@@ -2,19 +2,22 @@
 """Install Orbital Laser into Horizon's game home.
 
   python3 install.py            copy the shader pack and the sound pack into place
-  python3 install.py --enable   ...and select them (needs the game CLOSED: Horizon rewrites its settings on exit)
+  python3 install.py --enable   ...and select/switch them on (needs the game CLOSED: Horizon rewrites its settings on exit)
   python3 install.py --link     symlink the packs instead of copying (handy while developing)
   python3 install.py --uninstall
   --home PATH                   Horizon's game home (default: $HORIZON_HOME, then the usual place for your OS)
 
-Without --enable, pick them in the game: Options > Video Settings > Shader Packs > "orbital-laser-shader",
-and Options > Resource Packs > enable "orbital-sounds". Then run strike.py (strike.py --doctor checks everything).
+It installs three things: the shader pack, the sound pack and the item mod (the Orbital Laser Designator and the Orbital
+Remote). Without --enable, pick them in the game: Options > Video Settings > Shader Packs > "orbital-laser-shader",
+Options > Resource Packs > enable "orbital-sounds", and Options > Mods > switch on "Orbital Laser". Then run strike.py (strike.py --doctor checks everything).
 """
 import argparse, os, shutil, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PACKS = (("orbital-laser-shader", "shaderpacks"), ("orbital-sounds", "resourcepacks"))
+# (source folder, folder in the game home, installed name)
+PACKS = (("orbital-laser-shader", "shaderpacks", "orbital-laser-shader"), ("orbital-sounds", "resourcepacks", "orbital-sounds"),
+         ("orbital-laser-mod", "horizon-mods", "orbital-laser"))
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--home")
@@ -50,8 +53,8 @@ def find_home():
 
 home = find_home()
 
-for name, sub in PACKS:
-    dest = home / sub / name
+for name, sub, installed in PACKS:
+    dest = home / sub / installed
     if dest.is_symlink() or dest.exists():
         shutil.rmtree(dest) if dest.is_dir() and not dest.is_symlink() else dest.unlink()
         print(f"removed {dest}")
@@ -93,7 +96,8 @@ if args.enable and not args.uninstall:
     if "file/orbital-sounds" not in packs:
         packs.append("file/orbital-sounds")
     set_line(opt, "resourcePacks", json.dumps(packs, separators=(",", ":")))
-    print("enabled: shader pack selected and sound pack switched on (start the game afterwards, not before)")
+    set_line(home / "horizon-mods.txt", "mod.orbital", "true")
+    print("enabled: shader pack selected, sound pack and the item mod switched on (start the game afterwards, not before)")
 
 if not args.uninstall:
     print("\nNext:\n"

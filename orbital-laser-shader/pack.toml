@@ -46,10 +46,10 @@ max = 200.0
 step = 0.1
 
 [options.swz]
-label = "Debug: blue-channel capture view (leave at 0)"
+label = "Debug: capture modes (leave at 0)"
 default = 0.0
 min = 0.0
-max = 2.0
+max = 3.0
 step = 1.0
 
 [options.seed]
@@ -57,4 +57,11 @@ label = "Randomness seed (set by strike.py)"
 default = 0.0
 min = 0.0
 max = 1000.0
+step = 1.0
+
+[options.theme]
+label = "Theme (0 Plasma, 1 Inferno, 2 Void, 3 Godly)"
+default = 0.0
+min = 0.0
+max = 3.0
 step = 1.0
