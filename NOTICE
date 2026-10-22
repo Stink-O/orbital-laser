@@ -21,7 +21,7 @@ Third-party material
 
 tools/fonts/Barlow-Medium.ttf  (licence: tools/fonts/OFL.txt)
   Barlow by The Barlow Project Authors, SIL Open Font License 1.1 (https://github.com/jpt/barlow). It is used by
-  tools/make_branding.py to set the tagline of docs/branding/social-preview.png, as in Portalcraft's social preview.
+  tools/make_branding.py to set the tagline of docs/branding/social-preview.png.
 
 tools/wgslcheck
   A small program that links naga (MIT or Apache-2.0, https://github.com/gfx-rs/wgpu) to validate shaders the way

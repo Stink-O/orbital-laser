@@ -82,34 +82,154 @@ def icon(name, plate):
     (OUT / name).write_text(svg)
 
 
-def social_preview(tagline="A terrestrial orbital laser strike for Horizon"):
-    """1280x640 social preview, laid out like Portalcraft's: grey ground, the wordmark 1025 px wide centred at
-    y = 262, a one-line tagline in Barlow Medium 40 px centred at y = 479, and a 14 px blue/orange bar on the bottom edge."""
-    import tempfile
-    from PIL import Image, ImageDraw, ImageFont
-    body, w = wordmark("#222428")
-    pad = 60
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-{pad} -190 {w + pad * 2} 380" '
-           f'width="{(w + pad * 2) * 3}" height="1140"><g>{body}</g></svg>')
-    with tempfile.TemporaryDirectory() as t:
-        src, png = Path(t, "w.svg"), Path(t, "w.png")
-        src.write_text(svg)
-        subprocess.run(["magick", "-background", "none", "-density", "288", str(src), str(png)], check=True)
-        mark = Image.open(png).convert("RGBA")
-    # crop to the visible ink (ignoring the faint top of the beam's fade), then fit to 1025 px wide
-    alpha = mark.split()[3].point(lambda v: 255 if v > 90 else 0)
-    mark = mark.crop(alpha.getbbox())
-    mark = mark.resize((1025, round(mark.height * 1025 / mark.width)), Image.LANCZOS)
-    bg = Image.new("RGBA", (1280, 640), "#E9EAEC")
-    bg.alpha_composite(mark, ((1280 - mark.width) // 2, round(262 - mark.height / 2)))
+def social_preview(tagline="An orbital laser strike for Horizon"):
+    """1280x640 social preview, drawn for this project: the name on the left, and on the right the strike itself,
+    a beam coming down into a crater with shockwave rings on the ground and a couple of forked bolts. Flat, dark and simple."""
+    import math, random, tempfile
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+    S = 2                                   # draw at 2x, then downsample for clean edges
+    W, H = 1280 * S, 640 * S
+    rnd = random.Random(7)
+    cx, impact = 925 * S, 438 * S           # the beam's x and where it lands
+
+    def layer():
+        return Image.new("RGBA", (W, H), (0, 0, 0, 0))
+
+    def glow(img, radius):
+        return img.filter(ImageFilter.GaussianBlur(radius * S))
+
+    # ground: deep blue-black, a faint pool of light where the beam lands
+    bg = Image.new("RGBA", (W, H), "#0D1117")
+    pool = layer()
+    pd = ImageDraw.Draw(pool)
+    for i in range(14, 0, -1):
+        k = i / 14
+        pd.ellipse([cx - 520 * S * k, impact - 110 * S * k, cx + 520 * S * k, impact + 110 * S * k], fill=(255, 136, 0, int(9 * (1 - k) + 2)))
+    bg.alpha_composite(glow(pool, 20))
+
+    # shockwave rings lying on the ground, in perspective
+    rings = layer()
+    rd = ImageDraw.Draw(rings)
+    for rx, a, wd in ((150, 255, 5), (290, 190, 4), (440, 120, 3), (600, 62, 3)):
+        rd.ellipse([cx - rx * S, impact - rx * 0.2 * S, cx + rx * S, impact + rx * 0.2 * S], outline=(255, 136, 0, a), width=wd * S)
+    bg.alpha_composite(glow(rings, 7))
+    bg.alpha_composite(rings)
+
+    # the crater: a dark hole with a glowing rim, and the molten light inside it
+    cr = layer()
+    cd = ImageDraw.Draw(cr)
+    cd.ellipse([cx - 74 * S, impact - 15 * S, cx + 74 * S, impact + 15 * S], fill="#05070A", outline=(255, 160, 40, 255), width=4 * S)
+    bg.alpha_composite(glow(cr, 5))
+    bg.alpha_composite(cr)
+    lava = layer()
+    ld = ImageDraw.Draw(lava)
+    ld.ellipse([cx - 52 * S, impact - 8 * S, cx + 52 * S, impact + 8 * S], fill=(255, 190, 90, 255))
+    bg.alpha_composite(glow(lava, 6))
+
+    # the beam: blue glow, blue body, white core, fading in from the top edge
+    def beam_layer(width, color, blur):
+        L = layer()
+        d = ImageDraw.Draw(L)
+        d.rectangle([cx - width * S / 2, 0, cx + width * S / 2, impact], fill=color)
+        L = glow(L, blur) if blur else L
+        fade = Image.linear_gradient("L").resize((W, H)).point(lambda v: min(255, int(v * 4.2)))   # 0 at the top, opaque by ~25% down
+        r, g, b_, al = L.split()
+        al = Image.composite(al, Image.new("L", (W, H), 0), Image.new("L", (W, H), 255))
+        mask = Image.fromarray(__import__("numpy").minimum(al, fade))
+        L.putalpha(mask)
+        return L
+    bg.alpha_composite(beam_layer(120, (41, 163, 255, 120), 26))
+    bg.alpha_composite(beam_layer(34, (41, 163, 255, 255), 2))
+    bg.alpha_composite(beam_layer(12, (255, 255, 255, 255), 0))
+
+    # the flash where it lands
+    fl = layer()
+    fd = ImageDraw.Draw(fl)
+    for i in range(10, 0, -1):
+        k = i / 10
+        fd.ellipse([cx - 120 * S * k, impact - 42 * S * k, cx + 120 * S * k, impact + 42 * S * k], fill=(255, 255, 255, int(40 * (1 - k) + 18)))
+    bg.alpha_composite(glow(fl, 10))
+    # impact flare: a hot white-orange bloom that swallows the beam's base, with a darker crater mouth under it
+    fz = layer()
+    zd = ImageDraw.Draw(fz)
+    for i in range(14, 0, -1):
+        k = i / 14
+        zd.ellipse([cx - 95 * S * k, impact - 34 * S * k, cx + 95 * S * k, impact + 34 * S * k],
+                   fill=(255, int(150 + 105 * (1 - k)), int(40 + 190 * (1 - k) ** 2), int(255 * (1 - k) ** 0.8 + 20)))
+    bg.alpha_composite(glow(fz, 4))
+    bg.alpha_composite(fz)
+    up = layer()
+    ImageDraw.Draw(up).ellipse([cx - 16 * S, impact - 120 * S, cx + 16 * S, impact - 6 * S], fill=(255, 255, 255, 235))
+    bg.alpha_composite(glow(up, 5))
+
+    # forked bolts, jagged and rooted on the beam
+    def bolt(x0, y0, x1, y1, amp, steps=9):
+        pts = [(x0, y0)]
+        for i in range(1, steps):
+            t = i / steps
+            nx, ny = -(y1 - y0), (x1 - x0)
+            n = math.hypot(nx, ny) or 1
+            j = rnd.uniform(-amp, amp) * math.sin(math.pi * t)
+            pts.append((x0 + (x1 - x0) * t + nx / n * j, y0 + (y1 - y0) * t + ny / n * j))
+        pts.append((x1, y1))
+        return pts
+    lt = layer()
+    ld2 = ImageDraw.Draw(lt)
+    specs = [((cx + 6 * S, 190 * S), (cx + 215 * S, 150 * S)), ((cx - 6 * S, 270 * S), (cx - 190 * S, 318 * S)),
+             ((cx + 6 * S, 330 * S), (cx + 150 * S, 372 * S))]
+    for (x0, y0), (x1, y1) in specs:
+        main = bolt(x0, y0, x1, y1, 22 * S)
+        ld2.line(main, fill=(235, 246, 255, 255), width=3 * S, joint="curve")
+        mx, my = main[len(main) // 2]
+        fork = bolt(mx, my, mx + (x1 - x0) * 0.35, my + (y1 - y0) * 0.9 + 34 * S, 14 * S, 6)
+        ld2.line(fork, fill=(235, 246, 255, 230), width=2 * S, joint="curve")
+    bg.alpha_composite(glow(lt, 5))
+    bg.alpha_composite(lt)
+
+    # a few sparks
+    sp = layer()
+    sd = ImageDraw.Draw(sp)
+    for _ in range(26):
+        x = cx + rnd.gauss(0, 95 * S)
+        y = rnd.uniform(120 * S, impact - 12 * S)
+        r = rnd.uniform(1.5, 3.2) * S
+        sd.ellipse([x - r, y - r, x + r, y + r], fill=(255, 214, 150, rnd.randint(150, 255)))
+    bg.alpha_composite(sp)
+
+    # the name, stacked and left-aligned: the O is a small reticle
+    ink = "#E8EAED"
+    scale = 0.86
+    def line_svg(word, ring_first):
+        x, parts = 0, []
+        for k, ch in enumerate(word):
+            if ch == "O":
+                parts.append(f'<g transform="translate({x} 0)"><circle cx="50" cy="50" r="44" fill="none" stroke="{RING}" stroke-width="{STROKE}"/>'
+                             f'<path d="M15 50H29M71 50H85M50 15V29M50 71V85" fill="none" stroke="{RING}" stroke-width="{STROKE - 3}"/>'
+                             f'<circle cx="50" cy="50" r="8" fill="{BEAM}"/></g>')
+                x += 100 + GAP
+            else:
+                d, w = G[ch]
+                parts.append(f'<path transform="translate({x} 0)" d="{d}" fill="none" stroke="{ink}" stroke-width="{STROKE}" stroke-linejoin="miter" stroke-linecap="butt"/>')
+                x += w + GAP
+        return "".join(parts), x - GAP
+    def place(word, top, left=96):
+        body, w = line_svg(word, True)
+        pad = 12
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-{pad} -{pad} {w + 2 * pad} {100 + 2 * pad}" '
+               f'width="{round((w + 2 * pad) * scale * S)}" height="{round((100 + 2 * pad) * scale * S)}">{body}</svg>')
+        with tempfile.TemporaryDirectory() as t:
+            src, png = Path(t, "w.svg"), Path(t, "w.png")
+            src.write_text(svg)
+            subprocess.run(["magick", "-background", "none", "-density", "96", str(src), str(png)], check=True)
+            im = Image.open(png).convert("RGBA")
+        bg.alpha_composite(im, (round((left - pad * scale) * S), round((top - pad * scale) * S)))
+    place("ORBITAL", 168)
+    place("LASER", 168 + 100 * scale + 52)
     d = ImageDraw.Draw(bg)
-    font_file = Path(__file__).resolve().parent / "fonts" / "Barlow-Medium.ttf"
-    font = ImageFont.truetype(str(font_file), 40)
-    box = d.textbbox((0, 0), tagline, font=font)
-    d.text(((1280 - (box[2] - box[0])) / 2 - box[0], 479 - (box[1] + box[3]) / 2), tagline, font=font, fill="#222428")
-    d.rectangle([0, 626, 639, 639], fill="#1F7AD6")
-    d.rectangle([640, 626, 1279, 639], fill="#E8820C")
-    bg.convert("RGB").save(OUT / "social-preview.png", optimize=True)
+    font = ImageFont.truetype(str(Path(__file__).resolve().parent / "fonts" / "Barlow-Medium.ttf"), 34 * S)
+    d.text((96 * S, 440 * S), tagline, font=font, fill="#9AA4AF")
+
+    bg.resize((1280, 640), Image.LANCZOS).convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 
 logo("orbital-laser-logo-light.svg", "#FFFFFF", "#303133")
