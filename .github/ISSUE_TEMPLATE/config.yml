@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: I'd like to help / work on something
+    url: https://github.com/Stink-O/orbital-laser/discussions
+    about: Say what you'd like to work on, or ask how something works. CONTRIBUTING.md has the overview.
+  - name: Questions, ideas and clips
+    url: https://github.com/Stink-O/orbital-laser/discussions
+    about: Ask, suggest, or show what you made. Bugs go in an issue.

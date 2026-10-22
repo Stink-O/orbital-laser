@@ -1,0 +1,7 @@
+[package]
+name = "wgslcheck"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+naga = { version = "30.0.1", features = ["wgsl-in", "wgsl-out", "spv-out"] }
+hashbrown = "0.17.1"

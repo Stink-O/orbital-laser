@@ -1,0 +1,60 @@
+[pack]
+name = "Orbital Laser"
+description = "A terrestrial orbital laser strike: targeting reticle, plasma beam with forked lightning, shockwave, molten crater, smoke plume."
+authors = ["Stink-O"]
+version = "0.1.0"
+license = "MIT"
+api = 1
+
+[[stage]]
+kind = "composite"
+shader = "shaders/strike.wgsl"
+
+[options.target_x]
+label = "Target X"
+default = 0.0
+min = -30000000.0
+max = 30000000.0
+step = 1.0
+
+[options.target_y]
+label = "Target Y"
+default = 64.0
+min = -64.0
+max = 320.0
+step = 1.0
+
+[options.target_z]
+label = "Target Z"
+default = 0.0
+min = -30000000.0
+max = 30000000.0
+step = 1.0
+
+[options.intensity]
+label = "Intensity"
+default = 1.0
+min = 0.2
+max = 2.0
+step = 0.1
+
+[options.freeze_time]
+label = "Strike clock (set by strike.py: -1 running, 100 idle)"
+default = 100.0
+min = -1.0
+max = 200.0
+step = 0.1
+
+[options.swz]
+label = "Debug: blue-channel capture view (leave at 0)"
+default = 0.0
+min = 0.0
+max = 2.0
+step = 1.0
+
+[options.seed]
+label = "Randomness seed (set by strike.py)"
+default = 0.0
+min = 0.0
+max = 1000.0
+step = 1.0

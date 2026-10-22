@@ -1,0 +1,29 @@
+Orbital Laser
+Copyright (c) 2026 Stink-O, MIT License (see LICENSE).
+
+An independent fan project. It is not affiliated with or endorsed by Mojang Studios, Microsoft, or the author of
+Horizon. Minecraft is a trademark and work of Mojang Studios and Microsoft. Nothing from Minecraft is in this
+repository: no code, textures or sounds. The shader pack and the driver run on top of Horizon
+(https://github.com/ludovic111/horizon, MIT) and its `horizon-ctl` tool, which are not included.
+
+Original material
+-----------------
+
+orbital-laser-shader/   Written for this project.
+orbital-sounds/         All eight sounds are synthesized from noise and tones by tools/synth_sounds.py. They contain
+                        no samples from any recording.
+docs/branding/          The logo, icon and social preview are drawn as vector paths by tools/make_branding.py.
+docs/*.jpg              Screenshots taken in Horizon with this shader pack. They show Minecraft terrain rendered by
+                        Horizon; they are included to show the shader's output.
+
+Third-party material
+--------------------
+
+docs/branding/social-preview.png
+  The tagline is set in Noto Sans (SIL Open Font License 1.1), https://github.com/notofonts/latin-greek-cyrillic.
+  Only the rendered image is included, not the font.
+
+tools/wgslcheck
+  A small program that links naga (MIT or Apache-2.0, https://github.com/gfx-rs/wgpu) to validate shaders the way
+  Horizon does. naga is downloaded by cargo when you build the tool; it is not included. tools/wgslcheck/prelude.wgsl
+  reproduces the stage prelude Horizon prepends to every shader pack, so that a shader can be checked offline.

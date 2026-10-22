@@ -1,0 +1,8 @@
+# build output
+tools/wgslcheck/target/
+__pycache__/
+*.pyc
+# local scratch
+*.log
+nohup.out
+.DS_Store
