@@ -83,32 +83,32 @@ def icon(name, plate):
 
 
 def social_preview(tagline="A terrestrial orbital laser strike for Horizon"):
-    """1280x640 social preview: grey ground, the wordmark, a one-line tagline and a blue/orange base bar."""
+    """1280x640 social preview, laid out like Portalcraft's: grey ground, the wordmark 1025 px wide centred at
+    y = 262, a one-line tagline in Barlow Medium 40 px centred at y = 479, and a 14 px blue/orange bar on the bottom edge."""
     import tempfile
     from PIL import Image, ImageDraw, ImageFont
-    body, w = wordmark("#303133")
+    body, w = wordmark("#222428")
     pad = 60
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-{pad} -190 {w + pad * 2} 380" '
-           f'width="{(w + pad * 2) * 2}" height="760"><g>{body}</g></svg>')
+           f'width="{(w + pad * 2) * 3}" height="1140"><g>{body}</g></svg>')
     with tempfile.TemporaryDirectory() as t:
         src, png = Path(t, "w.svg"), Path(t, "w.png")
         src.write_text(svg)
-        subprocess.run(["magick", "-background", "none", "-density", "192", str(src), str(png)], check=True)
+        subprocess.run(["magick", "-background", "none", "-density", "288", str(src), str(png)], check=True)
         mark = Image.open(png).convert("RGBA")
-    bg = Image.new("RGBA", (1280, 640), "#E8EAED")
-    target_w = 960
-    mark = mark.resize((target_w, round(mark.height * target_w / mark.width)), Image.LANCZOS)
-    bg.alpha_composite(mark, ((1280 - mark.width) // 2, 108))
+    # crop to the visible ink (ignoring the faint top of the beam's fade), then fit to 1025 px wide
+    alpha = mark.split()[3].point(lambda v: 255 if v > 90 else 0)
+    mark = mark.crop(alpha.getbbox())
+    mark = mark.resize((1025, round(mark.height * 1025 / mark.width)), Image.LANCZOS)
+    bg = Image.new("RGBA", (1280, 640), "#E9EAEC")
+    bg.alpha_composite(mark, ((1280 - mark.width) // 2, round(262 - mark.height / 2)))
     d = ImageDraw.Draw(bg)
-    try:
-        font_path = subprocess.run(["fc-match", "-f", "%{file}", "Noto Sans:medium"], capture_output=True, text=True).stdout
-        font = ImageFont.truetype(font_path, 40)
-    except Exception:
-        font = ImageFont.load_default()
-    tw = d.textlength(tagline, font=font)
-    d.text(((1280 - tw) / 2, 452), tagline, font=font, fill="#303133")
-    d.rectangle([0, 626, 640, 640], fill=BEAM)
-    d.rectangle([640, 626, 1280, 640], fill=RING)
+    font_file = Path(__file__).resolve().parent / "fonts" / "Barlow-Medium.ttf"
+    font = ImageFont.truetype(str(font_file), 40)
+    box = d.textbbox((0, 0), tagline, font=font)
+    d.text(((1280 - (box[2] - box[0])) / 2 - box[0], 479 - (box[1] + box[3]) / 2), tagline, font=font, fill="#222428")
+    d.rectangle([0, 626, 639, 639], fill="#1F7AD6")
+    d.rectangle([640, 626, 1279, 639], fill="#E8820C")
     bg.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 
