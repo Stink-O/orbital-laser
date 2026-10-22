@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Draw the two 16x16 item textures (and a preview sheet): the designator and the remote.
+"""Draw the 16x16 item textures (and a preview sheet): the designator, the remote, and one icon per laser for the
+remote's menu.
 
     python3 tools/make_item_textures.py
 """
@@ -69,22 +70,64 @@ REMOTE = [
     "..dGcccccccGGd..",
     "..dGcccWcccGGd..",
     "..dGGGGGGGGGGd..",
-    "..dGbbGGooGGGd..",
-    "..dGbbGGooGGGd..",
-    "..dGGGGrrGGGGd..",
-    "..dGppGGyyGGGd..",
-    "..dGppGGyyGGGd..",
+    "..dGbbbGGyyyGd..",
+    "..dGbBbGGyOyGd..",
+    "..dGbbbGGyyyGd..",
+    "..dGGGGGGGGGGd..",
+    "..dGGGrrrGGGGd..",
     "..dGGGGGGGGGGd..",
     "...ddddddddddd..",
     "................",
 ]
 
-sheet = Image.new("RGBA", (16 * 2 + 4, 16), (0, 0, 0, 0))
-for i, name in enumerate(("laser_designator", "remote")):
-    if name == "remote":
-        assert len(REMOTE) == 16 and all(len(r) == 16 for r in REMOTE)
+PLASMA_ICON = [            # a beam coming down through forked lightning, splashing on the ground
+    "......bBWBb.....",
+    "......bBWBb.....",
+    ".....b.BWB.b....",
+    "....b..BWB..b...",
+    "...b...BWB...b..",
+    "....b..BWB..b...",
+    ".....b.BWB.b....",
+    "......bBWBb.....",
+    "......bBWBb.....",
+    "......bBWBb.....",
+    ".....bBBWBBb....",
+    "....bBBWWWBBb...",
+    "..bbBWWWWWWWBbb.",
+    ".bBBWWWWWWWWWBBb",
+    "..ddddddddddddd.",
+    "................",
+]
+
+GODLY_ICON = [             # a halo with a pillar of light through it
+    "................",
+    "....yyyyyyyy....",
+    "..yy........yy..",
+    ".y....WWWW....y.",
+    "..yy..WWWW..yy..",
+    "....yyWWWWyy....",
+    "......WWWW......",
+    "....O.WWWW.O....",
+    "...O..WWWW..O...",
+    "......WWWW......",
+    "..O...WWWW...O..",
+    "......WWWW......",
+    ".....yWWWWy.....",
+    "...yyyWWWWyyy...",
+    ".yyyyyyyyyyyyyy.",
+    "................",
+]
+
+GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON}
+
+names = ("laser_designator", "remote", "plasma_icon", "godly_icon")
+sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
+for i, name in enumerate(names):
+    if name in GRIDS:
+        grid = GRIDS[name]
+        assert len(grid) == 16 and all(len(r) == 16 for r in grid), name
         im = Image.new("RGBA", (16, 16))
-        for y, row in enumerate(REMOTE):
+        for y, row in enumerate(grid):
             for x, ch in enumerate(row):
                 im.putpixel((x, y), K[ch])
     else:

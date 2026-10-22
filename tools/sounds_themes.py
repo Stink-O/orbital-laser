@@ -1,8 +1,8 @@
-"""Sound sets for the Inferno, Void and Godly themes. Each has: lockon, charge, fire, beam, rumble, accent, shutdown
-(the Plasma set's `collapse` is shared). Files go to sounds/<theme>/<name>.ogg, events are `<theme>.<name>`."""
+"""The Godly sound set (Plasma's lives in sounds_plasma.py): lockon, charge, fire, beam, rumble, accent, shutdown
+(the Plasma set's `collapse` is shared). Files go to sounds/godly/<name>.ogg, events are `godly.<name>`."""
 from soundlib import *
 
-THEMES = ("inferno", "void", "godly")
+THEMES = ("godly",)
 NAMES = ["lockon", "charge", "fire", "beam", "rumble", "accent", "shutdown"]
 
 D_MAJOR = {"D1": 36.71, "D2": 73.42, "A2": 110.0, "D3": 146.83, "A3": 220.0, "D4": 293.66, "F4#": 369.99, "A4": 440.0, "D5": 587.33}
@@ -65,140 +65,6 @@ def echoes(x, n, taps):
         e[dn:] = band(x, 25, hi)[: n - dn] * g
         x = x + e
     return x
-
-
-# =====================================================================================  INFERNO
-def inferno():
-    th = "inferno"
-    # lock-on: an ignition whump
-    d = 0.9; n = int(SR * d)
-    x = thump(n, 0.0, 110, 45, 0.18, 12) * 1.5 + lane(d, 200, 2500, 6, 0.4, 1.0) * exp_env(n, 0.002, 0.12) + click(n, 0.0, 1.0, 1500, 9000, 0.004) * 0.8
-    finish(f"{th}/lockon", reverb(x, 0.3, length=1.3, tau_lo=0.6, tau_mid=0.3, tau_hi=0.15))
-
-    # charge: a furnace spooling up: roar, sweeping whoosh, accelerating heartbeat, crackles thickening
-    d = 4.0; n = int(SR * d); t = tt(d); p = t / d
-    x = band(white(d), 60, 1400) * (0.12 + 1.5 * p ** 2.2) * (1 + 0.3 * smooth_noise(d, 10))
-    for i, (lo, hi) in enumerate(((80, 400), (300, 1100), (900, 2800), (2200, 7000))):
-        x += band(white(d), lo, hi) * np.exp(-((p - (0.2 + 0.25 * i)) / 0.18) ** 2) * 1.2
-    tb = 0.2
-    while tb < d - 0.2:
-        x += thump(n, tb, 70, 30, 0.14) * (0.4 + 0.9 * p[min(int(tb * SR), n - 1)]) * 1.4
-        tb += 0.75 * (1 - 0.7 * (tb / d) ** 1.3) + 0.12
-    for _ in range(260):
-        ti = d * np.sqrt(rng.random())
-        if rng.random() < (ti / d) ** 1.5:
-            x += click(n, ti, rng.uniform(0.15, 0.8), 700, rng.uniform(3000, 9000), rng.uniform(0.003, 0.014))
-    x = soft(x, 1.5) * np.minimum(t / 0.2, 1.0)
-    finish(f"{th}/charge", reverb(x, 0.2, length=2.0, tau_lo=0.9, tau_mid=0.5, tau_hi=0.2))
-
-    # fire: the fireball
-    d = 6.5; n = int(SR * d); t = tt(d)
-    crack = lane(d, 500, 14000, 3, 0.3, 1.8) * exp_env(n, 0.0004, 0.014) + lane(d, 100, 1200, 3, 0.3, 1.2) * exp_env(n, 0.0006, 0.07)
-    boom = thump(n, 0.0, 90, 22, 1.3, 3.0) * 2.1 + thump(n, 0.02, 60, 20, 0.9, 2.2) * 1.2
-    ball = lane(d, 80, 3200, 6, 0.5, 1.9) * exp_env(n, 0.02, 1.1)
-    tail = lane(d, 200, 1800, 12, 0.6, 0.9) * exp_env(n, 0.3, 2.2)
-    roll = band(white(d), 20, 200, 3) * exp_env(n, 0.2, 1.9) * (1 + 0.8 * smooth_noise(d, 5)) * 2.4
-    x = crack + boom + ball + tail + roll + crackles(n, d, 190, 0.3, 5.8, 0.05, 0.3, bias=1.8)
-    x = echoes(x, n, ((0.5, 0.45, 900), (1.2, 0.35, 600), (2.1, 0.25, 420), (3.3, 0.15, 300)))
-    finish(f"{th}/fire", reverb(soft(x, 1.4), 0.5, length=3.8, tau_lo=2.2, tau_mid=1.1, tau_hi=0.4), 0.3)
-
-    # beam: a blowtorch roar with pops and low whumps
-    d = 4.0; n = int(SR * d); t = tt(d)
-    x = lane(d, 70, 300, 2.5, 0.5, 1.8) + lane(d, 250, 1100, 4.0, 0.55, 1.6) + lane(d, 1000, 4500, 7, 0.6, 0.7) + lane(d, 4500, 11000, 10, 0.7, 0.25)
-    x += crackles(n, d, 90, 0.0, d - 0.1, 0.1, 0.5, 0.004, 0.02, 400, 3000)
-    for _ in range(6):
-        x += thump(n, rng.uniform(0, d - 0.3), 100, 50, 0.12, 9) * 0.8
-    x = soft(x, 1.3) * np.minimum(np.minimum(t / 0.35, (d - t) / 0.35), 1.0)
-    finish(f"{th}/beam", reverb(x, 0.18, length=1.6, tau_lo=0.8, tau_mid=0.4, tau_hi=0.2), 0.01)
-
-    # rumble: lava, with slow bubbles bursting
-    d = 3.4; n = int(SR * d); t = tt(d)
-    x = band(white(d), 15, 90, 3) * (1 + 0.7 * smooth_noise(d, 3)) * 3.0 + band(white(d), 90, 520) * 0.4 * (1 + smooth_noise(d, 6))
-    for _ in range(15):
-        ti = rng.uniform(0, d - 0.4); f0 = rng.uniform(140, 230)
-        tp = np.maximum(np.arange(n) / SR - ti, 0)
-        x += np.sin(2 * np.pi * np.cumsum(f0 * np.exp(-tp * 9) + 55) / SR) * np.exp(-tp / 0.09) * (np.arange(n) / SR >= ti) * rng.uniform(0.3, 0.9)
-    x *= np.minimum(np.minimum(t / 0.5, (d - t) / 1.0), 1.0)
-    finish(f"{th}/rumble", reverb(x, 0.25, length=2.2, tau_lo=1.2, tau_mid=0.6, tau_hi=0.2), 0.02)
-
-    # accent: a burst of flame
-    d = 1.8; n = int(SR * d)
-    x = lane(d, 300, 3000, 8, 0.5, 1.3) * exp_env(n, 0.02, 0.4) + crackles(n, d, 100, 0.0, 1.2, 0.2, 0.9, 0.002, 0.012, 1200, 9000, 2.0)
-    x += thump(n, 0.0, 90, 40, 0.2, 10) * 0.9
-    finish(f"{th}/accent", reverb(soft(x, 1.6), 0.3, length=1.6, tau_lo=0.8, tau_mid=0.4, tau_hi=0.2), 0.1)
-
-    # shutdown: the fire dying back
-    d = 3.2; n = int(SR * d); t = tt(d)
-    x = lane(d, 100, 2500, 5, 0.5, 1.3) * np.exp(-t * 1.4) + lane(d, 3000, 9000, 6, 0.5, 0.25) * np.exp(-t * 3)
-    x += crackles(n, d, 80, 0.0, d - 0.3, 0.1, 0.6, 0.003, 0.012, 1500, 8000, 2.6) + thump(n, 0.0, 70, 24, 0.5, 4) * 0.9
-    finish(f"{th}/shutdown", reverb(x, 0.3, length=2.0, tau_lo=1.0, tau_mid=0.5, tau_hi=0.2), 0.1)
-
-
-# =====================================================================================  VOID
-def void():
-    th = "void"
-    # lock-on: one low, detuned, metallic ping
-    d = 1.4; n = int(SR * d)
-    x = ring(n, 0.0, (171, 423, 733, 1109), 0.9, 0.5) + thump(n, 0.0, 60, 30, 0.3, 6) * 1.3 + lane(d, 100, 800, 3, 0.3, 0.3) * exp_env(n, 0.01, 0.3)
-    finish(f"{th}/lockon", reverb(x, 0.45, length=2.5, tau_lo=1.5, tau_mid=0.9, tau_hi=0.4))
-
-    # charge: sub drone with beating, a reverse inhale, inharmonic shimmer, a slowing-then-quickening pulse
-    d = 4.0; n = int(SR * d); t = tt(d); p = t / d
-    f = 38 + 32 * p ** 1.5
-    ph = 2 * np.pi * np.cumsum(f) / SR
-    x = (np.sin(ph) + np.sin(ph * 1.012)) * (0.2 + 1.4 * p ** 1.8)
-    for fr in (91.3, 137.1, 213.7, 321.9):
-        x += np.sin(2 * np.pi * fr * (1 + 0.6 * p) * t + fr) * 0.4 * p ** 1.5 * (0.7 + 0.3 * np.sin(2 * np.pi * 0.7 * t + fr))
-    x += band(white(d), 300, 3500) * p ** 3 * 1.3 * (1 + 0.4 * smooth_noise(d, 5)) + band(white(d), 5000, 12000) * p ** 3 * 0.3
-    tb = 0.4
-    while tb < d - 0.1:
-        x += thump(n, tb, 55, 28, 0.2) * (0.5 + 1.0 * p[min(int(tb * SR), n - 1)])
-        tb += 1.2 * (1 - 0.66 * tb / d)
-    x *= np.minimum(t / 0.3, 1.0)
-    finish(f"{th}/charge", reverb(soft(x, 1.3), 0.3, length=3.0, tau_lo=1.6, tau_mid=0.9, tau_hi=0.4))
-
-    # fire: an implosion: a descending suck-out, a huge sub drop, a metallic tail
-    d = 6.5; n = int(SR * d); t = tt(d)
-    sweep = np.sin(2 * np.pi * np.cumsum(2200 * np.exp(-t * 4.2) + 35) / SR) * exp_env(n, 0.003, 1.6) * 1.2
-    boom = thump(n, 0.0, 70, 18, 2.0, 2.4) * 2.4 + band(white(d), 40, 300, 3) * exp_env(n, 0.05, 1.8) * 1.6
-    metal = ring(n, 0.0, (233, 507, 911, 1623, 2711), 3.0, 0.3)
-    suck = band(white(d), 300, 2000) * np.where((t > 0.2) & (t < 0.9), ((t - 0.2) / 0.7) ** 2, 0.0) * 0.6
-    snap = click(n, 0.9, 1.0, 400, 5000, 0.01) * 0.9
-    x = sweep + boom + metal + suck + snap
-    x = echoes(x, n, ((0.7, 0.4, 500), (1.6, 0.3, 350), (2.8, 0.2, 260)))
-    finish(f"{th}/fire", reverb(soft(x, 1.4), 0.6, length=4.2, tau_lo=2.6, tau_mid=1.4, tau_hi=0.5), 0.3)
-
-    # beam: a dark drone: detuned stacks, a whisper, slow sub pulses
-    d = 4.0; n = int(SR * d); t = tt(d)
-    x = np.zeros(n)
-    for i, fr in enumerate((41.2, 61.9, 82.7, 123.9)):
-        x += sum(np.sin(2 * np.pi * fr * h * t + h) / h ** 1.4 for h in range(1, 9)) * (0.7 + 0.3 * np.sin(2 * np.pi * 0.31 * t + i))
-    x += lane(d, 1200, 4200, 3, 0.5, 0.35) + np.sin(2 * np.pi * 38 * t) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.8 * t)) ** 3 * 1.2
-    x = soft(x * 0.5, 1.4) * np.minimum(np.minimum(t / 0.35, (d - t) / 0.35), 1.0)
-    finish(f"{th}/beam", reverb(x, 0.3, length=2.4, tau_lo=1.4, tau_mid=0.8, tau_hi=0.3), 0.01)
-
-    # rumble: a deep growl with ghostly voices far off
-    d = 3.4; n = int(SR * d); t = tt(d)
-    x = band(white(d), 14, 70, 3) * (1 + 0.8 * smooth_noise(d, 2.5)) * 3.5
-    x += band(white(d), 300, 900) * 0.2 * (0.5 + 0.5 * smooth_noise(d, 1.2)) + band(white(d), 1400, 2600) * 0.12 * (0.5 + 0.5 * smooth_noise(d, 1.6))
-    x *= np.minimum(np.minimum(t / 0.6, (d - t) / 1.0), 1.0)
-    finish(f"{th}/rumble", reverb(x, 0.4, length=3.0, tau_lo=1.8, tau_mid=1.0, tau_hi=0.4), 0.02)
-
-    # accent: a reverse swell that cuts into a thud
-    d = 1.9; n = int(SR * d); t = tt(d)
-    sw = band(white(d), 500, 5000) * np.where(t < 1.2, (t / 1.2) ** 2.5, 0.0) * 1.4
-    delayed = np.zeros(n); dl = int(0.003 * SR); delayed[dl:] = sw[:-dl]
-    x = sw + delayed * 0.8 + thump(n, 1.2, 60, 28, 0.4, 5) * 1.5
-    finish(f"{th}/accent", reverb(x, 0.4, length=2.2, tau_lo=1.2, tau_mid=0.7, tau_hi=0.3), 0.1)
-
-    # shutdown: the drone sinks away and snaps shut
-    d = 3.2; n = int(SR * d); t = tt(d)
-    f = 130 * np.exp(-t * 1.6) + 20
-    ph = 2 * np.pi * np.cumsum(f) / SR
-    x = sum(np.sin(h * ph) / h for h in range(1, 7)) * np.exp(-t * 0.9)
-    x += band(white(d), 800, 5000) * np.where(t > d - 0.7, ((t - (d - 0.7)) / 0.7) ** 3, 0.0) * 0.5
-    x += thump(n, d - 0.05, 60, 25, 0.3, 6) * 1.2
-    finish(f"{th}/shutdown", reverb(soft(x, 1.3), 0.45, length=2.8, tau_lo=1.6, tau_mid=0.9, tau_hi=0.4), 0.1)
 
 
 # =====================================================================================  GODLY
@@ -284,7 +150,7 @@ def godly():
     finish(f"{th}/shutdown", reverb(x, 0.5, length=3.4, tau_lo=2.0, tau_mid=1.3, tau_hi=0.6), 0.2)
 
 
-BUILDERS = {"inferno": inferno, "void": void, "godly": godly}
+BUILDERS = {"godly": godly}
 
 
 def build_all(only=None):

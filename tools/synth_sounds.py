@@ -3,9 +3,9 @@
 Every sound is synthesized from scratch (band-limited noise, pitched sweeps, additive tones and formants, convolution
 reverb built from a synthetic impulse response): no samples, nothing to license. Needs numpy and ffmpeg (with libvorbis).
 
-    python3 tools/synth_sounds.py [OUT_DIR] [--only plasma inferno void godly]     # default OUT_DIR: ../orbital-sounds
+    python3 tools/synth_sounds.py [OUT_DIR] [--only plasma godly]     # default OUT_DIR: ../orbital-sounds
 
-Four themes: Plasma (names have no prefix) and Inferno, Void, Godly (events are `<theme>.<name>`, files sounds/<theme>/).
+Two lasers: Plasma (names have no prefix) and Godly (events are `godly.<name>`, files sounds/godly/).
 """
 import argparse, json, sys
 from pathlib import Path

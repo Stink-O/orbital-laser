@@ -79,20 +79,45 @@ def read_sound(path, sr=44100):
     return np.frombuffer(raw, dtype="<f4")
 
 
+VANILLA = None
+
+
+def vanilla_file(event, rnd):
+    """A file for a vanilla sound event, from your own Horizon resources (never shipped in this repo)."""
+    global VANILLA
+    root = Path(os.environ.get("HORIZON_RESOURCES", ROOT.parent / "horizon-linux-x86_64/.local/horizon-client/26.3")) / "assets/minecraft"
+    if VANILLA is None:
+        f = root / "sounds.json"
+        VANILLA = json.loads(f.read_text()) if f.is_file() else {}
+    entries = VANILLA.get(event.split(":", 1)[1], {}).get("sounds", [])
+    if not entries:
+        return None
+    e = entries[rnd.randrange(len(entries))]
+    name = e if isinstance(e, str) else e.get("name", "")
+    p = root / "sounds" / f"{name.split(':')[-1]}.ogg"
+    return p if p.is_file() else None
+
+
 def mix_soundtrack(timeline, sounds_dir, offset, length, sr=44100):
     """Mix the timeline's sounds (event names like 'godly.fire') into a stereo wav-ready array, `offset` seconds late."""
     n = int(length * sr)
     mix = np.zeros(n, dtype=np.float32)
     cache = {}
+    import random as _r
+    rnd = _r.Random(7)
     for ev in timeline["sounds"]:
         name = ev["event"]
-        rel = name.replace(".", "/") if "." in name else name
-        f = Path(sounds_dir) / f"{rel}.ogg"
-        if not f.is_file():
+        if name.startswith("minecraft:"):
+            f = vanilla_file(name, rnd)
+        else:
+            rel = name.replace(".", "/") if "." in name else name
+            f = Path(sounds_dir) / f"{rel}.ogg"
+        if f is None or not f.is_file():
             continue
-        if name not in cache:
-            cache[name] = read_sound(f, sr)
-        x = cache[name]
+        key = str(f)
+        if key not in cache:
+            cache[key] = read_sound(f, sr)
+        x = cache[key]
         pitch = float(ev.get("pitch", 1.0))
         if abs(pitch - 1.0) > 1e-3:                                    # playsound pitch changes speed and pitch together
             idx = np.arange(0, len(x) - 1, pitch)
@@ -189,6 +214,12 @@ def record(args):
         if home and (Path(home) / "shaderpacks/orbital-laser-shader/pack.toml").is_file():
             pack = Path(home) / "shaderpacks/orbital-laser-shader/pack.toml"
             break
+    def set_swz(v):
+        if pack:
+            txt = pack.read_text()
+            pack.write_text(re.sub(r"(\[options\.swz\][^\[]*?default = )[-0-9.eE+]+", rf"\g<1>{v:.2f}", txt, flags=re.S))
+    set_swz(3.0)                                              # capture format for the whole recording, not just the strike
+    time.sleep(1.5)
     mtime0 = pack.stat().st_mtime if pack else 0
     rec = Recorder(ctl, frames_dir)
     rec.start()
@@ -216,7 +247,10 @@ def record(args):
     rec.join(timeout=30)
     sh("look-at", str(tx), str(ty + 4), str(tz))
     sh("command", "gamemode creative")
+    set_swz(0.0)
     frames = rec.frames
+    if len(frames) < 30:
+        sys.exit(f"Only {len(frames)} frames came back: the game stopped rendering (is the screen locked or asleep?).")
     print(f"{len(frames)} frames captured over {frames[-1][0] - frames[0][0]:.1f} s ({len(frames) / (frames[-1][0] - frames[0][0]):.1f} fps)")
     return finish(args, theme, frames, rec.t0, t_shader0, tl, work)
 
@@ -254,6 +288,13 @@ def finish(args, theme, frames, rec_t0, t_shader0, tl, work):
     out = Path(args.output or ROOT / "docs" / "videos" / f"orbital-laser-{theme.key}.mp4")
     out.parent.mkdir(parents=True, exist_ok=True)
     enc = ["-c:v", "libx264", "-preset", "slow", "-crf", "19", "-pix_fmt", "yuv420p", "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
+    if getattr(args, "raw", False):
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-framerate", str(FPS), "-i", str(outdir / "%05d.jpg"), "-i", str(wav),
+                        "-shortest", *enc, str(out)], check=True)
+        print("wrote", out, f"{out.stat().st_size / 1e6:.1f} MB")
+        if not args.keep:
+            shutil.rmtree(work, ignore_errors=True)
+        return out
     intro = work / "intro.mp4"
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-t", "2.4", "-i", str(card_png), "-f", "lavfi", "-t", "2.4",
                     "-i", "anullsrc=r=44100:cl=stereo", "-vf", f"fade=t=in:st=0:d=0.5,fade=t=out:st=1.9:d=0.5,fps={FPS}", *enc, str(intro)], check=True)
@@ -315,7 +356,7 @@ if __name__ == "__main__":
     sub = ap.add_subparsers(dest="what", required=True)
     r = sub.add_parser("record"); r.add_argument("theme", choices=[t.key for t in THEMES])
     r.add_argument("x", type=int); r.add_argument("y", type=int); r.add_argument("z", type=int)
-    r.add_argument("-o", "--output"); r.add_argument("--ctl"); r.add_argument("--no-terrain", action="store_true"); r.add_argument("--keep", action="store_true")
+    r.add_argument("-o", "--output"); r.add_argument("--ctl"); r.add_argument("--no-terrain", action="store_true"); r.add_argument("--keep", action="store_true"); r.add_argument("--raw", action="store_true", help="just the footage: no title card or fades")
     q = sub.add_parser("reel"); q.add_argument("clips", nargs="+"); q.add_argument("-o", "--output", required=True)
     sub.add_parser("selftest")
     a = ap.parse_args()
