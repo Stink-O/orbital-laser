@@ -17,7 +17,7 @@
 Needs Horizon running with its control socket (horizon-ctl launch --world NAME --creative), cheats on, the
 "Orbital Laser" shader pack selected and, for the custom sounds, the "orbital-sounds" resource pack enabled. The items'
 looks come from the orbital-laser-mod content mod (install.py puts it in place); without it they are plain spyglasses.
-Run install.py once first. The strike edits the installed shader pack's pack.toml to aim and restart it, and writes its
+Run install.py --legacy once first. The strike edits the installed shader pack's pack.toml to aim and restart it, and writes its
 block changes as functions into a small datapack in the world's folder (datapacks/orbital-laser) so they land in bulk.
 
 WARNING: a strike permanently destroys terrain (a crater and a shaft to bedrock) and kills every mob and
@@ -109,7 +109,7 @@ def find_pack():
                  "saves/; `horizon-ctl launch` prints it as \"home\").")
     pack = home / "shaderpacks" / "orbital-laser-shader" / "pack.toml"
     if not pack.is_file():
-        sys.exit(f"The shader pack isn't installed ({pack} is missing). Run install.py first, or pass --home.")
+        sys.exit(f"The shader pack isn't installed ({pack} is missing). Run install.py --legacy first, or pass --home.")
     return pack
 
 
@@ -138,19 +138,19 @@ def doctor():
     if home:
         sp = home / "shaderpacks" / "orbital-laser-shader" / "pack.toml"
         rp = home / "resourcepacks" / "orbital-sounds" / "pack.mcmeta"
-        line(sp.is_file(), "shader pack installed", "run: python3 install.py")
-        line(rp.is_file(), "sound pack installed", "run: python3 install.py")
+        line(sp.is_file(), "shader pack installed", "run: python3 install.py --legacy")
+        line(rp.is_file(), "sound pack installed", "run: python3 install.py --legacy")
         mp = home / "horizon-mods" / "orbital-laser" / "horizon-mod.toml"
         mt = home / "horizon-mods.txt"
         line(mp.is_file() and mt.is_file() and "mod.orbital:true" in mt.read_text(),
              "item mod installed and switched on (the Designator and the Remote)",
-             "run: python3 install.py --enable (without it the daemon falls back to renamed spyglasses, which still work)")
+             "run: python3 install.py --legacy --enable (without it the daemon falls back to renamed spyglasses, which still work)")
         gfx = (home / "horizon-graphics.txt")
         sel = gfx.is_file() and "shaderPack:orbital-laser-shader" in gfx.read_text()
-        line(sel, "shader pack selected", "close the game, run: python3 install.py --enable (or pick it in Options > Video Settings > Shader Packs)")
+        line(sel, "shader pack selected", "close the game, run: python3 install.py --legacy --enable (or pick it in Options > Video Settings > Shader Packs)")
         opt = home / "options.txt"
         snd = opt.is_file() and "orbital-sounds" in opt.read_text()
-        line(snd, "sound pack enabled", "close the game, run: python3 install.py --enable (or enable it in Options > Resource Packs)")
+        line(snd, "sound pack enabled", "close the game, run: python3 install.py --legacy --enable (or enable it in Options > Resource Packs)")
     if ctl_path:
         st = {}
         try:

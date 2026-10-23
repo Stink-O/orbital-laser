@@ -12,40 +12,42 @@ any size is welcome: a bug report, a test on your PC, a fix, or taking over a wh
 
 ## What needs doing most
 
-- **A real item.** The designator is a renamed spyglass that a script watches for. Horizon's content-mod API
-  (`registries`, API 0.2) is meant to add real items and blocks, but I couldn't get one to load. If you can, a proper
-  Orbital Laser Designator item (and a trigger that doesn't need `strike.py`) is the best upgrade there is.
-- **Windows and macOS.** Everything was built and tested on one Linux PC. `strike.py` needs path handling for the other
-  systems, and the shader needs a look on other GPUs and drivers.
-- **Survival and multiplayer.** It needs cheats and runs against one local game. Once Horizon has server mods, the
-  strike could run where the world is simulated.
+- **Getting the mod capabilities into Horizon.** The mod runs on a fork that adds `input`, `ui`, `render` and `world`
+  ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world)). Help shaping them into
+  something Horizon would take upstream is the most useful work there is.
+- **Windows and macOS.** Everything was built and tested on one Linux PC. The fork needs building and testing on the
+  other systems, and the shader needs a look on other GPUs and drivers.
+- **Multiplayer.** The world changes run as server commands in a world the game itself runs, and the effects are drawn
+  only for the player who fired. Server mods and a `net` channel in Horizon would let a strike be seen by everyone.
 - **Undo.** Terrain damage is permanent. A snapshot-and-restore of the blasted region would make it much safer to use.
-- **Sound design.** Every sound is synthesized (`tools/synth_sounds.py`). Better or more convincing sounds are welcome,
-  as long as they are original or properly licensed.
-- **Shader cost.** It's one full-screen pass with a lot of noise in it. Cheaper versions of the beam, smoke and lightning
-  that look the same would help lower-end GPUs.
+- **More lasers.** A laser is an entry in `mod/src/lasers.rs`, a branch in `mod/shaders/strike.wgsl`, what it leaves
+  behind in `mod/src/strike.rs`, sounds in `tools/sounds_themes.py` and an icon in `tools/make_item_textures.py`.
+- **Shader cost.** It's one full-screen pass with a lot of noise in it, and Plasma traces a volume. Cheaper versions that
+  look the same would help lower-end GPUs.
 
 ## How it fits together
 
-- **`orbital-laser-shader/`** is a Horizon shader pack: one WGSL `composite` stage (`shaders/strike.wgsl`) and its
-  `pack.toml`. It owns the whole picture: reticle, beam, lightning, shockwaves, crater glow, smoke, camera shake.
-- **`orbital-sounds/`** is a resource pack with eight `.ogg` sounds and a `sounds.json`.
-- **`strike.py`** is the driver. It finds where you're aiming, rewrites the installed `pack.toml` to aim and restart the
-  shader, and in time with the shader's clock sends the `/fill`, `/kill`, `/particle` and `/playsound` commands through
-  `horizon-ctl`.
-- **`install.py`** copies (or symlinks) the two packs into Horizon's game folder.
-- **`tools/`** has the offline shader validator (`check-shader.sh`), the sound generator, a screenshot helper that
-  recovers the real colours, and the logo generator.
+- **`mod/`** is the mod: Rust for WebAssembly (`src/lib.rs` the hooks, the designator and the strike's playback;
+  `src/lasers.rs` the lasers; `src/strike.rs` a strike's plan of commands and sounds; `src/wheel.rs` the laser wheel),
+  its post pass (`shaders/strike.wgsl`) and its manifest.
+- **`orbital-laser-mod/`** holds the mod's content: the items, their models, textures and names. **`orbital-sounds/`**
+  holds the sounds. `tools/build_mod.py` puts the code and both into one mod folder, `dist/orbital`.
+- **`install.py`** installs that folder into Horizon's game folder; **`play.sh`** starts the Orbital Laser build of
+  Horizon on it.
+- **Stock Horizon:** `orbital-laser-shader/` (the same effects as a shader pack), `strike.py` and `themes.py` (the driver
+  that runs a strike from outside the game) are 0.1's setup, kept for stock Horizon (`install.py --legacy`).
+- **`tools/`** has the sound generator, the texture and logo generators, the shader validator and the video recorder.
 
 ## Testing a change
 
-- **Shader:** `tools/check-shader.sh` must print `OK`. It validates the file against Horizon's prelude and substitutes the
-  option values, which reproduces errors the game only reports as "Pipeline constant error". For anything visual, take a
-  screenshot with `tools/capture.py` at a few moments of the strike (about 2.9 s, 6.3 s and 17 s are good ones).
-- **Driver:** run `python3 strike.py --no-terrain --no-sound` first, then a full strike in a throwaway world, and check
-  that the chat stayed empty and that the shaft reaches bedrock.
-- **Sounds:** regenerate with `python3 tools/synth_sounds.py`, reload resources in game (F3 + T), and listen to all
-  eight at the volume you'd actually play at.
+- **Shader:** validate it against Horizon's prelude: `cat tools/wgslcheck/prelude.wgsl mod/shaders/strike.wgsl > /tmp/s.wgsl`
+  and run `tools/wgslcheck/target/release/wgslcheck /tmp/s.wgsl`; it must print `OK`. In the game a broken pass is
+  skipped and the reason logged.
+- **Mod:** `python3 tools/build_mod.py --install ~/.local/share/horizon`, then `./play.sh` in a throwaway world. Switch
+  terrain damage off (`/orbital terrain off`) for the first strike, then check a full strike: the chat stays empty, the
+  shaft reaches bedrock, and a second strike right after looks the same as the first.
+- **Sounds:** regenerate with `python3 tools/synth_sounds.py`, rebuild the mod, and listen to all of them at the volume
+  you'd actually play at.
 
 ## Rules
 
