@@ -1,7 +1,7 @@
 //! Orbital Laser, a Horizon mod. Hold the Orbital Laser Designator on a target
 //! and the strike lands there: a beam from orbit, a crater to bedrock, and what
-//! each laser leaves behind. Right-click the Orbital Remote (or press O) for the
-//! laser wheel. `/orbital give` hands you both items.
+//! each laser leaves behind. Right-click the Orbital Remote (or press R) for the
+//! laser wheel (rebind R in Options > Controls). `/orbital give` hands you both items.
 //!
 //! It uses the game's mod capabilities: `input` (the two items' right-clicks
 //! and the wheel's key), `ui` (the wheel), `render` (the strike's post pass,
@@ -174,7 +174,7 @@ impl Orbital {
             if self.strike.is_some() {
                 lines.push(("Strike in progress".to_string(), 0xFF8A65));
             } else {
-                lines.push(("O or the remote: laser wheel".to_string(), 0x7C8594));
+                lines.push(("R or the remote: laser wheel".to_string(), 0x7C8594));
             }
             lines
         } else {
@@ -195,7 +195,7 @@ impl Orbital {
 impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
-        input::register_key("wheel", "key.keyboard.o");
+        input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let (laser, terrain) = Orbital::load();
         let state = Orbital {
             laser,
