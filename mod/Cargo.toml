@@ -1,0 +1,18 @@
+[package]
+name = "orbital-laser"
+version = "0.2.0"
+edition = "2024"
+description = "Orbital Laser: a Horizon mod. Call down an orbital strike that drills a crater to bedrock."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The Horizon mod SDK with the input, ui, render and world interfaces (Horizon's
+# roadmap capabilities, from the Stink-O/horizon fork until they are upstream).
+horizon-mod-sdk = { git = "https://github.com/Stink-O/horizon", branch = "mod-api-input-ui-render-world" }
+
+[profile.release]
+opt-level = "s"
+lto = true

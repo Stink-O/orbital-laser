@@ -70,5 +70,68 @@
       }
     ],
     "subtitle": "subtitles.orbital.shutdown"
+  },
+  "godly.lockon": {
+    "sounds": [
+      {
+        "name": "orbital:godly/lockon",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.lockon"
+  },
+  "godly.charge": {
+    "sounds": [
+      {
+        "name": "orbital:godly/charge",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.charge"
+  },
+  "godly.fire": {
+    "sounds": [
+      {
+        "name": "orbital:godly/fire",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.fire"
+  },
+  "godly.beam": {
+    "sounds": [
+      {
+        "name": "orbital:godly/beam",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.beam"
+  },
+  "godly.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:godly/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.rumble"
+  },
+  "godly.accent": {
+    "sounds": [
+      {
+        "name": "orbital:godly/accent",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.accent"
+  },
+  "godly.shutdown": {
+    "sounds": [
+      {
+        "name": "orbital:godly/shutdown",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.godly.shutdown"
   }
 }

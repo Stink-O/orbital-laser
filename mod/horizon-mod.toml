@@ -1,0 +1,8 @@
+id = "orbital"
+name = "Orbital Laser"
+version = "0.2.0"
+description = "Call down an orbital strike that drills a crater to bedrock. Right-click the Orbital Remote (or press R, rebindable in Controls) for the laser wheel; hold the Orbital Laser Designator on a target to fire. /orbital give hands you both."
+authors = ["Stink-O"]
+api = "0.2"
+side = "client"
+capabilities = ["registries", "game-read", "hud", "storage", "input", "ui", "render", "world"]
