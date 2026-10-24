@@ -158,7 +158,10 @@ mod tests {
     fn spots() {
         assert_eq!(spot(0.0, 0.0), Some(Spot::Centre));
         assert_eq!(spot(-60.0, 0.0), Some(Spot::Laser(0)));
-        assert_eq!(spot(60.0, 0.0), Some(Spot::Laser(1)));
+        for i in 0..LASERS.len() {
+            let c = polar(segment_angle(i), 60.0);
+            assert_eq!(spot(c.x, c.y), Some(Spot::Laser(i)));
+        }
         assert_eq!(spot(0.0, 300.0), None);
     }
 }

@@ -8,12 +8,14 @@
 // The mod hands it sixteen numbers each frame, `frame.mod_params`:
 //   [0] target x, y, z (the point hit), strike clock in seconds
 //   [1] hit block centre x, z, the wings' facing (radians), laser
-//   [2] seed, intensity, capture mode (0 off, 3 video capture), unused
+//   [2] seed, intensity, capture mode (0 off, 3 video capture), hit block y
 //
 // Lasers:
 //   0 Plasma   a raging plasma beam, forked lightning, a churning fireball, a smoke plume
 //   1 Godly    the clouds part, a calm pillar of light comes down, halo rings and wings stand
 //              in the sky, six pillars of light land round a golden sigil, a dome of light
+//   2 Black hole  a singularity over the target bends the light round it; an accretion disk, a jet
+//              out of both poles, the land dragged in, and it evaporates in a flash (`singularity`)
 
 fn target_x() -> f32 { return frame.mod_params[0].x; }
 fn target_y() -> f32 { return frame.mod_params[0].y; }
@@ -25,6 +27,7 @@ fn laser() -> f32 { return frame.mod_params[1].w; }
 fn seed_v() -> f32 { return frame.mod_params[2].x; }
 fn intensity_v() -> f32 { return max(frame.mod_params[2].y, 0.05); }
 fn capture() -> f32 { return frame.mod_params[2].z; }
+fn block_y() -> f32 { return frame.mod_params[2].w; }
 
 const TAU: f32 = 6.2831853;
 const T_FIRE: f32 = 4.0;
@@ -211,8 +214,542 @@ fn axis_hit(c: vec2<f32>, v2: vec2<f32>, vv: f32, cam_y: f32, rdy: f32) -> vec3<
     return vec3<f32>(t, d, cam_y + rdy * t);
 }
 
+// ---- laser 2: the black hole ----------------------------------------------------------------
+// A singularity hangs over the target. Light is bent round it by marching each view ray that passes near it through
+// the hole's gravity (the photon orbit equation, r'' = -1.5 h^2 r / |r|^5, in horizon radii): rays that fall in are
+// black, rays that cross the disk pick up its light, and the rest resample the scene (or the starry sky) in the
+// direction they leave in. Its jet is a vertical column like the other lasers' beams.
+
+const HOLE_H: f32 = 28.0;         // keep in step with strike.rs: HOLE_H, BH_END
+const BH_END: f32 = 10.0;
+const BH_RS: f32 = 3.6;           // the horizon's radius, in blocks
+const DISK_IN: f32 = 2.6;         // the accretion disk, in horizon radii
+const DISK_OUT: f32 = 9.0;
+const LENS_R: f32 = 12.0;         // how far out light is bent, in horizon radii
+
+// A dark sky of stars and violet haze, looking along `d`.
+fn bh_sky(d: vec3<f32>, seed: f32) -> vec3<f32> {
+    let q = d * 140.0;
+    let f = fract(q) - 0.5;
+    let h = hash31(floor(q) + vec3<f32>(seed));
+    let star = step(0.975, h) * exp(-dot(f, f) * 40.0) * (0.5 + 4.0 * fract(h * 37.0));
+    let tint = mix(vec3<f32>(0.7, 0.8, 1.25), vec3<f32>(1.25, 0.9, 0.7), fract(h * 91.0));
+    let neb = fbm3(d * 2.6 + vec3<f32>(seed * 0.01));
+    let neb2 = fbm3(d * 6.0 - vec3<f32>(2.0, 0.0, 1.0));
+    let haze = vec3<f32>(0.10, 0.02, 0.17) * smoothstep(0.4, 0.85, neb) + vec3<f32>(0.02, 0.04, 0.13) * smoothstep(0.5, 0.9, neb2);
+    return tint * star + haze;
+}
+
+// The disk's colour by temperature: dull red at the rim, orange, white, then blue-white at the inner edge.
+fn disk_ramp(x: f32) -> vec3<f32> {
+    let h = saturate(x);
+    var c = mix(vec3<f32>(0.0), vec3<f32>(0.7, 0.07, 0.02), smoothstep(0.0, 0.25, h));
+    c = mix(c, vec3<f32>(2.4, 0.75, 0.12), smoothstep(0.2, 0.5, h));
+    c = mix(c, vec3<f32>(3.4, 2.5, 1.35), smoothstep(0.45, 0.75, h));
+    c = mix(c, vec3<f32>(3.2, 3.6, 5.0), smoothstep(0.75, 1.0, h));
+    return c;
+}
+
+// The scene at `uvs`, dimmed, its sky turned to the black hole's starry dark (seen along `dir`).
+fn bh_scene(uvs: vec2<f32>, dir: vec3<f32>, seed: f32, sky_env: f32, dim: f32) -> vec3<f32> {
+    let c = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uvs, 0.0).rgb) * dim;
+    if (is_sky(depth_at(uvs))) {
+        return mix(c, bh_sky(dir, seed), sky_env * 0.94);
+    }
+    return c;
+}
+
+// ---- the black hole's debris: blocks torn out of the ground, spiralling in, eaten or flung ----
+// strike.rs tears the same blocks out of the ground at the same moments (debris_*): keep the formulas in step.
+const DEBRIS: i32 = 160;
+
+fn debris_angle(fi: f32, seed: f32) -> f32 { return fract(fi * 0.381966 + seed * 0.1137) * TAU; }
+fn debris_r0(fi: f32, seed: f32) -> f32 { return 35.0 + 15.0 * fract(fi * 0.618034 + seed * 0.1234); }
+fn debris_t(fi: f32) -> f32 { return 0.4 + 6.0 * fi / f32(DEBRIS) + 0.3 * fract(fi * 0.7548777); }
+fn debris_big(fi: f32, seed: f32) -> bool { return fract(fi * 0.2763932 + seed * 0.0517) > 0.78; }
+
+fn rot_axis(v: vec3<f32>, a: vec3<f32>, ang: f32) -> vec3<f32> {
+    let c = cos(ang);
+    let s = sin(ang);
+    return v * c + cross(a, v) * s + a * dot(a, v) * (1.0 - c);
+}
+
+// One piece of debris: where it is (camera-relative), its radial direction from the hole, how stretched it is,
+// how hot, how present (0: not there).
+struct Piece {
+    c: vec3<f32>,
+    u: vec3<f32>,
+    k: f32,
+    glow: f32,
+    alive: f32,
+}
+
+fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: vec3<f32>, n: vec3<f32>, rs: f32) -> Piece {
+    var pc: Piece;
+    pc.alive = 0.0;
+    pc.k = 1.0;
+    pc.glow = 0.0;
+    pc.u = vec3<f32>(0.0, 1.0, 0.0);
+    pc.c = vec3<f32>(0.0);
+    let fi = f32(i);
+    let t_rip = debris_t(fi);
+    let s = min(ft, BH_END) - t_rip;
+    if (s <= 0.0) {
+        return pc;
+    }
+    let a0 = debris_angle(fi, seed);
+    let R0 = debris_r0(fi, seed);
+    let big = debris_big(fi, seed);
+    let h1 = hash21(vec2<f32>(fi, seed + 5.0));
+    let h2 = hash21(vec2<f32>(fi, seed + 9.0));
+    let T_in = 2.6 + 1.4 * h2;
+    let flung = h1 < 0.28;
+    let u_f = 0.5 + 0.2 * h2;
+    let ub = s / T_in;
+    let u = min(ub, select(1.0, u_f, flung));
+    // the disk's plane, with world x and z laid onto it so the orbit starts where the block was torn out
+    let E1 = normalize(vec3<f32>(1.0, 0.0, 0.0) - n * n.x);
+    let E2 = normalize(vec3<f32>(0.0, 0.0, 1.0) - n * n.z - E1 * dot(vec3<f32>(0.0, 0.0, 1.0), E1));
+    let rsn = max(rs, 0.6);
+    let r = mix(rsn * 0.95, R0, pow(1.0 - u, 0.75));
+    let th = a0 - (3.0 + 3.0 * h1) * u * u;                    // the same way round as the disk turns
+    let lift = smoothstep(0.0, 0.45, u);
+    // torn out of the ground where strike.rs removes it (block-aligned), then up into the disk's plane
+    let src = floor(tgt.xz + vec2<f32>(cos(a0), sin(a0)) * R0) + select(vec2<f32>(0.5), vec2<f32>(0.0), big);
+    let gy = block_y() + select(0.5, 0.0, big);           // the hit block's layer, which the blast levels the ground to
+    let ground = vec3<f32>(src.x, gy, src.y) - cam;
+    let ground_r = vec3<f32>(tgt.x - cam.x, gy - cam.y, tgt.z - cam.z) + vec3<f32>(cos(th), 0.0, sin(th)) * r;
+    let gp = mix(ground, ground_r, smoothstep(0.0, 0.15, u));
+    let dp = H + (E1 * cos(th) + E2 * sin(th)) * r;
+    var c = mix(gp, dp, lift) + vec3<f32>(0.0, sin(lift * 3.14159) * 7.0, 0.0);
+    var alive = smoothstep(0.0, 0.05, s);
+    var stretch = 1.0 + min(9.0, pow(2.2 * rsn / r, 3.0));
+    if (flung && ub > u_f) {
+        // slingshot round the hole and away
+        let dt = (ub - u_f) * T_in;
+        let tdir = E1 * sin(th) - E2 * cos(th);
+        c = c + (tdir * 65.0 + n * 16.0) * dt;
+        alive = alive * (1.0 - smoothstep(2.5, 4.0, dt));
+        stretch = 1.0;
+    } else if (!flung) {
+        // eaten: gone once it reaches the horizon
+        alive = alive * (1.0 - step(1.0, ub));
+    }
+    if (ft > BH_END) {
+        // what was still circling when it evaporated is thrown outwards
+        let ef = ft - BH_END;
+        c = c + normalize(c - H) * ef * 70.0;
+        alive = alive * (1.0 - smoothstep(1.0, 2.5, ef));
+        stretch = 1.0;
+    }
+    pc.c = c;
+    pc.u = normalize(c - H + vec3<f32>(1.0e-4));
+    pc.k = stretch;
+    pc.glow = select(smoothstep(rsn * 4.0, rsn * 1.2, r), 0.0, flung && ub > u_f) * f32(ft <= BH_END);
+    pc.alive = alive;
+    return pc;
+}
+
+// A block's face colour (sRGB) at face pixel `px`: grass, dirt, stone, deepslate, log or leaves.
+fn debris_tex(kind: i32, px: vec2<f32>, top: bool, side_y: f32, seed: f32) -> vec3<f32> {
+    let nz = hash21(px + vec2<f32>(seed * 3.1, f32(kind) * 17.0));
+    let nz2 = hash21(px * 1.7 + vec2<f32>(5.0, seed));
+    switch kind {
+        case 0: {
+            if (top || side_y > 0.8) {
+                return vec3<f32>(0.33, 0.55, 0.2) * (0.75 + 0.45 * nz);
+            }
+            return vec3<f32>(0.52, 0.36, 0.24) * (0.75 + 0.45 * nz);
+        }
+        case 1: { return vec3<f32>(0.52, 0.36, 0.24) * (0.75 + 0.45 * nz); }
+        case 2: { return vec3<f32>(0.5, 0.5, 0.5) * (0.78 + 0.35 * nz) * (0.9 + 0.1 * nz2); }
+        case 3: { return vec3<f32>(0.27, 0.27, 0.3) * (0.75 + 0.4 * nz); }
+        case 4: {
+            if (top) {
+                let ring = fract(length(px - vec2<f32>(7.5)) * 0.35);
+                return mix(vec3<f32>(0.68, 0.55, 0.34), vec3<f32>(0.5, 0.38, 0.22), step(0.5, ring)) * (0.9 + 0.2 * nz);
+            }
+            return vec3<f32>(0.4, 0.31, 0.19) * (0.7 + 0.5 * hash21(vec2<f32>(px.x, seed))) * (0.9 + 0.2 * nz);
+        }
+        default: {
+            return vec3<f32>(0.2, 0.42, 0.13) * (0.5 + 0.8 * nz) * (0.6 + 0.4 * step(0.25, nz2));
+        }
+    }
+}
+
+fn singularity(in: StageIn) -> vec4<f32> {
+    let uv = in.uv;
+    let aspect = frame.resolution.x / frame.resolution.y;
+    let time = now();
+    let cam = frame.camera_position.xyz;
+    let tgt = target_pos();
+    let crel = tgt - cam;
+    let k = intensity_v();
+    let seed = seed_v();
+
+    // ---- timeline -------------------------------------------------------------
+    let charging = select(0.0, saturate(time / T_FIRE), time < T_FIRE);
+    let fire_t = time - T_FIRE;
+    let fired = fire_t > 0.0;
+    let ft = max(fire_t, 0.0);
+    let left = saturate((BH_END - ft) / 1.6);                  // 1 until its last 1.6 s, then down to 0
+    let life = select(0.0, smoothstep(0.0, 0.07, ft) * pow(left, 0.4), fired);
+    // the horizon: nothing until the fire, then it is suddenly there, a touch too big for an instant before it settles;
+    // at the end it shrinks and is gone
+    let ring_in = 0.12 * exp(-ft * 6.0);
+    let rs = BH_RS * life * (1.0 + ring_in + 0.03 * sin(time * 5.0));
+    let rs_l = rs;
+    let disk_env = smoothstep(0.0, 0.12, ft) * pow(left, 0.5) * f32(fired);
+    let hot = 1.0 + 1.6 * (1.0 - left) + 2.2 * exp(-ft * 2.0);  // white-hot as it ignites, hotter again as it shrinks
+    let jet_env = smoothstep(0.3, 0.9, ft) * (1.0 - smoothstep(BH_END - 1.2, BH_END - 0.3, ft)) * f32(fired);
+    let ef = ft - BH_END;                                       // the evaporation's own clock
+    let evap = select(0.0, exp(-ef * 2.6), ef > 0.0);
+    let sky_env = smoothstep(0.5, 3.8, time) * (1.0 - smoothstep(BH_END + 2.0, BH_END + 10.0, ft));
+    let open_ = select(0.0, exp(-fire_t * 7.0), fired);        // the instant it opens
+    let implode = saturate((time - 2.7) / 1.3) * (1.0 - f32(fired));
+    let pull_env = max(charging * charging, life) * (1.0 - smoothstep(BH_END, BH_END + 3.0, ft));
+    // the last half second before it opens: the whole picture is sucked in towards one point
+    let pinch = smoothstep(T_FIRE - 0.5, T_FIRE, time) * (1.0 - f32(fired));
+
+    // ---- where it hangs, and how its disk lies (tipped towards whoever fired) ----
+    let H = crel + vec3<f32>(0.0, HOLE_H, 0.0);
+    let wd = wing_dirs();
+    let n = normalize(vec3<f32>(0.0, 1.0, 0.0) + 0.32 * vec3<f32>(wd.x, 0.0, wd.y));
+    let e1 = vec3<f32>(wd.z, 0.0, wd.w);
+    let e2 = cross(n, e1);
+    let pH = project_rel(H);
+    let pt = project_rel(crel);
+
+    // ---- camera shake and the imploding ring's refraction ----------------------
+    let near_scale = 1.0 / (1.0 + length(H) / 30.0);
+    let shake_amt = (open_ * 4.0 + jet_env * 0.5 + life * 0.25 + evap * 4.0 + implode * implode * 0.8) * k * 0.012 * near_scale;
+    let shake = (vec2<f32>(vnoise(vec2<f32>(time * 37.0, 1.0)), vnoise(vec2<f32>(time * 41.0, 7.0))) - 0.5) * 2.0 * shake_amt;
+    let d0 = depth_at(uv);
+    let sky0 = is_sky(d0);
+    let p0 = cam + world_offset(uv, select(d0, 0.5, sky0));
+    let r0 = length(p0.xz - tgt.xz);
+    let ri = 75.0 * pow(1.0 - implode, 1.6);
+    let rw = ft * 58.0;                                         // the shockwave when it opens
+    let ring_mask = select(0.0, exp(-pow((r0 - ri) / 3.0, 2.0)) * implode, !sky0) + select(0.0, exp(-pow((r0 - rw) / 3.5, 2.0)) * exp(-ft * 0.6), fired && !sky0);
+    var rdir = uv - pt.xy;
+    rdir = rdir / max(length(rdir), 1e-4);
+    // the moment it opens a ripple of bent space tears out across the screen from it
+    let sdv = (uv - pH.xy) * vec2<f32>(aspect, 1.0);
+    let sdist = length(sdv);
+    let gw = exp(-pow((sdist - ft * 2.4) / 0.07, 2.0)) * exp(-ft * 1.6) * f32(fired) * step(0.0, pH.z);
+    let gw_dir = (uv - pH.xy) / max(sdist, 1e-4);
+    let suck = (pH.xy - uv) * pinch * pinch * 0.32 * k * step(0.0, pH.z);
+    let uv2 = clamp(uv + shake - rdir * ring_mask * 0.06 * k * pt.z + suck + gw_dir * gw * 0.045 * k, vec2<f32>(0.002), vec2<f32>(0.998));
+
+    // ---- the scene, darkened: light itself is being pulled away ----------------
+    let d = depth_at(uv2);
+    let sky = is_sky(d);
+    let rel = world_offset(uv2, select(d, 0.5, sky));
+    let scene_len = select(1.0e9, length(rel), !sky);
+    let rd = normalize(world_offset(uv2, 0.5));
+    let P = cam + rel;
+    let v2 = rd.xz;
+    let vv = dot(v2, v2);
+    let dim = clamp(1.0 - (0.5 * charging * charging + 0.55 * sky_env * f32(fired) + 0.2 * life + 0.5 * pinch) * k, 0.08, 1.0);
+    let ca = (open_ * 0.02 + evap * 0.015 + ring_mask * 0.006 + gw * 0.03 + pinch * pinch * 0.012) * k;
+    let ca_dir = (uv2 - pH.xy) * ca;
+    var col = srgb_to_linear(vec3<f32>(
+        textureSampleLevel(scene_color, linear_sampler, uv2 + ca_dir, 0.0).r,
+        textureSampleLevel(scene_color, linear_sampler, uv2, 0.0).g,
+        textureSampleLevel(scene_color, linear_sampler, uv2 - ca_dir, 0.0).b)) * dim;
+    if (sky) {
+        col = mix(col, bh_sky(rd, seed), sky_env * 0.94);
+    }
+    var add = vec3<f32>(0.0);
+    var swallowed = false;
+
+    // ---- the lens: march the ray through the hole's gravity --------------------
+    if (rs_l > 0.02) {
+        let infl = LENS_R * rs_l;
+        let tc = dot(H, rd);
+        let b = length(H - rd * tc);
+        let t0 = max(tc - infl, 0.0);
+        if (b < infl && tc + infl > 0.0 && scene_len > t0) {
+            var pp = (rd * t0 - H) / rs_l;                     // the ray, relative to the hole, in horizon radii
+            var v = rd;
+            var travel = t0;
+            let hv = cross(pp, v);
+            let h2 = dot(hv, hv);
+            var trans = 1.0;
+            var acc = vec3<f32>(0.0);
+            var captured = false;
+            var hit = false;
+            var rmin = 1.0e9;
+            for (var i = 0; i < 120; i = i + 1) {
+                let r = length(pp);
+                rmin = min(rmin, r);
+                if (r < 1.0) {
+                    captured = true;
+                    break;
+                }
+                if (r > LENS_R + 0.5 && dot(pp, v) > 0.0) {
+                    break;
+                }
+                let dt = clamp((r - 0.9) * 0.16, 0.03, 1.5);
+                let prev = pp;
+                v = normalize(v - 1.5 * h2 * pp / pow(r, 5.0) * dt);
+                pp = pp + v * dt;
+                travel = travel + dt * rs_l;
+                if (!sky && travel > scene_len) {
+                    hit = true;
+                    break;
+                }
+                // crossing the disk's plane: its light, seen through whatever bending got the ray here
+                let s0 = dot(prev, n);
+                let s1 = dot(pp, n);
+                if (disk_env > 0.001 && s0 * s1 < 0.0) {
+                    let x = mix(prev, pp, s0 / (s0 - s1));
+                    let dr = length(x);
+                    if (dr > DISK_IN * 0.9 && dr < DISK_OUT) {
+                        let dx = vec2<f32>(dot(x, e1), dot(x, e2));
+                        // inner rings turn faster than outer ones (Kepler), so the gas shears into streaks
+                        let rot = -time * 5.5 / pow(dr, 1.5);
+                        let q = vec2<f32>(dx.x * cos(rot) - dx.y * sin(rot), dx.x * sin(rot) + dx.y * cos(rot));
+                        let nz = fbm(q * 0.9 + vec2<f32>(seed, 3.0));
+                        let bands = 0.55 + 0.45 * sin(dr * 7.0 + nz * 7.0);
+                        let dens = saturate(bands * (0.35 + 1.1 * nz));
+                        let edge = smoothstep(DISK_IN * 0.9, DISK_IN * 1.15, dr) * (1.0 - smoothstep(DISK_OUT * 0.55, DISK_OUT, dr));
+                        // the side turning towards you is brighter and bluer (relativistic beaming)
+                        let tdir = normalize(cross(n, x));
+                        let beta = 0.62 * sqrt(DISK_IN / dr);
+                        let g = sqrt(1.0 - beta * beta) / (1.0 - beta * dot(tdir, -v));
+                        let temp = pow(DISK_IN / dr, 0.85) * (0.7 + 0.4 * nz) * g * 0.95 * hot;
+                        let a_d = saturate(dens * edge * 1.1) * disk_env;
+                        acc = acc + trans * a_d * disk_ramp(temp) * min(g * g * g, 4.0) * 1.6;
+                        trans = trans * (1.0 - a_d * 0.92);
+                    }
+                }
+                if (trans < 0.02) {
+                    break;
+                }
+            }
+            // how much the bending counts: all of it near the hole, none at the edge, so it meets the unbent world
+            let w = 1.0 - smoothstep(LENS_R * 0.35, LENS_R * 0.95, rmin);
+            var bent = vec3<f32>(0.0);
+            if (!captured) {
+                let dir_b = normalize(mix(rd, v, w));
+                var far = H + pp * rs_l + v * 4000.0;
+                if (hit) {
+                    far = H + pp * rs_l;
+                }
+                let pr = project_rel(far);
+                let uvb = mix(uv2, pr.xy, w);
+                let on = pr.z > 0.0 && all(uvb > vec2<f32>(0.001)) && all(uvb < vec2<f32>(0.999));
+                if (on || w < 0.01) {
+                    bent = bh_scene(clamp(uvb, vec2<f32>(0.001), vec2<f32>(0.999)), dir_b, seed, sky_env, dim);
+                } else if (dir_b.y > -0.03) {
+                    bent = bh_sky(dir_b, seed) * sky_env + vec3<f32>(0.03, 0.025, 0.04) * (1.0 - sky_env);
+                } else {
+                    bent = vec3<f32>(0.02, 0.016, 0.022) * dim;
+                }
+            }
+            col = bent * trans + acc * k;
+            swallowed = captured;
+            // the photon ring: light that went round the hole before getting out
+            add = add + vec3<f32>(2.6, 1.7, 1.0) * exp(-pow((rmin - 1.52) / 0.05, 2.0)) * disk_env * select(1.0, 0.0, captured) * 1.4 * k;
+        }
+    }
+
+    // ---- ground: the spiral it draws in while it charges, the land being dragged in, the disk's light ----
+    if (!sky) {
+        let dxg = P.xz - tgt.xz;
+        let r = length(dxg);
+        let ang = atan2(dxg.y, dxg.x);
+        let dy = P.y - tgt.y;
+        let near_y = 1.0 / (1.0 + dy * dy / 40.0);
+        let lr = log(max(r, 0.5));
+        // four spiral arms winding in (the same spiral strike.rs drags the land into), the outer ring closing in
+        let conv = mix(48.0, 4.0, 1.0 - pow(1.0 - charging, 2.5));
+        let arms = pow(0.5 + 0.5 * cos(4.0 * (ang - lr * 2.6) + time * (2.0 + 6.0 * charging)), 6.0);
+        var ret = arms * (1.0 - smoothstep(conv - 6.0, conv, r)) * smoothstep(1.0, 4.0, r) * 0.6;
+        ret = ret + exp(-pow((r - conv) / 0.4, 2.0)) * 1.4;
+        ret = ret + exp(-pow((r - 3.0) / 0.25, 2.0)) * charging;
+        add = add + vec3<f32>(0.75, 0.25, 1.4) * ret * charging * near_y * 1.8 * k;
+        // the imploding ring, then the shockwave running out when it opens: a dark trough behind a bright edge
+        add = add + vec3<f32>(0.9, 0.5, 1.6) * exp(-pow((r - ri) / 1.4, 2.0)) * implode * near_y * 4.0 * k;
+        let wave = exp(-pow((r - rw) / 2.6, 2.0)) * exp(-ft * 0.5) * f32(fired) * near_y;
+        add = add + vec3<f32>(1.1, 0.7, 1.8) * wave * 5.0 * k;
+        col = col * (1.0 - exp(-pow((r - rw + 5.0) / 4.0, 2.0)) * exp(-ft * 0.5) * f32(fired) * near_y * 0.6);
+        // streaks flowing in across the ground towards the crater
+        let sa = ang - lr * 1.2;
+        let flow = fbm(vec2<f32>(cos(sa), sin(sa)) * 9.0 + vec2<f32>(lr * 2.0 + time * 0.9, seed));
+        let streak = smoothstep(0.55, 0.8, flow) * smoothstep(6.0, 14.0, r) * (1.0 - smoothstep(40.0, 85.0, r));
+        add = add + vec3<f32>(0.5, 0.15, 0.9) * streak * life * near_y * 0.6 * k;
+        // lit from above by the disk (warm) and the jet (violet)
+        let lh = (cam + H) - P;
+        let ld2 = dot(lh, lh);
+        let light = vec3<f32>(1.8, 0.85, 0.4) * disk_env * hot * 700.0 / (ld2 + 300.0) + vec3<f32>(0.8, 0.4, 1.6) * jet_env * 30.0 / (r * r + 30.0);
+        col = col + col * light * k / max(dim, 0.2);
+        // the bore under the jet
+        if (fired && r < 14.0) {
+            let bore = (1.0 - smoothstep(3.0, 8.5, r)) * smoothstep(-2.0, 0.0, dy + 1.5) * (1.0 - smoothstep(0.0, 8.0, dy));
+            let nz = fbm(dxg * 0.8 + vec2<f32>(time * 0.3, P.y * 0.5));
+            col = col * (1.0 - bore * jet_env * 0.85);
+            add = add + mix(vec3<f32>(0.5, 0.1, 1.2), vec3<f32>(1.6, 1.2, 2.2), nz) * bore * jet_env * 1.6 * k;
+        }
+    }
+
+    // ---- the jet: a column of light pouring out of the hole, down into the ground and up to the sky ----
+    let bh = axis_hit(crel.xz, v2, vv, cam.y, rd.y);
+    if (bh.x > 0.0 && (jet_env > 0.001 || charging > 0.001)) {
+        let dist = bh.y;
+        let y_p = bh.z;
+        let off = v2 * bh.x - crel.xz;
+        let ang_b = atan2(off.y, off.x);
+        let vis = select(1.0, 1.0 - smoothstep(scene_len - 0.6, scene_len + 0.6, bh.x), !sky);
+        let hy = tgt.y + HOLE_H;
+        let away = abs(y_p - hy);
+        // the designator's thread while it charges: violet, from the sky down to the target
+        let des = exp(-pow(dist / 0.07, 2.0)) * charging * smoothstep(tgt.y - 1.0, tgt.y + 0.5, y_p);
+        add = add + vec3<f32>(0.8, 0.2, 1.4) * des * vis * 2.5 * (0.7 + 0.3 * sin(time * 30.0));
+        if (jet_env > 0.001) {
+            // it shoots out of both poles: the down jet stops at the ground, the up jet runs on into the sky
+            let reach_up = (ft - 0.3) * 260.0;
+            let reach_dn = (ft - 0.3) * 120.0;
+            let up_ = step(hy, y_p) * (1.0 - smoothstep(reach_up - 20.0, reach_up, away)) * exp(-away / 500.0);
+            let dn_ = step(y_p, hy) * smoothstep(tgt.y - 1.5, tgt.y + 0.5, y_p) * (1.0 - smoothstep(reach_dn - 2.0, reach_dn, away));
+            let from_h = smoothstep(rs * 1.1, rs * 2.2, away);
+            let rj = (0.55 + 0.035 * away) * (1.0 + 0.15 * sin(time * 17.0 + away * 0.2)) * k;
+            let core = exp(-pow(dist / (rj * 0.5), 2.0));
+            let sheath = exp(-pow(dist / (rj * 1.8), 2.0));
+            let halo = 1.0 / (1.0 + pow(dist / (rj * 6.0), 2.0));
+            // knots of plasma racing away from the hole along the jet, wound round by two strands
+            let knot = pow(0.5 + 0.5 * sin((away - time * 60.0) * 0.25), 8.0);
+            let strand = pow(0.5 + 0.5 * sin(ang_b * 2.0 + away * 0.45 - time * 14.0), 10.0) * exp(-pow((dist - rj * 1.3) / (rj * 0.5), 2.0));
+            let n2 = fbm(vec2<f32>(ang_b * 2.0, away * 0.08 - time * 8.0));
+            var jb = core * vec3<f32>(6.0, 5.5, 9.0) + sheath * vec3<f32>(1.2, 0.5, 2.8) * (0.6 + 0.8 * n2) * (1.0 + 2.0 * knot);
+            jb = jb + halo * vec3<f32>(0.5, 0.2, 1.0) * 0.35 + vec3<f32>(1.4, 1.0, 2.6) * strand;
+            add = add + jb * (up_ + dn_) * from_h * jet_env * mix(0.25, 1.0, vis);
+        }
+    }
+
+    // ---- the debris: blocks torn out of the ground, tumbling round the hole ------
+    if (fired) {
+        let tch = dot(H, rd);
+        var best = scene_len;
+        var dcol = vec3<f32>(0.0);
+        var found = false;
+        for (var i = 0; i < DEBRIS; i = i + 1) {
+            let pc = debris_piece(i, ft, seed, cam, tgt, H, n, rs);
+            if (pc.alive < 0.01) {
+                continue;
+            }
+            let fi = f32(i);
+            let big = debris_big(fi, seed);
+            let hs = select(0.5, 1.0, big);
+            // quick reject: the ray misses the piece's bounding sphere
+            let tq = dot(pc.c, rd);
+            let reach = hs * 1.8 * pc.k;
+            if (tq < 0.0 || length(pc.c - rd * tq) > reach || tq - reach > best) {
+                continue;
+            }
+            // into the piece's own space: undo the stretch towards the hole, then its tumble
+            let ax = normalize(vec3<f32>(hash21(vec2<f32>(fi, 1.0)), hash21(vec2<f32>(fi, 2.0)), hash21(vec2<f32>(fi, 3.0))) - 0.5);
+            let spin = (ft - debris_t(fi)) * (1.5 + 3.0 * hash21(vec2<f32>(fi, 4.0))) * (1.0 + 2.0 * pc.glow);
+            let sk = sqrt(pc.k);
+            let ro = -pc.c;
+            let ro_s = (ro - pc.u * dot(pc.u, ro)) * sk + pc.u * dot(pc.u, ro) / pc.k;
+            let rd_s = (rd - pc.u * dot(pc.u, rd)) * sk + pc.u * dot(pc.u, rd) / pc.k;
+            let ro_l = rot_axis(ro_s, ax, -spin) / hs;
+            let rd_l = rot_axis(rd_s, ax, -spin) / hs;
+            let inv = 1.0 / select(rd_l, vec3<f32>(1.0e-6), abs(rd_l) < vec3<f32>(1.0e-6));
+            let ta = (vec3<f32>(-1.0) - ro_l) * inv;
+            let tb = (vec3<f32>(1.0) - ro_l) * inv;
+            let tlo = min(ta, tb);
+            let thi = max(ta, tb);
+            let tn = max(max(tlo.x, tlo.y), tlo.z);
+            let tf = min(min(thi.x, thi.y), thi.z);
+            if (tf < max(tn, 0.0) || tn > best || tn < 0.0) {
+                continue;
+            }
+            if (swallowed && tn > tch) {
+                continue;
+            }
+            best = tn;
+            found = true;
+            let lp = ro_l + rd_l * tn;
+            let al = abs(lp);
+            var nl = vec3<f32>(0.0, sign(lp.y), 0.0);
+            var fuv = lp.xz;
+            if (al.x >= al.y && al.x >= al.z) {
+                nl = vec3<f32>(sign(lp.x), 0.0, 0.0);
+                fuv = lp.zy;
+            } else if (al.z >= al.y) {
+                nl = vec3<f32>(0.0, 0.0, sign(lp.z));
+                fuv = lp.xy;
+            }
+            let px = floor((fuv * 0.5 + 0.5) * 16.0 * hs * 2.0);
+            let kind = i32(hash21(vec2<f32>(fi, seed + 13.0)) * 6.0);
+            let albedo = srgb_to_linear(debris_tex(kind, px, nl.y > 0.5, lp.y, seed + fi));
+            let nw = normalize(rot_axis(nl, ax, spin));
+            let sunl = 0.3 + 0.7 * max(dot(nw, normalize(vec3<f32>(0.3, 1.0, 0.2))), 0.0);
+            let rl = length(pc.c - H) / max(rs, 0.6);
+            let diskl = vec3<f32>(2.2, 1.0, 0.45) * max(dot(nw, -pc.u), 0.0) * disk_env * 6.0 / (1.0 + rl * 0.5);
+            var cc = albedo * (sunl * dim + diskl);
+            // tidal heating, then the redshift swallowing it as it reaches the horizon
+            cc = cc + vec3<f32>(2.6, 0.7, 0.15) * pc.glow * pc.glow * 1.5 + vec3<f32>(0.6, 0.2, 1.0) * pc.glow * 0.3;
+            cc = cc * smoothstep(1.0, 1.9, rl) * pc.alive;
+            dcol = cc;
+        }
+        if (found) {
+            col = dcol;
+            add = add * 0.15;
+        }
+    }
+
+    // ---- it evaporates: a blinding flash and a shell of light running out from where it was ----
+    if (ef > 0.0 && ef < 8.0) {
+        let tcs = dot(H, rd);
+        let bs = length(H - rd * max(tcs, 0.0));
+        let re = ef * 75.0;
+        let shell = exp(-pow((bs - re) / (1.5 + re * 0.06), 2.0)) * exp(-ef * 0.7) * select(0.0, 1.0, tcs > 0.0 || length(H) < re);
+        add = add + vec3<f32>(1.6, 1.2, 2.4) * shell * 2.5 * k;
+        add = add + vec3<f32>(2.2, 2.0, 2.6) * evap * evap * 2.5 * k;
+        add = add + vec3<f32>(1.2, 0.9, 1.8) * exp(-bs * 0.08) * evap * 3.0 * k;
+    }
+
+    // ---- the lens: the disk's bloom, a violet streak through the jet's foot ------
+    if (pH.z > 0.0) {
+        let dd = (uv - pH.xy) * vec2<f32>(aspect, 1.0);
+        // the pinprick everything is being sucked into, just before it opens, and the burst of the opening
+        add = add + vec3<f32>(2.0, 1.6, 3.0) * pinch * pinch * pinch * (1.0 / (1.0 + dot(dd, dd) * 9000.0) * 6.0 + 1.0 / (1.0 + dot(dd, dd) * 400.0) * 0.6) * k;
+        add = add + vec3<f32>(1.6, 1.2, 2.4) * exp(-pow((sdist - ft * 2.4) / 0.02, 2.0)) * exp(-ft * 2.2) * f32(fired) * 0.8 * k;
+        let bloom = 1.0 / (1.0 + dot(dd, dd) * 60.0);
+        add = add + vec3<f32>(1.2, 0.6, 0.35) * bloom * disk_env * hot * 0.22 * k;
+        let streak = exp(-abs(dd.y) * 240.0) * exp(-abs(dd.x) * 2.6);
+        add = add + vec3<f32>(1.2, 0.5, 2.6) * streak * (disk_env * 0.6 + evap * 2.0) * k;
+    }
+
+    // ---- combine --------------------------------------------------------------
+    var outc = col + add;
+    let vg = length((uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0));
+    outc = outc * (1.0 - smoothstep(0.3, 1.0, vg) * (0.25 + 0.45 * pull_env) * k)
+        + vec3<f32>(0.25, 0.05, 0.5) * smoothstep(0.35, 1.0, vg) * pull_env * 0.06 * k;
+    outc = aces(outc * 0.9);
+    var srgb = linear_to_srgb(outc);
+    // the instant it opens the picture goes negative
+    srgb = mix(srgb, vec3<f32>(1.0) - srgb, saturate(open_ * 1.2 * k));
+    if (capture() > 2.5) {
+        let sp = floor(in.position.xy);
+        let chk = fract((sp.x + sp.y) * 0.5);
+        let ycc_y = srgb.g * 0.5 + (srgb.r + srgb.b) * 0.25;
+        let ycc_co = srgb.r - srgb.b;
+        let ycc_cg = srgb.g - (srgb.r + srgb.b) * 0.5;
+        return vec4<f32>(ycc_y, select(ycc_cg, ycc_co, chk < 0.25) * 0.5 + 0.5, 0.0, 1.0);
+    }
+    return vec4<f32>(srgb, 1.0);
+}
+
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
+    if (th_is(2.0) > 0.5) {
+        return singularity(in);
+    }
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
     let time = now();

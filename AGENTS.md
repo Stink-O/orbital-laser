@@ -8,7 +8,7 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
 
 ## Ground rules
 
-- **A strike is destructive and permanent.** It flattens everything above ground within ~44 blocks, digs a ~60-block
+- **A strike is destructive and permanent.** It flattens everything above ground within ~44 blocks (52 for the black hole), digs a ~60-block
   crater and a shaft to bedrock, and kills every mob and dropped item within 40 blocks (not players). Only fire it in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
@@ -27,7 +27,7 @@ python3 install.py                  # install the mod into Horizon's game folder
 python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
 ```
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma` or `godly`, `/orbital terrain on|off`.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly` or `blackhole`, `/orbital terrain on|off`.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 

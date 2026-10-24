@@ -115,4 +115,40 @@ pub const GODLY: Laser = Laser {
     particle_b: "particle minecraft:wax_on {x} {y} {z} {r} 2 {r} 0.5 40 force",
 };
 
-pub const LASERS: [&Laser; 2] = [&PLASMA, &GODLY];
+pub const BLACK_HOLE: Laser = Laser {
+    key: "blackhole",
+    index: 2,
+    title: "BLACK HOLE",
+    color: "light_purple",
+    rgb: 0xB070FF,
+    blurb: "A singularity tears open over the target. Light bends round it, an accretion disk spins up and its jet bores to bedrock. Drags the land into spiral arms and pulls rock up after it, then evaporates in a blinding flash.",
+    icon_model: "orbital:blackhole_icon",
+    scorch: &[
+        (48, "minecraft:sculk", 0.12, "minecraft:grass_block"),
+        (44, "minecraft:tuff", 0.12, "minecraft:sand"),
+        (41, "minecraft:deepslate", 0.12, "minecraft:dirt"),
+    ],
+    bowl_r: 34,
+    bowl_d: 20,
+    bowl_rough: 0.05,
+    shaft_r: 8,
+    shaft_min: 8,
+    shaft_rough: 0.0,
+    lining: &[
+        ("minecraft:obsidian", 0.35),
+        ("minecraft:crying_obsidian", 0.25),
+        ("minecraft:black_concrete", 0.2),
+        ("minecraft:sculk", 0.12),
+        ("minecraft:amethyst_block", 0.08),
+    ],
+    bowl_floor: ("minecraft:crying_obsidian", 0.1, "minecraft:obsidian"),
+    bottom: &[
+        (4, 0, 0, "minecraft:crying_obsidian"),
+        (2, 1, 1, "minecraft:amethyst_block"),
+        (1, 2, 3, "minecraft:obsidian"),
+    ],
+    particle_a: "particle minecraft:portal {x} {y} {z} {r} 3 {r} 3 220 force",
+    particle_b: "particle minecraft:reverse_portal {x} {y} {z} {r} 2 {r} 0.2 60 force",
+};
+
+pub const LASERS: [&Laser; 3] = [&PLASMA, &GODLY, &BLACK_HOLE];

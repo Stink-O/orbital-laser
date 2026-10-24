@@ -14,6 +14,25 @@ const KILL_RADIUS: i32 = 40;
 /// this circle, the first at this angle. Keep in step with strike.wgsl.
 const PILLAR_R: f64 = 40.0;
 const PILLAR_A0: f64 = PI / 6.0;
+/// Black hole: the singularity hangs this high over the impact, and evaporates
+/// this long after it. Keep in step with strike.wgsl (HOLE_H, BH_END).
+const HOLE_H: f64 = 28.0;
+const BH_END: f32 = 10.0;
+/// Black hole: the blocks torn out of the ground that the shader flies round the hole. Where and when each one goes
+/// comes from these formulas, the same as strike.wgsl's debris_* (keep them in step); `seed` is the shader's seed.
+const DEBRIS: usize = 160;
+fn debris_angle(i: usize, seed: f32) -> f64 {
+    (f64::from(i as u32) * 0.381966 + f64::from(seed) * 0.1137).fract() * 2.0 * PI
+}
+fn debris_r0(i: usize, seed: f32) -> f64 {
+    35.0 + 15.0 * (f64::from(i as u32) * 0.618034 + f64::from(seed) * 0.1234).fract()
+}
+fn debris_t(i: usize) -> f32 {
+    0.4 + 6.0 * i as f32 / DEBRIS as f32 + 0.3 * (i as f32 * 0.754_877_7).fract()
+}
+fn debris_big(i: usize, seed: f32) -> bool {
+    (f64::from(i as u32) * 0.276_393_2 + f64::from(seed) * 0.0517).fract() > 0.78
+}
 
 pub enum Act {
     Cmd(String),
@@ -179,9 +198,9 @@ impl Plan<'_> {
     }
 }
 
-/// Everything a strike of `laser` at `target` does. `me` is where the player
-/// stands (godly's wings face them); `dimension` picks the bedrock floor.
-pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str) -> Vec<(f32, Act)> {
+/// Everything a strike of `laser` at `target` does. `dimension` picks the
+/// bedrock floor; `shader_seed` is the shader's, for what the two must agree on.
+pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
     let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
@@ -189,6 +208,7 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str) -> V
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
     let plasma = laser.key == "plasma";
     let godly = laser.key == "godly";
+    let blackhole = laser.key == "blackhole";
     let t = FIRE;
 
     // charge, lock-on, impact
@@ -237,7 +257,11 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str) -> V
     }
 
     // ---- particles in the world ----
-    let shard = if plasma { "minecraft:blackstone" } else { "minecraft:calcite" };
+    let shard = match laser.key {
+        "plasma" => "minecraft:blackstone",
+        "godly" => "minecraft:calcite",
+        _ => "minecraft:crying_obsidian",
+    };
     p.at(t + 0.05, format!(r#"particle minecraft:block{{block_state:"{shard}"}} {tx} {} {tz} 3 1 3 2.2 700 force"#, ty + 1.0));
     p.at(t + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:stone"}} {tx} {} {tz} 5 1 5 1.6 500 force"#, ty + 1.0));
     if plasma {
@@ -258,6 +282,40 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str) -> V
         }
     }
 
+    if blackhole {
+        let hy = ty + HOLE_H;
+        // matter spiralling in while it charges, faster and from further out as the singularity grows
+        p.sound(0.2, "block.portal.trigger", 8.0, 0.5);
+        for i in 0..12 {
+            let s = 2.0 + f64::from(i) * 0.9;
+            p.at(0.4 + i as f32 * 0.3, format!("particle minecraft:portal {tx} {hy} {tz} 0 0 0 {s:.1} {} force", 40 + i * 12));
+        }
+        // it opens with a crack of the air, and the end portal's toll
+        p.sound(t, "entity.warden.sonic_boom", 10.0, 0.5);
+        p.sound(t + 0.1, "block.end_portal.spawn", 10.0, 0.6);
+        p.at(t, format!("particle minecraft:sonic_boom {tx} {hy} {tz} 0 0 0 0 1 force"));
+        p.at(t + 0.05, format!("particle minecraft:sonic_boom {tx} {} {tz} 0 0 0 0 1 force", ty + 2.0));
+        for i in 0..24 {
+            // the land streams up into it while the jet pours out underneath
+            let tk = t + 0.3 + i as f32 * 0.4;
+            p.at(tk, format!("particle minecraft:portal {tx} {hy} {tz} 0 0 0 16 260 force"));
+            p.at(tk, format!("particle minecraft:portal {tx} {} {tz} 0 0 0 7 120 force", hy - 6.0));
+            if i % 2 == 0 {
+                p.at(tk, format!("particle minecraft:reverse_portal {tx} {} {tz} 0.6 12 0.6 0.04 140 force", (ty + hy) / 2.0));
+                p.at(tk, format!("particle minecraft:squid_ink {tx} {} {tz} 14 1 14 0.05 60 force", ty + 1.5));
+            }
+        }
+        // it evaporates: a burst of light from where it was, and a ring of sound running out
+        let te = t + BH_END;
+        p.at(te, format!("particle minecraft:flash {tx} {hy} {tz} 0 0 0 0 1 force"));
+        p.at(te, format!("particle minecraft:explosion_emitter {tx} {hy} {tz} 2 2 2 0 3 force"));
+        p.at(te, format!("particle minecraft:end_rod {tx} {hy} {tz} 0 0 0 1.4 500 force"));
+        p.at(te + 0.05, format!("particle minecraft:reverse_portal {tx} {hy} {tz} 1 1 1 2.5 700 force"));
+        p.sound(te, "entity.generic.explode", 10.0, 0.45);
+        p.sound(te + 0.02, "entity.lightning_bolt.thunder", 10.0, 0.5);
+        p.sound(te + 0.1, "block.beacon.deactivate", 10.0, 0.5);
+    }
+
     if terrain {
         let r_mouth = laser.shaft_r;
         let bedrock_top = match dimension {
@@ -266,15 +324,18 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str) -> V
             _ => 1,
         };
         let floor_y = bedrock_top;
-        // 1. the blast: everything standing above the ground in a wide disc is vaporised
-        for c in p.disc(44, by + 1, by + 60, "minecraft:air", 0.12, None) {
+        // 1. the blast: everything standing above the ground in a wide disc is vaporised (the black hole clears
+        //    further, so the ground it tears its debris from is level with the target)
+        for c in p.disc(if blackhole { 52 } else { 44 }, by + 1, by + 60, "minecraft:air", 0.12, None) {
             p.at(t + 0.15, c);
         }
-        // 2. scorched earth: what the ground round the crater turns into
+        // 2. scorched earth: what the ground round the crater turns into (the black hole drains it once it has
+        //    torn its debris up)
+        let t_scorch = if blackhole { t + 7.6 } else { t + 0.4 };
         for &(rad, block, rough, repl) in laser.scorch {
             for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
                 let dt = p.rng.next() as f32 * 2.2;
-                p.at(t + 0.4 + dt, c);
+                p.at(t_scorch + dt, c);
             }
         }
         // 3. the bowl: a rough paraboloid crater, outer layers first, its walls fused as it goes
@@ -334,6 +395,9 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str) -> V
         }
         if godly {
             godly_aftermath(&mut p);
+        }
+        if blackhole {
+            blackhole_aftermath(&mut p, target.point, shader_seed);
         }
     }
     if godly {
@@ -498,6 +562,127 @@ fn godly_aftermath(p: &mut Plan) {
         p.at(tl, format!("particle minecraft:end_rod {x} {y} {z} {s} 1 {s} 0.08 40 force"));
         p.at(tl, format!("playsound minecraft:block.amethyst_block.chime block @a {x} {y} {z} 3 0.7"));
     }
+}
+
+/// The blocks torn out of the ground for the shader's debris, real ones spat out of the disk to land far away, the land
+/// dragged into spiral arms round the crater, streams of rock pulled up towards the singularity, and what it had not yet
+/// swallowed when it evaporated left hanging in a ring where the disk was.
+fn blackhole_aftermath(p: &mut Plan, point: [f64; 3], seed: f32) {
+    let t = FIRE;
+    let by = p.by;
+    for i in 0..DEBRIS {
+        // the blocks the shader tears up and flies round the hole leave the ground at the moment it does
+        let (a, r0) = (debris_angle(i, seed), debris_r0(i, seed));
+        // (the blast has levelled the ground there to the target's block, which is where the shader starts them)
+        let (x, z) = ((point[0] + a.cos() * r0).floor() as i32, (point[2] + a.sin() * r0).floor() as i32);
+        let tl = t + debris_t(i);
+        if debris_big(i, seed) {
+            p.at(tl, format!("fill {} {} {} {x} {by} {z} minecraft:air", x - 1, by - 1, z - 1));
+        } else {
+            p.at(tl, format!("setblock {x} {by} {z} minecraft:air"));
+        }
+        p.at(tl, format!(r#"particle minecraft:block{{block_state:"minecraft:dirt"}} {x} {} {z} 0.8 0.3 0.8 0.3 24 force"#, by + 1));
+        if i % 5 == 0 {
+            let pitch = p.rng.uniform(0.5, 0.8);
+            p.at(tl, format!("playsound minecraft:block.rooted_dirt.break block @a {x} {by} {z} 3 {pitch:.2}"));
+        }
+    }
+    const FLUNG: [&str; 7] = [
+        "minecraft:dirt",
+        "minecraft:cobblestone",
+        "minecraft:stone",
+        "minecraft:grass_block",
+        "minecraft:cobbled_deepslate",
+        "minecraft:oak_log",
+        "minecraft:gravel",
+    ];
+    for _ in 0..70 {
+        // real blocks spat out of the disk, thrown far across the land where they come down as rubble
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = p.rng.uniform(10.0, 22.0);
+        let (x, z) = (point[0] + a.cos() * rr, point[2] + a.sin() * rr);
+        let y = f64::from(by) + HOLE_H + p.rng.uniform(-2.0, 2.0);
+        // along the disk's turn (clockwise seen from above, as the shader spins it), a little outwards and up
+        let sp = p.rng.uniform(1.0, 1.9);
+        let (vx, vz) = ((a.sin() * 0.9 + a.cos() * 0.45) * sp, (-a.cos() * 0.9 + a.sin() * 0.45) * sp);
+        let vy = p.rng.uniform(0.1, 0.7);
+        let blk = *p.rng.pick(&FLUNG);
+        let tl = t + p.rng.uniform(1.5, 9.8) as f32;
+        p.at(tl, format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"));
+    }
+    let (bx, by, bz) = (p.bx, p.by, p.bz);
+    let bowl_r = f64::from(p.laser.bowl_r);
+    let hy = f64::from(by) + HOLE_H;
+    const ARMS: [&str; 4] = ["minecraft:sculk", "minecraft:black_concrete", "minecraft:sculk", "minecraft:crying_obsidian"];
+    let a0 = p.rng.uniform(0.0, 2.0 * PI);
+    for arm in 0..4 {
+        // logarithmic spiral arms out across the land, drawn in from the outside as the ground is dragged towards the hole
+        let mut last = (i32::MIN, i32::MIN);
+        for i in 0..150 {
+            let u = f64::from(i) / 149.0;
+            let rr = 44.0 + 56.0 * u;
+            let a = a0 + f64::from(arm) * PI / 2.0 + (rr / 44.0).ln() * 2.6 + p.rng.uniform(-0.03, 0.03);
+            let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+            if (x, z) == last {
+                continue;
+            }
+            last = (x, z);
+            let w = if u < 0.5 { 1 } else { 0 };
+            let blk = *p.rng.pick(&ARMS);
+            let tl = t + 0.6 + (1.0 - u) as f32 * 5.0;
+            for tag in ["#minecraft:dirt", "#minecraft:sand", "#minecraft:base_stone_overworld"] {
+                p.at(tl, surf(x, z, &format!("fill ~-{w} ~-1 ~-{w} ~{w} ~-1 ~{w} {blk} replace {tag}")));
+            }
+            if i % 6 == 0 {
+                p.at(tl, surf(x, z, "particle minecraft:portal ~ ~0.5 ~ 0 0 0 1.5 12 force"));
+            }
+        }
+    }
+    const TORN: [&str; 6] = [
+        "minecraft:obsidian",
+        "minecraft:crying_obsidian",
+        "minecraft:cobbled_deepslate",
+        "minecraft:blackstone",
+        "minecraft:obsidian",
+        "minecraft:amethyst_block",
+    ];
+    for k in 0..8 {
+        // streams of rock torn up off the rim, reaching up and curving round towards the hole, left standing
+        let a = f64::from(k) * PI / 4.0 + p.rng.uniform(-0.25, 0.25);
+        let r0 = bowl_r + p.rng.uniform(2.0, 6.0);
+        let (x0, z0) = (f64::from(bx) + 0.5 + a.cos() * r0, f64::from(bz) + 0.5 + a.sin() * r0);
+        let reach = p.rng.uniform(0.55, 0.8);
+        let tk = t + 1.5 + k as f32 * 0.7;
+        for i in 0..44 {
+            let u = f64::from(i) / 43.0 * reach;
+            let rr = r0 + (7.0 - r0) * u;
+            let aa = a + 0.9 * u * u;
+            let (x, z) = (f64::from(bx) + 0.5 + aa.cos() * rr, f64::from(bz) + 0.5 + aa.sin() * rr);
+            let y = f64::from(by) + (hy - 4.0 - f64::from(by)) * u.powf(1.4);
+            let blk = if u > reach * 0.85 { "minecraft:crying_obsidian" } else { *p.rng.pick(&TORN) };
+            let tl = tk + (u / reach) as f32 * 1.6;
+            p.at(tl, format!("setblock {} {} {} {blk}", x.floor() as i32, y.floor() as i32, z.floor() as i32));
+            if i == 0 {
+                p.at(tl, surf(x0.floor() as i32, z0.floor() as i32, &format!("fill ~ ~-1 ~ ~ ~ ~ {blk}")));
+                p.at(tl, format!("playsound minecraft:block.sculk_shrieker.shriek block @a {x:.1} {y:.1} {z:.1} 2 0.5"));
+            }
+            if i % 8 == 0 {
+                p.at(tl, format!(r#"particle minecraft:block{{block_state:"{blk}"}} {x:.1} {y:.1} {z:.1} 0.4 0.4 0.4 0.1 10 force"#));
+            }
+        }
+    }
+    // the moment it evaporates, the matter still circling it is left hanging where the disk was
+    let te = t + BH_END;
+    for _ in 0..120 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = 9.0 + 16.0 * p.rng.next().sqrt();
+        let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+        let y = (hy + p.rng.uniform(-1.5, 1.5) + (a * 2.0).sin() * 2.0).round() as i32;
+        let blk = *p.rng.pick(&TORN);
+        let tl = te + p.rng.uniform(0.0, 0.15) as f32;
+        p.at(tl, format!("setblock {x} {y} {z} {blk}"));
+    }
+    p.at(te + 0.2, format!("playsound minecraft:block.amethyst_block.resonate block @a {bx} {} {bz} 4 0.5", hy as i32));
 }
 
 /// The godly wings' facing: from the impact towards the player, in the xz plane.

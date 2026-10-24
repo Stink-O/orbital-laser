@@ -133,5 +133,68 @@
       }
     ],
     "subtitle": "subtitles.orbital.godly.shutdown"
+  },
+  "blackhole.lockon": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/lockon",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.lockon"
+  },
+  "blackhole.charge": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/charge",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.charge"
+  },
+  "blackhole.fire": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/fire",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.fire"
+  },
+  "blackhole.beam": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/beam",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.beam"
+  },
+  "blackhole.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.rumble"
+  },
+  "blackhole.accent": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/accent",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.accent"
+  },
+  "blackhole.shutdown": {
+    "sounds": [
+      {
+        "name": "orbital:blackhole/shutdown",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.blackhole.shutdown"
   }
 }

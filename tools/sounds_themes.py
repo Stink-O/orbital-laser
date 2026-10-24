@@ -1,8 +1,8 @@
-"""The Godly sound set (Plasma's lives in sounds_plasma.py): lockon, charge, fire, beam, rumble, accent, shutdown
-(the Plasma set's `collapse` is shared). Files go to sounds/godly/<name>.ogg, events are `godly.<name>`."""
+"""The Godly and Black hole sound sets (Plasma's lives in sounds_plasma.py): lockon, charge, fire, beam, rumble, accent,
+shutdown (the Plasma set's `collapse` is shared). Files go to sounds/<theme>/<name>.ogg, events are `<theme>.<name>`."""
 from soundlib import *
 
-THEMES = ("godly",)
+THEMES = ("godly", "blackhole")
 NAMES = ["lockon", "charge", "fire", "beam", "rumble", "accent", "shutdown"]
 
 D_MAJOR = {"D1": 36.71, "D2": 73.42, "A2": 110.0, "D3": 146.83, "A3": 220.0, "D4": 293.66, "F4#": 369.99, "A4": 440.0, "D5": 587.33}
@@ -150,7 +150,92 @@ def godly():
     finish(f"{th}/shutdown", reverb(x, 0.5, length=3.4, tau_lo=2.0, tau_mid=1.3, tau_hi=0.6), 0.2)
 
 
-BUILDERS = {"godly": godly}
+# =====================================================================================  BLACK HOLE
+def glide(f0, f1, t, d, curve=1.0):
+    """A frequency curve from f0 to f1 over d seconds, exponential in pitch."""
+    u = np.clip(t / d, 0, 1) ** curve
+    return f0 * (f1 / f0) ** u
+
+
+def sine_ph(f):
+    return np.sin(2 * np.pi * np.cumsum(f) / SR)
+
+
+def blackhole():
+    th = "blackhole"
+    # lock-on: a sub drop under a metallic ping that bends down as if pulled in
+    d = 2.2; n = int(SR * d); t = tt(d)
+    ping = sum(sine_ph(glide(f, f * 0.55, t, 1.4, 0.6)) * a for f, a in ((1244.5, 0.6), (1661.2, 0.35), (2489.0, 0.2))) * np.exp(-t / 0.5)
+    x = thump(n, 0.0, 90, 26, 0.9, 4.0) * 1.4 + ping + band(white(d), 3000, 10000) * exp_env(n, 0.001, 0.03) * 0.3
+    finish(f"{th}/lockon", reverb(x, 0.5, length=3.0, tau_lo=2.2, tau_mid=1.2, tau_hi=0.4), 0.2)
+
+    # charge: an inhale. Noise sucked in harder and harder, a cluster of tones gliding down, a sub swelling, crackle
+    # speeding up, and all of it cut dead just before the fire
+    d = 4.0; n = int(SR * d); t = tt(d); p = t / d
+    inhale = band(white(d), 200, 6000) * p ** 2.6 * (1 + 0.5 * smooth_noise(d, 6))
+    inhale = band(inhale * (0.6 + 0.4 * np.sin(2 * np.pi * (2 + 14 * p ** 2) * t)), 120, 9000)
+    tones = sum(sine_ph(glide(f, f * 0.25, t, d, 1.3)) * (0.25 + 0.75 * p) for f in (880.0, 1046.5, 1318.5, 1760.0)) * 0.18
+    sub = np.sin(2 * np.pi * np.cumsum(glide(55, 28, t, d)) / SR) * p ** 2 * 1.4
+    crackle = crackles(n, d, 160, 0.4, 3.85, 0.05, 0.35, bias=0.45)
+    x = (inhale * 1.1 + tones + sub + crackle) * np.minimum(t / 0.1, 1.0) * np.clip((3.93 - t) / 0.04, 0, 1)
+    finish(f"{th}/charge", reverb(x, 0.3, length=2.0, tau_lo=1.2, tau_mid=0.7, tau_hi=0.3), 0.01)
+
+    # fire: a vast low brass blast tuned down, a sub boom, a crack of the air folding in, and long metallic groans after
+    d = 7.0; n = int(SR * d); t = tt(d)
+    brass = np.zeros(n)
+    for i, fr in enumerate((36.71, 55.0, 73.42, 77.78, 110.0)):
+        brass += saw_add(glide(fr * 1.04, fr * 0.94, t, 5.0), t, 30, vib=i * 0.7, vib_rate=3.1, vib_depth=0.008) * 0.32
+    brass = band(soft(brass * 1.6, 2.0), 25, 2400) * np.minimum(t / 0.02, 1.0) * (0.25 + 0.75 * np.exp(-t / 2.4))
+    crack = band(white(d), 600, 12000) * exp_env(n, 0.001, 0.09) * 1.4
+    boom = thump(n, 0.0, 60, 20, 2.2, 2.0) * 2.2
+    groan = sum(sine_ph(glide(f0, f0 * 0.4, t, 6.0)) * np.exp(-t / 2.2) * a for f0, a in ((311.1, 0.3), (466.2, 0.18), (622.3, 0.1)))
+    groan = groan * (1 + 0.6 * smooth_noise(d, 9))
+    x = brass * 1.4 + crack + boom + groan
+    finish(f"{th}/fire", reverb(soft(x, 1.3), 0.6, length=4.5, tau_lo=3.0, tau_mid=1.5, tau_hi=0.5), 0.3)
+
+    # beam: the hole's drone. A low chord with a slow phaser sweep, a throb, and a high whine swinging round and round
+    d = 4.0; n = int(SR * d); t = tt(d)
+    chord = sum(saw_add(np.full(n, fr), t, 26, vib=fr, vib_rate=0.7, vib_depth=0.004) * a for fr, a in ((36.71, 0.5), (55.0, 0.4), (73.42, 0.35), (82.41, 0.2)))
+    ph = band(chord, 25, 300) + 0.5 * band(chord, 300, 3000) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.25 * t + 1.0))
+    throb = 0.7 + 0.3 * np.sin(2 * np.pi * 2.4 * t)
+    whine = sine_ph(1500 + 450 * np.sin(2 * np.pi * 0.9 * t)) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.9 * t + 1.57)) ** 2 * 0.08
+    whine += sine_ph(2250 + 600 * np.sin(2 * np.pi * 0.9 * t + 2.1)) * 0.03
+    hiss = band(white(d), 2000, 9000) * (0.06 + 0.04 * np.sin(2 * np.pi * 0.25 * t))
+    x = (ph * throb + whine + hiss) * np.minimum(np.minimum(t / 0.3, (d - t) / 0.3), 1.0)
+    finish(f"{th}/beam", reverb(x, 0.3, length=2.5, tau_lo=1.6, tau_mid=0.8, tau_hi=0.3), 0.01)
+
+    # rumble: the ground giving way to it, very low
+    d = 3.4; n = int(SR * d); t = tt(d)
+    x = band(white(d), 18, 160) * (1 + 0.8 * smooth_noise(d, 5)) * 1.6 + np.sin(2 * np.pi * 29.1 * t) * (0.6 + 0.4 * smooth_noise(d, 2)) * 0.9
+    x = x * np.minimum(np.minimum(t / 0.5, (d - t) / 0.9), 1.0)
+    finish(f"{th}/rumble", reverb(x, 0.3, length=2.4, tau_lo=1.6, tau_mid=0.6, tau_hi=0.2), 0.02)
+
+    # accent: something huge torn up and dragged past: a whoosh swinging by and a metal groan falling away
+    d = 2.6; n = int(SR * d); t = tt(d)
+    pas = np.exp(-((t - 0.9) / 0.35) ** 2)
+    whoosh = band(white(d), 300, 7000) * pas * 0.8
+    whoosh = whoosh + band(white(d), 80, 600) * pas * 0.7
+    groan = sine_ph(glide(420, 70, t, 2.2, 0.8)) * np.exp(-t / 1.0) * (1 + 0.7 * smooth_noise(d, 14)) * 0.45
+    groan += sine_ph(glide(630, 105, t, 2.2, 0.8)) * np.exp(-t / 0.8) * 0.2
+    x = whoosh + groan + crackles(n, d, 40, 0.3, 1.6, 0.05, 0.3)
+    finish(f"{th}/accent", reverb(x, 0.45, length=3.0, tau_lo=2.0, tau_mid=1.0, tau_hi=0.4), 0.2)
+
+    # shutdown: it evaporates. A shimmer rushing up in pitch, a bright pop at 0.8 s, then a glittering tail
+    d = 3.6; n = int(SR * d); t = tt(d)
+    pre = t < 0.8
+    rise = sum(sine_ph(glide(f, f * 6.0, t, 0.8, 2.0)) * a for f, a in ((220.0, 0.3), (330.0, 0.22), (440.0, 0.15))) * (t / 0.8) ** 2 * pre
+    hiss = band(white(d), 1500, 11000) * (t / 0.8) ** 3 * pre * 0.5
+    k0 = int(0.8 * SR)
+    pop = np.zeros(n)
+    pop[k0:] = band(rng.standard_normal(n - k0), 200, 14000) * exp_env(n - k0, 0.0005, 0.07) * 1.6 + thump(n - k0, 0.0, 120, 30, 0.7, 6.0) * 1.6
+    glitter = np.zeros(n)
+    for _ in range(60):
+        glitter += bell(n, rng.uniform(0.82, 2.8), float(rng.choice([1760.0, 2093.0, 2637.0, 3136.0, 3520.0])), rng.uniform(0.04, 0.16), 0.6)
+    x = rise + hiss + pop + glitter
+    finish(f"{th}/shutdown", reverb(x, 0.5, length=3.4, tau_lo=2.2, tau_mid=1.3, tau_hi=0.6), 0.2)
+
+
+BUILDERS = {"godly": godly, "blackhole": blackhole}
 
 
 def build_all(only=None):

@@ -10,8 +10,9 @@
 **A terrestrial orbital laser strike, as a mod for [Horizon](https://github.com/ludovic111/horizon), the Rust rewrite of
 Minecraft Java.** Hold the Orbital Laser Designator on anything up to 200 blocks away and a beam drops from orbit: it
 digs a crater and a shaft down to bedrock, flattens everything around it and leaves the land changed for good. Pick
-the laser from a wheel: **Plasma**, a raging beam with forked lightning that fuses the crater into glass, or **Godly**,
-where the clouds part, a pillar of light comes down and the crater turns to quartz and gold.
+the laser from a wheel: **Plasma**, a raging beam with forked lightning that fuses the crater into glass, **Godly**,
+where the clouds part, a pillar of light comes down and the crater turns to quartz and gold, or **Black Hole**, a
+singularity that bends the light round it, tears the ground up into orbit and swallows it.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -34,10 +35,10 @@ where the clouds part, a pillar of light comes down and the crater turns to quar
 </p>
 
 > [!WARNING]
-> **A strike is destructive and permanent.** It flattens everything above the ground within about 44 blocks, digs a
-> crater about 60 blocks across and a shaft down to bedrock, scorches the land round it, and kills every mob and dropped
-> item within 40 blocks (players are spared). **Back up your world**, and don't aim at anything you care about. The
-> wheel has a switch that turns terrain damage off.
+> **A strike is destructive and permanent.** It flattens everything above the ground within about 44 blocks (52 for
+> the Black Hole), digs a crater about 60 blocks across and a shaft down to bedrock, scorches the land round it, and
+> kills every mob and dropped item within 40 blocks (players are spared). **Back up your world**, and don't aim at
+> anything you care about. The wheel has a switch that turns terrain damage off.
 
 > [!IMPORTANT]
 > **It needs the Orbital Laser build of Horizon.** Horizon's mod API doesn't yet let a mod catch an item's use, open its
@@ -53,7 +54,7 @@ where the clouds part, a pillar of light comes down and the crater turns to quar
 > and the ready-built Horizon is Linux x86-64 only (others can build the fork from source).
 
 **Contents:** [Features](#features) ·
-[New in 0.2.0](#new-in-020) ·
+[New in 0.3.0](#new-in-030) ·
 [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) ·
 [How to play](#how-to-play) ·
@@ -69,8 +70,8 @@ where the clouds part, a pillar of light comes down and the crater turns to quar
 
 ## Features
 
-- **Two lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the game:
-  Plasma on one side, Godly on the other, terrain damage on or off in the middle. Hover a laser to read what it does.
+- **Three lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
+  game: Plasma, Godly and Black Hole round it, terrain damage on or off in the middle. Hover a laser to read what it does.
 - **Plasma.** A red designator beam and a converging reticle while it charges, then a raging plasma beam with twisting
   strands and forked lightning, a churning fireball that climbs into a mushroom cloud, a shockwave and a smoke column.
   The crater's walls fuse into obsidian, black glass and magma, lava pools on its floor crust over into obsidian, fires
@@ -80,6 +81,14 @@ where the clouds part, a pillar of light comes down and the crater turns to quar
   swells out. The crater turns to quartz, calcite and gold, the sigil stays etched into the ground in gold, six quartz
   pillars stand where the light came down, flowers bloom outwards in a wave, chunks of the ground are left floating above
   the crater, and players nearby are healed.
+- **Black Hole.** The sky goes black and starry, a violet spiral winds in on the ground and the light round the target
+  starts to bend. Then the picture flashes negative and a black hole opens 28 blocks up: light is bent round it for real
+  (every view ray that passes near it is traced through its gravity), so the land and sky behind it warp into an Einstein
+  ring, and an accretion disk spins up whose far side shows over the top and under the bottom, brighter on the side
+  turning towards you. A jet pours out of both poles and bores down to bedrock. Blocks are torn out of the ground and
+  tumble up into orbit: most spiral in, stretch, glow red-hot and vanish at the horizon, and some are slingshotted away.
+  It drags the land into spiral arms of sculk and black concrete, pulls streams of rock up after it, and evaporates in a
+  blinding flash that throws out what it hadn't eaten and leaves a ring of rock hanging where the disk was.
 - **Everything is in the world.** The effects are traced against the depth buffer and against shapes placed in the
   world (planes, cylinders, a volume), so they stay put when you move, sit behind hills in front of them and are seen in
   perspective. Nothing is painted flat on the screen but the lens: bloom, a streak and the flash.
@@ -89,6 +98,21 @@ where the clouds part, a pillar of light comes down and the crater turns to quar
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
+
+## New in 0.3.0
+
+- **Black Hole**, the third laser, on the wheel and `/orbital blackhole`. The sky goes dark and starry and the picture
+  is sucked in towards one point, then a black hole snaps open over the target. Its light bending is traced for real,
+  so the land and sky behind it warp round it, and its accretion disk shows its far side over the top and under the
+  bottom. A jet out of both poles bores to bedrock.
+- **Terrain ripped into orbit.** 160 blocks and chunks are torn out of the ground round the crater (the real ones are
+  removed as they go) and tumble up round the hole: most stretch, glow red-hot and are swallowed at the horizon, some
+  are slingshotted away, and real blocks spat out of the disk come down as rubble across the land.
+- **What it leaves:** the land dragged into spiral arms of sculk and black concrete, streams of rock reaching up
+  towards where it hung, a crater lined with obsidian and crying obsidian, and a ring of rock left hanging where the
+  disk was when it evaporated in a blinding flash.
+- **Its own sounds**, synthesized like the others: an inhale that cuts dead, a vast low blast, the hole's drone, the
+  evaporation.
 
 ## New in 0.2.0
 
@@ -122,7 +146,7 @@ was a shader pack, a sound pack and a Python script driving the game from outsid
    Already have Horizon set up? Skip that and point `HORIZON_RESOURCES` at the prepared resources it already has (the
    folder `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.2.0.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.3.0.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -210,7 +234,7 @@ loaded laser and whether terrain damage is on.
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole` | loads that laser |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
@@ -241,7 +265,7 @@ it out tick by tick, and hands the post pass the strike's clock every frame.
 
 | Time | What happens |
 |---|---|
-| 0 to 4 s | **Charge:** Plasma's red designator beam and reticle; Godly's sigil burning in and the clouds tearing open |
+| 0 to 4 s | **Charge:** Plasma's red designator beam and reticle; Godly's sigil burning in and the clouds tearing open; the Black Hole's spiral and the sky going dark |
 | 4 s | **Impact:** a flash, the beam comes down, a shockwave, everything standing within about 44 blocks is vaporised |
 | 4 to 13 s | **Burn:** the beam, the fireball or the dome of light, the crater dug layer by layer and the shaft drilled to bedrock |
 | 13 to 26 s | **Aftermath:** what each laser leaves behind lands, the light fades, the smoke or the light veil disperses |
@@ -250,14 +274,16 @@ it out tick by tick, and hands the post pass the strike's clock every frame.
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
 and pillars are cylinders found by the closest approach between the view ray and their axis, the halo rings and wings are
 planes in the world, Plasma's fireball is a noise volume traced along the view ray, and Godly's opening in the clouds is
-a plane far overhead.
+a plane far overhead. The Black Hole marches each view ray that passes near it through its gravity (the photon orbit
+equation), picking up the accretion disk where the ray crosses it and resampling the scene in the direction the ray
+leaves in; the debris round it are ray-traced boxes on paths the mod's block changes follow too.
 
 **The sounds** ([`tools/synth_sounds.py`](tools/synth_sounds.py)) have no samples in them: they are generated from noise
 and sweeps, with a reverb built from a synthetic impulse response.
 
 ## Stock Horizon
 
-0.1's setup still works on stock Horizon, with both lasers: a shader pack, a sound pack and the item mod, run by
+0.1's setup still works on stock Horizon, with Plasma and Godly (the Black Hole is mod-only): a shader pack, a sound pack and the item mod, run by
 [`strike.py`](strike.py) from outside the game through Horizon's `horizon-ctl`. The items are spyglasses there, the remote
 opens a chest-style menu to pick the laser, and every strike rewrites the shader pack's settings.
 

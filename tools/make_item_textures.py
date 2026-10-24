@@ -25,6 +25,8 @@ K = {  # palette
     "p": (160, 90, 255, 255),     # void violet
     "y": (255, 212, 90, 255),     # godly gold
     "c": (70, 230, 255, 255),     # screen cyan
+    "k": (0, 0, 0, 255),          # the event horizon
+    "v": (88, 40, 150, 255),      # dark violet
 }
 
 def designator():
@@ -118,9 +120,28 @@ GODLY_ICON = [             # a halo with a pillar of light through it
     "................",
 ]
 
-GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON}
+BLACKHOLE_ICON = [         # a black hole edge-on: the disk across its middle, its far side bent up over the top and under
+    "................",
+    "................",
+    ".....vppppv.....",
+    "....pOyyyyOp....",
+    "...pOkkkkkkOp...",
+    "..vOkkkkkkkkOv..",
+    "..pykkkkkkkkyp..",
+    ".OOyWkkkkkkWyOO.",
+    "oOWWWWWWWWWWWWOo",
+    ".oOyyWWWWWWyyOo.",
+    "..pOkkkkkkkkOp..",
+    "...pOkkkkkkOp...",
+    "....pOyyyyOp....",
+    ".....vppppv.....",
+    "................",
+    "................",
+]
 
-names = ("laser_designator", "remote", "plasma_icon", "godly_icon")
+GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON}
+
+names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:

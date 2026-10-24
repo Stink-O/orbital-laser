@@ -119,16 +119,18 @@ impl Orbital {
         let dimension = player.as_ref().map_or("minecraft:overworld".to_string(), |p| p.dimension.clone());
         let me = player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]);
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
-        let plan = strike::plan(laser, &target, self.terrain, &dimension);
         let clock = game::get_clock().map_or(0, |c| c.game_time);
+        let seed = (clock % 997 + 1) as f32; // a fresh look every strike
+        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
         params[4] = hit.block_x as f32 + 0.5;
         params[5] = hit.block_z as f32 + 0.5;
         params[6] = strike::wing_angle(target.point, me);
         params[7] = laser.index as f32;
-        params[8] = (clock % 997 + 1) as f32; // a fresh look every strike
+        params[8] = seed;
         params[9] = 1.0;
+        params[11] = hit.block_y as f32;
         render::set_post(SHADER);
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
