@@ -5,7 +5,7 @@ reverb built from a synthetic impulse response): no samples, nothing to license.
 
     python3 tools/synth_sounds.py [OUT_DIR] [--only plasma godly]     # default OUT_DIR: ../orbital-sounds
 
-Two lasers: Plasma (names have no prefix) and Godly (events are `godly.<name>`, files sounds/godly/).
+Plasma's names have no prefix; the others' events are `<theme>.<name>`, files sounds/<theme>/.
 """
 import argparse, json, sys
 from pathlib import Path
@@ -27,7 +27,7 @@ sounds_themes.build_all(set(args.only) if args.only else None)
 
 events = {n: f"orbital:{n}" for n in sounds_plasma.NAMES}
 for th in sounds_themes.THEMES:
-    for n in sounds_themes.NAMES:
+    for n in sounds_themes.names(th):
         events[f"{th}.{n}"] = f"orbital:{th}/{n}"
 sounds = {ev: {"sounds": [{"name": name, "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{ev}"} for ev, name in events.items()}
 json.dump(sounds, open(args.out + "/assets/orbital/sounds.json", "w"), indent=2)

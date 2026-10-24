@@ -16,6 +16,8 @@ pub struct Laser {
     pub blurb: &'static str,
     /// The item model its segment of the wheel shows.
     pub icon_model: &'static str,
+    /// Seconds a strike runs, light and aftermath.
+    pub length: f32,
     /// (radius, block, roughness, replace): what the ground round the crater turns into, in order.
     pub scorch: &'static [(i32, &'static str, f32, &'static str)],
     pub bowl_r: i32,
@@ -56,6 +58,7 @@ pub const PLASMA: Laser = Laser {
     rgb: 0x55D8FF,
     blurb: "A raging plasma beam and forked lightning. Fuses the crater into glass and obsidian, rings it with fire and throws rubble far and wide.",
     icon_model: "orbital:plasma_icon",
+    length: 26.0,
     scorch: &[
         (46, "minecraft:blackstone", 0.15, "minecraft:grass_block"),
         (42, "minecraft:smooth_basalt", 0.15, "minecraft:sand"),
@@ -88,6 +91,7 @@ pub const GODLY: Laser = Laser {
     rgb: 0xFFD55A,
     blurb: "The clouds part and a pillar of light comes down. Leaves a crater of quartz and gold, a sigil in the ground, flowers blooming outwards and rock left hanging in the air.",
     icon_model: "orbital:godly_icon",
+    length: 26.0,
     scorch: &[
         (42, "minecraft:smooth_quartz", 0.0, "minecraft:grass_block"),
         (38, "minecraft:smooth_quartz", 0.0, "minecraft:sand"),
@@ -123,6 +127,7 @@ pub const BLACK_HOLE: Laser = Laser {
     rgb: 0xB070FF,
     blurb: "A singularity tears open over the target. Light bends round it, an accretion disk spins up and its jet bores to bedrock. Drags the land into spiral arms and pulls rock up after it, then evaporates in a blinding flash.",
     icon_model: "orbital:blackhole_icon",
+    length: 26.0,
     scorch: &[
         (48, "minecraft:sculk", 0.12, "minecraft:grass_block"),
         (44, "minecraft:tuff", 0.12, "minecraft:sand"),
@@ -151,4 +156,41 @@ pub const BLACK_HOLE: Laser = Laser {
     particle_b: "particle minecraft:reverse_portal {x} {y} {z} {r} 2 {r} 0.2 60 force",
 };
 
-pub const LASERS: [&Laser; 3] = [&PLASMA, &GODLY, &BLACK_HOLE];
+/// The storm and the extinction impact are planned in `strike::meteor_plan`; the crater, the shaft and their lining
+/// below are the big one's.
+pub const METEOR: Laser = Laser {
+    key: "meteor",
+    index: 3,
+    title: "METEOR STORM",
+    color: "red",
+    rgb: 0xFF7A3A,
+    blurb: "A storm of meteors pounds the land for 120 blocks round the target, each leaving its own crater. Then one the size of a hill comes down on it: a fireball, a crater 125 blocks across and a shaft to bedrock, the land charred out to 135 blocks.",
+    icon_model: "orbital:meteor_icon",
+    length: 38.0,
+    scorch: &[
+        (135, "minecraft:coarse_dirt", 0.1, "minecraft:grass_block"),
+        (130, "minecraft:smooth_basalt", 0.1, "minecraft:sand"),
+        (110, "minecraft:blackstone", 0.12, "minecraft:coarse_dirt"),
+        (110, "minecraft:blackstone", 0.12, "minecraft:dirt"),
+        (84, "minecraft:magma_block", 0.15, "minecraft:blackstone"),
+    ],
+    bowl_r: 62,
+    bowl_d: 34,
+    bowl_rough: 0.08,
+    shaft_r: 11,
+    shaft_min: 8,
+    shaft_rough: 0.05,
+    lining: &[
+        ("minecraft:blackstone", 0.35),
+        ("minecraft:magma_block", 0.25),
+        ("minecraft:obsidian", 0.2),
+        ("minecraft:basalt", 0.1),
+        ("minecraft:tuff", 0.1),
+    ],
+    bowl_floor: ("minecraft:magma_block", 0.25, "minecraft:blackstone"),
+    bottom: &[(6, 0, 0, "minecraft:magma_block"), (5, 1, 4, "minecraft:lava")],
+    particle_a: "particle minecraft:lava {x} {y} {z} {r} 2 {r} 0 50 force",
+    particle_b: "particle minecraft:flame {x} {y} {z} {r} 2 {r} 0.1 60 force",
+};
+
+pub const LASERS: [&Laser; 4] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR];

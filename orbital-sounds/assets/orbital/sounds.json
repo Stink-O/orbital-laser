@@ -196,5 +196,149 @@
       }
     ],
     "subtitle": "subtitles.orbital.blackhole.shutdown"
+  },
+  "meteor.lockon": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/lockon",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.lockon"
+  },
+  "meteor.charge": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/charge",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.charge"
+  },
+  "meteor.fire": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/fire",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.fire"
+  },
+  "meteor.storm": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/storm",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.storm"
+  },
+  "meteor.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.rumble"
+  },
+  "meteor.whoosh1": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/whoosh1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.whoosh1"
+  },
+  "meteor.whoosh2": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/whoosh2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.whoosh2"
+  },
+  "meteor.hit1": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/hit1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.hit1"
+  },
+  "meteor.hit2": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/hit2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.hit2"
+  },
+  "meteor.hit3": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/hit3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.hit3"
+  },
+  "meteor.hit_far1": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/hit_far1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.hit_far1"
+  },
+  "meteor.hit_far2": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/hit_far2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.hit_far2"
+  },
+  "meteor.hit_far3": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/hit_far3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.hit_far3"
+  },
+  "meteor.approach": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/approach",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.approach"
+  },
+  "meteor.impact": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/impact",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.impact"
+  },
+  "meteor.shutdown": {
+    "sounds": [
+      {
+        "name": "orbital:meteor/shutdown",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.meteor.shutdown"
   }
 }

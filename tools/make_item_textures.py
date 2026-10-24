@@ -139,9 +139,27 @@ BLACKHOLE_ICON = [         # a black hole edge-on: the disk across its middle, i
     "................",
 ]
 
-GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON}
+def meteor_icon():
+    """A burning rock coming down from the top right: a flame trail behind it, its leading edge white-hot."""
+    from PIL import ImageDraw
+    im = Image.new("RGBA", (16, 16), K["."])
+    d = ImageDraw.Draw(im)
+    cx, cy, r = 5.5, 10.0, 4.0
+    for w, c in ((3.6, "r"), (2.6, "o"), (1.6, "O"), (0.7, "y")):      # the trail, widest and reddest outside
+        d.polygon([(cx - w * 0.7, cy - w * 0.7), (cx + w * 0.7, cy + w * 0.7), (15.5, 0.5)], fill=K[c])
+    d.ellipse([cx - r - 0.5, cy - r - 0.5, cx + r + 0.5, cy + r + 0.5], fill=K["d"])
+    d.ellipse([cx - r + 0.5, cy - r + 0.5, cx + r - 0.5, cy + r - 0.5], fill=K["g"])
+    d.ellipse([cx - 2.0, cy - 2.6, cx + 0.6, cy - 0.4], fill=K["G"])     # a lighter face
+    d.arc([cx - r - 0.5, cy - r - 0.5, cx + r + 0.5, cy + r + 0.5], 100, 190, fill=K["O"])  # the leading edge, glowing
+    d.arc([cx - r + 0.5, cy - r + 0.5, cx + r - 0.5, cy + r - 0.5], 115, 175, fill=K["y"])
+    return im
 
-names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon")
+
+
+GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON}
+DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon}
+
+names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:
@@ -152,7 +170,7 @@ for i, name in enumerate(names):
             for x, ch in enumerate(row):
                 im.putpixel((x, y), K[ch])
     else:
-        im = designator()
+        im = DRAWN[name]()
     im.save(OUT / f"{name}.png")
     sheet.paste(im, (i * 20, 0))
 big = Image.new("RGBA", (sheet.width * 20, 16 * 20), (30, 34, 40, 255))

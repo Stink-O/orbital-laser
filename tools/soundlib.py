@@ -116,3 +116,41 @@ def finish(name, x, tail_fade=0.05):
     print(f"wrote {name:9s} {len(x) / SR:5.2f}s  rms {np.sqrt(np.mean(x ** 2)):.3f}")
 
 
+
+
+def reverb_st(x, wet=0.4, predelay=0.02, **kw):
+    """Stereo reverb: the same dry sound in both channels, a different tail in each, so it opens out wide."""
+    outs = []
+    for _ in range(2):
+        ir = make_ir(**kw)
+        ir = np.concatenate([np.zeros(int(predelay * SR)), ir])
+        n = len(x) + len(ir)
+        y = np.fft.irfft(np.fft.rfft(x, n) * np.fft.rfft(ir, n), n)[: len(x) + int(len(ir) * 0.6)]
+        o = np.zeros(len(y))
+        o[: len(x)] += x
+        outs.append(o * (1 - wet * 0.5) + y * wet * 3.0)
+    return outs[0], outs[1]
+
+
+def finish_st(name, left, right, tail_fade=0.05, level=0.97):
+    """Write a stereo sound: normalised to its peak (no squashing, so hits stay sharp) with only the loudest instants
+    limited, then encoded like `finish`."""
+    n = max(len(left), len(right))
+    x = np.zeros((n, 2))
+    x[: len(left), 0] = left
+    x[: len(right), 1] = right
+    x -= x.mean(axis=0)
+    peak = np.percentile(np.abs(x), 99.95) + 1e-9
+    x = x / peak
+    x = np.where(np.abs(x) > 0.85, np.sign(x) * (0.85 + 0.15 * np.tanh((np.abs(x) - 0.85) / 0.15)), x)
+    nf = int(tail_fade * SR)
+    x[-nf:] *= np.linspace(1, 0, nf)[:, None]
+    x = x / (np.max(np.abs(x)) + 1e-9) * level
+    path = f"{OUT}/assets/orbital/sounds/{name}"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    pcm = (np.clip(x, -1, 1) * 32767).astype("<i2")
+    with wave.open(path + ".wav", "wb") as w:
+        w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR); w.writeframes(pcm.tobytes())
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path + ".wav", "-c:a", "libvorbis", "-q:a", "7", path + ".ogg"], check=True)
+    os.remove(path + ".wav")
+    print(f"wrote {name:9s} {n / SR:5.2f}s  stereo  rms {np.sqrt(np.mean(x ** 2)):.3f}")

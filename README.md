@@ -11,8 +11,9 @@
 Minecraft Java.** Hold the Orbital Laser Designator on anything up to 200 blocks away and a beam drops from orbit: it
 digs a crater and a shaft down to bedrock, flattens everything around it and leaves the land changed for good. Pick
 the laser from a wheel: **Plasma**, a raging beam with forked lightning that fuses the crater into glass, **Godly**,
-where the clouds part, a pillar of light comes down and the crater turns to quartz and gold, or **Black Hole**, a
-singularity that bends the light round it, tears the ground up into orbit and swallows it.
+where the clouds part, a pillar of light comes down and the crater turns to quartz and gold, **Black Hole**, a
+singularity that bends the light round it, tears the ground up into orbit and swallows it, or **Meteor Storm**, a storm
+of meteors across the land and then an extinction-level impact, the most destructive of the four.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -37,8 +38,10 @@ singularity that bends the light round it, tears the ground up into orbit and sw
 > [!WARNING]
 > **A strike is destructive and permanent.** It flattens everything above the ground within about 44 blocks (52 for
 > the Black Hole), digs a crater about 60 blocks across and a shaft down to bedrock, scorches the land round it, and
-> kills every mob and dropped item within 40 blocks (players are spared). **Back up your world**, and don't aim at
-> anything you care about. The wheel has a switch that turns terrain damage off.
+> kills every mob and dropped item within 40 blocks (players are spared). **The Meteor Storm is far bigger:** craters
+> across 120 blocks round the target, then everything above the ground flattened out to 100 blocks, a crater about 125
+> blocks across, the land charred out to 135, rubble thrown out to 250 and every mob within 130 blocks killed. **Back up
+> your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
 > [!IMPORTANT]
 > **It needs the Orbital Laser build of Horizon.** Horizon's mod API doesn't yet let a mod catch an item's use, open its
@@ -54,7 +57,7 @@ singularity that bends the light round it, tears the ground up into orbit and sw
 > and the ready-built Horizon is Linux x86-64 only (others can build the fork from source).
 
 **Contents:** [Features](#features) ·
-[New in 0.3.0](#new-in-030) ·
+[New in 0.4.0](#new-in-040) ·
 [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) ·
 [How to play](#how-to-play) ·
@@ -68,10 +71,14 @@ singularity that bends the light round it, tears the ground up into orbit and sw
 |---|---|---|
 | ![The laser wheel: Plasma and Godly segments round a terrain-damage switch](docs/05-wheel.jpg) | ![A plasma beam with forked lightning, a shockwave ring and a molten crater](docs/02-impact.jpg) | ![A quartz and gold crater with a golden sigil, quartz pillars and floating islands of rock](docs/07-godly-aftermath.jpg) |
 
+| Meteor Storm | The extinction impact | What it leaves |
+|---|---|---|
+| ![Meteors streaking down through the sky and landing across the land in flashes of light](docs/08-meteor-storm.jpg) | ![The big impact: a fireball tearing open with burning ejecta thrown out every way](docs/09-meteor-impact.jpg) | ![A huge glowing crater rimmed with fire in charred land](docs/10-meteor-crater.jpg) |
+
 ## Features
 
-- **Three lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
-  game: Plasma, Godly and Black Hole round it, terrain damage on or off in the middle. Hover a laser to read what it does.
+- **Four lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
+  game: Plasma, Godly, Black Hole and Meteor Storm round it, terrain damage on or off in the middle. Hover a laser to read what it does.
 - **Plasma.** A red designator beam and a converging reticle while it charges, then a raging plasma beam with twisting
   strands and forked lightning, a churning fireball that climbs into a mushroom cloud, a shockwave and a smoke column.
   The crater's walls fuse into obsidian, black glass and magma, lava pools on its floor crust over into obsidian, fires
@@ -89,6 +96,12 @@ singularity that bends the light round it, tears the ground up into orbit and sw
   tumble up into orbit: most spiral in, stretch, glow red-hot and vanish at the horizon, and some are slingshotted away.
   It drags the land into spiral arms of sculk and black concrete, pulls streams of rock up after it, and evaporates in a
   blinding flash that throws out what it hadn't eaten and leaves a ring of rock hanging where the disk was.
+- **Meteor Storm.** 72 meteors, tiny to big, come in from high in the atmosphere trailing fire and smoke, and pound the
+  land for 120 blocks round the target, scattered and in clusters, each blowing out its own crater with a shockwave, a
+  meteorite at the bottom and fires round it. Then the big one comes down on the target: a white-out, a fireball that
+  tears open and throws burning ejecta every way, everything above the ground flattened out to 100 blocks, a crater
+  about 125 blocks across with a raised rim and a shaft to bedrock, a melt sheet of magma and lava on its floor, the
+  land charred out to 135 blocks, real blocks thrown out across the land and ash coming down over everything.
 - **Everything is in the world.** The effects are traced against the depth buffer and against shapes placed in the
   world (planes, cylinders, a volume), so they stay put when you move, sit behind hills in front of them and are seen in
   perspective. Nothing is painted flat on the screen but the lens: bloom, a streak and the flash.
@@ -98,6 +111,25 @@ singularity that bends the light round it, tears the ground up into orbit and sw
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
+
+## New in 0.4.0
+
+- **Meteor Storm**, the fourth laser, on the wheel and `/orbital meteor`. It does the most terrain damage of them all.
+- **The storm:** 72 meteors, from tiny to big, enter from high in the atmosphere along real curved paths, burning, with
+  trails of fire and smoke that hang in the sky. They land scattered and in clusters across 120 blocks round the target,
+  each with a flash, a ground shockwave and a dust skirt, and each blows out a real round crater with a meteorite at the
+  bottom, a lip of rubble and fires.
+- **The extinction impact:** after the storm, one the size of a hill comes in on the target. A white-out, then a
+  fireball that tears open in a different shape every time and throws glowing ejecta out every way. Everything above the
+  ground goes out to 100 blocks, a crater about 125 blocks across is blown out with a raised rim, a shaft to bedrock and
+  pools of lava on its floor, the land is charred out to 135, real blocks land as far as 250 blocks away and ash comes
+  down over everything.
+- **Its own sounds**, made to sound like real footage: whooshes as each meteor comes in, hits sized to the meteor,
+  heard later and muffled the further away they land (sound travels at its real speed), and a deep blast for the big
+  one followed by rumbling debris.
+- **Faster.** Strikes spread their block changes over the ticks (up to 20,000 blocks a tick) instead of all at once, the
+  big stages are worked out only when they're due, the post pass is warmed up when the mod loads (no hitch on the first
+  strike), and the Black Hole's shader costs less to draw.
 
 ## New in 0.3.0
 
@@ -146,7 +178,7 @@ was a shader pack, a sound pack and a Python script driving the game from outsid
    Already have Horizon set up? Skip that and point `HORIZON_RESOURCES` at the prepared resources it already has (the
    folder `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.3.0.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.4.0.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -197,7 +229,8 @@ Facts to rely on:
   and tell me exactly what you changed and why.
 - install.py needs Python 3.8 or newer. If it's missing, ask me before installing anything.
 - A real strike is destructive and permanent: a crater about 60 blocks across, a shaft down to bedrock, and
-  every mob and dropped item within 40 blocks killed. Use a throwaway creative world (play.sh makes one
+  every mob and dropped item within 40 blocks killed. The Meteor Storm is far bigger: craters across 120
+  blocks, a crater about 125 blocks across and the land charred out to 135. Use a throwaway creative world (play.sh makes one
   called OrbitalTest), never one of my real worlds, and ask me before the first strike with terrain damage
   on. The wheel's centre button and `/orbital terrain off` turn terrain damage off.
 - Run install.py with the game closed. Don't edit my saves or settings beyond what install.py does.
@@ -227,14 +260,14 @@ the reason on its row first.
 3. **Fire.** Hold the designator, aim at anything up to 200 blocks away, and **hold right-click** for under a second. The
    action bar counts `ACQUIRING TARGET…`, then the strike lands where your crosshair is.
 
-A strike takes about 26 seconds, and one runs at a time. While you hold either item, a panel in the top right shows the
+A strike takes about 26 seconds (the Meteor Storm 38), and one runs at a time. While you hold either item, a panel in the top right shows the
 loaded laser and whether terrain damage is on.
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor` | loads that laser |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
@@ -270,20 +303,25 @@ it out tick by tick, and hands the post pass the strike's clock every frame.
 | 4 to 13 s | **Burn:** the beam, the fireball or the dome of light, the crater dug layer by layer and the shaft drilled to bedrock |
 | 13 to 26 s | **Aftermath:** what each laser leaves behind lands, the light fades, the smoke or the light veil disperses |
 
+The Meteor Storm runs longer: the storm from 4 to about 16 s, the big one coming in from about 11 s and hitting at
+17.5 s, then its crater, ejecta and ash until 38 s.
+
 **The effects** are one fragment shader in Horizon's shader-pack stage format. It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
 and pillars are cylinders found by the closest approach between the view ray and their axis, the halo rings and wings are
 planes in the world, Plasma's fireball is a noise volume traced along the view ray, and Godly's opening in the clouds is
 a plane far overhead. The Black Hole marches each view ray that passes near it through its gravity (the photon orbit
 equation), picking up the accretion disk where the ray crosses it and resampling the scene in the direction the ray
-leaves in; the debris round it are ray-traced boxes on paths the mod's block changes follow too.
+leaves in; the debris round it are ray-traced boxes on paths the mod's block changes follow too. The Meteor Storm's meteors are
+placed by the same hash in the shader and in the mod, so each crater opens where its meteor lands; their trails, the
+fireball and the smoke are noise volumes traced along the view ray.
 
 **The sounds** ([`tools/synth_sounds.py`](tools/synth_sounds.py)) have no samples in them: they are generated from noise
 and sweeps, with a reverb built from a synthetic impulse response.
 
 ## Stock Horizon
 
-0.1's setup still works on stock Horizon, with Plasma and Godly (the Black Hole is mod-only): a shader pack, a sound pack and the item mod, run by
+0.1's setup still works on stock Horizon, with Plasma and Godly (the Black Hole and the Meteor Storm are mod-only): a shader pack, a sound pack and the item mod, run by
 [`strike.py`](strike.py) from outside the game through Horizon's `horizon-ctl`. The items are spyglasses there, the remote
 opens a chest-style menu to pick the laser, and every strike rewrites the shader pack's settings.
 
@@ -303,7 +341,7 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow) and
   rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, past 200 blocks, or at unloaded chunks.
-- **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds).
+- **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds, 38 for the Meteor Storm).
 - **No sound.** Check the in-game master volume (Music & Sounds) and your OS volume for the game's own audio stream.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
 

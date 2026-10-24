@@ -6,8 +6,6 @@ use std::f64::consts::PI;
 
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
-/// How long a strike runs, light and aftermath.
-pub const LENGTH: f32 = 26.0;
 /// Mobs and dropped items this close to the impact die (players are spared).
 const KILL_RADIUS: i32 = 40;
 /// Godly: the six quartz pillars (and the shader's pillars of light) stand on
@@ -38,6 +36,32 @@ pub enum Act {
     Cmd(String),
     /// A sound that follows the player.
     Sound { event: String, volume: f32, pitch: f32 },
+    /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
+    /// much work for the one tick it fires in (a mod's tick has a fuel limit).
+    Later(Box<dyn FnOnce() -> Vec<(f32, Act)>>),
+}
+
+/// The blocks a command changes or visits, roughly, when it changes the world (`fill`, `setblock`, `summon`, through
+/// any `execute ... run`); `None` for one that doesn't (sounds, particles, titles, kills), which runs on time.
+pub fn block_cost(cmd: &str) -> Option<u64> {
+    let run = cmd.rsplit(" run ").next().unwrap_or(cmd);
+    let mut words = run.split_whitespace();
+    match words.next()? {
+        "fill" => {
+            // x1 y1 z1 x2 y2 z2, absolute or ~-relative (both corners the same way)
+            let n: Vec<i64> = words
+                .take(6)
+                .map(|w| w.trim_start_matches('~').parse::<i64>().unwrap_or(0))
+                .collect();
+            if n.len() < 6 {
+                return Some(1);
+            }
+            Some((0..3).map(|i| (n[i + 3] - n[i]).unsigned_abs() + 1).product())
+        }
+        "setblock" => Some(1),
+        "summon" => Some(20),
+        _ => None,
+    }
 }
 
 /// What was hit: the block, and the point on its face.
@@ -87,8 +111,8 @@ fn surf(x: i32, z: i32, then: &str) -> String {
     format!("execute positioned {x} 0 {z} positioned over motion_blocking_no_leaves run {then}")
 }
 
-struct Plan<'a> {
-    laser: &'a Laser,
+struct Plan {
+    laser: &'static Laser,
     ev: Vec<(f32, Act)>,
     rng: Rng,
     bx: i32,
@@ -96,7 +120,19 @@ struct Plan<'a> {
     bz: i32,
 }
 
-impl Plan<'_> {
+impl Plan {
+    /// Work out part of the plan only when it is due (at `at`, a little before its first event).
+    fn later(&mut self, at: f32, f: impl FnOnce(&mut Plan) + 'static) {
+        let (laser, bx, by, bz) = (self.laser, self.bx, self.by, self.bz);
+        let seed = (self.rng.next() * 9.0e15) as u64;
+        let job = move || {
+            let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed), bx, by, bz };
+            f(&mut p);
+            p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
+            p.ev
+        };
+        self.ev.push((at, Act::Later(Box::new(job))));
+    }
     fn at(&mut self, t: f32, cmd: impl Into<String>) {
         self.ev.push((t, Act::Cmd(cmd.into())));
     }
@@ -151,6 +187,21 @@ impl Plan<'_> {
             })
             .collect()
     }
+    /// Like `fills`, but only the ends of each row (and the first and last rows whole): the wall of a dug disc,
+    /// for lining it without visiting the inside, which is about to be air anyway.
+    fn edge_fills(rs: &[[i32; 4]], y_lo: i32, y_hi: i32, block: &str, replace: &str, grow: i32) -> Vec<String> {
+        let mut out = Vec::new();
+        for (i, &[x0, z0, x1, z1]) in rs.iter().enumerate() {
+            let (za, zb) = (z0 - if i == 0 { grow } else { 0 }, z1 + if i + 1 == rs.len() { grow } else { 0 });
+            if i == 0 || i + 1 == rs.len() || x1 - x0 <= 4 * grow + 2 {
+                out.push(format!("fill {} {y_lo} {za} {} {y_hi} {zb} {block} replace {replace}", x0 - grow, x1 + grow));
+            } else {
+                out.push(format!("fill {} {y_lo} {za} {} {y_hi} {zb} {block} replace {replace}", x0 - grow, x0 + grow));
+                out.push(format!("fill {} {y_lo} {za} {} {y_hi} {zb} {block} replace {replace}", x1 - grow, x1 + grow));
+            }
+        }
+        out
+    }
     fn disc(&mut self, r: i32, y_lo: i32, y_hi: i32, block: &str, rough: f64, replace: Option<&str>) -> Vec<String> {
         let rs = self.rects(r, rough);
         Self::fills(&rs, y_lo, y_hi, block, replace, 0)
@@ -199,8 +250,12 @@ impl Plan<'_> {
 }
 
 /// Everything a strike of `laser` at `target` does. `dimension` picks the
-/// bedrock floor; `shader_seed` is the shader's, for what the two must agree on.
-pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32) -> Vec<(f32, Act)> {
+/// bedrock floor; `shader_seed` is the shader's, for what the two must agree on;
+/// `me` is where the player stands (the meteor storm's sounds reach them late).
+pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+    if laser.key == "meteor" {
+        return meteor_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
     let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
@@ -318,12 +373,7 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str, shad
 
     if terrain {
         let r_mouth = laser.shaft_r;
-        let bedrock_top = match dimension {
-            "minecraft:overworld" => -59,
-            "minecraft:the_nether" => 5,
-            _ => 1,
-        };
-        let floor_y = bedrock_top;
+        let floor_y = bedrock_top(dimension);
         // 1. the blast: everything standing above the ground in a wide disc is vaporised (the black hole clears
         //    further, so the ground it tears its debris from is level with the target)
         for c in p.disc(if blackhole { 52 } else { 44 }, by + 1, by + 60, "minecraft:air", 0.12, None) {
@@ -410,6 +460,15 @@ pub fn plan(laser: &Laser, target: &Target, terrain: bool, dimension: &str, shad
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
+}
+
+/// The top of the bedrock floor in a dimension.
+fn bedrock_top(dimension: &str) -> i32 {
+    match dimension {
+        "minecraft:overworld" => -59,
+        "minecraft:the_nether" => 5,
+        _ => 1,
+    }
 }
 
 /// Molten pools on the crater floor that crust over to obsidian, fires round the rim, and rubble landing far and wide.
@@ -688,4 +747,414 @@ fn blackhole_aftermath(p: &mut Plan, point: [f64; 3], seed: f32) {
 /// The godly wings' facing: from the impact towards the player, in the xz plane.
 pub fn wing_angle(target: [f64; 3], me: [f64; 3]) -> f32 {
     (me[2] - target[2]).atan2(me[0] - target[0]) as f32
+}
+
+// ---- the meteor storm ------------------------------------------------------------------------------------------------
+
+/// Meteor storm: how many meteors, how far out from the target they land, and when the big one lands (after FIRE).
+/// Where, when and how big each meteor is comes from met_*, the same as strike.wgsl's: keep them in step.
+const MET_N: usize = 72;
+const MET_SPAN: f64 = 120.0;
+const BIG_T: f32 = 13.5;
+/// The integer hash strike.wgsl uses (PCG): the same bits there and here.
+fn pcg(x: u32) -> u32 {
+    let s = x.wrapping_mul(747_796_405).wrapping_add(2_891_336_453);
+    let w = ((s >> ((s >> 28) + 4)) ^ s).wrapping_mul(277_803_737);
+    (w >> 22) ^ w
+}
+/// A meteor's own random numbers (`k` picks which), as strike.wgsl's `mh`.
+fn mh(i: u32, seed: u32, k: u32) -> f64 {
+    f64::from(pcg(i ^ pcg(seed ^ pcg(k)))) / 4_294_967_296.0
+}
+/// Where a meteor lands (x, z off the target) and when (seconds after FIRE), as strike.wgsl's `met_where`: a third of
+/// them come down together, the fragments of one that broke up, the rest anywhere, at any time.
+fn met_where(i: usize, seed: f32) -> (f64, f64, f32) {
+    let (i, s) = (i as u32, seed as u32);
+    if mh(i, s, 5) < 0.33 {
+        let c = 100 + ((mh(i, s, 6) * 6.0) as u32).min(5);
+        let ca = mh(c, s, 1) * 2.0 * PI;
+        let cr = 24.0 + (MET_SPAN - 30.0) * mh(c, s, 2).sqrt();
+        let oa = mh(i, s, 7) * 2.0 * PI;
+        let or = 3.0 + 11.0 * mh(i, s, 8);
+        let t = 3.0 + 8.5 * mh(c, s, 3) + 1.4 * mh(i, s, 9);
+        return (ca.cos() * cr + oa.cos() * or, ca.sin() * cr + oa.sin() * or, t as f32);
+    }
+    let a = mh(i, s, 1) * 2.0 * PI;
+    let r = 14.0 + (MET_SPAN - 14.0) * mh(i, s, 2).sqrt();
+    (a.cos() * r, a.sin() * r, (2.5 + 9.5 * mh(i, s, 3)) as f32)
+}
+fn met_t(i: usize, seed: f32) -> f32 {
+    met_where(i, seed).2
+}
+fn met_off(i: usize, seed: f32) -> (f64, f64) {
+    let (x, z, _) = met_where(i, seed);
+    (x, z)
+}
+/// The horizontal direction the meteors come in from (strike.wgsl's met_dir); they head the other way, downrange.
+fn met_from(seed: f32) -> f64 {
+    (f64::from(seed) * 0.0911).fract() * 2.0 * PI
+}
+/// 0 tiny, 1 medium, 2 big.
+fn met_class(i: usize, seed: f32) -> usize {
+    let h = mh(i as u32, seed as u32, 4);
+    if h < 0.6 {
+        0
+    } else if h < 0.87 {
+        1
+    } else {
+        2
+    }
+}
+
+/// A meteor storm: 72 meteors over the land round the target, then the extinction impact on it.
+fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+    let [bx, by, bz] = target.block;
+    let r2 = |v: f64| (v * 100.0).round() / 100.0;
+    let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
+    let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
+    let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
+    let t = FIRE;
+    let tb = t + BIG_T;
+    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
+    // sound takes its time to reach the player: about 343 blocks a second
+    let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
+
+    // the warning, then the sky starts falling
+    p.csound(0.0, "charge", 10.0, 1.0);
+    p.csound(3.4, "lockon", 8.0, 1.0);
+    p.at(3.5, bar("METEOR STORM INBOUND", laser.color));
+    p.csound(t, "fire", 10.0, 1.0);
+    p.csound(t + 0.3, "storm", 8.0, 1.0);
+    p.csound(t + 3.0, "rumble", 6.0, 1.0);
+    p.csound(t + 8.0, "rumble", 6.0, 0.9);
+    // the big one coming in, and its blast reaching the player after its flash
+    let heard = tb + late(tx, ty, tz);
+    p.csound(tb - 6.5, "approach", 10.0, 1.0);
+    p.at(tb - 6.0, bar("IMPACT IMMINENT", "dark_red"));
+    p.csound(heard, "impact", 10.0, 1.0);
+    p.at(tb + 0.2, bar("EXTINCTION EVENT", "dark_red"));
+    p.csound(heard + 6.0, "rumble", 9.0, 0.75);
+    p.csound(heard + 12.0, "shutdown", 9.0, 1.0);
+
+    for i in 0..MET_N {
+        // each meteor: its whistle coming down, the blast, a crater where it lands
+        let (ox, oz) = met_off(i, shader_seed);
+        let (x, z) = ((target.point[0] + ox).floor() as i32, (target.point[2] + oz).floor() as i32);
+        let cls = met_class(i, shader_seed);
+        let tl = t + met_t(i, shader_seed);
+        // its whoosh coming in (where it lands), then its hit, once the sound has had time to reach the player. A
+        // player further than `playsound` reaches (16 blocks a unit of volume) still hears it, from its direction, at
+        // `min`: quieter the further off, louder the bigger; far ones are muffled and echo.
+        // sized by the take, not by pitch (pitching a sound up makes it toy-like); only a little variation
+        let pitch = p.rng.uniform(0.97, 1.03);
+        let dist = ((f64::from(x) - me[0]).powi(2) + (f64::from(z) - me[2]).powi(2)).sqrt();
+        let min = ((1.25 - dist / 320.0).clamp(0.3, 1.0) * [0.6, 0.8, 1.0][cls]).max(0.2);
+        // the hit recorded at its size (tiny, medium, big), near or far; a whoosh at random
+        let hit = format!("{}{}", if dist > 90.0 { "hit_far" } else { "hit" }, cls + 1);
+        let whoosh = format!("whoosh{}", p.rng.int(1, 2));
+        p.at(tl - 1.3, surf(x, z, &format!("playsound orbital:meteor.{whoosh} block @a ~ ~ ~ 4 {pitch:.2} {:.2}", min * 0.8)));
+        let tl_heard = tl + late(f64::from(x), ty, f64::from(z));
+        p.at(tl_heard, surf(x, z, &format!("playsound orbital:meteor.{hit} block @a ~ ~ ~ 4 {pitch:.2} {min:.2}")));
+        match cls {
+            0 => p.at(tl, surf(x, z, "particle minecraft:explosion ~ ~1 ~ 1 1 1 0 4 force")),
+            1 => {
+                p.at(tl, surf(x, z, "particle minecraft:explosion_emitter ~ ~1 ~ 0 0 0 0 1 force"));
+                p.at(tl, surf(x, z, "particle minecraft:campfire_signal_smoke ~ ~1 ~ 2 1 2 0.02 20 force"));
+            }
+            _ => {
+                p.at(tl, surf(x, z, "particle minecraft:explosion_emitter ~ ~2 ~ 3 2 3 0 4 force"));
+                p.at(tl, surf(x, z, "particle minecraft:lava ~ ~1 ~ 3 1 3 0 60 force"));
+                p.at(tl, surf(x, z, "particle minecraft:campfire_signal_smoke ~ ~1 ~ 4 1 4 0.03 50 force"));
+            }
+        }
+        let kill = [4, 8, 14][cls];
+        p.at(tl + 0.05, surf(x, z, &format!("kill @e[type=!minecraft:player,distance=..{kill}]")));
+        if terrain {
+            p.later(tl - 0.4, move |q| meteor_crater(q, x, z, cls, tl));
+        }
+    }
+
+    // the big one hits
+    p.at(tb, format!("particle minecraft:explosion_emitter {tx} {} {tz} 14 6 14 0 10 force", ty + 4.0));
+    p.at(tb + 0.05, format!("particle minecraft:flash {tx} {} {tz} 0 0 0 0 1 force", ty + 20.0));
+    p.at(tb + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {tx} {} {tz} 20 4 20 3 400 force"#, ty + 2.0));
+    for i in 0..10 {
+        p.at(tb + 0.5 + i as f32 * 0.6, format!("particle minecraft:lava {tx} {} {tz} 30 6 30 0 40 force", ty + 4.0));
+        p.at(tb + 0.7 + i as f32 * 0.6, format!("particle minecraft:campfire_signal_smoke {tx} {} {tz} 30 4 30 0.05 40 force", ty + 2.0));
+    }
+    for i in 0..26 {
+        // ash coming down over everything
+        let tk = tb + 2.0 + i as f32 * 0.6;
+        p.at(tk, format!("particle minecraft:ash {tx} {} {tz} 70 20 70 0 300 force", ty + 25.0));
+        p.at(tk, format!("particle minecraft:white_ash {tx} {} {tz} 70 20 70 0 150 force", ty + 25.0));
+    }
+    for tk in [0.1, 0.8, 2.0, 4.0, 7.0] {
+        p.at(tb + tk, format!("execute positioned {tx} {ty} {tz} run kill @e[type=!minecraft:player,distance=..130]"));
+    }
+    if terrain {
+        let (floor_y, point) = (bedrock_top(dimension), target.point);
+        p.later(tb - 0.3, move |q| extinction(q, tb, floor_y, point, shader_seed));
+    }
+    p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
+    p.ev
+}
+
+/// One meteor's crater (cls: 0 tiny, 1 medium, 2 big) at column (x, z), dug at `tl`: a round bowl, its walls fused,
+/// a meteorite at the bottom, a lip of thrown-up rubble, scorch marks and fires round it. Every command measures from
+/// the ground at (x, z), so the order matters: trees first (a tick earlier), then what is above the ground, the
+/// lining, the layers from the deepest up, the meteorite, and the top layer last (which moves the ground).
+fn meteor_crater(p: &mut Plan, x: i32, z: i32, cls: usize, tl: f32) {
+    let (r, d) = [(3, 2), (6, 4), (11, 7)][cls];
+    // a round disc of rows at depth y (relative to the ground), radius rr
+    let rows = |rr: i32, y_lo: i32, y_hi: i32, block: &str, replace: &str| -> Vec<String> {
+        (-rr..=rr)
+            .map(|dz| {
+                let hw = (f64::from(rr * rr - dz * dz).max(0.0).sqrt() + 0.35) as i32;
+                format!("fill ~-{hw} ~{y_lo} ~{dz} ~{hw} ~{y_hi} ~{dz} {block}{replace}")
+            })
+            .collect()
+    };
+    let a = r + 2;
+    for tag in ["#minecraft:logs", "#minecraft:leaves"] {
+        p.at(tl - 0.05, surf(x, z, &format!("fill ~-{a} ~-14 ~-{a} ~{a} ~14 ~{a} minecraft:air replace {tag}")));
+    }
+    for c in rows(r + 1, 0, 6, "minecraft:air", "") {
+        p.at(tl, surf(x, z, &c));
+    }
+    for tag in ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand"] {
+        for c in rows(r + 1, -(d + 2), -1, "minecraft:blackstone", &format!(" replace {tag}")) {
+            p.at(tl, surf(x, z, &c));
+        }
+    }
+    for _ in 0..(1 + 3 * cls) {
+        let (dx, dz) = (p.rng.int(-r, r), p.rng.int(-r, r));
+        p.at(tl, surf(x, z, &format!("fill ~{} ~-{} ~{} ~{} ~-1 ~{} minecraft:magma_block replace minecraft:blackstone", dx - 1, d + 2, dz - 1, dx + 1, dz + 1)));
+    }
+    for k in (1..d).rev() {
+        let rk = ((f64::from(r) * (1.0 - f64::from(k) / (f64::from(d) + 0.5)).sqrt()).round() as i32).max(1);
+        for c in rows(rk, -(k + 1), -(k + 1), "minecraft:air", "") {
+            p.at(tl, surf(x, z, &c));
+        }
+    }
+    let core = ["minecraft:magma_block", "minecraft:raw_iron_block", "minecraft:ancient_debris"][cls];
+    p.at(tl, surf(x, z, &format!("setblock ~ ~-{} ~ {core}", d + 1)));
+    if cls == 2 {
+        p.at(tl, surf(x, z, &format!("fill ~-1 ~-{} ~-1 ~1 ~-{} ~1 minecraft:magma_block replace minecraft:blackstone", d + 1, d + 1)));
+    }
+    for c in rows(r, -1, -1, "minecraft:air", "") {
+        p.at(tl, surf(x, z, &c));
+    }
+    // the lip: rubble thrown up round the edge, and scorch marks splashed out past it
+    const LIP: [&str; 5] = ["minecraft:cobblestone", "minecraft:blackstone", "minecraft:coarse_dirt", "minecraft:gravel", "minecraft:tuff"];
+    for _ in 0..[8, 18, 36][cls] {
+        let ang = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = f64::from(r) + p.rng.uniform(0.6, 2.2);
+        let (lx, lz) = (x + (ang.cos() * rr).round() as i32, z + (ang.sin() * rr).round() as i32);
+        let blk = *p.rng.pick(&LIP);
+        p.at(tl + 0.1, surf(lx, lz, &format!("setblock ~ ~ ~ {blk} keep")));
+    }
+    for _ in 0..[3, 6, 10][cls] {
+        let ang = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = f64::from(r) + p.rng.uniform(1.0, f64::from(r) * 1.4 + 2.0);
+        let (sx, sz) = (x + (ang.cos() * rr).round() as i32, z + (ang.sin() * rr).round() as i32);
+        let s = p.rng.int(1, 1 + cls as i32);
+        let blk = *p.rng.pick(&["minecraft:coarse_dirt", "minecraft:blackstone", "minecraft:coarse_dirt"]);
+        p.at(tl + 0.1, surf(sx, sz, &format!("fill ~-{s} ~-1 ~-{s} ~{s} ~-1 ~{s} {blk} replace #minecraft:dirt")));
+    }
+    // fires round it, and rocks thrown out
+    for _ in 0..(3 + 4 * cls) {
+        let ang = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = f64::from(r) + p.rng.uniform(1.0, 5.0);
+        let (fx, fz) = (x + (ang.cos() * rr).round() as i32, z + (ang.sin() * rr).round() as i32);
+        let dt = p.rng.uniform(0.1, 0.6) as f32;
+        p.at(tl + dt, surf(fx, fz, "setblock ~ ~ ~ minecraft:fire keep"));
+    }
+    for _ in 0..[1, 4, 10][cls] {
+        let ang = p.rng.uniform(0.0, 2.0 * PI);
+        let sp = p.rng.uniform(0.3, 0.9);
+        let (vx, vy, vz) = (ang.cos() * sp, p.rng.uniform(0.4, 1.0), ang.sin() * sp);
+        let blk = *p.rng.pick(&["minecraft:cobblestone", "minecraft:blackstone", "minecraft:dirt", "minecraft:magma_block"]);
+        p.at(tl + 0.05, surf(x, z, &format!("summon minecraft:falling_block ~ ~1 ~ {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}")));
+    }
+}
+
+/// The extinction impact at the target: everything above the ground flattened out to 100 blocks, the land charred out
+/// to 135, a crater 125 blocks across with a raised rim, a shaft to bedrock with lava at the bottom, a melt sheet on
+/// its floor, and ejecta thrown far across the land.
+fn extinction(p: &mut Plan, tb: f32, floor_y: i32, point: [f64; 3], seed: f32) {
+    // each stage is worked out just before it starts
+    // 1. the blast (in bands of height: a fill is capped at 32768 blocks)
+    p.later(tb + 0.0 - 0.15, move |p| {
+        let by = p.by;
+        for band in 0..4 {
+            let y0 = by + 1 + band * 20;
+            for c in p.disc(100, y0, y0 + 19, "minecraft:air", 0.1, None) {
+                p.at(tb + 0.1 + band as f32 * 0.1, c);
+            }
+        }
+    });
+    // 2. charred land
+    p.later(tb + 0.5 - 0.15, move |p| {
+        let laser = p.laser;
+        let by = p.by;
+        for &(rad, block, rough, repl) in laser.scorch {
+            for c in p.disc(rad, by - 4, by + 1, block, f64::from(rough), Some(repl)) {
+                let dt = p.rng.next() as f32 * 1.5;
+                p.at(tb + 0.6 + dt, c);
+            }
+        }
+    });
+    // 3. the crater, blown out in under two seconds, its walls fused as it goes
+    p.later(tb + 0.2 - 0.15, move |p| {
+        let laser = p.laser;
+        let (bx, by, bz) = (p.bx, p.by, p.bz);
+        const NATURAL: [&str; 5] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel", "minecraft:coarse_dirt"];
+        let prim = laser.lining[0].0;
+        let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
+        let mut d = 0;
+        while d < bowl_d {
+            let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(4);
+            let tl = tb + 0.3 + d as f32 * 0.045;
+            let (y_lo, y_hi) = (by - d - 2, by - d);
+            let rs = p.rects(r, f64::from(laser.bowl_rough));
+            for tag in NATURAL {
+                for c in Plan::edge_fills(&rs, y_lo - 1, y_hi, prim, tag, 2) {
+                    p.at(tl - 0.05, c);
+                }
+            }
+            for c in Plan::fills(&rs, y_lo, y_hi, "minecraft:air", None, 0) {
+                p.at(tl, c);
+            }
+            p.mottle(r, y_lo, y_hi, tl, 24);
+            d += 3;
+        }
+        let (fb, fr, fq) = laser.bowl_floor;
+        for c in p.disc(bowl_r - 6, by - bowl_d - 1, by - bowl_d + 2, fb, f64::from(fr), Some(fq)) {
+            p.at(tb + 2.2, c);
+        }
+        for _ in 0..14 {
+            // pools of melt on the floor, still molten
+            let a = p.rng.uniform(0.0, 2.0 * PI);
+            let rr = p.rng.uniform(16.0, f64::from(bowl_r) * 0.6);
+            let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+            let s = p.rng.int(1, 3);
+            p.at(tb + 2.6, surf(x, z, &format!("fill ~-{s} ~-1 ~-{s} ~{s} ~-1 ~{s} minecraft:lava")));
+        }
+    });
+    // 4. the shaft to bedrock, and a lava lake at the bottom
+    p.later(tb + 0.9 - 0.15, move |p| {
+        let laser = p.laser;
+        let by = p.by;
+        let bowl_d = laser.bowl_d;
+        let mut y_hi = by - bowl_d;
+        let mut i = 0;
+        while y_hi >= floor_y {
+            let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.3).round() as i32).max(laser.shaft_min);
+            let ts = tb + 1.0 + i as f32 * 0.12;
+            p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
+            p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 4);
+            y_hi -= 4;
+            i += 1;
+        }
+        for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
+            for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
+                p.at(tb + 4.0 + 0.1 * k as f32, c);
+            }
+        }
+    });
+    // 5. the rim: rock thrown up round the edge, piled highest nearest the crater
+    p.later(tb + 0.7 - 0.15, move |p| {
+        let laser = p.laser;
+        let (bx, by, bz) = (p.bx, p.by, p.bz);
+        let bowl_r = laser.bowl_r;
+        const RIM: [&str; 6] = ["minecraft:cobblestone", "minecraft:blackstone", "minecraft:tuff", "minecraft:cobbled_deepslate", "minecraft:basalt", "minecraft:magma_block"];
+        for _ in 0..280 {
+            let a = p.rng.uniform(0.0, 2.0 * PI);
+            let rr = f64::from(bowl_r) + 1.0 + 14.0 * p.rng.next().powf(1.5);
+            let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+            let h = (6.0 * (1.0 - (rr - f64::from(bowl_r)) / 16.0)).round().max(1.0) as i32 + p.rng.int(-1, 1);
+            let blk = *p.rng.pick(&RIM);
+            let tl = tb + 0.8 + p.rng.uniform(0.0, 1.6) as f32;
+            p.at(tl, format!("fill {} {} {} {} {} {} {blk} keep", x - 1, by + 1, z - 1, x + 1, by + h.max(1), z + 1));
+        }
+    });
+    // 6. ejecta: real blocks thrown out over the land, landing as far as 250 blocks away, and rubble raining down
+    p.later(tb + 0.0 - 0.15, move |p| {
+        let (bx, by, bz) = (p.bx, p.by, p.bz);
+        const EJECTA: [&str; 8] = [
+            "minecraft:cobblestone",
+            "minecraft:blackstone",
+            "minecraft:magma_block",
+            "minecraft:cobbled_deepslate",
+            "minecraft:basalt",
+            "minecraft:obsidian",
+            "minecraft:tuff",
+            "minecraft:dirt",
+        ];
+        // thrown every way at once: most along seven rays (the ones strike.wgsl's glowing ejecta follow) and downrange of
+        // where it came in, some skimming low and far, some lobbed high, a few big chunks
+        let from = met_from(seed);
+        let (dx0, dz0) = (-from.cos(), -from.sin());
+        let ray0 = f64::from(seed) * 0.3;
+        for _ in 0..260 {
+            let a = if p.rng.next() < 0.6 {
+                ray0 + f64::from(p.rng.int(0, 6)) * 2.0 * PI / 7.0 + p.rng.uniform(-0.09, 0.09)
+            } else {
+                p.rng.uniform(0.0, 2.0 * PI)
+            };
+            let bias = 0.35 * p.rng.next();
+            let (hx, hz) = (a.cos() * (1.0 - bias) + dx0 * bias, a.sin() * (1.0 - bias) + dz0 * bias);
+            let hl = (hx * hx + hz * hz).sqrt().max(1e-6);
+            let (hx, hz) = (hx / hl, hz / hl);
+            let rr = p.rng.uniform(16.0, 40.0);
+            let (x, z) = (point[0] + hx * rr, point[2] + hz * rr);
+            let elev = 0.15 + 1.2 * p.rng.next().powf(0.7);
+            let speed = (1.6 + 2.8 * p.rng.next().powi(2)) * p.rng.uniform(0.7, 1.3);
+            let (vx, vy, vz) = (hx * elev.cos() * speed, elev.sin() * speed, hz * elev.cos() * speed);
+            let blk = *p.rng.pick(&EJECTA);
+            let tl = tb + (0.1 + 1.4 * p.rng.next().powi(2)) as f32;
+            p.at(tl, format!("summon minecraft:falling_block {x:.1} {} {z:.1} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}", by + 3));
+        }
+        for k in 0..320 {
+            // rubble coming down across the land, in rays reaching out furthest
+            let on_ray = p.rng.next() < 0.5;
+            let a = if on_ray { ray0 + f64::from(p.rng.int(0, 6)) * 2.0 * PI / 7.0 + p.rng.uniform(-0.06, 0.06) } else { p.rng.uniform(0.0, 2.0 * PI) };
+            let rr = 80.0 + if on_ray { 170.0 } else { 110.0 } * p.rng.next().powf(1.4);
+            let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+            let tl = tb + 1.5 + (rr / 210.0 * 6.0) as f32 + p.rng.uniform(0.0, 1.5) as f32;
+            let blk = *p.rng.pick(&EJECTA);
+            p.at(tl, surf(x, z, &format!("setblock ~ ~ ~ {blk} keep")));
+            if k % 4 == 0 {
+                p.at(tl, surf(x, z, &format!(r#"particle minecraft:block{{block_state:"{blk}"}} ~ ~0.5 ~ 0.6 0.4 0.6 0.2 16 force"#)));
+            }
+        }
+    });
+    // 7. the charred land burning
+    p.later(tb + 0.9 - 0.15, move |p| {
+        let laser = p.laser;
+        let (bx, _, bz) = (p.bx, p.by, p.bz);
+        let bowl_r = laser.bowl_r;
+        for _ in 0..170 {
+            let a = p.rng.uniform(0.0, 2.0 * PI);
+            let rr = p.rng.uniform(f64::from(bowl_r) + 4.0, 130.0);
+            let dt = p.rng.uniform(1.0, 5.0) as f32;
+            p.at(tb + dt, surf(bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32, "setblock ~ ~ ~ minecraft:fire keep"));
+        }
+    });
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn block_costs() {
+        assert_eq!(block_cost("fill 0 60 0 9 61 4 minecraft:air"), Some(100));
+        assert_eq!(block_cost("fill 5 70 5 -4 69 0 minecraft:stone replace #minecraft:dirt"), Some(120));
+        assert_eq!(block_cost(&surf(3, 4, "fill ~-2 ~-3 ~-2 ~2 ~-1 ~2 minecraft:blackstone replace #minecraft:dirt")), Some(75));
+        assert_eq!(block_cost(&surf(3, 4, "setblock ~ ~ ~ minecraft:fire keep")), Some(1));
+        assert_eq!(block_cost("playsound minecraft:entity.generic.explode block @a 0 64 0 3 1"), None);
+        assert_eq!(block_cost(&surf(3, 4, "particle minecraft:explosion ~ ~1 ~ 1 1 1 0 4 force")), None);
+        assert_eq!(block_cost("execute positioned 0 64 0 run kill @e[type=!minecraft:player,distance=..40]"), None);
+    }
 }

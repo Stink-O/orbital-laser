@@ -19,7 +19,7 @@ use horizon_mod_sdk::{
     log, render, storage, ui, world,
 };
 use lasers::LASERS;
-use strike::{Act, FIRE, LENGTH, Target};
+use strike::{Act, FIRE, Target};
 
 const DESIGNATOR: &str = "orbital:laser_designator";
 const REMOTE: &str = "orbital:remote";
@@ -29,16 +29,25 @@ const LOCK_TICKS: u32 = 14;
 const RANGE: f32 = 200.0;
 const SHADER: &str = include_str!("../shaders/strike.wgsl");
 const SETTINGS: &str = "settings";
+/// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
+/// carves its crater over a few seconds instead of freezing the game for one.
+const BLOCK_BUDGET: u64 = 20_000;
 
 struct Strike {
     plan: Vec<(f32, Act)>,
     next: usize,
     ticks: u32,
+    /// Seconds it runs (the laser's `length`).
+    length: f32,
     /// What the post pass reads; [3] is the strike clock, set each frame.
     params: [f32; 16],
 }
 
 struct Orbital {
+    /// Frames since the world loaded, until the post pass has been compiled once (see `frame`).
+    warm: u8,
+    /// World changes waiting for room in a tick's block budget, in order; they outlive the strike that made them.
+    carving: std::collections::VecDeque<(u64, String)>,
     laser: usize,
     terrain: bool,
     /// Ticks the designator has been held, while it is.
@@ -121,7 +130,7 @@ impl Orbital {
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
-        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed);
+        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
         params[4] = hit.block_x as f32 + 0.5;
@@ -134,32 +143,63 @@ impl Orbital {
         render::set_post(SHADER);
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
-        self.strike = Some(Strike { plan, next: 0, ticks: 0, params });
+        self.strike = Some(Strike { plan, next: 0, ticks: 0, length: laser.length, params });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
+        self.carve();
         let Some(s) = &mut self.strike else {
             return;
         };
         s.ticks += 1;
         let now = s.ticks as f32 * 0.05;
         let mut cmds = Vec::new();
-        while let Some((t, act)) = s.plan.get(s.next) {
+        while let Some((t, _)) = s.plan.get(s.next) {
             if *t > now {
                 break;
             }
-            match act {
-                Act::Cmd(c) => cmds.push(c.clone()),
-                Act::Sound { event, volume, pitch } => world::play_sound(event, None, *volume, *pitch),
-            }
+            let (_, act) = std::mem::replace(&mut s.plan[s.next], (0.0, Act::Cmd(String::new())));
             s.next += 1;
+            match act {
+                Act::Cmd(c) => match strike::block_cost(&c) {
+                    Some(cost) => self.carving.push_back((cost, c)),
+                    None => cmds.push(c),
+                },
+                Act::Sound { event, volume, pitch } => world::play_sound(&event, None, volume, pitch),
+                Act::Later(job) => {
+                    // more of the plan, worked out now it is due: merged in after what has run (both are in order,
+                    // so the sort only merges two runs)
+                    let mut rest = s.plan.split_off(s.next);
+                    rest.extend(job());
+                    rest.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    s.plan.extend(rest);
+                }
+            }
         }
         if !cmds.is_empty() {
             world::run_commands(&cmds);
         }
-        if now >= LENGTH {
+        if now >= s.length {
             render::clear_post();
             self.strike = None;
+        }
+        self.carve();
+    }
+    /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one).
+    fn carve(&mut self) {
+        let mut spent = 0;
+        let mut cmds = Vec::new();
+        while let Some((cost, _)) = self.carving.front() {
+            if !cmds.is_empty() && spent + cost > BLOCK_BUDGET {
+                break;
+            }
+            spent += cost;
+            if let Some((_, c)) = self.carving.pop_front() {
+                cmds.push(c);
+            }
+        }
+        if !cmds.is_empty() {
+            world::run_commands(&cmds);
         }
     }
 
@@ -200,6 +240,8 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let (laser, terrain) = Orbital::load();
         let state = Orbital {
+            warm: 0,
+            carving: std::collections::VecDeque::new(),
             laser,
             terrain,
             aiming: None,
@@ -248,6 +290,18 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         self.since_tick += seconds;
+        // Compile the post pass as the world loads, not when the first strike fires (that costs about a second): set
+        // it for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
+        // the compiled pass for the strikes after.
+        if self.warm < 2 && self.strike.is_none() {
+            if self.warm == 0 {
+                render::set_post(SHADER);
+                render::set_params(&[0.0; 16]);
+            } else {
+                render::clear_post();
+            }
+            self.warm += 1;
+        }
         if let Some(s) = &mut self.strike {
             s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
             render::set_params(&s.params);
@@ -291,4 +345,10 @@ impl Mod for Orbital {
 horizon_mod_sdk::export_mod!(Orbital);
 
 // The shader runs the impact at FIRE seconds into the strike.
-const _: () = assert!(FIRE < LENGTH);
+const _: () = {
+    let mut i = 0;
+    while i < LASERS.len() {
+        assert!(FIRE < LASERS[i].length);
+        i += 1;
+    }
+};

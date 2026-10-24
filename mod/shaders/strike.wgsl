@@ -16,6 +16,8 @@
 //              in the sky, six pillars of light land round a golden sigil, a dome of light
 //   2 Black hole  a singularity over the target bends the light round it; an accretion disk, a jet
 //              out of both poles, the land dragged in, and it evaporates in a flash (`singularity`)
+//   3 Meteor storm  meteors pound the land round the target, then one the size of a hill lands on it: a
+//              fireball, a shockwave, ejecta across the sky and a sky gone brown with dust (`meteor_storm`)
 
 fn target_x() -> f32 { return frame.mod_params[0].x; }
 fn target_y() -> f32 { return frame.mod_params[0].y; }
@@ -78,6 +80,43 @@ fn fbm3(p: vec3<f32>) -> f32 {
     let q = p * 2.07 + vec3<f32>(5.1, 1.3, 7.7);
     let r = q * 2.11 + vec3<f32>(2.9, 8.3, 4.1);
     return 0.55 * vnoise3(p) + 0.3 * vnoise3(q) + 0.15 * vnoise3(r);
+}
+
+// Cheaper noise for the heavy passes (the black hole, the meteor storm): an integer hash (PCG) instead of sin.
+fn pcg(x: u32) -> u32 {
+    let s = x * 747796405u + 2891336453u;
+    let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+fn fh21(p: vec2<f32>) -> f32 {
+    let q = bitcast<vec2<u32>>(vec2<i32>(floor(p)));
+    return f32(pcg(q.x ^ pcg(q.y))) * (1.0 / 4294967295.0);
+}
+fn fh31(p: vec3<f32>) -> f32 {
+    let q = bitcast<vec3<u32>>(vec3<i32>(floor(p)));
+    return f32(pcg(q.x ^ pcg(q.y ^ pcg(q.z)))) * (1.0 / 4294967295.0);
+}
+fn fvnoise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(fh21(i), fh21(i + vec2<f32>(1.0, 0.0)), u.x), mix(fh21(i + vec2<f32>(0.0, 1.0)), fh21(i + vec2<f32>(1.0, 1.0)), u.x), u.y);
+}
+fn ffbm(p: vec2<f32>) -> f32 {
+    return 0.55 * fvnoise(p) + 0.3 * fvnoise(p * 2.03 + vec2<f32>(17.3, 9.1)) + 0.15 * fvnoise(p * 4.1 + vec2<f32>(3.1, 5.7));
+}
+fn fvnoise3(p: vec3<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = mix(fh31(i), fh31(i + vec3<f32>(1.0, 0.0, 0.0)), u.x);
+    let b = mix(fh31(i + vec3<f32>(0.0, 1.0, 0.0)), fh31(i + vec3<f32>(1.0, 1.0, 0.0)), u.x);
+    let c = mix(fh31(i + vec3<f32>(0.0, 0.0, 1.0)), fh31(i + vec3<f32>(1.0, 0.0, 1.0)), u.x);
+    let d = mix(fh31(i + vec3<f32>(0.0, 1.0, 1.0)), fh31(i + vec3<f32>(1.0, 1.0, 1.0)), u.x);
+    return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
+}
+fn ffbm3(p: vec3<f32>) -> f32 {
+    return 0.62 * fvnoise3(p) + 0.38 * fvnoise3(p * 2.07 + vec3<f32>(5.1, 1.3, 7.7));
 }
 
 fn lava_ramp(x: f32) -> vec3<f32> {
@@ -231,11 +270,11 @@ const LENS_R: f32 = 12.0;         // how far out light is bent, in horizon radii
 fn bh_sky(d: vec3<f32>, seed: f32) -> vec3<f32> {
     let q = d * 140.0;
     let f = fract(q) - 0.5;
-    let h = hash31(floor(q) + vec3<f32>(seed));
+    let h = fh31(floor(q) + vec3<f32>(seed));
     let star = step(0.975, h) * exp(-dot(f, f) * 40.0) * (0.5 + 4.0 * fract(h * 37.0));
     let tint = mix(vec3<f32>(0.7, 0.8, 1.25), vec3<f32>(1.25, 0.9, 0.7), fract(h * 91.0));
-    let neb = fbm3(d * 2.6 + vec3<f32>(seed * 0.01));
-    let neb2 = fbm3(d * 6.0 - vec3<f32>(2.0, 0.0, 1.0));
+    let neb = ffbm3(d * 2.6 + vec3<f32>(seed * 0.01));
+    let neb2 = ffbm3(d * 6.0 - vec3<f32>(2.0, 0.0, 1.0));
     let haze = vec3<f32>(0.10, 0.02, 0.17) * smoothstep(0.4, 0.85, neb) + vec3<f32>(0.02, 0.04, 0.13) * smoothstep(0.5, 0.9, neb2);
     return tint * star + haze;
 }
@@ -300,8 +339,8 @@ fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: v
     let a0 = debris_angle(fi, seed);
     let R0 = debris_r0(fi, seed);
     let big = debris_big(fi, seed);
-    let h1 = hash21(vec2<f32>(fi, seed + 5.0));
-    let h2 = hash21(vec2<f32>(fi, seed + 9.0));
+    let h1 = fh21(vec2<f32>(fi, seed + 5.0));
+    let h2 = fh21(vec2<f32>(fi, seed + 9.0));
     let T_in = 2.6 + 1.4 * h2;
     let flung = h1 < 0.28;
     let u_f = 0.5 + 0.2 * h2;
@@ -352,8 +391,8 @@ fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: v
 
 // A block's face colour (sRGB) at face pixel `px`: grass, dirt, stone, deepslate, log or leaves.
 fn debris_tex(kind: i32, px: vec2<f32>, top: bool, side_y: f32, seed: f32) -> vec3<f32> {
-    let nz = hash21(px + vec2<f32>(seed * 3.1, f32(kind) * 17.0));
-    let nz2 = hash21(px * 1.7 + vec2<f32>(5.0, seed));
+    let nz = fh21(px + vec2<f32>(seed * 3.1, f32(kind) * 17.0));
+    let nz2 = fh21(px * 1.7 + vec2<f32>(5.0, seed));
     switch kind {
         case 0: {
             if (top || side_y > 0.8) {
@@ -480,7 +519,7 @@ fn singularity(in: StageIn) -> vec4<f32> {
             var captured = false;
             var hit = false;
             var rmin = 1.0e9;
-            for (var i = 0; i < 120; i = i + 1) {
+            for (var i = 0; i < 96; i = i + 1) {
                 let r = length(pp);
                 rmin = min(rmin, r);
                 if (r < 1.0) {
@@ -492,7 +531,8 @@ fn singularity(in: StageIn) -> vec4<f32> {
                 }
                 let dt = clamp((r - 0.9) * 0.16, 0.03, 1.5);
                 let prev = pp;
-                v = normalize(v - 1.5 * h2 * pp / pow(r, 5.0) * dt);
+                let r2 = r * r;
+                v = normalize(v - 1.5 * h2 * pp / (r2 * r2 * r) * dt);
                 pp = pp + v * dt;
                 travel = travel + dt * rs_l;
                 if (!sky && travel > scene_len) {
@@ -649,8 +689,8 @@ fn singularity(in: StageIn) -> vec4<f32> {
                 continue;
             }
             // into the piece's own space: undo the stretch towards the hole, then its tumble
-            let ax = normalize(vec3<f32>(hash21(vec2<f32>(fi, 1.0)), hash21(vec2<f32>(fi, 2.0)), hash21(vec2<f32>(fi, 3.0))) - 0.5);
-            let spin = (ft - debris_t(fi)) * (1.5 + 3.0 * hash21(vec2<f32>(fi, 4.0))) * (1.0 + 2.0 * pc.glow);
+            let ax = normalize(vec3<f32>(fh21(vec2<f32>(fi, 1.0)), fh21(vec2<f32>(fi, 2.0)), fh21(vec2<f32>(fi, 3.0))) - 0.5 + 1.0e-3);
+            let spin = (ft - debris_t(fi)) * (1.5 + 3.0 * fh21(vec2<f32>(fi, 4.0))) * (1.0 + 2.0 * pc.glow);
             let sk = sqrt(pc.k);
             let ro = -pc.c;
             let ro_s = (ro - pc.u * dot(pc.u, ro)) * sk + pc.u * dot(pc.u, ro) / pc.k;
@@ -684,7 +724,7 @@ fn singularity(in: StageIn) -> vec4<f32> {
                 fuv = lp.xy;
             }
             let px = floor((fuv * 0.5 + 0.5) * 16.0 * hs * 2.0);
-            let kind = i32(hash21(vec2<f32>(fi, seed + 13.0)) * 6.0);
+            let kind = min(i32(fh21(vec2<f32>(fi, seed + 13.0)) * 6.0), 5);
             let albedo = srgb_to_linear(debris_tex(kind, px, nl.y > 0.5, lp.y, seed + fi));
             let nw = normalize(rot_axis(nl, ax, spin));
             let sunl = 0.3 + 0.7 * max(dot(nw, normalize(vec3<f32>(0.3, 1.0, 0.2))), 0.0);
@@ -745,10 +785,601 @@ fn singularity(in: StageIn) -> vec4<f32> {
     return vec4<f32>(srgb, 1.0);
 }
 
+// Gradient noise (smooth, without the square grid value noise shows), from a cheap integer hash, for the meteor
+// storm's fire and smoke. Each octave is turned so their grids never line up.
+fn pcg3d(v0: vec3<u32>) -> vec3<u32> {
+    var v = v0 * 1664525u + 1013904223u;
+    v.x = v.x + v.y * v.z;
+    v.y = v.y + v.z * v.x;
+    v.z = v.z + v.x * v.y;
+    v = v ^ (v >> vec3<u32>(16u));
+    v.x = v.x + v.y * v.z;
+    v.y = v.y + v.z * v.x;
+    v.z = v.z + v.x * v.y;
+    return v;
+}
+fn grad3(i: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(pcg3d(bitcast<vec3<u32>>(vec3<i32>(i)))) * (2.0 / 4294967295.0) - 1.0;
+}
+fn gnoise3(p: vec3<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let n000 = dot(grad3(i), f);
+    let n100 = dot(grad3(i + vec3<f32>(1.0, 0.0, 0.0)), f - vec3<f32>(1.0, 0.0, 0.0));
+    let n010 = dot(grad3(i + vec3<f32>(0.0, 1.0, 0.0)), f - vec3<f32>(0.0, 1.0, 0.0));
+    let n110 = dot(grad3(i + vec3<f32>(1.0, 1.0, 0.0)), f - vec3<f32>(1.0, 1.0, 0.0));
+    let n001 = dot(grad3(i + vec3<f32>(0.0, 0.0, 1.0)), f - vec3<f32>(0.0, 0.0, 1.0));
+    let n101 = dot(grad3(i + vec3<f32>(1.0, 0.0, 1.0)), f - vec3<f32>(1.0, 0.0, 1.0));
+    let n011 = dot(grad3(i + vec3<f32>(0.0, 1.0, 1.0)), f - vec3<f32>(0.0, 1.0, 1.0));
+    let n111 = dot(grad3(i + vec3<f32>(1.0, 1.0, 1.0)), f - vec3<f32>(1.0, 1.0, 1.0));
+    let x0 = mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y);
+    let x1 = mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y);
+    return mix(x0, x1, u.z) * 0.75 + 0.5;
+}
+fn gfbm3(p: vec3<f32>, octaves: i32) -> f32 {
+    let m = mat3x3<f32>(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
+    var q = p;
+    var a = 0.5;
+    var s = 0.0;
+    var w = 0.0;
+    for (var o = 0; o < octaves; o = o + 1) {
+        s = s + a * gnoise3(q);
+        w = w + a;
+        q = m * q * 2.03 + vec3<f32>(1.7, 9.2, 5.3);
+        a = a * 0.5;
+    }
+    return s / w;
+}
+fn grad2(i: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(pcg3d(bitcast<vec3<u32>>(vec3<i32>(vec2<i32>(i), 7))).xy) * (2.0 / 4294967295.0) - 1.0;
+}
+fn gnoise2(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let a = dot(grad2(i), f);
+    let b = dot(grad2(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));
+    let c = dot(grad2(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));
+    let d = dot(grad2(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 0.9 + 0.5;
+}
+fn gfbm2(p: vec2<f32>) -> f32 {
+    let m = mat2x2<f32>(0.8, 0.6, -0.6, 0.8);
+    let q1 = m * p * 2.03 + vec2<f32>(1.7, 9.2);
+    let q2 = m * q1 * 2.01 + vec2<f32>(5.3, 2.8);
+    return (0.5 * gnoise2(p) + 0.25 * gnoise2(q1) + 0.125 * gnoise2(q2)) / 0.875;
+}
+// A dither that changes from pixel to pixel without clumping, to hide the steps of a march.
+fn ign(px: vec2<f32>) -> f32 {
+    return fract(52.9829189 * fract(dot(px, vec2<f32>(0.06711056, 0.00583715))));
+}
+
+// ---- laser 3: the meteor storm ------------------------------------------------------------------
+// Seventy-two meteors come in from one direction and land over the land round the target, then one the size of a
+// hill comes down on the target itself. Each meteor is a glowing head and a trail on its path, hidden by the terrain
+// in front of it (so it disappears into the ground where it really hits), a fireball and a ring on the ground where it
+// lands. strike.rs digs the craters at the same places and moments (met_*): keep the formulas in step.
+
+const MET_N: i32 = 72;             // keep in step with strike.rs: MET_N, MET_SPAN, BIG_T
+const MET_SPAN: f32 = 120.0;
+const BIG_T: f32 = 13.5;           // the big one lands this long after the fire, on the target
+const BIG_R: f32 = 16.0;           // its radius, in blocks
+const MET_V: f32 = 150.0;          // how fast the small ones are going when they land, blocks a second
+const MET_A: f32 = 45.0;           // how hard the air slows them (they come in four times faster)
+const MET_ENTRY: f32 = 5.0;        // seconds from the top of their path to the ground
+const BIG_V: f32 = 260.0;
+const MET_END: f32 = 34.0;         // when everything has faded (the strike runs 38 s)
+
+// A meteor's own random numbers (`k` picks which): an integer hash, so strike.rs gets exactly the same ones.
+fn mh(i: u32, seed: u32, k: u32) -> f32 { return f32(pcg(i ^ pcg(seed ^ pcg(k)))) * (1.0 / 4294967296.0); }
+// Where a meteor lands (x, z off the target) and when (seconds after the fire). A third of them come down together,
+// the fragments of one that broke up, close to one another and within a second or so of each other; the rest
+// anywhere, at any time.
+fn met_where(fi: f32, seed: f32) -> vec3<f32> {
+    let i = u32(fi);
+    let s = u32(seed);
+    if (mh(i, s, 5u) < 0.33) {
+        let c = 100u + min(u32(mh(i, s, 6u) * 6.0), 5u);
+        let ca = mh(c, s, 1u) * TAU;
+        let cr = 24.0 + (MET_SPAN - 30.0) * sqrt(mh(c, s, 2u));
+        let oa = mh(i, s, 7u) * TAU;
+        let orr = 3.0 + 11.0 * mh(i, s, 8u);
+        let pos = vec2<f32>(cos(ca), sin(ca)) * cr + vec2<f32>(cos(oa), sin(oa)) * orr;
+        return vec3<f32>(pos, 3.0 + 8.5 * mh(c, s, 3u) + 1.4 * mh(i, s, 9u));
+    }
+    let a = mh(i, s, 1u) * TAU;
+    let r = 14.0 + (MET_SPAN - 14.0) * sqrt(mh(i, s, 2u));
+    return vec3<f32>(cos(a) * r, sin(a) * r, 2.5 + 9.5 * mh(i, s, 3u));
+}
+fn met_t(fi: f32, seed: f32) -> f32 { return met_where(fi, seed).z; }
+// How far up its path a meteor is `tau` seconds before it lands, and when (seconds before landing) it passed `l`.
+fn met_path(tau: f32) -> f32 { return MET_V * tau + MET_A * tau * tau; }
+fn met_when(l: f32) -> f32 { return (sqrt(MET_V * MET_V + 4.0 * MET_A * l) - MET_V) / (2.0 * MET_A); }
+fn met_off(fi: f32, seed: f32) -> vec2<f32> { return met_where(fi, seed).xy; }
+fn met_class(fi: f32, seed: f32) -> i32 {
+    let h = mh(u32(fi), u32(seed), 4u);
+    return select(select(2, 1, h < 0.87), 0, h < 0.6);
+}
+// Where a meteor comes from (pointing back up its path): all from one part of the sky, a little scattered.
+fn met_dir(fi: f32, seed: f32, elev: f32, spread: f32) -> vec3<f32> {
+    let phi = fract(seed * 0.0911) * TAU + (fh21(vec2<f32>(fi, 31.0)) - 0.5) * 0.45 * spread;
+    let e = elev + (fh21(vec2<f32>(fi, 37.0)) - 0.5) * 0.3 * spread;
+    return vec3<f32>(cos(e) * cos(phi), sin(e), cos(e) * sin(phi));
+}
+
+// The closest approach of the view ray (from the eye, along `rd`) to the segment ab (camera-relative):
+// x = the distance between them, y = how far along the ray, z = where along ab (0 at a).
+fn ray_seg(rd: vec3<f32>, a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
+    let ab = b - a;
+    let l2 = max(dot(ab, ab), 1.0e-6);
+    let rab = dot(rd, ab);
+    let den = l2 - rab * rab;
+    var s = clamp(select(0.0, (rab * dot(rd, a) - dot(a, ab)) / den, den > 1.0e-6), 0.0, 1.0);
+    let t = max(dot(rd, a + ab * s), 0.0);
+    s = clamp(dot(rd * t - a, ab) / l2, 0.0, 1.0);
+    return vec3<f32>(length(rd * t - (a + ab * s)), t, s);
+}
+
+fn meteor_storm(in: StageIn) -> vec4<f32> {
+    let uv = in.uv;
+    let aspect = frame.resolution.x / frame.resolution.y;
+    let time = now();
+    let cam = frame.camera_position.xyz;
+    let tgt = target_pos();
+    let crel = tgt - cam;
+    let k = intensity_v();
+    let seed = seed_v();
+
+    // ---- timeline -------------------------------------------------------------
+    let charging = select(0.0, saturate(time / T_FIRE), time < T_FIRE);
+    let fire_t = time - T_FIRE;
+    let fired = fire_t > 0.0;
+    let ft = max(fire_t, 0.0);
+    let dtb = ft - BIG_T;                                       // the big one's clock: 0 at its impact
+    let hit_b = dtb > 0.0;
+    let end_env = 1.0 - smoothstep(MET_END - 6.0, MET_END, ft);
+    let storm_env = smoothstep(0.0, 1.5, time) * (1.0 - smoothstep(BIG_T + 2.0, BIG_T + 6.0, ft));
+    let approach = smoothstep(BIG_T - 6.0, BIG_T, ft) * (1.0 - f32(hit_b));
+    let flash = select(0.0, exp(-dtb * 2.2), hit_b);
+    let dust_env = smoothstep(BIG_T + 0.5, BIG_T + 7.0, ft) * end_env;
+
+    // ---- the big one's path ---------------------------------------------------
+    let ub = met_dir(-1.0, seed, 0.42, 0.0);
+    let big_head = crel + ub * BIG_V * max(BIG_T - ft, 0.0);
+    let pB = project_rel(big_head);
+    let pt = project_rel(crel);
+
+    // ---- camera shake and the shockwave's refraction ----------------------------
+    let near_scale = 1.0 / (1.0 + length(crel) / 60.0);
+    let shake_amt = (storm_env * 0.15 * f32(fired) + approach * approach * 1.5 + flash * 7.0 + select(0.0, exp(-dtb * 0.35), hit_b) * 1.6) * k * 0.012 * max(near_scale, 0.35);
+    let shake = (vec2<f32>(vnoise(vec2<f32>(time * 37.0, 1.0)), vnoise(vec2<f32>(time * 41.0, 7.0))) - 0.5) * 2.0 * shake_amt;
+    let d0 = depth_at(uv);
+    let sky0 = is_sky(d0);
+    let p0 = cam + world_offset(uv, select(d0, 0.5, sky0));
+    let r0 = length(p0.xz - tgt.xz);
+    let rsb = max(dtb, 0.0) * 95.0;                             // the big shockwave's radius
+    let shock_mask = select(0.0, exp(-pow((r0 - rsb) / 5.0, 2.0)) * exp(-max(dtb, 0.0) * 0.3), hit_b && !sky0);
+    var sdir = uv - pt.xy;
+    sdir = sdir / max(length(sdir), 1e-4);
+    var haze = vec2<f32>(0.0);
+    if (fired && !sky0) {
+        // each small impact's air blast: a ripple of heat haze running out along the ground
+        for (var i = 0; i < MET_N; i = i + 1) {
+            let fi = f32(i);
+            let dtm = fire_t - met_t(fi, seed);
+            if (dtm < 0.0 || dtm > 1.1) {
+                continue;
+            }
+            let fc = f32(met_class(fi, seed));
+            let off = met_off(fi, seed);
+            let gi = length(p0.xz - (tgt.xz + off));
+            let m = exp(-pow((gi - dtm * (55.0 + 25.0 * fc)) / (1.5 + fc), 2.0)) * exp(-dtm * 3.5) * (0.5 + 0.5 * fc)
+                * (1.0 - smoothstep(20.0, 40.0, abs(p0.y - tgt.y)));
+            if (m > 0.002) {
+                let pi = project_rel(vec3<f32>(tgt.x + off.x, tgt.y, tgt.z + off.y) - cam);
+                let dir = uv - pi.xy;
+                haze = haze + dir / max(length(dir), 1.0e-4) * m * 0.012 * pi.z;
+            }
+        }
+    }
+    let uv2 = clamp(uv + shake + sdir * shock_mask * 0.05 * k * pt.z + haze * k, vec2<f32>(0.002), vec2<f32>(0.998));
+
+    // ---- the scene ------------------------------------------------------------
+    let d = depth_at(uv2);
+    let sky = is_sky(d);
+    let rel = world_offset(uv2, select(d, 0.5, sky));
+    let scene_len = select(1.0e9, length(rel), !sky);
+    let rd = normalize(world_offset(uv2, 0.5));
+    let P = cam + rel;
+    let ca = (flash * 0.02 + shock_mask * 0.01) * k;
+    let ca_dir = (uv2 - vec2<f32>(0.5)) * ca;
+    var col = srgb_to_linear(vec3<f32>(
+        textureSampleLevel(scene_color, linear_sampler, uv2 + ca_dir, 0.0).r,
+        textureSampleLevel(scene_color, linear_sampler, uv2, 0.0).g,
+        textureSampleLevel(scene_color, linear_sampler, uv2 - ca_dir, 0.0).b));
+    // the light goes the colour of a dusk on fire, then brown under the dust
+    let dim = clamp(1.0 - (0.35 * charging * charging + 0.3 * storm_env + 0.45 * dust_env) * k, 0.2, 1.0);
+    col = col * dim * mix(vec3<f32>(1.0), vec3<f32>(1.15, 0.8, 0.6), saturate(storm_env + dust_env) * k);
+    // lit up by the big one as it comes in
+    col = col * (1.0 + vec3<f32>(1.4, 0.75, 0.3) * approach * approach * 1.6 * k);
+    if (sky) {
+        let grad = pow(1.0 - uv2.y, 1.5);
+        let dusk = vec3<f32>(0.32, 0.1, 0.05) + vec3<f32>(0.55, 0.22, 0.08) * grad;
+        col = mix(col, dusk, saturate(storm_env * 0.65 + charging * 0.3) * k);
+        let dusty = vec3<f32>(0.16, 0.07, 0.035) + vec3<f32>(0.25, 0.09, 0.03) * grad * (0.6 + 0.6 * gfbm2(rd.xz / max(rd.y, 0.05) * 1.5 + vec2<f32>(time * 0.05, 0.0)));
+        col = mix(col, dusty, dust_env * 0.88 * k);
+        // the sky round the big one burns as it comes in
+        let tow = max(dot(rd, normalize(big_head)), 0.0);
+        col = col + vec3<f32>(1.6, 0.75, 0.25) * pow(tow, 12.0) * approach * 1.6 * k;
+    }
+    var add = vec3<f32>(0.0);
+
+    // ---- on the ground: the impact zone while it charges, the craters' glow, the shockwaves ----
+    if (!sky) {
+        let dxg = P.xz - tgt.xz;
+        let r = length(dxg);
+        let ang = atan2(dxg.y, dxg.x);
+        let dy = P.y - tgt.y;
+        // on the ground, or down in the crater: nothing up in the clouds
+        let on_ground = 1.0 - smoothstep(28.0, 45.0, dy);
+        let near_y = on_ground / (1.0 + dy * dy / 200.0);
+        // the zone: a dashed ring where the storm will fall, closing in on ground zero
+        let zone_env = max(charging, storm_env * 0.35 * (1.0 - f32(hit_b))) * end_env;
+        if (zone_env > 0.001) {
+            let dash = step(0.5, fract(ang / TAU * 48.0 + time * 0.08));
+            var z = exp(-pow((r - MET_SPAN) / 0.8, 2.0)) * dash * 1.2;
+            let conv = mix(MET_SPAN, 10.0, 1.0 - pow(1.0 - charging, 2.0));
+            z = z + exp(-pow((r - conv) / 0.6, 2.0)) * charging;
+            z = z + (exp(-pow((r - 6.0) / 0.3, 2.0)) + exp(-pow((r - 2.5) / 0.25, 2.0))) * (0.6 + 0.4 * sin(time * 8.0));
+            let cross_ = (1.0 - smoothstep(0.15, 0.35, min(abs(dxg.x), abs(dxg.y)))) * (1.0 - smoothstep(9.0, 10.0, r));
+            z = z + cross_ * 0.7;
+            add = add + vec3<f32>(1.6, 0.25, 0.1) * z * zone_env * near_y * 2.0 * k;
+        }
+        // the big one: its crater glowing, its shockwave racing out with a wall of dust behind it
+        if (hit_b) {
+            let edge = exp(-pow((r - rsb) / 4.0, 2.0)) * exp(-dtb * 0.28) * near_y;
+            add = add + vec3<f32>(2.2, 1.3, 0.6) * edge * 5.0 * k;
+            let behind = smoothstep(rsb + 2.0, rsb - 40.0, r) * exp(-dtb * 0.12) * on_ground;
+            col = mix(col, vec3<f32>(0.2, 0.12, 0.07) * (0.6 + 0.8 * gfbm2(dxg * 0.03 + vec2<f32>(time * 0.3, 0.0))), behind * 0.55 * k);
+            let n = gfbm2(dxg * 0.12 + vec2<f32>(time * 0.1, -time * 0.07));
+            let heat = (1.0 - r / 75.0) * 0.9 + (n - 0.5) * 0.8 + saturate((tgt.y - P.y) / 30.0) * 0.6 - dtb * 0.02;
+            let mask = (1.0 - smoothstep(55.0, 80.0, r)) * smoothstep(0.0, 1.5, dtb) * end_env * on_ground;
+            add = add + lava_ramp(heat) * mask * 3.0 * k;
+        }
+    }
+
+    // ---- the storm -------------------------------------------------------------
+    // Each meteor comes in from the top of the atmosphere, about 1,900 blocks up its path, faint until the air gets
+    // thick enough to set it burning, slowing as it comes down. Behind it a streak of fire cools to a trail of smoke
+    // that stays where it passed, billowing out and thinning.
+    let v2 = rd.xz;
+    let vv = dot(v2, v2);
+    for (var i = 0; i < MET_N; i = i + 1) {
+        let fi = f32(i);
+        let dtm = fire_t - met_t(fi, seed);                     // 0 at its impact
+        if (dtm < -MET_ENTRY || dtm > 9.0) {
+            continue;
+        }
+        let cls = met_class(fi, seed);
+        let fc = f32(cls);
+        let off = met_off(fi, seed);
+        let I = vec3<f32>(tgt.x + off.x, tgt.y, tgt.z + off.y) - cam;
+        let u = met_dir(fi, seed, 0.62, 1.0);
+        let rr = 0.6 + 0.5 * fc + 0.3 * fc * fc;               // the rock: 0.6, 1.4, 2.8 blocks
+        let tau = -dtm;                                         // seconds until it lands
+        let Lh = met_path(max(tau, 0.0));
+        let L0 = met_path(MET_ENTRY);
+        let headp = I + u * Lh;
+        let q = ray_seg(rd, headp, I + u * L0);
+        let l = mix(Lh, L0, q.z);
+        let age = max(met_when(l) - tau, 0.0);                  // seconds since it passed there
+        let burn = smoothstep(1700.0, 1050.0, l);               // only burning once the air is thick enough
+        let vis = select(1.0, 1.0 - smoothstep(scene_len - 0.5, scene_len + 0.5, q.y), !sky);
+        let flick = 0.7 + 0.6 * fvnoise(vec2<f32>(time * 13.0, fi * 7.0));
+        let sw = rr * 1.4 + age * (1.6 + 1.2 * fc);
+        let swp = max(sw, q.y * 0.0015);
+        if (vis > 0.001 && q.x < swp * 3.0) {
+            // the smoke it leaves, widening and thinning out (its billows only worked out where there is smoke to see)
+            let s_env = exp(-pow(q.x / swp, 2.0)) * (sw / swp) * burn * smoothstep(0.08, 0.6, age)
+                * exp(-age / (3.5 + 2.0 * fc)) * (0.55 + 0.2 * fc);
+            if (s_env > 0.006) {
+                let sn = gfbm2(vec2<f32>(l * 0.06, age * 0.7 + fi * 3.1));
+                col = mix(col, vec3<f32>(0.32, 0.29, 0.27) * dim * (0.55 + 0.7 * sn), saturate(s_env * (0.3 + 0.6 * sn)) * vis);
+            }
+            // the fire: white-hot at the head, then orange, then a glowing streak cooling behind it
+            let fw0 = rr * (1.0 + age * 5.0);
+            let fw = max(fw0, q.y * 0.0012);
+            let fire = exp(-pow(q.x / fw, 2.0)) * (fw0 / fw) * exp(-age * 3.2);
+            let fcol = mix(vec3<f32>(3.4, 3.0, 2.2), vec3<f32>(2.6, 0.75, 0.12), smoothstep(0.0, 0.3, age));
+            add = add + fcol * fire * burn * flick * (0.8 + 0.4 * fc) * vis * k;
+            // bits breaking off and burning out behind it
+            let sp = fh21(vec2<f32>(floor(l * 0.5), floor(age * 14.0) + fi * 17.0));
+            let side = (fract(sp * 53.0) - 0.5) * (rr * 2.0 + age * 6.0);
+            let spark = step(0.9, sp) * exp(-pow((q.x - abs(side)) / max(rr * 0.5, q.y * 0.001), 2.0)) * exp(-age * 2.5) * smoothstep(0.02, 0.15, age);
+            add = add + vec3<f32>(3.0, 1.4, 0.35) * spark * burn * vis * k;
+        }
+        if (tau > -0.05) {
+            // the head: a glow seen from far off, and close up the rock itself, its leading face molten
+            let th = dot(headp, rd);
+            if (th > 0.0) {
+                let dh = length(headp - rd * th);
+                let visg = select(1.0, 1.0 - smoothstep(scene_len - 1.0, scene_len + 1.0, th), !sky);
+                let glow = 1.0 / (1.0 + pow(dh / (rr * 2.5 + th * 0.002), 2.0));
+                add = add + vec3<f32>(2.2, 1.3, 0.55) * glow * (0.08 + 0.9 * burn) * flick * 0.55 * visg * k;
+                let hq = rr * rr - dh * dh;
+                if (hq > 0.0) {
+                    let t0 = th - sqrt(hq);
+                    if (t0 > 0.0 && t0 < scene_len) {
+                        let nrm = normalize(rd * t0 - headp);
+                        let n3 = gfbm3(nrm * 2.5 + vec3<f32>(time * 0.6, fi, time * 0.4), 2);
+                        // lumpy: let the noise eat into its edge
+                        if (dot(nrm, -rd) > 0.45 * n3 - 0.05) {
+                            let front = saturate(dot(nrm, -u) * 0.5 + 0.5);
+                            let rock = vec3<f32>(0.08, 0.07, 0.06) * (0.5 + 0.9 * n3) * dim;
+                            col = rock + lava_ramp(0.3 + 0.7 * front) * pow(front, 3.0) * 2.4 * burn;
+                        }
+                    }
+                }
+            }
+        }
+        if (dtm >= 0.0) {
+            // it lands: a fireball, a plume of dust and rock, glowing chunks thrown out, a ring along the ground
+            let fr = 3.0 + 2.5 * fc + 0.5 * fc * fc;            // 3, 6, 10: about the crater strike.rs digs
+            let Rf = fr * (1.0 - exp(-dtm * 5.0)) + 0.5;
+            let C = I + vec3<f32>(0.0, Rf * 0.4, 0.0);
+            let tcp = dot(C, rd);
+            if (tcp > 0.0) {
+                let dc = length(C - rd * tcp);
+                let visf = select(1.0, smoothstep(tcp - Rf * 1.2, tcp - Rf * 0.2, scene_len), !sky);
+                let fire = exp(-pow(dc / Rf, 2.0)) * exp(-dtm * 1.8);
+                add = add + lava_ramp(0.45 + fire * 0.6) * fire * (2.8 + fc) * visf * k;
+                add = add + vec3<f32>(1.5, 0.7, 0.3) / (1.0 + pow(dc / (Rf * 3.0), 2.0)) * exp(-dtm * 4.0) * 0.5 * (1.0 + fc) * visf * k;
+            }
+            let ah = axis_hit(I.xz, v2, vv, cam.y, rd.y);
+            let Hp = fr * 3.0 * (1.0 - exp(-dtm * 1.1));
+            let Rp = fr * 0.6 + dtm * 0.9;
+            if (ah.x > 0.0 && ah.y < Rp * 3.0 && ah.z - tgt.y > -2.0 && ah.z - tgt.y < Hp + 2.0) {
+                let yrel = ah.z - tgt.y;
+                let pn = gfbm2(vec2<f32>(yrel * 0.22 - dtm * 1.2, fi + ah.y * 0.3));
+                let dens = exp(-pow(ah.y / Rp, 2.0)) * smoothstep(Hp, Hp * 0.5, yrel) * smoothstep(-1.0, 0.5, yrel)
+                    * exp(-dtm / 5.0) * smoothstep(0.0, 0.3, dtm) * (0.4 + 0.7 * pn);
+                let visp = select(1.0, 1.0 - smoothstep(scene_len - 0.5, scene_len + 0.5, ah.x), !sky);
+                col = mix(col, vec3<f32>(0.26, 0.2, 0.15) * dim * (0.6 + 0.6 * pn), saturate(dens * 0.85) * visp);
+            }
+            if (cls > 0 && dtm < 2.6) {
+                for (var j = 0; j < 5; j = j + 1) {
+                    let fj = f32(j);
+                    let az = fh21(vec2<f32>(fi * 7.0 + fj, seed)) * TAU;
+                    let hj = fh21(vec2<f32>(fj, fi * 3.0 + seed));
+                    let vh = (8.0 + 10.0 * hj) * (0.8 + 0.6 * fc);
+                    let vy = (11.0 + 9.0 * hj) * (0.9 + 0.4 * fc);
+                    let t1 = max(dtm - 0.12, 0.0);
+                    let pa = I + vec3<f32>(cos(az) * vh * dtm, vy * dtm - 12.5 * dtm * dtm, sin(az) * vh * dtm);
+                    let pb = I + vec3<f32>(cos(az) * vh * t1, vy * t1 - 12.5 * t1 * t1, sin(az) * vh * t1);
+                    if (pa.y < I.y - 2.0) {
+                        continue;
+                    }
+                    let qj = ray_seg(rd, pa, pb);
+                    let visj = select(1.0, 1.0 - smoothstep(scene_len - 0.4, scene_len + 0.4, qj.y), !sky);
+                    let w = max(0.35 * (1.0 + qj.z), qj.y * 0.0012);
+                    add = add + vec3<f32>(2.6, 1.0, 0.25) * exp(-pow(qj.x / w, 2.0)) * (0.35 / w) * exp(-dtm * 0.6) * visj * k;
+                }
+            }
+            let dxi = P.xz - (tgt.xz + off);
+            let gr = length(dxi);
+            let Rd = fr * 4.5 * (1.0 - exp(-dtm * 2.0));
+            if (!sky && dtm < 1.0) {
+                // a brief flash where the air blast leads
+                let gw = 1.0 - smoothstep(20.0, 40.0, abs(P.y - tgt.y));
+                let edge = exp(-pow((gr - dtm * (55.0 + 25.0 * fc)) / (0.4 + 0.3 * fc), 2.0)) * exp(-dtm * 9.0);
+                add = add + vec3<f32>(1.5, 1.1, 0.7) * edge * (0.4 + 0.4 * fc) * gw * k;
+            }
+            if (!sky && gr < max(Rd + fr * 2.0, fr * 3.0)) {
+                let gw = 1.0 - smoothstep(20.0, 40.0, abs(P.y - tgt.y));
+                // the blast throws up a skirt of dust that rolls out along the ground, thickest at its front, and settles
+                let inside = smoothstep(Rd + 1.0, Rd - fr * 0.8, gr);
+                let front = exp(-pow((gr - Rd * 0.92) / (0.6 + fr * 0.35), 2.0));
+                let dn = gfbm2(dxi * 0.35 + vec2<f32>(dtm * 0.8, fi * 2.3));
+                let grain = fh21(floor(P.xz * 4.0) + vec2<f32>(fi, 3.0));
+                let skirt = (inside * 0.35 + front * 0.9) * (0.45 + 0.8 * dn) * exp(-dtm / (2.5 + fc)) * smoothstep(0.0, 0.15, dtm);
+                let lit = lava_ramp(0.5) * 0.3 * exp(-dtm * 1.5) * (1.0 - smoothstep(0.0, fr * 2.0, gr));
+                let dust_col = mix(vec3<f32>(0.24, 0.18, 0.13), vec3<f32>(0.42, 0.3, 0.2), dn) * dim * (0.8 + 0.4 * grain) + lit;
+                col = mix(col, dust_col, saturate(skirt * (0.6 + 0.2 * fc)) * gw * k);
+                // the crater glowing as it cools, and embers scattered round it flickering out
+                let glow = (1.0 - smoothstep(fr * 0.3, fr * 1.1, gr)) * exp(-dtm * 0.3);
+                let n = gfbm2(dxi * 0.9 + vec2<f32>(time * 0.3, fi));
+                add = add + lava_ramp(0.35 + 0.5 * glow + 0.3 * n) * glow * gw * 1.8 * k;
+                let eh = fh21(floor(P.xz * 2.0) + vec2<f32>(fi * 13.0, 7.0));
+                let spark = step(0.93, eh) * (1.0 - smoothstep(fr, fr * 2.8, gr)) * exp(-dtm * (0.4 + 2.0 * fract(eh * 37.0)))
+                    * (0.55 + 0.45 * sin(time * 18.0 + eh * 60.0));
+                add = add + vec3<f32>(2.4, 0.9, 0.2) * spark * gw * k;
+            }
+        }
+    }
+
+    // ---- the big one coming in: a rock the size of a hill, burning, its trail left across the sky ----
+    if (fired && ft > 4.0 && dtb < 12.0) {
+        let heat = smoothstep(4.0, BIG_T - 2.0, ft) * (1.0 - smoothstep(0.0, 0.1, dtb));
+        let Lb = BIG_V * max(BIG_T - ft, 0.0);
+        let Lb0 = BIG_V * (BIG_T - 4.0);
+        let q = ray_seg(rd, big_head, crel + ub * Lb0);
+        let l = mix(Lb, Lb0, q.z);
+        let age = (l - Lb) / BIG_V + max(dtb, 0.0);            // seconds since it passed there
+        let burn = smoothstep(Lb0, Lb0 * 0.7, l);
+        let vis = select(1.0, 1.0 - smoothstep(scene_len - 2.0, scene_len + 2.0, q.y), !sky);
+        // smoke, billowing out into a wall across the sky
+        let sw = BIG_R * 1.3 + age * 7.0;
+        let swp = max(sw, q.y * 0.0015);
+        let sn = gfbm2(vec2<f32>(l * 0.02 - age * 0.3, q.x / swp * 2.0 + seed));
+        let sa = exp(-pow(q.x / swp, 2.0)) * (sw / swp) * burn * smoothstep(0.1, 0.8, age) * exp(-age / 14.0) * (0.35 + 0.65 * sn);
+        col = mix(col, vec3<f32>(0.3, 0.26, 0.23) * dim * (0.5 + 0.8 * sn), saturate(sa * 0.9) * vis);
+        // fire round the rock and streaming back off it
+        let fw0 = BIG_R * (1.0 + age * 2.5);
+        let fw = max(fw0, q.y * 0.0015);
+        let core = exp(-pow(q.x / (fw * 0.7), 2.0)) * (fw0 / fw) * exp(-age * 1.4);
+        let hot = mix(vec3<f32>(4.0, 3.4, 2.2), vec3<f32>(3.0, 0.9, 0.15), smoothstep(0.0, 0.8, age));
+        add = add + hot * core * vis * (0.3 + 0.9 * heat) * (1.0 - f32(hit_b)) * k;
+        if (!hit_b) {
+            // the rock itself, its leading face white-hot
+            let oc = -big_head;
+            let bq = dot(oc, rd);
+            let cq = dot(oc, oc) - BIG_R * BIG_R;
+            let hq = bq * bq - cq;
+            if (hq > 0.0) {
+                let t0 = -bq - sqrt(hq);
+                if (t0 > 0.0 && t0 < scene_len) {
+                    let nrm = normalize(rd * t0 - big_head);
+                    let front = saturate(dot(nrm, -ub));
+                    let cracks = smoothstep(0.55, 0.75, gfbm3(nrm * 5.0 + vec3<f32>(seed), 3));
+                    let rock = vec3<f32>(0.06, 0.05, 0.045) * (0.5 + gfbm3(nrm * 9.0, 2));
+                    col = rock + lava_ramp(0.4 + 0.6 * front + 0.3 * cracks) * (pow(front, 2.0) * 3.0 + cracks * 1.2) * (0.3 + heat);
+                }
+            }
+            // the glare round it, seen from far off as a star getting brighter
+            let th = dot(big_head, rd);
+            if (th > 0.0) {
+                let dh = length(big_head - rd * th);
+                let glare = 1.0 / (1.0 + pow(dh / (BIG_R * 2.5 + th * 0.004), 2.0));
+                add = add + vec3<f32>(2.2, 1.4, 0.7) * glare * (0.35 + 1.2 * heat) * select(1.0, 0.3, !sky && scene_len < th) * k;
+            }
+        }
+    }
+
+    // ---- the big one lands: a fireball the size of a mountain, bursting out unevenly, rising into smoke ----
+    if (hit_b && dtb < 24.0) {
+        let Rv = 115.0 * (1.0 - exp(-dtb * 0.55));
+        let top_s = 30.0 + dtb * 16.0;
+        let capr = 25.0 + dtb * 3.0;
+        let Rb = max(Rv * 1.35, top_s + capr) + 4.0;
+        let oc = cam - tgt;
+        let bq = dot(oc, rd);
+        let cq = dot(oc, oc) - Rb * Rb;
+        let hq = bq * bq - cq;
+        if (hq > 0.0) {
+            let sq = sqrt(hq);
+            let ta = max(-bq - sq, 0.0);
+            let tb = min(-bq + sq, scene_len);
+            if (tb > ta) {
+                let steps = 16;
+                let dt = (tb - ta) / f32(steps);
+                var trans = 1.0;
+                var acc = vec3<f32>(0.0);
+                let fade = 1.0 - smoothstep(16.0, 24.0, dtb);
+                let jit = ign(in.position.xy);
+                let grow = smoothstep(1.0, 4.0, dtb);
+                for (var i = 0; i < steps; i = i + 1) {
+                    let ts = ta + (f32(i) + jit) * dt;
+                    let lp = oc + rd * ts;
+                    let rl = length(lp);
+                    let rr = length(lp.xz);
+                    let stem = (1.0 - rr / (22.0 + max(lp.y, 0.0) * 0.12)) * 1.3 * (1.0 - smoothstep(top_s - 8.0, top_s, lp.y));
+                    let capq = length(vec2<f32>(rr / max(capr * 1.6, 1.0), (lp.y - top_s) / max(capr * 0.6, 1.0)));
+                    var coarse = max(stem, (1.0 - capq) * 1.6) * grow;
+                    if (rl < Rv * 1.6 + 2.0) {
+                        // its edge pushed out and pulled in by direction, so it bursts out in lobes, furthest downrange
+                        let dirn = lp / max(rl, 1.0e-3);
+                        let lobe = gnoise3(dirn * 2.4 + vec3<f32>(seed * 0.37, 3.1, seed * 0.11));
+                        let Re = Rv * (0.6 + 0.75 * lobe + 0.25 * saturate(dot(dirn, -ub)));
+                        coarse = max(coarse, (1.0 - rl / max(Re, 1.0)) * 1.5 - 0.2);
+                    }
+                    if (coarse < -1.25 || lp.y < -8.0) {
+                        continue;                                    // too far outside for the billows to reach
+                    }
+                    let nz = gfbm3(lp * 0.03 + vec3<f32>(0.0, -dtb * 0.45, seed), select(2, 3, ts < 200.0));
+                    let body = coarse + (nz - 0.5) * 2.6;
+                    let dens = saturate(body * 1.2) * smoothstep(-8.0, 4.0, lp.y) * fade;
+                    if (dens < 0.002) {
+                        continue;
+                    }
+                    let temp = saturate(body * 0.6 + 0.42 - dtb * 0.045 - max(lp.y, 0.0) / 260.0);
+                    let emit = lava_ramp(temp) * 3.0 * (0.3 + 0.7 * exp(-dtb * 0.12));
+                    // smoke, lit from underneath by the fire in it
+                    let smoke = vec3<f32>(0.11, 0.085, 0.07) * (0.45 + nz) + lava_ramp(temp * 0.8) * 0.12;
+                    let a = (1.0 - exp(-dens * dt * 0.07)) * 0.88;
+                    acc = acc + trans * a * (emit + smoke);
+                    trans = trans * (1.0 - a);
+                    if (trans < 0.05) {
+                        break;
+                    }
+                }
+                col = col * trans + acc * k;
+            }
+        }
+        // ejecta flung out every way at once: some skimming low and far, some thrown almost straight up, most along a
+        // few rays and downrange of where it came in, glowing as they arc and fall back
+        let down = normalize(vec2<f32>(-ub.x, -ub.z) + vec2<f32>(1.0e-4));
+        for (var j = 0; j < 64; j = j + 1) {
+            let fj = f32(j);
+            let h1 = fh21(vec2<f32>(fj, seed + 51.0));
+            let h2 = fh21(vec2<f32>(fj, seed + 57.0));
+            let h3 = fh21(vec2<f32>(fj, seed + 61.0));
+            let h4 = fh21(vec2<f32>(fj, seed + 67.0));
+            let tau = dtb - 0.1 - 1.4 * h3 * h3;
+            if (tau <= 0.0 || tau > 16.0) {
+                continue;
+            }
+            // which ray it rides (or none), how steep, how fast
+            let ray_a = floor(h1 * 7.0) * TAU / 7.0 + seed * 0.3;
+            let along_ray = h4 < 0.6;
+            let az0 = select(h1 * TAU, ray_a + (h2 - 0.5) * 0.18, along_ray);
+            let dvec = normalize(mix(vec2<f32>(cos(az0), sin(az0)), down, 0.35 * h2) + vec2<f32>(1.0e-4));
+            let elev = mix(0.15, 1.35, pow(h3, 0.7));
+            let speed = (55.0 + 95.0 * h4 * h4) * (0.7 + 0.6 * h2);
+            let vh = cos(elev) * speed;
+            let vy = sin(elev) * speed;
+            let p0 = crel + vec3<f32>(dvec.x, 0.0, dvec.y) * (18.0 + 18.0 * h2);
+            let ph = p0 + vec3<f32>(dvec.x * vh * tau, vy * tau - 15.0 * tau * tau, dvec.y * vh * tau);
+            let t1 = max(tau - 0.22, 0.0);
+            let pt1 = p0 + vec3<f32>(dvec.x * vh * t1, vy * t1 - 15.0 * t1 * t1, dvec.y * vh * t1);
+            if (ph.y + cam.y < tgt.y - 6.0) {
+                continue;
+            }
+            let sz = 0.8 + 2.2 * h1 * h4;
+            let q = ray_seg(rd, ph, pt1);
+            let vis = select(1.0, 1.0 - smoothstep(scene_len - 0.5, scene_len + 0.5, q.y), !sky);
+            let w = max(sz * (1.0 + q.z), q.y * 0.0012);
+            let core = exp(-pow(q.x / w, 2.0)) * (sz / w);
+            let cool = exp(-tau * 0.2);
+            add = add + mix(vec3<f32>(1.6, 0.25, 0.05), vec3<f32>(3.0, 1.6, 0.6), cool) * core * (1.0 - q.z * 0.6) * vis * (0.5 + cool) * k;
+        }
+    }
+
+    // ---- the lens: the big one's bloom as it comes in, the whiteout when it lands ----
+    if (pB.z > 0.0 && approach > 0.001) {
+        let dd = (uv - pB.xy) * vec2<f32>(aspect, 1.0);
+        add = add + vec3<f32>(1.6, 0.9, 0.4) * approach * approach / (1.0 + dot(dd, dd) * 25.0) * 1.2 * k;
+        let streak = exp(-abs(dd.y) * 220.0) * exp(-abs(dd.x) * 2.0);
+        add = add + vec3<f32>(2.0, 1.0, 0.4) * streak * approach * k;
+    }
+    add = add + vec3<f32>(6.0, 5.4, 4.6) * flash * flash * k;
+    add = add + vec3<f32>(1.5, 0.8, 0.4) * select(0.0, exp(-dtb * 0.6), hit_b) * 0.4 * k;
+
+    // ---- combine --------------------------------------------------------------
+    var outc = col + add;
+    let vg = length((uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0));
+    outc = outc * (1.0 - smoothstep(0.3, 1.0, vg) * (0.2 + 0.35 * max(storm_env, dust_env)) * k)
+        + vec3<f32>(0.4, 0.1, 0.02) * smoothstep(0.35, 1.0, vg) * max(storm_env, dust_env) * 0.08 * k;
+    outc = aces(outc * 0.9);
+    let srgb = linear_to_srgb(outc);
+    if (capture() > 2.5) {
+        let sp = floor(in.position.xy);
+        let chk = fract((sp.x + sp.y) * 0.5);
+        let ycc_y = srgb.g * 0.5 + (srgb.r + srgb.b) * 0.25;
+        let ycc_co = srgb.r - srgb.b;
+        let ycc_cg = srgb.g - (srgb.r + srgb.b) * 0.5;
+        return vec4<f32>(ycc_y, select(ycc_cg, ycc_co, chk < 0.25) * 0.5 + 0.5, 0.0, 1.0);
+    }
+    return vec4<f32>(srgb, 1.0);
+}
+
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     if (th_is(2.0) > 0.5) {
         return singularity(in);
+    }
+    if (th_is(3.0) > 0.5) {
+        return meteor_storm(in);
     }
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
