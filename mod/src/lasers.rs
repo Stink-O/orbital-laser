@@ -236,4 +236,46 @@ pub const MOTHERSHIP: Laser = Laser {
     particle_b: "particle minecraft:lava {x} {y} {z} {r} 1 {r} 0 20 force",
 };
 
-pub const LASERS: [&Laser; 5] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP];
+/// The mothership's last stand, planned in `strike::downfall_plan`: the crater, shaft and lining below are the black
+/// hole's, where the ship's stern comes down and its engine ruptures; the meteor's hits, the crash and its gouge are
+/// planned there too.
+pub const DOWNFALL: Laser = Laser {
+    key: "downfall",
+    index: 5,
+    title: "DOWNFALL",
+    color: "dark_red",
+    rgb: 0xE8424F,
+    blurb: "The mothership drops in and charges, then turns its roof batteries on a meteor coming down on it. It breaks the rock up, the pieces hit it anyway, and the ship falls out of the sky and ploughs into the land. Then the black hole engine in its stern ruptures and swallows the wreck.",
+    icon_model: "orbital:downfall_icon",
+    length: 60.0,
+    range: 1000.0,
+    scorch: &[
+        (60, "minecraft:sculk", 0.12, "minecraft:grass_block"),
+        (56, "minecraft:tuff", 0.12, "minecraft:sand"),
+        (52, "minecraft:deepslate", 0.12, "minecraft:dirt"),
+    ],
+    bowl_r: 30,
+    bowl_d: 18,
+    bowl_rough: 0.06,
+    shaft_r: 8,
+    shaft_min: 7,
+    shaft_rough: 0.03,
+    lining: &[
+        ("minecraft:obsidian", 0.35),
+        ("minecraft:crying_obsidian", 0.2),
+        ("minecraft:blackstone", 0.2),
+        ("minecraft:black_concrete", 0.15),
+        ("minecraft:sculk", 0.1),
+    ],
+    bowl_floor: ("minecraft:crying_obsidian", 0.1, "minecraft:obsidian"),
+    bottom: &[(4, 0, 0, "minecraft:crying_obsidian"), (2, 1, 2, "minecraft:obsidian")],
+    particle_a: "particle minecraft:portal {x} {y} {z} {r} 3 {r} 3 120 force",
+    particle_b: "particle minecraft:reverse_portal {x} {y} {z} {r} 2 {r} 0.2 40 force",
+};
+
+pub const LASERS: [&Laser; 6] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL];
+
+/// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
+pub fn is_ship(l: &Laser) -> bool {
+    l.key == "mothership" || l.key == "downfall"
+}

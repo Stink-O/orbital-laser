@@ -448,5 +448,158 @@
       }
     ],
     "subtitle": "subtitles.orbital.mothership.depart"
+  },
+  "downfall.hum": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/hum",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.hum"
+  },
+  "downfall.divert": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/divert",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.divert"
+  },
+  "downfall.approach": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/approach",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.approach"
+  },
+  "downfall.battery1": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/battery1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.battery1"
+  },
+  "downfall.battery2": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/battery2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.battery2"
+  },
+  "downfall.split": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/split",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.split"
+  },
+  "downfall.hit1": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/hit1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.hit1"
+  },
+  "downfall.hit2": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/hit2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.hit2"
+  },
+  "downfall.hit3": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/hit3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.hit3"
+  },
+  "downfall.fall": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/fall",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.fall"
+  },
+  "downfall.crash": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/crash",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.crash"
+  },
+  "downfall.groan1": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/groan1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.groan1"
+  },
+  "downfall.groan2": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/groan2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.groan2"
+  },
+  "downfall.rupture": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/rupture",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.rupture"
+  },
+  "downfall.vortex": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/vortex",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.vortex"
+  },
+  "downfall.evaporate": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/evaporate",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.evaporate"
+  },
+  "downfall.after": {
+    "sounds": [
+      {
+        "name": "orbital:downfall/after",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.downfall.after"
   }
 }

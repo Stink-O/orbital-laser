@@ -266,6 +266,20 @@ impl Plan {
             self.at(t + 0.05, format!("fill {} {} {} {} {y_hi} {} {blk} replace {prim}", x - s, y_lo - 1, z - s, x + s, z + s));
         }
     }
+    /// Like `dig`, but lining only the disc's wall (`edge_fills`) and in the commonest ground: for big craters, where
+    /// the full lining would hold up everything queued behind it.
+    fn dig_rim(&mut self, r: i32, y_lo: i32, y_hi: i32, t: f32, rough: f64) {
+        let prim = self.laser.lining[0].0;
+        let rs = self.rects(r, rough);
+        for tag in ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand"] {
+            for c in Self::edge_fills(&rs, y_lo - 1, y_hi, prim, tag, 2) {
+                self.at(t - 0.05, c);
+            }
+        }
+        for c in Self::fills(&rs, y_lo, y_hi, "minecraft:air", None, 0) {
+            self.at(t, c);
+        }
+    }
     /// Fuse the ground round a disc into the laser's lining (walls and the ledge under them), then dig the disc out.
     fn dig(&mut self, r: i32, y_lo: i32, y_hi: i32, t: f32, rough: f64, grow: i32) {
         const NATURAL: [&str; 13] = [
@@ -306,6 +320,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "mothership" {
         return mothership_plan(laser, target, terrain, dimension, wing_angle(target.point, me), me, approach);
+    }
+    if laser.key == "downfall" {
+        return downfall_plan(laser, target, terrain, dimension, shader_seed, me, approach);
     }
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
@@ -1595,6 +1612,795 @@ fn trench(p: &mut Plan, point: [f64; 3], axis: (f64, f64), d0: f64, d1: f64, sky
     }
 }
 
+// ---- the downfall ----------------------------------------------------------------------------------------------------
+
+/// Downfall: the mothership's last stand. Its times (strike clock) and the shape of its fall are strike.wgsl's DF_* and
+/// df_* (keep them in step): where the ship is at every moment (`DfGeo::pose`), where its stern comes to rest (`reach`
+/// downrange of the target, where its engine becomes the black hole), where the meteor's pieces strike it, the chunks
+/// blown off it and where they land, and the blocks the black hole tears up.
+const MS_EM_X: f64 = 70.0;
+const DF_XP: f64 = -480.0; // the pivot: the stern's engine core, on its belly, along the hull from its middle
+const DF_CUT: f32 = 6.8; // the charge is cut and its power diverted
+const DF_TURN0: f32 = 7.2; // coming from ahead or overhead it comes about, broadside on
+const DF_TURN1: f32 = 13.2;
+const DF_FIRE0: f32 = 8.4; // the roof batteries fire, a volley every DF_PERIOD
+const DF_FIRE1: f32 = 13.8;
+const DF_PERIOD: f32 = 0.75;
+const DF_SPLIT: f32 = 14.0; // the meteor breaks up DF_LS short of the ship; its pieces come on as fast
+const DF_MV: f64 = 260.0;
+const DF_LS: f64 = 360.0;
+const DF_ELEV: f64 = 0.45;
+const DF_ROCK: f32 = 15.4; // the hits rock it
+const DF_FALL0: f32 = 17.0; // it loses lift
+const DF_FALL1: f32 = 30.0; // its stern strikes the ground
+const DF_SLIDE: f32 = 2.6; // it ploughs on and its bow slams down
+const DF_OPEN: f32 = 40.0; // its engine ruptures into a black hole
+const DF_LIFE: f32 = 11.0; // which collapses this long after
+const DF_EMBED: f64 = 16.0; // the stern rests this deep in the ground
+const DF_THC: f64 = 0.19; // its pitch (stern down) as it strikes and at rest, and its roll
+const DF_THR: f64 = 0.044;
+const DF_PHC: f64 = 0.12;
+const DF_PHR: f64 = 0.035;
+const DF_HOLE_H: f64 = 40.0; // the black hole hangs this high over where the stern rests
+const DF_NEAR: f64 = 360.0; // the stern rests at least this far in front of the player
+const DF_MIN: f64 = 40.0; // and at least this far downrange of the target
+const DF_BETA: f64 = 0.111; // the share of its way it ploughs along the ground (so its speed carries on unbroken)
+const DFD_N: usize = 96; // the blocks the black hole tears up
+const DF_CHUNKS: usize = 10; // the chunks blown off the hull
+const DF_G: f64 = 16.0;
+/// Where the meteor's pieces strike the hull (x along, y up, z across; z mirrored by the seed), all on its roof.
+const DF_HITS: [[f64; 3]; 6] =
+    [[-440.0, 150.0, 40.0], [-300.0, 150.0, -110.0], [-520.0, 150.0, -150.0], [-200.0, 150.0, 120.0], [-545.0, 150.0, 60.0], [-360.0, 150.0, 190.0]];
+
+/// How far downrange of the target the stern comes to rest: far enough in front of the player that nothing of the
+/// ship comes down on them (strike.wgsl's `frame.mod_params[3].z`).
+pub fn df_reach(point: [f64; 3], me: [f64; 3]) -> f32 {
+    let d = ((me[0] - point[0]).powi(2) + (me[2] - point[2]).powi(2)).sqrt();
+    (DF_NEAR - d).max(DF_MIN) as f32
+}
+
+fn smooth(a: f32, b: f32, t: f32) -> f64 {
+    let s = f64::from(((t - a) / (b - a)).clamp(0.0, 1.0));
+    s * s * (3.0 - 2.0 * s)
+}
+
+/// The hull's half-width at `x` along it (strike.wgsl's ms_half_w).
+fn ms_half_w(x: f64) -> f64 {
+    let sponson = 32.0 * (f64::from(u8::from((x + 150.0).abs() <= 70.0)) + f64::from(u8::from((x - 130.0).abs() <= 70.0)));
+    (250.0 + sponson).min(250.0 - 180.0 * (x - 340.0) / 220.0)
+}
+
+/// The ship at a moment: its pivot and its axes in the world (along towards the bow, up out of its roof, across).
+#[derive(Clone, Copy)]
+struct DfPose {
+    s: [f64; 3],
+    a: [f64; 3],
+    u: [f64; 3],
+    d: [f64; 3],
+}
+impl DfPose {
+    /// A point of the hull (x along from its middle, y up from its belly, z across) in the world.
+    fn world(&self, l: [f64; 3]) -> [f64; 3] {
+        let x = l[0] - DF_XP;
+        [0, 1, 2].map(|k| self.s[k] + self.a[k] * x + self.u[k] * l[1] + self.d[k] * l[2])
+    }
+}
+
+fn rot2(v: (f64, f64), a: f64) -> (f64, f64) {
+    (v.0 * a.cos() - v.1 * a.sin(), v.0 * a.sin() + v.1 * a.cos())
+}
+
+/// Where everything of a downfall is, worked out from the strike: the target, the player's side (`wing`), which way
+/// the ship came in (`mode`, APPROACHES), `reach` and the shader's seed.
+#[derive(Clone, Copy)]
+struct DfGeo {
+    ax: (f64, f64),
+    mode: usize,
+    h0: (f64, f64),
+    hf: (f64, f64),
+    c: (f64, f64),
+    y0: f64,
+    by: f64,
+    ps: (f64, f64),
+    c0: (f64, f64),
+    s1: (f64, f64),
+    side: (f64, f64),
+    roll: f64,
+    mz: f64,
+    seed: u32,
+}
+impl DfGeo {
+    fn new(point: [f64; 3], by: i32, wing: f32, mode: usize, reach: f32, seed: f32) -> Self {
+        let ax = ms_axis(wing);
+        let right = (-ax.1, ax.0);
+        let neg = |v: (f64, f64)| (-v.0, -v.1);
+        // its heading as it arrives (strike.wgsl's mothership `base.ax`), and once it has come about
+        let h0 = match mode {
+            1 => ax,
+            2 => right,
+            3 => neg(right),
+            _ => neg(ax),
+        };
+        let hf = if mode == 0 || mode >= 4 { right } else { h0 };
+        let c = (point[0] - h0.0 * MS_EM_X, point[2] - h0.1 * MS_EM_X);
+        let s1 = (c.0 + hf.0 * DF_XP, c.1 + hf.1 * DF_XP);
+        let r = f64::from(reach);
+        let ps = (point[0] + ax.0 * r, point[2] + ax.1 * r);
+        let c0 = (ps.0 - (ps.0 - s1.0) * DF_BETA, ps.1 - (ps.1 - s1.1) * DF_BETA);
+        let s = seed as u32;
+        let sg = |k: u32| if mh(7, s, k) < 0.5 { 1.0 } else { -1.0 };
+        let side = if mode == 1 { (right.0 * sg(1), right.1 * sg(1)) } else { neg(hf) };
+        // it rolls its far side down (lifting the side over the player), or either way when it lies along their view
+        let far = -hf.1 * ax.0 + hf.0 * ax.1;
+        let roll = if far.abs() > 0.3 { far.signum() } else { sg(2) };
+        DfGeo { ax, mode, h0, hf, c, y0: point[1] + MS_H, by: f64::from(by), ps, c0, s1, side, roll, mz: sg(3), seed: s }
+    }
+    fn heading(&self, t: f32) -> (f64, f64) {
+        if self.mode == 0 || self.mode >= 4 { rot2(self.h0, -0.5 * PI * smooth(DF_TURN0, DF_TURN1, t)) } else { self.h0 }
+    }
+    /// The ship at `t` (from when it has stopped): hanging there, rocked by the hits, falling stern first and drifting
+    /// downrange, ploughing on along the ground as its bow slams down, and at rest.
+    fn pose(&self, t: f32) -> DfPose {
+        let h = self.heading(t);
+        let mut s = (self.c.0 + h.0 * DF_XP, self.c.1 + h.1 * DF_XP);
+        let mut y = self.y0;
+        let (mut th, mut ph) = (0.0, 0.0);
+        if t > DF_ROCK {
+            let r = f64::from(t - DF_ROCK);
+            ph = 0.03 * (-r * 0.7).exp() * (r * 2.4).sin();
+        }
+        let yc = self.by + 6.0;
+        let yr = self.by - DF_EMBED;
+        if (DF_FALL0..DF_FALL1).contains(&t) {
+            let u = f64::from((t - DF_FALL0) / (DF_FALL1 - DF_FALL0));
+            let e = u * u * (3.0 - 2.0 * u);
+            let k = u.powf(1.25);
+            s = (self.s1.0 + (self.c0.0 - self.s1.0) * k, self.s1.1 + (self.c0.1 - self.s1.1) * k);
+            y = self.y0 - (self.y0 - yc) * u * u * u.sqrt();
+            th = DF_THC * e;
+            ph += DF_PHC * e * self.roll;
+        } else if t >= DF_FALL1 {
+            let tau = f64::from(((t - DF_FALL1) / DF_SLIDE).min(1.0));
+            let e = 1.0 - (1.0 - tau) * (1.0 - tau);
+            s = (self.c0.0 + (self.ps.0 - self.c0.0) * e, self.c0.1 + (self.ps.1 - self.c0.1) * e);
+            y = yc + (yr - yc) * e;
+            th = DF_THR + (DF_THC - DF_THR) * (1.0 - tau * tau);
+            ph += (DF_PHR + (DF_PHC - DF_PHR) * (1.0 - tau) * (1.0 - tau)) * self.roll;
+            let b = f64::from(t - DF_FALL1 - DF_SLIDE);
+            if b > 0.0 {
+                th += 0.012 * (-b * 2.5).exp() * (b * 7.0).sin();
+            }
+        }
+        let (a3, s3) = ([h.0, 0.0, h.1], [-h.1, 0.0, h.0]);
+        let (ct, st, cp, sp) = (th.cos(), th.sin(), ph.cos(), ph.sin());
+        let a = [a3[0] * ct, st, a3[2] * ct];
+        let u1 = [-a3[0] * st, ct, -a3[2] * st];
+        let u = [0, 1, 2].map(|k| u1[k] * cp + s3[k] * sp);
+        let d = [0, 1, 2].map(|k| s3[k] * cp - u1[k] * sp);
+        DfPose { s: [s.0, y, s.1], a, u, d }
+    }
+    /// The meteor: the point on the roof it comes down on, where it breaks up, and the way it is going.
+    fn meteor(&self) -> ([f64; 3], [f64; 3], [f64; 3]) {
+        // across the sky from one side, from ahead of the player (it comes towards them, so they see it coming)
+        let (a, b) = (self.side.0 - self.ax.0 * 0.2, self.side.1 - self.ax.1 * 0.2);
+        let l = (a * a + b * b).sqrt();
+        let v = [a / l * DF_ELEV.cos(), -DF_ELEV.sin(), b / l * DF_ELEV.cos()];
+        let aim = self.pose(DF_SPLIT).world([-380.0, 150.0, 0.0]);
+        (aim, [0, 1, 2].map(|k| aim[k] - v[k] * DF_LS), v)
+    }
+    /// Where piece `j` of it strikes the hull, and when.
+    fn hit(&self, j: usize) -> ([f64; 3], f32) {
+        let h = DF_HITS[j];
+        let pt = self.pose(DF_SPLIT).world([h[0], h[1], h[2] * self.mz]);
+        let b = self.meteor().1;
+        let d = ((pt[0] - b[0]).powi(2) + (pt[1] - b[1]).powi(2) + (pt[2] - b[2]).powi(2)).sqrt();
+        (pt, DF_SPLIT + (d / DF_MV) as f32)
+    }
+    /// Chunk `i` blown off the edge of the roof: where it comes off, its speed, and when; none if it would be thrown
+    /// back towards the player.
+    fn chunk(&self, i: usize) -> Option<([f64; 3], [f64; 3], f32)> {
+        let side = if i < DF_CHUNKS / 2 { 1.0 } else { -1.0 };
+        let x = -500.0 + 80.0 * (i % (DF_CHUNKS / 2)) as f64;
+        let tb = DF_SPLIT + 1.6 + 1.8 * mh(i as u32, self.seed, 31) as f32;
+        let p = self.pose(tb);
+        let (nx, nz) = (p.d[0] * side, p.d[2] * side);
+        let nl = (nx * nx + nz * nz).sqrt().max(1e-6);
+        let (nx, nz) = (nx / nl, nz / nl);
+        if nx * self.ax.0 + nz * self.ax.1 < -0.25 {
+            return None;
+        }
+        let vh = 22.0 + 14.0 * mh(i as u32, self.seed, 32);
+        let vy = 8.0 + 10.0 * mh(i as u32, self.seed, 33);
+        Some((p.world([x, 150.0, side * (ms_half_w(x) - 2.0)]), [nx * vh, vy, nz * vh], tb))
+    }
+    /// Where a chunk comes down on the ground (the target's level), and when.
+    fn chunk_land(&self, i: usize) -> Option<(f64, f64, f32)> {
+        let (p, v, tb) = self.chunk(i)?;
+        let tau = (v[1] + (v[1] * v[1] + 2.0 * DF_G * (p[1] - self.by)).sqrt()) / DF_G;
+        Some((p[0] + v[0] * tau, p[2] + v[2] * tau, tb + tau as f32))
+    }
+    /// Block `i` the black hole tears up: where (x, z), when (after DF_OPEN), whether it is a piece of the wreck lying
+    /// there (or the ground), and whether it is a big one (2 x 2 x 2).
+    fn torn(&self, i: usize) -> (i32, i32, f32, bool, bool) {
+        let (s, k) = (self.seed, i as u32);
+        let a = mh(k, s, 21) * 2.0 * PI;
+        let r = 46.0 + 36.0 * mh(k, s, 22);
+        let t = 0.5 + 7.0 * i as f32 / DFD_N as f32 + 0.3 * mh(k, s, 23) as f32;
+        ((self.ps.0 + a.cos() * r).floor() as i32, (self.ps.1 + a.sin() * r).floor() as i32, t, mh(k, s, 24) < 0.4, mh(k, s, 25) > 0.7)
+    }
+    /// The top block of the ground at column (x, z) near where the stern rests, once it has been levelled and the
+    /// gouges cut: the target's level, or a gouge's floor (its lining).
+    fn ground(&self, x: i32, z: i32) -> i32 {
+        let (px, pz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
+        let by = self.by as i32;
+        let mut top = by;
+        let (a, b) = ((px - self.ps.0) * self.hf.0 + (pz - self.ps.1) * self.hf.1, (pz - self.ps.1) * self.hf.0 - (px - self.ps.0) * self.hf.1);
+        if (-80.0..370.0).contains(&a) && b.abs() <= DF_KEEL_W && df_keel_depth(a) >= 1 {
+            top = top.min(by - df_keel_depth(a) - 1);
+        }
+        let skid = (self.ps.0 - self.c0.0).hypot(self.ps.1 - self.c0.1);
+        if skid > 2.0 {
+            let dir = ((self.ps.0 - self.c0.0) / skid, (self.ps.1 - self.c0.1) / skid);
+            let (a, b) = ((px - self.c0.0) * dir.0 + (pz - self.c0.1) * dir.1, (pz - self.c0.1) * dir.0 - (px - self.c0.0) * dir.1);
+            if (0.0..skid).contains(&a) && b.abs() <= DF_SKID_W {
+                top = top.min(by - df_skid_depth(a / skid) - 1);
+            }
+        }
+        top
+    }
+}
+
+/// The downfall: the mothership drops in and charges, diverts the power to its roof batteries as a meteor comes down on
+/// it, breaks the meteor up, is hit by the pieces anyway, falls out of the sky and ploughs into the land; then its
+/// black hole engine ruptures and swallows the wreck and the land round it, and collapses.
+fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3], approach: usize) -> Vec<(f32, Act)> {
+    let [bx, by, bz] = target.block;
+    let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
+    let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
+    let point = target.point;
+    let mode = approach.min(4);
+    let g = DfGeo::new(point, by, wing_angle(point, me), mode, df_reach(point, me), shader_seed);
+    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
+    let dist = |q: [f64; 3]| ((q[0] - me[0]).powi(2) + (q[1] - me[1]).powi(2) + (q[2] - me[2]).powi(2)).sqrt();
+    let late = |q: [f64; 3]| (dist(q) / 343.0) as f32;
+    let fby = f64::from(by);
+    // the mothership's own sounds for its arrival; and this laser's, heard from where they happen (in full within 16
+    // blocks a unit of volume, from further off at the volume floor `min`)
+    let ms = |p: &mut Plan, t: f32, name: &str, vol: f32| {
+        p.ev.push((t, Act::Sound { event: format!("orbital:mothership.{name}"), at: None, volume: vol / 10.0, pitch: 1.0 }));
+    };
+    let here = |p: &mut Plan, t: f32, name: &str, q: [f64; 3], vol: f32, min: f64| {
+        p.at(t, format!("playsound orbital:downfall.{name} block @a {:.1} {:.1} {:.1} {vol} 1 {min:.2}", q[0], q[1], q[2]));
+    };
+
+    // 1. it drops in exactly as the mothership does, and charges
+    let mid = g.pose(5.0).world([0.0, 0.0, 0.0]);
+    let ship = late(mid);
+    p.at(MS_ARRIVE - 1.0, bar(&format!("MOTHERSHIP INBOUND {}", APPROACHES[mode].label.to_uppercase()), laser.color));
+    ms(&mut p, MS_ARRIVE - 0.02, "arrival", 10.0);
+    ms(&mut p, MS_ARRIVE + ship, "boom", 10.0);
+    p.shake(MS_ARRIVE + 0.2, 0.35, 1.0);
+    p.shake(MS_ARRIVE + ship, 0.85, 3.5);
+    p.at(MS_ARRIVE + 0.6, bar("MOTHERSHIP OVERHEAD", "green"));
+    p.csound(MS_ARRIVE + ship + 0.3, "hum", 8.0, 1.0);
+    // 2. the charge, cut short: its power slammed over to the roof batteries as the meteor is seen
+    p.csound(FIRE, "divert", 10.0, 1.0);
+    p.shake(FIRE + 2.0, 0.15, 1.5);
+    p.shake(DF_CUT + 0.05, 0.3, 1.4);
+    p.at(DF_CUT + 0.1, bar("CHARGE ABORTED: POWER TO ROOF BATTERIES", "gold"));
+    p.at(DF_CUT + 1.6, bar("METEOR INBOUND", "red"));
+    // 3. the meteor coming in (its roar ends as it breaks up), the batteries firing on it, heard from up on the roof
+    let (_, split_at, _) = g.meteor();
+    p.csound(DF_SPLIT - 7.6, "approach", 10.0, 1.0);
+    let mut tf = DF_FIRE0;
+    let mut n = 0;
+    while tf < DF_FIRE1 {
+        for side in [-1.0, 1.0] {
+            let q = g.pose(tf).world([-75.0 + 60.0 * side, 160.0, side * (ms_half_w(-75.0) - 3.0)]);
+            here(&mut p, tf + late(q), &format!("battery{}", 1 + (n + usize::from(side > 0.0)) % 2), q, 8.0, 0.55);
+        }
+        p.shake(tf + ship, 0.08, 0.6);
+        tf += DF_PERIOD;
+        n += 1;
+    }
+    // it breaks up high over the ship, and the pieces strike it
+    let heard = DF_SPLIT + late(split_at);
+    p.csound(heard, "split", 10.0, 1.0);
+    p.shake(heard, 0.45 * falloff(dist(split_at)).max(0.5), 3.0);
+    p.at(DF_SPLIT + 0.2, bar("METEOR BROKEN UP: FRAGMENTS INBOUND", "red"));
+    for j in 0..DF_HITS.len() {
+        let (q, th) = g.hit(j);
+        let tl = th + late(q);
+        here(&mut p, tl, &format!("hit{}", 1 + j % 3), q, 10.0, 0.75);
+        p.shake(tl, 0.55 * falloff(dist(q)).max(0.55), 2.2);
+    }
+    p.at(15.9, bar("HULL BREACHED", "dark_red"));
+    // 4. it falls: the roar of it coming down all round, the ground shaking more and more as it nears
+    p.at(DF_FALL0 + 0.4, bar("LIFT FAILING", "dark_red"));
+    // (timed so its roar is cut just as the crash reaches the player)
+    let c0 = [g.c0.0, fby, g.c0.1];
+    p.csound(DF_FALL0 + late(c0), "fall", 10.0, 1.0);
+    for k in 0..13 {
+        let u = k as f32 / 12.0;
+        p.shake(DF_FALL0 + 0.6 + k as f32, 0.1 + 0.32 * u * u, 1.6);
+    }
+    // the crash: its stern strikes, it ploughs on, its bow slams down (the hardest jolt of all, the loudest moment)
+    let crash = DF_FALL1 + late(c0);
+    // (a ship a kilometre long hitting the ground: felt hard however far off it is)
+    let fo = (1.25 - dist(c0) / 2000.0).clamp(0.9, 1.0) as f32;
+    p.csound(crash, "crash", 10.0, 1.0);
+    p.shake(crash, fo, 7.0);
+    let bow = g.pose(DF_FALL1 + DF_SLIDE).world([560.0, 0.0, 0.0]);
+    let slam = DF_FALL1 + DF_SLIDE * 0.9 + late(bow);
+    p.shake(slam, 0.8 * fo, 4.5);
+    p.shake(crash + 4.0, 0.45 * fo, 4.0);
+    p.shake(crash + 8.0, 0.25 * fo, 4.0);
+    p.at(DF_FALL1 + 0.2, bar("IMPACT", "white"));
+    // 5. the engine groaning, rupturing into a black hole, the land pulled into it, and its collapse
+    let hole = [g.ps.0, fby + DF_HOLE_H, g.ps.1];
+    let lh = late(hole);
+    let fh = falloff(dist(hole)).max(0.4);
+    here(&mut p, 34.2 + lh, "groan1", hole, 8.0, 0.8);
+    here(&mut p, 37.3 + lh, "groan2", hole, 8.0, 0.85);
+    p.shake(34.6 + lh, 0.15 * fh, 2.5);
+    p.shake(37.8 + lh, 0.22 * fh, 2.5);
+    p.at(36.0, bar("ENGINE CONTAINMENT FAILING", "light_purple"));
+    p.csound(DF_OPEN + lh, "rupture", 10.0, 1.0);
+    p.shake(DF_OPEN + lh, 0.75 * fh, 4.0);
+    p.at(DF_OPEN + 0.2, bar("SINGULARITY", "light_purple"));
+    // (it is drawn to nothing the instant it collapses)
+    p.csound(DF_OPEN + 0.4 + lh, "vortex", 9.0, 1.0);
+    for k in 1..10 {
+        p.shake(DF_OPEN + lh + k as f32, 0.17 * fh, 1.3);
+    }
+    let te = DF_OPEN + DF_LIFE + lh;
+    p.csound(te, "evaporate", 10.0, 1.0);
+    p.shake(te, 0.65 * fh, 4.0);
+    p.csound(te + 3.5, "after", 8.0, 1.0);
+
+    // ---- particles in the world ----
+    let (tx, ty, tz) = (point[0], point[1], point[2]);
+    for i in 0..6 {
+        // the ground under it stirring while it charges
+        let tk = FIRE + 0.3 + i as f32 * 0.45;
+        p.at(tk, format!("particle minecraft:white_ash {tx:.1} {:.1} {tz:.1} 9 1 9 0 70 force", ty + 1.0));
+    }
+    for j in 0..DF_HITS.len() {
+        let (q, th) = g.hit(j);
+        p.at(th, format!("particle minecraft:explosion_emitter {:.1} {:.1} {:.1} 6 4 6 0 3 force", q[0], q[1] + 4.0, q[2]));
+    }
+    for i in 0..DF_CHUNKS {
+        if let Some((x, z, tl)) = g.chunk_land(i) {
+            let (x, z) = (x.floor() as i32, z.floor() as i32);
+            p.at(tl, surf(x, z, "particle minecraft:explosion_emitter ~ ~1 ~ 0 0 0 0 1 force"));
+            p.at(tl, surf(x, z, "particle minecraft:campfire_signal_smoke ~ ~1 ~ 3 1 3 0.03 30 force"));
+            p.at(tl + 0.05, surf(x, z, "kill @e[type=!minecraft:player,distance=..12]"));
+            let d = ((f64::from(x) - me[0]).powi(2) + (f64::from(z) - me[2]).powi(2)).sqrt();
+            let min = ((1.25 - d / 320.0).clamp(0.3, 1.0) * 0.8).max(0.2);
+            let hit = if d > 90.0 { "hit_far2" } else { "hit2" };
+            p.at(tl + (d / 343.0) as f32, surf(x, z, &format!("playsound orbital:meteor.{hit} block @a ~ ~ ~ 4 1 {min:.2}")));
+        }
+    }
+    let rest = g.pose(DF_FALL1 + DF_SLIDE);
+    for k in 0..8 {
+        // the wreck burning, along it
+        let q = rest.world([-480.0 + 140.0 * f64::from(k), 60.0, 0.0]);
+        let tk = DF_FALL1 + DF_SLIDE * 0.3 * (1.0 + f64::from(k) / 7.0) as f32;
+        p.at(tk, format!("particle minecraft:explosion_emitter {:.1} {:.1} {:.1} 30 6 30 0 6 force", q[0], fby + 4.0, q[2]));
+        for i in 0..6 {
+            p.at(tk + 1.0 + i as f32 * 1.2, format!("particle minecraft:campfire_signal_smoke {:.1} {:.1} {:.1} 40 4 40 0.04 40 force", q[0], fby + 6.0, q[2]));
+        }
+    }
+    for i in 0..20 {
+        // matter streaming into the hole
+        let tk = DF_OPEN + 0.3 + i as f32 * 0.5;
+        p.at(tk, format!("particle minecraft:portal {:.1} {:.1} {:.1} 0 0 0 18 220 force", hole[0], hole[1], hole[2]));
+        p.at(tk, format!("particle minecraft:squid_ink {:.1} {:.1} {:.1} 30 1 30 0.06 60 force", hole[0], fby + 1.5, hole[2]));
+    }
+    let tc = DF_OPEN + DF_LIFE;
+    p.at(tc, format!("particle minecraft:flash {:.1} {:.1} {:.1} 0 0 0 0 1 force", hole[0], hole[1], hole[2]));
+    p.at(tc, format!("particle minecraft:explosion_emitter {:.1} {:.1} {:.1} 4 4 4 0 4 force", hole[0], hole[1], hole[2]));
+    p.at(tc + 0.05, format!("particle minecraft:reverse_portal {:.1} {:.1} {:.1} 2 2 2 3 800 force", hole[0], hole[1], hole[2]));
+
+    // ---- what dies: everything under it, and round where it comes down ----
+    p.at(DF_FALL1 + 0.1, format!("execute positioned {:.1} {by} {:.1} run kill @e[type=!minecraft:player,distance=..130]", c0[0], c0[2]));
+    for k in 0..8 {
+        let q = rest.world([-480.0 + 140.0 * f64::from(k), 0.0, 0.0]);
+        let tk = DF_FALL1 + DF_SLIDE * (0.5 + 0.07 * k as f32);
+        p.at(tk, format!("execute positioned {:.1} {by} {:.1} run kill @e[type=!minecraft:player,distance=..270]", q[0], q[2]));
+    }
+    for tk in [0.2, 2.0, 5.0, 8.0, 11.2] {
+        p.at(DF_OPEN + tk, format!("execute positioned {:.1} {by} {:.1} run kill @e[type=!minecraft:player,distance=..140]", hole[0], hole[2]));
+    }
+
+    if terrain {
+        let (floor_y, sky) = (bedrock_top(dimension), sky_top(dimension));
+        // a crash site out past what the game keeps loaded round the player stays loaded until it is done
+        for [x0, z0, x1, z1] in df_forceload(&g, me) {
+            p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
+            p.ev.push((laser.length - 0.2, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
+        }
+        // the chunks: each a crater where it lands, the chunk lying in it, burning
+        for i in 0..DF_CHUNKS {
+            if let Some((x, z, tl)) = g.chunk_land(i) {
+                let (x, z) = (x.floor() as i32, z.floor() as i32);
+                p.later(tl - 0.4, move |q| {
+                    meteor_crater(q, x, z, 1, tl);
+                    df_pile(q, x, z, tl + 0.25, 1);
+                });
+            }
+        }
+        // the crash: the stern's crater, the land round where it comes to rest levelled, and the gouge it ploughs
+        p.later(DF_FALL1 - 0.3, move |q| df_impact(q, &g, sky));
+        p.later(DF_FALL1 + 0.6, move |q| df_level(q, &g, sky));
+        let skid = ((g.ps.0 - g.c0.0).powi(2) + (g.ps.1 - g.c0.1).powi(2)).sqrt();
+        if skid > 2.0 {
+            let dir = ((g.ps.0 - g.c0.0) / skid, (g.ps.1 - g.c0.1) / skid);
+            let mut d0 = 0.0;
+            while d0 < skid {
+                let d1 = (d0 + 15.0).min(skid);
+                let t0 = df_skid_t(d0 / skid);
+                p.later(t0 - 0.3, move |q| df_cut(q, g.c0, dir, d0, d1, move |d| Some((DF_SKID_W, df_skid_depth(d / skid), df_skid_t(d / skid)))));
+                d0 = d1;
+            }
+        }
+        let mut x0 = -80.0;
+        while x0 < 370.0 {
+            let x1 = (x0 + 16.0f64).min(370.0);
+            p.later(df_keel_t(x0.max(0.0)) - 0.3, move |q| df_cut(q, g.ps, g.hf, x0, x1, df_keel));
+            x0 = x1;
+        }
+        // the wreckage lying round it, some of it where the black hole will tear it up
+        p.later(DF_FALL1 + DF_SLIDE + 0.2, move |q| df_wreck(q, &g));
+        // the black hole: its crater and the land dragged into spiral arms round it, the blocks it tears up, the shaft
+        // its collapse bores to bedrock
+        p.later(DF_OPEN - 0.3, move |q| df_hole(q, &g, floor_y, 0));
+        p.later(DF_OPEN + 0.2, move |q| df_hole(q, &g, floor_y, 1));
+        p.later(DF_OPEN + 5.0, move |q| df_hole(q, &g, floor_y, 2));
+        p.later(DF_OPEN + DF_LIFE - 0.3, move |q| df_hole(q, &g, floor_y, 3));
+    }
+    p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
+    p.ev
+}
+
+/// When the stern, ploughing along the ground, is `u` of the way from where it struck to where it rests.
+fn df_skid_t(u: f64) -> f32 {
+    DF_FALL1 + DF_SLIDE * (1.0 - (1.0 - u.clamp(0.0, 1.0)).sqrt()) as f32
+}
+/// When the gouge under the hull is cut `x` blocks along it from the stern's pivot (the belly coming down from the
+/// stern as the bow slams down; strike.wgsl's df_keel_t).
+fn df_keel_t(x: f64) -> f32 {
+    DF_FALL1 + DF_SLIDE * (0.3 + 0.7 * (x.max(0.0) / 370.0).sqrt()) as f32
+}
+/// The gouge under the hull resting in it, `x` along from the stern's pivot: its half-width (its keel's), how deep
+/// (the belly's depth), and when.
+fn df_keel(x: f64) -> Option<(f64, i32, f32)> {
+    let depth = df_keel_depth(x);
+    (depth >= 1).then(|| (DF_KEEL_W, depth, df_keel_t(x)))
+}
+/// The gouges' half-widths and depths (strike.wgsl's df_ground).
+const DF_KEEL_W: f64 = 70.0;
+const DF_SKID_W: f64 = 60.0;
+fn df_keel_depth(x: f64) -> i32 {
+    (DF_EMBED - x.max(0.0) * DF_THR.tan()).round() as i32
+}
+fn df_skid_depth(u: f64) -> i32 {
+    (12.0 + 8.0 * u) as i32
+}
+
+/// The chunks of the world a downfall changes that may be out past what the game keeps loaded round the player: where
+/// the stern strikes and ploughs, the gouge, the black hole's reach, and where the chunks come down. As rectangles of
+/// chunks, one per row (`forceload add` takes 256 chunks at most).
+fn df_forceload(g: &DfGeo, me: [f64; 3]) -> Vec<[i32; 4]> {
+    let mut set = std::collections::BTreeSet::new();
+    let mut add = |x: f64, z: f64, r: f64| {
+        for cz in ((z - r) / 16.0).floor() as i32..=((z + r) / 16.0).floor() as i32 {
+            for cx in ((x - r) / 16.0).floor() as i32..=((x + r) / 16.0).floor() as i32 {
+                let (mx, mz) = (f64::from(cx) * 16.0 + 8.0, f64::from(cz) * 16.0 + 8.0);
+                if (mx - x).hypot(mz - z) <= r + 12.0 && (mx - me[0]).hypot(mz - me[2]) > 150.0 {
+                    set.insert((cz, cx));
+                }
+            }
+        }
+    };
+    add(g.ps.0, g.ps.1, 150.0);
+    add(g.c0.0, g.c0.1, 55.0);
+    for k in 0..13 {
+        let x = 30.0 * f64::from(k);
+        add(g.ps.0 + g.hf.0 * x, g.ps.1 + g.hf.1 * x, 85.0);
+    }
+    for i in 0..DF_CHUNKS {
+        if let Some((x, z, _)) = g.chunk_land(i) {
+            add(x, z, 12.0);
+        }
+    }
+    let mut out: Vec<[i32; 4]> = Vec::new();
+    for (cz, cx) in set {
+        match out.last_mut() {
+            Some(r) if r[1] == cz * 16 && r[2] == cx * 16 - 1 => r[2] = cx * 16 + 15,
+            _ => out.push([cx * 16, cz * 16, cx * 16 + 15, cz * 16 + 15]),
+        }
+    }
+    out
+}
+
+/// A heap of the wreck lying on the ground at column (x, z): dark metal, a few of its green lights still glowing in it.
+fn df_pile(p: &mut Plan, x: i32, z: i32, t: f32, s: i32) {
+    const WRECK: [&str; 5] = ["minecraft:polished_blackstone", "minecraft:blackstone", "minecraft:polished_deepslate", "minecraft:deepslate_tiles", "minecraft:obsidian"];
+    let a = *p.rng.pick(&WRECK);
+    let b = *p.rng.pick(&WRECK);
+    p.at(t, surf(x, z, &format!("fill ~-{s} ~ ~-{s} ~{s} ~{} ~{s} {a} keep", s.max(1))));
+    p.at(t, surf(x, z, &format!("fill ~-{s} ~ ~ ~{s} ~ ~ {b}")));
+    if p.rng.next() < 0.6 {
+        let lit = *p.rng.pick(&["minecraft:verdant_froglight", "minecraft:green_stained_glass", "minecraft:tinted_glass"]);
+        p.at(t + 0.05, surf(x, z, &format!("setblock ~ ~ ~ {lit}")));
+    }
+    if p.rng.next() < 0.5 {
+        p.at(t + 0.4, surf(x + s + 1, z, "setblock ~ ~ ~ minecraft:fire keep"));
+    }
+}
+
+/// Where the stern strikes: everything over the ground round it blasted away, a crater, its walls fused.
+fn df_impact(p: &mut Plan, g: &DfGeo, sky: i32) {
+    let t = DF_FALL1;
+    (p.bx, p.bz) = (g.c0.0.floor() as i32, g.c0.1.floor() as i32);
+    let by = p.by;
+    for c in p.disc(48, by + 1, by + 20, "minecraft:air", 0.12, None) {
+        p.at(t + 0.1, c);
+    }
+    p.clear_above(t + 0.2, 48, by + 21, sky, 0.12);
+    for d in (0..12).step_by(2) {
+        let r = ((36.0 * (1.0 - f64::from(d) / 12.5).sqrt()) as i32).max(4);
+        let tl = t + 0.15 + d as f32 * 0.05;
+        p.dig_rim(r, by - d - 1, by - d, tl, 0.1);
+        p.mottle(r, by - d - 1, by - d, tl, 10);
+    }
+    for _ in 0..30 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = p.rng.uniform(38.0, 70.0);
+        let dt = p.rng.uniform(0.5, 3.0) as f32;
+        p.at(t + dt, surf(p.bx + (a.cos() * rr) as i32, p.bz + (a.sin() * rr) as i32, "setblock ~ ~ ~ minecraft:fire keep"));
+    }
+}
+
+/// Round where the stern comes to rest the land is flattened to the target's level (the ground the black hole later
+/// tears its blocks from), and charred.
+fn df_level(p: &mut Plan, g: &DfGeo, sky: i32) {
+    let t = DF_FALL1 + DF_SLIDE * 0.6;
+    (p.bx, p.bz) = (g.ps.0.floor() as i32, g.ps.1.floor() as i32);
+    let by = p.by;
+    for c in p.disc(88, by + 1, by + 15, "minecraft:air", 0.1, None) {
+        p.at(t, c);
+    }
+    p.clear_above(t + 0.5, 88, by + 16, sky, 0.1);
+    for (rad, block, repl) in [(96, "minecraft:coarse_dirt", "minecraft:grass_block"), (92, "minecraft:blackstone", "minecraft:dirt"), (90, "minecraft:smooth_basalt", "minecraft:sand")] {
+        for c in p.disc(rad, by - 2, by, block, 0.12, Some(repl)) {
+            let dt = p.rng.next() as f32 * 1.5;
+            p.at(t + 0.6 + dt, c);
+        }
+    }
+}
+
+/// The stretch `d0..d1` blocks of a gouge from `from` along `dir` (unit, xz), each column cut when `prof(d)` says, as
+/// wide and as deep as it says: its walls and floor fused into the lining, a little molten rock and fire, whatever
+/// stood over it cleared to the sky (down from its own top, on the spare budget). Laid out in columns across whichever
+/// of x and z it runs along most.
+fn df_cut(p: &mut Plan, from: (f64, f64), dir: (f64, f64), d0: f64, d1: f64, prof: impl Fn(f64) -> Option<(f64, i32, f32)>) {
+    const NATURAL: [&str; 3] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand"];
+    let by = p.by;
+    let prim = p.laser.lining[0].0;
+    let along_x = dir.0.abs() >= dir.1.abs();
+    let (m, n) = if along_x { dir } else { (dir.1, dir.0) };
+    let (pm, pn) = if along_x { from } else { (from.1, from.0) };
+    let fill = |c: i32, n0: i32, n1: i32, y0: i32, y1: i32, what: &str| {
+        if along_x { format!("fill {c} {y0} {n0} {c} {y1} {n1} {what}") } else { format!("fill {n0} {y0} {c} {n1} {y1} {c} {what}") }
+    };
+    let (ma, mb) = (pm + m * d0, pm + m * d1);
+    let (c_lo, c_hi) = ((ma.min(mb) - 0.5).floor() as i32 - 1, (ma.max(mb) - 0.5).ceil() as i32 + 1);
+    for c in c_lo..=c_hi {
+        let d = (f64::from(c) + 0.5 - pm) / m;
+        if d < d0 || d >= d1 {
+            continue;
+        }
+        let Some((hw, depth, t)) = prof(d) else { continue };
+        let nc = pn + n * d;
+        let e = hw / m.abs();
+        let (n0, n1) = ((nc - e - 0.5).ceil() as i32, (nc + e - 0.5).floor() as i32);
+        let y0 = by - depth;
+        for tag in NATURAL {
+            let what = format!("{prim} replace {tag}");
+            p.at(t - 0.05, fill(c, n0 - 2, n0 - 1, y0 - 1, by, &what));
+            p.at(t - 0.05, fill(c, n1 + 1, n1 + 2, y0 - 1, by, &what));
+            p.at(t - 0.05, fill(c, n0 - 1, n1 + 1, y0 - 1, y0 - 1, &what));
+        }
+        p.at(t, fill(c, n0, n1, y0, by, "minecraft:air"));
+        // whatever stands over it, down from its own top, in pieces (a fill's cap), on the spare budget
+        let mut a = n0;
+        while a <= n1 {
+            let b = (a + 31).min(n1);
+            let mid = (a + b) / 2;
+            let (x, z) = if along_x { (c, mid) } else { (mid, c) };
+            let rel = if along_x {
+                format!("fill ~ ~30 ~{} ~ {} ~{} minecraft:air", a - mid, by + 1, b - mid)
+            } else {
+                format!("fill ~{} ~30 ~ ~{} {} ~ minecraft:air", a - mid, b - mid, by + 1)
+            };
+            p.ev.push((t + 0.1, Act::Spare(surf(x, z, &rel))));
+            a = b + 1;
+        }
+        // its lips charred, molten rock left along its floor, fires catching
+        for (block, repl) in [("minecraft:coarse_dirt", "minecraft:grass_block"), ("minecraft:blackstone", "minecraft:dirt")] {
+            let what = format!("{block} replace {repl}");
+            p.at(t + 0.4, fill(c, n0 - 10, n0 - 3, by - 3, by + 1, &what));
+            p.at(t + 0.4, fill(c, n1 + 3, n1 + 10, by - 3, by + 1, &what));
+        }
+        let mid = nc.floor() as i32;
+        if c.rem_euclid(7) == 0 {
+            let w = p.rng.int(-((hw * 0.6) as i32), (hw * 0.6) as i32);
+            p.at(t + 0.5, fill(c, mid + w - 1, mid + w + 1, y0, y0, "minecraft:magma_block"));
+        }
+        if c.rem_euclid(11) == 0 {
+            p.at(t + 0.6, fill(c, mid, mid, y0, y0, "minecraft:lava"));
+        }
+        if c.rem_euclid(4) == 0 {
+            let lip = if p.rng.next() < 0.5 { n0 - p.rng.int(2, 8) } else { n1 + p.rng.int(2, 8) };
+            let (x, z) = if along_x { (c, lip) } else { (lip, c) };
+            let dt = p.rng.uniform(0.3, 2.0) as f32;
+            p.at(t + dt, surf(x, z, "setblock ~ ~ ~ minecraft:fire keep"));
+        }
+        if c.rem_euclid(9) == 0 {
+            let (x, z) = if along_x { (c, mid) } else { (mid, c) };
+            let pitch = p.rng.uniform(0.5, 0.75);
+            p.at(t, format!("playsound minecraft:block.stone.break block @a {x} {by} {z} 4 {pitch:.2}"));
+        }
+    }
+}
+
+/// The wreck strewn round it: heaps along the gouge's lips, and the pieces lying where the black hole will tear them
+/// up (DfGeo::torn).
+fn df_wreck(p: &mut Plan, g: &DfGeo) {
+    let t = DF_FALL1 + DF_SLIDE + 0.3;
+    const WRECK: [&str; 4] = ["minecraft:polished_blackstone", "minecraft:polished_deepslate", "minecraft:obsidian", "minecraft:deepslate_tiles"];
+    for i in 0..DFD_N {
+        let (x, z, _, wreck, big) = g.torn(i);
+        if wreck {
+            let blk = *p.rng.pick(&WRECK);
+            let y = g.ground(x, z) + 1;
+            if big {
+                p.at(t + 0.2, format!("fill {} {y} {} {x} {} {z} {blk}", x - 1, z - 1, y + 1));
+            } else {
+                p.at(t + 0.2, format!("setblock {x} {y} {z} {blk}"));
+            }
+        }
+    }
+    let rest = g.pose(DF_FALL1 + DF_SLIDE);
+    for k in 0..28 {
+        let x = p.rng.uniform(-560.0, -100.0);
+        let z = p.rng.uniform(78.0, 115.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+        let q = rest.world([x, 0.0, z]);
+        if (q[0] - g.ps.0).hypot(q[2] - g.ps.1) < 100.0 {
+            continue;
+        }
+        let s = *p.rng.pick(&[1, 1, 2]);
+        let dt = p.rng.uniform(0.0, 0.8) as f32;
+        df_pile(p, q[0].floor() as i32, q[2].floor() as i32, t + dt, s);
+    }
+}
+
+/// The black hole: the blocks it tears up (as strike.wgsl flies them in), its crater, the land dragged into spiral arms
+/// round it, the ground charred, and the shaft its collapse bores to bedrock, lined; what it had not swallowed thrown
+/// out over the land.
+/// In four stages, each worked out just before it starts: 0 the torn blocks and the crater, 1 the spiral arms, 2 the
+/// charring, 3 the collapse.
+fn df_hole(p: &mut Plan, g: &DfGeo, floor_y: i32, stage: u8) {
+    let t = DF_OPEN;
+    let laser = p.laser;
+    (p.bx, p.bz) = (g.ps.0.floor() as i32, g.ps.1.floor() as i32);
+    let (bx, by, bz) = (p.bx, p.by, p.bz);
+    let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
+    if stage == 0 {
+        df_hole_tear(p, g, bowl_r, bowl_d);
+    }
+    if stage == 1 {
+        df_hole_arms(p, bx, bz);
+    }
+    if stage == 2 {
+        for &(rad, block, rough, repl) in laser.scorch {
+            for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
+                let dt = p.rng.next() as f32 * 2.0;
+                p.at(t + 7.5 + dt, c);
+            }
+        }
+    }
+    if stage == 3 {
+        df_hole_collapse(p, g, floor_y, bowl_d);
+    }
+}
+fn df_hole_tear(p: &mut Plan, g: &DfGeo, bowl_r: i32, bowl_d: i32) {
+    let t = DF_OPEN;
+    let by = p.by;
+    for i in 0..DFD_N {
+        let (x, z, tr, wreck, big) = g.torn(i);
+        let tl = t + tr;
+        // a piece of the wreck lying on the ground, or the ground itself
+        let gy = g.ground(x, z);
+        let y = if wreck { gy + 1 } else { gy - i32::from(big) };
+        if big {
+            p.at(tl, format!("fill {} {y} {} {x} {} {z} minecraft:air", x - 1, z - 1, y + 1));
+        } else {
+            p.at(tl, format!("setblock {x} {y} {z} minecraft:air"));
+        }
+        if i % 6 == 0 {
+            p.at(tl, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {x} {} {z} 0.8 0.3 0.8 0.3 20 force"#, by + 1));
+        }
+    }
+    // the crater under it, its walls fused
+    let rough = f64::from(p.laser.bowl_rough);
+    for d in (0..bowl_d).step_by(2) {
+        let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(3);
+        let tl = t + 0.4 + d as f32 * 0.2;
+        p.dig_rim(r, by - d - 1, by - d, tl, rough);
+        p.mottle(r, by - d - 1, by - d, tl, 12);
+    }
+}
+/// The land dragged round into spiral arms, from the outside in.
+fn df_hole_arms(p: &mut Plan, bx: i32, bz: i32) {
+    let t = DF_OPEN;
+    const ARMS: [&str; 4] = ["minecraft:sculk", "minecraft:black_concrete", "minecraft:sculk", "minecraft:crying_obsidian"];
+    let a0 = p.rng.uniform(0.0, 2.0 * PI);
+    for arm in 0..4 {
+        let mut last = (i32::MIN, i32::MIN);
+        for i in 0..150 {
+            let u = f64::from(i) / 149.0;
+            let rr = 86.0 + 64.0 * u;
+            let a = a0 + f64::from(arm) * PI / 2.0 + (rr / 86.0).ln() * 2.6 + p.rng.uniform(-0.03, 0.03);
+            let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+            if (x, z) == last {
+                continue;
+            }
+            last = (x, z);
+            let blk = *p.rng.pick(&ARMS);
+            let tl = t + 0.6 + (1.0 - u) as f32 * 5.0;
+            for tag in ["#minecraft:dirt", "#minecraft:sand", "#minecraft:base_stone_overworld"] {
+                p.at(tl, surf(x, z, &format!("fill ~-1 ~-1 ~-1 ~1 ~-1 ~1 {blk} replace {tag}")));
+            }
+        }
+    }
+}
+/// It collapses: the shaft bored to bedrock, lined, and what it was still holding thrown out over the land.
+fn df_hole_collapse(p: &mut Plan, g: &DfGeo, floor_y: i32, bowl_d: i32) {
+    let laser = p.laser;
+    let by = p.by;
+    let tc = DF_OPEN + DF_LIFE;
+    let mut y_hi = by - bowl_d;
+    let mut i = 0;
+    while y_hi >= floor_y {
+        let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.2).round() as i32).max(laser.shaft_min);
+        let ts = tc + 0.1 + i as f32 * 0.06;
+        p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
+        p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
+        y_hi -= 4;
+        i += 1;
+    }
+    for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
+        for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
+            p.at(tc + 0.2 + i as f32 * 0.06 + 0.1 * k as f32, c);
+        }
+    }
+    const FLUNG: [&str; 5] = ["minecraft:blackstone", "minecraft:polished_deepslate", "minecraft:obsidian", "minecraft:crying_obsidian", "minecraft:cobbled_deepslate"];
+    let hy = f64::from(by) + DF_HOLE_H;
+    for _ in 0..50 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = p.rng.uniform(8.0, 20.0);
+        let (x, z) = (g.ps.0 + a.cos() * rr, g.ps.1 + a.sin() * rr);
+        let sp = p.rng.uniform(1.2, 2.4);
+        let (vx, vz) = (a.cos() * sp, a.sin() * sp);
+        let vy = p.rng.uniform(0.3, 1.0);
+        let blk = *p.rng.pick(&FLUNG);
+        p.at(tc + 0.05, format!("summon minecraft:falling_block {x:.2} {hy:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1636,13 +2442,21 @@ mod tests {
         let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
         for laser in crate::lasers::LASERS {
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
-                let cmds = run_all(plan(laser, &target, true, dimension, 7.0, [10.5, 66.0, 60.0], 0));
+                let me = [10.5, 66.0, 60.0];
+                let cmds = run_all(plan(laser, &target, true, dimension, 7.0, me, 0));
+                // (the downfall's blast is where its stern comes down)
+                let (cx, cz) = if laser.key == "downfall" {
+                    let g = DfGeo::new(target.point, 64, wing_angle(target.point, me), 0, df_reach(target.point, me), 7.0);
+                    (g.ps.0.floor() as i32, g.ps.1.floor() as i32)
+                } else {
+                    (10, -3)
+                };
                 let over = |y: i32| {
                     cmds.iter().any(|(_, c)| {
                         let w: Vec<&str> = c.split_whitespace().collect();
                         w.len() >= 8 && w[0] == "fill" && w[7] == "minecraft:air" && {
                             let n: Vec<i32> = w[1..7].iter().filter_map(|v| v.parse().ok()).collect();
-                            n.len() == 6 && n[0].min(n[3]) <= 10 && n[0].max(n[3]) >= 10 && n[2].min(n[5]) <= -3 && n[2].max(n[5]) >= -3
+                            n.len() == 6 && n[0].min(n[3]) <= cx && n[0].max(n[3]) >= cx && n[2].min(n[5]) <= cz && n[2].max(n[5]) >= cz
                                 && n[1].min(n[4]) <= y && n[1].max(n[4]) >= y
                         }
                     })
@@ -1747,6 +2561,179 @@ mod tests {
                 if let Act::Cmd(c) = a {
                     assert!(block_cost(c).unwrap_or(0) <= 32768, "{c}");
                 }
+            }
+        }
+    }
+
+    const DF_PLAYERS: [[f64; 3]; 7] =
+        [[10.5, 66.0, 60.0], [10.5, 66.0, 4.0], [-150.0, 70.0, -40.0], [200.0, 64.0, 190.0], [10.5, 66.0, -600.0], [700.0, 64.0, -3.0], [-40.0, 90.0, 300.0]];
+    fn df_cmds(mode: usize, me: [f64; 3], dimension: &str) -> Vec<(f32, String)> {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        run_all(plan(&crate::lasers::DOWNFALL, &target, true, dimension, 37.0, me, mode))
+    }
+    fn df_g(mode: usize, me: [f64; 3]) -> DfGeo {
+        let point = [10.5, 65.0, -2.5];
+        DfGeo::new(point, 64, wing_angle(point, me), mode, df_reach(point, me), 37.0)
+    }
+    #[test]
+    fn downfall_never_comes_down_on_the_player() {
+        // whichever way it came in, from wherever the player stands: no part of the hull comes within 40 blocks of
+        // them lower than 80 blocks over them, at any moment of its fall or after; its stern (the black hole) comes to
+        // rest well in front of them; and the chunks blown off it land well clear of them
+        for mode in 0..5 {
+            for me in DF_PLAYERS {
+                let g = df_g(mode, me);
+                assert!((g.ps.0 - me[0]).hypot(g.ps.1 - me[2]) >= 250.0, "mode {mode} {me:?}: the hole is too close");
+                let mut t = DF_FALL0;
+                while t <= 60.0 {
+                    let p = g.pose(t);
+                    for x in (-560..=560).step_by(20) {
+                        for z in (-280..=280).step_by(20) {
+                            let (x, z) = (f64::from(x), f64::from(z));
+                            if ms_half_w(x) < z.abs() {
+                                continue;
+                            }
+                            let w = p.world([x, 0.0, z]);
+                            if (w[0] - me[0]).hypot(w[2] - me[2]) < 40.0 {
+                                assert!(w[1] > me[1] + 80.0, "mode {mode} {me:?}: the hull {} over the player at {t}", w[1] - me[1]);
+                            }
+                        }
+                    }
+                    t += 0.25;
+                }
+                for i in 0..DF_CHUNKS {
+                    if let Some((x, z, _)) = g.chunk_land(i) {
+                        assert!((x - me[0]).hypot(z - me[2]) > 60.0, "mode {mode} {me:?}: chunk {i} lands by the player");
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn downfall_pose_agrees() {
+        for mode in 0..5 {
+            for me in DF_PLAYERS {
+                let g = df_g(mode, me);
+                // hanging there it is the mothership as it stops: its eye over the target, 420 up
+                let eye = g.pose(5.0).world([MS_EM_X, 0.0, 0.0]);
+                assert!((eye[0] - 10.5).abs() < 1e-6 && (eye[2] + 2.5).abs() < 1e-6 && (eye[1] - 485.0).abs() < 1e-6);
+                // its fall is unbroken, and its stern comes to rest at the hole, buried
+                let mut last = g.pose(DF_FALL0 - 0.05).s;
+                let mut t = DF_FALL0;
+                while t < 40.0 {
+                    let s = g.pose(t).s;
+                    let step = ((s[0] - last[0]).powi(2) + (s[1] - last[1]).powi(2) + (s[2] - last[2]).powi(2)).sqrt();
+                    assert!(step < 10.0, "mode {mode}: a jump of {step} at {t}");
+                    last = s;
+                    t += 0.05;
+                }
+                let s = g.pose(45.0).s;
+                assert!((s[0] - g.ps.0).abs() < 1e-6 && (s[2] - g.ps.1).abs() < 1e-6 && (s[1] - (64.0 - DF_EMBED)).abs() < 1e-6);
+                // the meteor's pieces strike its roof while it hangs there, before it falls
+                for j in 0..DF_HITS.len() {
+                    let (_, th) = g.hit(j);
+                    assert!(th > DF_SPLIT + 0.5 && th < DF_FALL0 - 0.5, "{th}");
+                }
+            }
+        }
+    }
+    #[test]
+    fn downfall_real_blocks_agree() {
+        // what the shader draws and what is really done: the blocks the black hole tears up go when it does, from where
+        // its debris starts; each chunk's crater is dug where and when it comes down; the hole's crater is under it
+        for mode in [0, 1, 2] {
+            let me = DF_PLAYERS[mode + 1];
+            let g = df_g(mode, me);
+            let cmds = df_cmds(mode, me, "minecraft:overworld");
+            for i in 0..DFD_N {
+                let (x, z, tr, wreck, big) = g.torn(i);
+                let gy = g.ground(x, z);
+                let y = if wreck { gy + 1 } else { gy - i32::from(big) };
+                let want = if big { format!("fill {} {y} {} {x} {} {z} minecraft:air", x - 1, z - 1, y + 1) } else { format!("setblock {x} {y} {z} minecraft:air") };
+                assert!(cmds.iter().any(|(t, c)| *c == want && (*t - (DF_OPEN + tr)).abs() < 1e-4), "torn {i}: {want}");
+                if wreck {
+                    // and the piece of wreck was lying there
+                    let put = if big { format!("fill {} {} {} {x} {} {z} ", x - 1, gy + 1, z - 1, gy + 2) } else { format!("setblock {x} {} {z} ", gy + 1) };
+                    assert!(cmds.iter().any(|(t, c)| c.starts_with(&put) && *t < DF_OPEN), "wreck {i}");
+                }
+            }
+            for i in 0..DF_CHUNKS {
+                if let Some((x, z, tl)) = g.chunk_land(i) {
+                    let at = surf(x.floor() as i32, z.floor() as i32, "fill");
+                    assert!(cmds.iter().any(|(t, c)| c.starts_with(&at) && (*t - tl).abs() < 0.2), "chunk {i}");
+                }
+            }
+            let (px, pz) = (g.ps.0.floor() as i32, g.ps.1.floor() as i32);
+            assert!(cmds.iter().any(|(t, c)| {
+                let w: Vec<&str> = c.split_whitespace().collect();
+                *t > DF_OPEN && w.len() >= 8 && w[0] == "fill" && w[7] == "minecraft:air" && {
+                    let n: Vec<i32> = w[1..7].iter().filter_map(|v| v.parse().ok()).collect();
+                    n.len() == 6 && n[0] <= px && n[3] >= px && n[2] <= pz && n[5] >= pz && n[1] <= 50
+                }
+            }));
+        }
+    }
+    #[test]
+    fn downfall_fills_fit_and_stay_under_the_sky() {
+        // every fill under the cap, nothing cleared over the build limit, a shaft to bedrock under the hole, and what is
+        // force-loaded is let go again
+        for mode in 0..5 {
+            for me in [DF_PLAYERS[0], DF_PLAYERS[4]] {
+                for (dimension, sky, floor) in [("minecraft:overworld", 319, -59), ("minecraft:the_nether", 122, 5)] {
+                    let cmds = df_cmds(mode, me, dimension);
+                    let mut deepest = i32::MAX;
+                    for (_, c) in &cmds {
+                        assert!(block_cost(c).unwrap_or(0) <= 32768, "{c}");
+                        let run = c.rsplit(" run ").next().unwrap_or(c);
+                        let w: Vec<&str> = run.split_whitespace().collect();
+                        if w.first() == Some(&"fill") {
+                            for k in [2, 5] {
+                                if let Ok(y) = w[k].parse::<i32>() {
+                                    assert!(y <= sky, "{c}");
+                                    deepest = deepest.min(y);
+                                }
+                            }
+                        }
+                    }
+                    // (the lining's patches reach one block into the bedrock floor, as every laser's do)
+                    assert!(deepest == floor || deepest == floor - 1, "mode {mode}: the shaft reaches {deepest}");
+                    let adds = cmds.iter().filter(|(_, c)| c.starts_with("forceload add")).count();
+                    let removes = cmds.iter().filter(|(t, c)| c.starts_with("forceload remove") && *t < crate::lasers::DOWNFALL.length).count();
+                    assert_eq!(adds, removes);
+                    let chunks: i32 = cmds
+                        .iter()
+                        .filter(|(_, c)| c.starts_with("forceload add"))
+                        .map(|(_, c)| {
+                            let n: Vec<i32> = c.split_whitespace().skip(2).map(|v| v.parse().unwrap()).collect();
+                            ((n[2] >> 4) - (n[0] >> 4) + 1) * ((n[3] >> 4) - (n[1] >> 4) + 1)
+                        })
+                        .sum();
+                    assert!(chunks <= 700, "{chunks} chunks");
+                }
+            }
+        }
+    }
+    #[test]
+    fn downfall_shakes_hardest_at_the_crash() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        for mode in 0..5 {
+            for me in DF_PLAYERS {
+                let mut ev = plan(&crate::lasers::DOWNFALL, &target, false, "minecraft:overworld", 37.0, me, mode);
+                let mut jolts = Vec::new();
+                while let Some((t, act)) = ev.pop() {
+                    match act {
+                        Act::Shake { strength, seconds } => jolts.push((t, strength, seconds)),
+                        Act::Later(job) => ev.extend(job()),
+                        _ => {}
+                    }
+                }
+                for &(t, s, d) in &jolts {
+                    assert!(s > 0.0 && s <= 1.0 && (0.05..=30.0).contains(&d) && t < crate::lasers::DOWNFALL.length, "{s} {d} at {t}");
+                }
+                let g = df_g(mode, me);
+                let crash = DF_FALL1 + (((g.c0.0 - me[0]).powi(2) + (64.0 - me[1]).powi(2) + (g.c0.1 - me[2]).powi(2)).sqrt() / 343.0) as f32;
+                let hardest = jolts.iter().fold((0.0, 0.0), |a, j| if j.1 > a.1 { (j.0, j.1) } else { a });
+                assert!((hardest.0 - crash).abs() < 1e-3, "mode {mode} {me:?}: hardest at {} not {crash}", hardest.0);
             }
         }
     }

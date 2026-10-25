@@ -18,7 +18,7 @@ use horizon_mod_sdk::{
     input::{self, Event},
     log, render, storage, ui, world,
 };
-use lasers::LASERS;
+use lasers::{LASERS, is_ship};
 use strike::{APPROACHES, ARRIVALS, Act, FIRE, Target};
 
 const DESIGNATOR: &str = "orbital:laser_designator";
@@ -26,6 +26,8 @@ const REMOTE: &str = "orbital:remote";
 /// Ticks of holding the designator on a target before it fires.
 const LOCK_TICKS: u32 = 14;
 const SHADER: &str = include_str!("../shaders/strike.wgsl");
+/// The downfall's own pass: strike.wgsl up to its fs_main, then this (see shaders/downfall.wgsl).
+const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
 const SETTINGS: &str = "settings";
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
 /// carves its crater over a few seconds instead of freezing the game for one.
@@ -42,17 +44,23 @@ struct Strike {
 }
 
 struct Orbital {
-    /// Frames since the world loaded, until the post pass has been compiled once (see `frame`).
-    warm: u8,
+    /// The two post passes (0 every laser's, 1 the downfall's), the one the game last compiled, and the ones waiting to
+    /// be compiled ahead of a strike, and whether one is being now (see `frame`).
+    passes: [String; 2],
+    compiled: Option<usize>,
+    warm_queue: Vec<usize>,
+    warming: bool,
     /// World changes waiting for room in a tick's block budget, in order; they outlive the strike that made them.
     carving: std::collections::VecDeque<(u64, String)>,
     /// World changes that wait for spare block budget (`Act::Spare`): what stands high over a blast.
     spare: std::collections::VecDeque<(u64, String)>,
     laser: usize,
     terrain: bool,
-    /// Which way the mothership comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
+    /// Which way the ship lasers' ship comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
     approach: usize,
     arrival: usize,
+    /// The wheel's page last shown.
+    page: usize,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     strike: Option<Strike>,
@@ -66,32 +74,35 @@ struct Orbital {
 impl Orbital {
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\napproach={}\narrival={}\n",
+            "laser={}\nterrain={}\napproach={}\narrival={}\npage={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             APPROACHES[self.approach].key,
-            ARRIVALS[self.arrival].key
+            ARRIVALS[self.arrival].key,
+            self.page
         );
         if let Err(e) = storage::set(SETTINGS, text.as_bytes()) {
             log::write(log::Level::Warn, &format!("settings not saved: {e}"));
         }
     }
-    fn load() -> (usize, bool, usize, usize) {
+    fn load() -> (usize, bool, usize, usize, usize) {
         let text = storage::get(SETTINGS).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
         let mut laser = 0;
         let mut terrain = true;
         let mut approach = 0;
         let mut arrival = 0;
+        let mut page = 0;
         for line in text.lines() {
             match line.split_once('=') {
                 Some(("laser", k)) => laser = LASERS.iter().position(|l| l.key == k).unwrap_or(0),
                 Some(("terrain", v)) => terrain = v != "0",
                 Some(("approach", k)) => approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
+                Some(("page", v)) => page = v.parse::<usize>().unwrap_or(0).min(wheel::pages() - 1),
                 _ => {}
             }
         }
-        (laser, terrain, approach, arrival)
+        (laser, terrain, approach, arrival, page)
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -99,7 +110,7 @@ impl Orbital {
 
     // ---- the wheel ----
     fn open_wheel(&mut self) {
-        let mut w = wheel::Wheel::default();
+        let mut w = wheel::Wheel::on_page(self.page);
         if let Some(c) = ui::cursor() {
             w.hover_at(c.x, c.y, self.laser);
         }
@@ -107,9 +118,17 @@ impl Orbital {
         self.wheel = Some(w);
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
+    fn turn_page(&mut self, k: usize) {
+        let Some(w) = &mut self.wheel else { return };
+        w.turn(k);
+        self.page = w.page;
+        ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
+        world::play_sound("minecraft:ui.button.click", None, 0.5, 1.2);
+        self.save();
+    }
     fn wheel_click(&mut self, x: f32, y: f32) {
-        let row = self.wheel.as_ref().is_some_and(|w| w.row_shown(self.laser));
-        match wheel::spot(x, y, row) {
+        let (row, page) = self.wheel.as_ref().map_or((None, self.page), |w| (w.row_laser(self.laser), w.page));
+        match wheel::spot(x, y, row.is_some(), page) {
             Some(wheel::Spot::Laser(i)) => {
                 self.laser = i;
                 self.save();
@@ -119,10 +138,11 @@ impl Orbital {
                 Self::actionbar(&format!("{} LOADED", l.title), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
+            Some(wheel::Spot::Page(k)) => self.turn_page(k),
             Some(wheel::Spot::Approach(a)) => {
-                // picking how it comes in loads the mothership too
+                // picking how it comes in loads the ship laser the row is for too
                 self.approach = a;
-                self.laser = wheel::mothership();
+                self.laser = row.unwrap_or(self.laser);
                 self.save();
                 ui::close();
                 self.wheel = None;
@@ -132,7 +152,7 @@ impl Orbital {
             }
             Some(wheel::Spot::Arrival(a)) => {
                 self.arrival = a;
-                self.laser = wheel::mothership();
+                self.laser = row.unwrap_or(self.laser);
                 self.save();
                 ui::close();
                 self.wheel = None;
@@ -175,11 +195,16 @@ impl Orbital {
         params[8] = seed;
         params[9] = 1.0;
         params[11] = hit.block_y as f32;
-        if laser.key == "mothership" {
+        if is_ship(laser) {
             params[12] = self.approach as f32;
             params[13] = self.arrival as f32;
         }
-        render::set_post(SHADER);
+        if laser.key == "downfall" {
+            params[14] = strike::df_reach(target.point, me);
+        }
+        let pass = usize::from(laser.key == "downfall");
+        render::set_post(&self.passes[pass]);
+        self.compiled = Some(pass);
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         self.strike = Some(Strike { plan, next: 0, ticks: 0, length: laser.length, params });
@@ -273,7 +298,7 @@ impl Orbital {
                 (format!("Laser: {}", l.title), l.rgb),
                 (format!("Terrain damage: {}", if self.terrain { "on" } else { "off" }), 0xA8B0BC),
             ];
-            if l.key == "mothership" {
+            if is_ship(l) {
                 lines.push((format!("Approach: {}", APPROACHES[self.approach].label), 0xA8B0BC));
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
             }
@@ -302,15 +327,20 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let (laser, terrain, approach, arrival) = Orbital::load();
+        let (laser, terrain, approach, arrival, page) = Orbital::load();
         let state = Orbital {
-            warm: 0,
+            passes: [SHADER.to_string(), format!("{}{DOWNFALL_PASS}", &SHADER[..SHADER.find("\n@fragment").map_or(SHADER.len(), |i| i + 1)])],
+            compiled: None,
+            // both compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
+            warm_queue: vec![usize::from(LASERS[laser].key == "downfall"), usize::from(LASERS[laser].key != "downfall")],
+            warming: false,
             carving: std::collections::VecDeque::new(),
             spare: std::collections::VecDeque::new(),
             laser,
             terrain,
             approach,
             arrival,
+            page,
             aiming: None,
             strike: None,
             wheel: None,
@@ -335,6 +365,7 @@ impl Mod for Orbital {
                 Event::UseStop(u) if u.item.id == DESIGNATOR => self.aiming = None,
                 Event::KeyDown(k) if k == "wheel" => self.open_wheel(),
                 Event::ScreenClick(c) if c.button == 0 => self.wheel_click(c.x, c.y),
+                Event::ScreenClick(c) if c.button == 1 => self.turn_page(self.page + 1),
                 Event::ScreenClosed => self.wheel = None,
                 _ => {}
             }
@@ -357,17 +388,28 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         self.since_tick += seconds;
-        // Compile the post pass as the world loads, not when the first strike fires (that costs about a second): set
-        // it for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
-        // the compiled pass for the strikes after.
-        if self.warm < 2 && self.strike.is_none() {
-            if self.warm == 0 {
-                render::set_post(SHADER);
-                render::set_params(&[0.0; 16]);
-            } else {
+        // Compile the post passes as the world loads, not when the first strike fires (that costs about a second): set
+        // each for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
+        // the last one compiled for the strikes after; loading a laser that needs the other one compiles that one the
+        // same way (quickly, the driver has kept it), there and then rather than as it fires.
+        let want = usize::from(LASERS[self.laser].key == "downfall");
+        if self.warm_queue.is_empty() && !self.warming && self.compiled != Some(want) && self.strike.is_none() {
+            self.warm_queue.push(want);
+        }
+        if self.strike.is_none() {
+            if self.warming {
                 render::clear_post();
+                self.warming = false;
+            } else if !self.warm_queue.is_empty() {
+                let pass = self.warm_queue.remove(0);
+                render::set_post(&self.passes[pass]);
+                render::set_params(&[0.0; 16]);
+                self.compiled = Some(pass);
+                self.warming = true;
             }
-            self.warm += 1;
+        } else {
+            self.warm_queue.clear();
+            self.warming = false;
         }
         if let Some(s) = &mut self.strike {
             s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
@@ -394,12 +436,12 @@ impl Mod for Orbital {
             (Some("approach"), Some(k)) if APPROACHES.iter().any(|a| a.key == k) => {
                 self.approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0);
                 self.save();
-                Ok(Some(format!("The mothership comes in {}", APPROACHES[self.approach].label)))
+                Ok(Some(format!("The ship comes in {}", APPROACHES[self.approach].label)))
             }
             (Some("arrival"), Some(k)) if ARRIVALS.iter().any(|a| a.key == k) => {
                 self.arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0);
                 self.save();
-                Ok(Some(format!("The mothership {}", ARRIVALS[self.arrival].label)))
+                Ok(Some(format!("The ship {}", ARRIVALS[self.arrival].label)))
             }
             (Some("terrain"), Some(v @ ("on" | "off"))) => {
                 self.terrain = v == "on";

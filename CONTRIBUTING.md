@@ -20,8 +20,10 @@ any size is welcome: a bug report, a test on your PC, a fix, or taking over a wh
 - **Multiplayer.** The world changes run as server commands in a world the game itself runs, and the effects are drawn
   only for the player who fired. Server mods and a `net` channel in Horizon would let a strike be seen by everyone.
 - **Undo.** Terrain damage is permanent. A snapshot-and-restore of the blasted region would make it much safer to use.
-- **More lasers.** A laser is an entry in `mod/src/lasers.rs`, a branch in `mod/shaders/strike.wgsl`, what it leaves
-  behind in `mod/src/strike.rs`, sounds in `tools/sounds_themes.py` and an icon in `tools/make_item_textures.py`.
+- **More lasers.** A laser is an entry in `mod/src/lasers.rs`, a branch in `mod/shaders/strike.wgsl` (or, for a big one
+  like the Downfall, its own pass appended to it, as `mod/shaders/downfall.wgsl`: one pass with everything in it is
+  harder for the GPU's compiler to fit and slows every laser), what it leaves behind in `mod/src/strike.rs`, sounds in
+  `tools/sounds_themes.py` and an icon in `tools/make_item_textures.py`. The wheel takes five a page.
 - **Shader cost.** It's one full-screen pass with a lot of noise in it, Plasma traces a volume, and the Black Hole
   marches rays through its gravity and tests 160 pieces of debris per pixel, the Meteor Storm traces 72 meteors'
   trails and a fireball volume, and the Mothership's arrival and departure average its hull over a shutter. Cheaper versions that
@@ -42,7 +44,7 @@ any size is welcome: a bug report, a test on your PC, a fix, or taking over a wh
 
 ## Testing a change
 
-- **Shader:** run `tools/check-shader.sh`, which validates it after the fork's mod pass prelude (a copy is in
+- **Shader:** run `tools/check-shader.sh`, which validates both passes after the fork's mod pass prelude (a copy is in
   `tools/wgslcheck/prelude.wgsl`); it must print `OK`. In the game a broken pass is skipped and the reason logged.
 - **Mod:** `python3 tools/build_mod.py --install ~/.local/share/horizon`, then `./play.sh` in a throwaway world. Switch
   terrain damage off (`/orbital terrain off`) for the first strike, then check a full strike: the chat stays empty, the

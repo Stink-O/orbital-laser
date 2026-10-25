@@ -30,7 +30,8 @@ python3 install.py                  # install the mod into Horizon's game folder
 python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
 ```
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor` or `mothership`, `/orbital approach …`, `/orbital arrival …`, `/orbital terrain on|off`.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` or `downfall`, `/orbital approach …`, `/orbital arrival …`, `/orbital terrain on|off`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall is on the second.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
@@ -46,7 +47,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 - `mod/`: the mod (Rust for `wasm32-unknown-unknown`): `src/lib.rs` hooks, designator and strike playback,
   `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan, `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
-  pass, `horizon-mod.toml` the manifest (api 0.2 with `registries` for the content).
+  pass, `shaders/downfall.wgsl` the Downfall's own pass (the mod appends it to `strike.wgsl` up to its `fs_main`),
+  `horizon-mod.toml` the manifest (api 0.2 with `registries` for the content).
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.
 - `orbital-laser-shader/`, `strike.py`, `themes.py`: 0.1's setup for stock Horizon (`install.py --legacy`).
 
@@ -62,6 +64,6 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 ## Verifying work
 
-Shader: `tools/check-shader.sh` prints `OK` (the prelude + `mod/shaders/strike.wgsl`). Mod: build, install, `./play.sh`, one
+Shader: `tools/check-shader.sh` prints `OK` (both passes: the prelude + `mod/shaders/strike.wgsl`, and the Downfall's). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).

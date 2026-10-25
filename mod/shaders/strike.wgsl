@@ -23,6 +23,9 @@
 //   4 Mothership  a slab of dark metal a kilometre long drops out of hyperspace over the target and stops dead, its
 //              shadow on the land; its emitters' green beams meet under it, and one beam comes down and sweeps away,
 //              cutting a molten trench; then it is gone (`mothership`)
+//   5 Downfall  its own pass (shaders/downfall.wgsl, after everything here up to fs_main): the mothership brought down
+//              by a meteor, its black hole engine rupturing (`downfall`). [3].z there is how far downrange its stern
+//              comes to rest. Kept out of this pass so its size costs the other lasers nothing.
 
 fn target_x() -> f32 { return frame.mod_params[0].x; }
 fn target_y() -> f32 { return frame.mod_params[0].y; }
@@ -423,6 +426,134 @@ fn debris_tex(kind: i32, px: vec2<f32>, top: bool, side_y: f32, seed: f32) -> ve
     }
 }
 
+// What a view ray brings back past a black hole at `H` (camera-relative) of horizon radius `rs_l`: it is marched through
+// the hole's gravity (the photon orbit equation, in horizon radii), picking up the disk's light (`acc`, seen through
+// `trans` of it) where it crosses the disk's plane (normal `n`, `e1` `e2` in it), and either falls in (`captured`), ends
+// on the scene (`hit`), or leaves along `v` from `p` (camera-relative) and resamples the scene that way (`bent`; `w`
+// how much the bending counts). `on`: whether the ray came near enough to be bent at all.
+struct BhLens {
+    on: bool,
+    captured: bool,
+    hit: bool,
+    bent: vec3<f32>,
+    trans: f32,
+    acc: vec3<f32>,
+    rmin: f32,
+    p: vec3<f32>,
+    v: vec3<f32>,
+    w: f32,
+}
+fn bh_lens(H: vec3<f32>, rs_l: f32, rd: vec3<f32>, uv2: vec2<f32>, scene_len: f32, sky: bool, n: vec3<f32>, e1: vec3<f32>,
+           e2: vec3<f32>, disk_env: f32, hot: f32, seed: f32, time: f32, sky_env: f32, dim: f32) -> BhLens {
+    var L: BhLens;
+    L.on = false;
+    L.captured = false;
+    L.hit = false;
+    L.bent = vec3<f32>(0.0);
+    L.trans = 1.0;
+    L.acc = vec3<f32>(0.0);
+    L.rmin = 1.0e9;
+    L.p = vec3<f32>(0.0);
+    L.v = rd;
+    L.w = 0.0;
+    let infl = LENS_R * rs_l;
+    let tc = dot(H, rd);
+    let b = length(H - rd * tc);
+    let t0 = max(tc - infl, 0.0);
+    if (b < infl && tc + infl > 0.0 && scene_len > t0) {
+        L.on = true;
+        var pp = (rd * t0 - H) / rs_l;                     // the ray, relative to the hole, in horizon radii
+        var v = rd;
+        var travel = t0;
+        let hv = cross(pp, v);
+        let h2 = dot(hv, hv);
+        var trans = 1.0;
+        var acc = vec3<f32>(0.0);
+        var captured = false;
+        var hit = false;
+        var rmin = 1.0e9;
+        for (var i = 0; i < 96; i = i + 1) {
+            let r = length(pp);
+            rmin = min(rmin, r);
+            if (r < 1.0) {
+                captured = true;
+                break;
+            }
+            if (r > LENS_R + 0.5 && dot(pp, v) > 0.0) {
+                break;
+            }
+            let dt = clamp((r - 0.9) * 0.16, 0.03, 1.5);
+            let prev = pp;
+            let r2 = r * r;
+            v = normalize(v - 1.5 * h2 * pp / (r2 * r2 * r) * dt);
+            pp = pp + v * dt;
+            travel = travel + dt * rs_l;
+            if (!sky && travel > scene_len) {
+                hit = true;
+                break;
+            }
+            // crossing the disk's plane: its light, seen through whatever bending got the ray here
+            let s0 = dot(prev, n);
+            let s1 = dot(pp, n);
+            if (disk_env > 0.001 && s0 * s1 < 0.0) {
+                let x = mix(prev, pp, s0 / (s0 - s1));
+                let dr = length(x);
+                if (dr > DISK_IN * 0.9 && dr < DISK_OUT) {
+                    let dx = vec2<f32>(dot(x, e1), dot(x, e2));
+                    // inner rings turn faster than outer ones (Kepler), so the gas shears into streaks
+                    let rot = -time * 5.5 / pow(dr, 1.5);
+                    let q = vec2<f32>(dx.x * cos(rot) - dx.y * sin(rot), dx.x * sin(rot) + dx.y * cos(rot));
+                    let nz = fbm(q * 0.9 + vec2<f32>(seed, 3.0));
+                    let bands = 0.55 + 0.45 * sin(dr * 7.0 + nz * 7.0);
+                    let dens = saturate(bands * (0.35 + 1.1 * nz));
+                    let edge = smoothstep(DISK_IN * 0.9, DISK_IN * 1.15, dr) * (1.0 - smoothstep(DISK_OUT * 0.55, DISK_OUT, dr));
+                    // the side turning towards you is brighter and bluer (relativistic beaming)
+                    let tdir = normalize(cross(n, x));
+                    let beta = 0.62 * sqrt(DISK_IN / dr);
+                    let g = sqrt(1.0 - beta * beta) / (1.0 - beta * dot(tdir, -v));
+                    let temp = pow(DISK_IN / dr, 0.85) * (0.7 + 0.4 * nz) * g * 0.95 * hot;
+                    let a_d = saturate(dens * edge * 1.1) * disk_env;
+                    acc = acc + trans * a_d * disk_ramp(temp) * min(g * g * g, 4.0) * 1.6;
+                    trans = trans * (1.0 - a_d * 0.92);
+                }
+            }
+            if (trans < 0.02) {
+                break;
+            }
+        }
+        // how much the bending counts: all of it near the hole, none at the edge, so it meets the unbent world
+        let w = 1.0 - smoothstep(LENS_R * 0.35, LENS_R * 0.95, rmin);
+        var bent = vec3<f32>(0.0);
+        if (!captured) {
+            let dir_b = normalize(mix(rd, v, w));
+            var far = H + pp * rs_l + v * 4000.0;
+            if (hit) {
+                far = H + pp * rs_l;
+            }
+            let pr = project_rel(far);
+            let uvb = mix(uv2, pr.xy, w);
+            let on = pr.z > 0.0 && all(uvb > vec2<f32>(0.001)) && all(uvb < vec2<f32>(0.999));
+            if (on || w < 0.01) {
+                bent = bh_scene(clamp(uvb, vec2<f32>(0.001), vec2<f32>(0.999)), dir_b, seed, sky_env, dim);
+            } else if (dir_b.y > -0.03) {
+                bent = bh_sky(dir_b, seed) * sky_env + vec3<f32>(0.03, 0.025, 0.04) * (1.0 - sky_env);
+            } else {
+                bent = vec3<f32>(0.02, 0.016, 0.022) * dim;
+            }
+        }
+        L.captured = captured;
+        L.hit = hit;
+        L.bent = bent;
+        L.trans = trans;
+        L.acc = acc;
+        L.rmin = rmin;
+        L.p = H + pp * rs_l;
+        L.v = v;
+        L.w = w;
+    }
+    return L;
+}
+
 fn singularity(in: StageIn) -> vec4<f32> {
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
@@ -508,94 +639,12 @@ fn singularity(in: StageIn) -> vec4<f32> {
 
     // ---- the lens: march the ray through the hole's gravity --------------------
     if (rs_l > 0.02) {
-        let infl = LENS_R * rs_l;
-        let tc = dot(H, rd);
-        let b = length(H - rd * tc);
-        let t0 = max(tc - infl, 0.0);
-        if (b < infl && tc + infl > 0.0 && scene_len > t0) {
-            var pp = (rd * t0 - H) / rs_l;                     // the ray, relative to the hole, in horizon radii
-            var v = rd;
-            var travel = t0;
-            let hv = cross(pp, v);
-            let h2 = dot(hv, hv);
-            var trans = 1.0;
-            var acc = vec3<f32>(0.0);
-            var captured = false;
-            var hit = false;
-            var rmin = 1.0e9;
-            for (var i = 0; i < 96; i = i + 1) {
-                let r = length(pp);
-                rmin = min(rmin, r);
-                if (r < 1.0) {
-                    captured = true;
-                    break;
-                }
-                if (r > LENS_R + 0.5 && dot(pp, v) > 0.0) {
-                    break;
-                }
-                let dt = clamp((r - 0.9) * 0.16, 0.03, 1.5);
-                let prev = pp;
-                let r2 = r * r;
-                v = normalize(v - 1.5 * h2 * pp / (r2 * r2 * r) * dt);
-                pp = pp + v * dt;
-                travel = travel + dt * rs_l;
-                if (!sky && travel > scene_len) {
-                    hit = true;
-                    break;
-                }
-                // crossing the disk's plane: its light, seen through whatever bending got the ray here
-                let s0 = dot(prev, n);
-                let s1 = dot(pp, n);
-                if (disk_env > 0.001 && s0 * s1 < 0.0) {
-                    let x = mix(prev, pp, s0 / (s0 - s1));
-                    let dr = length(x);
-                    if (dr > DISK_IN * 0.9 && dr < DISK_OUT) {
-                        let dx = vec2<f32>(dot(x, e1), dot(x, e2));
-                        // inner rings turn faster than outer ones (Kepler), so the gas shears into streaks
-                        let rot = -time * 5.5 / pow(dr, 1.5);
-                        let q = vec2<f32>(dx.x * cos(rot) - dx.y * sin(rot), dx.x * sin(rot) + dx.y * cos(rot));
-                        let nz = fbm(q * 0.9 + vec2<f32>(seed, 3.0));
-                        let bands = 0.55 + 0.45 * sin(dr * 7.0 + nz * 7.0);
-                        let dens = saturate(bands * (0.35 + 1.1 * nz));
-                        let edge = smoothstep(DISK_IN * 0.9, DISK_IN * 1.15, dr) * (1.0 - smoothstep(DISK_OUT * 0.55, DISK_OUT, dr));
-                        // the side turning towards you is brighter and bluer (relativistic beaming)
-                        let tdir = normalize(cross(n, x));
-                        let beta = 0.62 * sqrt(DISK_IN / dr);
-                        let g = sqrt(1.0 - beta * beta) / (1.0 - beta * dot(tdir, -v));
-                        let temp = pow(DISK_IN / dr, 0.85) * (0.7 + 0.4 * nz) * g * 0.95 * hot;
-                        let a_d = saturate(dens * edge * 1.1) * disk_env;
-                        acc = acc + trans * a_d * disk_ramp(temp) * min(g * g * g, 4.0) * 1.6;
-                        trans = trans * (1.0 - a_d * 0.92);
-                    }
-                }
-                if (trans < 0.02) {
-                    break;
-                }
-            }
-            // how much the bending counts: all of it near the hole, none at the edge, so it meets the unbent world
-            let w = 1.0 - smoothstep(LENS_R * 0.35, LENS_R * 0.95, rmin);
-            var bent = vec3<f32>(0.0);
-            if (!captured) {
-                let dir_b = normalize(mix(rd, v, w));
-                var far = H + pp * rs_l + v * 4000.0;
-                if (hit) {
-                    far = H + pp * rs_l;
-                }
-                let pr = project_rel(far);
-                let uvb = mix(uv2, pr.xy, w);
-                let on = pr.z > 0.0 && all(uvb > vec2<f32>(0.001)) && all(uvb < vec2<f32>(0.999));
-                if (on || w < 0.01) {
-                    bent = bh_scene(clamp(uvb, vec2<f32>(0.001), vec2<f32>(0.999)), dir_b, seed, sky_env, dim);
-                } else if (dir_b.y > -0.03) {
-                    bent = bh_sky(dir_b, seed) * sky_env + vec3<f32>(0.03, 0.025, 0.04) * (1.0 - sky_env);
-                } else {
-                    bent = vec3<f32>(0.02, 0.016, 0.022) * dim;
-                }
-            }
-            col = bent * trans + acc * k;
-            swallowed = captured;
+        let L = bh_lens(H, rs_l, rd, uv2, scene_len, sky, n, e1, e2, disk_env, hot, seed, time, sky_env, dim);
+        if (L.on) {
+            col = L.bent * L.trans + L.acc * k;
+            swallowed = L.captured;
             // the photon ring: light that went round the hole before getting out
-            add = add + vec3<f32>(2.6, 1.7, 1.0) * exp(-pow((rmin - 1.52) / 0.05, 2.0)) * disk_env * select(1.0, 0.0, captured) * 1.4 * k;
+            add = add + vec3<f32>(2.6, 1.7, 1.0) * exp(-pow((L.rmin - 1.52) / 0.05, 2.0)) * disk_env * select(1.0, 0.0, L.captured) * 1.4 * k;
         }
     }
 
@@ -1793,6 +1842,10 @@ fn ms_hull(h: MsHit, f: MsFrame, rd: vec3<f32>, time: f32, lit: f32, chase_on: f
                 tone = tone * (0.4 + 0.6 * smoothstep(0.5, 1.0, abs(fract(dd / 2.0) - 0.5) * 2.0));
             }
         }
+        if (h.h >= MS_TOP) {
+            // (the roof, seen from above: the downfall's ship as it rolls)
+            nl.y = -nl.y;
+        }
         // the decks' edges bevelled, catching the light from round the side
         let edge = -ms_tier(q, h.kind);
         let bevel = (1.0 - smoothstep(0.0, 2.5 + fp, edge)) * select(1.0, 0.0, h.kind == 0 && ms_eye(q) < 2.0);
@@ -1910,6 +1963,115 @@ fn ms_hull(h: MsHit, f: MsFrame, rd: vec3<f32>, time: f32, lit: f32, chase_on: f
     return mix(c, haze * 0.6, hz * 0.35) + emit * exp(-h.t / 3000.0);
 }
 
+// The air reacting to the mothership as it comes (the clouds stirring before it), as it stops (a pressure ripple
+// running out through the cloud layer, `tr` seconds after) and just after (a shimmer of heat round its edges): seen only
+// as the world bending, so it comes back as the offset of the picture at `uv`.
+fn ms_air(uv: vec2<f32>, cam: vec3<f32>, p0: vec3<f32>, sky0: bool, stir: f32, tr: f32, wake: f32, base: MsFrame, f: MsFrame,
+          time: f32, seed: f32, k: f32) -> vec2<f32> {
+    var off = vec2<f32>(0.0);
+    if (stir > 0.001 && !sky0 && abs(p0.y - CLOUD_Y - 2.0) < 6.0) {
+        // before it comes the clouds start to stir, as if the air is being pushed aside
+        let sw = vec2<f32>(gnoise2(p0.xz * 0.012 + vec2<f32>(time * 0.35, seed)), gnoise2(p0.xz * 0.012 + vec2<f32>(7.0, time * 0.3))) - 0.5;
+        off = off + sw * 0.014 * stir * stir * k;
+    }
+    // the air reacting to it: a pressure ripple running out through the cloud layer and the air below it as it stops
+    // (and again as it goes), seen only as the world bending, and a shimmer of heat round its edges for a second
+    let rd0 = normalize(world_offset(uv, 0.5));
+    if (tr > 0.0 && tr < 6.0 && abs(rd0.y) > 1.0e-3) {
+        let t_cl = (CLOUD_Y - cam.y) / rd0.y;
+        if (t_cl > 0.0 && (sky0 || t_cl < length(p0 - cam) + 40.0)) {
+            let rr = length(cam.xz + rd0.xz * t_cl - base.c);
+            let ripple = exp(-pow((rr - tr * 650.0) / (40.0 + tr * 15.0), 2.0)) * exp(-tr * 0.8);
+            let pr = project_rel(vec3<f32>(base.c.x, CLOUD_Y, base.c.y) - cam);
+            let rdir = uv - pr.xy;
+            off = off + rdir / max(length(rdir), 1.0e-4) * ripple * 0.012 * pr.z * k;
+        }
+    }
+    if (wake > 0.0 && wake < 1.2 && rd0.y > 1.0e-3 && cam.y < base.y0) {
+        let qe = ms_local(f, cam.xz + rd0.xz * ((base.y0 + 20.0 - cam.y) / rd0.y));
+        let m = exp(-pow(ms_tier(qe, 2) / 18.0, 2.0)) * (1.0 - wake / 1.2);
+        if (m > 0.01) {
+            let hw = vec2<f32>(gnoise2(uv * vec2<f32>(120.0, 60.0) + vec2<f32>(0.0, time * 6.0)), gnoise2(uv * vec2<f32>(120.0, 60.0) + vec2<f32>(17.0, time * 5.0))) - 0.5;
+            off = off + hw * 0.006 * m * k;
+        }
+    }
+    return off;
+}
+
+// The mothership's arrival in light: the point it unfolds out of, the warp streak it pulls out of, its exhaust
+// streaming out behind it while it moves fast.
+fn ms_arrival_fx(f: MsFrame, base: MsFrame, cam: vec3<f32>, rd: vec3<f32>, sky: bool, scene_len: f32, ta: f32, mode: i32, style: i32,
+                 blurring: bool, present: bool, k: f32) -> vec3<f32> {
+    var add = vec3<f32>(0.0);
+    // the unfold: the point it bursts out of, a tiny bright star far off where it is coming from, swelling into it
+    if (style == 1 && ta >= 0.0 && ta < MS_IN) {
+        let pc = vec3<f32>(ms_world(f, vec2<f32>(0.0)).x, f.y0 + 40.0 * f.sy, ms_world(f, vec2<f32>(0.0)).y) - cam;
+        let tp = dot(pc, rd);
+        if (tp > 0.0 && (sky || tp < scene_len)) {
+            let ang = length(pc - rd * tp) / tp;
+            let born = pow(1.0 - f.sx, 1.5);
+            add = add + (vec3<f32>(4.0, 6.0, 4.0) * exp(-pow(ang / 0.0025, 2.0)) + vec3<f32>(0.4, 1.6, 0.5) * exp(-ang / 0.012) * 0.5) * born * k;
+        }
+    }
+    if (style == 2 && ta > -0.3 && ta < 0.06) {
+        // the warp: the streak it comes in on, racing in along its path from far off and snapping into it
+        let up = mode == 4;
+        let head = MS_HL - 30000.0 * pow(saturate(-ta / 0.3), 2.0);
+        let a2 = ms_world(base, vec2<f32>(select(head, 0.0, up), 0.0));
+        let b2 = ms_world(base, vec2<f32>(select(head - 30000.0, 0.0, up), 0.0));
+        let ya = base.y0 + select(30.0, MS_TOP - head + MS_HL, up);
+        let q = ray_seg(rd, vec3<f32>(a2.x, ya, a2.y) - cam, vec3<f32>(b2.x, ya + select(0.0, 30000.0, up), b2.y) - cam);
+        let w = max(3.0, q.y * 0.0015);
+        let vis = select(1.0, 0.0, !sky && q.y > scene_len);
+        add = add + vec3<f32>(1.2, 2.6, 1.5) * exp(-pow(q.x / w, 2.0)) * (3.0 / w) * 2.0 * smoothstep(-0.3, -0.1, ta) * (1.0 - smoothstep(0.0, 0.06, ta)) * vis * k;
+    }
+    if (blurring && present) {
+        // its engines' exhaust streaming out behind it while it moves
+        for (var j = 0; j < 5; j = j + 1) {
+            let zc = (f32(j) - 2.0) * 90.0;
+            let e0 = ms_world(f, vec2<f32>(-MS_HL, zc));
+            let e1 = ms_world(f, vec2<f32>(-MS_HL - 260.0, zc));
+            let q = ray_seg(rd, vec3<f32>(e0.x, f.y0 + 103.0 * f.sy, e0.y) - cam, vec3<f32>(e1.x, f.y0 + 103.0 * f.sy, e1.y) - cam);
+            let w = max(16.0 + 30.0 * q.z, q.y * 0.0015);
+            let vis = select(1.0, 0.0, !sky && q.y > scene_len);
+            add = add + vec3<f32>(0.4, 2.2, 0.6) * exp(-pow(q.x / w, 2.0)) * (16.0 / w) * (1.0 - q.z) * 0.8 * vis * k;
+        }
+    }
+    return add;
+}
+
+// The mothership's charge: its emitters' beams converging under the eye on `focus` (camera-relative), and the blinding
+// point of light gathering there. `ship_t`: how far off the hull is along the view (the beams pass behind it).
+fn ms_charge_fx(f: MsFrame, cam: vec3<f32>, rdb: vec3<f32>, focus: vec3<f32>, sky: bool, scene_len: f32, ship_t: f32, conv_env: f32,
+                core_env: f32, present: bool, time: f32, k: f32) -> vec3<f32> {
+    var add = vec3<f32>(0.0);
+    // ---- the charge: the emitters' beams converging under the eye, a blinding point of light gathering there ----
+    if (conv_env > 0.001 && present) {
+        let rad = 30.0;
+        for (var i = 0; i < 6; i = i + 1) {
+            let a = f32(i) * TAU / 6.0;
+            let ew = ms_world(f, vec2<f32>(MS_EM_X + cos(a) * rad, sin(a) * rad));
+            let e3 = vec3<f32>(ew.x, f.y0 + MS_EYE_UP, ew.y) - cam;
+            let q = ray_seg(rdb, e3, focus);
+            let w = max(1.2 + 0.8 * core_env, q.y * 0.0012);
+            let vis = select(1.0, 0.0, (!sky && q.y > scene_len) || q.y > ship_t + 1.0);
+            let flick = 0.8 + 0.2 * sin(time * 40.0 + f32(i) * 2.1);
+            add = add + (vec3<f32>(2.6, 4.8, 2.6) * exp(-pow(q.x / (w * 0.5), 2.0)) + vec3<f32>(0.15, 1.4, 0.3) * exp(-pow(q.x / (w * 2.5), 2.0)))
+                * (1.2 / w) * conv_env * flick * vis * k;
+        }
+    }
+    if (core_env > 0.001) {
+        let tc = dot(focus, rdb);
+        if (tc > 0.0) {
+            let dc = length(focus - rdb * tc);
+            let R = (1.0 + 3.5 * core_env) * (1.0 + 0.08 * sin(time * 33.0));
+            let vis = select(1.0, 0.2, !sky && tc > scene_len);
+            add = add + (vec3<f32>(5.0, 6.0, 5.0) * exp(-pow(dc / R, 2.0)) + vec3<f32>(0.6, 2.6, 0.8) * exp(-dc / R) * 0.9 + vec3<f32>(0.12, 0.7, 0.2) * exp(-dc / (R * 5.0)) * 0.4) * core_env * vis * k;
+        }
+    }
+    return add;
+}
+
 fn mothership(in: StageIn) -> vec4<f32> {
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
@@ -1977,34 +2139,8 @@ fn mothership(in: StageIn) -> vec4<f32> {
     let d0 = depth_at(uv);
     let sky0 = is_sky(d0);
     let p0 = cam + world_offset(uv, select(d0, 0.5, sky0));
-    var off = vec2<f32>(0.0);
-    if (stir > 0.001 && !sky0 && abs(p0.y - CLOUD_Y - 2.0) < 6.0) {
-        // before it comes the clouds start to stir, as if the air is being pushed aside
-        let sw = vec2<f32>(gnoise2(p0.xz * 0.012 + vec2<f32>(time * 0.35, seed)), gnoise2(p0.xz * 0.012 + vec2<f32>(7.0, time * 0.3))) - 0.5;
-        off = off + sw * 0.014 * stir * stir * k;
-    }
-    // the air reacting to it: a pressure ripple running out through the cloud layer and the air below it as it stops
-    // (and again as it goes), seen only as the world bending, and a shimmer of heat round its edges for a second
-    let rd0 = normalize(world_offset(uv, 0.5));
     let tr = select(ta - stop, td - MS_OUT * 0.5, td > 0.0);
-    if (tr > 0.0 && tr < 6.0 && abs(rd0.y) > 1.0e-3) {
-        let t_cl = (CLOUD_Y - cam.y) / rd0.y;
-        if (t_cl > 0.0 && (sky0 || t_cl < length(p0 - cam) + 40.0)) {
-            let rr = length(cam.xz + rd0.xz * t_cl - base.c);
-            let ripple = exp(-pow((rr - tr * 650.0) / (40.0 + tr * 15.0), 2.0)) * exp(-tr * 0.8);
-            let pr = project_rel(vec3<f32>(base.c.x, CLOUD_Y, base.c.y) - cam);
-            let rdir = uv - pr.xy;
-            off = off + rdir / max(length(rdir), 1.0e-4) * ripple * 0.012 * pr.z * k;
-        }
-    }
-    if (wake > 0.0 && wake < 1.2 && rd0.y > 1.0e-3 && cam.y < base.y0) {
-        let qe = ms_local(f, cam.xz + rd0.xz * ((base.y0 + 20.0 - cam.y) / rd0.y));
-        let m = exp(-pow(ms_tier(qe, 2) / 18.0, 2.0)) * (1.0 - wake / 1.2);
-        if (m > 0.01) {
-            let hw = vec2<f32>(gnoise2(uv * vec2<f32>(120.0, 60.0) + vec2<f32>(0.0, time * 6.0)), gnoise2(uv * vec2<f32>(120.0, 60.0) + vec2<f32>(17.0, time * 5.0))) - 0.5;
-            off = off + hw * 0.006 * m * k;
-        }
-    }
+    var off = ms_air(uv, cam, p0, sky0, stir, tr, wake, base, f, time, seed, k);
     let pF = project_rel(focus);
     let pG = project_rel(G);
     if (beam_env > 0.001 && pG.z > 0.0) {
@@ -2161,40 +2297,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
         col = col * (1.0 - a) + acc / f32(n);
         add = add * (1.0 - a);
     }
-    // the unfold: the point it bursts out of, a tiny bright star far off where it is coming from, swelling into it
-    if (style == 1 && ta >= 0.0 && ta < MS_IN) {
-        let pc = vec3<f32>(ms_world(f, vec2<f32>(0.0)).x, f.y0 + 40.0 * f.sy, ms_world(f, vec2<f32>(0.0)).y) - cam;
-        let tp = dot(pc, rd);
-        if (tp > 0.0 && (sky || tp < scene_len)) {
-            let ang = length(pc - rd * tp) / tp;
-            let born = pow(1.0 - f.sx, 1.5);
-            add = add + (vec3<f32>(4.0, 6.0, 4.0) * exp(-pow(ang / 0.0025, 2.0)) + vec3<f32>(0.4, 1.6, 0.5) * exp(-ang / 0.012) * 0.5) * born * k;
-        }
-    }
-    if (style == 2 && ta > -0.3 && ta < 0.06) {
-        // the warp: the streak it comes in on, racing in along its path from far off and snapping into it
-        let up = mode == 4;
-        let head = MS_HL - 30000.0 * pow(saturate(-ta / 0.3), 2.0);
-        let a2 = ms_world(base, vec2<f32>(select(head, 0.0, up), 0.0));
-        let b2 = ms_world(base, vec2<f32>(select(head - 30000.0, 0.0, up), 0.0));
-        let ya = base.y0 + select(30.0, MS_TOP - head + MS_HL, up);
-        let q = ray_seg(rd, vec3<f32>(a2.x, ya, a2.y) - cam, vec3<f32>(b2.x, ya + select(0.0, 30000.0, up), b2.y) - cam);
-        let w = max(3.0, q.y * 0.0015);
-        let vis = select(1.0, 0.0, !sky && q.y > scene_len);
-        add = add + vec3<f32>(1.2, 2.6, 1.5) * exp(-pow(q.x / w, 2.0)) * (3.0 / w) * 2.0 * smoothstep(-0.3, -0.1, ta) * (1.0 - smoothstep(0.0, 0.06, ta)) * vis * k;
-    }
-    if (blurring && present) {
-        // its engines' exhaust streaming out behind it while it moves
-        for (var j = 0; j < 5; j = j + 1) {
-            let zc = (f32(j) - 2.0) * 90.0;
-            let e0 = ms_world(f, vec2<f32>(-MS_HL, zc));
-            let e1 = ms_world(f, vec2<f32>(-MS_HL - 260.0, zc));
-            let q = ray_seg(rd, vec3<f32>(e0.x, f.y0 + 103.0 * f.sy, e0.y) - cam, vec3<f32>(e1.x, f.y0 + 103.0 * f.sy, e1.y) - cam);
-            let w = max(16.0 + 30.0 * q.z, q.y * 0.0015);
-            let vis = select(1.0, 0.0, !sky && q.y > scene_len);
-            add = add + vec3<f32>(0.4, 2.2, 0.6) * exp(-pow(q.x / w, 2.0)) * (16.0 / w) * (1.0 - q.z) * 0.8 * vis * k;
-        }
-    }
+    add = add + ms_arrival_fx(f, base, cam, rd, sky, scene_len, ta, mode, style, blurring, present, k);
     if (wake > 1.0 && td < 0.0) {
         // small craft out round it once it has settled, tiny against it, each with its own lights
         for (var j = 0; j < 6; j = j + 1) {
@@ -2248,30 +2351,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
         }
     }
 
-    // ---- the charge: the emitters' beams converging under the eye, a blinding point of light gathering there ----
-    if (conv_env > 0.001 && present) {
-        let rad = 30.0;
-        for (var i = 0; i < 6; i = i + 1) {
-            let a = f32(i) * TAU / 6.0;
-            let ew = ms_world(f, vec2<f32>(MS_EM_X + cos(a) * rad, sin(a) * rad));
-            let e3 = vec3<f32>(ew.x, f.y0 + MS_EYE_UP, ew.y) - cam;
-            let q = ray_seg(rdb, e3, focus);
-            let w = max(1.2 + 0.8 * core_env, q.y * 0.0012);
-            let vis = select(1.0, 0.0, (!sky && q.y > scene_len) || q.y > ship_t + 1.0);
-            let flick = 0.8 + 0.2 * sin(time * 40.0 + f32(i) * 2.1);
-            add = add + (vec3<f32>(2.6, 4.8, 2.6) * exp(-pow(q.x / (w * 0.5), 2.0)) + vec3<f32>(0.15, 1.4, 0.3) * exp(-pow(q.x / (w * 2.5), 2.0)))
-                * (1.2 / w) * conv_env * flick * vis * k;
-        }
-    }
-    if (core_env > 0.001) {
-        let tc = dot(focus, rdb);
-        if (tc > 0.0) {
-            let dc = length(focus - rdb * tc);
-            let R = (1.0 + 3.5 * core_env) * (1.0 + 0.08 * sin(time * 33.0));
-            let vis = select(1.0, 0.2, !sky && tc > scene_len);
-            add = add + (vec3<f32>(5.0, 6.0, 5.0) * exp(-pow(dc / R, 2.0)) + vec3<f32>(0.6, 2.6, 0.8) * exp(-dc / R) * 0.9 + vec3<f32>(0.12, 0.7, 0.2) * exp(-dc / (R * 5.0)) * 0.4) * core_env * vis * k;
-        }
-    }
+    add = add + ms_charge_fx(f, cam, rdb, focus, sky, scene_len, ship_t, conv_env, core_env, present, time, k);
     // the guide: a pencil-thin thread from the focus to the target in the last seconds before it fires
     if (charge > 0.6 && time < MS_HIT) {
         let q = ray_seg(rd, focus, crel);

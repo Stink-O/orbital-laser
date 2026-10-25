@@ -183,10 +183,30 @@ def mothership_icon():
     return im
 
 
-GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON}
+DOWNFALL_ICON = [          # the mothership coming down stern first, burning, smoke streaming up off it; the black hole
+    ".............gG.",    # tearing out of its stern
+    "...........gGg..",
+    "..........gGg.gG",
+    ".........gGg.gG.",
+    "........dddgdGg.",
+    "......ddGGGdGdd.",
+    ".....dhhhhOyGhd.",
+    "....dhhhhhhOhhd.",
+    "...dhhMmhhhhhd..",
+    "..dhhMMhhhhhd...",
+    ".vphhhhhhhdd....",
+    "vpkpphhhdd......",
+    "pkkkpdd.........",
+    "pkkkp...........",
+    "vpkpv...........",
+    ".vpv............",
+]
+
+GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+         "downfall_icon": DOWNFALL_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon}
 
-names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon")
+names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:
