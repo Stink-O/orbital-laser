@@ -18,6 +18,8 @@ pub struct Laser {
     pub icon_model: &'static str,
     /// Seconds a strike runs, light and aftermath.
     pub length: f32,
+    /// Blocks the designator reaches with it (the raycast stops at 1024; past the render distance it needs LOD Distance).
+    pub range: f32,
     /// (radius, block, roughness, replace): what the ground round the crater turns into, in order.
     pub scorch: &'static [(i32, &'static str, f32, &'static str)],
     pub bowl_r: i32,
@@ -59,6 +61,7 @@ pub const PLASMA: Laser = Laser {
     blurb: "A raging plasma beam and forked lightning. Fuses the crater into glass and obsidian, rings it with fire and throws rubble far and wide.",
     icon_model: "orbital:plasma_icon",
     length: 26.0,
+    range: 200.0,
     scorch: &[
         (46, "minecraft:blackstone", 0.15, "minecraft:grass_block"),
         (42, "minecraft:smooth_basalt", 0.15, "minecraft:sand"),
@@ -92,6 +95,7 @@ pub const GODLY: Laser = Laser {
     blurb: "The clouds part and a pillar of light comes down. Leaves a crater of quartz and gold, a sigil in the ground, flowers blooming outwards and rock left hanging in the air.",
     icon_model: "orbital:godly_icon",
     length: 26.0,
+    range: 200.0,
     scorch: &[
         (42, "minecraft:smooth_quartz", 0.0, "minecraft:grass_block"),
         (38, "minecraft:smooth_quartz", 0.0, "minecraft:sand"),
@@ -128,6 +132,7 @@ pub const BLACK_HOLE: Laser = Laser {
     blurb: "A singularity tears open over the target. Light bends round it, an accretion disk spins up and its jet bores to bedrock. Drags the land into spiral arms and pulls rock up after it, then evaporates in a blinding flash.",
     icon_model: "orbital:blackhole_icon",
     length: 26.0,
+    range: 200.0,
     scorch: &[
         (48, "minecraft:sculk", 0.12, "minecraft:grass_block"),
         (44, "minecraft:tuff", 0.12, "minecraft:sand"),
@@ -167,6 +172,7 @@ pub const METEOR: Laser = Laser {
     blurb: "A storm of meteors pounds the land for 120 blocks round the target, each leaving its own crater. Then one the size of a hill comes down on it: a fireball, a crater 125 blocks across and a shaft to bedrock, the land charred out to 135 blocks.",
     icon_model: "orbital:meteor_icon",
     length: 38.0,
+    range: 200.0,
     scorch: &[
         (135, "minecraft:coarse_dirt", 0.1, "minecraft:grass_block"),
         (130, "minecraft:smooth_basalt", 0.1, "minecraft:sand"),
@@ -193,4 +199,41 @@ pub const METEOR: Laser = Laser {
     particle_b: "particle minecraft:flame {x} {y} {z} {r} 2 {r} 0.1 60 force",
 };
 
-pub const LASERS: [&Laser; 4] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR];
+/// The ship, its beam and the trench it cuts are planned in `strike::mothership_plan`; the crater, the shaft and their
+/// lining below are where the beam first comes down, and the trench is lined the same way.
+pub const MOTHERSHIP: Laser = Laser {
+    key: "mothership",
+    index: 4,
+    title: "MOTHERSHIP",
+    color: "green",
+    rgb: 0x3FE05A,
+    blurb: "A slab of dark metal a kilometre long drops out of hyperspace and stops dead over the target, its shadow across the land. Its green beam drills a shaft to bedrock, then sweeps away from you, cutting a molten trench 100 blocks long, and the ship is gone.",
+    icon_model: "orbital:mothership_icon",
+    length: 34.0,
+    // a long way off: past the render distance it aims across the distant terrain (LOD Distance on)
+    range: 1000.0,
+    scorch: &[
+        (40, "minecraft:blackstone", 0.12, "minecraft:grass_block"),
+        (36, "minecraft:smooth_basalt", 0.12, "minecraft:sand"),
+        (34, "minecraft:coarse_dirt", 0.12, "minecraft:dirt"),
+    ],
+    bowl_r: 22,
+    bowl_d: 14,
+    bowl_rough: 0.08,
+    shaft_r: 7,
+    shaft_min: 5,
+    shaft_rough: 0.04,
+    lining: &[
+        ("minecraft:obsidian", 0.35),
+        ("minecraft:magma_block", 0.22),
+        ("minecraft:tinted_glass", 0.18),
+        ("minecraft:smooth_basalt", 0.15),
+        ("minecraft:cyan_stained_glass", 0.1),
+    ],
+    bowl_floor: ("minecraft:magma_block", 0.25, "minecraft:obsidian"),
+    bottom: &[(4, 0, 0, "minecraft:magma_block"), (3, 1, 3, "minecraft:lava")],
+    particle_a: "particle minecraft:flame {x} {y} {z} {r} 3 {r} 0.2 50 force",
+    particle_b: "particle minecraft:lava {x} {y} {z} {r} 1 {r} 0 20 force",
+};
+
+pub const LASERS: [&Laser; 5] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP];

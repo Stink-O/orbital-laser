@@ -27,6 +27,9 @@ K = {  # palette
     "c": (70, 230, 255, 255),     # screen cyan
     "k": (0, 0, 0, 255),          # the event horizon
     "v": (88, 40, 150, 255),      # dark violet
+    "m": (63, 224, 90, 255),      # mothership green
+    "M": (24, 120, 44, 255),      # dark green
+    "h": (34, 40, 54, 255),       # hull
 }
 
 def designator():
@@ -156,10 +159,34 @@ def meteor_icon():
 
 
 
-GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON}
-DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon}
+def mothership_icon():
+    """The ship from below and a little behind: a long slab of dark metal across the top, its edge catching the light,
+    a deck stepped down under it with a green seam along it and the eye in it, and its green beam coming down from the
+    eye onto the ground."""
+    from PIL import ImageDraw
+    im = Image.new("RGBA", (16, 16), K["."])
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 1, 15, 5], fill=K["G"])                       # the slab, its lit edge
+    d.rectangle([1, 2, 14, 5], fill=K["h"])
+    d.line([(1, 1), (14, 1)], fill=K["w"])
+    d.rectangle([3, 5, 12, 6], fill=K["g"])                       # the deck stepped down under it
+    d.line([(2, 4), (13, 4)], fill=K["M"])                        # a seam of light along it
+    d.point((1, 3), fill=K["m"]); d.point((14, 3), fill=K["m"])  # running lights
+    d.rectangle([7, 7, 8, 13], fill=K["m"])                       # the beam, white down its middle
+    d.line([(8, 7), (8, 13)], fill=K["W"])
+    d.rectangle([6, 6, 9, 6], fill=K["m"])                        # the eye
+    d.point((7, 6), fill=K["W"]); d.point((8, 6), fill=K["W"])
+    d.line([(4, 14), (11, 14)], fill=K["o"])                      # where it touches down, the ground molten
+    d.line([(5, 13), (10, 13)], fill=K["O"])
+    d.line([(7, 13), (8, 14)], fill=K["W"]); d.point((7, 14), fill=K["y"]); d.point((8, 13), fill=K["W"])
+    d.point((3, 12), fill=K["o"]); d.point((12, 12), fill=K["o"])
+    return im
 
-names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon")
+
+GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON}
+DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon}
+
+names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:

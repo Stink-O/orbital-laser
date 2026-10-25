@@ -35,7 +35,10 @@ fn debris_big(i: usize, seed: f32) -> bool {
 pub enum Act {
     Cmd(String),
     /// A sound that follows the player.
-    Sound { event: String, volume: f32, pitch: f32 },
+    /// A sound following the player (`at` none), or at a point, heard only nearby.
+    Sound { event: String, at: Option<[f64; 3]>, volume: f32, pitch: f32 },
+    /// A jolt of the real camera (`render.shake`): `strength` 0 to 1, fading out over `seconds`.
+    Shake { strength: f32, seconds: f32 },
     /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
     /// much work for the one tick it fires in (a mod's tick has a fuel limit).
     Later(Box<dyn FnOnce() -> Vec<(f32, Act)>>),
@@ -106,6 +109,17 @@ impl Rng {
     }
 }
 
+/// Seconds a sound takes to reach the player at `me` from `p` (about 343 blocks a second), and how far it is.
+fn sound_from(p: [f64; 3], me: [f64; 3]) -> (f32, f64) {
+    let d = ((p[0] - me[0]).powi(2) + (p[1] - me[1]).powi(2) + (p[2] - me[2]).powi(2)).sqrt();
+    ((d / 343.0) as f32, d)
+}
+/// How much of a blast's jolt reaches the player `d` blocks off: all of it close by, a third at 300 blocks. (The game
+/// squares a jolt's strength, so a third of it is a faint tremor.)
+fn falloff(d: f64) -> f32 {
+    (1.4 / (1.0 + d / 100.0)).min(1.0) as f32
+}
+
 /// `then`, run on the ground at column (x, z): `~ ~ ~` is the first air block above the surface.
 fn surf(x: i32, z: i32, then: &str) -> String {
     format!("execute positioned {x} 0 {z} positioned over motion_blocking_no_leaves run {then}")
@@ -142,15 +156,34 @@ impl Plan {
             t,
             Act::Sound {
                 event: format!("minecraft:{name}"),
+                at: None,
                 volume: (vol / 10.0).min(1.0),
                 pitch: pitch as f32,
             },
         ));
     }
+    /// A vanilla sound out of the impact, `vol` out of 10: heard there (out to about 64 blocks at 10) and fading with
+    /// distance, not in the player's ears wherever they are, like the ground breaking.
+    fn ground_sound(&mut self, t: f32, name: &str, vol: f32, pitch: f64) {
+        let at = [f64::from(self.bx) + 0.5, f64::from(self.by) + 0.5, f64::from(self.bz) + 0.5];
+        self.ev.push((
+            t,
+            Act::Sound {
+                event: format!("minecraft:{name}"),
+                at: Some(at),
+                volume: (vol / 10.0).min(1.0) * 4.0,
+                pitch: pitch as f32,
+            },
+        ));
+    }
+    /// A jolt of the camera, timed to when the blast reaches the player (see `late` and `falloff`).
+    fn shake(&mut self, t: f32, strength: f32, seconds: f32) {
+        self.ev.push((t, Act::Shake { strength: strength.clamp(0.0, 1.0), seconds: seconds.clamp(0.05, 30.0) }));
+    }
     /// One of the laser's own sounds.
     fn csound(&mut self, t: f32, role: &str, vol: f32, pitch: f32) {
         let event = self.laser.sound(role);
-        self.ev.push((t, Act::Sound { event, volume: (vol / 10.0).min(1.0), pitch }));
+        self.ev.push((t, Act::Sound { event, at: None, volume: (vol / 10.0).min(1.0), pitch }));
     }
     /// A rough circle as a few rectangles (x0, z0, x1, z1): consecutive rows share one /fill.
     fn rects(&mut self, r: i32, rough: f64) -> Vec<[i32; 4]> {
@@ -251,10 +284,14 @@ impl Plan {
 
 /// Everything a strike of `laser` at `target` does. `dimension` picks the
 /// bedrock floor; `shader_seed` is the shader's, for what the two must agree on;
-/// `me` is where the player stands (the meteor storm's sounds reach them late).
-pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+/// `me` is where the player stands (the meteor storm's sounds reach them late);
+/// `approach` is the way the mothership comes in (APPROACHES).
+pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3], approach: usize) -> Vec<(f32, Act)> {
     if laser.key == "meteor" {
         return meteor_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "mothership" {
+        return mothership_plan(laser, target, terrain, dimension, wing_angle(target.point, me), me, approach);
     }
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
@@ -271,6 +308,21 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     p.csound(3.4, "lockon", 8.0, 1.0);
     p.at(3.5, format!(r#"title @s actionbar {{"text":"ORBITAL LASER: LOCKED  [{}]","color":"{}","bold":true}}"#, laser.title, laser.color));
     p.csound(t, "fire", 10.0, 1.0);
+    // the camera: a hard jolt when the blast reaches the player, then the beam (or the jet) shaking the ground while
+    // it burns
+    let (lt, dist) = sound_from(target.point, me);
+    let fo = falloff(dist);
+    p.shake(t + lt, [0.95, 0.8, 0.9][usize::from(godly) + 2 * usize::from(blackhole)] * fo, 3.0);
+    if plasma {
+        for i in 0..9 {
+            p.shake(t + lt + 0.6 + i as f32, 0.22 * fo, 1.3);
+        }
+    }
+    if godly {
+        for i in 0..6 {
+            p.shake(t + lt + 0.8 + i as f32 * 1.4, 0.12 * fo, 1.6);
+        }
+    }
     // the impact: stacked explosions and thunder under the laser's own blast, then rock raining back down
     for (dt, pitch) in [(0.0, 0.42), (0.06, 0.55), (0.2, 0.7), (0.5, 0.5)] {
         p.sound(t + dt, "entity.generic.explode", 10.0, pitch);
@@ -301,13 +353,13 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
         for k in 0..14 {
             let name = *p.rng.pick(&["block.stone.break", "block.gravel.break", "block.grass.break", "block.wood.break"]);
             let pitch = p.rng.uniform(0.5, 0.9);
-            p.sound(t + 0.05 + k as f32 * 0.07, name, 10.0, pitch);
+            p.ground_sound(t + 0.05 + k as f32 * 0.07, name, 10.0, pitch);
         }
         for _ in 0..10 {
             let dt = p.rng.uniform(0.0, 2.5) as f32;
             let name = *p.rng.pick(&["block.stone.break", "block.gravel.break"]);
             let pitch = p.rng.uniform(0.6, 1.1);
-            p.sound(t + 1.0 + dt, name, 6.0, pitch);
+            p.ground_sound(t + 1.0 + dt, name, 6.0, pitch);
         }
     }
 
@@ -345,6 +397,13 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
             let s = 2.0 + f64::from(i) * 0.9;
             p.at(0.4 + i as f32 * 0.3, format!("particle minecraft:portal {tx} {hy} {tz} 0 0 0 {s:.1} {} force", 40 + i * 12));
         }
+        // the air pulled in towards it as it forms, the jet shaking the ground, and its evaporation's blast
+        p.shake(t - 1.0, 0.3 * fo, 1.2);
+        for i in 0..9 {
+            p.shake(t + lt + 0.5 + i as f32, 0.18 * fo, 1.2);
+        }
+        let (lh, dh) = sound_from([tx, hy, tz], me);
+        p.shake(t + BH_END + lh, 0.95 * falloff(dh), 3.0);
         // it opens with a crack of the air, and the end portal's toll
         p.sound(t, "entity.warden.sonic_boom", 10.0, 0.5);
         p.sound(t + 0.1, "block.end_portal.spawn", 10.0, 0.6);
@@ -399,7 +458,7 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
                 let dt = p.rng.uniform(0.0, 0.25) as f32;
                 let name = *p.rng.pick(&["block.stone.break", "block.gravel.break", "block.grass.break"]);
                 let pitch = p.rng.uniform(0.55, 0.9);
-                p.sound(tl + dt, name, 9.0, pitch);
+                p.ground_sound(tl + dt, name, 9.0, pitch);
             }
         }
         let (fb, fr, fq) = laser.bowl_floor;
@@ -419,10 +478,10 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
             p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
             p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
             let pitch = p.rng.uniform(0.5, 0.8);
-            p.sound(ts, if y_hi < 0 { "block.deepslate.break" } else { "block.stone.break" }, 8.0, pitch);
+            p.ground_sound(ts, if y_hi < 0 { "block.deepslate.break" } else { "block.stone.break" }, 8.0, pitch);
             if i % 2 == 0 {
                 let pitch = p.rng.uniform(0.6, 0.9);
-                p.sound(ts + 0.1, "block.gravel.break", 6.0, pitch);
+                p.ground_sound(ts + 0.1, "block.gravel.break", 6.0, pitch);
             }
             let fmt = |s: &str, y: i32, rr: f64| {
                 s.replace("{x}", &format!("{}", f64::from(bx) + 0.5))
@@ -832,6 +891,16 @@ fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension:
     p.csound(tb - 6.5, "approach", 10.0, 1.0);
     p.at(tb - 6.0, bar("IMPACT IMMINENT", "dark_red"));
     p.csound(heard, "impact", 10.0, 1.0);
+    // the camera: the air shaking more and more as it comes in, then the hardest jolt of all, and the land shaking on
+    for (k, s) in [0.25, 0.35, 0.45].iter().enumerate() {
+        p.shake(tb - 3.0 + k as f32, *s, 1.6);
+    }
+    p.shake(heard, 1.0, 6.0);
+    p.shake(heard + 2.5, 0.55, 4.0);
+    p.shake(heard + 6.0, 0.35, 4.0);
+    for i in 0..5 {
+        p.shake(t + 1.0 + i as f32 * 2.0, 0.15, 2.0);
+    }
     p.at(tb + 0.2, bar("EXTINCTION EVENT", "dark_red"));
     p.csound(heard + 6.0, "rumble", 9.0, 0.75);
     p.csound(heard + 12.0, "shutdown", 9.0, 1.0);
@@ -855,6 +924,7 @@ fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension:
         p.at(tl - 1.3, surf(x, z, &format!("playsound orbital:meteor.{whoosh} block @a ~ ~ ~ 4 {pitch:.2} {:.2}", min * 0.8)));
         let tl_heard = tl + late(f64::from(x), ty, f64::from(z));
         p.at(tl_heard, surf(x, z, &format!("playsound orbital:meteor.{hit} block @a ~ ~ ~ 4 {pitch:.2} {min:.2}")));
+        p.shake(tl_heard, [0.3, 0.5, 0.75][cls] * falloff(dist), [0.8, 1.4, 2.2][cls]);
         match cls {
             0 => p.at(tl, surf(x, z, "particle minecraft:explosion ~ ~1 ~ 1 1 1 0 4 force")),
             1 => {
@@ -1144,6 +1214,353 @@ fn extinction(p: &mut Plan, tb: f32, floor_y: i32, point: [f64; 3], seed: f32) {
 
 }
 
+// ---- the mothership --------------------------------------------------------------------------------------------------
+
+/// Mothership: when it drops out of hyperspace (it has stopped a fifth of a second later), when its beam lands, sweeps,
+/// cuts off and when it leaves (strike clock), how high its belly hangs over the target and how long a trench the beam
+/// cuts. Where the beam is on the ground comes from ms_sweep, the same as strike.wgsl's: keep them in step (MS_*,
+/// ms_sweep, ms_axis). The ship's own small coast after it stops has died away long before the beam fires, so it plays no
+/// part here.
+const MS_H: f64 = 420.0;
+const MS_ARRIVE: f32 = 3.0;
+const MS_HIT: f32 = 8.2;
+const MS_SWEEP0: f32 = 10.0;
+const MS_SWEEP1: f32 = 19.0;
+const MS_CUT: f32 = 20.0;
+const MS_LEAVE: f32 = 23.0;
+const MS_END: f32 = 32.0;
+const TRENCH_L: f64 = 100.0;
+/// How far along the trench the beam is at `t`, 0 to 1: it eases away from the crater and eases to a stop.
+fn ms_sweep(t: f32) -> f64 {
+    let s = f64::from(((t - MS_SWEEP0) / (MS_SWEEP1 - MS_SWEEP0)).clamp(0.0, 1.0));
+    s * s * (3.0 - 2.0 * s)
+}
+/// When the beam is `u` of the way along (ms_sweep turned round).
+fn ms_when(u: f64) -> f32 {
+    let s = 0.5 - ((1.0 - 2.0 * u.clamp(0.0, 1.0)).asin() / 3.0).sin();
+    MS_SWEEP0 + (MS_SWEEP1 - MS_SWEEP0) * s as f32
+}
+/// The way the beam sweeps: from the target away from the player (the wings' angle turned round), whichever way the
+/// ship came in, so the player is never in its path.
+fn ms_axis(wing: f32) -> (f64, f64) {
+    (-f64::from(wing.cos()), -f64::from(wing.sin()))
+}
+
+/// Which way the mothership comes in, picked in the wheel: its settings key, how the game says it, and its button.
+/// The index is the shader's approach (`frame.mod_params[3].x`): it points the ship and flies it in that way.
+pub struct Choice {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub button: &'static str,
+}
+pub const APPROACHES: [Choice; 5] = [
+    Choice { key: "ahead", label: "from ahead, towards you", button: "AHEAD" },
+    Choice { key: "behind", label: "from behind you", button: "BEHIND" },
+    Choice { key: "left", label: "from your left", button: "LEFT" },
+    Choice { key: "right", label: "from your right", button: "RIGHT" },
+    Choice { key: "overhead", label: "from overhead", button: "ABOVE" },
+];
+
+/// How the mothership arrives, picked in the wheel: its settings key, how the game says it, and its button. The index
+/// is the shader's arrival style (`frame.mod_params[3].y`).
+pub const ARRIVALS: [Choice; 3] = [
+    Choice { key: "snap", label: "snaps in, like film", button: "SNAP" },
+    Choice { key: "unfold", label: "unfolds out of a point", button: "UNFOLD" },
+    Choice { key: "warp", label: "pulls out of a warp streak", button: "WARP" },
+];
+
+/// The mothership: it drops in out of hyperspace (from `approach`, one of APPROACHES), its shadow over the land, charges, drills a shaft at the target, sweeps its beam away from
+/// the player cutting a trench, and leaves. `wing` is the shader's facing angle (towards the player).
+fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, wing: f32, me: [f64; 3], approach: usize) -> Vec<(f32, Act)> {
+    let [bx, by, bz] = target.block;
+    let r2 = |v: f64| (v * 100.0).round() / 100.0;
+    let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
+    let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
+    let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
+    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
+    let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
+    let axis = ms_axis(wing);
+    let point = target.point;
+    // where the beam is on the ground at `t`
+    let spot = move |t: f32| {
+        let u = ms_sweep(t) * TRENCH_L;
+        (point[0] + axis.0 * u, point[2] + axis.1 * u)
+    };
+    let ship = late(tx, ty + MS_H, tz);
+
+    // it drops in: a deep shove of displaced air the instant it stops; its boom comes down after the light
+    p.at(MS_ARRIVE - 1.0, bar(&format!("MOTHERSHIP INBOUND {}", APPROACHES[approach.min(4)].label.to_uppercase()), laser.color));
+    p.csound(MS_ARRIVE - 0.02, "arrival", 10.0, 1.0);
+    p.csound(MS_ARRIVE + ship, "boom", 10.0, 1.0);
+    // the camera: the shove of air as it stops, then its boom coming down from overhead
+    p.shake(MS_ARRIVE + 0.2, 0.35, 1.0);
+    p.shake(MS_ARRIVE + ship, 0.85, 3.5);
+    p.at(MS_ARRIVE + 0.6, bar("MOTHERSHIP OVERHEAD", laser.color));
+    p.csound(MS_ARRIVE + ship + 0.3, "hum", 8.0, 1.0);
+    // it charges, and fires: the blast reaches the player after the flash
+    p.csound(FIRE, "charge", 10.0, 1.0);
+    p.at(MS_HIT - 0.9, bar("BEAM LOCKED", laser.color));
+    let heard = MS_HIT + late(tx, ty, tz);
+    let heard_dist = sound_from(target.point, me).1;
+    p.csound(heard, "fire", 10.0, 1.0);
+    // the camera: the charge building, the beam landing (the hardest jolt of the strike), the ground shaking while
+    // it burns
+    let fo = falloff(heard_dist).max(0.5);
+    p.shake(FIRE + 2.0, 0.15, 1.5);
+    p.shake(FIRE + 3.0, 0.22, 1.5);
+    p.shake(heard, fo, 4.0);
+    let mut tk = MS_HIT + 1.0;
+    while tk < MS_CUT {
+        p.shake(tk + (heard - MS_HIT), 0.22 * fo.max(0.6), 1.3);
+        tk += 1.0;
+    }
+    // the beam's roar, two takes end to end (6.2 s each, crossfading)
+    p.csound(MS_HIT + 0.15, "beam1", 10.0, 1.0);
+    p.csound(MS_HIT + 5.9, "beam2", 10.0, 1.0);
+    p.csound(heard + 1.2, "rumble", 9.0, 1.0);
+    p.csound(heard + 7.4, "rumble", 8.0, 1.0);
+    p.at(MS_HIT + 0.1, bar("DIRECT HIT", "white"));
+    for k in 0..7 {
+        // the beam searing across the land, heard from where it is: in full within 96 blocks, and from further off (out
+        // to the 1000 the mothership reaches) still clearly, at the volume floor, quieter the further
+        let tk = MS_SWEEP0 - 0.6 + k as f32 * 1.35;
+        let (gx, gz) = spot(tk);
+        let dist = ((gx - me[0]).powi(2) + (gz - me[2]).powi(2)).sqrt();
+        let min = (1.2 - dist / 350.0).clamp(0.5, 0.95);
+        let take = 1 + k % 2;
+        p.at(tk + late(gx, ty, gz), surf(gx.floor() as i32, gz.floor() as i32, &format!("playsound orbital:mothership.sweep{take} block @a ~ ~ ~ 6 1 {min:.2}")));
+    }
+    let (ex, ez) = spot(MS_CUT);
+    p.csound(MS_CUT + late(ex, ty, ez), "cutoff", 9.0, 1.0);
+    p.shake(MS_CUT + late(ex, ty, ez), 0.45, 2.0);
+    // a still moment, then it is gone the way it points, and its boom follows it out (all of it quieter than the beam
+    // landing)
+    p.csound(MS_LEAVE - 0.8, "depart", 10.0, 1.0);
+    p.csound(MS_LEAVE + ship, "boom", 8.0, 1.0);
+    p.shake(MS_LEAVE, 0.55, 2.0);
+    p.shake(MS_LEAVE + ship, 0.6, 3.0);
+
+    // ---- particles in the world ----
+    for i in 0..8 {
+        // the ground under it stirring while it charges: dust lifting, a shimmer of energy coming up off it
+        let tk = FIRE + 0.3 + i as f32 * 0.45;
+        let s = 10.0 - f64::from(i);
+        p.at(tk, format!("particle minecraft:white_ash {tx} {} {tz} {s:.1} 1 {s:.1} 0 90 force", ty + 1.0));
+        p.at(tk, format!("particle minecraft:poof {tx} {} {tz} {s:.1} 0.3 {s:.1} 0.04 30 force", ty + 0.5));
+        p.at(tk, format!("particle minecraft:end_rod {tx} {} {tz} 2 0.5 2 0.08 {} force", ty + 1.0, 6 + i * 3));
+    }
+    p.at(MS_HIT, format!("particle minecraft:explosion_emitter {tx} {} {tz} 2 1 2 0 4 force", ty + 1.0));
+    p.at(MS_HIT + 0.05, format!(r#"particle minecraft:block{{block_state:"minecraft:obsidian"}} {tx} {} {tz} 3 1 3 2.0 500 force"#, ty + 1.0));
+    p.at(MS_HIT + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:stone"}} {tx} {} {tz} 5 1 5 1.6 400 force"#, ty + 1.0));
+    let mut tk = MS_HIT + 0.2;
+    let mut k = 0;
+    while tk < MS_CUT {
+        // where the beam is cutting: molten rock thrown up, fire, smoke boiling off; anything there dies
+        let (gx, gz) = spot(tk);
+        let (x, z) = (gx.floor() as i32, gz.floor() as i32);
+        p.at(tk, surf(x, z, "particle minecraft:lava ~ ~1 ~ 2 1 2 0 14 force"));
+        p.at(tk, surf(x, z, "particle minecraft:flame ~ ~0.5 ~ 2.5 0.6 2.5 0.12 30 force"));
+        if k % 2 == 0 {
+            p.at(tk, surf(x, z, "particle minecraft:explosion ~ ~1 ~ 2 1 2 0 3 force"));
+            p.at(tk, surf(x, z, "particle minecraft:large_smoke ~ ~2 ~ 2.5 2 2.5 0.06 24 force"));
+            p.at(tk, format!("execute positioned {gx:.1} {ty} {gz:.1} run kill @e[type=!minecraft:player,distance=..16]"));
+        }
+        tk += 0.25;
+        k += 1;
+    }
+    let mut tk = MS_SWEEP0 + 1.0;
+    while tk < MS_END {
+        // steam and smoke off the trench as it cools
+        tk += 0.7;
+        let u = (p.rng.next() * ms_sweep(tk - 0.8)) * TRENCH_L;
+        let (x, z) = (point[0] + axis.0 * u, point[2] + axis.1 * u);
+        let (x, z) = (x.floor() as i32, z.floor() as i32);
+        p.at(tk, surf(x, z, "particle minecraft:campfire_cosy_smoke ~ ~0.5 ~ 3 0.5 3 0.03 14 force"));
+        p.at(tk, surf(x, z, "particle minecraft:cloud ~ ~1 ~ 3 1 3 0.04 18 force"));
+    }
+    for tk in [0.1, 0.8, 1.6, 3.0] {
+        p.at(MS_HIT + tk, format!("execute positioned {tx} {ty} {tz} run kill @e[type=!minecraft:player,distance=..{KILL_RADIUS}]"));
+    }
+
+    if terrain {
+        // a far target's trench runs out past what the game keeps loaded round the player: keep it loaded until the
+        // trench has been cut (a forceload takes 256 chunks at most; this is 200 at most)
+        let (ex, ez) = (point[0] + axis.0 * TRENCH_L, point[2] + axis.1 * TRENCH_L);
+        let (x0, x1) = ((point[0].min(ex) - 48.0).floor() as i32, (point[0].max(ex) + 48.0).floor() as i32);
+        let (z0, z1) = ((point[2].min(ez) - 48.0).floor() as i32, (point[2].max(ez) + 48.0).floor() as i32);
+        p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
+        p.at(MS_END + 1.0, format!("forceload remove {x0} {z0} {x1} {z1}"));
+        let floor_y = bedrock_top(dimension);
+        mothership_crater(&mut p, floor_y);
+        // the trench, a stretch at a time, each worked out just before the beam gets there
+        let mut d0 = 0.0;
+        while d0 < TRENCH_L {
+            let d1 = (d0 + 8.0).min(TRENCH_L);
+            p.later(ms_when(d0 / TRENCH_L) - 0.3, move |q| trench(q, point, axis, d0, d1));
+            d0 = d1;
+        }
+    }
+    p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
+    p.ev
+}
+
+/// The crater where the beam first comes down: the land above it vaporised, the ground round it charred, a bowl, and a
+/// shaft drilled to bedrock in the two seconds before it starts to sweep.
+fn mothership_crater(p: &mut Plan, floor_y: i32) {
+    let t = MS_HIT;
+    // 1. the blast, in two bands of height (a fill is capped at 32768 blocks)
+    p.later(t - 0.1, move |p| {
+        let by = p.by;
+        for band in 0..2 {
+            let y0 = by + 1 + band * 20;
+            for c in p.disc(34, y0, y0 + 19, "minecraft:air", 0.12, None) {
+                p.at(t + 0.1 + band as f32 * 0.1, c);
+            }
+        }
+        for &(rad, block, rough, repl) in p.laser.scorch {
+            for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
+                let dt = p.rng.next() as f32 * 1.6;
+                p.at(t + 0.4 + dt, c);
+            }
+        }
+    });
+    // 2. the bowl, its walls fused as it goes
+    p.later(t + 0.1, move |p| {
+        let laser = p.laser;
+        let by = p.by;
+        let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
+        for d in (0..bowl_d).step_by(2) {
+            let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(3);
+            let tl = t + 0.3 + d as f32 * 0.09;
+            p.dig(r, by - d - 1, by - d, tl, f64::from(laser.bowl_rough), 2);
+            p.mottle(r, by - d - 1, by - d, tl, 12);
+            let pitch = p.rng.uniform(0.55, 0.85);
+            p.ground_sound(tl, "block.stone.break", 8.0, pitch);
+        }
+        let (fb, fr, fq) = laser.bowl_floor;
+        for c in p.disc(bowl_r - 4, by - bowl_d, by - bowl_d + 1, fb, f64::from(fr), Some(fq)) {
+            p.at(t + 1.8, c);
+        }
+    });
+    // 3. the shaft, drilled to bedrock, and lava at the bottom
+    p.later(t + 0.4, move |p| {
+        let laser = p.laser;
+        let (bx, by, bz) = (p.bx, p.by, p.bz);
+        let mut y_hi = by - laser.bowl_d;
+        let mut i = 0;
+        while y_hi >= floor_y {
+            let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.25).round() as i32).max(laser.shaft_min);
+            let ts = t + 0.5 + i as f32 * 0.05;
+            p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
+            p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
+            if i % 3 == 0 {
+                let pitch = p.rng.uniform(0.5, 0.8);
+                p.ground_sound(ts, if y_hi < 0 { "block.deepslate.break" } else { "block.stone.break" }, 7.0, pitch);
+                p.at(ts, format!("particle minecraft:lava {} {y_hi} {} 2 1 2 0 12 force", f64::from(bx) + 0.5, f64::from(bz) + 0.5));
+            }
+            y_hi -= 4;
+            i += 1;
+        }
+        for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
+            for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
+                p.at(t + 0.6 + i as f32 * 0.05 + 0.1 * k as f32, c);
+            }
+        }
+    });
+}
+
+/// The stretch `d0..d1` blocks along the trench (from the target, along `axis`): each column of it cut the moment the
+/// beam reaches it (`ms_when`). The land over it vaporised, a stepped cut 14 blocks wide and 17 deep fused into the
+/// laser's lining, lava running along its floor, scorched ground and fires along its lips. The trench is laid out in
+/// columns across whichever of x and z it runs along most, each column one /fill per step of its cut.
+fn trench(p: &mut Plan, point: [f64; 3], axis: (f64, f64), d0: f64, d1: f64) {
+    const NATURAL: [&str; 5] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel", "#minecraft:terracotta"];
+    // (half-width, top, bottom) of each step of the cut, from the target's block down; the end shallows out
+    const STEPS: [(f64, i32, i32); 3] = [(7.0, 0, -5), (5.0, -6, -11), (3.0, -12, -16)];
+    let laser = p.laser;
+    let by = p.by;
+    let prim = laser.lining[0].0;
+    let others = &laser.lining[1..];
+    let along_x = axis.0.abs() >= axis.1.abs();
+    // m: along the major axis, n: along the minor one
+    let (m, n) = if along_x { axis } else { (axis.1, axis.0) };
+    let (pm, pn) = if along_x { (point[0], point[2]) } else { (point[2], point[0]) };
+    let fill = |c: i32, n0: i32, n1: i32, y0: i32, y1: i32, what: &str| {
+        if along_x {
+            format!("fill {c} {y0} {n0} {c} {y1} {n1} {what}")
+        } else {
+            format!("fill {n0} {y0} {c} {n1} {y1} {c} {what}")
+        }
+    };
+    let (ma, mb) = (pm + m * d0, pm + m * d1);
+    // the columns whose middles are in [d0, d1)
+    let (c_lo, c_hi) = ((ma.min(mb) - 0.5).floor() as i32 - 1, (ma.max(mb) - 0.5).ceil() as i32 + 1);
+    for c in c_lo..=c_hi {
+        let d = (f64::from(c) + 0.5 - pm) / m;
+        if d < d0 || d >= d1 {
+            continue;
+        }
+        let t = ms_when(d / TRENCH_L);
+        let nc = pn + n * d;
+        // the cells across this column within `hw` of the trench's middle line
+        let span = |hw: f64| {
+            let e = hw / m.abs();
+            ((nc - e - 0.5).ceil() as i32, (nc + e - 0.5).floor() as i32)
+        };
+        let steps = if d > 95.0 { 1 } else if d > 89.0 { 2 } else { 3 };
+        let mut deepest = by;
+        for &(hw, top, bottom) in &STEPS[..steps] {
+            let (n0, n1) = span(hw);
+            let (y0, y1) = (by + bottom, by + top);
+            for tag in NATURAL {
+                let what = format!("{prim} replace {tag}");
+                p.at(t - 0.05, fill(c, n0 - 2, n0 - 1, y0 - 1, y1, &what));
+                p.at(t - 0.05, fill(c, n1 + 1, n1 + 2, y0 - 1, y1, &what));
+                p.at(t - 0.05, fill(c, n0 - 1, n1 + 1, y0 - 1, y0 - 1, &what));
+            }
+            p.at(t, fill(c, n0, n1, y0, y1, "minecraft:air"));
+            deepest = y0;
+        }
+        // everything standing over it, trees and all
+        let (n0, n1) = span(9.0);
+        p.at(t, fill(c, n0, n1, by + 1, by + 30, "minecraft:air"));
+        for _ in 0..2 {
+            // patches of the other linings over the fused walls
+            let &(hw, top, bottom) = p.rng.pick(&STEPS[..steps]);
+            let (w0, w1) = span(hw);
+            let side = if p.rng.next() < 0.5 { w0 - 1 } else { w1 + 1 };
+            let y = p.rng.int(by + bottom - 1, by + top);
+            let blk = p.rng.weighted(others).to_string();
+            p.at(t + 0.05, fill(c, side, side, y - 1, y + 1, &format!("{blk} replace {prim}")));
+        }
+        let (s0, s1) = span(7.0);
+        for &(_, block, _, repl) in laser.scorch {
+            // the ground along its lips charred
+            let what = format!("{block} replace {repl}");
+            p.at(t + 0.3, fill(c, s0 - 12, s0 - 3, by - 3, by + 1, &what));
+            p.at(t + 0.3, fill(c, s1 + 3, s1 + 12, by - 3, by + 1, &what));
+        }
+        if c.rem_euclid(5) == 0 {
+            // molten rock pooling along the floor
+            let mid = nc.floor() as i32;
+            p.at(t + 0.6, fill(c, mid, mid, deepest, deepest, "minecraft:lava"));
+        }
+        if c.rem_euclid(3) == 0 {
+            // fires catching along the lips
+            let lip = if p.rng.next() < 0.5 { s0 - p.rng.int(2, 6) } else { s1 + p.rng.int(2, 6) };
+            let dt = p.rng.uniform(0.2, 1.6) as f32;
+            let (x, z) = if along_x { (c, lip) } else { (lip, c) };
+            p.at(t + dt, surf(x, z, "setblock ~ ~ ~ minecraft:fire keep"));
+        }
+        if c.rem_euclid(4) == 0 {
+            let mid = nc.floor() as i32;
+            let (x, z) = if along_x { (c, mid) } else { (mid, c) };
+            let pitch = p.rng.uniform(0.5, 0.8);
+            p.at(t, format!("playsound minecraft:block.stone.break block @a {x} {by} {z} 3 {pitch:.2}"));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1156,5 +1573,119 @@ mod tests {
         assert_eq!(block_cost("playsound minecraft:entity.generic.explode block @a 0 64 0 3 1"), None);
         assert_eq!(block_cost(&surf(3, 4, "particle minecraft:explosion ~ ~1 ~ 1 1 1 0 4 force")), None);
         assert_eq!(block_cost("execute positioned 0 64 0 run kill @e[type=!minecraft:player,distance=..40]"), None);
+    }
+    #[test]
+    fn sweep_turns_round() {
+        for i in 0..=20 {
+            let t = MS_SWEEP0 + (MS_SWEEP1 - MS_SWEEP0) * i as f32 / 20.0;
+            assert!((ms_when(ms_sweep(t)) - t).abs() < 1e-3, "{t}");
+        }
+        assert_eq!(ms_sweep(MS_HIT), 0.0);
+        assert_eq!(ms_sweep(MS_CUT), 1.0);
+    }
+    /// The whole plan, every stage worked out (as the mod does when each one is due).
+    fn run_all(mut ev: Vec<(f32, Act)>) -> Vec<(f32, String)> {
+        let mut out = Vec::new();
+        while let Some((t, act)) = ev.pop() {
+            match act {
+                Act::Cmd(c) => out.push((t, c)),
+                Act::Sound { .. } | Act::Shake { .. } => {}
+                Act::Later(job) => ev.extend(job()),
+            }
+        }
+        out
+    }
+    #[test]
+    fn every_laser_shakes_the_camera() {
+        // each laser jolts the real camera, within what render.shake takes; the mothership hardest as its beam lands
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        for laser in crate::lasers::LASERS {
+            let mut ev = plan(laser, &target, false, "minecraft:overworld", 7.0, [10.5, 66.0, 60.0], 0);
+            let mut jolts = Vec::new();
+            while let Some((t, act)) = ev.pop() {
+                match act {
+                    Act::Shake { strength, seconds } => jolts.push((t, strength, seconds)),
+                    Act::Later(job) => ev.extend(job()),
+                    _ => {}
+                }
+            }
+            assert!(!jolts.is_empty(), "{}", laser.key);
+            for &(t, s, d) in &jolts {
+                assert!(s > 0.0 && s <= 1.0 && (0.05..=30.0).contains(&d) && t < laser.length, "{}: {s} {d} at {t}", laser.key);
+            }
+            if laser.key == "mothership" {
+                let hardest = jolts.iter().fold((0.0, 0.0), |a, j| if j.1 > a.1 { (j.0, j.1) } else { a });
+                assert!(hardest.0 > MS_HIT && hardest.0 < MS_HIT + 0.5, "hardest at {}", hardest.0);
+            }
+        }
+    }
+    #[test]
+    fn trench_away_from_player_every_approach() {
+        // whichever way it comes in, from wherever the player stands, the trench runs away from them and never under
+        // them, the beam's spot and the cut agree, and what is force-loaded fits in one forceload
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        for (i, ap) in APPROACHES.iter().enumerate() {
+            for me in [[10.5, 66.0, 80.0], [-150.0, 70.0, -40.0], [200.0, 64.0, 190.0], [10.5, 66.0, -250.0]] {
+                let cmds = run_all(plan(&crate::lasers::MOTHERSHIP, &target, true, "minecraft:overworld", 7.0, me, i));
+                let axis = ms_axis(wing_angle(target.point, me));
+                let mut columns = 0;
+                for (t, c) in &cmds {
+                    // the trench's clearing fills, one a column: `fill X 65 Z X 94 Z air` (or across)
+                    let w: Vec<&str> = c.split_whitespace().collect();
+                    if w.len() == 8 && w[0] == "fill" && w[2] == "65" && w[5] == "94" && w[7] == "minecraft:air" {
+                        let n: Vec<f64> = [1, 3, 4, 6].iter().map(|&k| w[k].parse::<f64>().unwrap() + 0.5).collect();
+                        let (cx, cz) = ((n[0] + n[2]) * 0.5, (n[1] + n[3]) * 0.5);
+                        let along = (cx - target.point[0]) * axis.0 + (cz - target.point[2]) * axis.1;
+                        assert!(along > -2.0 && along < TRENCH_L + 2.0, "{}: {c}", ap.key);
+                        // the beam is there when the column is cut
+                        let u = ms_sweep(*t) * TRENCH_L;
+                        assert!((u - along).abs() < 2.5, "{}: beam at {u}, cut at {along}", ap.key);
+                        let to_me = ((me[0] - cx).powi(2) + (me[2] - cz).powi(2)).sqrt();
+                        assert!(to_me > 20.0, "{}: the trench runs under the player", ap.key);
+                        columns += 1;
+                    }
+                }
+                assert!(columns >= 70, "{}: {columns} columns", ap.key);
+                let fl: Vec<&String> = cmds.iter().map(|(_, c)| c).filter(|c| c.starts_with("forceload add")).collect();
+                assert_eq!(fl.len(), 1);
+                let n: Vec<i32> = fl[0].split_whitespace().skip(2).map(|v| v.parse().unwrap()).collect();
+                let chunks = ((n[2] >> 4) - (n[0] >> 4) + 1) * ((n[3] >> 4) - (n[1] >> 4) + 1);
+                assert!(chunks <= 256, "{chunks} chunks");
+                assert!(cmds.iter().any(|(t, c)| c.starts_with("forceload remove") && *t < crate::lasers::MOTHERSHIP.length));
+            }
+        }
+    }
+    #[test]
+    fn trench_fills_fit() {
+        // every column of the trench once, and no fill over the cap, whichever way it runs
+        for wing in [0.0f32, 0.4, 1.2, 2.5, -2.0, -0.8] {
+            let mut p = Plan { laser: &crate::lasers::MOTHERSHIP, ev: Vec::new(), rng: Rng::new(7), bx: 10, by: 64, bz: -3 };
+            let axis = ms_axis(wing);
+            let mut d0 = 0.0;
+            while d0 < TRENCH_L {
+                let d1 = (d0 + 8.0).min(TRENCH_L);
+                trench(&mut p, [10.5, 64.0, -2.5], axis, d0, d1);
+                d0 = d1;
+            }
+            let air: Vec<&String> = p
+                .ev
+                .iter()
+                .filter_map(|(_, a)| match a {
+                    Act::Cmd(c) if c.ends_with("minecraft:air") && c.contains(" 94 ") => Some(c),
+                    _ => None,
+                })
+                .collect();
+            // one column a block along whichever of x and z it runs along most, none twice
+            let along = TRENCH_L * axis.0.abs().max(axis.1.abs());
+            assert!((air.len() as f64 - along).abs() <= 2.0, "{wing}: {} columns", air.len());
+            let mut seen: Vec<&String> = air.clone();
+            seen.dedup();
+            assert_eq!(seen.len(), air.len());
+            for (_, a) in &p.ev {
+                if let Act::Cmd(c) = a {
+                    assert!(block_cost(c).unwrap_or(0) <= 32768, "{c}");
+                }
+            }
+        }
     }
 }

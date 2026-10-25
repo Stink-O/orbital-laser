@@ -11,7 +11,8 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
 - **A strike is destructive and permanent.** It flattens everything above ground within ~44 blocks (52 for the black hole), digs a ~60-block
   crater and a shaft to bedrock, and kills every mob and dropped item within 40 blocks (not players). The Meteor Storm is far bigger:
   craters across 120 blocks round the target, then everything above ground flattened out to 100, a ~125-block crater,
-  the land charred to 135, rubble out to 250 and every mob within 130 killed. Only fire it in a
+  the land charred to 135, rubble out to 250 and every mob within 130 killed. The Mothership vaporises out to 34 blocks, digs a
+  22-block crater, a shaft and a 100-block trench, and force-loads those chunks while it works. Only fire it in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
@@ -29,7 +30,7 @@ python3 install.py                  # install the mod into Horizon's game folder
 python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
 ```
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole` or `meteor`, `/orbital terrain on|off`.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor` or `mothership`, `/orbital approach …`, `/orbital arrival …`, `/orbital terrain on|off`.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
@@ -38,7 +39,8 @@ under a second fires. Rebind R in Options > Controls > Key Binds.
 and `HORIZON_HOME` (the game folder; default `~/.local/share/horizon`).
 
 The game's control tool works on this build too: `horizon-ctl state`, `horizon-ctl command "orbital give"`,
-`horizon-ctl key r tap` (opens the wheel), `horizon-ctl screenshot out.png`.
+`horizon-ctl key r tap` (opens the wheel), `horizon-ctl screenshot out.png` (without the mod's post pass), and
+`horizon-ctl record out.mp4 60` / `horizon-ctl record stop` (the finished frames, effects included; F1 hides the HUD).
 
 ## Layout
 

@@ -340,5 +340,113 @@
       }
     ],
     "subtitle": "subtitles.orbital.meteor.shutdown"
+  },
+  "mothership.arrival": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/arrival",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.arrival"
+  },
+  "mothership.boom": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/boom",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.boom"
+  },
+  "mothership.hum": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/hum",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.hum"
+  },
+  "mothership.charge": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/charge",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.charge"
+  },
+  "mothership.fire": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/fire",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.fire"
+  },
+  "mothership.beam1": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/beam1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.beam1"
+  },
+  "mothership.beam2": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/beam2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.beam2"
+  },
+  "mothership.sweep1": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/sweep1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.sweep1"
+  },
+  "mothership.sweep2": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/sweep2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.sweep2"
+  },
+  "mothership.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.rumble"
+  },
+  "mothership.cutoff": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/cutoff",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.cutoff"
+  },
+  "mothership.depart": {
+    "sounds": [
+      {
+        "name": "orbital:mothership/depart",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.mothership.depart"
   }
 }

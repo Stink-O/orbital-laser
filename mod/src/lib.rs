@@ -19,14 +19,12 @@ use horizon_mod_sdk::{
     log, render, storage, ui, world,
 };
 use lasers::LASERS;
-use strike::{Act, FIRE, Target};
+use strike::{APPROACHES, ARRIVALS, Act, FIRE, Target};
 
 const DESIGNATOR: &str = "orbital:laser_designator";
 const REMOTE: &str = "orbital:remote";
 /// Ticks of holding the designator on a target before it fires.
 const LOCK_TICKS: u32 = 14;
-/// Blocks the designator reaches.
-const RANGE: f32 = 200.0;
 const SHADER: &str = include_str!("../shaders/strike.wgsl");
 const SETTINGS: &str = "settings";
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
@@ -50,6 +48,9 @@ struct Orbital {
     carving: std::collections::VecDeque<(u64, String)>,
     laser: usize,
     terrain: bool,
+    /// Which way the mothership comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
+    approach: usize,
+    arrival: usize,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     strike: Option<Strike>,
@@ -62,23 +63,33 @@ struct Orbital {
 
 impl Orbital {
     fn save(&self) {
-        let text = format!("laser={}\nterrain={}\n", LASERS[self.laser].key, u8::from(self.terrain));
+        let text = format!(
+            "laser={}\nterrain={}\napproach={}\narrival={}\n",
+            LASERS[self.laser].key,
+            u8::from(self.terrain),
+            APPROACHES[self.approach].key,
+            ARRIVALS[self.arrival].key
+        );
         if let Err(e) = storage::set(SETTINGS, text.as_bytes()) {
             log::write(log::Level::Warn, &format!("settings not saved: {e}"));
         }
     }
-    fn load() -> (usize, bool) {
+    fn load() -> (usize, bool, usize, usize) {
         let text = storage::get(SETTINGS).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
         let mut laser = 0;
         let mut terrain = true;
+        let mut approach = 0;
+        let mut arrival = 0;
         for line in text.lines() {
             match line.split_once('=') {
                 Some(("laser", k)) => laser = LASERS.iter().position(|l| l.key == k).unwrap_or(0),
                 Some(("terrain", v)) => terrain = v != "0",
+                Some(("approach", k)) => approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0),
+                Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
                 _ => {}
             }
         }
-        (laser, terrain)
+        (laser, terrain, approach, arrival)
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -88,14 +99,15 @@ impl Orbital {
     fn open_wheel(&mut self) {
         let mut w = wheel::Wheel::default();
         if let Some(c) = ui::cursor() {
-            w.hover_at(c.x, c.y);
+            w.hover_at(c.x, c.y, self.laser);
         }
-        ui::show(&w.draws(self.laser, self.terrain));
+        ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
         self.wheel = Some(w);
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
     fn wheel_click(&mut self, x: f32, y: f32) {
-        match wheel::spot(x, y) {
+        let row = self.wheel.as_ref().is_some_and(|w| w.row_shown(self.laser));
+        match wheel::spot(x, y, row) {
             Some(wheel::Spot::Laser(i)) => {
                 self.laser = i;
                 self.save();
@@ -105,12 +117,33 @@ impl Orbital {
                 Self::actionbar(&format!("{} LOADED", l.title), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
+            Some(wheel::Spot::Approach(a)) => {
+                // picking how it comes in loads the mothership too
+                self.approach = a;
+                self.laser = wheel::mothership();
+                self.save();
+                ui::close();
+                self.wheel = None;
+                let l = LASERS[self.laser];
+                Self::actionbar(&format!("{} LOADED: {}", l.title, APPROACHES[a].label.to_uppercase()), l.color);
+                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
+            }
+            Some(wheel::Spot::Arrival(a)) => {
+                self.arrival = a;
+                self.laser = wheel::mothership();
+                self.save();
+                ui::close();
+                self.wheel = None;
+                let l = LASERS[self.laser];
+                Self::actionbar(&format!("{} LOADED: IT {}", l.title, ARRIVALS[a].label.to_uppercase()), l.color);
+                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
+            }
             Some(wheel::Spot::Centre) => {
                 self.terrain = !self.terrain;
                 self.save();
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.terrain { 1.6 } else { 1.0 });
                 if let Some(w) = &self.wheel {
-                    ui::show(&w.draws(self.laser, self.terrain));
+                    ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
                 }
             }
             None => {}
@@ -119,18 +152,18 @@ impl Orbital {
 
     // ---- the strike ----
     fn fire(&mut self) {
-        let Some(hit) = world::raycast(RANGE) else {
+        let laser = LASERS[self.laser];
+        let Some(hit) = world::raycast(laser.range) else {
             Self::actionbar("NO TARGET IN RANGE", "gray");
             return;
         };
-        let laser = LASERS[self.laser];
         let player = game::get_player();
         let dimension = player.as_ref().map_or("minecraft:overworld".to_string(), |p| p.dimension.clone());
         let me = player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]);
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
-        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me);
+        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, self.approach);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
         params[4] = hit.block_x as f32 + 0.5;
@@ -140,6 +173,10 @@ impl Orbital {
         params[8] = seed;
         params[9] = 1.0;
         params[11] = hit.block_y as f32;
+        if laser.key == "mothership" {
+            params[12] = self.approach as f32;
+            params[13] = self.arrival as f32;
+        }
         render::set_post(SHADER);
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
@@ -154,6 +191,7 @@ impl Orbital {
         s.ticks += 1;
         let now = s.ticks as f32 * 0.05;
         let mut cmds = Vec::new();
+        let mut jolts: Vec<(f32, f32)> = Vec::new();
         while let Some((t, _)) = s.plan.get(s.next) {
             if *t > now {
                 break;
@@ -165,7 +203,8 @@ impl Orbital {
                     Some(cost) => self.carving.push_back((cost, c)),
                     None => cmds.push(c),
                 },
-                Act::Sound { event, volume, pitch } => world::play_sound(&event, None, volume, pitch),
+                Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
+                Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Later(job) => {
                     // more of the plan, worked out now it is due: merged in after what has run (both are in order,
                     // so the sort only merges two runs)
@@ -178,6 +217,12 @@ impl Orbital {
         }
         if !cmds.is_empty() {
             world::run_commands(&cmds);
+        }
+        if !jolts.is_empty() {
+            // the jolts due this tick as one (the game adds jolts up the same way, and takes only so many a call)
+            let strength = jolts.iter().map(|j| j.0 * j.0).sum::<f32>().sqrt().min(1.0);
+            let seconds = jolts.iter().map(|j| j.1).fold(0.0, f32::max);
+            render::shake(strength, seconds);
         }
         if now >= s.length {
             render::clear_post();
@@ -213,6 +258,10 @@ impl Orbital {
                 (format!("Laser: {}", l.title), l.rgb),
                 (format!("Terrain damage: {}", if self.terrain { "on" } else { "off" }), 0xA8B0BC),
             ];
+            if l.key == "mothership" {
+                lines.push((format!("Approach: {}", APPROACHES[self.approach].label), 0xA8B0BC));
+                lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
+            }
             if self.strike.is_some() {
                 lines.push(("Strike in progress".to_string(), 0xFF8A65));
             } else {
@@ -238,12 +287,14 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let (laser, terrain) = Orbital::load();
+        let (laser, terrain, approach, arrival) = Orbital::load();
         let state = Orbital {
             warm: 0,
             carving: std::collections::VecDeque::new(),
             laser,
             terrain,
+            approach,
+            arrival,
             aiming: None,
             strike: None,
             wheel: None,
@@ -307,9 +358,9 @@ impl Mod for Orbital {
             render::set_params(&s.params);
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
-            && w.hover_at(c.x, c.y)
+            && w.hover_at(c.x, c.y, self.laser)
         {
-            ui::show(&w.draws(self.laser, self.terrain));
+            ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
         }
     }
 
@@ -324,6 +375,16 @@ impl Mod for Orbital {
                 self.open_wheel();
                 Ok(None)
             }
+            (Some("approach"), Some(k)) if APPROACHES.iter().any(|a| a.key == k) => {
+                self.approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0);
+                self.save();
+                Ok(Some(format!("The mothership comes in {}", APPROACHES[self.approach].label)))
+            }
+            (Some("arrival"), Some(k)) if ARRIVALS.iter().any(|a| a.key == k) => {
+                self.arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0);
+                self.save();
+                Ok(Some(format!("The mothership {}", ARRIVALS[self.arrival].label)))
+            }
             (Some("terrain"), Some(v @ ("on" | "off"))) => {
                 self.terrain = v == "on";
                 self.save();
@@ -335,7 +396,9 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | {}",
+                "/orbital give | wheel | terrain on|off | approach {} | arrival {} | {}",
+                APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
+                ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 LASERS.iter().map(|l| l.key).collect::<Vec<_>>().join(" | ")
             )),
         }

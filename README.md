@@ -8,12 +8,13 @@
 # Orbital Laser
 
 **A terrestrial orbital laser strike, as a mod for [Horizon](https://github.com/ludovic111/horizon), the Rust rewrite of
-Minecraft Java.** Hold the Orbital Laser Designator on anything up to 200 blocks away and a beam drops from orbit: it
+Minecraft Java.** Hold the Orbital Laser Designator on anything up to 200 blocks away (1000 for the Mothership) and a beam drops from orbit: it
 digs a crater and a shaft down to bedrock, flattens everything around it and leaves the land changed for good. Pick
 the laser from a wheel: **Plasma**, a raging beam with forked lightning that fuses the crater into glass, **Godly**,
 where the clouds part, a pillar of light comes down and the crater turns to quartz and gold, **Black Hole**, a
 singularity that bends the light round it, tears the ground up into orbit and swallows it, or **Meteor Storm**, a storm
-of meteors across the land and then an extinction-level impact, the most destructive of the four.
+of meteors across the land and then an extinction-level impact, the most destructive of them all, or **Mothership**, a
+kilometre-long ship that drops out of hyperspace over the target and cuts a molten trench across the land with its beam.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -32,7 +33,7 @@ of meteors across the land and then an extinction-level impact, the most destruc
 </p>
 
 <p align="center">
-  <img alt="A Godly strike: a pillar of light, six pillars of light round a golden sigil, halo rings and wings in the sky" width="720" src="docs/06-godly.jpg">
+  <img alt="The Mothership: a vast dark metal ship lit with green seams over the land, its green beam striking the ground" width="720" src="docs/11-mothership.jpg">
 </p>
 
 > [!WARNING]
@@ -40,7 +41,9 @@ of meteors across the land and then an extinction-level impact, the most destruc
 > the Black Hole), digs a crater about 60 blocks across and a shaft down to bedrock, scorches the land round it, and
 > kills every mob and dropped item within 40 blocks (players are spared). **The Meteor Storm is far bigger:** craters
 > across 120 blocks round the target, then everything above the ground flattened out to 100 blocks, a crater about 125
-> blocks across, the land charred out to 135, rubble thrown out to 250 and every mob within 130 blocks killed. **Back up
+> blocks across, the land charred out to 135, rubble thrown out to 250 and every mob within 130 blocks killed. **The
+> Mothership** vaporises the land out to 34 blocks, digs a crater 22 across and a shaft to bedrock, then cuts a trench
+> 100 blocks long, up to 15 wide and 17 deep, away from you; it keeps the chunks round it loaded while it works. **Back up
 > your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
 > [!IMPORTANT]
@@ -57,7 +60,7 @@ of meteors across the land and then an extinction-level impact, the most destruc
 > and the ready-built Horizon is Linux x86-64 only (others can build the fork from source).
 
 **Contents:** [Features](#features) ·
-[New in 0.4.0](#new-in-040) ·
+[New in 0.5.0](#new-in-050) ·
 [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) ·
 [How to play](#how-to-play) ·
@@ -75,10 +78,14 @@ of meteors across the land and then an extinction-level impact, the most destruc
 |---|---|---|
 | ![Meteors streaking down through the sky and landing across the land in flashes of light](docs/08-meteor-storm.jpg) | ![The big impact: a fireball tearing open with burning ejecta thrown out every way](docs/09-meteor-impact.jpg) | ![A huge glowing crater rimmed with fire in charred land](docs/10-meteor-crater.jpg) |
 
+| Mothership | Its underside | For scale, from 900 blocks |
+|---|---|---|
+| ![A vast dark metal ship lit with green seams hanging over the land, its green beam striking the ground](docs/11-mothership.jpg) | ![Looking up at the ship's underside: plated decks, green-lit seams, window lights and the beam's emitter](docs/12-mothership-underside.jpg) | ![The whole ship hanging over the horizon, small against the sky, its beam on the land below](docs/13-mothership-scale.jpg) |
+
 ## Features
 
-- **Four lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
-  game: Plasma, Godly, Black Hole and Meteor Storm round it, terrain damage on or off in the middle. Hover a laser to read what it does.
+- **Five lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
+  game: Plasma, Godly, Black Hole, Meteor Storm and Mothership round it, terrain damage on or off in the middle. Hover a laser to read what it does.
 - **Plasma.** A red designator beam and a converging reticle while it charges, then a raging plasma beam with twisting
   strands and forked lightning, a churning fireball that climbs into a mushroom cloud, a shockwave and a smoke column.
   The crater's walls fuse into obsidian, black glass and magma, lava pools on its floor crust over into obsidian, fires
@@ -102,15 +109,37 @@ of meteors across the land and then an extinction-level impact, the most destruc
   tears open and throws burning ejecta every way, everything above the ground flattened out to 100 blocks, a crater
   about 125 blocks across with a raised rim and a shaft to bedrock, a melt sheet of magma and lava on its floor, the
   land charred out to 135 blocks, real blocks thrown out across the land and ash coming down over everything.
+- **Mothership.** A slab of dark metal over a kilometre long drops out of hyperspace and stops dead over the target, its
+  shadow falling across the land, the air rippling round it and its green lights cascading on. Its emitters charge and
+  converge, and a green beam with a white-hot core drills a shaft to bedrock, then sweeps away from you, cutting a
+  molten trench 100 blocks long, before the ship pulls away into a streak. Pick on the wheel which way it comes in
+  (ahead, behind, left, right or straight down) and how it arrives (a film-style snap, unfolding out of a point, or out
+  of a warp streak). It reaches 1000 blocks: past your render distance it aims across Horizon's distant terrain.
+- **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
+  further away you are.
 - **Everything is in the world.** The effects are traced against the depth buffer and against shapes placed in the
   world (planes, cylinders, a volume), so they stay put when you move, sit behind hills in front of them and are seen in
   perspective. Nothing is painted flat on the screen but the lens: bloom, a streak and the flash.
 - **Real terrain damage.** The crater, the shaft to bedrock and what each laser leaves behind are real blocks.
 - **Point and fire.** Hold the designator on a target for under a second and it fires where your crosshair lands, up to
-  200 blocks away.
+  200 blocks away (1000 for the Mothership).
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
+
+## New in 0.5.0
+
+- **Mothership**, the fifth laser, on the wheel and `/orbital mothership`. A kilometre-long ship of dark metal and
+  green light drops out of hyperspace over the target, charges, drills a shaft to bedrock and sweeps its beam away from
+  you, cutting a molten trench 100 blocks long, then leaves in a streak.
+- **Approach and arrival on the wheel.** Two rows under the ring when the Mothership is loaded: where it comes in from
+  (ahead, behind, left, right, above) and how (snap, unfold, warp). Also `/orbital approach …` and `/orbital arrival …`.
+- **Range out to 1000 blocks** for the Mothership. Past your render distance it aims across Horizon's distant terrain,
+  so turn on **LOD Distance** in Video Settings to use it all.
+- **Real camera shake on every laser.** The old screen jitter is gone: the game turns the camera itself, so the world,
+  your hand and the effects move together, and each jolt lands when the sound does.
+- **Quieter from afar.** The ground breaking is heard from the impact, not in your ears wherever you are.
+- **Needs the newer Orbital Laser build of Horizon** (camera shake and the longer raycast are new in its mod API).
 
 ## New in 0.4.0
 
@@ -178,7 +207,7 @@ was a shader pack, a sound pack and a Python script driving the game from outsid
    Already have Horizon set up? Skip that and point `HORIZON_RESOURCES` at the prepared resources it already has (the
    folder `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.4.0.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.0.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -260,14 +289,16 @@ the reason on its row first.
 3. **Fire.** Hold the designator, aim at anything up to 200 blocks away, and **hold right-click** for under a second. The
    action bar counts `ACQUIRING TARGET…`, then the strike lands where your crosshair is.
 
-A strike takes about 26 seconds (the Meteor Storm 38), and one runs at a time. While you hold either item, a panel in the top right shows the
+A strike takes about 26 seconds (the Meteor Storm 38, the Mothership 34), and one runs at a time. While you hold either item, a panel in the top right shows the
 loaded laser and whether terrain damage is on.
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership` | loads that laser |
+| `/orbital approach ahead\|behind\|left\|right\|overhead` | where the Mothership comes in from |
+| `/orbital arrival snap\|unfold\|warp` | how the Mothership arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
@@ -282,8 +313,8 @@ search box).
 |---|---|
 | `input` | claims the two items' right-clicks (use-start, use-stop, ticks held) and registers the **R** keybind |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
-| `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](mod/shaders/strike.wgsl)), fed 16 numbers each frame |
-| `world` | aims (a raycast up to 256 blocks), plays the sounds, and runs the crater's block changes as server commands, silently, in bulk each tick |
+| `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](mod/shaders/strike.wgsl)), fed 16 numbers each frame, and the camera shake |
+| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, and runs the crater's block changes as server commands, silently, in bulk each tick |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -304,7 +335,8 @@ it out tick by tick, and hands the post pass the strike's clock every frame.
 | 13 to 26 s | **Aftermath:** what each laser leaves behind lands, the light fades, the smoke or the light veil disperses |
 
 The Meteor Storm runs longer: the storm from 4 to about 16 s, the big one coming in from about 11 s and hitting at
-17.5 s, then its crater, ejecta and ash until 38 s.
+17.5 s, then its crater, ejecta and ash until 38 s. The Mothership arrives at 3 s, charges until 8, drills from 8.2 s,
+sweeps from 10 to 19 s, cuts off at 20 and is gone by 23.5; its trench cools until 34 s.
 
 **The effects** are one fragment shader in Horizon's shader-pack stage format. It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
@@ -314,14 +346,16 @@ a plane far overhead. The Black Hole marches each view ray that passes near it t
 equation), picking up the accretion disk where the ray crosses it and resampling the scene in the direction the ray
 leaves in; the debris round it are ray-traced boxes on paths the mod's block changes follow too. The Meteor Storm's meteors are
 placed by the same hash in the shader and in the mod, so each crater opens where its meteor lands; their trails, the
-fireball and the smoke are noise volumes traced along the view ray.
+fireball and the smoke are noise volumes traced along the view ray. The Mothership's hull is found analytically: each
+view ray meets its stepped decks as flat floors and its walls by testing the outline, so it is cheap however much of the
+sky it covers; its arrival and departure are averaged over a shutter for real motion blur.
 
 **The sounds** ([`tools/synth_sounds.py`](tools/synth_sounds.py)) have no samples in them: they are generated from noise
 and sweeps, with a reverb built from a synthetic impulse response.
 
 ## Stock Horizon
 
-0.1's setup still works on stock Horizon, with Plasma and Godly (the Black Hole and the Meteor Storm are mod-only): a shader pack, a sound pack and the item mod, run by
+0.1's setup still works on stock Horizon, with Plasma and Godly (the Black Hole, the Meteor Storm and the Mothership are mod-only): a shader pack, a sound pack and the item mod, run by
 [`strike.py`](strike.py) from outside the game through Horizon's `horizon-ctl`. The items are spyglasses there, the remote
 opens a chest-style menu to pick the laser, and every strike rewrites the shader pack's settings.
 
@@ -340,8 +374,9 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
   `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the prepared resources.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow) and
   rebind it. R only opens the wheel while you play, not over another screen.
-- **`NO TARGET IN RANGE`.** You're aiming at the sky, past 200 blocks, or at unloaded chunks.
-- **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds, 38 for the Meteor Storm).
+- **`NO TARGET IN RANGE`.** You're aiming at the sky, past 200 blocks (1000 for the Mothership), or at unloaded
+  chunks. Past your render distance only the Mothership can aim, and only with **LOD Distance** on.
+- **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds, 38 for the Meteor Storm, 34 for the Mothership).
 - **No sound.** Check the in-game master volume (Music & Sounds) and your OS volume for the game's own audio stream.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
 
@@ -353,7 +388,8 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
   for the player who fired.
 - **One strike at a time.**
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off on the wheel.
-- **Targets must be in loaded chunks** and within 200 blocks.
+- **Targets must be in loaded chunks** and within 200 blocks. The Mothership reaches 1000 across the distant terrain,
+  where its aim follows the coarser distant heights, and its crater only shows there once those chunks load.
 
 ## Developing
 

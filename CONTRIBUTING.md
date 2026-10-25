@@ -23,8 +23,8 @@ any size is welcome: a bug report, a test on your PC, a fix, or taking over a wh
 - **More lasers.** A laser is an entry in `mod/src/lasers.rs`, a branch in `mod/shaders/strike.wgsl`, what it leaves
   behind in `mod/src/strike.rs`, sounds in `tools/sounds_themes.py` and an icon in `tools/make_item_textures.py`.
 - **Shader cost.** It's one full-screen pass with a lot of noise in it, Plasma traces a volume, and the Black Hole
-  marches rays through its gravity and tests 160 pieces of debris per pixel, and the Meteor Storm traces 72 meteors'
-  trails and a fireball volume. Cheaper versions that
+  marches rays through its gravity and tests 160 pieces of debris per pixel, the Meteor Storm traces 72 meteors'
+  trails and a fireball volume, and the Mothership's arrival and departure average its hull over a shutter. Cheaper versions that
   look the same would help lower-end GPUs.
 
 ## How it fits together
