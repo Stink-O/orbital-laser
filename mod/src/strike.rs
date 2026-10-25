@@ -34,7 +34,6 @@ fn debris_big(i: usize, seed: f32) -> bool {
 
 pub enum Act {
     Cmd(String),
-    /// A sound that follows the player.
     /// A sound following the player (`at` none), or at a point, heard only nearby.
     Sound { event: String, at: Option<[f64; 3]>, volume: f32, pitch: f32 },
     /// A jolt of the real camera (`render.shake`): `strength` 0 to 1, fading out over `seconds`.
@@ -42,6 +41,9 @@ pub enum Act {
     /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
     /// much work for the one tick it fires in (a mod's tick has a fuel limit).
     Later(Box<dyn FnOnce() -> Vec<(f32, Act)>>),
+    /// A world change for when the block budget is to spare (after everything `Cmd` queued): what is still standing
+    /// high over a blast, which takes long to clear and nothing waits on.
+    Spare(String),
 }
 
 /// The blocks a command changes or visits, roughly, when it changes the world (`fill`, `setblock`, `summon`, through
@@ -149,6 +151,18 @@ impl Plan {
     }
     fn at(&mut self, t: f32, cmd: impl Into<String>) {
         self.ev.push((t, Act::Cmd(cmd.into())));
+    }
+    /// Everything left standing over a blast of radius `r`, from `y0` up to the sky: a laser comes down from orbit,
+    /// so no mountain is left hanging over its crater. On the spare block budget, in bands (a fill's cap).
+    fn clear_above(&mut self, t: f32, r: i32, y0: i32, sky: i32, rough: f64) {
+        let mut y = y0;
+        while y <= sky {
+            let top = (y + 19).min(sky);
+            for c in self.disc(r, y, top, "minecraft:air", rough, None) {
+                self.ev.push((t, Act::Spare(c)));
+            }
+            y = top + 1;
+        }
     }
     /// A vanilla sound, `vol` out of 10.
     fn sound(&mut self, t: f32, name: &str, vol: f32, pitch: f64) {
@@ -435,9 +449,11 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
         let floor_y = bedrock_top(dimension);
         // 1. the blast: everything standing above the ground in a wide disc is vaporised (the black hole clears
         //    further, so the ground it tears its debris from is level with the target)
-        for c in p.disc(if blackhole { 52 } else { 44 }, by + 1, by + 60, "minecraft:air", 0.12, None) {
+        let (blast_r, sky) = (if blackhole { 52 } else { 44 }, sky_top(dimension));
+        for c in p.disc(blast_r, by + 1, (by + 60).min(sky), "minecraft:air", 0.12, None) {
             p.at(t + 0.15, c);
         }
+        p.clear_above(t + 0.15, blast_r, by + 61, sky, 0.12);
         // 2. scorched earth: what the ground round the crater turns into (the black hole drains it once it has
         //    torn its debris up)
         let t_scorch = if blackhole { t + 7.6 } else { t + 0.4 };
@@ -522,6 +538,15 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
 }
 
 /// The top of the bedrock floor in a dimension.
+/// The highest block a strike clears up to: the build limit, under the Nether's bedrock roof.
+fn sky_top(dimension: &str) -> i32 {
+    match dimension {
+        "minecraft:overworld" => 319,
+        "minecraft:the_nether" => 122,
+        _ => 255,
+    }
+}
+
 fn bedrock_top(dimension: &str) -> i32 {
     match dimension {
         "minecraft:overworld" => -59,
@@ -962,8 +987,8 @@ fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension:
         p.at(tb + tk, format!("execute positioned {tx} {ty} {tz} run kill @e[type=!minecraft:player,distance=..130]"));
     }
     if terrain {
-        let (floor_y, point) = (bedrock_top(dimension), target.point);
-        p.later(tb - 0.3, move |q| extinction(q, tb, floor_y, point, shader_seed));
+        let (floor_y, sky, point) = (bedrock_top(dimension), sky_top(dimension), target.point);
+        p.later(tb - 0.3, move |q| extinction(q, tb, floor_y, sky, point, shader_seed));
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -1051,17 +1076,21 @@ fn meteor_crater(p: &mut Plan, x: i32, z: i32, cls: usize, tl: f32) {
 /// The extinction impact at the target: everything above the ground flattened out to 100 blocks, the land charred out
 /// to 135, a crater 125 blocks across with a raised rim, a shaft to bedrock with lava at the bottom, a melt sheet on
 /// its floor, and ejecta thrown far across the land.
-fn extinction(p: &mut Plan, tb: f32, floor_y: i32, point: [f64; 3], seed: f32) {
+fn extinction(p: &mut Plan, tb: f32, floor_y: i32, sky: i32, point: [f64; 3], seed: f32) {
     // each stage is worked out just before it starts
     // 1. the blast (in bands of height: a fill is capped at 32768 blocks)
     p.later(tb + 0.0 - 0.15, move |p| {
         let by = p.by;
         for band in 0..4 {
             let y0 = by + 1 + band * 20;
-            for c in p.disc(100, y0, y0 + 19, "minecraft:air", 0.1, None) {
+            if y0 > sky {
+                break;
+            }
+            for c in p.disc(100, y0, (y0 + 19).min(sky), "minecraft:air", 0.1, None) {
                 p.at(tb + 0.1 + band as f32 * 0.1, c);
             }
         }
+        p.clear_above(tb + 0.5, 100, by + 81, sky, 0.1);
     });
     // 2. charred land
     p.later(tb + 0.5 - 0.15, move |p| {
@@ -1390,13 +1419,13 @@ fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimens
         let (z0, z1) = ((point[2].min(ez) - 48.0).floor() as i32, (point[2].max(ez) + 48.0).floor() as i32);
         p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
         p.at(MS_END + 1.0, format!("forceload remove {x0} {z0} {x1} {z1}"));
-        let floor_y = bedrock_top(dimension);
-        mothership_crater(&mut p, floor_y);
+        let (floor_y, sky) = (bedrock_top(dimension), sky_top(dimension));
+        mothership_crater(&mut p, floor_y, sky);
         // the trench, a stretch at a time, each worked out just before the beam gets there
         let mut d0 = 0.0;
         while d0 < TRENCH_L {
             let d1 = (d0 + 8.0).min(TRENCH_L);
-            p.later(ms_when(d0 / TRENCH_L) - 0.3, move |q| trench(q, point, axis, d0, d1));
+            p.later(ms_when(d0 / TRENCH_L) - 0.3, move |q| trench(q, point, axis, d0, d1, sky));
             d0 = d1;
         }
     }
@@ -1406,17 +1435,21 @@ fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimens
 
 /// The crater where the beam first comes down: the land above it vaporised, the ground round it charred, a bowl, and a
 /// shaft drilled to bedrock in the two seconds before it starts to sweep.
-fn mothership_crater(p: &mut Plan, floor_y: i32) {
+fn mothership_crater(p: &mut Plan, floor_y: i32, sky: i32) {
     let t = MS_HIT;
     // 1. the blast, in two bands of height (a fill is capped at 32768 blocks)
     p.later(t - 0.1, move |p| {
         let by = p.by;
         for band in 0..2 {
             let y0 = by + 1 + band * 20;
-            for c in p.disc(34, y0, y0 + 19, "minecraft:air", 0.12, None) {
+            if y0 > sky {
+                break;
+            }
+            for c in p.disc(34, y0, (y0 + 19).min(sky), "minecraft:air", 0.12, None) {
                 p.at(t + 0.1 + band as f32 * 0.1, c);
             }
         }
+        p.clear_above(t + 0.3, 34, by + 41, sky, 0.12);
         for &(rad, block, rough, repl) in p.laser.scorch {
             for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
                 let dt = p.rng.next() as f32 * 1.6;
@@ -1473,7 +1506,7 @@ fn mothership_crater(p: &mut Plan, floor_y: i32) {
 /// beam reaches it (`ms_when`). The land over it vaporised, a stepped cut 14 blocks wide and 17 deep fused into the
 /// laser's lining, lava running along its floor, scorched ground and fires along its lips. The trench is laid out in
 /// columns across whichever of x and z it runs along most, each column one /fill per step of its cut.
-fn trench(p: &mut Plan, point: [f64; 3], axis: (f64, f64), d0: f64, d1: f64) {
+fn trench(p: &mut Plan, point: [f64; 3], axis: (f64, f64), d0: f64, d1: f64, sky: i32) {
     const NATURAL: [&str; 5] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel", "#minecraft:terracotta"];
     // (half-width, top, bottom) of each step of the cut, from the target's block down; the end shallows out
     const STEPS: [(f64, i32, i32); 3] = [(7.0, 0, -5), (5.0, -6, -11), (3.0, -12, -16)];
@@ -1521,9 +1554,10 @@ fn trench(p: &mut Plan, point: [f64; 3], axis: (f64, f64), d0: f64, d1: f64) {
             p.at(t, fill(c, n0, n1, y0, y1, "minecraft:air"));
             deepest = y0;
         }
-        // everything standing over it, trees and all
+        // everything standing over it up to the sky, trees, hills and all: the beam comes down through a mountain
+        // in its way, so it cuts a slot through it, not a tunnel under it
         let (n0, n1) = span(9.0);
-        p.at(t, fill(c, n0, n1, by + 1, by + 30, "minecraft:air"));
+        p.at(t, fill(c, n0, n1, by + 1, sky, "minecraft:air"));
         for _ in 0..2 {
             // patches of the other linings over the fused walls
             let &(hw, top, bottom) = p.rng.pick(&STEPS[..steps]);
@@ -1588,12 +1622,40 @@ mod tests {
         let mut out = Vec::new();
         while let Some((t, act)) = ev.pop() {
             match act {
-                Act::Cmd(c) => out.push((t, c)),
+                Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Sound { .. } | Act::Shake { .. } => {}
                 Act::Later(job) => ev.extend(job()),
             }
         }
         out
+    }
+    #[test]
+    fn blasts_clear_to_the_sky() {
+        // nothing is left hanging over a crater: every laser clears the air over its target up to the build limit
+        // (under the Nether's roof there), and no fill is over the cap
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        for laser in crate::lasers::LASERS {
+            for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
+                let cmds = run_all(plan(laser, &target, true, dimension, 7.0, [10.5, 66.0, 60.0], 0));
+                let over = |y: i32| {
+                    cmds.iter().any(|(_, c)| {
+                        let w: Vec<&str> = c.split_whitespace().collect();
+                        w.len() >= 8 && w[0] == "fill" && w[7] == "minecraft:air" && {
+                            let n: Vec<i32> = w[1..7].iter().filter_map(|v| v.parse().ok()).collect();
+                            n.len() == 6 && n[0].min(n[3]) <= 10 && n[0].max(n[3]) >= 10 && n[2].min(n[5]) <= -3 && n[2].max(n[5]) >= -3
+                                && n[1].min(n[4]) <= y && n[1].max(n[4]) >= y
+                        }
+                    })
+                };
+                for y in [65, (65 + sky) / 2, sky] {
+                    assert!(over(y), "{} in {dimension}: nothing clears y {y} over the target", laser.key);
+                }
+                assert!(!over(sky + 1), "{} in {dimension}: clears above y {sky}", laser.key);
+                for (_, c) in &cmds {
+                    assert!(block_cost(c).unwrap_or(0) <= 32768, "{c}");
+                }
+            }
+        }
     }
     #[test]
     fn every_laser_shakes_the_camera() {
@@ -1630,9 +1692,9 @@ mod tests {
                 let axis = ms_axis(wing_angle(target.point, me));
                 let mut columns = 0;
                 for (t, c) in &cmds {
-                    // the trench's clearing fills, one a column: `fill X 65 Z X 94 Z air` (or across)
+                    // the trench's clearing fills, one a column: `fill X 65 Z X 319 Z air` (or across)
                     let w: Vec<&str> = c.split_whitespace().collect();
-                    if w.len() == 8 && w[0] == "fill" && w[2] == "65" && w[5] == "94" && w[7] == "minecraft:air" {
+                    if w.len() == 8 && w[0] == "fill" && w[2] == "65" && w[5] == "319" && w[7] == "minecraft:air" {
                         let n: Vec<f64> = [1, 3, 4, 6].iter().map(|&k| w[k].parse::<f64>().unwrap() + 0.5).collect();
                         let (cx, cz) = ((n[0] + n[2]) * 0.5, (n[1] + n[3]) * 0.5);
                         let along = (cx - target.point[0]) * axis.0 + (cz - target.point[2]) * axis.1;
@@ -1664,14 +1726,14 @@ mod tests {
             let mut d0 = 0.0;
             while d0 < TRENCH_L {
                 let d1 = (d0 + 8.0).min(TRENCH_L);
-                trench(&mut p, [10.5, 64.0, -2.5], axis, d0, d1);
+                trench(&mut p, [10.5, 64.0, -2.5], axis, d0, d1, 319);
                 d0 = d1;
             }
             let air: Vec<&String> = p
                 .ev
                 .iter()
                 .filter_map(|(_, a)| match a {
-                    Act::Cmd(c) if c.ends_with("minecraft:air") && c.contains(" 94 ") => Some(c),
+                    Act::Cmd(c) if c.ends_with("minecraft:air") && c.contains(" 319 ") => Some(c),
                     _ => None,
                 })
                 .collect();

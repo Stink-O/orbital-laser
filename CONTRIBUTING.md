@@ -42,9 +42,8 @@ any size is welcome: a bug report, a test on your PC, a fix, or taking over a wh
 
 ## Testing a change
 
-- **Shader:** validate it against Horizon's prelude: `cat tools/wgslcheck/prelude.wgsl mod/shaders/strike.wgsl > /tmp/s.wgsl`
-  and run `tools/wgslcheck/target/release/wgslcheck /tmp/s.wgsl`; it must print `OK`. In the game a broken pass is
-  skipped and the reason logged.
+- **Shader:** run `tools/check-shader.sh`, which validates it after the fork's mod pass prelude (a copy is in
+  `tools/wgslcheck/prelude.wgsl`); it must print `OK`. In the game a broken pass is skipped and the reason logged.
 - **Mod:** `python3 tools/build_mod.py --install ~/.local/share/horizon`, then `./play.sh` in a throwaway world. Switch
   terrain damage off (`/orbital terrain off`) for the first strike, then check a full strike: the chat stays empty, the
   shaft reaches bedrock, and a second strike right after looks the same as the first.

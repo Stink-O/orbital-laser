@@ -338,7 +338,7 @@ The Meteor Storm runs longer: the storm from 4 to about 16 s, the big one coming
 17.5 s, then its crater, ejecta and ash until 38 s. The Mothership arrives at 3 s, charges until 8, drills from 8.2 s,
 sweeps from 10 to 19 s, cuts off at 20 and is gone by 23.5; its trench cools until 34 s.
 
-**The effects** are one fragment shader in Horizon's shader-pack stage format. It rebuilds every pixel's position from
+**The effects** are one fragment shader, run as the mod's post pass after the fork's small prelude (the world's colour and depth, the camera and the mod's parameters). It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
 and pillars are cylinders found by the closest approach between the view ray and their axis, the halo rings and wings are
 planes in the world, Plasma's fireball is a noise volume traced along the view ray, and Godly's opening in the clouds is
@@ -355,7 +355,7 @@ and sweeps, with a reverb built from a synthetic impulse response.
 
 ## Stock Horizon
 
-0.1's setup still works on stock Horizon, with Plasma and Godly (the Black Hole, the Meteor Storm and the Mothership are mod-only): a shader pack, a sound pack and the item mod, run by
+0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the Black Hole, the Meteor Storm and the Mothership are mod-only): a shader pack, a sound pack and the item mod, run by
 [`strike.py`](strike.py) from outside the game through Horizon's `horizon-ctl`. The items are spyglasses there, the remote
 opens a chest-style menu to pick the laser, and every strike rewrites the shader pack's settings.
 
@@ -404,8 +404,8 @@ python3 tools/make_branding.py                # regenerate the logo files in doc
 `tools/build_mod.py` builds the code with `cargo horizon-mod build` from the fork
 (`cargo install --git https://github.com/Stink-O/horizon --branch mod-api-input-ui-render-world cargo-horizon-mod`,
 plus `rustup target add wasm32-unknown-unknown`), then adds the items, textures and sounds. To validate the shader on its
-own, prepend Horizon's prelude ([`tools/wgslcheck/prelude.wgsl`](tools/wgslcheck/prelude.wgsl)) and run
-`tools/wgslcheck` on it. See [CONTRIBUTING.md](CONTRIBUTING.md).
+own, run `tools/check-shader.sh`: it puts the fork's mod pass prelude
+([`tools/wgslcheck/prelude.wgsl`](tools/wgslcheck/prelude.wgsl)) before it and checks it. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits and licence
 

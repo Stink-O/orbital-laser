@@ -56,12 +56,12 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   and, if it stopped, why.
 - **The game keeps its saves and options in the folder it starts in** when started with `--game`: `play.sh` starts it in
   the game folder for that reason. Starting it elsewhere makes a fresh, empty game folder there.
-- **The mod's post pass is plain WGSL in Horizon's shader-pack stage format** with the prelude prepended. A compile error
+- **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
   is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 
 ## Verifying work
 
-Shader: `tools/wgslcheck` prints `OK` on prelude + `mod/shaders/strike.wgsl`. Mod: build, install, `./play.sh`, one
+Shader: `tools/check-shader.sh` prints `OK` (the prelude + `mod/shaders/strike.wgsl`). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).

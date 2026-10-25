@@ -46,6 +46,8 @@ struct Orbital {
     warm: u8,
     /// World changes waiting for room in a tick's block budget, in order; they outlive the strike that made them.
     carving: std::collections::VecDeque<(u64, String)>,
+    /// World changes that wait for spare block budget (`Act::Spare`): what stands high over a blast.
+    spare: std::collections::VecDeque<(u64, String)>,
     laser: usize,
     terrain: bool,
     /// Which way the mothership comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
@@ -205,6 +207,7 @@ impl Orbital {
                 },
                 Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
+                Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
                 Act::Later(job) => {
                     // more of the plan, worked out now it is due: merged in after what has run (both are in order,
                     // so the sort only merges two runs)
@@ -230,7 +233,8 @@ impl Orbital {
         }
         self.carve();
     }
-    /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one).
+    /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one); then, with
+    /// what is left of it, the ones that wait for spare budget.
     fn carve(&mut self) {
         let mut spent = 0;
         let mut cmds = Vec::new();
@@ -240,6 +244,17 @@ impl Orbital {
             }
             spent += cost;
             if let Some((_, c)) = self.carving.pop_front() {
+                cmds.push(c);
+            }
+        }
+        while self.carving.is_empty()
+            && let Some((cost, _)) = self.spare.front()
+        {
+            if spent + cost > BLOCK_BUDGET && (spent > 0 || !cmds.is_empty()) {
+                break;
+            }
+            spent += cost;
+            if let Some((_, c)) = self.spare.pop_front() {
                 cmds.push(c);
             }
         }
@@ -291,6 +306,7 @@ impl Mod for Orbital {
         let state = Orbital {
             warm: 0,
             carving: std::collections::VecDeque::new(),
+            spare: std::collections::VecDeque::new(),
             laser,
             terrain,
             approach,
