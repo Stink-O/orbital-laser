@@ -26,8 +26,30 @@ const REMOTE: &str = "orbital:remote";
 /// Ticks of holding the designator on a target before it fires.
 const LOCK_TICKS: u32 = 14;
 const SHADER: &str = include_str!("../shaders/strike.wgsl");
-/// The downfall's own pass: strike.wgsl up to its fs_main, then this (see shaders/downfall.wgsl).
+/// The downfall's own pass: strike.wgsl up to its fs_main, less the other lasers' own functions (marked `[lasers pass
+/// only]`), then this (see shaders/downfall.wgsl).
 const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
+fn downfall_pass() -> String {
+    let mut out = String::with_capacity(SHADER.len() + DOWNFALL_PASS.len());
+    let mut skip = false;
+    for line in SHADER.lines() {
+        if line.starts_with("@fragment") {
+            break;
+        }
+        if line.starts_with("// [lasers pass only]") {
+            skip = true;
+        }
+        if !skip {
+            out.push_str(line);
+            out.push('\n');
+        }
+        if line.starts_with("// [end lasers pass only]") {
+            skip = false;
+        }
+    }
+    out.push_str(DOWNFALL_PASS);
+    out
+}
 const SETTINGS: &str = "settings";
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
 /// carves its crater over a few seconds instead of freezing the game for one.
@@ -329,7 +351,7 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let (laser, terrain, approach, arrival, page) = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), format!("{}{DOWNFALL_PASS}", &SHADER[..SHADER.find("\n@fragment").map_or(SHADER.len(), |i| i + 1)])],
+            passes: [SHADER.to_string(), downfall_pass()],
             compiled: None,
             // both compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: vec![usize::from(LASERS[laser].key == "downfall"), usize::from(LASERS[laser].key != "downfall")],
@@ -473,3 +495,21 @@ const _: () = {
         i += 1;
     }
 };
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn downfall_pass_is_whole_and_small() {
+        // the downfall's pass leaves out the other lasers' own functions and fs_main, keeps what it uses, and is under
+        // the game's 256 KiB
+        let p = super::downfall_pass();
+        for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
+            assert!(!p.contains(gone), "{gone}");
+        }
+        for kept in ["fn bh_lens(", "fn ms_hull(", "fn ms_frame(", "fn downfall(", "fn ms_air("] {
+            assert!(p.contains(kept), "{kept}");
+        }
+        assert_eq!(p.matches("@fragment").count(), 1);
+        assert!(p.len() <= 256 << 10 && super::SHADER.len() <= 256 << 10);
+    }
+}

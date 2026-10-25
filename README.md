@@ -45,10 +45,12 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 > blocks across, the land charred out to 135, rubble thrown out to 250 and every mob within 130 blocks killed. **The
 > Mothership** vaporises the land out to 34 blocks, digs a crater 22 across and a shaft to bedrock, then cuts a trench
 > 100 blocks long, up to 15 wide and 17 deep, away from you; it keeps the chunks round it loaded while it works. **The
-> Downfall** crashes the ship downrange of the target, at least 360 blocks in front of you: a crater where its stern
-> strikes, a gouge about 140 wide and 450 long, the land flattened 88 blocks round where it comes to rest, wreckage strewn
-> about, craters where chunks of it land, then the black hole's crater, spiral arms out to 150 blocks and a shaft to
-> bedrock, every mob under the ship and round the hole killed; it keeps those chunks loaded while it works. **Back up
+> Downfall** crashes the ship downrange of the target, at least 360 blocks in front of you, and buries it half its
+> height: a crater where its stern strikes, the gouge it ploughs, the slot under its keel carved out 32 deep and the
+> ground it displaced heaped up in berms along its sides (for the 250 blocks of its stern nearest you; its bow is a
+> kilometre off), the land flattened 88 blocks round where it comes to rest, wreckage strewn about, craters where the
+> pieces it shed land, then the black hole's crater, spiral arms out to 150 blocks and a shaft to bedrock, every mob
+> under the ship and round the hole killed; it keeps up to about 950 chunks loaded while it works. **Back up
 > your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
 > [!IMPORTANT]
@@ -126,11 +128,15 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
   thrown to the batteries along its roof as a meteor the size of a hill comes down on it out of the sky. Green bolts race
   up at it and break it apart, and the pieces, coming on as fast, strike the hull anyway: fire bursts through it, chunks
   of it come away and fall burning, its lights fail and it loses lift. It falls stern first, slowly for its size, tilting
-  and drifting downrange, smoke pouring up off it and left hanging along its path, the air under it blasting the dust
-  off the land, until its stern strikes, it ploughs on through the ground and its bow slams down, a wall of dust rolling
-  out. Then the black hole engine in its stern groans, cracks of light spreading over it, and ruptures: a black hole
-  opens in the wreck, bends the light round it, and draws the whole ship in after it, with the wreckage and the land
-  round it, before it collapses in a flash and bores a shaft to bedrock. It uses the Mothership's approach and arrival
+  and drifting downrange, shedding plates, girders and burning fragments the whole way down, smoke pouring up off it and
+  left hanging along its path, the air under it blasting the dust off the land, until its stern strikes, it ploughs on
+  through the ground, its bow slams down, and it sinks on in until it is buried half its height, the ground it displaced
+  surging up into berms along its sides, a wall of dust rolling out. Then the black hole engine in its stern fails: the
+  stern crumples in towards it, its lights die section by section, tears open in the plating with a deep glow far down
+  inside, space starts to bend round it and dust and plating are drawn in. It ruptures: a black hole opens in the wreck
+  and tears it apart section by section from the stern, each torn piece tumbling and stretching as it falls in, what is
+  left swung round and drawn in after it, the disk filling from the wreck, before it collapses in a flash and bores a
+  shaft to bedrock. It uses the Mothership's approach and arrival
   choices, reaches 1000 blocks, and always comes down well clear of you.
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
   further away you are.

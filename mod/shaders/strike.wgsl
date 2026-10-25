@@ -554,6 +554,7 @@ fn bh_lens(H: vec3<f32>, rs_l: f32, rd: vec3<f32>, uv2: vec2<f32>, scene_len: f3
     return L;
 }
 
+// [lasers pass only]
 fn singularity(in: StageIn) -> vec4<f32> {
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
@@ -837,6 +838,7 @@ fn singularity(in: StageIn) -> vec4<f32> {
     }
     return vec4<f32>(srgb, 1.0);
 }
+// [end lasers pass only]
 
 // Gradient noise (smooth, without the square grid value noise shows), from a cheap integer hash, for the meteor
 // storm's fire and smoke. Each octave is turned so their grids never line up.
@@ -974,6 +976,7 @@ fn ray_seg(rd: vec3<f32>, a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(length(rd * t - (a + ab * s)), t, s);
 }
 
+// [lasers pass only]
 fn meteor_storm(in: StageIn) -> vec4<f32> {
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
@@ -1422,6 +1425,7 @@ fn meteor_storm(in: StageIn) -> vec4<f32> {
     }
     return vec4<f32>(srgb, 1.0);
 }
+// [end lasers pass only]
 
 // ---- laser 4: the mothership --------------------------------------------------------------------------------------
 // A ship a kilometre long, a slab of dark metal with a blunted, tapering bow, drops out of hyperspace over the target:
@@ -1922,13 +1926,20 @@ fn ms_hull(h: MsHit, f: MsFrame, rd: vec3<f32>, time: f32, lit: f32, chase_on: f
         nl = vec3<f32>(n2.x, 0.0, n2.y);
         let u = select(dot(q, vec2<f32>(-n2.y, n2.x)), atan2(q.y, q.x - MS_EM_X) * MS_EYE_R, h.kind == 5);
         let deck = abs(fract(h.h / 5.0) - 0.5) * 5.0;
-        tone = 0.8 * mix(0.45, 1.0, saturate((deck - 0.3) / max(fp * 0.5, 0.2))) * (0.75 + 0.4 * fh21(vec2<f32>(floor(u / 30.0), 9.0)));
+        let deck_l = mix(mix(0.45, 1.0, saturate((deck - 0.3) / max(fp * 0.5, 0.2))), 0.93, smoothstep(0.7, 2.2, fp));
+        tone = 0.8 * deck_l * (0.75 + 0.4 * fh21(vec2<f32>(floor(u / 30.0), 9.0)));
         rough = 0.3 + 0.4 * fh21(vec2<f32>(floor(u / 30.0), 19.0));
         let wc = vec2<f32>(floor(u / 3.5), floor(h.h / 5.0));
         let wh = fh21(wc + vec2<f32>(3.0, 51.0));
         let win = step(select(0.88, 0.55, h.kind == 7), wh) * step(1.2, deck) * step(abs(fract(u / 3.5) - 0.5), 0.3);
         emit = emit + vec3<f32>(0.45, 1.5, 0.5) * win * saturate(1.6 - fp / 2.5) * boost * on * select(1.0, 2.0, h.kind == 7);
         emit = emit + green * ms_line(MS_TOP - h.h, 0.8, fp) * glow * select(0.0, 1.0, h.kind == 3);
+        if (h.kind == 3 && n2.x > 0.8 && q.x > MS_HL - 4.0) {
+            // the bow's blunt end: heavy ribs up it, a prow light along its middle
+            let rib = abs(fract(q.y / 14.0) - 0.5) * 14.0;
+            tone = tone * mix(1.0, 0.5 + 0.6 * smoothstep(1.0, 3.0, rib), saturate(2.0 - fp / 2.0));
+            emit = emit + green * ms_line(abs(h.h - 75.0), 1.2, fp) * (0.4 + glow) * 1.5;
+        }
         if (h.kind == 3 && n2.x < -0.8) {
             // the engines: big bells across the stern above, a row of smaller ones in the engine block below
             let big = h.h > MS_TIER_C;
@@ -2065,13 +2076,14 @@ fn ms_charge_fx(f: MsFrame, cam: vec3<f32>, rdb: vec3<f32>, focus: vec3<f32>, sk
         if (tc > 0.0) {
             let dc = length(focus - rdb * tc);
             let R = (1.0 + 3.5 * core_env) * (1.0 + 0.08 * sin(time * 33.0));
-            let vis = select(1.0, 0.2, !sky && tc > scene_len);
+            let vis = select(1.0, 0.2, (!sky && tc > scene_len) || tc > ship_t + 2.0);
             add = add + (vec3<f32>(5.0, 6.0, 5.0) * exp(-pow(dc / R, 2.0)) + vec3<f32>(0.6, 2.6, 0.8) * exp(-dc / R) * 0.9 + vec3<f32>(0.12, 0.7, 0.2) * exp(-dc / (R * 5.0)) * 0.4) * core_env * vis * k;
         }
     }
     return add;
 }
 
+// [lasers pass only]
 fn mothership(in: StageIn) -> vec4<f32> {
     let uv = in.uv;
     let aspect = frame.resolution.x / frame.resolution.y;
@@ -2274,9 +2286,15 @@ fn mothership(in: StageIn) -> vec4<f32> {
                 continue;
             }
             // behind the terrain it is hidden; behind a cloud it shows faintly through; far off it is lost in the air
-            let vis = select(select(0.0, 0.3, cloud), 1.0, sky || hit.t < scene_len) * (1.0 - smoothstep(4000.0, 20000.0, hit.t));
+            // behind a cloud: from under the cloud layer it shows faintly through it; from over it (where the clouds
+            // are thin) it is solid, under the cloud's tint, the land never showing through it
+            let over = cloud && cam.y > CLOUD_Y + 8.0;
+            let vis = select(select(0.0, 0.3, cloud), 1.0, sky || hit.t < scene_len || over) * (1.0 - smoothstep(4000.0, 20000.0, hit.t));
             if (vis > 0.0) {
                 var hc = ms_hull(hit, fi, rd, ts, lit, chase_on, core_env, beam_env, focus, haze, day, sun, select(1.0, 3.0, blurring), ts - MS_ARRIVE - stop, eng);
+                if (over && hit.t > scene_len) {
+                    hc = mix(hc, vec3<f32>(luminance(col)), 0.3);
+                }
                 var a = vis;
                 if (style == 2 && ts < MS_LEAVE) {
                     // still pulling out of its streak: hardly there, its lights smeared out along it, brightest down its
@@ -2296,8 +2314,13 @@ fn mothership(in: StageIn) -> vec4<f32> {
         let a = cover / f32(n);
         col = col * (1.0 - a) + acc / f32(n);
         add = add * (1.0 - a);
+        // (a smear of it, while it moves fast, hides what is behind it only where it covers most of the shutter)
+        ship_t = select(1.0e9, ship_t, a > 0.5);
     }
-    add = add + ms_arrival_fx(f, base, cam, rd, sky, scene_len, ta, mode, style, blurring, present, k);
+    // everything drawn after the hull is hidden where the hull is in front of it: its distance is the scene's depth
+    let scene_lh = min(scene_len, ship_t);
+    let sky_h = sky && ship_t > 1.0e8;
+    add = add + ms_arrival_fx(f, base, cam, rd, sky_h, scene_lh, ta, mode, style, blurring, present, k);
     if (wake > 1.0 && td < 0.0) {
         // small craft out round it once it has settled, tiny against it, each with its own lights
         for (var j = 0; j < 6; j = j + 1) {
@@ -2309,7 +2332,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
             let pc2 = base.c + base.ax * cos(ang) * rad + base.sd * sin(ang) * rad * 0.5;
             let pc = vec3<f32>(pc2.x, base.y0 - 20.0 - (25.0 + 40.0 * fract(fj * 0.381966)) * lift, pc2.y) - cam;
             let tp = dot(pc, rd);
-            if (tp > 0.0 && (sky || tp < scene_len)) {
+            if (tp > 0.0 && (sky_h || tp < scene_lh)) {
                 let dpx = length(pc - rd * tp);
                 let fpc = tp * 0.0012;
                 col = mix(col, vec3<f32>(0.03, 0.03, 0.035), (1.0 - smoothstep(2.5, 2.5 + fpc, dpx)) * lift);
@@ -2326,7 +2349,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
         let q = ray_seg(rd, vec3<f32>(a2.x, base.y0 + select(30.0, MS_TOP + 40.0, up), a2.y) - cam,
                         vec3<f32>(b2.x, base.y0 + select(30.0, MS_FAR, up), b2.y) - cam);
         let w = max(2.0, q.y * 0.0012);
-        let vis = select(1.0, 0.0, !sky && q.y > scene_len);
+        let vis = select(1.0, 0.0, !sky_h && q.y > scene_lh);
         add = add + vec3<f32>(0.5, 1.6, 0.6) * exp(-pow(q.x / w, 2.0)) * (2.0 / w) * 0.6 * smoothstep(0.08, 0.2, td) * exp(-max(td - MS_OUT, 0.0) * 5.0) * vis * k;
     }
 
@@ -2339,7 +2362,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
         let age = max(time - select(MS_HIT, ms_when(along / TRENCH_L), u_sw > 0.0), 0.0);
         let W = 6.0 + 1.6 * age;
         if (q.x < W * 2.5) {
-            let vis = select(1.0, 1.0 - smoothstep(scene_len - 1.0, scene_len + 1.0, q.y), !sky);
+            let vis = select(1.0, 1.0 - smoothstep(scene_lh - 1.0, scene_lh + 1.0, q.y), !sky_h);
             let yq = cam.y + rd.y * q.y - tgt.y;
             let sn = gfbm2(vec2<f32>(along * 0.07 - time * 0.1, yq * 0.09 - time * 0.55 + seed));
             let dens = exp(-pow(q.x / W, 2.0)) * smoothstep(0.3, 2.0, age) * exp(-age / 12.0) * (0.25 + 1.1 * sn) * smoothstep(-2.0, 3.0, yq) * end_env;
@@ -2356,7 +2379,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
     if (charge > 0.6 && time < MS_HIT) {
         let q = ray_seg(rd, focus, crel);
         let w = max(0.12, q.y * 0.0008);
-        let vis = select(1.0, 0.0, !sky && q.y > scene_len + 0.5);
+        let vis = select(1.0, 0.0, !sky_h && q.y > scene_lh + 0.5);
         add = add + vec3<f32>(0.7, 3.0, 0.9) * exp(-pow(q.x / w, 2.0)) * (0.12 / w) * smoothstep(0.6, 0.9, charge) * (0.7 + 0.3 * sin(time * 50.0)) * vis * k;
     }
 
@@ -2375,7 +2398,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
         let e = rc / w;
         let dd = q.x;
         if (dd < w * 40.0 && q.z <= head + 0.01) {
-            let vis = select(1.0, 1.0 - smoothstep(scene_len - 0.8, scene_len + 0.8, q.y), !sky);
+            let vis = select(1.0, 1.0 - smoothstep(scene_lh - 0.8, scene_lh + 0.8, q.y), !sky_h);
             let vis_mix = mix(0.1, 1.0, vis);
             let bdir = (gb - focus) / max(lenb, 1.0e-3);
             let e1 = normalize(cross(bdir, vec3<f32>(1.0, 0.0, 0.0)));
@@ -2412,7 +2435,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
                     let ang = atan2(dot(on, hy), dot(on, hx));
                     let nz = gfbm2(vec2<f32>(ang * 1.3 + seed, dc / Rf * 2.0 - time * 2.5));
                     let fire = exp(-pow(dc / (Rf * (0.75 + 0.5 * nz)), 2.0));
-                    let visf = select(1.0, smoothstep(tcp - Rf * 1.3, tcp - Rf * 0.2, scene_len), !sky);
+                    let visf = select(1.0, smoothstep(tcp - Rf * 1.3, tcp - Rf * 0.2, scene_lh), !sky_h);
                     add = add + (lava_ramp(0.55 + 0.5 * fire) * fire * 3.5 + vec3<f32>(0.5, 2.0, 0.6) * fire * fire * 1.5) * visf * beam_env * k;
                     add = add + vec3<f32>(1.6, 1.0, 0.6) * exp(-dc / Rf) * 0.25 * beam_env * visf * k;
                 }
@@ -2452,7 +2475,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
                 continue;
             }
             let qj = ray_seg(rd, pa, pb);
-            let vis = select(1.0, 1.0 - smoothstep(scene_len - 0.4, scene_len + 0.4, qj.y), !sky);
+            let vis = select(1.0, 1.0 - smoothstep(scene_lh - 0.4, scene_lh + 0.4, qj.y), !sky_h);
             if (j % 3 == 0) {
                 let w = 0.25 + 0.3 * h2;
                 col = mix(col, vec3<f32>(0.05, 0.04, 0.035) * dim, exp(-pow(qj.x / max(w, qj.y * 0.0012), 4.0)) * (w / max(w, qj.y * 0.0012)) * vis);
@@ -2492,6 +2515,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
     }
     return vec4<f32>(srgb, 1.0);
 }
+// [end lasers pass only]
 
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {

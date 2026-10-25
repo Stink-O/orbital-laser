@@ -1228,8 +1228,9 @@ def downfall():
 
     # crash: the loudest moment of the strike, louder than the meteor storm's last impact. Its stern strikes: one enormous
     # blow of pressure, the ground torn up, a sub-bass shove that goes on; then a huge grinding roar as it ploughs on
-    # through earth and rock, and its bow slamming down two and a half seconds later in a second blow; the land rolling it
-    # back for many seconds; rock and earth coming back down, rumbling, settling, on and on
+    # through earth and rock, and its bow slamming down two and a half seconds later in a second blow; then the long,
+    # slowing grind of it burying itself, earth slumping against it; the land rolling it back for many seconds; rock and
+    # earth coming back down, rumbling, settling, on and on
     d = 18.0; n = int(SR * d); t = tt(d); ts = 2.4
     punch_ = band(white(d), 26, 220) * np.clip(t / 0.002, 0, 1) * np.exp(-t / 0.26) * 1.7
     turb = lowpass_glide(white(d), 2200, 140, curve=0.55) * np.clip(t / 0.004, 0, 1) * np.exp(-t / 1.5) * 0.8
@@ -1238,7 +1239,18 @@ def downfall():
     slide = (stick_slip(d, 11, 30, 420, 0.9, 2.0) * 0.8 + band(crackle(d, rate=900, decay=0.006, lo=60, hi=900), None, 800) * 0.4)
     slide = slide * np.clip(t / 0.15, 0, 1) * np.clip((ts + 0.3 - t) / 0.5, 0, 1) * 0.9
     slam = heavy(n, ts, 0.45, 1.9, 1.1, 2.2, 0.7) + band(white(d), 26, 200) * np.clip((t - ts) / 0.002, 0, 1) * np.exp(-np.maximum(t - ts, 0) / 0.22) * (t >= ts) * 1.1
-    front = band(overload(hit1 + slide + slam, 2.6), None, 2800)
+    # then it sinks on in: a long, slow, heavy grinding of earth and metal as it buries itself, slumps of the ground
+    # piling up against it, slowing to a stop (no pitch in any of it)
+    sink = np.clip((t - ts) / 0.6, 0, 1) * np.exp(-np.maximum(t - ts - 1.5, 0) / 2.6)
+    burial = (stick_slip(d, 6.0, 22, 260, 0.9, 1.8) * 0.9 + lowpass_glide(band(white(d), 25, None), 320, 90, curve=0.6) * 0.6) * sink * 0.8
+    slumps = np.zeros(n)
+    for _ in range(14):
+        t1 = ts + 0.4 + rng.exponential(2.2)
+        if t1 > 11.0:
+            continue
+        k0 = int(t1 * SR); m = min(int(1.0 * SR), n - k0)
+        slumps[k0:k0 + m] += thud(m, rng.uniform(2.0, 3.0)) * rng.uniform(0.35, 0.8) * np.exp(-(t1 - ts) / 4.0)
+    front = band(overload(hit1 + slide + slam + burial + slumps * 0.7, 2.6), None, 2800)
     falls = [debris_settle(d, 1.0 + 0.15 * k, amount=2.0, spread=10.0) for k in range(2)]
     fall_lo = convolve_wet(band(falls[0], None, 150), outdoor_ir(3.0, density=40.0, darken=(3500, 220), decay=1.3), 0.5)
     L, R = wide_tail(front, 10.0, 3.4, (2600, 120), 1.0, 35.0)

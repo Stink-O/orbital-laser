@@ -3,7 +3,7 @@
 # validate the WGSL with naga (the version the game ships).
 #
 #   tools/check-shader.sh              # checks both passes: mod/shaders/strike.wgsl, and the downfall's (strike.wgsl up
-#                                      # to its fs_main, then mod/shaders/downfall.wgsl, as the mod builds it)
+#                                      # to its fs_main less the other lasers' own functions, then mod/shaders/downfall.wgsl, as the mod builds it)
 #   tools/check-shader.sh other.wgsl   # another pass
 #
 # Why it exists: the game only logs that a mod's post pass did not compile. This prints the real error, with its line.
@@ -21,9 +21,10 @@ fi
 shaders="$here/../mod/shaders"
 cat "$here/wgslcheck/prelude.wgsl" "$shaders/strike.wgsl" > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "strike.wgsl:"; echo "$out"; exit 1; }
-{ cat "$here/wgslcheck/prelude.wgsl"; sed '/^@fragment/,$d' "$shaders/strike.wgsl"; cat "$shaders/downfall.wgsl"; } > "$tmp"
+pre() { sed -e '/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d' -e '/^@fragment/,$d' "$shaders/strike.wgsl"; }
+{ cat "$here/wgslcheck/prelude.wgsl"; pre; cat "$shaders/downfall.wgsl"; } > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "the downfall's pass (strike.wgsl up to its fs_main, then downfall.wgsl):"; echo "$out"; exit 1; }
 # the game takes a pass of 256 KiB at most
-size=$(( $(sed '/^@fragment/,$d' "$shaders/strike.wgsl" | wc -c) + $(wc -c < "$shaders/downfall.wgsl") ))
+size=$(( $(pre | wc -c) + $(wc -c < "$shaders/downfall.wgsl") ))
 [ "$size" -le 262144 ] || { echo "the downfall's pass is $size bytes, over the game's 256 KiB"; exit 1; }
 echo OK
