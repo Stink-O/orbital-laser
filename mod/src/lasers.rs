@@ -274,32 +274,31 @@ pub const DOWNFALL: Laser = Laser {
     particle_b: "particle minecraft:reverse_portal {x} {y} {z} {r} 2 {r} 0.2 40 force",
 };
 
-/// The planet killer, planned in `strike::planetkiller_plan`: seven emitters round the horizon, their beams meeting high
+/// The planet killer, planned in `strike::planetkiller_plan`: seven towers round the horizon, their beams meeting high
 /// over the target, and the one beam they make coming down on it. The crater, the shaft and their lining below are its
-/// own, the biggest of any one beam; its cracks, the blast and the ejecta are planned there too.
+/// own, by far the biggest of any laser; the blast, the terraces, the rim, the fissures and the ejecta are planned there.
 pub const PLANET_KILLER: Laser = Laser {
     key: "planetkiller",
     index: 6,
     title: "PLANET KILLER",
     color: "blue",
     rgb: 0x4D7CFF,
-    blurb: "Seven emitters out on the horizon fire one after another and their beams meet high over the target. They fuse in a flash and one beam comes down: the land blown flat for 72 blocks, a crater 80 across and a shaft to bedrock, the ground split in molten cracks.",
+    blurb: "Seven towers tear up out of the land on the horizon and fire columns of light that bend over and meet high above the target. They fuse and one beam comes down: the land domes up and bursts, and it leaves a crater 260 blocks across and 70 deep, fissures splitting the land for 300 blocks and a mushroom cloud.",
     icon_model: "orbital:planetkiller_icon",
     length: 26.0,
     // a long way off, like the ship lasers: it is best watched from a distance
     range: 1000.0,
     scorch: &[
-        (120, "minecraft:coarse_dirt", 0.1, "minecraft:grass_block"),
-        (112, "minecraft:smooth_basalt", 0.1, "minecraft:sand"),
-        (96, "minecraft:blackstone", 0.12, "minecraft:coarse_dirt"),
-        (96, "minecraft:blackstone", 0.12, "minecraft:dirt"),
-        (64, "minecraft:basalt", 0.15, "minecraft:blackstone"),
+        (280, "minecraft:coarse_dirt", 0.08, "minecraft:grass_block"),
+        (250, "minecraft:smooth_basalt", 0.08, "minecraft:sand"),
+        (220, "minecraft:blackstone", 0.1, "minecraft:dirt"),
+        (200, "minecraft:blackstone", 0.1, "minecraft:coarse_dirt"),
     ],
-    bowl_r: 40,
-    bowl_d: 24,
-    bowl_rough: 0.08,
-    shaft_r: 13,
-    shaft_min: 9,
+    bowl_r: 130,
+    bowl_d: 70,
+    bowl_rough: 0.06,
+    shaft_r: 16,
+    shaft_min: 11,
     shaft_rough: 0.04,
     lining: &[
         ("minecraft:obsidian", 0.3),
@@ -309,8 +308,8 @@ pub const PLANET_KILLER: Laser = Laser {
         ("minecraft:blue_stained_glass", 0.1),
         ("minecraft:smooth_basalt", 0.1),
     ],
-    bowl_floor: ("minecraft:magma_block", 0.25, "minecraft:obsidian"),
-    bottom: &[(8, 0, 0, "minecraft:magma_block"), (7, 1, 5, "minecraft:lava")],
+    bowl_floor: ("minecraft:magma_block", 0.2, "minecraft:obsidian"),
+    bottom: &[(10, 0, 0, "minecraft:magma_block"), (9, 1, 5, "minecraft:lava")],
     particle_a: "particle minecraft:soul_fire_flame {x} {y} {z} {r} 3 {r} 0.2 60 force",
     particle_b: "particle minecraft:lava {x} {y} {z} {r} 1 {r} 0 25 force",
 };
