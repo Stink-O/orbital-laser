@@ -32,6 +32,9 @@ K = {  # palette
     "h": (34, 40, 54, 255),       # hull
     "e": (226, 58, 40, 255),      # the downfall's red lights
     "E": (120, 22, 16, 255),      # dark red
+    "u": (77, 124, 255, 255),     # the planet killer's blue
+    "U": (175, 205, 255, 255),    # its pale blue
+    "n": (24, 40, 110, 255),      # its deep blue
 }
 
 def designator():
@@ -204,11 +207,33 @@ DOWNFALL_ICON = [          # the mothership coming down stern first, burning, sm
     ".vpv............",
 ]
 
+def planetkiller_icon():
+    """Beams from the horizon either side converging on a white star high up, and one beam from it down onto the
+    ground, white down its middle, the ground molten where it lands."""
+    from PIL import ImageDraw
+    im = Image.new("RGBA", (16, 16), K["."])
+    d = ImageDraw.Draw(im)
+    for x0, y0 in ((0, 6), (0, 10), (15, 6), (15, 10)):           # the emitters' beams, from low either side
+        d.line([(x0, y0), (8 if x0 else 7, 3)], fill=K["u"])
+    d.rectangle([6, 4, 9, 13], fill=K["u"])                       # the one beam, white-hot down its middle
+    d.rectangle([7, 4, 8, 13], fill=K["W"])
+    d.rectangle([6, 2, 9, 3], fill=K["U"])                        # the star where they meet, a cross of light through it
+    d.line([(4, 2), (11, 2)], fill=K["U"]); d.line([(7, 0), (7, 4)], fill=K["U"]); d.line([(8, 0), (8, 4)], fill=K["U"])
+    d.rectangle([7, 2, 8, 3], fill=K["W"])
+    d.line([(3, 14), (12, 14)], fill=K["o"])                      # where it lands, the ground molten
+    d.line([(5, 13), (10, 13)], fill=K["O"])
+    d.line([(6, 14), (9, 14)], fill=K["y"]); d.line([(7, 13), (8, 13)], fill=K["W"])
+    d.line([(1, 15), (14, 15)], fill=K["n"]); d.point((2, 15), fill=K["E"]); d.point((13, 15), fill=K["E"])
+    return im
+
+
 GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON}
-DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon}
+DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
+         "planetkiller_icon": planetkiller_icon}
 
-names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon")
+names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
+         "planetkiller_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:
