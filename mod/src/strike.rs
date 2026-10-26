@@ -328,6 +328,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     if laser.key == "downfall" {
         return downfall_plan(laser, target, terrain, dimension, shader_seed, me, approach);
     }
+    if laser.key == "planetkiller" {
+        return planetkiller_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
     let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
@@ -2943,6 +2946,354 @@ fn df_hole_collapse(p: &mut Plan, g: &DfGeo, floor_y: i32, bowl_d: i32) {
     }
 }
 
+// ---- the planet killer -----------------------------------------------------------------------------------------------
+
+/// Planet killer: its times (strike clock) are strike.wgsl's PK_* (keep them in step), and where its emitters stand,
+/// when each fires and where its cracks run come from pk_*, the same as strike.wgsl's. The emitters fire from PK_IGN0 to
+/// PK_IGN1, their beams fuse at PK_MERGE, the one beam lands at PK_HIT and burns until the emitters cut out at PK_CUT,
+/// and the nexus bursts at PK_POP.
+const PK_N: usize = 7;
+const PK_H: f64 = 300.0;
+const PK_SRC_R: f64 = 1500.0;
+const PK_IGN0: f32 = 0.3;
+const PK_IGN1: f32 = 1.5;
+const PK_MERGE: f32 = 4.0;
+const PK_HIT: f32 = 4.35;
+const PK_CUT: f32 = 13.5;
+const PK_POP: f32 = 14.4;
+/// The blast: everything above the ground blown away out to this far.
+const PK_BLAST: i32 = 72;
+/// The cracks: PK_CRACKS of them from PK_RIM out, wandering off their heading every PK_SEG blocks, opening at PK_CRACK_V
+/// blocks a second from PK_CRACK_T after the hit.
+const PK_CRACKS: usize = 9;
+const PK_RIM: f64 = 38.0;
+const PK_SEG: f64 = 8.0;
+const PK_CRACK_V: f64 = 70.0;
+const PK_CRACK_T: f32 = 1.2;
+
+/// Emitter i: where it stands (x, z) and when it fires, as strike.wgsl's pk_emitter. The first beyond the target as the
+/// player faces it (`wing` points from the target to them), the rest alternately to its right and left, round towards
+/// the player.
+fn pk_emitter(i: usize, seed: f32, point: [f64; 3], wing: f32) -> (f64, f64, f32) {
+    let s = seed as u32;
+    let side = if i % 2 == 1 { 1.0 } else { -1.0 };
+    let a = f64::from(wing) + PI + side * i.div_ceil(2) as f64 * 2.0 * PI / PK_N as f64 + (mh(i as u32, s, 31) - 0.5) * 0.5;
+    let r = PK_SRC_R * (0.8 + 0.4 * mh(i as u32, s, 32));
+    let t = PK_IGN0 + (PK_IGN1 - PK_IGN0) * i as f32 / (PK_N - 1) as f32 + ((mh(i as u32, s, 33) - 0.5) * 0.12) as f32;
+    (point[0] + a.cos() * r, point[2] + a.sin() * r, t)
+}
+/// Crack i: its heading out from the target, and how far it runs past PK_RIM (strike.wgsl's pk_crack).
+fn pk_crack(i: usize, seed: f32) -> (f64, f64) {
+    let s = seed as u32;
+    let a = (i as f64 + 0.7 * mh(i as u32, s, 21)) * 2.0 * PI / PK_CRACKS as f64 + mh(99, s, 22) * 2.0 * PI;
+    (a, 50.0 + 25.0 * mh(i as u32, s, 23))
+}
+/// How far crack i has wandered off its heading `u` blocks past PK_RIM (strike.wgsl's pk_crack_off, between points).
+fn pk_crack_at(i: usize, u: f64, seed: f32) -> f64 {
+    let off = |j: usize| if j == 0 { 0.0 } else { (mh((i * 32 + j) as u32, seed as u32, 24) - 0.5) * 0.16 };
+    let j = (u.max(0.0) / PK_SEG).floor() as usize;
+    let f = (u.max(0.0) / PK_SEG).fract();
+    pk_crack(i, seed).0 + off(j) + (off(j + 1) - off(j)) * f
+}
+
+/// The planet killer: seven emitters far out round the horizon fire one after another (each heard from where it
+/// stands), their beams meet high over the target and fuse, and the one beam they make comes down on it and burns for
+/// nine seconds while they feed it; then they cut out and the nexus bursts. The land is blown flat for 72 blocks, a
+/// crater 80 across is blown out with a shaft drilled to bedrock under the beam, the ground splits in molten cracks out
+/// from the rim, and rock is thrown far across the land.
+fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+    let [bx, by, bz] = target.block;
+    let r2 = |v: f64| (v * 100.0).round() / 100.0;
+    let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
+    let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
+    let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
+    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
+    let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
+    let wing = wing_angle(target.point, me);
+    let (lt, dist) = sound_from(target.point, me);
+    let fo = falloff(dist).max(0.45);
+    let heard = PK_HIT + lt;
+    let nexus = late(tx, ty + PK_H, tz);
+
+    // the emitters firing: each one's crack heard from where it stands, far off, its thump through the ground; the charge
+    // building under it all to the moment the beams fuse
+    p.at(0.2, bar("PLANET KILLER: EMITTERS FIRING", laser.color));
+    p.csound(0.0, "charge", 10.0, 1.0);
+    for i in 0..PK_N {
+        let (x, z, t) = pk_emitter(i, shader_seed, target.point, wing);
+        let pitch = p.rng.uniform(0.94, 1.06);
+        // (far past where `playsound` reaches: it is heard from its direction at the volume floor)
+        p.at(t + late(x, ty, z).min(2.0), format!("playsound orbital:planetkiller.ignite block @a {x:.1} {ty} {z:.1} 4 {pitch:.2} 0.85"));
+        p.shake(t + 0.15, 0.14, 0.8);
+    }
+    p.at(2.4, bar("BEAMS CONVERGING", laser.color));
+    for (k, s) in [0.12, 0.18, 0.25].iter().enumerate() {
+        p.shake(PK_MERGE - 1.5 + k as f32 * 0.5, *s, 1.0);
+    }
+    // they fuse: a blow of light and pressure from overhead
+    p.csound(PK_MERGE - 0.05, "merge", 10.0, 1.0);
+    p.shake(PK_MERGE + nexus, 0.5, 2.0);
+    p.at(PK_MERGE, bar("CONVERGENCE", "aqua"));
+    // the beam lands: the hardest blow of the strike, then the ground shaking under it while it burns
+    p.csound(heard, "fire", 10.0, 1.0);
+    p.shake(heard, fo, 5.0);
+    p.at(PK_HIT + 0.1, bar("DIRECT HIT", "white"));
+    p.csound(PK_HIT + 0.1, "beam1", 10.0, 1.0);
+    p.csound(PK_HIT + 4.6, "beam2", 10.0, 1.0);
+    p.csound(heard + 1.5, "rumble", 9.0, 1.0);
+    p.csound(heard + 6.5, "rumble", 8.0, 0.9);
+    let mut tk = PK_HIT + 1.2;
+    while tk < PK_CUT {
+        p.shake(tk + lt, 0.24 * fo, 1.3);
+        tk += 1.0;
+    }
+    // they cut out, the nexus collapses and bursts, and the land settles
+    p.csound(PK_CUT, "cutoff", 10.0, 1.0);
+    p.shake(PK_POP + nexus, 0.6, 2.5);
+    p.csound(PK_POP + 1.0, "after", 9.0, 1.0);
+
+    // ---- particles in the world ----
+    for i in 0..10 {
+        // the ground under the nexus stirring as it charges, dust lifting, a shimmer of energy coming up off it
+        let tk = 1.6 + i as f32 * 0.25;
+        let s = 14.0 - f64::from(i);
+        p.at(tk, format!("particle minecraft:white_ash {tx} {} {tz} {s:.1} 1 {s:.1} 0 120 force", ty + 1.0));
+        p.at(tk, format!("particle minecraft:soul_fire_flame {tx} {} {tz} {s:.1} 0.3 {s:.1} 0.02 30 force", ty + 0.5));
+    }
+    p.at(PK_HIT, format!("particle minecraft:explosion_emitter {tx} {} {tz} 8 3 8 0 12 force", ty + 2.0));
+    p.at(PK_HIT + 0.05, format!("particle minecraft:flash {tx} {} {tz} 0 0 0 0 1 force", ty + 6.0));
+    p.at(PK_HIT + 0.05, format!(r#"particle minecraft:block{{block_state:"minecraft:obsidian"}} {tx} {} {tz} 6 2 6 2.6 700 force"#, ty + 1.0));
+    p.at(PK_HIT + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:stone"}} {tx} {} {tz} 10 2 10 2.0 600 force"#, ty + 1.0));
+    for (dt, pitch) in [(0.0, 0.4), (0.05, 0.5), (0.15, 0.62), (0.4, 0.45)] {
+        p.sound(heard + dt, "entity.generic.explode", 10.0, pitch);
+    }
+    let mut tk = PK_HIT + 0.2;
+    let mut k = 0;
+    while tk < PK_CUT {
+        // the foot of the beam: blue fire, molten rock thrown up, smoke boiling off
+        p.at(tk, format!("particle minecraft:soul_fire_flame {tx} {} {tz} 6 2 6 0.2 60 force", ty + 1.0));
+        p.at(tk, format!("particle minecraft:lava {tx} {} {tz} 8 2 8 0 20 force", ty + 1.0));
+        if k % 2 == 0 {
+            p.at(tk, format!("particle minecraft:explosion {tx} {} {tz} 8 2 8 0 4 force", ty + 2.0));
+            p.at(tk, format!("particle minecraft:large_smoke {tx} {} {tz} 10 4 10 0.08 40 force", ty + 4.0));
+        }
+        tk += 0.35;
+        k += 1;
+    }
+    for i in 0..20 {
+        // ash coming down over everything once it is over
+        let tk = PK_POP + i as f32 * 0.5;
+        p.at(tk, format!("particle minecraft:ash {tx} {} {tz} 60 20 60 0 240 force", ty + 25.0));
+        p.at(tk, format!("particle minecraft:campfire_signal_smoke {tx} {} {tz} 20 4 20 0.04 20 force", ty + 2.0));
+    }
+    for tk in [0.1, 0.8, 2.0, 4.0, 7.0] {
+        p.at(PK_HIT + tk, format!("execute positioned {tx} {ty} {tz} run kill @e[type=!minecraft:player,distance=..80]"));
+    }
+
+    if terrain {
+        let (floor_y, sky, point) = (bedrock_top(dimension), sky_top(dimension), target.point);
+        // a far target is past what the game keeps loaded round the player: keep the crater, the cracks and the ground
+        // round them loaded until it is over (a forceload takes 256 chunks at most: this is 16 by 16)
+        let (x0, z0) = ((point[0] - 120.0).floor() as i32, (point[2] - 120.0).floor() as i32);
+        p.at(0.0, format!("forceload add {x0} {z0} {} {}", x0 + 239, z0 + 239));
+        p.at(laser.length - 1.0, format!("forceload remove {x0} {z0} {} {}", x0 + 239, z0 + 239));
+        pk_crater(&mut p, floor_y, sky);
+        for i in 0..PK_CRACKS {
+            // each crack worked out on its own tick, just before it opens
+            p.later(PK_HIT + PK_CRACK_T - 0.5 + i as f32 * 0.05, move |q| pk_crack_cut(q, point, i, shader_seed));
+        }
+        p.later(PK_HIT + 0.2, move |q| pk_ejecta(q, point));
+    }
+    p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
+    p.ev
+}
+
+/// The blast, the charred land, the crater and the shaft: each stage worked out just before it starts.
+fn pk_crater(p: &mut Plan, floor_y: i32, sky: i32) {
+    let t = PK_HIT;
+    // 1. the blast: everything standing above the ground blown away, the first 20 blocks at once (in bands of height:
+    //    a fill is capped at 32768 blocks), the rest on the spare budget
+    p.later(t - 0.15, move |p| {
+        let by = p.by;
+        for c in p.disc(PK_BLAST, by + 1, (by + 20).min(sky), "minecraft:air", 0.1, None) {
+            p.at(t + 0.1, c);
+        }
+        p.clear_above(t + 0.3, PK_BLAST, by + 21, sky, 0.1);
+    });
+    // 2. the crater, blown out in a second, its walls fused as it goes
+    p.later(t - 0.1, move |p| {
+        let laser = p.laser;
+        let by = p.by;
+        const NATURAL: [&str; 5] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel", "minecraft:coarse_dirt"];
+        let prim = laser.lining[0].0;
+        let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
+        let mut d = 0;
+        while d < bowl_d {
+            let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(4);
+            let tl = t + 0.15 + d as f32 * 0.04;
+            let (y_lo, y_hi) = (by - d - 2, by - d);
+            let rs = p.rects(r, f64::from(laser.bowl_rough));
+            for tag in NATURAL {
+                for c in Plan::edge_fills(&rs, y_lo - 1, y_hi, prim, tag, 2) {
+                    p.at(tl - 0.05, c);
+                }
+            }
+            for c in Plan::fills(&rs, y_lo, y_hi, "minecraft:air", None, 0) {
+                p.at(tl, c);
+            }
+            p.mottle(r, y_lo, y_hi, tl, 20);
+            let pitch = p.rng.uniform(0.5, 0.8);
+            p.ground_sound(tl, "block.stone.break", 9.0, pitch);
+            d += 3;
+        }
+        let (fb, fr, fq) = laser.bowl_floor;
+        for c in p.disc(bowl_r - 5, by - bowl_d - 1, by - bowl_d + 2, fb, f64::from(fr), Some(fq)) {
+            p.at(t + 1.4, c);
+        }
+    });
+    // 3. the charred land, once the cracks have opened (it is the most ground to change: before them, it would hold
+    //    them up)
+    p.later(t + 2.6, move |p| {
+        let laser = p.laser;
+        let by = p.by;
+        for &(rad, block, rough, repl) in laser.scorch {
+            for c in p.disc(rad, by - 4, by + 1, block, f64::from(rough), Some(repl)) {
+                let dt = p.rng.next() as f32 * 2.0;
+                p.at(t + 2.75 + dt, c);
+            }
+        }
+    });
+    // 4. the shaft, drilled down under the beam while it burns (the upper half, then the lower), and lava at the bottom
+    for half in 0..2 {
+        p.later(t + 0.5 + half as f32 * 3.6, move |p| {
+            let laser = p.laser;
+            let (bx, by, bz) = (p.bx, p.by, p.bz);
+            let top = by - laser.bowl_d;
+            let steps = ((top - floor_y) / 4 + 1).max(1);
+            let mid = steps / 2;
+            for i in if half == 0 { 0..mid } else { mid..steps } {
+                let y_hi = top - 4 * i;
+                if y_hi < floor_y {
+                    break;
+                }
+                let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.3).round() as i32).max(laser.shaft_min);
+                let ts = t + 0.6 + i as f32 * (7.0 / steps as f32);
+                p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
+                p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 4);
+                if i % 2 == 0 {
+                    let pitch = p.rng.uniform(0.5, 0.8);
+                    p.ground_sound(ts, if y_hi < 0 { "block.deepslate.break" } else { "block.stone.break" }, 8.0, pitch);
+                    p.at(ts, format!("particle minecraft:soul_fire_flame {} {y_hi} {} 3 1 3 0.05 20 force", f64::from(bx) + 0.5, f64::from(bz) + 0.5));
+                }
+            }
+            if half == 1 {
+                for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
+                    for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
+                        p.at(t + 7.8 + 0.1 * k as f32, c);
+                    }
+                }
+            }
+        });
+    }
+    // 5. the rim: rock thrown up round the edge, piled highest nearest the crater
+    p.later(t + 0.6, move |p| {
+        let (bx, by, bz) = (p.bx, p.by, p.bz);
+        let bowl_r = p.laser.bowl_r;
+        const RIM: [&str; 6] = ["minecraft:cobblestone", "minecraft:blackstone", "minecraft:tuff", "minecraft:cobbled_deepslate", "minecraft:basalt", "minecraft:obsidian"];
+        for _ in 0..220 {
+            let a = p.rng.uniform(0.0, 2.0 * PI);
+            let rr = f64::from(bowl_r) + 1.0 + 12.0 * p.rng.next().powf(1.5);
+            let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+            let h = (5.0 * (1.0 - (rr - f64::from(bowl_r)) / 14.0)).round().max(1.0) as i32 + p.rng.int(-1, 1);
+            let blk = *p.rng.pick(&RIM);
+            let tl = t + 0.7 + p.rng.uniform(0.0, 1.4) as f32;
+            p.at(tl, format!("fill {} {} {} {} {} {} {blk} keep", x - 1, by + 1, z - 1, x + 1, by + h.max(1), z + 1));
+        }
+    });
+}
+
+/// One crack (`i`, of PK_CRACKS) split open from the crater's rim out across the land, a column at a time as the split
+/// runs out to it: lined with magma, molten down its middle. Each column is cut on its own from the ground there (a
+/// column at a time, so no cut moves the ground another measures from), deepest and widest by the crater.
+fn pk_crack_cut(p: &mut Plan, point: [f64; 3], i: usize, seed: f32) {
+    let len = pk_crack(i, seed).1;
+    let mut seen = std::collections::HashSet::new();
+    let mut u = 0.0;
+    while u < len {
+        let a = pk_crack_at(i, u, seed);
+        let r = PK_RIM + u;
+        let (dx, dz) = (a.cos(), a.sin());
+        let share = 1.0 - u / len;
+        let hw = 0.5 + 2.5 * share;
+        let depth = (2.0 + 6.0 * share).round() as i32;
+        let t = PK_HIT + PK_CRACK_T + (u / PK_CRACK_V) as f32;
+        let mut o = -hw;
+        while o <= hw + 1e-6 {
+            let (x, z) = ((point[0] + dx * r - dz * o).floor() as i32, (point[2] + dz * r + dx * o).floor() as i32);
+            if seen.insert((x, z)) {
+                p.at(t, surf(x, z, &format!("fill ~ ~-{} ~ ~ ~-1 ~ minecraft:magma_block", depth + 1)));
+                p.at(t, surf(x, z, &format!("fill ~ ~-{depth} ~ ~ ~-1 ~ minecraft:air")));
+                if o.abs() < 0.8 {
+                    p.at(t + 0.05, surf(x, z, "setblock ~ ~-1 ~ minecraft:lava"));
+                }
+            }
+            o += 0.7;
+        }
+        if (u / 6.0).fract() < 0.08 {
+            let (x, z) = ((point[0] + dx * r).floor() as i32, (point[2] + dz * r).floor() as i32);
+            let pitch = p.rng.uniform(0.5, 0.75);
+            p.at(t, surf(x, z, &format!("playsound minecraft:block.basalt.break block @a ~ ~ ~ 3 {pitch:.2}")));
+            p.at(t, surf(x, z, "particle minecraft:lava ~ ~ ~ 1 0.5 1 0 8 force"));
+        }
+        u += 0.5;
+    }
+}
+
+/// Rock thrown out of the crater, real blocks flying out over the land, rubble coming down out to 180 blocks, and the
+/// charred land burning.
+fn pk_ejecta(p: &mut Plan, point: [f64; 3]) {
+    let t = PK_HIT;
+    let (bx, by, bz) = (p.bx, p.by, p.bz);
+    const EJECTA: [&str; 7] = [
+        "minecraft:cobblestone",
+        "minecraft:blackstone",
+        "minecraft:obsidian",
+        "minecraft:cobbled_deepslate",
+        "minecraft:basalt",
+        "minecraft:magma_block",
+        "minecraft:dirt",
+    ];
+    for _ in 0..170 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = p.rng.uniform(10.0, 30.0);
+        let (x, z) = (point[0] + a.cos() * rr, point[2] + a.sin() * rr);
+        let elev = 0.3 + 1.0 * p.rng.next().powf(0.7);
+        let speed = (1.4 + 2.4 * p.rng.next().powi(2)) * p.rng.uniform(0.7, 1.3);
+        let (vx, vy, vz) = (a.cos() * elev.cos() * speed, elev.sin() * speed, a.sin() * elev.cos() * speed);
+        let blk = *p.rng.pick(&EJECTA);
+        let tl = t + (0.1 + 1.2 * p.rng.next().powi(2)) as f32;
+        p.at(tl, format!("summon minecraft:falling_block {x:.1} {} {z:.1} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}", by + 3));
+    }
+    for k in 0..240 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = 75.0 + 105.0 * p.rng.next().powf(1.4);
+        let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
+        let tl = t + 1.5 + (rr / 180.0 * 5.0) as f32 + p.rng.uniform(0.0, 1.2) as f32;
+        let blk = *p.rng.pick(&EJECTA);
+        p.at(tl, surf(x, z, &format!("setblock ~ ~ ~ {blk} keep")));
+        if k % 4 == 0 {
+            p.at(tl, surf(x, z, &format!(r#"particle minecraft:block{{block_state:"{blk}"}} ~ ~0.5 ~ 0.6 0.4 0.6 0.2 16 force"#)));
+        }
+    }
+    let bowl_r = p.laser.bowl_r;
+    for _ in 0..130 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let rr = p.rng.uniform(f64::from(bowl_r) + 6.0, 115.0);
+        let dt = p.rng.uniform(1.0, 6.0) as f32;
+        p.at(t + dt, surf(bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32, "setblock ~ ~ ~ minecraft:fire keep"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3395,6 +3746,89 @@ mod tests {
                     assert!(cmds.iter().any(|(t, c)| c.starts_with(&at) && (*t - tl).abs() < 0.2), "mode {mode}: shed {i}");
                 }
             }
+        }
+    }
+
+    fn pk_cmds(me: [f64; 3], dimension: &str) -> Vec<(f32, String)> {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        run_all(plan(&crate::lasers::PLANET_KILLER, &target, true, dimension, 37.0, me, 0))
+    }
+    #[test]
+    fn planetkiller_fills_fit_and_reach_bedrock() {
+        // every fill under the cap, nothing cleared over the build limit, the shaft down to bedrock, and what is
+        // force-loaded is one forceload, let go again before the strike ends
+        for me in [[10.5, 66.0, 60.0], [600.0, 70.0, -400.0]] {
+            for (dimension, sky, floor) in [("minecraft:overworld", 319, -59), ("minecraft:the_nether", 122, 5)] {
+                let cmds = pk_cmds(me, dimension);
+                let mut deepest = i32::MAX;
+                for (t, c) in &cmds {
+                    assert!(block_cost(c).unwrap_or(0) <= 32768, "{c}");
+                    assert!(*t < crate::lasers::PLANET_KILLER.length, "{t}: {c}");
+                    let w: Vec<&str> = c.split_whitespace().collect();
+                    if w.first() == Some(&"fill") {
+                        for k in [2, 5] {
+                            let y = w[k].parse::<i32>().unwrap();
+                            assert!(y <= sky, "{c}");
+                            deepest = deepest.min(y);
+                        }
+                    }
+                }
+                assert!(deepest == floor || deepest == floor - 1, "the shaft reaches {deepest}");
+                let fl: Vec<&String> = cmds.iter().map(|(_, c)| c).filter(|c| c.starts_with("forceload add")).collect();
+                assert_eq!(fl.len(), 1);
+                let n: Vec<i32> = fl[0].split_whitespace().skip(2).map(|v| v.parse().unwrap()).collect();
+                assert!(((n[2] >> 4) - (n[0] >> 4) + 1) * ((n[3] >> 4) - (n[1] >> 4) + 1) <= 256);
+                assert!(cmds.iter().any(|(_, c)| c.starts_with("forceload remove")));
+            }
+        }
+    }
+    #[test]
+    fn planetkiller_cracks_follow_the_shader() {
+        // each crack's columns lie along the line strike.wgsl draws it on (pk_crack, pk_crack_at), and are cut as its
+        // split runs out to them
+        let point = [10.5, 65.0, -2.5];
+        for i in 0..PK_CRACKS {
+            let mut p = Plan { laser: &crate::lasers::PLANET_KILLER, ev: Vec::new(), rng: Rng::new(7), bx: 10, by: 64, bz: -3 };
+            pk_crack_cut(&mut p, point, i, 37.0);
+            let len = pk_crack(i, 37.0).1;
+            let mut cols = 0;
+            for (t, a) in &p.ev {
+                let Act::Cmd(c) = a else { continue };
+                if !c.ends_with("minecraft:air") {
+                    continue;
+                }
+                let w: Vec<&str> = c.split_whitespace().collect();
+                let (x, z) = (w[2].parse::<f64>().unwrap() + 0.5 - point[0], w[4].parse::<f64>().unwrap() + 0.5 - point[2]);
+                let r = x.hypot(z);
+                let u = r - PK_RIM;
+                assert!(u > -3.0 && u < len + 3.0, "crack {i}: a column {r:.1} out");
+                let a = pk_crack_at(i, u.clamp(0.0, len), 37.0);
+                let lat = (x * a.sin() - z * a.cos()).abs();
+                assert!(lat < 4.5, "crack {i}: a column {lat:.1} off its line");
+                assert!((t - (PK_HIT + PK_CRACK_T + (u.max(0.0) / PK_CRACK_V) as f32)).abs() < 0.1, "crack {i}: cut at {t} at {u:.1}");
+                cols += 1;
+            }
+            assert!(cols as f64 > len, "crack {i}: {cols} columns");
+        }
+    }
+    #[test]
+    fn planetkiller_emitters_ring_the_target() {
+        // the emitters stand round the target, the first beyond it from the player, all fired by PK_IGN1, and each is
+        // heard from where it stands
+        let point = [10.5, 65.0, -2.5];
+        for me in [[10.5, 66.0, 60.0], [-300.0, 70.0, 40.0]] {
+            let wing = wing_angle(point, me);
+            let cmds = pk_cmds(me, "minecraft:overworld");
+            for i in 0..PK_N {
+                let (x, z, t) = pk_emitter(i, 37.0, point, wing);
+                let r = (x - point[0]).hypot(z - point[2]);
+                assert!((1150.0..=1850.0).contains(&r) && t > 0.0 && t <= PK_IGN1 + 0.07, "{i}: {r} {t}");
+                let heard = cmds.iter().any(|(_, c)| c.starts_with("playsound orbital:planetkiller.ignite") && c.contains(&format!("{x:.1} 65 {z:.1}")));
+                assert!(heard, "{i}: not heard");
+            }
+            let (x, z, _) = pk_emitter(0, 37.0, point, wing);
+            let (to_me, to_it) = ((me[0] - point[0], me[2] - point[2]), (x - point[0], z - point[2]));
+            assert!(to_me.0 * to_it.0 + to_me.1 * to_it.1 < 0.0, "the first is not beyond the target");
         }
     }
 }

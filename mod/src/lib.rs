@@ -5,7 +5,8 @@
 //!
 //! It uses the game's mod capabilities: `input` (the two items' right-clicks,
 //! the wheel's key and what is typed on it), `ui` (the wheel), `render` (the
-//! strike's post pass, shaders/strike.wgsl), `world` (aiming, the crater's block
+//! strike's post pass, shaders/strike.wgsl, and the downfall's and the planet
+//! killer's own), `world` (aiming, the crater's block
 //! changes, the sounds and the flying speed), `hud` (the status panel), `storage`
 //! (the chosen laser and the settings) and
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
@@ -27,11 +28,12 @@ const REMOTE: &str = "orbital:remote";
 /// Ticks of holding the designator on a target before it fires.
 const LOCK_TICKS: u32 = 14;
 const SHADER: &str = include_str!("../shaders/strike.wgsl");
-/// The downfall's own pass: strike.wgsl up to its fs_main, less the other lasers' own functions (marked `[lasers pass
-/// only]`), then this (see shaders/downfall.wgsl).
+/// The downfall's and the planet killer's own passes: strike.wgsl up to its fs_main, less the other lasers' own
+/// functions (marked `[lasers pass only]`), then one of these (see shaders/downfall.wgsl, shaders/planetkiller.wgsl).
 const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
-fn downfall_pass() -> String {
-    let mut out = String::with_capacity(SHADER.len() + DOWNFALL_PASS.len());
+const PLANET_PASS: &str = include_str!("../shaders/planetkiller.wgsl");
+fn own_pass(own: &str) -> String {
+    let mut out = String::with_capacity(SHADER.len() + own.len());
     let mut skip = false;
     for line in SHADER.lines() {
         if line.starts_with("@fragment") {
@@ -48,8 +50,16 @@ fn downfall_pass() -> String {
             skip = false;
         }
     }
-    out.push_str(DOWNFALL_PASS);
+    out.push_str(own);
     out
+}
+/// Which of the post passes a laser's strike runs (`Orbital::passes`).
+fn pass_of(l: &lasers::Laser) -> usize {
+    match l.key {
+        "downfall" => 1,
+        "planetkiller" => 2,
+        _ => 0,
+    }
 }
 const SETTINGS: &str = "settings";
 /// Vanilla's flying speed (creative flight), which the wheel's speeds multiply.
@@ -99,9 +109,9 @@ fn default_colour(i: usize) -> usize {
 }
 
 struct Orbital {
-    /// The two post passes (0 every laser's, 1 the downfall's), the one the game last compiled, and the ones waiting to
-    /// be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [String; 2],
+    /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's), the one the game last compiled,
+    /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
+    passes: [String; 3],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -383,7 +393,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        let pass = usize::from(laser.key == "downfall");
+        let pass = pass_of(laser);
         render::set_post(&self.passes[pass]);
         self.compiled = Some(pass);
         render::set_params(&params);
@@ -527,10 +537,13 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), downfall_pass()],
+            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS)],
             compiled: None,
-            // both compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
-            warm_queue: vec![usize::from(LASERS[laser].key == "downfall"), usize::from(LASERS[laser].key != "downfall")],
+            // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
+            warm_queue: {
+                let mine = pass_of(LASERS[laser]);
+                (0..3).filter(|&i| i != mine).chain([mine]).collect()
+            },
             warming: false,
             carving: std::collections::VecDeque::new(),
             spare: std::collections::VecDeque::new(),
@@ -598,9 +611,9 @@ impl Mod for Orbital {
         self.since_tick += seconds;
         // Compile the post passes as the world loads, not when the first strike fires (that costs about a second): set
         // each for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
-        // the last one compiled for the strikes after; loading a laser that needs the other one compiles that one the
+        // the last one compiled for the strikes after; loading a laser that needs another one compiles that one the
         // same way (quickly, the driver has kept it), there and then rather than as it fires.
-        let want = usize::from(LASERS[self.laser].key == "downfall");
+        let want = pass_of(LASERS[self.laser]);
         if self.warm_queue.is_empty() && !self.warming && self.compiled != Some(want) && self.strike.is_none() {
             self.warm_queue.push(want);
         }
@@ -724,17 +737,24 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn downfall_pass_is_whole_and_small() {
-        // the downfall's pass leaves out the other lasers' own functions and fs_main, keeps what it uses, and is under
-        // the game's 256 KiB
-        let p = super::downfall_pass();
-        for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
-            assert!(!p.contains(gone), "{gone}");
+    fn own_passes_are_whole_and_small() {
+        // the downfall's and the planet killer's passes leave out the other lasers' own functions and fs_main, keep what
+        // they use, and are under the game's 256 KiB
+        for (own, kept) in [
+            (super::DOWNFALL_PASS, &["fn bh_lens(", "fn ms_hull(", "fn ms_frame(", "fn downfall(", "fn ms_air("][..]),
+            (super::PLANET_PASS, &["fn ray_seg(", "fn bolt_line(", "fn mh(", "fn planet_killer(", "fn lava_ramp("][..]),
+        ] {
+            let p = super::own_pass(own);
+            for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
+                assert!(!p.contains(gone), "{gone}");
+            }
+            for kept in kept {
+                assert!(p.contains(kept), "{kept}");
+            }
+            assert_eq!(p.matches("@fragment").count(), 1);
+            assert!(p.len() <= 256 << 10);
         }
-        for kept in ["fn bh_lens(", "fn ms_hull(", "fn ms_frame(", "fn downfall(", "fn ms_air("] {
-            assert!(p.contains(kept), "{kept}");
-        }
-        assert_eq!(p.matches("@fragment").count(), 1);
-        assert!(p.len() <= 256 << 10 && super::SHADER.len() <= 256 << 10);
+        assert!(super::SHADER.len() <= 256 << 10);
+        assert!(!super::own_pass(super::PLANET_PASS).contains("fn downfall("));
     }
 }
