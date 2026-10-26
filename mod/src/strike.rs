@@ -1638,18 +1638,19 @@ const DF_CUT: f32 = 6.8; // the charge is cut and its power diverted
 const DF_TURN0: f32 = 7.2; // coming from ahead or overhead it comes about, broadside on
 const DF_TURN1: f32 = 13.2;
 const DF_FIRE0: f32 = 8.4; // the roof batteries fire, a volley every DF_PERIOD
-const DF_FIRE1: f32 = 13.8;
+const DF_FIRE1: f32 = 10.8;
 const DF_PERIOD: f32 = 0.75;
-const DF_SPLIT: f32 = 14.0; // the meteor breaks up DF_LS short of the ship; its pieces come on as fast
+const DF_SPLIT: f32 = 11.0; // the meteor breaks up DF_LS short of the ship, in sight; its pieces come on as fast
 const DF_MV: f64 = 260.0;
-const DF_LS: f64 = 360.0;
-const DF_ELEV: f64 = 0.45;
+const DF_LS: f64 = 1150.0;
+const DF_ELEV: f64 = 0.3;
 const DF_ROCK: f32 = 15.4; // the hits rock it
 const DF_FALL0: f32 = 17.0; // it loses lift
 const DF_FALL1: f32 = 30.0; // its stern strikes the ground
 const DF_SLIDE: f32 = 2.6; // it ploughs on and its bow slams down
+const DF_BOW: f64 = 0.65; // its bow strikes the ground this long after its stern
 const DF_OPEN: f32 = 40.0; // its engine ruptures into a black hole
-const DF_LIFE: f32 = 11.0; // which collapses this long after
+const DF_LIFE: f32 = 15.0; // which collapses this long after (once the last of the wreck is in)
 const DF_SINK0: f64 = 28.0; // it ploughs in this deep (its stern's belly under the ground), then settles
 const DF_SETTLE: f32 = 5.5; // over this long, slowly for its weight,
 const DF_EMBED: f64 = 72.0; // to rest buried this deep: about half its height at the stern
@@ -1682,6 +1683,28 @@ pub fn df_reach(point: [f64; 3], me: [f64; 3]) -> f32 {
     (DF_NEAR - d).max(DF_MIN) as f32
 }
 
+/// How far it has dropped `r` seconds after it loses lift, as a share of the way down, and how fast (a share a
+/// second; strike.wgsl's df_drop): a lurch as the lift first gives, its engines fighting back a little, a second lurch,
+/// then falling free, faster and faster, into the ground.
+fn df_drop(r: f64) -> (f64, f64) {
+    let j = |x: f64| { let x = x.clamp(0.0, 1.0); (x * x * (3.0 - 2.0 * x), 6.0 * x * (1.0 - x)) };
+    let (a, da) = j(r / 0.7);
+    let (b, db) = j((r - 3.2) / 0.6);
+    let c = ((r - 0.7) / 2.5).clamp(0.0, 1.0);
+    let dc = if c > 0.0 && c < 1.0 { 1.0 } else { 0.0 };
+    let f = (r - 4.0).max(0.0) / 9.0;
+    (0.07 * a + 0.05 * b - 0.012 * (PI * c).sin() + 0.88 * f * f,
+     0.07 * da / 0.7 + 0.05 * db / 0.6 - 0.012 * PI / 2.5 * (PI * c).cos() * dc + 0.88 * 2.0 * f / 9.0)
+}
+/// Its pitch and roll `r` seconds after it loses lift, as shares of those it strikes the ground with (strike.wgsl's
+/// df_lurch): jerked over at each lurch, wallowing, then tipping on over as it falls.
+fn df_lurch(r: f64) -> (f64, f64) {
+    let j = |x: f64| { let x = x.clamp(0.0, 1.0); x * x * (3.0 - 2.0 * x) };
+    let free = j((r - 4.0) / 9.0);
+    let wal = (1.0 - j((r - 9.0) / 4.0)) * j(r);
+    (0.35 * j(r / 0.8) + 0.25 * j((r - 3.2) / 0.7) + 0.4 * free + 0.16 * (r * 1.9).sin() * wal,
+     0.3 * j((r - 0.2) / 0.8) + 0.3 * j((r - 3.3) / 0.7) + 0.4 * free + 0.17 * (r * 2.3 + 1.0).sin() * wal)
+}
 fn smooth(a: f32, b: f32, t: f32) -> f64 {
     let s = f64::from(((t - a) / (b - a)).clamp(0.0, 1.0));
     s * s * (3.0 - 2.0 * s)
@@ -1731,7 +1754,13 @@ struct DfGeo {
     roll: f64,
     mz: f64,
     seed: u32,
+    /// Its belly's line (the height of its middle, and its rise along it) at each step of `sunk_by`, and at rest: worked
+    /// out once, as `sunk_by` is asked of every column the stages build (each pose costs a mod's tick a lot of maths).
+    sink: [(f64, f64); DF_SINK_N],
+    rest: (f64, f64),
 }
+/// The steps of `sunk_by`: every 0.05 s from a second before the stern strikes until it is at rest.
+const DF_SINK_N: usize = 184;
 impl DfGeo {
     fn new(point: [f64; 3], by: i32, wing: f32, mode: usize, reach: f32, seed: f32) -> Self {
         let ax = ms_axis(wing);
@@ -1756,7 +1785,20 @@ impl DfGeo {
         // it rolls its far side down (lifting the side over the player), or either way when it lies along their view
         let far = -hf.1 * ax.0 + hf.0 * ax.1;
         let roll = if far.abs() > 0.3 { far.signum() } else { sg(2) };
-        DfGeo { ax, mode, h0, hf, c, y0: point[1] + MS_H, by: f64::from(by), ps, c0, s1, side, roll, mz: sg(3), seed: s }
+        let mut g = DfGeo {
+            ax, mode, h0, hf, c, y0: point[1] + MS_H, by: f64::from(by), ps, c0, s1, side, roll, mz: sg(3), seed: s,
+            sink: [(0.0, 0.0); DF_SINK_N], rest: (0.0, 0.0),
+        };
+        let line = |p: DfPose| (p.s[1] - p.a[1] * DF_XP, p.a[1]);
+        g.rest = line(g.pose(DF_REST));
+        let mut t = DF_FALL1 - 1.0;
+        let mut k = 0;
+        while t < DF_REST && k < DF_SINK_N {
+            g.sink[k] = line(g.pose(t.min(DF_REST)));
+            t += 0.05;
+            k += 1;
+        }
+        g
     }
     fn heading(&self, t: f32) -> (f64, f64) {
         if self.mode == 0 || self.mode >= 4 { rot2(self.h0, -0.5 * PI * smooth(DF_TURN0, DF_TURN1, t)) } else { self.h0 }
@@ -1770,18 +1812,21 @@ impl DfGeo {
         let (mut th, mut ph) = (0.0, 0.0);
         if t > DF_ROCK {
             let r = f64::from(t - DF_ROCK);
-            ph = 0.03 * (-r * 0.7).exp() * (r * 2.4).sin();
+            // (kicked over by the hits, rocking back)
+            ph = 0.07 * (-r * 1.1).exp() * (r * 4.5).sin();
+            th = 0.025 * (-r * 1.3).exp() * (r * 5.2).sin();
         }
         let yc = self.by + 6.0;
         let yr = self.by - DF_EMBED;
         if (DF_FALL0..DF_FALL1).contains(&t) {
             let u = f64::from((t - DF_FALL0) / (DF_FALL1 - DF_FALL0));
-            let e = u * u * (3.0 - 2.0 * u);
+            let r = f64::from(t - DF_FALL0);
             let k = u.powf(1.25);
             s = (self.s1.0 + (self.c0.0 - self.s1.0) * k, self.s1.1 + (self.c0.1 - self.s1.1) * k);
-            y = self.y0 - (self.y0 - yc) * u * u * u.sqrt();
-            th = DF_THC * e;
-            ph += DF_PHC * e * self.roll;
+            y = self.y0 - (self.y0 - yc) * df_drop(r).0;
+            let (pt, rl) = df_lurch(r);
+            th = DF_THC * pt;
+            ph += DF_PHC * rl * self.roll;
         } else if t >= DF_FALL1 {
             // it ploughs on through the ground, its bow slamming down, then sinks on in, slowing, until it is buried
             let tau = f64::from(((t - DF_FALL1) / DF_SLIDE).min(1.0));
@@ -1791,8 +1836,18 @@ impl DfGeo {
             let ys = self.by - DF_SINK0;
             s = (self.c0.0 + (self.ps.0 - self.c0.0) * e, self.c0.1 + (self.ps.1 - self.c0.1) * e);
             y = yc + (ys - yc) * e + (yr - ys) * f;
-            th = DF_THS + (DF_THC - DF_THS) * (1.0 - tau * tau) + (DF_THR - DF_THS) * f;
-            ph += (DF_PHR + (DF_PHC - DF_PHR) * (1.0 - tau) * (1.0 - tau)) * self.roll;
+            // (its bow slams down well before it stops, rebounds, and the whole hull shudders with the blow)
+            let b0 = f64::from(t - DF_FALL1);
+            let tp = (b0 / DF_BOW).min(1.0);
+            th = DF_THS + (DF_THC - DF_THS) * (1.0 - tp * tp) + (DF_THR - DF_THS) * f;
+            ph += (DF_PHR + (DF_PHC - DF_PHR) * (1.0 - tp) * (1.0 - tp)) * self.roll;
+            let bs = b0 - DF_BOW;
+            if bs > 0.0 {
+                th += 0.03 * (-bs * 2.8).exp() * (bs * 7.5).sin();
+                ph += 0.02 * (-bs * 3.0).exp() * (bs * 8.0).sin() * self.roll;
+            }
+            y += 1.5 * (-b0 * 1.8).exp() * (b0 * 29.0).sin();
+            th += 0.004 * (-b0 * 1.8).exp() * (b0 * 23.0).sin();
             let b = f64::from(t - DF_FALL1 - DF_SLIDE);
             if b > 0.0 {
                 th += 0.012 * (-b * 2.5).exp() * (b * 7.0).sin();
@@ -1814,7 +1869,7 @@ impl DfGeo {
         let tf = f64::from(DF_FALL1 - DF_FALL0);
         let u = f64::from((t - DF_FALL0) / (DF_FALL1 - DF_FALL0)).max(1e-6);
         let k = 1.25 * u.powf(0.25) / tf;
-        [(self.c0.0 - self.s1.0) * k, -(self.y0 - self.by - 6.0) * 2.5 * u.powf(1.5) / tf, (self.c0.1 - self.s1.1) * k]
+        [(self.c0.0 - self.s1.0) * k, -(self.y0 - self.by - 6.0) * df_drop(f64::from(t - DF_FALL0)).1, (self.c0.1 - self.s1.1) * k]
     }
     /// Piece `i` it sheds: where it comes away (its belly, a side, or the roof's edge, more of them towards the stern
     /// where it was hit), its speed (the ship's, and a kick away from it), when, what it is (0 a plate, 1 a girder, 2 a
@@ -1849,17 +1904,19 @@ impl DfGeo {
     }
     /// The meteor: the point on the roof it comes down on, where it breaks up, and the way it is going.
     fn meteor(&self) -> ([f64; 3], [f64; 3], [f64; 3]) {
-        // across the sky from one side, from ahead of the player (it comes towards them, so they see it coming)
+        // across the sky from one side, from ahead of the player (it comes towards them, so they see it coming); low and
+        // from far enough off that it breaks up past the ship's end, in the open, not over the hull where it hides it
         let (a, b) = (self.side.0 - self.ax.0 * 0.2, self.side.1 - self.ax.1 * 0.2);
         let l = (a * a + b * b).sqrt();
         let v = [a / l * DF_ELEV.cos(), -DF_ELEV.sin(), b / l * DF_ELEV.cos()];
-        let aim = self.pose(DF_SPLIT).world([-380.0, 150.0, 0.0]);
+        // (aimed at where it hangs once it has come about)
+        let aim = self.pose(DF_TURN1).world([-380.0, 150.0, 0.0]);
         (aim, [0, 1, 2].map(|k| aim[k] - v[k] * DF_LS), v)
     }
     /// Where piece `j` of it strikes the hull, and when.
     fn hit(&self, j: usize) -> ([f64; 3], f32) {
         let h = DF_HITS[j];
-        let pt = self.pose(DF_SPLIT).world([h[0], h[1], h[2] * self.mz]);
+        let pt = self.pose(DF_TURN1).world([h[0], h[1], h[2] * self.mz]);
         let b = self.meteor().1;
         let d = ((pt[0] - b[0]).powi(2) + (pt[1] - b[1]).powi(2) + (pt[2] - b[2]).powi(2)).sqrt();
         (pt, DF_SPLIT + (d / DF_MV) as f32)
@@ -1869,7 +1926,7 @@ impl DfGeo {
     fn chunk(&self, i: usize) -> Option<([f64; 3], [f64; 3], f32)> {
         let side = if i < DF_CHUNKS / 2 { 1.0 } else { -1.0 };
         let x = -500.0 + 80.0 * (i % (DF_CHUNKS / 2)) as f64;
-        let tb = DF_SPLIT + 1.6 + 1.8 * mh(i as u32, self.seed, 31) as f32;
+        let tb = DF_ROCK + 0.2 + 1.8 * mh(i as u32, self.seed, 31) as f32;
         let p = self.pose(tb);
         let (nx, nz) = (p.d[0] * side, p.d[2] * side);
         let nl = (nx * nx + nz * nz).sqrt().max(1e-6);
@@ -1897,13 +1954,19 @@ impl DfGeo {
     /// When the belly at `x` along the hull has gone `share` of the way down to where it comes to rest, into the ground:
     /// the ground it shoves aside heaps up beside it as it does, and nothing of that shows before the hull is there.
     fn sunk_by(&self, x: f64, share: f64) -> f32 {
+        let rest = self.by - (self.rest.0 + self.rest.1 * x);
         let mut t = DF_FALL1 - 1.0;
+        let mut k = 0;
         while t < DF_REST {
-            let (now, rest) = self.sunk(x, t);
+            let now = match self.sink.get(k) {
+                Some(&(y, a)) => self.by - (y + a * x),
+                None => self.sunk(x, t).0,
+            };
             if now >= 0.0 && now >= share * rest {
                 return t;
             }
             t += 0.05;
+            k += 1;
         }
         DF_REST
     }
@@ -2019,15 +2082,19 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
         let u = k as f32 / 12.0;
         p.shake(DF_FALL0 + 0.6 + k as f32, 0.1 + 0.32 * u * u, 1.6);
     }
+    // (each lurch as its lift gives way)
+    p.shake(DF_FALL0 + late(c0) * 0.5, 0.55, 1.4);
+    p.shake(DF_FALL0 + 3.2 + late(c0) * 0.5, 0.5, 1.4);
     // the crash: its stern strikes, it ploughs on, its bow slams down (the hardest jolt of all, the loudest moment)
     let crash = DF_FALL1 + late(c0);
     // (a ship a kilometre long hitting the ground: felt hard however far off it is)
     let fo = (1.25 - dist(c0) / 2000.0).clamp(0.9, 1.0) as f32;
     p.csound(crash, "crash", 10.0, 1.0);
     p.shake(crash, fo, 7.0);
-    let bow = g.pose(DF_FALL1 + DF_SLIDE).world([560.0, 0.0, 0.0]);
-    let slam = DF_FALL1 + DF_SLIDE * 0.9 + late(bow);
-    p.shake(slam, 0.8 * fo, 4.5);
+    p.shake(crash + 0.05, 0.95 * fo, 1.2);
+    let bow = g.pose(DF_FALL1 + DF_BOW as f32).world([560.0, 0.0, 0.0]);
+    let slam = DF_FALL1 + DF_BOW as f32 + late(bow);
+    p.shake(slam, 0.9 * fo, 4.5);
     p.shake(crash + 4.0, 0.45 * fo, 4.0);
     p.shake(crash + 8.0, 0.25 * fo, 4.0);
     for k in 0..5 {
@@ -2049,7 +2116,8 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
     p.at(DF_OPEN + 0.2, bar("SINGULARITY", "light_purple"));
     // (it is drawn to nothing the instant it collapses)
     p.csound(DF_OPEN + 0.4 + lh, "vortex", 9.0, 1.0);
-    for k in 1..10 {
+    p.csound(DF_OPEN + 6.0 + lh, "vortex", 8.0, 0.9);
+    for k in 1..14 {
         p.shake(DF_OPEN + lh + k as f32, 0.17 * fh, 1.3);
     }
     let te = DF_OPEN + DF_LIFE + lh;
@@ -2149,8 +2217,8 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
         // the heaps a stretch at a time, a tick apart: worked out all at once they are more than one tick's budget
         let mut a0 = -80.0;
         let mut i = 0;
-        while a0 < DF_REAL_A {
-            let a1 = (a0 + DF_BERM_STRETCH).min(DF_REAL_A);
+        while a0 < DF_BERM_END {
+            let a1 = (a0 + DF_BERM_STRETCH).min(DF_BERM_END);
             p.later(DF_FALL1 - 0.4 + i as f32 * 0.1, move |q| df_berms(q, &g, a0, a1));
             a0 = a1;
             i += 1;
@@ -2165,7 +2233,13 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
             p.later(DF_FALL1 - 0.35, move |q| df_cut(q, g.ps, g.hf, x0, x1, Some(ts), df_keel));
             x0 = x1;
         }
-        p.later(DF_FALL1 - 0.3, move |q| df_swallowed(q, &g));
+        // (in stretches along it, a stage each: each is a few thousand commands)
+        let mut a0 = -80.0;
+        while a0 < 1040.0 {
+            let a1 = a0 + DF_CRUSH_STRETCH;
+            p.later(DF_FALL1 - 0.3 + (a0 as f32 + 80.0) / 1000.0, move |q| df_swallowed(q, &g, a0, a1));
+            a0 = a1;
+        }
         // the pieces it shed as it fell, where they came down near the crash
         for i in 0..DF_SHED {
             if let Some((x, z, tl, big)) = g.shed_land(i)
@@ -2215,6 +2289,8 @@ const DF_SKID_W: f64 = 60.0;
 const DF_REAL_A: f64 = 170.0;
 /// The berms are worked out this many blocks along the hull a stage (`df_berms`), to stay within a tick's budget.
 const DF_BERM_STRETCH: f64 = 30.0;
+/// The heaps run along the whole hull, up to where its bow narrows to its point (along from the stern's pivot).
+const DF_BERM_END: f64 = 990.0;
 /// What the heaps shoved up beside the hull are made of.
 const DF_BERM_BODY: [&str; 5] = ["minecraft:dirt", "minecraft:coarse_dirt", "minecraft:stone", "minecraft:gravel", "minecraft:dirt"];
 const DF_SLOT: i32 = 32;
@@ -2281,11 +2357,13 @@ fn df_berms(p: &mut Plan, g: &DfGeo, a0: f64, a1: f64) {
                 // (each heap a little off the grid, its own size, as high as df_berm_h gives, give or take)
                 let (ja, je) = (a + p.rng.uniform(-2.5, 2.5), e + p.rng.uniform(-2.5, 2.5));
                 let x = ja + DF_XP;
-                let q = rest.world([x, 0.0, side * (ms_half_w(x) + je)]);
+                // (out from the hull's widest just round it: clear of a sponson's end)
+                let hw = ms_half_w(x - 7.0).max(ms_half_w(x)).max(ms_half_w(x + 7.0));
+                let q = rest.world([x, 0.0, side * (hw + je)]);
                 let (cx, cz) = (q[0].floor() as i32, q[2].floor() as i32);
                 let lump = 0.75 + 0.5 * vnoise(q[0], q[2], 18.0, g.seed ^ 0x77);
-                // (dying away at either end of the stretch carved for real, and reaching out further in places)
-                let ends = ((ja + 80.0) / 40.0).clamp(0.0, 1.0).min(((DF_REAL_A - ja) / 40.0).clamp(0.0, 1.0));
+                // (dying away at either end of the hull, and reaching out further in places)
+                let ends = ((ja + 80.0) / 40.0).clamp(0.0, 1.0).min(((DF_BERM_END - ja) / 40.0).clamp(0.0, 1.0));
                 let reach = je < 40.0 + 24.0 * vnoise(q[0], q[2], 30.0, g.seed ^ 0x99);
                 let h = (df_berm_h(x, je) * lump * ends * f64::from(u8::from(reach))).round() as i32;
                 // built once the hull beside it has sunk most of the way in (the drawn ones rise with it until then)
@@ -2293,11 +2371,14 @@ fn df_berms(p: &mut Plan, g: &DfGeo, a0: f64, a1: f64) {
                 if h >= 1 {
                     let blk = *p.rng.pick(&DF_BERM_BODY);
                     let r = p.rng.int(3, 5);
-                    p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-{r} ~ ~-{r} ~{} ~{} ~{} {blk} keep", r - 1, h - 1, r - 1)))));
+                    // (ahead of the crushing under the hull, which is out of sight: these are what is seen; and where it
+                    // is water, heaped up from a few blocks down in it, not floating on it)
+                    p.ev.push((ts, Act::Cmd(surf(cx, cz, &format!("fill ~-{r} ~-4 ~-{r} ~{} ~{} ~{} {blk} replace minecraft:water", r - 1, h - 1, r - 1)))));
+                    p.ev.push((ts, Act::Cmd(surf(cx, cz, &format!("fill ~-{r} ~ ~-{r} ~{} ~{} ~{} {blk} keep", r - 1, h - 1, r - 1)))));
                     if h >= 3 && p.rng.next() < 0.45 {
                         let cap = *p.rng.pick(&CAP);
                         let c = p.rng.int(1, 2);
-                        p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-{c} ~ ~-{c} ~{c} ~{} ~{c} {cap} keep", p.rng.int(0, 1))))));
+                        p.ev.push((ts, Act::Cmd(surf(cx, cz, &format!("fill ~-{c} ~ ~-{c} ~{c} ~{} ~{c} {cap} keep", p.rng.int(0, 1))))));
                     }
                 }
                 e += 6.0;
@@ -2312,7 +2393,7 @@ fn df_spills(p: &mut Plan, g: &DfGeo, n: usize) {
     let rest = g.pose(DF_REST);
     let t0 = DF_FALL1 + DF_SLIDE;
     for _ in 0..n {
-        let x = p.rng.uniform(-80.0, DF_REAL_A) + DF_XP;
+        let x = p.rng.uniform(-80.0, DF_BERM_END) + DF_XP;
         let side = if p.rng.next() < 0.5 { -1.0 } else { 1.0 };
         let e = 14.0 + p.rng.uniform(-4.0, 6.0);
         let q = rest.world([x, 0.0, side * (ms_half_w(x) + e)]);
@@ -2325,25 +2406,61 @@ fn df_spills(p: &mut Plan, g: &DfGeo, n: usize) {
     }
 }
 
-/// Whatever stood higher than the land inside where the hull came down, swallowed by it: cleared down from its own top
-/// to the target's level, in cells (on the spare budget, after the slot).
-fn df_swallowed(p: &mut Plan, g: &DfGeo) {
+/// How much of the hull's length (blocks) each stage of `df_swallowed` crushes.
+const DF_CRUSH_STRETCH: f64 = 60.0;
+/// Whatever stood on the land under the hull, from `a0` to `a1` along from the stern's pivot, crushed by it as it came
+/// down there (on the spare budget, after the slot). In 8 by 8 cells, each cleared from 16 over its middle column's top
+/// (trees, and the slope across it, so nothing is left standing in pillars) down into the ground: along the stern's slot
+/// to the land's own level, rising gently towards the hull's edges and its far end, so what is left once the wreck has
+/// gone is a shallow valley round the slot; further on scraped a few blocks down, here and there a crater, its edges
+/// ragged. What is left is scorched and broken: coarse dirt, gravel and rubble, lumps of stone thrown about.
+fn df_swallowed(p: &mut Plan, g: &DfGeo, a0: f64, a1: f64) {
     let rest = g.pose(DF_REST);
     let by = p.by;
-    // (8 by 8 cells: a fill's cap holds over a hill 500 high; each cleared once the hull is down in it there) down to the
-    // land's own level along the slot, rising gently towards the hull's edges and its far end, so what is left once the
-    // wreck has gone is a shallow valley round the slot, not a flat floor cut off sheer
-    let mut a = -76.0;
-    while a < DF_REAL_A {
+    const GROUND: [&str; 6] = ["coarse_dirt", "gravel", "coarse_dirt", "rooted_dirt", "cobblestone", "tuff"];
+    const RUBBLE: [&str; 5] = ["cobblestone", "blackstone", "basalt", "cobbled_deepslate", "gravel"];
+    let mut a = a0;
+    while a < a1.min(1040.0) {
         let x = a + DF_XP;
-        let hw = ms_half_w(x) - 8.0;
+        let hw = ms_half_w(x) - 4.0;
         let ts = g.sunk_by(x - 4.0, 0.0).max(g.sunk_by(x + 4.0, 0.0)) + 0.1;
         let inner = df_slot(a).0 + 16.0;
         let mut z = -hw;
         while z <= hw {
             let q = rest.world([x, 0.0, z]);
-            let lv = by + 1 + ((z.abs() - inner).max(0.0) * 0.28 + (a - 110.0).max(0.0) * 0.3 + 3.0 * vnoise(q[0], q[2], 24.0, g.seed ^ 0x31)).min(24.0) as i32;
-            p.ev.push((ts, Act::Spare(surf(q[0].floor() as i32, q[2].floor() as i32, &format!("fill ~-4 ~4 ~-4 ~3 {lv} ~3 minecraft:air")))));
+            // (each cell a little off the grid and its own size, overlapping its neighbours: no square pattern)
+            let (cx, cz) = ((q[0] + p.rng.uniform(-2.0, 2.0)).floor() as i32, (q[2] + p.rng.uniform(-2.0, 2.0)).floor() as i32);
+            let r = p.rng.int(4, 5);
+            // (its edges ragged: torn and shoved, not cut along a line)
+            if z.abs() > hw - 14.0 * vnoise(q[0], q[2], 20.0, g.seed ^ 0x5d) {
+                z += 8.0;
+                continue;
+            }
+            let cell = |then: &str| Act::Spare(surf(cx, cz, then));
+            let s1 = r - 1;
+            p.ev.push((ts, cell(&format!("fill ~-{r} ~16 ~-{r} ~{s1} ~1 ~{s1} minecraft:air"))));
+            let k = if a < DF_REAL_A {
+                let lv = by + 1 + ((z.abs() - inner).max(0.0) * 0.28 + (a - 110.0).max(0.0) * 0.3 + 3.0 * vnoise(q[0], q[2], 24.0, g.seed ^ 0x31)).min(24.0) as i32;
+                p.ev.push((ts, cell(&format!("fill ~-{r} ~ ~-{r} ~{s1} {lv} ~{s1} minecraft:air"))));
+                0
+            } else {
+                // (scraped down by a depth that wanders smoothly across it, so neighbours lie at much the same depth and
+                // the ground undulates; now and then a crater)
+                let crater = p.rng.next() < 0.12;
+                let k = 1 + (5.0 * vnoise(q[0], q[2], 40.0, g.seed ^ 0x6b)).round() as i32 + if crater { 3 + (4.0 * p.rng.next()) as i32 } else { 0 };
+                p.ev.push((ts, cell(&format!("fill ~-{r} ~ ~-{r} ~{s1} ~-{k} ~{s1} minecraft:air"))));
+                k
+            };
+            // scorched and broken where it lay: all of the cell's ground, whatever its height across it
+            let ground = GROUND[(p.rng.next() * GROUND.len() as f64) as usize % GROUND.len()];
+            let tl = ts + 0.5;
+            p.ev.push((tl, cell(&format!("fill ~-{r} ~-{} ~-{r} ~{s1} ~-{} ~{s1} minecraft:{ground} replace #minecraft:dirt", k + 4, k.max(1)))));
+            if p.rng.next() < 0.35 {
+                let rb = RUBBLE[(p.rng.next() * RUBBLE.len() as f64) as usize % RUBBLE.len()];
+                let (dx, dz) = ((p.rng.next() * 6.0) as i32 - 3, (p.rng.next() * 6.0) as i32 - 3);
+                let hgt = (p.rng.next() * 2.0) as i32;
+                p.ev.push((tl, cell(&format!("fill ~{dx} ~ ~{dz} ~{} ~{hgt} ~{} minecraft:{rb}", dx + 1, dz + (p.rng.next() * 2.0) as i32))));
+            }
             z += 8.0;
         }
         a += 8.0;
@@ -3255,12 +3372,17 @@ mod tests {
                     let (x, z) = (w[0].parse::<f64>().unwrap() + 0.5, w[2].parse::<f64>().unwrap() + 0.5);
                     let (a, b) = local(x, z);
                     let xl = a + DF_XP;
-                    let e = b.abs() - ms_half_w(xl);
-                    assert!(e > 0.0, "mode {mode}: a heap under the hull: {c}");
-                    let h = num(run[5]).unwrap();
-                    let bh = df_berm_h(xl, e);
-                    assert!(f64::from(h + 1) <= bh * 1.3 + 2.5, "mode {mode}: heap {h} at e {e:.1}: {bh:.1}");
                     berms += 1;
+                    // (out from the hull's widest just round it, as df_berms lays them; not judged by a sponson's end,
+                    // where the hull's width steps within the few blocks this finds the heap's place to)
+                    if (ms_half_w(xl - 12.0) - ms_half_w(xl + 12.0)).abs() > 1.0 {
+                        continue;
+                    }
+                    let e = b.abs() - ms_half_w(xl - 7.0).max(ms_half_w(xl)).max(ms_half_w(xl + 7.0));
+                    assert!(b.abs() > ms_half_w(xl), "mode {mode}: a heap under the hull at {a:.1} {b:.1}: {c}");
+                    let h = num(run[5]).unwrap();
+                    let bh = df_berm_h(xl, e.max(0.0));
+                    assert!(f64::from(h + 1) <= bh * 1.3 + 2.5, "mode {mode}: heap {h} at e {e:.1}: {bh:.1}");
                 }
             }
             assert!(berms > 200, "mode {mode}: {berms} heaps");
@@ -3315,6 +3437,68 @@ mod tick_budget {
         for laser in crate::lasers::LASERS {
             let ms = heaviest_tick(laser);
             assert!(ms <= proven * 1.25 + 0.5, "{}: a tick of {ms:.2} ms against the proven {proven:.2} ms", laser.key);
+        }
+    }
+}
+#[cfg(test)]
+mod replay {
+    use super::*;
+    /// A strike played out tick by tick as the mod does (lib.rs's tick_strike: one stage a tick, every due command's
+    /// cost worked out), timing each tick. `cargo test --release replay -- --ignored --nocapture`, with ORBITAL_REPLAY
+    /// "laser bx by bz px py pz [approach]".
+    #[test]
+    #[ignore]
+    fn replay_ticks() {
+        let a: Vec<f64> = std::env::var("ORBITAL_REPLAY").unwrap_or("5 12092 96 12416 12021.5 199.9 11811.3 0".into())
+            .split_whitespace().skip(1).map(|s| s.parse().unwrap()).collect();
+        let key = std::env::var("ORBITAL_REPLAY").unwrap_or("5".into()).split_whitespace().next().unwrap().parse::<usize>().unwrap();
+        let laser = crate::lasers::LASERS[key];
+        let target = Target { block: [a[0] as i32, a[1] as i32, a[2] as i32], point: [a[0] + 0.5, a[1] + 1.0, a[2] + 0.5] };
+        let t0 = std::time::Instant::now();
+        let mut plan = plan(laser, &target, true, "minecraft:overworld", 7.0, [a[3], a[4], a[5]], a.get(6).copied().unwrap_or(0.0) as usize);
+        let mut worst = vec![(t0.elapsed().as_secs_f64() * 1000.0, 0.0f32, 0usize)];
+        let mut next = 0;
+        let mut waiting: std::collections::VecDeque<Stage> = Default::default();
+        let mut ticks = 0u32;
+        let mut spare = 0u64;
+        while (ticks as f32) * 0.05 < laser.length {
+            ticks += 1;
+            let now = ticks as f32 * 0.05;
+            let s = std::time::Instant::now();
+            let mut n = 0;
+            let out = |job: Stage, plan: &mut Vec<(f32, Act)>, next: usize| {
+                let mut rest = plan.split_off(next);
+                let j = std::time::Instant::now();
+                let made = job();
+                let first = made.iter().map(|e| e.0).fold(f32::MAX, f32::min);
+                println!("stage at {now:5.2} s: {:6.2} ms, {} acts, the first due {first:5.2}, {} waiting in the plan", j.elapsed().as_secs_f64() * 1000.0, made.len(), plan.len() - next + rest.len());
+                rest.extend(made);
+                rest.sort_by(|a, b| a.0.total_cmp(&b.0));
+                plan.extend(rest);
+            };
+            let mut worked = false;
+            if let Some(job) = waiting.pop_front() {
+                out(job, &mut plan, next);
+                worked = true;
+            }
+            while next < plan.len() && plan[next].0 <= now {
+                let (_, act) = std::mem::replace(&mut plan[next], (0.0, Act::Cmd(String::new())));
+                next += 1;
+                n += 1;
+                match act {
+                    Act::Cmd(c) => { std::hint::black_box(block_cost(&c)); }
+                    Act::Spare(c) => spare += block_cost(&c).unwrap_or(1),
+                    Act::Later(job) if worked => waiting.push_back(job),
+                    Act::Later(job) => { out(job, &mut plan, next); worked = true; }
+                    _ => {}
+                }
+            }
+            worst.push((s.elapsed().as_secs_f64() * 1000.0, now, n));
+        }
+        println!("spare budget asked for: {spare} blocks");
+        worst.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for w in worst.iter().take(8) {
+            println!("{:7.2} ms at {:5.2} s, {} events", w.0, w.1, w.2);
         }
     }
 }

@@ -247,7 +247,7 @@ pub const DOWNFALL: Laser = Laser {
     rgb: 0xE8424F,
     blurb: "The mothership drops in and charges, then turns its roof batteries on a meteor coming down on it. It breaks the rock up, the pieces hit it anyway, and the ship falls out of the sky and ploughs into the land. Then the black hole engine in its stern ruptures and swallows the wreck.",
     icon_model: "orbital:downfall_icon",
-    length: 60.0,
+    length: 64.0,
     range: 1000.0,
     scorch: &[
         (60, "minecraft:sculk", 0.12, "minecraft:grass_block"),
