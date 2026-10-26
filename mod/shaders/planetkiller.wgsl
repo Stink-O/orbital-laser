@@ -417,10 +417,10 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         // (the horizon round it lit up, along the horizon more than above it, a little: the glow of its crown)
         let low = exp(-abs(rd.y - sdir.y - 0.05) / 0.07);
         add = add + PK_DEEP * exp(-c / 0.02) * low * (0.9 * burst_ + 0.25 * lit) * select(0.15, 1.0, sky || scene_len > ds * 0.6) * k;
-        // (only near it: what it throws up climbs some 800 blocks and spreads 300 round it, and once that has thinned out
-        // only its foot's cloud and the tower itself are left)
-        let reach = select(330.0, 120.0, rt > 6.0);
-        if (ray_seg(rd, S0, S0 + vec3<f32>(0.0, select(820.0, 480.0, rt > 6.0), 0.0)).x > reach) {
+        // (only near it: what it throws up climbs some 1000 blocks and spreads 600 round it, and once that has thinned
+        // out only its foot's cloud and the tower itself are left)
+        let reach = select(650.0, 280.0, rt > 6.0);
+        if (ray_seg(rd, S0, S0 + vec3<f32>(0.0, select(1000.0, 480.0, rt > 6.0), 0.0)).x > reach) {
             continue;
         }
         // its ground bulging up before it breaks, split by cracks glowing from below
@@ -487,12 +487,12 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 add = add * (1.0 - saturate(dens) * 0.75 * vis);
             }
             // chunks of the ground flung up and out as it breaks through, falling back (dark against the sky)
-            if (rt > 0.0 && rt < 7.0) {
-                for (var j = 0; j < 14; j = j + 1) {
+            if (rt > 0.0 && rt < 5.0) {
+                for (var j = 0; j < 10; j = j + 1) {
                     let hv = vec3<f32>(pcg3d(vec3<u32>(u32(j), u32(i), u32(seed)))) * (1.0 / 4294967295.0);
                     let az = hv.x * TAU;
-                    let vh = 25.0 + 50.0 * hv.y;
-                    let vy = 55.0 + 60.0 * hv.z;
+                    let vh = 20.0 + 45.0 * hv.y;
+                    let vy = 35.0 + 40.0 * hv.z;
                     let s3 = S0 + vec3<f32>(cos(az) * 30.0, 4.0, sin(az) * 30.0);
                     let a1 = max(rt - 0.06, 0.0);
                     let pa = s3 + vec3<f32>(cos(az) * vh * rt, vy * rt - 16.0 * rt * rt, sin(az) * vh * rt);
@@ -501,8 +501,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                         continue;
                     }
                     let qj = ray_seg(rd, pa, pb);
-                    let wj = 7.0 + 12.0 * hv.y;
-                    let cov = exp(-pow(qj.x / max(wj, qj.y * 0.0013), 4.0)) * (wj / max(wj, qj.y * 0.0013));
+                    let wj = 3.0 + 5.0 * hv.y;
+                    let cov = smoothstep(1.0, 0.6, qj.x / max(wj, qj.y * 0.0013)) * (wj / max(wj, qj.y * 0.0013));
                     let vj = select(1.0, 1.0 - smoothstep(scene_len - 1.0, scene_len + 1.0, qj.y), !sky);
                     col = mix(col, vec3<f32>(0.04, 0.035, 0.03), cov * vj);
                     add = add * (1.0 - cov * vj * 0.8);
