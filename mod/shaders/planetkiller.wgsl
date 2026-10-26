@@ -741,6 +741,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 // how much of it is lit at this angle: each beam's arc running on round from where it feeds, gathering
                 // speed, a white-hot head leading it; each feed point flaring as its beam strikes
                 var lit = 0.0;
+                var lit_soft = 0.0;                             // (the same, its ends soft: for the haze round it)
                 var lead = 0.0;
                 for (var i = 0; i < PK_N; i = i + 1) {
                     let dt = time - (em[i].w + PK_BEND0 + PK_BEND - 0.05);
@@ -751,6 +752,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                     var d = th - fa[i];
                     d = d - TAU * floor(d / TAU);
                     lit = max(lit, smoothstep(reach + 0.03, reach - 0.03, d));
+                    let ds = select(d, d - TAU, d > TAU - 0.4);
+                    lit_soft = max(lit_soft, smoothstep(-0.35, 0.0, ds) * smoothstep(reach + 0.35, reach - 0.05, ds));
                     lead = max(lead, exp(-pow((d - reach) / 0.05, 2.0)) * (1.0 - smoothstep(TAU * 0.6, TAU, reach)));
                     lead = max(lead, exp(-pow(min(d, TAU - d) / 0.04, 2.0)) * (0.35 + 1.5 * exp(-dt * 4.0)) * power);
                 }
@@ -768,8 +771,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 let level = (0.55 + 0.6 * charge + 0.5 * burn + 0.5 * unstable * (0.5 + 0.5 * sin(time * 47.0))) * ring_vis;
                 var c = pk_heat(1.0) * edge * (0.9 + 0.6 * pls) + pk_heat(0.75) * inner * 0.8
                     + pk_heat(0.35 + 0.3 * flowr + 0.35 * pls) * body * (0.4 + 0.4 * flowr + 0.8 * pls)
-                    + pk_heat(0.7) * rune * 0.45 + pk_heat(0.1) * haze * 0.35;
-                c = c * lit + PK_WHITE * lead * (edge * 0.4 + body * 0.25) * 2.0
+                    + pk_heat(0.7) * rune * 0.45;
+                c = c * lit + pk_heat(0.1) * haze * 0.35 * lit_soft + PK_WHITE * lead * (edge * 0.4 + body * 0.25) * 2.0
                     + pk_heat(0.2) * (1.0 - lit) * edge * 0.08 * saturate(fed);
                 add = add + c * level * pk_occ(tpl, scene_len, sky, cloud) * k;
             }
