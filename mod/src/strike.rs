@@ -1315,6 +1315,16 @@ pub const ARRIVALS: [Choice; 3] = [
     Choice { key: "unfold", label: "unfolds out of a point", button: "UNFOLD" },
     Choice { key: "warp", label: "pulls out of a warp streak", button: "WARP" },
 ];
+/// The colours a ship laser's ship can be lit in (the shader's frame.mod_params[3].w, its SHIP_M), and each one's swatch.
+pub const COLOURS: [Choice; 6] = [
+    Choice { key: "green", label: "green", button: "GREEN" },
+    Choice { key: "red", label: "red", button: "RED" },
+    Choice { key: "amber", label: "amber", button: "AMBER" },
+    Choice { key: "blue", label: "blue", button: "BLUE" },
+    Choice { key: "violet", label: "violet", button: "VIOLET" },
+    Choice { key: "white", label: "white", button: "WHITE" },
+];
+pub const COLOUR_RGB: [u32; 6] = [0x4CE06A, 0xE0402C, 0xF2A42A, 0x48A0F5, 0xB060F0, 0xE6EAF0];
 
 /// The mothership: it drops in out of hyperspace (from `approach`, one of APPROACHES), its shadow over the land, charges, drills a shaft at the target, sweeps its beam away from
 /// the player cutting a trench, and leaves. `wing` is the shader's facing angle (towards the player).
@@ -1874,6 +1884,26 @@ impl DfGeo {
         let tau = (v[1] + (v[1] * v[1] + 2.0 * DF_G * (p[1] - self.by)).sqrt()) / DF_G;
         Some((p[0] + v[0] * tau, p[2] + v[2] * tau, tb + tau as f32))
     }
+    /// How far the belly at `x` along the hull has sunk into the ground at `t` (blocks under the top of the land; below
+    /// 0 while it is still over it), and how far it will have once it is at rest (strike.wgsl's df_sunk).
+    fn sunk(&self, x: f64, t: f32) -> (f64, f64) {
+        let now = self.pose(t.min(DF_REST)).world([x, 0.0, 0.0])[1];
+        let rest = self.pose(DF_REST).world([x, 0.0, 0.0])[1];
+        (self.by - now, self.by - rest)
+    }
+    /// When the belly at `x` along the hull has gone `share` of the way down to where it comes to rest, into the ground:
+    /// the ground it shoves aside heaps up beside it as it does, and nothing of that shows before the hull is there.
+    fn sunk_by(&self, x: f64, share: f64) -> f32 {
+        let mut t = DF_FALL1 - 1.0;
+        while t < DF_REST {
+            let (now, rest) = self.sunk(x, t);
+            if now >= 0.0 && now >= share * rest {
+                return t;
+            }
+            t += 0.05;
+        }
+        DF_REST
+    }
     /// Block `i` the black hole tears up: where (x, z), when (after DF_OPEN), whether it is a piece of the wreck lying
     /// there (or the ground), and whether it is a big one (2 x 2 x 2).
     fn torn(&self, i: usize) -> (i32, i32, f32, bool, bool) {
@@ -1890,15 +1920,22 @@ impl DfGeo {
         let by = self.by as i32;
         let mut top = by;
         let (a, b) = ((px - self.ps.0) * self.hf.0 + (pz - self.ps.1) * self.hf.1, (pz - self.ps.1) * self.hf.0 - (px - self.ps.0) * self.hf.1);
-        if (-80.0..DF_REAL_A).contains(&a) && b.abs() <= df_keel_hw(a) {
-            top = top.min(by - DF_SLOT - 1);
+        if (-80.0..DF_REAL_A).contains(&a) {
+            let (hw, depth) = df_slot(a);
+            let j = df_step_depth(hw, depth, b);
+            if j >= 0 {
+                top = top.min(by - j - 1);
+            }
         }
         let skid = (self.ps.0 - self.c0.0).hypot(self.ps.1 - self.c0.1);
         if skid > 2.0 {
             let dir = ((self.ps.0 - self.c0.0) / skid, (self.ps.1 - self.c0.1) / skid);
             let (a, b) = ((px - self.c0.0) * dir.0 + (pz - self.c0.1) * dir.1, (pz - self.c0.1) * dir.0 - (px - self.c0.0) * dir.1);
-            if (0.0..skid).contains(&a) && b.abs() <= DF_SKID_W {
-                top = top.min(by - df_skid_depth(a / skid) - 1);
+            if (0.0..skid).contains(&a) {
+                let j = df_step_depth(DF_SKID_W, df_skid_depth(a / skid), b);
+                if j >= 0 {
+                    top = top.min(by - j - 1);
+                }
             }
         }
         top
@@ -2110,7 +2147,9 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
         let mut x0 = -80.0;
         while x0 < DF_REAL_A {
             let x1 = (x0 + 16.0f64).min(DF_REAL_A);
-            p.later(DF_FALL1 - 0.35, move |q| df_cut(q, g.ps, g.hf, x0, x1, Some(DF_FALL1 + 0.1), df_keel));
+            // (carved once the keel over it is down past it: under the hull, out of sight)
+            let ts = g.sunk_by(x0 + DF_XP, 0.55).max(g.sunk_by(x1 + DF_XP, 0.55));
+            p.later(DF_FALL1 - 0.35, move |q| df_cut(q, g.ps, g.hf, x0, x1, Some(ts), df_keel));
             x0 = x1;
         }
         p.later(DF_FALL1 - 0.3, move |q| df_swallowed(q, &g));
@@ -2149,13 +2188,16 @@ fn df_skid_t(u: f64) -> f32 {
 /// it is carved on the spare budget once the crash's own work is done, under the hull, and is only seen once the black
 /// hole has taken the hull).
 fn df_keel(a: f64) -> Option<(f64, i32, f32)> {
-    Some((df_keel_hw(a), DF_SLOT, DF_FALL1))
+    let (hw, depth) = df_slot(a);
+    Some((hw, depth, DF_FALL1))
 }
 /// The gouges' half-widths and depths (strike.wgsl's df_ground). The slot the buried keel sits in is carved for real
 /// along the stern's DF_REAL_A blocks (the part of the wreck near the player; its bow is a kilometre off, past what can
 /// be kept loaded), DF_SLOT deep: the keel itself sits deeper still, and the wide decks over it are buried in the ground
 /// that closes round it.
 const DF_KEEL_W: f64 = 70.0;
+/// When it has come to rest, buried.
+const DF_REST: f32 = DF_FALL1 + DF_SLIDE + DF_SETTLE;
 const DF_SKID_W: f64 = 60.0;
 const DF_REAL_A: f64 = 170.0;
 const DF_SLOT: i32 = 32;
@@ -2174,7 +2216,36 @@ fn df_berm_h(x: f64, e: f64) -> f64 {
     (14.0 * (-((e - 14.0) / 13.0).powi(2)).exp() + 5.0 * (-((e - 52.0) / 6.0).powi(2)).exp()) * (1.0 - 0.35 * (x + 560.0) / 1120.0)
 }
 fn df_skid_depth(u: f64) -> i32 {
-    (12.0 + 8.0 * u) as i32
+    // deeper as it ploughs on, its floor rising and falling
+    (12.5 + 8.0 * u + 2.5 * (u * 19.0 + 1.0).sin() + 1.5 * (u * 41.0).sin()).floor() as i32
+}
+/// How far in its walls lean: they slope in this many blocks across for each one down (in steps of three layers).
+const DF_SLOPE: f64 = 1.1;
+/// The deepest layer a gouge `hw` wide and `depth` deep has dug `b` across from its middle, its walls sloping in (df_cut's
+/// steps of three layers, each as wide as its lowest allows): -1 for none (strike.wgsl's df_step_depth).
+fn df_step_depth(hw: f64, depth: i32, b: f64) -> i32 {
+    let m = (hw - b.abs()) / DF_SLOPE;
+    if f64::from(depth) <= m {
+        return depth;
+    }
+    if m < 2.0 {
+        return -1;
+    }
+    3 * ((m - 2.0) / 3.0).floor() as i32 + 2
+}
+/// The slot the buried keel lies in, `a` along from the stern's pivot: its half-width at the top and its depth (strike.wgsl's
+/// df_slot). Wide round the engine block, narrowing to the keel's ridge, its edges wandering, and shallowing out and
+/// closing at its far end rather than stopping square where the real ground stops being carved.
+fn df_slot(a: f64) -> (f64, i32) {
+    let s = |x: f64| {
+        let x = x.clamp(0.0, 1.0);
+        x * x * (3.0 - 2.0 * x)
+    };
+    let wide = s((62.0 - a) / 32.0);
+    let wander = 0.94 + 0.04 * (a * 0.11 + 1.3).sin() + 0.02 * (a * 0.29).sin();
+    let end = ((DF_REAL_A - a) / 55.0).clamp(0.0, 1.0).powf(0.8) * s((a + 80.0) / 55.0);
+    let hw = ((70.0 + 60.0 * wide) * wander * (0.5 + 0.5 * end)).min(df_keel_hw(a));
+    (hw, (f64::from(DF_SLOT) * end + 0.5).floor() as i32)
 }
 
 /// The ground it displaced, heaped up along both its sides (df_berm_h), on the spare budget ahead of anything else there
@@ -2183,30 +2254,38 @@ fn df_skid_depth(u: f64) -> i32 {
 fn df_berms(p: &mut Plan, g: &DfGeo) {
     const BODY: [&str; 5] = ["minecraft:dirt", "minecraft:coarse_dirt", "minecraft:stone", "minecraft:gravel", "minecraft:dirt"];
     const CAP: [&str; 3] = ["minecraft:gravel", "minecraft:cobblestone", "minecraft:coarse_dirt"];
-    let ts = DF_FALL1 + 0.05;
-    let rest = g.pose(DF_FALL1 + DF_SLIDE + DF_SETTLE);
+    let rest = g.pose(DF_REST);
     let mut a = -80.0;
     while a < DF_REAL_A {
-        let x = a + DF_XP;
-        let hw = ms_half_w(x);
         for side in [-1.0, 1.0] {
             let mut e = 4.0;
             while e < 64.0 {
-                let h = df_berm_h(x, e).round() as i32;
+                // (each heap a little off the grid, its own size, as high as df_berm_h gives, give or take)
+                let (ja, je) = (a + p.rng.uniform(-2.5, 2.5), e + p.rng.uniform(-2.5, 2.5));
+                let x = ja + DF_XP;
+                let q = rest.world([x, 0.0, side * (ms_half_w(x) + je)]);
+                let (cx, cz) = (q[0].floor() as i32, q[2].floor() as i32);
+                let lump = 0.75 + 0.5 * vnoise(q[0], q[2], 18.0, g.seed ^ 0x77);
+                // (dying away at either end of the stretch carved for real, and reaching out further in places)
+                let ends = ((ja + 80.0) / 40.0).clamp(0.0, 1.0).min(((DF_REAL_A - ja) / 40.0).clamp(0.0, 1.0));
+                let reach = je < 40.0 + 24.0 * vnoise(q[0], q[2], 30.0, g.seed ^ 0x99);
+                let h = (df_berm_h(x, je) * lump * ends * f64::from(u8::from(reach))).round() as i32;
+                // built once the hull beside it has sunk most of the way in (the drawn ones rise with it until then)
+                let ts = g.sunk_by(x, 0.6);
                 if h >= 1 {
-                    let q = rest.world([x, 0.0, side * (hw + e)]);
-                    let (cx, cz) = (q[0].floor() as i32, q[2].floor() as i32);
                     let blk = *p.rng.pick(&BODY);
-                    p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-4 ~ ~-4 ~3 ~{} ~3 {blk} keep", h - 1)))));
-                    if h >= 3 && p.rng.next() < 0.35 {
+                    let r = p.rng.int(3, 5);
+                    p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-{r} ~ ~-{r} ~{} ~{} ~{} {blk} keep", r - 1, h - 1, r - 1)))));
+                    if h >= 3 && p.rng.next() < 0.45 {
                         let cap = *p.rng.pick(&CAP);
-                        p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-2 ~ ~-2 ~1 ~ ~1 {cap} keep")))));
+                        let c = p.rng.int(1, 2);
+                        p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-{c} ~ ~-{c} ~{c} ~{} ~{c} {cap} keep", p.rng.int(0, 1))))));
                     }
                 }
-                e += 8.0;
+                e += 6.0;
             }
         }
-        a += 8.0;
+        a += 6.0;
     }
     let t0 = DF_FALL1 + DF_SLIDE;
     for _ in 0..140 {
@@ -2217,7 +2296,7 @@ fn df_berms(p: &mut Plan, g: &DfGeo) {
         let (ix, iz) = (-rest.d[0] * side, -rest.d[2] * side);
         let sp = p.rng.uniform(0.15, 0.45);
         let blk = *p.rng.pick(&BODY);
-        let tl = t0 + p.rng.uniform(0.6, DF_SETTLE as f64 + 1.5) as f32;
+        let tl = (t0 + p.rng.uniform(0.6, DF_SETTLE as f64 + 1.5) as f32).max(g.sunk_by(x, 0.6) + 0.3);
         let y = g.by + df_berm_h(x, e) + 1.0;
         p.at(tl, format!("summon minecraft:falling_block {:.1} {y:.1} {:.1} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{:.3}d,0.15d,{:.3}d]}}", q[0], q[2], ix * sp, iz * sp));
     }
@@ -2226,20 +2305,25 @@ fn df_berms(p: &mut Plan, g: &DfGeo) {
 /// Whatever stood higher than the land inside where the hull came down, swallowed by it: cleared down from its own top
 /// to the target's level, in cells (on the spare budget, after the slot).
 fn df_swallowed(p: &mut Plan, g: &DfGeo) {
-    let rest = g.pose(DF_FALL1 + DF_SLIDE + DF_SETTLE);
+    let rest = g.pose(DF_REST);
     let by = p.by;
-    // (16 by 16 cells: a fill's cap holds over a hill 120 high)
-    let mut a = -72.0;
+    // (8 by 8 cells: a fill's cap holds over a hill 500 high; each cleared once the hull is down in it there) down to the
+    // land's own level along the slot, rising gently towards the hull's edges and its far end, so what is left once the
+    // wreck has gone is a shallow valley round the slot, not a flat floor cut off sheer
+    let mut a = -76.0;
     while a < DF_REAL_A {
         let x = a + DF_XP;
         let hw = ms_half_w(x) - 8.0;
+        let ts = g.sunk_by(x - 4.0, 0.0).max(g.sunk_by(x + 4.0, 0.0)) + 0.1;
+        let inner = df_slot(a).0 + 16.0;
         let mut z = -hw;
         while z <= hw {
             let q = rest.world([x, 0.0, z]);
-            p.ev.push((DF_FALL1 + 0.12, Act::Spare(surf(q[0].floor() as i32, q[2].floor() as i32, &format!("fill ~-8 ~4 ~-8 ~7 {} ~7 minecraft:air", by + 1)))));
-            z += 16.0;
+            let lv = by + 1 + ((z.abs() - inner).max(0.0) * 0.28 + (a - 110.0).max(0.0) * 0.3 + 3.0 * vnoise(q[0], q[2], 24.0, g.seed ^ 0x31)).min(24.0) as i32;
+            p.ev.push((ts, Act::Spare(surf(q[0].floor() as i32, q[2].floor() as i32, &format!("fill ~-4 ~4 ~-4 ~3 {lv} ~3 minecraft:air")))));
+            z += 8.0;
         }
-        a += 16.0;
+        a += 8.0;
     }
 }
 
@@ -2359,9 +2443,7 @@ fn df_level(p: &mut Plan, g: &DfGeo, sky: i32) {
 /// stood over it cleared to the sky (down from its own top, on the spare budget). Laid out in columns across whichever
 /// of x and z it runs along most.
 fn df_cut(p: &mut Plan, from: (f64, f64), dir: (f64, f64), d0: f64, d1: f64, spare: Option<f32>, prof: impl Fn(f64) -> Option<(f64, i32, f32)>) {
-    const NATURAL: [&str; 3] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand"];
     let by = p.by;
-    let prim = p.laser.lining[0].0;
     let along_x = dir.0.abs() >= dir.1.abs();
     let (m, n) = if along_x { dir } else { (dir.1, dir.0) };
     let (pm, pn) = if along_x { from } else { (from.1, from.0) };
@@ -2382,16 +2464,22 @@ fn df_cut(p: &mut Plan, from: (f64, f64), dir: (f64, f64), d0: f64, d1: f64, spa
         }
         let Some((hw, depth, t)) = prof(d) else { continue };
         let nc = pn + n * d;
+        // its walls sloping in, in steps of three layers (df_step_depth)
+        let mut k0 = 0;
+        while k0 <= depth {
+            let j1 = (k0 + 2).min(depth);
+            let w = hw - f64::from(j1) * DF_SLOPE;
+            if w < 0.5 {
+                break;
+            }
+            let e = w / m.abs();
+            let (n0, n1) = ((nc - e - 0.5).ceil() as i32, (nc + e - 0.5).floor() as i32);
+            at(p, t, fill(c, n0, n1, by - j1, by - k0, "minecraft:air"));
+            k0 += 3;
+        }
         let e = hw / m.abs();
         let (n0, n1) = ((nc - e - 0.5).ceil() as i32, (nc + e - 0.5).floor() as i32);
         let y0 = by - depth;
-        for tag in NATURAL {
-            let what = format!("{prim} replace {tag}");
-            at(p, t - 0.05, fill(c, n0 - 2, n0 - 1, y0 - 1, by, &what));
-            at(p, t - 0.05, fill(c, n1 + 1, n1 + 2, y0 - 1, by, &what));
-            at(p, t - 0.05, fill(c, n0 - 1, n1 + 1, y0 - 1, y0 - 1, &what));
-        }
-        at(p, t, fill(c, n0, n1, y0, by, "minecraft:air"));
         if spare.is_some() {
             continue;
         }
@@ -2475,29 +2563,46 @@ fn df_wreck(p: &mut Plan, g: &DfGeo) {
 /// charring, 3 the collapse.
 fn df_hole(p: &mut Plan, g: &DfGeo, floor_y: i32, stage: u8) {
     let t = DF_OPEN;
-    let laser = p.laser;
     (p.bx, p.bz) = (g.ps.0.floor() as i32, g.ps.1.floor() as i32);
-    let (bx, by, bz) = (p.bx, p.by, p.bz);
-    let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
+    let (bx, bz) = (p.bx, p.bz);
     if stage == 0 {
-        df_hole_tear(p, g, bowl_r, bowl_d);
+        df_hole_tear(p, g);
     }
     if stage == 1 {
         df_hole_arms(p, bx, bz);
     }
     if stage == 2 {
-        for &(rad, block, rough, repl) in laser.scorch {
-            for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
-                let dt = p.rng.next() as f32 * 2.0;
-                p.at(t + 7.5 + dt, c);
-            }
-        }
+        // once everything it tears up round it has gone: its crater opened out to its full size, swallowing the end of
+        // the slot the wreck lay in, then rubble thrown back into it, and the whole site scarred
+        df_crater(p, f64::INFINITY, t + 8.3, 2.4);
+        df_rubble(p, g, t + 10.7);
+        df_scar(p, g, t + 10.9);
     }
     if stage == 3 {
-        df_hole_collapse(p, g, floor_y, bowl_d);
+        df_hole_collapse(p, g, floor_y, DF_CRATER_D);
     }
 }
-fn df_hole_tear(p: &mut Plan, g: &DfGeo, bowl_r: i32, bowl_d: i32) {
+/// The black hole's crater: a bowl DF_CRATER_R across and DF_CRATER_D deep at its middle, falling away steeper towards
+/// it (depth D (1 - (r/R)^1.6)), dug in layers of three, each a ragged disc, so its sides come down in uneven terraces.
+/// Only out to `r_cap` (what of it can be dug before the blocks the hole tears up round it have gone), from `t0` over `dt`.
+const DF_CRATER_R: f64 = 115.0;
+const DF_CRATER_D: i32 = 56;
+fn df_crater(p: &mut Plan, r_cap: f64, t0: f32, dt: f32) {
+    let by = p.by;
+    let mut d = 0;
+    while d < DF_CRATER_D {
+        let r = (DF_CRATER_R * (1.0 - f64::from(d) / f64::from(DF_CRATER_D)).powf(1.0 / 1.6)).min(r_cap);
+        if r >= 3.0 {
+            let tl = t0 + dt * d as f32 / DF_CRATER_D as f32;
+            let rs = p.rects(r as i32, 0.14);
+            for c in Plan::fills(&rs, by - d - 2, by - d, "minecraft:air", None, 0) {
+                p.at(tl, c);
+            }
+        }
+        d += 3;
+    }
+}
+fn df_hole_tear(p: &mut Plan, g: &DfGeo) {
     let t = DF_OPEN;
     let by = p.by;
     for i in 0..DFD_N {
@@ -2515,19 +2620,14 @@ fn df_hole_tear(p: &mut Plan, g: &DfGeo, bowl_r: i32, bowl_d: i32) {
             p.at(tl, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {x} {} {z} 0.8 0.3 0.8 0.3 20 force"#, by + 1));
         }
     }
-    // the crater under it, its walls fused
-    let rough = f64::from(p.laser.bowl_rough);
-    for d in (0..bowl_d).step_by(2) {
-        let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(3);
-        let tl = t + 0.4 + d as f32 * 0.2;
-        p.dig_rim(r, by - d - 1, by - d, tl, rough);
-        p.mottle(r, by - d - 1, by - d, tl, 12);
-    }
+    // the heart of its crater, inside the ring of what it tears up
+    df_crater(p, 44.0, t + 0.4, 2.0);
 }
 /// The land dragged round into spiral arms, from the outside in.
 fn df_hole_arms(p: &mut Plan, bx: i32, bz: i32) {
     let t = DF_OPEN;
-    const ARMS: [&str; 4] = ["minecraft:sculk", "minecraft:black_concrete", "minecraft:sculk", "minecraft:crying_obsidian"];
+    const ARMS: [&str; 5] = ["minecraft:blackstone", "minecraft:basalt", "minecraft:sculk", "minecraft:smooth_basalt", "minecraft:crying_obsidian"];
+    const LIP: [&str; 4] = ["minecraft:gravel", "minecraft:coarse_dirt", "minecraft:cobblestone", "minecraft:blackstone"];
     let a0 = p.rng.uniform(0.0, 2.0 * PI);
     for arm in 0..4 {
         let mut last = (i32::MIN, i32::MIN);
@@ -2542,10 +2642,131 @@ fn df_hole_arms(p: &mut Plan, bx: i32, bz: i32) {
             last = (x, z);
             let blk = *p.rng.pick(&ARMS);
             let tl = t + 0.6 + (1.0 - u) as f32 * 5.0;
-            for tag in ["#minecraft:dirt", "#minecraft:sand", "#minecraft:base_stone_overworld"] {
-                p.at(tl, surf(x, z, &format!("fill ~-1 ~-1 ~-1 ~1 ~-1 ~1 {blk} replace {tag}")));
+            // the land dragged round into the hole: a furrow ploughed along the arm, deeper further in, its floor
+            // scorched, the ground it shoved out heaped along its outer side
+            let deep = if u < 0.7 { 3 } else { 2 };
+            p.at(tl, surf(x, z, &format!("fill ~-1 ~-{deep} ~-1 ~1 ~-1 ~1 minecraft:air")));
+            for tag in ["#minecraft:dirt", "#minecraft:base_stone_overworld"] {
+                p.at(tl + 0.05, surf(x, z, &format!("fill ~-1 ~-1 ~-1 ~1 ~-1 ~1 {blk} replace {tag}")));
+            }
+            if i % 2 == 0 {
+                let (ox, oz) = (bx + (a.cos() * (rr + 3.0)).round() as i32, bz + (a.sin() * (rr + 3.0)).round() as i32);
+                let lip = *p.rng.pick(&LIP);
+                p.at(tl + 0.1, surf(ox, oz, &format!("fill ~-1 ~ ~-1 ~1 ~{} ~1 {lip} keep", i32::from(u < 0.5))));
             }
         }
+    }
+}
+/// Rubble: the ground and the wreck the hole threw back as it collapsed, in heaps on the crater's terraces and floor and
+/// along the slot's floor and the foot of its walls; and a lip of earth and rock heaped round the crater's rim.
+fn df_rubble(p: &mut Plan, g: &DfGeo, t: f32) {
+    const RUBBLE: [&str; 6] = ["minecraft:gravel", "minecraft:cobblestone", "minecraft:coarse_dirt", "minecraft:blackstone", "minecraft:cobbled_deepslate", "minecraft:tuff"];
+    const WRECK: [&str; 3] = ["minecraft:polished_blackstone", "minecraft:deepslate_tiles", "minecraft:obsidian"];
+    let heap = |p: &mut Plan, x: f64, z: f64, s: i32, h: i32, dt: f32| {
+        let (x, z) = (x.floor() as i32, z.floor() as i32);
+        let a = *p.rng.pick(&RUBBLE);
+        let b = if p.rng.next() < 0.25 { *p.rng.pick(&WRECK) } else { *p.rng.pick(&RUBBLE) };
+        p.at(t + dt, surf(x, z, &format!("fill ~-{s} ~ ~-{s} ~{s} ~{h} ~{s} {a} keep")));
+        if s > 1 {
+            let (s2, h2) = (s / 2, h + 1);
+            p.at(t + dt + 0.05, surf(x, z, &format!("fill ~-{s2} ~ ~-{s2} ~{s2} ~{h2} ~{s2} {b} keep")));
+        }
+    };
+    // in the crater
+    for _ in 0..70 {
+        let a = p.rng.uniform(0.0, 2.0 * PI);
+        let r = DF_CRATER_R * p.rng.next().sqrt() * 0.9;
+        let s = p.rng.int(1, 4);
+        let h = p.rng.int(0, 2);
+        let dt = p.rng.next() as f32;
+        heap(p, g.ps.0 + a.cos() * r, g.ps.1 + a.sin() * r, s, h, dt);
+    }
+    // along the slot: its floor, and slumped against the foot of its walls
+    for _ in 0..90 {
+        let a = p.rng.uniform(40.0, DF_REAL_A - 10.0);
+        let (hw, depth) = df_slot(a);
+        let foot = (hw - f64::from(depth) * DF_SLOPE).max(4.0);
+        let side = if p.rng.next() < 0.5 { -1.0 } else { 1.0 };
+        let b = if p.rng.next() < 0.6 { side * (foot - p.rng.uniform(0.0, 5.0)) } else { p.rng.uniform(-foot, foot) };
+        let (x, z) = (g.ps.0 + g.hf.0 * a - g.hf.1 * b, g.ps.1 + g.hf.1 * a + g.hf.0 * b);
+        let s = p.rng.int(1, 3);
+        let h = p.rng.int(0, 3);
+        let dt = p.rng.next() as f32;
+        heap(p, x, z, s, h, dt);
+    }
+    // the rim's lip
+    for k in 0..64 {
+        let a = f64::from(k) / 64.0 * 2.0 * PI + p.rng.uniform(-0.04, 0.04);
+        let r = DF_CRATER_R + p.rng.uniform(2.0, 9.0);
+        let s = p.rng.int(2, 4);
+        let dt = p.rng.next() as f32 * 0.5;
+        heap(p, g.ps.0 + a.cos() * r, g.ps.1 + a.sin() * r, s, 1, dt);
+    }
+}
+/// A smooth noise over the land (0 to 1), `scale` blocks across.
+fn vnoise(x: f64, z: f64, scale: f64, seed: u32) -> f64 {
+    let (fx, fz) = (x / scale, z / scale);
+    let (ix, iz) = (fx.floor(), fz.floor());
+    let (tx, tz) = (fx - ix, fz - iz);
+    let (sx, sz) = (tx * tx * (3.0 - 2.0 * tx), tz * tz * (3.0 - 2.0 * tz));
+    let h = |dx: f64, dz: f64| mh(((ix + dx) as i32 as u32).wrapping_mul(73_856_093) ^ ((iz + dz) as i32 as u32).wrapping_mul(19_349_663), seed, 77);
+    let (a, b, c, d) = (h(0.0, 0.0), h(1.0, 0.0), h(0.0, 1.0), h(1.0, 1.0));
+    a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz
+}
+/// The site's ground, scarred: patches over the crater, the slot and the gouge, each a few blocks of scorched stone,
+/// blackstone, basalt, tuff, coarse dirt or gravel, in broad stretches of one or another (a smooth noise picks), glassy
+/// obsidian and the odd seam of magma nearer the hole. Only the top layers of the ground are changed, on the spare budget.
+fn df_scar(p: &mut Plan, g: &DfGeo, t: f32) {
+    let seed = g.seed;
+    let skid = (g.ps.0 - g.c0.0).hypot(g.ps.1 - g.c0.1);
+    let back = ((g.c0.0 - g.ps.0) * g.hf.0 + (g.c0.1 - g.ps.1) * g.hf.1).min(0.0) - 60.0;
+    let mut a = (-DF_CRATER_R - 30.0).min(back);
+    while a < DF_REAL_A + 10.0 {
+        let mut b = -190.0;
+        while b < 190.0 {
+            let ja = a + p.rng.uniform(-2.5, 2.5);
+            let jb = b + p.rng.uniform(-2.5, 2.5);
+            let (x, z) = (g.ps.0 + g.hf.0 * ja - g.hf.1 * jb, g.ps.1 + g.hf.1 * ja + g.hf.0 * jb);
+            let r = ja.hypot(jb);
+            let in_slot = (-80.0..DF_REAL_A).contains(&ja) && df_step_depth(df_slot(ja).0 + 4.0, 0, jb) >= 0;
+            let dir = ((g.ps.0 - g.c0.0) / skid.max(1.0), (g.ps.1 - g.c0.1) / skid.max(1.0));
+            let ra = (x - g.c0.0) * dir.0 + (z - g.c0.1) * dir.1;
+            let rb = ((z - g.c0.1) * dir.0 - (x - g.c0.0) * dir.1).abs();
+            let in_skid = skid > 2.0 && (-10.0..skid + 10.0).contains(&ra) && rb < DF_SKID_W + 6.0;
+            let at_strike = (x - g.c0.0).hypot(z - g.c0.1) < 58.0;
+            if r < DF_CRATER_R + 26.0 || in_slot || in_skid || at_strike {
+                let v = vnoise(x, z, 26.0, seed);
+                let w = vnoise(x, z, 9.0, seed ^ 0x5bd1);
+                let hot = (1.0 - r / 70.0).max(0.0);
+                let blk = if hot > 0.2 && w > 0.62 {
+                    "minecraft:obsidian"
+                } else if hot > 0.1 && w < 0.08 {
+                    "minecraft:magma_block"
+                } else if v < 0.16 {
+                    "minecraft:coarse_dirt"
+                } else if v < 0.3 {
+                    "minecraft:gravel"
+                } else if v < 0.46 {
+                    "minecraft:tuff"
+                } else if v < 0.6 {
+                    "minecraft:blackstone"
+                } else if v < 0.72 {
+                    "minecraft:basalt"
+                } else if v < 0.84 {
+                    "minecraft:deepslate"
+                } else if w > 0.5 {
+                    "minecraft:smooth_basalt"
+                } else {
+                    "minecraft:cobbled_deepslate"
+                };
+                let s = 3;
+                for tag in ["#minecraft:base_stone_overworld", "#minecraft:dirt", "minecraft:blackstone"] {
+                    p.ev.push((t, Act::Spare(surf(x.floor() as i32, z.floor() as i32, &format!("fill ~-{s} ~-3 ~-{s} ~{s} ~-1 ~{s} {blk} replace {tag}")))));
+                }
+            }
+            b += 7.0;
+        }
+        a += 7.0;
     }
 }
 /// It collapses: the shaft bored to bedrock, lined, and what it was still holding thrown out over the land.
@@ -2921,9 +3142,49 @@ mod tests {
     }
 
     #[test]
+    fn downfall_leaves_the_land_alone_until_it_is_there() {
+        // nothing of the crash is built or dug on the land along where it comes to rest (its heaps, the slot under its
+        // keel, the hills it sinks into) before the hull has come down there: each part waits for the belly beside it
+        for mode in [0, 1, 2] {
+            let me = DF_PLAYERS[mode];
+            let g = df_g(mode, me);
+            let cmds = df_cmds(mode, me, "minecraft:overworld");
+            let local = |x: f64, z: f64| ((x - g.ps.0) * g.hf.0 + (z - g.ps.1) * g.hf.1, (z - g.ps.1) * g.hf.0 - (x - g.ps.0) * g.hf.1);
+            // (the pieces that fell off it, and the stern's own crater where it first strikes, come before)
+            let mut falls: Vec<(f64, f64)> = (0..DF_SHED).filter_map(|i| g.shed_land(i).map(|(x, z, _, _)| (x, z))).collect();
+            falls.extend((0..DF_CHUNKS).filter_map(|i| g.chunk_land(i).map(|(x, z, _)| (x, z))));
+            let mut checked = 0;
+            for (t, c) in &cmds {
+                let w: Vec<&str> = c.split_whitespace().collect();
+                let (x, z) = match w.as_slice() {
+                    ["fill" | "setblock", x, _, z, ..] => (x.parse::<f64>().unwrap_or(f64::NAN), z.parse::<f64>().unwrap_or(f64::NAN)),
+                    ["execute", "positioned", x, "0", z, ..] if c.contains(" fill ") || c.contains(" setblock ") => {
+                        (x.parse::<f64>().unwrap(), z.parse::<f64>().unwrap())
+                    }
+                    _ => continue,
+                };
+                if !x.is_finite() || !z.is_finite() || *t < DF_FALL0 || *t > DF_REST + 3.0 {
+                    continue;
+                }
+                if (x - g.c0.0).hypot(z - g.c0.1) < 75.0 || falls.iter().any(|f| (x - f.0).hypot(z - f.1) < 14.0) {
+                    continue;
+                }
+                let (a, b) = local(x + 0.5, z + 0.5);
+                let xl = a + DF_XP;
+                if !(-560.0..=560.0).contains(&xl) || b.abs() > ms_half_w(xl) + 70.0 {
+                    continue;
+                }
+                let touch = g.sunk_by(xl.clamp(-560.0, 560.0), 0.0);
+                assert!(*t >= touch - 0.15, "mode {mode}: at {t:.2}, before the hull is down there at {touch:.2}: {c}");
+                checked += 1;
+            }
+            assert!(checked > 300, "mode {mode}: {checked}");
+        }
+    }
+    #[test]
     fn downfall_buries_itself_and_agrees() {
-        // at rest its stern's belly is DF_EMBED under the ground; the slot carved for its keel lies inside the keel's
-        // own outline at that pose, DF_SLOT deep, and covers it; the heaps of displaced ground stand outside the hull,
+        // at rest its stern's belly is DF_EMBED under the ground; the slot carved for its keel (its walls sloping in, its
+        // ends closing) lies inside the keel's own outline at that pose, no more than DF_SLOT deep; the heaps of displaced ground stand outside the hull,
         // as high as df_berm_h says; the pieces it shed leave craters where they come down
         for mode in [0, 1, 2] {
             let me = DF_PLAYERS[mode];
@@ -2941,7 +3202,8 @@ mod tests {
             let mut slot = 0;
             for (_, c) in &cmds {
                 let w: Vec<&str> = c.split_whitespace().collect();
-                if w.len() == 8 && w[0] == "fill" && w[7] == "minecraft:air" && w[2] == "32" && w[5] == "64" {
+                let ys = (w.get(2).and_then(|v| v.parse::<i32>().ok()), w.get(5).and_then(|v| v.parse::<i32>().ok()));
+                if w.len() == 8 && w[0] == "fill" && w[7] == "minecraft:air" && (w[1] == w[4] || w[3] == w[6]) && matches!(ys, (Some(y0), Some(y1)) if y0 >= 64 - DF_SLOT && y1 <= 64 && y0 <= y1) {
                     let n: Vec<f64> = [1, 3, 4, 6].iter().map(|&k| w[k].parse::<f64>().unwrap()).collect();
                     let (am, _) = local((n[0] + n[2]) * 0.5 + 0.5, (n[1] + n[3]) * 0.5 + 0.5);
                     if (-80.0..DF_REAL_A).contains(&am) {
@@ -2956,9 +3218,15 @@ mod tests {
             assert!(slot as f64 > 2.0 * (DF_REAL_A + 80.0) * 0.9, "mode {mode}: {slot} slot ends");
             let mut berms = 0;
             for (_, c) in &cmds {
+                let run: Vec<&str> = c.rsplit(" run ").next().unwrap_or("").split_whitespace().collect();
+                // (a heap: fill ~-r ~ ~-r ~(r-1) ~(h-1) ~(r-1) ... keep, round a point beside the hull)
+                let num = |s: &str| s.trim_start_matches('~').parse::<i32>().ok();
                 if let Some(rest_) = c.strip_prefix("execute positioned ")
-                    && c.contains(" keep")
-                    && c.contains("fill ~-4 ~ ~-4 ~3 ~")
+                    && run.len() == 9
+                    && run[0] == "fill"
+                    && run[8] == "keep"
+                    && run[2] == "~"
+                    && matches!((num(run[1]), num(run[4])), (Some(r0), Some(r1)) if r0 <= -3 && r1 == -r0 - 1)
                 {
                     let w: Vec<&str> = rest_.split_whitespace().collect();
                     let (x, z) = (w[0].parse::<f64>().unwrap() + 0.5, w[2].parse::<f64>().unwrap() + 0.5);
@@ -2966,8 +3234,9 @@ mod tests {
                     let xl = a + DF_XP;
                     let e = b.abs() - ms_half_w(xl);
                     assert!(e > 0.0, "mode {mode}: a heap under the hull: {c}");
-                    let h: i32 = c.split("~3 ~").nth(1).unwrap().split_whitespace().next().unwrap().parse().unwrap();
-                    assert!((f64::from(h + 1) - df_berm_h(xl, e)).abs() <= 1.6, "mode {mode}: heap {h} at e {e:.1}: {:.1}", df_berm_h(xl, e));
+                    let h = num(run[5]).unwrap();
+                    let bh = df_berm_h(xl, e);
+                    assert!(f64::from(h + 1) <= bh * 1.3 + 2.5, "mode {mode}: heap {h} at e {e:.1}: {bh:.1}");
                     berms += 1;
                 }
             }

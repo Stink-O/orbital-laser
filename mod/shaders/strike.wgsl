@@ -39,6 +39,24 @@ fn intensity_v() -> f32 { return max(frame.mod_params[2].y, 0.05); }
 fn capture() -> f32 { return frame.mod_params[2].z; }
 fn block_y() -> f32 { return frame.mod_params[2].w; }
 fn approach() -> i32 { return i32(frame.mod_params[3].x + 0.5); }
+// The ship lasers' own light, in the colour picked for them (frame.mod_params[3].w: 0 green, the Mothership's own, 1 red,
+// 2 amber, 3 blue, 4 violet, 5 white): their green lights taken through a matrix (each column what that channel turns
+// into). Green leaves them exactly as they are.
+fn ship_tint(c: vec3<f32>) -> vec3<f32> {
+    let i = i32(frame.mod_params[3].w + 0.5);
+    if (i <= 0) {
+        return c;
+    }
+    var m = mat3x3<f32>(0.25, 0.25, 0.25, 0.62, 0.65, 0.68, 0.1, 0.1, 0.1);
+    switch i {
+        case 1: { m = mat3x3<f32>(0.2, 0.35, 0.0, 1.0, 0.1, 0.03, 0.0, 0.0, 0.2); }
+        case 2: { m = mat3x3<f32>(0.2, 0.3, 0.0, 1.0, 0.55, 0.05, 0.0, 0.0, 0.15); }
+        case 3: { m = mat3x3<f32>(0.1, 0.1, 0.2, 0.12, 0.45, 1.0, 0.0, 0.1, 0.3); }
+        case 4: { m = mat3x3<f32>(0.2, 0.2, 0.1, 0.7, 0.12, 1.0, 0.0, 0.0, 0.3); }
+        default: {}
+    }
+    return m * c;
+}
 fn arrival_style() -> i32 { return i32(frame.mod_params[3].y + 0.5); }
 
 const TAU: f32 = 6.2831853;
@@ -323,14 +341,77 @@ fn rot_axis(v: vec3<f32>, a: vec3<f32>, ang: f32) -> vec3<f32> {
     return v * c + cross(a, v) * s + a * dot(a, v) * (1.0 - c);
 }
 
-// One piece of debris: where it is (camera-relative), its radial direction from the hole, how stretched it is,
-// how hot, how present (0: not there).
+// ---- falling into a black hole (the Black Hole's and the Downfall's debris, and the Downfall's wreck) ----
+// How far out a piece is `u` (0 to 1) of the way through its fall from `r0`: from rest, slowly at first, then faster and
+// faster, through the horizon and into the middle by u = 1 (r0 (1 - u²)^(2/3), close to a free fall's).
+fn bh_fall(r0: f32, u: f32) -> f32 {
+    return r0 * pow(max(1.0 - u * u, 0.0), 0.6667);
+}
+// How many times as long a piece `l0` long is drawn out at `u` through its fall from `r0` (its near end at `r`, bh_fall):
+// its far end falls the same way from further out, so later (`lag` times as long: the free fall's time goes as r^1.5),
+// and the gap between them grows faster and faster as they near the hole; at most 6 times.
+fn bh_tide(r0: f32, l0: f32, r: f32, u: f32, lag: f32) -> f32 {
+    return clamp((bh_fall(r0 + l0, u / lag) - r) / l0, 1.0, 6.0);
+}
+// No less than bh_tide, without its pow (the far end's fall to first order): for culling.
+fn bh_tide_max(r0: f32, l0: f32, r: f32, u: f32, lag: f32) -> f32 {
+    let rt = (r0 + l0) / r0 * r * (1.0 + 1.3333 * u * u * (1.0 - 1.0 / lag) / max(1.0 - u * u, 1.0e-4));
+    return select(clamp((rt - r) / l0, 1.0, 6.0), 6.0, u > 0.97);
+}
+// The light from something `r` from the hole: redder and dimmer nearer the horizon (climbing out of the hole's pull),
+// none from the horizon in.
+fn bh_redshift(r: f32, rs: f32) -> vec3<f32> {
+    let z = sqrt(saturate(1.0 - rs / max(r, 1.0e-3)));
+    return vec3<f32>(pow(z, 0.7), pow(z, 1.6), pow(z, 2.6));
+}
+// A ray from the camera (`rd`) against a piece falling in: a box of half-size `hs`, turned `ang` about `ax`, drawn out
+// `k` times along `u` (out from the hole) and thinned across about its middle `c` (camera-relative); none of it from the
+// horizon (`rs` round `H`) in. How far (x, -1: missed), and where on it in its own space (yzw, the box -1 to 1).
+fn bh_chunk(c: vec3<f32>, rd: vec3<f32>, u: vec3<f32>, k: f32, hs: f32, ax: vec3<f32>, ang: f32, H: vec3<f32>, rs: f32) -> vec4<f32> {
+    let sk = sqrt(k);
+    let ro = -c;
+    let ro_s = (ro - u * dot(u, ro)) * sk + u * dot(u, ro) / k;
+    let rd_s = (rd - u * dot(u, rd)) * sk + u * dot(u, rd) / k;
+    let ro_l = rot_axis(ro_s, ax, -ang) / hs;
+    let rd_l = rot_axis(rd_s, ax, -ang) / hs;
+    let inv = 1.0 / select(rd_l, vec3<f32>(1.0e-6), abs(rd_l) < vec3<f32>(1.0e-6));
+    let ta = (vec3<f32>(-1.0) - ro_l) * inv;
+    let tb = (vec3<f32>(1.0) - ro_l) * inv;
+    let tlo = min(ta, tb);
+    let thi = max(ta, tb);
+    let tn = max(max(tlo.x, tlo.y), tlo.z);
+    let tf = min(min(thi.x, thi.y), thi.z);
+    // (where the ray meets it inside the horizon, what is behind is in the hole's shadow)
+    if (tf < tn || tn < 0.0 || length(rd * tn - H) < rs) {
+        return vec4<f32>(-1.0);
+    }
+    return vec4<f32>(tn, ro_l + rd_l * tn);
+}
+// The world normal of the face of a bh_chunk box at `lp` (its own space).
+fn bh_chunk_n(lp: vec3<f32>, u: vec3<f32>, k: f32, ax: vec3<f32>, ang: f32) -> vec3<f32> {
+    let al = abs(lp);
+    var nl = vec3<f32>(0.0, sign(lp.y), 0.0);
+    if (al.x >= al.y && al.x >= al.z) {
+        nl = vec3<f32>(sign(lp.x), 0.0, 0.0);
+    } else if (al.z >= al.y) {
+        nl = vec3<f32>(0.0, 0.0, sign(lp.z));
+    }
+    // (the stretch is symmetric, so normals go back through it as it is)
+    let ns = rot_axis(nl, ax, ang);
+    return normalize((ns - u * dot(u, ns)) * sqrt(k) + u * dot(u, ns) / k);
+}
+
+// One piece of debris: where its near end is (camera-relative), its radial direction from the hole, how stretched it
+// is (or below 0: drawn out by the tides, worked out by bh_tide from `tide` (r0, l0, u, lag) and `r` only once the ray is
+// known to pass near it), how hot, how present (0: not there).
 struct Piece {
     c: vec3<f32>,
     u: vec3<f32>,
     k: f32,
     glow: f32,
     alive: f32,
+    tide: vec4<f32>,
+    r: f32,
 }
 
 fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: vec3<f32>, n: vec3<f32>, rs: f32) -> Piece {
@@ -355,12 +436,17 @@ fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: v
     let flung = h1 < 0.28;
     let u_f = 0.5 + 0.2 * h2;
     let ub = s / T_in;
-    let u = min(ub, select(1.0, u_f, flung));
+    let l0 = select(1.0, 2.0, big);
+    let lag = (R0 + l0) / R0 * sqrt((R0 + l0) / R0);
+    let u = min(ub, select(lag, u_f, flung));
     // the disk's plane, with world x and z laid onto it so the orbit starts where the block was torn out
     let E1 = normalize(vec3<f32>(1.0, 0.0, 0.0) - n * n.x);
     let E2 = normalize(vec3<f32>(0.0, 0.0, 1.0) - n * n.z - E1 * dot(vec3<f32>(0.0, 0.0, 1.0), E1));
     let rsn = max(rs, 0.6);
-    let r = mix(rsn * 0.95, R0, pow(1.0 - u, 0.75));
+    // its near end falls from rest, faster and faster, through the horizon to the middle; its far end, a block or two
+    // further out, falls in a little after it (the free fall's time goes as r^1.5): so the tides draw it out along the
+    // way in, more and more as it nears the hole
+    let r = bh_fall(R0, u);
     let th = a0 - (3.0 + 3.0 * h1) * u * u;                    // the same way round as the disk turns
     let lift = smoothstep(0.0, 0.45, u);
     // torn out of the ground where strike.rs removes it (block-aligned), then up into the disk's plane
@@ -372,7 +458,7 @@ fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: v
     let dp = H + (E1 * cos(th) + E2 * sin(th)) * r;
     var c = mix(gp, dp, lift) + vec3<f32>(0.0, sin(lift * 3.14159) * 7.0, 0.0);
     var alive = smoothstep(0.0, 0.05, s);
-    var stretch = 1.0 + min(9.0, pow(2.2 * rsn / r, 3.0));
+    var stretch = select(1.0, -bh_tide_max(R0, l0, r, u, lag), !flung || ub < u_f);
     if (flung && ub > u_f) {
         // slingshot round the hole and away
         let dt = (ub - u_f) * T_in;
@@ -381,8 +467,8 @@ fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: v
         alive = alive * (1.0 - smoothstep(2.5, 4.0, dt));
         stretch = 1.0;
     } else if (!flung) {
-        // eaten: gone once it reaches the horizon
-        alive = alive * (1.0 - step(1.0, ub));
+        // eaten: gone once its far end too is through the horizon
+        alive = alive * (1.0 - step(lag, ub));
     }
     if (ft > BH_END) {
         // what was still circling when it evaporated is thrown outwards
@@ -391,9 +477,11 @@ fn debris_piece(i: i32, ft: f32, seed: f32, cam: vec3<f32>, tgt: vec3<f32>, H: v
         alive = alive * (1.0 - smoothstep(1.0, 2.5, ef));
         stretch = 1.0;
     }
-    pc.c = c;
     pc.u = normalize(c - H + vec3<f32>(1.0e-4));
+    pc.c = c;
     pc.k = stretch;
+    pc.tide = vec4<f32>(R0, l0, u, lag);
+    pc.r = r;
     pc.glow = select(smoothstep(rsn * 4.0, rsn * 1.2, r), 0.0, flung && ub > u_f) * f32(ft <= BH_END);
     pc.alive = alive;
     return pc;
@@ -736,58 +824,55 @@ fn singularity(in: StageIn) -> vec4<f32> {
             let fi = f32(i);
             let big = debris_big(fi, seed);
             let hs = select(0.5, 1.0, big);
-            // quick reject: the ray misses the piece's bounding sphere
-            let tq = dot(pc.c, rd);
-            let reach = hs * 1.8 * pc.k;
-            if (tq < 0.0 || length(pc.c - rd * tq) > reach || tq - reach > best) {
+            // quick reject: the ray misses the piece's bounding sphere, however far it is drawn out
+            let far_ = abs(pc.k) * hs;
+            let mid = pc.c + pc.u * far_;
+            let tq = dot(mid, rd);
+            let reach = hs * 1.8 + far_;
+            if (tq < 0.0 || length(mid - rd * tq) > reach || tq - reach > best) {
                 continue;
+            }
+            let k = select(pc.k, bh_tide(pc.tide.x, pc.tide.y, pc.r, pc.tide.z, pc.tide.w), pc.k < 0.0);
+            let cen = pc.c + pc.u * (pc.tide.y * 0.5 * k);       // (its middle: its near end is where it has fallen to)
+            if (k > 1.5) {
+                // (and, drawn out, the ray misses the sliver it has become)
+                let qs = ray_seg(rd, pc.c, pc.c + pc.u * (pc.tide.y * k));
+                if (qs.x > hs * 1.8) {
+                    continue;
+                }
             }
             // into the piece's own space: undo the stretch towards the hole, then its tumble
             let ax = normalize(vec3<f32>(fh21(vec2<f32>(fi, 1.0)), fh21(vec2<f32>(fi, 2.0)), fh21(vec2<f32>(fi, 3.0))) - 0.5 + 1.0e-3);
             let spin = (ft - debris_t(fi)) * (1.5 + 3.0 * fh21(vec2<f32>(fi, 4.0))) * (1.0 + 2.0 * pc.glow);
-            let sk = sqrt(pc.k);
-            let ro = -pc.c;
-            let ro_s = (ro - pc.u * dot(pc.u, ro)) * sk + pc.u * dot(pc.u, ro) / pc.k;
-            let rd_s = (rd - pc.u * dot(pc.u, rd)) * sk + pc.u * dot(pc.u, rd) / pc.k;
-            let ro_l = rot_axis(ro_s, ax, -spin) / hs;
-            let rd_l = rot_axis(rd_s, ax, -spin) / hs;
-            let inv = 1.0 / select(rd_l, vec3<f32>(1.0e-6), abs(rd_l) < vec3<f32>(1.0e-6));
-            let ta = (vec3<f32>(-1.0) - ro_l) * inv;
-            let tb = (vec3<f32>(1.0) - ro_l) * inv;
-            let tlo = min(ta, tb);
-            let thi = max(ta, tb);
-            let tn = max(max(tlo.x, tlo.y), tlo.z);
-            let tf = min(min(thi.x, thi.y), thi.z);
-            if (tf < max(tn, 0.0) || tn > best || tn < 0.0) {
+            let bx = bh_chunk(cen, rd, pc.u, k, hs, ax, spin, H, rs);
+            if (bx.x < 0.0 || bx.x > best || (swallowed && bx.x > tch)) {
                 continue;
             }
-            if (swallowed && tn > tch) {
-                continue;
-            }
-            best = tn;
+            best = bx.x;
             found = true;
-            let lp = ro_l + rd_l * tn;
+            let lp = bx.yzw;
             let al = abs(lp);
-            var nl = vec3<f32>(0.0, sign(lp.y), 0.0);
             var fuv = lp.xz;
+            var top = lp.y > 0.0;
             if (al.x >= al.y && al.x >= al.z) {
-                nl = vec3<f32>(sign(lp.x), 0.0, 0.0);
                 fuv = lp.zy;
+                top = false;
             } else if (al.z >= al.y) {
-                nl = vec3<f32>(0.0, 0.0, sign(lp.z));
                 fuv = lp.xy;
+                top = false;
             }
+            let nw = bh_chunk_n(lp, pc.u, k, ax, spin);
             let px = floor((fuv * 0.5 + 0.5) * 16.0 * hs * 2.0);
             let kind = min(i32(fh21(vec2<f32>(fi, seed + 13.0)) * 6.0), 5);
-            let albedo = srgb_to_linear(debris_tex(kind, px, nl.y > 0.5, lp.y, seed + fi));
-            let nw = normalize(rot_axis(nl, ax, spin));
+            let albedo = srgb_to_linear(debris_tex(kind, px, top, lp.y, seed + fi));
             let sunl = 0.3 + 0.7 * max(dot(nw, normalize(vec3<f32>(0.3, 1.0, 0.2))), 0.0);
-            let rl = length(pc.c - H) / max(rs, 0.6);
+            let rp = length(rd * bx.x - H);
+            let rl = rp / max(rs, 0.6);
             let diskl = vec3<f32>(2.2, 1.0, 0.45) * max(dot(nw, -pc.u), 0.0) * disk_env * 6.0 / (1.0 + rl * 0.5);
             var cc = albedo * (sunl * dim + diskl);
-            // tidal heating, then the redshift swallowing it as it reaches the horizon
+            // tidal heating, then the redshift taking it as it goes through the horizon
             cc = cc + vec3<f32>(2.6, 0.7, 0.15) * pc.glow * pc.glow * 1.5 + vec3<f32>(0.6, 0.2, 1.0) * pc.glow * 0.3;
-            cc = cc * smoothstep(1.0, 1.9, rl) * pc.alive;
+            cc = cc * bh_redshift(rp, rs) * pc.alive;
             dcol = cc;
         }
         if (found) {
@@ -1968,10 +2053,10 @@ fn ms_hull(h: MsHit, f: MsFrame, rd: vec3<f32>, time: f32, lit: f32, chase_on: f
     var c = metal * (env * fres + glint) + metal * 0.04 * (haze + vec3<f32>(0.1) * day) * max(dot(n, sun), 0.0);
     // and the green light gathering under the eye, and the beam's
     let lf = X - focus;
-    c = c + metal * vec3<f32>(0.4, 2.0, 0.6) * (core * 0.8 + beam * 1.6) * 4000.0 / (dot(lf, lf) + 2500.0) * 0.3;
+    c = c + metal * ship_tint(vec3<f32>(0.4, 2.0, 0.6)) * (core * 0.8 + beam * 1.6) * 4000.0 / (dot(lf, lf) + 2500.0) * 0.3;
     // the air between: a light veil of the sky's blue, and its lights dimmed, which is what makes it look so far away
     let hz = 1.0 - exp(-h.t / 3000.0);
-    return mix(c, haze * 0.6, hz * 0.35) + emit * exp(-h.t / 3000.0);
+    return mix(c, haze * 0.6, hz * 0.35) + ship_tint(emit) * exp(-h.t / 3000.0);
 }
 
 // The air reacting to the mothership as it comes (the clouds stirring before it), as it stops (a pressure ripple
@@ -2048,7 +2133,7 @@ fn ms_arrival_fx(f: MsFrame, base: MsFrame, cam: vec3<f32>, rd: vec3<f32>, sky: 
             add = add + vec3<f32>(0.4, 2.2, 0.6) * exp(-pow(q.x / w, 2.0)) * (16.0 / w) * (1.0 - q.z) * 0.8 * vis * k;
         }
     }
-    return add;
+    return ship_tint(add);
 }
 
 // The mothership's charge: its emitters' beams converging under the eye on `focus` (camera-relative), and the blinding
@@ -2080,7 +2165,7 @@ fn ms_charge_fx(f: MsFrame, cam: vec3<f32>, rdb: vec3<f32>, focus: vec3<f32>, sk
             add = add + (vec3<f32>(5.0, 6.0, 5.0) * exp(-pow(dc / R, 2.0)) + vec3<f32>(0.6, 2.6, 0.8) * exp(-dc / R) * 0.9 + vec3<f32>(0.12, 0.7, 0.2) * exp(-dc / (R * 5.0)) * 0.4) * core_env * vis * k;
         }
     }
-    return add;
+    return ship_tint(add);
 }
 
 // [lasers pass only]
@@ -2209,7 +2294,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
         let dy = P.y - tgt.y;
         // on the ground, or down in the crater and the trench: nothing up in the clouds
         let on_ground = 1.0 - smoothstep(25.0, 40.0, dy);
-        let green = vec3<f32>(0.3, 1.8, 0.45);
+        let green = ship_tint(vec3<f32>(0.3, 1.8, 0.45));
         if (charge > 0.0 && hit_t < 0.5) {
             // charging: the ground under the eye lit, a ring closing in on the target, dust lifting off it
             let fade = 1.0 - smoothstep(0.0, 0.5, hit_t);
@@ -2304,7 +2389,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
                     let smear = (exp(-pow(az / 0.05, 2.0)) * 2.0 + pow(0.5 + 0.5 * cos(az * 40.0), 12.0) * 0.6 + 0.15)
                         * (0.4 + 0.6 * saturate((hit.q.x + MS_HL) / (2.0 * MS_HL)));
                     a = vis * (1.0 - 0.9 * w);
-                    hc = hc * (1.0 - 0.9 * w) + vec3<f32>(1.2, 2.6, 1.5) * smear * w;
+                    hc = hc * (1.0 - 0.9 * w) + ship_tint(vec3<f32>(1.2, 2.6, 1.5)) * smear * w;
                 }
                 acc = acc + hc * vis;
                 cover = cover + a;
@@ -2419,7 +2504,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
             // the head of it, blazing, on its way down
             b = b + vec3<f32>(8.0, 9.5, 8.0) * exp(-pow((q.z - head) * lenb / 6.0, 2.0)) * core * (1.0 - step(1.0, head));
             // behind the ground only its glow shows
-            add = add + (b * vis + halo * vec3<f32>(0.03, 0.18, 0.05) * vis_mix) * beam_env * k;
+            add = add + ship_tint(b * vis + halo * vec3<f32>(0.03, 0.18, 0.05) * vis_mix) * beam_env * k;
         }
         // the fireball where it touches down, boiling
         if (landed) {
@@ -2436,7 +2521,7 @@ fn mothership(in: StageIn) -> vec4<f32> {
                     let nz = gfbm2(vec2<f32>(ang * 1.3 + seed, dc / Rf * 2.0 - time * 2.5));
                     let fire = exp(-pow(dc / (Rf * (0.75 + 0.5 * nz)), 2.0));
                     let visf = select(1.0, smoothstep(tcp - Rf * 1.3, tcp - Rf * 0.2, scene_lh), !sky_h);
-                    add = add + (lava_ramp(0.55 + 0.5 * fire) * fire * 3.5 + vec3<f32>(0.5, 2.0, 0.6) * fire * fire * 1.5) * visf * beam_env * k;
+                    add = add + (lava_ramp(0.55 + 0.5 * fire) * fire * 3.5 + ship_tint(vec3<f32>(0.5, 2.0, 0.6)) * fire * fire * 1.5) * visf * beam_env * k;
                     add = add + vec3<f32>(1.6, 1.0, 0.6) * exp(-dc / Rf) * 0.25 * beam_env * visf * k;
                 }
             }
@@ -2489,13 +2574,13 @@ fn mothership(in: StageIn) -> vec4<f32> {
     // ---- the lens: bloom round the focus and the beam's foot, a streak through it ----
     if (pF.z > 0.0 && core_env > 0.001) {
         let dd = (uv - pF.xy) * vec2<f32>(aspect, 1.0);
-        add = add + vec3<f32>(0.6, 1.9, 0.7) * core_env / (1.0 + dot(dd, dd) * 600.0) * 0.4 * k;
+        add = add + ship_tint(vec3<f32>(0.6, 1.9, 0.7)) * core_env / (1.0 + dot(dd, dd) * 600.0) * 0.4 * k;
     }
     if (pG.z > 0.0 && beam_env > 0.001) {
         let dd = (uv - pG.xy) * vec2<f32>(aspect, 1.0);
-        add = add + vec3<f32>(1.1, 1.8, 1.1) * beam_env / (1.0 + dot(dd, dd) * 400.0) * 0.5 * k;
+        add = add + ship_tint(vec3<f32>(1.1, 1.8, 1.1)) * beam_env / (1.0 + dot(dd, dd) * 400.0) * 0.5 * k;
         // a short anamorphic streak through the beam's foot
-        add = add + vec3<f32>(0.4, 2.3, 0.6) * exp(-abs(dd.y) * 260.0) * exp(-abs(dd.x) * 6.0) * beam_env * 0.4 * k;
+        add = add + ship_tint(vec3<f32>(0.4, 2.3, 0.6)) * exp(-abs(dd.y) * 260.0) * exp(-abs(dd.x) * 6.0) * beam_env * 0.4 * k;
     }
     add = add + vec3<f32>(2.4, 2.9, 2.4) * flash * flash * k;
 

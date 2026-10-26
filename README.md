@@ -323,6 +323,8 @@ loaded laser and whether terrain damage is on.
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
+| `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
+| `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
 search box).

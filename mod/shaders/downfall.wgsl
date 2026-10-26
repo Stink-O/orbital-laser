@@ -59,7 +59,9 @@ const DF_CHUNKS: i32 = 10;
 const DF_G: f32 = 16.0;
 const DF_KEEL_W: f32 = 70.0;
 const DF_SKID_W: f32 = 60.0;
+const DF_SLOPE: f32 = 1.1;          // the gouges' walls lean in this far across a block down (strike.rs's DF_SLOPE)
 const DF_END: f32 = 60.0;          // the strike's length
+const DF_REST: f32 = DF_FALL1 + DF_SLIDE + DF_SETTLE;   // it has come to rest, buried (strike.rs's DF_REST)
 
 // Where everything is, from the strike (strike.rs's DfGeo): the way away from the player, the ship's heading as it
 // arrives and once it has come about, its middle, its belly's height, the target's block level, where its stern comes to
@@ -132,6 +134,8 @@ struct DfPose {
     x0: f32,
     x1: f32,
     crush: f32,
+    // a section falling in: how wide its near end still is, as a share of its far end's (it narrows towards the hole)
+    tz: f32,
 }
 fn df_bare(o: vec3<f32>, a: vec3<f32>, u: vec3<f32>, d: vec3<f32>) -> DfPose {
     var P: DfPose;
@@ -147,6 +151,7 @@ fn df_bare(o: vec3<f32>, a: vec3<f32>, u: vec3<f32>, d: vec3<f32>) -> DfPose {
     P.x0 = -1.0e4;
     P.x1 = 1.0e4;
     P.crush = 0.0;
+    P.tz = 1.0;
     return P;
 }
 // The Mothership's arrival, as a pose.
@@ -209,12 +214,17 @@ fn df_world(P: DfPose, l: vec3<f32>) -> vec3<f32> {
 
 // How far a tear across the hull wanders, `y` across it and `h` up it: torn further in some decks than others, ragged.
 fn df_jag(y: f32, h: f32) -> f32 {
-    return 26.0 * (fvnoise(vec2<f32>(y * 0.045, floor(h / 9.0) * 1.7)) - 0.5) + 10.0 * (fvnoise(vec2<f32>(y * 0.21, h * 0.13)) - 0.5);
+    return 15.0 * (fvnoise(vec2<f32>(y * 0.045, floor(h / 7.0) * 1.7)) - 0.5) + 14.0 * (fvnoise(vec2<f32>(y * 0.09, h * 0.07)) - 0.5)
+        + 6.0 * (fvnoise(vec2<f32>(y * 0.37, h * 0.31)) - 0.5);
 }
 // Where in the hull's plan a point of its frame is (xy), and z 1e4 once the black hole has had it: the hull is drawn in
 // after the hole along its length, narrowing as it goes, and gone round the hole and behind it.
 fn df_plan(P: DfPose, l: vec3<f32>) -> vec3<f32> {
     var q = vec2<f32>((l.x - P.px) / P.s.x + P.px, l.z / P.s.z);
+    if (P.tz < 1.0) {
+        // (a section falling in: narrower towards its near end, at px)
+        q.y = q.y / mix(P.tz, 1.0, saturate((q.x - P.px) / (P.x1 - P.x0)));
+    }
     var gone = 0.0;
     if (P.crush > 0.0) {
         // crumpling inwards: the plating round the hole drawn in towards it, in dents and folds
@@ -409,6 +419,27 @@ fn df_berm_h(x: f32, e: f32) -> f32 {
     return (14.0 * exp(-pow((e - 14.0) / 13.0, 2.0)) + 5.0 * exp(-pow((e - 52.0) / 6.0, 2.0))) * (1.0 - 0.35 * (x + 560.0) / 1120.0);
 }
 
+// The heap of ground the hull shoved aside, `xa` along it from its middle and `zb` across (band 0 and 1 beside either
+// side, 2 the wave before its bow), how high over the land: df_berm_h's heaps, rising as the hull beside them sinks in
+// (`sk`: how far its belly is down now, and at rest, as a + b x along it), surging up a little higher as it does, lumpy.
+fn df_heap(xa: f32, zb: f32, band: i32, sk: vec4<f32>) -> f32 {
+    let x = select(xa, 560.0, band == 2);
+    let now = sk.x + sk.y * x;
+    let fr = select(saturate(now / max(sk.z + sk.w * x, 1.0)), 0.0, now <= 0.0);
+    let rise = smoothstep(0.0, 1.0, fr);
+    let surge = 0.3 * exp(-pow((fr - 0.5) / 0.2, 2.0));
+    var hb = 0.0;
+    if (band < 2) {
+        let side = select(1.0, -1.0, band == 1);
+        let e = side * zb - ms_half_w(xa) - 18.0 * (1.0 - rise);
+        hb = df_berm_h(xa, e) * step(abs(xa), 560.0);
+    } else {
+        hb = 22.0 * exp(-pow((xa - 576.0 - 14.0 * (1.0 - rise)) / 14.0, 2.0)) * (1.0 - smoothstep(180.0, 270.0, abs(zb)));
+    }
+    let lump = 0.8 + 0.35 * fvnoise(vec2<f32>(xa, zb) * 0.06) + 0.25 * (fvnoise(vec2<f32>(xa, zb) * 0.23) - 0.5);
+    return hb * (rise + surge) * lump - 0.6 * (1.0 - rise);
+}
+
 // Whether the hull stands between the eye and `p` (camera-relative): where the line to it crosses the belly's and the
 // roof's planes, is it inside the hull's outline? For fading the glare of what the hull hides.
 fn df_blocks(P: DfPose, p: vec3<f32>) -> bool {
@@ -456,19 +487,38 @@ fn df_ground(g: DfGeo, xz: vec2<f32>) -> f32 {
     var top = g.by;
     let r = p - g.ps;
     let a = dot(r, g.hf);
-    if (a >= -80.0 && a < DF_REAL_A && abs(r.y * g.hf.x - r.x * g.hf.y) <= select(DF_KEEL_W, 170.0, a < 50.0)) {
-        top = min(top, g.by - DF_SLOT - 1.0);
+    if (a >= -80.0 && a < DF_REAL_A) {
+        let sl = df_slot(a);
+        let j = df_step_depth(sl.x, sl.y, r.y * g.hf.x - r.x * g.hf.y);
+        top = select(top, min(top, g.by - j - 1.0), j >= 0.0);
     }
     let sk = length(g.ps - g.c0);
     if (sk > 2.0) {
         let dir = (g.ps - g.c0) / sk;
         let r2 = p - g.c0;
         let a2 = dot(r2, dir);
-        if (a2 >= 0.0 && a2 < sk && abs(r2.y * dir.x - r2.x * dir.y) <= DF_SKID_W) {
-            top = min(top, g.by - floor(12.0 + 8.0 * a2 / sk) - 1.0);
+        if (a2 >= 0.0 && a2 < sk) {
+            let u = a2 / sk;
+            let j = df_step_depth(DF_SKID_W, floor(12.5 + 8.0 * u + 2.5 * sin(u * 19.0 + 1.0) + 1.5 * sin(u * 41.0)), r2.y * dir.x - r2.x * dir.y);
+            top = select(top, min(top, g.by - j - 1.0), j >= 0.0);
         }
     }
     return top;
+}
+// The deepest layer a gouge `hw` wide and `d` deep has dug `b` across from its middle, its walls sloping in in steps of
+// three layers; -1 for none (strike.rs's df_step_depth).
+fn df_step_depth(hw: f32, d: f32, b: f32) -> f32 {
+    let m = (hw - abs(b)) / DF_SLOPE;
+    return select(select(3.0 * floor((m - 2.0) / 3.0) + 2.0, -1.0, m < 2.0), d, d <= m);
+}
+// The slot the buried keel lies in, `a` along from the stern's pivot: its half-width at the top and its depth (strike.rs's
+// df_slot): wide round the engine block, narrowing to the keel, wandering, shallowing out and closing at its far end.
+fn df_slot(a: f32) -> vec2<f32> {
+    let wide = smoothstep(0.0, 1.0, (62.0 - a) / 32.0);
+    let wander = 0.94 + 0.04 * sin(a * 0.11 + 1.3) + 0.02 * sin(a * 0.29);
+    let end = pow(saturate((DF_REAL_A - a) / 55.0), 0.8) * smoothstep(0.0, 1.0, (a + 80.0) / 55.0);
+    let hw = min((70.0 + 60.0 * wide) * wander * (0.5 + 0.5 * end), select(DF_KEEL_W, 170.0, a < 50.0));
+    return vec2<f32>(hw, floor(DF_SLOT * end + 0.5));
 }
 // How hot the gouges are at a point of the ground (0 to 1): fresh from the friction where the hull ploughed, cooling.
 fn df_gouge_heat(g: DfGeo, p: vec3<f32>, time: f32) -> f32 {
@@ -476,7 +526,7 @@ fn df_gouge_heat(g: DfGeo, p: vec3<f32>, time: f32) -> f32 {
     let a = dot(r, g.hf);
     let b = abs(r.y * g.hf.x - r.x * g.hf.y);
     var heat = 0.0;
-    let kw = select(DF_KEEL_W, 170.0, a < 50.0);
+    let kw = df_slot(a).x;
     if (a > -80.0 && a < DF_REAL_A && b < kw + 4.0) {
         let age = time - DF_FALL1 - DF_SLIDE;
         heat = select(0.0, exp(-age / 12.0) * (1.0 - smoothstep(kw - 8.0, kw + 4.0, b)), age > 0.0);
@@ -610,9 +660,6 @@ fn df_dust(cam: vec3<f32>, rd: vec3<f32>, scene_len: f32, c: vec2<f32>, R: f32, 
     return vec2<f32>(exp(-tau * dens), lit / max(tau, 1.0e-4));
 }
 
-// The hull's colour where a ray (`rd`, world) met it in pose `P` at `ts`: the Mothership's plating and lights in its own
-// frame, its batteries, and what the downfall does to it: the meteor's hits burning through it, its engine's cracks of
-// light as it fails, the black hole's light on it and its torn edges glowing as it is drawn in.
 // What is left of the wreck in the hole's grip, `sw` of the way through swallowing it: swung up on its far end so its
 // torn end lifts towards the hole, and drawn in after it.
 fn df_grip(P0: DfPose, sw: f32, H: vec3<f32>) -> DfPose {
@@ -627,35 +674,363 @@ fn df_grip(P0: DfPose, sw: f32, H: vec3<f32>) -> DfPose {
     P.hl = df_local(P, H);
     return P;
 }
-// Section `k` torn off the wreck (`R` what is left of it), `age` seconds since: it falls in over `dur` seconds along a
-// closed-form path, faster and faster, some swinging round the hole first, tumbling, and stretched out along its length
-// as it nears the horizon, where it goes in. `pull` holds how far through its fall it is.
+// Where a point of the wreck torn off at `p0` (camera-relative) is, `u` of the way through its fall into the hole at
+// `H`: in from rest, faster and faster (bh_fall), settling into the disk's plane (normal `nd`) as it goes, and swung
+// round the way the disk turns, faster the nearer it gets (`spin`: how much it had to start with).
+fn df_fall_pt(p0: vec3<f32>, H: vec3<f32>, nd: vec3<f32>, u: f32, spin: f32) -> vec3<f32> {
+    let rel = p0 - H;
+    let r0 = length(rel);
+    let z0 = dot(rel, nd);
+    let e1 = normalize(rel - nd * z0 + vec3<f32>(1.0e-4));
+    let e2 = cross(nd, e1);
+    let r = bh_fall(r0, u);
+    let z = z0 * pow(r / r0, 1.5);
+    let th = spin * (sqrt(r0 / max(r, 6.0)) - 1.0);
+    return H + (e1 * cos(th) + e2 * sin(th)) * sqrt(max(r * r - z * z, 0.0)) + nd * z;
+}
+fn df_sec_spin(k: i32) -> f32 {
+    return select(0.06, 0.3, k % 3 == 1) * (0.7 + 0.6 * fh21(vec2<f32>(f32(k), 9.0)));
+}
+// Section `k` torn off the wreck (`R` what is left of it), `age` seconds since, all of it gone in 1.25 `dur`. Its near
+// end (towards the hole) falls in first, its far end after it (further out, it takes longer to fall), so the
+// section is drawn out between them along the way in, its length pointing at the hole, thinner as it stretches and
+// narrowing to its near end as it is pulled in; nothing of it inside the horizon (`rs`). Turning only about its length.
+// `pull` how far through its fall its far end is.
 fn df_section(R: DfPose, k: i32, age: f32, dur: f32, H: vec3<f32>, nd: vec3<f32>, rs: f32) -> DfPose {
     var P = R;
     let fk = f32(k);
     let x0 = -370.0 + 930.0 / f32(DF_SEC) * fk;
     let x1 = x0 + 930.0 / f32(DF_SEC);
-    let s = saturate(age / dur);
-    let C0 = df_world(R, vec3<f32>(0.5 * (x0 + x1), 75.0, 0.0));
-    let swing = select(0.5, 2.2, k % 3 == 1) * s * s;
-    let rel = rot_axis(C0 - H, nd, swing) * (1.0 - s * s);
-    let C = H + rel;
-    let ax = normalize(vec3<f32>(fh21(vec2<f32>(fk, 3.0)) - 0.5, 0.6, fh21(vec2<f32>(fk, 7.0)) - 0.5));
-    let om = (1.2 + 1.5 * fh21(vec2<f32>(fk, 9.0))) * s * s * select(1.0, 2.0, k == DF_SEC - 1);
-    P.a = rot_axis(R.a, ax, om);
-    P.u = rot_axis(R.u, ax, om);
-    P.d = rot_axis(R.d, ax, om);
-    P.s = vec3<f32>(1.0 + 4.0 * s * s * s, 1.0, 1.0 - 0.5 * s * s);
-    P.px = 0.5 * (x0 + x1);
-    P.o = C - P.a * P.px - P.u * 75.0;
+    let A0 = df_world(R, vec3<f32>(x0, 75.0, 0.0));
+    let B0 = df_world(R, vec3<f32>(x1, 75.0, 0.0));
+    let ra = length(A0 - H);
+    let rb = length(B0 - H);
+    let lag = pow(rb / ra, 1.2);
+    let s = max(age, 0.0) * lag / (1.25 * dur);
+    let spin = df_sec_spin(k);
+    let A = df_fall_pt(A0, H, nd, s, spin);
+    let B = df_fall_pt(B0, H, nd, s / lag, spin);
+    let ab = B - A;
+    let len = max(length(ab), 1.0);
+    let a = ab / len;
+    let hand = sign(dot(cross(R.a, R.u), R.d));
+    let u = rot_axis(normalize(R.u - a * dot(R.u, a) + vec3<f32>(0.0, 1.0e-4, 0.0)), a, (0.4 + 0.8 * fh21(vec2<f32>(fk, 3.0))) * s * s);
+    P.a = a;
+    P.u = u;
+    P.d = cross(a, u) * hand;
+    let kx = len / (x1 - x0);
+    let wa = pow(saturate(length(A - H) / ra), 1.3);
+    let wb = pow(saturate(length(B - H) / rb), 1.3);
+    let thin = inverseSqrt(max(kx, 1.0));
+    P.s = vec3<f32>(kx, max(wb, 0.02) * thin, max(wb, 0.02) * thin);
+    P.tz = clamp(wa / max(wb, 0.02), 0.02, 0.999);
+    P.px = x0;
+    P.o = A - a * x0 - u * (75.0 * P.s.y);
     P.x0 = x0;
     P.x1 = x1;
     P.hl = df_local(P, H);
-    P.eat = rs * 1.3 + 10.0;
-    P.pull = s;
+    P.eat = rs;
+    P.pull = s / lag;
     return P;
 }
 
+// What is up on the roof too thin to trace: each battery's twin barrels (raised as it charges, scorched once it has
+// fired), and the masts and antennae along the roof's edges and over the bow, their lights blinking while it has power.
+// Each is a capsule, met where the view ray passes closest to it (coverage from how near, kept a pixel wide far off,
+// shaded as a cylinder), nearer than `tmax`: their colour, how much of the pixel they cover, how far, and the lights' glare.
+struct DfRig {
+    c: vec3<f32>,
+    w: f32,
+    t: f32,
+    glow: vec3<f32>,
+}
+fn df_rig(P: DfPose, rd: vec3<f32>, tmax: f32, time: f32, boost: f32, haze: vec3<f32>, day: f32, sun: vec3<f32>) -> DfRig {
+    var out: DfRig;
+    out.c = vec3<f32>(0.0);
+    out.w = 0.0;
+    out.t = 1.0e9;
+    out.glow = vec3<f32>(0.0);
+    let o = df_local(P, vec3<f32>(0.0));
+    let v = vec3<f32>(dot(rd, P.a), dot(rd, P.u), dot(rd, P.d));
+    let sl = vec3<f32>(dot(sun, P.a), dot(sun, P.u), dot(sun, P.d));
+    // (only where the ray passes through the band over the roof)
+    let iv = 1.0 / select(v, vec3<f32>(1.0e-6), abs(v) < vec3<f32>(1.0e-6));
+    let bx0 = (vec3<f32>(-580.0, MS_TOP, -330.0) - o) * iv;
+    let bx1 = (vec3<f32>(580.0, MS_TOP + 60.0, 330.0) - o) * iv;
+    let t0 = max(max(max(min(bx0.x, bx1.x), min(bx0.y, bx1.y)), min(bx0.z, bx1.z)), 0.0);
+    let t1 = min(min(min(max(bx0.x, bx1.x), max(bx0.y, bx1.y)), max(bx0.z, bx1.z)), tmax);
+    if (t1 <= t0) {
+        return out;
+    }
+    // (what of the roof the ray passes over: only what stands there is looked at)
+    let pa = o + v * t0;
+    let pb = o + v * t1;
+    let lo = min(pa, pb) - vec3<f32>(30.0, 0.0, 30.0);
+    let hi = max(pa, pb) + vec3<f32>(30.0, 0.0, 30.0);
+    let pix = 2.0 / (frame.projection[1][1] * frame.resolution.y);
+    var best = tmax;
+    let el = mix(0.12, 0.62, smoothstep(DF_CUT - 1.5, DF_FIRE0, time)) - 0.25 * smoothstep(DF_FALL1, DF_FALL1 + 1.0, time);
+    let burnt = smoothstep(DF_FIRE0, DF_FIRE1, time);
+    for (var i = 0; i < 20; i = i + 1) {
+        var A = vec3<f32>(0.0);
+        var B = vec3<f32>(0.0);
+        var r = 1.2;
+        var light = 0.0;
+        if (i < 12) {
+            // a battery's barrel: two to each, off its top towards the bow and out over the edge
+            let side = select(-1.0, 1.0, i < 6);
+            let x = -450.0 + 150.0 * f32(i % 6);
+            let base = vec3<f32>(x, MS_TOP + 9.5, side * (ms_half_w(x) - 3.0));
+            if (any(base.xz < lo.xz) || any(base.xz > hi.xz)) {
+                continue;
+            }
+            let az = side * (0.35 + 0.1 * fh21(vec2<f32>(x, side)));
+            let dir = vec3<f32>(cos(el) * cos(az), sin(el), cos(el) * sin(az));
+            let across = normalize(vec3<f32>(-dir.z, 0.0, dir.x));
+            A = base;
+            B = base + dir * 22.0;
+            r = 1.25;
+            // (both barrels at once: the nearer of the pair, by which side the ray passes)
+            let mid = base + dir * 11.0 - o;
+            let tq = dot(mid, v);
+            if (tq < 0.0 || length(mid - v * tq) > 26.0) {
+                continue;
+            }
+            let sgn = select(-1.0, 1.0, dot(v * tq - mid, across) > 0.0);
+            A = A + across * 2.1 * sgn;
+            B = B + across * 2.1 * sgn;
+            light = -1.0;
+        } else {
+            // a mast: tall and thin, a yard across it, a light on top; the bow's is the tallest
+            let j = i - 12;
+            let side = select(-1.0, 1.0, j % 2 == 0);
+            let x = select(-470.0 + 125.0 * f32(j), 455.0, j == 7);
+            let h = select(20.0 + 16.0 * fh21(vec2<f32>(f32(j), 5.0)), 52.0, j == 7);
+            let z = select(side * (ms_half_w(x) - 9.0), 0.0, j == 7);
+            A = vec3<f32>(x, MS_TOP, z);
+            B = A + vec3<f32>(0.0, h, 0.0);
+            if (any(A.xz < lo.xz) || any(A.xz > hi.xz)) {
+                continue;
+            }
+            r = 0.55;
+            let mid = A + vec3<f32>(0.0, h * 0.5, 0.0) - o;
+            let tq = dot(mid, v);
+            if (tq < 0.0 || length(mid - v * tq) > h * 0.5 + 8.0) {
+                continue;
+            }
+            light = 1.0 + f32(j);
+        }
+        if (df_plan(P, A).z > 0.0) {
+            continue;
+        }
+        // (in the hull's frame, from the eye)
+        let Aw = A - o;
+        let Bw = B - o;
+        var q = ray_seg(v, Aw, Bw);
+        var rr = r;
+        if (light > 0.0) {
+            // the yard across the mast's top
+            let ax2 = vec3<f32>(0.0, 0.0, 4.0);
+            let Y = Bw - (Bw - Aw) * 0.12;
+            let qy = ray_seg(v, Y - ax2, Y + ax2);
+            if (qy.x < q.x) {
+                q = qy;
+                rr = 0.4;
+            }
+        }
+        let pw = max(q.y * pix, 1.0e-4);
+        let cov = (1.0 - smoothstep(rr - 0.5 * pw, rr + 0.5 * pw, q.x)) * min(1.0, 2.0 * rr / pw);
+        if (cov <= 0.002 || q.y > best) {
+            if (light > 0.0) {
+                // its light, glaring a little past it
+                let tl = dot(Bw, v);
+                let dl = length(Bw - v * tl);
+                let on = step(0.6, fract(time * 0.8 + light * 0.37)) * min(boost * 2.0, 1.0) * f32(time < DF_GROAN + 2.0 + light * 0.5);
+                if (tl > 0.0 && tl < tmax) {
+                    out.glow = out.glow + select(vec3<f32>(3.5, 0.5, 0.3), ship_tint(vec3<f32>(2.5, 3.2, 2.5)), light > 7.5) * exp(-pow(dl / max(0.8, tl * pix * 1.5), 2.0)) * on * 2.0;
+                }
+            }
+            continue;
+        }
+        best = q.y;
+        // shaded as a cylinder: its normal from how far across it the ray passes, round towards the eye
+        let P0 = v * q.y;
+        let ax_ = normalize(Bw - Aw);
+        let C = Aw + ax_ * dot(P0 - Aw, ax_);
+        let pr = P0 - C;
+        let side_ = pr - ax_ * dot(pr, ax_);
+        let f = saturate(q.x / rr);
+        let tow = normalize(-v - ax_ * dot(-v, ax_));
+        let nl = normalize(side_ / max(length(side_), 1.0e-4) * f + tow * sqrt(1.0 - f * f));
+        var tone = 0.5;
+        if (light < 0.0) {
+            // scorched towards the muzzle once it has fired
+            tone = 0.55 * (1.0 - 0.6 * burnt * smoothstep(0.5, 1.0, q.z));
+        }
+        out.c = mix(out.c, df_metal(nl, v, sl, haze, day, tone, 0.3), cov);
+        out.w = max(out.w, cov);
+        out.t = q.y;
+    }
+    return out;
+}
+
+// A running light on some of the spine's sections (at `q`, its section `sec_`), dying with the power (`bl`).
+fn emit_spine(c: ptr<function, vec3<f32>>, q: vec2<f32>, sec_: f32, ts: f32, bl: f32, fp: f32) {
+    let lx = (sec_ + 0.5) * 90.0;
+    let d = length(vec2<f32>(q.x - lx, abs(q.y) - 12.0));
+    let on = step(0.45, fh21(vec2<f32>(sec_, 77.0)));
+    let blink = step(0.7, fract(ts * 0.6 + sec_ * 0.23));
+    *c = *c + vec3<f32>(3.2, 0.5, 0.3) * ms_line(d, 0.9, fp) * on * (0.3 + 1.7 * blink) * min(bl * 2.0, 1.0);
+}
+// Dark metal in the hull's frame (normal `n`, view `v`, sun `sl`): it mirrors the land and the sky, sharply where it is
+// smooth, blurred where it is `rough`, more the more glancing the look; lit by the sun, and where smooth catching a glint
+// of it. `tone` how bright it is.
+fn df_metal(n: vec3<f32>, v: vec3<f32>, sl: vec3<f32>, haze: vec3<f32>, day: f32, tone: f32, rough: f32) -> vec3<f32> {
+    let r = reflect(v, n);
+    let cosv = max(dot(-v, n), 0.0);
+    let fres = 0.3 + 0.7 * pow(1.0 - cosv, 5.0);
+    let grey = mix(haze, vec3<f32>(luminance(haze)), 0.65);
+    let env = mix(ms_env(r, haze, sl, day), grey * 0.55 + vec3<f32>(0.05, 0.05, 0.045) * day, rough * 0.85);
+    let sun_c = vec3<f32>(1.0, 0.92, 0.8) * 2.5 * day * step(0.0, sl.y);
+    let ndl = max(dot(n, sl), 0.0);
+    let glint = sun_c * pow(max(dot(r, sl), 0.0), mix(300.0, 20.0, rough)) * (1.0 - rough) * ndl * 3.0;
+    let metal = vec3<f32>(0.42, 0.43, 0.44) * tone;
+    return metal * (env * fres + glint) + metal * (sun_c * 0.07 * ndl + grey * 0.06);
+}
+
+// The roof, seen once the ship rolls, falls and lies buried (plan `q`, `t` away, the view `v` and the sun `sl` in its
+// frame): heavy armour laid in long courses out from the spine, each course's lip over the next, each plate its own
+// tone, tilt and wear, their joints staggered; conduits along the spine; hatches, vent grilles, radiator fields and
+// sensor domes let into it; rows of lit windows in districts along the lips (`bl` its lights, failing with the power);
+// a gutter and rim along its edges with running lights; soot over the engines, grime trailing aft from everything, and
+// once it has crashed, soil thrown over it. Every pattern fades to its average where a pixel covers it.
+fn df_roof(q: vec2<f32>, t: f32, v: vec3<f32>, sl: vec3<f32>, haze: vec3<f32>, day: f32, ts: f32, bl: f32) -> vec3<f32> {
+    let pix = 2.0 / (frame.projection[1][1] * frame.resolution.y);
+    let fp = max(t * pix / max(abs(v.y), 0.15), 0.02);
+    let af = saturate(1.5 - fp / 1.5);          // fine detail's weight
+    let am = saturate(2.0 - fp / 5.0);          // middling detail's
+    let ay = abs(q.y);
+    let sd = sign(q.y);
+    let e = ms_half_w(q.x) - ay;
+    let ed = -ms_outline(q, 0.0);               // in from the roof's edge
+    var tone = 0.6;
+    var rough = 0.5;
+    var nx = 0.0;
+    var nz = 0.0;
+    var emit = vec3<f32>(0.0);
+    // the armour courses, out from the spine
+    let cw = 36.0;
+    let cz = max(ay - 54.0, 0.0) / cw;
+    let ci = floor(cz);
+    let cf = fract(cz);
+    let pl_len = 40.0 + 30.0 * fh21(vec2<f32>(ci, 3.0 + sd));
+    let pxx = q.x / pl_len + 0.37 * ci + fh21(vec2<f32>(ci, sd));
+    let pi = floor(pxx);
+    let pf = fract(pxx);
+    let hv = vec3<f32>(pcg3d(bitcast<vec3<u32>>(vec3<i32>(i32(pi), i32(ci), i32(sd) + 7)))) * (1.0 / 4294967295.0);
+    if (ay < 54.0) {
+        // conduits beside the spine: bundles of pipes along it, clamped every so often
+        let pp = fract(ay / 3.2);
+        nz = (pp - 0.5) * 1.2 * sd * af;
+        tone = 0.42 + 0.25 * (1.0 - abs(pp - 0.5) * 2.0) * af;
+        let clamp_ = 1.0 - smoothstep(0.8, 0.8 + fp, abs(fract(q.x / 14.0) - 0.5) * 14.0);
+        tone = mix(tone, 0.75, clamp_ * af);
+        rough = 0.35;
+    } else {
+        tone = 0.5 + 0.18 * hv.x;
+        rough = 0.25 + 0.45 * hv.y;
+        nx = (hv.z - 0.5) * 0.07;
+        nz = (hv.y - 0.5) * 0.07 + 0.05 * sd;   // each course tilted a little down to its lip
+        // the lip of the course further in casting a shadow over this one's inner edge, this one's own lip catching
+        // the light at its outer edge; the joints between its plates
+        let shadow = exp(-cf * cw / max(2.5, fp * 0.7));
+        let lip = exp(-(1.0 - cf) * cw / max(0.8, fp * 0.7)) * min(1.0, 1.6 / max(fp, 0.4));
+        tone = tone * (1.0 - 0.5 * shadow) + 0.55 * lip;
+        let jd = min(pf, 1.0 - pf) * pl_len;
+        tone = tone * (1.0 - 0.6 * (1.0 - smoothstep(0.25, 0.25 + fp, jd)) * min(1.0, 0.6 / max(fp, 0.3)));
+        // rivets along the joints
+        let rv = length(vec2<f32>(jd - 1.2, (fract(q.y / 2.0) - 0.5) * 2.0));
+        tone = tone + 0.25 * (1.0 - smoothstep(0.3, 0.3 + fp, rv)) * af;
+        // what is let into some plates
+        let lq = vec2<f32>((pf - 0.5) * pl_len, (cf - 0.5) * cw);
+        if (hv.x > 0.86 && e > 30.0) {
+            // a hatch: a heavy square lid in a frame, its hinge side darker, a handle
+            let b = max(abs(lq.x), abs(lq.y)) - 5.0;
+            tone = mix(tone, 0.25, (1.0 - smoothstep(0.0, 0.5 + fp, abs(b))) * am);
+            tone = mix(tone, tone * 1.15 - 0.08 * step(lq.x, -3.5), step(b, 0.0) * am);
+            tone = mix(tone, 0.85, (1.0 - smoothstep(0.3, 0.3 + fp, length(lq - vec2<f32>(2.8, 0.0)))) * af);
+        } else if (hv.x > 0.74 && e > 30.0) {
+            // a vent grille: slots across it, dark inside, warm air shimmering out of the hot ones while it has power
+            let inb = step(abs(lq.x), pl_len * 0.3) * step(abs(lq.y), 6.0);
+            let slot = 1.0 - smoothstep(0.25, 0.25 + fp, abs(fract(lq.x / 1.6) - 0.5) * 1.6 - 0.35);
+            tone = tone * mix(1.0, mix(0.35, 0.65, 1.0 - af), inb * slot * am + inb * (1.0 - am) * 0.35);
+            emit = emit + vec3<f32>(1.2, 0.5, 0.15) * inb * slot * step(0.95, hv.y) * bl * 0.12 * af * af;
+        } else if (hv.x < 0.08) {
+            // a sensor dome, mirroring the sky round it
+            let dd = length(lq);
+            if (dd < 3.5) {
+                let dv = lq / 3.5;
+                nx = dv.x;
+                nz = dv.y;
+                tone = 1.1;
+                rough = 0.08;
+            } else {
+                tone = tone * (1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.6 + fp, abs(dd - 4.2))) * am);
+            }
+        }
+        // radiator fields: banks of fins across whole stretches of the courses
+        let fc = vec2<f32>(floor(q.x / 110.0), ci);
+        if (fh21(fc + vec2<f32>(13.0, 29.0 + sd)) > 0.72 && e > 30.0 && abs(fract(q.x / 110.0) - 0.5) < 0.38 && cf > 0.15 && cf < 0.85) {
+            let fin = fract(ay / 2.2 + 0.25 * sign(v.z * sd));
+            tone = mix(tone, mix(0.32, 0.32 + 0.5 * smoothstep(0.2, 0.8, fin), af), am);
+            rough = 0.55;
+        }
+        // windows: rows of small lights along the lips in districts, lit and dark, like the belly's
+        let dist_ = fh21(vec2<f32>(floor(q.x / 85.0), ci + sd * 31.0) + vec2<f32>(3.0, 17.0));
+        let wx = floor(q.x / 2.5);
+        let wh = fh21(vec2<f32>(wx, ci + sd * 17.0) + vec2<f32>(41.0, 5.0));
+        if (dist_ > 0.55 && wh > 0.55 && cf > 0.86) {
+            let d = length(vec2<f32>(q.x - wx * 2.5 - 1.25, (cf - 0.93) * cw));
+            let flick = 0.6 + 0.4 * step(0.2, fract(wh * 13.0 + floor(ts * 0.5) * 0.37));
+            emit = emit + mix(vec3<f32>(0.55, 1.5, 0.6), vec3<f32>(1.4, 1.3, 1.0), step(0.85, wh)) * ms_line(d, 0.4, fp) * flick * bl * 0.55;
+        }
+    }
+    // the gutter and rim along the long edges: a dark channel, drain grates, the rim's lip catching the light
+    if (ed < 26.0) {
+        let gut = smoothstep(4.0, 6.0, ed) * (1.0 - smoothstep(18.0, 20.0, ed));
+        let grate = 1.0 - smoothstep(0.3, 0.3 + fp, abs(fract(q.x / 1.5) - 0.5) * 1.5 - 0.3);
+        tone = mix(tone, mix(0.3 + 0.2 * grate, 0.38, 1.0 - af), gut);
+        tone = tone + 0.6 * (1.0 - smoothstep(0.0, 1.5 + fp, ed)) + 0.35 * exp(-abs(ed - 20.0) / max(0.6, fp));
+        rough = mix(rough, 0.6, gut);
+        // running lights along it, on all along with any power at all
+        let cx = floor(q.x / 40.0);
+        let lx = cx * 40.0 + 20.0;
+        let d = length(vec2<f32>(q.x - lx, ed - 12.0));
+        let blink = step(0.82, fract(ts * 0.9 - cx * 0.11));
+        let rc = select(vec3<f32>(0.4, 2.6, 0.5), vec3<f32>(0.08, 1.1, 0.18), q.y > 0.0);
+        emit = emit + mix(rc, vec3<f32>(3.5, 4.0, 3.5), blink) * ms_line(d, 1.0, fp) * (0.6 + 1.4 * blink) * min(bl * 2.0, 1.0);
+    }
+    // weathering: whole stretches lighter or darker, grime trailing aft from everything, soot over the engines
+    tone = tone * (0.82 + 0.3 * gnoise2(q * 0.007 + vec2<f32>(3.1, 7.7)));
+    let streak = smoothstep(0.5, 0.8, gnoise2(vec2<f32>(q.x * 0.012, q.y * 0.32)));
+    tone = tone * (1.0 - 0.35 * streak * am);
+    tone = tone * mix(1.0, 0.35 + 0.3 * gnoise2(q * 0.05), smoothstep(-420.0, -540.0, q.x));
+    var c = df_metal(normalize(vec3<f32>(nx, 1.0, nz)), v, sl, haze, day, tone, rough);
+    // the soil thrown over it as it ploughed in, heaped deepest along its edges
+    if (ts > DF_FALL1) {
+        let soil = smoothstep(0.55, 0.7, gnoise2(q * 0.018 + vec2<f32>(5.0, 1.0)) + 0.35 * (1.0 - smoothstep(0.0, 120.0, ed)) - 0.1)
+            * smoothstep(DF_FALL1, DF_FALL1 + 2.0, ts);
+        let sc = vec3<f32>(0.075, 0.058, 0.04) * (0.75 + 0.5 * gnoise2(q * 0.35)) * (0.25 + 0.75 * day);
+        c = mix(c, sc * (0.5 + 0.5 * max(sl.y, 0.0)), soil * 0.85);
+    }
+    let hz = 1.0 - exp(-t / 3000.0);
+    return mix(c, haze * 0.6, hz * 0.35) + ship_tint(emit) * exp(-t / 3000.0);
+}
+
+
+// The hull's colour where a ray (`rd`, world) met it in pose `P` at `ts`: the Mothership's plating and lights in its own
+// frame, its roof, spine and batteries, and what the downfall does to it: the meteor's hits burning through it, its
+// stern crumpling as the engine fails, the black hole's light on it and its torn sections laid open as it is drawn in.
 fn df_shade(h: MsHit, P: DfPose, g: DfGeo, rd: vec3<f32>, X: vec3<f32>, ts: f32, lit: f32, chase_on: f32, core: f32, focus: vec3<f32>, haze: vec3<f32>,
             day: f32, sun: vec3<f32>, boost: f32, wake: f32, eng: f32, groan: f32, ht0: vec3<f32>, ht1: vec3<f32>) -> vec3<f32> {
     let v = vec3<f32>(dot(rd, P.a), dot(rd, P.u), dot(rd, P.d));
@@ -666,27 +1041,86 @@ fn df_shade(h: MsHit, P: DfPose, g: DfGeo, rd: vec3<f32>, X: vec3<f32>, ts: f32,
     f0.sd = vec2<f32>(0.0, 1.0);
     var c = vec3<f32>(0.0);
     let q = h.q;
+    // its lights after the crash: on here and there, then failing section by section from the stern, each with a last
+    // flare, until none is left
+    var bl = boost;
+    if (ts > DF_FALL1) {
+        let sec = floor((q.x + 560.0) / 70.0);
+        let tf = DF_GROAN + 5.8 * (0.25 * fh21(vec2<f32>(sec, sign(q.y) + 5.0)) + 0.75 * (q.x + 560.0) / 1120.0);
+        bl = 0.35 * f32(ts < tf) * (0.55 + 0.45 * step(0.3, fh21(vec2<f32>(sec, floor(ts * 7.0))))) + 2.0 * exp(-pow((ts - tf) / 0.08, 2.0));
+    }
+    let pix = 2.0 / (frame.projection[1][1] * frame.resolution.y);
     if (h.kind == 9) {
-        // a battery: a squat dark turret, its emitter on top glowing green as it fires
+        let fp = max(h.t * pix / 0.5, 0.02);
+        let af = saturate(1.5 - fp / 1.5);
+        let top = h.h > MS_TOP + 11.5;
         let x = -450.0 + 150.0 * clamp(floor((q.x + 450.0) / 150.0 + 0.5), 0.0, 5.0);
         let tc = vec2<f32>(x, sign(q.y) * (ms_half_w(x) - 3.0));
         let dq = q - tc;
-        let top = h.h > MS_TOP + 11.5;
-        let n = select(normalize(vec3<f32>(dq.x, 0.0, dq.y)), vec3<f32>(0.0, 1.0, 0.0), top);
-        let lam = 0.25 + 0.75 * max(dot(n, sl), 0.0) * day;
-        let ring = smoothstep(0.6, 0.9, abs(fract(h.h / 4.0) - 0.5) * 2.0);
-        c = vec3<f32>(0.07, 0.075, 0.08) * lam * (0.7 + 0.3 * ring) + haze * 0.05;
-        let em = (1.0 - smoothstep(3.0, 4.5, length(dq))) * f32(top);
-        c = c + vec3<f32>(0.6, 3.5, 1.0) * (em * 3.0 + exp(-length(dq) / 4.0) * 0.4) * lit;
-    } else {
-        // its lights after the crash: on here and there, then failing section by section from the stern, each with a
-        // last flare, until none is left
-        var bl = boost;
-        if (ts > DF_FALL1) {
-            let sec = floor((q.x + 560.0) / 70.0);
-            let tf = DF_GROAN + 5.8 * (0.25 * fh21(vec2<f32>(sec, sign(q.y) + 5.0)) + 0.75 * (q.x + 560.0) / 1120.0);
-            bl = 0.35 * f32(ts < tf) * (0.55 + 0.45 * step(0.3, fh21(vec2<f32>(sec, floor(ts * 7.0))))) + 2.0 * exp(-pow((ts - tf) / 0.08, 2.0));
+        let rq = length(dq);
+        // scorched by its own firing, and blackened more where the meteor's pieces struck near it
+        let burnt = smoothstep(DF_FIRE0, DF_FIRE1, ts);
+        if (rq < 9.6) {
+            // a battery: a heavy armoured housing, its plates in segments round it, a band of vents; on top a ring
+            // round the barrels' mount, an access hatch, its emitter glowing green as it fires
+            let ang = atan2(dq.y, dq.x);
+            let seg = abs(fract(ang / TAU * 12.0) - 0.5) * 2.0;
+            var tone = 0.5 + 0.12 * fh21(vec2<f32>(floor(ang / TAU * 12.0), x));
+            var n = vec3<f32>(dq.x / max(rq, 1.0e-3), 0.0, dq.y / max(rq, 1.0e-3));
+            if (top) {
+                let ring = 1.0 - smoothstep(0.4, 0.4 + fp, abs(rq - 6.0));
+                let hatch = 1.0 - smoothstep(0.3, 0.3 + fp, abs(max(abs(dq.x + 3.0), abs(dq.y - 3.0)) - 1.6));
+                tone = 0.5 - 0.25 * ring * af - 0.2 * hatch * af + 0.25 * (1.0 - smoothstep(8.0, 8.8 + fp, rq));
+                n = normalize(vec3<f32>(dq.x, 30.0, dq.y));
+                tone = tone * (1.0 - 0.55 * burnt * (1.0 - smoothstep(2.0, 7.0, rq)));
+            } else {
+                tone = tone * (1.0 - 0.4 * (1.0 - smoothstep(0.05, 0.05 + fp / 9.0, seg)) * af);
+                let band = step(abs(h.h - MS_TOP - 6.0), 1.6);
+                tone = tone * mix(1.0, 0.45 + 0.4 * step(0.5, fract(ang / TAU * 60.0)), band * af);
+                // soot streaked down from the top
+                tone = tone * (1.0 - 0.5 * burnt * smoothstep(0.4, 0.8, gnoise2(vec2<f32>(ang * 6.0, h.h * 0.15))) * smoothstep(MS_TOP + 2.0, MS_TOP + 12.0, h.h));
+            }
+            c = df_metal(n, v, sl, haze, day, tone, 0.3 + 0.3 * f32(top));
+            let em = (1.0 - smoothstep(2.5, 3.5 + fp, rq)) * f32(top);
+            c = c + ship_tint(vec3<f32>(0.6, 3.5, 1.0)) * (em * 3.0 + exp(-rq / 4.0) * 0.4 * f32(top)) * lit;
+            c = c + vec3<f32>(1.2, 0.4, 0.08) * em * burnt * exp(-max(ts - DF_FIRE1, 0.0) / 6.0) * 0.6;
+        } else {
+            // the spine: ribbed along its top, a vent strip down its middle, conduits along its sides; ribs and a
+            // band of hatches down its walls
+            var tone = 0.52;
+            var n = vec3<f32>(0.0, 1.0, 0.0);
+            let rib = abs(fract(q.x / 6.0) - 0.5) * 6.0;
+            if (top) {
+                let sec_ = floor(q.x / 90.0);
+                let w = 34.0 + 14.0 * fh21(vec2<f32>(sec_, 71.0));
+                let ay = abs(q.y);
+                tone = tone * (1.0 - 0.35 * (1.0 - smoothstep(0.5, 0.5 + fp, rib)) * af * step(ay, w - 10.0));
+                let vent = step(ay, 5.0) * (1.0 - smoothstep(0.25, 0.25 + fp, abs(fract(q.x / 1.4) - 0.5) * 1.4 - 0.3));
+                tone = mix(tone, 0.18, vent * af + step(ay, 5.0) * (1.0 - af) * 0.4);
+                let pp = fract((w - ay) / 2.6);
+                let pipes = step(w - 10.0, ay);
+                n = normalize(vec3<f32>(0.0, 1.0, (pp - 0.5) * 1.2 * sign(q.y) * pipes * af));
+                tone = mix(tone, 0.38 + 0.3 * (1.0 - abs(pp - 0.5) * 2.0), pipes * af);
+                // a light on some of its sections, dying with the power
+                emit_spine(&c, q, sec_, ts, bl, fp);
+            } else {
+                // (a wall: its normal across the spine or along it)
+                let sec_ = floor(q.x / 90.0);
+                let w = 34.0 + 14.0 * fh21(vec2<f32>(sec_, 71.0));
+                let along = abs(abs(q.x - (sec_ + 0.5) * 90.0) - 42.0) < abs(abs(q.y) - w);
+                n = select(vec3<f32>(0.0, 0.0, sign(q.y)), vec3<f32>(sign(q.x - (sec_ + 0.5) * 90.0), 0.0, 0.0), along);
+                let u_ = select(q.x, q.y, along);
+                let wr = abs(fract(u_ / 4.0) - 0.5) * 4.0;
+                tone = tone * (1.0 - 0.4 * (1.0 - smoothstep(0.4, 0.4 + fp, wr)) * af);
+                let band = step(abs(h.h - MS_TOP - 7.0), 1.8);
+                let hatch = step(0.6, fh21(vec2<f32>(floor(u_ / 8.0), sec_)));
+                tone = tone * mix(1.0, 0.4, band * hatch * af);
+            }
+            c = c + df_metal(n, v, sl, haze, day, tone * (1.0 - 0.3 * burnt * smoothstep(0.5, 0.8, gnoise2(q * 0.03))), 0.4);
         }
+    } else if (h.kind == 2 && h.h >= MS_TOP - 0.01) {
+        c = df_roof(q, h.t, v, sl, haze, day, ts, bl);
+    } else {
         c = ms_hull(h, f0, v, ts, lit, chase_on, core, 0.0, fl, haze, day, sl, bl, wake, eng);
     }
     // the hits: craters burning through the plating, scorched round, and fire breaking out through its belly under them
@@ -704,6 +1138,17 @@ fn df_shade(h: MsHit, P: DfPose, g: DfGeo, rd: vec3<f32>, X: vec3<f32>, ts: f32,
             let n = gnoise2(q * 0.05 + vec2<f32>(f32(j) * 7.0, ts * 0.4));
             let core = exp(-pow(dp / (R * (0.55 + 0.3 * n)), 2.0));
             c = c * (1.0 - 0.7 * exp(-pow(dp / (R * 1.6), 2.0)));
+            // the hole torn through the plating: a ragged edge of plates bent up and back, the decks under it laid
+            // open in rings, dark, burning deeper in
+            let rr = R * (0.62 + 0.25 * gnoise2(normalize(q - e.xz + vec2<f32>(1.0e-3)) * 3.0 + vec2<f32>(f32(j), 2.0)));
+            if (dp < rr + 2.0 && h.h > 100.0) {
+                let ring = abs(fract((rr - dp) / 6.0) - 0.5) * 6.0;
+                let lipc = exp(-abs(dp - rr) / 1.2);
+                let deep = saturate((rr - dp) / rr);
+                let deckc = vec3<f32>(0.03, 0.028, 0.026) * (0.4 + 0.6 * smoothstep(0.4, 1.4, ring)) * (1.0 - deep * 0.7);
+                c = mix(c, deckc, smoothstep(rr + 1.5, rr - 1.0, dp));
+                c = c + vec3<f32>(0.12, 0.11, 0.1) * lipc * (0.3 + 0.7 * day);
+            }
             let heat = core * (0.6 + 0.4 * exp(-age * 0.3)) * (0.8 + 0.25 * sin(ts * 3.0 + f32(j) * 3.0) + 0.15 * n);
             c = c + lava_ramp(0.3 + 0.65 * heat) * heat * 2.6;
         }
@@ -729,26 +1174,57 @@ fn df_shade(h: MsHit, P: DfPose, g: DfGeo, rd: vec3<f32>, X: vec3<f32>, ts: f32,
         c = mix(c, vec3<f32>(0.006) + inner, gap * min(gr * 1.5, 1.0));
     }
     if (P.x0 > -1.0e3 || P.x1 < 1.0e3) {
-        // where it was torn apart: its decks, girders and rooms open, some still lit, its edges hot nearer the hole
+        // where it was torn apart: the hull's cross-section open to the sky, its decks' torn edges catching the light,
+        // the bulkheads and girders between them, the rooms behind dark, a few lit by fires inside; its rim hot nearer
+        // the hole
         let jag = df_jag(q.y, lx.y);
         let edge = min(abs(q.x - P.x0 - jag), abs(q.x - P.x1 - jag));
-        if (edge < 7.0) {
-            let deck = abs(fract(h.h / 7.0) - 0.5) * 7.0;
-            let gird = abs(fract(q.y / 9.0) - 0.5) * 9.0;
-            let room = fh21(vec2<f32>(floor(q.y / 9.0), floor(h.h / 7.0)) + vec2<f32>(3.0, 1.0));
-            let lit_in = vec3<f32>(0.25, 0.75, 0.3) * step(0.7, room) * 0.35 + vec3<f32>(0.9, 0.4, 0.1) * step(0.9, room) * 0.6;
-            let frame_ = saturate(step(deck, 0.9) + step(gird, 0.8));
-            let inside = mix(vec3<f32>(0.008) + lit_in * (0.6 + 0.4 * fh21(vec2<f32>(room, floor(ts * 3.0)))), vec3<f32>(0.035, 0.035, 0.04) * (0.4 + 0.6 * day), frame_);
-            c = mix(c, inside, 1.0 - smoothstep(4.0, 7.0, edge));
-            // only its rim, where the torn section meets the skin, glowing hot (hotter nearer the hole)
-            let rim = 1.0 - smoothstep(0.0, 5.0, -ms_outline(q, 0.0));
-            c = c + lava_ramp(0.6) * rim * (1.0 - smoothstep(3.0, 7.0, edge)) * 1.6 * exp(-dh / 260.0);
+        if (edge < 6.0) {
+            let pix = 2.0 / (frame.projection[1][1] * frame.resolution.y);
+            let fpw = max(length(X) * pix / 0.6, 0.05);
+            let hh = h.h;
+            let deck = abs(fract(hh / 7.0) - 0.5) * 7.0;
+            let dk = floor(hh / 7.0);
+            // the bulkheads: their spacing and place their own on each deck
+            let bw = 11.0 + 9.0 * fh21(vec2<f32>(dk, 5.0));
+            let yb = q.y / bw + fh21(vec2<f32>(dk, 6.0));
+            let cell = floor(yb);
+            let bulk = abs(fract(yb) - 0.5) * bw * select(1.0, 4.0, fh21(vec2<f32>(cell, dk + 40.0)) > 0.6);
+            let rh = fh21(vec2<f32>(cell, dk) + vec2<f32>(3.0, 1.0));
+            // the rooms: dark, darker up under the deck above, some only gutted, now and then one burning
+            let fy = fract(hh / 7.0);
+            var inside = vec3<f32>(0.012, 0.012, 0.014) * (0.5 + 0.8 * fy) * (0.6 + 0.8 * rh);
+            let fire = step(0.93, rh) * (0.6 + 0.4 * fvnoise(vec2<f32>(ts * 3.0 + rh * 40.0, cell)));
+            inside = inside + vec3<f32>(1.1, 0.42, 0.1) * fire * (0.25 + 0.75 * (1.0 - fy)) * 0.5;
+            // a brace across some of them, twisted
+            let br = abs(fract(yb) - select(fy, 1.0 - fy, rh > 0.5)) * 7.0;
+            let brace = (1.0 - smoothstep(0.5, 0.5 + fpw, br)) * step(0.55, fract(rh * 7.3)) * saturate(1.5 - fpw);
+            // the decks' torn edges and the bulkheads: metal, lit from round the hole and the sky
+            // (a deck's edge torn back in places)
+            let torn_d = step(0.25, fvnoise(vec2<f32>(q.y * 0.08, dk * 3.1)));
+            let fr = max((1.0 - smoothstep(0.55, 0.55 + fpw, deck)) * torn_d, (1.0 - smoothstep(0.7, 0.7 + fpw, bulk)) * 0.8);
+            let fr_a = mix(fr, 0.22, smoothstep(1.5, 4.0, fpw));
+            let metal = vec3<f32>(0.05, 0.05, 0.055) * (0.5 + 0.6 * day) * (0.7 + 0.6 * fh21(vec2<f32>(cell, dk + 9.0)));
+            // some rooms choked with wreckage and machinery, crushed up against their decks
+            let junk = step(0.55, rh) * smoothstep(0.35, 0.6, gnoise2(vec2<f32>(q.y * 0.4, hh * 0.4) + vec2<f32>(rh * 50.0)));
+            inside = mix(inside, metal * (0.5 + 0.6 * gnoise2(vec2<f32>(q.y, hh) * 0.9)), junk * (1.0 - fire) * mix(1.0, 0.6, smoothstep(1.5, 4.0, fpw)));
+            inside = mix(inside, metal * 0.8, max(fr_a, brace * 0.8));
+            // the skin: a few blocks of armour round the outside, then the plating
+            let skin = 1.0 - smoothstep(2.0, 4.0, -ms_outline(q, 0.0));
+            inside = mix(inside, metal * 1.4, skin);
+            c = mix(c, inside, 1.0 - smoothstep(3.5, 6.0, edge));
+            // its rim, where the torn section meets the skin, glowing hot (hotter nearer the hole)
+            let rim = 1.0 - smoothstep(0.0, 4.0, -ms_outline(q, 0.0));
+            c = c + lava_ramp(0.55) * rim * (1.0 - smoothstep(2.0, 6.0, edge)) * 1.2 * exp(-dh / 220.0);
         }
     }
     if (P.eat > 0.0 || P.x0 > -1.0e3) {
-        // in the black hole's grip: lit by its disk, heating, reddening and brightening as it nears the horizon
-        c = c + c * vec3<f32>(1.6, 0.8, 0.5) * 30000.0 / (dh * dh + 6000.0) + vec3<f32>(0.5, 0.22, 0.12) * 4000.0 / (dh * dh + 4000.0) * 0.3;
-        c = c + vec3<f32>(3.0, 0.9, 0.3) * exp(-max(dh - max(P.eat, 20.0), 0.0) / 12.0) * 1.4;
+        // in the black hole's grip: lit by its disk, heating as it nears the horizon, and there redder and dimmer, and
+        // gone through it
+        let sec = P.pull > 0.0;
+        c = c + c * vec3<f32>(1.6, 0.8, 0.5) * 9000.0 / (dh * dh + 4000.0) + vec3<f32>(0.5, 0.22, 0.12) * 1200.0 / (dh * dh + 4000.0);
+        c = c + vec3<f32>(2.4, 0.7, 0.22) * exp(-max(dh - select(max(P.eat, 20.0), P.eat * 1.3, sec), 0.0) / 14.0) * select(0.9, 0.6, sec);
+        c = c * select(vec3<f32>(1.0), bh_redshift(dh, P.eat), sec);
     }
     return c;
 }
@@ -977,7 +1453,7 @@ fn downfall(in: StageIn) -> vec4<f32> {
             let ch = select(charge, 1.0, cut_t > 0.0);
             let conv = mix(60.0, 5.0, pow(ch, 1.5));
             let gl = exp(-r / 14.0) * ch * ch * 1.4 + exp(-pow((r - conv) / 1.2, 2.0)) * ch * 1.6;
-            add = add + vec3<f32>(0.3, 1.8, 0.45) * gl * on_ground * select(1.0, exp(-cut_t * 7.0), cut_t > 0.0) * k;
+            add = add + ship_tint(vec3<f32>(0.3, 1.8, 0.45)) * gl * on_ground * select(1.0, exp(-cut_t * 7.0), cut_t > 0.0) * k;
         }
         let dustc = vec3<f32>(0.34, 0.28, 0.21) * (0.3 + 0.7 * day) * dim;
         let pw = time - (DF_FALL1 - 2.4);
@@ -1027,7 +1503,15 @@ fn downfall(in: StageIn) -> vec4<f32> {
     }
 
     // ---- the ship ----------------------------------------------------------------------
+    // (once it has arrived, where the ray meets it is kept, and shaded once the sections torn off it are traced too:
+    // whichever is nearest)
     var ship_t = 1.0e9;
+    var dhit: MsHit;
+    dhit.kind = -1;
+    var dP = P;
+    var dvis = 0.0;
+    var dover = false;
+    var dsec = false;
     if (wreck_on) {
         // averaged over the shutter while it moves fast as it arrives (as the Mothership)
         let n = select(1, 12, arriving);
@@ -1053,20 +1537,20 @@ fn downfall(in: StageIn) -> vec4<f32> {
             // behind a cloud: faint through it from under the clouds; solid under its tint from over them
             let over = cloud && cam.y > CLOUD_Y + 8.0;
             let vis = select(select(0.0, 0.3, cloud), 1.0, sky || hit.t < scene_len || over) * (1.0 - smoothstep(4000.0, 20000.0, hit.t));
-            if (vis > 0.0) {
-                var hc = vec3<f32>(0.0);
-                if (arriving) {
-                    // (as it arrives, unhurt: the Mothership's own shading, lighter for the shutter's twelve looks)
-                    var f0: MsFrame;
-                    f0.ax = vec2<f32>(1.0, 0.0);
-                    f0.sd = vec2<f32>(0.0, 1.0);
-                    let vl = vec3<f32>(dot(rd, Pi.a), dot(rd, Pi.u), dot(rd, Pi.d));
-                    let fl = vec3<f32>(dot(focus, Pi.a), dot(focus, Pi.u), dot(focus, Pi.d));
-                    let sl = vec3<f32>(dot(sun, Pi.a), dot(sun, Pi.u), dot(sun, Pi.d));
-                    hc = ms_hull(hit, f0, vl, ts, lit, chase_on, core_env, 0.0, fl, haze, day, sl, 3.0, ts - MS_ARRIVE - stop, eng);
-                } else {
-                    hc = df_shade(hit, Pi, g, rd, rd * hit.t, ts, lit, chase_on, core_env, focus, haze, day, sun, boost, ts - MS_ARRIVE - stop, eng, groan, vec3<f32>(hits[0].w, hits[1].w, hits[2].w), vec3<f32>(hits[3].w, hits[4].w, hits[5].w));
-                }
+            if (vis > 0.0 && !arriving) {
+                dhit = hit;
+                dvis = vis;
+                dover = over;
+                ship_t = hit.t;
+            } else if (vis > 0.0) {
+                // (as it arrives, unhurt: the Mothership's own shading, lighter for the shutter's twelve looks)
+                var f0: MsFrame;
+                f0.ax = vec2<f32>(1.0, 0.0);
+                f0.sd = vec2<f32>(0.0, 1.0);
+                let vl = vec3<f32>(dot(rd, Pi.a), dot(rd, Pi.u), dot(rd, Pi.d));
+                let fl = vec3<f32>(dot(focus, Pi.a), dot(focus, Pi.u), dot(focus, Pi.d));
+                let sl = vec3<f32>(dot(sun, Pi.a), dot(sun, Pi.u), dot(sun, Pi.d));
+                var hc = ms_hull(hit, f0, vl, ts, lit, chase_on, core_env, 0.0, fl, haze, day, sl, 3.0, ts - MS_ARRIVE - stop, eng);
                 if (over && hit.t > scene_len) {
                     hc = mix(hc, vec3<f32>(luminance(col)), 0.3);
                 }
@@ -1077,7 +1561,7 @@ fn downfall(in: StageIn) -> vec4<f32> {
                     let smear = (exp(-pow(az / 0.05, 2.0)) * 2.0 + pow(0.5 + 0.5 * cos(az * 40.0), 12.0) * 0.6 + 0.15)
                         * (0.4 + 0.6 * saturate((hit.q.x + MS_HL) / (2.0 * MS_HL)));
                     a = vis * (1.0 - 0.9 * w);
-                    hc = hc * (1.0 - 0.9 * w) + vec3<f32>(1.2, 2.6, 1.5) * smear * w;
+                    hc = hc * (1.0 - 0.9 * w) + ship_tint(vec3<f32>(1.2, 2.6, 1.5)) * smear * w;
                 }
                 // far off, the air between veils it
                 acc = acc + hc * vis;
@@ -1085,11 +1569,13 @@ fn downfall(in: StageIn) -> vec4<f32> {
                 ship_t = min(ship_t, hit.t);
             }
         }
-        let a = cover / f32(n);
-        col = col * (1.0 - a) + acc / f32(n);
-        add = add * (1.0 - a);
-        // (a smear of it, while it moves fast, hides what is behind it only where it covers most of the shutter)
-        ship_t = select(1.0e9, ship_t, a > 0.5);
+        if (arriving) {
+            let a = cover / f32(n);
+            col = col * (1.0 - a) + acc / f32(n);
+            add = add * (1.0 - a);
+            // (a smear of it, while it moves fast, hides what is behind it only where it covers most of the shutter)
+            ship_t = select(1.0e9, ship_t, a > 0.5);
+        }
     }
     // ---- the black hole: how big, its disk filling from the wreck as it goes in ----------
     let wd = wing_dirs();
@@ -1101,6 +1587,8 @@ fn downfall(in: StageIn) -> vec4<f32> {
     let hot = 1.0 + 1.6 * (1.0 - left) + 2.2 * exp(-max(bt, 0.0) * 2.0) + 0.8 * sw;
 
     // ---- the sections torn off it, falling in: the nearest of them drawn, a stream of grit and dust off each --------
+    var dust_c = vec3<f32>(0.0);
+    var dust_a = 0.0;
     if (opened && bt < DF_LIFE) {
         var best: MsHit;
         best.kind = -1;
@@ -1117,31 +1605,62 @@ fn downfall(in: StageIn) -> vec4<f32> {
             if (Pk.pull >= 1.0) {
                 continue;
             }
-            let C = df_world(Pk, vec3<f32>(Pk.px, 75.0, 0.0));
-            let tc = dot(C, rd);
-            if (tc > 0.0 && length(C - rd * tc) < 300.0 + 280.0 * Pk.s.x) {
+            // (its near end, and its middle)
+            let C = df_world(Pk, vec3<f32>(Pk.px, 75.0 * Pk.s.y, 0.0));
+            let M = df_world(Pk, vec3<f32>(Pk.px + 0.5 * (Pk.x1 - Pk.x0) * Pk.s.x, 75.0 * Pk.s.y, 0.0));
+            let tc = dot(M, rd);
+            if (tc > -300.0 && length(M - rd * max(tc, 0.0)) < 300.0 * Pk.s.z + 60.0 * Pk.s.x + 80.0) {
                 let hk = df_trace(Pk, vec3<f32>(0.0), rd);
                 if (hk.kind >= 0 && hk.t < best.t) {
                     best = hk;
                     bestP = Pk;
                 }
             }
-            // grit and dust streaming off it, back along its path, hot nearer the hole
-            let sp = saturate((bt - t_k - 0.35) / dur);
-            let Cp = H + rot_axis(df_world(P, vec3<f32>(Pk.px, 75.0, 0.0)) - H, nd, select(0.5, 2.2, kx % 3 == 1) * sp * sp) * (1.0 - sp * sp);
+            // grit and dust streaming off it, back along its near end's path, hot nearer the hole
+            let A0 = df_world(P, vec3<f32>(Pk.px, 75.0, 0.0));
+            let sp = max(bt - t_k - 0.3, 0.0) * pow(length(df_world(P, vec3<f32>(Pk.x1, 75.0, 0.0)) - H) / length(A0 - H), 1.2) / (1.25 * dur);
+            let Cp = df_fall_pt(A0, H, nd, sp, df_sec_spin(kx));
             let q = ray_seg(rd, C, Cp);
-            let w = max(50.0 + 60.0 * q.z, q.y * 0.002);
-            if (q.x < w * 2.0 && q.y < min(scene_len, best.t)) {
+            let w = max(25.0 + 50.0 * q.z, q.y * 0.002);
+            if (q.x < w * 2.0 && q.y < min(scene_len, best.t) && length(rd * q.y - H) > rs) {
                 let sn = gfbm2(vec2<f32>(q.z * 5.0 - bt * 2.0, q.x / w * 2.0 + f32(kx)));
-                let dens = exp(-pow(q.x / w, 2.0)) * (0.25 + 0.7 * sn) * (1.0 - q.z) * 0.7;
-                col = mix(col, vec3<f32>(0.13, 0.1, 0.09) * dim + lava_ramp(0.6) * exp(-length(C - H) / 120.0) * 0.8, saturate(dens));
+                let dens = exp(-pow(q.x / w, 2.0)) * (0.25 + 0.7 * sn) * (1.0 - q.z) * 0.6 * saturate(1.0 - Pk.pull);
+                let ai = saturate(dens);
+                let ci = (vec3<f32>(0.13, 0.1, 0.09) * dim + lava_ramp(0.6) * exp(-length(C - H) / 120.0) * 0.8) * bh_redshift(length(rd * q.y - H), rs);
+                let na = dust_a + ai - dust_a * ai;
+                dust_c = (dust_c * dust_a * (1.0 - ai) + ci * ai) / max(na, 1.0e-4);
+                dust_a = na;
             }
         }
         if (best.kind >= 0) {
-            col = df_shade(best, bestP, g, rd, rd * best.t, time, 0.0, 0.0, 0.0, focus, haze, day, sun, 0.0, 9.0, 0.0, 0.0, vec3<f32>(hits[0].w, hits[1].w, hits[2].w), vec3<f32>(hits[3].w, hits[4].w, hits[5].w));
-            add = vec3<f32>(0.0);
+            dhit = best;
+            dP = bestP;
+            dvis = 1.0;
+            dover = false;
+            dsec = true;
             ship_t = best.t;
         }
+    }
+    // the wreck, or the nearer of the sections torn off it
+    if (dhit.kind >= 0) {
+        var hc = df_shade(dhit, dP, g, rd, rd * dhit.t, time, select(lit, 0.0, dsec), select(chase_on, 0.0, dsec), select(core_env, 0.0, dsec), focus,
+                          haze, day, sun, select(boost, 0.0, dsec), select(time - MS_ARRIVE - stop, 9.0, dsec), select(eng, 0.0, dsec), select(groan, 0.0, dsec),
+                          vec3<f32>(hits[0].w, hits[1].w, hits[2].w), vec3<f32>(hits[3].w, hits[4].w, hits[5].w));
+        if (dover && dhit.t > scene_len) {
+            hc = mix(hc, vec3<f32>(luminance(col)), 0.3);
+        }
+        col = mix(col, hc, dvis);
+        add = add * (1.0 - dvis);
+    }
+    if (dust_a > 0.0) {
+        col = mix(col, dust_c, dust_a);
+    }
+    // ---- its batteries' barrels and the masts along its roof's edges: too thin to trace, drawn as lines ----------------
+    if (wreck_on && !arriving && present) {
+        let rg = df_rig(P, rd, min(ship_t, select(scene_len, 1.0e9, sky)), time, boost, haze, day, sun);
+        col = mix(col, rg.c, rg.w);
+        add = add * (1.0 - rg.w) + rg.glow * k;
+        ship_t = select(ship_t, rg.t, rg.w > 0.5);
     }
 
     // ---- the lens: the land and the wreck bent round it, its disk ------------------
@@ -1199,7 +1718,7 @@ fn downfall(in: StageIn) -> vec4<f32> {
                     let q = ray_seg(rd, mix(M, Tg, u), mix(M, Tg, max(u - 0.05, 0.0)));
                     let w = max(1.4, q.y * 0.0012);
                     let vis = select(1.0, 0.0, (!sky_h && q.y > scene_lh) || q.y > ship_t + 2.0);
-                    add = add + (vec3<f32>(2.4, 6.0, 2.8) * exp(-pow(q.x / (w * 0.6), 2.0)) + vec3<f32>(0.15, 1.5, 0.35) * exp(-pow(q.x / (w * 3.0), 2.0)))
+                    add = add + ship_tint(vec3<f32>(2.4, 6.0, 2.8) * exp(-pow(q.x / (w * 0.6), 2.0)) + vec3<f32>(0.15, 1.5, 0.35) * exp(-pow(q.x / (w * 3.0), 2.0)))
                         * (1.4 / w) * vis * k;
                 }
                 // the muzzle's flash, glaring past the roof's edge even where the hull hides it, and the hit on the rock
@@ -1212,7 +1731,7 @@ fn downfall(in: StageIn) -> vec4<f32> {
                     if (s > 0.01 && tp > 0.0) {
                         let dp = length(pnt - rd * tp) / tp;
                         let hid = select(1.0, 0.08, tp > ship_t || (!sky_h && tp > scene_lh) || df_blocks(P, pnt));
-                        add = add + vec3<f32>(1.6, 4.0, 1.8) * s * (exp(-pow(dp / 0.0025, 2.0)) * 3.0 + exp(-dp / 0.01) * 0.4) * hid * k;
+                        add = add + ship_tint(vec3<f32>(1.6, 4.0, 1.8)) * s * (exp(-pow(dp / 0.0025, 2.0)) * 3.0 + exp(-dp / 0.01) * 0.4) * hid * k;
                     }
                 }
             }
@@ -1467,63 +1986,81 @@ fn downfall(in: StageIn) -> vec4<f32> {
             let T_in = 3.2 + 1.8 * h2;
             let u_f = 0.5 + 0.2 * h2;
             let ub = s / T_in;
-            let u = min(ub, select(1.0, u_f, flung));
             let a0 = atan2(src.z + cam.z - g.ps.y, src.x + cam.x - g.ps.x);
             let R0 = length(src.xz + cam.xz - g.ps);
-            let r = mix(rsn * 0.95, R0, pow(1.0 - u, 0.75));
+            // falling in as the Black Hole's debris does (bh_fall): its near end through the horizon to the middle, its
+            // far end after it, the tides drawing it out between them
+            let l0 = 2.0 * hs;
+            let lag = (R0 + l0) / R0 * sqrt((R0 + l0) / R0);
+            let u = min(ub, select(lag, u_f, flung));
+            let r = bh_fall(R0, u);
             let thd = a0 - (3.0 + 3.0 * h1) * u * u;
             let lift = smoothstep(0.0, 0.45, u);
             let ground_r = vec3<f32>(g.ps.x, y_c, g.ps.y) - cam + vec3<f32>(cos(thd), 0.0, sin(thd)) * r;
             let gp = mix(src, ground_r, smoothstep(0.0, 0.15, u));
             var c = mix(gp, H + (E1 * cos(thd) + E2 * sin(thd)) * r, lift) + vec3<f32>(0.0, sin(lift * 3.14159) * 12.0, 0.0);
             var alive = smoothstep(0.0, 0.05, s);
+            var kt = bh_tide(R0, l0, r, u, lag);
             if (flung && ub > u_f) {
                 let dt = (ub - u_f) * T_in;
                 c = c + ((E1 * sin(thd) - E2 * cos(thd)) * 70.0 + nd * 18.0) * dt;
                 alive = alive * (1.0 - smoothstep(2.5, 4.0, dt));
+                kt = 1.0;
             } else if (!flung) {
-                alive = alive * (1.0 - step(1.0, ub));
+                alive = alive * (1.0 - step(lag, ub));
             }
             if (ef > 0.0) {
                 c = c + normalize(c - H) * ef * 70.0;
                 alive = alive * (1.0 - smoothstep(1.0, 2.5, ef));
+                kt = 1.0;
             }
             if (alive < 0.01) {
                 continue;
             }
+            let ur = normalize(c - H + vec3<f32>(1.0e-4));
+            c = c + ur * (hs * kt);
             let tq = dot(c, rd);
-            if (tq < 0.0 || length(c - rd * tq) > hs * 1.8 || tq - hs * 1.8 > best) {
+            if (tq < 0.0 || length(c - rd * tq) > hs * 1.8 * kt || tq - hs * 1.8 * kt > best) {
                 continue;
             }
             let ax = normalize(vec3<f32>(fh21(vec2<f32>(fi, 1.0)), fh21(vec2<f32>(fi, 2.0)), fh21(vec2<f32>(fi, 3.0))) - 0.5 + 1.0e-3);
-            let bx = df_box(c, rd, vec3<f32>(hs), ax, s * (1.5 + 3.0 * fh21(vec2<f32>(fi, 4.0))));
+            let ang = s * (1.5 + 3.0 * fh21(vec2<f32>(fi, 4.0)));
+            let bx = bh_chunk(c, rd, ur, kt, hs, ax, ang, H, rs);
             if (bx.x < 0.0 || bx.x > best || (swallowed && bx.x > tch)) {
                 continue;
             }
             best = bx.x;
-            let nw = bx.yzw;
-            let lp = rd * bx.x - c;
+            let nw = bh_chunk_n(bx.yzw, ur, kt, ax, ang);
+            let lp = bx.yzw * hs;
             let px = floor((lp.xz + lp.y) * 8.0);
             let kind = min(i32(fh21(vec2<f32>(fi, seed + 13.0)) * 4.0), 3);
             var albedo = srgb_to_linear(debris_tex(kind, px, nw.y > 0.5, 0.0, seed + fi));
             if (wreck) {
                 albedo = vec3<f32>(0.05, 0.055, 0.06) * (0.7 + 0.6 * fh21(px + vec2<f32>(fi)));
             }
-            let rl = length(c - H) / rsn;
-            let diskl = vec3<f32>(2.2, 1.0, 0.45) * max(dot(nw, -normalize(c - H)), 0.0) * disk_env * 6.0 / (1.0 + rl * 0.5);
+            let rp = length(rd * bx.x - H);
+            let rl = rp / rsn;
+            let diskl = vec3<f32>(2.2, 1.0, 0.45) * max(dot(nw, -ur), 0.0) * disk_env * 6.0 / (1.0 + rl * 0.5);
             let glow = smoothstep(rsn * 4.0, rsn * 1.2, r) * f32(!(flung && ub > u_f));
             var cc = albedo * ((0.3 + 0.7 * max(dot(nw, sun), 0.0) * day) * dim + diskl);
-            cc = cc + vec3<f32>(2.6, 0.7, 0.15) * glow * glow * 1.5 + vec3<f32>(0.3, 2.0, 0.6) * f32(wreck) * step(0.85, fh21(px)) * 0.8;
-            col = cc * smoothstep(1.0, 1.9, rl) * alive;
+            cc = cc + vec3<f32>(2.6, 0.7, 0.15) * glow * glow * 1.5 + ship_tint(vec3<f32>(0.3, 2.0, 0.6)) * f32(wreck) * step(0.85, fh21(px)) * 0.4 * (1.0 - glow);
+            // redder and dimmer as it goes through the horizon
+            col = cc * bh_redshift(rp, rs) * alive;
             add = add * 0.15;
         }
     }
 
     // ---- the ground it displaced as it dug in: surging out and up along its sides and in a wave before its bow, settling
     // into heaps (the real ones near its stern take over as they are built; strike.rs's df_berms) ----------------------
-    if (time > DF_FALL1 && time < DF_END) {
-        let rise = smoothstep(DF_FALL1 + 0.4, DF_FALL1 + DF_SLIDE + DF_SETTLE, time);
-        let surge = 0.35 * exp(-pow((time - DF_FALL1 - 3.4) / 1.5, 2.0));
+    if (time > DF_FALL1 - 0.5 && time < DF_END) {
+        // (each part rising as the hull beside it sinks in: how far down its belly is there, of the way it goes;
+        // strike.rs's DfGeo::sunk, which times the real heaps)
+        let Pn = df_pose(g, min(time, DF_REST), cam);
+        let Pr = df_pose(g, DF_REST, cam);
+        let sk = vec4<f32>(g.by - Pn.o.y - cam.y, -Pn.a.y, g.by - Pr.o.y - cam.y, -Pr.a.y);
+        // (heaped on the land itself: taken as level at the height of the land this pixel looks at, so they never hang
+        // over a dip in it or sink into a rise)
+        let base = select(Pg.y, g.by, sky);
         let hf = g.hf;
         let sd = vec2<f32>(-hf.y, hf.x);
         let mw = g.ps + hf * (-DF_XP);
@@ -1533,8 +2070,9 @@ fn downfall(in: StageIn) -> vec4<f32> {
         let zb0 = dot(o2, sd);
         let zb1 = dot(rd.xz, sd);
         var bt_hit = min(scene_lh, 6000.0);
-        var bn = vec3<f32>(0.0, 1.0, 0.0);
         var bxa = 0.0;
+        var bzb = 0.0;
+        var bband = 0;
         var found = false;
         for (var band = 0; band < 3; band = band + 1) {
             // the band's stretch of the view ray: beside either side (out from its edge), or before its bow
@@ -1554,53 +2092,66 @@ fn downfall(in: StageIn) -> vec4<f32> {
                 t1 = min(t1, max(lo, hi));
             }
             // and under the heaps' top
-            let ylo = (g.by - 2.0 - cam.y) / select(rd.y, 1.0e-6, abs(rd.y) < 1.0e-6);
-            let yhi = (g.by + 30.0 - cam.y) / select(rd.y, 1.0e-6, abs(rd.y) < 1.0e-6);
+            let ylo = (base - 2.0 - cam.y) / select(rd.y, 1.0e-6, abs(rd.y) < 1.0e-6);
+            let yhi = (base + 30.0 - cam.y) / select(rd.y, 1.0e-6, abs(rd.y) < 1.0e-6);
             t0 = max(t0, min(ylo, yhi));
             t1 = min(t1, max(ylo, yhi));
-            if (t1 <= t0) {
+            if (t1 <= t0 || sky) {
                 continue;
             }
-            var prev = 1.0;
             var tp = t0;
-            for (var i = 0; i <= 11; i = i + 1) {
-                let tt = mix(t0, t1, f32(i) / 11.0);
+            let ns = 18;
+            for (var i = 0; i <= ns; i = i + 1) {
+                let tt = mix(t0, t1, f32(i) / f32(ns));
                 let xa = xa0 + xa1 * tt;
                 let zb = zb0 + zb1 * tt;
-                var hb = 0.0;
-                if (band < 2) {
-                    let e = side * zb - ms_half_w(xa) - 18.0 * (1.0 - rise);
-                    hb = df_berm_h(xa, e) * step(abs(xa), 560.0);
-                } else {
-                    hb = 22.0 * exp(-pow((xa - 576.0 - 14.0 * (1.0 - rise)) / 14.0, 2.0)) * (1.0 - smoothstep(180.0, 270.0, abs(zb)));
-                }
-                hb = hb * (rise + surge) * (0.85 + 0.3 * fvnoise(vec2<f32>(xa, zb) * 0.06));
-                let dh = cam.y + rd.y * tt - g.by - hb;
-                if (dh < 0.0 && hb > 0.3) {
-                    let th = mix(tp, tt, prev / max(prev - dh, 1.0e-4));
-                    if (th < bt_hit) {
-                        bt_hit = th;
-                        bxa = xa;
-                        let e2 = select(xa - 576.0, side * zb - ms_half_w(xa), band < 2);
-                        let slope = select(-(e2 - 14.0) / 13.0, -(e2 - 14.0) / 14.0, band == 2) * hb * 0.15;
-                        let out = select(vec2<f32>(sd * side), hf, band == 2);
-                        bn = normalize(vec3<f32>(-out.x * slope, 1.0, -out.y * slope));
+                let hh = df_heap(xa, zb, band, sk);
+                let dh = cam.y + rd.y * tt - base - hh;
+                if (dh < 0.0 && hh > 0.3) {
+                    // closing in on where it crosses the heaps' surface
+                    var lo_ = tp;
+                    var hi_ = tt;
+                    for (var j = 0; j < 4; j = j + 1) {
+                        let m = 0.5 * (lo_ + hi_);
+                        if (cam.y + rd.y * m - base - df_heap(xa0 + xa1 * m, zb0 + zb1 * m, band, sk) < 0.0) {
+                            hi_ = m;
+                        } else {
+                            lo_ = m;
+                        }
+                    }
+                    if (hi_ < bt_hit && i > 0) {
+                        bt_hit = hi_;
+                        bxa = xa0 + xa1 * hi_;
+                        bzb = zb0 + zb1 * hi_;
+                        bband = band;
                         found = true;
                     }
                     break;
                 }
-                prev = dh;
                 tp = tt;
             }
         }
         // where its real heaps stand they take over once built; further along it the drawn ones last the strike
         let real = select(1.0 - smoothstep(DF_FALL1 + 9.0, DF_FALL1 + 13.0, time), 1.0 - smoothstep(DF_END - 3.0, DF_END, time), bxa > DF_XP + DF_REAL_A + 8.0);
         if (found && real > 0.0) {
+            // heaped earth and rock: its slope from the heap's own shape, the blocks it is made of (dirt, coarse dirt,
+            // gravel, stone, the odd boulder), darker down in its folds
             let pb = cam + rd * bt_hit;
-            let n1 = fvnoise(pb.xz * 0.4);
-            let n2 = fvnoise(pb.xz * 0.07 + vec2<f32>(3.0, 1.0));
-            let alb = mix(vec3<f32>(0.2, 0.14, 0.09), vec3<f32>(0.22, 0.21, 0.2), smoothstep(0.65, 0.8, n2)) * (0.75 + 0.4 * n1);
-            let lam = 0.3 + 0.7 * max(dot(bn, sun), 0.0) * day;
+            let h0 = df_heap(bxa, bzb, bband, sk);
+            let gx = df_heap(bxa + 1.5, bzb, bband, sk) - df_heap(bxa - 1.5, bzb, bband, sk);
+            let gz = df_heap(bxa, bzb + 1.5, bband, sk) - df_heap(bxa, bzb - 1.5, bband, sk);
+            let gw = hf * gx / 3.0 + sd * gz / 3.0;
+            let bn = normalize(vec3<f32>(-gw.x, 1.0, -gw.y));
+            let cell = floor(pb);
+            let bh = fh21(cell.xz + vec2<f32>(cell.y * 7.1, 3.0));
+            let big = fvnoise(pb.xz * 0.11 + vec2<f32>(7.0, 2.0));
+            var alb = vec3<f32>(0.2, 0.14, 0.09);
+            alb = select(alb, vec3<f32>(0.15, 0.11, 0.075), bh > 0.55);
+            alb = select(alb, vec3<f32>(0.24, 0.22, 0.2), bh > 0.8 || big > 0.72);
+            alb = select(alb, vec3<f32>(0.3, 0.29, 0.28), bh > 0.93);
+            alb = alb * (0.8 + 0.3 * fh21(floor(pb.xz * 4.0) + vec2<f32>(cell.y)));
+            let fold = saturate(0.45 + 0.08 * h0 + 0.5 * (bn.y - 0.6));
+            let lam = (0.25 + 0.75 * max(dot(bn, sun), 0.0) * day) * fold;
             col = mix(col, alb * lam * dim, real);
             add = add * (1.0 - real);
         }
@@ -1836,9 +2387,18 @@ fn downfall(in: StageIn) -> vec4<f32> {
     }
     if (pH.z > 0.0 && (opened || groan > 0.0)) {
         let dd = (uv - pH.xy) * vec2<f32>(aspect, 1.0);
+        // the disk's glare and the streak through it come from the disk itself: only while it is in sight (not behind
+        // the wreck or the land), and softer close to, where the disk itself fills the view
+        var hole_vis = 0.0;
+        if (all(pH.xy > vec2<f32>(0.0)) && all(pH.xy < vec2<f32>(1.0))) {
+            let dh0 = depth_at(pH.xy);
+            let land = is_sky(dh0) || length(world_offset(pH.xy, dh0)) > length(H) - rs * 3.0;
+            hole_vis = select(0.0, 1.0, land && !(wreck_on && df_blocks(P, H)));
+        }
+        let near_k = mix(0.3, 1.0, smoothstep(120.0, 600.0, length(H)));
         add = add + vec3<f32>(1.6, 1.2, 2.4) * exp(-pow((sdist - bt * 2.0) / 0.02, 2.0)) * exp(-max(bt, 0.0) * 2.2) * f32(opened) * 0.8 * k;
-        add = add + vec3<f32>(1.2, 0.6, 0.35) * disk_env * hot * 0.25 / (1.0 + dot(dd, dd) * 40.0) * k;
-        add = add + vec3<f32>(1.2, 0.5, 2.6) * exp(-abs(dd.y) * 240.0) * exp(-abs(dd.x) * 2.6) * (disk_env * 0.6 + evap * 2.0) * k;
+        add = add + vec3<f32>(1.2, 0.6, 0.35) * disk_env * hot * 0.2 / (1.0 + dot(dd, dd) * 90.0) * hole_vis * near_k * k;
+        add = add + vec3<f32>(1.2, 0.5, 2.6) * exp(-abs(dd.y) * 240.0) * exp(-abs(dd.x) * 2.6) * (disk_env * 0.6 * near_k + evap * 2.0) * hole_vis * k;
     }
     let ps_c = project_rel(c0w - cam);
     if (ps_c.z > 0.0 && crashed && crash_t < 3.0) {

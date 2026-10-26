@@ -19,7 +19,7 @@ use horizon_mod_sdk::{
     log, render, storage, ui, world,
 };
 use lasers::{LASERS, is_ship};
-use strike::{APPROACHES, ARRIVALS, Act, FIRE, Target};
+use strike::{APPROACHES, ARRIVALS, Act, COLOUR_RGB, COLOURS, FIRE, Target};
 
 const DESIGNATOR: &str = "orbital:laser_designator";
 const REMOTE: &str = "orbital:remote";
@@ -65,6 +65,22 @@ struct Strike {
     params: [f32; 16],
 }
 
+/// What is kept between sessions.
+struct Settings {
+    laser: usize,
+    terrain: bool,
+    messages: bool,
+    approach: usize,
+    arrival: usize,
+    page: usize,
+    colours: Vec<usize>,
+}
+
+/// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
+fn default_colour(i: usize) -> usize {
+    usize::from(LASERS[i].key == "downfall")
+}
+
 struct Orbital {
     /// The two post passes (0 every laser's, 1 the downfall's), the one the game last compiled, and the ones waiting to
     /// be compiled ahead of a strike, and whether one is being now (see `frame`).
@@ -78,11 +94,15 @@ struct Orbital {
     spare: std::collections::VecDeque<(u64, String)>,
     laser: usize,
     terrain: bool,
+    /// Whether the strikes put their messages over the hotbar (the replies to the player's own clicks always show).
+    messages: bool,
     /// Which way the ship lasers' ship comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
     approach: usize,
     arrival: usize,
     /// The wheel's page last shown.
     page: usize,
+    /// Each laser's ship colour (strike::COLOURS; only the ship lasers use theirs).
+    colours: Vec<usize>,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     strike: Option<Strike>,
@@ -96,55 +116,75 @@ struct Orbital {
 impl Orbital {
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\napproach={}\narrival={}\npage={}\n",
+            "laser={}\nterrain={}\nmessages={}\napproach={}\narrival={}\npage={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
+            u8::from(self.messages),
             APPROACHES[self.approach].key,
             ARRIVALS[self.arrival].key,
             self.page
         );
+        let mut text = text;
+        for (i, l) in LASERS.iter().enumerate() {
+            if is_ship(l) {
+                text += &format!("colour_{}={}\n", l.key, COLOURS[self.colours[i]].key);
+            }
+        }
         if let Err(e) = storage::set(SETTINGS, text.as_bytes()) {
             log::write(log::Level::Warn, &format!("settings not saved: {e}"));
         }
     }
-    fn load() -> (usize, bool, usize, usize, usize) {
+    fn load() -> Settings {
         let text = storage::get(SETTINGS).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
         let mut laser = 0;
         let mut terrain = true;
+        let mut messages = true;
         let mut approach = 0;
         let mut arrival = 0;
         let mut page = 0;
+        let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
                 Some(("laser", k)) => laser = LASERS.iter().position(|l| l.key == k).unwrap_or(0),
                 Some(("terrain", v)) => terrain = v != "0",
+                Some(("messages", v)) => messages = v != "0",
                 Some(("approach", k)) => approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("page", v)) => page = v.parse::<usize>().unwrap_or(0).min(wheel::pages() - 1),
+                Some((k, v)) if k.starts_with("colour_") => {
+                    if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
+                        colours[i] = c;
+                    }
+                }
                 _ => {}
             }
         }
-        (laser, terrain, approach, arrival, page)
+        Settings { laser, terrain, messages, approach, arrival, page, colours }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
     }
 
     // ---- the wheel ----
+    fn show_wheel(&self) {
+        if let Some(w) = &self.wheel {
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.approach, self.arrival, &self.colours));
+        }
+    }
     fn open_wheel(&mut self) {
         let mut w = wheel::Wheel::on_page(self.page);
         if let Some(c) = ui::cursor() {
             w.hover_at(c.x, c.y, self.laser);
         }
-        ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
         self.wheel = Some(w);
+        self.show_wheel();
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
     fn turn_page(&mut self, k: usize) {
         let Some(w) = &mut self.wheel else { return };
         w.turn(k);
         self.page = w.page;
-        ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
+        self.show_wheel();
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.2);
         self.save();
     }
@@ -182,13 +222,28 @@ impl Orbital {
                 Self::actionbar(&format!("{} LOADED: IT {}", l.title, ARRIVALS[a].label.to_uppercase()), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
+            Some(wheel::Spot::Colour(c)) => {
+                let i = row.unwrap_or(self.laser);
+                self.colours[i] = c;
+                self.laser = i;
+                self.save();
+                ui::close();
+                self.wheel = None;
+                let l = LASERS[i];
+                Self::actionbar(&format!("{} LOADED: LIT {}", l.title, COLOURS[c].button), l.color);
+                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
+            }
             Some(wheel::Spot::Centre) => {
                 self.terrain = !self.terrain;
                 self.save();
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.terrain { 1.6 } else { 1.0 });
-                if let Some(w) = &self.wheel {
-                    ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
-                }
+                self.show_wheel();
+            }
+            Some(wheel::Spot::Messages) => {
+                self.messages = !self.messages;
+                self.save();
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.messages { 1.6 } else { 1.0 });
+                self.show_wheel();
             }
             None => {}
         }
@@ -220,6 +275,7 @@ impl Orbital {
         if is_ship(laser) {
             params[12] = self.approach as f32;
             params[13] = self.arrival as f32;
+            params[15] = self.colours[self.laser] as f32;
         }
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
@@ -248,6 +304,8 @@ impl Orbital {
             let (_, act) = std::mem::replace(&mut s.plan[s.next], (0.0, Act::Cmd(String::new())));
             s.next += 1;
             match act {
+                // the strike's messages over the hotbar, unless they are switched off
+                Act::Cmd(c) if !self.messages && c.starts_with("title @s actionbar") => {}
                 Act::Cmd(c) => match strike::block_cost(&c) {
                     Some(cost) => self.carving.push_back((cost, c)),
                     None => cmds.push(c),
@@ -319,10 +377,12 @@ impl Orbital {
                 ("Orbital Laser".to_string(), 0xFFFFFF),
                 (format!("Laser: {}", l.title), l.rgb),
                 (format!("Terrain damage: {}", if self.terrain { "on" } else { "off" }), 0xA8B0BC),
+                (format!("Messages: {}", if self.messages { "on" } else { "off" }), 0xA8B0BC),
             ];
             if is_ship(l) {
                 lines.push((format!("Approach: {}", APPROACHES[self.approach].label), 0xA8B0BC));
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
+                lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
             if self.strike.is_some() {
                 lines.push(("Strike in progress".to_string(), 0xFF8A65));
@@ -349,7 +409,7 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let (laser, terrain, approach, arrival, page) = Orbital::load();
+        let Settings { laser, terrain, messages, approach, arrival, page, colours } = Orbital::load();
         let state = Orbital {
             passes: [SHADER.to_string(), downfall_pass()],
             compiled: None,
@@ -360,9 +420,11 @@ impl Mod for Orbital {
             spare: std::collections::VecDeque::new(),
             laser,
             terrain,
+            messages,
             approach,
             arrival,
             page,
+            colours,
             aiming: None,
             strike: None,
             wheel: None,
@@ -440,7 +502,7 @@ impl Mod for Orbital {
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
             && w.hover_at(c.x, c.y, self.laser)
         {
-            ui::show(&w.draws(self.laser, self.terrain, self.approach, self.arrival));
+            self.show_wheel();
         }
     }
 
@@ -470,15 +532,30 @@ impl Mod for Orbital {
                 self.save();
                 Ok(Some(format!("Terrain damage {v}")))
             }
+            (Some("colour" | "color"), Some(k)) if COLOURS.iter().any(|c| c.key == k) => {
+                let l = LASERS[self.laser];
+                if !is_ship(l) {
+                    return Err("The colour is the ship's: load the Mothership or the Downfall first".into());
+                }
+                self.colours[self.laser] = COLOURS.iter().position(|c| c.key == k).unwrap_or(0);
+                self.save();
+                Ok(Some(format!("The {} is lit {k}", l.title)))
+            }
+            (Some("messages"), Some(v @ ("on" | "off"))) => {
+                self.messages = v == "on";
+                self.save();
+                Ok(Some(format!("Strike messages {v}")))
+            }
             (Some(key), None) if LASERS.iter().any(|l| l.key == key) => {
                 self.laser = LASERS.iter().position(|l| l.key == key).unwrap_or(0);
                 self.save();
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | approach {} | arrival {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
+                COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 LASERS.iter().map(|l| l.key).collect::<Vec<_>>().join(" | ")
             )),
         }

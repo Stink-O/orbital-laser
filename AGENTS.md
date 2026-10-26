@@ -30,7 +30,7 @@ python3 install.py                  # install the mod into Horizon's game folder
 python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
 ```
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` or `downfall`, `/orbital approach …`, `/orbital arrival …`, `/orbital terrain on|off`.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` or `downfall`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall is on the second.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.

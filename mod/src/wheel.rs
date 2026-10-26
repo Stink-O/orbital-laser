@@ -1,12 +1,14 @@
 //! The laser wheel (capability `ui`): a ring of segments, one per laser, round
-//! a centre button that switches terrain damage. The lasers are laid out in
+//! a centre button that switches terrain damage, and a switch over the ring's
+//! top right for the strikes' messages over the hotbar. The lasers are laid out in
 //! pages of five (arrows either side of the ring and numbered tabs over it
 //! turn the page; so does a right-click). Under the ring, two rows of buttons
-//! for which way a ship laser's ship comes in and how it arrives (shown while
-//! one is loaded, or its segment is pointed at). Drawn by the game from the
+//! for which way a ship laser's ship comes in and how it arrives, and a row of
+//! swatches for the colour it is lit in (shown while one is loaded, or its
+//! segment is pointed at). Drawn by the game from the
 //! shapes built here; GUI pixels, from the centre of the screen.
 use crate::lasers::{LASERS, Laser, is_ship};
-use crate::strike::{APPROACHES, ARRIVALS, Choice};
+use crate::strike::{APPROACHES, ARRIVALS, COLOUR_RGB, COLOURS, Choice};
 use horizon_mod_sdk::ui::{Draw, Point, Rect};
 use std::f32::consts::{PI, TAU};
 
@@ -16,7 +18,7 @@ const R_OUT: f32 = 96.0;
 const GAP: f32 = 0.035;
 /// Segments a page.
 pub const PAGE: usize = 5;
-/// The ship lasers' rows under the ring (approach, then arrival): the first's top, each button's size, and the space
+/// The ship lasers' rows under the ring (approach, arrival, colour): the first's top, each button's size, and the space
 /// between them.
 const ROW_Y: f32 = R_OUT + 20.0;
 const BTN_W: f32 = 46.0;
@@ -29,14 +31,20 @@ const ARROW_H: f32 = 34.0;
 const TAB_Y: f32 = -R_OUT - 16.0;
 const TAB_W: f32 = 20.0;
 const TAB_H: f32 = 11.0;
+/// The strike messages' switch, over the ring's top right.
+const MSG: Rect = Rect { x: R_OUT - 30.0, y: -R_OUT - 33.0, w: 80.0, h: 15.0 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Spot {
     Laser(usize),
     Centre,
+    /// The strike messages' switch.
+    Messages,
     /// One of the ship's approaches (strike::APPROACHES), or ways of arriving (strike::ARRIVALS).
     Approach(usize),
     Arrival(usize),
+    /// One of the ship's colours (strike::COLOURS).
+    Colour(usize),
     /// A page arrow or tab: the page it turns to.
     Page(usize),
 }
@@ -59,13 +67,30 @@ pub fn page_of(i: usize) -> usize {
     i / PAGE
 }
 
-/// Row `row`'s buttons (0 approach, 1 arrival), left to right, each row centred.
+/// Row `row`'s buttons (0 approach, 1 arrival, 2 colour), left to right: the approaches centred, the ways of arriving
+/// under them with the colours' swatches beside them, the two together centred.
+const SWATCH: f32 = 14.0;
 fn button(row: usize, k: usize) -> Rect {
-    let n = [APPROACHES.len(), ARRIVALS.len()][row] as f32;
-    let x0 = -(n * BTN_W + (n - 1.0) * BTN_GAP) / 2.0;
-    Rect { x: x0 + k as f32 * (BTN_W + BTN_GAP), y: ROW_Y + row as f32 * (BTN_H + BTN_GAP + 2.0), w: BTN_W, h: BTN_H }
+    let y = ROW_Y + row.min(1) as f32 * (BTN_H + BTN_GAP + 2.0);
+    if row == 0 {
+        let n = ROWS[0].len() as f32;
+        let x0 = -(n * BTN_W + (n - 1.0) * BTN_GAP) / 2.0;
+        return Rect { x: x0 + k as f32 * (BTN_W + BTN_GAP), y, w: BTN_W, h: BTN_H };
+    }
+    let na = ROWS[1].len() as f32;
+    let nc = ROWS[2].len() as f32;
+    let wa = na * BTN_W + (na - 1.0) * BTN_GAP;
+    let x0 = -(wa + 12.0 + nc * SWATCH + (nc - 1.0) * 3.0) / 2.0;
+    if row == 1 {
+        Rect { x: x0 + k as f32 * (BTN_W + BTN_GAP), y, w: BTN_W, h: BTN_H }
+    } else {
+        Rect { x: x0 + wa + 12.0 + k as f32 * (SWATCH + 3.0), y: y + 1.0, w: SWATCH, h: SWATCH }
+    }
 }
-const ROWS: [&[Choice]; 2] = [&APPROACHES, &ARRIVALS];
+const ROWS: [&[Choice]; 3] = [&APPROACHES, &ARRIVALS, &COLOURS];
+fn row_spot(r: usize, k: usize) -> Spot {
+    [Spot::Approach(k), Spot::Arrival(k), Spot::Colour(k)][r]
+}
 /// The page arrows: 0 back (left of the ring), 1 on (right of it).
 fn arrow(k: usize) -> Rect {
     let x = if k == 0 { -ARROW_X } else { ARROW_X };
@@ -91,10 +116,13 @@ pub fn spot(x: f32, y: f32, row: bool, page: usize) -> Option<Spot> {
         for (r, items) in ROWS.iter().enumerate() {
             for k in 0..items.len() {
                 if inside(&button(r, k), x, y) {
-                    return Some(if r == 0 { Spot::Approach(k) } else { Spot::Arrival(k) });
+                    return Some(row_spot(r, k));
                 }
             }
         }
+    }
+    if inside(&MSG, x, y) {
+        return Some(Spot::Messages);
     }
     if pages() > 1 {
         for k in 0..2 {
@@ -196,7 +224,7 @@ impl Wheel {
         changed
     }
 
-    pub fn draws(&self, selected: usize, terrain: bool, approach: usize, arrival: usize) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, approach: usize, arrival: usize, colours: &[usize]) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -230,20 +258,36 @@ impl Wheel {
         sector(&mut out, 0.0, TAU, R_IN - 1.5, R_IN, if terrain { 0xFF62D46A } else { 0xFFE0524E });
         text(&mut out, "TERRAIN", 0.0, -9.0, 0xB8BEC8);
         text(&mut out, if terrain { "ON" } else { "OFF" }, 0.0, 2.0, if terrain { 0x7CE884 } else { 0xF06A64 });
+        // the strike messages: on or off, the way the centre shows terrain damage
+        let hovered = self.hover == Some(Spot::Messages);
+        out.push(Draw::Fill((MSG, if hovered { 0xF0262A31 } else { 0xD0101318 })));
+        out.push(Draw::Fill((Rect { x: MSG.x, y: MSG.y + MSG.h - 1.5, w: MSG.w, h: 1.5 }, if messages { 0xFF62D46A } else { 0xFFE0524E })));
+        text(&mut out, "MESSAGES", MSG.x + 27.0, MSG.y + 4.0, 0xB8BEC8);
+        text(&mut out, if messages { "ON" } else { "OFF" }, MSG.x + 64.0, MSG.y + 4.0, if messages { 0x7CE884 } else { 0xF06A64 });
         // title, the pages, hint, and what the highlighted laser does
         text(&mut out, "ORBITAL LASER", 0.0, -R_OUT - 30.0, 0xFFFFFF);
         if pages() > 1 {
             self.page_controls(&mut out, selected);
         }
-        // the ship's approaches and ways of arriving: the ones it will use lit in its laser's colour
+        // the ship's approaches, ways of arriving and colours: the ones it will use lit in its laser's colour (each
+        // colour's swatch in its own)
         let row = self.row_laser(selected);
         let below = if let Some(rl) = row {
             let ms = LASERS[rl];
             for (r, items) in ROWS.iter().enumerate() {
-                let chosen = [approach, arrival][r];
+                let chosen = [approach, arrival, colours.get(rl).copied().unwrap_or(0)][r];
                 for (k, a) in items.iter().enumerate() {
                     let b = button(r, k);
-                    let hovered = self.hover == Some(if r == 0 { Spot::Approach(k) } else { Spot::Arrival(k) });
+                    let hovered = self.hover == Some(row_spot(r, k));
+                    if r == 2 {
+                        // a swatch: the picked one ringed in white, the one pointed at brighter
+                        if k == chosen {
+                            out.push(Draw::Fill((Rect { x: b.x - 1.5, y: b.y - 1.5, w: b.w + 3.0, h: b.h + 3.0 }, 0xFFFFFFFF)));
+                        }
+                        let c = COLOUR_RGB[k];
+                        out.push(Draw::Fill((Rect { x: b.x, y: b.y, w: b.w, h: b.h }, argb(0xFF, if hovered { shade(c, 1.25) } else { shade(c, 0.85) }))));
+                        continue;
+                    }
                     let body = if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 };
                     out.push(Draw::Fill((Rect { x: b.x, y: b.y, w: b.w, h: b.h }, body)));
                     let rim = if k == chosen { 2.0 } else { 1.0 };
@@ -259,11 +303,13 @@ impl Wheel {
         };
         let hint = match self.hover {
             Some(Spot::Centre) => "Click: terrain damage on or off".to_string(),
+            Some(Spot::Messages) => "Click: strike messages over the hotbar on or off (replies to your clicks stay)".to_string(),
             Some(Spot::Laser(_)) => "Click to load this laser".to_string(),
             Some(Spot::Approach(k)) => format!("Click: the ship comes in {}", APPROACHES[k].label),
             Some(Spot::Arrival(k)) => format!("Click: the ship {}", ARRIVALS[k].label),
+            Some(Spot::Colour(k)) => format!("Click: the ship lit {}", COLOURS[k].label),
             Some(Spot::Page(k)) => format!("Click: page {} of {}", k + 1, pages()),
-            None if row.is_some() => "Pick a laser, or how the ship comes in and arrives  ·  Esc to close".to_string(),
+            None if row.is_some() => "Pick a laser, or how the ship comes in, arrives and is lit  ·  Esc to close".to_string(),
             None if pages() > 1 => "Pick a laser  ·  arrows or right-click: more lasers  ·  Esc to close".to_string(),
             None => "Pick a laser  ·  Esc to close".to_string(),
         };
@@ -344,6 +390,12 @@ mod tests {
             assert_eq!(spot(c.x, c.y, false, last), None);
         }
         assert_eq!(spot(0.0, 300.0, false, 0), None);
+        // the messages' switch, on every page, clear of the ring, the title, the tabs and the arrows
+        for page in 0..pages() {
+            assert_eq!(spot(MSG.x + MSG.w / 2.0, MSG.y + MSG.h / 2.0, true, page), Some(Spot::Messages));
+        }
+        let corner = (MSG.x * MSG.x + (MSG.y + MSG.h) * (MSG.y + MSG.h)).sqrt();
+        assert!(corner > R_OUT + 14.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
         assert_eq!(page_of(ship("downfall")), 1);
     }
     #[test]
@@ -381,6 +433,13 @@ mod tests {
             let b = button(1, k);
             assert!(b.y > button(0, 0).y + BTN_H);
             assert_eq!(spot(b.x + b.w / 2.0, b.y + b.h / 2.0, true, 1), Some(Spot::Arrival(k)));
+        }
+        for k in 0..COLOURS.len() {
+            let b = button(2, k);
+            // (beside the ways of arriving, clear of them)
+            assert!(b.x > button(1, ARRIVALS.len() - 1).x + BTN_W + 4.0 && (b.y - button(1, 0).y).abs() < 2.0);
+            assert_eq!(spot(b.x + b.w / 2.0, b.y + b.h / 2.0, true, 0), Some(Spot::Colour(k)));
+            assert_ne!(spot(b.x + b.w / 2.0, b.y + b.h / 2.0, false, 0), Some(Spot::Colour(k)));
         }
         // pointing at either ship opens its rows, on its own page, and they stay open on the way down to them
         for key in ["mothership", "downfall"] {

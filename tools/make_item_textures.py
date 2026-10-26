@@ -30,6 +30,8 @@ K = {  # palette
     "m": (63, 224, 90, 255),      # mothership green
     "M": (24, 120, 44, 255),      # dark green
     "h": (34, 40, 54, 255),       # hull
+    "e": (226, 58, 40, 255),      # the downfall's red lights
+    "E": (120, 22, 16, 255),      # dark red
 }
 
 def designator():
@@ -192,8 +194,8 @@ DOWNFALL_ICON = [          # the mothership coming down stern first, burning, sm
     "......ddGGGdGdd.",
     ".....dhhhhOyGhd.",
     "....dhhhhhhOhhd.",
-    "...dhhMmhhhhhd..",
-    "..dhhMMhhhhhd...",
+    "...dhhEehhhhhd..",
+    "..dhhEEhhhhhd...",
     ".vphhhhhhhdd....",
     "vpkpphhhdd......",
     "pkkkpdd.........",
