@@ -9,8 +9,8 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Horizon's stock mod SDK (command.run-quiet arrives in ludovic111/horizon#2140 and the PR after it).
-horizon-mod-sdk = { git = "https://github.com/ludovic111/horizon", branch = "feat/mod-run-quiet" }
+# Horizon's stock mod SDK (command.run-quiet: API level 3, in the first Horizon release after 0.2.73).
+horizon-mod-sdk = { git = "https://github.com/ludovic111/horizon", branch = "main" }
 
 [profile.release]
 opt-level = "s"

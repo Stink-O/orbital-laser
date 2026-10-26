@@ -428,8 +428,8 @@ and sweeps, with a reverb built from a synthetic impulse response.
 
 ## Stock Horizon
 
-**The stock port.** `mod/` also builds against stock Horizon's mod API: it needs a Horizon release with mod API level 3,
-which adds `game.raycast` and `command.run-quiet`. Every laser fires the same way and leaves the same crater, sounds and
+**The stock port.** `mod/` also builds against stock Horizon's mod API: it needs a Horizon release with mod API level 3
+(`command.run-quiet`, on top of level 2's `game.raycast`): the first release after 0.2.73. Every laser fires the same way and leaves the same crater, sounds and
 particles, and the wheel is a screen of the game's own widgets (a list of lasers and a list of switches). What the
 stock build doesn't have yet:
 
