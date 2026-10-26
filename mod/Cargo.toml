@@ -1,6 +1,6 @@
 [package]
 name = "orbital-laser"
-version = "0.6.0"
+version = "0.5.1"
 edition = "2024"
 description = "Orbital Laser: a Horizon mod. Call down an orbital strike that drills a crater to bedrock."
 license = "MIT"

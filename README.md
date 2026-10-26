@@ -69,7 +69,7 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 > and the ready-built Horizon is Linux x86-64 only (others can build the fork from source).
 
 **Contents:** [Features](#features) ·
-[New in 0.6.0](#new-in-060) ·
+[New in 0.5.1](#new-in-051) ·
 [New in 0.5.0](#new-in-050) ·
 [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) ·
@@ -156,7 +156,7 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
 
-## New in 0.6.0
+## New in 0.5.1
 
 <p align="center">
   <img alt="The Downfall: the burning ship ploughing into a mountain, earth flung up along its sides, smoke trailing behind" width="720" src="docs/15-downfall-crash.jpg">
@@ -264,7 +264,7 @@ was a shader pack, a sound pack and a Python script driving the game from outsid
    Already have Horizon set up? Skip that and point `HORIZON_RESOURCES` at the prepared resources it already has (the
    folder `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.6.0.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.1.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
