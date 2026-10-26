@@ -274,8 +274,8 @@ pub const DOWNFALL: Laser = Laser {
     particle_b: "particle minecraft:reverse_portal {x} {y} {z} {r} 2 {r} 0.2 40 force",
 };
 
-/// The planet killer, planned in `strike::planetkiller_plan`: seven towers round the horizon, their beams meeting high
-/// over the target, and the one beam they make coming down on it. The crater, the shaft and their lining below are its
+/// The planet killer, planned in `strike::planetkiller_plan`: seven towers round the horizon, their beams feeding a ring
+/// of light high over the target, and the one beam it fires coming down on it. The crater, the shaft and their lining below are its
 /// own, by far the biggest of any laser; the blast, the terraces, the rim, the fissures and the ejecta are planned there.
 pub const PLANET_KILLER: Laser = Laser {
     key: "planetkiller",
@@ -283,7 +283,7 @@ pub const PLANET_KILLER: Laser = Laser {
     title: "PLANET KILLER",
     color: "blue",
     rgb: 0x4D7CFF,
-    blurb: "Seven towers tear up out of the land on the horizon and fire columns of light that bend over and meet high above the target. They fuse and one beam comes down: the land domes up and bursts, and it leaves a crater 260 blocks across and 70 deep, fissures splitting the land for 300 blocks and a mushroom cloud.",
+    blurb: "Seven towers tear up out of the land on the horizon and whip their beams onto a ring of light high above the target. It spins up and fires one beam down through it: the land domes up and bursts, leaving a crater 260 blocks across and 70 deep, fissures splitting the land for 300 blocks and a mushroom cloud.",
     icon_model: "orbital:planetkiller_icon",
     length: 26.0,
     // a long way off, like the ship lasers: it is best watched from a distance

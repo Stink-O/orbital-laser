@@ -5,19 +5,24 @@
 
 // ---- laser 6: the planet killer -----------------------------------------------------------------------------------
 // Seven towers tear up out of the land far out round the horizon, one after another, dark against a sky going dark, the
-// light running up their seams. Each fires a column of light straight up into the sky, then bends it over like a
-// searchlight onto a point high over the target, the beams braided with strands of light and surges racing along them.
-// Where they meet a star swells inside spinning rings, bending the light round it and drawing streaks of light in,
-// until it shudders out of true and they fuse: a flash, a ring of fire tearing out through the sky, the sky cracking and
-// the clouds blown open. One beam comes down. The land under it domes up, cracking with light, and bursts: a fireball, a
-// column of ejecta, a shock ring rippling out through the land and a wall of dust, debris spiralling up round the beam,
-// the crater molten and fissures running out from it pulsing with light. Then the towers go dark and sink, their beams
-// draining into the star; it collapses, drops into the crater and bursts again, and a mushroom of glowing smoke climbs
-// over the crater as the daylight comes back. strike.rs times the same strike, digs the same crater and opens the same
-// fissures (pk_crack): keep the PK_* and pk_* in step.
+// light running up their seams. Each fires a column of light straight up into the sky, then whips it over onto a ring of
+// light forming high over the target, curling in to feed it like a pinwheel, the beams white-hot cores in turbulent
+// sheaths with light flowing along them. The ring lights up from where each beam strikes it, round to the next, until it
+// is whole; it spins up, pulses racing round it and runes turning on it, the light bending inside it, until it shudders,
+// tightens and fills with light, and they fuse: a flash, a ring of fire tearing out through the sky, the sky cracking and
+// the clouds blown open. One beam comes down through it. The land under it domes up, cracking with light, and bursts: a
+// fireball, a column of ejecta, a shock ring rippling out through the land and a wall of dust, debris spiralling up round
+// the beam, the crater molten and fissures running out from it pulsing with light. Then the towers go dark and sink,
+// their beams draining into the ring; it crushes in to a point, drops into the crater and bursts again, and a mushroom of
+// glowing smoke climbs over the crater as the daylight comes back. strike.rs times the same strike, digs the same crater
+// and opens the same fissures (pk_crack): keep the PK_* and pk_* in step.
 
 const PK_N: i32 = 7;               // the towers
-const PK_H: f32 = 300.0;           // the nexus, where their beams meet, this high over the target
+const PK_H: f32 = 300.0;           // the ring their beams feed, its middle this high over the target,
+const PK_RING_R: f32 = 220.0;      // this wide, tightening to PK_RING_T as they fuse,
+const PK_RING_T: f32 = 150.0;
+const PK_RING_TILT: f32 = 0.22;    // its face tipped this far towards the player, so it reads from the ground,
+const PK_RING_V: f32 = 2.6;        // and lit round from each beam at this many radians a second
 const PK_SRC_R: f32 = 1500.0;      // how far out the towers stand
 const PK_TOWER_H: f32 = 420.0;     // how tall they stand, and how wide at the foot
 const PK_TOWER_R: f32 = 62.0;
@@ -26,15 +31,15 @@ const PK_IGN0: f32 = 0.51;         // the first fires (it starts to rise as the 
 const PK_IGN1: f32 = 1.71;
 const PK_UP: f32 = 0.25;           // its column reaches PK_COL high this long after it fires,
 const PK_COL: f32 = 1100.0;
-const PK_BEND0: f32 = 0.45;        // and bends over onto the nexus from this long after it fires, over PK_BEND
+const PK_BEND0: f32 = 0.45;        // and whips over onto the ring from this long after it fires, over PK_BEND
 const PK_BEND: f32 = 0.8;
-const PK_SHAKE: f32 = 3.3;         // the nexus shudders out of true from here
+const PK_SHAKE: f32 = 3.3;         // the ring shudders and tightens from here
 const PK_MERGE: f32 = 4.0;         // keep in step with strike.rs: PK_IGN*, PK_RAISE, PK_MERGE, PK_HIT, PK_BURST, PK_CUT,
 const PK_DROP: f32 = 4.1;          // PK_POP, PK_BOWL, PK_BOWL_D, PK_DIG*, the cracks'
 const PK_HIT: f32 = 4.35;          // the one beam lands, the ground domes up,
 const PK_BURST: f32 = 4.85;        // and bursts
 const PK_CUT: f32 = 13.5;          // the towers cut out
-const PK_DRAIN: f32 = 0.4;         // their beams drain up into the nexus over this long, all done before it falls
+const PK_DRAIN: f32 = 0.4;         // their beams drain up into the ring over this long, all done before it falls
 const PK_FALL: f32 = 14.0;         // it drops into the crater,
 const PK_POP: f32 = 14.4;          // and bursts there
 const PK_END: f32 = 24.0;          // the daylight is back (the strike runs 26 s)
@@ -123,6 +128,14 @@ fn pk_ring(rd: vec3<f32>, C: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32) ->
     return vec3<f32>(length(P - rd * tq), tq, a);
 }
 
+// The colour of the beams' and the ring's light by how hot it is (0 to 1 and over): a deep blue haze, an electric
+// blue, cyan, then white.
+fn pk_heat(h: f32) -> vec3<f32> {
+    var c = mix(vec3<f32>(0.02, 0.05, 0.45), vec3<f32>(0.12, 0.45, 3.0), smoothstep(0.0, 0.35, h));
+    c = mix(c, vec3<f32>(0.7, 2.8, 5.2), smoothstep(0.3, 0.7, h));
+    return mix(c, vec3<f32>(6.5, 7.8, 9.5), smoothstep(0.65, 1.0, h));
+}
+
 // A band of light round C (camera-relative) at radius R in the plane with normal n, `w` blocks wide (at least a pixel
 // or so): met where the view ray crosses the plane, widened as the plane turns edge on so it never thins to nothing.
 // x how bright, y how far along the ray, z where round it (radians, from e1 towards e2).
@@ -184,8 +197,9 @@ fn pk_tower(b: vec3<f32>, lift: f32, rd: vec3<f32>) -> vec4<f32> {
 }
 
 // Where tower i's beam runs at `time` (camera-relative): a quadratic curve from its tip (a) through c to its end (b),
-// drawn from u0 to u1 of the way along. It fires a column straight up, bends it over onto the nexus, and at the end
-// drains from the tower end up into it.
+// drawn from u0 to u1 of the way along. It fires a column straight up, then bends it over onto its feed point F on the
+// ring, arriving along the ring (its tangent T there), so the seven of them wind onto it like a pinwheel; at the end it
+// drains from the tower end up into the ring.
 struct PkCurve {
     a: vec3<f32>,
     c: vec3<f32>,
@@ -193,20 +207,22 @@ struct PkCurve {
     u0: f32,
     u1: f32,
 }
-fn pk_curve(e: vec4<f32>, NX: vec3<f32>, cam: vec3<f32>, time: f32, i: i32, seed: f32) -> PkCurve {
+fn pk_curve(e: vec4<f32>, F: vec3<f32>, T: vec3<f32>, R: f32, cam: vec3<f32>, time: f32, i: i32, seed: f32) -> PkCurve {
     var cv: PkCurve;
     let et = time - e.w;
     cv.a = e.xyz - cam + vec3<f32>(0.0, PK_TOWER_H, 0.0);
-    // (a whip: its body bends over first and fast, its head following and drawn in to settle on the nexus, arriving
+    // (a whip: its body bends over first and fast, its head following and drawn in to settle on the ring, arriving
     // along the curve rather than stopping dead)
     let x = saturate((et - PK_BEND0) / PK_BEND);
     let body = 1.0 - pow(1.0 - x, 3.0);
     let head = x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
     let up = cv.a + vec3<f32>(0.0, PK_COL, 0.0);
-    let arc = mix(cv.a, NX, 0.35) + vec3<f32>(0.0, 420.0, 0.0);
-    cv.b = mix(up, NX, head);
+    // (in from outside the ring, curling round to join it at a slant along its turn)
+    let out = normalize(vec3<f32>(F.x - cv.a.x, 0.0, F.z - cv.a.z) * -1.0 + vec3<f32>(1.0e-4, 0.0, 0.0));
+    let arc = F - T * max(R, 60.0) * 0.55 + out * max(R, 60.0) * 1.1 + vec3<f32>(0.0, 70.0, 0.0);
+    cv.b = mix(up, F, head);
     cv.c = mix(cv.a + vec3<f32>(0.0, PK_COL * 0.5, 0.0), arc, body);
-    // (its head shoots up and slows as it reaches its height; at the end its tail rushes up into the nexus)
+    // (its head shoots up and slows as it reaches its height; at the end its tail rushes up into the ring)
     let h = saturate(et / PK_UP);
     cv.u1 = 1.0 - (1.0 - h) * (1.0 - h) * (1.0 - h);
     let dr = saturate((time - PK_CUT - 0.1 * mh(u32(i), u32(seed), 34u)) / PK_DRAIN);
@@ -248,27 +264,42 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     // the towers' power: rising with them, full while they fire, gone once they cut out
     let power = 1.0 - smoothstep(PK_CUT, PK_CUT + 0.8, time);
 
-    // the towers, and how many beams are feeding the nexus
+    // the ring's frame: its underside turned towards the player, and two directions across it (angles round it run from re1
+    // towards re2)
+    let tw = wing_dirs().xy;
+    let rn = normalize(vec3<f32>(-tw.x * PK_RING_TILT, 1.0, -tw.y * PK_RING_TILT));
+    let re1 = normalize(cross(rn, vec3<f32>(0.0, 0.0, 1.0)));
+    let re2 = cross(rn, re1);
+    // the towers, and how many beams are feeding the ring
     var em: array<vec4<f32>, 7>;
+    var fa: array<f32, 7>;                                      // where round the ring each beam feeds it
     var fed = 0.0;
     var lock = 0.0;                                             // a jolt of light as each beam locks on
     for (var i = 0; i < PK_N; i = i + 1) {
         em[i] = pk_emitter(i, seed);
+        let fv = em[i].xyz - tgt;
+        fa[i] = atan2(dot(fv, re2), dot(fv, re1));
         let lt = time - em[i].w - PK_BEND0 - PK_BEND;
         fed = fed + smoothstep(-PK_BEND * 0.3, 0.2, lt);
         lock = lock + select(0.0, exp(-lt * 7.0), lt > 0.0 && time < PK_CUT);
     }
-    // the nexus: a point when the first beam reaches it, swelling with each one after and with the charge, shuddering,
-    // blazing as they fuse, steady while it feeds the beam, collapsing as they drain, then falling into the crater
-    let collapse = 1.0 - 0.8 * smoothstep(PK_CUT + 0.2, PK_FALL, time);
+    // the ring: round the point over the target, tipped towards the player; it tightens as they fuse, holds while it
+    // feeds the beam, and crushes in to a point as they drain, which falls into the crater
+    let tight = smoothstep(PK_SHAKE, PK_MERGE, time);
+    let crush = saturate((time - PK_CUT - 0.1) / (PK_FALL - PK_CUT - 0.1));
+    let RR = mix(PK_RING_R, PK_RING_T, tight * tight) * (1.0 + 0.015 * sin(time * 9.0) * burn) * (1.0 - crush * crush);
     let fall = saturate((time - PK_FALL) / (PK_POP - PK_FALL));
     let NX0 = crel + vec3<f32>(0.0, PK_H, 0.0) + vec3<f32>(sin(time * 41.0), sin(time * 37.0 + 1.0), cos(time * 43.0)) * 2.5 * unstable;
     let NX = NX0 - vec3<f32>(0.0, (PK_H - 6.0) * fall * fall, 0.0);       // (falling, faster and faster)
-    let Rn = (1.5 + 1.1 * fed + 8.0 * charge * charge + 7.0 * select(0.0, exp(-merge_t * 3.0), merged) + 3.0 * lock)
-        * (0.93 + 0.07 * sin(time * 31.0) + 0.04 * sin(time * 53.0) + 0.25 * unstable * sin(time * 67.0))
-        * collapse * f32(fed > 0.0 && !popped);
-    let glow_n = saturate(fed / 3.0) * (0.4 + 0.6 * charge + 0.6 * burn) * collapse * f32(!popped);
-    let rings_on = saturate(fed / 2.0) * (1.0 - smoothstep(PK_CUT, PK_FALL, time));
+    // its middle: nothing until they fuse; then the white-hot heart the beam is fired from, and at the end the ring
+    // crushed into it
+    let fuse = smoothstep(PK_MERGE - 0.4, PK_MERGE, time);
+    let Rn = (fuse * (6.0 + 8.0 * select(0.0, exp(-merge_t * 3.0), merged)) * (1.0 - crush) + 14.0 * crush * crush + 2.0 * lock * fuse)
+        * (0.94 + 0.06 * sin(time * 31.0) + 0.04 * sin(time * 53.0)) * f32(!popped);
+    // how much of it is lit and how hard: the light it throws on the land and the clouds
+    let glow_n = saturate(fed / 7.0) * (0.5 + 0.7 * charge + 0.6 * burn) * (1.0 - crush) * f32(!popped);
+    // energy racing round it, faster and faster as it charges, and while it burns
+    let spin = time * 1.5 + 9.0 * charge * charge * charge * max(time - 1.5, 0.0) + 6.0 * burn * max(time - PK_DROP, 0.0);
 
     // ---- the light and the sky ------------------------------------------------
     let sun = frame.sun.xyz;
@@ -276,19 +307,25 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     let pT = project_rel(crel);
     let pN = project_rel(NX);
 
-    // ---- what bends the light: the nexus's pull, and the shock rings running out through the land ----------------
+    // ---- what bends the light: the ring, and the shock rings running out through the land -------------------------
     let d0 = depth_at(uv);
     let sky0 = is_sky(d0);
     let p0 = cam + world_offset(uv, select(d0, 0.5, sky0));
     var off = vec2<f32>(0.0);
     if (pN.z > 0.0 && glow_n > 0.01) {
-        // the light round the nexus pulled in towards it, harder as it charges and as it shudders
-        let side = normalize(cross(NX, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4, 0.0, 0.0));
-        let rs = length((project_rel(NX + side * Rn * 3.0).xy - pN.xy) * vec2<f32>(aspect, 1.0));
-        let dv = (uv - pN.xy) * vec2<f32>(aspect, 1.0);
-        let dl = max(length(dv), 1.0e-5);
-        let pull = rs * rs / max(dl, rs * 0.8) * (0.35 + 0.5 * charge + 0.8 * unstable) * exp(-dl / (rs * 6.0 + 1.0e-4));
-        off = off - dv / dl * min(pull, 0.05) / vec2<f32>(aspect, 1.0) * glow_n * k;
+        // what is seen through the ring bent towards its middle and turned with it, harder as it charges and as it
+        // shudders; a shimmer of heat in it
+        let r0d = normalize(world_offset(uv, 0.5));
+        let dn0 = dot(r0d, rn);
+        let tp0 = dot(NX0, rn) / select(dn0, 1.0e-4, abs(dn0) < 1.0e-4);
+        if (tp0 > 0.0) {
+            let in_ = saturate(1.0 - length(r0d * tp0 - NX0) / max(RR, 1.0));
+            let dv = uv - pN.xy;
+            let tw_ = in_ * in_ * (0.04 + 0.08 * charge + 0.1 * unstable) * glow_n;
+            off = off - dv * in_ * in_ * (0.05 + 0.08 * charge + 0.1 * unstable) * glow_n + vec2<f32>(-dv.y, dv.x) * tw_
+                + (vec2<f32>(gnoise2(uv * 90.0 + vec2<f32>(0.0, time * 3.0)), gnoise2(uv * 90.0 + vec2<f32>(17.0, time * 2.5))) - 0.5) * 0.004 * in_ * glow_n;
+            off = off * k;
+        }
     }
     if (pT.z > 0.0 && !sky0) {
         let r0 = length(p0.xz - tgt.xz);
@@ -334,7 +371,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     } else {
         col = col * (1.0 - 0.62 * dark * k);
     }
-    // the clouds blown open from under the nexus as they fuse, a rim of light running out round the hole
+    // the clouds blown open from under the ring as they fuse, a rim of light running out round the hole
     if (cloud && merged) {
         let dcl = length(P.xz - (NX + cam).xz);
         let Rh = 1100.0 * (1.0 - exp(-merge_t * 0.9));
@@ -376,7 +413,10 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             let yp = th.z;
             let u = yp / PK_TOWER_H;
             // dark metal, lit at its edge by the glow behind it; seams and bands of light, power surging up them
-            let body = vec3<f32>(0.025, 0.03, 0.04) * (0.35 + 0.65 * day) * (1.0 - 0.4 * dark) + PK_DEEP * pow(1.0 - th.w, 3.0) * 0.25 * (0.3 + lit);
+            // (and on the side facing the target by the ring and the beam)
+            let towards = saturate(dot(vec2<f32>(cos(th.y), sin(th.y)), normalize(-S.xz)));
+            let body = vec3<f32>(0.025, 0.03, 0.04) * (0.35 + 0.65 * day) * (1.0 - 0.4 * dark) + PK_DEEP * pow(1.0 - th.w, 3.0) * 0.25 * (0.3 + lit)
+                + pk_heat(0.3) * towards * (0.05 * glow_n + 0.04 * burn);
             let seam = exp(-pow(sin(th.y * 4.0) / 0.05, 2.0)) * smoothstep(0.84, 0.8, u);
             let band = exp(-pow((fract(yp / 38.0) - 0.5) / 0.04, 2.0));
             let surge = 0.35 + pow(0.5 + 0.5 * sin(yp * 0.035 - time * 12.0 + th.y), 6.0) * 1.6;
@@ -399,15 +439,17 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             * pk_occ(length(tip) - 5.0, scene_len, sky, cloud) * k;
     }
 
-    // ---- on the land: lit by the nexus and the beam, the shock rings, the crater and the fissures molten ----------
+    // ---- on the land: lit by the ring and the beam, the shock rings, the crater and the fissures molten ----------
     let rel2 = P.xz - tgt.xz;
     let r = length(rel2);
     let dy = P.y - tgt.y;
     if (!sky) {
         let on_ground = 1.0 - smoothstep(25.0, 40.0, dy);
-        // the nexus lights everything under it, like a second sun
-        let ln = NX + cam - P;
-        col = col + col * vec3<f32>(1.0, 1.7, 3.2) * glow_n * 90000.0 / (dot(ln, ln) + 60000.0) * k;
+        // the ring lights the land under it, a ring of blue light on it, falling off from its nearest point
+        let pr = P - cam - NX0;
+        let pp = pr - rn * dot(pr, rn);
+        let ql = pr - pp / max(length(pp), 1.0e-3) * RR;
+        col = col + col * vec3<f32>(0.9, 1.7, 3.4) * glow_n * 80000.0 / (dot(ql, ql) + 50000.0) * k;
         // the beam hard on the land round its foot
         col = col + col * vec3<f32>(1.6, 2.2, 3.6) * burn * 9000.0 / (r * r + dy * dy + 3000.0) * k;
         if (charge > 0.0 && hit_t < 0.5) {
@@ -479,10 +521,12 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             }
         }
     }
-    // the clouds lit from above by the nexus, from below by the beam
+    // the clouds lit from above by the ring, from below by the beam
     if (cloud) {
-        let dn = length((P - cam - NX).xz);
-        add = add + PK_HOT * (glow_n * 0.5 * exp(-dn / 160.0) + burn * 0.4 * exp(-length(rel2) / 80.0)) * k;
+        let pr = P - cam - NX0;
+        let pp = pr - rn * dot(pr, rn);
+        let dn = length(pr - pp / max(length(pp), 1.0e-3) * RR);
+        add = add + pk_heat(0.4) * (glow_n * 0.45 * exp(-dn / 140.0) + burn * 0.12 * exp(-length(rel2) / 80.0)) * k;
     }
 
     // ---- the land doming up under the beam, cracking with the light inside it, before it bursts --------------------
@@ -501,7 +545,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 let cn2 = abs(gnoise2(vec2<f32>(atan2(nd.z, nd.x) * 11.0, nd.y * 15.0) + vec2<f32>(seed + 7.0)) - 0.5);
                 let cracks = (exp(-cn / 0.014) + 0.6 * exp(-cn2 / 0.01)) * smoothstep(0.1, 0.8, s);
                 let top = exp(-(1.0 - nd.y) * 14.0);
-                // (lit from above by the nexus and the beam, its sides in shadow)
+                // (lit from above by the ring and the beam, its sides in shadow)
                 col = vec3<f32>(0.07, 0.06, 0.055) * (0.25 + 0.4 * day + 1.2 * max(nd.y, 0.0) * glow_n) * (1.0 - 0.4 * dark);
                 add = (lava_ramp(0.5 + 0.45 * cracks) * cracks * 3.0 + PK_HOT * top * 2.0 * s) * k;
                 scene_len = min(scene_len, td);
@@ -605,14 +649,16 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         add = add * (1.0 - dens * 0.85) + glow * after * smoothstep(0.0, 0.8, mt) * k;
     }
 
-    // ---- the towers' beams: columns straight up, bending over onto the nexus, braided, surges racing along them ----
+    // ---- the towers' beams: columns straight up, whipping over onto the ring, braided, light flowing along them ----
     for (var i = 0; i < PK_N; i = i + 1) {
         let e = em[i];
         let et = time - e.w;
         if (et <= 0.0) {
             continue;
         }
-        let cv = pk_curve(e, NX0, cam, time, i, seed);
+        let F = NX0 + (re1 * cos(fa[i]) + re2 * sin(fa[i])) * RR;
+        let T = re2 * cos(fa[i]) - re1 * sin(fa[i]);
+        let cv = pk_curve(e, F, T, RR, cam, time, i, seed);
         if (cv.u0 >= 1.0) {
             continue;
         }
@@ -657,42 +703,86 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             let wh = max(rc * 0.35, th * 0.0012);
             strands = strands + exp(-pow(dh / wh, 2.0)) * (rc * 0.35 / wh) * pk_occ(th, scene_len, sky, cloud);
         }
-        // (from far off, where the braid is too small to make out, only the beam; and it unwinds into the beam as it nears
-        // the nexus, so the beams go in clean)
-        let to_nx = length(axis - NX0);
-        strands = strands * smoothstep(0.02, 0.05, (rc * 2.6 + 2.0) / max(best.y, 1.0)) * smoothstep(30.0, 120.0, to_nx);
+        // (from far off, where the braid is too small to make out, only the beam; and it unwinds into the beam as it
+        // nears the ring, so the beams go in clean)
+        let to_f = length(axis - F);
+        strands = strands * smoothstep(0.02, 0.05, (rc * 2.6 + 2.0) / max(best.y, 1.0)) * smoothstep(30.0, 120.0, to_f);
         let pulse = pow(0.5 + 0.5 * sin(along * 0.012 - time * 26.0 + fi * 1.7), 10.0) * (0.4 + charge) + pow(0.5 + 0.5 * sin(along * 0.015 - time * 41.0 + fi), 14.0) * burn;
-        let crackle = 0.75 + 0.5 * gnoise2(vec2<f32>(along * 0.05 - time * 30.0, fi * 7.0));
-        let core = exp(-pow(best.x / (w * 0.5), 2.0));
-        let sheath = exp(-pow(best.x / (w * 1.6), 2.0)) * crackle;
-        let glow = exp(-best.x / (w * 6.0)) * (1.0 - smoothstep(w * 25.0, w * 40.0, best.x)) * smoothstep(10.0, 80.0, to_nx);
+        // a white-hot core in a turbulent sheath, streaks of it flowing along towards the ring, a haze round it in the air
+        let flow = 0.55 + 0.9 * gnoise2(vec2<f32>(along * 0.02 - time * 14.0, fi * 7.0 + best.x / w * 0.7));
+        let core = exp(-pow(best.x / (w * 0.45), 2.0));
+        let sheath = exp(-pow(best.x / (w * 1.5), 2.0)) * flow;
+        let glow = exp(-best.x / (w * 5.0)) * (1.0 - smoothstep(w * 25.0, w * 40.0, best.x)) * smoothstep(10.0, 80.0, to_f);
         // its head blazing as it climbs
         let head = exp(-pow((cv.u1 - best.z) * len / 15.0, 2.0)) * (1.0 - step(1.0, cv.u1));
-        // (the sheath narrowing in as it is drawn into the nexus)
-        let inflow = smoothstep(15.0, 90.0, to_nx);
-        let b = PK_WHITE * core * (1.0 + 1.5 * pulse + 3.0 * head) + PK_HOT * sheath * (0.6 + 1.6 * pulse + 2.0 * head) * (0.45 + 0.55 * inflow) + PK_DEEP * glow * 0.4;
-        add = add + (b * en * occ + (PK_HOT * 0.6 + PK_WHITE * 0.1) * strands) * k;
+        let heat = saturate(core * (0.95 + 0.3 * pulse) + sheath * (0.4 + 0.3 * pulse) + glow * 0.1 + head);
+        let bright = core * (1.0 + 1.5 * pulse + 3.0 * head) + sheath * (0.45 + 1.0 * pulse + 1.5 * head) * (0.5 + 0.5 * smoothstep(15.0, 90.0, to_f)) + glow * 0.9;
+        add = add + (pk_heat(heat) * bright * 0.95 * en * occ + pk_heat(0.62) * 0.5 * strands) * k;
     }
 
-    // ---- the nexus: a star where they meet, rings spinning round it, streaks of light drawn in, arcs over it -------
+    // ---- the ring: lit round from where each beam feeds it until it closes, a band of light with a white-hot outer
+    //      edge, a lit inner edge and a turbulent body, runes turning on it, energy racing round; filling with light as
+    //      they fuse; met where the view ray crosses its plane, so it is a clean ellipse from anywhere ----------------
+    let ring_vis = saturate(fed * 2.0) * (1.0 - smoothstep(PK_FALL - 0.05, PK_FALL + 0.05, time)) * f32(!popped);
     let tcn = dot(NX, rd);
     let lum_n = Rn / 14.0;
-    if (rings_on > 0.01 && tcn > 0.0) {
-        // three rings, each turning on its own tilted axis, faster as it charges, thrown out of true as it shudders
-        let Rr = (10.0 + 10.0 * charge + 6.0 * burn) * collapse;
-        for (var j = 0; j < 2; j = j + 1) {
-            let fj = f32(j);
-            let tilt = 0.5 + 0.55 * fj + unstable * 0.7 * sin(time * (23.0 + fj * 7.0));
-            let spin = (time + 6.0 * charge * charge * charge) * (0.6 + 0.5 * fj) + fj * 2.1 + unstable * 0.4 * sin(time * 53.0 + fj * 3.0);
-            let nrm = vec3<f32>(sin(tilt) * cos(spin), cos(tilt), sin(tilt) * sin(spin));
-            let e1 = normalize(cross(nrm, vec3<f32>(0.3, 0.1, 0.9)));
-            let e2 = cross(nrm, e1);
-            let rg = pk_band(rd, NX, e1, e2, max(Rr, Rn) * (2.2 + 0.6 * fj), 1.0 + 0.4 * charge);
-            let seg = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(rg.z * 3.0 + time * (6.0 + 3.0 * fj)), 2.0);
-            add = add + (PK_HOT + PK_WHITE * 0.15) * rg.x * 1.2 * seg * rings_on * (1.0 + 1.5 * unstable)
-                * pk_occ(rg.y, scene_len, sky, cloud) * k;
+    if (ring_vis > 0.0 && RR > 1.0) {
+        let dn = dot(rd, rn);
+        let tpl = dot(NX0, rn) / select(dn, 1.0e-4, abs(dn) < 1.0e-4);
+        if (tpl > 0.0) {
+            let X = rd * tpl - NX0;
+            let rr = length(X);
+            let th = atan2(dot(X, re2), dot(X, re1));
+            // (a pixel, in the ring's plane: every line is at least that wide, so nothing shimmers)
+            let fp = max(tpl * 0.0013, 0.3) / max(abs(dn), 0.1);
+            let rho = rr - RR;
+            let W = 24.0 + 10.0 * charge;
+            if (rho > -W - 40.0 - fp * 4.0 && rho < 90.0 + fp * 4.0) {
+                // how much of it is lit at this angle: each beam's arc running on round from where it feeds, gathering
+                // speed, a white-hot head leading it; each feed point flaring as its beam strikes
+                var lit = 0.0;
+                var lead = 0.0;
+                for (var i = 0; i < PK_N; i = i + 1) {
+                    let dt = time - (em[i].w + PK_BEND0 + PK_BEND - 0.05);
+                    if (dt <= 0.0) {
+                        continue;
+                    }
+                    let reach = PK_RING_V * dt * (1.0 + 0.6 * dt);
+                    var d = th - fa[i];
+                    d = d - TAU * floor(d / TAU);
+                    lit = max(lit, smoothstep(reach + 0.03, reach - 0.03, d));
+                    lead = max(lead, exp(-pow((d - reach) / 0.05, 2.0)) * (1.0 - smoothstep(TAU * 0.6, TAU, reach)));
+                    lead = max(lead, exp(-pow(min(d, TAU - d) / 0.04, 2.0)) * (0.35 + 1.5 * exp(-dt * 4.0)) * power);
+                }
+                let lw = max(2.2, fp);
+                let edge = exp(-pow(rho / lw, 2.0)) * (2.2 / lw);
+                let iw = max(1.4, fp);
+                let inner = exp(-pow((rho + W) / iw, 2.0)) * (1.4 / iw);
+                let body = smoothstep(-W - fp, -W + fp, rho) * smoothstep(fp, -fp, rho);
+                let flowr = gnoise2(vec2<f32>(th * RR * 0.04 - spin * 6.0, rho * 0.12 + seed));
+                let pls = pow(0.5 + 0.5 * cos(th * 7.0 - spin), 12.0);
+                // the runes: dashes turning on the band, half way in
+                let rw = max(1.2, fp);
+                let rune = exp(-pow((rho + W * 0.5) / rw, 2.0)) * (1.2 / rw) * smoothstep(0.62, 0.55, fract(th * 48.0 / TAU + spin * 0.08)) * smoothstep(0.2, 0.6, charge + burn);
+                let haze = exp(-max(rho, 0.0) / 45.0) * exp(-max(-rho - W, 0.0) / 30.0);
+                let level = (0.55 + 0.6 * charge + 0.5 * burn + 0.5 * unstable * (0.5 + 0.5 * sin(time * 47.0))) * ring_vis;
+                var c = pk_heat(1.0) * edge * (0.9 + 0.6 * pls) + pk_heat(0.75) * inner * 0.8
+                    + pk_heat(0.35 + 0.3 * flowr + 0.35 * pls) * body * (0.4 + 0.4 * flowr + 0.8 * pls)
+                    + pk_heat(0.7) * rune * 0.45 + pk_heat(0.1) * haze * 0.35;
+                c = c * lit + PK_WHITE * lead * (edge * 0.4 + body * 0.25) * 2.0
+                    + pk_heat(0.2) * (1.0 - lit) * edge * 0.08 * saturate(fed);
+                add = add + c * level * pk_occ(tpl, scene_len, sky, cloud) * k;
+            }
+            // as they fuse it fills with light, swirling in to its middle
+            let fill = fuse * (0.9 * select(1.0, exp(-merge_t * 1.2), merged) + 0.22 * burn) * (1.0 - crush);
+            if (fill > 0.001 && rho < -W) {
+                let sw = gfbm2(vec2<f32>(th * 3.0 + time * 1.4 - rr * 0.012, rr * 0.016 - time * 0.9));
+                let dsc = fill * (0.3 + 0.7 * sw) * (0.35 + 0.65 * saturate(1.0 - rr / RR)) * smoothstep(-W, -W - 15.0, rho);
+                add = add + pk_heat(0.25 + 0.45 * sw * fill) * dsc * 0.7 * ring_vis * pk_occ(tpl, scene_len, sky, cloud) * k;
+            }
         }
     }
+    // ---- its middle: the white-hot heart the beam is fired from, and the ring crushed into it, falling ----------
     if (Rn > 0.01 && tcn > 0.0) {
         let dcn = length(NX - rd * tcn);
         let occ = pk_occ(tcn - Rn, scene_len, sky, cloud);
@@ -701,59 +791,21 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         let hx = normalize(cross(rd, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4, 0.0, 0.0));
         let hy = cross(hx, rd);
         let o = rd * tcn - NX;
-        let p2 = vec2<f32>(dot(o, hx), dot(o, hy));
-        let ang = atan2(p2.y, p2.x);
+        let ang = atan2(dot(o, hy), dot(o, hx));
         let surf = gfbm2(vec2<f32>(ang * 2.5 + seed, dcn / wpx * 1.5 - time * 3.0));
-        let wob = 1.0 + unstable * 0.1 * sin(ang * 5.0 + time * 40.0);
         // (a hard white core, a thin rim of blue fire round it, a little haze: a star, not a blur)
-        let core = 1.0 - smoothstep(wpx * 0.9, wpx * 1.0, dcn * (0.94 + 0.12 * surf) / wob);
+        let core = 1.0 - smoothstep(wpx * 0.9, wpx * 1.0, dcn * (0.94 + 0.12 * surf));
         let rim = exp(-pow((dcn - wpx) / (wpx * 0.12), 2.0));
-        var star = PK_WHITE * 1.2 * core + PK_HOT * rim * (0.8 + 0.6 * surf + 1.5 * lock) * en
-            + PK_HOT * exp(-max(dcn - wpx, 0.0) / (wpx * 0.35)) * (0.4 + 0.5 * surf) * en
-            + PK_DEEP * exp(-dcn / (wpx * 3.0)) * 0.45 * en;
-        if (dcn < wpx * 4.0 && time < PK_FALL) {
-            // arcs of plasma leaping off it
-            let tq = floor(time * 16.0);
-            var arcs = 0.0;
-            for (var j = 0; j < 3; j = j + 1) {
-                let aj = fh21(vec2<f32>(f32(j) * 3.1, tq)) * TAU;
-                let dj = vec2<f32>(cos(aj), sin(aj));
-                let bl = bolt_line(p2, dj * wpx * 0.7, dj * wpx * (2.2 + 1.6 * fh21(vec2<f32>(f32(j), tq + 5.0))), seed + 50.0 + f32(j) * 3.0, tq, wpx * 0.06);
-                arcs = arcs + (bl.x + bl.y * 0.3) * step(0.3 - 0.3 * unstable, fh21(vec2<f32>(f32(j) + 9.0, tq)));
-            }
-            // (only a flicker of them while it feeds; they leap off it as it shudders)
-            star = star + (PK_WHITE * 0.5 + PK_HOT) * arcs * saturate(fed / 2.0) * (0.15 + 0.3 * burn + 2.0 * unstable) * en
-                * (1.0 - smoothstep(PK_CUT, PK_FALL, time));
-        }
+        var star = pk_heat(1.0) * 0.9 * core + pk_heat(0.7) * rim * (0.6 + 0.5 * surf) * en
+            + pk_heat(0.45) * exp(-max(dcn - wpx, 0.0) / (wpx * 0.35)) * (0.3 + 0.4 * surf) * en
+            + pk_heat(0.1) * exp(-dcn / (wpx * 3.0)) * 0.5 * en;
         if (fall > 0.0) {
             // falling: its trail down the line of the beam
             let q = ray_seg(rd, NX, NX + vec3<f32>(0.0, 120.0 * fall, 0.0));
             let wq = max(2.0, q.y * 0.0013);
-            star = star + PK_HOT * exp(-pow(q.x / wq, 2.0)) * (3.0 / wq) * (1.0 - q.z) * fall;
+            star = star + pk_heat(0.6) * exp(-pow(q.x / wq, 2.0)) * (3.0 / wq) * (1.0 - q.z) * fall;
         }
         add = add + star * occ * k;
-    }
-    if (charge > 0.01 && tcn > 0.0 && length(NX - rd * tcn) < 320.0 && time < PK_DROP) {
-        // light drawn in from round it, spiralling in faster as it closes
-        for (var j = 0; j < 16; j = j + 1) {
-            let fj = f32(j);
-            let per = 1.2 + 0.7 * fract(fj * 0.618034);
-            let u = fract((time + fract(fj * 0.754878) * per) / per);
-            let nr = normalize(vec3<f32>(fract(fj * 0.37) - 0.5, 0.6 + fract(fj * 0.71), fract(fj * 0.53) - 0.5));
-            let e1 = normalize(cross(nr, vec3<f32>(0.0, 0.0, 1.0)));
-            let e2 = cross(nr, e1);
-            let rad = 280.0 * pow(1.0 - u, 1.6) + 3.0;
-            let th = fj * 2.4 + u * 7.0;
-            let u1 = max(u - 0.05, 0.0);
-            let rad1 = 280.0 * pow(1.0 - u1, 1.6) + 3.0;
-            let th1 = fj * 2.4 + u1 * 7.0;
-            let pa = NX + (e1 * cos(th) + e2 * sin(th)) * rad;
-            let pb = NX + (e1 * cos(th1) + e2 * sin(th1)) * rad1;
-            let q = ray_seg(rd, pa, pb);
-            let wq = max(0.8, q.y * 0.0012);
-            add = add + (PK_HOT + PK_WHITE * 0.2 * u) * exp(-pow(q.x / wq, 2.0)) * (0.8 / wq) * u * u * charge * (1.0 - smoothstep(PK_MERGE, PK_DROP, time))
-                * pk_occ(q.y, scene_len, sky, cloud) * k;
-        }
     }
 
     // ---- as they fuse: a ring of fire tearing out through the sky, and the sky cracking open from the nexus -------
@@ -784,7 +836,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         }
     }
 
-    // the guide: a pencil-thin thread from the nexus to the target in the moments before it fires
+    // the guide: a pencil-thin thread from the ring's middle to the target in the moments before it fires
     if (time > 2.6 && time < PK_DROP) {
         let q = ray_seg(rdb, NX, crel);
         let w = max(0.15, q.y * 0.001);
@@ -792,7 +844,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             * pk_occ(q.y, scene_len, sky, cloud) * k;
     }
 
-    // ---- the beam: down from the nexus onto the target, a white core inside a blue sheath, strands wound round it ----
+    // ---- the beam: down from the ring's middle onto the target, a white core inside a blue sheath, strands wound round it ----
     if (burn > 0.001) {
         let G = crel - vec3<f32>(0.0, 14.0, 0.0);
         let xh = saturate((time - PK_DROP) / (PK_HIT - PK_DROP));
@@ -839,7 +891,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             var b = (PK_WHITE * core * (1.0 + 0.6 * pulse) + PK_HOT * inner * (0.28 + 0.6 * pulse) + PK_DEEP * outer * 0.4) * e;
             // the head of it, blazing, on its way down
             b = b + PK_WHITE * exp(-pow((q.z - 1.0) * (u_head - u_top) * lenb / 10.0, 2.0)) * core * 1.5 * (1.0 - step(1.0, u_head));
-            // (its strands wind out of it below the nexus, not round the nexus itself)
+            // (its strands wind out of it below the ring, not round its heart)
             strands = strands * smoothstep(40.0, 110.0, along);
             add = add + (b * vis + halo * PK_DEEP * 0.12 * e * vis_mix + (PK_HOT * 0.8 + PK_WHITE * 0.15) * strands * 1.5) * burn * k;
         }
@@ -949,7 +1001,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         add = add + (PK_HOT * 0.25 + vec3<f32>(0.5, 0.55, 0.6)) * limb * exp(-bt * 1.3) * pk_occ(tcs, scene_len, sky, cloud) * k;
     }
 
-    // ---- the lens: bloom round the nexus and the beam's foot, a long streak through the nexus --------------------
+    // ---- the lens: bloom round the ring's heart and the beam's foot, a long streak through the heart --------------
     if (pN.z > 0.0 && Rn > 0.01) {
         let dd = (uv - pN.xy) * vec2<f32>(aspect, 1.0);
         let l = lum_n * (0.6 + 0.5 * charge + 0.6 * burn) + select(0.0, exp(-merge_t * 4.0) * 1.5, merged) + lock * 0.8;
@@ -968,7 +1020,10 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     var outc = col + add;
     let vg = length((uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0));
     outc = outc * (1.0 - smoothstep(0.3, 1.0, vg) * (0.2 + 0.3 * dark) * k);
-    outc = aces(outc * 0.9);
+    // (tone-mapped so the brightest light keeps its colour: the filmic curve on its brightness, half on each channel)
+    let lum_o = max(luminance(outc * 0.9), 1.0e-5);
+    let hue = outc * 0.9 * (aces(vec3<f32>(lum_o)).x / lum_o);
+    outc = mix(aces(outc * 0.9), hue / max(1.0, max(hue.r, max(hue.g, hue.b))), 0.45);
     let srgb = linear_to_srgb(outc);
     if (capture() > 2.5) {
         let sp = floor(in.position.xy);

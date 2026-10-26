@@ -16,8 +16,8 @@ singularity that bends the light round it, tears the ground up into orbit and sw
 of meteors across the land and then an extinction-level impact, the most destructive of them all, **Mothership**, a
 kilometre-long ship that drops out of hyperspace over the target and cuts a molten trench across the land with its beam,
 **Downfall**, the same ship brought down by a meteor, crashing into the land, its black hole engine swallowing the wreck,
-or **Planet Killer**, seven towers rising out of the horizon whose beams bend over and fuse high above the target into
-one that comes down on it, leaving a crater 260 blocks across.
+or **Planet Killer**, seven towers rising out of the horizon whose beams feed a ring of light high above the target
+until it fires one beam down through it, leaving a crater 260 blocks across.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -156,16 +156,19 @@ one that comes down on it, leaving a crater 260 blocks across.
   clear of you.
 - **Planet Killer.** Seven towers, each over 400 blocks tall, tear up out of the land far out round the horizon one
   after another, dark against a sky going dark, the light running up their seams, each heard grinding up from where it
-  stands. Each fires a column of light straight up into the sky, then bends it over like a searchlight onto a point 300
-  blocks over the target, the beams braided with strands of light and surges racing along them. Where they meet a star
-  swells inside spinning rings, bending the light round it and drawing streaks of light in, until it shudders out of
-  true and they fuse: a flash, a ring of fire tearing out through the sky, the sky cracking open and the clouds blown
-  away. One beam, white-hot inside its blue sheath, comes down. The land under it domes up, cracking with light, and
+  stands. Each fires a column of light straight up into the sky, then whips it over onto a ring of light forming 300
+  blocks over the target, 440 across, the beams curling in to feed it like a pinwheel, white-hot cores in turbulent
+  sheaths, light flowing along them. The ring lights up from where each beam strikes it and runs round to meet the next
+  until it is whole, then spins up, pulses racing round it, runes turning on it, the light bending inside it, until it
+  shudders, tightens and fills with light, and they fuse: a flash, a ring of fire tearing out through the sky, the sky
+  cracking open and the clouds blown away. One beam, white-hot inside its blue sheath, comes down through the ring. The
+  land under it domes up, cracking with light, and
   bursts: a fireball, a column of ejecta, debris spiralling up round the beam, a shock ring rippling out through the land
   and a wall of dust. Everything above the ground is blown flat for 170 blocks, a crater 260 across and 70 deep is dug
   in terraces down to a lake of lava under the beam, with a shaft on to bedrock, a rim is thrown up round it, and twelve
   chasms split the land out to about 300 blocks, molten light pulsing along them. Then the towers go dark and sink, their
-  beams draining into the star; it drops into the crater and bursts again, and a mushroom of smoke, lit orange from below
+  beams draining into the ring; it crushes in to a point, which drops into the crater and bursts again, and a mushroom
+  of smoke, lit orange from below
   with lightning flickering in it, climbs over the crater as the daylight comes back. It reaches 1000 blocks: watch it
   from a long way off.
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
@@ -429,10 +432,10 @@ and charges from 4 (its meteor is a point of light far off from 2.5 s); the char
 from 8.4, the meteor breaks up at 11 and its pieces strike at about 15.4; it lurches down at 17 and 20, falls free,
 strikes at 30, its bow slams down at 30.65 and it is still by 32.6; its engine groans from 34, ruptures at 40, the last of
 the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64. The Planet Killer's towers
-rise from 0 s and fire from 0.5 to 1.7 s; their columns bend onto the nexus by about 3, it shudders from 3.3 and they
-fuse at 4 s; the one beam lands at 4.35, the land bursts at 4.85, the chasms open over the next 2 s and the crater is
-dug from 7.75 to about 15 s; the towers cut out at 13.5, the nexus drops into the crater and bursts at 14.4, and the
-mushroom climbs until the strike ends at 26.
+rise from 0 s and fire from 0.5 to 1.7 s; their columns whip onto the ring from about 1.7 to 3 s, it closes by about 3.4,
+shudders and tightens from 3.3 and they fuse at 4 s; the one beam lands at 4.35, the land bursts at 4.85, the chasms open
+over the next 2 s and the crater is dug from 7.75 to about 15 s; the towers cut out at 13.5, the ring crushes in, drops
+into the crater and bursts at 14.4, and the mushroom climbs until the strike ends at 26.
 
 **The effects** are one fragment shader, run as the mod's post pass after the fork's small prelude (the world's colour and depth, the camera and the mod's parameters). It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
@@ -450,8 +453,9 @@ other lasers nothing: the same hull, met in its own frame as it tilts (from any 
 Black Hole's lens, and its dust as a volume integrated along the view ray in closed form. Its fall, crash, gouge,
 chunks and the blocks the black hole tears up are worked out by the same formulas in the shader and in the mod. The
 Planet Killer has its own pass too ([`mod/shaders/planetkiller.wgsl`](mod/shaders/planetkiller.wgsl)): its towers are
-met as upright cylinders, its beams are curves met piece by piece by the view ray, with strands wound round them, its
-rings, nexus, dome and fireballs are traced as rings, spheres and domes, the mushroom's cap as a flattened ellipsoid, and
+met as upright cylinders, its beams are curves met piece by piece by the view ray, with strands wound round them, the
+ring is met where the view ray crosses its plane (a clean ellipse from any side), its heart, dome and fireballs are
+traced as spheres and domes, the mushroom's cap as a flattened ellipsoid, and
 the dust wall as a cylinder; its towers and its chasms are placed by the same hash in the shader and in the mod, and the
 crater glows layer by layer as the mod digs it.
 
