@@ -20,8 +20,9 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build: a Linux x86-64 download on the fork's releases, or
-  `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
+- **`mod/` builds against stock Horizon's mod API** (level 3: `game.raycast`, `command.run-quiet`). The stock build has
+  no strike light (the post pass waits for a native shader API) and no fly speed, and it needs cheats: the world changes
+  are vanilla commands, run quietly. The fork's build (a Linux x86-64 download on the fork's releases) has the full look.
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.
 
@@ -30,7 +31,7 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
 ```sh
 python3 install.py                  # install the mod into Horizon's game folder and switch it on (game CLOSED)
 ./play.sh [WORLD]                   # start the fork's build on the game folder (default world OrbitalTest, creative)
-python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
+python3 tools/build_mod.py          # build the mod from source into dist/orbital.hmod (needs stock cargo-horizon-mod)
 tools/check-shader.sh               # validate both post passes (a tenth of a second)
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 ```
@@ -42,11 +43,10 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` or `downfall`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall is on the second. Its FLY
-SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
-box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`: a fork build without them
-won't start the mod.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` or `downfall`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital skip SECONDS` (`/orbital flyspeed N|reset` on the fork's build only).
+On the stock build the wheel is two lists: the lasers (a click loads one and closes it) and the switches (a click flips
+or cycles one in place; a ship laser adds its approach, arrival and colour rows first). On the fork's build it has pages of
+five and a FLY SPEED row (`world.set-flying-speed`, `input.poll-typed`).
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
