@@ -46,11 +46,13 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 > Mothership** vaporises the land out to 34 blocks, digs a crater 22 across and a shaft to bedrock, then cuts a trench
 > 100 blocks long, up to 15 wide and 17 deep, away from you; it keeps the chunks round it loaded while it works. **The
 > Downfall** crashes the ship downrange of the target, at least 360 blocks in front of you, and buries it half its
-> height: a crater where its stern strikes, the gouge it ploughs, the slot under its keel carved out 32 deep and the
-> ground it displaced heaped up in berms along its sides (for the 250 blocks of its stern nearest you; its bow is a
-> kilometre off), the land flattened 88 blocks round where it comes to rest, wreckage strewn about, craters where the
+> height: a crater where its stern strikes, the gouge it ploughs, the slot under its keel carved out 32 deep, and
+> everything standing on the land under its whole length crushed and scraped down a few blocks, with craters and rubble,
+> the ground it displaced heaped up along both its sides (into lakes too), wreckage strewn about, craters where the
 > pieces it shed land, then the black hole's crater, spiral arms out to 150 blocks and a shaft to bedrock, every mob
-> under the ship and round the hole killed; it keeps up to about 950 chunks loaded while it works. **Back up
+> under the ship and round the hole killed. It keeps the stern's chunks loaded while it works (up to about 950); out past
+> what the game has loaded round you, the crushing under the far end of the hull may be skipped. The crushing goes on
+> for up to a minute after the strike, a little at a time. **Back up
 > your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
 > [!IMPORTANT]
@@ -67,6 +69,7 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 > and the ready-built Horizon is Linux x86-64 only (others can build the fork from source).
 
 **Contents:** [Features](#features) ·
+[New in 0.6.0](#new-in-060) ·
 [New in 0.5.0](#new-in-050) ·
 [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) ·
@@ -125,19 +128,22 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
   (ahead, behind, left, right or straight down) and how it arrives (a film-style snap, unfolding out of a point, or out
   of a warp streak). It reaches 1000 blocks: past your render distance it aims across Horizon's distant terrain.
 - **Downfall.** The Mothership drops in as it always does and starts to charge, but the charge is cut and its power
-  thrown to the batteries along its roof as a meteor the size of a hill comes down on it out of the sky. Green bolts race
-  up at it and break it apart, and the pieces, coming on as fast, strike the hull anyway: fire bursts through it, chunks
-  of it come away and fall burning, its lights fail and it loses lift. It falls stern first, slowly for its size, tilting
-  and drifting downrange, shedding plates, girders and burning fragments the whole way down, smoke pouring up off it and
-  left hanging along its path, the air under it blasting the dust off the land, until its stern strikes, it ploughs on
-  through the ground, its bow slams down, and it sinks on in until it is buried half its height, the ground it displaced
-  surging up into berms along its sides, a wall of dust rolling out. Then the black hole engine in its stern fails: the
-  stern crumples in towards it, its lights die section by section, tears open in the plating with a deep glow far down
-  inside, space starts to bend round it and dust and plating are drawn in. It ruptures: a black hole opens in the wreck
-  and tears it apart section by section from the stern, each torn piece tumbling and stretching as it falls in, what is
-  left swung round and drawn in after it, the disk filling from the wreck, before it collapses in a flash and bores a
-  shaft to bedrock. It uses the Mothership's approach and arrival
-  choices, reaches 1000 blocks, and always comes down well clear of you.
+  thrown to the batteries along its roof as a meteor the size of a hill comes in out of the sky, first a point of light
+  far off, then a burning, tumbling rock. The armoured turrets turn on their rings and lay their twin barrels on it,
+  recoiling as they fire, and green bolts race up and break it apart past the ship's bow; the pieces come on as fast and
+  strike the hull anyway, kicking it over: fire bursts through it, chunks of it come away and fall burning, its lights
+  fail and it loses lift. It lurches down as its lift gives, twice, then falls free, faster and faster, stern first,
+  shedding plates, girders and burning fragments the whole way down, smoke pouring up off it, until its stern strikes,
+  its bow slams down and the whole hull shudders. Blasts burst out along it, earth is flung up in sheets along both its
+  sides, a shock of air races out, and it ploughs on and sinks in until it is buried half its height, crushing whatever
+  stood under it and heaping the ground it shoved aside up along both sides, a wall of dust rolling out. Then the black
+  hole engine in its stern fails: the stern crumples in towards it, its lights die section by section, tears open in the
+  plating with a deep glow far down inside, and space starts to bend round it. It ruptures: a black hole opens in the
+  wreck and tears it apart section by section from the stern, each torn piece already moving as it comes away and
+  stretching as it falls in, what is left swung round and drawn in after it, the disk filling from the wreck and flaring
+  as the last of it goes through, before it collapses in a flash and bores a shaft to bedrock. It uses the Mothership's
+  approach and arrival choices and its own colour (red by default), reaches 1000 blocks, and always comes down well
+  clear of you.
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
   further away you are.
 - **Everything is in the world.** The effects are traced against the depth buffer and against shapes placed in the
@@ -149,6 +155,30 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
+
+## New in 0.6.0
+
+- **Downfall**, the sixth laser, on the wheel's second page and `/orbital downfall`: the Mothership brought down by a
+  meteor. Its roof turrets fire on the meteor and break it up, the pieces hit it anyway, it falls and crashes into the
+  land, crushing what it lands on and burying itself half its height, then the black hole engine in its stern ruptures
+  and swallows the wreck. See [Features](#features).
+- **A second page on the wheel** (its arrows, its tabs or a right-click turn it).
+- **A colour for each ship**: the Mothership green, the Downfall red, or amber, blue, violet or white, from the swatches
+  beside the arrival row or `/orbital colour …`.
+- **Faster flying** for getting round the craters: the FLY SPEED bar over the wheel's title (1x to 40x) and the box
+  beside it (type any speed up to 1000x), or `/orbital flyspeed N`. Kept between sessions.
+- **Switches for the clutter:** MESSAGES turns the strikes' messages over the hotbar off, PANEL hides the status panel
+  (or `/orbital messages off`, `/orbital hud off`).
+- **`/orbital skip SECONDS`** starts the next strike part way in, with terrain damage off, to look at one moment of it.
+- **Every blast now clears to the sky:** a strike under a hill or a mountain no longer leaves a tunnel or floating
+  hilltops.
+- **No more "it took too long":** a strike's heavier world changes are worked out a little each tick, so a big one can't
+  overrun the mod's per-tick limit.
+- **On Horizon's new renderer.** Horizon replaced its shader-pack support; the fork now gives a mod its own post pass
+  on the new renderer and the integrated server, and the effects look as they did.
+- **A new logo.**
+- **Needs the newest Orbital Laser build of Horizon** (`orbital-mod-api-3`: the new renderer, flying speed and typing
+  on the mod's screen are new in it).
 
 ## New in 0.5.0
 
@@ -230,7 +260,7 @@ was a shader pack, a sound pack and a Python script driving the game from outsid
    Already have Horizon set up? Skip that and point `HORIZON_RESOURCES` at the prepared resources it already has (the
    folder `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.0.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.6.0.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -309,11 +339,13 @@ the reason on its row first.
 1. Type **`/orbital give`** for the **Orbital Laser Designator** and the **Orbital Remote**.
 2. **Pick a laser.** Right-click with the remote, or press **R** while you play, and the laser wheel opens. Click a laser to
    load it; click the middle to switch terrain damage on or off; Escape closes it. Your choice is remembered.
+   The **FLY SPEED** bar over the title speeds up creative flight for getting round the craters: click along it for
+   1x to 40x vanilla's, or click the box beside it, type any speed up to 1000x and press Enter.
 3. **Fire.** Hold the designator, aim at anything up to 200 blocks away, and **hold right-click** for under a second. The
    action bar counts `ACQUIRING TARGET…`, then the strike lands where your crosshair is.
 
-A strike takes about 26 seconds (the Meteor Storm 38, the Mothership 34, the Downfall 60), and one runs at a time. While you hold either item, a panel in the top right shows the
-loaded laser and whether terrain damage is on.
+A strike takes about 26 seconds (the Meteor Storm 38, the Mothership 34, the Downfall 64), and one runs at a time. While you hold either item, a panel in the top right shows the
+loaded laser and whether terrain damage is on (the wheel's PANEL switch, or `/orbital hud off`, hides it).
 
 | Command | What it does |
 |---|---|
@@ -324,6 +356,9 @@ loaded laser and whether terrain damage is on.
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
+| `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
+| `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
+| `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
@@ -336,10 +371,10 @@ search box).
 
 | Capability | What the mod does with it |
 |---|---|
-| `input` | claims the two items' right-clicks (use-start, use-stop, ticks held) and registers the **R** keybind |
+| `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
 | `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](mod/shaders/strike.wgsl)), fed 16 numbers each frame, and the camera shake |
-| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, and runs the crater's block changes as server commands, silently, in bulk each tick |
+| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick, and sets your flying speed |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -362,9 +397,10 @@ it out tick by tick, and hands the post pass the strike's clock every frame.
 The Meteor Storm runs longer: the storm from 4 to about 16 s, the big one coming in from about 11 s and hitting at
 17.5 s, then its crater, ejecta and ash until 38 s. The Mothership arrives at 3 s, charges until 8, drills from 8.2 s,
 sweeps from 10 to 19 s, cuts off at 20 and is gone by 23.5; its trench cools until 34 s. The Downfall arrives at 3 s
-and charges from 4; the charge is cut at 6.8, its batteries fire from 8.4, the meteor breaks up at 14 and its pieces
-strike at about 15 to 16; it falls from 17, strikes at 30 and is still by 32.6; its engine groans from 34, ruptures at
-40, and the black hole collapses at 51; the strike ends at 60.
+and charges from 4 (its meteor is a point of light far off from 2.5 s); the charge is cut at 6.8, its batteries fire
+from 8.4, the meteor breaks up at 11 and its pieces strike at about 15.4; it lurches down at 17 and 20, falls free,
+strikes at 30, its bow slams down at 30.65 and it is still by 32.6; its engine groans from 34, ruptures at 40, the last of
+the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64.
 
 **The effects** are one fragment shader, run as the mod's post pass after the fork's small prelude (the world's colour and depth, the camera and the mod's parameters). It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
@@ -408,7 +444,7 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
   rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, past 200 blocks (1000 for the Mothership), or at unloaded
   chunks. Past your render distance only the Mothership can aim, and only with **LOD Distance** on.
-- **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds, 38 for the Meteor Storm, 34 for the Mothership, 60 for the Downfall).
+- **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds, 38 for the Meteor Storm, 34 for the Mothership, 64 for the Downfall).
 - **No sound.** Check the in-game master volume (Music & Sounds) and your OS volume for the game's own audio stream.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
 
@@ -430,8 +466,14 @@ python3 tools/build_mod.py                    # build the mod into dist/orbital 
 python3 tools/build_mod.py --install ~/.local/share/horizon
 python3 tools/synth_sounds.py                 # regenerate the sounds in orbital-sounds/
 python3 tools/make_item_textures.py           # redraw the item and wheel icon textures
-python3 tools/make_branding.py                # regenerate the logo files in docs/branding
+python3 tools/make_branding.py                # the dark logos, icon PNG and social card, from the traced logos in docs/branding
+tools/check-shader.sh                         # validate both post passes (a tenth of a second)
+python3 tools/preview.py downfall 14 30 45    # render a strike offscreen at those moments, onto dist/preview/downfall.jpg
 ```
+
+`tools/preview.py` renders the real post pass on your GPU over a synthetic scene, from several views at once, so a
+change to a strike's look can be seen in seconds without the game (`--bench` adds its GPU time). In the game,
+`/orbital skip SECONDS` jumps the next strike to the moment you're working on.
 
 `tools/build_mod.py` builds the code with `cargo horizon-mod build` from the fork
 (`cargo install --git https://github.com/Stink-O/horizon --branch mod-api-input-ui-render-world cargo-horizon-mod`,

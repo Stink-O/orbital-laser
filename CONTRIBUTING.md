@@ -40,7 +40,8 @@ any size is welcome: a bug report, a test on your PC, a fix, or taking over a wh
   Horizon on it.
 - **Stock Horizon:** `orbital-laser-shader/` (the same effects as a shader pack), `strike.py` and `themes.py` (the driver
   that runs a strike from outside the game) are 0.1's setup, kept for stock Horizon (`install.py --legacy`).
-- **`tools/`** has the sound generator, the texture and logo generators, the shader validator and the video recorder.
+- **`tools/`** has the sound generator, the texture and logo generators, the shader validator, the offscreen
+  preview (`tools/preview.py`: a strike's look in seconds, without the game) and the video recorder.
 
 ## Testing a change
 
