@@ -168,10 +168,11 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         let c = 1.0 - dot(rd, sdir);
         let live = 1.0 - smoothstep(PK_CUT, PK_CUT + PK_DRAIN, time);
         let burst = exp(-et * 2.2);
-        // (the horizon round it lit up, lowest and widest: in the sky and on the far land alike)
-        let low = exp(-max(rd.y - sdir.y, 0.0) / 0.06);
+        // (the horizon round it lit up, along the horizon more than above it: in the sky and on the far land, a little
+        // on the near land)
+        let low = exp(-abs(rd.y - sdir.y) / 0.05);
         let horizon = exp(-c / 0.02) * low * (1.6 * burst + 0.25 * live) + exp(-c / 0.0015) * (2.0 * burst + 0.5 * live);
-        add = add + PK_DEEP * horizon * select(0.35, 1.0, sky || scene_len > ds * 0.6) * k;
+        add = add + PK_DEEP * horizon * select(0.15, 1.0, sky || scene_len > ds * 0.6) * k;
         // the point of it, white
         let vis = select(0.0, 1.0, sky || scene_len > ds - 30.0);
         add = add + (PK_WHITE * exp(-c / 2.0e-6) * 0.6 + PK_HOT * exp(-c / 4.0e-5) * 0.4) * (live + 2.0 * burst) * vis * k;
