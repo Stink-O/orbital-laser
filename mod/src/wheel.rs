@@ -5,7 +5,8 @@
 //! turn the page; so does a right-click). Under the ring, two rows of buttons
 //! for which way a ship laser's ship comes in and how it arrives, and a row of
 //! swatches for the colour it is lit in (shown while one is loaded, or its
-//! segment is pointed at). Drawn by the game from the
+//! segment is pointed at). Over the title, the player's flying speed: a bar to
+//! click along and a field to type one in. Drawn by the game from the
 //! shapes built here; GUI pixels, from the centre of the screen.
 use crate::lasers::{LASERS, Laser, is_ship};
 use crate::strike::{APPROACHES, ARRIVALS, COLOUR_RGB, COLOURS, Choice};
@@ -33,6 +34,17 @@ const TAB_W: f32 = 20.0;
 const TAB_H: f32 = 11.0;
 /// The strike messages' switch, over the ring's top right.
 const MSG: Rect = Rect { x: R_OUT - 30.0, y: -R_OUT - 33.0, w: 80.0, h: 15.0 };
+/// The status panel's switch, under the messages'.
+const HUD: Rect = Rect { x: MSG.x, y: MSG.y + MSG.h + 3.0, w: MSG.w, h: MSG.h };
+/// The flying speed's row over the title: the bar (a click along it sets the speed) and the field a speed is typed in.
+const FLY_Y: f32 = -R_OUT - 56.0;
+const BAR: Rect = Rect { x: -76.0, y: FLY_Y, w: 150.0, h: 14.0 };
+const FIELD: Rect = Rect { x: 80.0, y: FLY_Y, w: 46.0, h: 14.0 };
+/// The bar's top speed and the highest a typed one may be, in times vanilla's.
+pub const BAR_MAX: f32 = 40.0;
+pub const FLY_MAX: f32 = 1000.0;
+/// Characters the field holds.
+const FIELD_CHARS: usize = 6;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Spot {
@@ -40,6 +52,8 @@ pub enum Spot {
     Centre,
     /// The strike messages' switch.
     Messages,
+    /// The status panel's switch.
+    Hud,
     /// One of the ship's approaches (strike::APPROACHES), or ways of arriving (strike::ARRIVALS).
     Approach(usize),
     Arrival(usize),
@@ -47,6 +61,9 @@ pub enum Spot {
     Colour(usize),
     /// A page arrow or tab: the page it turns to.
     Page(usize),
+    /// The flying speed's bar, and its field.
+    FlyBar,
+    FlyField,
 }
 
 #[derive(Default)]
@@ -57,6 +74,11 @@ pub struct Wheel {
     row_for: Option<usize>,
     /// The page shown.
     pub page: usize,
+    /// The flying speed shown, in times vanilla's, and what has been typed in its field while it has the keyboard.
+    pub fly: f32,
+    pub typing: Option<String>,
+    /// The speed a click on the bar would give, while the cursor is on it.
+    bar_hover: Option<f32>,
 }
 
 /// How many pages of lasers there are, and the page a laser is on.
@@ -105,6 +127,39 @@ fn inside(b: &Rect, x: f32, y: f32) -> bool {
     x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h
 }
 
+/// The speed `t` of the way along the bar gives: 1x to 40x in even ratios, so the low end has room, rounded to a half
+/// under 10x and to whole ones over it.
+pub fn bar_speed(t: f32) -> f32 {
+    let m = BAR_MAX.powf(t.clamp(0.0, 1.0));
+    if m < 10.0 { (m * 2.0).round() / 2.0 } else { m.round() }
+}
+/// The speed a click at `x` on the bar gives.
+pub fn bar_speed_at(x: f32) -> f32 {
+    bar_speed((x - BAR.x) / BAR.w)
+}
+/// How far along the bar speed `m` sits (a typed speed past its end at the end).
+fn bar_place(m: f32) -> f32 {
+    (m.max(1.0).ln() / BAR_MAX.ln()).min(1.0)
+}
+/// A typed speed: any number over 0 (an `x` after it is fine), up to 1000x.
+pub fn parse_speed(s: &str) -> Option<f32> {
+    let v: f32 = s.trim().trim_end_matches(['x', 'X']).parse().ok()?;
+    (v.is_finite() && v > 0.0).then(|| v.min(FLY_MAX))
+}
+/// A speed as the wheel and the panel show it: `12x`, `2.5x`, `0.25x`.
+pub fn speed_label(m: f32) -> String {
+    let s = format!("{m:.2}");
+    format!("{}x", s.trim_end_matches('0').trim_end_matches('.'))
+}
+/// What typing adds to the field: digits and a point, up to its length.
+pub fn type_into(field: &mut String, text: &str) {
+    for c in text.chars() {
+        if (c.is_ascii_digit() || c == '.') && field.len() < FIELD_CHARS {
+            field.push(c);
+        }
+    }
+}
+
 /// Where slot `k`'s middle points: the first on the left, then clockwise.
 fn segment_angle(k: usize) -> f32 {
     PI + k as f32 * TAU / PAGE as f32
@@ -112,6 +167,13 @@ fn segment_angle(k: usize) -> f32 {
 
 /// What is under the cursor on page `page` (`row`: whether the ship's rows are showing).
 pub fn spot(x: f32, y: f32, row: bool, page: usize) -> Option<Spot> {
+    // (the bar takes a little either side of its ends, for its first and last speeds)
+    if inside(&Rect { x: BAR.x - 4.0, y: BAR.y - 2.0, w: BAR.w + 8.0, h: BAR.h + 4.0 }, x, y) {
+        return Some(Spot::FlyBar);
+    }
+    if inside(&FIELD, x, y) {
+        return Some(Spot::FlyField);
+    }
     if row {
         for (r, items) in ROWS.iter().enumerate() {
             for k in 0..items.len() {
@@ -123,6 +185,9 @@ pub fn spot(x: f32, y: f32, row: bool, page: usize) -> Option<Spot> {
     }
     if inside(&MSG, x, y) {
         return Some(Spot::Messages);
+    }
+    if inside(&HUD, x, y) {
+        return Some(Spot::Hud);
     }
     if pages() > 1 {
         for k in 0..2 {
@@ -194,8 +259,8 @@ fn wrap(s: &str, width: usize) -> Vec<String> {
 }
 
 impl Wheel {
-    pub fn on_page(page: usize) -> Self {
-        Wheel { page: page.min(pages() - 1), ..Default::default() }
+    pub fn on_page(page: usize, fly: f32) -> Self {
+        Wheel { page: page.min(pages() - 1), fly, ..Default::default() }
     }
     /// The ship laser the rows are for, if they are showing: the one pointed at, or the one loaded.
     pub fn row_laser(&self, selected: usize) -> Option<usize> {
@@ -219,12 +284,15 @@ impl Wheel {
             Some(Spot::Centre) => self.row_for = None,
             _ => {}
         }
-        let changed = now != self.hover || was != self.row_for;
+        let bar = (now == Some(Spot::FlyBar)).then(|| bar_speed_at(x));
+        let changed = now != self.hover || was != self.row_for || bar != self.bar_hover;
         self.hover = now;
+        self.bar_hover = bar;
         changed
     }
 
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, approach: usize, arrival: usize, colours: &[usize]) -> Vec<Draw> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize]) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -264,8 +332,15 @@ impl Wheel {
         out.push(Draw::Fill((Rect { x: MSG.x, y: MSG.y + MSG.h - 1.5, w: MSG.w, h: 1.5 }, if messages { 0xFF62D46A } else { 0xFFE0524E })));
         text(&mut out, "MESSAGES", MSG.x + 27.0, MSG.y + 4.0, 0xB8BEC8);
         text(&mut out, if messages { "ON" } else { "OFF" }, MSG.x + 64.0, MSG.y + 4.0, if messages { 0x7CE884 } else { 0xF06A64 });
-        // title, the pages, hint, and what the highlighted laser does
+        // and the status panel, the same way
+        let hovered = self.hover == Some(Spot::Hud);
+        out.push(Draw::Fill((HUD, if hovered { 0xF0262A31 } else { 0xD0101318 })));
+        out.push(Draw::Fill((Rect { x: HUD.x, y: HUD.y + HUD.h - 1.5, w: HUD.w, h: 1.5 }, if hud { 0xFF62D46A } else { 0xFFE0524E })));
+        text(&mut out, "PANEL", HUD.x + 27.0, HUD.y + 4.0, 0xB8BEC8);
+        text(&mut out, if hud { "ON" } else { "OFF" }, HUD.x + 64.0, HUD.y + 4.0, if hud { 0x7CE884 } else { 0xF06A64 });
+        // title, the flying speed, the pages, hint, and what the highlighted laser does
         text(&mut out, "ORBITAL LASER", 0.0, -R_OUT - 30.0, 0xFFFFFF);
+        self.fly_row(&mut out);
         if pages() > 1 {
             self.page_controls(&mut out, selected);
         }
@@ -302,8 +377,12 @@ impl Wheel {
             0.0
         };
         let hint = match self.hover {
+            _ if self.typing.is_some() => "Type a flying speed (times vanilla's)  ·  Enter: set it  ·  click elsewhere: leave it".to_string(),
+            Some(Spot::FlyBar) => format!("Click: fly at {}  ·  or click the box and type any speed", speed_label(self.bar_hover.unwrap_or(self.fly))),
+            Some(Spot::FlyField) => "Click to type a flying speed, up to 1000x".to_string(),
             Some(Spot::Centre) => "Click: terrain damage on or off".to_string(),
             Some(Spot::Messages) => "Click: strike messages over the hotbar on or off (replies to your clicks stay)".to_string(),
+            Some(Spot::Hud) => "Click: the status panel at the top right on or off".to_string(),
             Some(Spot::Laser(_)) => "Click to load this laser".to_string(),
             Some(Spot::Approach(k)) => format!("Click: the ship comes in {}", APPROACHES[k].label),
             Some(Spot::Arrival(k)) => format!("Click: the ship {}", ARRIVALS[k].label),
@@ -320,6 +399,40 @@ impl Wheel {
             }
         }
         out
+    }
+
+    /// The flying speed's row: its name, the bar lit up to the speed with a knob there (and a mark where a click
+    /// would put it), and the field showing the speed, or what is being typed in it.
+    fn fly_row(&self, out: &mut Vec<Draw>) {
+        const ACCENT: u32 = 0x6FC8FF;
+        out.push(Draw::Fill((Rect { x: -138.0, y: FLY_Y - 3.0, w: 270.0, h: BAR.h + 6.0 }, 0xB0101318)));
+        text(out, "FLY SPEED", -107.0, FLY_Y + 3.0, 0xB8BEC8);
+        let hovered = self.hover == Some(Spot::FlyBar);
+        let track = Rect { x: BAR.x, y: BAR.y + 5.0, w: BAR.w, h: 4.0 };
+        out.push(Draw::Fill((track, if hovered { 0xFF2A3038 } else { 0xFF1C2026 })));
+        let at = BAR.x + BAR.w * bar_place(self.fly);
+        out.push(Draw::Fill((Rect { w: at - BAR.x, ..track }, argb(0xFF, if hovered { shade(ACCENT, 1.15) } else { ACCENT }))));
+        // marks at 1x, 2x, 5x, 10x, 20x and 40x
+        for m in [1.0, 2.0, 5.0, 10.0, 20.0, 40.0] {
+            let x = BAR.x + BAR.w * bar_place(m);
+            out.push(Draw::Fill((Rect { x: x - 0.5, y: BAR.y + 10.0, w: 1.0, h: 3.0 }, 0x70FFFFFF)));
+        }
+        if let Some(m) = self.bar_hover {
+            let to = BAR.x + BAR.w * bar_place(m);
+            out.push(Draw::Fill((Rect { x: to - 1.0, y: BAR.y + 1.0, w: 2.0, h: BAR.h - 2.0 }, 0x90FFFFFF)));
+        }
+        out.push(Draw::Fill((Rect { x: at - 2.0, y: BAR.y, w: 4.0, h: BAR.h }, 0xFFFFFFFF)));
+        // the field: lit while it has the keyboard
+        let typing = self.typing.as_deref();
+        let body = if typing.is_some() { 0xF0262A31 } else if self.hover == Some(Spot::FlyField) { 0xF0202429 } else { 0xE0101318 };
+        out.push(Draw::Fill((FIELD, body)));
+        let rim = if typing.is_some() { 0xFFFFFFFF } else { argb(0xC0, ACCENT) };
+        out.push(Draw::Fill((Rect { x: FIELD.x, y: FIELD.y + FIELD.h - 1.5, w: FIELD.w, h: 1.5 }, rim)));
+        let (shown, colour) = match typing {
+            Some(t) => (format!("{t}_"), 0xFFFFFF),
+            None => (speed_label(self.fly), ACCENT),
+        };
+        text(out, &shown, FIELD.x + FIELD.w / 2.0, FIELD.y + 3.0, colour);
     }
 
     /// The page arrows either side of the ring, and the numbered tabs over it, the page shown lit (in the loaded laser's
@@ -393,9 +506,12 @@ mod tests {
         // the messages' switch, on every page, clear of the ring, the title, the tabs and the arrows
         for page in 0..pages() {
             assert_eq!(spot(MSG.x + MSG.w / 2.0, MSG.y + MSG.h / 2.0, true, page), Some(Spot::Messages));
+            assert_eq!(spot(HUD.x + HUD.w / 2.0, HUD.y + HUD.h / 2.0, true, page), Some(Spot::Hud));
         }
         let corner = (MSG.x * MSG.x + (MSG.y + MSG.h) * (MSG.y + MSG.h)).sqrt();
         assert!(corner > R_OUT + 14.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
+        let corner = (HUD.x * HUD.x + (HUD.y + HUD.h) * (HUD.y + HUD.h)).sqrt();
+        assert!(corner > R_OUT + 14.0 && HUD.y + HUD.h < arrow(1).y);
         assert_eq!(page_of(ship("downfall")), 1);
     }
     #[test]
@@ -414,10 +530,57 @@ mod tests {
                 assert!(t.y + t.h < -R_OUT - 2.0);
             }
         }
-        let mut w = Wheel::on_page(7);
+        let mut w = Wheel::on_page(7, 1.0);
         assert_eq!(w.page, pages() - 1);
         w.turn(pages());
         assert_eq!(w.page, 0);
+    }
+    #[test]
+    fn flying_speed_row() {
+        // the bar and the field are clickable on every page, the ship's rows showing or not, clear of the messages'
+        // switch and the title, and on a 1080p screen at GUI scale 3 (360 high)
+        for page in 0..pages() {
+            for row in [false, true] {
+                assert_eq!(spot(BAR.x + 2.0, BAR.y + 7.0, row, page), Some(Spot::FlyBar));
+                assert_eq!(spot(BAR.x + BAR.w - 2.0, BAR.y + 7.0, row, page), Some(Spot::FlyBar));
+                assert_eq!(spot(FIELD.x + FIELD.w / 2.0, FIELD.y + 7.0, row, page), Some(Spot::FlyField));
+            }
+        }
+        assert!(FIELD.y + FIELD.h < MSG.y - 2.0 && FLY_Y + BAR.h < -R_OUT - 30.0 - 2.0 && FLY_Y - 3.0 > -180.0);
+        assert!(BAR.x + BAR.w + 4.0 < FIELD.x);
+        // 1x at the left end, 40x at the right, rising all the way, with room at the low end
+        assert_eq!(bar_speed_at(BAR.x - 3.0), 1.0);
+        assert_eq!(bar_speed_at(BAR.x + BAR.w + 3.0), BAR_MAX);
+        let speeds: Vec<f32> = (0..=100).map(|k| bar_speed(k as f32 / 100.0)).collect();
+        assert!(speeds.windows(2).all(|w| w[1] >= w[0]));
+        assert!(bar_speed(0.25) <= 3.0);
+        for m in [1.0, 2.0, 5.0, 10.0, 20.0, 40.0] {
+            assert_eq!(bar_speed(bar_place(m)), m);
+        }
+        assert_eq!(bar_place(500.0), 1.0);
+        // typed speeds: any number over 0, up to 1000x
+        assert_eq!(parse_speed("12"), Some(12.0));
+        assert_eq!(parse_speed("2.5x"), Some(2.5));
+        assert_eq!(parse_speed(" 0.25 "), Some(0.25));
+        assert_eq!(parse_speed("5000"), Some(FLY_MAX));
+        for bad in ["", ".", "0", "-3", "abc", "NaN", "inf"] {
+            assert_eq!(parse_speed(bad), None, "{bad}");
+        }
+        assert_eq!(speed_label(12.0), "12x");
+        assert_eq!(speed_label(2.5), "2.5x");
+        assert_eq!(speed_label(0.25), "0.25x");
+        assert_eq!(speed_label(1000.0), "1000x");
+        let mut field = String::new();
+        type_into(&mut field, "1a2.5x");
+        assert_eq!(field, "12.5");
+        type_into(&mut field, "123456");
+        assert_eq!(field.len(), FIELD_CHARS);
+        // the mark follows the cursor along the bar
+        let mut w = Wheel::on_page(0, 1.0);
+        assert!(w.hover_at(BAR.x + 10.0, BAR.y + 7.0, 0));
+        assert!(!w.hover_at(BAR.x + 10.0, BAR.y + 7.0, 0));
+        assert!(w.hover_at(BAR.x + BAR.w + 1.0, BAR.y + 7.0, 0));
+        assert_eq!(w.bar_hover, Some(BAR_MAX));
     }
     #[test]
     fn approach_row() {
@@ -444,7 +607,7 @@ mod tests {
         // pointing at either ship opens its rows, on its own page, and they stay open on the way down to them
         for key in ["mothership", "downfall"] {
             let s = ship(key);
-            let mut w = Wheel::on_page(page_of(s));
+            let mut w = Wheel::on_page(page_of(s), 1.0);
             let other = 0;
             assert!(!w.row_shown(other));
             let c = polar(segment_angle(s % PAGE), 60.0);
@@ -462,7 +625,7 @@ mod tests {
             assert_eq!(w.row_laser(s), Some(s));
         }
         // a loaded ship keeps its rows on the other page too
-        let w = Wheel::on_page(0);
+        let w = Wheel::on_page(0, 1.0);
         assert_eq!(w.row_laser(ship("downfall")), Some(ship("downfall")));
     }
 }
