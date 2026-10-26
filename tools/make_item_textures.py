@@ -208,22 +208,26 @@ DOWNFALL_ICON = [          # the mothership coming down stern first, burning, sm
 ]
 
 def planetkiller_icon():
-    """Beams from the horizon either side converging on a white star high up, and one beam from it down onto the
-    ground, white down its middle, the ground molten where it lands."""
+    """Two towers either side, their beams arcing up and over onto a white star high up, and one beam from it down
+    onto the ground, white down its middle, the ground molten where it lands."""
     from PIL import ImageDraw
     im = Image.new("RGBA", (16, 16), K["."])
     d = ImageDraw.Draw(im)
-    for x0, y0 in ((0, 6), (0, 10), (15, 6), (15, 10)):           # the emitters' beams, from low either side
-        d.line([(x0, y0), (8 if x0 else 7, 3)], fill=K["u"])
-    d.rectangle([6, 4, 9, 13], fill=K["u"])                       # the one beam, white-hot down its middle
-    d.rectangle([7, 4, 8, 13], fill=K["W"])
-    d.rectangle([6, 2, 9, 3], fill=K["U"])                        # the star where they meet, a cross of light through it
-    d.line([(4, 2), (11, 2)], fill=K["U"]); d.line([(7, 0), (7, 4)], fill=K["U"]); d.line([(8, 0), (8, 4)], fill=K["U"])
+    for x0, x1 in ((0, 2), (13, 15)):                             # the towers, dark, their crowns lit
+        d.polygon([(x0, 14), (x1, 14), ((x0 + x1) // 2 + (1 if x0 else 0), 7)], fill=K["G"])
+        d.line([((x0 + x1) // 2 + (1 if x0 else 0), 13), ((x0 + x1) // 2 + (1 if x0 else 0), 9)], fill=K["u"])
+        d.point(((x0 + x1) // 2 + (1 if x0 else 0), 6), fill=K["U"])
+    for pts in (((1, 6), (2, 3), (4, 1), (6, 2)), ((14, 6), (13, 3), (11, 1), (9, 2))):   # their beams, arcing over
+        d.line(pts, fill=K["u"])
+    d.rectangle([7, 4, 8, 13], fill=K["W"])                       # the one beam, white-hot in its blue sheath
+    d.line([(6, 5), (6, 13)], fill=K["u"]); d.line([(9, 5), (9, 13)], fill=K["u"])
+    d.rectangle([6, 2, 9, 3], fill=K["U"])                        # the star where they meet
+    d.point((7, 1), fill=K["U"]); d.point((8, 1), fill=K["U"])
     d.rectangle([7, 2, 8, 3], fill=K["W"])
     d.line([(3, 14), (12, 14)], fill=K["o"])                      # where it lands, the ground molten
     d.line([(5, 13), (10, 13)], fill=K["O"])
     d.line([(6, 14), (9, 14)], fill=K["y"]); d.line([(7, 13), (8, 13)], fill=K["W"])
-    d.line([(1, 15), (14, 15)], fill=K["n"]); d.point((2, 15), fill=K["E"]); d.point((13, 15), fill=K["E"])
+    d.line([(0, 15), (15, 15)], fill=K["n"]); d.point((2, 15), fill=K["E"]); d.point((13, 15), fill=K["E"])
     return im
 
 
