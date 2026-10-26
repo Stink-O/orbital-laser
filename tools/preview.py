@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller"]
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -31,18 +31,18 @@ VIEWS = {
     "under": "cx=0 cy=72 cz=-250 yaw=-90 pitch=80 mx=0 mz=60",
     "aerial": "cx=0 cy=900 cz=1100 yaw=-90 pitch=-32 mx=0 mz=60",
 }
-DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far"}
+DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side"}
 
 
 def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
-    """The pass as the mod builds it (mod/src/lib.rs): strike.wgsl, or for the downfall strike.wgsl up to its fs_main
-    less the other lasers' own functions, then downfall.wgsl."""
+    """The pass as the mod builds it (mod/src/lib.rs): strike.wgsl, or for the downfall and the planet killer
+    strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl."""
     path = out / "pass.wgsl"
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser == "downfall":
+    if laser in ("downfall", "planetkiller"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
-        path.write_text(pre + (SHADERS / "downfall.wgsl").read_text())
+        path.write_text(pre + (SHADERS / f"{laser}.wgsl").read_text())
     else:
         path.write_text(strike)
     return path
