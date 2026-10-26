@@ -21,7 +21,7 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build: a Linux x86-64 download on the fork's releases, or
-  `cargo build --release -p horizon-client` in the fork elsewhere (ask first: it takes a while).
+  `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.
 

@@ -309,7 +309,7 @@ Facts to rely on:
   resources come from my own copy of Minecraft Java 26.3 (horizon-prepare with the 26.3 server jar, as
   Horizon's PLAY.txt says). If I don't have Minecraft 26.3, stop and tell me.
 - Stock Horizon can't run this mod: it needs the fork's build. On Linux x86-64 use the release download.
-  Elsewhere, build the fork from source (cargo build --release -p horizon-client, Rust 1.85 or newer) and
+  Elsewhere, build the fork from source (cargo build --release -p horizon-client --features mods, Rust 1.85 or newer) and
   tell me before you start, since it takes a while.
 - This was developed and tested on Linux only. On Windows or macOS expect rough edges. Keep any fix small,
   and tell me exactly what you changed and why.
