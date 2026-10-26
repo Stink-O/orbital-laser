@@ -15,7 +15,9 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
   22-block crater, a shaft and a 100-block trench, and force-loads those chunks while it works. The Downfall buries a
   kilometre-long wreck at least 360 blocks in front of the player, crushes the land under its whole length, heaps
   berms along it and leaves the black hole's crater (arms out to 150 blocks) and a shaft; its crushing carries on for
-  up to a minute after the strike. Only fire them in a
+  up to a minute after the strike. The Planet Killer flattens out to 72 blocks, digs an 80-block crater and a shaft,
+  splits the ground in molten cracks out to ~110, chars it to 120, kills every mob within 80 and force-loads the
+  chunks within 120 of the target while it works. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
@@ -31,7 +33,7 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
 python3 install.py                  # install the mod into Horizon's game folder and switch it on (game CLOSED)
 ./play.sh [WORLD]                   # start the fork's build on the game folder (default world OrbitalTest, creative)
 python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
-tools/check-shader.sh               # validate both post passes (a tenth of a second)
+tools/check-shader.sh               # validate the post passes (a tenth of a second)
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 ```
 
@@ -42,8 +44,8 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` or `downfall`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall is on the second. Its FLY
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall` or `planetkiller`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall and the Planet Killer are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`: a fork build without them
 won't start the mod.
@@ -62,7 +64,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 - `mod/`: the mod (Rust for `wasm32-unknown-unknown`): `src/lib.rs` hooks, designator and strike playback,
   `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan, `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
-  pass, `shaders/downfall.wgsl` the Downfall's own pass (the mod appends it to `strike.wgsl` up to its `fs_main`),
+  pass, `shaders/downfall.wgsl` and `shaders/planetkiller.wgsl` the Downfall's and the Planet Killer's own passes (the
+  mod appends each to `strike.wgsl` up to its `fs_main`; `pass_of` in lib.rs picks a strike's),
   `horizon-mod.toml` the manifest (api 0.2 with `registries` for the content).
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.
 - `orbital-laser-shader/`, `strike.py`, `themes.py`: 0.1's setup for stock Horizon (`install.py --legacy`).
@@ -79,6 +82,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 ## Verifying work
 
-Shader: `tools/check-shader.sh` prints `OK` (both passes: the prelude + `mod/shaders/strike.wgsl`, and the Downfall's). Mod: build, install, `./play.sh`, one
+Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's and the
+Planet Killer's). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -8,14 +8,16 @@
 # Orbital Laser
 
 **A terrestrial orbital laser strike, as a mod for [Horizon](https://github.com/ludovic111/horizon), the Rust rewrite of
-Minecraft Java.** Hold the Orbital Laser Designator on anything up to 200 blocks away (1000 for the Mothership and the Downfall) and a beam drops from orbit: it
+Minecraft Java.** Hold the Orbital Laser Designator on anything up to 200 blocks away (1000 for the Mothership, the Downfall and the Planet Killer) and a beam drops from orbit: it
 digs a crater and a shaft down to bedrock, flattens everything around it and leaves the land changed for good. Pick
 the laser from a wheel: **Plasma**, a raging beam with forked lightning that fuses the crater into glass, **Godly**,
 where the clouds part, a pillar of light comes down and the crater turns to quartz and gold, **Black Hole**, a
 singularity that bends the light round it, tears the ground up into orbit and swallows it, or **Meteor Storm**, a storm
 of meteors across the land and then an extinction-level impact, the most destructive of them all, **Mothership**, a
 kilometre-long ship that drops out of hyperspace over the target and cuts a molten trench across the land with its beam,
-or **Downfall**, the same ship brought down by a meteor, crashing into the land, its black hole engine swallowing the wreck.
+**Downfall**, the same ship brought down by a meteor, crashing into the land, its black hole engine swallowing the wreck,
+or **Planet Killer**, seven beams fired from round the horizon that meet high over the target and fuse into one that
+comes down on it.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -52,7 +54,10 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 > pieces it shed land, then the black hole's crater, spiral arms out to 150 blocks and a shaft to bedrock, every mob
 > under the ship and round the hole killed. It keeps the stern's chunks loaded while it works (up to about 950); out past
 > what the game has loaded round you, the crushing under the far end of the hull may be skipped. The crushing goes on
-> for up to a minute after the strike, a little at a time. **Back up
+> for up to a minute after the strike, a little at a time. **The Planet Killer** flattens everything above the ground
+> out to 72 blocks, digs a crater 80 across and a shaft about 25 wide to bedrock, splits the ground in nine molten cracks
+> running out to about 110 blocks, chars the land out to 120, throws rubble out to 180 and kills every mob within 80; it
+> keeps the chunks within 120 blocks of the target loaded while it works. **Back up
 > your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
 > [!IMPORTANT]
@@ -94,8 +99,9 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 
 ## Features
 
-- **Six lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
-  game: Plasma, Godly, Black Hole, Meteor Storm and Mothership round it, the Downfall on its second page (the arrows
+- **Seven lasers, picked from a wheel.** Right-click the Orbital Remote (or press **R**) and a wheel opens over the
+  game: Plasma, Godly, Black Hole, Meteor Storm and Mothership round it, the Downfall and the Planet Killer on its
+  second page (the arrows
   either side of the ring, the tabs over it, or a right-click turn the page), terrain damage on or off in the middle.
   Hover a laser to read what it does.
 - **Plasma.** A red designator beam and a converging reticle while it charges, then a raging plasma beam with twisting
@@ -144,6 +150,16 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
   as the last of it goes through, before it collapses in a flash and bores a shaft to bedrock. It uses the Mothership's
   approach and arrival choices and its own colour (red by default), reaches 1000 blocks, and always comes down well
   clear of you.
+- **Planet Killer.** Seven emitters far out round the horizon fire one after another, the first beyond the target and
+  the rest rippling round towards you, each lighting up its stretch of the horizon and heard from where it stands, and
+  the daylight drains out of the sky. Their electric-blue beams race up to a point 300 blocks over the target and meet
+  there: a star swells where they meet, arcs of plasma crawling over it, until they fuse in a flash and a ring of light
+  tears out across the sky. Then one beam, far thicker than theirs, white-hot inside its blue sheath, comes down on the
+  target while they go on feeding it: a fireball, a dome of shock and a shock ring racing out over the land, a wall of
+  dust climbing round it. Everything above the ground is blown flat for 72 blocks, a crater 80 across is blown out and a
+  shaft drilled to bedrock under the beam, and the ground splits in nine molten cracks running out from the rim. Then
+  the emitters cut out, their beams draining up into the star, which collapses and bursts, and a column of smoke stands
+  over the crater as the daylight comes back. It reaches 1000 blocks: it is best watched from a long way off.
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
   further away you are.
 - **Everything is in the world.** The effects are traced against the depth buffer and against shapes placed in the
@@ -151,7 +167,7 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
   perspective. Nothing is painted flat on the screen but the lens: bloom, a streak and the flash.
 - **Real terrain damage.** The crater, the shaft to bedrock and what each laser leaves behind are real blocks.
 - **Point and fire.** Hold the designator on a target for under a second and it fires where your crosshair lands, up to
-  200 blocks away (1000 for the Mothership and the Downfall).
+  200 blocks away (1000 for the Mothership, the Downfall and the Planet Killer).
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
@@ -355,7 +371,7 @@ loaded laser and whether terrain damage is on (the wheel's PANEL switch, or `/or
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -404,7 +420,10 @@ sweeps from 10 to 19 s, cuts off at 20 and is gone by 23.5; its trench cools unt
 and charges from 4 (its meteor is a point of light far off from 2.5 s); the charge is cut at 6.8, its batteries fire
 from 8.4, the meteor breaks up at 11 and its pieces strike at about 15.4; it lurches down at 17 and 20, falls free,
 strikes at 30, its bow slams down at 30.65 and it is still by 32.6; its engine groans from 34, ruptures at 40, the last of
-the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64.
+the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64. The Planet Killer's emitters
+fire from 0.3 to 1.5 s and their beams reach the nexus by 2.2; it swells until they fuse at 4 s, the one beam lands at
+4.35 and burns until 13.5, when the emitters cut out; the nexus bursts at 14.4, the cracks have opened by about 6.6 s,
+and the daylight is back by 24; the strike ends at 26.
 
 **The effects** are one fragment shader, run as the mod's post pass after the fork's small prelude (the world's colour and depth, the camera and the mod's parameters). It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
@@ -420,7 +439,11 @@ sky it covers; its arrival and departure are averaged over a shutter for real mo
 own ([`mod/shaders/downfall.wgsl`](mod/shaders/downfall.wgsl), after the helpers in `strike.wgsl`), so its size costs the
 other lasers nothing: the same hull, met in its own frame as it tilts (from any side, roof and batteries too), the
 Black Hole's lens, and its dust as a volume integrated along the view ray in closed form. Its fall, crash, gouge,
-chunks and the blocks the black hole tears up are worked out by the same formulas in the shader and in the mod.
+chunks and the blocks the black hole tears up are worked out by the same formulas in the shader and in the mod. The
+Planet Killer has its own pass too ([`mod/shaders/planetkiller.wgsl`](mod/shaders/planetkiller.wgsl)): its beams are
+segments met by the closest approach of the view ray, its nexus and fireball are traced as spheres, the ring as a plane
+at the nexus's height and the dust wall as a cylinder; its emitters and its cracks are placed by the same hash in the
+shader and in the mod.
 
 **The sounds** ([`tools/synth_sounds.py`](tools/synth_sounds.py)) have no samples in them: they are generated from noise
 and sweeps, with a reverb built from a synthetic impulse response.
@@ -446,8 +469,9 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
   `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the prepared resources.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow) and
   rebind it. R only opens the wheel while you play, not over another screen.
-- **`NO TARGET IN RANGE`.** You're aiming at the sky, past 200 blocks (1000 for the Mothership), or at unloaded
-  chunks. Past your render distance only the Mothership can aim, and only with **LOD Distance** on.
+- **`NO TARGET IN RANGE`.** You're aiming at the sky, past 200 blocks (1000 for the Mothership, the Downfall and the
+  Planet Killer), or at unloaded chunks. Past your render distance only those three can aim, and only with **LOD
+  Distance** on.
 - **`STRIKE IN PROGRESS`.** One strike runs at a time: wait for it to finish (about 26 seconds, 38 for the Meteor Storm, 34 for the Mothership, 64 for the Downfall).
 - **No sound.** Check the in-game master volume (Music & Sounds) and your OS volume for the game's own audio stream.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
@@ -460,8 +484,9 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
   for the player who fired.
 - **One strike at a time.**
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off on the wheel.
-- **Targets must be in loaded chunks** and within 200 blocks. The Mothership reaches 1000 across the distant terrain,
-  where its aim follows the coarser distant heights, and its crater only shows there once those chunks load.
+- **Targets must be in loaded chunks** and within 200 blocks. The Mothership, the Downfall and the Planet Killer reach
+  1000 across the distant terrain, where the aim follows the coarser distant heights, and a crater only shows there once
+  those chunks load.
 
 ## Developing
 
@@ -471,7 +496,7 @@ python3 tools/build_mod.py --install ~/.local/share/horizon
 python3 tools/synth_sounds.py                 # regenerate the sounds in orbital-sounds/
 python3 tools/make_item_textures.py           # redraw the item and wheel icon textures
 python3 tools/make_branding.py                # the dark logos, icon PNG and social card, from the traced logos in docs/branding
-tools/check-shader.sh                         # validate both post passes (a tenth of a second)
+tools/check-shader.sh                         # validate the post passes (a tenth of a second)
 python3 tools/preview.py downfall 14 30 45    # render a strike offscreen at those moments, onto dist/preview/downfall.jpg
 ```
 
@@ -483,8 +508,8 @@ change to a strike's look can be seen in seconds without the game (`--bench` add
 (`cargo install --git https://github.com/Stink-O/horizon --branch mod-api-input-ui-render-world cargo-horizon-mod`,
 plus `rustup target add wasm32-unknown-unknown`), then adds the items, textures and sounds. To validate the shader on its
 own, run `tools/check-shader.sh`: it puts the fork's mod pass prelude
-([`tools/wgslcheck/prelude.wgsl`](tools/wgslcheck/prelude.wgsl)) before both passes (every laser's, and the
-Downfall's as the mod builds it) and checks them. See [CONTRIBUTING.md](CONTRIBUTING.md).
+([`tools/wgslcheck/prelude.wgsl`](tools/wgslcheck/prelude.wgsl)) before each pass (the other lasers', and the
+Downfall's and the Planet Killer's as the mod builds them) and checks them. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits and licence
 
