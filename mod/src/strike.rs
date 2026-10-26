@@ -32,6 +32,9 @@ fn debris_big(i: usize, seed: f32) -> bool {
     (f64::from(i as u32) * 0.276_393_2 + f64::from(seed) * 0.0517).fract() > 0.78
 }
 
+/// Part of a plan, worked out when it is due (`Act::Later`).
+pub type Stage = Box<dyn FnOnce() -> Vec<(f32, Act)>>;
+
 pub enum Act {
     Cmd(String),
     /// A sound following the player (`at` none), or at a point, heard only nearby.
@@ -40,7 +43,7 @@ pub enum Act {
     Shake { strength: f32, seconds: f32 },
     /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
     /// much work for the one tick it fires in (a mod's tick has a fuel limit).
-    Later(Box<dyn FnOnce() -> Vec<(f32, Act)>>),
+    Later(Stage),
     /// A world change for when the block budget is to spare (after everything `Cmd` queued): what is still standing
     /// high over a blast, which takes long to clear and nothing waits on.
     Spare(String),
@@ -2143,7 +2146,17 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
         // it buries itself: the ground it displaced heaped up along its sides, spilling back against it, and (on the
         // spare budget, first the heaps you see, then the slot under its keel, then the hills it swallowed) the ground
         // it sank into carved out from under it
-        p.later(DF_FALL1 - 0.4, move |q| df_berms(q, &g));
+        // the heaps a stretch at a time, a tick apart: worked out all at once they are more than one tick's budget
+        let mut a0 = -80.0;
+        let mut i = 0;
+        while a0 < DF_REAL_A {
+            let a1 = (a0 + DF_BERM_STRETCH).min(DF_REAL_A);
+            p.later(DF_FALL1 - 0.4 + i as f32 * 0.1, move |q| df_berms(q, &g, a0, a1));
+            a0 = a1;
+            i += 1;
+        }
+        p.later(DF_FALL1 + DF_SLIDE, move |q| df_spills(q, &g, 70));
+        p.later(DF_FALL1 + DF_SLIDE + 0.1, move |q| df_spills(q, &g, 70));
         let mut x0 = -80.0;
         while x0 < DF_REAL_A {
             let x1 = (x0 + 16.0f64).min(DF_REAL_A);
@@ -2200,6 +2213,10 @@ const DF_KEEL_W: f64 = 70.0;
 const DF_REST: f32 = DF_FALL1 + DF_SLIDE + DF_SETTLE;
 const DF_SKID_W: f64 = 60.0;
 const DF_REAL_A: f64 = 170.0;
+/// The berms are worked out this many blocks along the hull a stage (`df_berms`), to stay within a tick's budget.
+const DF_BERM_STRETCH: f64 = 30.0;
+/// What the heaps shoved up beside the hull are made of.
+const DF_BERM_BODY: [&str; 5] = ["minecraft:dirt", "minecraft:coarse_dirt", "minecraft:stone", "minecraft:gravel", "minecraft:dirt"];
 const DF_SLOT: i32 = 32;
 /// The buried keel's half-width `a` along from the stern's pivot: the engine block at the stern, then the keel ridge
 /// (ms_tier's tier 0).
@@ -2251,12 +2268,13 @@ fn df_slot(a: f64) -> (f64, i32) {
 /// The ground it displaced, heaped up along both its sides (df_berm_h), on the spare budget ahead of anything else there
 /// (it is seen: the slot under the hull is not, yet), each heap a stack of earth and stone on the ground, some capped
 /// with rubble; and earth spilling back off their crests against the hull as it settles.
-fn df_berms(p: &mut Plan, g: &DfGeo) {
-    const BODY: [&str; 5] = ["minecraft:dirt", "minecraft:coarse_dirt", "minecraft:stone", "minecraft:gravel", "minecraft:dirt"];
+/// The earth the hull shoves aside, heaped along both its sides for the stretch `a0..a1` along it (the heaps are done
+/// a stretch at a time, a stage each).
+fn df_berms(p: &mut Plan, g: &DfGeo, a0: f64, a1: f64) {
     const CAP: [&str; 3] = ["minecraft:gravel", "minecraft:cobblestone", "minecraft:coarse_dirt"];
     let rest = g.pose(DF_REST);
-    let mut a = -80.0;
-    while a < DF_REAL_A {
+    let mut a = a0;
+    while a < a1 {
         for side in [-1.0, 1.0] {
             let mut e = 4.0;
             while e < 64.0 {
@@ -2273,7 +2291,7 @@ fn df_berms(p: &mut Plan, g: &DfGeo) {
                 // built once the hull beside it has sunk most of the way in (the drawn ones rise with it until then)
                 let ts = g.sunk_by(x, 0.6);
                 if h >= 1 {
-                    let blk = *p.rng.pick(&BODY);
+                    let blk = *p.rng.pick(&DF_BERM_BODY);
                     let r = p.rng.int(3, 5);
                     p.ev.push((ts, Act::Spare(surf(cx, cz, &format!("fill ~-{r} ~ ~-{r} ~{} ~{} ~{} {blk} keep", r - 1, h - 1, r - 1)))));
                     if h >= 3 && p.rng.next() < 0.45 {
@@ -2287,15 +2305,20 @@ fn df_berms(p: &mut Plan, g: &DfGeo) {
         }
         a += 6.0;
     }
+}
+
+/// Earth spilling back off the heaps against the hull as it settles: `n` falling blocks (in two stages, for the budget).
+fn df_spills(p: &mut Plan, g: &DfGeo, n: usize) {
+    let rest = g.pose(DF_REST);
     let t0 = DF_FALL1 + DF_SLIDE;
-    for _ in 0..140 {
+    for _ in 0..n {
         let x = p.rng.uniform(-80.0, DF_REAL_A) + DF_XP;
         let side = if p.rng.next() < 0.5 { -1.0 } else { 1.0 };
         let e = 14.0 + p.rng.uniform(-4.0, 6.0);
         let q = rest.world([x, 0.0, side * (ms_half_w(x) + e)]);
         let (ix, iz) = (-rest.d[0] * side, -rest.d[2] * side);
         let sp = p.rng.uniform(0.15, 0.45);
-        let blk = *p.rng.pick(&BODY);
+        let blk = *p.rng.pick(&DF_BERM_BODY);
         let tl = (t0 + p.rng.uniform(0.6, DF_SETTLE as f64 + 1.5) as f32).max(g.sunk_by(x, 0.6) + 0.3);
         let y = g.by + df_berm_h(x, e) + 1.0;
         p.at(tl, format!("summon minecraft:falling_block {:.1} {y:.1} {:.1} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{:.3}d,0.15d,{:.3}d]}}", q[0], q[2], ix * sp, iz * sp));
@@ -3250,6 +3273,48 @@ mod tests {
                     assert!(cmds.iter().any(|(t, c)| c.starts_with(&at) && (*t - tl).abs() < 0.2), "mode {mode}: shed {i}");
                 }
             }
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tick_budget {
+    use super::*;
+    /// The most plan work any one tick of `laser`'s strike does: its firing, or one stage (the mod works out one a tick;
+    /// the best of three runs, in milliseconds).
+    fn heaviest_tick(laser: &'static Laser) -> f64 {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let mut best = f64::MAX;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
+            // the firing tick, then each stage on its own (the mod works out one a tick)
+            let mut worst = t0.elapsed().as_secs_f64() * 1000.0;
+            while let Some((_, act)) = ev.pop() {
+                if let Act::Later(job) = act {
+                    let s = std::time::Instant::now();
+                    let more = job();
+                    worst = worst.max(s.elapsed().as_secs_f64() * 1000.0);
+                    ev.extend(more);
+                }
+            }
+            best = best.min(worst);
+        }
+        best
+    }
+    #[test]
+    fn no_tick_outworks_the_proven_lasers() {
+        // a mod's tick has a fuel limit, and a stage that overran it stopped the whole mod. The plasma's, godly's and
+        // black hole's firing ticks (each its whole plan at once) have always fitted: no tick of any strike may do much
+        // more than the heaviest of them
+        let proven = [&crate::lasers::PLASMA, &crate::lasers::GODLY, &crate::lasers::BLACK_HOLE]
+            .map(heaviest_tick)
+            .into_iter()
+            .fold(0.0, f64::max);
+        for laser in crate::lasers::LASERS {
+            let ms = heaviest_tick(laser);
+            assert!(ms <= proven * 1.25 + 0.5, "{}: a tick of {ms:.2} ms against the proven {proven:.2} ms", laser.key);
         }
     }
 }

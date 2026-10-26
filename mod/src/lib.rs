@@ -63,6 +63,18 @@ struct Strike {
     length: f32,
     /// What the post pass reads; [3] is the strike clock, set each frame.
     params: [f32; 16],
+    /// Stages due that wait for a tick of their own (`tick_strike` works out one a tick).
+    waiting: std::collections::VecDeque<strike::Stage>,
+}
+impl Strike {
+    /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
+    /// merges two runs).
+    fn work_out(&mut self, job: strike::Stage) {
+        let mut rest = self.plan.split_off(self.next);
+        rest.extend(job());
+        rest.sort_by(|a, b| a.0.total_cmp(&b.0));
+        self.plan.extend(rest);
+    }
 }
 
 /// What is kept between sessions.
@@ -285,7 +297,7 @@ impl Orbital {
         self.compiled = Some(pass);
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
-        self.strike = Some(Strike { plan, next: 0, ticks: 0, length: laser.length, params });
+        self.strike = Some(Strike { plan, next: 0, ticks: 0, length: laser.length, params, waiting: Default::default() });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
@@ -297,6 +309,14 @@ impl Orbital {
         let now = s.ticks as f32 * 0.05;
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
+        // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
+        // fall due together, the rest wait for the ticks after, while everything else goes on time (each is due a
+        // little before its own events)
+        let mut worked_out = false;
+        if let Some(job) = s.waiting.pop_front() {
+            s.work_out(job);
+            worked_out = true;
+        }
         while let Some((t, _)) = s.plan.get(s.next) {
             if *t > now {
                 break;
@@ -313,13 +333,11 @@ impl Orbital {
                 Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
+                Act::Later(job) if worked_out => s.waiting.push_back(job),
                 Act::Later(job) => {
-                    // more of the plan, worked out now it is due: merged in after what has run (both are in order,
-                    // so the sort only merges two runs)
-                    let mut rest = s.plan.split_off(s.next);
-                    rest.extend(job());
-                    rest.sort_by(|a, b| a.0.total_cmp(&b.0));
-                    s.plan.extend(rest);
+                    // more of the plan, worked out now it is due
+                    s.work_out(job);
+                    worked_out = true;
                 }
             }
         }
