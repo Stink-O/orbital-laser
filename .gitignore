@@ -8,3 +8,4 @@ nohup.out
 .DS_Store
 mod/target/
 dist/
+tools/preview/target/

@@ -1,0 +1,13 @@
+[package]
+name = "preview"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wgpu = "30.0.1"
+pollster = "0.4"
+bytemuck = "1.25"
+png = "0.18"
+
+[profile.release]
+opt-level = 3
