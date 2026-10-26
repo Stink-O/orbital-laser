@@ -2974,7 +2974,7 @@ const PK_DIG_K: f64 = 0.21;
 const PK_TERRACE: i32 = 12;
 const PK_RIM_OUT: i32 = 175;
 /// The fissures: PK_CRACKS of them from PK_RIM out, wandering off their heading every PK_SEG blocks, splitting open at
-/// PK_CRACK_V blocks a second from PK_CRACK_T after the burst.
+/// PK_CRACK_V blocks a second (in jerks: pk_crack_time) from PK_CRACK_T after the burst.
 const PK_CRACKS: usize = 12;
 const PK_RIM: f64 = 126.0;
 const PK_SEG: f64 = 12.0;
@@ -3006,6 +3006,15 @@ fn pk_crack_at(i: usize, u: f64, seed: f32) -> f64 {
     let j = (u.max(0.0) / PK_SEG).floor() as usize;
     let f = (u.max(0.0) / PK_SEG).fract();
     pk_crack(i, seed).0 + off(j) + (off(j + 1) - off(j)) * f
+}
+/// When fissure splits have run `u` blocks past PK_RIM (after the burst): they run out in jerks, four a second, each a
+/// lurch forward easing to a stop, PK_CRACK_V on the whole (strike.wgsl's pk_crack_front, turned round).
+fn pk_crack_time(u: f64) -> f32 {
+    let q = u.max(0.0) / PK_CRACK_V * 4.0;
+    let (n, f) = (q.floor(), q.fract());
+    // (where smoothstep(0, 0.35, x) is f)
+    let x = 0.35 * (0.5 - ((1.0 - 2.0 * f).asin() / 3.0).sin());
+    PK_CRACK_T + ((n + x) / 4.0) as f32
 }
 /// The crater's radius `d` blocks down: a bowl in terraces PK_TERRACE deep, each wall dropping steeply to a ledge.
 fn pk_bowl_r(d: i32, bowl_r: i32, bowl_d: i32) -> i32 {
@@ -3353,7 +3362,7 @@ fn pk_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, u0: f64, u1: f
         let share = 1.0 - u / len;
         let hw = 0.8 + 3.5 * share;
         let depth = (4.0 + 30.0 * share).round() as i32;
-        let t = PK_BURST + PK_CRACK_T + (u / PK_CRACK_V) as f32;
+        let t = PK_BURST + pk_crack_time(u);
         let mut o = -hw - 0.7;
         while o <= hw + 0.7 + 1e-6 {
             let (x, z) = ((point[0] + dx * r - dz * o).floor() as i32, (point[2] + dz * r + dx * o).floor() as i32);
@@ -3987,7 +3996,9 @@ mod tests {
                 let a = pk_crack_at(i, u.clamp(0.0, len), 37.0);
                 let lat = (x * a.sin() - z * a.cos()).abs();
                 assert!(lat < 5.5, "fissure {i}: a column {lat:.1} off its line");
-                assert!((t - (PK_BURST + PK_CRACK_T + (u.max(0.0) / PK_CRACK_V) as f32)).abs() < 0.1, "fissure {i}: cut at {t} at {u:.1}");
+                // (the split runs out in lurches and waits between them: a column's centre may sit either side of a wait)
+                let (t0, t1) = (PK_BURST + pk_crack_time((u - 1.5).max(0.0)), PK_BURST + pk_crack_time((u + 1.5).max(0.0)));
+                assert!(*t >= t0 - 0.05 && *t <= t1 + 0.05, "fissure {i}: cut at {t} at {u:.1}, not {t0}..{t1}");
                 let deep: i32 = w[w.len() - 6].trim_start_matches("~-").parse().unwrap();
                 assert!(deep <= 34 && (u > len * 0.2 || deep >= 25), "fissure {i}: {deep} deep at {u:.1}");
                 cols += 1;
