@@ -123,6 +123,21 @@ fn pk_ring(rd: vec3<f32>, C: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32) ->
     return vec3<f32>(length(P - rd * tq), tq, a);
 }
 
+// A band of light round C (camera-relative) at radius R in the plane with normal n, `w` blocks wide (at least a pixel
+// or so): met where the view ray crosses the plane, widened as the plane turns edge on so it never thins to nothing.
+// x how bright, y how far along the ray, z where round it (radians, from e1 towards e2).
+fn pk_band(rd: vec3<f32>, C: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32, w: f32) -> vec3<f32> {
+    let n = cross(e1, e2);
+    let dn = dot(rd, n);
+    let tp = dot(C, n) / select(dn, 1.0e-4, abs(dn) < 1.0e-4);
+    if (tp <= 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let X = rd * tp - C;
+    let ww = max(w, tp * 0.0013) / max(abs(dn), 0.12);
+    return vec3<f32>(exp(-pow((length(X) - R) / ww, 2.0)) * (w / max(w, tp * 0.0013)), tp, atan2(dot(X, e2), dot(X, e1)));
+}
+
 // A tower's radius `yp` blocks up from its bottom: a tapering shaft, a drum for its head, a spike for its tip.
 fn pk_tower_r(yp: f32) -> f32 {
     if (yp < 0.0 || yp > PK_TOWER_H) {
@@ -182,14 +197,15 @@ fn pk_curve(e: vec4<f32>, NX: vec3<f32>, cam: vec3<f32>, time: f32, i: i32, seed
     var cv: PkCurve;
     let et = time - e.w;
     cv.a = e.xyz - cam + vec3<f32>(0.0, PK_TOWER_H, 0.0);
-    // (a whip: gathering speed all the way over, then a spring as it snaps onto the nexus)
+    // (a whip: its body bends over first and fast, its head following and drawn in to settle on the nexus, arriving
+    // along the curve rather than stopping dead)
     let x = saturate((et - PK_BEND0) / PK_BEND);
-    let post = max(et - PK_BEND0 - PK_BEND, 0.0);
-    let bend = x * x * x + 0.07 * sin(post * 26.0) * exp(-post * 6.0) * step(1.0, x);
+    let body = 1.0 - pow(1.0 - x, 3.0);
+    let head = x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
     let up = cv.a + vec3<f32>(0.0, PK_COL, 0.0);
     let arc = mix(cv.a, NX, 0.35) + vec3<f32>(0.0, 420.0, 0.0);
-    cv.b = mix(up, NX, bend);
-    cv.c = mix(cv.a + vec3<f32>(0.0, PK_COL * 0.5, 0.0), arc, min(bend * 1.1, 1.0));
+    cv.b = mix(up, NX, head);
+    cv.c = mix(cv.a + vec3<f32>(0.0, PK_COL * 0.5, 0.0), arc, body);
     // (its head shoots up and slows as it reaches its height; at the end its tail rushes up into the nexus)
     let h = saturate(et / PK_UP);
     cv.u1 = 1.0 - (1.0 - h) * (1.0 - h) * (1.0 - h);
@@ -235,9 +251,12 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     // the towers, and how many beams are feeding the nexus
     var em: array<vec4<f32>, 7>;
     var fed = 0.0;
+    var lock = 0.0;                                             // a jolt of light as each beam locks on
     for (var i = 0; i < PK_N; i = i + 1) {
         em[i] = pk_emitter(i, seed);
-        fed = fed + smoothstep(PK_BEND0 + PK_BEND * 0.7, PK_BEND0 + PK_BEND + 0.2, time - em[i].w);
+        let lt = time - em[i].w - PK_BEND0 - PK_BEND;
+        fed = fed + smoothstep(-PK_BEND * 0.3, 0.2, lt);
+        lock = lock + select(0.0, exp(-lt * 7.0), lt > 0.0 && time < PK_CUT);
     }
     // the nexus: a point when the first beam reaches it, swelling with each one after and with the charge, shuddering,
     // blazing as they fuse, steady while it feeds the beam, collapsing as they drain, then falling into the crater
@@ -245,7 +264,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     let fall = saturate((time - PK_FALL) / (PK_POP - PK_FALL));
     let NX0 = crel + vec3<f32>(0.0, PK_H, 0.0) + vec3<f32>(sin(time * 41.0), sin(time * 37.0 + 1.0), cos(time * 43.0)) * 2.5 * unstable;
     let NX = NX0 - vec3<f32>(0.0, (PK_H - 6.0) * fall * fall, 0.0);       // (falling, faster and faster)
-    let Rn = (1.5 + 1.1 * fed + 8.0 * charge * charge + 12.0 * select(0.0, exp(-merge_t * 2.5), merged))
+    let Rn = (1.5 + 1.1 * fed + 8.0 * charge * charge + 7.0 * select(0.0, exp(-merge_t * 3.0), merged) + 3.0 * lock)
         * (0.93 + 0.07 * sin(time * 31.0) + 0.04 * sin(time * 53.0) + 0.25 * unstable * sin(time * 67.0))
         * collapse * f32(fed > 0.0 && !popped);
     let glow_n = saturate(fed / 3.0) * (0.4 + 0.6 * charge + 0.6 * burn) * collapse * f32(!popped);
@@ -638,16 +657,20 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             let wh = max(rc * 0.35, th * 0.0012);
             strands = strands + exp(-pow(dh / wh, 2.0)) * (rc * 0.35 / wh) * pk_occ(th, scene_len, sky, cloud);
         }
-        // (from far off, where the braid is too small to make out, only the beam)
-        strands = strands * smoothstep(0.02, 0.05, (rc * 2.6 + 2.0) / max(best.y, 1.0));
+        // (from far off, where the braid is too small to make out, only the beam; and it unwinds into the beam as it nears
+        // the nexus, so the beams go in clean)
+        let to_nx = length(axis - NX0);
+        strands = strands * smoothstep(0.02, 0.05, (rc * 2.6 + 2.0) / max(best.y, 1.0)) * smoothstep(30.0, 120.0, to_nx);
         let pulse = pow(0.5 + 0.5 * sin(along * 0.012 - time * 26.0 + fi * 1.7), 10.0) * (0.4 + charge) + pow(0.5 + 0.5 * sin(along * 0.015 - time * 41.0 + fi), 14.0) * burn;
         let crackle = 0.75 + 0.5 * gnoise2(vec2<f32>(along * 0.05 - time * 30.0, fi * 7.0));
         let core = exp(-pow(best.x / (w * 0.5), 2.0));
         let sheath = exp(-pow(best.x / (w * 1.6), 2.0)) * crackle;
-        let glow = exp(-best.x / (w * 6.0)) * (1.0 - smoothstep(w * 25.0, w * 40.0, best.x));
+        let glow = exp(-best.x / (w * 6.0)) * (1.0 - smoothstep(w * 25.0, w * 40.0, best.x)) * smoothstep(10.0, 80.0, to_nx);
         // its head blazing as it climbs
         let head = exp(-pow((cv.u1 - best.z) * len / 15.0, 2.0)) * (1.0 - step(1.0, cv.u1));
-        let b = PK_WHITE * core * (1.0 + 1.5 * pulse + 3.0 * head) + PK_HOT * sheath * (0.6 + 1.6 * pulse + 2.0 * head) + PK_DEEP * glow * 0.4;
+        // (the sheath narrowing in as it is drawn into the nexus)
+        let inflow = smoothstep(15.0, 90.0, to_nx);
+        let b = PK_WHITE * core * (1.0 + 1.5 * pulse + 3.0 * head) + PK_HOT * sheath * (0.6 + 1.6 * pulse + 2.0 * head) * (0.45 + 0.55 * inflow) + PK_DEEP * glow * 0.4;
         add = add + (b * en * occ + (PK_HOT * 0.6 + PK_WHITE * 0.1) * strands) * k;
     }
 
@@ -657,17 +680,16 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     if (rings_on > 0.01 && tcn > 0.0) {
         // three rings, each turning on its own tilted axis, faster as it charges, thrown out of true as it shudders
         let Rr = (10.0 + 10.0 * charge + 6.0 * burn) * collapse;
-        for (var j = 0; j < 3; j = j + 1) {
+        for (var j = 0; j < 2; j = j + 1) {
             let fj = f32(j);
             let tilt = 0.5 + 0.55 * fj + unstable * 0.7 * sin(time * (23.0 + fj * 7.0));
             let spin = (time + 6.0 * charge * charge * charge) * (0.6 + 0.5 * fj) + fj * 2.1 + unstable * 0.4 * sin(time * 53.0 + fj * 3.0);
             let nrm = vec3<f32>(sin(tilt) * cos(spin), cos(tilt), sin(tilt) * sin(spin));
             let e1 = normalize(cross(nrm, vec3<f32>(0.3, 0.1, 0.9)));
             let e2 = cross(nrm, e1);
-            let rg = pk_ring(rd, NX, e1, e2, Rr * (1.7 + 0.55 * fj));
-            let wr = max(0.9 + 0.3 * charge, rg.y * 0.0012);
+            let rg = pk_band(rd, NX, e1, e2, max(Rr, Rn) * (2.2 + 0.6 * fj), 1.0 + 0.4 * charge);
             let seg = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(rg.z * 3.0 + time * (6.0 + 3.0 * fj)), 2.0);
-            add = add + (PK_HOT + PK_WHITE * 0.15) * exp(-pow(rg.x / wr, 2.0)) * (1.2 / wr) * seg * rings_on * (1.0 + 2.0 * unstable)
+            add = add + (PK_HOT + PK_WHITE * 0.15) * rg.x * 1.2 * seg * rings_on * (1.0 + 1.5 * unstable)
                 * pk_occ(rg.y, scene_len, sky, cloud) * k;
         }
     }
@@ -682,21 +704,25 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         let p2 = vec2<f32>(dot(o, hx), dot(o, hy));
         let ang = atan2(p2.y, p2.x);
         let surf = gfbm2(vec2<f32>(ang * 2.5 + seed, dcn / wpx * 1.5 - time * 3.0));
-        let wob = 1.0 + unstable * 0.35 * sin(ang * 5.0 + time * 40.0);
-        var star = PK_WHITE * 1.2 * (1.0 - smoothstep(wpx * 0.85, wpx * 1.05, dcn * (0.9 + 0.2 * surf) / wob))
-            + PK_HOT * exp(-max(dcn - wpx, 0.0) / (wpx * 0.6)) * (0.8 + 0.8 * surf) * en
-            + PK_DEEP * exp(-dcn / (wpx * 4.0)) * 0.8 * en;
+        let wob = 1.0 + unstable * 0.1 * sin(ang * 5.0 + time * 40.0);
+        // (a hard white core, a thin rim of blue fire round it, a little haze: a star, not a blur)
+        let core = 1.0 - smoothstep(wpx * 0.9, wpx * 1.0, dcn * (0.94 + 0.12 * surf) / wob);
+        let rim = exp(-pow((dcn - wpx) / (wpx * 0.12), 2.0));
+        var star = PK_WHITE * 1.2 * core + PK_HOT * rim * (0.8 + 0.6 * surf + 1.5 * lock) * en
+            + PK_HOT * exp(-max(dcn - wpx, 0.0) / (wpx * 0.35)) * (0.4 + 0.5 * surf) * en
+            + PK_DEEP * exp(-dcn / (wpx * 3.0)) * 0.45 * en;
         if (dcn < wpx * 4.0 && time < PK_FALL) {
             // arcs of plasma leaping off it
             let tq = floor(time * 16.0);
             var arcs = 0.0;
-            for (var j = 0; j < 5; j = j + 1) {
+            for (var j = 0; j < 3; j = j + 1) {
                 let aj = fh21(vec2<f32>(f32(j) * 3.1, tq)) * TAU;
                 let dj = vec2<f32>(cos(aj), sin(aj));
                 let bl = bolt_line(p2, dj * wpx * 0.7, dj * wpx * (2.2 + 1.6 * fh21(vec2<f32>(f32(j), tq + 5.0))), seed + 50.0 + f32(j) * 3.0, tq, wpx * 0.06);
                 arcs = arcs + (bl.x + bl.y * 0.3) * step(0.3 - 0.3 * unstable, fh21(vec2<f32>(f32(j) + 9.0, tq)));
             }
-            star = star + (PK_WHITE * 0.5 + PK_HOT) * arcs * saturate(fed / 2.0) * (0.6 + charge + burn + 2.0 * unstable) * en
+            // (only a flicker of them while it feeds; they leap off it as it shudders)
+            star = star + (PK_WHITE * 0.5 + PK_HOT) * arcs * saturate(fed / 2.0) * (0.15 + 0.3 * burn + 2.0 * unstable) * en
                 * (1.0 - smoothstep(PK_CUT, PK_FALL, time));
         }
         if (fall > 0.0) {
@@ -813,6 +839,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             var b = (PK_WHITE * core * (1.0 + 0.6 * pulse) + PK_HOT * inner * (0.28 + 0.6 * pulse) + PK_DEEP * outer * 0.4) * e;
             // the head of it, blazing, on its way down
             b = b + PK_WHITE * exp(-pow((q.z - 1.0) * (u_head - u_top) * lenb / 10.0, 2.0)) * core * 1.5 * (1.0 - step(1.0, u_head));
+            // (its strands wind out of it below the nexus, not round the nexus itself)
+            strands = strands * smoothstep(40.0, 110.0, along);
             add = add + (b * vis + halo * PK_DEEP * 0.12 * e * vis_mix + (PK_HOT * 0.8 + PK_WHITE * 0.15) * strands * 1.5) * burn * k;
         }
         // the fireball where the land burst, boiling; it settles round the foot of the beam
@@ -924,8 +952,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     // ---- the lens: bloom round the nexus and the beam's foot, a long streak through the nexus --------------------
     if (pN.z > 0.0 && Rn > 0.01) {
         let dd = (uv - pN.xy) * vec2<f32>(aspect, 1.0);
-        let l = lum_n * (0.6 + 0.5 * charge + 0.6 * burn) + select(0.0, exp(-merge_t * 3.0) * 3.0, merged);
-        add = add + PK_HOT * l / (1.0 + dot(dd, dd) * 300.0) * 0.35 * k;
+        let l = lum_n * (0.6 + 0.5 * charge + 0.6 * burn) + select(0.0, exp(-merge_t * 4.0) * 1.5, merged) + lock * 0.8;
+        add = add + PK_HOT * l / (1.0 + dot(dd, dd) * 600.0) * 0.25 * k;
         add = add + PK_HOT * exp(-abs(dd.y) * 300.0) * exp(-abs(dd.x) * 1.6) * l * 0.5 * k;
     }
     if (pT.z > 0.0 && (burn > 0.001 || (popped && mt < 2.0))) {
