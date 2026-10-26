@@ -25,6 +25,7 @@ LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "p
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
+    "mid": "cx=0 cy=95 cz=420 yaw=-90 pitch=16 mx=0 mz=420",
     "up": "cx=0 cy=70 cz=60 yaw=-90 pitch=70",
     "far": "cx=0 cy=110 cz=900 yaw=-90 pitch=6 mx=0 mz=60",
     "side": "cx=1700 cy=200 cz=-250 yaw=180 pitch=6 mx=0 mz=60",
