@@ -602,6 +602,15 @@
     ],
     "subtitle": "subtitles.orbital.downfall.after"
   },
+  "planetkiller.burst": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/burst",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.burst"
+  },
   "planetkiller.ignite": {
     "sounds": [
       {

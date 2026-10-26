@@ -154,11 +154,11 @@ until it fires one beam down through it, leaving a crater 260 blocks across.
   as the last of it goes through, before it collapses in a flash and bores a shaft to bedrock. It uses the Mothership's
   approach and arrival choices and its own colour (red by default), reaches 1000 blocks, and always comes down well
   clear of you.
-- **Planet Killer.** Seven towers, each over 400 blocks tall, tear up out of the land far out round the horizon one
-  after another, dark against a sky going dark, the light running up their seams, each heard grinding up from where it
-  stands. Each fires a column of light straight up into the sky, then whips it over onto a ring of light forming 300
-  blocks over the target, 440 across, the beams curling in to feed it like a pinwheel, white-hot cores in turbulent
-  sheaths, light flowing along them. The ring lights up from where each beam strikes it and runs round to meet the next
+- **Planet Killer.** Out round the horizon, a kilometre off, the ground bulges and splits seven times, one after another,
+  and seven towers over 400 blocks tall burst up through it, shuddering, throwing earth and rock into the air, lurching
+  and grinding up to their full height while the sky goes dark, dust left hanging round their feet; each is heard and
+  felt breaking through from where it stands. Each fires its beam straight at a ring of light forming 300 blocks over
+  the target, 440 across: white-hot cores in turbulent sheaths, light flowing along them. The ring lights up from where each beam strikes it and runs round to meet the next
   until it is whole, then spins up, pulses racing round it, runes turning on it, the light bending inside it, until it
   shudders, tightens and fills with light, and they fuse: a flash, a ring of fire tearing out through the sky, the sky
   cracking open and the clouds blown away. One beam, white-hot inside its blue sheath, comes down through the ring. The
@@ -432,8 +432,8 @@ and charges from 4 (its meteor is a point of light far off from 2.5 s); the char
 from 8.4, the meteor breaks up at 11 and its pieces strike at about 15.4; it lurches down at 17 and 20, falls free,
 strikes at 30, its bow slams down at 30.65 and it is still by 32.6; its engine groans from 34, ruptures at 40, the last of
 the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64. The Planet Killer's towers
-rise from 0 s and fire from 0.5 to 1.7 s; their columns whip onto the ring from about 1.7 to 3 s, it closes by about 3.4,
-shudders and tightens from 3.3 and they fuse at 4 s; the one beam lands at 4.35, the land bursts at 4.85, the chasms open
+burst up through the land from 0 to 1.5 s and fire from 1.6 to 2.5 s, their beams striking the ring by about 3; it
+closes by about 3.4, shudders and tightens from 3.3 and they fuse at 4 s; the one beam lands at 4.35, the land bursts at 4.85, the chasms open
 over the next 2 s and the crater is dug from 7.75 to about 15 s; the towers cut out at 13.5, the ring crushes in, drops
 into the crater and bursts at 14.4, and the mushroom climbs until the strike ends at 26.
 
