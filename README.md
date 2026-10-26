@@ -158,6 +158,10 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 
 ## New in 0.6.0
 
+<p align="center">
+  <img alt="The Downfall: the burning ship ploughing into a mountain, earth flung up along its sides, smoke trailing behind" width="720" src="docs/15-downfall-crash.jpg">
+</p>
+
 - **Downfall**, the sixth laser, on the wheel's second page and `/orbital downfall`: the Mothership brought down by a
   meteor. Its roof turrets fire on the meteor and break it up, the pieces hit it anyway, it falls and crashes into the
   land, crushing what it lands on and burying itself half its height, then the black hole engine in its stern ruptures
