@@ -601,5 +601,86 @@
       }
     ],
     "subtitle": "subtitles.orbital.downfall.after"
+  },
+  "planetkiller.ignite": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/ignite",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.ignite"
+  },
+  "planetkiller.charge": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/charge",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.charge"
+  },
+  "planetkiller.merge": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/merge",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.merge"
+  },
+  "planetkiller.fire": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/fire",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.fire"
+  },
+  "planetkiller.beam1": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/beam1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.beam1"
+  },
+  "planetkiller.beam2": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/beam2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.beam2"
+  },
+  "planetkiller.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.rumble"
+  },
+  "planetkiller.cutoff": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/cutoff",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.cutoff"
+  },
+  "planetkiller.after": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/after",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.after"
   }
 }

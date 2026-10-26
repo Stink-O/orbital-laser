@@ -1,10 +1,11 @@
-"""The Godly, Black hole, Meteor storm and Mothership sound sets (Plasma's lives in sounds_plasma.py): lockon, charge,
-fire, beam, rumble, accent, shutdown; the meteor storm and the mothership have their own lists (see OWN). The Plasma set's `collapse` is shared. Files go to
+"""The Godly, Black hole, Meteor storm, Mothership, Downfall and Planet killer sound sets (Plasma's lives in
+sounds_plasma.py): lockon, charge, fire, beam, rumble, accent, shutdown; the meteor storm, the mothership, the downfall
+and the planet killer have their own lists (see OWN). The Plasma set's `collapse` is shared. Files go to
 sounds/<theme>/<name>.ogg, events are `<theme>.<name>`."""
 from soundlib import *
 import soundlib
 
-THEMES = ("godly", "blackhole", "meteor", "mothership", "downfall")
+THEMES = ("godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller")
 NAMES = ["lockon", "charge", "fire", "beam", "rumble", "accent", "shutdown"]
 # The meteor storm's set is its own: one storm bed instead of a beam, and a whoosh and a hit for every meteor.
 OWN = {"meteor": ["lockon", "charge", "fire", "storm", "rumble", "whoosh1", "whoosh2", "hit1", "hit2", "hit3",
@@ -19,7 +20,11 @@ OWN = {"meteor": ["lockon", "charge", "fire", "storm", "rumble", "whoosh1", "who
        # breaking up, its pieces striking the hull, the ship falling, the crash, its engine groaning, rupturing into a black
        # hole that drags everything in, and its collapse; then the quiet after
        "downfall": ["hum", "divert", "approach", "battery1", "battery2", "split", "hit1", "hit2", "hit3", "fall", "crash",
-                    "groan1", "groan2", "rupture", "vortex", "evaporate", "after"]}
+                    "groan1", "groan2", "rupture", "vortex", "evaporate", "after"],
+       # the planet killer: an emitter firing far off (heard from each one's direction), the charge building to the
+       # beams fusing, the beam landing, two takes of its roar, the ground shaking, the emitters cutting out and the
+       # nexus bursting, and the quiet after
+       "planetkiller": ["ignite", "charge", "merge", "fire", "beam1", "beam2", "rumble", "cutoff", "after"]}
 
 
 def names(th):
@@ -1335,7 +1340,170 @@ def downfall():
     finish_loud(f"{th}/after", L, R, -18.0, 0.5)
 
 
-BUILDERS = {"godly": godly, "blackhole": blackhole, "meteor": meteor, "mothership": mothership, "downfall": downfall}
+# =====================================================================================  PLANET KILLER
+def electric(d, f, depth=0.3, rate=7.0, nh=12):
+    """The hum of an enormous amount of power: a buzzing tone (odd harmonics, like a transformer's) whose level and
+    brightness wobble, never quite steady."""
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    f = np.broadcast_to(np.asarray(f, dtype=float), (n,))
+    ph = 2 * np.pi * np.cumsum(f * (1.0 + 0.003 * smooth_noise(d, 3.0, n))) / SR
+    x = np.zeros(n)
+    for h in range(1, nh + 1, 2):
+        if float(np.max(f)) * h < 9000:
+            x += np.sin(h * ph) / h ** 1.2
+    return x * (1 - depth + depth * (0.5 + 0.5 * np.sin(2 * np.pi * rate * t + smooth_noise(d, 1.0, n))))
+
+
+def planetkiller():
+    th = "planetkiller"
+    # ignite (positional, so mono): one emitter firing, out on the horizon. Heard from a long way off: a colossal
+    # discharge with the crack dulled by the distance, a deep blow under it, the beam tearing upward in a rising
+    # sizzle, and the land rolling it back for seconds
+    for _ in range(1):
+        d = 4.5; n = int(SR * d); t = tt(d)
+        blow = band(overload(heavy(n, 0.02, 0.35, 1.6, 1.0, 1.0, 0.4), 2.2), None, 900)
+        rise = glide_noise(d, 180, 1400, 1.0, curve=0.6) * np.clip(t / 0.05, 0, 1) * np.exp(-t / 0.9) * 0.35
+        zap = band(electric(d, glide(70, 220, t, 1.2, 0.7), 0.4, 11.0), 60, 2400) * np.clip(t / 0.03, 0, 1) * np.exp(-t / 0.8) * 0.4
+        x = convolve_wet(blow + rise + zap, outdoor_ir(4.0, density=30.0, darken=(1800, 120), decay=1.5), 0.9)
+        x, _ = parallel_comp(x, x.copy(), amount=0.8)
+        finish_loud(f"{th}/ignite", low_cut(x, 16), None, -8.5, 0.4)
+
+    # charge: 4 s from the trigger to the beams fusing. The power of the whole array gathering: a sub drone that climbs,
+    # an electric whine rising through it, a throb that quickens and hardens, a crackle thickening as the nexus swells,
+    # and the air beginning to roar; cut dead the instant they fuse (merge takes over)
+    d = 4.0; n = int(SR * d); t = tt(d); p = np.clip(t / 3.95, 0, 1)
+    rate = 1.2 + 10.0 * p ** 1.8
+    throb = (0.5 + 0.5 * np.sin(2 * np.pi * np.cumsum(rate) / SR)) ** 3
+    L = np.zeros(n); R = np.zeros(n)
+    for k, ch in enumerate((L, R)):
+        whine = band(electric(d, glide(55 + 2 * k, 330 + 6 * k, t, 3.95, 1.4), 0.25, 9.0 + k), 40, 5000) * (0.15 + 0.85 * p ** 2) * 0.5
+        crk = crackle(d, rate=900 + 300 * k, decay=0.002, lo=200, hi=4000) * p ** 2.5 * 0.4
+        draw = glide_noise(d, 60, 420, 1.6, curve=1.5) * (0.1 + 0.9 * p ** 2) * 0.6
+        ch += whine + crk + draw
+    weight = band(drone(d, ((27.5, 1.0), (27.9, 0.7), (41.2, 0.5)), 0.2, 0.4), 18, 140) * (0.4 + 0.6 * p) * 0.8
+    weight += unit(band(white(d), 16, 70)) * throb * (0.3 + 0.7 * p) * 0.7
+    L, R = wide_tail(L + weight, 2.0, 0.8, (2600, 160), 0.35)[0], wide_tail(R + weight, 2.0, 0.8, (2600, 160), 0.35)[1]
+    m = min(len(L), len(R))
+    tm = np.arange(m) / SR
+    cut = np.clip(tm / 0.2, 0, 1) * np.clip((3.95 - tm) / 0.004, 0, 1)
+    L, R = centre_lows(L[:m] * cut, R[:m] * cut)
+    L, R = parallel_comp(L, R, amount=0.7)
+    finish_loud(f"{th}/charge", L[:n], R[:n], -12.0, 0.004)
+
+    # merge: the beams fusing overhead. A crack of the air, a huge falling blow of pressure, a ringing chord of the
+    # nexus snapping in tune and sliding down, and a rush of air thrown outward with the ring of light; long and wide
+    d = 8.0; n = int(SR * d); t = tt(d); t0 = 0.05
+    after = np.maximum(t - t0, 0); on = t >= t0
+    crack = nwave(n, t0, 0.006, 1.2, 5000)
+    blow = band(overload(heavy(n, t0, 0.5, 2.0, 1.0, 1.8, 0.6), 2.4), None, 1400)
+    chord = sum(band(electric(d, glide(f, f * 0.7, after, 3.0, 0.6), 0.2, 5.0 + k), 30, 4000) * a for k, (f, a) in enumerate(((55.0, 1.0), (82.4, 0.6), (110.0, 0.45), (164.8, 0.25))))
+    chord = chord * np.clip(after / 0.01, 0, 1) * np.exp(-after / 1.6) * on * 0.45
+    rush = [flange(glide_noise(d, 900 - 150 * k, 90, 1.5, curve=0.4) * np.clip(after / 0.02, 0, 1) * np.exp(-after / 0.9) * on * 0.5, 0.001, 0.01, 0.6, 0.5) for k in range(2)]
+    L, R = wide_tail(crack + blow + chord, 7.0, 2.4, (2400, 120), 1.0)
+    m = len(L)
+    L = pad_to(L, m) + pad_to(rush[0], m); R = pad_to(R, m) + pad_to(rush[1], m)
+    L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
+    L, R = parallel_comp(L, R, amount=0.9)
+    finish_loud(f"{th}/merge", L, R, -9.5, 0.6)
+
+    # fire: the beam landing, louder than anything before it. One enormous blow of pressure, the land flashing to vapour
+    # in a roar torn through with crackle, a sub-bass shove that goes on and on, an electric scream under it as the beam
+    # bites, the land answering in long clumps of echoes, rock raining back down, the ground rumbling on
+    d = 14.0; n = int(SR * d); t = tt(d)
+    punch_ = band(white(d), 26, 220) * np.clip(t / 0.002, 0, 1) * np.exp(-t / 0.25) * 1.8
+    turb = lowpass_glide(white(d), 2600, 150, curve=0.55) * np.clip(t / 0.004, 0, 1) * np.exp(-t / 1.5) * 0.85
+    sear = lowpass_glide(crackle(d, rate=3000, decay=0.003, lo=90, hi=3000), 3000, 500, curve=0.7) * np.exp(-t / 2.0) * 0.5
+    scream = band(electric(d, glide(160, 70, t, 2.5, 0.6), 0.3, 13.0), 60, 3000) * np.clip(t / 0.05, 0, 1) * np.exp(-t / 1.6) * 0.3
+    front = band(overload(heavy(n, 0.0, 0.6, 2.6, 1.3, 2.8, 0.9) + punch_ + turb + sear + scream, 2.6), None, 3200)
+    falls = [debris_settle(d, 1.0 + 0.15 * k, amount=1.5, spread=8.0) for k in range(2)]
+    fall_lo = convolve_wet(band(falls[0], None, 150), outdoor_ir(3.0, density=40.0, darken=(4000, 250), decay=1.1), 0.5)
+    L, R = wide_tail(front, 10.0, 3.2, (3000, 130), 1.0, 35.0)
+    outs = []
+    for k, y in enumerate((L, R)):
+        fw = convolve_wet(band(falls[k], 150, None), outdoor_ir(3.0, density=40.0, darken=(4000, 250), decay=1.1), 0.5)
+        mm = min(len(y), len(fw), len(fall_lo))
+        y = y.copy()
+        y[:mm] += fw[:mm] + fall_lo[:mm]
+        outs.append(y)
+    m = min(len(o) for o in outs)
+    rumble = band(white(m / SR), 16, 80) * np.exp(-np.arange(m) / SR / 4.5) * (1 + 0.5 * smooth_noise(m / SR, 2.0)) * 0.5
+    L, R = centre_lows(low_cut(outs[0][:m] + rumble, 16), low_cut(outs[1][:m] + rumble, 16))
+    L, R = parallel_comp(L, R, amount=1.2)
+    finish_loud(f"{th}/fire", L, R, -8.5, 0.8)
+
+    # beam1-2: the beam's roar while it burns, 5.2 s a take (two, end to end). A column of air torn apart round a beam
+    # of pure power: a deep turbulent roar, the array's electric drone under it, swelling with the surges racing down
+    # it, a searing crackle round it, the ground boiling where it stands
+    for take in (1, 2):
+        d = 5.2; n = int(SR * d); t = tt(d)
+        L = np.zeros(n); R = np.zeros(n)
+        surge = 0.6 + 0.4 * (0.5 + 0.5 * smooth_noise(d, 1.4 + 0.3 * take, n)) ** 1.5
+        hum = band(electric(d, 41.2 + 0.4 * take, 0.25, 4.0 + take), 30, 2000) * 0.35
+        for k, ch in enumerate((L, R)):
+            roar = roar_bed(d, 80 + 10 * take, 105, 2.0, 0.4) * 0.9
+            body = roar_bed(d, 170 + 20 * take, 230, 1.5, 0.5) * 0.5
+            sear = band(crackle(d, rate=3200 + 500 * take + 300 * k, decay=0.0025, lo=150, hi=2600), None, 2400) * 0.35
+            boil = band(crackle(d, rate=120, decay=0.01, lo=60, hi=500, heavy=1.4), None, 500) * 0.3
+            ch += (roar + body + sear * surge) * surge + boil + hum * surge
+        weight = band(drone(d, ((36.7, 1.0), (37.3, 0.8), (55.0, 0.4)), 0.3, 0.5), 20, 150) * 0.6
+        weight += unit(band(white(d), 16, 60)) * surge * 0.35
+        f = fade(n, 0.25, 0.5)
+        L, R = wide_tail((L + weight) * f, 3.0, 1.2, (2200, 140), 0.5)[0], wide_tail((R + weight) * f, 3.0, 1.2, (2200, 140), 0.5)[1]
+        m = min(len(L), len(R))
+        L, R = centre_lows(L[:m], R[:m])
+        L, R = parallel_comp(L, R, amount=0.7)
+        finish_loud(f"{th}/beam{take}", L, R, -11.5, 0.4)
+
+    # rumble: the ground shaking under it, 5 s: a deep roll that comes and goes, heavy slumps under it
+    d = 5.0; n = int(SR * d); t = tt(d)
+    L = np.zeros(n); R = np.zeros(n)
+    roll = band(white(d), 16, 100) * (0.6 + 0.4 * smooth_noise(d, 1.8, n)) * 1.2
+    for ch in (L, R):
+        ch += roll + lowpass_glide(band(white(d), 60, None), 400, 160) * (0.4 + 0.6 * (0.5 + 0.5 * smooth_noise(d, 2.5, n)) ** 2) * 0.3
+    for _ in range(6):
+        t1 = rng.uniform(0.2, d - 1.0)
+        k0 = int(t1 * SR)
+        mm = int(0.9 * SR)
+        l, r = pan(thud(mm, rng.uniform(1.8, 3.0)) * rng.uniform(0.4, 0.9), rng.uniform(-0.6, 0.6))
+        L[k0:k0 + mm] += l; R[k0:k0 + mm] += r
+    f = fade(n, 0.5, 1.6)
+    L, R = centre_lows(L * f, R * f)
+    finish_st_m(f"{th}/rumble", L, R, 0.02, 0.75)
+
+    # cutoff: the emitters cutting out (at the strike's 13.5 s) and the nexus bursting 0.9 s later. The roar and the
+    # array's drone sliding down and away as the power drains, a breath of the air being sucked in to where the nexus
+    # was, then its burst: a hard crack and a deep blow, rolling off the land and the sky for a long time
+    d = 9.0; n = int(SR * d); t = tt(d); tp = 0.9
+    drain = (roar_bed(d, 110, 60, 3.0, 0.3) * 0.8 + band(electric(d, glide(110, 25, t, tp, 0.8), 0.2, 6.0), 20, 2000) * 0.5) * np.clip((tp + 0.05 - t) / 0.05, 0, 1) * (1 - 0.6 * np.clip(t / tp, 0, 1))
+    drain = lowpass_glide(drain, 2400, 200, curve=0.4)
+    suck = glide_noise(d, 200, 1600, 1.4, curve=2.0) * np.clip((t - tp + 0.35) / 0.35, 0, 1) ** 3 * (t < tp) * 0.5
+    after = np.maximum(t - tp, 0)
+    burst = nwave(n, tp, 0.005, 1.0, 5000) + band(overload(heavy(n, tp, 0.45, 1.8, 1.0, 1.6, 0.5), 2.2), None, 1400)
+    burst += lowpass_glide(white(d), 1800, 90, curve=0.5) * np.clip(after / 0.01, 0, 1) * np.exp(-after / 0.8) * (t >= tp) * 0.5
+    L, R = wide_tail(drain + suck + burst, 8.0, 2.8, (2200, 110), 1.0)
+    L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
+    L, R = parallel_comp(L, R, amount=0.9)
+    finish_loud(f"{th}/cutoff", L, R, -10.0, 0.8)
+
+    # after: the quiet that follows, 9 s: a low wind over the scorched land, the last rock coming down far off, the
+    # crater ticking and seething as it cools, fires crackling, the ground giving a last groan
+    d = 9.0; n = int(SR * d); t = tt(d)
+    L = np.zeros(n); R = np.zeros(n)
+    for k, ch in enumerate((L, R)):
+        ch += roar_bed(d, 160 + 30 * k, 120, 0.4, 0.7) * 0.18
+        ch += band(crackle(d, rate=60 + 20 * k, decay=0.004, lo=300, hi=3000, heavy=1.3), None, 3000) * 0.12
+        ch += lowpass_glide(white(d), 900, 300) * 0.04
+    falls = debris_settle(d, 0.3, amount=0.6, spread=6.0)
+    mm = min(len(falls), n)
+    L[:mm] += falls[:mm] * 0.6; R[:mm] += falls[:mm] * 0.6
+    groan = band(white(d), 20, 90) * np.exp(-((t - 3.5) / 1.2) ** 2) * 0.6
+    f = fade(n, 0.3, 3.0)
+    L, R = centre_lows((L + groan) * f, (R + groan) * f)
+    finish_st_m(f"{th}/after", L, R, 0.05, 0.55)
+
+BUILDERS = {"godly": godly, "blackhole": blackhole, "meteor": meteor, "mothership": mothership, "downfall": downfall,
+            "planetkiller": planetkiller}
 
 
 def build_all(only=None):
