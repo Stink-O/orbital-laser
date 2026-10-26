@@ -7,5 +7,7 @@ __pycache__/
 nohup.out
 .DS_Store
 mod/target/
+mod/assets/
+mod/data/
 dist/
 tools/preview/target/

@@ -61,7 +61,8 @@ or **Downfall**, the same ship brought down by a meteor, crashing into the land,
 > `input`, `ui`, `render` and `world` capabilities from Horizon's own roadmap):
 > [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world),
 > with a ready-built Linux download on its [releases](https://github.com/Stink-O/horizon/releases). Stock Horizon can't
-> run the mod; [Stock Horizon](#stock-horizon) covers the older setup that works there. You also need your own copy of
+> run the fork's mod. A port to stock Horizon's own mod API, with no strike light yet, is in
+> [Stock Horizon](#stock-horizon), along with the older 0.1 setup. You also need your own copy of
 > Minecraft Java Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 
 > [!WARNING]
@@ -427,7 +428,23 @@ and sweeps, with a reverb built from a synthetic impulse response.
 
 ## Stock Horizon
 
-0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the Black Hole, the Meteor Storm and the Mothership are mod-only): a shader pack, a sound pack and the item mod, run by
+**The stock port.** `mod/` also builds against stock Horizon's mod API: it needs a Horizon release with mod API level 3
+(`command.run-quiet`, on top of level 2's `game.raycast`): the first release after 0.2.73. Every laser fires the same way and leaves the same crater, sounds and
+particles, and the wheel is a screen of the game's own widgets (a list of lasers and a list of switches). What the
+stock build doesn't have yet:
+
+- **The strike's light** (the post pass in `mod/shaders/`) waits for Horizon's native shader API. The shaders still
+  build and are checked by the tests.
+- **Fly speed** (`/orbital flyspeed` and the wheel's FLY SPEED bar) and the typed box: stock Horizon has no
+  `world.set-flying-speed` or `input.poll-typed`.
+- **It needs cheats.** The crater, the sounds and the messages are vanilla commands, run quietly (nothing in the chat),
+  64 a tick, with the player's own rights. In single player that means Allow Cheats on. On another server than Horizon's,
+  the commands go as chat commands, and their feedback shows.
+
+Build it with stock `cargo-horizon-mod` (`cargo install --git https://github.com/ludovic111/horizon cargo-horizon-mod`)
+and `python3 tools/build_mod.py`, then put `dist/orbital.hmod` in the game's `horizon-mods` folder.
+
+**0.1's setup.** 0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the Black Hole, the Meteor Storm and the Mothership are mod-only): a shader pack, a sound pack and the item mod, run by
 [`strike.py`](strike.py) from outside the game through Horizon's `horizon-ctl`. The items are spyglasses there, the remote
 opens a chest-style menu to pick the laser, and every strike rewrites the shader pack's settings.
 
@@ -454,7 +471,8 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
 
 ## Known gaps
 
-- **It needs a Horizon fork** until Horizon adds these capabilities upstream. The ready-built fork is Linux x86-64 only.
+- **The full look needs a Horizon fork** until Horizon has a native shader API; the [stock port](#stock-horizon) has
+  everything but the strike's light and fly speed. The ready-built fork is Linux x86-64 only.
 - **Linux only so far.** Windows and macOS are untested.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn only
   for the player who fired.
@@ -479,9 +497,9 @@ python3 tools/preview.py downfall 14 30 45    # render a strike offscreen at tho
 change to a strike's look can be seen in seconds without the game (`--bench` adds its GPU time). In the game,
 `/orbital skip SECONDS` jumps the next strike to the moment you're working on.
 
-`tools/build_mod.py` builds the code with `cargo horizon-mod build` from the fork
-(`cargo install --git https://github.com/Stink-O/horizon --branch mod-api-input-ui-render-world cargo-horizon-mod`,
-plus `rustup target add wasm32-unknown-unknown`), then adds the items, textures and sounds. To validate the shader on its
+`tools/build_mod.py` copies the items, textures and sounds into `mod/assets` and `mod/data`, then builds
+`dist/orbital.hmod` with `cargo horizon-mod build` (stock: `cargo install --git https://github.com/ludovic111/horizon
+cargo-horizon-mod`, plus `rustup target add wasm32-unknown-unknown`; `--cargo-horizon-mod PATH` picks another one). To validate the shader on its
 own, run `tools/check-shader.sh`: it puts the fork's mod pass prelude
 ([`tools/wgslcheck/prelude.wgsl`](tools/wgslcheck/prelude.wgsl)) before both passes (every laser's, and the
 Downfall's as the mod builds it) and checks them. See [CONTRIBUTING.md](CONTRIBUTING.md).

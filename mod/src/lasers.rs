@@ -6,7 +6,9 @@
 pub struct Laser {
     /// Settings key and sound prefix (the plasma set has none).
     pub key: &'static str,
-    /// The shader's laser number (`frame.mod_params[1].w`).
+    /// The shader's laser number (`frame.mod_params[1].w`), for the strike's light once Horizon has a native
+    /// shader API.
+    #[allow(dead_code)]
     pub index: u32,
     pub title: &'static str,
     /// Minecraft text colour for the action bar.
@@ -14,7 +16,8 @@ pub struct Laser {
     /// The wheel's accent, 0xRRGGBB.
     pub rgb: u32,
     pub blurb: &'static str,
-    /// The item model its segment of the wheel shows.
+    /// The item model its segment of the drawn wheel showed (the stock wheel is a list).
+    #[allow(dead_code)]
     pub icon_model: &'static str,
     /// Seconds a strike runs, light and aftermath.
     pub length: f32,

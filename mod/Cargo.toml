@@ -9,9 +9,8 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-# The Horizon mod SDK with the input, ui, render and world interfaces (Horizon's
-# roadmap capabilities, from the Stink-O/horizon fork until they are upstream).
-horizon-mod-sdk = { git = "https://github.com/Stink-O/horizon", branch = "mod-api-input-ui-render-world" }
+# Horizon's stock mod SDK (command.run-quiet: API level 3, in the first Horizon release after 0.2.73).
+horizon-mod-sdk = { git = "https://github.com/ludovic111/horizon", branch = "main" }
 
 [profile.release]
 opt-level = "s"

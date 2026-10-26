@@ -1,35 +1,43 @@
 //! Orbital Laser, a Horizon mod. Hold the Orbital Laser Designator on a target
 //! and the strike lands there: a beam from orbit, a crater to bedrock, and what
 //! each laser leaves behind. Right-click the Orbital Remote (or press R) for the
-//! laser wheel (rebind R in Options > Controls). `/orbital give` hands you both items.
+//! laser wheel. `/orbital give` hands you both items.
 //!
-//! It uses the game's mod capabilities: `input` (the two items' right-clicks,
-//! the wheel's key and what is typed on it), `ui` (the wheel), `render` (the
-//! strike's post pass, shaders/strike.wgsl), `world` (aiming, the crater's block
-//! changes, the sounds and the flying speed), `hud` (the status panel), `storage`
-//! (the chosen laser and the settings) and
-//! `registries` (the items, their textures and the sounds, in assets/ and data/).
+//! It uses Horizon's stock mod interfaces: `input` (the two items'
+//! right-clicks and the wheel's key), `ui` (the wheel, a screen of the game's
+//! widgets), `game-read` (aiming: `game.raycast`), `command` (the crater's
+//! block changes, the sounds and the messages, as vanilla commands run
+//! quietly, one batch a tick: it needs cheats), `render` (the camera's
+//! jolts), `hud` (the status panel), `storage` (the chosen laser and the
+//! settings) and `registries` (the items, their textures and the sounds, in
+//! assets/ and data/). The strike's light (the post
+//! pass in shaders/) waits for Horizon's native shader API.
 mod lasers;
 mod strike;
 mod wheel;
 
 use horizon_mod_sdk::{
-    Mod, Registration, game,
+    Mod, Registration, command, game,
     hud::{self, Corner, Line},
     input::{self, Event},
-    log, render, storage, ui, world,
+    log, render, storage, ui,
 };
 use lasers::{LASERS, is_ship};
+use std::collections::VecDeque;
 use strike::{APPROACHES, ARRIVALS, Act, COLOUR_RGB, COLOURS, FIRE, Target};
 
-const DESIGNATOR: &str = "orbital:laser_designator";
+pub(crate) const DESIGNATOR: &str = "orbital:laser_designator";
 const REMOTE: &str = "orbital:remote";
 /// Ticks of holding the designator on a target before it fires.
 const LOCK_TICKS: u32 = 14;
+/// The strike's light, for when Horizon has a native shader API: strike.wgsl, and the downfall's own pass
+/// (strike.wgsl up to its fs_main, less the other lasers' own functions, marked `[lasers pass only]`, then
+/// shaders/downfall.wgsl).
+#[cfg(test)]
 const SHADER: &str = include_str!("../shaders/strike.wgsl");
-/// The downfall's own pass: strike.wgsl up to its fs_main, less the other lasers' own functions (marked `[lasers pass
-/// only]`), then this (see shaders/downfall.wgsl).
+#[cfg(test)]
 const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
+#[cfg(test)]
 fn downfall_pass() -> String {
     let mut out = String::with_capacity(SHADER.len() + DOWNFALL_PASS.len());
     let mut skip = false;
@@ -52,11 +60,12 @@ fn downfall_pass() -> String {
     out
 }
 const SETTINGS: &str = "settings";
-/// Vanilla's flying speed (creative flight), which the wheel's speeds multiply.
-const VANILLA_FLY: f32 = 0.05;
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
 /// carves its crater over a few seconds instead of freezing the game for one.
 const BLOCK_BUDGET: u64 = 20_000;
+/// Commands sent a tick at most, as one `command.run-quiet` batch: Horizon's servers run 64 a player a tick, so the
+/// rest wait here rather than in the server's queue.
+const COMMANDS_PER_TICK: usize = 64;
 
 struct Strike {
     plan: Vec<(f32, Act)>,
@@ -64,10 +73,8 @@ struct Strike {
     ticks: u32,
     /// Seconds it runs (the laser's `length`).
     length: f32,
-    /// What the post pass reads; [3] is the strike clock, set each frame.
-    params: [f32; 16],
     /// Stages due that wait for a tick of their own (`tick_strike` works out one a tick).
-    waiting: std::collections::VecDeque<strike::Stage>,
+    waiting: VecDeque<strike::Stage>,
 }
 impl Strike {
     /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
@@ -88,9 +95,7 @@ struct Settings {
     hud: bool,
     approach: usize,
     arrival: usize,
-    page: usize,
     colours: Vec<usize>,
-    fly: f32,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -98,17 +103,19 @@ fn default_colour(i: usize) -> usize {
     usize::from(LASERS[i].key == "downfall")
 }
 
+/// `playsound` for a sound following the player (`at` none) or at a point.
+fn playsound(event: &str, at: Option<[f64; 3]>, volume: f32, pitch: f32) -> String {
+    let at = at.map_or("~ ~ ~".to_string(), |[x, y, z]| format!("{x:.2} {y:.2} {z:.2}"));
+    format!("playsound {event} master @s {at} {volume:.2} {pitch:.2}")
+}
+
 struct Orbital {
-    /// The two post passes (0 every laser's, 1 the downfall's), the one the game last compiled, and the ones waiting to
-    /// be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [String; 2],
-    compiled: Option<usize>,
-    warm_queue: Vec<usize>,
-    warming: bool,
+    /// Commands due now (sounds, messages, effects), in order: they go first.
+    due: VecDeque<String>,
     /// World changes waiting for room in a tick's block budget, in order; they outlive the strike that made them.
-    carving: std::collections::VecDeque<(u64, String)>,
+    carving: VecDeque<(u64, String)>,
     /// World changes that wait for spare block budget (`Act::Spare`): what stands high over a blast.
-    spare: std::collections::VecDeque<(u64, String)>,
+    spare: VecDeque<(u64, String)>,
     laser: usize,
     terrain: bool,
     /// Whether the strikes put their messages over the hotbar (the replies to the player's own clicks always show).
@@ -118,38 +125,30 @@ struct Orbital {
     /// Which way the ship lasers' ship comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
     approach: usize,
     arrival: usize,
-    /// The wheel's page last shown.
-    page: usize,
     /// Each laser's ship colour (strike::COLOURS; only the ship lasers use theirs).
     colours: Vec<usize>,
-    /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
-    fly: f32,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
     skip: f32,
     strike: Option<Strike>,
-    wheel: Option<wheel::Wheel>,
-    /// Seconds since the last tick, for a smooth strike clock between ticks.
-    since_tick: f32,
+    /// The wheel is open (else its widgets may be on the mod's settings page).
+    wheel: bool,
     /// The HUD panel last sent.
     panel: Vec<(String, u32)>,
 }
 
 impl Orbital {
     fn save(&self) {
-        let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\n",
+        let mut text = format!(
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
             u8::from(self.hud),
             APPROACHES[self.approach].key,
             ARRIVALS[self.arrival].key,
-            self.page,
-            self.fly
         );
-        let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
             if is_ship(l) {
                 text += &format!("colour_{}={}\n", l.key, COLOURS[self.colours[i]].key);
@@ -167,8 +166,6 @@ impl Orbital {
         let mut hud = true;
         let mut approach = 0;
         let mut arrival = 0;
-        let mut page = 0;
-        let mut fly = 1.0;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -178,8 +175,6 @@ impl Orbital {
                 Some(("hud", v)) => hud = v != "0",
                 Some(("approach", k)) => approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
-                Some(("page", v)) => page = v.parse::<usize>().unwrap_or(0).min(wheel::pages() - 1),
-                Some(("flyspeed", v)) => fly = wheel::parse_speed(v).unwrap_or(1.0),
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -188,165 +183,137 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly }
-    }
-    fn actionbar(text: &str, color: &str) {
-        world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
+        Settings { laser, terrain, messages, hud, approach, arrival, colours }
     }
 
-    // ---- the flying speed ----
-    /// Hands the game the flying speed (vanilla's at 1x). The game keeps it through respawns and worlds until it is
-    /// changed, so this is needed only when it changes and as the mod starts.
-    fn apply_fly(&self) {
-        let speed = ((self.fly - 1.0).abs() > 1e-4).then_some(VANILLA_FLY * self.fly);
-        world::set_flying_speed(speed);
+    // ---- commands ----
+    fn run(&mut self, cmd: String) {
+        self.due.push_back(cmd);
     }
-    fn set_fly(&mut self, m: f32) {
-        self.fly = m.clamp(0.01, wheel::FLY_MAX);
-        self.apply_fly();
-        self.save();
-        if let Some(w) = &mut self.wheel {
-            w.fly = self.fly;
-        }
+    fn sound(&mut self, event: &str, at: Option<[f64; 3]>, volume: f32, pitch: f32) {
+        self.run(playsound(event, at, volume, pitch));
     }
-    /// What was typed on the wheel: into the flying speed's field while it has the keyboard; Enter sets the speed,
-    /// Backspace takes a character off.
-    fn typed(&mut self, t: input::Typed) {
-        let Some(field) = self.wheel.as_mut().and_then(|w| w.typing.as_mut()) else {
-            return;
-        };
-        match t {
-            input::Typed::Text(s) => wheel::type_into(field, &s),
-            input::Typed::Key(k) if k == "key.keyboard.backspace" => {
-                field.pop();
-            }
-            input::Typed::Key(k) if k == "key.keyboard.enter" || k == "key.keyboard.keypad.enter" => {
-                let typed = std::mem::take(field);
-                if let Some(w) = &mut self.wheel {
-                    w.typing = None;
-                }
-                match wheel::parse_speed(&typed) {
-                    Some(m) => {
-                        self.set_fly(m);
-                        world::play_sound("minecraft:ui.button.click", None, 0.6, 1.6);
-                    }
-                    // (nothing typed leaves the speed as it was; a bad number says so)
-                    None if !typed.is_empty() => world::play_sound("minecraft:ui.button.click", None, 0.6, 0.6),
-                    None => {}
-                }
-            }
-            input::Typed::Key(_) => return,
+    fn actionbar(&mut self, text: &str, color: &str) {
+        self.run(format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#));
+    }
+    /// Hands the game this tick's commands as one quiet batch (nothing of them in the chat): the ones due first, then
+    /// the waiting world changes in order as far as the tick's block budget goes (at least one a tick), then with what
+    /// is left of it the ones that wait for spare budget.
+    fn flush(&mut self) {
+        let mut lines = Vec::new();
+        while lines.len() < COMMANDS_PER_TICK
+            && let Some(c) = self.due.pop_front()
+        {
+            lines.push(c);
         }
-        self.show_wheel();
+        let mut spent = 0;
+        while lines.len() < COMMANDS_PER_TICK
+            && let Some((cost, _)) = self.carving.front()
+        {
+            if spent > 0 && spent + cost > BLOCK_BUDGET {
+                break;
+            }
+            spent += cost;
+            if let Some((_, c)) = self.carving.pop_front() {
+                lines.push(c);
+            }
+        }
+        while lines.len() < COMMANDS_PER_TICK
+            && self.carving.is_empty()
+            && let Some((cost, _)) = self.spare.front()
+        {
+            if spent > 0 && spent + cost > BLOCK_BUDGET {
+                break;
+            }
+            spent += cost;
+            if let Some((_, c)) = self.spare.pop_front() {
+                lines.push(c);
+            }
+        }
+        if !lines.is_empty() {
+            command::run_quiet(&lines);
+        }
     }
 
     // ---- the wheel ----
+    fn state(&self) -> wheel::State<'_> {
+        wheel::State {
+            laser: self.laser,
+            terrain: self.terrain,
+            messages: self.messages,
+            hud: self.hud,
+            approach: self.approach,
+            arrival: self.arrival,
+            colours: &self.colours,
+        }
+    }
+    /// The wheel, or the settings page, again after a change.
     fn show_wheel(&self) {
-        if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours));
+        if self.wheel {
+            ui::open_screen(&wheel::screen(&self.state()));
+        } else {
+            ui::set_settings(&wheel::widgets(&self.state()));
         }
     }
     fn open_wheel(&mut self) {
-        let mut w = wheel::Wheel::on_page(self.page, self.fly);
-        if let Some(c) = ui::cursor() {
-            w.hover_at(c.x, c.y, self.laser);
-        }
-        self.wheel = Some(w);
+        self.wheel = true;
         self.show_wheel();
-        world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
+        self.sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
-    fn turn_page(&mut self, k: usize) {
-        let Some(w) = &mut self.wheel else { return };
-        w.turn(k);
-        self.page = w.page;
-        self.show_wheel();
-        world::play_sound("minecraft:ui.button.click", None, 0.5, 1.2);
+    fn click(&mut self, on: bool) {
         self.save();
+        self.sound("minecraft:ui.button.click", None, 0.6, if on { 1.6 } else { 1.0 });
+        self.show_wheel();
     }
-    fn wheel_click(&mut self, x: f32, y: f32) {
-        let (row, page) = self.wheel.as_ref().map_or((None, self.page), |w| (w.row_laser(self.laser), w.page));
-        let spot = wheel::spot(x, y, row.is_some(), page);
-        // a click anywhere but the field takes the keyboard from it, leaving the speed as it was
-        if let Some(w) = &mut self.wheel
-            && w.typing.is_some()
-            && spot != Some(wheel::Spot::FlyField)
-        {
-            w.typing = None;
+    /// A laser loaded from the wheel: it closes, and the action bar says so.
+    fn loaded(&mut self, what: String) {
+        self.save();
+        if self.wheel {
+            ui::close_screen();
+            self.wheel = false;
+        } else {
             self.show_wheel();
         }
-        match spot {
-            Some(wheel::Spot::FlyBar) => {
-                self.set_fly(wheel::bar_speed_at(x));
-                world::play_sound("minecraft:ui.button.click", None, 0.5, 1.2 + 0.4 * (self.fly.ln() / wheel::BAR_MAX.ln()).clamp(0.0, 1.0));
-                self.show_wheel();
+        let l = LASERS[self.laser];
+        self.actionbar(&what, l.color);
+        self.sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
+    }
+    fn wheel_select(&mut self, id: u32, row: u32) {
+        let row = row as usize;
+        if id == wheel::LASER_LIST && row < LASERS.len() {
+            self.laser = row;
+            self.loaded(format!("{} LOADED", LASERS[self.laser].title));
+            return;
+        }
+        if id != wheel::SWITCHES {
+            return;
+        }
+        let ship = self.laser;
+        match wheel::switches(ship).get(row) {
+            Some(wheel::Switch::Approach) => {
+                self.approach = (self.approach + 1) % APPROACHES.len();
+                self.click(true);
             }
-            Some(wheel::Spot::FlyField) => {
-                if let Some(w) = &mut self.wheel {
-                    w.typing.get_or_insert_with(String::new);
-                }
-                world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
-                self.show_wheel();
+            Some(wheel::Switch::Arrival) => {
+                self.arrival = (self.arrival + 1) % ARRIVALS.len();
+                self.click(true);
             }
-            Some(wheel::Spot::Laser(i)) => {
-                self.laser = i;
-                self.save();
-                ui::close();
-                self.wheel = None;
-                let l = LASERS[i];
-                Self::actionbar(&format!("{} LOADED", l.title), l.color);
-                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
+            Some(wheel::Switch::Colour) => {
+                self.colours[ship] = (self.colours[ship] + 1) % COLOURS.len();
+                self.click(true);
             }
-            Some(wheel::Spot::Page(k)) => self.turn_page(k),
-            Some(wheel::Spot::Approach(a)) => {
-                // picking how it comes in loads the ship laser the row is for too
-                self.approach = a;
-                self.laser = row.unwrap_or(self.laser);
-                self.save();
-                ui::close();
-                self.wheel = None;
-                let l = LASERS[self.laser];
-                Self::actionbar(&format!("{} LOADED: {}", l.title, APPROACHES[a].label.to_uppercase()), l.color);
-                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
-            }
-            Some(wheel::Spot::Arrival(a)) => {
-                self.arrival = a;
-                self.laser = row.unwrap_or(self.laser);
-                self.save();
-                ui::close();
-                self.wheel = None;
-                let l = LASERS[self.laser];
-                Self::actionbar(&format!("{} LOADED: IT {}", l.title, ARRIVALS[a].label.to_uppercase()), l.color);
-                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
-            }
-            Some(wheel::Spot::Colour(c)) => {
-                let i = row.unwrap_or(self.laser);
-                self.colours[i] = c;
-                self.laser = i;
-                self.save();
-                ui::close();
-                self.wheel = None;
-                let l = LASERS[i];
-                Self::actionbar(&format!("{} LOADED: LIT {}", l.title, COLOURS[c].button), l.color);
-                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
-            }
-            Some(wheel::Spot::Centre) => {
+            Some(wheel::Switch::Terrain) => {
                 self.terrain = !self.terrain;
-                self.save();
-                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.terrain { 1.6 } else { 1.0 });
-                self.show_wheel();
+                self.click(self.terrain);
             }
-            Some(wheel::Spot::Messages) => {
+            Some(wheel::Switch::Messages) => {
                 self.messages = !self.messages;
-                self.save();
-                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.messages { 1.6 } else { 1.0 });
-                self.show_wheel();
+                self.click(self.messages);
             }
-            Some(wheel::Spot::Hud) => {
+            Some(wheel::Switch::Hud) => {
                 self.hud = !self.hud;
-                self.save();
-                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.hud { 1.6 } else { 1.0 });
                 self.update_panel();
-                self.show_wheel();
+                self.click(self.hud);
             }
             None => {}
         }
@@ -355,8 +322,8 @@ impl Orbital {
     // ---- the strike ----
     fn fire(&mut self) {
         let laser = LASERS[self.laser];
-        let Some(hit) = world::raycast(laser.range) else {
-            Self::actionbar("NO TARGET IN RANGE", "gray");
+        let Some(hit) = game::raycast(laser.range) else {
+            self.actionbar("NO TARGET IN RANGE", "gray");
             return;
         };
         let player = game::get_player();
@@ -366,43 +333,20 @@ impl Orbital {
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, self.approach);
-        let mut params = [0.0f32; 16];
-        params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
-        params[4] = hit.block_x as f32 + 0.5;
-        params[5] = hit.block_z as f32 + 0.5;
-        params[6] = strike::wing_angle(target.point, me);
-        params[7] = laser.index as f32;
-        params[8] = seed;
-        params[9] = 1.0;
-        params[11] = hit.block_y as f32;
-        if is_ship(laser) {
-            params[12] = self.approach as f32;
-            params[13] = self.arrival as f32;
-            params[15] = self.colours[self.laser] as f32;
-        }
-        if laser.key == "downfall" {
-            params[14] = strike::df_reach(target.point, me);
-        }
-        let pass = usize::from(laser.key == "downfall");
-        render::set_post(&self.passes[pass]);
-        self.compiled = Some(pass);
-        render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike)
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
         let next = plan.iter().take_while(|e| e.0 < ticks as f32 * 0.05).count();
         self.skip = 0.0;
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default() });
+        self.strike = Some(Strike { plan, next, ticks, length: laser.length, waiting: Default::default() });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
-        self.carve();
         let Some(s) = &mut self.strike else {
             return;
         };
         s.ticks += 1;
         let now = s.ticks as f32 * 0.05;
-        let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
         // fall due together, the rest wait for the ticks after, while everything else goes on time (each is due a
@@ -423,9 +367,9 @@ impl Orbital {
                 Act::Cmd(c) if !self.messages && c.starts_with("title @s actionbar") => {}
                 Act::Cmd(c) => match strike::block_cost(&c) {
                     Some(cost) => self.carving.push_back((cost, c)),
-                    None => cmds.push(c),
+                    None => self.due.push_back(c),
                 },
-                Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
+                Act::Sound { event, at, volume, pitch } => self.due.push_back(playsound(&event, at, volume, pitch)),
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
                 Act::Later(job) if worked_out => s.waiting.push_back(job),
@@ -436,48 +380,14 @@ impl Orbital {
                 }
             }
         }
-        if !cmds.is_empty() {
-            world::run_commands(&cmds);
-        }
         if !jolts.is_empty() {
-            // the jolts due this tick as one (the game adds jolts up the same way, and takes only so many a call)
+            // the jolts due this tick as one (the game adds jolts up the same way)
             let strength = jolts.iter().map(|j| j.0 * j.0).sum::<f32>().sqrt().min(1.0);
             let seconds = jolts.iter().map(|j| j.1).fold(0.0, f32::max);
             render::shake(strength, seconds);
         }
         if now >= s.length {
-            render::clear_post();
             self.strike = None;
-        }
-        self.carve();
-    }
-    /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one); then, with
-    /// what is left of it, the ones that wait for spare budget.
-    fn carve(&mut self) {
-        let mut spent = 0;
-        let mut cmds = Vec::new();
-        while let Some((cost, _)) = self.carving.front() {
-            if !cmds.is_empty() && spent + cost > BLOCK_BUDGET {
-                break;
-            }
-            spent += cost;
-            if let Some((_, c)) = self.carving.pop_front() {
-                cmds.push(c);
-            }
-        }
-        while self.carving.is_empty()
-            && let Some((cost, _)) = self.spare.front()
-        {
-            if spent + cost > BLOCK_BUDGET && (spent > 0 || !cmds.is_empty()) {
-                break;
-            }
-            spent += cost;
-            if let Some((_, c)) = self.spare.pop_front() {
-                cmds.push(c);
-            }
-        }
-        if !cmds.is_empty() {
-            world::run_commands(&cmds);
         }
     }
 
@@ -496,9 +406,6 @@ impl Orbital {
                 lines.push((format!("Approach: {}", APPROACHES[self.approach].label), 0xA8B0BC));
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
-            }
-            if (self.fly - 1.0).abs() > 1e-4 {
-                lines.push((format!("Flying speed: {}", wheel::speed_label(self.fly)), 0x6FC8FF));
             }
             if self.strike.is_some() {
                 lines.push(("Strike in progress".to_string(), 0xFF8A65));
@@ -524,44 +431,36 @@ impl Orbital {
 impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
-        input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly } = Orbital::load();
+        if let Err(e) = input::register_key("wheel", "Open the laser wheel", "key.keyboard.r") {
+            log::write(log::Level::Warn, &format!("the wheel's key: {e}"));
+        }
+        let Settings { laser, terrain, messages, hud, approach, arrival, colours } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), downfall_pass()],
-            compiled: None,
-            // both compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
-            warm_queue: vec![usize::from(LASERS[laser].key == "downfall"), usize::from(LASERS[laser].key != "downfall")],
-            warming: false,
-            carving: std::collections::VecDeque::new(),
-            spare: std::collections::VecDeque::new(),
+            due: VecDeque::new(),
+            carving: VecDeque::new(),
+            spare: VecDeque::new(),
             laser,
             terrain,
             messages,
             hud,
             approach,
             arrival,
-            page,
             colours,
-            fly,
             aiming: None,
             skip: 0.0,
             strike: None,
-            wheel: None,
-            since_tick: 0.0,
+            wheel: false,
             panel: Vec::new(),
         };
-        // the game keeps the flying speed from here on, in every world
-        state.apply_fly();
-        Ok((state, Registration::new().command("orbital").on_tick().on_frame()))
+        Ok((state, Registration::new().command("orbital").on_tick()))
     }
 
     fn tick(&mut self, _tick: u64) {
-        self.since_tick = 0.0;
         for event in input::poll() {
             match event {
                 Event::UseStart(u) if u.item.id == DESIGNATOR => {
                     if self.strike.is_some() {
-                        Self::actionbar("STRIKE IN PROGRESS", "gray");
+                        self.actionbar("STRIKE IN PROGRESS", "gray");
                     } else {
                         self.aiming = Some(0);
                     }
@@ -569,14 +468,8 @@ impl Mod for Orbital {
                 Event::UseStart(u) if u.item.id == REMOTE => self.open_wheel(),
                 Event::UseStop(u) if u.item.id == DESIGNATOR => self.aiming = None,
                 Event::KeyDown(k) if k == "wheel" => self.open_wheel(),
-                Event::ScreenClick(c) if c.button == 0 => self.wheel_click(c.x, c.y),
-                Event::ScreenClick(c) if c.button == 1 => self.turn_page(self.page + 1),
-                Event::ScreenClosed => self.wheel = None,
                 _ => {}
             }
-        }
-        for t in input::poll_typed() {
-            self.typed(t);
         }
         if let Some(n) = self.aiming {
             let l = LASERS[self.laser];
@@ -585,56 +478,39 @@ impl Mod for Orbital {
                 self.fire();
             } else {
                 if n % 4 == 0 {
-                    Self::actionbar(&format!("ACQUIRING TARGET {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
+                    self.actionbar(&format!("ACQUIRING TARGET {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
                 }
                 self.aiming = Some(n + 1);
             }
         }
         self.tick_strike();
         self.update_panel();
+        self.flush();
     }
 
-    fn frame(&mut self, seconds: f32) {
-        self.since_tick += seconds;
-        // Compile the post passes as the world loads, not when the first strike fires (that costs about a second): set
-        // each for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
-        // the last one compiled for the strikes after; loading a laser that needs the other one compiles that one the
-        // same way (quickly, the driver has kept it), there and then rather than as it fires.
-        let want = usize::from(LASERS[self.laser].key == "downfall");
-        if self.warm_queue.is_empty() && !self.warming && self.compiled != Some(want) && self.strike.is_none() {
-            self.warm_queue.push(want);
-        }
-        if self.strike.is_none() {
-            if self.warming {
-                render::clear_post();
-                self.warming = false;
-            } else if !self.warm_queue.is_empty() {
-                let pass = self.warm_queue.remove(0);
-                render::set_post(&self.passes[pass]);
-                render::set_params(&[0.0; 16]);
-                self.compiled = Some(pass);
-                self.warming = true;
-            }
-        } else {
-            self.warm_queue.clear();
-            self.warming = false;
-        }
-        if let Some(s) = &mut self.strike {
-            s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
-            render::set_params(&s.params);
-        }
-        if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
-            && w.hover_at(c.x, c.y, self.laser)
-        {
-            self.show_wheel();
-        }
+    fn ui_select(&mut self, id: u32, row: u32) {
+        self.wheel_select(id, row);
+    }
+    fn ui_closed(&mut self) {
+        self.wheel = false;
+    }
+    fn ui_settings_opened(&mut self) {
+        ui::set_settings(&wheel::widgets(&self.state()));
     }
 
     fn command(&mut self, _name: &str, args: &str) -> Result<Option<String>, String> {
+        self.orbital(args)
+    }
+}
+
+impl Orbital {
+    /// `/orbital ...`
+    fn orbital(&mut self, args: &str) -> Result<Option<String>, String> {
         let mut words = args.split_whitespace();
         match (words.next(), words.next()) {
             (Some("give"), _) => {
-                world::run_commands(&[format!("give @s {DESIGNATOR}"), format!("give @s {REMOTE}")]);
+                self.run(format!("give @s {DESIGNATOR}"));
+                self.run(format!("give @s {REMOTE}"));
                 Ok(Some("Orbital Laser Designator and Orbital Remote added to your inventory".into()))
             }
             (Some("wheel"), _) => {
@@ -673,16 +549,6 @@ impl Mod for Orbital {
                 self.skip = t.max(0.0);
                 Ok(Some(format!("The next strike starts {t} s in")))
             }
-            (Some("flyspeed"), Some("reset")) => {
-                self.set_fly(1.0);
-                Ok(Some("Flying speed back to vanilla's (1x)".into()))
-            }
-            (Some("flyspeed"), Some(v)) => {
-                let m = wheel::parse_speed(v).ok_or("/orbital flyspeed N (times vanilla's, over 0, up to 1000) or reset")?;
-                self.set_fly(m);
-                Ok(Some(format!("Flying speed {}", wheel::speed_label(self.fly))))
-            }
-            (Some("flyspeed"), None) => Ok(Some(format!("Flying speed {} (/orbital flyspeed N, or reset)", wheel::speed_label(self.fly)))),
             (Some("hud"), Some(v @ ("on" | "off"))) => {
                 self.hud = v == "on";
                 self.save();
@@ -697,10 +563,11 @@ impl Mod for Orbital {
             (Some(key), None) if LASERS.iter().any(|l| l.key == key) => {
                 self.laser = LASERS.iter().position(|l| l.key == key).unwrap_or(0);
                 self.save();
-                Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
+                let l = LASERS[self.laser];
+                Ok(Some(format!("{} loaded: {}", l.title, l.blurb)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | flyspeed N|reset | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
