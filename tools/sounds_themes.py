@@ -21,7 +21,7 @@ OWN = {"meteor": ["lockon", "charge", "fire", "storm", "rumble", "whoosh1", "who
        # hole that drags everything in, and its collapse; then the quiet after
        "downfall": ["hum", "divert", "approach", "battery1", "battery2", "split", "hit1", "hit2", "hit3", "fall", "crash",
                     "groan1", "groan2", "rupture", "vortex", "evaporate", "after"],
-       # the planet killer: an emitter firing far off (heard from each one's direction), the charge building to the
+       # the planet killer: a tower rising and firing far off (heard from each one's direction), the charge building to the
        # beams fusing, the beam landing, two takes of its roar, the ground shaking, the emitters cutting out and the
        # nexus bursting, and the quiet after
        "planetkiller": ["ignite", "charge", "merge", "fire", "beam1", "beam2", "rumble", "cutoff", "after"]}
@@ -1357,15 +1357,19 @@ def electric(d, f, depth=0.3, rate=7.0, nh=12):
 
 def planetkiller():
     th = "planetkiller"
-    # ignite (positional, so mono): one emitter firing, out on the horizon. Heard from a long way off: a colossal
-    # discharge with the crack dulled by the distance, a deep blow under it, the beam tearing upward in a rising
-    # sizzle, and the land rolling it back for seconds
+    # ignite (positional, so mono): one tower tearing up out of the land on the horizon and firing, heard from a long way
+    # off. A deep grinding roar of rock giving way as it rises (0.45 s, the strike's PK_RAISE), then a colossal discharge
+    # with the crack dulled by the distance, a deep blow under it, the beam tearing upward in a rising sizzle, and the land
+    # rolling it back for seconds
     for _ in range(1):
-        d = 4.5; n = int(SR * d); t = tt(d)
-        blow = band(overload(heavy(n, 0.02, 0.35, 1.6, 1.0, 1.0, 0.4), 2.2), None, 900)
-        rise = glide_noise(d, 180, 1400, 1.0, curve=0.6) * np.clip(t / 0.05, 0, 1) * np.exp(-t / 0.9) * 0.35
-        zap = band(electric(d, glide(70, 220, t, 1.2, 0.7), 0.4, 11.0), 60, 2400) * np.clip(t / 0.03, 0, 1) * np.exp(-t / 0.8) * 0.4
-        x = convolve_wet(blow + rise + zap, outdoor_ir(4.0, density=30.0, darken=(1800, 120), decay=1.5), 0.9)
+        d = 5.0; n = int(SR * d); t = tt(d); t0 = 0.45
+        after = np.maximum(t - t0, 0); on = t >= t0
+        grind = (band(white(d), 25, 220) + band(crackle(d, rate=500, decay=0.006, lo=60, hi=900), None, 900) * 0.6)
+        grind = grind * np.clip(t / t0, 0, 1) ** 2 * np.exp(-after / 0.25) * 0.55
+        blow = band(overload(heavy(n, t0 + 0.02, 0.35, 1.6, 1.0, 1.0, 0.4), 2.2), None, 900)
+        rise = glide_noise(d, 180, 1400, 1.0, curve=0.6) * np.clip(after / 0.05, 0, 1) * np.exp(-after / 0.9) * on * 0.35
+        zap = band(electric(d, glide(70, 220, after, 1.2, 0.7), 0.4, 11.0), 60, 2400) * np.clip(after / 0.03, 0, 1) * np.exp(-after / 0.8) * on * 0.4
+        x = convolve_wet(grind + blow + rise + zap, outdoor_ir(4.0, density=30.0, darken=(1800, 120), decay=1.5), 0.9)
         x, _ = parallel_comp(x, x.copy(), amount=0.8)
         finish_loud(f"{th}/ignite", low_cut(x, 16), None, -8.5, 0.4)
 
