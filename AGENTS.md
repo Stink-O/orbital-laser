@@ -18,9 +18,10 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
   up to a minute after the strike. The Planet Killer is the biggest: it flattens out to 340 blocks, digs a crater 480
   across (terraced walls 60 deep, the floor 80, an open shaft 80 across to bedrock in the middle), heaps a rim out to
   340, splits the land in chasms out to ~400, chars it and strews rubble to 380, kills every mob within 280 and
-  force-loads ~1,900 chunks while it works; its block changes run for about two minutes (main ones by ~67 s, the rest
-  on the spare budget by ~116 s: `cargo test --release carve_queue -- --ignored --nocapture`, and `tick_profile` for
-  what each tick asks of the game). Only fire them in a
+  force-loads ~1,900 chunks from the moment it fires; its crater, rim and charred land go straight into the chunks
+  through the fork's `world.edit-blocks` (branch `mod-api-edit-blocks` in ~/horizon-port, the next fork release
+  `orbital-mod-api-4`; older builds won't start the mod) and are done about 25 s into the strike, the fissures' few
+  commands soon after. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
