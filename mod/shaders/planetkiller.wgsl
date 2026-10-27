@@ -804,7 +804,9 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                     let torn = (exp(-cn / (w1 * 6.0)) * 0.7 + smoothstep(0.985, 0.995, nd.y) * saturate(s * 3.0)) * open;
                     let slope = 0.55 + 0.6 * saturate(dot(nd, normalize(vec3<f32>(0.3, 1.0, 0.2))));
                     let land = vec3<f32>(0.12, 0.15, 0.08) * (0.25 + 0.75 * day) * (1.0 - 0.55 * dark) * slope;
-                    col = mix(col, mix(land, vec3<f32>(0.06, 0.048, 0.038) * (0.3 + 0.6 * day) * (1.0 - 0.5 * dark), saturate(torn)), open);
+                    // (as hazy with distance as the land round it)
+                    let dome = mix(land, vec3<f32>(0.06, 0.048, 0.038) * (0.3 + 0.6 * day) * (1.0 - 0.5 * dark), saturate(torn));
+                    col = mix(col, mix(dome, col, saturate(td / 2500.0) * 0.85), open);
                     add = add * (1.0 - open) + pk_heat(0.45 + 0.35 * saturate(cracks)) * cracks * (0.4 + 1.2 * saturate(s)) * k;
                     tlen = min(tlen, td);
                 }
