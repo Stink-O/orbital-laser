@@ -194,51 +194,167 @@ fn pk_band(rd: vec3<f32>, C: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32, w:
     return vec3<f32>(exp(-pow((length(X) - R) / ww, 2.0)) * (w / max(w, tp * 0.0013)), tp, atan2(dot(X, e2), dot(X, e1)));
 }
 
-// A tower's radius `yp` blocks up from its bottom: a tapering shaft, a drum for its head, a spike for its tip.
-fn pk_tower_r(yp: f32) -> f32 {
-    if (yp < 0.0 || yp > PK_TOWER_H) {
-        return 0.0;
-    }
-    let u = yp / PK_TOWER_H;
-    if (u < 0.84) {
-        return mix(PK_TOWER_R, 16.0, u / 0.84);
-    }
-    if (u < 0.93) {
-        return 30.0;
-    }
-    return 12.0 * (1.0 - (u - 0.93) / 0.07);
-}
+// A tower, in its own frame (y up from its bottom, PK_TOWER_H tall): a stepped hexagonal plinth splayed into the ground,
+// three buttresses flying up off its corners, a shaft in six tiers narrowing up it with a heavy collar under each joint
+// and ribs up its corners, a neck, a ring plate round it, and four claws curling up round the emitter at its crown under
+// a spire. Its distance (a little under, so marching it never oversteps), and what it is made of there: 0 the hull,
+// 1 a collar or a rib, 2 the crown, 3 a buttress, 5 the emitter.
+const PK_T0: f32 = 64.0;            // the shaft, from the plinth's top
+const PK_T1: f32 = 336.0;           // to the neck,
+const PK_TIER: f32 = 45.333;        // in six tiers
+const PK_TB: f32 = 136.0;           // and all of it (and the broken ground heaped round its foot) within this of its axis
+const PK_CORE_Y: f32 = 397.0;       // where the emitter is
 
-// The view ray against a tower whose foot is at b (camera-relative), risen `lift` blocks out of the land and leaning by
-// `lean` (how far its axis runs off upright for each block up, sheared about the ground): x how far along the ray (under
-// 0 if it misses), y the angle round it, z how far up it from its bottom, w how square on it faces the eye (1 face on, 0
-// at its edge). Met as an upright cylinder of the radius at the height it is met at, twice over, in the space where it
-// stands upright.
-fn pk_tower(b: vec3<f32>, lift: f32, lean: vec2<f32>, rd: vec3<f32>) -> vec4<f32> {
-    let o = -b.xz + lean * b.y;
+// A hexagon's distance, `a` from its middle to the middle of a side (its corners on +-x).
+fn pk_hex(p: vec2<f32>, a: f32) -> f32 {
+    let k = vec3<f32>(-0.8660254, 0.5, 0.57735027);
+    var q = abs(p);
+    q = q - 2.0 * min(dot(k.xy, q), 0.0) * k.xy;
+    q = q - vec2<f32>(clamp(q.x, -k.z * a, k.z * a), a);
+    return length(q) * sign(q.y);
+}
+// p turned into the first of n sectors round the axis (the first centred `off` round from +x).
+fn pk_fold(p: vec2<f32>, n: f32, off: f32) -> vec2<f32> {
+    let s = TAU / n;
+    let a = atan2(p.y, p.x) - off;
+    let b = a - s * floor(a / s + 0.5);
+    return vec2<f32>(cos(b), sin(b)) * length(p);
+}
+fn pk_cone(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, ra: f32, rb: f32) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = saturate(dot(pa, ba) / dot(ba, ba));
+    return length(pa - ba * h) - mix(ra, rb, h);
+}
+// The shaft's half-width at height y, before its tiers.
+fn pk_shaft_a(y: f32) -> f32 {
+    let u = saturate((y - PK_T0) / (PK_T1 - PK_T0));
+    return mix(46.0, 19.0, u * (0.55 + 0.45 * u));
+}
+// How far the tower being marched has risen, and how high the broken ground is heaped round its foot (0 to 1).
+var<private> pk_lift_g: f32;
+var<private> pk_heap_g: f32;
+fn pk_tsdf(p: vec3<f32>) -> vec2<f32> {
+    let y = p.y;
+    // the plinth, in three steps, run down into the ground
+    let pa = mix(76.0, 60.0, saturate(y / PK_T0)) - 7.0 * smoothstep(20.0, 22.0, y) - 6.0 * smoothstep(42.0, 44.0, y);
+    var d = max(pk_hex(p.xz, pa) * 0.9, max(-60.0 - y, y - PK_T0));
+    var m = 0.0;
+    // the shaft, each tier narrowing up its height
+    let ti = clamp(floor((y - PK_T0) / PK_TIER), 0.0, 5.0);
+    let tt = (y - PK_T0) / PK_TIER - ti;
+    let a = pk_shaft_a(y) * (1.04 - 0.08 * tt);
+    // (every other tier turned a twelfth of the way round, so its corners stand over the faces under it)
+    let tw = select(0.0, 0.5235988, ti - 2.0 * floor(ti * 0.5) > 0.5);
+    let pr = vec2<f32>(cos(tw) * p.x + sin(tw) * p.z, -sin(tw) * p.x + cos(tw) * p.z);
+    d = min(d, max(pk_hex(pr, a), max(PK_T0 - 2.0 - y, y - PK_T1)));
+    // a collar under each joint
+    let yj = PK_T0 + clamp(round((y - PK_T0) / PK_TIER), 1.0, 5.0) * PK_TIER;
+    let dc = max(length(p.xz) - pk_shaft_a(yj) * 1.12 - 5.0, abs(y - yj + 1.0) - 3.5);
+    if (dc < d) {
+        d = dc;
+        m = 1.0;
+    }
+    // ribs up its corners
+    let q6 = pk_fold(pr, 6.0, 0.0);
+    let dr = max(max(abs(q6.y) - 1.8, q6.x - a * 1.1547 - 3.5), max(PK_T0 - y, y - PK_T1 + 30.0));
+    if (dr < d) {
+        d = dr;
+        m = 1.0;
+    }
+    // the three buttresses off the plinth's corners
+    let q3 = pk_fold(p.xz, 3.0, 0.0);
+    let df = max(max(abs(q3.y) - 4.5, (q3.x + 0.38 * y - 104.0) * 0.935), max(-60.0 - y, y - 236.0));
+    if (df < d) {
+        d = df;
+        m = 3.0;
+    }
+    // the ground round its foot, broken and heaped up round it as it burst out (not risen with it)
+    if (pk_heap_g > 0.0) {
+        let rr = length(p.xz);
+        let yg = y - PK_TOWER_H + pk_lift_g;
+        let hh = pk_heap_g * (16.0 * exp(-pow((rr - 82.0) / 26.0, 2.0)) + 7.0 * exp(-pow((rr - 112.0) / 14.0, 2.0)))
+            * (0.6 + 0.8 * gnoise2(p.xz * 0.09)) - 2.0;
+        let dm = max((yg - hh) * 0.45, rr - PK_TB + 2.0);
+        if (dm < d) {
+            d = dm;
+            m = 6.0;
+        }
+    }
+    // the crown
+    if (y > PK_T1 - 24.0) {
+        let dn = max(pk_hex(p.xz, 14.0), max(PK_T1 - 4.0 - y, y - 360.0));
+        let dh = max(abs(y - 352.0) - 2.2, abs(length(p.xz) - 31.0) - 9.0);
+        let q4 = pk_fold(p.xz, 4.0, 0.7853982);
+        let qc = vec3<f32>(q4.x, y, q4.y);
+        let dk = min(pk_cone(qc, vec3<f32>(15.0, 346.0, 0.0), vec3<f32>(37.0, 380.0, 0.0), 6.0, 4.0),
+            pk_cone(qc, vec3<f32>(37.0, 380.0, 0.0), vec3<f32>(13.0, 416.0, 0.0), 4.0, 1.2));
+        let dsp = pk_cone(p, vec3<f32>(0.0, 352.0, 0.0), vec3<f32>(0.0, 420.0, 0.0), 5.0, 0.8);
+        let dcr = min(min(dn, dh), min(dk, dsp));
+        if (dcr < d) {
+            d = dcr;
+            m = 2.0;
+        }
+        let de = length(p - vec3<f32>(0.0, PK_CORE_Y, 0.0)) - 8.5;
+        if (de < d) {
+            d = de;
+            m = 5.0;
+        }
+    }
+    return vec2<f32>(d, m);
+}
+// A point (camera-relative) in the frame of the tower whose foot is at S (camera-relative, on the ground), risen `lift`
+// out of the land, leaning by `lean` (sheared about the ground), turned `rot` about its axis.
+fn pk_tlocal(X: vec3<f32>, S: vec3<f32>, lift: f32, lean: vec2<f32>, rot: f32) -> vec3<f32> {
+    let rel = X - S;
+    let xz = rel.xz - lean * rel.y;
+    let c = cos(rot);
+    let s = sin(rot);
+    return vec3<f32>(c * xz.x - s * xz.y, rel.y + PK_TOWER_H - lift, s * xz.x + c * xz.y);
+}
+// The view ray against the tower (S, lift, lean, rot as pk_tlocal), up to `tmax`: x how far along it (under 0 if it
+// misses), y what it is made of there. Marched from where the ray enters the upright cylinder round it.
+fn pk_tower(S: vec3<f32>, lift: f32, lean: vec2<f32>, rot: f32, rd: vec3<f32>, tmax: f32) -> vec2<f32> {
+    let o = -S.xz + lean * S.y;
     let v = rd.xz - lean * rd.y;
     let a = max(dot(v, v), 1.0e-8);
-    let bb = dot(o, v);
-    var t = -bb / a;
-    var r = pk_tower_r(rd.y * t - b.y + PK_TOWER_H - lift);
-    for (var k = 0; k < 2; k = k + 1) {
-        let disc = bb * bb - a * (dot(o, o) - r * r);
-        if (r <= 0.0 || disc < 0.0) {
-            return vec4<f32>(-1.0);
-        }
-        t = (-bb - sqrt(disc)) / a;
-        let rn = pk_tower_r(rd.y * t - b.y + PK_TOWER_H - lift);
-        if (rn <= 0.0) {
-            return vec4<f32>(-1.0);
-        }
-        r = rn;
+    let b = dot(o, v);
+    let disc = b * b - a * (dot(o, o) - PK_TB * PK_TB);
+    if (disc <= 0.0) {
+        return vec2<f32>(-1.0);
     }
-    let hy = rd.y * t - b.y;
-    if (t <= 0.0 || hy < 0.0) {
-        return vec4<f32>(-1.0);
+    var t0 = (-b - sqrt(disc)) / a;
+    var t1 = (-b + sqrt(disc)) / a;
+    // (from a little under its foot, the ground there not always level, to its tip)
+    let ylo = S.y - 30.0;
+    let yhi = S.y + lift + 2.0;
+    if (abs(rd.y) > 1.0e-5) {
+        t0 = max(t0, min(ylo / rd.y, yhi / rd.y));
+        t1 = min(t1, max(ylo / rd.y, yhi / rd.y));
     }
-    let nrm = normalize(o + v * t);
-    return vec4<f32>(t, atan2(nrm.y, nrm.x), hy + PK_TOWER_H - lift, saturate(dot(nrm, -normalize(rd.xz))));
+    t0 = max(t0, 0.0);
+    t1 = min(t1, tmax);
+    if (t1 <= t0) {
+        return vec2<f32>(-1.0);
+    }
+    var t = t0;
+    for (var k = 0; k < 80; k = k + 1) {
+        let h = pk_tsdf(pk_tlocal(rd * t, S, lift, lean, rot));
+        if (h.x < max(0.05, t * 0.0009)) {
+            return vec2<f32>(t, h.y);
+        }
+        t = t + h.x * 0.8;
+        if (t > t1) {
+            break;
+        }
+    }
+    return vec2<f32>(-1.0);
+}
+// The tower's surface's normal at q (in its frame).
+fn pk_tnormal(q: vec3<f32>, e: f32) -> vec3<f32> {
+    let k = vec2<f32>(1.0, -1.0);
+    return normalize(k.xyy * pk_tsdf(q + k.xyy * e).x + k.yyx * pk_tsdf(q + k.yyx * e).x + k.yxy * pk_tsdf(q + k.yxy * e).x
+        + k.xxx * pk_tsdf(q + k.xxx * e).x);
 }
 
 fn pk_ease(a: f32, b: f32, x: f32) -> f32 {
@@ -748,13 +864,14 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
 
     // ---- the scene ------------------------------------------------------------
     let d = depth_at(uv2);
-    let sky = is_sky(d);
+    var sky = is_sky(d);
+    var solid = false;                                          // (a tower is what is seen here)
     let rel = world_offset(uv2, select(d, 0.5, sky));
     var scene_len = select(1.0e9, length(rel), !sky);
     let rd = normalize(world_offset(uv2, 0.5));
     let rdb = normalize(world_offset(uv, 0.5));                // not bent
     let P = cam + rel;
-    let cloud = !sky && abs(P.y - CLOUD_Y - 2.0) < 6.0;
+    var cloud = !sky && abs(P.y - CLOUD_Y - 2.0) < 6.0;
     let ca = flash * 0.015 * k;
     let ca_dir = (uv2 - vec2<f32>(0.5)) * ca;
     var col = srgb_to_linear(vec3<f32>(
@@ -780,12 +897,25 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     // ---- the towers: the ground over each heaving and splitting, light leaking up through the cracks; the tower
     //      breaking the surface and struggling there, straining, catching, shuddering, leaning, puffs of dust venting
     //      round it; then bursting up out of it, the ground round it blown out in a surge of dust and a column of earth
-    //      climbing with it, rock flung out; dark metal, power running up its seams, its crown crackling before it fires
+    //      climbing with it, rock flung out; dark armoured metal, tiered, buttressed, power running up its seams, its
+    //      crown's emitter crackling before it fires. Solid: the nearest of them (or of their heaving ground) is drawn
+    //      over what is behind it, and hides it, and anything nearer (the land, the dust) hides it.
+    var tS: array<vec4<f32>, 7>;                                // where each stands (shaking) and how far it has risen
+    var tst: array<vec4<f32>, 7>;                               // s, its ground's heave, its power, its seams waking
+    var near_t = scene_len;
+    var near_col = vec3<f32>(0.0);
+    var near_add = vec3<f32>(0.0);
+    var near_a = 0.0;
+    let hazec = srgb_to_linear(frame.fog_color.rgb) * (0.3 + 0.7 * day) * (1.0 - 0.8 * dark);
+    let amb_t = mix(vec3<f32>(0.012, 0.018, 0.045), vec3<f32>(0.2, 0.24, 0.32), day) * (1.0 - 0.7 * dark);
+    let sun_c = vec3<f32>(1.6, 1.5, 1.35) * day * (1.0 - 0.85 * dark);
     for (var i = 0; i < PK_N; i = i + 1) {
         let e = em[i];
         let fi = f32(i);
         let r0 = e.w - PK_RAISE;                                // when it breaks the surface
         let bt0 = time - (r0 - PK_BULGE);                       // since its ground began to heave
+        tS[i] = vec4<f32>(e.xyz - cam, 0.0);
+        tst[i] = vec4<f32>(-99.0, 0.0, 0.0, 0.0);
         if (bt0 <= 0.0) {
             continue;
         }
@@ -809,14 +939,16 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         let lit = smoothstep(-0.5, 0.15, et) * power;
         let wake = smoothstep(0.0, 0.5, tb) * power;              // (its seams waking as it bursts up)
         let fire_ = select(0.0, exp(-(et - PK_SHOOT) * 2.2), et > PK_SHOOT);
+        tS[i] = vec4<f32>(S, lift);
+        tst[i] = vec4<f32>(s, sb, lit, wake);
         // (the horizon round it lit by its crown, a little, along the horizon more than above it)
         let low = exp(-abs(rd.y - sdir.y - 0.05) / 0.07);
         add = add + PK_ARC * (exp(-c / 0.004) * 0.6 + exp(-c / 0.02) * 0.08) * low * (0.5 * fire_ + 0.08 * lit) * select(0.15, 1.0, sky || scene_len > ds * 0.6) * k;
-        // (only near it: what it throws up climbs some 600 blocks and spreads 400 round it)
-        if (ray_seg(rd, S0, S0 + vec3<f32>(0.0, 650.0, 0.0)).x > 480.0) {
+        // (only near it)
+        if (ray_seg(rd, S0, S0 + vec3<f32>(0.0, PK_TOWER_H + 30.0, 0.0)).x > PK_TB * 1.5 + 60.0) {
             continue;
         }
-        var tlen = scene_len;
+        let haze = 1.0 - exp(-ds / 6000.0);
         // its ground heaving up before it breaks, split by cracks with light leaking up through them, then broken open
         // round it while it struggles, until it bursts out
         if (tb < 0.3) {
@@ -827,7 +959,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             if (tcd > 0.0 && dc2 < Rd * Rd) {
                 let td = tcd - sqrt(Rd * Rd - dc2);
                 let pd = rd * td - Cd;
-                if (pd.y + Cd.y - S0.y > -0.5 && (sky || td < scene_len + 6.0)) {
+                if (pd.y + Cd.y - S0.y > -0.5 && (sky || td < scene_len + 6.0) && td < near_t) {
                     let nd = pd / Rd;
                     let ang = atan2(nd.z, nd.x);
                     // (the land itself lifted, shaded by its slope; split by cracks no thinner than a pixel, the ground
@@ -842,56 +974,150 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                     let torn = (exp(-cn / (w1 * 6.0)) * 0.7 + smoothstep(0.985, 0.995, nd.y) * saturate(s * 3.0)) * open;
                     let slope = 0.55 + 0.6 * saturate(dot(nd, normalize(vec3<f32>(0.3, 1.0, 0.2))));
                     let land = vec3<f32>(0.12, 0.15, 0.08) * (0.25 + 0.75 * day) * (1.0 - 0.55 * dark) * slope;
-                    // (as hazy with distance as the land round it)
                     let dome = mix(land, vec3<f32>(0.06, 0.048, 0.038) * (0.3 + 0.6 * day) * (1.0 - 0.5 * dark), saturate(torn));
-                    col = mix(col, mix(dome, col, saturate(td / 2500.0) * 0.85), open);
-                    add = add * (1.0 - open) + pk_heat(0.45 + 0.35 * saturate(cracks)) * cracks * (0.4 + 1.2 * saturate(s)) * k;
-                    tlen = min(tlen, td);
+                    near_t = td;
+                    // (as hazy with distance as the land round it: it is the land)
+                    near_col = mix(dome, col, saturate(td / 2500.0) * 0.85);
+                    near_add = pk_heat(0.45 + 0.35 * saturate(cracks)) * cracks * (0.4 + 1.2 * saturate(s)) * k;
+                    near_a = open;
                 }
             }
         }
         if (lift > 1.0) {
-            let th = pk_tower(S, lift, lean, rd);
-            if (th.x > 0.0 && th.x < tlen) {
-                let yp = th.z;
-                let u = yp / PK_TOWER_H;
-                // dark, worn metal: ribs up it, bands round it at uneven heights, grime; its edge lit by the sky behind it,
-                // the side towards the target by the ring and the beam
-                let towards = saturate(dot(vec2<f32>(cos(th.y), sin(th.y)), normalize(-S.xz)));
-                let grime = 0.7 + 0.5 * gnoise2(vec2<f32>(th.y * 7.0, yp * 0.04 + fi * 3.0));
-                let rib = exp(-pow(sin(th.y * 5.0) / 0.07, 2.0));
-                let bandy = fract(yp / 61.0 + 0.25 * sin(yp * 0.011 + fi));
-                let band = exp(-pow((bandy - 0.5) / 0.025, 2.0)) * step(0.6, fh21(vec2<f32>(floor(yp / 61.0 + 0.25 * sin(yp * 0.011 + fi)), fi * 7.0 + seed)));
-                let rim = pow(1.0 - th.w, 3.0);
-                var tc = vec3<f32>(0.03, 0.034, 0.042) * grime * (0.3 + 0.7 * day * (0.5 + 0.5 * th.w)) * (1.0 - 0.45 * dark) * (1.0 - 0.35 * rib)
-                    + (vec3<f32>(0.1, 0.12, 0.16) * day * (1.0 - dark) + PK_DEEP * 0.25 * (0.2 + lit)) * rim
-                    + pk_heat(0.3) * towards * (0.05 * glow_n + 0.04 * burn);
-                // power: running up every other rib and round the bands, surging, once it has burst up; its drum lit
-                // (lit in runs, not the whole way: a seam's panels each on or off; only some bands)
-                let sid = floor(th.y * 2.5 / 3.14159265 + 0.5);
-                let run = step(0.35, fh21(vec2<f32>(floor(yp / 27.0) + sid * 13.0, fi + seed)));
-                let seam = exp(-pow(sin(th.y * 2.5) / 0.04, 2.0)) * smoothstep(0.84, 0.8, u) * run;
-                let surge = 0.3 + pow(0.5 + 0.5 * sin(yp * 0.03 - time * 10.0 + th.y), 6.0) * 1.8;
-                let drum = smoothstep(0.83, 0.85, u) * smoothstep(0.94, 0.92, u) * (0.5 + 0.5 * pow(0.5 + 0.5 * sin(th.y * 6.0 + time * 4.0), 3.0));
-                tc = tc + PK_HOT * ((seam * 0.55 + band * 0.25) * surge * (0.15 * wake + lit) + drum * (0.15 * wake + 1.4 * lit + 2.0 * fire_));
+            let rot = fi * 0.9 + mh(u32(i), u32(seed), 37u) * 1.0;
+            pk_lift_g = lift;
+            pk_heap_g = smoothstep(0.0, 0.4, tb) * (1.0 - smoothstep(PK_CUT + 2.0, PK_CUT + 6.0, time));
+            let th = pk_tower(S, lift, lean, rot, rd, near_t);
+            if (th.x > 0.0) {
+                let X = rd * th.x;
+                let q = pk_tlocal(X, S, lift, lean, rot);
+                let nl = pk_tnormal(q, max(0.4, th.x * 0.0008));
+                let cr = cos(rot);
+                let sr = sin(rot);
+                let n = normalize(vec3<f32>(cr * nl.x + sr * nl.z, nl.y, -sr * nl.x + cr * nl.z));
+                let m = th.y;
+                let yp = q.y;
+                // (the panels of its hull: on each face of the six, plates in courses, each a little different, the
+                // joints between them dark; their face-local place)
+                let qf = pk_fold(q.xz, 6.0, 0.5235988);
+                let course = floor(yp / 17.0);
+                let pu = qf.y / 13.0 + 0.5 * (course - 2.0 * floor(course / 2.0));
+                let groove = max(smoothstep(0.45, 0.49, abs(fract(pu) - 0.5)), smoothstep(0.46, 0.49, abs(fract(yp / 17.0) - 0.5))) * f32(m < 0.5 || m > 2.5);
+                let plate = fh21(vec2<f32>(floor(pu) + floor(atan2(q.z, q.x) * 0.955) * 17.0, course + fi * 31.0));
+                // (some plates inset, darker, a slit of light across them)
+                let inset = step(0.8, plate) * f32(m < 0.5) * step(PK_T0, yp);
+                var alb = vec3<f32>(0.042, 0.046, 0.056) * (0.7 + 0.6 * plate) * (1.0 - 0.6 * groove) * (1.0 - 0.5 * inset);
+                if (m > 0.5 && m < 1.5) {
+                    alb = vec3<f32>(0.065, 0.066, 0.072);                  // collars and ribs: heavier, brighter metal
+                } else if (m > 1.5 && m < 2.5) {
+                    alb = vec3<f32>(0.06, 0.062, 0.075);                   // the crown
+                } else if (m > 2.5 && m < 3.5) {
+                    alb = vec3<f32>(0.038, 0.04, 0.05) * (0.85 + 0.3 * plate); // the buttresses
+                } else if (m > 5.5) {
+                    alb = vec3<f32>(0.075, 0.062, 0.05) * (0.6 + 0.6 * gnoise2(q.xz * 0.3));   // the broken ground
+                }
+                // lit by the sky, the sun, the ring, the beam, and its own emitter; its hollows shadowed
+                let ao = 0.3 + 0.7 * saturate(pk_tsdf(q + nl * 6.0).x / 6.0);
+                let L = frame.sun.xyz;
+                let Lr = normalize(NX - X);
+                let Lb = normalize(crel - X);
+                let qe = vec3<f32>(0.0, PK_CORE_Y, 0.0) - q;
+                let de2 = dot(qe, qe);
+                let emi = (0.3 * lit + 3.0 * fire_ + 0.1 * wake) * 900.0 / (900.0 + de2) * max(dot(nl, qe * inverseSqrt(de2)), 0.0);
+                let ringc = pk_heat(0.55) * glow_n * 0.4 + vec3<f32>(0.5, 0.7, 1.2) * burn * 0.3;
+                let diff = amb_t * (0.35 + 0.65 * n.y) + sun_c * max(dot(n, L), 0.0) + pk_heat(0.55) * glow_n * 0.22 * max(dot(n, Lr), 0.0)
+                    + vec3<f32>(0.5, 0.7, 1.2) * burn * 0.3 * max(dot(n, Lb), 0.0) + PK_HOT * emi;
+                let spec = sun_c * pow(max(dot(n, normalize(L - rd)), 0.0), 48.0) * 0.35 + ringc * pow(max(dot(n, normalize(Lr - rd)), 0.0), 24.0) * 0.6;
+                let rim = pow(1.0 - max(dot(n, -rd), 0.0), 5.0) * select(1.0, 0.15, m > 5.5);
+                var tc = alb * diff * ao * (0.6 + 0.4 * smoothstep(0.0, 200.0, yp)) + spec * ao * (1.0 - 0.6 * groove) + (amb_t * 1.5 + PK_DEEP * 0.12 * (0.2 + lit)) * rim * ao;
+                // power: in the seams over the joints, up the middle of some of the hull's plates in runs, along the
+                // buttresses' edges, round the ring plate, surging; the emitter blazing as it fires
+                let yj = PK_T0 + clamp(round((yp - PK_T0) / PK_TIER), 1.0, 5.0) * PK_TIER;
+                let surge = 0.3 + pow(0.5 + 0.5 * sin(yp * 0.03 - time * 10.0 + fi), 6.0) * 1.8;
+                let run = step(0.55, fh21(vec2<f32>(floor(yp / 23.0) + floor(atan2(q.z, q.x) * 0.955) * 7.0, fi + seed)));
+                var glow = 0.0;
+                if (m < 0.5) {
+                    glow = exp(-pow((yp - yj - 3.6) / 0.8, 2.0)) * 0.7 + exp(-pow(qf.y / 0.7, 2.0)) * run * step(PK_T0, yp) * 0.6
+                        + inset * exp(-pow((fract(yp / 17.0) - 0.5) / 0.04, 2.0)) * 0.5;
+                } else if (m > 2.5 && m < 3.5) {
+                    let q3 = pk_fold(q.xz, 3.0, 0.0);
+                    glow = exp(-pow((104.0 - 0.38 * yp - q3.x) / 1.2, 2.0)) * smoothstep(0.0, 20.0, yp) * 0.9;
+                } else if (m > 1.5 && m < 2.5) {
+                    glow = exp(-pow((length(q.xz) - 37.0) / 1.0, 2.0)) * smoothstep(356.0, 350.0, yp) * 1.2 + exp(-pow((length(q.xz) - 25.0) / 1.0, 2.0)) * smoothstep(356.0, 350.0, yp) * 0.6;
+                }
+                if (m > 5.5) {
+                    let cn = abs(gnoise2(q.xz * 0.12 + vec2<f32>(fi * 7.0)) - 0.5);
+                    glow = exp(-cn / 0.015) * 0.35 * (1.0 - smoothstep(0.0, 6.0, tb));
+                }
+                var em_ = PK_HOT * glow * surge * (0.12 * wake + lit) * 0.9;
+                if (m > 4.5 && m < 5.5) {
+                    em_ = PK_WHITE * (0.15 * wake + 0.8 * lit + 2.5 * fire_) + PK_HOT * (0.3 * wake + lit) * (0.6 + 0.4 * rim);
+                    tc = vec3<f32>(0.02, 0.03, 0.06);
+                }
                 // (caked in earth where it came up through the ground as it struggled, the earth falling away in streaks
                 // once it has burst up)
                 let crust_top = PK_TOWER_H - 0.17 * PK_TOWER_H;
-                let streak = gnoise2(vec2<f32>(th.y * 11.0, yp * 0.012 + fi));
-                let earth = smoothstep(crust_top - 30.0, crust_top + 10.0, yp) * select(1.0, saturate(1.0 - tb * 0.35 - (1.0 - streak) * 0.7), tb > 0.0)
-                    + smoothstep(90.0, 0.0, yp) * 0.7;
-                tc = mix(tc, vec3<f32>(0.07, 0.056, 0.042) * (0.6 + 0.5 * streak) * (0.3 + 0.6 * day) * (1.0 - 0.4 * dark), saturate(earth) * 0.9);
-                let haze = saturate(ds / 6000.0);
-                col = mix(tc, col, haze);
-                add = add * haze;
-                tlen = min(tlen, th.x);
+                let streak = gnoise2(vec2<f32>(atan2(q.z, q.x) * 11.0, yp * 0.012 + fi));
+                let earth = saturate(smoothstep(crust_top - 30.0, crust_top + 10.0, yp) * select(1.0, saturate(1.0 - tb * 0.35 - (1.0 - streak) * 0.7), tb > 0.0)
+                    + smoothstep(90.0, 0.0, yp) * 0.7) * 0.9 * f32(m < 5.5);
+                tc = mix(tc, vec3<f32>(0.07, 0.056, 0.042) * (0.6 + 0.5 * streak) * (0.3 + 0.6 * day) * (1.0 - 0.4 * dark) * (0.5 + 0.5 * ao), earth);
+                em_ = em_ * (1.0 - earth);
+                near_t = th.x;
+                near_col = mix(tc, hazec, haze);
+                near_add = em_ * (1.0 - haze * 0.7) * k;
+                near_a = 1.0;
             }
         }
-        scene_len = min(scene_len, tlen);
-        // the dust it throws up (in front of the tower, cut by the land)
+    }
+    if (near_a > 0.0) {
+        col = mix(col, near_col, near_a);
+        add = add * (1.0 - near_a) + near_add;
+        scene_len = near_t;
+        if (near_a > 0.5) {
+            sky = false;
+            cloud = false;
+            solid = true;
+        }
+    }
+    // what each throws up, and its crown, the furthest first, each cut by what is in front of it
+    var order: array<i32, 7>;
+    for (var i = 0; i < PK_N; i = i + 1) {
+        order[i] = i;
+    }
+    for (var i = 0; i < PK_N; i = i + 1) {
+        for (var j = i + 1; j < PK_N; j = j + 1) {
+            if (dot(tS[order[j]].xyz, tS[order[j]].xyz) > dot(tS[order[i]].xyz, tS[order[i]].xyz)) {
+                let o = order[i];
+                order[i] = order[j];
+                order[j] = o;
+            }
+        }
+    }
+    for (var oi = 0; oi < PK_N; oi = oi + 1) {
+        let i = order[oi];
+        let st = tst[i];
+        let s = st.x;
+        if (s < -PK_BULGE - 0.5) {
+            continue;
+        }
+        let fi = f32(i);
+        let S0 = em[i].xyz - cam;
+        let S = tS[i].xyz;
+        let lift = tS[i].w;
+        let sb = st.y;
+        let lit = st.z;
+        let wake = st.w;
+        let tb = s - PK_STRUGGLE;
+        let et = time - em[i].w;
+        let fire_ = select(0.0, exp(-(et - PK_SHOOT) * 2.2), et > PK_SHOOT);
+        // (only near it: what it throws up climbs some 600 blocks and spreads 400 round it)
+        if (ray_seg(rd, S0, S0 + vec3<f32>(0.0, 650.0, 0.0)).x > 480.0) {
+            continue;
+        }
+        // the dust it throws up (cut by the land and by the towers)
         let amb = vec3<f32>(0.4, 0.36, 0.31) * (0.15 + 0.85 * day) * (1.0 - 0.6 * dark) + PK_DEEP * 0.03 * lit;
         let dg = PK_HOT * (0.05 * lit + 0.06 * wake * exp(-max(tb, 0.0))) + lava_ramp(0.4) * 0.05 * f32(s > 0.0) * exp(-max(s, 0.0) * 0.8);
-        let du = pk_dust(rd, S0, s, sb, fi, seed, select(tlen, 1.0e9, sky && tlen > 1.0e8), in.position.xy, amb, dg, time);
+        let du = pk_dust(rd, S0, s, sb, fi, seed, select(scene_len, 1.0e9, sky), in.position.xy, amb, dg, time);
         col = col * du.w + du.xyz * k + col * (1.0 - k) * (1.0 - du.w);
         add = add * mix(1.0, du.w, 0.85);
         // rock flung up and out as it bursts through, falling back (dark against the sky)
@@ -916,19 +1142,19 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 add = add * (1.0 - cov * vj * 0.8);
             }
         }
-        // its crown: the tip blazing as it fires, and before it fires the charge crawling over its head, crackling
-        let tip = S + vec3<f32>(0.0, lift, 0.0);
+        // its emitter: blazing as it fires, and before it fires the charge crawling over its crown, crackling
+        let tip = S + vec3<f32>(0.0, lift - PK_TOWER_H + PK_CORE_Y, 0.0);
         let ct = 1.0 - dot(rd, normalize(tip));
         add = add + (PK_WHITE * exp(-ct / 3.0e-6) * 0.6 + PK_HOT * exp(-ct / 6.0e-5) * 0.4) * (lit + 2.0 * fire_)
-            * pk_occ(length(tip) - 5.0, scene_len, sky, cloud) * k;
+            * pk_occ(length(tip) - 12.0, scene_len, sky, cloud) * k;
         let corona = smoothstep(-0.7, -0.1, et) * (1.0 - smoothstep(PK_SHOOT, PK_SHOOT + 0.5, et)) * power;
         if (corona > 0.01) {
             for (var j = 0; j < 2; j = j + 1) {
                 let sj = pcg(u32(seed) + u32(i) * 131u + u32(j) * 7u + u32(time * 16.0) * 1009u);
                 let hv = vec3<f32>(pcg3d(vec3<u32>(sj, 3u, 5u))) * (1.0 / 4294967295.0);
-                let a0 = tip - vec3<f32>(0.0, 8.0 + 30.0 * hv.x, 0.0);
+                let a0 = tip + vec3<f32>(0.0, 6.0 * hv.x, 0.0);
                 let dir = normalize(vec3<f32>(cos(hv.y * TAU), 0.6 * hv.z - 0.1, sin(hv.y * TAU)));
-                let bo = pk_bolt(rd, a0, a0 + dir * (25.0 + 30.0 * hv.z), 1.0, sj, 6, 1.6, 0.0, 0.5, time, scene_len, sky, cloud);
+                let bo = pk_bolt(rd, a0, a0 + dir * (30.0 + 30.0 * hv.z), 1.0, sj, 6, 1.6, 0.0, 0.5, time, scene_len, sky, cloud);
                 add = add + (PK_WHITE * bo.x * 0.8 + PK_HOT * bo.y) * corona * k;
             }
         }
@@ -938,7 +1164,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     let rel2 = P.xz - tgt.xz;
     let r = length(rel2);
     let dy = P.y - tgt.y;
-    if (!sky) {
+    if (!sky && !solid) {
         let on_ground = 1.0 - smoothstep(25.0, 40.0, dy);
         // the ring lights the land under it, a ring of blue light on it, falling off from its nearest point
         let pr = P - cam - NX0;
@@ -1160,7 +1386,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             continue;
         }
         let fi = f32(i);
-        let A = e.xyz - cam + vec3<f32>(0.0, PK_TOWER_H - 3.0, 0.0);
+        let A = e.xyz - cam + vec3<f32>(0.0, PK_CORE_Y + 9.0, 0.0);
         let F = NX0 + (re1 * cos(fa[i]) + re2 * sin(fa[i])) * RR;
         let head = pk_lead(et, fi);
         let si = pcg(u32(seed) * 31u + u32(i) * 7919u);
