@@ -14,7 +14,7 @@ the laser from a wheel: **Plasma**, a raging beam with forked lightning that fus
 where the clouds part, a pillar of light comes down and the crater turns to quartz and gold, **Black Hole**, a
 singularity that bends the light round it, tears the ground up into orbit and swallows it, or **Meteor Storm**, a storm
 of meteors across the land and then an extinction-level impact, the most destructive of them all, **Mothership**, a
-kilometre-long ship that drops out of hyperspace over the target and cuts a molten trench across the land with its beam,
+kilometre-long ship that drops out of nowhere over the target and cuts a molten trench across the land with its beam,
 **Downfall**, the same ship brought down by a meteor, crashing into the land, its black hole engine swallowing the wreck,
 or **Planet Killer**, seven towers grinding up out of the horizon that strike a ring of light high above the target
 with bolts of lightning until it fires one beam down through it, leaving a crater 260 blocks across.
@@ -132,11 +132,11 @@ with bolts of lightning until it fires one beam down through it, leaving a crate
   tears open and throws burning ejecta every way, everything above the ground flattened out to 100 blocks, a crater
   about 125 blocks across with a raised rim and a shaft to bedrock, a melt sheet of magma and lava on its floor, the
   land charred out to 135 blocks, real blocks thrown out across the land and ash coming down over everything.
-- **Mothership.** A slab of dark metal over a kilometre long drops out of hyperspace and stops dead over the target, its
+- **Mothership.** A slab of dark metal over a kilometre long drops out of nowhere and stops dead over the target, its
   shadow falling across the land, the air rippling round it and its green lights cascading on. Its emitters charge and
   converge, and a green beam with a white-hot core drills a shaft to bedrock, then sweeps away from you, cutting a
   molten trench 100 blocks long, before the ship pulls away into a streak. Pick on the wheel which way it comes in
-  (ahead, behind, left, right or straight down) and how it arrives (a film-style snap, unfolding out of a point, or out
+  (ahead, behind, left, right or straight down) and how it arrives (snapping into place, unfolding out of a point, or out
   of a warp streak). It reaches 1000 blocks: past your render distance it aims across Horizon's distant terrain.
 - **Downfall.** The Mothership drops in as it always does and starts to charge, but the charge is cut and its power
   thrown to the batteries along its roof as a meteor the size of a hill comes in out of the sky, first a point of light
@@ -218,7 +218,7 @@ with bolts of lightning until it fires one beam down through it, leaving a crate
 ## New in 0.5.0
 
 - **Mothership**, the fifth laser, on the wheel and `/orbital mothership`. A kilometre-long ship of dark metal and
-  green light drops out of hyperspace over the target, charges, drills a shaft to bedrock and sweeps its beam away from
+  green light drops out of nowhere over the target, charges, drills a shaft to bedrock and sweeps its beam away from
   you, cutting a molten trench 100 blocks long, then leaves in a streak.
 - **Approach and arrival on the wheel.** Two rows under the ring when the Mothership is loaded: where it comes in from
   (ahead, behind, left, right, above) and how (snap, unfold, warp). Also `/orbital approach …` and `/orbital arrival …`.

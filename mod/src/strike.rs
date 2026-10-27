@@ -1317,7 +1317,7 @@ pub const APPROACHES: [Choice; 5] = [
 /// How the mothership arrives, picked in the wheel: its settings key, how the game says it, and its button. The index
 /// is the shader's arrival style (`frame.mod_params[3].y`).
 pub const ARRIVALS: [Choice; 3] = [
-    Choice { key: "snap", label: "snaps in, like film", button: "SNAP" },
+    Choice { key: "snap", label: "snaps into place", button: "SNAP" },
     Choice { key: "unfold", label: "unfolds out of a point", button: "UNFOLD" },
     Choice { key: "warp", label: "pulls out of a warp streak", button: "WARP" },
 ];
