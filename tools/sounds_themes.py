@@ -1461,8 +1461,8 @@ def pk_fire(th):
 def pk_cutoff(th):
     """cutoff: the towers cutting out (at the strike's 17.65 s) and the last of the beam and the ring crushed into the
     crater, bursting there 0.9 s later. The roar dying away down to nothing as the bolts stutter out, then the rush of it
-    falling, the air sucked in after it, building; a breath; and the burst: the land's explosion again at full weight
-    (its own take), rolling off the land and the sky for as long as the first."""
+    falling, the air sucked in after it, building; a breath; and the burst: as heavy as the land's, but down in the crater,
+    so deeper, darker and booming off the pit's walls, to sound unlike the first."""
     import sounds_pk_blast as PB
     tp = 0.9
     d = 19.3; n = int(SR * d); t = tt(d)
@@ -1473,8 +1473,21 @@ def pk_cutoff(th):
         stut = (rng.random(int(d * 22) + 2)[(t * 22).astype(int)] > 0.45) * np.clip((0.4 - t) / 0.35, 0, 1)
         drain = drain + crackle(d, rate=2500, decay=0.0008, lo=1200, hi=9000, heavy=1.2) * stut * 0.5
         build = drain + suck
-    with PB.seeded(63101):
-        EL, ER = PB.explosion_live(d, tp, stretch=0.65)
+    # the burst, made to sound unlike the land's: down in the crater, so deeper and slower (the same kind of explosion
+    # played 0.8x, about 4 semitones down), muffled by the pit (its top opening briefly as the blast clears the rim, then
+    # closing), booming in the shaft (close echoes off its walls, 28-71 ms) and slapping back off the far crater walls
+    # (0.75, 1.45 and 2.2 s: the crater is about 480 blocks across)
+    sl = 0.8
+    with PB.seeded(63111):
+        XL, XR = PB.explosion_live(d * sl + 0.5, tp * sl, stretch=0.75)
+    src = np.arange(n) * sl
+    EL = np.interp(src, np.arange(len(XL)), XL); ER = np.interp(src, np.arange(len(XR)), XR)
+    fc = PB.track(n, tp, [(-1.0, 9000), (0.0, 2600), (0.15, 5200), (1.0, 2200), (4.0, 1000), (12.0, 700)])
+    EL, ER = PB.lowpass_track(EL, fc), PB.lowpass_track(ER, fc)
+    mono = (EL + ER) / 2
+    for dt, gain, pan, lo, hi in [(0.028, 0.35, -0.4, None, 900), (0.047, 0.3, 0.5, None, 700), (0.071, 0.25, -0.2, None, 600),
+                                  (0.75, 0.3, -0.7, 40, 500), (1.45, 0.22, 0.7, 40, 400), (2.2, 0.12, 0.0, 40, 300)]:
+        PB.delay_into(EL, ER, mono, dt, gain, pan, lo, hi)
     L, R = wide_tail(build, 8.0, 2.8, (2200, 110), 0.8)
     m = min(len(L), len(R), n)
     # (the build-up as loud against the burst as it was before: its loudest 400 ms 1/1.35 of the burst's; then the breath
