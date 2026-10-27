@@ -32,6 +32,8 @@ VIEWS = {
     "side": "cx=1700 cy=200 cz=-250 yaw=180 pitch=6 mx=0 mz=60",
     "under": "cx=0 cy=72 cz=-250 yaw=-90 pitch=80 mx=0 mz=60",
     "aerial": "cx=0 cy=900 cz=1100 yaw=-90 pitch=-32 mx=0 mz=60",
+    # the planet killer's first tower, a few hundred blocks off it (it stands beyond the target from the player)
+    "tower": "cx=180 cy=80 cz=-420 lx=0 ly=170 lz=-1150 mx=0 mz=60",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side"}
 

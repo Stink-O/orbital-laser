@@ -2949,22 +2949,31 @@ fn df_hole_collapse(p: &mut Plan, g: &DfGeo, floor_y: i32, bowl_d: i32) {
 // ---- the planet killer -----------------------------------------------------------------------------------------------
 
 /// Planet killer: its times (strike clock) are strike.wgsl's PK_* (keep them in step), and where its towers stand, when
-/// each fires and where its fissures run come from pk_*, the same as strike.wgsl's. Each tower's ground bulges for
-/// PK_BULGE, then it bursts up out of it, rising over PK_RAISE, and fires when it has risen, from PK_IGN0 to PK_IGN1;
-/// their beams feed the ring, which fuses at PK_MERGE; the one beam lands at PK_HIT and the land under it bursts at
-/// PK_BURST; it burns until the towers cut out at PK_CUT, and the ring, crushed to a point, bursts in the crater at PK_POP.
+/// each fires and where its fissures run come from pk_*, the same as strike.wgsl's. Each tower's ground heaves for
+/// PK_BULGE; then it breaks the surface and struggles there for PK_STRUGGLE (catching at PK_CATCH), bursts up out of it
+/// over PK_THRUST, settles, and fires PK_RAISE after it broke the surface, from PK_IGN0 to PK_IGN1; its bolt feels its way
+/// out and strikes the ring PK_SHOOT after it fires. The ring fuses at PK_MERGE; a bolt feels its way down to the target
+/// and the beam pours down it at PK_DROP, lands at PK_HIT, and the land under it bursts at PK_BURST; it burns until the
+/// towers cut out at PK_CUT, and the ring, crushed to a point, bursts in the crater at PK_POP.
 const PK_N: usize = 7;
 const PK_H: f64 = 300.0;
 const PK_SRC_R: f64 = 1100.0;
-const PK_BULGE: f32 = 0.5;
-const PK_RAISE: f32 = 1.0;
-const PK_IGN0: f32 = 1.56;
-const PK_IGN1: f32 = 2.5;
-const PK_MERGE: f32 = 4.0;
-const PK_HIT: f32 = 4.35;
-const PK_BURST: f32 = 4.85;
-const PK_CUT: f32 = 13.5;
-const PK_POP: f32 = 14.4;
+const PK_TOWER_H: f64 = 420.0;
+const PK_BULGE: f32 = 0.7;
+const PK_STRUGGLE: f32 = 1.1;
+const PK_THRUST: f32 = 0.8;
+const PK_RAISE: f32 = 2.25;
+/// When, after it breaks the surface, a tower gives a little and catches again as it struggles (strike.wgsl's pk_rise).
+const PK_CATCH: [f32; 2] = [0.45, 0.82];
+const PK_IGN0: f32 = 3.05;
+const PK_IGN1: f32 = 5.45;
+const PK_SHOOT: f32 = 1.14;
+const PK_MERGE: f32 = 7.6;
+const PK_DROP: f32 = 8.4;
+const PK_HIT: f32 = 8.5;
+const PK_BURST: f32 = 9.0;
+const PK_CUT: f32 = 17.65;
+const PK_POP: f32 = 18.55;
 /// The blast: everything above the ground blown away out to this far (the first PK_BLAST_LOW blocks of it at once).
 const PK_BLAST: i32 = 170;
 const PK_BLAST_LOW: i32 = 8;
@@ -3052,48 +3061,68 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     let heard = PK_BURST + lt;
     let nexus = late(tx, ty + PK_H, tz);
 
-    // the towers bursting up out of the land and firing: each one's burst and its beam's ignition heard from where it
-    // stands, far off, the ground shaking with each; the rumble of the ground and then the charge building under it all
-    // to the moment they fuse. (Their sound is held to at most a second and a half behind them, though they stand
-    // further off than that: it is the strike's opening.)
+    // the ground groaning under it all from the start, the array's power gathering, swelling to the moment they fuse
+    // and cut dead just before it (the charge)
     p.at(0.2, bar("PLANET KILLER: ARRAY RISING", laser.color));
     p.csound(0.0, "charge", 10.0, 1.0);
-    for (k, s) in [0.05, 0.08, 0.11].iter().enumerate() {
-        p.shake(k as f32 * 0.2, *s, 0.6);
+    for (k, s) in [0.04, 0.06, 0.08].iter().enumerate() {
+        p.shake(0.1 + k as f32 * 0.25, *s, 0.7);
     }
+    // each tower heard from where it stands (far past where `playsound` reaches: from its direction, at the volume
+    // floor), its sound kept to a third of a second behind it, though it stands further off than that, so the grinding
+    // and the bursts stay on the picture: its ground heaving, the tower breaking the surface and grinding, giving and
+    // catching, bursting up out of it and settling, rock raining back down; then its bolt crackling out to the ring and
+    // striking it with a crack and a long roll of thunder. Three takes of each, at their own pitch, so no two are alike.
+    // The land shakes with each, weaker the further off it stands (but not lost).
+    let mut takes = [1, 2, 3];
     for i in 0..PK_N {
         let (x, z, t) = pk_emitter(i, shader_seed, target.point, wing);
-        let (lag, d) = (late(x, ty, z).min(1.5), (x - me[0]).hypot(z - me[2]));
-        // (a tower's burst is felt a long way off: weaker with distance, but not lost)
+        let (lag, d) = (late(x, ty, z).min(0.35), (x - me[0]).hypot(z - me[2]));
         let w = (1.0 / (1.0 + d / 600.0)) as f32;
-        let pitch = p.rng.uniform(0.94, 1.06);
-        // (far past where `playsound` reaches: it is heard from its direction at the volume floor)
-        p.at(t - PK_RAISE + lag, format!("playsound orbital:planetkiller.burst block @a {x:.1} {ty} {z:.1} 4 {pitch:.2} 0.95"));
-        p.shake(t - PK_RAISE - PK_BULGE + lag, 0.12 * w + 0.03, 0.6);
-        p.shake(t - PK_RAISE + lag, 0.6 * w + 0.1, 1.6);
-        p.shake(t - PK_RAISE + 0.45 + lag, 0.3 * w + 0.05, 0.8);
-        let pitch = p.rng.uniform(0.95, 1.05);
-        p.at(t + lag, format!("playsound orbital:planetkiller.ignite block @a {x:.1} {ty} {z:.1} 4 {pitch:.2} 0.9"));
-        p.shake(t + lag, 0.15 * w + 0.05, 0.7);
+        let r0 = t - PK_RAISE;
+        if i % 3 == 0 {
+            let k = p.rng.int(0, 2) as usize;
+            takes.swap(0, k);
+        }
+        let take = takes[i % 3];
+        let pitch = p.rng.uniform(0.92, 1.07);
+        p.at(r0 - PK_BULGE + lag, format!("playsound orbital:planetkiller.rise{take} block @a {x:.1} {ty} {z:.1} 4 {pitch:.2} 0.95"));
+        p.shake(r0 - PK_BULGE + lag, 0.07 * w + 0.02, PK_BULGE + 0.3);
+        p.shake(r0 + lag, 0.3 * w + 0.06, 0.45);
+        for c in PK_CATCH {
+            p.shake(r0 + c + lag, 0.22 * w + 0.04, 0.35);
+        }
+        p.shake(r0 + 0.9 + lag, 0.1 * w + 0.03, 0.3);
+        p.shake(r0 + PK_STRUGGLE + lag, 0.65 * w + 0.12, 1.6);
+        p.shake(r0 + PK_STRUGGLE + PK_THRUST + lag, 0.22 * w + 0.05, 0.5);
+        // its bolt: heard from the stretch of it nearest the ring, overhead and out towards the tower
+        let (bx_, by_, bz_) = (tx + (x - tx) * 0.3, ty + PK_H + (PK_TOWER_H - PK_H) * 0.3, tz + (z - tz) * 0.3);
+        let blag = late(bx_, by_, bz_).min(0.3);
+        let btake = 1 + (i + take) % 3;
+        let pitch = p.rng.uniform(0.9, 1.1);
+        p.at(t + blag, format!("playsound orbital:planetkiller.bolt{btake} block @a {bx_:.1} {by_:.1} {bz_:.1} 4 {pitch:.2} 1"));
+        p.shake(t + PK_SHOOT + blag, 0.2, 0.4);
     }
-    p.at(2.4, bar("BEAMS CONVERGING", laser.color));
+    // the bolts' crackle, held while they stay connected, swelling as each strikes the ring
+    p.csound(PK_IGN0 + PK_SHOOT, "arcs", 10.0, 1.0);
+    p.at(PK_IGN0 + 0.2, bar("ARRAY CHARGING", laser.color));
     for (k, s) in [0.12, 0.18, 0.3].iter().enumerate() {
         p.shake(PK_MERGE - 1.2 + k as f32 * 0.4, *s, 1.0);
     }
-    // they fuse: a blow of light and pressure from overhead
-    p.csound(PK_MERGE - 0.05, "merge", 10.0, 1.0);
-    p.shake(PK_MERGE + nexus, 0.5, 2.0);
+    // they fuse: a blow of light and pressure from overhead, the sky torn, a bolt crackling down out of it
+    p.csound(PK_MERGE, "merge", 10.0, 1.0);
+    p.shake(PK_MERGE + nexus, 0.55, 2.0);
     p.at(PK_MERGE, bar("CONVERGENCE", "aqua"));
-    // the beam lands and the land heaves up under it, then bursts: the hardest blow of the strike, then the ground shaking
-    // under it while it burns
-    p.sound(PK_HIT + lt, "entity.lightning_bolt.thunder", 10.0, 0.5);
-    p.sound(PK_HIT + lt + 0.1, "block.deepslate.break", 10.0, 0.5);
-    p.shake(PK_HIT + lt, 0.35 * fo, 0.6);
-    p.csound(heard, "fire", 10.0, 1.0);
+    // the beam pours down onto the target: a thunderclap, the land heaving up under it, a breath of near silence, and it
+    // bursts: the hardest blow of the strike (all one sound, heard from the target), then the beam's roar and the ground
+    // shaking under it while it burns
+    p.csound(PK_DROP + lt, "fire", 10.0, 1.0);
+    p.shake(PK_DROP + lt, 0.4 * fo, 0.5);
+    p.shake(PK_HIT + lt, 0.2 * fo, 0.5);
     p.shake(heard, fo, 5.0);
     p.at(PK_BURST + 0.1, bar("DIRECT HIT", "white"));
-    p.csound(PK_HIT + 0.1, "beam1", 10.0, 1.0);
-    p.csound(PK_HIT + 4.6, "beam2", 10.0, 1.0);
+    p.csound(heard + 0.7, "beam1", 10.0, 1.0);
+    p.csound(heard + 5.4, "beam2", 10.0, 1.0);
     p.csound(heard + 1.5, "rumble", 9.0, 1.0);
     p.csound(heard + 6.0, "rumble", 8.0, 0.9);
     let mut tk = PK_BURST + 1.2;
@@ -3109,7 +3138,7 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     // ---- particles in the world ----
     for i in 0..10 {
         // the ground under the nexus stirring as it charges, dust lifting, a shimmer of energy coming up off it
-        let tk = 1.6 + i as f32 * 0.25;
+        let tk = PK_MERGE - 2.6 + i as f32 * 0.3;
         let s = 24.0 - 1.5 * f64::from(i);
         p.at(tk, format!("particle minecraft:white_ash {tx} {} {tz} {s:.1} 1 {s:.1} 0 160 force", ty + 1.0));
         p.at(tk, format!("particle minecraft:soul_fire_flame {tx} {} {tz} {s:.1} 0.3 {s:.1} 0.02 40 force", ty + 0.5));
@@ -3118,9 +3147,6 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     p.at(PK_BURST + 0.05, format!("particle minecraft:flash {tx} {} {tz} 0 0 0 0 1 force", ty + 6.0));
     p.at(PK_BURST + 0.05, format!(r#"particle minecraft:block{{block_state:"minecraft:obsidian"}} {tx} {} {tz} 20 4 20 3.0 900 force"#, ty + 1.0));
     p.at(PK_BURST + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:stone"}} {tx} {} {tz} 40 4 40 2.4 900 force"#, ty + 1.0));
-    for (dt, pitch) in [(0.0, 0.4), (0.05, 0.5), (0.15, 0.62), (0.4, 0.45)] {
-        p.sound(heard + dt, "entity.generic.explode", 10.0, pitch);
-    }
     let mut tk = PK_BURST + 0.2;
     let mut k = 0;
     while tk < PK_CUT {
@@ -3137,9 +3163,6 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     // the nexus bursting in the crater
     p.at(PK_POP, format!("particle minecraft:explosion_emitter {tx} {} {tz} 20 10 20 0 20 force", ty - 20.0));
     p.at(PK_POP + 0.05, format!("particle minecraft:flash {tx} {} {tz} 0 0 0 0 1 force", ty));
-    for (dt, pitch) in [(0.0, 0.45), (0.08, 0.6)] {
-        p.sound(PK_POP + lt + dt, "entity.generic.explode", 10.0, pitch);
-    }
     for i in 0..24 {
         // ash coming down over everything once it is over, the crater still smoking
         let tk = PK_POP + i as f32 * 0.45;
@@ -4025,7 +4048,7 @@ mod tests {
     #[test]
     fn planetkiller_emitters_ring_the_target() {
         // the towers stand round the target, the first beyond it from the player, all fired by PK_IGN1, and each is heard
-        // bursting up and firing from where it stands
+        // grinding up from where it stands, and each bolt striking the ring
         let point = [10.5, 65.0, -2.5];
         for me in [[10.5, 66.0, 400.0], [-300.0, 70.0, 40.0]] {
             let wing = wing_angle(point, me);
@@ -4034,11 +4057,11 @@ mod tests {
                 let (x, z, t) = pk_emitter(i, 37.0, point, wing);
                 let r = (x - point[0]).hypot(z - point[2]);
                 assert!((850.0..=1350.0).contains(&r) && (PK_RAISE..=PK_IGN1 + 0.07).contains(&t), "{i}: {r} {t}");
-                for ev in ["burst", "ignite"] {
-                    let heard = cmds.iter().any(|(_, c)| c.starts_with(&format!("playsound orbital:planetkiller.{ev}")) && c.contains(&format!("{x:.1} 65 {z:.1}")));
-                    assert!(heard, "{i}: its {ev} not heard");
-                }
+                let heard = cmds.iter().any(|(_, c)| c.starts_with("playsound orbital:planetkiller.rise") && c.contains(&format!("{x:.1} 65 {z:.1}")));
+                assert!(heard, "{i}: its rise not heard");
             }
+            let bolts = cmds.iter().filter(|(_, c)| c.starts_with("playsound orbital:planetkiller.bolt")).count();
+            assert_eq!(bolts, PK_N, "every bolt heard");
             let (x, z, _) = pk_emitter(0, 37.0, point, wing);
             let (to_me, to_it) = ((me[0] - point[0], me[2] - point[2]), (x - point[0], z - point[2]));
             assert!(to_me.0 * to_it.0 + to_me.1 * to_it.1 < 0.0, "the first is not beyond the target");

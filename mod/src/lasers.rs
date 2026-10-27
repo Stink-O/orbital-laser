@@ -283,9 +283,9 @@ pub const PLANET_KILLER: Laser = Laser {
     title: "PLANET KILLER",
     color: "blue",
     rgb: 0x4D7CFF,
-    blurb: "Seven towers tear up out of the land on the horizon and whip their beams onto a ring of light high above the target. It spins up and fires one beam down through it: the land domes up and bursts, leaving a crater 260 blocks across and 70 deep, fissures splitting the land for 300 blocks and a mushroom cloud.",
+    blurb: "Seven towers grind up out of the land on the horizon and strike a ring of light high above the target with bolts of lightning. It fuses and fires one beam down through it: the land domes up and bursts, leaving a crater 260 blocks across and 70 deep, fissures splitting the land for 300 blocks and a mushroom cloud.",
     icon_model: "orbital:planetkiller_icon",
-    length: 26.0,
+    length: 30.5,
     // a long way off, like the ship lasers: it is best watched from a distance
     range: 1000.0,
     scorch: &[

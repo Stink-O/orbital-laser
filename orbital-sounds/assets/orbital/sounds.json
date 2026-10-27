@@ -602,23 +602,68 @@
     ],
     "subtitle": "subtitles.orbital.downfall.after"
   },
-  "planetkiller.burst": {
+  "planetkiller.rise1": {
     "sounds": [
       {
-        "name": "orbital:planetkiller/burst",
+        "name": "orbital:planetkiller/rise1",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.planetkiller.burst"
+    "subtitle": "subtitles.orbital.planetkiller.rise1"
   },
-  "planetkiller.ignite": {
+  "planetkiller.rise2": {
     "sounds": [
       {
-        "name": "orbital:planetkiller/ignite",
+        "name": "orbital:planetkiller/rise2",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.planetkiller.ignite"
+    "subtitle": "subtitles.orbital.planetkiller.rise2"
+  },
+  "planetkiller.rise3": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/rise3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.rise3"
+  },
+  "planetkiller.bolt1": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/bolt1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.bolt1"
+  },
+  "planetkiller.bolt2": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/bolt2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.bolt2"
+  },
+  "planetkiller.bolt3": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/bolt3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.bolt3"
+  },
+  "planetkiller.arcs": {
+    "sounds": [
+      {
+        "name": "orbital:planetkiller/arcs",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.planetkiller.arcs"
   },
   "planetkiller.charge": {
     "sounds": [
