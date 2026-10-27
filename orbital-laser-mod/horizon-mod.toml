@@ -1,6 +1,6 @@
 id = "orbital"
 name = "Orbital Laser"
-version = "0.5.1"
+version = "0.5.2"
 description = "The Orbital Laser Designator and the Orbital Remote: real items for the orbital laser strike."
 authors = ["Stink-O"]
 api = "0.2"
