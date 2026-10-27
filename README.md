@@ -17,7 +17,7 @@ of meteors across the land and then an extinction-level impact, the most destruc
 kilometre-long ship that drops out of nowhere over the target and cuts a molten trench across the land with its beam,
 **Downfall**, the same ship brought down by a meteor, crashing into the land, its black hole engine swallowing the wreck,
 or **Planet Killer**, seven towers grinding up out of the horizon that strike a ring of light high above the target
-with bolts of lightning until it fires one beam down through it, leaving a crater 260 blocks across.
+with bolts of lightning until it fires one beam down through it, leaving a crater 480 blocks across.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -55,13 +55,16 @@ with bolts of lightning until it fires one beam down through it, leaving a crate
 > under the ship and round the hole killed. It keeps the stern's chunks loaded while it works (up to about 950); out past
 > what the game has loaded round you, the crushing under the far end of the hull may be skipped. The crushing goes on
 > for up to a minute after the strike, a little at a time. **The Planet Killer** is the biggest of all: it flattens
-> everything above the ground out to 170 blocks, up to the sky, digs a crater 260 blocks across and 70 deep in terraces
-> down to a lake of lava, with a shaft to bedrock, piles a rim round it out to 175, splits the land in twelve chasms up
-> to 34 deep running out to about 300 blocks (some running with lava), chars it out to 280, throws rubble out to 400 and
-> kills every mob within 200. Stand at least 300 blocks back: the ground within 175 of the target is gone. It keeps
-> about 1,000 chunks loaded round the target while it works (the chasms' far stretches only until they are cut), and
-> its changes go on after the strike: about 10 million blocks over the first 40 seconds, then the sky over the blast
-> cleared, about 20 million more, for a minute after.
+> everything standing on the land out to 340 blocks and digs a crater 480 blocks across: terraced, slumped walls
+> dropping 60 blocks to a heaped, scorched floor, magma glowing through it, that sags 20 more into an open shaft 80
+> across which drops straight to bedrock, bare bedrock at its foot strewn with magma and scorched rock (no lava). A
+> broken rim of thrown-up rock is heaped round it out to 340, twelve chasms up to 40 deep split the land out to about
+> 400, rays of pale rock streak out over land charred out to 380, rubble is strewn over it, and every mob within 280 is
+> killed. Stand at least 450 blocks back: the ground within 340 of the target is changed. It keeps about 1,900 chunks
+> loaded round the target while it works (the outer ones only from the end of the strike), and its changes go on
+> after it: about 21 million blocks by about a minute after it fires, then what stands higher over the crater, about
+> 13 million more (mostly air), for another 50 seconds. Every change is made without updating what is round it (no
+> sand falls, no water or lava flows), a chunk at a time, so the game keeps up.
 > **Back up
 > your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
@@ -156,7 +159,8 @@ with bolts of lightning until it fires one beam down through it, leaving a crate
   approach and arrival choices and its own colour (red by default), reaches 1000 blocks, and always comes down well
   clear of you.
 - **Planet Killer.** Out round the horizon, a kilometre off, the ground heaves and splits seven times, one after
-  another, light leaking up through the cracks, and seven towers over 400 blocks tall break the surface. Each struggles
+  another, light leaking up through the cracks, and seven towers over 400 blocks tall break the surface: tiered, buttressed alien megastructures with
+  glowing seams, each crowned with claws round an emitter. Each struggles
   there for a second, straining, catching, shuddering and leaning, puffs of dust venting round it, then bursts up out
   of the ground in a surge of dust rolling out over the land and a column of earth climbing with it, rock flung out,
   while the sky goes dark; each is heard grinding and bursting up from where it stands, and felt. Then each tower's
@@ -169,9 +173,10 @@ with bolts of lightning until it fires one beam down through it, leaving a crate
   ring's middle with streamers reaching up off the land to meet it, and the beam pours down the path it opens, arcs
   wound round it. The land under it domes up, cracking with light; a breath of near silence, and it bursts: a fireball,
   a column of ejecta, debris spiralling up round the beam, a shock rippling out through the land and a wall of dust.
-  Everything above the ground is blown flat for 170 blocks, a crater 260 across and 70 deep is dug in terraces down to a
-  lake of lava under the beam, with a shaft on to bedrock, a rim is thrown up round it, and twelve chasms split the land
-  out to about 300 blocks, molten light pulsing along them. Then the bolts stutter out and the towers go dark and sink;
+  Everything above the ground is blown flat for 340 blocks and a crater 480 across is torn out of the land from the
+  middle out, its walls slumped in terraces, its floor glowing with magma, an open shaft down to bedrock under the beam;
+  a broken rim of rock is thrown up round it, rays of rock streak out over the charred land, and twelve chasms split
+  the land out to about 400 blocks, molten light pulsing along them. Then the bolts stutter out and the towers go dark and sink;
   the ring crushes in to a point, which drops into the crater and bursts again, and a mushroom cloud, glowing from below
   with lightning flickering in it, climbs over the crater as the daylight comes back. It reaches 1000 blocks: watch it
   from a long way off.
@@ -439,8 +444,8 @@ the wreck goes in at about 53, and the black hole collapses at 55; the strike en
 ground heaves from 0.1 s, they break the surface from 0.8 s, struggle there for 1.1 s and burst up 0.8 s later, one
 every 0.4 s; their bolts set out from 3.05 to 5.45 s and strike the ring 1.14 s after they set out, the last by about
 6.6; it shudders and tightens from 6.9 and they fuse at 7.6 s; a bolt feels its way down and the beam pours down it at
-8.4, lands at 8.5, and the land bursts at 9; the chasms open over the next 2 s and the crater is dug from 11.9 to about
-19 s; the towers cut out at 17.65, the ring crushes in, drops into the crater and bursts at 18.55, and the mushroom
+8.4, lands at 8.5, and the land bursts at 9; the chasms open over the next 2 s, the crater's core is dug from 11 to
+about 15.5 s, the land over the rest cleared by about 30 and the rest dug from the middle out after the strike; the towers cut out at 17.65, the ring crushes in, drops into the crater and bursts at 18.55, and the mushroom
 climbs until the strike ends at 30.5.
 
 **The effects** are one fragment shader, run as the mod's post pass after the fork's small prelude (the world's colour and depth, the camera and the mod's parameters). It rebuilds every pixel's position from
@@ -459,12 +464,13 @@ other lasers nothing: the same hull, met in its own frame as it tilts (from any 
 Black Hole's lens, and its dust as a volume integrated along the view ray in closed form. Its fall, crash, gouge,
 chunks and the blocks the black hole tears up are worked out by the same formulas in the shader and in the mod. The
 Planet Killer has its own pass too ([`mod/shaders/planetkiller.wgsl`](mod/shaders/planetkiller.wgsl)): its towers are
-met as upright cylinders (sheared as they lean), its bolts are jagged lines from a seeded hash, met kink by kink by the
+solids marched in their own frame (a signed distance: plinth, buttresses, tiers, collars, crown; sheared as they lean),
+the nearest hiding what is behind it, its bolts are jagged lines from a seeded hash, met kink by kink by the
 view ray (their broad bends first, the kinks only near them), so each keeps the path it took from frame to frame, the
 ring is met where the view ray crosses its plane (a clean ellipse from any side), its heart, dome and fireballs are
 traced as spheres and domes, the towers' dust and the mushroom cloud are noise volumes marched along the view ray, and
 the dust wall is a cylinder; its towers and its chasms are placed by the same hash in the shader and in the mod, and the
-crater glows layer by layer as the mod digs it.
+crater glows where it has just been opened as the mod digs it from the middle out.
 
 **The sounds** ([`tools/synth_sounds.py`](tools/synth_sounds.py)) have no samples in them: they are generated from noise
 and sweeps, with a reverb built from a synthetic impulse response.

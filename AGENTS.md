@@ -15,10 +15,12 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
   22-block crater, a shaft and a 100-block trench, and force-loads those chunks while it works. The Downfall buries a
   kilometre-long wreck at least 360 blocks in front of the player, crushes the land under its whole length, heaps
   berms along it and leaves the black hole's crater (arms out to 150 blocks) and a shaft; its crushing carries on for
-  up to a minute after the strike. The Planet Killer is the biggest: it flattens out to 170 blocks, digs a 260-block
-  crater 70 deep and a shaft, piles a rim out to 175, splits the land in chasms out to ~300, chars it to 280, throws
-  rubble to 400, kills every mob within 200 and force-loads ~1,000 chunks while it works; its block changes run for
-  about a minute and a half (`cargo test --release carve_queue -- --ignored --nocapture`). Only fire them in a
+  up to a minute after the strike. The Planet Killer is the biggest: it flattens out to 340 blocks, digs a crater 480
+  across (terraced walls 60 deep, the floor 80, an open shaft 80 across to bedrock in the middle), heaps a rim out to
+  340, splits the land in chasms out to ~400, chars it and strews rubble to 380, kills every mob within 280 and
+  force-loads ~1,900 chunks while it works; its block changes run for about two minutes (main ones by ~67 s, the rest
+  on the spare budget by ~116 s: `cargo test --release carve_queue -- --ignored --nocapture`, and `tick_profile` for
+  what each tick asks of the game). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3

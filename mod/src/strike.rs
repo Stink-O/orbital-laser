@@ -3151,9 +3151,10 @@ fn pk_depth(dx: f64, dz: f64, seed: u32, bottom: i32) -> i32 {
 /// The planet killer: seven towers grind up out of the land far out round the horizon (each heard from where it stands)
 /// and strike a ring of light high over the target with bolts of lightning, one after another; the ring fuses, a bolt
 /// feels its way down to the target and the beam comes down it: the land bursts, and the beam burns for eight and a half
-/// seconds while they feed it; then they cut out and the nexus drops into the crater and bursts there. The land is blown flat for 170 blocks, a crater 260 across and 70 deep
-/// is blown out in terraces with a molten floor and a shaft to bedrock, a rim is thrown up round it, twelve fissures
-/// split the land out to about 300 blocks, and rock is thrown far across the land.
+/// seconds while they feed it; then they cut out and the nexus drops into the crater and bursts there. The land is blown
+/// flat for 340 blocks and a crater 480 across is dug from the middle out (pk_crater): terraced walls, a scorched floor
+/// glowing with magma, an open shaft to bedrock; a broken rim is thrown up round it, twelve fissures split the land out
+/// to about 400 blocks, and the land is charred and strewn with rubble out to 380.
 fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
