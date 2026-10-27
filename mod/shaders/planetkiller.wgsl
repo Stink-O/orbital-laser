@@ -39,7 +39,7 @@ const PK_CREEP: f32 = 1.0;         // its bolt feels its way out from its crown 
 const PK_SHOOT: f32 = 1.14;        // way, striking the ring this long after it fires
 const PK_SHAKE: f32 = 6.9;         // the ring shudders and tightens from here
 const PK_MERGE: f32 = 7.6;         // keep in step with strike.rs: PK_IGN*, PK_BULGE, PK_STRUGGLE, PK_THRUST, PK_RAISE, PK_SHOOT,
-const PK_DROP: f32 = 8.4;          // PK_MERGE, PK_DROP, PK_HIT, PK_BURST, PK_CUT, PK_POP, PK_BOWL, PK_BOWL_D, PK_DIG*, the cracks'
+const PK_DROP: f32 = 8.4;          // PK_MERGE, PK_DROP, PK_HIT, PK_BURST, PK_CUT, PK_POP, the crater's and the cracks'
 const PK_HIT: f32 = 8.5;           // a bolt feels its way down from the ring to the target, the beam pours down it and lands,
 const PK_BURST: f32 = 9.0;         // the ground domes up, and bursts
 const PK_CUT: f32 = 17.65;         // the towers cut out
@@ -47,13 +47,20 @@ const PK_DRAIN: f32 = 0.4;         // their bolts dying over this long, all gone
 const PK_FALL: f32 = 18.15;        // it drops into the crater,
 const PK_POP: f32 = 18.55;         // and bursts there
 const PK_END: f32 = 28.15;         // the daylight is back (the strike runs 30.5 s)
-const PK_BLAST: f32 = 170.0;       // the land flattened out to here
-const PK_BOWL: f32 = 130.0;        // the crater's radius and depth (the laser's bowl_r, bowl_d), dug 3 blocks at a time
-const PK_BOWL_D: f32 = 70.0;       // from PK_DIG0 after the burst, PK_DIG_K seconds a block down at the top (pk_dig_t)
-const PK_DIG0: f32 = 2.9;
-const PK_DIG_K: f32 = 0.21;
+const PK_BLAST: f32 = 340.0;       // the land flattened out to here, PK_ABOVE up
+const PK_ABOVE: f32 = 24.0;
+const PK_BOWL: f32 = 240.0;        // the crater (strike.rs's pk_depth0): PK_BOWL round, its walls dropping PK_WALL_D from
+const PK_FLOOR: f32 = 145.0;       // its edge in to PK_FLOOR, its floor sagging PK_SAG more in to the open shaft, PK_SHAFT
+const PK_WALL_D: f32 = 60.0;       // round, down to bedrock (PK_SHAFT_D under a target at sea level)
+const PK_SAG: f32 = 20.0;
+const PK_SHAFT: f32 = 40.0;
+const PK_SHAFT_D: f32 = 123.0;
+const PK_CORE: f32 = 64.0;         // dug from PK_DIG0 after the burst at PK_RATE blocks a second, from the middle out: the
+const PK_DIG0: f32 = 2.0;          // core (with the land over it), then the land over the rest out to PK_LAND, then the rest
+const PK_RATE: f32 = 340000.0;     // (pk_dig_t)
+const PK_LAND: f32 = 268.0;
 const PK_CRACKS: i32 = 12;         // the fissures: from PK_RIM out, PK_SEG-block segments, opening at PK_CRACK_V blocks a
-const PK_RIM: f32 = 126.0;         // second from PK_CRACK_T after the burst
+const PK_RIM: f32 = 236.0;         // second from PK_CRACK_T after the burst
 const PK_SEG: f32 = 12.0;
 const PK_CRACK_V: f32 = 90.0;
 const PK_CRACK_T: f32 = 0.9;
@@ -80,26 +87,57 @@ fn pk_emitter(i: i32, seed: f32) -> vec4<f32> {
 fn pk_crack(i: i32, seed: f32) -> vec2<f32> {
     let s = u32(seed);
     let a = (f32(i) + 0.7 * mh(u32(i), s, 21u)) * TAU / f32(PK_CRACKS) + mh(99u, s, 22u) * TAU;
-    return vec2<f32>(a, 120.0 + 70.0 * mh(u32(i), s, 23u));
+    return vec2<f32>(a, 110.0 + 50.0 * mh(u32(i), s, 23u));
 }
 fn pk_crack_off(i: i32, j: i32, seed: f32) -> f32 {
     return select((mh(u32(i * 32 + j), u32(seed), 24u) - 0.5) * 0.12, 0.0, j == 0);
 }
 
-// When the 3 blocks of the crater from `d` down are dug (strike.rs's pk_dig_t): the time to dig all of the bowl over
-// them, its area falling off with depth as a paraboloid's does.
-fn pk_dig_t(d: f32) -> f32 {
-    let q = floor(d / 3.0) * 3.0;
-    return PK_BURST + PK_DIG0 + PK_DIG_K * (q - q * q / (2.0 * (PK_BOWL_D + 0.5)));
+// How deep the crater is `r` out from its middle, smoothly (strike.rs's pk_depth0), and the ground dug out of it within
+// `r` (pk_vol).
+fn pk_depth0(r: f32) -> f32 {
+    if (r < PK_SHAFT) {
+        return PK_SHAFT_D;
+    }
+    if (r < PK_FLOOR) {
+        return PK_WALL_D + PK_SAG * (PK_FLOOR - r) / (PK_FLOOR - PK_SHAFT);
+    }
+    let u = saturate((r - PK_FLOOR) / (PK_BOWL - PK_FLOOR));
+    return PK_WALL_D * (1.0 - u * u);
+}
+fn pk_vol(r: f32) -> f32 {
+    let w = PK_BOWL - PK_FLOOR;
+    let rs = min(r, PK_SHAFT);
+    var v = 3.14159265 * rs * rs * PK_SHAFT_D;
+    if (r > PK_SHAFT) {
+        let rf = min(r, PK_FLOOR);
+        let k = PK_SAG / (PK_FLOOR - PK_SHAFT);
+        v = v + TAU * ((PK_WALL_D + k * PK_FLOOR) * (rf * rf - PK_SHAFT * PK_SHAFT) * 0.5 - k * (rf * rf * rf - PK_SHAFT * PK_SHAFT * PK_SHAFT) / 3.0);
+    }
+    if (r > PK_FLOOR) {
+        let u = min((r - PK_FLOOR) / w, 1.0);
+        v = v + TAU * PK_WALL_D * w * (PK_FLOOR * (u - u * u * u / 3.0) + w * (u * u * 0.5 - u * u * u * u * 0.25));
+    }
+    return v;
+}
+// When the crater `r` out is dug (strike.rs's pk_dig_t): the core with the land over it, then, once the land over the rest
+// is cleared, the rest, from the middle out.
+fn pk_dig_t(r: f32) -> f32 {
+    let rc = min(r, PK_CORE);
+    let core = PK_BURST + PK_DIG0 + (3.14159265 * rc * rc * PK_ABOVE + pk_vol(rc)) / PK_RATE;
+    if (r <= PK_CORE) {
+        return core;
+    }
+    return core + 3.14159265 * (PK_LAND * PK_LAND - PK_CORE * PK_CORE) * PK_ABOVE / PK_RATE + (pk_vol(r) - pk_vol(PK_CORE)) / PK_RATE;
 }
 
 // How far the blast's shock front has run out `t` after the land burst, and the second one `t` after the nexus burst:
 // fast out, slowing as it spreads.
 fn pk_shock_r(t: f32) -> f32 {
-    return 60.0 + 540.0 * (1.0 - exp(-t * 0.55));
+    return 90.0 + 820.0 * (1.0 - exp(-t * 0.55));
 }
 fn pk_pop_r(t: f32) -> f32 {
-    return 20.0 + 380.0 * (1.0 - exp(-t * 0.6));
+    return 30.0 + 540.0 * (1.0 - exp(-t * 0.6));
 }
 // How far a fissure's split has run out past PK_RIM `t` after the burst (strike.rs's pk_crack_time turned round): in
 // jerks, four a second, each a lurch forward that eases to a stop, keeping to PK_CRACK_V on the whole.
@@ -506,8 +544,8 @@ fn pk_dust(rd: vec3<f32>, F: vec3<f32>, s: f32, sb: f32, fi: f32, seed: f32, tma
 // from under where the fire is still in it, cooling. Marched through in twelve steps. xyz the light it gives, w how much
 // of what is behind shows through.
 fn pk_mushroom(rd: vec3<f32>, C: vec3<f32>, mt: f32, seed: f32, tmax: f32, px: vec2<f32>, amb: vec3<f32>, time: f32) -> vec4<f32> {
-    let hc = 70.0 + 480.0 * (1.0 - exp(-mt * 0.2));             // its cap's height,
-    let rx = 60.0 + 240.0 * (1.0 - exp(-mt * 0.28));            // how wide,
+    let hc = 90.0 + 640.0 * (1.0 - exp(-mt * 0.2));             // its cap's height,
+    let rx = 90.0 + 340.0 * (1.0 - exp(-mt * 0.28));            // how wide,
     let ry = rx * 0.42;                                         // how deep
     let Rb = rx * 1.25;
     let Hb = hc + ry * 1.3;
@@ -550,7 +588,7 @@ fn pk_mushroom(rd: vec3<f32>, C: vec3<f32>, mt: f32, seed: f32, tmax: f32, px: v
         let ring = length(vec2<f32>((r - rx * 0.55) / (rx * 0.5), (y - hc) / ry));
         let dome = length(vec2<f32>(r / (rx * 0.75), (y - hc - ry * 0.2) / (ry * 1.1)));
         var d = smoothstep(1.0, 0.25, min(ring, dome));
-        let Rs = (24.0 + 3.0 * mt) * (1.0 + 0.7 * exp(-y / 25.0) + 0.8 * smoothstep(hc - ry * 2.5, hc - ry * 0.5, y));
+        let Rs = (36.0 + 4.5 * mt) * (1.0 + 0.7 * exp(-y / 25.0) + 0.8 * smoothstep(hc - ry * 2.5, hc - ry * 0.5, y));
         d = max(d, smoothstep(1.0, 0.3, r / Rs) * smoothstep(hc + ry * 0.2, hc - ry * 0.6, y) * 0.9);
         if (d < 0.13) {
             continue;
@@ -919,12 +957,12 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             }
         }
         // the beam hard on the land round its foot
-        col = col + col * vec3<f32>(1.6, 2.2, 3.6) * burn * 9000.0 / (r * r + dy * dy + 3000.0) * k;
+        col = col + col * vec3<f32>(1.6, 2.2, 3.6) * burn * 22000.0 / (r * r + dy * dy + 7500.0) * k;
         if (charge > 0.0 && hit_t < 0.5) {
             // charging: the ground under the ring glowing with the charge gathering in it, flickering
             let fade = 1.0 - smoothstep(0.0, 0.5, hit_t);
             let fl = 0.6 + 0.4 * mh(u32(time * 24.0), u32(seed), 61u);
-            add = add + PK_ARC * exp(-r / 14.0) * charge * charge * 0.5 * fl * on_ground * fade * k;
+            add = add + PK_ARC * exp(-r / 24.0) * charge * charge * 0.5 * fl * on_ground * fade * k;
         }
         if (burst) {
             // the shock ring racing out over the land, kicking up dust as it goes
@@ -940,24 +978,31 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             add = add + PK_HOT * exp(-pow((r - rs) / 3.0, 2.0)) * exp(-mt * 3.0) * 0.8 * on_ground * k;
             col = mix(col, vec3<f32>(0.3, 0.27, 0.24) * (0.3 + 0.7 * day) * (1.0 - 0.5 * dark), exp(-pow((r - rs + 6.0) / 10.0, 2.0)) * 0.35 * exp(-mt * 0.5) * on_ground * k);
         }
-        if (burst && r < PK_BOWL + 10.0) {
-            // the crater molten where it has been dug (each layer glowing as it is opened, cooling), hottest deepest, and
-            // the lake of lava on its floor; round the foot of the beam everything white-hot
+        if (burst && r < PK_BOWL * 1.12) {
+            // the crater glowing where it has just been dug (each part of it as it is opened, from the middle out,
+            // cooling), hotter the deeper; the magma strewn over its floor (more of it in towards the shaft) and over the
+            // bedrock at the foot of the shaft glowing on in patches (strike.rs strews it so: no lake, only rock); round
+            // the foot of the beam everything white-hot
             let deep = max(-dy, 0.0);
-            let dug = max(time - pk_dig_t(deep), 0.0);
-            let fresh = exp(-dug / 8.0) * smoothstep(1.0, 3.0, deep);
-            let core = saturate((deep - 25.0) / 40.0);
-            let lake = smoothstep(PK_BOWL_D - 6.0, PK_BOWL_D - 3.0, deep);
-            let heat = max(max(fresh * 0.85, core * 0.75), lake) * (1.0 - smoothstep(PK_BOWL - 4.0, PK_BOWL + 10.0, r))
-                + burn * exp(-r / 22.0);
+            let dug = time - pk_dig_t(r);
+            let open = select(0.0, 1.0, dug > 0.0);
+            let fresh = exp(-max(dug, 0.0) / 7.0) * smoothstep(1.0, 3.0, deep) * open;
+            let core = saturate((deep - 30.0) / 60.0) * open;
+            let pn = gnoise2(rel2 * 0.11 + vec2<f32>(seed, 0.0));
+            let hotf = saturate(1.0 - (r - PK_SHAFT) / (PK_BOWL - PK_SHAFT));
+            let th = 0.66 - 0.22 * hotf * hotf;
+            let mpatch = smoothstep(th, th + 0.1, pn) * smoothstep(PK_WALL_D * 0.6, PK_WALL_D, deep) * open;
+            let bottom = smoothstep(PK_SHAFT_D - 16.0, PK_SHAFT_D - 4.0, deep) * smoothstep(0.42, 0.56, pn) * open;
+            let heat = max(max(fresh * 0.85, core * 0.6), max(mpatch * 0.8, bottom * 0.9)) * (1.0 - smoothstep(PK_BOWL * 0.98, PK_BOWL * 1.1, r))
+                + burn * exp(-r / 35.0);
             let n = gfbm2(rel2 * 0.06 + vec2<f32>(P.y * 0.2 + time * 0.05, seed));
             let veins = exp(-pow((n - 0.5) / 0.07, 2.0));
-            let molten = mix(veins * 0.9, 1.0, saturate(heat * heat + lake));
+            let molten = mix(veins * 0.9, 1.0, saturate(heat * heat + max(mpatch, bottom)));
             let hh = heat * molten * (0.8 + 0.4 * gnoise2(rel2 * 0.15 + vec2<f32>(time * 0.3, P.y)));
             add = add + lava_ramp(hh) * smoothstep(0.03, 0.25, heat * molten) * on_ground * after * 2.6 * k;
         }
         // the fissures running out from the rim, opening as the shock reaches them, light pulsing out along them
-        if (burst && r > PK_RIM - 2.0 && r < PK_RIM + 200.0) {
+        if (burst && r > PK_RIM - 2.0 && r < PK_RIM + 170.0) {
             let ang = atan2(rel2.y, rel2.x);
             var crack = 0.0;
             var pulse = 0.0;
@@ -978,7 +1023,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 var da = ang - a;
                 da = da - TAU * floor(da / TAU + 0.5);
                 let lat = abs(da) * r;
-                let hw = 0.8 + 3.5 * (1.0 - u / cr.y);
+                let hw = 1.0 + 4.5 * (1.0 - u / cr.y);
                 let open = saturate((pk_crack_front(bt) - u) / 6.0);
                 let c1 = ((1.0 - smoothstep(hw - 0.4, hw + 0.8, lat)) + exp(-lat / (hw * 2.5)) * 0.35) * open;
                 if (c1 > crack) {
@@ -1013,7 +1058,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     // ---- the land doming up under the beam, cracking with the light inside it, before it bursts --------------------
     if (hit_t > 0.0 && !burst) {
         let s = pow(saturate(hit_t / (PK_BURST - PK_HIT)), 2.2);
-        let Rd = 25.0 + 75.0 * s;
+        let Rd = 40.0 + 140.0 * s;
         let Cd = crel - vec3<f32>(0.0, Rd * 0.62, 0.0);
         let tcd = dot(Cd, rd);
         let dc2 = dot(Cd, Cd) - tcd * tcd;
@@ -1044,9 +1089,9 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     }
 
     // ---- the wall of dust thrown out round it, racing over the land and climbing ------------------------------------
-    if (burst && bt < 16.0) {
-        let Rw = 70.0 + 300.0 * (1.0 - exp(-bt * 0.3));
-        let Hw = 20.0 + 110.0 * (1.0 - exp(-bt * 0.45));
+    if (burst && bt < 18.0) {
+        let Rw = 120.0 + 520.0 * (1.0 - exp(-bt * 0.3));
+        let Hw = 30.0 + 170.0 * (1.0 - exp(-bt * 0.45));
         let c2 = cam.xz - tgt.xz;
         let v2 = rd.xz;
         let a2 = dot(v2, v2);
@@ -1068,7 +1113,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                 dust = max(dust, smoothstep(top, top * 0.3, hy) * smoothstep(-6.0, 2.0, hy) * (0.5 + 0.6 * n));
             }
             let fade = exp(-bt / 4.0) * smoothstep(0.0, 0.3, bt);
-            let lit = vec3<f32>(0.2, 0.18, 0.16) * (0.25 + 0.75 * day) * (1.0 - 0.6 * dark) + vec3<f32>(0.2, 0.28, 0.5) * burn * 0.6 * exp(-Rw / 300.0);
+            let lit = vec3<f32>(0.2, 0.18, 0.16) * (0.25 + 0.75 * day) * (1.0 - 0.6 * dark) + vec3<f32>(0.2, 0.28, 0.5) * burn * 0.6 * exp(-Rw / 500.0);
             col = mix(col, lit, saturate(dust * fade) * 0.85 * k);
             add = add * (1.0 - saturate(dust * fade) * 0.6);
         }
@@ -1076,8 +1121,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
 
     // ---- the column of ejecta thrown up round the beam as the land bursts, thinning out -------------------------
     if (burst && bt < 14.0) {
-        let He = 40.0 + 300.0 * (1.0 - exp(-bt * 0.9));
-        let Re = 30.0 + 40.0 * (1.0 - exp(-bt * 0.6));
+        let He = 60.0 + 460.0 * (1.0 - exp(-bt * 0.9));
+        let Re = 45.0 + 70.0 * (1.0 - exp(-bt * 0.6));
         let q = ray_seg(rd, crel, crel + vec3<f32>(0.0, He, 0.0));
         if (q.x < Re * 1.6) {
             let X = rd * q.y - crel;
@@ -1418,7 +1463,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
         }
         // the fireball where the land burst, boiling; it settles round the foot of the beam
         if (burst) {
-            let Rf = (45.0 + 80.0 * exp(-bt * 0.6) * (1.0 - exp(-bt * 6.0))) * (0.93 + 0.07 * sin(time * 13.0));
+            let Rf = (70.0 + 130.0 * exp(-bt * 0.6) * (1.0 - exp(-bt * 6.0))) * (0.93 + 0.07 * sin(time * 13.0));
             let cf = crel + vec3<f32>(0.0, Rf * 0.25, 0.0);
             let tcp = dot(cf, rd);
             // (a dome, flattened against the land)
@@ -1445,7 +1490,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
 
     // ---- the nexus bursting in the crater: a ball of fire and plasma swelling out of it, the mushroom climbing out of it --
     if (popped && mt < 5.0) {
-        let Rp = (30.0 + 90.0 * (1.0 - exp(-mt * 3.0))) * (0.95 + 0.05 * sin(time * 17.0));
+        let Rp = (45.0 + 135.0 * (1.0 - exp(-mt * 3.0))) * (0.95 + 0.05 * sin(time * 17.0));
         let cf = crel + vec3<f32>(0.0, Rp * 0.3 + 40.0 * mt, 0.0);
         let tcp = dot(cf, rd);
         let dc = length((rd * max(tcp, 0.0) - cf) * vec3<f32>(1.0, 1.3, 1.0));
@@ -1462,8 +1507,8 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
     }
 
     // ---- debris spiralling up round the beam, and molten rock thrown out of the crater, the crater still erupting ----
-    let sp_q = ray_seg(rd, crel, crel + vec3<f32>(0.0, 200.0, 0.0));
-    if (burst && sp_q.x < 220.0) {
+    let sp_q = ray_seg(rd, crel, crel + vec3<f32>(0.0, 300.0, 0.0));
+    if (burst && sp_q.x < 340.0) {
         for (var j = 0; j < 30; j = j + 1) {
             // each one thrown again and again, a new way each time
             let fj = f32(j);
@@ -1481,17 +1526,17 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             var pb = vec3<f32>(0.0);
             if (j % 2 == 0 && tb < PK_CUT) {
                 // round the beam: orbiting it and climbing
-                let rr = 18.0 + 30.0 * hv.x;
+                let rr = 30.0 + 50.0 * hv.x;
                 let w0 = (1.2 + 1.5 * hv.y) * select(-1.0, 1.0, hv.z > 0.5);
-                let vy = 25.0 + 35.0 * hv.z;
+                let vy = 35.0 + 50.0 * hv.z;
                 let a1 = max(a - 0.08, 0.0);
                 pa = crel + vec3<f32>(cos(hv.y * TAU + w0 * a) * rr, vy * a, sin(hv.y * TAU + w0 * a) * rr);
                 pb = crel + vec3<f32>(cos(hv.y * TAU + w0 * a1) * rr, vy * a1, sin(hv.y * TAU + w0 * a1) * rr);
             } else {
                 let az = hv.x * TAU;
-                let vh = 15.0 + 40.0 * hv.y;
-                let vy = 25.0 + 40.0 * hv.z;
-                let s3 = crel + vec3<f32>(cos(az) * 12.0, 2.0, sin(az) * 12.0);
+                let vh = 25.0 + 60.0 * hv.y;
+                let vy = 35.0 + 55.0 * hv.z;
+                let s3 = crel + vec3<f32>(cos(az) * 20.0, 2.0, sin(az) * 20.0);
                 let a1 = max(a - 0.07, 0.0);
                 pa = s3 + vec3<f32>(cos(az) * vh * a, vy * a - 16.0 * a * a, sin(az) * vh * a);
                 pb = s3 + vec3<f32>(cos(az) * vh * a1, vy * a1 - 16.0 * a1 * a1, sin(az) * vh * a1);

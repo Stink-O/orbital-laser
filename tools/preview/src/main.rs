@@ -16,6 +16,26 @@ fn hash(x: i32, z: i32) -> f32 {
 fn ground_h(x: f32, z: f32) -> f32 {
     64.0 + 3.0 * (x * 0.031).sin() * (z * 0.027).cos() + 6.0 * (x * 0.009 + 1.0).sin() * (z * 0.011).sin()
 }
+/// With `crater=1`, the planet killer's crater dug into it round the target (strike.rs's pk_depth0, smoothly, with the
+/// rim thrown up round it), to look at its aftermath against the shape the strike leaves.
+fn crater_h(x: f32, z: f32, on: bool) -> f32 {
+    let g = ground_h(x, z);
+    if !on {
+        return g;
+    }
+    let r = (x - 0.5).hypot(z - 0.5);
+    let d = if r < 40.0 {
+        123.0
+    } else if r < 145.0 {
+        60.0 + 20.0 * (145.0 - r) / 105.0
+    } else if r < 240.0 {
+        let u = (r - 145.0) / 95.0;
+        60.0 * (1.0 - u * u)
+    } else {
+        -15.0 * (240.0 / r).powi(3) * ((340.0 - r) / 70.0).clamp(0.0, 1.0)
+    };
+    if r < 240.0 { 64.0 - d } else { g - d }
+}
 
 struct Shot {
     w: u32,
@@ -125,10 +145,11 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             // the ground: march
             if d[1] < 0.2 {
                 let mut t = 0.5;
-                let mut prev = cam[1] - ground_h(cam[0], cam[2]);
+                let crater = g("crater", 0.0) > 0.5;
+                let mut prev = cam[1] - crater_h(cam[0], cam[2], crater);
                 while t < 3500.0 {
                     let p = [cam[0] + d[0] * t, cam[1] + d[1] * t, cam[2] + d[2] * t];
-                    let s = p[1] - ground_h(p[0], p[2]);
+                    let s = p[1] - crater_h(p[0], p[2], crater);
                     if s < 0.0 {
                         let tt = t - s / (s - prev) * -1.0 * 0.0;
                         hit_t = tt;
