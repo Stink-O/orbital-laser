@@ -419,3 +419,404 @@ def finish_blast(name, L, R, db=-8.0, ceiling=0.905, tail_fade=0.8):
     y[-nf:] *= np.linspace(1, 0, nf)[:, None]
     write_ogg(f"{soundlib.OUT}/assets/orbital/sounds/{name}", y, 2)
     print(f"wrote {name:9s} {n / SR:5.2f}s  stereo  loudest {db:.1f} dB  peak {20 * np.log10(np.abs(y).max()):.2f} dBFS (before the encoder)")
+
+
+# ==============================================================  the land bursting, with depth: the explosion as it moves
+# What `explosion` lacked, measured against the reference with the same code (numbers: reference / `explosion` as fire.ogg
+# had it / this, as fire.ogg has it now):
+#  - its mids and top were a smooth wash: the share of the 0.8-3 kHz band envelope's movement (1-5.5 s) faster than 2 Hz
+#    67 % / 17 % / 42 %, of the 3-10 kHz band's 70 % / 12 % / 30 %; transients a second standing 6 dB out of the 0.8-3
+#    and 3-10 kHz bands 1.2 and 1.0 / 0 and 0 / 2.1 and 2.5; in 60-200 Hz 2.9 / 2.1 / 3.7, in 200-800 Hz 1.7 / 0.8 / 1.5;
+#    spectral flux 1.0 / 0.87 / 1.0;
+#  - one onset and nothing after it: the reference cracks again 30, 140 and 250 ms after the first (found here at 20,
+#    170 and 270 ms); its first 50 ms stood 6.5 dB over the roar at 1-3 s / 2.1 / 4.2;
+#  - a stereo image that never moved: width (S/M) at 0-1, 1-4 and 4-8 s -26, -20, -24 dB / -20, -26, -26 / -21, -21,
+#    -24, and how much it varies over time (250 ms windows) 5.1 dB / 1.7 / 3.4;
+#  - no sub-bass blow of its own (the pressure shove was in at zero), and rock coming down in one mono layer.
+# So the roar now moves (its colour tilts, three resonances in it drop in pitch as the pressure wave passes and then
+# wander, its top boils in uneven little surges, its lows heave in lumps, it drifts across the field, a lowpass over it
+# all closes and opens again as the pressure wave rolls past) and things happen inside it: the crack and the cracks after
+# it, the land's early reflections, aftershocks going off round it, rolls of thunder low down, fits of crackle, rock
+# raining back down all round, and the whole front coming back off distant hills, duller the later it arrives.
+def shaped_noise_moving(d, times, table, controls, size=4096, hop=1024, corr=BLAST_CORR):
+    """`shaped_noise`, with each frame's spectrum also moved by `controls(tc, lf)` -> (dB for both ears, dB the left ear
+    has over the right, how far the ears' likeness is eased toward independent (0-1)), `lf` the log2 frequencies."""
+    n = int(SR * d)
+    f = np.fft.rfftfreq(size, 1 / SR)
+    lf = np.log2(np.maximum(f, 1.0))
+    loct = np.log2(OCT)
+    xs = np.concatenate([[np.log2(8.0), np.log2(16.0)], loct, [np.log2(22050.0)]])
+    cc0 = np.sqrt(np.interp(lf, loct, corr))
+    win = np.hanning(size)
+    L = np.zeros(n + 2 * size); R = np.zeros(n + 2 * size)
+    for start in range(-size, n, hop):
+        tc = (start + size / 2) / SR
+        row = np.array([np.interp(tc, times, table[:, k]) for k in range(table.shape[1])])
+        ys = np.concatenate([[row[0] - 24, row[0] - 12], row, [row[-1] - 24 * (np.log2(22050) - loct[-1])]])
+        db = np.interp(lf, xs, ys)
+        both, side, loosen = controls(tc, lf)
+        db = db + both
+        mag = 10 ** (db / 20) / np.sqrt(np.maximum(f, 20.0) / 1000.0)
+        mag[0] = 0
+        cc = cc0 * (1 - loosen)
+        ss = np.sqrt(1 - cc ** 2)
+        z = lambda: (rng().standard_normal(len(f)) + 1j * rng().standard_normal(len(f))) / np.sqrt(2)
+        zc = z()
+        zl, zr = cc * zc + ss * z(), cc * zc + ss * z()
+        gl, gr = 10 ** (side / 40), 10 ** (-side / 40)
+        a = start + size
+        L[a:a + size] += np.fft.irfft(mag * gl * zl, size) * win
+        R[a:a + size] += np.fft.irfft(mag * gr * zr, size) * win
+    k = np.sqrt(size / 2) / np.sqrt(1.5) * 0.7071
+    return L[size:size + n] * k, R[size:size + n] * k
+
+
+def track(n, t0, pts):
+    """A curve over `n` samples through (seconds after t0, value) points, held at its ends."""
+    ts, vs = zip(*pts)
+    return np.interp(np.arange(n) / SR - t0, ts, vs)
+
+
+def burst(n, k0, tau, lo, hi, tau_lo=None):
+    """A short broadband slam starting hard at sample k0: noise filtered first and gated after, so nothing comes before
+    it; its low part (under `lo`) dies over `tau_lo`, the rest over `tau`."""
+    u = np.maximum(np.arange(n) - k0, 0) / SR
+    g = ramp_in(n, k0, 8)
+    w = rng().standard_normal(n)
+    x = band(w, lo, hi, 2) * np.exp(-u / tau)
+    if tau_lo:
+        x += band(rng().standard_normal(n), 30, lo, 2) * np.exp(-u / tau_lo) * 0.8
+    return x * g
+
+
+def pan2(x, p):
+    a = (p + 1) * np.pi / 4
+    return x * np.cos(a) * 1.4142, x * np.sin(a) * 1.4142
+
+
+def delay_into(L, R, x, dt, gain, p, lo=None, hi=None):
+    """`x` added `dt` seconds late, filtered, panned (an echo or a reflection: always well after what it echoes, so the
+    filter's ringing never comes before the sound it belongs to)."""
+    k = int(dt * SR)
+    m = min(len(x), len(L) - k)
+    if m <= 0:
+        return
+    y = band(x[:m], lo, hi, 2) if (lo or hi) else x[:m]
+    l, r = pan2(y * gain, p)
+    L[k:k + m] += l; R[k:k + m] += r
+
+
+def lowpass_track(x, fc, size=2048, hop=512):
+    """`x` through a lowpass (12 dB/octave) whose cutoff follows the curve `fc` (Hz per sample): air taking the top off
+    a sound as it travels further, frame by frame and overlap-added."""
+    n = len(x)
+    win = np.hanning(size)
+    out = np.zeros(n + size); norm = np.zeros(n + size)
+    xp = np.concatenate([x, np.zeros(size)])
+    freqs = np.fft.rfftfreq(size, 1 / SR)
+    for start in range(0, n, hop):
+        c = fc[min(start + size // 2, n - 1)]
+        g = 1 / np.sqrt(1 + (freqs / c) ** 4)
+        out[start:start + size] += np.fft.irfft(np.fft.rfft(xp[start:start + size] * win) * g, size) * win
+        norm[start:start + size] += win ** 2
+    return out[:n] / np.maximum(norm[:n], 1e-3)
+
+
+def aftershock(n, t1, size, far):
+    """One secondary blast inside the roar (a pocket of the land going up, a slab collapsing): a deep blow with a
+    falling pitch, a dull burst of rock and a fit of crackle; `far` (0-1) darkens and softens it. Mono."""
+    k = int(t1 * SR)
+    u = np.maximum(np.arange(n) / SR - t1, 0)
+    on = np.arange(n) >= k
+    blow = soundlib.thump(n, t1, rng().uniform(55, 75), rng().uniform(26, 34), 0.25 + 0.3 * size, 5.0) * np.minimum(u / 0.003, 1)
+    blow += soundlib.thump(n, t1, rng().uniform(120, 160), rng().uniform(60, 80), 0.05 + 0.05 * size, 12.0) * np.minimum(u / 0.002, 1) * 0.7
+    body = burst(n, k, 0.06 + 0.12 * size, 120, 1500 * (1 - 0.5 * far), 0.18 + 0.25 * size)
+    crk = T.crackle(n / SR, rate=1800, decay=0.0015, lo=300, hi=3500 * (1 - 0.5 * far), heavy=1.4) * np.exp(-u / (0.1 + 0.15 * size)) * on
+    return (blow * 1.1 + body * 0.5 + crk * 0.2) * size
+
+
+def debris_stereo(d, t0, amount=1.0, spread=7.0):
+    """Rock and earth thrown up by the burst coming back down all round: thuds of clods and slabs, clacks of stone,
+    gravel hissing down in surges, each landing somewhere of its own across the field (real stereo spread, the nearer
+    ones louder and brighter). Starts about half a second after the burst, thickest two or three seconds in."""
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    L = np.zeros(n); R = np.zeros(n)
+    for _ in range(int(160 * amount)):
+        t1 = t0 + 0.5 + rng().gamma(2.2, spread * 0.17)
+        if t1 > d - 0.4:
+            continue
+        near = rng().random() ** 1.5                                   # 0 far .. 1 near
+        size = min(rng().pareto(2.0) * 0.4 + 0.1, 2.0)
+        k0 = int(t1 * SR)
+        if rng().random() < 0.65:
+            m = min(int((0.12 + 0.35 * size) * SR), n - k0)
+            x = T.thud(m, size) * size * 0.9
+        else:
+            m = min(int(0.25 * SR), n - k0)
+            x = T.rock_clack(m, 0.0, min(size, 1.4)) * 0.8
+        x = band(x, None, 1500 + 6000 * near, 2) * (0.35 + 0.65 * near) * np.exp(-(t1 - t0) / (spread * 0.6))
+        l, r = pan2(x, rng().uniform(-0.85, 0.85))
+        L[k0:k0 + m] += l; R[k0:k0 + m] += r
+    rate = np.clip((t - t0 - 0.5) / 0.8, 0, 1) * np.exp(-np.maximum(t - t0 - 1.0, 0) / (spread * 0.35))
+    for ch in (L, R):
+        surge = (0.5 + 0.5 * smooth_noise(d, 3.5, n)) ** 2.5
+        ch += T.unit(band(white(d), 1200, 7000)) * rate * surge * 0.05
+        ch += T.unit(band(white(d), 250, 1200)) * rate * (0.5 + 0.5 * smooth_noise(d, 2.0, n)) ** 2 * 0.05
+    return L, R
+
+
+def thunder_rolls(d, t0, count=9, length=8.0):
+    """The blast rolling off round the land: deep swells of rumble, each arriving on its own from somewhere, low and
+    smooth, swelling and dying over a few tenths of a second. Stereo."""
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    L = np.zeros(n); R = np.zeros(n)
+    base = T.unit(band(white(d), 28, 170, 2))
+    for _ in range(count):
+        c = t0 + 0.4 + length * rng().random() ** 1.4
+        w = rng().uniform(0.12, 0.45)
+        sh = np.where(t < c, np.exp(-0.5 * ((t - c) / (w * 0.1)) ** 2), np.exp(-(t - c) / w)) * rng().uniform(0.5, 1.0) * np.exp(-(c - t0) / (length * 0.5))
+        l, r = pan2(base * sh, rng().uniform(-0.4, 0.4))
+        L += l; R += r
+    return L, R
+
+
+def grains(d, rate, taus=(0.012, 0.025, 0.05)):
+    """A curve of many little surges at random (a Poisson rate a second, sizes heavy-tailed, each rising in 2 ms and
+    dying over one of `taus`), averaging 1: the uneven boil of a fireball's roar, not a regular wobble."""
+    n = int(SR * d)
+    out = np.zeros(n)
+    for tau in taus:
+        x = np.zeros(n)
+        k = rng().poisson(rate * d / len(taus))
+        np.add.at(x, rng().integers(0, n, k), np.minimum(rng().pareto(2.5, k) + 0.2, 6.0))
+        s = np.arange(int(tau * SR * 6)) / SR
+        kern = (1 - np.exp(-s / 0.002)) * np.exp(-s / tau)
+        out += np.convolve(x, kern)[:n] / (tau * SR)
+    return out / (np.mean(out) + 1e-9)
+
+
+def explosion_deep(d, t0, stretch=0.65, parts=None):
+    """The land bursting: a huge explosion at `t0` in a `d`-second stereo sound, before mastering, that moves.
+     crack     : the first ~50 ms, broadband and hard, then three more cracks after it (as the measured blast has them,
+                 30, 140 and 250 ms after the first), each further off to one side and duller
+     reflections: the crack off the land round it, 9-100 ms later, from either side
+     blow      : the pressure wave you feel: a sub-bass drop from 52 Hz down to 26, a short punch from 110 Hz down
+                 that small speakers can play, and a rumble of 14-45 Hz under it
+     roar      : the measured table's roar (63-125 Hz heavy, the top dying fast, the sub swelling in), now moving: its
+                 colour tilting this way and that, three resonances in it sliding down in pitch over the first second or
+                 so as the pressure wave passes (and wandering after), its top coming in fits, drifting across the field,
+                 the ears' likeness loosening and tightening
+     inside it : fits of crackle, aftershocks going off round it (each with its own echo), deep rolls of thunder, rock
+                 and earth raining back down across the whole field
+     distance  : the whole front coming back off distant hills (0.6-2.7 s, each later one duller and from another side),
+                 its own clumpy outdoor tail in each ear, a lowpass that closes as the pressure wave rolls past and
+                 opens again, and the air taking more of the top the longer it goes on
+    `stretch` scales the time the roar holds (1 = the measured ten seconds). Each seed is its own take. Returns (L, R);
+    `parts`, a dict, gets each layer (for measuring)."""
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    u = np.maximum(t - t0, 0.0)
+    k0 = int(t0 * SR)
+    on = ramp_in(n, k0, 10)
+    tab = BLAST_DB + BLAST_TRIM
+    tt_ = np.where(BLAST_T <= 0.65, BLAST_T, 0.65 + (BLAST_T - 0.65) * stretch) + t0
+    times = np.concatenate([[t0 - 0.1], tt_])
+    body_tab = np.vstack([tab[0] - 40.0, tab])
+
+    # ---- the roar, moving
+    ctl_n = int(d * 50) + 2                                                    # control curves at 50 points a second
+    sn = lambda rate: smooth_noise(d, rate, ctl_n)
+    tilt = sn(0.6) * 1.4 + sn(1.7) * 0.6                                       # dB per octave about 150 Hz
+    swing = sn(0.3)                                                            # drift across the field
+    loose = 0.5 + 0.5 * sn(0.45)
+    oct_wob = [sn(rng().uniform(0.8, 1.6)) * 2.5 for _ in range(len(OCT))]
+    res = []                                                                   # (start Hz, end Hz, glide s, dB, width oct)
+    for f_a, f_b, tau, g_db, w in ((440, 125, 0.55, 5.0, 0.32), (1500, 420, 0.8, 5.5, 0.4), (100, 47, 1.0, 4.5, 0.45)):
+        res.append((f_a * rng().uniform(0.9, 1.1), f_b * rng().uniform(0.9, 1.1), tau, g_db, w, sn(0.5) * 0.3, 0.6 + 0.4 * sn(0.7)))
+    loct = np.log2(OCT)
+
+    def controls(tc, lf):
+        i = int(np.clip(tc, 0, d - 1e-3) * 50)
+        a = tc - t0
+        ramp = np.clip(a / 0.35, 0, 1)                                         # nothing moves in the crack itself
+        both = tilt[i] * ramp * (lf - np.log2(150.0))
+        both = both + np.interp(lf, loct, [w[i] for w in oct_wob]) * ramp
+        for f_a, f_b, tau, g_db, w, wan, swell in res:
+            fc = f_b * (f_a / f_b) ** np.exp(-max(a, 0) / tau) * 2 ** wan[i]
+            gg = g_db * swell[i] * np.clip(a / 0.05, 0, 1)
+            both = both + gg * np.exp(-0.5 * ((lf - np.log2(fc)) / (w / 2.355)) ** 2)
+        # (the first second: the roar's top held down, so the cracks stand out of it as they do in the measured blast)
+        a2 = np.clip((a - 0.035) / 0.03, 0, 1) * np.clip((1.0 - a) / 0.5, 0, 1)
+        both = both - 9.0 * a2 * np.clip((lf - np.log2(500.0)) / 1.5, 0, 1)
+        # (what the resonances add on average taken back out of the low mids once the roar has settled, so its balance
+        # stays the measured one)
+        both = both - 3.5 * np.clip((a - 0.5) / 0.6, 0, 1) * np.exp(-0.5 * ((lf - np.log2(420.0)) / 0.7) ** 2)
+        side = swing[i] * 2.0 * np.clip((lf - np.log2(180.0)) / 2.0, 0, 1) * ramp
+        lo = 0.04 * loose[i] * np.clip((lf - np.log2(150.0)) / 2.5, 0, 1) * ramp
+        return both, side, lo
+
+    bl, br = shaped_noise_moving(d, times, body_tab, controls)
+    # (its top boiling: the 300 Hz-and-up part gated by an uneven curve of little surges, nearly the same in both ears;
+    # its lows heaving in lumps a few times a second, the same in both)
+    grow = np.clip(u / 0.4, 0, 1)
+    common = np.log(grains(d, 45.0) + 0.25) * 0.36 + smooth_noise(d, 2.5, n) * 0.25
+    heave = np.exp((np.log(grains(d, 9.0, (0.03, 0.07, 0.15)) + 0.4) * 0.33 + smooth_noise(d, 1.2, n) * 0.2) * grow)
+    out = []
+    for ch in (bl, br):
+        hi = band(ch, 300, None, 2)
+        fits = np.exp((common + np.log(grains(d, 25.0) + 0.5) * 0.2) * grow)
+        out.append((ch - hi) * heave / np.sqrt(np.mean(heave[k0:] ** 2)) + hi * fits / np.sqrt(np.mean(fits[k0:] ** 2)))
+    # (held up as it goes on: what the layers above add early on would otherwise leave it dying away faster than the
+    # measured blast, which holds within 3 dB for ten seconds)
+    hold = track(n, t0, [(0.8, 1.0), (2.0, 1.3), (4.0, 1.5), (7.0, 1.8), (12.0, 1.8)])
+    bl, br = out[0] * hold, out[1] * hold
+    roar_lvl = np.sqrt(np.mean(((bl + br) / 2)[k0:k0 + int(1.0 * SR)] ** 2))
+
+    # ---- the crack (as `explosion` builds it: the measured first 50 ms, soft-clipped as an overloaded microphone)
+    ct = np.array([0.0, 0.012, 0.03, 0.06, 0.12, 0.3])
+    c0 = tab[1]
+    ctab = np.vstack([c0 + 8.0, c0 + 2.0, c0 - 4.0 + np.array([0, 0, 0, 0, -2, -4, -6, -8, -10, -12]), tab[2] - 2.0, tab[2] - 8.0, tab[3] - 14.0])
+    cl, cr = shaped_noise(d, ct + t0, ctab, 256, 64)
+    cs = np.sqrt(np.mean(cl[k0:k0 + int(0.03 * SR)] ** 2) + 1e-12)
+    cl = np.tanh(cl / cs * 1.2) * cs / 1.2 * 1.25
+    cr = np.tanh(cr / cs * 1.2) * cs / 1.2 * 1.25
+    ce = np.exp(-u / 0.05) * 2.0 * (t >= t0)
+    cpk = np.max(np.abs((cl + cr) / 2 * ce))
+    front = (cl + cr) / 2 * ce                                                 # (mono, for the echoes)
+    L = bl + cl * ce
+    R = br + cr * ce
+    keep = (lambda k, x: parts.__setitem__(k, parts.get(k, 0) + x)) if parts is not None else (lambda k, x: None)
+    keep("roar", (bl + br) / 2); keep("crack", (cl + cr) / 2 * ce)
+    # the cracks after it: 30, 140 and 250 ms (jittered per take), then a few smaller ones; each to one side, duller
+    after_ = [(0.03, 1.0, -0.15, 3500), (0.14, 0.9, 0.25, 2800), (0.25, 0.75, -0.3, 2200)]
+    for _ in range(4):
+        after_.append((rng().uniform(0.33, 1.1), rng().uniform(0.25, 0.45), rng().uniform(-0.4, 0.4), rng().uniform(1200, 2500)))
+    for dt, g, p, hi in after_:
+        dt = dt * rng().uniform(0.85, 1.15) if dt < 0.3 else dt
+        kk = k0 + int(dt * SR)
+        x = burst(n, kk, rng().uniform(0.008, 0.02), 250, hi, rng().uniform(0.05, 0.12))
+        # (soft-clipped as the first is, then each at its share of the first's peak)
+        x = x / (np.sqrt(np.mean(x[kk:kk + int(0.03 * SR)] ** 2)) + 1e-12)
+        x = np.tanh(x * 0.8) / np.max(np.abs(np.tanh(x * 0.8))) * cpk * g
+        front += x
+        keep("cracks after", x)
+        l, r = pan2(x, p)
+        L += l; R += r
+
+    # ---- the blow: an instant push and a sub drop under it, the same in both ears
+    # (no Friedlander pulse: nearly all of it is under 16 Hz, unheard, and a filter after it would ring ahead of the burst)
+    blow = soundlib.thump(n, t0, 52, 26, 1.5, 2.2) * np.minimum(u / 0.004, 1) * 0.9
+    blow += soundlib.thump(n, t0, 110, 55, 0.12, 9.0) * np.minimum(u / 0.002, 1) * 0.6
+    blow += T.unit(band(white(d), 14, 45, 2)) * np.exp(-u / 0.9) * np.minimum(u / 0.01, 1) * 0.35 * (t >= t0)
+    blow = blow * roar_lvl * 1.8
+    L += blow; R += blow
+    keep("blow", blow)
+    front += blow * 0.6
+
+    # ---- the land answering the front: reflections off the ground round it, then distant hills
+    fr = front.copy()
+    for dt, g, p, hi in ((0.009, 0.4, 0.0, 2500), (0.023, 0.26, -0.3, 1800), (0.041, 0.2, 0.35, 1400),
+                         (0.067, 0.16, -0.45, 1100), (0.098, 0.12, 0.3, 900)):
+        delay_into(L, R, fr, dt, g, p, 40, hi)
+    for dt, g, p, hi in ((0.62, 0.30, -0.5, 1100), (1.18, 0.24, 0.55, 850), (1.9, 0.17, -0.25, 600), (2.7, 0.12, 0.4, 450)):
+        delay_into(L, R, fr[:k0 + int(0.6 * SR)], dt * rng().uniform(0.93, 1.07), g, p, 30, hi)
+
+    # ---- inside it: crackle in fits, aftershocks, rolls of thunder, rock coming down
+    # (crackle in fits, thick at first and thinning, wandering across the field)
+    rate_env = (np.exp(-u / 1.5) * 0.5 + 0.3 * np.exp(-u / (8.0 * stretch))) * np.clip(u / 0.3, 0, 1)
+    fit = np.clip(smooth_noise(d, 6.0, n) * 1.2 + smooth_noise(d, 20.0, n) * 0.8 + 0.1, 0, None) ** 2
+    crk = T.crackle(d, rate=2600, decay=0.0012, lo=500, hi=4000, heavy=1.35)
+    crk = np.tanh(crk / 0.35) * 0.35 * 7.0 * rate_env * fit * roar_lvl * 0.4 * (t >= t0)      # (its rarest spikes eased)
+    keep("crackle", crk)
+    l, r = pan2(crk, smooth_noise(d, 0.8, n) * 0.35)
+    L += l; R += r
+    shocks_t = sorted(t0 + 0.4 + 7.5 * stretch / 0.65 * rng().random(14) ** 1.3)
+    for t1 in shocks_t:
+        if t1 > d - 1.0:
+            continue
+        far = min((t1 - t0) / 7.0, 1.0)
+        size = rng().uniform(0.3, 1.0) * (1 - 0.5 * far)
+        x = aftershock(n, t1, size, far) * roar_lvl * 0.9
+        keep("aftershocks", x)
+        p = rng().uniform(-0.35, 0.35)
+        l, r = pan2(x, p)
+        L += l; R += r
+        delay_into(L, R, x[int(t1 * SR):], t1 + rng().uniform(0.18, 0.45), 0.3, -1.5 * p, 30, 700)
+    rl, rr = thunder_rolls(d, t0, 12, 8.0 * stretch / 0.65)
+    L += rl * roar_lvl * 0.5; R += rr * roar_lvl * 0.5
+    keep("rolls", (rl + rr) / 2 * roar_lvl * 0.5)
+    dl, dr = debris_stereo(d, t0, 1.0, 7.0 * stretch / 0.65)
+    L += dl * roar_lvl * 1.6; R += dr * roar_lvl * 1.6
+    keep("debris", (dl + dr) / 2 * roar_lvl * 1.6)
+
+    # ---- distance: each ear its own clumpy outdoor tail (after the crack, never on it), the air taking the top
+    # (the tail's level set where it is heard, 200 Hz-2 kHz: a dark impulse response of unit energy is far louder than
+    # unity there)
+    send = band((L + R) / 2, 150, None, 2)
+    ref_ = np.sqrt(np.mean(band(send, 200, 2000, 2) ** 2))
+    wets = []
+    for _ in range(2):
+        ir = T.outdoor_ir(5.0, density=26.0, darken=(2400, 150), decay=1.5)
+        ir = np.concatenate([np.zeros(int(0.025 * SR)), ir])
+        m_ = n + len(ir)
+        wets.append(np.fft.irfft(np.fft.rfft(send, m_) * np.fft.rfft(ir, m_), m_)[:n])
+    k = ref_ / (np.sqrt(np.mean(band(wets[0], 200, 2000, 2) ** 2)) + 1e-12)
+    wc = track(n, t0, [(0.3, 0.08), (2.5, 0.16), (6.0, 0.1)]) * k                         # (the land answering more and more)
+    L += wets[0] * wc; R += wets[1] * wc
+    # (a lowpass over it all that closes as the pressure wave rolls past, darkest two seconds in, as the measured
+    # blast's centre of gravity sinks from 112 Hz to 87, then opens again partway; past that the air takes the top)
+    fc = track(n, t0, [(0.0, 18000), (0.25, 12000), (1.2, 2200), (2.5, 1500), (4.0, 2600), (6.0, 5000), (9.0, 4500), (14.0, 3000)])
+    L = lowpass_track(L, fc); R = lowpass_track(R, fc)
+    return L * on, R * on
+
+
+def soft_clip(x, c, knee=0.55):
+    """Peaks over `knee` of `c` rounded off (smoothly, sample by sample) so nothing passes `c`: what a microphone
+    overloaded by a blast does, and the reason a recorded blast's first instant is so dense. No gain riding, so nothing
+    pumps after the hit the way a limiter's recovery does."""
+    k = knee * c
+    a = np.abs(x)
+    return np.where(a > k, np.sign(x) * (k + (c - k) * np.tanh((a - k) / (c - k))), x)
+
+
+def finish_blast_decoded(name, L, R, db=-8.0, peak=0.912, tail_fade=0.8, knee=None):
+    """`finish_blast`, with the peak held where the game hears it: the file is encoded, decoded and measured, and the
+    limiter's ceiling corrected until the decoded peak is `peak` (0.912 is -0.8 dBFS); the loudest 400 ms stays at `db`.
+    With `knee`, the peaks are first rounded off by `soft_clip` (the limiter then has next to nothing left to do)."""
+    import subprocess
+    n = max(len(L), len(R))
+    x = np.stack([np.pad(L - L.mean(), (0, n - len(L))), np.pad(R - R.mean(), (0, n - len(R)))], axis=1)
+    w, h = int(0.4 * SR), int(0.1 * SR)
+    lv = lambda y: max(np.sqrt(np.mean(y.mean(axis=1)[i:i + w] ** 2)) for i in range(0, max(n - w, 1), h))
+    target = 10 ** (db / 20)
+    path = f"{soundlib.OUT}/assets/orbital/sounds/{name}"
+    nf = int(tail_fade * SR)
+    c = peak * 0.985
+    best = None
+    for _ in range(8):
+        gain = target / lv(x)
+        shape = (lambda z: soft_clip(z, c, knee)) if knee else (lambda z: z)
+        for _ in range(6):
+            y = limit(shape(x * gain), c)
+            got = lv(y)
+            gain *= target / got
+            if abs(20 * np.log10(target / got)) < 0.05:
+                break
+        y = limit(shape(x * gain), c)
+        y[-nf:] *= np.linspace(1, 0, nf)[:, None]
+        write_ogg(path, y, 2)
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path + ".ogg", "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"], capture_output=True, check=True).stdout
+        dec = np.frombuffer(raw, dtype="<f4").reshape(-1, 2)
+        pk = float(np.max(np.abs(dec)))
+        if best is None or abs(pk / peak - 1) < abs(best[0] / peak - 1):
+            best = (pk, y, dec)
+        if abs(pk / peak - 1) < 0.005:
+            break
+        c = min(c * peak / pk, 0.999)
+    if best[0] != pk:                                                     # (the encoder's peaks jitter: keep the closest)
+        pk, y, dec = best
+        write_ogg(path, y, 2)
+    gr = 20 * np.log10(np.max(np.abs(x * gain), axis=1).max() / c)       # (by the clip and the limiter together)
+    print(f"wrote {name:9s} {n / SR:5.2f}s  stereo  loudest {20 * np.log10(lv(dec.astype(float))):.1f} dB  decoded peak {20 * np.log10(pk):.2f} dBFS  ({gr:.1f} dB off the highest peak)")

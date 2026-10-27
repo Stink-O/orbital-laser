@@ -1416,6 +1416,69 @@ def thunder(d, t0, size=1.0, length=6.0, take=0):
     return (unit(body) * 0.8 + low) * env
 
 
+def pk_fire(th):
+    """fire: the beam pouring down onto the target and the land bursting under it (0 here is the beam striking, the
+    strike's 8.4 s; it lands 0.1 s in and the land bursts 0.6 s in). A thunderclap as it strikes; the beam's roar
+    starting and the ground heaving up under it with a rising groan, its top closing down as the air is drawn in; a
+    breath of near silence; then the burst, louder than anything before it: a huge explosion that moves (see
+    `explosion_deep` in sounds_pk_blast.py: its spectrum over time follows measurements of a real, very large explosion,
+    and its movement, the cracks after the first, the land's answer and the rock coming down were matched to the same
+    recording's dynamics)."""
+    import sounds_pk_blast as PB
+    tb_ = 0.6
+    d = 19.0; n = int(SR * d); t = tt(d)
+    with PB.seeded(61001):
+        clap = nwave(n, 0.0, 0.002, 1.2, 11000) + band(white(d), 1500, 10000) * np.exp(-t / 0.01) * 0.9
+        clap += crackle(d, rate=9000, decay=0.0007, lo=900, hi=10000, heavy=1.2) * np.exp(-t / 0.12) * 0.6
+        clap += heavy(n, 0.0, 0.28, 2.2, 1.2, 1.0, 0.35) * 1.2
+        heave = np.clip(t / tb_, 0, 1) * (t < tb_)
+        rise = (glide_noise(d, 35, 110, 0.6, curve=1.0) * 0.5 + unit(band(white(d), 18, 60)) * 0.6 + roar_bed(d, 120, 600, 3.0, 0.4) * 0.4) * heave ** 1.5
+        # (the heave's top closing down over the last tenths of a second before the breath: the air drawn in)
+        rise = PB.lowpass_track(rise, PB.track(n, 0.0, [(0.0, 16000), (0.16, 9000), (0.34, 220)]))
+        pre = (clap + rise) * 0.5 * fade(n, 0.001, 2.0)
+        pws = [convolve_wet(pre, outdoor_ir(4.0, density=30.0, darken=(2600, 140), decay=1.6), 0.8) for _ in range(2)]
+    with PB.seeded(61101):
+        EL, ER = PB.explosion_deep(d, tb_, stretch=0.65)
+    # (the strike's thunderclap and the heave under the beam as loud as the burst's loudest, which still hits harder: it
+    # comes out of the breath, broadband and with the blow under it)
+    m = min(len(EL), len(pws[0]), len(pws[1]))
+    k = loudest((EL + ER)[:m] / 2) / (loudest(pws[0][:int(tb_ * SR)]) + 1e-9)
+    # (and once the land bursts, the clap's echoes sink under it instead of washing on through it)
+    tm = np.arange(m) / SR
+    k = k * np.where(tm < tb_, 1.0, 0.35 * np.exp(-(tm - tb_) / 0.8))
+    L, R = EL[:m] + pws[0][:m] * k, ER[:m] + pws[1][:m] * k
+    # the breath: from 0.36 s to the burst, near silence (the heave's tail and its echoes cut short; after the filters, so
+    # nothing they smear ahead of the burst is left in it)
+    g = duck(np.arange(m) / SR, tb_ - 0.24, tb_, 0.03, 0.04)
+    L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
+    L, R = L * g, R * g
+    PB.finish_blast_decoded(f"{th}/fire", L, R, -8.0, 0.912, 0.8, knee=0.5)
+
+
+def pk_cutoff(th):
+    """cutoff: the towers cutting out (at the strike's 17.65 s) and the ring crushed into the crater, bursting 0.9 s later.
+    The roar dying away down to nothing, then the air sucked in, building, to where the ring was, a breath held, and the
+    burst: the explosion again (the land's burst, shorter), rolling off the land and the sky for a long time"""
+    import sounds_pk_blast as PB
+    d = 13.0; n = int(SR * d); t = tt(d); tp = 0.9
+    with PB.seeded(63001):
+        drain = lowpass_glide(roar_bed(d, 110, 50, 3.0, 0.3) * 0.9, 2400, 120, curve=0.4) * np.clip((tp - 0.35 - t) / 0.15, 0, 1)
+        suck = (glide_noise(d, 120, 1800, 1.5, curve=2.2) * 0.6 + band(white(d), 20, 90) * 0.5) * np.clip((t - 0.35) / (tp - 0.35), 0, 1) ** 3 * (t < tp - 0.01)
+        # (the bolts stuttering out as they go)
+        stut = (rng.random(int(d * 22) + 2)[(t * 22).astype(int)] > 0.45) * np.clip((0.4 - t) / 0.35, 0, 1)
+        drain = drain + crackle(d, rate=2500, decay=0.0008, lo=1200, hi=9000, heavy=1.2) * stut * 0.5
+        build = drain + suck
+        EL, ER = PB.explosion(d, tp, stretch=0.4, crack=1.2, debris=0.5)
+        k = loudest(build[:int(tp * SR)]) / loudest((EL + ER) / 2)
+        crk = PB.bolt_crack(n, int(tp * SR), 3)
+        crk = crk / np.max(np.abs(crk)) * 3.0 * loudest((EL + ER) / 2)
+    L, R = wide_tail(build, 8.0, 2.8, (2200, 110), 0.8)
+    m = min(len(L), len(R), n)
+    L = L[:m] + (EL[:m] + crk[:m]) * k * 1.35; R = R[:m] + (ER[:m] + crk[:m]) * k * 1.35
+    L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
+    PB.finish_blast(f"{th}/cutoff", L, R, -9.5, 0.895, 0.8)
+
+
 def planetkiller():
     import sounds_pk_blast as PB
     th = "planetkiller"
@@ -1556,35 +1619,7 @@ def planetkiller():
     g = duck(np.arange(len(L)) / SR, 1.25, 1.57, 0.12, 0.05)
     PB.finish_blast(f"{th}/merge", L * g, R * g, -11.0, 0.905, 0.8)
 
-    # fire: the beam pouring down onto the target and the land bursting under it (0 here is the beam striking, the
-    # strike's 8.4 s; it lands 0.1 s in and the land bursts 0.6 s in). A thunderclap as it strikes; the beam's roar
-    # starting and the ground heaving up under it with a rising groan; a breath of near silence; then the burst, louder
-    # than anything before it, a huge explosion: a hard crack (broadband for the first 50 ms), the heavy 60-125 Hz blow
-    # of the pressure wave, a deep roar that holds for ten seconds while the top of it dies away and the sub-bass swells
-    # in under it, rock raining back down (see `explosion` in sounds_pk_blast.py: its spectrum over time follows
-    # measurements of a real, very large explosion)
-    tb_ = 0.6
-    d = 19.0; n = int(SR * d); t = tt(d)
-    with PB.seeded(61001):
-        clap = nwave(n, 0.0, 0.002, 1.2, 11000) + band(white(d), 1500, 10000) * np.exp(-t / 0.01) * 0.9
-        clap += crackle(d, rate=9000, decay=0.0007, lo=900, hi=10000, heavy=1.2) * np.exp(-t / 0.12) * 0.6
-        clap += heavy(n, 0.0, 0.28, 2.2, 1.2, 1.0, 0.35) * 1.2
-        heave = np.clip(t / tb_, 0, 1) * (t < tb_)
-        rise = (glide_noise(d, 35, 110, 0.6, curve=1.0) * 0.5 + unit(band(white(d), 18, 60)) * 0.6 + roar_bed(d, 120, 600, 3.0, 0.4) * 0.4) * heave ** 1.5
-        pre = (clap + rise) * 0.5 * fade(n, 0.001, 2.0)
-        EL, ER = PB.explosion(d, tb_, stretch=0.65)
-        outs = []
-        for k, y in enumerate((EL, ER)):
-            pw = convolve_wet(pre, outdoor_ir(4.0, density=30.0, darken=(2600, 140), decay=1.6), 0.8)
-            outs.append((y, pw))
-        # (the strike's thunderclap and the heave under the beam, just under the burst, which is the hardest blow of it all)
-        m = min(len(o[0]) for o in outs)
-        ref_lvl = loudest((EL + ER)[:m] / 2)
-        pre_lvl = loudest(outs[0][1][:int(tb_ * SR)])
-        L, R = [(y[:m] + pw[:m] * (ref_lvl * 1.0 / (pre_lvl + 1e-9))) for y, pw in outs]
-    g = duck(np.arange(m) / SR, tb_ - 0.25, tb_, 0.04, 0.06)
-    L, R = centre_lows(low_cut(L * g, 16), low_cut(R * g, 16))
-    PB.finish_blast(f"{th}/fire", L, R, -8.0, 0.895, 0.8)
+    pk_fire(th)
 
     # beam1-2: the beam's roar while it burns, 5.2 s a take (two, end to end). A column of air torn apart round it: a deep
     # turbulent roar in layers, each moving on its own, surging with the pulses racing down it, a searing crackle round it,
@@ -1627,26 +1662,7 @@ def planetkiller():
     L, R = centre_lows(L * f, R * f)
     finish_st_m(f"{th}/rumble", L, R, 0.02, 0.75)
 
-    # cutoff: the towers cutting out (at the strike's 17.65 s) and the ring crushed into the crater, bursting 0.9 s later.
-    # The roar dying away down to nothing, then the air sucked in, building, to where the ring was, a breath held, and the
-    # burst: the explosion again (the land's burst, shorter), rolling off the land and the sky for a long time
-    d = 13.0; n = int(SR * d); t = tt(d); tp = 0.9
-    with PB.seeded(63001):
-        drain = lowpass_glide(roar_bed(d, 110, 50, 3.0, 0.3) * 0.9, 2400, 120, curve=0.4) * np.clip((tp - 0.35 - t) / 0.15, 0, 1)
-        suck = (glide_noise(d, 120, 1800, 1.5, curve=2.2) * 0.6 + band(white(d), 20, 90) * 0.5) * np.clip((t - 0.35) / (tp - 0.35), 0, 1) ** 3 * (t < tp - 0.01)
-        # (the bolts stuttering out as they go)
-        stut = (rng.random(int(d * 22) + 2)[(t * 22).astype(int)] > 0.45) * np.clip((0.4 - t) / 0.35, 0, 1)
-        drain = drain + crackle(d, rate=2500, decay=0.0008, lo=1200, hi=9000, heavy=1.2) * stut * 0.5
-        build = drain + suck
-        EL, ER = PB.explosion(d, tp, stretch=0.4, crack=1.2, debris=0.5)
-        k = loudest(build[:int(tp * SR)]) / loudest((EL + ER) / 2)
-        crk = PB.bolt_crack(n, int(tp * SR), 3)
-        crk = crk / np.max(np.abs(crk)) * 3.0 * loudest((EL + ER) / 2)
-    L, R = wide_tail(build, 8.0, 2.8, (2200, 110), 0.8)
-    m = min(len(L), len(R), n)
-    L = L[:m] + (EL[:m] + crk[:m]) * k * 1.35; R = R[:m] + (ER[:m] + crk[:m]) * k * 1.35
-    L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
-    PB.finish_blast(f"{th}/cutoff", L, R, -9.5, 0.895, 0.8)
+    pk_cutoff(th)
 
     # after: what follows, 9 s: a distant rumble rolling round the land, the last rock coming down far off, the crater
     # seething, fires crackling all round, the ground giving a last groan
