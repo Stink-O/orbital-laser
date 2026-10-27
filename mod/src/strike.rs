@@ -2974,25 +2974,49 @@ const PK_HIT: f32 = 8.5;
 const PK_BURST: f32 = 9.0;
 const PK_CUT: f32 = 17.65;
 const PK_POP: f32 = 18.55;
-/// The blast: everything above the ground blown away out to this far (the first PK_BLAST_LOW blocks of it at once).
-const PK_BLAST: i32 = 170;
-const PK_BLAST_LOW: i32 = 8;
-/// The crater (the laser's bowl_r and bowl_d) is dug 3 blocks at a time from PK_DIG0 after the burst, as fast as a
-/// tick's block budget digs its layers (PK_DIG_K seconds a block down at the top, less as it narrows), in terraces
-/// PK_TERRACE deep; its raised rim reaches out to PK_RIM_OUT.
-const PK_DIG0: f32 = 2.9;
-const PK_DIG_K: f64 = 0.21;
-const PK_TERRACE: i32 = 12;
-const PK_RIM_OUT: i32 = 175;
+/// The blast: everything standing on the land blown away out to PK_BLAST, PK_ABOVE blocks up from the target's ground
+/// (over the crater, what stands higher too, up to PK_SKY over it, on the spare budget; over its middle, to the sky).
+const PK_BLAST: f64 = 340.0;
+const PK_ABOVE: i32 = 24;
+const PK_SKY: i32 = 72;
+/// The crater (strike.wgsl's pk_depth0, roughened by pk_depth): PK_BOWL round at the top, its walls dropping PK_WALL_D in
+/// slumped terraces about PK_TERRACE deep from its edge in to PK_FLOOR, its floor sagging PK_SAG more in to the lip of
+/// the open shaft, PK_SHAFT round, which drops straight to bedrock (PK_SHAFT_D for a target at sea level). Its edge,
+/// its terraces, its floor and the shaft's lip wander with the noise.
+const PK_BOWL: f64 = 240.0;
+const PK_FLOOR: f64 = 145.0;
+const PK_WALL_D: f64 = 60.0;
+const PK_SAG: f64 = 20.0;
+const PK_SHAFT: f64 = 40.0;
+const PK_SHAFT_D: f64 = 123.0;
+const PK_TERRACE: f64 = 10.0;
+/// How far out its edge may wander, and the land cleared over it before it is dug (PK_ABOVE up), a little further.
+const PK_EDGE: f64 = PK_BOWL * 1.1;
+const PK_LAND: f64 = PK_EDGE + 4.0;
+/// The digging, a chunk column at a time, from the middle out, PK_RATE blocks a second (about what a tick's block
+/// budget takes): from PK_DIG0 after the burst the core (out to PK_CORE: the shaft and the floor round it, and the land
+/// over them); then the land over the rest of the crater; then the rest of the crater; then the land out to PK_BLAST,
+/// the rim thrown up round it and the land charred out to PK_CHAR, rubble strewn over it out to PK_THROW. What falls due
+/// after PK_LATE is queued by then, in order (the strike's plan ends with it), and made as the block budget allows.
+const PK_CORE: f64 = 64.0;
+const PK_DIG0: f64 = 2.0;
+const PK_RATE: f64 = 340_000.0;
+const PK_LATE: f32 = 28.6;
+const PK_RIM_H: f64 = 15.0;
+const PK_CHAR: f64 = 380.0;
+const PK_THROW: f64 = 380.0;
 /// The fissures: PK_CRACKS of them from PK_RIM out, wandering off their heading every PK_SEG blocks, splitting open at
 /// PK_CRACK_V blocks a second (in jerks: pk_crack_time) from PK_CRACK_T after the burst.
 const PK_CRACKS: usize = 12;
-const PK_RIM: f64 = 126.0;
+const PK_RIM: f64 = 236.0;
 const PK_SEG: f64 = 12.0;
 const PK_CRACK_V: f64 = 90.0;
 const PK_CRACK_T: f32 = 0.9;
-/// The chunks kept loaded: a square this far either side of the target, and the fissures out past it.
-const PK_LOAD: i32 = 184;
+/// The chunks kept loaded: those within PK_LOAD of the target from the start (the crater and the land cleared over it),
+/// the fissures' stretches past it with them, and once the strike is all but over those out to PK_LOAD_OUT (the land
+/// blown flat, the rim and the charred land), which the queue reaches long after.
+const PK_LOAD: f64 = PK_LAND + 8.0;
+const PK_LOAD_OUT: f64 = PK_CHAR + 4.0;
 
 /// Tower i: where its foot stands (x, z) and when it fires, as strike.wgsl's pk_emitter. The first beyond the target as
 /// the player faces it (`wing` points from the target to them), the rest alternately to its right and left, round
@@ -3009,7 +3033,7 @@ fn pk_emitter(i: usize, seed: f32, point: [f64; 3], wing: f32) -> (f64, f64, f32
 fn pk_crack(i: usize, seed: f32) -> (f64, f64) {
     let s = seed as u32;
     let a = (i as f64 + 0.7 * mh(i as u32, s, 21)) * 2.0 * PI / PK_CRACKS as f64 + mh(99, s, 22) * 2.0 * PI;
-    (a, 120.0 + 70.0 * mh(i as u32, s, 23))
+    (a, 110.0 + 50.0 * mh(i as u32, s, 23))
 }
 /// The heading of fissure i `u` blocks past PK_RIM, as it wanders (strike.wgsl's pk_crack_off, between points).
 fn pk_crack_at(i: usize, u: f64, seed: f32) -> f64 {
@@ -3027,18 +3051,101 @@ fn pk_crack_time(u: f64) -> f32 {
     let x = 0.35 * (0.5 - ((1.0 - 2.0 * f).asin() / 3.0).sin());
     PK_CRACK_T + ((n + x) / 4.0) as f32
 }
-/// The crater's radius `d` blocks down: a bowl in terraces PK_TERRACE deep, each wall dropping steeply to a ledge.
-fn pk_bowl_r(d: i32, bowl_r: i32, bowl_d: i32) -> i32 {
-    let at = |d: i32| f64::from(bowl_r) * (1.0 - f64::from(d.min(bowl_d)) / (f64::from(bowl_d) + 0.5)).max(0.0).sqrt();
-    let k = d / PK_TERRACE;
-    let wall = at(k * PK_TERRACE) - f64::from(d - k * PK_TERRACE) * 0.55;
-    (wall.max(at((k + 1) * PK_TERRACE)).round() as i32).max(18)
+#[cfg_attr(not(test), allow(dead_code))]
+/// How deep the crater is `r` out from its middle, smoothly (strike.wgsl's pk_depth0): the shaft, the floor sagging in to
+/// it, the walls rising from the floor ever more steeply to the edge.
+fn pk_depth0(r: f64) -> f64 {
+    if r < PK_SHAFT {
+        PK_SHAFT_D
+    } else if r < PK_FLOOR {
+        PK_WALL_D + PK_SAG * (PK_FLOOR - r) / (PK_FLOOR - PK_SHAFT)
+    } else if r < PK_BOWL {
+        let u = (r - PK_FLOOR) / (PK_BOWL - PK_FLOOR);
+        PK_WALL_D * (1.0 - u * u)
+    } else {
+        0.0
+    }
 }
-/// When the 3 blocks of the crater from `d` down are dug: the time to dig all of the bowl over them (its area falling
-/// off with depth as a paraboloid's does), as strike.wgsl's pk_dig_t.
-fn pk_dig_t(d: i32) -> f32 {
-    let (d, dd) = (f64::from(d / 3 * 3), f64::from(crate::lasers::PLANET_KILLER.bowl_d) + 0.5);
-    PK_BURST + PK_DIG0 + (PK_DIG_K * (d - d * d / (2.0 * dd))) as f32
+/// The ground dug out of the crater within `r` of its middle (pk_depth0 over the disc; strike.wgsl's pk_vol).
+fn pk_vol(r: f64) -> f64 {
+    let (s, f, w) = (PK_SHAFT, PK_FLOOR, PK_BOWL - PK_FLOOR);
+    let rs = r.min(s);
+    let mut v = PI * rs * rs * PK_SHAFT_D;
+    if r > s {
+        let rf = r.min(f);
+        let k = PK_SAG / (f - s);
+        v += 2.0 * PI * ((PK_WALL_D + k * f) * (rf * rf - s * s) / 2.0 - k * (rf.powi(3) - s.powi(3)) / 3.0);
+    }
+    if r > f {
+        let u = ((r - f) / w).min(1.0);
+        v += 2.0 * PI * PK_WALL_D * w * (f * (u - u.powi(3) / 3.0) + w * (u * u / 2.0 - u.powi(4) / 4.0));
+    }
+    v
+}
+/// When the crater `r` out is dug (strike.wgsl's pk_dig_t): the core with the land over it, then (once the land over the
+/// rest is cleared) the rest, from the middle out, PK_RATE blocks a second.
+fn pk_dig_t(r: f64) -> f32 {
+    let h = f64::from(PK_ABOVE);
+    if r <= PK_CORE {
+        return PK_BURST + (PK_DIG0 + (PI * r * r * h + pk_vol(r)) / PK_RATE) as f32;
+    }
+    pk_land_t(PK_LAND) + ((pk_vol(r) - pk_vol(PK_CORE)) / PK_RATE) as f32
+}
+/// When the land `r` out is cleared, PK_ABOVE up: over the crater once its core is dug, then (once it is all dug) on out
+/// to the edge of the blast.
+fn pk_land_t(r: f64) -> f32 {
+    let h = f64::from(PK_ABOVE);
+    if r <= PK_LAND {
+        return pk_dig_t(PK_CORE) + (PI * (r * r - PK_CORE * PK_CORE).max(0.0) * h / PK_RATE) as f32;
+    }
+    pk_dig_t(PK_EDGE) + (PI * (r * r - PK_LAND * PK_LAND) * h / PK_RATE) as f32
+}
+/// When the land `r` out past the crater is cleared, PK_ABOVE up: while the crater's walls are dug (after the strike), the
+/// two queued in among each other, the many small changes of the walls with the few big ones of the land.
+fn pk_flat_t(r: f64) -> f32 {
+    let x = ((r - PK_LAND + 12.0) / (PK_BLAST - PK_LAND + 12.0)).clamp(0.0, 1.0);
+    // (by area: the walls' changes are as many for each column of them, the deep ones and the shallow)
+    let e = PK_EDGE + 12.0;
+    pk_dig_t((PK_FLOOR * PK_FLOOR + x * (e * e - PK_FLOOR * PK_FLOOR)).sqrt()) + 0.001
+}
+/// When something due at `t` is queued: then, or once the strike's plan nears its end, by PK_LATE + 0.8, in order.
+fn pk_queue_t(t: f32) -> f32 {
+    if t <= PK_LATE { t } else { PK_LATE + 0.8 * (1.0 - (-(t - PK_LATE) / 20.0).exp()) }
+}
+/// How deep the crater is under the column at (dx, dz) from its middle (blocks under the target's ground; `bottom` is
+/// as deep as it goes, to bedrock): pk_depth0 with its edge, its terraces, its floor and the shaft's lip wandering, the
+/// terraces slumped, the floor heaped and hollowed.
+fn pk_depth(dx: f64, dz: f64, seed: u32, bottom: i32) -> i32 {
+    let r = dx.hypot(dz);
+    if r > PK_EDGE + 2.0 {
+        return 0;
+    }
+    let (ca, sa) = (dx / r.max(1e-6), dz / r.max(1e-6));
+    // (round it: noise along a circle, so it only turns with the angle)
+    let round = |rad: f64, scale: f64, k: u32| vnoise(ca * rad + 1000.0, sa * rad + 1000.0, scale, seed ^ k) * 2.0 - 1.0;
+    let edge = PK_BOWL * (1.0 + 0.07 * round(400.0, 90.0, 0x11) + 0.03 * round(400.0, 24.0, 0x12));
+    if r >= edge {
+        return 0;
+    }
+    let lip = PK_SHAFT * (1.0 + 0.18 * round(120.0, 16.0, 0x13));
+    if r < lip {
+        return bottom;
+    }
+    let fl = PK_FLOOR * edge / PK_BOWL;
+    let d = if r < fl {
+        // the floor: heaped and hollowed, sagging in to the shaft
+        PK_WALL_D + PK_SAG * (fl - r) / (fl - lip) + 8.0 * (vnoise(dx, dz, 26.0, seed ^ 0x14) - 0.5) + 3.0 * (vnoise(dx, dz, 8.0, seed ^ 0x15) - 0.5)
+    } else {
+        // the walls, in terraces: a ledge, then a scarp down to the next, their heights wandering round it, slumped
+        let u = (r - fl) / (edge - fl);
+        let smooth = PK_WALL_D * (1.0 - u * u);
+        let ph = 0.5 + 0.5 * round(400.0, 70.0, 0x16) + 0.35 * (vnoise(dx, dz, 40.0, seed ^ 0x17) - 0.5);
+        let q = smooth / PK_TERRACE + ph;
+        let f = ((q.fract() - 0.55) / 0.45).clamp(0.0, 1.0);
+        let stepped = (q.floor() + f * f * (3.0 - 2.0 * f) - ph) * PK_TERRACE;
+        stepped.max(smooth * 0.35).min(smooth + 4.0) + 3.0 * (vnoise(dx, dz, 7.0, seed ^ 0x18) - 0.5)
+    };
+    (d.round() as i32).clamp(0, bottom)
 }
 
 /// The planet killer: seven towers grind up out of the land far out round the horizon (each heard from where it stands)
@@ -3145,8 +3252,8 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     }
     p.at(PK_BURST, format!("particle minecraft:explosion_emitter {tx} {} {tz} 30 6 30 0 30 force", ty + 2.0));
     p.at(PK_BURST + 0.05, format!("particle minecraft:flash {tx} {} {tz} 0 0 0 0 1 force", ty + 6.0));
-    p.at(PK_BURST + 0.05, format!(r#"particle minecraft:block{{block_state:"minecraft:obsidian"}} {tx} {} {tz} 20 4 20 3.0 900 force"#, ty + 1.0));
-    p.at(PK_BURST + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:stone"}} {tx} {} {tz} 40 4 40 2.4 900 force"#, ty + 1.0));
+    p.at(PK_BURST + 0.05, format!(r#"particle minecraft:block{{block_state:"minecraft:obsidian"}} {tx} {} {tz} 30 4 30 3.0 300 force"#, ty + 1.0));
+    p.at(PK_BURST + 0.1, format!(r#"particle minecraft:block{{block_state:"minecraft:stone"}} {tx} {} {tz} 60 4 60 2.4 300 force"#, ty + 1.0));
     let mut tk = PK_BURST + 0.2;
     let mut k = 0;
     while tk < PK_CUT {
@@ -3166,33 +3273,31 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     for i in 0..24 {
         // ash coming down over everything once it is over, the crater still smoking
         let tk = PK_POP + i as f32 * 0.45;
-        p.at(tk, format!("particle minecraft:ash {tx} {} {tz} 150 30 150 0 400 force", ty + 40.0));
-        p.at(tk, format!("particle minecraft:campfire_signal_smoke {tx} {} {tz} 60 4 60 0.05 40 force", ty - 30.0));
+        p.at(tk, format!("particle minecraft:ash {tx} {} {tz} 220 30 220 0 180 force", ty + 40.0));
+        p.at(tk, format!("particle minecraft:campfire_signal_smoke {tx} {} {tz} 30 4 30 0.05 14 force", ty - 60.0));
     }
     for tk in [0.1, 0.8, 2.0, 4.0, 7.0, PK_POP - PK_BURST + 0.2] {
-        p.at(PK_BURST + tk, format!("execute positioned {tx} {ty} {tz} run kill @e[type=!minecraft:player,distance=..200]"));
+        p.at(PK_BURST + tk, format!("execute positioned {tx} {ty} {tz} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..280]"));
     }
 
     if terrain {
         let (floor_y, sky, point) = (bedrock_top(dimension), sky_top(dimension), target.point);
-        // a far target is past what the game keeps loaded round the player: keep the crater, the rim, the blast and the
-        // fissures loaded until every change has been made (a forceload takes 256 chunks at most: strips of 128 blocks
-        // across, and the stretch of each fissure past them); they are let go on the spare budget, after everything else
-        // (the fissures' stretches let go as soon as everything queued before them is done, not held for the minute it
-        // takes to clear the sky over the blast: then the square, which shares chunks with them at its edges, taken
-        // again, and let go at the end)
-        let rects = pk_forceload(point, shader_seed);
-        for &(x0, z0, x1, z1, _) in &rects {
+        // a far target is past what the game keeps loaded round the player: keep the crater and the fissures loaded from
+        // the start, and the land round them out to the charred land's edge once the strike is all but over, until every
+        // change has been made (a forceload takes 256 chunks at most: a row of chunks each), let go on the spare budget
+        // after everything else. Only as much as is changed: each chunk loaded and ticking is work for the game.
+        let near = pk_forceload(point, shader_seed);
+        let far = pk_load_rows(point, PK_LOAD, PK_LOAD_OUT);
+        for [x0, z0, x1, z1] in &near {
             p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
         }
-        for &(x0, z0, x1, z1, fissure) in rects.iter().filter(|r| r.4).chain(rects.iter().filter(|r| !r.4)) {
-            let verb = if fissure { "remove" } else { "add" };
-            p.ev.push((PK_BURST + 5.0, Act::Spare(format!("forceload {verb} {x0} {z0} {x1} {z1}"))));
-            if !fissure {
-                p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
-            }
+        for [x0, z0, x1, z1] in &far {
+            p.at(PK_LATE, format!("forceload add {x0} {z0} {x1} {z1}"));
         }
-        pk_crater(&mut p, floor_y, sky);
+        for [x0, z0, x1, z1] in near.iter().chain(&far) {
+            p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
+        }
+        pk_crater(&mut p, point, floor_y, sky, shader_seed as u32);
         for i in 0..PK_CRACKS {
             // each fissure in two stretches, each worked out on its own tick just before it opens
             let len = pk_crack(i, shader_seed).1;
@@ -3202,257 +3307,545 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
                 p.later(at, move |q| pk_fissure(q, point, i, shader_seed, u0, u1));
             }
         }
-        p.later(PK_BURST + 0.2, move |q| pk_ejecta(q, point));
-        p.later(PK_BURST + 1.3, pk_rubble);
+        p.later(PK_BURST + 0.1, move |q| pk_ejecta(q, point));
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
 }
 
-/// The rectangles kept loaded: strips across the square round the target, and the far stretch of each fissure (marked).
-fn pk_forceload(point: [f64; 3], seed: f32) -> Vec<(i32, i32, i32, i32, bool)> {
-    let (cx, cz) = (point[0].floor() as i32, point[2].floor() as i32);
+/// The chunk columns (x, z of their corner) over the land within `r` of `point`, nearest first, with how far out the
+/// middle of each is.
+fn pk_cells(point: [f64; 3], r: f64) -> Vec<(i32, i32, f64)> {
+    let (c0x, c1x) = (((point[0] - r).floor() as i32) >> 4, ((point[0] + r).floor() as i32) >> 4);
+    let (c0z, c1z) = (((point[2] - r).floor() as i32) >> 4, ((point[2] + r).floor() as i32) >> 4);
     let mut out = Vec::new();
-    let mut z = cz - PK_LOAD;
-    while z <= cz + PK_LOAD {
-        let z1 = (z + 127).min(cz + PK_LOAD);
-        out.push((cx - PK_LOAD, z, cx + PK_LOAD, z1, false));
-        z = z1 + 1;
+    for cz in c0z..=c1z {
+        for cx in c0x..=c1x {
+            let (x0, z0) = (cx * 16, cz * 16);
+            // (the nearest point of it within r)
+            let nx = (point[0] - f64::from(x0)).clamp(0.0, 16.0) + f64::from(x0) - point[0];
+            let nz = (point[2] - f64::from(z0)).clamp(0.0, 16.0) + f64::from(z0) - point[2];
+            if nx.hypot(nz) <= r {
+                out.push((x0, z0, (f64::from(x0) + 8.0 - point[0]).hypot(f64::from(z0) + 8.0 - point[2])));
+            }
+        }
     }
+    out.sort_by(|a, b| a.2.total_cmp(&b.2));
+    out
+}
+/// The forceloads that keep the chunks within `r1` of `point` and not within `r0` loaded (a row of chunks a forceload,
+/// or the two ends of it either side of `r0`).
+fn pk_load_rows(point: [f64; 3], r0: f64, r1: f64) -> Vec<[i32; 4]> {
+    let inside = |r: f64| pk_cells(point, r).into_iter().map(|c| (c.0 >> 4, c.1 >> 4)).collect::<std::collections::HashSet<_>>();
+    let (inner, outer) = (if r0 > 0.0 { inside(r0) } else { Default::default() }, inside(r1));
+    let mut rows: std::collections::BTreeMap<i32, Vec<i32>> = Default::default();
+    for &(cx, cz) in outer.iter().filter(|c| !inner.contains(c)) {
+        rows.entry(cz).or_default().push(cx);
+    }
+    let mut out = Vec::new();
+    for (cz, mut xs) in rows {
+        xs.sort();
+        let mut start = xs[0];
+        for k in 1..=xs.len() {
+            if k == xs.len() || xs[k] != xs[k - 1] + 1 {
+                out.push([start * 16, cz * 16, xs[k - 1] * 16 + 15, cz * 16 + 15]);
+                if k < xs.len() {
+                    start = xs[k];
+                }
+            }
+        }
+    }
+    out
+}
+/// The rectangles kept loaded from the start: the crater, the rim and the blast, and the far stretch of each fissure.
+fn pk_forceload(point: [f64; 3], seed: f32) -> Vec<[i32; 4]> {
+    let mut out = pk_load_rows(point, 0.0, PK_LOAD);
     for i in 0..PK_CRACKS {
         let len = pk_crack(i, seed).1;
         let (mut x0, mut z0, mut x1, mut z1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-        let mut u = f64::from(PK_LOAD) - PK_RIM - 8.0;
+        let mut u = PK_LOAD - PK_RIM - 12.0;
         while u <= len + 4.0 {
             let a = pk_crack_at(i, u.min(len), seed);
             let (x, z) = ((point[0] + a.cos() * (PK_RIM + u)).floor() as i32, (point[2] + a.sin() * (PK_RIM + u)).floor() as i32);
-            (x0, z0, x1, z1) = (x0.min(x - 6), z0.min(z - 6), x1.max(x + 6), z1.max(z + 6));
+            (x0, z0, x1, z1) = (x0.min(x - 8), z0.min(z - 8), x1.max(x + 8), z1.max(z + 8));
             u += 4.0;
         }
         if x0 <= x1 {
-            out.push((x0, z0, x1, z1, true));
+            out.push([x0, z0, x1, z1]);
         }
     }
     out
 }
 
-/// The blast, the crater dug top down in terraces, its molten floor and lava lake, the shaft, the rim and the charred land:
-/// each stage worked out just before it starts, each a small piece of work. They go in the order the eye takes them in:
-/// the land blown flat round it, the crater opening, its depths, then the land further out; what stands high over the
-/// blast, out of the way, goes on the spare budget.
-fn pk_crater(p: &mut Plan, floor_y: i32, sky: i32) {
-    let t = PK_BURST;
-    // 1. the blast: everything standing above the ground blown away, the lowest PK_BLAST_LOW blocks at once, the next 30
-    //    once the crater and its shaft are dug, the rest up to the sky on the spare budget (in bands: a fill is capped at
-    //    32768 blocks)
-    p.later(t - 0.1, move |p| {
-        let by = p.by;
-        for c in p.disc(PK_BLAST, by + 1, (by + PK_BLAST_LOW).min(sky), "minecraft:air", 0.08, None) {
-            p.at(t + 0.05, c);
-        }
-    });
-    p.later(t + 13.0, move |p| {
-        let by = p.by;
-        let mut y = by + PK_BLAST_LOW + 1;
-        while y <= (by + PK_BLAST_LOW + 30).min(sky) {
-            let top = (y + 14).min(sky);
-            for c in p.disc(PK_BLAST, y, top, "minecraft:air", 0.08, None) {
-                p.at(t + 13.2, c);
-            }
-            y = top + 1;
-        }
-        p.clear_above(t + 13.3, PK_BLAST, by + PK_BLAST_LOW + 31, sky, 0.08);
-    });
-    // 2. the crater, 3 blocks at a time from the top down, a stage for each: its walls fused as it goes, and the rock
-    //    breaking away onto the ledges of its terraces
-    let (bowl_r, bowl_d) = (p.laser.bowl_r, p.laser.bowl_d.min(p.by - floor_y - 8));
-    let mut d = 0;
-    while d < bowl_d {
-        let dd = d;
-        p.later(pk_dig_t(dd) - 0.15, move |p| {
-            // (the walls fused where they are natural ground: near the top every kind of it; deeper down only the rock,
-            // the odd pocket of dirt or gravel left in the glass. Each kind is a pass of its own over the wall, and the
-            // passes are most of the crater's commands)
-            const NATURAL: [&str; 4] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel"];
-            let natural = if dd < 12 { &NATURAL[..] } else { &NATURAL[..1] };
-            let laser = p.laser;
-            let by = p.by;
-            let prim = laser.lining[0].0;
-            let tl = pk_dig_t(dd);
-            let (y_lo, y_hi) = (by - dd - 2, by - dd);
-            let r = pk_bowl_r(dd, bowl_r, bowl_d);
-            let rs = p.rects(r, f64::from(laser.bowl_rough));
-            for tag in natural {
-                for c in Plan::edge_fills(&rs, y_lo - 1, y_hi, prim, tag, 2) {
-                    p.at(tl - 0.05, c);
-                }
-            }
-            for c in Plan::fills(&rs, y_lo, y_hi, "minecraft:air", None, 0) {
-                p.at(tl, c);
-            }
-            p.mottle(r, y_lo, y_hi, tl, 24);
-            if dd % PK_TERRACE == PK_TERRACE - 3 && dd + 3 < bowl_d {
-                // the ledge under this terrace's wall: rock fallen from it heaped along it
-                let next = pk_bowl_r(dd + 3, bowl_r, bowl_d);
-                const FALLEN: [&str; 4] = ["minecraft:cobblestone", "minecraft:blackstone", "minecraft:cobbled_deepslate", "minecraft:basalt"];
-                for _ in 0..18 {
-                    let a = p.rng.uniform(0.0, 2.0 * PI);
-                    let rr = p.rng.uniform(f64::from(next) + 1.0, f64::from(r) - 1.0);
-                    let (x, z) = (p.bx + (a.cos() * rr).round() as i32, p.bz + (a.sin() * rr).round() as i32);
-                    let h = p.rng.int(1, 3);
-                    let blk = *p.rng.pick(&FALLEN);
-                    p.at(tl + 0.1, format!("fill {} {} {} {} {} {} {blk} keep", x - 1, y_lo, z - 1, x + 1, y_lo + h - 1, z + 1));
-                }
-            }
-            for _ in 0..2 {
-                let (pitch, dt) = (p.rng.uniform(0.5, 0.8), p.rng.uniform(0.0, 0.2) as f32);
-                p.ground_sound(tl + dt, if dd > 60 { "block.deepslate.break" } else { "block.stone.break" }, 10.0, pitch);
-            }
-        });
-        d += 3;
+/// A block of the crater's ground, `depth` under the target's ground at (x, z): in broad stretches of one rock or another
+/// as a smooth noise picks, the earth of the top giving way to stone, then to deepslate and blackstone; seams of magma
+/// and glassy obsidian deeper down, more of them deeper.
+fn pk_rock(x: f64, z: f64, depth: f64, seed: u32) -> &'static str {
+    const TOP: [&str; 6] = ["minecraft:coarse_dirt", "minecraft:tuff", "minecraft:stone", "minecraft:cobblestone", "minecraft:andesite", "minecraft:dirt"];
+    const MID: [&str; 6] = ["minecraft:stone", "minecraft:tuff", "minecraft:deepslate", "minecraft:cobbled_deepslate", "minecraft:basalt", "minecraft:andesite"];
+    const DEEP: [&str; 6] = ["minecraft:deepslate", "minecraft:cobbled_deepslate", "minecraft:blackstone", "minecraft:basalt", "minecraft:tuff", "minecraft:smooth_basalt"];
+    let n = vnoise(x + depth * 1.7, z - depth * 1.3, 15.0, seed ^ 0x51);
+    let m = vnoise(x - depth * 0.7, z + depth * 2.1, 5.0, seed ^ 0x52);
+    let deep = (depth / 80.0).min(1.0);
+    if depth > 18.0 && m > 0.86 - 0.12 * deep {
+        return "minecraft:magma_block";
     }
-    // 3. its floor: magma, and a lake of lava over it
-    let floor = p.by - bowl_d;
-    p.later(pk_dig_t(bowl_d) + 0.1, move |p| {
-        let laser = p.laser;
-        let (fb, fr, fq) = laser.bowl_floor;
-        let r = pk_bowl_r(bowl_d - 1, laser.bowl_r, bowl_d) + 6;
-        let tf = pk_dig_t(bowl_d) + 0.3;
-        for c in p.disc(r, floor - 2, floor, fb, f64::from(fr), Some(fq)) {
-            p.at(tf, c);
-        }
-        for c in p.disc(r + 12, floor + 1, floor + 2, "minecraft:lava", 0.1, Some("minecraft:air")) {
-            p.at(tf + 0.2, c);
-        }
-        p.at(tf + 0.2, format!("playsound minecraft:block.lava.ambient block @a {} {floor} {} 4 0.6", p.bx, p.bz));
-    });
-    // 4. the shaft, drilled on down from the floor to bedrock (in three stages), and the bottom of it
-    let steps = ((floor - floor_y) / 4 + 1).max(1);
-    for part in 0..3 {
-        let (i0, i1) = (steps * part / 3, steps * (part + 1) / 3);
-        p.later(pk_dig_t(bowl_d) + 0.3 + i0 as f32 * 0.15, move |p| {
-            let laser = p.laser;
-            let (bx, bz) = (p.bx, p.bz);
-            for i in i0..i1 {
-                let y_hi = floor - 4 * i;
-                if y_hi < floor_y {
-                    break;
-                }
-                let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.4).round() as i32).max(laser.shaft_min);
-                let ts = pk_dig_t(bowl_d) + 0.5 + i as f32 * 0.15;
-                p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
-                p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 4);
-                if i % 2 == 0 {
-                    let pitch = p.rng.uniform(0.5, 0.8);
-                    p.ground_sound(ts, "block.deepslate.break", 9.0, pitch);
-                    p.at(ts, format!("particle minecraft:soul_fire_flame {} {y_hi} {} 4 1 4 0.05 30 force", f64::from(bx) + 0.5, f64::from(bz) + 0.5));
-                }
-            }
-            if part == 2 {
-                for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
-                    for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
-                        p.at(pk_dig_t(bowl_d) + 0.6 + steps as f32 * 0.15 + 0.1 * k as f32, c);
-                    }
-                }
-            }
-        });
+    if depth > 30.0 && m < 0.05 + 0.07 * deep {
+        return "minecraft:obsidian";
     }
-    // 5. the rim, once the crater is dug: the land round it thrown up and piled outward, highest at the crater's lip, in
-    //    three rings
-    let tr = pk_dig_t(bowl_d) + 0.2;
-    p.later(tr - 0.2, move |p| {
-        let by = p.by;
-        let mid = (bowl_r + 3 + PK_RIM_OUT) / 2;
-        for (r, g, y0, y1, block) in [
-            (mid, (PK_RIM_OUT - bowl_r - 3) / 2, by - 6, by + 3, "minecraft:cobbled_deepslate"),
-            (bowl_r + 16, 12, by + 4, by + 8, "minecraft:blackstone"),
-            (bowl_r + 9, 5, by + 9, by + 12, "minecraft:basalt"),
-        ] {
-            let rs = p.rects(r, 0.05);
-            for c in Plan::edge_fills(&rs, y0, y1, block, "minecraft:air", g) {
-                p.at(tr, c.replace(" replace minecraft:air", " keep"));
-            }
-        }
-        const RIM: [&str; 5] = ["minecraft:cobblestone", "minecraft:tuff", "minecraft:blackstone", "minecraft:obsidian", "minecraft:magma_block"];
-        for _ in 0..240 {
-            // boulders strewn over it
-            let a = p.rng.uniform(0.0, 2.0 * PI);
-            let rr = p.rng.uniform(f64::from(bowl_r) + 4.0, f64::from(PK_RIM_OUT) + 10.0);
-            let (x, z) = (p.bx + (a.cos() * rr).round() as i32, p.bz + (a.sin() * rr).round() as i32);
-            let s = p.rng.int(1, 2);
-            let blk = *p.rng.pick(&RIM);
-            let dt = p.rng.uniform(0.0, 0.8) as f32;
-            p.at(tr + 0.1 + dt, surf(x, z, &format!("fill ~-{s} ~ ~-{s} ~{s} ~{} ~{s} {blk} keep", s * 2 - 1)));
-        }
-    });
-    // 6. the charred land, last (it is the most ground to change after the crater and the blast)
-    p.later(t + 13.5, move |p| {
-        let laser = p.laser;
-        let by = p.by;
-        for &(rad, block, rough, repl) in laser.scorch {
-            for c in p.disc(rad, by - 1, by + 1, block, f64::from(rough), Some(repl)) {
-                let dt = p.rng.next() as f32 * 2.0;
-                p.at(t + 13.7 + dt, c);
-            }
-        }
-    });
+    let set = if depth < 14.0 + 6.0 * (n - 0.5) { &TOP } else if depth < 46.0 + 10.0 * (n - 0.5) { &MID } else { &DEEP };
+    let k = (((n - 0.5) * 1.9 + 0.5) * 0.85 + m * 0.15).clamp(0.0, 0.999);
+    set[(k * set.len() as f64) as usize]
+}
+/// The crater's floor and its ledges at (x, z), `depth` down, `r` out: blasted rubble, ash and scoria, magma glowing
+/// through it more and more in towards the shaft.
+fn pk_floor_rock(x: f64, z: f64, depth: f64, r: f64, seed: u32) -> &'static str {
+    const FLOOR: [&str; 7] = ["minecraft:coarse_dirt", "minecraft:gravel", "minecraft:tuff", "minecraft:blackstone", "minecraft:basalt", "minecraft:cobbled_deepslate", "minecraft:smooth_basalt"];
+    let n = vnoise(x, z, 11.0, seed ^ 0x61);
+    let m = vnoise(x, z, 4.0, seed ^ 0x62);
+    let hot = (1.0 - (r - PK_SHAFT) / (PK_BOWL - PK_SHAFT)).clamp(0.0, 1.0);
+    if m > 0.82 - 0.3 * hot * hot {
+        return "minecraft:magma_block";
+    }
+    if depth > 40.0 && m < 0.08 {
+        return "minecraft:obsidian";
+    }
+    let k = (((n - 0.5) * 1.9 + 0.5) * 0.8 + m * 0.2).clamp(0.0, 0.999);
+    // (no gravel high on the walls' ledges, where it may stand over a cave)
+    let b = FLOOR[(k * FLOOR.len() as f64) as usize];
+    if b == "minecraft:gravel" && depth < 30.0 { "minecraft:tuff" } else { b }
 }
 
-/// The stretch `u0..u1` blocks past PK_RIM of fissure `i` split open, a column at a time as the split runs out to it: a
-/// chasm deepest and widest by the crater (34 blocks down), its floor magma, every third one running with lava, its
-/// walls basalt. Each column is cut on its own from the ground there (so no cut moves the ground another measures from).
+/// Fills over the part of chunk column (x0, z0) whose 4-block squares lie `r0` to `r1` out from `point`, from y0 up to y1:
+/// a fill for each run of them along a row of squares, or one for the whole column.
+fn pk_band(point: [f64; 3], x0: i32, z0: i32, r0: f64, r1: f64, y0: i32, y1: i32) -> Vec<String> {
+    let mut out = Vec::new();
+    if y1 < y0 {
+        return out;
+    }
+    let mut rows = Vec::new();
+    for j in 0..4 {
+        let mut runs: Vec<(i32, i32)> = Vec::new();
+        for i in 0..4 {
+            let r = (f64::from(x0 + 4 * i) + 2.0 - point[0]).hypot(f64::from(z0 + 4 * j) + 2.0 - point[2]);
+            if r >= r0 && r < r1 {
+                match runs.last_mut() {
+                    Some(run) if run.1 == i - 1 => run.1 = i,
+                    _ => runs.push((i, i)),
+                }
+            }
+        }
+        rows.push(runs);
+    }
+    // (in bands no taller than half a tick's block budget for the whole column)
+    let tall = 64;
+    let mut ya = y0;
+    while ya <= y1 {
+        let yb = (ya + tall - 1).min(y1);
+        if rows.iter().all(|r| r.len() == 1 && r[0] == (0, 3)) {
+            out.push(format!("fill {x0} {ya} {z0} {} {yb} {} minecraft:air strict", x0 + 15, z0 + 15));
+        } else {
+            for (j, runs) in rows.iter().enumerate() {
+                for &(a, b) in runs {
+                    let z = z0 + 4 * j as i32;
+                    out.push(format!("fill {} {ya} {z} {} {yb} {} minecraft:air strict", x0 + 4 * a, x0 + 4 * b + 3, z + 3));
+                }
+            }
+        }
+        ya = yb + 1;
+    }
+    out
+}
+
+/// Dig the crater under chunk column (x0, z0) at `t`, from the target's ground (from PK_ABOVE over it, `land`) down, in
+/// columns 4 blocks square, each to its own depth: its floor laid with blasted rock, the faces of the ground left
+/// standing round it lined with rock (sealing in any water or lava behind them, and every cave), and in the shaft the
+/// bedrock bared, with scorched rock and magma strewn over it. Every change is `strict`: nothing round it is told, so no
+/// sand or gravel falls, no water or lava flows, no leaves decay.
+fn pk_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, land: bool, floor_y: i32, sky: i32, seed: u32) {
+    let by = p.by;
+    let bottom = by - floor_y + 1;
+    let top = if land { (by + PK_ABOVE).min(sky) } else { by };
+    // the depth of each column of the chunk's, and of those round it
+    let mut d = [[0i32; 6]; 6];
+    for (j, row) in d.iter_mut().enumerate() {
+        for (i, v) in row.iter_mut().enumerate() {
+            let (cx, cz) = (f64::from(x0 + 4 * i as i32 - 4) + 2.0 - point[0], f64::from(z0 + 4 * j as i32 - 4) + 2.0 - point[2]);
+            *v = pk_depth(cx, cz, seed, bottom);
+        }
+    }
+    let bare = |p: &mut Plan, xa: i32, za: i32, xb: i32, zb: i32| {
+        // the bedrock bared under the shaft (what is not bedrock in its top layer dug out), scorched rock and magma
+        // strewn over it in places
+        p.at(t, format!("fill {xa} {} {za} {xb} {} {zb} minecraft:air replace #minecraft:sculk_replaceable strict", floor_y - 1, floor_y - 1));
+        const STREWN: [&str; 7] = ["minecraft:magma_block", "minecraft:blackstone", "minecraft:basalt", "minecraft:coarse_dirt", "minecraft:magma_block", "minecraft:cobbled_deepslate", "minecraft:smooth_basalt"];
+        let mut z = za;
+        while z <= zb {
+            let mut x = xa;
+            while x <= xb {
+                let n = vnoise(f64::from(x), f64::from(z), 9.0, seed ^ 0x71);
+                if n > 0.48 {
+                    let s = p.rng.int(1, 3);
+                    let blk = *p.rng.pick(&STREWN);
+                    let h = i32::from(n > 0.62);
+                    p.at(t, format!("fill {x} {} {z} {} {} {} {blk} replace minecraft:air strict", floor_y - 1, (x + s - 1).min(xb), floor_y - 1 + h, (z + s - 1).min(zb)));
+                }
+                x += 4;
+            }
+            z += 4;
+        }
+    };
+    let deepest = d[1..5].iter().all(|r| r[1..5].iter().all(|&v| v == bottom));
+    if deepest {
+        // all of it the shaft: dug whole
+        for c in pk_band(point, x0, z0, 0.0, f64::INFINITY, floor_y, top) {
+            p.at(t, c);
+        }
+        bare(p, x0, z0, x0 + 15, z0 + 15);
+    }
+    // dug, and its floor laid, a run of columns along a row at a time where they are as deep and their floor the same
+    for j in 1..5 {
+        if deepest {
+            break;
+        }
+        let mut i = 1;
+        while i < 5 {
+            let dd = d[j][i];
+            let (xa, za) = (x0 + 4 * (i as i32 - 1), z0 + 4 * (j as i32 - 1));
+            let fz = f64::from(za) + 2.0;
+            let floor_of = |i: usize| pk_floor_rock(f64::from(x0 + 4 * (i as i32 - 1)) + 2.0, fz, f64::from(dd), (f64::from(x0 + 4 * (i as i32 - 1)) + 2.0 - point[0]).hypot(fz - point[2]), seed);
+            let blk = floor_of(i);
+            let mut k = i + 1;
+            while k < 5 && d[j][k] == dd && (dd == 0 || dd >= bottom || floor_of(k) == blk) {
+                k += 1;
+            }
+            let (xb, zb) = (x0 + 4 * (k as i32 - 1) - 1, za + 3);
+            if dd > 0 || land {
+                let mut ya = if dd > 0 { by - dd + 1 } else { by + 1 };
+                while ya <= top {
+                    let yb = (ya + 16384 / ((xb - xa + 1) * 4) - 1).min(top);
+                    p.at(t, format!("fill {xa} {ya} {za} {xb} {yb} {zb} minecraft:air strict"));
+                    ya = yb + 1;
+                }
+            }
+            if dd >= bottom {
+                bare(p, xa, za, xb, zb);
+            } else if dd > 0 {
+                p.at(t, format!("fill {xa} {} {za} {xb} {} {zb} {blk} strict", by - dd, by - dd));
+            }
+            i = k;
+        }
+    }
+    for j in 1..5 {
+        for i in 1..5 {
+            let dd = d[j][i];
+            let (xa, za) = (x0 + 4 * (i as i32 - 1), z0 + 4 * (j as i32 - 1));
+            let (xb, zb) = (xa + 3, za + 3);
+            if dd == 0 {
+                continue;
+            }
+            // the faces of the ground standing round it, lined (up to the ground's own top a few blocks under the
+            // target's ground, and over that only where it is ground, so no wall stands up over lower land round it)
+            for (di, dj) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+                let dn = d[(j as i32 + dj) as usize][(i as i32 + di) as usize];
+                // (a step of a block is only the edge of the floor's rock)
+                if dn >= dd - 1 {
+                    continue;
+                }
+                let (sx0, sx1, sz0, sz1) = match (di, dj) {
+                    (1, _) => (xb + 1, xb + 1, za, zb),
+                    (-1, _) => (xa - 1, xa - 1, za, zb),
+                    (_, 1) => (xa, xb, zb + 1, zb + 1),
+                    _ => (xa, xb, za - 1, za - 1),
+                };
+                let (ya, yb) = ((by - dd).max(floor_y), by - dn);
+                let blk = pk_rock(f64::from(sx0 + sx1) / 2.0, f64::from(sz0 + sz1) / 2.0, f64::from(dd + dn) / 2.0, seed);
+                let open = if dn == 0 { by - 6 } else { yb };
+                if ya <= open.min(yb) {
+                    p.at(t, format!("fill {sx0} {ya} {sz0} {sx1} {} {sz1} {blk} strict", open.min(yb)));
+                }
+                if open < yb {
+                    let blk = pk_rock(f64::from(sx0) + 0.5, f64::from(sz0) + 0.5, 3.0, seed);
+                    p.at(t, format!("fill {sx0} {} {sz0} {sx1} {yb} {sz1} {blk} replace #minecraft:sculk_replaceable strict", (open + 1).max(ya)));
+                }
+            }
+        }
+    }
+}
+
+/// The crater, the land blown flat round it, the rim thrown up round it and the land charred and strewn with rubble far
+/// out past it: worked out a few chunk columns a stage, nearest first, each stage just before it falls due.
+fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
+    let by = p.by;
+    // the core, the land over the rest of the crater, the rest of the crater
+    let cells = pk_cells(point, PK_LAND);
+    let core: Vec<(i32, i32, f64)> = cells.iter().copied().filter(|c| c.2 <= PK_CORE).collect();
+    let rest: Vec<(i32, i32, f64)> = cells.iter().copied().filter(|c| c.2 > PK_CORE).collect();
+    for group in core.chunks(6) {
+        let group = group.to_vec();
+        let t0 = pk_dig_t(group[0].2);
+        p.later(t0 - 0.3, move |p| {
+            for (x0, z0, r) in group {
+                pk_dig_cell(p, point, x0, z0, pk_dig_t(r), true, floor_y, sky, seed);
+                // (the rock breaking, heard close by)
+                let pitch = p.rng.uniform(0.5, 0.8);
+                p.ground_sound(pk_dig_t(r), "block.deepslate.break", 10.0, pitch);
+            }
+        });
+    }
+    for group in rest.chunks(48) {
+        let group = group.to_vec();
+        let t0 = pk_queue_t(pk_land_t(group[0].2));
+        p.later(t0 - 0.3, move |p| {
+            for (x0, z0, r) in group {
+                for c in pk_band(point, x0, z0, 0.0, PK_LAND, by + 1, (by + PK_ABOVE).min(sky)) {
+                    p.at(pk_queue_t(pk_land_t(r)), c);
+                }
+            }
+        });
+    }
+    for group in rest.chunks(10) {
+        let group: Vec<_> = group.iter().copied().filter(|c| c.2 <= PK_EDGE + 12.0).collect();
+        if group.is_empty() {
+            continue;
+        }
+        let t0 = pk_queue_t(pk_dig_t(group[0].2));
+        p.later(t0 - 0.3, move |p| {
+            for (k, (x0, z0, r)) in group.into_iter().enumerate() {
+                pk_dig_cell(p, point, x0, z0, pk_queue_t(pk_dig_t(r)), false, floor_y, sky, seed);
+                if k % 3 == 0 && pk_dig_t(r) < PK_LATE {
+                    let pitch = p.rng.uniform(0.5, 0.8);
+                    p.ground_sound(pk_dig_t(r), "block.stone.break", 10.0, pitch);
+                }
+            }
+        });
+    }
+    // the land out to the edge of the blast, while the crater's walls are dug
+    let flat: Vec<(i32, i32, f64)> = pk_cells(point, PK_BLAST).into_iter().filter(|c| c.2 > PK_LAND - 12.0).collect();
+    for group in flat.chunks(64) {
+        let group = group.to_vec();
+        let t0 = pk_queue_t(pk_flat_t(group[0].2));
+        p.later(t0 - 0.3, move |p| {
+            for (x0, z0, r) in group {
+                let blast = PK_BLAST * (0.94 + 0.12 * vnoise(f64::from(x0), f64::from(z0), 60.0, seed ^ 0x81));
+                for c in pk_band(point, x0, z0, PK_LAND, blast, by + 1, (by + PK_ABOVE).min(sky)) {
+                    p.at(pk_queue_t(pk_flat_t(r)), c);
+                }
+            }
+        });
+    }
+    // what stands higher over the crater, on the spare budget; over its middle, to the sky
+    let over: Vec<(i32, i32, f64)> = cells.clone();
+    let tl = pk_queue_t(pk_land_t(PK_BLAST)) + 0.01;
+    p.later(tl - 0.3, move |p| {
+        for (x0, z0, r) in over {
+            let mut cmds = pk_band(point, x0, z0, 0.0, PK_EDGE, by + PK_ABOVE + 1, (by + PK_SKY).min(sky));
+            if r <= PK_CORE {
+                cmds.extend(pk_band(point, x0, z0, 0.0, PK_CORE, by + PK_SKY + 1, sky));
+            }
+            for c in cmds {
+                p.ev.push((tl, Act::Spare(c)));
+            }
+        }
+    });
+    // the rim, the charred land, the rubble
+    let t_rim = pk_queue_t(pk_land_t(PK_BLAST) + 0.5);
+    for part in 0..4 {
+        p.later(t_rim - 0.3 + part as f32 * 0.01, move |p| pk_rim(p, point, seed, part, t_rim + part as f32 * 0.01));
+    }
+    let t_char = pk_queue_t(pk_land_t(PK_BLAST) + 5.0);
+    for part in 0..4 {
+        p.later(t_char - 0.3 + part as f32 * 0.01, move |p| pk_char(p, point, seed, part, t_char + part as f32 * 0.01));
+    }
+}
+
+/// Rays of ejecta thrown out over the land: how much of one runs over (dx, dz), 0 to 1.
+fn pk_ray(dx: f64, dz: f64, seed: u32) -> f64 {
+    let r = dx.hypot(dz);
+    let a = dz.atan2(dx);
+    let mut best: f64 = 0.0;
+    for k in 0..16u32 {
+        let ak = (f64::from(k) + 0.7 * mh(k, seed, 41)) * 2.0 * PI / 16.0 + mh(99, seed, 42) * 2.0 * PI;
+        let mut da = a - ak;
+        da -= 2.0 * PI * (da / (2.0 * PI)).round();
+        let lat = da.abs() * r;
+        let w = 5.0 + 9.0 * mh(k, seed, 43) + 0.05 * (r - PK_BOWL).max(0.0);
+        let len = PK_BOWL + 90.0 + 90.0 * mh(k, seed, 44);
+        let along = 1.0 - ((r - len + 40.0) / 40.0).clamp(0.0, 1.0);
+        best = best.max((-(lat / w).powi(2)).exp() * along);
+    }
+    best
+}
+/// Whether (dx, dz) lies on a fissure's line, or within `pad` of it.
+fn pk_on_crack(dx: f64, dz: f64, seed: f32, pad: f64) -> bool {
+    let r = dx.hypot(dz);
+    let u = r - PK_RIM;
+    if u < -6.0 {
+        return false;
+    }
+    let a = dz.atan2(dx);
+    (0..PK_CRACKS).any(|i| {
+        let len = pk_crack(i, seed).1;
+        if u > len + 4.0 {
+            return false;
+        }
+        let mut da = a - pk_crack_at(i, u.clamp(0.0, len), seed);
+        da -= 2.0 * PI * (da / (2.0 * PI)).round();
+        da.abs() * r < 1.0 + 4.5 * (1.0 - u.max(0.0) / len) + pad
+    })
+}
+
+/// The rim: the ground thrown up and out over the land round the crater, heaped highest at its edge and falling away to
+/// the edge of the blast, lumpy and broken, heaped higher along the rays; the deep rock turned up over the edge, earth
+/// and rubble further out, boulders over it. A quarter of it (`part`, round the crater), in heaps a few blocks across,
+/// each on the ground where it is (only into the air).
+fn pk_rim(p: &mut Plan, point: [f64; 3], seed: u32, part: u32, t: f32) {
+    const LIP: [&str; 7] = ["minecraft:deepslate", "minecraft:cobbled_deepslate", "minecraft:tuff", "minecraft:blackstone", "minecraft:basalt", "minecraft:stone", "minecraft:cobbled_deepslate"];
+    const MID: [&str; 7] = ["minecraft:stone", "minecraft:cobblestone", "minecraft:tuff", "minecraft:andesite", "minecraft:coarse_dirt", "minecraft:cobbled_deepslate", "minecraft:gravel"];
+    const OUT: [&str; 6] = ["minecraft:coarse_dirt", "minecraft:dirt", "minecraft:cobblestone", "minecraft:tuff", "minecraft:coarse_dirt", "minecraft:stone"];
+    const BOULDER: [&str; 5] = ["minecraft:blackstone", "minecraft:tuff", "minecraft:cobbled_deepslate", "minecraft:basalt", "minecraft:deepslate"];
+    let bottom = 400;
+    let (q0, q1) = (f64::from(part) * PI / 2.0, f64::from(part + 1) * PI / 2.0);
+    let mut heaps = Vec::new();
+    let mut r = PK_BOWL * 0.9;
+    while r < PK_BLAST {
+        let s = if r < 300.0 { 6 } else { 8 };
+        let n = ((r * (q1 - q0)) / f64::from(s)).ceil() as i32;
+        for k in 0..n {
+            let a = q0 + (q1 - q0) * (f64::from(k) + 0.5 + p.rng.uniform(-0.3, 0.3)) / f64::from(n);
+            let rr = r + p.rng.uniform(-1.0, 1.0);
+            let (dx, dz) = (a.cos() * rr, a.sin() * rr);
+            // (outside the crater, and not over a fissure)
+            if pk_depth(dx, dz, seed, bottom) > 0 || pk_on_crack(dx, dz, seed as f32, 3.0) {
+                continue;
+            }
+            let fall = (PK_BOWL / rr).powi(3) * ((PK_BLAST - rr) / 70.0).clamp(0.0, 1.0);
+            let lump = 0.45 + 1.1 * vnoise(dx, dz, 13.0, seed ^ 0x91);
+            let h = (PK_RIM_H * fall * lump * (1.0 + 0.9 * pk_ray(dx, dz, seed)) + p.rng.uniform(-1.2, 1.2)).round() as i32;
+            if h < 1 {
+                continue;
+            }
+            let m = vnoise(dx, dz, 5.0, seed ^ 0x92);
+            let n2 = vnoise(dx, dz, 17.0, seed ^ 0x93);
+            let set: &[&str] = if rr < PK_BOWL + 22.0 + 12.0 * n2 { &LIP } else if rr < 300.0 + 20.0 * n2 { &MID } else { &OUT };
+            let blk = if rr < PK_BOWL + 30.0 && m > 0.84 { "minecraft:magma_block" } else { set[((n2 * 0.7 + m * 0.3) * set.len() as f64).min(set.len() as f64 - 1.0) as usize] };
+            heaps.push((rr, dx, dz, s, h, blk));
+        }
+        r += f64::from(if r < 300.0 { 6 } else { 8 });
+    }
+    let mut out: Vec<((i32, i32), String)> = Vec::new();
+    for (_, dx, dz, s, h, blk) in heaps {
+        let (x, z) = ((point[0] + dx).floor() as i32, (point[2] + dz).floor() as i32);
+        let (lo, hi) = (s / 2, (s - 1) / 2);
+        out.push(((z >> 4, x >> 4), surf(x, z, &format!("fill ~-{lo} ~-3 ~-{lo} ~{hi} ~{} ~{hi} {blk} replace minecraft:air strict", h - 1))));
+    }
+    for _ in 0..50 {
+        // boulders, tumbled over it
+        let a = p.rng.uniform(q0, q1);
+        let rr = PK_BOWL + 6.0 + 90.0 * p.rng.next().powf(1.6);
+        let (dx, dz) = (a.cos() * rr, a.sin() * rr);
+        if pk_depth(dx, dz, seed, bottom) > 0 || pk_on_crack(dx, dz, seed as f32, 3.0) {
+            continue;
+        }
+        let (x, z) = ((point[0] + dx).floor() as i32, (point[2] + dz).floor() as i32);
+        let (s, h) = (p.rng.int(1, 2), p.rng.int(1, 3));
+        let blk = *p.rng.pick(&BOULDER);
+        out.push(((z >> 4, x >> 4), surf(x, z, &format!("fill ~-{s} ~ ~-{s} ~{s} ~{h} ~{s} {blk} replace minecraft:air strict"))));
+    }
+    // (a chunk at a time: what one tick changes is in few chunks, each lit and meshed again once; the heaps under the
+    // boulders first)
+    out.sort_by_key(|o| o.0);
+    for (_, c) in out {
+        p.at(t, c);
+    }
+}
+
+/// The land charred round it (a quarter of it, `part`), out to PK_CHAR, and the rubble strewn over it (pk_rubble): the earth of its top few blocks burnt to coarse
+/// dirt, ash and cinders, blackstone and basalt in towards the crater, the rays streaking pale rock out over it, the
+/// last of it in patches. Only where it is earth (`#minecraft:substrate_overworld`), so the rock thrown up stays.
+fn pk_char(p: &mut Plan, point: [f64; 3], seed: u32, part: u32, t: f32) {
+    const BURNT: [&str; 7] = ["minecraft:coarse_dirt", "minecraft:coarse_dirt", "minecraft:dirt", "minecraft:tuff", "minecraft:coarse_dirt", "minecraft:smooth_basalt", "minecraft:gravel"];
+    const NEAR: [&str; 5] = ["minecraft:blackstone", "minecraft:basalt", "minecraft:coarse_dirt", "minecraft:blackstone", "minecraft:magma_block"];
+    const RAY: [&str; 5] = ["minecraft:tuff", "minecraft:gravel", "minecraft:stone", "minecraft:cobblestone", "minecraft:andesite"];
+    let by = p.by;
+    let (bx, bz) = ((point[0].floor() as i32) & !7, (point[2].floor() as i32) & !7);
+    let span = (PK_CHAR as i32) / 8 + 1;
+    let mut boxes = Vec::new();
+    for j in -span..=span {
+        for i in -span..=span {
+            let (x, z) = (bx + i * 8, bz + j * 8);
+            let (dx, dz) = (f64::from(x) + 4.0 - point[0], f64::from(z) + 4.0 - point[2]);
+            let r = dx.hypot(dz);
+            let a = dz.atan2(dx).rem_euclid(2.0 * PI);
+            if a < f64::from(part) * PI / 2.0 || a >= f64::from(part + 1) * PI / 2.0 || r < PK_BOWL * 0.92 {
+                continue;
+            }
+            let n = vnoise(dx, dz, 30.0, seed ^ 0xa1);
+            let ray = pk_ray(dx, dz, seed);
+            let reach = PK_CHAR * (0.82 + 0.18 * n);
+            if r > reach && ray < 0.4 {
+                continue;
+            }
+            let near = 1.0 - ((r - PK_BOWL) / (PK_CHAR - PK_BOWL)).clamp(0.0, 1.0);
+            let m = vnoise(dx, dz, 9.0, seed ^ 0xa2);
+            let blk = if ray > 0.45 && m > 0.3 {
+                RAY[((m * 0.6 + n * 0.4) * RAY.len() as f64).min(RAY.len() as f64 - 1.0) as usize]
+            } else if m < near * near * 0.7 {
+                NEAR[((n * 0.6 + m * 0.4) * NEAR.len() as f64).min(NEAR.len() as f64 - 1.0) as usize]
+            } else {
+                BURNT[((n * 0.5 + m * 0.5) * BURNT.len() as f64).min(BURNT.len() as f64 - 1.0) as usize]
+            };
+            boxes.push(((z >> 4, x >> 4), format!("fill {x} {} {z} {} {} {} {blk} replace #minecraft:substrate_overworld strict", by - 3, x + 7, by + 1, z + 7)));
+        }
+    }
+    // (a chunk at a time)
+    boxes.extend(pk_rubble(p, point, seed, part));
+    boxes.sort_by_key(|b| b.0);
+    for (_, c) in boxes {
+        p.at(t, c);
+    }
+}
+
+/// Fissure `i`'s stretch `u0..u1` blocks past PK_RIM split open as the split runs out to it: a chasm deepest and widest by
+/// the crater (40 blocks down), its floor magma. Cut a few blocks at a time along its line, each piece
+/// from the ground at its own middle, which no piece before it has cut.
 fn pk_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, u0: f64, u1: f64) {
     let len = pk_crack(i, seed).1;
-    let lava = i.is_multiple_of(3);
-    let mut seen = std::collections::HashSet::new();
     let mut u = u0;
     while u < u1 {
         let a = pk_crack_at(i, u, seed);
         let r = PK_RIM + u;
-        let (dx, dz) = (a.cos(), a.sin());
         let share = 1.0 - u / len;
-        let hw = 0.8 + 3.5 * share;
-        let depth = (4.0 + 30.0 * share).round() as i32;
+        let h = (1.0 + 4.5 * share).round() as i32;
+        let w = 2 * h + 1;
+        let depth = (4.0 + 36.0 * share).round() as i32;
         let t = PK_BURST + pk_crack_time(u);
-        let mut o = -hw - 0.7;
-        while o <= hw + 0.7 + 1e-6 {
-            let (x, z) = ((point[0] + dx * r - dz * o).floor() as i32, (point[2] + dz * r + dx * o).floor() as i32);
-            if seen.insert((x, z)) {
-                if o.abs() > hw {
-                    // the wall, fused
-                    p.at(t, surf(x, z, &format!("fill ~ ~-{depth} ~ ~ ~-2 ~ minecraft:basalt replace #minecraft:base_stone_overworld")));
-                } else {
-                    p.at(t, surf(x, z, &format!("fill ~ ~-{} ~ ~ ~-1 ~ minecraft:magma_block", depth + 1)));
-                    p.at(t, surf(x, z, &format!("fill ~ ~-{depth} ~ ~ ~-1 ~ minecraft:air")));
-                    if lava && o.abs() < hw * 0.6 {
-                        p.at(t + 0.05, surf(x, z, "setblock ~ ~-1 ~ minecraft:lava"));
-                    }
-                }
-            }
-            o += 0.7;
-        }
-        if (u / 8.0).fract() < 0.06 {
-            let (x, z) = ((point[0] + dx * r).floor() as i32, (point[2] + dz * r).floor() as i32);
+        let (x, z) = ((point[0] + a.cos() * r).floor() as i32, (point[2] + a.sin() * r).floor() as i32);
+        let e = depth + 1;
+        p.at(t, surf(x, z, &format!("fill ~-{h} ~-{e} ~-{h} ~{h} ~-{e} ~{h} minecraft:magma_block strict")));
+        p.at(t, surf(x, z, &format!("fill ~-{h} ~-{depth} ~-{h} ~{h} ~-1 ~{h} minecraft:air strict")));
+        if p.rng.next() < 0.25 {
             let pitch = p.rng.uniform(0.5, 0.75);
             p.at(t, surf(x, z, &format!("playsound minecraft:block.basalt.break block @a ~ ~ ~ 4 {pitch:.2}")));
-            p.at(t, surf(x, z, "particle minecraft:lava ~ ~ ~ 2 1 2 0 10 force"));
+            p.at(t, surf(x, z, "particle minecraft:lava ~ ~ ~ 2 1 2 0 6 force"));
         }
-        u += 0.5;
+        u += (f64::from(w) * 0.75).max(2.0);
     }
 }
 
-/// Rock thrown out of the crater as the land bursts: real blocks flying out over the land.
+/// Rock thrown out of the crater as the land bursts: real blocks flying out over the land, few enough that the game
+/// carries them easily (the pass draws the rest), launched past the last of the kills so they come down.
 fn pk_ejecta(p: &mut Plan, point: [f64; 3]) {
     let by = p.by;
-    for _ in 0..260 {
+    for _ in 0..70 {
         let a = p.rng.uniform(0.0, 2.0 * PI);
-        let rr = p.rng.uniform(20.0, 110.0);
+        let rr = p.rng.uniform(90.0, 200.0);
         let (x, z) = (point[0] + a.cos() * rr, point[2] + a.sin() * rr);
-        let elev = 0.4 + 0.9 * p.rng.next().powf(0.7);
-        let speed = (1.8 + 3.0 * p.rng.next().powi(2)) * p.rng.uniform(0.7, 1.3);
+        let elev = 0.5 + 0.6 * p.rng.next();
+        let speed = p.rng.uniform(1.6, 3.2);
         let (vx, vy, vz) = (a.cos() * elev.cos() * speed, elev.sin() * speed, a.sin() * elev.cos() * speed);
         let blk = *p.rng.pick(&PK_EJECTA);
-        let tl = PK_BURST + (0.05 + 1.0 * p.rng.next().powi(2)) as f32;
+        let tl = PK_BURST + p.rng.uniform(0.15, 1.6) as f32;
         p.at(tl, format!("summon minecraft:falling_block {x:.1} {} {z:.1} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}", by + 3));
     }
 }
@@ -3463,39 +3856,34 @@ const PK_EJECTA: [&str; 7] = [
     "minecraft:cobbled_deepslate",
     "minecraft:basalt",
     "minecraft:magma_block",
-    "minecraft:dirt",
+    "minecraft:tuff",
 ];
 
-/// Out past the rim: boulders and rubble coming down across the land out to 400 blocks, and the charred land burning.
-fn pk_rubble(p: &mut Plan) {
-    let t = PK_BURST;
-    let (bx, bz) = (p.bx, p.bz);
-    for _ in 0..220 {
-        let a = p.rng.uniform(0.0, 2.0 * PI);
-        let rr = f64::from(PK_RIM_OUT) + 150.0 * p.rng.next().powf(1.3);
-        let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
-        let tl = t + 1.5 + (rr / 330.0 * 4.0) as f32 + p.rng.uniform(0.0, 1.0) as f32;
-        let blk = *p.rng.pick(&PK_EJECTA);
-        let s = if p.rng.next() < 0.3 { 1 } else { 0 };
-        p.at(tl, surf(x, z, &format!("fill ~-{s} ~ ~-{s} ~{s} ~{s} ~{s} {blk} keep")));
-    }
-    for k in 0..360 {
-        let a = p.rng.uniform(0.0, 2.0 * PI);
-        let rr = f64::from(PK_RIM_OUT) + 225.0 * p.rng.next().powf(1.4);
-        let (x, z) = (bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32);
-        let tl = t + 2.0 + (rr / 400.0 * 5.0) as f32 + p.rng.uniform(0.0, 1.2) as f32;
-        let blk = *p.rng.pick(&PK_EJECTA);
-        p.at(tl, surf(x, z, &format!("setblock ~ ~ ~ {blk} keep")));
-        if k % 5 == 0 {
-            p.at(tl, surf(x, z, &format!(r#"particle minecraft:block{{block_state:"{blk}"}} ~ ~0.5 ~ 0.6 0.4 0.6 0.2 16 force"#)));
+/// Out past the rim (a quarter of it round, `part`): boulders and rubble come down across the land, thicker near the
+/// crater and along the rays. Each with the chunk it lands in, to be made with the rest of that chunk's changes.
+fn pk_rubble(p: &mut Plan, point: [f64; 3], seed: u32, part: u32) -> Vec<((i32, i32), String)> {
+    let mut out = Vec::new();
+    let mut k = 0;
+    while out.len() < 120 && k < 1000 {
+        k += 1;
+        let a = p.rng.uniform(f64::from(part) * PI / 2.0, f64::from(part + 1) * PI / 2.0);
+        let rr = PK_BOWL + 10.0 + (PK_THROW - PK_BOWL - 10.0) * p.rng.next().powf(1.2);
+        let (dx, dz) = (a.cos() * rr, a.sin() * rr);
+        // (thinning out away from it, and off the rays)
+        let keep = (PK_BOWL / rr).powi(2) * (0.35 + 0.65 * pk_ray(dx, dz, seed));
+        if p.rng.next() > keep || pk_on_crack(dx, dz, seed as f32, 1.0) {
+            continue;
         }
+        let (x, z) = ((point[0] + dx).floor() as i32, (point[2] + dz).floor() as i32);
+        let blk = *p.rng.pick(&PK_EJECTA);
+        let c = if p.rng.next() < 0.4 {
+            format!("fill ~ ~ ~ ~1 ~ ~1 {blk} replace minecraft:air strict")
+        } else {
+            format!("setblock ~ ~ ~ {blk} strict")
+        };
+        out.push(((z >> 4, x >> 4), surf(x, z, &c)));
     }
-    for _ in 0..200 {
-        let a = p.rng.uniform(0.0, 2.0 * PI);
-        let rr = p.rng.uniform(f64::from(PK_RIM_OUT) + 4.0, 290.0);
-        let dt = p.rng.uniform(1.5, 7.0) as f32;
-        p.at(t + dt, surf(bx + (a.cos() * rr).round() as i32, bz + (a.sin() * rr).round() as i32, "setblock ~ ~ ~ minecraft:fire keep"));
-    }
+    out
 }
 
 #[cfg(test)]
@@ -3986,84 +4374,129 @@ mod tests {
                     let last_remove = cmds.iter().filter(|(_, c)| *c == a.replace("add", "remove")).map(|(t, _)| *t).fold(-1.0, f32::max);
                     assert!(last_remove >= last_add, "{a} taken again after it was let go");
                 }
-                let mut chunks = 0;
+                let mut chunks = std::collections::HashSet::new();
                 for a in &adds {
                     let n: Vec<i32> = a.split_whitespace().skip(2).map(|v| v.parse().unwrap()).collect();
                     let c = ((n[2] >> 4) - (n[0] >> 4) + 1) * ((n[3] >> 4) - (n[1] >> 4) + 1);
                     assert!(c <= 256, "{a}: {c} chunks");
-                    chunks += c;
+                    for cx in (n[0] >> 4)..=(n[2] >> 4) {
+                        for cz in (n[1] >> 4)..=(n[3] >> 4) {
+                            chunks.insert((cx, cz));
+                        }
+                    }
                     assert!(cmds.iter().any(|(_, c)| *c == a.replace("add", "remove")), "{a} never let go");
                 }
-                assert!(chunks <= 1100, "{chunks} chunks");
+                assert!(chunks.len() <= 2000, "{} chunks", chunks.len());
             }
         }
     }
     #[test]
     fn planetkiller_crater_follows_the_shader() {
-        // the crater is dug 3 blocks at a time when strike.wgsl starts each glowing (pk_dig_t, PK_DIG0, PK_DIG_DT), never
-        // wider than its bowl, its terraces stepping in, down to bowl_d, with a lake of lava on its floor
-        let laser = &crate::lasers::PLANET_KILLER;
-        let cmds = pk_cmds([10.5, 66.0, 400.0], "minecraft:overworld");
-        let mut layers = 0;
-        for d in (0..laser.bowl_d).step_by(3) {
-            let r = pk_bowl_r(d, laser.bowl_r, laser.bowl_d);
-            assert!(r <= laser.bowl_r && r >= 18 && (d == 0 || r <= pk_bowl_r(d - 3, laser.bowl_r, laser.bowl_d)), "{d}: {r}");
-            let (y_lo, y_hi) = (64 - d - 2, 64 - d);
-            let dug: Vec<&(f32, String)> = cmds
-                .iter()
-                .filter(|(_, c)| {
-                    let w: Vec<&str> = c.split_whitespace().collect();
-                    w.len() == 8 && w[0] == "fill" && w[7] == "minecraft:air" && w[2] == y_lo.to_string() && w[5] == y_hi.to_string()
-                })
-                .collect();
-            assert!(!dug.is_empty(), "nothing dug at {d}");
-            for (t, c) in dug {
-                assert!((t - pk_dig_t(d)).abs() < 1e-4, "{d}: dug at {t}, not {}", pk_dig_t(d));
-                let w: Vec<i32> = c.split_whitespace().skip(1).take(6).map(|v| v.parse().unwrap()).collect();
-                for x in [w[0], w[3]] {
-                    assert!((x - 10).abs() <= (f64::from(r) * 1.07) as i32 + 1, "{d}: {c} wider than {r}");
-                }
+        // the crater is dug from the middle out when strike.wgsl starts each part of it glowing (pk_dig_t, pk_vol), each
+        // column as deep as pk_depth0 has it there, give or take its terraces and its heaps, the shaft to bedrock, and
+        // never wider than its wandering edge; pk_vol is pk_depth0 over the disc
+        let mut v = 0.0;
+        for k in 0..2600 {
+            let r = (f64::from(k) + 0.5) * 0.1;
+            v += 2.0 * PI * r * pk_depth0(r) * 0.1;
+            if k % 100 == 99 {
+                assert!((v - pk_vol(r + 0.05)).abs() < v * 0.002 + 50.0, "{r}: {v} against {}", pk_vol(r + 0.05));
             }
-            layers += 1;
         }
-        assert_eq!(layers, (laser.bowl_d + 2) / 3);
-        let floor = 64 - laser.bowl_d;
-        assert!(cmds.iter().any(|(_, c)| c.ends_with("minecraft:lava replace minecraft:air") && c.contains(&format!(" {} ", floor + 1))));
+        for k in 1..300 {
+            assert!(pk_dig_t(f64::from(k)) >= pk_dig_t(f64::from(k - 1)) && pk_land_t(f64::from(k + 100)) >= pk_land_t(f64::from(k + 99)));
+        }
+        let cmds = pk_cmds([10.5, 66.0, 400.0], "minecraft:overworld");
+        let (point, by, floor) = ([10.5, 65.0, -2.5], 64, -59);
+        let mut cols = 0;
+        let mut deepest = 0;
+        for (t, c) in &cmds {
+            let w: Vec<&str> = c.split_whitespace().collect();
+            if w.len() < 8 || w[0] != "fill" || w[7] != "minecraft:air" || w.contains(&"replace") {
+                continue;
+            }
+            let n: Vec<i32> = w[1..7].iter().map(|v| v.parse().unwrap()).collect();
+            if n[1] > by {
+                continue;
+            }
+            let (xm, zm) = (f64::from(n[0] + n[3] + 1) / 2.0 - point[0], f64::from(n[2] + n[5] + 1) / 2.0 - point[2]);
+            let r = xm.hypot(zm);
+            assert!(r < PK_EDGE + 3.0, "dug {r:.0} out: {c}");
+            let cell = 12.0 * f64::from(u8::from(n[3] - n[0] < 8)) + 12.0;
+            let (t0, t1) = (pk_queue_t(pk_dig_t((r - cell).max(0.0))), pk_queue_t(pk_dig_t(r + cell)));
+            assert!(*t >= t0 - 1e-3 && *t <= t1 + 1e-3, "{r:.0} out dug at {t}, not {t0}..{t1}: {c}");
+            let depth = by - n[1] + 1;
+            deepest = deepest.max(depth);
+            if n[3] - n[0] == 3 {
+                // (the floor about as deep as it is drawn, the walls no deeper than the floor and shallowing out)
+                if r > PK_SHAFT * 1.25 && r < PK_FLOOR * 0.85 {
+                    assert!((f64::from(depth) - pk_depth0(r)).abs() < 12.0, "{r:.0} out dug {depth} deep, not about {:.0}: {c}", pk_depth0(r));
+                } else if r > PK_FLOOR * 1.15 {
+                    assert!(f64::from(depth) <= PK_WALL_D + 8.0 && f64::from(depth) <= pk_depth0(r * 0.88) + 12.0, "{r:.0} out dug {depth} deep: {c}");
+                }
+                cols += 1;
+            }
+        }
+        assert!(cols > 8000, "{cols} columns");
+        assert_eq!(deepest, by - floor + 1, "the shaft reaches bedrock");
+        // nothing that flows or spreads: no lava, no fire, anywhere
+        for (_, c) in &cmds {
+            let run = c.rsplit(" run ").next().unwrap();
+            if run.starts_with("fill") || run.starts_with("setblock") {
+                assert!(!c.contains("minecraft:lava") && !c.contains("minecraft:fire") && !c.contains("minecraft:water"), "{c}");
+            }
+        }
+    }
+    #[test]
+    fn planetkiller_changes_nothing_round_it() {
+        // every block it changes is changed `strict`: nothing round it is told, so no sand or gravel falls, no water or
+        // lava flows and no leaves decay, all through the crater's walls and the land round it
+        let cmds = pk_cmds([10.5, 66.0, 400.0], "minecraft:overworld");
+        for (_, c) in &cmds {
+            let run = c.rsplit(" run ").next().unwrap();
+            if run.starts_with("fill") || run.starts_with("setblock") {
+                assert!(run.ends_with(" strict"), "{c}");
+            }
+        }
+        let thrown = cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")).count();
+        assert!(thrown <= 80, "{thrown} blocks thrown");
+        // (nor are they killed in the air as the land round it is cleared of what lives there)
+        assert!(cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block")));
     }
     #[test]
     fn planetkiller_cracks_follow_the_shader() {
-        // each fissure's columns lie along the line strike.wgsl draws it on (pk_crack, pk_crack_at), are cut as its split
-        // runs out to them, deepest by the crater, and every third runs with lava
+        // each fissure is cut along the line strike.wgsl draws it on (pk_crack, pk_crack_at), as its split runs out to
+        // it, deepest by the crater; its floor magma, no lava
         let point = [10.5, 65.0, -2.5];
         for i in 0..PK_CRACKS {
             let mut p = Plan { laser: &crate::lasers::PLANET_KILLER, ev: Vec::new(), rng: Rng::new(7), bx: 10, by: 64, bz: -3 };
             let len = pk_crack(i, 37.0).1;
             pk_fissure(&mut p, point, i, 37.0, 0.0, len / 2.0);
             pk_fissure(&mut p, point, i, 37.0, len / 2.0, len);
-            let mut cols = 0;
+            let mut cuts = 0;
+            let mut reach: f64 = 0.0;
             for (t, a) in &p.ev {
                 let Act::Cmd(c) = a else { continue };
-                if !c.ends_with("minecraft:air") {
+                assert!(!c.contains("minecraft:lava ") || c.contains("particle"), "{c}");
+                if !c.ends_with("minecraft:air strict") {
                     continue;
                 }
                 let w: Vec<&str> = c.split_whitespace().collect();
                 let (x, z) = (w[2].parse::<f64>().unwrap() + 0.5 - point[0], w[4].parse::<f64>().unwrap() + 0.5 - point[2]);
                 let r = x.hypot(z);
                 let u = r - PK_RIM;
-                assert!(u > -5.0 && u < len + 5.0, "fissure {i}: a column {r:.1} out");
+                assert!(u > -2.0 && u < len + 2.0, "fissure {i}: a cut {r:.1} out");
                 let a = pk_crack_at(i, u.clamp(0.0, len), 37.0);
                 let lat = (x * a.sin() - z * a.cos()).abs();
-                assert!(lat < 5.5, "fissure {i}: a column {lat:.1} off its line");
-                // (the split runs out in lurches and waits between them: a column's centre may sit either side of a wait)
+                assert!(lat < 2.0, "fissure {i}: a cut {lat:.1} off its line");
                 let (t0, t1) = (PK_BURST + pk_crack_time((u - 1.5).max(0.0)), PK_BURST + pk_crack_time((u + 1.5).max(0.0)));
                 assert!(*t >= t0 - 0.05 && *t <= t1 + 0.05, "fissure {i}: cut at {t} at {u:.1}, not {t0}..{t1}");
-                let deep: i32 = w[w.len() - 6].trim_start_matches("~-").parse().unwrap();
-                assert!(deep <= 34 && (u > len * 0.2 || deep >= 25), "fissure {i}: {deep} deep at {u:.1}");
-                cols += 1;
+                let deep: i32 = w[w.len() - 7].trim_start_matches("~-").parse().unwrap();
+                assert!(deep <= 40 && (u > len * 0.2 || deep >= 30), "fissure {i}: {deep} deep at {u:.1}");
+                cuts += 1;
+                reach = reach.max(u);
             }
-            assert!(cols as f64 > len * 2.0, "fissure {i}: {cols} columns");
-            let lava = p.ev.iter().any(|(_, a)| matches!(a, Act::Cmd(c) if c.ends_with("setblock ~ ~-1 ~ minecraft:lava")));
-            assert_eq!(lava, i % 3 == 0, "fissure {i}");
+            assert!(cuts as f64 > len / 9.0 && reach > len * 0.9, "fissure {i}: {cuts} cuts, out to {reach:.0} of {len:.0}");
         }
     }
     #[test]
@@ -4191,6 +4624,158 @@ mod replay {
         for w in worst.iter().take(8) {
             println!("{:7.2} ms at {:5.2} s, {} events", w.0, w.1, w.2);
         }
+    }
+    /// What each tick of a strike asks of the game, played out as lib.rs's carve does (BLOCK_BUDGET and CARVE_CMDS a
+    /// tick, in order, then the spare ones): the world-changing commands, the blocks they visit, those changed with
+    /// their side effects (not `strict`: each tells its neighbours, so sand falls and water flows), the chunk sections
+    /// they touch (each to be lit and meshed again), and the thrown blocks in the air. `cargo test --release
+    /// tick_profile -- --ignored --nocapture`, ORBITAL_CARVE the laser.
+    #[test]
+    #[ignore]
+    fn tick_profile() {
+        let key = std::env::var("ORBITAL_CARVE").unwrap_or("6".into()).parse::<usize>().unwrap();
+        let laser = crate::lasers::LASERS[key];
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
+        let mut all: Vec<(f32, String, bool)> = Vec::new();
+        while let Some((t, a)) = ev.pop() {
+            match a {
+                Act::Cmd(c) => all.push((t, c, false)),
+                Act::Spare(c) => all.push((t, c, true)),
+                Act::Later(job) => ev.extend(job()),
+                _ => {}
+            }
+        }
+        all.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // the chunk sections a command touches (a column's, round the ground, when it is measured from the ground)
+        let sections = |c: &str, out: &mut std::collections::HashSet<(i32, i32, i32)>| {
+            let w: Vec<&str> = c.split_whitespace().collect();
+            if w.first() == Some(&"execute") {
+                let (x, z) = (w[2].parse::<i32>().unwrap_or(0), w[4].parse::<i32>().unwrap_or(0));
+                out.insert((x >> 4, 64 >> 4, z >> 4));
+                return;
+            }
+            if w.first() == Some(&"setblock") && w.len() > 3 {
+                let n: Vec<i32> = w[1..4].iter().map(|v| v.parse().unwrap_or(0)).collect();
+                out.insert((n[0] >> 4, n[1] >> 4, n[2] >> 4));
+                return;
+            }
+            if w.first() != Some(&"fill") || w.len() < 7 {
+                return;
+            }
+            let n: Vec<i32> = w[1..7].iter().map(|v| v.parse().unwrap_or(0)).collect();
+            for sx in (n[0].min(n[3]) >> 4)..=(n[0].max(n[3]) >> 4) {
+                for sy in (n[1].min(n[4]) >> 4)..=(n[1].max(n[4]) >> 4) {
+                    for sz in (n[2].min(n[5]) >> 4)..=(n[2].max(n[5]) >> 4) {
+                        out.insert((sx, sy, sz));
+                    }
+                }
+            }
+        };
+        // a thrown block's time in the air: vanilla's falling block (gravity 0.04 a tick, drag 0.98), down to the ground
+        let flight = |c: &str| -> u32 {
+            let m = c.split("Motion:[").nth(1).unwrap_or("0d,0d,0d]");
+            let v: Vec<f64> = m.split(']').next().unwrap().split(',').map(|s| s.trim_end_matches('d').parse().unwrap_or(0.0)).collect();
+            let (mut y, mut vy, mut n) = (3.0, v.get(1).copied().unwrap_or(0.0), 0);
+            while y > 0.0 && n < 600 {
+                vy = (vy - 0.04) * 0.98;
+                y += vy;
+                n += 1;
+            }
+            n
+        };
+        let budget = 20_000u64;
+        let (mut queue, mut spares) = (std::collections::VecDeque::new(), std::collections::VecDeque::new());
+        let (mut next, mut tick) = (0, 0u32);
+        let mut airborne: Vec<u32> = Vec::new();
+        // (tick, commands, blocks, blocks changed with side effects, sections, in the air)
+        let mut rows: Vec<(f32, usize, u64, u64, usize, usize)> = Vec::new();
+        let mut first: Vec<String> = Vec::new();
+        while next < all.len() || !queue.is_empty() || !spares.is_empty() {
+            tick += 1;
+            let now = tick as f32 * 0.05;
+            while next < all.len() && all[next].0 <= now {
+                let (_, c, sp) = &all[next];
+                match (sp, block_cost(c)) {
+                    (true, cost) => spares.push_back((cost.unwrap_or(1), c.clone())),
+                    (false, Some(cost)) => queue.push_back((cost, c.clone())),
+                    (false, None) => {
+                        if c.contains("kill @e") && !c.contains("falling_block") {
+                            airborne.clear();
+                        }
+                    }
+                }
+                next += 1;
+            }
+            let (mut spent, mut cmds, mut loud) = (0, 0, 0);
+            let mut secs = std::collections::HashSet::new();
+            let mut what = String::new();
+            let mut run = |cost: u64, c: &str, spent: &mut u64, cmds: &mut usize, loud: &mut u64, airborne: &mut Vec<u32>| {
+                *spent += cost;
+                *cmds += 1;
+                let r = c.rsplit(" run ").next().unwrap_or(c);
+                if !r.ends_with(" strict") && (r.starts_with("fill") || r.starts_with("setblock")) {
+                    *loud += cost;
+                }
+                if r.starts_with("summon minecraft:falling_block") {
+                    airborne.push(tick + flight(c));
+                }
+                sections(c, &mut secs);
+            };
+            while let Some((cost, _)) = queue.front() {
+                if spent > 0 && (spent + cost > budget || cmds >= crate::CARVE_CMDS) {
+                    break;
+                }
+                let (cost, c) = queue.pop_front().unwrap();
+                if what.is_empty() {
+                    what = c.clone();
+                }
+                run(cost, &c, &mut spent, &mut cmds, &mut loud, &mut airborne);
+            }
+            while queue.is_empty() && let Some((cost, _)) = spares.front() {
+                if spent > 0 && (spent + cost > budget || cmds >= crate::CARVE_CMDS) {
+                    break;
+                }
+                let (cost, c) = spares.pop_front().unwrap();
+                run(cost, &c, &mut spent, &mut cmds, &mut loud, &mut airborne);
+            }
+            airborne.retain(|&t| t > tick);
+            rows.push((now, cmds, spent, loud, secs.len(), airborne.len()));
+            first.push(what);
+        }
+        let pct = |v: &mut Vec<f64>, q: f64| -> f64 {
+            v.sort_by(|a, b| a.total_cmp(b));
+            if v.is_empty() { 0.0 } else { v[((v.len() - 1) as f64 * q) as usize] }
+        };
+        for (name, lo, hi) in [("the strike (0-30.5 s)", 0.0, laser.length), ("after it", laser.length, 1.0e9)] {
+            let sel: Vec<_> = rows.iter().filter(|r| r.0 >= lo && r.0 < hi && r.1 > 0).collect();
+            let col = |f: &dyn Fn(&(f32, usize, u64, u64, usize, usize)) -> f64| sel.iter().map(|r| f(r)).collect::<Vec<f64>>();
+            let (mut c, mut b, mut l, mut s) = (col(&|r| r.1 as f64), col(&|r| r.2 as f64), col(&|r| r.3 as f64), col(&|r| r.4 as f64));
+            let air = rows.iter().filter(|r| r.0 >= lo && r.0 < hi).map(|r| r.5).max().unwrap_or(0);
+            println!("{name}: {} working ticks; per tick (median / 95th / most): commands {:.0} / {:.0} / {:.0}, blocks {:.0} / {:.0} / {:.0}, side-effect blocks {:.0} / {:.0} / {:.0}, sections {:.0} / {:.0} / {:.0}; thrown blocks in the air at once, most {air}",
+                sel.len(), pct(&mut c, 0.5), pct(&mut c, 0.95), pct(&mut c, 1.0), pct(&mut b, 0.5), pct(&mut b, 0.95), pct(&mut b, 1.0),
+                pct(&mut l, 0.5), pct(&mut l, 0.95), pct(&mut l, 1.0), pct(&mut s, 0.5), pct(&mut s, 0.95), pct(&mut s, 1.0));
+        }
+        let mut by_secs: Vec<usize> = (0..rows.len()).collect();
+        by_secs.sort_by_key(|&i| std::cmp::Reverse(rows[i].4.max(rows[i].1 / 4)));
+        for &i in by_secs.iter().take(4) {
+            println!("  busiest: {:5.2} s, {} commands, {} sections: {}", rows[i].0, rows[i].1, rows[i].4, &first[i][..first[i].len().min(110)]);
+        }
+        // the chunks it keeps loaded (each loaded and ticking is work for the game), and when
+        let mut loaded: std::collections::BTreeMap<String, std::collections::HashSet<(i32, i32)>> = Default::default();
+        for (t, c, _) in all.iter().filter(|a| a.1.starts_with("forceload add")) {
+            let n: Vec<i32> = c.split_whitespace().skip(2).map(|v| v.parse().unwrap()).collect();
+            let set = loaded.entry(format!("{t:.1} s")).or_default();
+            for cx in (n[0] >> 4)..=(n[2] >> 4) {
+                for cz in (n[1] >> 4)..=(n[3] >> 4) {
+                    set.insert((cx, cz));
+                }
+            }
+        }
+        let every: std::collections::HashSet<_> = loaded.values().flatten().collect();
+        println!("chunks force-loaded: {} in all ({})", every.len(), loaded.iter().map(|(t, s)| format!("{} from {t}", s.len())).collect::<Vec<_>>().join(", "));
+        let total_secs: usize = rows.iter().map(|r| r.4).sum();
+        println!("sections touched in all (each touch a relight and a remesh): {total_secs}; all done by {:.1} s", rows.last().map(|r| r.0).unwrap_or(0.0));
     }
     /// A strike's world changes drained through the block budget as the mod does (lib.rs's carve: BLOCK_BUDGET a tick,
     /// in order, then the spare ones), to see how many blocks it changes, how far behind their time they are made, and
