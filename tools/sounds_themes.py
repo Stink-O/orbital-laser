@@ -1500,7 +1500,7 @@ def planetkiller():
     # arcs: the bolts held, from the first striking the ring (the strike's 4.2 s) until the towers cut out (17.65 s):
     # their crackle and the buzzing electric hum of all that power, swelling as each strikes (seven of them, 0.4 s apart),
     # surging, snapping now and then as one is struck again; stuttering out at the end. No tone in it: a buzz of noise.
-    d = 13.75; n = int(SR * d); t = tt(d)
+    d = 13.9; n = int(SR * d); t = tt(d)
     count = sum(np.clip((t - 0.4 * k) / 0.08, 0, 1) for k in range(7)) / 7.0
     L = np.zeros(n); R = np.zeros(n)
     for k, ch in enumerate((L, R)):
