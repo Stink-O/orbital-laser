@@ -92,6 +92,28 @@ All of them:
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
 
+## What each strike destroys
+
+Every strike is permanent. Players are spared. The ship lasers and the Planet Killer keep the chunks they work on loaded while they work.
+
+
+- **Plasma, Godly, Black Hole:** everything above the ground flattened within about 44 blocks (52 for the Black
+  Hole), a crater about 60 across, a shaft to bedrock, the land scorched round it, every mob and dropped item within
+  40 blocks killed. Players are spared.
+- **Meteor Storm:** craters across 120 blocks round the target, then everything above the ground flattened out to
+  100, a crater about 125 across, the land charred out to 135, rubble out to 250, every mob within 130 killed.
+- **Mothership:** the land vaporised out to 34 blocks, a crater 22 across, a shaft to bedrock, and a trench 100 blocks
+  long, up to 15 wide and 17 deep, cut away from you. The ship lasers keep the chunks they work on loaded.
+- **Downfall:** a kilometre-long wreck buried at least 360 blocks in front of you, the land under its whole length
+  crushed, the ground it shoved aside heaped along both sides, then the black hole's crater with arms out to 150
+  blocks and a shaft to bedrock, every mob under the ship and round the hole killed. The crushing goes on for up to a
+  minute after the strike, and under the far end of the hull it may be skipped past what the game has loaded.
+- **Planet Killer, the biggest:** everything above the ground flattened out to 340 blocks, a crater 480 across with
+  terraced walls 60 deep and an open shaft 80 across down to bedrock, a broken rim of rock out to 340, twelve chasms up
+  to 40 deep out to about 400, the land charred and strewn with rubble out to 380, and every mob within 280 killed.
+  Stand at least 450 blocks back. It keeps about 1,900 chunks loaded while it works; its land is done about 25
+  seconds into the strike.
+
 ## Commands
 
 | Command | What it does |
