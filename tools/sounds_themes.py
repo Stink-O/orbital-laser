@@ -1456,11 +1456,13 @@ def pk_fire(th):
 
 
 def pk_cutoff(th):
-    """cutoff: the towers cutting out (at the strike's 17.65 s) and the ring crushed into the crater, bursting 0.9 s later.
-    The roar dying away down to nothing, then the air sucked in, building, to where the ring was, a breath held, and the
-    burst: the explosion again (the land's burst, shorter), rolling off the land and the sky for a long time"""
+    """cutoff: the towers cutting out (at the strike's 17.65 s) and the last of the beam and the ring crushed into the
+    crater, bursting there 0.9 s later. The roar dying away down to nothing as the bolts stutter out, then the rush of it
+    falling, the air sucked in after it, building; a breath; and the burst: the land's explosion again at full weight
+    (its own take), rolling off the land and the sky for as long as the first."""
     import sounds_pk_blast as PB
-    d = 13.0; n = int(SR * d); t = tt(d); tp = 0.9
+    tp = 0.9
+    d = 19.3; n = int(SR * d); t = tt(d)
     with PB.seeded(63001):
         drain = lowpass_glide(roar_bed(d, 110, 50, 3.0, 0.3) * 0.9, 2400, 120, curve=0.4) * np.clip((tp - 0.35 - t) / 0.15, 0, 1)
         suck = (glide_noise(d, 120, 1800, 1.5, curve=2.2) * 0.6 + band(white(d), 20, 90) * 0.5) * np.clip((t - 0.35) / (tp - 0.35), 0, 1) ** 3 * (t < tp - 0.01)
@@ -1468,15 +1470,21 @@ def pk_cutoff(th):
         stut = (rng.random(int(d * 22) + 2)[(t * 22).astype(int)] > 0.45) * np.clip((0.4 - t) / 0.35, 0, 1)
         drain = drain + crackle(d, rate=2500, decay=0.0008, lo=1200, hi=9000, heavy=1.2) * stut * 0.5
         build = drain + suck
-        EL, ER = PB.explosion(d, tp, stretch=0.4, crack=1.2, debris=0.5)
-        k = loudest(build[:int(tp * SR)]) / loudest((EL + ER) / 2)
-        crk = PB.bolt_crack(n, int(tp * SR), 3)
-        crk = crk / np.max(np.abs(crk)) * 3.0 * loudest((EL + ER) / 2)
+    with PB.seeded(63101):
+        EL, ER = PB.explosion_deep(d, tp, stretch=0.65)
     L, R = wide_tail(build, 8.0, 2.8, (2200, 110), 0.8)
     m = min(len(L), len(R), n)
-    L = L[:m] + (EL[:m] + crk[:m]) * k * 1.35; R = R[:m] + (ER[:m] + crk[:m]) * k * 1.35
+    # (the build-up as loud against the burst as it was before: its loudest 400 ms 1/1.35 of the burst's; then the breath
+    # before the burst, the rush and its echoes cut to near silence for its last 100 ms; once the burst lands, the rush's
+    # echoes sink under it instead of washing on through it)
+    k = loudest((EL + ER)[:m] / 2) / (loudest(build[:int(tp * SR)]) + 1e-9) / 1.35
+    tm = np.arange(m) / SR
+    g = np.where(tm < tp, 1.0, 0.35 * np.exp(-(tm - tp) / 0.8))
+    L = L[:m] * k * g + EL[:m]; R = R[:m] * k * g + ER[:m]
     L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
-    PB.finish_blast(f"{th}/cutoff", L, R, -9.5, 0.895, 0.8)
+    g = duck(tm, tp - 0.1, tp, 0.04, 0.025)
+    L, R = L * g, R * g
+    PB.finish_blast_decoded(f"{th}/cutoff", L, R, -8.0, 0.912, 0.8, knee=0.5)
 
 
 def planetkiller():
