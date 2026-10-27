@@ -820,3 +820,234 @@ def finish_blast_decoded(name, L, R, db=-8.0, peak=0.912, tail_fade=0.8, knee=No
         write_ogg(path, y, 2)
     gr = 20 * np.log10(np.max(np.abs(x * gain), axis=1).max() / c)       # (by the clip and the limiter together)
     print(f"wrote {name:9s} {n / SR:5.2f}s  stereo  loudest {20 * np.log10(lv(dec.astype(float))):.1f} dB  decoded peak {20 * np.log10(pk):.2f} dBFS  ({gr:.1f} dB off the highest peak)")
+
+
+# =====================================================  the land bursting, alive: `explosion` with what a recording has
+# `explosion` has the measured spectrum of a real, very large explosion and is clean and heavy, but it sounds flat beside
+# the recording it was measured on. Measured with the same code on both (reference / `explosion` as fire.ogg had it):
+#  - no blow at the start: the reference's first 50 ms stands 6.5 dB over its roar (1-3 s) and peaks 24 ms in, a hard
+#    crack and then two and a half swings of a ~60 Hz pressure wave at twice the roar's low amplitude; `explosion`'s
+#    stands 2.1 dB over it, peaks 207 ms in and its lows ease in over 50 ms with no swing to them;
+#  - no shape to the start: in the reference the crack is over in 15 ms (its mids in 25), the mids then drop away for
+#    50 ms (to -30 dB) before the roar rolls in 90 ms in, and the crack comes back off the land 145 ms in (-13 dB) and
+#    more softly at about 250 ms; in `explosion` everything just decays smoothly from the crack;
+#  - a top that sits still: the 1-4 kHz bands' envelopes move 4.0-4.6 dB (std) with 37-43 % of it at 2-8 Hz, the roar
+#    boiling; `explosion`'s 2.1-3.1 dB with 5-12 % (its movement is the slow 0.3-2 Hz wander only);
+#  - a top that is smooth noise: the 2-8 kHz bands of the reference are bursty (kurtosis 3.6, 5.4, 6.6 at 2, 4, 8 kHz;
+#    Gaussian noise is 3), `explosion`'s are Gaussian (3.0);
+#  - a stereo image that never moves: the reference starts as one point dead centre (S/M -25 dB, every band up to 2 kHz
+#    0.95-0.99 alike in the two ears) and its top spreads out into the land over seconds (4 kHz 0.94 alike at 0.3-1 s,
+#    0.66 at 1-3, 0.30 at 3-8; 8 kHz 0.74 then about 0), its width moving 5.1 dB over time; `explosion` starts wider
+#    (S/M -16 dB, its crack's mids 0.8-0.9 alike) and every band is as alike at 10 s as at the start (width moves 1.6 dB);
+#  - the roar sagging: the reference's holds within a dB from 0.05 s to 8 s; `explosion`'s sinks 3.6 dB over it.
+# What already agreed and is kept: the balance of the octaves over time (within ~2 dB through 8 s), the low-mid body
+# (150-400 Hz against 45-120 Hz -9.7 / -9.8 dB at 0.3-1 s), the smooth, Gaussian-or-under lows, nothing tonal in it.
+# So `explosion_live` is `explosion`'s roar and debris with: a real start (crack, the pressure wave's swing, the mids
+# dropping out, the roar rolling in, the crack coming back off the land), driven into a soft clip as an overloaded
+# microphone is; the roar's top boiling in surges and bursts (the noise modulated, no clicks added), the lower bands a
+# little; the image starting as one point and the top spreading out over seconds; the roar held up for its first seconds.
+OCT_CORR_T = np.array([0.0, 1.0, 2.5, 6.0])
+OCT_CORR = np.array([
+    [1.0, 1.0, 1.0, 0.99, 0.98, 0.97, 0.97, 0.93, 0.75, 0.6],
+    [1.0, 1.0, 1.0, 0.99, 0.97, 0.96, 0.95, 0.86, 0.5, 0.4],
+    [1.0, 1.0, 0.99, 0.98, 0.96, 0.93, 0.88, 0.62, 0.15, 0.1],
+    [1.0, 1.0, 0.99, 0.97, 0.94, 0.86, 0.72, 0.32, 0.0, 0.0]])
+
+
+# (the roar's and the crack's levels trimmed, dB per octave, so that with the new start (which sets the loudest 400 ms)
+# and the movement the finished sound measures like the reference again, found the same way as `BLAST_TRIM`)
+LIVE_TRIM = np.array([
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, -1.0, 0.0, -1.0, -0.5, 1.0, -1.0, -1.5, 0.0, 0.0],
+    [0.0, 1.0, 2.5, 0.0, 0.0, 1.5, 1.5, -1.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 2.5, 0.0, 0.0],
+    [0.0, -1.0, 1.0, -1.0, 2.5, 1.0, 0.0, 2.0, 1.0, 0.0],
+    [1.5, 0.5, 1.0, 2.5, 2.0, 2.0, 1.0, 2.5, 3.0, 2.0],
+    [1.5, 0.5, 1.0, 2.5, 2.0, 2.0, 1.0, 2.5, 3.0, 2.0],
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
+CRACK_TRIM = np.array([0.0, 0.0, 4.0, -2.0, 5.0, 0.0, 2.5, 1.0, 2.0, 0.0])
+
+
+def shaped_noise_tv(d, times, table, ctimes, ctable, size=4096, hop=1024, wander=0.0, wander_rate=1.2, wander_from=0.0):
+    """`shaped_noise`, with how alike the two ears are per octave changing over time too (`ctable`, a row per time in
+    `ctimes`)."""
+    n = int(SR * d)
+    f = np.fft.rfftfreq(size, 1 / SR)
+    lf = np.log2(np.maximum(f, 1.0))
+    loct = np.log2(OCT)
+    xs = np.concatenate([[np.log2(8.0), np.log2(16.0)], loct, [np.log2(22050.0)]])
+    win = np.hanning(size)
+    L = np.zeros(n + 2 * size); R = np.zeros(n + 2 * size)
+    wob = [wander * 2.2 * smooth_noise(d, wander_rate, n) for _ in OCT] if wander > 0 else None
+    for start in range(-size, n, hop):
+        tc = (start + size / 2) / SR
+        row = np.array([np.interp(tc, times, table[:, k]) for k in range(table.shape[1])])
+        if wob is not None:
+            row = row + np.array([w[min(max(int(tc * SR), 0), n - 1)] for w in wob]) * np.clip((tc - wander_from) / 1.2, 0, 1)
+        crow = np.array([np.interp(tc, ctimes, ctable[:, k]) for k in range(ctable.shape[1])])
+        cc = np.sqrt(np.clip(np.interp(lf, loct, crow), 0, 1))
+        ss = np.sqrt(1 - cc ** 2)
+        ys = np.concatenate([[row[0] - 24, row[0] - 12], row, [row[-1] - 24 * (np.log2(22050) - loct[-1])]])
+        db = np.interp(lf, xs, ys)
+        mag = 10 ** (db / 20) / np.sqrt(np.maximum(f, 20.0) / 1000.0)
+        mag[0] = 0
+        z = lambda: (rng().standard_normal(len(f)) + 1j * rng().standard_normal(len(f))) / np.sqrt(2)
+        zc = z()
+        sl = np.fft.irfft(mag * (cc * zc + ss * z()), size) * win
+        sr_ = np.fft.irfft(mag * (cc * zc + ss * z()), size) * win
+        a = start + size
+        L[a:a + size] += sl; R[a:a + size] += sr_
+    k = np.sqrt(size / 2) / np.sqrt(1.5) * 0.7071
+    return L[size:size + n] * k, R[size:size + n] * k
+
+
+def causal_lowcut(x, f, poles=2):
+    """Everything under `f` Hz taken out by a filter that only looks back (one-pole lowpasses subtracted), so a hard
+    onset has nothing ringing ahead of it: the game's zero-phase low cut afterwards then has nothing left to ring with."""
+    tau = 1.0 / (2 * np.pi * f)
+    m = int(tau * 12 * SR)
+    h = np.exp(-np.arange(m) / (tau * SR)); h /= h.sum()
+    for _ in range(poles):
+        nf = 1 << int(np.ceil(np.log2(len(x) + m)))
+        x = x - np.fft.irfft(np.fft.rfft(x, nf) * np.fft.rfft(h, nf), nf)[:len(x)]
+    return x
+
+
+def slow_random(n, lo, hi, rate=1000):
+    """A random curve with unit spread whose movement is all between `lo` and `hi` Hz (built at `rate` and eased up to
+    the sound's rate)."""
+    m = int(n * rate / SR) + 4
+    k = SR / rate                                               # (`band` reads frequencies at the sound's rate)
+    g = band(rng().standard_normal(m), lo * k, hi * k, 2)
+    g = g / (np.std(g) + 1e-12)
+    return np.interp(np.arange(n) * rate / SR, np.arange(m), g)
+
+
+def surges(n, sig_db, slow, fast, share, t0, spread, drift=0.0):
+    """Two gains (left, right) for one band of the roar: it swells and sinks by about `sig_db` dB (spread over 1.5-12 Hz:
+    the roar boiling), with `fast` dB more over 15-60 Hz (bursts within it); `share` of it the same in the whole roar
+    (`slow` is that common curve), and the two ears moving together at first and apart as it spreads out
+    (`spread`: how far apart, 0-1, after 4 s); `drift` dB more over 0.3-1.5 Hz (slow heaves). The mean power is kept."""
+    t = np.arange(n) / SR
+    own = slow_random(n, 1.5, 12.0)
+    g = share * slow + np.sqrt(1 - share ** 2) * own
+    w = np.interp(t, [t0, t0 + 1.0, t0 + 4.0], [1.0, 1.0 - 0.4 * spread, 1.0 - spread])
+    out = []
+    for _ in range(2):
+        e = slow_random(n, 1.5, 12.0)
+        gs = w * g + np.sqrt(1 - w ** 2) * e
+        gf = slow_random(n, 25.0, 90.0)
+        gd = slow_random(n, 0.3, 1.5) if drift > 0 else 0.0
+        lg = (sig_db * gs + fast * gf + drift * gd) / 8.686
+        v = (sig_db ** 2 + fast ** 2 + drift ** 2) / 8.686 ** 2
+        out.append(np.exp(lg - v))                   # (E[exp(2·lg)] = exp(2v): the power stays as it was)
+    return out
+
+
+def explosion_live(d, t0, stretch=1.0, debris=1.0, whump=1.0, live=1.0):
+    """A huge explosion starting at `t0` in a `d`-second stereo sound, before any mastering: `explosion`'s roar, as heavy
+    and clean, with what a recording of a real one has (see above).
+     crack   : the first 15 ms (its mids 25), broadband and hard, one point dead centre
+     whump   : the pressure wave: two and a half swings of ~60 Hz, from 10 to 55 ms, twice the roar's low amplitude
+     the gap : the mids dropping away for 50 ms after the crack, until the roar rolls in 90 ms in, a little over itself
+     echo    : the crack coming back off the land, 145 ms in (duller, 13 dB down) and, softer and smeared, about 250 ms
+     roar    : the measured table, its top boiling in surges and bursts, its image spreading out over seconds, held up
+               over its first seconds
+     debris  : as `explosion`'s
+    The start is driven into a soft clip, as a microphone overloaded by a blast is: dense, nothing pumping after it."""
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    u = np.maximum(t - t0, 0.0)
+    k0 = int(t0 * SR)
+    on = ramp_in(n, k0, 10)
+    # ---- the roar
+    tt_ = np.where(BLAST_T <= 0.65, BLAST_T, 0.65 + (BLAST_T - 0.65) * stretch) + t0
+    tab = BLAST_DB + BLAST_TRIM + LIVE_TRIM
+    body_tab = np.vstack([tab[0] - 40.0, tab])
+    ct = np.where(OCT_CORR_T <= 0.65, OCT_CORR_T, 0.65 + (OCT_CORR_T - 0.65) * stretch) + t0
+    bl, br = shaped_noise_tv(d, np.concatenate([[t0 - 0.1], tt_]), body_tab, ct, OCT_CORR, 4096, 1024,
+                             wander=2.4 * min(1.0, stretch + 0.3), wander_from=t0)
+    # (held up: the roar does not sag over its first seconds)
+    hold = 10 ** (np.interp(u, np.array([0.0, 0.65, 1.5, 4.0, 7.0, 10.0]) * np.r_[1, 1, [stretch] * 4] + np.r_[0, 0, [0.65 * (1 - stretch)] * 4],
+                            [0.0, 0.0, 1.5 * live, 2.0 * live, 1.0 * live, 0.0]) / 20)
+    bl = bl * hold; br = br * hold
+    # its bands, each moving: (edges, swell dB, burst dB, how far the ears drift apart)
+    split = [(120, 0.0, 0.0, 0.0, 0.0), (350, 1.2, 0.0, 0.0, 0.0), (1000, 2.4, 1.0, 0.1, 0.0), (2800, 3.4, 1.8, 0.3, 2.6),
+             (6500, 3.0, 4.2, 0.6, 2.4), (None, 2.4, 4.2, 0.8, 1.5)]
+    common = slow_random(n, 1.5, 12.0)
+    parts = []
+    restL, restR = bl, br
+    for k, (fc, sg_, fs_, sp, dr) in enumerate(split):
+        if fc is not None:
+            lL, lR = band(restL, None, fc, 4), band(restR, None, fc, 4)
+            restL, restR = restL - lL, restR - lR
+        else:
+            lL, lR = restL, restR
+        if sg_ > 0:
+            gL, gR = surges(n, sg_ * live, common, fs_ * live, 0.6, t0, sp, dr * live)
+            # (the movement grows in over the first half second: the start has its own shape)
+            ramp = np.clip((u - 0.15) / 0.35, 0, 1)
+            gL = 1 + (gL - 1) * ramp; gR = 1 + (gR - 1) * ramp
+            lL, lR = lL * gL, lR * gR
+        parts.append((fc, lL, lR))
+    # the gap: everything over 350 Hz dropping away after the crack until the roar rolls in, a little over itself
+    gap_db = np.interp(u, [0.0, 0.02, 0.035, 0.075, 0.095, 0.12, 0.15], [0.0, 0.0, -14.0, -14.0, 2.5, 2.5, 0.0])
+    gap = 10 ** (gap_db * live / 20)
+    L = np.zeros(n); R = np.zeros(n)
+    for fc, lL, lR in parts:
+        g = 1.0 if (fc is not None and fc <= 350) else gap
+        L += lL * g; R += lR * g
+    # ---- the crack: one point, dead centre (its own fast spectrum, as `explosion`'s)
+    c0 = tab[1]
+    cct = np.array([0.0, 0.012, 0.03, 0.06, 0.12, 0.3])
+    ctab = np.vstack([c0 + 8.0, c0 + 2.0, c0 - 4.0 + np.array([0, 0, 0, 0, -2, -4, -6, -8, -10, -12]), tab[2] - 2.0, tab[2] - 8.0, tab[3] - 14.0])
+    ctab = ctab + CRACK_TRIM
+    cl, cr = shaped_noise(d, cct + t0, ctab, 256, 64, corr=np.array([1.0, 1.0, 1.0, 1.0, 0.99, 0.98, 0.97, 0.93, 0.75, 0.6]))
+    hi_env = np.where(u < 0.010, 1.0, np.exp(-(u - 0.010) / 0.005))
+    mid_env = np.where(u < 0.022, 1.0, np.exp(-(u - 0.022) / 0.006))
+    def crack_of(c):
+        h = band(c, 2000, None, 2)
+        return (h * hi_env + (c - h) * mid_env) * (t >= t0)
+    cl, cr = crack_of(cl), crack_of(cr)
+    # ---- the pressure wave: two and a half swings of ~60 Hz, the same in both ears
+    f = 62.0 - 10.0 * np.clip(u / 0.06, 0, 1)
+    ph = 2 * np.pi * np.cumsum(f * (t >= t0)) / SR
+    wenv = np.clip((u - 0.006) / 0.014, 0, 1) ** 2 * np.where(u < 0.045, 1.0, np.exp(-(u - 0.045) / 0.014))
+    wh = -np.sin(ph) * wenv
+    # (its level against the roar's lows, as measured: twice their amplitude)
+    lo_rms = np.sqrt(np.mean(band(L + R, 30, 100, 2)[k0 + int(1.0 * SR):k0 + int(3.0 * SR)] ** 2) / 4 + 1e-20)
+    wh = wh * lo_rms * np.sqrt(2) * 3.0 * whump
+    # (and the crack's against the roar, as `explosion` set it)
+    L = L + cl * 2.1 + wh; R = R + cr * 2.1 + wh
+    # ---- the crack coming back off the land: 145 ms in (duller, 13 dB down) and about 250 ms, softer and smeared
+    seg = slice(k0, k0 + int(0.03 * SR))
+    for dt, gn, fc, smear, pan in ((0.145, 0.22, 5000, 0.0, 0.15), (0.25, 0.13, 2500, 0.025, -0.2)):
+        for ch, c in ((0, cl), (1, cr)):
+            e = band(c[seg] * 1.5, 250, fc, 2)
+            if smear > 0:
+                kk = int(smear * SR)
+                e = np.convolve(e, np.hanning(kk) / np.sum(np.hanning(kk)) * np.sqrt(kk) * 0.6)
+            k = k0 + int(dt * SR)
+            m = min(len(e), n - k)
+            side = (1 + pan) if ch == 0 else (1 - pan)
+            (L if ch == 0 else R)[k:k + m] += e[:m] * gn * side
+    # ---- rock and earth coming back down (as `explosion`)
+    if debris > 0:
+        deb = T.debris_settle(d, t0 + 0.25, amount=1.5 * debris, spread=8.0 * stretch)
+        deb = band(deb, None, 1800, 2)
+        L = L + deb * 0.085; R = R + deb * 0.085
+    # (nothing under 20 Hz, taken out looking back only: see `causal_lowcut`)
+    L = causal_lowcut(L * on, 20.0); R = causal_lowcut(R * on, 20.0)
+    # ---- the overloaded microphone: the first 80 ms driven into a soft clip 6.6 dB over the loudest 400 ms (which the
+    # start itself sets), so the master's limiter (7.1 dB of room: -8 dB loudest, -0.9 dBFS peaks) has next to nothing
+    # to take off it; a limiter riding the start down would pull the whole first 200 ms down with it
+    free = 1 + 1e3 * np.clip((u - 0.08) / 0.07, 0, 1) ** 2
+    L0, R0 = L, R
+    lv = T.loudest((L + R) / 2)
+    for _ in range(4):
+        c = lv * 10 ** (6.6 / 20) * free
+        L = soft_clip(L0, c, 0.5); R = soft_clip(R0, c, 0.5)
+        lv = T.loudest((L + R) / 2)
+    return L * on, R * on
