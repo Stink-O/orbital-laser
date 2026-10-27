@@ -3311,8 +3311,9 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
         p.shake(tk + lt, 0.24 * fo, 1.3);
         tk += 1.0;
     }
-    // they cut out, the nexus drops into the crater and bursts there, and the land settles
-    p.csound(PK_CUT, "cutoff", 10.0, 1.0);
+    // they cut out, the nexus drops into the crater and bursts there with the land's full explosion (0.9 s into the
+    // cutoff, at PK_POP, heard from the target), and the land settles
+    p.csound(PK_CUT + lt, "cutoff", 10.0, 1.0);
     p.shake(PK_POP + lt, 0.7 * fo, 3.0);
     p.csound(PK_POP + 1.0, "after", 9.0, 1.0);
 
