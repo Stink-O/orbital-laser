@@ -57,7 +57,7 @@ const PK_SHAFT: f32 = 40.0;
 const PK_SHAFT_D: f32 = 123.0;
 const PK_CORE: f32 = 64.0;         // dug from PK_DIG0 after the burst at PK_RATE blocks a second, from the middle out: the
 const PK_DIG0: f32 = 2.0;          // core (with the land over it), then the land over the rest out to PK_LAND, then the rest
-const PK_RATE: f32 = 340000.0;     // (pk_dig_t)
+const PK_RATE: f32 = 1500000.0;    // (pk_dig_t)
 const PK_LAND: f32 = 268.0;
 const PK_CRACKS: i32 = 12;         // the fissures: from PK_RIM out, PK_SEG-block segments, opening at PK_CRACK_V blocks a
 const PK_RIM: f32 = 236.0;         // second from PK_CRACK_T after the burst
@@ -129,6 +129,19 @@ fn pk_dig_t(r: f32) -> f32 {
         return core;
     }
     return core + 3.14159265 * (PK_LAND * PK_LAND - PK_CORE * PK_CORE) * PK_ABOVE / PK_RATE + (pk_vol(r) - pk_vol(PK_CORE)) / PK_RATE;
+}
+
+// How far the land at `rel2` (from the target, `r` out) has really been opened by `time`: the crater as strike.rs digs
+// it, from the middle out (pk_dig_t), its edge wandering round it as pk_depth's does and a little ragged, soft. Nothing
+// over the land not dug yet.
+fn pk_open(rel2: vec2<f32>, r: f32, time: f32, seed: f32) -> f32 {
+    let ang = atan2(rel2.y, rel2.x);
+    let w = gnoise2(vec2<f32>(cos(ang), sin(ang)) * 4.4 + vec2<f32>(seed * 0.37, 11.0)) - 0.5;
+    let rag = gnoise2(rel2 * 0.06 + vec2<f32>(seed, 3.0)) - 0.5;
+    let edge = PK_BOWL * (1.0 + 0.14 * w) + 10.0 * rag;
+    let inside = 1.0 - smoothstep(edge - 8.0, edge + 2.0, r);
+    let front = time - pk_dig_t(max(r + 14.0 * rag, 0.0));
+    return inside * smoothstep(0.0, 0.8, front);
 }
 
 // How far the blast's shock front has run out `t` after the land burst, and the second one `t` after the nexus burst:
@@ -1211,7 +1224,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             // the foot of the beam everything white-hot
             let deep = max(-dy, 0.0);
             let dug = time - pk_dig_t(r);
-            let open = select(0.0, 1.0, dug > 0.0);
+            let open = pk_open(rel2, r, time, seed);
             let fresh = exp(-max(dug, 0.0) / 7.0) * smoothstep(1.0, 3.0, deep) * open;
             let core = saturate((deep - 30.0) / 60.0) * open;
             let pn = gnoise2(rel2 * 0.11 + vec2<f32>(seed, 0.0));
@@ -1228,7 +1241,9 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             add = add + lava_ramp(hh) * smoothstep(0.03, 0.25, heat * molten) * on_ground * after * 2.6 * k;
         }
         // the fissures running out from the rim, opening as the shock reaches them, light pulsing out along them
-        if (burst && r > PK_RIM - 2.0 && r < PK_RIM + 170.0) {
+        // (in from the rim too, across the land not dug yet, up to the crater's real edge)
+        let unopened = 1.0 - pk_open(rel2, r, time, seed);
+        if (burst && r > PK_SHAFT && r < PK_RIM + 170.0 && unopened > 0.01) {
             let ang = atan2(rel2.y, rel2.x);
             var crack = 0.0;
             var pulse = 0.0;
@@ -1239,12 +1254,12 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
             for (var di = -1; di <= 1; di = di + 1) {
                 let i = (i0 + di + PK_CRACKS) % PK_CRACKS;
                 let cr = pk_crack(i, seed);
-                let u = r - PK_RIM;
+                let u = max(r - PK_RIM, 0.0);
                 if (u > cr.y) {
                     continue;
                 }
-                let j = i32(floor(max(u, 0.0) / PK_SEG));
-                let f = fract(max(u, 0.0) / PK_SEG);
+                let j = i32(floor(u / PK_SEG));
+                let f = fract(u / PK_SEG);
                 let a = cr.x + mix(pk_crack_off(i, j, seed), pk_crack_off(i, j + 1, seed), f);
                 var da = ang - a;
                 da = da - TAU * floor(da / TAU + 0.5);
@@ -1257,6 +1272,7 @@ fn planet_killer(in: StageIn) -> vec4<f32> {
                     pulse = pow(0.5 + 0.5 * sin(u * 0.1 - time * 5.0 + f32(i)), 4.0);
                 }
             }
+            crack = crack * unopened;
             if (crack > 0.01) {
                 let hh = (0.55 + 0.35 * exp(-bt / 14.0) + 0.25 * pulse * power) * (0.85 + 0.3 * gnoise2(rel2 * 0.3 + vec2<f32>(time * 0.3, 0.0)));
                 add = add + (lava_ramp(hh) + PK_HOT * pulse * 0.4 * power) * crack * on_ground * after * 2.2 * k;

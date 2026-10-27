@@ -442,6 +442,7 @@ impl Orbital {
                 Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
+                Act::Blocks(b) => world::edit_blocks(&b.edit()),
                 Act::Later(job) if worked_out => s.waiting.push_back(job),
                 Act::Later(job) => {
                     // more of the plan, worked out now it is due
