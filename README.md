@@ -16,8 +16,8 @@ singularity that bends the light round it, tears the ground up into orbit and sw
 of meteors across the land and then an extinction-level impact, the most destructive of them all, **Mothership**, a
 kilometre-long ship that drops out of hyperspace over the target and cuts a molten trench across the land with its beam,
 **Downfall**, the same ship brought down by a meteor, crashing into the land, its black hole engine swallowing the wreck,
-or **Planet Killer**, seven towers rising out of the horizon whose beams feed a ring of light high above the target
-until it fires one beam down through it, leaving a crater 260 blocks across.
+or **Planet Killer**, seven towers grinding up out of the horizon that strike a ring of light high above the target
+with bolts of lightning until it fires one beam down through it, leaving a crater 260 blocks across.
 
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
@@ -59,8 +59,9 @@ until it fires one beam down through it, leaving a crater 260 blocks across.
 > down to a lake of lava, with a shaft to bedrock, piles a rim round it out to 175, splits the land in twelve chasms up
 > to 34 deep running out to about 300 blocks (some running with lava), chars it out to 280, throws rubble out to 400 and
 > kills every mob within 200. Stand at least 300 blocks back: the ground within 175 of the target is gone. It keeps
-> about 1,000 chunks loaded round the target while it works, and its changes go on after the strike: about 11 million
-> blocks over the first half-minute, then the sky over the blast cleared, about 20 million more, for a minute after.
+> about 1,000 chunks loaded round the target while it works (the chasms' far stretches only until they are cut), and
+> its changes go on after the strike: about 10 million blocks over the first 40 seconds, then the sky over the blast
+> cleared, about 20 million more, for a minute after.
 > **Back up
 > your world**, and don't aim at anything you care about. The wheel has a switch that turns terrain damage off.
 
@@ -154,21 +155,24 @@ until it fires one beam down through it, leaving a crater 260 blocks across.
   as the last of it goes through, before it collapses in a flash and bores a shaft to bedrock. It uses the Mothership's
   approach and arrival choices and its own colour (red by default), reaches 1000 blocks, and always comes down well
   clear of you.
-- **Planet Killer.** Out round the horizon, a kilometre off, the ground bulges and splits seven times, one after another,
-  and seven towers over 400 blocks tall burst up through it, shuddering, throwing earth and rock into the air, lurching
-  and grinding up to their full height while the sky goes dark, dust left hanging round their feet; each is heard and
-  felt breaking through from where it stands. Each fires its beam straight at a ring of light forming 300 blocks over
-  the target, 440 across: white-hot cores in turbulent sheaths, light flowing along them. The ring lights up from where each beam strikes it and runs round to meet the next
-  until it is whole, then spins up, pulses racing round it, runes turning on it, the light bending inside it, until it
-  shudders, tightens and fills with light, and they fuse: a flash, a ring of fire tearing out through the sky, the sky
-  cracking open and the clouds blown away. One beam, white-hot inside its blue sheath, comes down through the ring. The
-  land under it domes up, cracking with light, and
-  bursts: a fireball, a column of ejecta, debris spiralling up round the beam, a shock ring rippling out through the land
-  and a wall of dust. Everything above the ground is blown flat for 170 blocks, a crater 260 across and 70 deep is dug
-  in terraces down to a lake of lava under the beam, with a shaft on to bedrock, a rim is thrown up round it, and twelve
-  chasms split the land out to about 300 blocks, molten light pulsing along them. Then the towers go dark and sink, their
-  beams draining into the ring; it crushes in to a point, which drops into the crater and bursts again, and a mushroom
-  of smoke, lit orange from below
+- **Planet Killer.** Out round the horizon, a kilometre off, the ground heaves and splits seven times, one after
+  another, light leaking up through the cracks, and seven towers over 400 blocks tall break the surface. Each struggles
+  there for a second, straining, catching, shuddering and leaning, puffs of dust venting round it, then bursts up out
+  of the ground in a surge of dust rolling out over the land and a column of earth climbing with it, rock flung out,
+  while the sky goes dark; each is heard grinding and bursting up from where it stands, and felt. Then each tower's
+  crown crackles and a bolt of lightning feels its way out towards a ring 300 blocks over the target, 440 across, in
+  steps, branching, slowly, until it suddenly runs the rest of the way and strikes it: a blinding stroke that lights the
+  land and the sky, a sharp crack and a long roll of thunder. The bolts hold the jagged paths they took, trembling,
+  struck again now and then, crackling where they meet the ring, the ring a band of plasma with lightning crawling over
+  it, the crackle swelling as each strikes. It shudders, tightens and fills with light, and they fuse: a flash, a ring of
+  light tearing out through the sky, the sky cracking open and the clouds blown away. A bolt feels its way down from the
+  ring's middle with streamers reaching up off the land to meet it, and the beam pours down the path it opens, arcs
+  wound round it. The land under it domes up, cracking with light; a breath of near silence, and it bursts: a fireball,
+  a column of ejecta, debris spiralling up round the beam, a shock rippling out through the land and a wall of dust.
+  Everything above the ground is blown flat for 170 blocks, a crater 260 across and 70 deep is dug in terraces down to a
+  lake of lava under the beam, with a shaft on to bedrock, a rim is thrown up round it, and twelve chasms split the land
+  out to about 300 blocks, molten light pulsing along them. Then the bolts stutter out and the towers go dark and sink;
+  the ring crushes in to a point, which drops into the crater and bursts again, and a mushroom cloud, glowing from below
   with lightning flickering in it, climbs over the crater as the daylight comes back. It reaches 1000 blocks: watch it
   from a long way off.
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
@@ -431,11 +435,13 @@ sweeps from 10 to 19 s, cuts off at 20 and is gone by 23.5; its trench cools unt
 and charges from 4 (its meteor is a point of light far off from 2.5 s); the charge is cut at 6.8, its batteries fire
 from 8.4, the meteor breaks up at 11 and its pieces strike at about 15.4; it lurches down at 17 and 20, falls free,
 strikes at 30, its bow slams down at 30.65 and it is still by 32.6; its engine groans from 34, ruptures at 40, the last of
-the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64. The Planet Killer's towers
-burst up through the land from 0 to 1.5 s and fire from 1.6 to 2.5 s, their beams striking the ring by about 3; it
-closes by about 3.4, shudders and tightens from 3.3 and they fuse at 4 s; the one beam lands at 4.35, the land bursts at 4.85, the chasms open
-over the next 2 s and the crater is dug from 7.75 to about 15 s; the towers cut out at 13.5, the ring crushes in, drops
-into the crater and bursts at 14.4, and the mushroom climbs until the strike ends at 26.
+the wreck goes in at about 53, and the black hole collapses at 55; the strike ends at 64. The Planet Killer's towers'
+ground heaves from 0.1 s, they break the surface from 0.8 s, struggle there for 1.1 s and burst up 0.8 s later, one
+every 0.4 s; their bolts set out from 3.05 to 5.45 s and strike the ring 1.14 s after they set out, the last by about
+6.6; it shudders and tightens from 6.9 and they fuse at 7.6 s; a bolt feels its way down and the beam pours down it at
+8.4, lands at 8.5, and the land bursts at 9; the chasms open over the next 2 s and the crater is dug from 11.9 to about
+19 s; the towers cut out at 17.65, the ring crushes in, drops into the crater and bursts at 18.55, and the mushroom
+climbs until the strike ends at 30.5.
 
 **The effects** are one fragment shader, run as the mod's post pass after the fork's small prelude (the world's colour and depth, the camera and the mod's parameters). It rebuilds every pixel's position from
 the depth buffer, so ground effects (the reticle, the sigil, the crater glow, the shockwaves) sit on real blocks. The beams
@@ -453,10 +459,11 @@ other lasers nothing: the same hull, met in its own frame as it tilts (from any 
 Black Hole's lens, and its dust as a volume integrated along the view ray in closed form. Its fall, crash, gouge,
 chunks and the blocks the black hole tears up are worked out by the same formulas in the shader and in the mod. The
 Planet Killer has its own pass too ([`mod/shaders/planetkiller.wgsl`](mod/shaders/planetkiller.wgsl)): its towers are
-met as upright cylinders, its beams are curves met piece by piece by the view ray, with strands wound round them, the
+met as upright cylinders (sheared as they lean), its bolts are jagged lines from a seeded hash, met kink by kink by the
+view ray (their broad bends first, the kinks only near them), so each keeps the path it took from frame to frame, the
 ring is met where the view ray crosses its plane (a clean ellipse from any side), its heart, dome and fireballs are
-traced as spheres and domes, the mushroom's cap as a flattened ellipsoid, and
-the dust wall as a cylinder; its towers and its chasms are placed by the same hash in the shader and in the mod, and the
+traced as spheres and domes, the towers' dust and the mushroom cloud are noise volumes marched along the view ray, and
+the dust wall is a cylinder; its towers and its chasms are placed by the same hash in the shader and in the mod, and the
 crater glows layer by layer as the mod digs it.
 
 **The sounds** ([`tools/synth_sounds.py`](tools/synth_sounds.py)) have no samples in them: they are generated from noise

@@ -38,7 +38,7 @@ tools/check-shader.sh               # validate the post passes (a tenth of a sec
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 ```
 
-**Iterate on a strike's look offscreen first.** `tools/preview.py LASER TIMES... [--views player,far,side,up,under,aerial]
+**Iterate on a strike's look offscreen first.** `tools/preview.py LASER TIMES... [--views player,far,side,up,under,aerial,tower]
 [--set key=value...] [--bench]` builds the pass exactly as the mod does, renders every moment from every view in one run
 over a synthetic scene, and writes a labelled contact sheet; `--bench` prints the pass's GPU time. Only then rebuild,
 install and check it in the game, once. In the game, `/orbital skip SECONDS` (terrain off) starts the next strike that
@@ -80,6 +80,9 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
   is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
+- **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
+  `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many
+  blocks. `carve_queue` prints a laser's busiest ticks and commonest commands.
 
 ## Verifying work
 
