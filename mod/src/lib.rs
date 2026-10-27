@@ -67,6 +67,10 @@ const VANILLA_FLY: f32 = 0.05;
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
 /// carves its crater over a few seconds instead of freezing the game for one.
 const BLOCK_BUDGET: u64 = 20_000;
+/// At most this many world-changing commands a tick, however few blocks each changes: each is parsed and run on its
+/// own, and thousands of small ones in one tick (a planet killer's fissures, cut a column at a time, with its crater's
+/// walls) hitch the game as surely as too many blocks. Every other laser stays under it.
+pub(crate) const CARVE_CMDS: usize = 400;
 
 struct Strike {
     plan: Vec<(f32, Act)>,
@@ -406,7 +410,7 @@ impl Orbital {
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
-        self.carve();
+        let carved = self.carve(CARVE_CMDS);
         let Some(s) = &mut self.strike else {
             return;
         };
@@ -459,15 +463,18 @@ impl Orbital {
             render::clear_post();
             self.strike = None;
         }
-        self.carve();
+        self.carve(CARVE_CMDS.saturating_sub(carved));
     }
-    /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one); then, with
-    /// what is left of it, the ones that wait for spare budget.
-    fn carve(&mut self) {
+    /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one), and no more
+    /// than `room` commands; then, with what is left of it, the ones that wait for spare budget. How many it ran.
+    fn carve(&mut self, room: usize) -> usize {
+        if room == 0 {
+            return 0;
+        }
         let mut spent = 0;
         let mut cmds = Vec::new();
         while let Some((cost, _)) = self.carving.front() {
-            if !cmds.is_empty() && spent + cost > BLOCK_BUDGET {
+            if !cmds.is_empty() && (spent + cost > BLOCK_BUDGET || cmds.len() >= room) {
                 break;
             }
             spent += cost;
@@ -478,7 +485,7 @@ impl Orbital {
         while self.carving.is_empty()
             && let Some((cost, _)) = self.spare.front()
         {
-            if spent + cost > BLOCK_BUDGET && (spent > 0 || !cmds.is_empty()) {
+            if (spent + cost > BLOCK_BUDGET || cmds.len() >= room) && (spent > 0 || !cmds.is_empty()) {
                 break;
             }
             spent += cost;
@@ -489,6 +496,7 @@ impl Orbital {
         if !cmds.is_empty() {
             world::run_commands(&cmds);
         }
+        cmds.len()
     }
 
     /// While the player holds one of the items: which laser is loaded.

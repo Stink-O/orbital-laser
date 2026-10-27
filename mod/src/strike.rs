@@ -3178,9 +3178,19 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
         // a far target is past what the game keeps loaded round the player: keep the crater, the rim, the blast and the
         // fissures loaded until every change has been made (a forceload takes 256 chunks at most: strips of 128 blocks
         // across, and the stretch of each fissure past them); they are let go on the spare budget, after everything else
-        for (x0, z0, x1, z1) in pk_forceload(point, shader_seed) {
+        // (the fissures' stretches let go as soon as everything queued before them is done, not held for the minute it
+        // takes to clear the sky over the blast: then the square, which shares chunks with them at its edges, taken
+        // again, and let go at the end)
+        let rects = pk_forceload(point, shader_seed);
+        for &(x0, z0, x1, z1, _) in &rects {
             p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
-            p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
+        }
+        for &(x0, z0, x1, z1, fissure) in rects.iter().filter(|r| r.4).chain(rects.iter().filter(|r| !r.4)) {
+            let verb = if fissure { "remove" } else { "add" };
+            p.ev.push((PK_BURST + 5.0, Act::Spare(format!("forceload {verb} {x0} {z0} {x1} {z1}"))));
+            if !fissure {
+                p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
+            }
         }
         pk_crater(&mut p, floor_y, sky);
         for i in 0..PK_CRACKS {
@@ -3199,14 +3209,14 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     p.ev
 }
 
-/// The rectangles kept loaded: strips across the square round the target, and the far stretch of each fissure.
-fn pk_forceload(point: [f64; 3], seed: f32) -> Vec<(i32, i32, i32, i32)> {
+/// The rectangles kept loaded: strips across the square round the target, and the far stretch of each fissure (marked).
+fn pk_forceload(point: [f64; 3], seed: f32) -> Vec<(i32, i32, i32, i32, bool)> {
     let (cx, cz) = (point[0].floor() as i32, point[2].floor() as i32);
     let mut out = Vec::new();
     let mut z = cz - PK_LOAD;
     while z <= cz + PK_LOAD {
         let z1 = (z + 127).min(cz + PK_LOAD);
-        out.push((cx - PK_LOAD, z, cx + PK_LOAD, z1));
+        out.push((cx - PK_LOAD, z, cx + PK_LOAD, z1, false));
         z = z1 + 1;
     }
     for i in 0..PK_CRACKS {
@@ -3220,7 +3230,7 @@ fn pk_forceload(point: [f64; 3], seed: f32) -> Vec<(i32, i32, i32, i32)> {
             u += 4.0;
         }
         if x0 <= x1 {
-            out.push((x0, z0, x1, z1));
+            out.push((x0, z0, x1, z1, true));
         }
     }
     out
@@ -3260,7 +3270,11 @@ fn pk_crater(p: &mut Plan, floor_y: i32, sky: i32) {
     while d < bowl_d {
         let dd = d;
         p.later(pk_dig_t(dd) - 0.15, move |p| {
-            const NATURAL: [&str; 5] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel", "minecraft:coarse_dirt"];
+            // (the walls fused where they are natural ground: near the top every kind of it; deeper down only the rock,
+            // the odd pocket of dirt or gravel left in the glass. Each kind is a pass of its own over the wall, and the
+            // passes are most of the crater's commands)
+            const NATURAL: [&str; 4] = ["#minecraft:base_stone_overworld", "#minecraft:dirt", "#minecraft:sand", "minecraft:gravel"];
+            let natural = if dd < 12 { &NATURAL[..] } else { &NATURAL[..1] };
             let laser = p.laser;
             let by = p.by;
             let prim = laser.lining[0].0;
@@ -3268,7 +3282,7 @@ fn pk_crater(p: &mut Plan, floor_y: i32, sky: i32) {
             let (y_lo, y_hi) = (by - dd - 2, by - dd);
             let r = pk_bowl_r(dd, bowl_r, bowl_d);
             let rs = p.rects(r, f64::from(laser.bowl_rough));
-            for tag in NATURAL {
+            for tag in natural {
                 for c in Plan::edge_fills(&rs, y_lo - 1, y_hi, prim, tag, 2) {
                     p.at(tl - 0.05, c);
                 }
@@ -3964,7 +3978,14 @@ mod tests {
                     }
                 }
                 assert!(deepest == floor || deepest == floor - 1, "the shaft reaches {deepest}");
-                let adds: Vec<&String> = cmds.iter().map(|(_, c)| c).filter(|c| c.starts_with("forceload add")).collect();
+                // (the square is taken again once the fissures' stretches are let go: the same rectangles, counted once;
+                // each let go after it was last taken)
+                let adds: std::collections::BTreeSet<&String> = cmds.iter().map(|(_, c)| c).filter(|c| c.starts_with("forceload add")).collect();
+                for a in &adds {
+                    let last_add = cmds.iter().filter(|(_, c)| c == *a).map(|(t, _)| *t).fold(0.0, f32::max);
+                    let last_remove = cmds.iter().filter(|(_, c)| *c == a.replace("add", "remove")).map(|(t, _)| *t).fold(-1.0, f32::max);
+                    assert!(last_remove >= last_add, "{a} taken again after it was let go");
+                }
                 let mut chunks = 0;
                 for a in &adds {
                     let n: Vec<i32> = a.split_whitespace().skip(2).map(|v| v.parse().unwrap()).collect();
@@ -4194,10 +4215,24 @@ mod replay {
         let blocks: u64 = all.iter().filter(|a| !a.2).filter_map(|a| block_cost(&a.1)).sum();
         let spare: u64 = all.iter().filter(|a| a.2).map(|a| block_cost(&a.1).unwrap_or(1)).sum();
         println!("{} commands; world changes {blocks} blocks, spare {spare} blocks", all.len());
+        // (the kinds of command most numerous: each runs on its own, however few blocks it changes)
+        let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+        for (_, c, _) in &all {
+            let run = c.rsplit(" run ").next().unwrap_or(c);
+            let w: Vec<&str> = run.split_whitespace().collect();
+            let k = format!("{} {}", w.first().unwrap_or(&""), w.iter().find(|x| x.starts_with("minecraft:")).unwrap_or(&""));
+            *kinds.entry(k).or_default() += 1;
+        }
+        let mut kinds: Vec<_> = kinds.into_iter().collect();
+        kinds.sort_by_key(|a| std::cmp::Reverse(a.1));
+        for (k, n) in kinds.iter().take(8) {
+            println!("{n:6} {k}");
+        }
         let budget = 20_000u64;
         let (mut queue, mut spares) = (std::collections::VecDeque::new(), std::collections::VecDeque::new());
         let (mut next, mut tick, mut done_at, mut spare_at) = (0, 0u32, 0.0f32, 0.0f32);
         let mut late: Vec<(f32, f32, String)> = Vec::new();
+        let mut busy: Vec<(usize, u64, f32)> = Vec::new();
         while next < all.len() || !queue.is_empty() || !spares.is_empty() {
             tick += 1;
             let now = tick as f32 * 0.05;
@@ -4211,24 +4246,36 @@ mod replay {
                 next += 1;
             }
             let mut spent = 0;
+            let mut cmds = 0;
             while let Some((t, cost, _)) = queue.front() {
-                if spent > 0 && spent + cost > budget {
+                if spent > 0 && (spent + cost > budget || cmds >= crate::CARVE_CMDS) {
                     break;
                 }
                 spent += cost;
+                cmds += 1;
                 late.push((*t, now - t, queue.pop_front().unwrap().2));
                 done_at = now;
             }
             while queue.is_empty() && let Some((cost, _)) = spares.front() {
-                if spent > 0 && spent + cost > budget {
+                if spent > 0 && (spent + cost > budget || cmds >= crate::CARVE_CMDS) {
                     break;
                 }
                 spent += cost;
+                cmds += 1;
                 spares.pop_front();
                 spare_at = now;
             }
+            busy.push((cmds, spent, now));
+        }
+        busy.sort_by_key(|a| std::cmp::Reverse(a.0));
+        for (c, b, t) in busy.iter().take(5) {
+            println!("{c:5} commands, {b:6} blocks in the tick at {t:5.2} s");
         }
         late.sort_by(|a, b| b.1.total_cmp(&a.1));
+        // (what is seen happen: the changes due while the strike plays, not the charred land after it)
+        if let Some((t, l, c)) = late.iter().find(|a| a.0 < laser.length * 0.5) {
+            println!("of those due in its first half, the latest: due {t:5.2} s, made {l:5.2} s late: {}", &c[..c.len().min(100)]);
+        }
         for (t, l, c) in late.iter().take(5) {
             println!("due {t:5.2} s, made {l:5.2} s late: {}", &c[..c.len().min(100)]);
         }
