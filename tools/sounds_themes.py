@@ -1417,8 +1417,9 @@ def thunder(d, t0, size=1.0, length=6.0, take=0):
 
 
 def pk_fire(th):
-    """fire: the beam striking and the land bursting under it, with `explosion` (`explosion_deep`, which moves more, was
-    tried here and sounded worse in the game)."""
+    """fire: the beam striking and the land bursting under it, with `explosion_live` (`explosion`'s roar with a real start
+    and a top that boils and spreads out: `explosion` alone sounded flat beside the recording, `explosion_deep`, busier,
+    sounded worse in the game)."""
     import sounds_pk_blast as PB
     # fire: the beam pouring down onto the target and the land bursting under it (0 here is the beam striking, the
     # strike's 8.4 s; it lands 0.1 s in and the land bursts 0.6 s in). A thunderclap as it strikes; the beam's roar
@@ -1436,7 +1437,7 @@ def pk_fire(th):
         heave = np.clip(t / tb_, 0, 1) * (t < tb_)
         rise = (glide_noise(d, 35, 110, 0.6, curve=1.0) * 0.5 + unit(band(white(d), 18, 60)) * 0.6 + roar_bed(d, 120, 600, 3.0, 0.4) * 0.4) * heave ** 1.5
         pre = (clap + rise) * 0.5 * fade(n, 0.001, 2.0)
-        EL, ER = PB.explosion(d, tb_, stretch=0.65)
+        EL, ER = PB.explosion_live(d, tb_, stretch=0.65)
         outs = []
         for k, y in enumerate((EL, ER)):
             pw = convolve_wet(pre, outdoor_ir(4.0, density=30.0, darken=(2600, 140), decay=1.6), 0.8)
@@ -1445,7 +1446,12 @@ def pk_fire(th):
         m = min(len(o[0]) for o in outs)
         ref_lvl = loudest((EL + ER)[:m] / 2)
         pre_lvl = loudest(outs[0][1][:int(tb_ * SR)])
-        L, R = [(y[:m] + pw[:m] * (ref_lvl * 1.0 / (pre_lvl + 1e-9))) for y, pw in outs]
+        # (once the burst lands, the strike's echoes sink under it (9 dB at once, then away) instead of ringing on at the
+        # burst's own level through its first 300 ms, which buried its start: the crack, the swing of the pressure wave,
+        # the mids dropping out and the roar rolling in)
+        tm = np.arange(m) / SR
+        sink = np.where(tm < tb_, 1.0, 0.35 * np.exp(-(tm - tb_) / 0.6))
+        L, R = [(y[:m] + pw[:m] * sink * (ref_lvl * 1.0 / (pre_lvl + 1e-9))) for y, pw in outs]
     g = duck(np.arange(m) / SR, tb_ - 0.25, tb_, 0.04, 0.06)
     L, R = centre_lows(low_cut(L * g, 16), low_cut(R * g, 16))
     PB.finish_blast(f"{th}/fire", L, R, -8.0, 0.895, 0.8)
@@ -1468,7 +1474,7 @@ def pk_cutoff(th):
         drain = drain + crackle(d, rate=2500, decay=0.0008, lo=1200, hi=9000, heavy=1.2) * stut * 0.5
         build = drain + suck
     with PB.seeded(63101):
-        EL, ER = PB.explosion(d, tp, stretch=0.65)
+        EL, ER = PB.explosion_live(d, tp, stretch=0.65)
     L, R = wide_tail(build, 8.0, 2.8, (2200, 110), 0.8)
     m = min(len(L), len(R), n)
     # (the build-up as loud against the burst as it was before: its loudest 400 ms 1/1.35 of the burst's; then the breath
