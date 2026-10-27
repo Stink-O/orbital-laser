@@ -1417,14 +1417,16 @@ def thunder(d, t0, size=1.0, length=6.0, take=0):
 
 
 def pk_fire(th):
-    """fire: the beam pouring down onto the target and the land bursting under it (0 here is the beam striking, the
-    strike's 8.4 s; it lands 0.1 s in and the land bursts 0.6 s in). A thunderclap as it strikes; the beam's roar
-    starting and the ground heaving up under it with a rising groan, its top closing down as the air is drawn in; a
-    breath of near silence; then the burst, louder than anything before it: a huge explosion that moves (see
-    `explosion_deep` in sounds_pk_blast.py: its spectrum over time follows measurements of a real, very large explosion,
-    and its movement, the cracks after the first, the land's answer and the rock coming down were matched to the same
-    recording's dynamics)."""
+    """fire: the beam striking and the land bursting under it, with `explosion` (`explosion_deep`, which moves more, was
+    tried here and sounded worse in the game)."""
     import sounds_pk_blast as PB
+    # fire: the beam pouring down onto the target and the land bursting under it (0 here is the beam striking, the
+    # strike's 8.4 s; it lands 0.1 s in and the land bursts 0.6 s in). A thunderclap as it strikes; the beam's roar
+    # starting and the ground heaving up under it with a rising groan; a breath of near silence; then the burst, louder
+    # than anything before it, a huge explosion: a hard crack (broadband for the first 50 ms), the heavy 60-125 Hz blow
+    # of the pressure wave, a deep roar that holds for ten seconds while the top of it dies away and the sub-bass swells
+    # in under it, rock raining back down (see `explosion` in sounds_pk_blast.py: its spectrum over time follows
+    # measurements of a real, very large explosion)
     tb_ = 0.6
     d = 19.0; n = int(SR * d); t = tt(d)
     with PB.seeded(61001):
@@ -1433,26 +1435,21 @@ def pk_fire(th):
         clap += heavy(n, 0.0, 0.28, 2.2, 1.2, 1.0, 0.35) * 1.2
         heave = np.clip(t / tb_, 0, 1) * (t < tb_)
         rise = (glide_noise(d, 35, 110, 0.6, curve=1.0) * 0.5 + unit(band(white(d), 18, 60)) * 0.6 + roar_bed(d, 120, 600, 3.0, 0.4) * 0.4) * heave ** 1.5
-        # (the heave's top closing down over the last tenths of a second before the breath: the air drawn in)
-        rise = PB.lowpass_track(rise, PB.track(n, 0.0, [(0.0, 16000), (0.16, 9000), (0.34, 220)]))
         pre = (clap + rise) * 0.5 * fade(n, 0.001, 2.0)
-        pws = [convolve_wet(pre, outdoor_ir(4.0, density=30.0, darken=(2600, 140), decay=1.6), 0.8) for _ in range(2)]
-    with PB.seeded(61101):
-        EL, ER = PB.explosion_deep(d, tb_, stretch=0.65)
-    # (the strike's thunderclap and the heave under the beam as loud as the burst's loudest, which still hits harder: it
-    # comes out of the breath, broadband and with the blow under it)
-    m = min(len(EL), len(pws[0]), len(pws[1]))
-    k = loudest((EL + ER)[:m] / 2) / (loudest(pws[0][:int(tb_ * SR)]) + 1e-9)
-    # (and once the land bursts, the clap's echoes sink under it instead of washing on through it)
-    tm = np.arange(m) / SR
-    k = k * np.where(tm < tb_, 1.0, 0.35 * np.exp(-(tm - tb_) / 0.8))
-    L, R = EL[:m] + pws[0][:m] * k, ER[:m] + pws[1][:m] * k
-    # the breath: from 0.36 s to the burst, near silence (the heave's tail and its echoes cut short; after the filters, so
-    # nothing they smear ahead of the burst is left in it)
-    g = duck(np.arange(m) / SR, tb_ - 0.24, tb_, 0.03, 0.04)
-    L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
-    L, R = L * g, R * g
-    PB.finish_blast_decoded(f"{th}/fire", L, R, -8.0, 0.912, 0.8, knee=0.5)
+        EL, ER = PB.explosion(d, tb_, stretch=0.65)
+        outs = []
+        for k, y in enumerate((EL, ER)):
+            pw = convolve_wet(pre, outdoor_ir(4.0, density=30.0, darken=(2600, 140), decay=1.6), 0.8)
+            outs.append((y, pw))
+        # (the strike's thunderclap and the heave under the beam, just under the burst, which is the hardest blow of it all)
+        m = min(len(o[0]) for o in outs)
+        ref_lvl = loudest((EL + ER)[:m] / 2)
+        pre_lvl = loudest(outs[0][1][:int(tb_ * SR)])
+        L, R = [(y[:m] + pw[:m] * (ref_lvl * 1.0 / (pre_lvl + 1e-9))) for y, pw in outs]
+    g = duck(np.arange(m) / SR, tb_ - 0.25, tb_, 0.04, 0.06)
+    L, R = centre_lows(low_cut(L * g, 16), low_cut(R * g, 16))
+    PB.finish_blast(f"{th}/fire", L, R, -8.0, 0.895, 0.8)
+
 
 
 def pk_cutoff(th):
@@ -1471,7 +1468,7 @@ def pk_cutoff(th):
         drain = drain + crackle(d, rate=2500, decay=0.0008, lo=1200, hi=9000, heavy=1.2) * stut * 0.5
         build = drain + suck
     with PB.seeded(63101):
-        EL, ER = PB.explosion_deep(d, tp, stretch=0.65)
+        EL, ER = PB.explosion(d, tp, stretch=0.65)
     L, R = wide_tail(build, 8.0, 2.8, (2200, 110), 0.8)
     m = min(len(L), len(R), n)
     # (the build-up as loud against the burst as it was before: its loudest 400 ms 1/1.35 of the burst's; then the breath
@@ -1484,7 +1481,7 @@ def pk_cutoff(th):
     L, R = centre_lows(low_cut(L, 16), low_cut(R, 16))
     g = duck(tm, tp - 0.1, tp, 0.04, 0.025)
     L, R = L * g, R * g
-    PB.finish_blast_decoded(f"{th}/cutoff", L, R, -8.0, 0.912, 0.8, knee=0.5)
+    PB.finish_blast(f"{th}/cutoff", L, R, -8.0, 0.895, 0.8)
 
 
 def planetkiller():
