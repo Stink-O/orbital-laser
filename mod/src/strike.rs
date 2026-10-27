@@ -3041,10 +3041,10 @@ fn pk_dig_t(d: i32) -> f32 {
     PK_BURST + PK_DIG0 + (PK_DIG_K * (d - d * d / (2.0 * dd))) as f32
 }
 
-/// The planet killer: seven towers tear up out of the land far out round the horizon and fire one after another (each
-/// heard from where it stands), their beams bend over and meet high over the target and fuse, and the one beam they make
-/// comes down on it: the land bursts, and the beam burns for nine seconds while they feed it; then they cut out and the
-/// nexus drops into the crater and bursts there. The land is blown flat for 170 blocks, a crater 260 across and 70 deep
+/// The planet killer: seven towers grind up out of the land far out round the horizon (each heard from where it stands)
+/// and strike a ring of light high over the target with bolts of lightning, one after another; the ring fuses, a bolt
+/// feels its way down to the target and the beam comes down it: the land bursts, and the beam burns for eight and a half
+/// seconds while they feed it; then they cut out and the nexus drops into the crater and bursts there. The land is blown flat for 170 blocks, a crater 260 across and 70 deep
 /// is blown out in terraces with a molten floor and a shaft to bedrock, a rim is thrown up round it, twelve fissures
 /// split the land out to about 300 blocks, and rock is thrown far across the land.
 fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {

@@ -4,18 +4,21 @@
 // other lasers nothing. Validate with tools/check-shader.sh.
 
 // ---- laser 6: the planet killer -----------------------------------------------------------------------------------
-// Seven towers tear up out of the land far out round the horizon, one after another, dark against a sky going dark, the
-// light running up their seams. Each fires a column of light straight up into the sky, then whips it over onto a ring of
-// light forming high over the target, curling in to feed it like a pinwheel, the beams white-hot cores in turbulent
-// sheaths with light flowing along them. The ring lights up from where each beam strikes it, round to the next, until it
-// is whole; it spins up, pulses racing round it and runes turning on it, the light bending inside it, until it shudders,
-// tightens and fills with light, and they fuse: a flash, a ring of fire tearing out through the sky, the sky cracking and
-// the clouds blown open. One beam comes down through it. The land under it domes up, cracking with light, and bursts: a
-// fireball, a column of ejecta, a shock ring rippling out through the land and a wall of dust, debris spiralling up round
-// the beam, the crater molten and fissures running out from it pulsing with light. Then the towers go dark and sink,
-// their beams draining into the ring; it crushes in to a point, drops into the crater and bursts again, and a mushroom of
-// glowing smoke climbs over the crater as the daylight comes back. strike.rs times the same strike, digs the same crater
-// and opens the same fissures (pk_crack): keep the PK_* and pk_* in step.
+// Seven towers grind up out of the land far out round the horizon, one after another, dark against a sky going dark:
+// each one's ground heaves and splits, light leaking up through it; the tower breaks the surface and struggles there,
+// straining, catching, shuddering, leaning, then bursts up out of it in a surge of dust, a column of earth climbing with
+// it. Each crown crackles and fires a bolt of lightning at a ring of light forming high over the target: it feels its
+// way out in steps, branching, then runs the rest of the way and strikes the ring, lighting the land and the sky, and
+// holds the jagged path it took, trembling, struck again now and then. The ring lights up from where each bolt strikes
+// it, round to the next, until it is whole, a band of plasma with lightning crawling over it; it shudders, tightens and
+// fills with light, and they fuse: a flash, a ring of light tearing out through the sky, the sky cracking and the clouds
+// blown open. A bolt feels its way down to the target, streamers reaching up to meet it, and the beam pours down it.
+// The land under it domes up, cracking with light, and bursts: a fireball, a column of ejecta, a shock running out
+// through the land and a wall of dust, debris spiralling up round the beam, the crater molten and fissures running out
+// from it pulsing with light. Then the bolts stutter out and the towers go dark and sink; the ring crushes in to a
+// point, drops into the crater and bursts again, and a mushroom cloud climbs over the crater as the daylight comes back.
+// strike.rs times the same strike, digs the same crater and opens the same fissures (pk_crack): keep the PK_* and pk_*
+// in step.
 
 const PK_N: i32 = 7;               // the towers
 const PK_H: f32 = 300.0;           // the ring their beams feed, its middle this high over the target,
