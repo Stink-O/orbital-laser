@@ -4,7 +4,8 @@ You've been asked to set up or work on **Orbital Laser**, a mod for [Horizon](ht
 Rust rewrite of Minecraft Java). It runs on a Horizon fork that adds the mod capabilities it needs:
 [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world).
 The README is the user-facing guide and the full copy-paste setup prompt is in
-[README.md](README.md#set-it-up-with-an-ai-agent). This file is the short, factual version for you.
+[README.md](README.md#set-it-up-with-an-ai-agent); [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) has the detail (every
+laser, command, capability and timing). This file is the short, factual version for you.
 
 ## Ground rules
 
@@ -19,14 +20,14 @@ The README is the user-facing guide and the full copy-paste setup prompt is in
   across (terraced walls 60 deep, the floor 80, an open shaft 80 across to bedrock in the middle), heaps a rim out to
   340, splits the land in chasms out to ~400, chars it and strews rubble to 380, kills every mob within 280 and
   force-loads ~1,900 chunks from the moment it fires; its crater, rim and charred land go straight into the chunks
-  through the fork's `world.edit-blocks` (branch `mod-api-edit-blocks` in ~/horizon-port, the next fork release
-  `orbital-mod-api-4`; older builds won't start the mod) and are done about 25 s into the strike, the fissures' few
+  through the fork's `world.edit-blocks` (new in the fork release `orbital-mod-api-4`) and are done about 25 s into the strike, the fissures' few
   commands soon after. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build: a Linux x86-64 download on the fork's releases, or
+- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-4` or newer (older builds won't
+  start the mod): a Linux x86-64 download on the fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.
@@ -51,8 +52,8 @@ from a script.
 In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall` or `planetkiller`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall and the Planet Killer are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
-box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`: a fork build without them
-won't start the mod.
+box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
+without `world.edit-blocks`, won't start the mod.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
