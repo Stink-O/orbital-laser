@@ -1417,6 +1417,7 @@ def thunder(d, t0, size=1.0, length=6.0, take=0):
 
 
 def planetkiller():
+    import sounds_pk_blast as PB
     th = "planetkiller"
     # rise1-3 (positional, so mono): one tower grinding up out of the land on the horizon, heard from where it stands,
     # in step with strike.wgsl's pk_rise (0 here is its ground starting to heave, 0.7 s before it breaks the surface).
@@ -1479,23 +1480,17 @@ def planetkiller():
         finish_loud(f"{th}/rise{take}", low_cut(x, 16), None, -15.0, 1.0, 0.89)
 
     # bolt1-3 (positional, so mono): a tower's bolt, heard overhead from the stretch of it nearest the ring, in step with
-    # strike.wgsl's pk_lead (0 here is it setting out). It crackles out step by step, each step a little louder, a buzz
-    # of charge rising under them; then it runs, a rising tearing zip; the briefest silence; it strikes: a sharp, close
-    # crack, and the thunder rolling away after it for seconds.
+    # strike.wgsl's pk_lead (0 here is it setting out). It ticks out step by step, quickening, a short rising zip, a held
+    # breath; then it connects: a hard, sharp crack at full level that starts on the first sample (nothing before it,
+    # no reverb on it), a fast electric chirp and a low thwack in it; the crackle after it a few separate ticks thinning
+    # out, the electric hum coming up under them, and a deep thunder roll underneath that rolls away over five seconds. The
+    # three takes differ in the crack's chirp, its thwack's pitch, its body, the ticks and the roll, so two bolts a moment
+    # apart are never the same waveform twice (see sounds_pk_blast.py). The loudest sound here is the crack, at the peak.
     creep, shoot = 1.0, 1.14
     for take in (1, 2, 3):
-        d = 9.0; n = int(SR * d); t = tt(d)
-        x = leader(d, creep, shoot - creep, 13 + take, take) * 1.8
-        after = np.maximum(t - shoot, 0); on = t >= shoot
-        crack = nwave(n, shoot, 0.0016, 2.4, 12000) + band(white(d), 1800, 11000) * np.exp(-after / 0.007) * on * 1.5
-        crack += crackle(d, rate=12000, decay=0.0006, lo=1000, hi=10000, heavy=1.2) * np.exp(-after / 0.05) * on * 0.7
-        crack += band(white(d), 250, 2500) * np.exp(-after / 0.08) * on * 0.5
-        x += crack + heavy(n, shoot, 0.12, 1.6, 1.0, 0.6, 0.25) * 1.3
-        x += thunder(d, shoot + 0.08, 1.0, 6.5, take) * 0.3
-        x = convolve_wet(x, outdoor_ir(5.0, density=25.0, darken=(2600, 140), decay=1.8), 0.6)[:n + int(2.0 * SR)]
-        x *= duck(np.arange(len(x)) / SR, shoot - 0.03, shoot, 0.08, 0.005)
-        x, _ = parallel_comp(x, x.copy(), amount=0.4)
-        finish_loud(f"{th}/bolt{take}", low_cut(x, 18), None, -14.0, 1.0, 0.89)
+        with PB.seeded(51000 + take):
+            x = PB.bolt_connect(take, creep, shoot, 8.4)
+        PB.finish_bolt(f"{th}/bolt{take}", x, -15.0, 0.912, 0.6)
 
     # arcs: the bolts held, from the first striking the ring (the strike's 4.2 s) until the towers cut out (17.65 s):
     # their crackle and the buzzing electric hum of all that power, swelling as each strikes (seven of them, 0.4 s apart),

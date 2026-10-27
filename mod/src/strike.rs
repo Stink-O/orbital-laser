@@ -3098,7 +3098,8 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
         // its bolt: heard from the stretch of it nearest the ring, overhead and out towards the tower
         let (bx_, by_, bz_) = (tx + (x - tx) * 0.3, ty + PK_H + (PK_TOWER_H - PK_H) * 0.3, tz + (z - tz) * 0.3);
         let blag = late(bx_, by_, bz_).min(0.3);
-        let btake = 1 + (i + take) % 3;
+        // (taken in turn, so bolts that strike a moment apart are never the same take)
+        let btake = 1 + i % 3;
         let pitch = p.rng.uniform(0.9, 1.1);
         p.at(t + blag, format!("playsound orbital:planetkiller.bolt{btake} block @a {bx_:.1} {by_:.1} {bz_:.1} 4 {pitch:.2} 1"));
         p.shake(t + PK_SHOOT + blag, 0.2, 0.4);
