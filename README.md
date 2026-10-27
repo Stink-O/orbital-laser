@@ -71,7 +71,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 ## New in 0.5.2
 
-<!-- PK stills: docs/17-planet-killer-*.jpg -->
+<p align="center">
+  <img alt="The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning" width="720" src="docs/17-planet-killer-lightning.jpg">
+</p>
 
 - **Planet Killer**, the seventh laser, on the wheel's second page and `/orbital planetkiller`. Seven towers grind up
   out of the land on the horizon and strike a ring of light in the sky with lightning. The ring fuses and fires a beam
@@ -123,7 +125,9 @@ reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes 
 |---|---|---|
 | ![The Downfall falling, fires burning on its roof and smoke streaming off it](docs/14-downfall-fall.jpg) | ![The burning ship ploughing into a mountain, earth flung up along its sides, smoke trailing behind](docs/15-downfall-crash.jpg) | ![The black hole tearing up what is left of the wreck](docs/16-downfall-black-hole.jpg) |
 
-<!-- PK stills: docs/17-planet-killer-*.jpg (a "Planet Killer" row here) -->
+| Planet Killer | The beam | The burst | The crater |
+|---|---|---|---|
+| ![The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning](docs/17-planet-killer-lightning.jpg) | ![The Planet Killer's beam hitting the land, cracks glowing across the ground round it](docs/18-planet-killer-beam.jpg) | ![The Planet Killer's burst: a fireball rising out of the crater](docs/19-planet-killer-burst.jpg) | ![The Planet Killer's crater afterwards, seen from high above at a distance](docs/20-planet-killer-crater.jpg) |
 
 ## Getting started
 
