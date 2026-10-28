@@ -40,6 +40,14 @@ K = {  # palette
     "x": (96, 44, 168, 255),      # its deep violet
     "z": (255, 120, 210, 255),    # its rose
     "Z": (110, 220, 255, 255),    # its ice blue
+    "s": (210, 162, 87, 255),     # the sinkhole's dust
+    "S": (236, 214, 170, 255),    # its pale dust
+    "t": (92, 150, 52, 255),      # grass
+    "T": (60, 104, 34, 255),      # dark grass
+    "j": (118, 82, 52, 255),      # dirt
+    "J": (78, 54, 36, 255),       # dark dirt
+    "l": (112, 112, 112, 255),    # stone
+    "L": (70, 70, 74, 255),       # dark stone
 }
 
 def designator():
@@ -255,13 +263,32 @@ CRYSTALBLOOM_ICON = [     # a cluster of crystal spires bursting up out of crack
     "................",
 ]
 
-GRIDS = {"remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+SINKHOLE_ICON = [        # the land caving in: a dark pit, its walls in strata, a slab tipping into it, dust over it
+    "......S..S......",
+    "....SsSsSsS.....",
+    "...sSs.s.sSs....",
+    "....s.....s.....",
+    "................",
+    "tTtTtt.....ttTtt",
+    "jjJjjtT...Ttjjjj",
+    "jJjjl.tt..jl.jJj",
+    "llLl..jjt.Lll.lL",
+    "lLl...Jj...lLl.l",
+    "Ll.....l....Lll.",
+    "lL..........lLL.",
+    "L.....dd.....Ll.",
+    "l....dkkd.....L.",
+    "L...dkkkkd....L.",
+    "...dkkkkkkd.....",
+]
+
+GRIDS = {"sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:
