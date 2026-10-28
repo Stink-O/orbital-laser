@@ -18,6 +18,7 @@ const CB_N: i32 = 46;              // the spires: 0..4 the first shards, 5 the h
 const CB_LEADS: i32 = 6;
 const CB_FIELD: f32 = 150.0;       // how far out they stand
 const CB_SINK: f32 = 40.0;         // how far under the target's ground each runs down
+const CB_STUMP: f32 = 0.5;         // its stump as wide as this of it (its heart: the rest of it shatters)
 const CB_PUNCH0: f32 = 3.5;        // the first shard breaks the ground, the next CB_PUNCH_DT after, the heart last
 const CB_PUNCH_DT: f32 = 0.62;
 const CB_BULGE: f32 = 0.7;         // the ground over each heaves for this long before it breaks
@@ -106,7 +107,11 @@ fn cb_break(i: i32, seed: f32, ph: f32) -> vec4<f32> {
     if (i == 5) {
         return vec4<f32>(0.0);
     }
-    let h = clamp(ph * (0.1 + 0.26 * mh(u, s, 18u)), 7.0, 64.0);
+    // (the first shards, each cluster's tallest and a few others leave a stump; the rest shatter whole)
+    if (!(i < CB_LEADS || (i - 6) % 4 == 0 || mh(u, s, 26u) < 0.3)) {
+        return vec4<f32>(0.0);
+    }
+    let h = clamp(ph * (0.06 + 0.14 * mh(u, s, 18u)), 6.0, 34.0);
     let ta = mh(u, s, 19u) * TAU;
     let tl = 0.25 + 0.55 * mh(u, s, 20u);
     return vec4<f32>(h, 0.0, cos(ta) * tl, sin(ta) * tl);
@@ -652,6 +657,8 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let H = c.Hb + c.tip;
         if (det) {
             c.cut = vec4<f32>(brk.x, brk.z, brk.w, 1.0);
+            c.R = c.R * CB_STUMP;
+            c.Rt = c.R * 0.8;
         }
         if ((i < CB_LEADS || (i - 6) % 4 == 0) && nl < 16 && !det) {
             lp[nl] = vec4<f32>(c.B + c.a * H * 0.45, glow_i * saturate(c.g) * (0.25 + H / 300.0));
@@ -678,6 +685,8 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         if (det) {
             let br = cb_break(best, seed, cb_place(best, seed).w);
             c.cut = vec4<f32>(br.x, br.z, br.w, 1.0);
+            c.R = c.R * CB_STUMP;
+            c.Rt = c.R * 0.8;
         }
         let X = rd * best_t;
         let ql = cb_to(c, X - c.B);

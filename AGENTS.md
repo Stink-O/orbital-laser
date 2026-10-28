@@ -22,8 +22,8 @@ laser, command, capability and timing). This file is the short, factual version 
   force-loads ~1,900 chunks from the moment it fires; its crater, rim and charred land go straight into the chunks
   through the fork's `world.edit-blocks` (new in the fork release `orbital-mod-api-4`) and are done about 25 s into the strike, the fissures' few
   commands soon after. The Crystal Bloom clears everything above ground out to ~130 blocks (24 up, to the sky over its
-  middle), digs a geode crater ~176 across and 28 deep round a well 20 across to bedrock, leaves 45 crystal stumps up to
-  64 tall out to ~150 with broken spires lying by the tallest, opens nine fissures out to ~205, strews crystal shards
+  middle), digs a geode crater ~176 across and 28 deep round a well 20 across to bedrock, leaves about two dozen crystal stumps up
+  to 34 tall out to ~150 with three broken spires lying by them, opens nine fissures out to ~205, strews crystal shards
   and frosts the land out to 235, kills every mob within 160 and force-loads the ~770 chunks within 240; its land goes
   in through `world.edit-blocks` from the detonation at 22 s and is done by about 28 s. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the

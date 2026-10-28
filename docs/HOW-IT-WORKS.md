@@ -90,7 +90,8 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   and quicker; a breath; and they detonate in a flash of colour, every spire shattering into a storm of tumbling shards
   and a cloud of glitter, a pale shock running out over the land. The shards rain down for seconds, each landing as a real
   crystal where it comes down; the crater is dug from the middle out, the stumps of the spires standing in it as the dig
-  reaches them, and the fissures split open as the shock reaches them, light running along them. It reaches 1000 blocks.
+  reaches them (the hearts of the first shards, each cluster's tallest and a few others; the rest shatter whole), and
+  the fissures split open as the shock reaches them, light running along them. It reaches 1000 blocks.
 
 All of them:
 
@@ -130,9 +131,9 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 - **Crystal Bloom:** everything above the ground blown clear out to about 130 blocks (24 up, to the sky over its
   middle), a geode crater about 176 across and 28 deep (lined with amethyst over calcite over smooth basalt, here and
   there quartz or rose glass, seams of light through its floor, crystals jutting up off it) round a crystal-lined well 20
-  across down to bedrock where the heart stood, 45 stumps of the spires standing up to 64 blocks tall out to about 150
+  across down to bedrock where the heart stood, about two dozen stumps standing up to 34 blocks tall out to about 150
   (amethyst, quartz, calcite, packed and blue ice under a skin of stained glass, banded, a glowing heart of froglight or
-  sea lantern down the middle of each), the tallest spires' broken lengths lying by their stumps, nine fissures up to 18
+  sea lantern down the middle of each), three broken lengths of spire lying by their stumps, nine fissures up to 18
   deep out to about 205, crystals where the shards came down, the land frosted with calcite and amethyst out to 165 and
   strewn with amethyst out to 235, and every mob within 160 killed. Stand at least 250 blocks back. It keeps about 770
   chunks loaded while it works; its land goes in from the detonation (22 s) and is done by about 28 s.

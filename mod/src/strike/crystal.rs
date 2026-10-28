@@ -13,6 +13,7 @@ pub(super) const CB_N: usize = 46;
 pub(super) const CB_LEADS: usize = 6;
 const CB_FIELD: f64 = 150.0;
 const CB_SINK: f64 = 40.0;
+const CB_STUMP: f64 = 0.5;
 const CB_PUNCH0: f32 = 3.5;
 const CB_PUNCH_DT: f32 = 0.62;
 const CB_BULGE: f32 = 0.7;
@@ -127,7 +128,11 @@ pub(super) fn cb_break(i: usize, seed: f32, h: f64) -> [f64; 3] {
     if i == 5 {
         return [0.0; 3];
     }
-    let bh = (h * (0.1 + 0.26 * mh(u, s, 18))).clamp(7.0, 64.0);
+    // (the first shards, each cluster's tallest and a few others leave a stump; the rest shatter whole)
+    if !(i < CB_LEADS || (i - 6) % 4 == 0 || mh(u, s, 26) < 0.3) {
+        return [0.0; 3];
+    }
+    let bh = (h * (0.06 + 0.14 * mh(u, s, 18))).clamp(6.0, 34.0);
     let ta = mh(u, s, 19) * TAU;
     let tl = 0.25 + 0.55 * mh(u, s, 20);
     [bh, ta.cos() * tl, ta.sin() * tl]
@@ -266,11 +271,11 @@ impl CbSolid {
         let off = rel.unwrap_or(0);
         let put = |bl: &mut Blocks, a: i32, b: i32, blk: &'static str| bl.put(x, z, a - off, b - off, blk, None, rel.is_some());
         if side < 1.6 {
-            // the skin, banded every seven blocks
+            // the skin, banded every thirteen blocks
             let mut y = lo;
             while y <= hi {
-                let bnd = (y + 3 * self.family as i32).rem_euclid(7) == 0;
-                let next = if bnd { y } else { (y + 6 - (y + 3 * self.family as i32).rem_euclid(7)).min(hi) };
+                let bnd = (y + 3 * self.family as i32).rem_euclid(13) == 0;
+                let next = if bnd { y } else { (y + 12 - (y + 3 * self.family as i32).rem_euclid(13)).min(hi) };
                 put(bl, y, next, if bnd { band } else { skin });
                 y = next + 1;
             }
@@ -299,9 +304,10 @@ fn cb_stump(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
     let hue = cb_hue(i, seed, p);
     let a = [f[1].sin() * f[2].cos(), f[1].cos(), f[1].sin() * f[2].sin()];
     let (e1, e2) = cb_frame(a, f[3]);
-    let (r, h) = (f[0], p[3]);
+    // (only its heart: the rest of it shatters; strike.wgsl's CB_STUMP)
+    let (r, h) = (f[0] * CB_STUMP, p[3]);
     let rt = r * 0.8;
-    let tip = (rt * (1.3 + 1.5 * mh(i as u32, seed as u32, 24))).min(h + CB_SINK * 0.5);
+    let tip = (f[0] * 0.8 * (1.3 + 1.5 * mh(i as u32, seed as u32, 24))).min(h + CB_SINK * 0.5);
     let hb = h - tip;
     let tp = (r - rt) / (hb + CB_SINK).max(1.0);
     let apex = [(mh(i as u32, seed as u32, 21) - 0.5) * 0.7, (mh(i as u32, seed as u32, 22) - 0.5) * 0.7];
@@ -324,14 +330,14 @@ fn cb_stump(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
 /// The broken length of spire i lying on the land by its stump, toppled the way it leaned, for the tallest of them.
 fn cb_fallen(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
     let p = cb_place(i, seed);
-    if i == 5 || p[3] < 150.0 || !(i < CB_LEADS || (i - 6) % 4 == 0) {
+    if i >= 5 || i % 2 == 1 {
         return None;
     }
     let f = cb_form(i, seed, p);
     let br = cb_break(i, seed, p[3]);
     let s = seed as u32;
-    let len = (p[3] * 0.3).clamp(25.0, 80.0);
-    let rp = f[0] * 0.85;
+    let len = (p[3] * 0.18).clamp(20.0, 45.0);
+    let rp = f[0] * 0.6;
     let hd = f[2] + (mh(i as u32, s, 25) - 0.5) * 0.5;
     let dist = br[0] * f[1].sin() + len * 0.5 + rp + 5.0;
     let a = norm([hd.cos(), -0.1 - 0.1 * mh(i as u32, s, 26), hd.sin()]);
@@ -918,7 +924,7 @@ mod tests {
             let f = cb_form(i, SEED, p);
             let br = cb_break(i, SEED, p[3]);
             let (x, z) = ((POINT[0] + p[0]).floor() as i32, (POINT[2] + p[1]).floor() as i32);
-            if i == 5 {
+            if br[0] < 0.5 {
                 continue;
             }
             // (built through its middle a little over the ground, after the crater round it is dug)
