@@ -31,7 +31,7 @@ const CB_DET: f32 = 22.0;          // and detonate
 const CB_END: f32 = 31.0;          // the light gone (the strike runs 32 s)
 const CB_FRAGS: i32 = 96;          // the shards thrown out as they burst (strike.rs lands each where it comes down)
 const CB_G: f32 = 22.0;            // how hard they fall
-const CB_ORBITERS: i32 = 40;
+const CB_ORBITERS: i32 = 32;
 const CB_BOWL: f32 = 88.0;         // the crater (strike.rs's cb_depth): CB_BOWL round, CB_BOWL_D deep, a well CB_WELL round
 const CB_BOWL_D: f32 = 28.0;
 const CB_WELL: f32 = 10.0;
@@ -438,7 +438,7 @@ fn cb_dust(rd: vec3<f32>, F: vec3<f32>, s: f32, size: f32, seed: f32, tmax: f32,
     let up = tb > 0.0;
     let Rf = size * select(0.4 + 0.6 * saturate(s * 2.0), 0.9 + 1.3 * (1.0 - exp(-tb * 0.7)), up);
     let Hf = size * select(0.3 + 0.5 * saturate(s * 2.0), 0.8 + 1.6 * (1.0 - exp(-tb * 0.8)), up);
-    let af = select(0.5 * saturate(s * 4.0) + 0.5 * cb_jolt(s, 0.34, 3.0) + 0.5 * cb_jolt(s, 0.66, 3.0), 1.1 * exp(-tb / 3.5), up);
+    let af = select(0.5 * saturate(s * 4.0) + 0.5 * cb_jolt(s, 0.34, 3.0) + 0.5 * cb_jolt(s, 0.66, 3.0), 1.2 * exp(-tb / 2.2), up);
     if (af < 0.02 || s < -0.3) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
@@ -478,7 +478,8 @@ fn cb_dust(rd: vec3<f32>, F: vec3<f32>, s: f32, size: f32, seed: f32, tmax: f32,
         }
         let nq = q * (2.2 / size) + vec3<f32>(seed, -time * 0.4, 3.0) - vec3<f32>(q.x, 0.0, q.z) * (0.01 / max(r, 1.0)) * time * 4.0;
         let n = gfbm3(nq, 2);
-        d = smoothstep(0.0, 1.0, saturate((d * (0.4 + 2.2 * n) - 0.35) * 2.0));
+        let n2 = gnoise3(nq * 3.1 + vec3<f32>(7.0));
+        d = smoothstep(0.0, 1.0, saturate((d * (0.2 + 2.8 * n * (0.6 + 0.8 * n2)) - 0.5) * 2.2));
         if (d > 0.002) {
             let al = 1.0 - exp(-d * (5.0 / size) * dt);
             let lit = amb * (0.35 + 0.9 * smoothstep(0.4, 0.8, n)) * (0.55 + 0.45 * saturate(y / Hf)) + glow * exp(-r / (size * 0.6));
@@ -721,6 +722,16 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                 // (how close the bent ray passes to its heart: the glow inside it, strongest down its middle)
                 let mid = ql + dr * ex.x * 0.5;
                 core = exp(-length(mid.xz) / (c.R * 0.5));
+                // (cleavage inside it catching the light: a few flat sheets across it, each its own way)
+                for (var fk = 0; fk < 3; fk = fk + 1) {
+                    let hv = cb_h3(best * 3 + fk, 777u, seed);
+                    let fn_ = normalize(hv - 0.5 + vec3<f32>(0.0, 0.2, 0.0));
+                    let off_ = (hv.x - 0.5) * c.R * 0.8;
+                    let a0 = dot(ql, fn_) - off_;
+                    let a1 = dot(ql + dr * ex.x, fn_) - off_;
+                    // (the sheet's light where the ray crosses it, softer the more face-on it is seen)
+                    core = core + select(0.0, 0.55 * (0.4 + 0.6 * abs(dot(dr, fn_))), a0 * a1 < 0.0);
+                }
             }
         }
         // its body: a deep, saturated colour, darker the further the light goes through it
@@ -783,14 +794,14 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let reach = smoothstep(front, front - 30.0, r + 20.0 * (gnoise2(rel2 * 0.02 + vec2<f32>(seed)) - 0.5));
         if (reach > 0.01 && !det && on_ground > 0.01) {
             let pw = scene_len * px_a;
-            let w1 = max(0.004, pw * 0.03);
+            let w1 = max(0.004, pw * 0.05);
             let warp = vec2<f32>(gnoise2(rel2 * 0.011 + vec2<f32>(3.0, seed)), gnoise2(rel2 * 0.011 + vec2<f32>(seed, 7.0))) * 40.0;
             let cn1 = abs(gnoise2((rel2 + warp) * 0.022 + vec2<f32>(seed * 0.37)) - 0.5);
             let cn2 = abs(gnoise2((rel2 + warp * 0.6) * 0.07 + vec2<f32>(5.0, seed)) - 0.5);
-            let crk = (exp(-cn1 / w1) * min(1.0, 0.01 / w1) + 0.5 * exp(-cn2 / (w1 * 0.8)) * min(1.0, 0.008 / w1) * smoothstep(1.0, 3.0, time))
+            let crk = (exp(-cn1 / w1) * min(1.0, 0.016 / w1) + 0.5 * exp(-cn2 / (w1 * 0.8)) * min(1.0, 0.008 / w1) * smoothstep(1.0, 3.0, time))
                 * reach;
             let throb = 0.7 + 0.3 * sin(time * 2.2 - r * 0.04) + 1.2 * res * pow(0.5 + 0.5 * sin(pulse_ph * TAU - r * 0.03), 6.0);
-            let hc = cb_hue(atan2(rel2.y, rel2.x) / TAU * 0.7 + r * 0.002 + hue_t);
+            let hc = cb_hue(atan2(rel2.y, rel2.x) / TAU + r * 0.002 + hue_t);
             add = add + hc * crk * (0.6 + 1.4 * wake) * throb * (1.0 - breath * 0.8) * (1.0 + 0.5 * exp(-r / 40.0)) * on_ground * 4.5 * k;
             // (and a glow over it, low, the light coming up out of the ground)
             add = add + hc * exp(-cn1 / 0.07) * reach * 0.12 * wake * on_ground * k;
@@ -809,7 +820,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                 let veins = exp(-pow((n - 0.5) / 0.05, 2.0));
                 let deep = saturate(-dy / CB_BOWL_D);
                 let fresh = exp(-max(time - cb_dig_t(r), 0.0) / 6.0);
-                let hc = cb_hue(atan2(rel2.y, rel2.x) / TAU * 0.5 + 0.02 * r);
+                let hc = cb_hue(atan2(rel2.y, rel2.x) / TAU + 0.02 * r);
                 add = add + hc * (veins * (0.5 + 1.2 * fresh) + 0.5 * fresh * deep + smoothstep(CB_WELL * 1.6, 0.0, r) * 2.0) * open * after * 1.3 * k;
             }
             // the fissures as they open, light pulsing out along them
@@ -832,6 +843,34 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                 let fade = 0.35 + 0.65 * exp(-max(dt - 1.5, 0.0) / 5.0);
                 add = add + cb_hue(ang / TAU + 0.3) * crack * fade * on_ground * after * 1.8 * k;
             }
+        }
+    }
+    // the light welling up out of the waking land: a low haze of colour over it, thickest over the middle, pulsing with
+    // the hum, carried up by the bloom, gone as they burst
+    if (!det) {
+        let front = (CB_FIELD + 40.0) * smoothstep(0.0, 3.6, time);
+        let Hh = 14.0 + 30.0 * smoothstep(CB_BLOOM0, CB_RES, time);
+        // (where the view ray is in the slab of air over the land, up to what it meets)
+        let y0 = tgt.y - 2.0 - cam.y;
+        let y1 = tgt.y + Hh - cam.y;
+        var ta = 0.0;
+        var tb = select(scene_len, 1.0e4, sky);
+        if (abs(rd.y) > 1.0e-4) {
+            ta = max(min(y0 / rd.y, y1 / rd.y), 0.0);
+            tb = min(tb, max(y0 / rd.y, y1 / rd.y));
+        } else if (cam.y < tgt.y - 2.0 || cam.y > tgt.y + Hh) {
+            tb = -1.0;
+        }
+        if (tb > ta) {
+            // (its strength where the ray passes nearest the middle within the slab)
+            let tcl = clamp(dot(crel.xz, rd.xz) / max(dot(rd.xz, rd.xz), 1.0e-6), ta, tb);
+            let mid = rd * tcl - crel;
+            let rm = length(mid.xz);
+            let m = smoothstep(front, front * 0.4, rm) * exp(-rm / 90.0);
+            let hc = mix(cb_hue(hue_t + 0.1), cb_hue(atan2(mid.z, mid.x) / TAU + hue_t), smoothstep(20.0, 120.0, rm));
+            let path = min(tb - ta, 400.0);
+            let throb = 0.75 + 0.25 * sin(time * 2.2) + 0.6 * res * pow(0.5 + 0.5 * sin(pulse_ph * TAU), 4.0);
+            add = add + hc * (1.0 - exp(-path / 160.0)) * m * wake * throb * (1.0 - breath) * 0.6 * k;
         }
     }
     // the clouds lit from under by the spires' light, in colour
@@ -1074,10 +1113,10 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let dcs = length(ps);
         let wpx = max(6.0 + 10.0 * dt, max(tcs, 1.0) * 0.002);
         let limb = exp(-pow((dcs - Rs) / wpx, 2.0));
-        add = add + mix(vec3<f32>(0.8, 0.85, 1.0), cb_spectrum(saturate((dcs - Rs) / (wpx * 2.0) + 0.5)), 0.5) * limb * exp(-dt * 2.2) * 0.25 * cb_occ(tcs, scene_len, sky, cloud) * k;
+        add = add + mix(vec3<f32>(0.8, 0.85, 1.0), cb_spectrum(saturate((dcs - Rs) / (wpx * 2.0) + 0.5)), 0.15) * limb * exp(-dt * 2.5) * 0.18 * cb_occ(tcs, scene_len, sky, cloud) * k;
         // a ball of white light where the heart was, fading
         let ball = exp(-dcs / (30.0 + 40.0 * dt)) * exp(-dt * 2.2) * 3.0;
-        add = add + mix(vec3<f32>(1.0), cb_hue(hue_t), 0.3) * ball * cb_occ(tcs - 30.0, scene_len, sky, cloud) * k;
+        add = add + mix(vec3<f32>(1.0), cb_hue(hue_t + dcs * 0.006 + dt * 0.4), 0.25 + 0.5 * saturate(dcs / (40.0 + 60.0 * dt))) * ball * cb_occ(tcs - 30.0, scene_len, sky, cloud) * k;
     }
 
     // ---- the lens: bloom round the heart as they resonate and burst, a ring of colour round it ----------------------
