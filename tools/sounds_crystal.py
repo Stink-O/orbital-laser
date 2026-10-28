@@ -3,17 +3,20 @@
   wake       the land waking: a deep resonant hum swelling under groans and creaks of the ground, a faint glassy shimmer
              coming up through it (0 is the strike's start, heard from the middle)
   punch1-3   a shard punching up out of the land (positional, mono; 0 is its ground starting to heave, 0.7 s before it
-             breaks it): the ground groaning and cracking, the crack of rock and crystal as it breaks through, grinding
+             breaks it): the ground groaning and cracking, the crystal under it fracturing under the strain, the crack of rock and crystal as it breaks through, grinding
              and catching twice (0.34 and 0.66 s after), then the surge: a heavy blow, a glassy ring rising with it, rock
              raining back down, a variation of the Planet Killer's `rise`
   bloom      the bloom running out over the land (0 is 0.3 s before it sets out): chimes and ringing as the spires grow,
              each push its own chime, deeper for the big ones, grinding and cracking where they break the ground
   resonance  the spires humming in sync (0 is the strike's 14 s): a harmonic drone building, harmonic by harmonic, its
-             pulses quickening with the light running up them, shimmering on top; cut dead 0.32 s before the burst
+             pulses quickening with the light running up them, air and breathy high harmonics shimmering on top; cut dead
+             0.32 s before the burst
   shatter    the detonation: `explosion_live` played on another seed and with its own character (a sharper, brighter
              start, a little shorter), with ringing crystalline partials, a shimmer of glitter high up and the glass of the
              spires shattering on top of its weight
-  tinkle     shards raining down for seconds after it: glassy clinks near and far, the odd bigger one breaking
+  tinkle     shards raining down for seconds after it: each its own glass hit (inharmonic modes struck rough, bouncing
+             and skittering on stone, dull on earth), near and far, some in sprays, the odd bigger one breaking, fine
+             grit settling, thinning out
   after      what is left: a singing ring dying away over the crater, a low wind, a last few tinkles
 
     python3 tools/sounds_crystal.py            # writes orbital-sounds/assets/orbital/sounds/crystalbloom/*.ogg and
@@ -108,6 +111,107 @@ def glitter(n, t_lo, t_hi, rate_fn, amp_fn, f_lo=4000, f_hi=12000):
     return L, R
 
 
+def modal(g, m, exc, freqs, decays, amps):
+    """`exc` (a short burst of noise) struck into a body's modes: each mode a damped sine at its own phase, the burst
+    convolved through them all, so the onset is as rough as the burst and no two strikes ring quite alike. Mono, `m`
+    samples."""
+    s = np.arange(m) / SR
+    ir = np.zeros(m)
+    for f, dk, a in zip(freqs, decays, amps):
+        if f < 16500:
+            ir += np.sin(2 * np.pi * f * s + g.uniform(0, 2 * np.pi)) * np.exp(-s / dk) * a
+    return np.convolve(exc, ir)[:m]
+
+
+def burst(g, m, decay, lo=None, hi=None):
+    """A burst of noise `m` samples long, dying over `decay` seconds: what strikes a body in `modal`."""
+    s = np.arange(m) / SR
+    x = g.standard_normal(m) * np.exp(-s / decay)
+    return band(x, lo, hi) if (lo or hi) else x
+
+
+def fracture(g, n, t0, size=1.0):
+    """A crystal mass cracking under stress, deep in the ground: a quick run of micro-fractures (each a rough burst
+    through a dense, short, inharmonic set of modes, so it snaps and grits rather than rings) and the dull knock of the
+    whole body taking the strain under it. Mono, placed at t0."""
+    m = int(0.45 * SR)
+    y = np.zeros(m)
+    tc = 0.0
+    for i in range(int(g.integers(4, 9) + 3 * size)):
+        k = int(tc * SR)
+        if k >= m - 64:
+            break
+        nm = int(g.integers(14, 24))
+        fr = np.exp(g.uniform(np.log(650), np.log(7000), nm))
+        dec = g.uniform(0.003, 0.022, nm) * (900 / fr) ** 0.35
+        amp = g.lognormal(0, 0.7, nm) * (1500 / fr) ** 0.3
+        e = burst(g, int(0.006 * SR), g.uniform(0.0003, 0.0022))
+        c = modal(g, m - k, e, fr, dec, amp)
+        c += band(burst(g, m - k, g.uniform(0.0008, 0.003)), 900, 9000) * np.abs(c).max() * 0.8
+        y[k:] += c / (np.abs(c).max() + 1e-9) * g.uniform(0.25, 1.0) * (1.0 if i else 1.3)
+        tc += g.gamma(1.3, 0.012 + 0.012 * size)
+    # (the body taking it: a few low modes struck by a soft, long burst, a knock more than a note)
+    fr = np.array([g.uniform(110, 160), g.uniform(230, 300), g.uniform(390, 520)]) * (1.1 - 0.2 * size)
+    body = modal(g, m, burst(g, int(0.04 * SR), 0.012, 60, 900), fr, g.uniform(0.025, 0.06, 3), (1.0, 0.6, 0.35))
+    body = band(body, 60, 1500)
+    y += body / (np.abs(body).max() + 1e-9) * (0.35 + 0.25 * size)
+    out = np.zeros(n)
+    k0 = int(t0 * SR)
+    out[k0:k0 + m] = y[:n - k0]
+    return out
+
+
+def glass_hit(g, size, stone, rough=1.0):
+    """One shard of glass landing: a hard tick of contact, the shard's own modes (inharmonic, few and short, each
+    struck through a rough burst), on stone maybe bouncing a few times, quicker and softer each time, and skittering;
+    on earth dull and short, more knock than ring. Mono, peak 1, about a third of a second."""
+    m = int(0.36 * SR)
+    s = np.arange(m) / SR
+    # (the shard's modes: a big piece lower and longer, a sliver high and brief; spaced unevenly, as a flake's are)
+    nm = int(g.integers(5, 11))
+    base = np.exp(g.uniform(np.log(1700), np.log(5200))) * (1.6 - size)
+    fr = base * np.cumprod(np.concatenate(([1.0], 1 + g.uniform(0.18, 0.9, nm - 1))))
+    dec = g.uniform(0.005, 0.022, nm) * (0.6 + 0.8 * size) * (base / fr) ** 0.6 * (1.0 if stone else 0.45)
+    amp = g.lognormal(0, 0.6, nm) * (base / fr) ** 0.5
+    y = np.zeros(m)
+    hits = [(0.0, 1.0)]
+    if stone and g.random() < 0.6:
+        dt, a, tb = g.uniform(0.03, 0.1), 1.0, 0.0
+        for _ in range(int(g.integers(1, 5))):
+            tb += dt; a *= g.uniform(0.25, 0.6); dt *= g.uniform(0.4, 0.75)
+            if tb > 0.25:
+                break
+            hits.append((tb, a))
+    for tb, a in hits:
+        k = int(tb * SR)
+        e = burst(g, int(0.004 * SR), g.uniform(0.0002, 0.0012) * rough)
+        r = modal(g, m - k, e, fr * g.uniform(0.985, 1.015, nm), dec * g.uniform(0.7, 1.2, nm), amp * g.uniform(0.5, 1.3, nm))
+        r /= np.abs(r).max() + 1e-9
+        tick = band(burst(g, m - k, g.uniform(0.0002, 0.0007)), 3000 if stone else 1200, 15000 if stone else 5000)
+        tick /= np.abs(tick).max() + 1e-9
+        y[k:] += (r * (1.0 if stone else 0.5) + tick * g.uniform(0.3, 0.8)) * a
+    if not stone:
+        th = band(burst(g, m, g.uniform(0.003, 0.007)), 500, 2000)
+        y += th / (np.abs(th).max() + 1e-9) * 0.3
+    if stone and g.random() < 0.35:
+        # (skittering on: grit dragged over stone for a moment, in uneven grabs)
+        k = int(g.uniform(0.01, 0.05) * SR)
+        ln = int(g.uniform(0.03, 0.12) * SR)
+        grab = (g.random(ln // 90 + 2) ** 3)[np.minimum(np.arange(ln) // 90, ln // 90 + 1)]
+        sk = band(g.standard_normal(ln), 2500, 9000) * grab * np.hanning(ln)
+        y[k:k + ln] += sk[:m - k] / (np.abs(sk).max() + 1e-9) * g.uniform(0.15, 0.35)
+    return y / (np.abs(y).max() + 1e-9)
+
+
+def env_of(x, w=0.08):
+    """The loudness of `x` over time: its RMS over a sliding `w` seconds."""
+    k = max(int(w * SR), 1)
+    c = np.cumsum(np.concatenate(([0.0], x * x)))
+    e = (c[k:] - c[:-k]) / k
+    e = np.concatenate((np.full(k // 2, e[0]), e, np.full(len(x) - len(e) - k // 2, e[-1])))
+    return np.sqrt(np.maximum(e, 0))
+
+
 def singing(d, f0, ratios, swell, wobble=0.004, beat=0.6):
     """A ringing chord held and swelling: each partial a pair of sines a few tenths of a hertz apart (the slow beating of
     a singing glass), drifting a little. Mono."""
@@ -162,8 +266,14 @@ def punch(take):
         heave = np.clip(t / br, 0, 1) ** 1.5 * (t < surge)
         x += T.unit(band(white(d), 20, 80)) * heave * 0.22
         x += T.crackle(d, rate=70 + 25 * take, decay=0.004, lo=200, hi=2600, heavy=1.4) * heave * (t < br + 0.1) * 0.25
-        # (light leaking up through the cracks: a faint glassy ring under the groan)
-        x += ping(n, br * 0.4, 520 + 60 * take, 1.2, 0.05, beat=0.004) + ping(n, br * 0.75, 780 + 50 * take, 0.9, 0.05, beat=0.004)
+        # (the crystal under the ground cracking under the strain, twice, as loud as the glassy rings it replaces, which
+        # are still drawn, unheard, so every other layer of the take keeps its random draws)
+        for j, (tc, old) in enumerate(((br * 0.4, ping(n, br * 0.4, 520 + 60 * take, 1.2, 0.05, beat=0.004)),
+                                       (br * 0.75, ping(n, br * 0.75, 780 + 50 * take, 0.9, 0.05, beat=0.004)))):
+            g = np.random.default_rng(72100 + 10 * take + j)
+            fx = fracture(g, n, tc + g.uniform(-0.03, 0.03), 0.6 + 0.4 * j)
+            k0, k1 = int(tc * SR), int((tc + 0.5) * SR)
+            x += fx * np.sqrt(np.mean(old[k0:k1] ** 2) / (np.mean(fx[k0 - 2000:k1] ** 2) + 1e-12)) * 0.8
         # breaking through: rock and crystal cracking at once, a thud
         x += T.nwave(n, br, 0.003, 0.7, 6000) + shatter_burst(n, br, 0.9, 0.8) * 0.6
         x += T.heavy(n, br, 0.16, 1.4, 1.0, 0.6, 0.3) * 0.8
@@ -246,7 +356,7 @@ def bloom():
 def resonance():
     # 8 s from the strike's 14 s to the burst at 22: a drone of the spires humming as one, harmonic by harmonic coming
     # in (55 Hz up to its 24th), each pair of sines beating slowly; its pulses quickening with the light running up them
-    # (strike.wgsl's pulse_f: half a pulse a second to seven); shimmering high partials; a rising whine of air; then
+    # (strike.wgsl's pulse_f: half a pulse a second to seven); a shimmer of air on top; a rising whine of air; then
     # cut dead at 7.68 s, the breath before the burst
     d = 8.0; n = int(SR * d); t = tt(d)
     cut_at = 7.68
@@ -264,7 +374,26 @@ def resonance():
                 drift = 1 + 0.0015 * smooth_noise(d, 0.3, n)
                 ph = 2 * np.pi * np.cumsum(f0 * h * drift * (1 + 0.0007 * k) * (1 + 0.012 * res)) / SR
                 ch += (np.sin(ph + h) + 0.7 * np.sin(ph * (1 + 0.5 / (f0 * h)) + 2 * h + k)) * a * 0.08
-        shim_L, shim_R = glitter(n, 1.0, cut_at, lambda s: 30 + 900 * np.clip((s - 1) / 6.6, 0, 1) ** 2, lambda s: 0.02 + 0.06 * np.clip((s - 1) / 6.6, 0, 1), 3000, 9000)
+        # the shimmer on top: air round the spires (a band of noise, its texture drifting) and the drone's own high
+        # harmonics breathed rather than rung (narrow noise riding each, a pair a hair apart, beating slowly), at the
+        # loudness of the glitter it replaced, moment by moment; the glitter is still drawn, unheard, so the whine and
+        # the sub after it keep their random draws
+        gl = glitter(n, 1.0, cut_at, lambda s: 30 + 900 * np.clip((s - 1) / 6.6, 0, 1) ** 2, lambda s: 0.02 + 0.06 * np.clip((s - 1) / 6.6, 0, 1), 3000, 9000)
+        shims = []
+        with PB.seeded(74101):
+            for k, old in enumerate(gl):
+                air = band(white(d), 3200, 8500, 2) * (0.65 + 0.35 * smooth_noise(d, 1.3 + 0.4 * k, n))
+                air /= np.std(air) + 1e-9
+                hp = np.zeros(n)
+                for h in (59, 67, 76, 88, 101, 117, 134):
+                    for b in (0.0, 0.35 + 0.1 * k):
+                        ph = 2 * np.pi * np.cumsum(f0 * h * (1 + 0.012 * res) + b) / SR
+                        breath = band(white(d), None, 9.0, 1)
+                        hp += np.sin(ph + rng().uniform(0, 6.28)) * breath / h ** 0.5
+                hp /= np.std(hp) + 1e-9
+                sh = air * 0.7 + hp * 0.45
+                shims.append(sh / (env_of(sh, 0.25) + 1e-9) * env_of(old, 0.25))
+        shim_L, shim_R = shims
         whine = T.glide_noise(d, 900, 4200, 0.35, curve=2.4) * res ** 2.5 * 0.08
         sub = T.unit(band(white(d), 18, 55)) * res * 0.45
         mono = whine + sub
@@ -327,33 +456,80 @@ def shatter():
 
 
 def tinkle():
-    # 10 s from 1.4 s after the burst: the shards coming down all round, glassy clinks near and far (near: bright, loud,
-    # few; far: dull, soft, many), the odd big one breaking, a hiss of fine glitter settling, thinning out
+    # 10 s from 1.4 s after the burst: the shards coming down all round, near and far (near: bright, loud, few; far:
+    # dull, soft, many), the odd big one breaking, fine grit settling, thinning out.
+    # Each shard its own: its size, its modes, whether it lands on stone (a tick, a ring, bounces, a skitter) or earth
+    # (a dull knock), how far off (the far ones softer, duller and a touch late, the near ones bright and placed);
+    # some shards come down in a little spray of pieces, and a few big ones break where they land
     d = 10.0; n = int(SR * d); t = tt(d)
     with PB.seeded(76001):
+        g = np.random.default_rng(76002)
         L = np.zeros(n); R = np.zeros(n)
-        for _ in range(420):
-            t1 = rng().gamma(1.6, 1.5)
+
+        def put(y, t1, p, near):
+            k0 = int(t1 * SR)
+            if k0 >= n:
+                return
+            y = y[:n - k0]
+            if near < 0.6:
+                # (distance: the highs lost first, then the level)
+                y = band(y, None, 3500 + 10000 * near ** 1.2, 2)
+            l, r = T.pan(y, p)
+            itd = int(abs(p) * 0.00035 * SR * near)
+            if p > 0:
+                l = np.concatenate((np.zeros(itd), l))[:len(y)]
+            else:
+                r = np.concatenate((np.zeros(itd), r))[:len(y)]
+            L[k0:k0 + len(y)] += l; R[k0:k0 + len(y)] += r
+
+        def shard(t1, near, size, p, amp):
+            stone = g.random() < 0.75
+            put(glass_hit(g, size, stone) * amp, t1, p, near)
+
+        for _ in range(170):
+            t1 = g.gamma(1.6, 1.5)
             if t1 > d - 0.4:
                 continue
-            near = rng().random() ** 2.5
-            f = np.exp(rng().uniform(np.log(1500), np.log(7000)))
-            x = ping(n, t1, f, rng().uniform(0.03, 0.18), (0.08 + 0.4 * near) * np.exp(-t1 / 4.0), bright=0.4 + 0.3 * near)
-            if rng().random() < 0.3:
-                x += ping(n, t1 + rng().uniform(0.02, 0.09), f * rng().uniform(0.85, 1.2), 0.05, (0.04 + 0.2 * near) * np.exp(-t1 / 4.0))
-            if near < 0.3:
-                x = band(x, None, 3000 + 9000 * near, 2)
-            l, r = T.pan(x, rng().uniform(-1, 1))
-            L += l; R += r
-        for _ in range(9):
-            tb = rng().gamma(1.5, 1.2)
+            near = g.random() ** 2.2
+            size = min(g.pareto(3.0) * 0.25 + 0.05 + 0.2 * g.random(), 1.0)
+            p = g.uniform(-1, 1) * (0.5 + 0.5 * near)
+            amp = (0.05 + 0.35 * near) * (0.5 + size) * g.lognormal(0, 0.3) * np.exp(-t1 / 4.0)
+            t1 += (1 - near) * 0.03
+            shard(t1, near, size, p, amp)
+            # (a spray: a few smaller pieces off the same shard, close by, just after)
+            if g.random() < 0.25:
+                ts = t1
+                for _ in range(int(g.integers(1, 4))):
+                    ts += g.gamma(1.4, 0.025)
+                    shard(ts, near * g.uniform(0.7, 1.0), size * g.uniform(0.3, 0.7), np.clip(p + g.normal(0, 0.12), -1, 1), amp * g.uniform(0.25, 0.6))
+        # the odd big one breaking where it lands: a crack and a crunch, and its pieces scattering off it
+        for _ in range(7):
+            tb = g.gamma(1.5, 1.2)
             if tb > d - 1.0:
                 continue
-            x = shatter_burst(n, tb, rng().uniform(0.3, 0.8), 0.8) * 0.25 * np.exp(-tb / 4.0)
-            l, r = T.pan(x, rng().uniform(-0.8, 0.8))
-            L += l; R += r
-        gL, gR = glitter(n, 0.0, d - 0.3, lambda s: 600 * np.exp(-s / 2.5), lambda s: 0.03 * np.exp(-s / 3.5), 5000, 13000)
-        L += gL; R += gR
+            near = g.uniform(0.25, 0.9); p = g.uniform(-0.8, 0.8); a = (0.3 + 0.5 * near) * np.exp(-tb / 4.0)
+            m = int(0.3 * SR)
+            u = np.arange(m) / SR
+            sz = g.uniform(0.4, 1.0)
+            y = band(g.standard_normal(m), 2500, 14000, 2) * np.exp(-u / (0.004 + 0.004 * sz))
+            y = y / (np.abs(y).max() + 1e-9) + band(g.standard_normal(m), 400, 3000, 2) * np.exp(-u / (0.012 + 0.02 * sz)) / 4.0
+            put(y * a * 0.6, tb, p, near)
+            tp = tb
+            for _ in range(int(6 + 10 * sz)):
+                tp += g.gamma(1.3, 0.02)
+                shard(tp, near * g.uniform(0.75, 1.0), g.uniform(0.05, 0.4), np.clip(p + g.normal(0, 0.2), -1, 1), a * g.uniform(0.15, 0.5))
+        # fine grit and splinters settling everywhere: tiny ticks, thousands at first, unpitched, thinning out
+        for ch, k in ((L, 0), (R, 1)):
+            rate = 1400 * np.exp(-t / 2.2) + 40 * np.exp(-t / 6.0)
+            ev = g.random(n) < rate / SR
+            imp = np.zeros(n)
+            imp[ev] = g.pareto(2.2, ev.sum()) * g.choice([-1.0, 1.0], ev.sum())
+            kern = np.exp(-np.arange(int(0.0012 * SR)) / (0.00025 * SR))
+            grit = band(np.convolve(imp, kern)[:n], 3500, 11000, 2)
+            grit /= np.percentile(np.abs(grit), 99.5) + 1e-9
+            ch += grit * 0.03 * (np.exp(-t / 3.0) + 0.1)
+        # (glass, not rock: the knocks' and crunches' weight below a few hundred hertz left out, as before)
+        L, R = band(L, 320, None, 2), band(R, 320, None, 2)
         f = T.fade(n, 0.2, 2.0)
         L, R = T.wide_tail(L * f, 2.0, 0.9, (8000, 800), 0.35)[0], T.wide_tail(R * f, 2.0, 0.9, (8000, 800), 0.35)[1]
         m = min(len(L), len(R))
