@@ -314,7 +314,39 @@ pub const PLANET_KILLER: Laser = Laser {
     particle_b: "particle minecraft:lava {x} {y} {z} {r} 1 {r} 0 25 force",
 };
 
-pub const LASERS: [&Laser; 7] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER];
+/// The crystal bloom, planned in `strike::crystalbloom_plan`: the land wakes, crystals punch up out of it and a forest of
+/// spires blooms out over it, hums as one and shatters. The crater below is its geode: a bowl lined with amethyst over
+/// calcite and basalt round a crystal-lined well to bedrock where its heart stood; the stumps of its spires, the broken
+/// pieces lying by them, the fissures and the shards strewn over the land are planned there.
+pub const CRYSTAL_BLOOM: Laser = Laser {
+    key: "crystalbloom",
+    index: 7,
+    title: "CRYSTAL BLOOM",
+    color: "light_purple",
+    rgb: 0xE07BFF,
+    blurb: "A forest of crystal spires bursts from the land, hums as one and shatters in a flash of colour.",
+    icon_model: "orbital:crystalbloom_icon",
+    length: 32.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 88,
+    bowl_d: 28,
+    bowl_rough: 0.05,
+    shaft_r: 10,
+    shaft_min: 10,
+    shaft_rough: 0.0,
+    lining: &[
+        ("minecraft:amethyst_block", 0.45),
+        ("minecraft:calcite", 0.3),
+        ("minecraft:smooth_basalt", 0.25),
+    ],
+    bowl_floor: ("minecraft:amethyst_block", 0.1, "minecraft:calcite"),
+    bottom: &[(6, 0, 0, "minecraft:amethyst_block")],
+    particle_a: "particle minecraft:end_rod {x} {y} {z} {r} 3 {r} 0.1 40 force",
+    particle_b: "particle minecraft:glow {x} {y} {z} {r} 2 {r} 0 20 force",
+};
+
+pub const LASERS: [&Laser; 8] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom"]
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -36,8 +36,16 @@ VIEWS = {
     "tower": "cx=180 cy=80 cz=-420 lx=0 ly=170 lz=-1150 mx=0 mz=60",
     # and close under it, its crown and its seams
     "towerclose": "cx=160 cy=110 cz=-560 lx=0 ly=230 lz=-1130 mx=0 mz=60",
+    # the crystal bloom: from where the player would watch it (330 blocks off), from far off, close under its spires,
+    # from the side, and from above the aftermath
+    "cbplayer": "cx=0 cy=80 cz=330 lx=0.5 ly=125 lz=0.5",
+    "cbfar": "cx=0 cy=130 cz=950 lx=0.5 ly=150 lz=0.5",
+    "spire": "cx=70 cy=74 cz=150 lx=0 ly=150 lz=0 mx=0 mz=330",
+    "cbside": "cx=620 cy=110 cz=-120 lx=0.5 ly=140 lz=0.5 mx=0 mz=330",
+    "cbaerial": "cx=0 cy=360 cz=380 lx=0.5 ly=60 lz=0.5 mx=0 mz=330",
 }
-DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side"}
+DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
+                 "crystalbloom": "cbplayer,cbfar,spire"}
 
 
 def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
@@ -45,7 +53,7 @@ def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
     strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl."""
     path = out / "pass.wgsl"
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller"):
+    if laser in ("downfall", "planetkiller", "crystalbloom"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         path.write_text(pre + (SHADERS / f"{laser}.wgsl").read_text())

@@ -32,6 +32,7 @@ const SHADER: &str = include_str!("../shaders/strike.wgsl");
 /// functions (marked `[lasers pass only]`), then one of these (see shaders/downfall.wgsl, shaders/planetkiller.wgsl).
 const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
 const PLANET_PASS: &str = include_str!("../shaders/planetkiller.wgsl");
+const CRYSTAL_PASS: &str = include_str!("../shaders/crystalbloom.wgsl");
 fn own_pass(own: &str) -> String {
     let mut out = String::with_capacity(SHADER.len() + own.len());
     let mut skip = false;
@@ -58,6 +59,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
         "downfall" => 1,
         "planetkiller" => 2,
+        "crystalbloom" => 3,
         _ => 0,
     }
 }
@@ -113,9 +115,10 @@ fn default_colour(i: usize) -> usize {
 }
 
 struct Orbital {
-    /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's), the one the game last compiled,
+    /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's), the one the
+    /// game last compiled,
     /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [String; 3],
+    passes: [String; 4],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -546,12 +549,12 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS)],
+            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
                 let mine = pass_of(LASERS[laser]);
-                (0..3).filter(|&i| i != mine).chain([mine]).collect()
+                (0..4).filter(|&i| i != mine).chain([mine]).collect()
             },
             warming: false,
             carving: std::collections::VecDeque::new(),
@@ -752,6 +755,7 @@ mod tests {
         for (own, kept) in [
             (super::DOWNFALL_PASS, &["fn bh_lens(", "fn ms_hull(", "fn ms_frame(", "fn downfall(", "fn ms_air("][..]),
             (super::PLANET_PASS, &["fn ray_seg(", "fn bolt_line(", "fn mh(", "fn planet_killer(", "fn lava_ramp("][..]),
+            (super::CRYSTAL_PASS, &["fn ray_seg(", "fn mh(", "fn gfbm3(", "fn crystal_bloom(", "fn rot_axis("][..]),
         ] {
             let p = super::own_pass(own);
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
@@ -765,5 +769,6 @@ mod tests {
         }
         assert!(super::SHADER.len() <= 256 << 10);
         assert!(!super::own_pass(super::PLANET_PASS).contains("fn downfall("));
+        assert!(!super::own_pass(super::CRYSTAL_PASS).contains("fn planet_killer("));
     }
 }
