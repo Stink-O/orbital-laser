@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole"]
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -51,9 +51,17 @@ VIEWS = {
     # close on one of the pieces as it comes down and lies there (piece 52 of seed 37, down at 27.48 s)
     "cbland": "cx=-31.4 cy=77 cz=192.1 lx=-53.4 ly=63 lz=170.1 mx=0 mz=330",
     "cbheavefar": "cx=60 cy=110 cz=170 lx=17 ly=66 lz=56 mx=0 mz=330",
+    # the sinkhole (over flat land, its pit dug into the scene as the collapse reaches it: pit=1): from 300 blocks off,
+    # close at the edge, looking down into it from over the rim, from high above, and low over the cracking land
+    "shplayer": "cx=0 cy=100 cz=300 lx=0.5 ly=45 lz=0.5 flat=1 pit=1",
+    "shedge": "cx=25 cy=72 cz=150 lx=0 ly=45 lz=30 flat=1 pit=1",
+    "shdown": "cx=10 cy=150 cz=150 lx=0 ly=-20 lz=0 flat=1 pit=1",
+    "shaerial": "cx=0 cy=430 cz=330 lx=0.5 ly=40 lz=0.5 flat=1 pit=1",
+    "shground": "cx=50 cy=69 cz=110 lx=0 ly=64 lz=20 flat=1 pit=1",
+    "shclose": "cx=-20 cy=95 cz=105 lx=10 ly=55 lz=40 flat=1 pit=1",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
-                 "crystalbloom": "cbplayer,cbfar,spire"}
+                 "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown"}
 
 
 def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
@@ -61,13 +69,26 @@ def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
     strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl."""
     path = out / "pass.wgsl"
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         path.write_text(pre + (SHADERS / f"{laser}.wgsl").read_text())
     else:
         path.write_text(strike)
     return path
+
+
+def mod_data(laser: str, out: pathlib.Path, sets: list) -> dict:
+    """The Crystal Bloom's and the Sinkhole's passes read their tables from the mod's data (render.set-data): work it out
+    for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
+    if laser == "crystalbloom":
+        return crystal_data(out, sets)
+    seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
+    path = (out / "data.txt").resolve()
+    env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path))
+    subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "sh_write_table", "--", "--ignored"],
+                   cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+    return dict(os.environ, PREVIEW_DATA=str(path))
 
 
 def crystal_data(out: pathlib.Path, sets: list) -> dict:
@@ -109,7 +130,7 @@ def main() -> int:
         for v in views:
             shots += ["--", f"t={t}", *VIEWS[v].split()]
             labels.append(f"{t:g} s  {v}")
-    env = crystal_data(out, a.set) if a.laser == "crystalbloom" else None
+    env = mod_data(a.laser, out, a.set) if a.laser in ("crystalbloom", "sinkhole") else None
     r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         print(r.stderr, file=sys.stderr)

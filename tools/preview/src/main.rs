@@ -45,6 +45,24 @@ fn crater_h(x: f32, z: f32, on: bool) -> f32 {
     if r < 240.0 { 64.0 - d } else { g - d }
 }
 
+/// With `pit=1`, the sinkhole's pit dug into the land where its collapse has reached by time `t` (strike/sinkhole.rs's
+/// rim and sh_front, roughly: its phases are not the strike's), 25 deep until it is dug on to bedrock from 16 s.
+fn pit_h(x: f32, z: f32, ty: f32, t: f32) -> Option<f32> {
+    let (dx, dz) = (x - 0.5, z - 0.5);
+    let r = dx.hypot(dz);
+    let a = dz.atan2(dx);
+    let rim = 112.0 * (1.0 + 0.07 * (3.0 * a + 1.0).sin() + 0.04 * (5.0 * a + 2.0).sin() + 0.025 * (11.0 * a + 3.0).sin());
+    let front = if r < 30.0 { 8.6 + 0.9 * r / 30.0 } else { 10.6 + 4.4 * ((r - 30.0) / 82.0).clamp(0.0, 1.4).powf(0.75) };
+    if r >= rim || t < front + 0.3 {
+        return None;
+    }
+    let deep = if t < 16.5 { 25.0 } else { 123.0 };
+    // (the walls stepped in a few ledges, the floor heaped with rubble)
+    let wall = ((rim - r) / 3.0).floor() * 9.0;
+    let rub = if deep > 30.0 { 3.0 + 6.0 * hash((x / 5.0).floor() as i32, (z / 5.0).floor() as i32) + 8.0 * (1.0 - r / rim) } else { 0.0 };
+    Some(ty - wall.min(deep) .max(6.0).min(deep) + if wall >= deep { rub } else { 0.0 })
+}
+
 struct Shot {
     w: u32,
     h: u32,
@@ -152,8 +170,11 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         }
     }
     let hills = g("hills", 0.0);
+    let pit = g("pit", 0.0) > 0.5;
     let ground = |x: f32, z: f32, crater: bool| {
-        if flat {
+        if let Some(h) = pit.then(|| pit_h(x, z, tgt[1], time)).flatten() {
+            h
+        } else if flat {
             tgt[1]
         } else if hills != 0.0 {
             hills_h(x, z, tgt[1], hills)
@@ -197,6 +218,13 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                         let n = hash(bx, bz);
                         let lit = 0.55 + 0.45 * sun[1];
                         c = [(0.18 + 0.06 * n) * lit, (0.36 + 0.1 * n) * lit, (0.12 + 0.04 * n) * lit];
+                        if p[1] < tgt[1] - 1.5 {
+                            // (rock laid open: dirt near the top, stone in bands, deepslate deep down)
+                            let band = hash((p[1] / 3.0).floor() as i32, 7);
+                            let dep = tgt[1] - p[1];
+                            let k = if dep < 4.0 { [0.27, 0.19, 0.13] } else if dep > 70.0 { [0.2, 0.2, 0.22] } else { [0.4, 0.39, 0.38] };
+                            c = [k[0] * (0.85 + 0.3 * band) * lit, k[1] * (0.85 + 0.3 * band) * lit, k[2] * (0.85 + 0.3 * band) * lit];
+                        }
                         let fog = 1.0 - (-t / 1800.0).exp();
                         c = [c[0] + (0.6 - c[0]) * fog, c[1] + (0.72 - c[1]) * fog, c[2] + (0.95 - c[2]) * fog];
                         break;
