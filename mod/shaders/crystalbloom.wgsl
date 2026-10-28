@@ -437,60 +437,172 @@ fn cb_frag_land(P: vec3<f32>, v: vec3<f32>) -> f32 {
     return (v.y + sqrt(v.y * v.y + 2.0 * CB_G * max(P.y, 0.0))) / CB_G;
 }
 
-// ---- dust: what a shard throws up as it breaks the ground and bursts up out of it (F its foot, camera-relative) ----
-fn cb_dust(rd: vec3<f32>, F: vec3<f32>, s: f32, size: f32, seed: f32, tmax: f32, px: vec2<f32>, amb: vec3<f32>, glow: vec3<f32>, time: f32) -> vec4<f32> {
-    let tb = s - CB_STRUGGLE;
-    let up = tb > 0.0;
-    let Rf = size * select(0.4 + 0.6 * saturate(s * 2.0), 0.9 + 1.3 * (1.0 - exp(-tb * 0.7)), up);
-    let Hf = size * select(0.3 + 0.5 * saturate(s * 2.0), 0.8 + 1.6 * (1.0 - exp(-tb * 0.8)), up);
-    let af = select(0.5 * saturate(s * 4.0) + 0.5 * cb_jolt(s, 0.34, 3.0) + 0.5 * cb_jolt(s, 0.66, 3.0), 1.2 * exp(-tb / 2.2), up);
-    if (af < 0.02 || s < -0.3) {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+// ---- dust: what each crystal throws up as it breaks the ground and comes up out of it -----------------------------
+// Round each of the first shards, the heart and each of the bloom's clusters (a "source": its foot, when it broke
+// through, how big its dust is): a burst of earth as it breaks the ground (again as it surges, and at each push), a
+// billowing column climbing with it (cb_rise), a surge rolling out over the land (cb_surge); the bloom's wall of dust
+// running out ahead of its spires; and the haze all of it leaves, drifting and thinning. Each part is marched in a few
+// steps over where the view ray crosses it, up to whatever is nearer (the land, a spire), and the parts are put
+// together whatever their order (a weighted blend: they are all dust).
+const CB_RISE_END: f32 = 6.0;       // a source's column gone this long after it surged (the haze carries on)
+const CB_SURGE_END: f32 = 6.0;      // its surge gone (the bloom's soon, taken up into its wall)
+const CB_SURGE_BLOOM: f32 = 3.0;
+struct CbDL {
+    crel: vec3<f32>,
+    Ld: vec3<f32>,
+    sky_l: vec3<f32>,
+    sun_l: vec3<f32>,
+    time: f32,
+    seed: f32,
+    glow_k: f32,
+}
+// A burst of earth `a` seconds after it was thrown, r out and y up from the foot, S the dust's size: a fountain from
+// the foot, flaring as it climbs, its head falling back and spreading.
+fn cb_burst(r: f32, y: f32, a: f32, S: f32) -> f32 {
+    if (a <= 0.0 || a > 4.5) {
+        return 0.0;
     }
-    let v = rd.xz;
-    let a = max(dot(v, v), 1.0e-8);
-    let b = -dot(v, F.xz);
-    let c = dot(F.xz, F.xz) - Rf * Rf * 1.3;
+    let rb = S * (0.45 + 1.5 * cb_ease(a / 1.2));
+    let hb = S * (0.3 + 1.9 * cb_ease(a / 0.8)) * (1.0 - 0.45 * smoothstep(0.7, 3.5, a));
+    let rf = rb * (0.5 + 0.5 * saturate(y / max(hb, 1.0)));
+    let f = saturate(1.0 - length(vec2<f32>(r / rf, (y - clamp(y, 0.0, hb)) / (rb * 0.7))));
+    return f * f * (3.0 - 2.0 * f) * smoothstep(0.0, 0.06, a) * exp(-a / 1.2) * 2.2;
+}
+// What a source throws up at p (off its foot): x how much dust, y how much of that is earth. s seconds since it broke
+// the ground, S its dust's size, R its radius, Hc how high its column has climbed; dp 0 for the first shards and the
+// heart (a bulge before they break, a surge after they struggle), else the time each of the bloom's pushes takes.
+fn cb_rise(p: vec3<f32>, s: f32, S: f32, R: f32, Hc: f32, dp: f32) -> vec2<f32> {
+    // (its column settled into the haze by the time it is CB_RISE_END old)
+    let lead = dp == 0.0;
+    let r = length(p.xz);
+    let y = max(p.y, 0.0);
+    var dirt = cb_burst(r, y, s, S);
+    if (lead) {
+        dirt = dirt + 1.3 * cb_burst(r, y, s - CB_STRUGGLE, S * 1.2);
+    } else {
+        dirt = dirt + 0.6 * cb_burst(r, y, s - 0.18 * dp, S * 0.8) + 0.45 * cb_burst(r, y, s - 0.55 * dp, S * 0.7);
+    }
+    var d = 0.0;
+    // (before it breaks: dust seeping up round its foot as the ground heaves)
+    if (lead && s < 0.3) {
+        let sb = smoothstep(-CB_BULGE, 0.05, s);
+        d = sb * sb * smoothstep(R + S * 0.9, R * 0.5, r) * smoothstep(S * 0.6, 0.0, y) * 0.9;
+    }
+    let sc = select(s, s - CB_STRUGGLE, lead);
+    if (sc > -0.2) {
+        let up = smoothstep(-0.2, 0.5, sc) * exp(-max(sc - 1.0, 0.0) / 4.5) * (1.0 - smoothstep(CB_RISE_END - 2.0, CB_RISE_END, sc));
+        let rc = R * 1.02 + S * (0.3 + 0.55 * cb_ease(sc / 4.0)) + y * 0.16;
+        let body = smoothstep(rc, R * 0.85, r) * smoothstep(Hc, Hc * 0.3, y);
+        let hh = Hc * 0.82;
+        let fh = saturate(1.0 - length(vec2<f32>(r / (rc * 1.35), (y - hh) / (rc * 0.9))));
+        d = d + max(body, fh * fh * (3.0 - 2.0 * fh)) * up * 1.4;
+    }
+    return vec2<f32>(d + dirt, dirt);
+}
+// (it is gone `end` seconds after it set out). How far out it has rolled (sc seconds since it set out: x its middle, y how wide, z how high).
+fn cb_surge_at(sc: f32, S: f32, R: f32) -> vec3<f32> {
+    let e = cb_ease(sc / 3.6);
+    return vec3<f32>(R + S * (0.3 + 3.4 * e), S * (0.4 + 0.7 * e), S * (0.45 + 0.6 * cb_ease(sc / 3.0)));
+}
+fn cb_surge(p: vec3<f32>, sc: f32, S: f32, R: f32, end: f32) -> f32 {
+    let g = cb_surge_at(sc, S, R);
+    let r = length(p.xz);
+    let ring = exp(-pow((r - g.x) / g.y, 2.0)) + 0.2 * smoothstep(g.x, R, r);
+    return ring * smoothstep(g.z, g.z * 0.05, max(p.y, 0.0)) * smoothstep(-0.2, 0.3, sc) * exp(-max(sc, 0.0) / 3.4) * (1.0 - smoothstep(end * 0.6, end, sc)) * 1.6;
+}
+// A cheap smooth noise (about 0..1, no lattice to show) for the dust's billows, marched many times a pixel: waves
+// bent by waves, at two scales and turned to each other.
+fn cb_wn3(p: vec3<f32>) -> f32 {
+    let a = sin(p.x + 1.1 * sin(p.z * 0.73 + 1.3)) * sin(p.y * 1.13 + 1.2 * sin(p.x * 0.81)) * sin(p.z * 0.91 + sin(p.y * 0.62 + 2.0));
+    let q = mat3x3<f32>(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64) * p * 2.1 + vec3<f32>(1.7, 9.2, 5.3);
+    let b = sin(q.x + 1.1 * sin(q.z * 0.77 + 0.4)) * sin(q.y * 1.07 + 1.1 * sin(q.x * 0.69 + 2.2)) * sin(q.z * 0.95 + sin(q.y * 0.58 + 0.7));
+    return saturate(0.5 + 0.62 * a + 0.3 * b);
+}
+// The dust at qt (off the target) given how much of it the shapes put there (env, earth of it, its light from the
+// crystals glw): its billows crisp-edged, two scales, rising and drifting, each shading itself where the light reaching
+// it has come through more of it; lit by the sky and sun from above, the crystals from inside and below. x, y, z the
+// light it sends back, w how dense.
+fn cb_dshade(env: f32, dirt: f32, glw: vec3<f32>, qt: vec3<f32>, L: CbDL) -> vec4<f32> {
+    if (env < 0.12) {
+        return vec4<f32>(0.0);
+    }
+    let np = qt * (1.0 / 13.0) + vec3<f32>(L.seed * 0.37 - L.time * 0.12, -L.time * 0.32, L.time * 0.06);
+    let n1 = cb_wn3(np);
+    let n = n1 * 0.68 + cb_wn3(np * 2.3 + vec3<f32>(11.0, 3.0, 7.0)) * 0.32;
+    let er = saturate((env - (1.0 - n) * 1.5) * 2.4);
+    let dens = er * er * (3.0 - 2.0 * er) * (0.55 + 0.45 * min(env, 2.0));
+    if (dens < 0.003) {
+        return vec4<f32>(0.0);
+    }
+    let ns1 = cb_wn3(np + L.Ld * 0.35);
+    let lit = saturate(0.5 + (n1 - ns1) * 3.5);
+    let occ = 0.5 + 0.5 * exp(-env * 0.45);
+    let tops = 0.7 + 0.3 * saturate(qt.y / 60.0);
+    let alb = mix(vec3<f32>(0.62, 0.55, 0.47), vec3<f32>(0.36, 0.29, 0.22), saturate(dirt / env));
+    let li = alb * (L.sky_l * (0.3 + 0.7 * lit) * occ * tops + L.sun_l * lit * lit * occ)
+        + glw / env * (0.55 + 0.45 * (1.0 - lit)) * L.glow_k;
+    return vec4<f32>(li, dens);
+}
+// Where the view ray (from the eye) is inside an upright cylinder, R round C (camera-relative), from y0 to y1 over it:
+// x in, y out (y <= x: it misses).
+fn cb_cyl(rd: vec3<f32>, C: vec3<f32>, R: f32, y0: f32, y1: f32) -> vec2<f32> {
+    let a = max(dot(rd.xz, rd.xz), 1.0e-8);
+    let b = -dot(rd.xz, C.xz);
+    let c = dot(C.xz, C.xz) - R * R;
     let disc = b * b - a * c;
     if (disc <= 0.0) {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        return vec2<f32>(1.0, 0.0);
     }
     var t0 = (-b - sqrt(disc)) / a;
     var t1 = (-b + sqrt(disc)) / a;
     if (abs(rd.y) > 1.0e-5) {
-        let ya = (F.y - 2.0) / rd.y;
-        let yb = (F.y + Hf * 1.2) / rd.y;
+        let ya = (C.y + y0) / rd.y;
+        let yb = (C.y + y1) / rd.y;
         t0 = max(t0, min(ya, yb));
         t1 = min(t1, max(ya, yb));
+    } else if (C.y + y0 > 0.0 || C.y + y1 < 0.0) {
+        return vec2<f32>(1.0, 0.0);
     }
-    t0 = max(t0, 0.0);
-    t1 = min(t1, tmax);
-    if (t1 <= t0) {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    }
-    let N = 7;
-    let dt = (t1 - t0) / f32(N);
+    return vec2<f32>(max(t0, 0.0), t1);
+}
+// One part of the dust marched over t0..t1 of the view ray: kind 0 a source's burst and column, 1 its surge (F its
+// foot, v its s, S, R, Hc; dp as cb_rise's; gc its light), 2 the bloom's wall (F the target, v how far out it has run,
+// how wide, how high, how thick). x, y, z the light it sends back, w how much of what is behind it shows through.
+fn cb_dseg(rd: vec3<f32>, t0: f32, t1: f32, kind: i32, N: i32, F: vec3<f32>, v: vec4<f32>, dp: f32, gc: vec3<f32>, L: CbDL, jit: f32) -> vec4<f32> {
+    let stp = (t1 - t0) / f32(N);
     var T = 1.0;
     var acc = vec3<f32>(0.0);
-    let jit = ign(px);
     for (var k = 0; k < N; k = k + 1) {
-        let q = rd * (t0 + (f32(k) + jit) * dt) - F;
-        let r = length(q.xz);
-        let y = max(q.y, 0.0);
-        var d = af * smoothstep(1.0, 0.15, length(vec2<f32>(r / Rf, y / Hf)));
-        if (d < 0.1) {
-            continue;
+        let x = rd * (t0 + (f32(k) + jit) * stp);
+        let p = x - F;
+        let qt = x - L.crel;
+        var env = 0.0;
+        var dirt = 0.0;
+        var glw = vec3<f32>(0.0);
+        if (kind == 2) {
+            let rr = length(qt.xz);
+            let ang = atan2(qt.z, qt.x);
+            let hw = v.z * (0.7 + 0.3 * sin(ang * 5.0 + L.seed) * sin(ang * 3.0 - 1.3 + L.seed * 0.7));
+            env = exp(-pow((rr - v.x) / v.y, 2.0)) * smoothstep(hw, hw * 0.1, qt.y) * v.w;
+            glw = cb_hue(ang / TAU + rr * 0.002 + L.time * 0.02) * env * 0.25 * exp(-max(qt.y, 0.0) / 15.0);
+        } else {
+            if (kind == 0) {
+                let e = cb_rise(p, v.x, v.y, v.z, v.w, dp);
+                env = e.x;
+                dirt = e.y;
+            } else {
+                env = cb_surge(p, select(v.x, v.x - CB_STRUGGLE, dp == 0.0), v.y, v.z, select(CB_SURGE_END, CB_SURGE_BLOOM, dp > 0.0));
+            }
+            // (its light on the dust round it: from inside it and from below, the dust taking its colour)
+            let rr = length(p.xz);
+            glw = gc * (env - 0.7 * dirt) * exp(-max(rr - v.z, 0.0) / (v.y * 1.1)) * (0.35 + 0.65 * exp(-max(p.y, 0.0) / (v.y * 2.0)));
         }
-        let nq = q * (2.2 / size) + vec3<f32>(seed, -time * 0.4, 3.0) - vec3<f32>(q.x, 0.0, q.z) * (0.01 / max(r, 1.0)) * time * 4.0;
-        let n = gfbm3(nq, 2);
-        let n2 = gnoise3(nq * 3.1 + vec3<f32>(7.0));
-        d = smoothstep(0.0, 1.0, saturate((d * (0.2 + 2.8 * n * (0.6 + 0.8 * n2)) - 0.5) * 2.2));
-        if (d > 0.002) {
-            let al = 1.0 - exp(-d * (5.0 / size) * dt);
-            let lit = amb * (0.35 + 0.9 * smoothstep(0.4, 0.8, n)) * (0.55 + 0.45 * saturate(y / Hf)) + glow * exp(-r / (size * 0.6));
-            acc = acc + T * al * lit;
+        let sm = cb_dshade(env, dirt, glw, qt, L);
+        if (sm.w > 0.0) {
+            let al = 1.0 - exp(-sm.w * 0.11 * stp);
+            acc = acc + T * al * sm.xyz;
             T = T * (1.0 - al);
-            if (T < 0.03) {
+            if (T < 0.02) {
                 break;
             }
         }
@@ -896,7 +1008,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
     for (var i = 0; i < CB_LEADS; i = i + 1) {
         let pl = cb_place(i, seed);
         let s = time - pl.z;
-        if (s < -0.3 || s > 9.0 || det) {
+        if (s < 0.0 || s > 5.0 || det) {
             continue;
         }
         let fm = cb_form(i, seed, pl);
@@ -904,11 +1016,6 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         if (ray_seg(rd, F, F + vec3<f32>(0.0, 120.0, 0.0)).x > fm.x * 6.0 + 40.0) {
             continue;
         }
-        let amb = vec3<f32>(0.4, 0.36, 0.33) * (0.15 + 0.85 * day) * (1.0 - 0.5 * dark);
-        let glow = cb_hue(f32(i) * 0.17 + hue_t) * 0.08 * smoothstep(0.0, 1.0, s);
-        let du = cb_dust(rd, F, s, fm.x * 3.0, seed + f32(i) * 7.0, select(scene_len, 1.0e9, sky), in.position.xy, amb, glow, time);
-        col = col * du.w + du.xyz * k + col * (1.0 - k) * (1.0 - du.w);
-        add = add * mix(1.0, du.w, 0.85);
         // rock flung up and out as it breaks the ground, and again as it surges, falling back
         for (var j = 0; j < 12; j = j + 1) {
             let hv = vec3<f32>(pcg3d(vec3<u32>(u32(j), u32(i), u32(seed)))) * (1.0 / 4294967295.0);
@@ -967,13 +1074,150 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                 col = mix(col, vec3<f32>(0.05, 0.042, 0.035) * (0.4 + 0.6 * day), cov * vj);
                 add = add * (1.0 - cov * vj * 0.8);
             }
-            // (and a puff of dust round its foot, low)
-            let tcf = dot(F, rd);
-            let pf = rd * max(tcf, 0.0) - F;
-            let rr = fm.x * (1.5 + 2.5 * (1.0 - exp(-s * 1.5)));
-            let puff = exp(-pow(length(pf.xz) / rr, 2.0)) * smoothstep(rr * 0.8, 0.0, pf.y) * smoothstep(-2.0, 1.0, pf.y) * exp(-s * 1.2) * smoothstep(0.0, 0.1, s);
-            let vp = select(1.0, 1.0 - smoothstep(scene_len - 2.0, scene_len + 2.0, tcf), !sky);
-            col = mix(col, vec3<f32>(0.24, 0.21, 0.19) * (0.3 + 0.7 * day) * (1.0 - 0.4 * dark), puff * vp * 0.6 * k);
+        }
+    }
+
+    // ---- the dust they throw up as they come up (cb_rise, cb_surge, the bloom's wall, the haze they leave), up to
+    //      whatever is nearer, the land or a spire: dust in front of a spire veils it, dust behind it is hidden by it --
+    let dfade = 1.0 - smoothstep(CB_RES - 1.0, CB_DET - 1.5, time);
+    if (!det && time > CB_PUNCH0 - CB_BULGE && dfade > 0.0) {
+        let tmax_d = select(scene_len, 1.0e9, sky);
+        var L: CbDL;
+        L.crel = crel;
+        L.Ld = normalize(vec3<f32>(sun.x * 0.6, 1.0, sun.z * 0.6));
+        L.sky_l = (amb_c * 3.0 + hazec * 0.3) * dfade;
+        L.sun_l = sun_c * 0.45 * saturate(sun.y * 3.0) * dfade;
+        L.time = time;
+        L.seed = seed;
+        L.glow_k = 0.8 * (1.0 + 0.5 * res) * dfade;
+        let jit = ign(in.position.xy);
+        // (the parts put together whatever their order: their light summed, weighted by how much each hides)
+        var sum_c = vec3<f32>(0.0);
+        var sum_a = 0.0;
+        var Tall = 1.0;
+        // the haze they leave over the land, low, drifting and thinning (where the view ray is in it, its strength
+        // where the ray passes nearest the middle)
+        let tau = time - CB_BLOOM0;
+        let rw = 235.0 * (1.0 - pow(1.0 - saturate(tau / 8.0), 1.6));
+        let Rh = max(70.0 + 120.0 * cb_ease((time - CB_PUNCH0 - 1.0) / 6.0), rw);
+        let Hh = 14.0 + 36.0 * cb_ease((time - CB_PUNCH0 - 1.0) / 7.0);
+        let ha = smoothstep(CB_PUNCH0 + 0.8, CB_PUNCH0 + 3.5, time) * (0.6 + 0.4 * smoothstep(CB_BLOOM0, CB_BLOOM0 + 3.0, time)) * dfade;
+        let th = cb_cyl(rd, crel, Rh, -3.0, Hh);
+        let th1 = min(th.y, tmax_d);
+        if (th1 > th.x && ha > 0.0) {
+            let tm = clamp(dot(crel.xz, rd.xz) / max(dot(rd.xz, rd.xz), 1.0e-6), th.x, th1);
+            let mid = rd * tm - crel;
+            let pat = gnoise2(mid.xz * 0.012 + vec2<f32>(seed - time * 0.05, time * 0.03));
+            let m = smoothstep(Rh, Rh * 0.4, length(mid.xz)) * (0.4 + 1.2 * pat * pat);
+            // (thinning with height: the depth of it along the ray through a haze falling off over hs)
+            let hs = Hh * 0.4;
+            let ya = max(th.x * rd.y - crel.y, 0.0);
+            let yb = max(th1 * rd.y - crel.y, 0.0);
+            var od = (th1 - th.x) * exp(-ya / hs);
+            if (abs(rd.y) > 1.0e-3) {
+                od = min(od, hs * abs(exp(-ya / hs) - exp(-yb / hs)) / abs(rd.y));
+            }
+            let a = (1.0 - exp(-od * 0.006 * m)) * ha * 0.85;
+            let hc = (vec3<f32>(0.62, 0.55, 0.47) * (amb_c * 3.0 + hazec * 0.3) + cb_hue(hue_t + 0.1) * 0.05 * wake) * dfade;
+            sum_c = sum_c + hc * a;
+            sum_a = sum_a + a;
+            Tall = Tall * (1.0 - a);
+        }
+        // round each of the first shards, the heart and each cluster of the bloom's
+        for (var u = 0; u < CB_LEADS + 10; u = u + 1) {
+            let bloom = u >= CB_LEADS;
+            let i = select(u, CB_LEADS + (u - CB_LEADS) * 4, bloom);
+            let pl = cb_place(i, seed);
+            let s = time - pl.z;
+            if (s < -CB_BULGE || s > 14.0) {
+                continue;
+            }
+            let fm = cb_form(i, seed, pl);
+            var S = 32.0;
+            var R = fm.x;
+            var dp = 0.0;
+            if (i == 5) {
+                S = 44.0;
+                R = 24.0;
+            }
+            if (bloom) {
+                R = fm.x + 7.0;
+                S = 0.7 * fm.x + 6.0;
+                dp = 1.3 + 2.2 * saturate(pl.w / 260.0);
+            }
+            let F = crel + vec3<f32>(pl.x, 0.0, pl.y);
+            let sc = select(s - CB_STRUGGLE, s, bloom);
+            let hue = fract(0.13 * f32(i) + mh(u32(i), u32(seed), 23u) * 0.18 + atan2(pl.y, pl.x) / TAU * 0.6);
+            let gc = cb_hue(hue + hue_t) * (0.5 + 0.5 * smoothstep(0.0, 1.5, s)) * select(1.0, 0.7, bloom);
+            // its burst and column
+            if (sc < CB_RISE_END) {
+                let g = cb_grow(i, max(s, 0.0), pl.w).x;
+                let Hc = S * 0.7 + min(g * pl.w * select(0.6, 0.45, bloom), S * select(5.0, 3.6, bloom));
+                // (bounded by its column, and by its bursts while they last)
+                let bursts = s < select(5.5, 4.6 + 0.55 * dp, bloom);
+                let Rc = (R * 1.02 + S * 0.85 + Hc * 0.16) * 1.35;
+                let tr = cb_cyl(rd, F, select(Rc, max(Rc, R + S * 2.4), bursts), -3.0, select(Hc * 1.1, max(Hc * 1.1, S * 4.2), bursts));
+                let t1 = min(tr.y, tmax_d);
+                if (t1 > tr.x) {
+                    let o = cb_dseg(rd, tr.x, t1, 0, select(5, 3, bloom), F, vec4<f32>(s, S, R, Hc), dp, gc, L, jit);
+                    sum_c = sum_c + o.xyz;
+                    sum_a = sum_a + 1.0 - o.w;
+                    Tall = Tall * o.w;
+                }
+            }
+            // its surge (the bloom's soon taken up into its wall)
+            if (sc > -0.2 && sc < select(CB_SURGE_END, CB_SURGE_BLOOM, bloom)) {
+                let g = cb_surge_at(sc, S, R);
+                let tr = cb_cyl(rd, F, g.x + g.y * 2.0, -3.0, g.z * 1.1);
+                let t1 = min(tr.y, tmax_d);
+                if (t1 > tr.x) {
+                    let o = cb_dseg(rd, tr.x, t1, 1, 5, F, vec4<f32>(s, S, R, 0.0), dp, gc, L, jit);
+                    sum_c = sum_c + o.xyz;
+                    sum_a = sum_a + 1.0 - o.w;
+                    Tall = Tall * o.w;
+                }
+            }
+        }
+        // the bloom's wall of dust, running out ahead of the spires and slowing (marched where the ray crosses its
+        // ring: in through it, and out through it beyond)
+        if (tau > 0.0) {
+            let xw = saturate(tau / 8.0);
+            let ww = 12.0 + 16.0 * xw;
+            let Hw = 14.0 + 52.0 * cb_ease(tau / 5.0);
+            let wamp = smoothstep(0.0, 1.2, tau) * (0.4 + 0.6 * exp(-max(tau - 4.6, 0.0) / 2.5)) * 1.7;
+            let wv = vec4<f32>(rw, ww, Hw, wamp);
+            let to = cb_cyl(rd, crel, rw + ww * 2.2, -3.0, Hw * 1.4);
+            if (to.y > to.x) {
+                let ti = cb_cyl(rd, crel, max(rw - ww * 2.2, 0.0), -3.0, Hw * 1.4);
+                var a0 = to.x;
+                var a1 = to.y;
+                var b0 = 1.0;
+                var b1 = 0.0;
+                if (ti.y > ti.x) {
+                    a1 = ti.x;
+                    b0 = ti.y;
+                    b1 = to.y;
+                }
+                a1 = min(a1, tmax_d);
+                b1 = min(b1, tmax_d);
+                if (a1 > a0) {
+                    let o = cb_dseg(rd, a0, a1, 2, 5, crel, wv, 0.0, vec3<f32>(0.0), L, jit);
+                    sum_c = sum_c + o.xyz;
+                    sum_a = sum_a + 1.0 - o.w;
+                    Tall = Tall * o.w;
+                }
+                if (b1 > b0) {
+                    let o = cb_dseg(rd, b0, b1, 2, 4, crel, wv, 0.0, vec3<f32>(0.0), L, jit);
+                    sum_c = sum_c + o.xyz;
+                    sum_a = sum_a + 1.0 - o.w;
+                    Tall = Tall * o.w;
+                }
+            }
+        }
+        if (sum_a > 1.0e-4) {
+            let dc = sum_c / sum_a * (1.0 - Tall);
+            col = col * Tall + dc * k + col * (1.0 - k) * (1.0 - Tall);
+            add = add * mix(1.0, Tall, 0.85);
         }
     }
 
