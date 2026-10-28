@@ -1,6 +1,24 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-052); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-053); each release's notes are in [docs/releases](releases).
+
+## 0.5.2
+
+<p align="center">
+  <img alt="The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning" width="720" src="17-planet-killer-lightning.jpg">
+</p>
+
+- **Planet Killer**, the seventh laser, on the wheel's second page and `/orbital planetkiller`. Seven towers grind up
+  out of the land on the horizon and strike a ring of light in the sky with lightning. The ring fuses and fires a beam
+  down, and the land domes up and bursts. It leaves a crater about 480 blocks across with a shaft to bedrock, a broken
+  rim of thrown rock, chasms and charred land. Then the ring, crushed to a point, falls into the crater and bursts
+  again. Its sounds are its own, and its explosion is modelled on measurements of a real one.
+- **Faster terrain.** The Planet Killer writes its crater straight into the world's chunks through the fork's new
+  `world.edit-blocks`, instead of thousands of commands, so there is far less stutter. Its land is done about 25
+  seconds into the strike.
+- **The wheel fits any window**, down to the smallest GUI (320 × 240), with short blurbs and tidier spacing.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-4` (it adds `world.edit-blocks`). Older builds
+  won't start the mod.
 
 ## 0.5.1
 

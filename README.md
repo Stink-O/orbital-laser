@@ -49,27 +49,26 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
 > and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.2](#new-in-052) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [New in 0.5.3](#new-in-053) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
-## New in 0.5.2
+## New in 0.5.3
 
 <p align="center">
-  <img alt="The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning" width="720" src="docs/17-planet-killer-lightning.jpg">
+  <img alt="The Crystal Bloom: crystal spires blooming out of the cracked ground" width="720" src="docs/21-crystal-bloom-bloom.jpg">
 </p>
 
-- **Planet Killer**, the seventh laser, on the wheel's second page and `/orbital planetkiller`. Seven towers grind up
-  out of the land on the horizon and strike a ring of light in the sky with lightning. The ring fuses and fires a beam
-  down, and the land domes up and bursts. It leaves a crater about 480 blocks across with a shaft to bedrock, a broken
-  rim of thrown rock, chasms and charred land. Then the ring, crushed to a point, falls into the crater and bursts again. Its sounds are its
-  own, and its explosion is modelled on measurements of a real one.
-- **Faster terrain.** The Planet Killer writes its crater straight into the world's chunks through the fork's new
-  `world.edit-blocks`, instead of thousands of commands, so there is far less stutter. Its land is done about 25
-  seconds into the strike.
-- **The wheel fits any window**, down to the smallest GUI (320 × 240), with short blurbs and tidier spacing.
-- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-4` (it adds `world.edit-blocks`). Older builds
-  won't start the mod.
+- **Crystal Bloom**, the eighth laser, on the wheel's second page and `/orbital crystalbloom`. Crystals heave up out
+  of cracked ground and 46 spires bloom over the land. They resonate with prism beams under an aurora, then shatter
+  into about 200 pieces, each landing as blocks of its own shape on the ground where it falls. It leaves a glowing
+  geode crater with a crystal-lined well to bedrock, broken pillars and shards. It lasts 60 seconds, with its own sounds.
+- **Strikes tidy up after themselves:** loose plants, leaves and cut trees are cleared at the blast's edge, the Planet
+  Killer's too.
+- **Faster.** The Crystal Bloom's pass reads a table the mod works out once a strike (the fork's new
+  `render.set-data`), about halving its GPU time at the heaviest moments.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-5` (it adds `world.surface-height` and
+  `render.set-data`). Older builds won't start the mod.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -89,8 +88,8 @@ Eight lasers, five on the wheel's first page and three on its second.
   and then its black hole engine ruptures and swallows the wreck.
 - **Planet Killer** (page two). Seven towers out on the horizon strike a ring in the sky with lightning, and its beam
   leaves a crater 480 blocks across.
-- **Crystal Bloom** (page two). A forest of crystal spires bursts out of the land, hums as one and shatters in a flash of
-  colour, leaving a geode crater ringed with crystal stumps and shards.
+- **Crystal Bloom** (page two). A forest of crystal spires bursts out of the land, hums as one and shatters into pieces
+  that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer and
 the Crystal Bloom reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
@@ -115,6 +114,10 @@ the Crystal Bloom reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-
 |---|---|---|---|
 | ![The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning](docs/17-planet-killer-lightning.jpg) | ![The Planet Killer's beam hitting the land, cracks glowing across the ground round it](docs/18-planet-killer-beam.jpg) | ![The Planet Killer's burst: a fireball rising out of the crater](docs/19-planet-killer-burst.jpg) | ![The Planet Killer's crater afterwards, seen from high above at a distance](docs/20-planet-killer-crater.jpg) |
 
+| Crystal Bloom | The resonance | The shatter | What it leaves |
+|---|---|---|---|
+| ![Crystal spires blooming out of the cracked ground](docs/21-crystal-bloom-bloom.jpg) | ![Prism beams and an aurora over the crystal spires as they resonate](docs/22-crystal-bloom-prism.jpg) | ![The spires shattering into fractured pieces](docs/23-crystal-bloom-detonation.jpg) | ![The geode crater with broken crystal pillars and shards, seen from the ground](docs/24-crystal-bloom-aftermath.jpg) |
+
 ## Getting started
 
 1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-5` or newer). Download
@@ -133,7 +136,7 @@ the Crystal Bloom reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.2.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.3.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -218,7 +221,7 @@ the reason on its row first.
    `ACQUIRING TARGET…`, then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Crystal Bloom 32, the Mothership 34, the Meteor Storm 38 and the Downfall 64.
+Mothership 34, the Meteor Storm 38, the Crystal Bloom 60 and the Downfall 64.
 
 The wheel also has:
 
@@ -266,7 +269,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
-- **Targets must be in loaded chunks.** The three long-range lasers reach 1000 blocks across the distant terrain, where
+- **Targets must be in loaded chunks.** The four long-range lasers reach 1000 blocks across the distant terrain, where
   the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
 - **Stock Horizon** builds from before 24 October 2026 can run 0.1's setup (Plasma and Godly only, driven from outside
   the game): see [How it works](docs/HOW-IT-WORKS.md#stock-horizon).
