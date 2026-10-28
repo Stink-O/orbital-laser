@@ -572,7 +572,7 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
         let chunks = cb_chunks(shader_seed);
         let mut order: Vec<usize> = (0..chunks.len()).collect();
         order.sort_by(|a, b| chunks[*a].tp.total_cmp(&chunks[*b].tp));
-        for part in order.chunks(16) {
+        for part in order.chunks(5) {
             let cs: Vec<CbChunk> = part.iter().map(|&n| chunks[n]).collect();
             let first = cs[0].tp as f32;
             p.later(CB_DET + first - 1.5, move |q| cb_landed(q, point, &cs, shader_seed));
