@@ -14,21 +14,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import soundlib
 import sounds_plasma
 import sounds_themes
+import sounds_crystal
 
 ap = argparse.ArgumentParser()
 ap.add_argument("out", nargs="?", default=str(Path(__file__).resolve().parent.parent / "orbital-sounds"))
-ap.add_argument("--only", nargs="*", choices=["plasma", *sounds_themes.THEMES])
+ap.add_argument("--only", nargs="*", choices=["plasma", *sounds_themes.THEMES, sounds_crystal.TH])
 args = ap.parse_args()
 
 soundlib.init(args.out)
 if not args.only or "plasma" in args.only:
     sounds_plasma.build()
 sounds_themes.build_all(set(args.only) if args.only else None)
+if not args.only or sounds_crystal.TH in args.only:
+    for build in sounds_crystal.BUILD.values():
+        build()
 
 events = {n: f"orbital:{n}" for n in sounds_plasma.NAMES}
 for th in sounds_themes.THEMES:
     for n in sounds_themes.names(th):
         events[f"{th}.{n}"] = f"orbital:{th}/{n}"
+for n in sounds_crystal.NAMES:
+    events[f"{sounds_crystal.TH}.{n}"] = f"orbital:{sounds_crystal.TH}/{n}"
 sounds = {ev: {"sounds": [{"name": name, "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{ev}"} for ev, name in events.items()}
 json.dump(sounds, open(args.out + "/assets/orbital/sounds.json", "w"), indent=2)
 json.dump({"pack": {"description": "Orbital laser sound design", "min_format": 84, "max_format": 99, "pack_format": 84}},

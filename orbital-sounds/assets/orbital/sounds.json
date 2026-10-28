@@ -736,5 +736,86 @@
       }
     ],
     "subtitle": "subtitles.orbital.planetkiller.after"
+  },
+  "crystalbloom.wake": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/wake",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.wake"
+  },
+  "crystalbloom.punch1": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/punch1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.punch1"
+  },
+  "crystalbloom.punch2": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/punch2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.punch2"
+  },
+  "crystalbloom.punch3": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/punch3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.punch3"
+  },
+  "crystalbloom.bloom": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/bloom",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.bloom"
+  },
+  "crystalbloom.resonance": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/resonance",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.resonance"
+  },
+  "crystalbloom.shatter": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/shatter",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.shatter"
+  },
+  "crystalbloom.tinkle": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/tinkle",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.tinkle"
+  },
+  "crystalbloom.after": {
+    "sounds": [
+      {
+        "name": "orbital:crystalbloom/after",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.crystalbloom.after"
   }
 }
