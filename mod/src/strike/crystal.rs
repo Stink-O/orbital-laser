@@ -1661,6 +1661,113 @@ fn cb_strew(p: &mut Plan, point: [f64; 3], seed: u32, part: u32, t: f32) {
     p.ev.push((t, Act::Blocks(Box::new(b))));
 }
 
+/// What the pass reads of the spires and their pieces (crystalbloom.wgsl's CB_TAB on): everything about them that is
+/// the same for every pixel and every frame of a strike (where they stand, their shapes, their breaks, the pieces' cuts,
+/// throws and spins), worked out here once and given with render.set-data as the strike starts, so the pass reads it
+/// rather than hashing it all again for every pixel. The words under CB_TAB are the pieces' landings (cb_drop). Keep
+/// the layout in step with the pass's CB_* offsets.
+pub(super) const CB_TAB: usize = 1024;
+const CB_ORB: usize = CB_TAB + 32;
+const CB_SPB: usize = CB_TAB + 128;
+const CB_SPW: usize = 96;
+const CB_PCB: usize = CB_SPB + CB_N * CB_SPW;
+const CB_PCW: usize = 32;
+pub(super) fn cb_table(seed: f32) -> Vec<u32> {
+    let chunks = cb_chunks(seed);
+    let mut w = vec![0u32; CB_PCB + chunks.len() * CB_PCW];
+    let mut put = |w: &mut Vec<u32>, at: usize, v: &[f64]| {
+        for (j, x) in v.iter().enumerate() {
+            w[at + j] = (*x as f32).to_bits();
+        }
+    };
+    w[CB_TAB] = chunks.len() as u32;
+    // (the fissures: heading and length)
+    for i in 0..CB_CRACKS {
+        let (a, l) = cb_crack(i, seed);
+        put(&mut w, CB_TAB + 1 + i * 2, &[a, l]);
+    }
+    // (the shards orbiting them as they resonate: strike.wgsl's pcg3d(j, 911, seed))
+    for j in 0..32 {
+        let h = pcg3d([j as u32, 911, seed as u32]).map(|x| f64::from(x) / 4_294_967_295.0);
+        put(&mut w, CB_ORB + j * 3, &h);
+    }
+    let s = seed as u32;
+    for i in 0..CB_N {
+        let b = CB_SPB + i * CB_SPW;
+        let p = cb_place(i, seed);
+        let f = cb_form(i, seed, p);
+        let br = cb_break(i, seed, p[3]);
+        let hue = cb_hue(i, seed, p);
+        let a = [f[1].sin() * f[2].cos(), f[1].cos(), f[1].sin() * f[2].sin()];
+        let (e1, e2) = cb_frame(a, f[3]);
+        put(&mut w, b, &p);
+        put(&mut w, b + 4, &f);
+        put(&mut w, b + 8, &[br[0], 0.0, br[1], br[2]]);
+        put(&mut w, b + 12, &[hue, mh(i as u32, s, 24), (mh(i as u32, s, 21) - 0.5) * 0.7, (mh(i as u32, s, 22) - 0.5) * 0.7]);
+        put(&mut w, b + 22, &a);
+        put(&mut w, b + 25, &e1);
+        put(&mut w, b + 28, &e2);
+        let first = chunks.iter().position(|c| c.id / 16 == i).unwrap_or(0);
+        w[b + 31] = first as u32;
+        w[b + 32] = chunks.iter().filter(|c| c.id / 16 == i).count() as u32;
+        // (its two beams of prism light: strike.wgsl's cb_h3(i * 2 + b, 601))
+        for k in 0..2 {
+            put(&mut w, b + 33 + k * 3, &cb_h3(i * 2 + k, 601, seed));
+        }
+        // (its faces as it stands when they burst, for its pieces)
+        for (k, (n, d)) in cb_faces(i, seed, p, f).iter().enumerate() {
+            put(&mut w, b + 40 + k * 4, &[n[0], n[1], n[2], *d]);
+        }
+    }
+    for (n, c) in chunks.iter().enumerate() {
+        let b = CB_PCB + n * CB_PCW;
+        put(&mut w, b, &c.c0);
+        w[b + 3] = c.id as u32;
+        put(&mut w, b + 4, &[c.v[0], c.v[1], c.v[2], c.tl]);
+        put(&mut w, b + 8, &[c.spin.0[0], c.spin.0[1], c.spin.0[2], c.spin.1]);
+        for (k, (nn, d)) in c.cuts.iter().enumerate() {
+            put(&mut w, b + 12 + k * 4, &[nn[0], nn[1], nn[2], *d]);
+        }
+        // (how far it may be driven in when it comes down, CbChunk::rest_at's hv and wedge)
+        let ay = rot_axis(c.a, c.spin.0, c.spin.1 * c.tl)[1];
+        let hv = 0.5 * CB_LAND_SCALE * (c.len * ay.abs() + 2.0 * c.wid * (1.0 - ay * ay).max(0.0).sqrt());
+        put(&mut w, b + 24, &[c.tp, c.len, c.wid, 0.62 * c.len + 1.1 * c.wid + 2.0, hv, CB_WEDGE + CB_WEDGE_K * (c.len + c.wid).powi(2)]);
+        w[b + 31] = (c.id / 16) as u32;
+    }
+    w
+}
+
+#[cfg(test)]
+mod table {
+    use super::*;
+    /// The table for tools/preview.py (its $PREVIEW_DATA): `CB_SEED=37 CB_OUT=path cargo test --release cb_write_table
+    /// -- --ignored`.
+    #[test]
+    #[ignore]
+    fn cb_write_table() {
+        let seed: f32 = std::env::var("CB_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(37.0);
+        let out = std::env::var("CB_OUT").expect("CB_OUT");
+        let w = cb_table(seed);
+        let txt: String = w.iter().enumerate().skip(CB_TAB).map(|(i, v)| format!("{i} {v}u\n")).collect();
+        std::fs::write(out, txt).unwrap();
+    }
+    #[test]
+    fn cb_table_layout() {
+        let w = cb_table(37.0);
+        let n = w[CB_TAB] as usize;
+        assert_eq!(n, cb_chunks(37.0).len());
+        assert!(n > 150 && n < 300, "{n}");
+        // (every spire's pieces run on from the last's)
+        let mut at = 0;
+        for i in 0..CB_N {
+            assert_eq!(w[CB_SPB + i * CB_SPW + 31] as usize, at, "{i}");
+            at += w[CB_SPB + i * CB_SPW + 32] as usize;
+        }
+        assert_eq!(at, n);
+        assert!(CB_TAB >= CB_N * 16, "the landings come first");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -420,8 +420,10 @@ impl Orbital {
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
         let next = plan.iter().take_while(|e| e.0 < ticks as f32 * 0.05).count();
         self.skip = 0.0;
-        render::set_data(&[]);
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true });
+        // (the crystal bloom's spires and pieces, worked out once for the pass: strike::cb_table)
+        let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
+        render::set_data(&data);
+        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {

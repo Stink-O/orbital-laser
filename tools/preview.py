@@ -13,6 +13,7 @@ reads from the world (its depth, the clouds, the time of day) is like it, not th
 real pass's, built from the shaders exactly as the mod builds it.
 """
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
@@ -69,6 +70,20 @@ def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
     return path
 
 
+def crystal_data(out: pathlib.Path, sets: list) -> dict:
+    """The Crystal Bloom's pass reads its spires and pieces from the mod's data (render.set-data, mod/src/strike/
+    crystal.rs's cb_table): work it out for the strike's seed, as the mod does, and hand it to the preview."""
+    seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
+    path = (out / "data.txt").resolve()
+    env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path))
+    subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "cb_write_table", "--", "--ignored"],
+                   cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+    if "PREVIEW_DATA" in os.environ:
+        # (the landings, cb_drop's words under the table, from a file of the caller's)
+        path.write_text(pathlib.Path(os.environ["PREVIEW_DATA"]).read_text() + path.read_text())
+    return dict(os.environ, PREVIEW_DATA=str(path))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("laser", choices=LASERS)
@@ -94,7 +109,8 @@ def main() -> int:
         for v in views:
             shots += ["--", f"t={t}", *VIEWS[v].split()]
             labels.append(f"{t:g} s  {v}")
-    r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True)
+    env = crystal_data(out, a.set) if a.laser == "crystalbloom" else None
+    r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         print(r.stderr, file=sys.stderr)
         return 1

@@ -1030,6 +1030,11 @@ fn blackhole_aftermath(p: &mut Plan, point: [f64; 3], seed: f32) {
 }
 
 /// The godly wings' facing: from the impact towards the player, in the xz plane.
+/// What the Crystal Bloom's pass reads of its spires and pieces, given with render.set-data as it starts
+/// (crystal.rs's cb_table).
+pub fn cb_table(seed: f32) -> Vec<u32> {
+    crystal::cb_table(seed)
+}
 pub fn wing_angle(target: [f64; 3], me: [f64; 3]) -> f32 {
     (me[2] - target[2]).atan2(me[0] - target[0]) as f32
 }

@@ -42,79 +42,50 @@ const CB_CRACK_R: f32 = 205.0;
 const CB_SHOCK_V: f32 = 170.0;
 
 // ---- where everything is -------------------------------------------------------------------------------------------
+// The spires and their pieces are worked out once, by the mod, as the strike starts (strike/crystal.rs's cb_table: where
+// each stands, its shape, its break, its pieces' cuts, throws and spins), and given to the pass with render.set-data:
+// the same for every pixel, read here rather than hashed again for each. The words under CB_TAB are the pieces'
+// landings (cb_drop). Keep these offsets in step with cb_table's.
+const CB_TAB: u32 = 1024u;
+const CB_ORB: u32 = 1056u;         // CB_TAB + 32: the orbiting shards' random numbers, three each
+const CB_SPB: u32 = 1152u;         // CB_TAB + 128: the spires, CB_SPW words each
+const CB_SPW: u32 = 96u;
+const CB_PCB: u32 = 5568u;         // CB_SPB + CB_N * CB_SPW: the pieces, CB_PCW words each
+const CB_PCW: u32 = 32u;
+fn cb_u(i: u32) -> u32 {
+    return select(0u, mod_data[min(i, arrayLength(&mod_data) - 1u)], i < arrayLength(&mod_data));
+}
+fn cb_w(i: u32) -> f32 {
+    return bitcast<f32>(cb_u(i));
+}
+fn cb_w2(i: u32) -> vec2<f32> {
+    return vec2<f32>(cb_w(i), cb_w(i + 1u));
+}
+fn cb_w3(i: u32) -> vec3<f32> {
+    return vec3<f32>(cb_w(i), cb_w(i + 1u), cb_w(i + 2u));
+}
+fn cb_w4(i: u32) -> vec4<f32> {
+    return vec4<f32>(cb_w(i), cb_w(i + 1u), cb_w(i + 2u), cb_w(i + 3u));
+}
+fn cb_sp(i: i32) -> u32 {
+    return CB_SPB + u32(i) * CB_SPW;
+}
 // Spire i: x, z its foot off the target, y when it sets off (breaks the ground), w how tall it grows.
 fn cb_place(i: i32, seed: f32) -> vec4<f32> {
-    let s = u32(seed);
-    let u = u32(i);
-    if (i < 5) {
-        // the first shards, round the middle
-        let a = mh(0u, s, 1u) * TAU + f32(i) * 2.39996 + (mh(u, s, 2u) - 0.5) * 0.5;
-        let r = 42.0 + 34.0 * mh(u, s, 3u);
-        let t = CB_PUNCH0 + f32(i) * CB_PUNCH_DT + (mh(u, s, 4u) - 0.5) * 0.12;
-        return vec4<f32>(cos(a) * r, sin(a) * r, t, 170.0 + 80.0 * mh(u, s, 5u));
-    }
-    if (i == 5) {
-        return vec4<f32>((mh(u, s, 3u) - 0.5) * 4.0, (mh(u, s, 4u) - 0.5) * 4.0, CB_PUNCH0 + 5.0 * CB_PUNCH_DT + 0.1, 330.0);
-    }
-    // a cluster of four: the first its tallest, the others round it
-    let c = (i - 6) / 4;
-    let j = (i - 6) % 4;
-    let fc = f32(c);
-    let ac = mh(7u, s, 6u) * TAU + fc * 2.39996 + (mh(u32(c), s, 7u) - 0.5) * 0.4;
-    let rc = 34.0 + 108.0 * sqrt((fc + 0.5) / 10.0) + (mh(u32(c), s, 8u) - 0.5) * 16.0;
-    var x = cos(ac) * rc;
-    var z = sin(ac) * rc;
-    if (j > 0) {
-        let aj = ac + (f32(j) - 2.0) * 1.9 + (mh(u, s, 9u) - 0.5) * 1.2;
-        let dj = 7.0 + 11.0 * mh(u, s, 10u);
-        x = x + cos(aj) * dj;
-        z = z + sin(aj) * dj;
-    }
-    let r = length(vec2<f32>(x, z));
-    let big = select(0.25 + 0.45 * mh(u, s, 11u), 0.75 + 0.25 * mh(u, s, 11u), j == 0);
-    let h = (36.0 + 230.0 * big * big) * (1.0 - 0.45 * saturate(r / CB_FIELD));
-    let t = CB_BLOOM0 + CB_BLOOM_V * saturate(r / CB_FIELD) + 0.35 * mh(u, s, 12u) + 0.12 * f32(j);
-    return vec4<f32>(x, z, t, h);
+    return cb_w4(cb_sp(i));
 }
 // Spire i's shape: x its radius (the apothem of its hexagon at its foot), y how far it leans off upright (radians),
 // z which way (radians round from +x), w how far it is turned about its own axis.
 fn cb_form(i: i32, seed: f32, p: vec4<f32>) -> vec4<f32> {
-    let s = u32(seed);
-    let u = u32(i);
-    let out = atan2(p.y, p.x);
-    if (i == 5) {
-        return vec4<f32>(30.0, 0.035, mh(u, s, 13u) * TAU, mh(u, s, 14u) * TAU);
-    }
-    var r = 5.0 + p.w * 0.08 + 3.0 * mh(u, s, 15u);
-    var lean = 0.14 + 0.36 * mh(u, s, 16u);
-    var hd = out + (mh(u, s, 17u) - 0.5) * 1.3;
-    if (i < 5) {
-        r = 19.0 + 6.0 * mh(u, s, 15u);
-        lean = 0.08 + 0.14 * mh(u, s, 16u);
-    } else if ((i - 6) % 4 > 0) {
-        // (the smaller of a cluster splayed out from its tallest)
-        let c = (i - 6) / 4;
-        let m = cb_place(6 + c * 4, seed);
-        hd = atan2(p.y - m.y, p.x - m.x) + (mh(u, s, 17u) - 0.5) * 0.7;
-        lean = 0.3 + 0.45 * mh(u, s, 16u);
-    }
-    return vec4<f32>(r, lean, hd, mh(u, s, 14u) * TAU);
+    return cb_w4(cb_sp(i) + 4u);
 }
 // Where spire i breaks as they burst: x the height up its axis (0: it shatters whole), z, w the break's tilt across it.
 fn cb_break(i: i32, seed: f32, ph: f32) -> vec4<f32> {
-    let s = u32(seed);
-    let u = u32(i);
-    if (i == 5) {
-        return vec4<f32>(0.0);
-    }
-    // (the first shards, each cluster's tallest and a few others leave a stump; the rest shatter whole)
-    if (!(i < CB_LEADS || (i - 6) % 4 == 0 || mh(u, s, 26u) < 0.3)) {
-        return vec4<f32>(0.0);
-    }
-    let h = clamp(ph * (0.06 + 0.14 * mh(u, s, 18u)), 6.0, 34.0);
-    let ta = mh(u, s, 19u) * TAU;
-    let tl = 0.25 + 0.55 * mh(u, s, 20u);
-    return vec4<f32>(h, 0.0, cos(ta) * tl, sin(ta) * tl);
+    return cb_w4(cb_sp(i) + 8u);
+}
+// Its colour round the wheel.
+fn cb_hue_of(i: i32) -> f32 {
+    return cb_w(cb_sp(i) + 12u);
 }
 // Its axis (from its lean).
 fn cb_axis(f: vec4<f32>) -> vec3<f32> {
@@ -130,8 +101,7 @@ fn cb_frame(a: vec3<f32>, rot: f32) -> mat2x3<f32> {
 }
 // Its tip's apex, off its axis a little (x, z in its frame, of its radius at the top).
 fn cb_apex(i: i32, seed: f32) -> vec2<f32> {
-    let s = u32(seed);
-    return (vec2<f32>(mh(u32(i), s, 21u), mh(u32(i), s, 22u)) - 0.5) * 0.7;
+    return cb_w2(cb_sp(i) + 14u);
 }
 // How far a spire `s` seconds after it set off has grown (x, of its height) and how hard it shudders (y, blocks). The
 // first shards break the ground, catch, strain and give twice, gathering, then surge up out of it, a little past their
@@ -200,9 +170,7 @@ fn cb_crack_t(r: f32) -> f32 {
 }
 // Fissure i: x its heading out from the target, y how far out it runs.
 fn cb_crack(i: i32, seed: f32) -> vec2<f32> {
-    let s = u32(seed);
-    let a = (f32(i) + 0.7 * mh(u32(i), s, 31u)) * TAU / f32(CB_CRACKS) + mh(99u, s, 32u) * TAU;
-    return vec2<f32>(a, CB_BOWL + 50.0 + (CB_CRACK_R - CB_BOWL - 50.0) * mh(u32(i), s, 33u));
+    return cb_w2(CB_TAB + 1u + u32(i) * 2u);
 }
 
 // ---- the crystal: a hexagonal prism drawing in a little up its length, under a six-faced tip, its foot run down into
@@ -229,16 +197,14 @@ const CB_DIRS = array<vec2<f32>, 6>(vec2<f32>(1.0, 0.0), vec2<f32>(0.5, 0.866025
 // Plane k of a crystal (in its frame): xyz its outward normal (not normalised), w: inside where dot(n, p) <= w.
 fn cb_plane(c: Crystal, k: i32) -> vec4<f32> {
     if (k < 6) {
-        let th = f32(k) * 1.0471976;
-        let cs = vec2<f32>(cos(th), sin(th));
+        let cs = CB_DIRS[k];
         let tp = (c.R - c.Rt) / max(c.Hb + CB_SINK, 1.0);
         // (its faces not all as wide: each side stands a little in or out)
         let sk = 1.0 + c.skew * (fract(c.hue * 91.7 + f32(k) * 0.618) - 0.5);
         return vec4<f32>(cs.x, tp, cs.y, (c.R - tp * CB_SINK) * sk);
     }
     if (k < 12) {
-        let th = f32(k - 6) * 1.0471976;
-        let cs = vec2<f32>(cos(th), sin(th));
+        let cs = CB_DIRS[k - 6];
         let m = (c.Rt - dot(cs, c.apex) * c.Rt) / max(c.tip, 0.5);
         return vec4<f32>(cs.x, m, cs.y, c.Rt + m * c.Hb);
     }
@@ -320,12 +286,12 @@ fn cb_crystal(i: i32, seed: f32, time: f32, crel: vec3<f32>) -> Crystal {
     let w = 0.38 + 0.62 * saturate(gr.x * 1.15);
     c.R = f.x * w;
     c.Rt = c.R * 0.8;
-    c.tip = min(c.Rt * (1.3 + 1.5 * mh(u32(i), u32(seed), 24u)), H + CB_SINK * 0.5);
+    c.tip = min(c.Rt * (1.3 + 1.5 * cb_w(cb_sp(i) + 13u)), H + CB_SINK * 0.5);
     c.skew = 0.35;
     c.Hb = H - c.tip;
     c.apex = cb_apex(i, seed);
     c.cut = vec4<f32>(0.0);
-    c.hue = fract(0.13 * fi + mh(u32(i), u32(seed), 23u) * 0.18 + atan2(p.y, p.x) / TAU * 0.6);
+    c.hue = cb_hue_of(i);
     return c;
 }
 // A point (camera-relative) or a direction in a crystal's frame, and back.
@@ -1347,7 +1313,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             let E1 = le1[j];
             let E2 = cross(A, E1);
             for (var b = 0; b < 2; b = b + 1) {
-                let hb = cb_h3(li[j] * 2 + b, 601u, seed);
+                let hb = cb_w3(cb_sp(li[j]) + 33u + u32(b) * 3u);
                 let phi = hb.x * TAU + time * (0.04 + 0.06 * hb.y) * select(-1.0, 1.0, b == 0);
                 let tilt = 0.3 + 0.55 * hb.z;
                 let D = normalize(A * cos(tilt) + (E1 * cos(phi) + E2 * sin(phi)) * sin(tilt) + vec3<f32>(0.0, 0.25, 0.0));
@@ -1544,7 +1510,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             }
             let F = crel + vec3<f32>(pl.x, 0.0, pl.y);
             let sc = select(s - CB_STRUGGLE, s, bloom);
-            let hue = fract(0.13 * f32(i) + mh(u32(i), u32(seed), 23u) * 0.18 + atan2(pl.y, pl.x) / TAU * 0.6);
+            let hue = cb_hue_of(i);
             let gc = cb_hue(hue + hue_t) * (0.5 + 0.5 * smoothstep(0.0, 1.5, s)) * select(1.0, 0.7, bloom);
             // its burst and column
             if (sc < CB_RISE_END) {
@@ -1625,7 +1591,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
     var sh_glow = 0.0;
     if (time > CB_ORBIT && !det) {
         for (var j = 0; j < CB_ORBITERS; j = j + 1) {
-            let hv = vec3<f32>(pcg3d(vec3<u32>(u32(j), 911u, u32(seed)))) * (1.0 / 4294967295.0);
+            let hv = cb_w3(CB_ORB + u32(j) * 3u);
             // (round the first shards and the clusters' tallest)
             let pi = j % 16;
             if (pi >= nl) {
@@ -1654,7 +1620,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             c.a = ax;
             c.e1 = fr[0];
             c.e2 = fr[1];
-            c.hue = fract(0.13 * f32(si) + mh(u32(si), u32(seed), 23u) * 0.18 + atan2(pl.y, pl.x) / TAU * 0.6);
+            c.hue = cb_hue_of(si);
             let w = (0.5 + 0.8 * hv.z) * (1.0 + 3.0 * res * res) * select(-1.0, 1.0, hv.x > 0.5);
             let ph = hv.y * TAU + w * ot + 0.6 * res * res * ot * ot;
             let A = c.B + c.a * (y0 + 3.0 * sin(time * 1.3 + hv.x * 9.0));
