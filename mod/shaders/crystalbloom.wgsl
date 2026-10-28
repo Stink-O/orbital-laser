@@ -819,7 +819,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             // the shock running out over the land, a prismatic flash along its front, dust lifted behind it
             let rs = CB_SHOCK_V * dt * (1.0 - 0.18 * saturate(dt / 2.5));
             let fr = exp(-pow((r - rs) / 5.0, 2.0)) * exp(-dt * 1.4) * on_ground;
-            add = add + (cb_spectrum(saturate((r - rs) / 16.0 + 0.5)) * 1.5 + vec3<f32>(1.0)) * fr * k;
+            add = add + mix(vec3<f32>(0.95, 0.9, 1.05), cb_spectrum(saturate((r - rs) / 16.0 + 0.5)), 0.18) * fr * 1.3 * k;
             col = mix(col, vec3<f32>(0.32, 0.29, 0.3) * (0.3 + 0.7 * day) * (1.0 - 0.4 * dark), exp(-pow((r - rs + 9.0) / 14.0, 2.0)) * 0.5 * exp(-dt * 0.4) * on_ground * k);
             // the crater where it has really been opened: its crystal lining glowing, cooling slowly, veins of light
             // through it, the well at its middle glowing deepest
