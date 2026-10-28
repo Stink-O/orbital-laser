@@ -3828,7 +3828,7 @@ fn pk_tidy_edge(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, seed: u
 
 /// The land over chunk column (x0, z0), `r0` to `r1` out from `point` (`r1` wandering a little column by column), cleared
 /// from y0 up to y1, at `t`.
-fn pk_clear(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, r0: f64, r1: f64, y0: i32, y1: i32, t: f32, seed: u32) {
+fn pk_clear(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, r0: f64, r1: f64, y0: i32, y1: i32, sky: i32, t: f32, seed: u32) {
     if y1 < y0 {
         return;
     }
@@ -3840,6 +3840,11 @@ fn pk_clear(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, r0: f64, r1: f64, y
             let edge = r1 + 6.0 * (vnoise(dx, dz, 9.0, seed ^ 0x81) - 0.5);
             if r >= r0 && r < edge {
                 b.run(x, z, y0, y1, "minecraft:air");
+                // (the crowns of trees cut off under it, left over what was cleared)
+                if y1 < y0 + PK_SKY {
+                    b.put(x, z, y1 + 1, (y1 + 14).min(sky), "minecraft:air", Some(TIDY_LOOSE), false);
+                    b.put(x, z, y1 + 1, (y1 + 14).min(sky), "minecraft:air", Some(TIDY_LOGS), false);
+                }
             }
         }
     }
@@ -3863,7 +3868,7 @@ fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
             for (x0, z0, r) in group {
                 // (over the middle, to the sky)
                 let t = pk_dig_t(r);
-                pk_clear(p, point, x0, z0, 0.0, PK_CORE + 8.0, by + PK_ABOVE + 1, sky, t, seed);
+                pk_clear(p, point, x0, z0, 0.0, PK_CORE + 8.0, by + PK_ABOVE + 1, sky, sky, t, seed);
                 pk_dig_cell(p, point, x0, z0, t, true, floor_y, sky, seed);
                 let pitch = p.rng.uniform(0.5, 0.8);
                 p.ground_sound(t, "block.deepslate.break", 10.0, pitch);
@@ -3875,7 +3880,7 @@ fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
         let t0 = pk_queue_t(pk_land_t(group[0].2));
         p.later(t0 - 0.3, move |p| {
             for (x0, z0, r) in group {
-                pk_clear(p, point, x0, z0, 0.0, PK_EDGE, by + 1, (by + PK_SKY).min(sky), pk_queue_t(pk_land_t(r)), seed);
+                pk_clear(p, point, x0, z0, 0.0, PK_EDGE, by + 1, (by + PK_SKY).min(sky), sky, pk_queue_t(pk_land_t(r)), seed);
             }
         });
     }
@@ -3898,14 +3903,14 @@ fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
     // the land out to the edge of the blast, while the crater's walls are dug
     // (and what hangs over the land round its edge, the chunk columns round it too)
     let flat: Vec<(i32, i32, f64)> = pk_cells(point, PK_BLAST + 4.0 + 23.0 + f64::from(TIDY_BORDER)).into_iter().filter(|c| c.2 > PK_LAND - 12.0).collect();
-    for group in flat.chunks(24) {
+    for group in flat.chunks(12) {
         let group = group.to_vec();
         let t0 = pk_queue_t(pk_flat_t(group[0].2));
         p.later(t0 - 0.3, move |p| {
             for (x0, z0, r) in group {
                 if pk_flat_in(point, x0, z0) {
                     let blast = pk_blast_r(x0, z0, seed);
-                    pk_clear(p, point, x0, z0, PK_LAND, blast, by + 1, (by + PK_ABOVE).min(sky), pk_queue_t(pk_flat_t(r)), seed);
+                    pk_clear(p, point, x0, z0, PK_LAND, blast, by + 1, (by + PK_ABOVE).min(sky), sky, pk_queue_t(pk_flat_t(r)), seed);
                 }
                 pk_tidy_edge(p, point, x0, z0, pk_queue_t(pk_flat_t(r)) + 0.05, seed);
             }
@@ -4846,7 +4851,6 @@ mod tick_budget {
             let t0 = std::time::Instant::now();
             let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
             // the firing tick, then each stage on its own (the mod works out one a tick)
-            // (and as many of the small stages that must not wait, `Soon`, besides one of the rest, as a tick takes)
             let first = t0.elapsed().as_secs_f64() * 1000.0;
             let (mut later, mut soon) = (0.0f64, 0.0f64);
             while let Some((_, act)) = ev.pop() {
@@ -4861,7 +4865,7 @@ mod tick_budget {
                 if urgent { soon = soon.max(ms) } else { later = later.max(ms) }
                 ev.extend(more);
             }
-            best = best.min(first.max(later + soon * crate::URGENT_PER_TICK as f64));
+            best = best.min(first.max(later).max(soon));
         }
         best
     }
@@ -5082,12 +5086,7 @@ mod replay {
                 plan.extend(rest);
             };
             let mut worked = false;
-            let mut done = 0;
-            while done < crate::URGENT_PER_TICK && let Some(job) = urgent.pop_front() {
-                out(job, &mut plan, next);
-                done += 1;
-            }
-            if let Some(job) = waiting.pop_front() {
+            if let Some(job) = urgent.pop_front().or_else(|| waiting.pop_front()) {
                 out(job, &mut plan, next);
                 worked = true;
             }
@@ -5098,10 +5097,9 @@ mod replay {
                 match act {
                     Act::Cmd(c) => { std::hint::black_box(block_cost(&c)); }
                     Act::Spare(c) => spare += block_cost(&c).unwrap_or(1),
-                    Act::Soon(job) if done >= crate::URGENT_PER_TICK => urgent.push_back(job),
-                    Act::Soon(job) => { out(job, &mut plan, next); done += 1; }
+                    Act::Soon(job) if worked => urgent.push_back(job),
                     Act::Later(job) if worked => waiting.push_back(job),
-                    Act::Later(job) => { out(job, &mut plan, next); worked = true; }
+                    Act::Later(job) | Act::Soon(job) => { out(job, &mut plan, next); worked = true; }
                     _ => {}
                 }
             }

@@ -73,8 +73,6 @@ const BLOCK_BUDGET: u64 = 20_000;
 /// own, and thousands of small ones in one tick (a planet killer's fissures, cut a column at a time, with its crater's
 /// walls) hitch the game as surely as too many blocks. Every other laser stays under it.
 pub(crate) const CARVE_CMDS: usize = 400;
-/// How many of the small stages that must not wait (`Act::Soon`) a tick works out at most, besides its one other.
-pub(crate) const URGENT_PER_TICK: usize = 3;
 
 struct Strike {
     plan: Vec<(f32, Act)>,
@@ -432,17 +430,10 @@ impl Orbital {
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
         // fall due together, the rest wait for the ticks after, while everything else goes on time (each is due a
         // little before its own events)
-        // The landed pieces' stages (`Act::Soon`, each small) go first: up to URGENT_PER_TICK of them a tick besides it,
-        // so a piece's blocks are in on the tick it lands however much else waits.
-        let mut urgent = 0;
-        while urgent < URGENT_PER_TICK
-            && let Some(job) = s.urgent.pop_front()
-        {
-            s.work_out(job);
-            urgent += 1;
-        }
+        // (the stages that must not wait, `Act::Soon`, go before the rest: a landed piece's blocks must be in on the tick
+        // it lands however much else waits)
         let mut worked_out = false;
-        if let Some(job) = s.waiting.pop_front() {
+        if let Some(job) = s.urgent.pop_front().or_else(|| s.waiting.pop_front()) {
             s.work_out(job);
             worked_out = true;
         }
@@ -469,13 +460,9 @@ impl Orbital {
                         s.params[14] = s.params[14].max(t);
                     }
                 }
-                Act::Soon(job) if urgent >= URGENT_PER_TICK => s.urgent.push_back(job),
-                Act::Soon(job) => {
-                    s.work_out(job);
-                    urgent += 1;
-                }
+                Act::Soon(job) if worked_out => s.urgent.push_back(job),
                 Act::Later(job) if worked_out => s.waiting.push_back(job),
-                Act::Later(job) => {
+                Act::Later(job) | Act::Soon(job) => {
                     // more of the plan, worked out now it is due
                     s.work_out(job);
                     worked_out = true;

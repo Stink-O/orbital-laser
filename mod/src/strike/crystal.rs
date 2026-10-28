@@ -43,6 +43,8 @@ const CB_SHOCK_V: f64 = 170.0;
 /// out to CB_FROST; shards strewn out to CB_STREW; the chunks out to CB_LOAD kept loaded while it works.
 pub(super) const CB_BLAST: f64 = 130.0;
 const CB_ABOVE: i32 = 24;
+/// How far over that the crowns of trees cut off under it are cleared.
+const CB_CROWN: i32 = 14;
 const CB_CORE: f64 = 16.0;
 const CB_FROST: f64 = 165.0;
 pub(super) const CB_STREW: f64 = 235.0;
@@ -730,7 +732,7 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
                 stumps.push(st);
             }
         }
-        for group in cells.chunks(4) {
+        for group in cells.chunks(3) {
             let group = group.to_vec();
             let t0 = group[0].2 as f32;
             let stumps = stumps.clone();
@@ -746,14 +748,20 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             p.later(CB_DET - 2.6 + i as f32 * 0.05, move |q| cb_fissure(q, point, i, shader_seed, CB_BOWL * 0.85, len));
         }
         // the pieces the spires broke into, built where they came down
-        // (each its own stage, worked out ahead of every other stage waiting, a second before it comes down: its blocks
-        // must be in on the tick it lands, and the pass holds it until they are)
+        // (worked out long before they come down, two a stage every other tick while the land wakes and blooms, when
+        // little else is worked out, and each stage ahead of every other waiting: their blocks must be in on the tick
+        // each lands, and the pass holds each until they are)
         let chunks = cb_chunks(shader_seed);
         let mut order: Vec<usize> = (0..chunks.len()).collect();
         order.sort_by(|a, b| chunks[*a].tl.total_cmp(&chunks[*b].tl));
-        for n in order {
-            let c = chunks[n];
-            p.soon(CB_DET + c.tl as f32 - CB_LAND_AHEAD, move |q| cb_landed(q, point, &[c], shader_seed, n as u32));
+        for (k, pair) in order.chunks(2).enumerate() {
+            let cs: Vec<(CbChunk, u32)> = pair.iter().map(|&n| (chunks[n], n as u32)).collect();
+            let at = (CB_LAND_FROM + k as f32 * 0.1).min(CB_DET + cs[0].0.tl as f32 - CB_LAND_AHEAD);
+            p.soon(at, move |q| {
+                for (c, n) in cs {
+                    cb_landed(q, point, &[c], shader_seed, n);
+                }
+            });
         }
         // the land frosted with crystal and strewn with shards, a ring at a time from the middle out
         for part in 0..12u32 {
@@ -810,6 +818,9 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     // (what is built on the ground as it is once dug, the tick after: the shallow floor near its edge where the land
     // lies lower than the target, and the stumps)
     let mut post = Blocks::default();
+    // (which of its columns are cleared through, and which a stump stands on outside that)
+    let mut cleared = [[false; 16]; 16];
+    let mut stood = [[false; 16]; 16];
     let mut dep = [[0i32; 18]; 18];
     for (j, row) in dep.iter_mut().enumerate() {
         for (i, d) in row.iter_mut().enumerate() {
@@ -827,12 +838,17 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
             let core = CB_CORE * (0.9 + 0.2 * vnoise(dx, dz, 20.0, s ^ 0x506));
             let dd = dep[j][i];
             let top = (by + CB_ABOVE).min(sky);
+            cleared[j - 1][i - 1] = r < blast || dd > 0;
             if r < blast || dd > 0 {
                 let y0 = if dd > 0 { by - dd + 1 } else { by + 1 };
                 b.run(x, z, y0, top, "minecraft:air");
             }
             if r < core {
                 high.run(x, z, top + 1, sky, "minecraft:air");
+            } else if r < blast || dd > 0 {
+                // (the crowns of trees cut off under them, left over what was cleared)
+                b.put(x, z, top + 1, (top + CB_CROWN).min(sky), "minecraft:air", Some(super::TIDY_LOOSE), false);
+                b.put(x, z, top + 1, (top + CB_CROWN).min(sky), "minecraft:air", Some(super::TIDY_LOGS), false);
             }
             let dmax = [dep[j - 1][i], dep[j + 1][i], dep[j][i - 1], dep[j][i + 1]].into_iter().max().unwrap_or(0);
             let zone = vnoise(fx, fz, 40.0, s ^ 0x507);
@@ -914,8 +930,9 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
                 let d = dep[(z - z0 + 1) as usize][(x - x0 + 1) as usize];
                 let n = post.runs.len();
                 c.column(&mut post, x, z, (by - d - 3).max(floor_y + 1), sky, Some(by - d + 1));
-                if post.runs.len() > n {
+                if post.runs.len() > n && !cleared[(z - z0) as usize][(x - x0) as usize] {
                     b.put(x, z, -12, -1, "minecraft:air", Some(super::TIDY_LOGS), true);
+                    stood[(z - z0) as usize][(x - x0) as usize] = true;
                 }
             }
         }
@@ -929,24 +946,21 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     // cleared through, and the land beyond it is left as it was)
     let bb = f64::from(super::TIDY_BORDER) + 1.0;
     let (ex0, ez0, ex1, ez1) = (f64::from(x0) - bb, f64::from(z0) - bb, f64::from(x0 + 16) + bb, f64::from(z0 + 16) + bb);
-    let near: Vec<&CbSolid> = stumps
-        .iter()
-        .filter(|c| c.b[0] + c.reach >= ex0 && c.b[0] - c.reach <= ex1 && c.b[2] + c.reach >= ez0 && c.b[2] - c.reach <= ez1)
-        .collect();
     let (nx, nz) = ((point[0] - ex0).clamp(0.0, ex1 - ex0) + ex0 - point[0], (point[2] - ez0).clamp(0.0, ez1 - ez0) + ez0 - point[2]);
     let rmin = nx.hypot(nz);
     let rmax = [(ex0, ez0), (ex1, ez0), (ex0, ez1), (ex1, ez1)].iter().map(|&(x, z)| (x - point[0]).hypot(z - point[2])).fold(0.0, f64::max);
-    if !near.is_empty() || (rmax >= CB_BLAST * 0.93 && rmin <= CB_BLAST * 1.07) {
+    let stumps_here = stood.iter().flatten().any(|v| *v);
+    if stumps_here || (rmax >= CB_BLAST * 0.93 && rmin <= CB_BLAST * 1.07) {
         let tb = tidy(x0, z0, x0 + 15, z0 + 15, 16, -1, |x, z| {
-            let (fx, fz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
-            if near.iter().any(|c| c.span(fx, fz).is_some()) {
-                return Col::Dug;
+            // (its own columns as they were dug; those round it as the blast's edge has them)
+            let (i, j) = (x - x0, z - z0);
+            if (0..16).contains(&i) && (0..16).contains(&j) {
+                let (i, j) = (i as usize, j as usize);
+                return if stood[j][i] { Col::Dug } else if cleared[j][i] { Col::Cleared } else { Col::Kept };
             }
-            let (dx, dz) = (fx - point[0], fz - point[2]);
+            let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
             let r = dx.hypot(dz);
-            let cleared = r < CB_BLAST * 0.93
-                || (r < CB_BLAST * 1.07 && r < CB_BLAST * (0.93 + 0.14 * vnoise(dx, dz, 50.0, s ^ 0x505)))
-                || cb_depth(dx, dz, s, by - floor_y) > 0;
+            let cleared = r < CB_BLAST * 0.93 || (r < CB_BLAST * 1.07 && r < CB_BLAST * (0.93 + 0.14 * vnoise(dx, dz, 50.0, s ^ 0x505)));
             if cleared { Col::Cleared } else { Col::Kept }
         });
         if !tb.runs.is_empty() {
@@ -973,8 +987,12 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
         let (cx, cz) = (point[0] + a.cos() * r, point[2] + a.sin() * r);
         let mut b = Blocks::default();
         let e = hw.ceil() as i32 + 2;
-        for z in (cz.floor() as i32 - e)..=(cz.floor() as i32 + e) {
-            for x in (cx.floor() as i32 - e)..=(cx.floor() as i32 + e) {
+        let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
+        // (the columns it cuts, for clearing what is left over them)
+        let side = (2 * e + 1) as usize;
+        let mut cut = vec![false; side * side];
+        for z in (zc - e)..=(zc + e) {
+            for x in (xc - e)..=(xc + e) {
                 let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
                 let rr = dx.hypot(dz);
                 if rr < CB_BOWL * 0.85 || rr > len {
@@ -988,6 +1006,7 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
                 }
                 let n = vnoise(f64::from(x), f64::from(z), 5.0, s ^ 0x50b);
                 if lat < hw {
+                    cut[((z - zc + e) as usize) * side + (x - xc + e) as usize] = true;
                     b.put(x, z, -depth - 1, -depth - 1, if n > 0.72 { "minecraft:pearlescent_froglight" } else { "minecraft:amethyst_block" }, None, true);
                     b.put(x, z, -depth, -1, "minecraft:air", None, true);
                 } else if lat < hw + 1.5 {
@@ -997,17 +1016,11 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
         }
         p.ev.push((cb_crack_t(r), Act::Blocks(Box::new(b))));
         // the plants and the trees left over the cut, cleared the tick after
-        let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
         let g = e + super::TIDY_BORDER;
         let t = tidy(xc - g, zc - g, xc + g, zc + g, depth + 12, depth + 2, |x, z| {
-            let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
-            let rr = dx.hypot(dz);
-            if rr < CB_BOWL * 0.85 || rr > len {
-                return Col::Kept;
-            }
-            let aa = cb_crack_a(i, rr, seed);
-            let cut = (dx * aa.sin() - dz * aa.cos()).abs() < hw && (dx * aa.cos() + dz * aa.sin() - r).abs() <= 2.0;
-            if cut { Col::Dug } else { Col::Kept }
+            let (i, j) = (x - xc + e, z - zc + e);
+            let inside = (0..side as i32).contains(&i) && (0..side as i32).contains(&j);
+            if inside && cut[j as usize * side + i as usize] { Col::Dug } else { Col::Kept }
         });
         p.ev.push((cb_crack_t(r) + 0.05, Act::Blocks(Box::new(t))));
         r += 3.0;
@@ -1032,7 +1045,8 @@ fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32, n0: u32) 
         p.at(tl, super::surf(x, z, &format!(r#"particle minecraft:block_crumble{{block_state:"minecraft:stone"}} ~ ~0.1 ~ {s:.1} 0.1 {s:.1} 0 24 force"#)));
     }
 }
-/// How long before a piece comes down its blocks are worked out.
+/// When the landed pieces' blocks start to be worked out, and how long before a piece comes down they are at the latest.
+const CB_LAND_FROM: f32 = 8.5;
 const CB_LAND_AHEAD: f32 = 1.5;
 /// Each colour's landed crystal, dimmed: its body, its glassy skin, and patches through it (no light in them now).
 const CB_LANDED: [[&str; 3]; 6] = [
@@ -1535,12 +1549,11 @@ mod landings {
             ticks += 1;
             let now = ticks as f32 * 0.05;
             let mut done = 0;
-            while !fair && done < crate::URGENT_PER_TICK && let Some(job) = urgent.pop_front() {
+            let mut worked = false;
+            if !fair && let Some(job) = urgent.pop_front() {
                 work(job, &mut plan, next);
                 done += 1;
-            }
-            let mut worked = false;
-            if let Some(job) = waiting.pop_front() {
+            } else if let Some(job) = waiting.pop_front() {
                 work(job, &mut plan, next);
                 worked = true;
             }
@@ -1553,12 +1566,12 @@ mod landings {
                             out.push((t, ticks));
                         }
                     }
-                    Act::Soon(job) if !fair && done >= crate::URGENT_PER_TICK => urgent.push_back(job),
+                    Act::Soon(job) if !fair && (done > 0 || worked) => urgent.push_back(job),
                     Act::Soon(job) if !fair => {
                         work(job, &mut plan, next);
                         done += 1;
                     }
-                    Act::Later(job) | Act::Soon(job) if worked => waiting.push_back(job),
+                    Act::Later(job) | Act::Soon(job) if worked || done > 0 => waiting.push_back(job),
                     Act::Later(job) | Act::Soon(job) => {
                         work(job, &mut plan, next);
                         worked = true;
@@ -1592,6 +1605,42 @@ mod landings {
         for fair in [true, false] {
             let worst = landings(fair).iter().map(|(t, tick)| ((*tick as f32 * 0.05 - t) / 0.05).floor() * 0.05).fold(0.0, f32::max);
             println!("landings {}: worst {worst:.2} s late", if fair { "in turn" } else { "first" });
+        }
+    }
+}
+#[cfg(test)]
+mod stage_cost {
+    use super::*;
+    use crate::strike::plan;
+    /// `cargo test --release cb_stage_cost -- --ignored --nocapture`: the heaviest stages, each the best of three (the
+    /// firing at -1 s; ORBITAL_STAGES the laser, by default this one).
+    #[test]
+    #[ignore]
+    fn cb_stage_cost() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let mut runs: Vec<Vec<(f32, f64, usize, usize)>> = Vec::new();
+        for _ in 0..3 {
+            let key = std::env::var("ORBITAL_STAGES").map_or(7, |v| v.parse::<usize>().unwrap());
+            let t0 = std::time::Instant::now();
+            let mut ev = plan(crate::lasers::LASERS[key], &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 330.0], 0);
+            let mut out = vec![(-1.0, t0.elapsed().as_secs_f64() * 1000.0, ev.len(), 0)];
+            while let Some((t, a)) = ev.pop() {
+                if let Act::Later(job) | Act::Soon(job) = a {
+                    let s = std::time::Instant::now();
+                    let more = job();
+                    let ms = s.elapsed().as_secs_f64() * 1000.0;
+                    let r: usize = more.iter().map(|e| if let Act::Blocks(b) = &e.1 { b.runs.len() } else { 0 }).sum();
+                    out.push((t, ms, more.len(), r));
+                    ev.extend(more);
+                }
+            }
+            out.sort_by(|a, b| a.0.total_cmp(&b.0));
+            runs.push(out);
+        }
+        let mut best: Vec<(f32, f64, usize, usize)> = (0..runs[0].len()).map(|i| (runs[0][i].0, runs.iter().map(|r| r[i].1).fold(f64::MAX, f64::min), runs[0][i].2, runs[0][i].3)).collect();
+        best.sort_by(|a, b| b.1.total_cmp(&a.1));
+        for b in best.iter().take(8) {
+            println!("stage at {:6.2} s: {:.3} ms, {} acts, {} runs", b.0, b.1, b.2, b.3);
         }
     }
 }
