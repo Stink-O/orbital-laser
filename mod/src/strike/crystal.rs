@@ -301,6 +301,9 @@ struct CbSolid {
     /// Its radius, how far its sides are from its axis.
     r: f64,
     family: usize,
+    /// How jagged its broken top is (blocks; 0: cut clean, or no break), and the seed for it.
+    jag: f64,
+    seed: u32,
 }
 impl CbSolid {
     fn local(&self, q: [f64; 3]) -> [f64; 3] {
@@ -311,7 +314,18 @@ impl CbSolid {
         let o = self.local([x - self.b[0], 0.0, z - self.b[2]]);
         let d = [self.e1[1], self.a[1], self.e2[1]];
         let (mut t0, mut t1) = (-1e9f64, 1e9f64);
-        for (n, w) in &self.planes {
+        // (its broken top raised in shards and splinters: up to `jag` over the cut, highest towards its middle)
+        let lift = if self.jag > 0.0 {
+            let ax = o[0].hypot(o[2]) / self.r.max(1.0);
+            let n1 = vnoise(x, z, 2.3, self.seed ^ 0x530);
+            let n2 = vnoise(x, z, 5.5, self.seed ^ 0x531);
+            self.jag * (0.35 * n2 + 0.65 * n1 * n1) * (1.0 - 0.6 * ax.min(1.0))
+        } else {
+            0.0
+        };
+        let last = self.planes.len() - 1;
+        for (pi, (n, w)) in self.planes.iter().enumerate() {
+            let w = if pi == last { w + lift } else { *w };
             let dn = dot(*n, d);
             let num = w - dot(*n, o);
             if dn.abs() < 1e-9 {
@@ -347,26 +361,24 @@ impl CbSolid {
         let [body, skin, band, heart] = CB_FAMILY[self.family];
         let off = rel.unwrap_or(0);
         let put = |bl: &mut Blocks, a: i32, b: i32, blk: &'static str| bl.put(x, z, a - off, b - off, blk, None, rel.is_some());
-        if side < 1.6 {
-            // the skin, banded every thirteen blocks
-            let mut y = lo;
-            while y <= hi {
-                let bnd = (y + 3 * self.family as i32).rem_euclid(13) == 0;
-                let next = if bnd { y } else { (y + 12 - (y + 3 * self.family as i32).rem_euclid(13)).min(hi) };
-                put(bl, y, next, if bnd { band } else { skin });
-                y = next + 1;
-            }
-        } else if ax < self.r * 0.22 {
-            // the heart: glowing in stretches up its middle
-            let mut y = lo;
-            while y <= hi {
-                let lit = (y.div_euclid(5)) % 2 == 0;
-                let next = (y.div_euclid(5) * 5 + 4).min(hi);
-                put(bl, y, next, if lit { heart } else { body });
-                y = next + 1;
-            }
-        } else {
-            put(bl, lo, hi, body);
+        // (in coherent zones, not bands: the glassy skin a block or so thick with patches of the band's colour through
+        // it, the body with veins of it, the heart glowing all the way up)
+        let fam = self.family as u32;
+        let mut y = lo;
+        while y <= hi {
+            let fy = f64::from(y);
+            let zone = vnoise(fx + fy * 0.41, fz - fy * 0.33, 6.0, self.seed ^ 0x532 ^ fam);
+            let blk = if side < 1.3 {
+                if zone > 0.68 { band } else { skin }
+            } else if ax < self.r * 0.22 {
+                heart
+            } else if zone > 0.78 {
+                band
+            } else {
+                body
+            };
+            put(bl, y, y, blk);
+            y += 1;
         }
     }
 }
@@ -402,8 +414,49 @@ fn cb_stump(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
     planes.push(([0.0, -1.0, 0.0], CB_SINK));
     planes.push(([br[1], 1.0, br[2]], br[0]));
     let reach = r * 1.3 + (br[0] + CB_SINK) * f[1].sin() + 2.0;
-    Some(CbSolid { b: [point[0] + p[0], point[1], point[2] + p[1]], e1, a, e2, planes, reach, r, family: cb_family(hue) })
+    Some(CbSolid { b: [point[0] + p[0], point[1], point[2] + p[1]], e1, a, e2, planes, reach: reach + r * 0.9, r, family: cb_family(hue), jag: (r * 0.9).clamp(3.0, 12.0), seed: seed as u32 ^ i as u32 })
 }
+/// A small crystal: a hexagonal prism `r` round and `h` tall from its foot `b`, pointed, run `sink` into the ground.
+fn cb_hex(b: [f64; 3], a: [f64; 3], rot: f64, r: f64, h: f64, sink: f64, family: usize, seed: u32) -> CbSolid {
+    let (e1, e2) = cb_frame(a, rot);
+    let tip = r * 1.7;
+    let hb = h - tip;
+    let mut planes = Vec::new();
+    for k in 0..6 {
+        let th = k as f64 * PI / 3.0;
+        planes.push(([th.cos(), 0.0, th.sin()], r));
+    }
+    for k in 0..6 {
+        let th = k as f64 * PI / 3.0;
+        let m = r / tip;
+        planes.push(([th.cos(), m, th.sin()], r + m * hb));
+    }
+    planes.push(([0.0, -1.0, 0.0], sink));
+    let lean = a[1].clamp(-1.0, 1.0).acos();
+    CbSolid { b, e1, a, e2, planes, reach: r * 1.3 + (h + sink) * lean.sin() + 2.0, r, family, jag: 0.0, seed }
+}
+/// The crystals clustered round the foot of spire i's stump, leaning out from it, standing on the crater's floor.
+fn cb_cluster(i: usize, seed: f32, point: [f64; 3], st: &CbSolid) -> Vec<CbSolid> {
+    let s = seed as u32;
+    let p = cb_place(i, seed);
+    let n = 4 + (mh(i as u32, s, 40) * 5.0) as usize;
+    (0..n)
+        .map(|k| {
+            let h = cb_h3(i * 16 + k, 540, seed);
+            let ang = h[0] * TAU;
+            let d = st.r * (1.05 + 0.5 * h[1]) + 1.0;
+            let (x, z) = (p[0] + ang.cos() * d, p[1] + ang.sin() * d);
+            let dep = f64::from(cb_depth(x, z, s, 200)).min(CB_BOWL_D + 2.0);
+            let lean = 0.3 + 0.6 * h[2];
+            let la = ang + (h[1] - 0.5) * 0.8;
+            let a = [lean.sin() * la.cos(), lean.cos(), lean.sin() * la.sin()];
+            let r = 1.0 + 2.2 * h[1] * h[1];
+            let fam = if h[2] > 0.8 { (st.family + 1) % 6 } else { st.family };
+            cb_hex([point[0] + x, point[1] - dep, point[2] + z], a, h[0] * 9.0, r, 4.0 + r * 3.0 + 6.0 * h[0], 3.0, fam, s ^ k as u32)
+        })
+        .collect()
+}
+
 /// How deep the crater is under (dx, dz) from its middle (blocks under the target's ground; `bottom` as deep as it
 /// goes, to bedrock): a bowl, its edge wandering, its floor a little uneven; the well down the middle.
 pub(super) fn cb_depth(dx: f64, dz: f64, seed: u32, bottom: i32) -> i32 {
@@ -557,7 +610,13 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             let group = group.to_vec();
             let t0 = group[0].2 as f32;
             p.later(t0 - 1.6, move |q| {
-                let stumps: Vec<CbSolid> = (0..CB_N).filter_map(|i| cb_stump(i, shader_seed, point)).collect();
+                let mut stumps: Vec<CbSolid> = Vec::new();
+                for i in 0..CB_N {
+                    if let Some(st) = cb_stump(i, shader_seed, point) {
+                        stumps.extend(cb_cluster(i, shader_seed, point, &st));
+                        stumps.push(st);
+                    }
+                }
                 for (x0, z0, t) in group {
                     cb_dig_cell(q, point, x0, z0, t as f32, floor_y, sky, shader_seed, &stumps);
                 }
@@ -661,14 +720,16 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
                 b.run(x, z, floor_y + 1, fy.max(floor_y + 1), "minecraft:air");
                 let n = vnoise(fx, fz, 4.0, s ^ 0x508);
                 b.put(x, z, floor_y - 1, floor_y - 1, "minecraft:amethyst_block", Some("#minecraft:sculk_replaceable"), false);
-                b.run(x, z, floor_y, floor_y, if n > 0.6 { "minecraft:pearlescent_froglight" } else if n > 0.3 { "minecraft:amethyst_block" } else { "minecraft:calcite" });
+                b.run(x, z, floor_y, floor_y, if n > 0.45 { "minecraft:pearlescent_froglight" } else if n > 0.25 { "minecraft:sea_lantern" } else { "minecraft:amethyst_block" });
                 continue;
             }
             // the floor: its inner shell, calcite, then smooth basalt; seams of light through it near the middle
-            let seam = (vnoise(fx, fz, 11.0, s ^ 0x509) - 0.5).abs() < 0.025 && r < 60.0;
+            let seam = (vnoise(fx, fz, 11.0, s ^ 0x509) - 0.5).abs() < 0.04 && r < 80.0;
             b.run(x, z, (fy - 5).max(floor_y), fy - 3, "minecraft:smooth_basalt");
             b.run(x, z, (fy - 2).max(floor_y), fy - 1, "minecraft:calcite");
-            b.run(x, z, fy, fy, if seam { "minecraft:pearlescent_froglight" } else { inner });
+            let gl = mh((x.wrapping_mul(97) ^ z.wrapping_mul(61)) as u32, s, 0x50f);
+            let lamp = if gl > 0.993 { Some("minecraft:verdant_froglight") } else if gl > 0.986 { Some("minecraft:ochre_froglight") } else { None };
+            b.run(x, z, fy, fy, if seam { "minecraft:pearlescent_froglight" } else { lamp.unwrap_or(inner) });
             // the faces down to deeper ground beside it
             if dmax > dd {
                 b.run(x, z, (by - dmax + 1).max(floor_y), fy - 1, inner);

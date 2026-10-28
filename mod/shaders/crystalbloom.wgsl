@@ -29,7 +29,8 @@ const CB_BLOOM_V: f32 = 4.6;
 const CB_RES: f32 = 14.0;          // they resonate from here,
 const CB_ORBIT: f32 = 15.6;        // shards breaking off and orbiting them from here,
 const CB_DET: f32 = 22.0;          // and detonate
-const CB_END: f32 = 31.0;          // the light gone (the strike runs 32 s)
+const CB_END: f32 = 31.0;          // the burst's light gone
+const CB_LATE: f32 = 59.0;         // the well's light and the motes over the crater gone (the strike runs 60 s)
 const CB_G: f32 = 22.0;            // how hard they fall
 const CB_ORBITERS: i32 = 32;
 const CB_BOWL: f32 = 88.0;         // the crater (strike.rs's cb_depth): CB_BOWL round, CB_BOWL_D deep, a well CB_WELL round
@@ -1126,6 +1127,10 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                 let fresh = exp(-max(time - cb_dig_t(r), 0.0) / 6.0);
                 let hc = cb_hue(atan2(rel2.y, rel2.x) / TAU + 0.02 * r);
                 add = add + hc * (veins * (0.5 + 1.2 * fresh) + 0.5 * fresh * deep + smoothstep(CB_WELL * 1.6, 0.0, r) * 2.0) * open * after * 1.3 * k;
+                // (and after: the seams still glowing a little, a pool of light in the well and round its mouth)
+                let late = (1.0 - after) * (1.0 - smoothstep(CB_LATE - 12.0, CB_LATE, time));
+                let wp = smoothstep(CB_WELL * 2.6, CB_WELL * 0.3, r) * (0.5 + 0.5 * deep);
+                add = add + mix(hc, vec3<f32>(0.85, 0.8, 1.0), 0.4) * (veins * 0.2 * smoothstep(CB_BOWL, CB_BOWL * 0.45, r + 20.0 * (n - 0.5)) + wp * 1.6 * (0.85 + 0.15 * sin(time * 1.7))) * open * late * k;
             }
             // the fissures as they open, light pulsing out along them
             let ang = atan2(rel2.y, rel2.x);
@@ -1729,6 +1734,38 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         // a ball of white light where the heart was, fading
         let ball = exp(-dcs / (30.0 + 40.0 * dt)) * exp(-dt * 2.2) * 3.0;
         add = add + mix(vec3<f32>(1.0), cb_hue(hue_t + dcs * 0.006 + dt * 0.4), 0.25 + 0.5 * saturate(dcs / (40.0 + 60.0 * dt))) * ball * cb_occ(tcs - 30.0, scene_len, sky, cloud) * k;
+    }
+
+    // ---- the motes: a slow, sparse drift of glowing specks over the crater after, fading over the best part of a
+    //      minute (on a few rising sheets of air, found where the view ray crosses each, a mote on it per cell) -------
+    if (det && dt > 1.0 && time < CB_LATE) {
+        let mk = smoothstep(1.0, 5.0, dt) * (1.0 - smoothstep(CB_LATE - 28.0, CB_LATE, time)) * k;
+        for (var l = 0; l < 5; l = l + 1) {
+            let ph = fract(time * 0.03 + f32(l) * 0.2);
+            let y = -CB_BOWL_D + ph * 80.0;
+            let t = (tgt.y + y - cam.y) / rd.y;
+            if (t <= 0.0 || t > scene_len) {
+                continue;
+            }
+            let Q = (cam + rd * t - tgt).xz;
+            let rq = length(Q);
+            if (rq > 125.0) {
+                continue;
+            }
+            let g = Q / 6.0 + vec2<f32>(f32(l) * 13.1, f32(l) * 7.7);
+            let cid = floor(g);
+            let hv = vec3<f32>(pcg3d(vec3<u32>(bitcast<vec2<u32>>(vec2<i32>(cid)), u32(l) + u32(seed) * 5u + 900u))) * (1.0 / 4294967295.0);
+            if (hv.z > 0.16) {
+                continue;
+            }
+            let star = cid + vec2<f32>(0.2) + hv.xy * 0.6 + 0.12 * vec2<f32>(sin(time * 0.4 + hv.x * 20.0), cos(time * 0.33 + hv.y * 17.0));
+            let dd = (g - star) * 6.0;
+            let w = max(0.12, t * px_a * 0.8);
+            let tw = 0.55 + 0.45 * sin(time * (0.8 + 1.6 * hv.x) + hv.y * 30.0);
+            let lum = exp(-dot(dd, dd) / (w * w)) * min(1.0, 0.18 / w) * tw;
+            let edge = smoothstep(125.0, 50.0, rq + 25.0 * (gnoise2(Q * 0.02 + vec2<f32>(seed)) - 0.5));
+            add = add + mix(cb_hue(hv.x + f32(l) * 0.13), vec3<f32>(1.0), 0.35) * lum * sin(ph * 3.14159265) * edge * mk * 3.0;
+        }
     }
 
     // ---- the lens: bloom round the heart as they resonate and burst, a ring of colour round it ----------------------

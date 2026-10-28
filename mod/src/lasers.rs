@@ -326,7 +326,7 @@ pub const CRYSTAL_BLOOM: Laser = Laser {
     rgb: 0xE07BFF,
     blurb: "A forest of crystal spires bursts from the land, hums as one and shatters in a flash of colour.",
     icon_model: "orbital:crystalbloom_icon",
-    length: 32.0,
+    length: 60.0,
     range: 1000.0,
     scorch: &[],
     bowl_r: 88,
