@@ -517,15 +517,21 @@ fn cb_chunk_cuts(o: ptr<function, CbChunk>, i: i32, k: i32, nseg: i32, ylo: f32,
     (*o).hi = select(cb_cut_at(i, k + 1, nseg, yhi, span, R, seed), vec4<f32>(0.0, 1.0, 0.0, 1.0e7), k == nseg - 1);
 }
 // Where a piece is `dt` after the burst (off the target) and how far it has turned: flying, then come down and driven
-// a little into the ground, lying there until it is built.
+// CB_WEDGE into the ground along its path, lying there until it is built (strike.rs's CbChunk::rest: keep in step).
+const CB_WEDGE: f32 = 2.0;
 fn cb_chunk_at(o: CbChunk, dt: f32) -> vec4<f32> {
     let tf = min(dt, o.tl);
     var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf, 0.0);
     if (dt > o.tl) {
         let vl = o.v - vec3<f32>(0.0, CB_G * o.tl, 0.0);
-        P = P + normalize(vl) * 5.0 * min(dt - o.tl, 0.2);
+        P = P + normalize(vl) * CB_WEDGE * saturate((dt - o.tl) / 0.15);
     }
     return vec4<f32>(P, o.spin.w * tf);
+}
+// How big it is by then: shrinking as it falls, smoothly, to half by the time it comes down (strike.rs's CB_LAND_SCALE).
+fn cb_chunk_scale(o: CbChunk, dt: f32) -> f32 {
+    let u = saturate(dt / o.tl);
+    return 1.0 - 0.5 * u * u * (3.0 - 2.0 * u);
 }
 // The view ray through a crystal's own faces (but its cut) and three more planes: x in, y out, z the face it goes in
 // by (13 and on: a broken face).
@@ -1641,6 +1647,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
     // ---- as they burst: each spire broken into its pieces (cb_chunk), thrown out, tumbling, coming down ---------------
     var sh_brk = 0.0;
     var sh_ci = vec3<i32>(-1);
+    var sh_kin = 0;
     if (det && dt < 12.0) {
         for (var i = 0; i < CB_N; i = i + 1) {
             let pl = cb_place(i, seed);
@@ -1688,8 +1695,9 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                         continue;
                     }
                     let at = cb_chunk_at(o, dt);
+                    let sc = cb_chunk_scale(o, dt);
                     let Cw = crel + at.xyz;
-                    let bnd = 0.5 * length(vec2<f32>(o.L, 2.0 * o.wid)) + 2.0;
+                    let bnd = (0.5 * length(vec2<f32>(o.L, 2.0 * o.wid)) + 2.0) * sc;
                     let tc = dot(Cw, rd);
                     if (tc < -bnd || tc - bnd > sh_t || dot(Cw, Cw) - tc * tc > bnd * bnd) {
                         continue;
@@ -1699,8 +1707,8 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                         built = true;
                     }
                     cb_chunk_cuts(&o, i, kk, nseg, ylo, yhi, span, fm.x, brk, seed);
-                    let oo = o.C0 + rot_axis(-Cw, o.spin.xyz, -at.w);
-                    let dd = rot_axis(rd, o.spin.xyz, -at.w);
+                    let oo = o.C0 + rot_axis(-Cw, o.spin.xyz, -at.w) / sc;
+                    let dd = rot_axis(rd, o.spin.xyz, -at.w) / sc;
                     let h = cb_hit3(c, cb_to(c, oo - F), cb_to(c, dd), o.lo, o.hi, o.sp);
                     if (h.x > 0.0 && h.x < sh_t) {
                         let kin = i32(h.z);
@@ -1718,15 +1726,23 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                         sh_n = normalize(rot_axis(cb_from(c, normalize(nl)), o.spin.xyz, at.w));
                         sh_hue = c.hue;
                         sh_brk = f32(kin >= 13);
-                        sh_glow = (0.25 + 1.4 * exp(-dt * 1.5)) * (1.0 + sh_brk * 1.2);
+                        // (its light inside dying as it falls, each piece flickering its own way, out by when it lands)
+                        let hf_ = cb_h3(i * 16 + kk * 2 + hf, 508u, seed);
+                        let u = saturate(dt / o.tl);
+                        let flk = saturate(0.25 + 0.95 * gnoise2(vec2<f32>(dt * (2.5 + 6.0 * hf_.x), hf_.y * 61.0)) + 0.3 * (gnoise2(vec2<f32>(dt * 17.0, hf_.z * 43.0)) - 0.5));
+                        sh_glow = (0.15 + 1.2 * exp(-dt * 1.8)) * (1.0 + sh_brk * 0.6) * (1.0 - u) * (1.0 - u) * flk;
                         sh_ci = vec3<i32>(i, kk, hf);
+                        sh_kin = kin;
                     }
                 }
             }
         }
     }
-    // (the piece in front: its edges catching the light, as the spires' do)
+    // (the piece in front: its edges catching the light, as the spires' do, and the view through it bent by it)
     var sh_edge = 0.0;
+    var sh_thru = vec3<f32>(-1.0);
+    var sh_path = 0.0;
+    var sh_sheet = 0.0;
     if (sh_ci.x >= 0 && sh_t < scene_len) {
         let i = sh_ci.x;
         let pl = cb_place(i, seed);
@@ -1737,25 +1753,29 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let nseg = cb_nseg(c.R, span);
         let ylo = cb_cut_h(i, sh_ci.y, nseg, h0, span, seed);
         let yhi = cb_cut_h(i, sh_ci.y + 1, nseg, h0, span, seed);
-        var o = cb_chunk(i, sh_ci.y, sh_ci.z, seed, vec3<f32>(pl.x, 0.0, pl.y), c.a, c.e1, c.e2, c.R, nseg, ylo, yhi);
+        let F = vec3<f32>(pl.x, 0.0, pl.y);
+        var o = cb_chunk(i, sh_ci.y, sh_ci.z, seed, F, c.a, c.e1, c.e2, c.R, nseg, ylo, yhi);
         cb_chunk_cuts(&o, i, sh_ci.y, nseg, ylo, yhi, span, c.R, brk, seed);
         let at = cb_chunk_at(o, dt);
-        let Xo = o.C0 + rot_axis(rd * sh_t - crel - at.xyz, o.spin.xyz, -at.w);
-        let ql = cb_to(c, Xo - vec3<f32>(pl.x, 0.0, pl.y));
+        let sc = cb_chunk_scale(o, dt);
+        let Xo = o.C0 + rot_axis(rd * sh_t - crel - at.xyz, o.spin.xyz, -at.w) / sc;
+        let ql = cb_to(c, Xo - F);
+        let dl = cb_to(c, rot_axis(rd, o.spin.xyz, -at.w));
         var e1 = 1.0e9;
         var e2 = 1.0e9;
+        var nin = vec3<f32>(0.0, 1.0, 0.0);
+        var pk: array<vec4<f32>, 16>;
         for (var kk = 0; kk < 16; kk = kk + 1) {
-            var pk: vec4<f32>;
             if (kk < 13) {
-                pk = cb_plane(c, kk);
+                pk[kk] = cb_plane(c, kk);
             } else if (kk == 13) {
-                pk = o.lo;
+                pk[kk] = o.lo;
             } else if (kk == 14) {
-                pk = o.hi;
+                pk[kk] = o.hi;
             } else {
-                pk = o.sp;
+                pk[kk] = o.sp;
             }
-            let dpk = max((pk.w - dot(pk.xyz, ql)) / length(pk.xyz), 0.0);
+            let dpk = max((pk[kk].w - dot(pk[kk].xyz, ql)) / length(pk[kk].xyz), 0.0) * sc;
             if (dpk < e1) {
                 e2 = e1;
                 e1 = dpk;
@@ -1763,11 +1783,58 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                 e2 = min(e2, dpk);
             }
         }
-        let ew = max(0.12, sh_t * px_a * 0.8);
-        sh_edge = exp(-e2 / ew) * min(1.0, 0.12 / ew * 2.0);
+        nin = normalize(pk[sh_kin].xyz);
+        let ew = max(0.06, sh_t * px_a * 0.6);
+        // (a thin bright line along its edges, glinting here and there along them)
+        let glint = 0.5 + 1.5 * pow(gnoise2(vec2<f32>(dot(ql, vec3<f32>(0.9, 0.6, 0.7)) * 0.8, f32(i) + dt * 2.0)), 6.0) * 6.0;
+        sh_edge = exp(-e2 / ew) * min(1.0, 0.1 / ew * 2.0) * glint;
+        // through it: bent in at the face it is seen by, out at the face it leaves by, to what lies behind
+        var dr = refract(dl, nin, 1.0 / 1.52);
+        if (dot(dr, dr) < 1.0e-6) {
+            dr = reflect(dl, nin);
+        }
+        dr = normalize(dr);
+        var tout = 1.0e9;
+        var kout = 0;
+        for (var kk = 0; kk < 16; kk = kk + 1) {
+            let dn = dot(pk[kk].xyz, dr);
+            if (dn > 1.0e-6) {
+                let t = (pk[kk].w - dot(pk[kk].xyz, ql)) / dn;
+                if (t < tout) {
+                    tout = t;
+                    kout = kk;
+                }
+            }
+        }
+        tout = clamp(tout, 0.0, 200.0);
+        var vo = refract(dr, -normalize(pk[kout].xyz), 1.52);
+        if (dot(vo, vo) < 1.0e-6) {
+            vo = reflect(dr, -normalize(pk[kout].xyz));
+        }
+        let vw = rot_axis(cb_from(c, normalize(vo)), o.spin.xyz, at.w);
+        let Xe = rd * sh_t + rot_axis(cb_from(c, dr), o.spin.xyz, at.w) * tout * sc;
+        let behind = Xe + vw * clamp(select(scene_len, 300.0, sky) - sh_t, 3.0, 300.0);
+        let Pb = project_rel(behind);
+        if (Pb.z > 0.0) {
+            let ub = clamp(Pb.xy, vec2<f32>(0.002), vec2<f32>(0.998));
+            let bg = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, ub, 0.0).rgb);
+            // (darkened as the pass darkens the land and the sky behind)
+            sh_thru = select(bg * (1.0 - 0.7 * dark * k), mix(bg, night, dark * k), is_sky(depth_at(ub)));
+        } else {
+            sh_thru = cb_env(vw, sky_c, sun, day, dark, vec3<f32>(0.0));
+        }
+        sh_path = tout * sc;
+        // (and a cleavage sheet or two inside it, catching the light, for depth)
+        for (var fk = 0; fk < 2; fk = fk + 1) {
+            let hv = cb_h3(i * 16 + sh_ci.y * 2 + sh_ci.z, 777u + u32(fk), seed);
+            let fn_ = normalize(hv - 0.5);
+            let a0 = dot(ql - (o.C0 - F) * 0.0, fn_) - dot(cb_to(c, o.C0 - F), fn_) - (hv.x - 0.5) * o.wid * 0.6;
+            let a1 = a0 + dot(dr, fn_) * tout;
+            sh_sheet = sh_sheet + select(0.0, 0.5 * (0.4 + 0.6 * abs(dot(dr, fn_))), a0 * a1 < 0.0);
+        }
     }
     if (sh_t < scene_len) {
-        // a shard: its face catching the sky, its body lit from inside
+        // a shard: its face catching the sky, its body clear, what is behind it seen through it bent and tinted
         let base_c = cb_hue(sh_hue + hue_t);
         let cosi = max(dot(-rd, sh_n), 0.0);
         let fres = 0.045 + 0.955 * pow(1.0 - cosi, 5.0);
@@ -1779,10 +1846,22 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let glw_c = mix(deep, mix(base_c, vec3<f32>(1.0), 0.15), sh_brk * 0.8);
         // (light through it, bent and split: its faces each a little a different colour)
         let disp = cb_spectrum(fract(dot(sh_n, vec3<f32>(3.1, 1.7, 2.3)) + dt * 0.2));
-        var cc = inner * deep * facet * 0.5 + glw_c * sh_glow * 0.6 * facet + refl * fres * 1.3
-            + sun_c * pow(max(dot(sh_n, normalize(sun - rd)), 0.0), 160.0) * 3.0
-            + deep * disp * 0.12 * facet * sh_glow;
-        cc = cc + (refl * 0.5 + mix(base_c, vec3<f32>(1.0), 0.4) * (0.3 + sh_glow * 0.5)) * sh_edge;
+        var cc: vec3<f32>;
+        if (sh_thru.x >= 0.0) {
+            // (the pieces: clear crystal, tinted deeper the further the light goes through it)
+            let absorb = exp(-sh_path / 9.0 * (vec3<f32>(1.0) - deep * 0.9) * 1.6);
+            let tint = mix(vec3<f32>(1.0), base_c * 1.3, 0.55);
+            cc = sh_thru * absorb * tint * (1.0 - fres) * 0.95 + inner * deep * facet * 0.12
+                + glw_c * sh_glow * 0.6 * facet * absorb + deep * disp * 0.1 * facet * (0.3 + sh_glow)
+                + mix(base_c, vec3<f32>(1.0), 0.6) * sh_sheet * (0.04 + 0.25 * sh_glow) * (0.3 + 0.7 * day + 0.3 * dark)
+                + refl * fres * 1.3 + sun_c * pow(max(dot(sh_n, normalize(sun - rd)), 0.0), 200.0) * 3.0;
+            cc = cc + (refl * 0.6 + mix(base_c, vec3<f32>(1.0), 0.6) * (0.12 + sh_glow * 0.5)) * sh_edge;
+        } else {
+            cc = inner * deep * facet * 0.5 + glw_c * sh_glow * 0.6 * facet + refl * fres * 1.3
+                + sun_c * pow(max(dot(sh_n, normalize(sun - rd)), 0.0), 160.0) * 3.0
+                + deep * disp * 0.12 * facet * sh_glow;
+            cc = cc + (refl * 0.5 + mix(base_c, vec3<f32>(1.0), 0.4) * (0.3 + sh_glow * 0.5)) * sh_edge;
+        }
         let haze = 1.0 - exp(-sh_t / 3000.0);
         col = mix(cc * k + col * (1.0 - k), hazec, haze * 0.7);
         add = add * 0.1;
