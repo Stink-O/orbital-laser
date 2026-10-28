@@ -3841,9 +3841,13 @@ fn pk_clear(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, r0: f64, r1: f64, y
             if r >= r0 && r < edge {
                 b.run(x, z, y0, y1, "minecraft:air");
                 // (the crowns of trees cut off under it, left over what was cleared)
+                // (the trees cut through, gone whole: their crowns left over what was cleared, and where the land lies
+                // lower than the target, what of them stood under it)
                 if y1 < y0 + PK_SKY {
-                    b.put(x, z, y1 + 1, (y1 + 14).min(sky), "minecraft:air", Some(TIDY_LOOSE), false);
-                    b.put(x, z, y1 + 1, (y1 + 14).min(sky), "minecraft:air", Some(TIDY_LOGS), false);
+                    for only in [TIDY_LOOSE, TIDY_LOGS] {
+                        b.put(x, z, y0 - 14, y0 - 1, "minecraft:air", Some(only), false);
+                        b.put(x, z, y1 + 1, (y1 + 14).min(sky), "minecraft:air", Some(only), false);
+                    }
                 }
             }
         }

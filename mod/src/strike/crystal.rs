@@ -846,9 +846,15 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
             if r < core {
                 high.run(x, z, top + 1, sky, "minecraft:air");
             } else if r < blast || dd > 0 {
-                // (the crowns of trees cut off under them, left over what was cleared)
-                b.put(x, z, top + 1, (top + CB_CROWN).min(sky), "minecraft:air", Some(super::TIDY_LOOSE), false);
-                b.put(x, z, top + 1, (top + CB_CROWN).min(sky), "minecraft:air", Some(super::TIDY_LOGS), false);
+                // (the trees cut through, gone whole: their crowns left over what was cleared, and where the land lies
+                // lower than the target, what of them stood under it)
+                let lo = if dd > 0 { top + 1 } else { by - CB_CROWN + 1 };
+                for only in [super::TIDY_LOOSE, super::TIDY_LOGS] {
+                    if dd == 0 {
+                        b.put(x, z, lo, by, "minecraft:air", Some(only), false);
+                    }
+                    b.put(x, z, top + 1, (top + CB_CROWN).min(sky), "minecraft:air", Some(only), false);
+                }
             }
             let dmax = [dep[j - 1][i], dep[j + 1][i], dep[j][i - 1], dep[j][i + 1]].into_iter().max().unwrap_or(0);
             let zone = vnoise(fx, fz, 40.0, s ^ 0x507);
@@ -1292,7 +1298,8 @@ mod tests {
         let mut cols = 0;
         for (t, c) in &cmds {
             let Some((n, b)) = fill(c) else { continue };
-            if b != "minecraft:air" || n[1] > by || n[0] != n[3] {
+            // (not the trees felled under the target's height: only they and the plants change there)
+            if b != "minecraft:air" || n[1] > by || n[0] != n[3] || c.contains(" replace #minecraft:") {
                 continue;
             }
             let (dx, dz) = (f64::from(n[0]) + 0.5 - POINT[0], f64::from(n[2]) + 0.5 - POINT[2]);
