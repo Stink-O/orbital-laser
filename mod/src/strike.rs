@@ -5,6 +5,7 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 
 mod crystal;
+mod sinkhole;
 
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
@@ -59,6 +60,8 @@ pub enum Act {
     Survey { tag: u32, columns: Vec<(i32, i32)> },
     /// A word of what the pass reads (`render.set-data`, its `mod_data`): word `index` set to `value`'s bits.
     Data { index: u32, value: f32 },
+    /// All of what the pass reads, from word 0 (the words past it kept): a table worked out after the strike starts.
+    Table(Vec<u32>),
 }
 
 /// Blocks changed at once (`world.edit-blocks`): runs up columns, each block its own if need be.
@@ -507,6 +510,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "crystalbloom" {
         return crystal::crystalbloom_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "sinkhole" {
+        return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
@@ -1034,6 +1040,11 @@ fn blackhole_aftermath(p: &mut Plan, point: [f64; 3], seed: f32) {
 /// (crystal.rs's cb_table).
 pub fn cb_table(seed: f32) -> Vec<u32> {
     crystal::cb_table(seed)
+}
+/// What the Sinkhole's pass reads of its rim, rings and slabs, given with render.set-data as it starts (sinkhole.rs's
+/// sh_table; their ground and the waterfalls follow once the world says where the ground is).
+pub fn sh_table(seed: f32) -> Vec<u32> {
+    sinkhole::sh_table(seed)
 }
 pub fn wing_angle(target: [f64; 3], me: [f64; 3]) -> f32 {
     (me[2] - target[2]).atan2(me[0] - target[0]) as f32
@@ -4243,7 +4254,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } | Act::Survey { .. } | Act::Data { .. } => {}
+                Act::Sound { .. } | Act::Shake { .. } | Act::Survey { .. } | Act::Data { .. } | Act::Table(_) => {}
                 Act::Later(job) | Act::Soon(job) => ev.extend(job()),
             }
         }

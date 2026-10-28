@@ -42,10 +42,12 @@ pub const PER_QUERY: usize = 65_536;
 struct Store {
     /// Each query waiting for its answers (both heightmaps): its columns, and how many of its two answers are in.
     asked: FxMap<u32, (Vec<(i32, i32)>, u8)>,
-    /// The columns' first answer, until the other comes too.
-    half: FxMap<(i32, i32), Option<i32>>,
+    /// The columns' first answer, until the other comes too (and whether it was the ocean floor's).
+    half: FxMap<(i32, i32), (Option<i32>, bool)>,
     /// Each column's ground (none: not loaded), once both are in.
     ground: FxMap<(i32, i32), Option<i32>>,
+    /// How deep the water over a column's ground is, where there is any (the two heights apart).
+    wet: FxMap<(i32, i32), i32>,
     /// The queries answered.
     done: FxSet<u32>,
     /// Answers come in but not yet taken in (`poll` takes in so many columns a tick).
@@ -104,18 +106,26 @@ pub fn poll() {
                 continue;
             };
             let heights = heights.into_iter().chain(std::iter::repeat(None));
+            let floor = tag % 2 == 1;
             if got == 0 {
                 // (the first of its two answers: kept until the other comes)
                 for (c, h) in cols.iter().zip(heights) {
-                    s.half.insert(*c, h);
+                    s.half.insert(*c, (h, floor));
                 }
                 s.asked.insert(q, (cols, 1));
                 continue;
             }
             for (c, h) in cols.iter().zip(heights) {
-                let other = s.half.remove(c).flatten();
+                let (other, other_floor) = s.half.remove(c).unwrap_or((None, !floor));
                 let g = match (other, h) {
-                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (Some(a), Some(b)) => {
+                        // (water: the height without leaves over the ocean floor's)
+                        let (top, bed) = if other_floor { (b, a) } else { (a, b) };
+                        if top > bed {
+                            s.wet.insert(*c, top - bed);
+                        }
+                        Some(a.min(b))
+                    }
                     _ => None,
                 };
                 s.ground.insert(*c, g);
@@ -133,6 +143,22 @@ pub fn ready(tag: u32) -> bool {
 /// Column (x, z)'s ground, the first air over it (none: not asked, not answered yet, or not loaded).
 pub fn at(x: i32, z: i32) -> Option<i32> {
     STORE.with(|s| s.borrow().ground.get(&(x, z)).copied().flatten())
+}
+
+/// How deep the water standing over column (x, z)'s ground is (none: dry, or not answered).
+pub fn water(x: i32, z: i32) -> Option<i32> {
+    STORE.with(|s| s.borrow().wet.get(&(x, z)).copied())
+}
+
+/// In the tests: water this deep over the columns given.
+#[cfg(test)]
+pub fn set_test_water(cols: &[((i32, i32), i32)]) {
+    STORE.with(|s| {
+        let mut s = s.borrow_mut();
+        for &(c, d) in cols {
+            s.wet.insert(c, d);
+        }
+    });
 }
 
 /// Forget everything asked and answered (a new strike; answers to an earlier one's queries that come later are

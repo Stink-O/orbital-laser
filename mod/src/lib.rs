@@ -34,6 +34,7 @@ const SHADER: &str = include_str!("../shaders/strike.wgsl");
 const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
 const PLANET_PASS: &str = include_str!("../shaders/planetkiller.wgsl");
 const CRYSTAL_PASS: &str = include_str!("../shaders/crystalbloom.wgsl");
+const SINKHOLE_PASS: &str = include_str!("../shaders/sinkhole.wgsl");
 fn own_pass(own: &str) -> String {
     let mut out = String::with_capacity(SHADER.len() + own.len());
     let mut skip = false;
@@ -61,6 +62,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "downfall" => 1,
         "planetkiller" => 2,
         "crystalbloom" => 3,
+        "sinkhole" => 4,
         _ => 0,
     }
 }
@@ -121,10 +123,11 @@ fn default_colour(i: usize) -> usize {
 }
 
 struct Orbital {
-    /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's), the one the
+    /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
+    /// sinkhole's), the one the
     /// game last compiled,
     /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [String; 4],
+    passes: [String; 5],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -421,6 +424,7 @@ impl Orbital {
         let next = plan.iter().take_while(|e| e.0 < ticks as f32 * 0.05).count();
         self.skip = 0.0;
         // (the crystal bloom's spires and pieces, worked out once for the pass: strike::cb_table)
+        // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
         self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true });
@@ -471,6 +475,13 @@ impl Orbital {
                     }
                 }
                 Act::Survey { tag, columns } => ground::ask(tag, columns),
+                Act::Table(words) => {
+                    if s.data.len() < words.len() {
+                        s.data.resize(words.len(), 0);
+                    }
+                    s.data[..words.len()].copy_from_slice(&words);
+                    s.data_sent = false;
+                }
                 Act::Data { index, value } => {
                     let i = index as usize;
                     if s.data.len() <= i {
@@ -588,12 +599,12 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS)],
+            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
                 let mine = pass_of(LASERS[laser]);
-                (0..4).filter(|&i| i != mine).chain([mine]).collect()
+                (0..5).filter(|&i| i != mine).chain([mine]).collect()
             },
             warming: false,
             carving: std::collections::VecDeque::new(),
@@ -649,7 +660,9 @@ impl Mod for Orbital {
                 self.fire();
             } else {
                 if n % 4 == 0 {
-                    Self::actionbar(&format!("ACQUIRING TARGET {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
+                    // (the sinkhole comes from nothing overhead: it reads the ground under the crosshair instead)
+                    let what = if l.key == "sinkhole" { "SEISMIC SCAN" } else { "ACQUIRING TARGET" };
+                    Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
                 }
                 self.aiming = Some(n + 1);
             }
@@ -795,6 +808,7 @@ mod tests {
             (super::DOWNFALL_PASS, &["fn bh_lens(", "fn ms_hull(", "fn ms_frame(", "fn downfall(", "fn ms_air("][..]),
             (super::PLANET_PASS, &["fn ray_seg(", "fn bolt_line(", "fn mh(", "fn planet_killer(", "fn lava_ramp("][..]),
             (super::CRYSTAL_PASS, &["fn ray_seg(", "fn mh(", "fn gfbm3(", "fn crystal_bloom(", "fn rot_axis("][..]),
+            (super::SINKHOLE_PASS, &["fn mh(", "fn vnoise3(", "fn sinkhole(", "fn rot_axis(", "fn ign("][..]),
         ] {
             let p = super::own_pass(own);
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
@@ -809,5 +823,6 @@ mod tests {
         assert!(super::SHADER.len() <= 256 << 10);
         assert!(!super::own_pass(super::PLANET_PASS).contains("fn downfall("));
         assert!(!super::own_pass(super::CRYSTAL_PASS).contains("fn planet_killer("));
+        assert!(!super::own_pass(super::SINKHOLE_PASS).contains("fn crystal_bloom("));
     }
 }

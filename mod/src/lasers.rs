@@ -346,7 +346,35 @@ pub const CRYSTAL_BLOOM: Laser = Laser {
     particle_b: "particle minecraft:glow {x} {y} {z} {r} 2 {r} 0 20 force",
 };
 
-pub const LASERS: [&Laser; 8] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM];
+/// The sinkhole, planned in `strike::sinkhole_plan` (strike/sinkhole.rs): no beam and nothing from the sky. The land round
+/// the target trembles and cracks, a patch of it gives, then it caves in from the middle out, slab by slab, into a pit
+/// down to bedrock, dust billowing up out of it. The crater fields below are only what the shared tests read: the pit,
+/// its jagged walls, the ledges and the rubble at its foot are planned there.
+pub const SINKHOLE: Laser = Laser {
+    key: "sinkhole",
+    index: 8,
+    title: "SINKHOLE",
+    color: "gold",
+    rgb: 0xD2A257,
+    blurb: "The land trembles, cracks and caves in: a pit hundreds of blocks across, down to bedrock.",
+    icon_model: "orbital:sinkhole_icon",
+    length: 34.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 112,
+    bowl_d: 124,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:stone", 1.0)],
+    bowl_floor: ("minecraft:cobblestone", 0.0, "minecraft:stone"),
+    bottom: &[],
+    particle_a: "particle minecraft:block{block_state:\"minecraft:dirt\"} {x} {y} {z} {r} 3 {r} 0.2 40 force",
+    particle_b: "particle minecraft:block{block_state:\"minecraft:stone\"} {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 9] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {
