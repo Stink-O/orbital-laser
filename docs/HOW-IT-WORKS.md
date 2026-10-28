@@ -88,10 +88,11 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   sun, their edges glinting, and they throw coloured light over the land and the clouds. They resonate: pulses of light
   run up all of them together, faster and faster, the air shimmers round them, shards break off and orbit them, quicker
   and quicker; a breath; and they detonate in a flash of colour, every spire shattering into a storm of tumbling shards
-  and a cloud of glitter, a pale shock running out over the land. The shards rain down for seconds, each landing as a real
-  crystal where it comes down; the crater is dug from the middle out, the stumps of the spires standing in it as the dig
+  and a cloud of glitter, a pale shock running out over the land. About 200 fractured pieces rain down for seconds, each
+  landing as blocks of its own shape, resting on the ground where it comes down; the crater is dug from the middle out, the stumps of the spires standing in it as the dig
   reaches them (the hearts of the first shards, each cluster's tallest and a few others; the rest shatter whole), and
-  the fissures split open as the shock reaches them, light running along them. It reaches 1000 blocks.
+  the fissures split open as the shock reaches them, light running along them. The well's light and a drift of motes
+  fade out over the crater until the strike ends at 60 s. It reaches 1000 blocks.
 
 All of them:
 
@@ -166,7 +167,7 @@ The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's m
 |---|---|
 | `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
-| `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (where each of the Crystal Bloom's pieces comes to rest), and the camera shake |
+| `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (the Crystal Bloom's spires and pieces, and where each piece comes to rest), and the camera shake |
 | `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the Planet Killer's and the Crystal Bloom's go straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), and sets your flying speed |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
@@ -213,7 +214,8 @@ start; its first shard breaks the ground at 3.5 s and the next every 0.62 s (eac
 and 0.66 s after it breaks through and surging up 0.9 s after), the heart at 6.7; the bloom sets out from the middle at
 7.6 and reaches the edge of the field 4.6 s later; they resonate from 14, shards orbiting them from 15.6, a breath from
 21.68, and detonate at 22; the crater is dug from the middle out from 22.1 at 70 blocks a second, the shards land
-until about 28, the broken spires come down at 24.6 and the land is frosted and strewn by 28.2; the strike ends at 32.
+until about 28, the broken spires come down at 24.6 and the land is frosted and strewn by 28.2; the well's light and
+a drift of motes fade out over the crater until the strike ends at 60.
 
 ## The effects
 
@@ -246,9 +248,10 @@ by plane, and the face it enters by is a real facet; inside it the ray is bent i
 followed to the face it leaves by and out again, past the cleavage sheets inside, through the crystal's body, and the
 nearest spire hides what is behind it. The shards are octahedra met the same way, the glitter is points of light on
 shells round the burst found where the view ray crosses each, and the dust is a noise volume. The spires, their breaks,
-the shards' paths and the fissures are placed by the same hash in the shader and in the mod (`cb_*`), so each stump is
-built where its spire stood, each shard comes down as a crystal where it lands, and the crater glows only where the mod
-has really dug it. The pass only knows the land at the target's height, so the mod asks the world how high the ground
+the pieces' cuts, throws and spins and the fissures are worked out once by the mod as the strike starts (`cb_table`)
+and handed to the pass with `render.set-data`, so the pass reads them rather than hashing them again for every pixel
+(about half its GPU time at the heaviest moments). Each stump is built where its spire stood, each piece is built as
+blocks where it lands, and the crater glows only where the mod has really dug it. The pass only knows the land at the target's height, so the mod asks the world how high the ground
 really is under each of the ~200 pieces that fly out (`world.surface-height`, a pair a tick from 13 s) and rests each one
 whole on it: on a low point of the ground under it, so it is wedged in rather than hovering, deeper into the high side
 of a slope or a cliff where it would otherwise hang over the ground. It gives the pass how far up or down that is

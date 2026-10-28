@@ -90,7 +90,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
   is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
 - **The mod's post pass reads `mod_data`** (`render.set-data`, binding 5 of the prelude): the Crystal Bloom's pieces'
-  rest heights, word `i * 16 + k * 2 + half`. `tools/preview` binds it from `$PREVIEW_DATA` (`index value` lines) and
+  rest heights (word `i * 16 + k * 2 + half`) and from `CB_TAB` (1024) its spires and pieces, worked out once by
+  `cb_table` in `strike/crystal.rs`; keep that layout in step with the pass's `CB_*` offsets. `tools/preview` binds it from `$PREVIEW_DATA` (`index value` lines) and
   draws hills with `hills=H`; `cb_dump_slope` (ignored test) writes a matching data file and voxel files.
 - **`world.surface-height` answers a tick or two later** (`mod/src/ground.rs` keeps the answers; a stage asks, a later
   one reads). In the tests `ground::set_test` answers at once; with none set the pieces lie as on flat land.
