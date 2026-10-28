@@ -54,6 +54,11 @@ pub enum Act {
     /// As `Later`, but ahead of every stage already waiting for a tick of its own: what has to be in the world on the
     /// tick it is due (a landed piece's blocks, which the pass stops drawing once they are in).
     Soon(Stage),
+    /// The ground under these columns, asked of the world (`world.surface-height`, ground.rs) as query `tag`: the
+    /// stages after it read it (`ground::at`) once it is answered.
+    Survey { tag: u32, columns: Vec<(i32, i32)> },
+    /// A word of what the pass reads (`render.set-data`, its `mod_data`): word `index` set to `value`'s bits.
+    Data { index: u32, value: f32 },
 }
 
 /// Blocks changed at once (`world.edit-blocks`): runs up columns, each block its own if need be.
@@ -4233,7 +4238,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } => {}
+                Act::Sound { .. } | Act::Shake { .. } | Act::Survey { .. } | Act::Data { .. } => {}
                 Act::Later(job) | Act::Soon(job) => ev.extend(job()),
             }
         }

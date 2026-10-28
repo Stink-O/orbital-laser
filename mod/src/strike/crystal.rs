@@ -267,11 +267,18 @@ impl CbChunk {
         (self.c0[0] + self.v[0] * self.tl, self.c0[2] + self.v[2] * self.tl)
     }
     /// Where it lies when it is built (its middle, off the target) and how far it has turned by then
-    /// (strike.wgsl's cb_chunk_at at tp).
+    /// (strike.wgsl's cb_chunk_at at tp), come down on the land at the target's height (the crater's floor in it).
     pub fn rest(&self) -> ([f64; 3], f64) {
+        self.rest_at(0.0)
+    }
+    /// The same, come down `dy` higher (lower, when negative): the ground under it as it really lies (the mod gives the
+    /// pass each piece's dy, crystalbloom.wgsl's cb_drop). It is thrown that much higher over its flight (dy * t / tl
+    /// more at t, a throw dy / tl faster up), so it still comes down at tl, where it would have, and is driven in along
+    /// that path.
+    pub fn rest_at(&self, dy: f64) -> ([f64; 3], f64) {
         let tl = self.tl;
-        let mut p = [self.c0[0] + self.v[0] * tl, self.c0[1] + self.v[1] * tl - 0.5 * CB_G * tl * tl, self.c0[2] + self.v[2] * tl];
-        let vl = norm([self.v[0], self.v[1] - CB_G * tl, self.v[2]]);
+        let mut p = [self.c0[0] + self.v[0] * tl, self.c0[1] + self.v[1] * tl - 0.5 * CB_G * tl * tl + dy, self.c0[2] + self.v[2] * tl];
+        let vl = norm([self.v[0], self.v[1] + dy / tl - CB_G * tl, self.v[2]]);
         // (the bigger the deeper, but never so deep that a good part of it is not left standing out, however it lies)
         let ay = rot_axis(self.a, self.spin.0, self.spin.1 * tl)[1];
         let hv = 0.5 * CB_LAND_SCALE * (self.len * ay.abs() + 2.0 * self.wid * (1.0 - ay * ay).max(0.0).sqrt());
@@ -286,8 +293,13 @@ impl CbChunk {
     }
     /// Its faces as it lies there, in the world (off the target): inside where n . x <= w. The pass draws it as the
     /// spire's piece turned and shrunk about its middle; these are the same planes moved with it.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn rest_planes(&self) -> Vec<([f64; 3], f64)> {
-        let (pe, ang) = self.rest();
+        self.rest_planes_at(0.0)
+    }
+    /// The same, come down `dy` higher (`rest_at`).
+    pub fn rest_planes_at(&self, dy: f64) -> Vec<([f64; 3], f64)> {
+        let (pe, ang) = self.rest_at(dy);
         let rel = [self.c0[0] - self.foot[0], self.c0[1] - self.foot[1], self.c0[2] - self.foot[2]];
         self.faces
             .iter()
@@ -420,6 +432,9 @@ struct CbSolid {
     /// How jagged its broken top is (blocks; 0: cut clean, or no break), and the seed for it.
     jag: f64,
     seed: u32,
+    /// Whether it rests where its foot is on the ground (a crystal round a stump's foot), rather than standing where
+    /// its spire stood.
+    rests: bool,
 }
 impl CbSolid {
     fn local(&self, q: [f64; 3]) -> [f64; 3] {
@@ -533,7 +548,7 @@ fn cb_stump(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
     planes.push(([0.0, -1.0, 0.0], CB_SINK));
     planes.push(([br[1], 1.0, br[2]], br[0]));
     let reach = r * 1.3 + (br[0] + CB_SINK) * f[1].sin() + 2.0;
-    Some(CbSolid { b: [point[0] + p[0], point[1], point[2] + p[1]], e1, a, e2, planes, reach: reach + r * 0.9, r, family: cb_family(hue), jag: (r * 0.9).clamp(3.0, 12.0), seed: seed as u32 ^ i as u32 })
+    Some(CbSolid { b: [point[0] + p[0], point[1], point[2] + p[1]], e1, a, e2, planes, reach: reach + r * 0.9, r, family: cb_family(hue), jag: (r * 0.9).clamp(3.0, 12.0), seed: seed as u32 ^ i as u32, rests: false })
 }
 /// A small crystal: a hexagonal prism `r` round and `h` tall from its foot `b`, pointed, run `sink` into the ground.
 fn cb_hex(b: [f64; 3], a: [f64; 3], rot: f64, r: f64, h: f64, sink: f64, family: usize, seed: u32) -> CbSolid {
@@ -552,7 +567,7 @@ fn cb_hex(b: [f64; 3], a: [f64; 3], rot: f64, r: f64, h: f64, sink: f64, family:
     }
     planes.push(([0.0, -1.0, 0.0], sink));
     let lean = a[1].clamp(-1.0, 1.0).acos();
-    CbSolid { b, e1, a, e2, planes, reach: r * 1.3 + (h + sink) * lean.sin() + 2.0, r, family, jag: 0.0, seed }
+    CbSolid { b, e1, a, e2, planes, reach: r * 1.3 + (h + sink) * lean.sin() + 2.0, r, family, jag: 0.0, seed, rests: true }
 }
 /// The crystals clustered round the foot of spire i's stump, leaning out from it, standing on the crater's floor.
 fn cb_cluster(i: usize, seed: f32, point: [f64; 3], st: &CbSolid) -> Vec<CbSolid> {
@@ -726,10 +741,13 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
         }
         // (worked out well ahead, while they resonate: there are many, and the mod works out one a tick)
         let mut stumps: Vec<CbSolid> = Vec::new();
+        let mut groups: Vec<Vec<CbSolid>> = Vec::new();
         for i in 0..CB_N {
             if let Some(st) = cb_stump(i, shader_seed, point) {
-                stumps.extend(cb_cluster(i, shader_seed, point, &st));
-                stumps.push(st);
+                let mut g = cb_cluster(i, shader_seed, point, &st);
+                g.push(st);
+                stumps.extend(g.iter().cloned());
+                groups.push(g);
             }
         }
         for group in cells.chunks(3) {
@@ -747,19 +765,50 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             let len = cb_crack(i, shader_seed).1;
             p.later(CB_DET - 2.6 + i as f32 * 0.05, move |q| cb_fissure(q, point, i, shader_seed, CB_BOWL * 0.85, len));
         }
-        // the pieces the spires broke into, built where they came down
-        // (worked out long before they come down, two a stage every other tick while the land wakes and blooms, when
-        // little else is worked out, and each stage ahead of every other waiting: their blocks must be in on the tick
-        // each lands, and the pass holds each until they are)
+        // the pieces the spires broke into, built where they came down, on the ground as it lies there
+        // (worked out long before they come down, once the spires have all broken the ground, a pair a stage each tick
+        // while they resonate, when little else is worked out, and each stage ahead of every other waiting: the ground
+        // under a pair asked of the world, and the pair asked about CB_LAG stages before rested on it, its blocks put
+        // down and where it lies given to the pass, which flies it there; their blocks must be in on the tick each
+        // lands, and the pass holds each until they are. The ground under the stumps is asked after the pieces')
         let chunks = cb_chunks(shader_seed);
         let mut order: Vec<usize> = (0..chunks.len()).collect();
         order.sort_by(|a, b| chunks[*a].tl.total_cmp(&chunks[*b].tl));
-        for (k, pair) in order.chunks(2).enumerate() {
-            let cs: Vec<(CbChunk, u32)> = pair.iter().map(|&n| (chunks[n], n as u32)).collect();
-            let at = (CB_LAND_FROM + k as f32 * 0.1).min(CB_DET + cs[0].0.tl as f32 - CB_LAND_AHEAD);
+        let pairs: Vec<Vec<(CbChunk, u32)>> = order.chunks(2).map(|pair| pair.iter().map(|&n| (chunks[n], n as u32)).collect()).collect();
+        let land = CbLand { by: p.by, floor_y, seed: s };
+        let pair_tags: Vec<u32> = pairs.iter().map(|_| crate::ground::new_tag()).collect();
+        let stages = (pairs.len() + groups.len()).max(pairs.len() + CB_LAG);
+        let mut pending = pairs.into_iter().zip(pair_tags.iter().copied());
+        let mut asked: std::collections::VecDeque<(Vec<(CbChunk, u32)>, u32)> = Default::default();
+        let mut groups = groups.into_iter();
+        for k in 0..stages {
+            let at = (CB_SURVEY + k as f32 * 0.05).min(CB_DET - 0.5);
+            // (what this stage asks about: a pair, or once they are all asked, a stump and the crystals round it)
+            let ask_pair = pending.next();
+            let ask_stumps = if ask_pair.is_none() { groups.next() } else { None };
+            if let Some(a) = &ask_pair {
+                asked.push_back(a.clone());
+            }
+            let build = if k >= CB_LAG { asked.pop_front() } else { None };
+            let ask = ask_pair;
             p.soon(at, move |q| {
-                for (c, n) in cs {
-                    cb_landed(q, point, &[c], shader_seed, n);
+                let mut survey = |tag: u32, columns: Vec<(i32, i32)>| {
+                    #[cfg(test)]
+                    crate::ground::test_answer(tag, &columns);
+                    q.ev.push((at, Act::Survey { tag, columns }));
+                };
+                if let Some((cs, tag)) = ask {
+                    let mut columns = Vec::new();
+                    for (c, _) in &cs {
+                        columns.extend(cb_footprint(point, c));
+                    }
+                    survey(tag, columns);
+                }
+                if let Some(g) = ask_stumps {
+                    survey(crate::ground::new_tag(), cb_stump_footprint(&g));
+                }
+                if let Some((cs, tag)) = build {
+                    cb_land_pair(q, at, point, cs, shader_seed, tag, land, 10);
                 }
             });
         }
@@ -921,7 +970,21 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     }
     // the stumps standing here, built on the dug ground the tick after (any tree standing where one stands felled
     // first, so it stands on the ground and not on the trunk)
+    let dug = CbLand { by, floor_y, seed: s };
     for c in stumps {
+        // (a crystal round a stump's foot rests where its own foot is on the ground as it lies, whole: put up or down
+        // to it, when the world said where that is)
+        let lifted;
+        let c = if c.rests
+            && let Some(g) = dug.at(point, c.b[0].floor() as i32, c.b[2].floor() as i32, f32::MAX)
+        {
+            let mut m = c.clone();
+            m.b[1] = f64::from(g);
+            lifted = m;
+            &lifted
+        } else {
+            c
+        };
         let (cx, cz) = (c.b[0], c.b[2]);
         if cx + c.reach < f64::from(x0) || cx - c.reach > f64::from(x0 + 16) || cz + c.reach < f64::from(z0) || cz - c.reach > f64::from(z0 + 16) {
             continue;
@@ -935,7 +998,13 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
                 // target's; a little of it under the ground)
                 let d = dep[(z - z0 + 1) as usize][(x - x0 + 1) as usize];
                 let n = post.runs.len();
-                c.column(&mut post, x, z, (by - d - 3).max(floor_y + 1), sky, Some(by - d + 1));
+                // (where the world said what the ground is: put where it stands in the world, so it is whole and as
+                // the pass drew it, a little of it under the ground as it lies, down to it wherever it lies lower;
+                // where not, its columns counted from the ground)
+                match dug.at(point, x, z, f32::MAX) {
+                    Some(g) => c.column(&mut post, x, z, (g - 3).max(floor_y + 1), sky, None),
+                    None => c.column(&mut post, x, z, (by - d - 3).max(floor_y + 1), sky, Some(by - d + 1)),
+                }
                 if post.runs.len() > n && !cleared[(z - z0) as usize][(x - x0) as usize] {
                     b.put(x, z, -12, -1, "minecraft:air", Some(super::TIDY_LOGS), true);
                     stood[(z - z0) as usize][(x - x0) as usize] = true;
@@ -1033,12 +1102,27 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
     }
 }
 
-/// The pieces `cs` where they came down, each as blocks the size of it: driven into the ground at a slant the way it
-/// was going, a spike of its crystal (its glassy skin round its body, a cluster on its tip), broken bits heaped round
-/// its foot.
-fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32, n0: u32) {
-    for (k, c) in cs.iter().enumerate() {
-        let mut b = cb_landed_blocks(point, c, seed, n0 + k as u32);
+/// The pair of pieces `cs` (asked about as query `tag`) where they come down, once the world has said what the ground
+/// under them is (a tick or two after it was asked; waited for a tick at a time, `tries` more at most and never so
+/// late that the pass could not fly them there: then as though the land lay at the target's height).
+#[allow(clippy::too_many_arguments)]
+fn cb_land_pair(q: &mut Plan, at: f32, point: [f64; 3], cs: Vec<(CbChunk, u32)>, seed: f32, tag: u32, land: CbLand, tries: u32) {
+    if !crate::ground::ready(tag) && tries > 0 && at < CB_DET - 1.0 {
+        q.soon(at + 0.05, move |q| cb_land_pair(q, at + 0.05, point, cs, seed, tag, land, tries - 1));
+        return;
+    }
+    for (c, n) in cs {
+        cb_landed(q, at, point, &c, seed, n, &land);
+    }
+}
+/// The piece `c` where it came down, as blocks the size of it, rested on the ground as it lies there (`cb_landed_blocks`),
+/// and where it lies given to the pass at `at`, long before it is thrown.
+fn cb_landed(p: &mut Plan, at: f32, point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: &CbLand) {
+    {
+        let (dy, mut b) = cb_landed_blocks(point, c, seed, n, Some(land));
+        if let Some(dy) = dy {
+            p.ev.push((at, Act::Data { index: c.id as u32, value: dy as f32 }));
+        }
         let t = CB_DET + c.tp as f32;
         b.landing = Some(t);
         p.ev.push((t, Act::Blocks(Box::new(b))));
@@ -1051,9 +1135,146 @@ fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32, n0: u32) 
         p.at(tl, super::surf(x, z, &format!(r#"particle minecraft:block_crumble{{block_state:"minecraft:stone"}} ~ ~0.1 ~ {s:.1} 0.1 {s:.1} 0 24 force"#)));
     }
 }
-/// When the landed pieces' blocks start to be worked out, and how long before a piece comes down they are at the latest.
-const CB_LAND_FROM: f32 = 8.5;
-const CB_LAND_AHEAD: f32 = 1.5;
+/// When the ground under the landed pieces starts to be asked about (once every spire has broken the ground, cb_place's
+/// latest at about 12.9 s), and how many stages (ticks) before each pair is rested the ground under it is asked about.
+const CB_SURVEY: f32 = 13.2;
+const CB_LAG: usize = 6;
+/// How far a piece's lowest face may stand over the ground where it would be in the ground on land at the target's
+/// height (no more than half a block: it lies on it), and how much of how far it would stand out of that land it keeps
+/// standing out at least, however far it has to go down into the high side to lie so.
+const CB_REST_GAP: f64 = 0.5;
+const CB_REST_OUT: f64 = 0.5;
+/// What a piece comes down on: the ground the world gave (ground.rs), as it will be once the land under it is dug and
+/// blown clear (where it is by the time the piece is built there).
+#[derive(Clone, Copy)]
+struct CbLand {
+    by: i32,
+    floor_y: i32,
+    seed: u32,
+}
+impl CbLand {
+    /// Column (x, z)'s ground, the first air over it in the world, when something built at strike time `t` goes in
+    /// (none: the world did not say).
+    fn at(&self, point: [f64; 3], x: i32, z: i32, t: f32) -> Option<i32> {
+        let g = crate::ground::at(x, z)?;
+        let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
+        let r = dx.hypot(dz);
+        if r > CB_BLAST * 1.07 + 1.0 || cb_dig_t(r) + 0.06 > t {
+            return Some(g);
+        }
+        // (cb_dig_cell's: blown clear over the target's ground, or dug to the crater's floor, the land lower than that
+        // left as it lies)
+        let dd = cb_depth(dx, dz, self.seed, self.by - self.floor_y);
+        let blast = CB_BLAST * (0.93 + 0.14 * vnoise(dx, dz, 50.0, self.seed ^ 0x505));
+        if r < blast || dd > 0 {
+            let top = if dd >= self.by - self.floor_y { self.floor_y + 1 } else { self.by - dd + 1 };
+            return Some(g.min(top));
+        }
+        Some(g)
+    }
+}
+/// The columns a piece may come to rest over, wherever the ground under it has it lie (its columns as it lies at the
+/// target's height, and two round them).
+fn cb_footprint(point: [f64; 3], c: &CbChunk) -> Vec<(i32, i32)> {
+    let planes = cb_rest_world(c);
+    let (pe, _) = c.rest();
+    let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 3.0;
+    let mut out = Vec::new();
+    let (x0, x1) = ((point[0] + pe[0] - reach).floor() as i32, (point[0] + pe[0] + reach).ceil() as i32);
+    let (z0, z1) = ((point[2] + pe[2] - reach).floor() as i32, (point[2] + pe[2] + reach).ceil() as i32);
+    for z in z0..=z1 {
+        for x in x0..=x1 {
+            if cb_span(&planes, f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2], 2.0).is_some() {
+                out.push((x, z));
+            }
+        }
+    }
+    out
+}
+/// The columns a stump and the crystals round it stand in.
+fn cb_stump_footprint(g: &[CbSolid]) -> Vec<(i32, i32)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for c in g {
+        let (xa, xb) = ((c.b[0] - c.reach).floor() as i32, (c.b[0] + c.reach).ceil() as i32);
+        let (za, zb) = ((c.b[2] - c.reach).floor() as i32, (c.b[2] + c.reach).ceil() as i32);
+        for z in za..=zb {
+            for x in xa..=xb {
+                if c.span(f64::from(x) + 0.5, f64::from(z) + 0.5).is_some() && seen.insert((x, z)) {
+                    out.push((x, z));
+                }
+            }
+        }
+    }
+    out
+}
+/// Where the column at (fx, fz) (off the target) runs through the solid `planes` (normalised: inside where n . x <= w),
+/// each grown `grow` out: from ya up to yb.
+fn cb_span(planes: &[([f64; 3], f64)], fx: f64, fz: f64, grow: f64) -> Option<(f64, f64)> {
+    let (mut ya, mut yb) = (-1.0e9f64, 1.0e9f64);
+    for (nn, w) in planes {
+        let num = w + grow - nn[0] * fx - nn[2] * fz;
+        if nn[1].abs() < 1e-9 {
+            if num < 0.0 {
+                return None;
+            }
+            continue;
+        }
+        let t = num / nn[1];
+        if nn[1] < 0.0 { ya = ya.max(t) } else { yb = yb.min(t) }
+    }
+    (ya <= yb).then_some((ya, yb))
+}
+/// How far up (off the target's height) piece `c` comes to rest on the ground as it lies, and its planes there; none
+/// if the world did not say what most of the ground under it is. It is rigid: it comes down as the pass drew it in the
+/// air, only higher or lower. It comes to rest on a low point of the ground under where it would have been in the
+/// ground (the lowest quarter of it), so it is wedged in rather than hovering, and lower still if that would leave it
+/// standing over the ground anywhere there (a slope, a drop, the edge of a cliff: it goes into the high side), but
+/// never so far that it stands out less than half as far as it would have.
+fn cb_rest_on(point: [f64; 3], c: &CbChunk, land: &CbLand) -> Option<f64> {
+    let planes = cb_rest_world(c);
+    let (pe, _) = c.rest();
+    let t = CB_DET + c.tp as f32;
+    let tl = c.tl;
+    // (the land at the target's height it was thrown to come down on, the crater's floor in it: its middle comes down
+    // there at tl, or as far under it as it broke off under the target's height)
+    let lvl = c.c0[1] + c.v[1] * tl - 0.5 * CB_G * tl * tl - c.c0[1].min(0.0);
+    let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 1.0;
+    let (x0, x1) = ((point[0] + pe[0] - reach).floor() as i32, (point[0] + pe[0] + reach).ceil() as i32);
+    let (z0, z1) = ((point[2] + pe[2] - reach).floor() as i32, (point[2] + pe[2] + reach).ceil() as i32);
+    let (mut cols, mut all) = (Vec::new(), 0usize);
+    for z in z0..=z1 {
+        for x in x0..=x1 {
+            let Some((ya, yb)) = cb_span(&planes, f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2], 0.0) else { continue };
+            all += 1;
+            if let Some(g) = land.at(point, x, z, t) {
+                cols.push((ya, yb, f64::from(g) - point[1]));
+            }
+        }
+    }
+    if cols.is_empty() || cols.len() * 10 < all * 7 {
+        return None;
+    }
+    // (where it would have been in the ground)
+    let mut contact: Vec<(f64, f64, f64)> = cols.iter().copied().filter(|(ya, _, _)| ya - lvl <= CB_REST_GAP).collect();
+    if contact.is_empty() {
+        contact = cols.clone();
+    }
+    let mut gs: Vec<f64> = contact.iter().map(|c| c.2).collect();
+    gs.sort_by(f64::total_cmp);
+    let low = gs[gs.len() / 4];
+    let mut dy = low - lvl;
+    for (ya, _, g) in &contact {
+        dy = dy.min(g + CB_REST_GAP - ya);
+    }
+    let out = cols.iter().map(|(_, yb, _)| yb - lvl).fold(f64::MIN, f64::max);
+    let over = cols.iter().map(|(_, yb, g)| yb - g).fold(f64::MIN, f64::max);
+    // (a piece that would have been wholly in the ground stays so)
+    if out > 0.0 {
+        dy = dy.max(CB_REST_OUT * out - over);
+    }
+    Some(dy.clamp(-60.0, 60.0))
+}
 /// Each colour's landed crystal, dimmed: its body, its glassy skin, and patches through it (no light in them now).
 const CB_LANDED: [[&str; 3]; 6] = [
     ["minecraft:amethyst_block", "minecraft:purple_stained_glass", "minecraft:tinted_glass"],
@@ -1064,9 +1285,81 @@ const CB_LANDED: [[&str; 3]; 6] = [
     ["minecraft:blue_ice", "minecraft:blue_stained_glass", "minecraft:tinted_glass"],
 ];
 /// Piece `c` as blocks where it lies: the same piece the pass drew there (its faces and cuts, turned and shrunk as it
-/// came down), wedged into the land, a block or so of it under the ground. Columns count from the ground (the crater's
-/// floor in it, as the pass takes it), as the pass's ground is.
-fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
+/// came down), wedged into the land. With the ground the world gave (`land`), rested on it whole (`cb_rest_on`) and put
+/// down where it then is, none of it under the ground; with none, or not enough of it, as before there was any: its
+/// columns counted from the ground (the crater's floor in it, as the pass takes it), as the pass's ground is. How far up
+/// it was rested (none: not on the ground the world gave), and its blocks.
+fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: Option<&CbLand>) -> (Option<f64>, Blocks) {
+    if let Some(land) = land
+        && let Some(dy) = cb_rest_on(point, c, land)
+    {
+        return (Some(dy), cb_rested_blocks(point, c, seed, n, land, dy));
+    }
+    (None, cb_draped_blocks(point, c, seed, n))
+}
+/// Piece `c` rested `dy` up (`cb_rest_on`), as blocks where it then lies in the world: a shell of it over the ground.
+fn cb_rested_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: &CbLand, dy: f64) -> Blocks {
+    let planes = cb_rest_world_at(c, dy);
+    let (pe, _) = c.rest_at(dy);
+    let t = CB_DET + c.tp as f32;
+    let lvl = c.c0[1] + c.v[1] * c.tl - 0.5 * CB_G * c.tl * c.tl + dy;
+    let [body, skin, patch] = CB_LANDED[c.family];
+    let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 1.0;
+    let mut b = Blocks::default();
+    let (x0, x1) = ((point[0] + pe[0] - reach).floor() as i32, (point[0] + pe[0] + reach).ceil() as i32);
+    let (z0, z1) = ((point[2] + pe[2] - reach).floor() as i32, (point[2] + pe[2] + reach).ceil() as i32);
+    let s = seed as u32 ^ n.wrapping_mul(0x9e37);
+    // (its highest point over the ground, and where: a sliver standing out less than a block is still put down there)
+    let mut top = (f64::MIN, 0, 0, 0);
+    let mut built = false;
+    for z in z0..=z1 {
+        for x in x0..=x1 {
+            let (fx, fz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
+            let Some((ya, yb)) = cb_span(&planes, fx, fz, 0.0) else { continue };
+            // (the ground there, or where none was given, the low point it was rested on)
+            let g = land.at(point, x, z, t).unwrap_or((point[1] + lvl).round() as i32);
+            let gy = f64::from(g) - point[1];
+            if yb - gy > top.0 {
+                top = (yb - gy, x, z, g);
+            }
+            let lo = ((ya + point[1] - 0.5).ceil() as i32).max(g);
+            let hi = (yb + point[1] - 0.5).floor() as i32;
+            if hi < lo {
+                continue;
+            }
+            // (the plants and leaves it comes down through or on, and what of them would be left over it, cleared first)
+            for only in [TIDY_LOOSE, TIDY_FLOWERS] {
+                b.put(x, z, 0, hi - g + 2, "minecraft:air", Some(only), true);
+            }
+            let pz = vnoise(fx + point[0], fz + point[2], 3.0, s ^ 0x540);
+            let mut y = lo;
+            while y <= hi {
+                // (a shell a block thick, as cb_draped_blocks has it, its blocks laid out as there, up from the target's
+                // ground)
+                let fy = f64::from(y) + 0.5 - point[1];
+                let side = planes.iter().map(|(nn, w)| w - dot(*nn, [fx, fy, fz]) - nn[0].abs().max(nn[1].abs()).max(nn[2].abs())).fold(f64::MAX, f64::min);
+                if side < 0.0 {
+                    let yp = y - point[1].floor() as i32;
+                    let blk = if pz > 0.72 && (yp + (x ^ z)).rem_euclid(3) != 0 { patch } else if (yp ^ x ^ z).rem_euclid(4) == 0 { skin } else { body };
+                    b.put(x, z, y, y, blk, None, false);
+                    built = true;
+                    y += 1;
+                } else {
+                    y += (side.floor() as i32).max(1);
+                }
+            }
+        }
+    }
+    if !built && top.0 > 0.15 {
+        for only in [TIDY_LOOSE, TIDY_FLOWERS] {
+            b.put(top.1, top.2, 0, 1, "minecraft:air", Some(only), true);
+        }
+        b.put(top.1, top.2, top.3, top.3, CB_LANDED[c.family][1], None, false);
+    }
+    b
+}
+/// Piece `c` as blocks where it lies come down at the target's height, its columns counted from the ground.
+fn cb_draped_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
     let planes = cb_rest_world(c);
     let (pe, _) = c.rest();
     let [body, skin, patch] = CB_LANDED[c.family];
@@ -1144,7 +1437,11 @@ fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
 }
 /// Its planes as it lies (`CbChunk::rest_planes`, normalised).
 fn cb_rest_world(c: &CbChunk) -> Vec<([f64; 3], f64)> {
-    c.rest_planes()
+    cb_rest_world_at(c, 0.0)
+}
+/// The same, come down `dy` higher (`CbChunk::rest_planes_at`).
+fn cb_rest_world_at(c: &CbChunk, dy: f64) -> Vec<([f64; 3], f64)> {
+    c.rest_planes_at(dy)
         .into_iter()
         .map(|(n, w)| {
             let l = dot(n, n).sqrt().max(1e-12);
@@ -1368,7 +1665,7 @@ mod tests {
             // (its blocks: each inside the piece as the pass draws it at tp, taken back to the spire the way the pass
             // takes the view ray, C0 + rot(x - at, -turn) / scale, and tested against the spire's own faces and its cuts)
             let (pe, ang) = c.rest();
-            let mut b = cb_landed_blocks(POINT, c, SEED, n as u32);
+            let mut b = cb_landed_blocks(POINT, c, SEED, n as u32, None).1;
             // (the piece's own blocks: not the plants cleared from under it)
             b.runs.retain(|r| r.only.is_none());
             if b.runs.is_empty() {
@@ -1492,7 +1789,7 @@ mod tests {
             if pe[0].hypot(pe[2]) < 0.0 {
                 continue;
             }
-            let mut b = cb_landed_blocks(point, c, SEED, n as u32);
+            let mut b = cb_landed_blocks(point, c, SEED, n as u32, None).1;
             // (what it puts down, its footing too: not the plants it clears)
             b.runs.retain(|r| b.palette[r.block as usize] != "minecraft:air");
             let blocks: Vec<String> = b.runs.iter().flat_map(|r| { let name = b.palette[r.block as usize]; (r.y..r.y + r.height as i32).map(move |y| format!("[{},{},{},\"{}\"]", r.x, y, r.z, name)) }).collect();
@@ -1529,6 +1826,301 @@ mod tests {
         for (b, r, c, t) in busy.iter().take(5) {
             println!("{t:6.2} s: {b} blocks, {r} runs, {c} chunk columns");
         }
+    }
+}
+#[cfg(test)]
+pub(super) mod rested {
+    use super::*;
+    const SEED: f32 = 37.0;
+    const POINT: [f64; 3] = [10.5, 65.0, -2.5];
+    /// tools/preview's `hills`: rolling hills and valleys round the target, `h` high (the same land the preview draws).
+    pub(super) fn hills(x: f64, z: f64, ty: f64, h: f64) -> f64 {
+        ty + h * (0.5 * (x * 0.045 + 0.7).sin() * (z * 0.038).cos() + 0.5 * (x * 0.013 - z * 0.017).sin())
+    }
+    /// The first air over column (x, z) of that land, 20 high round the target at 65 (the preview's hills=20), round
+    /// POINT.
+    pub(super) fn hilly(x: i32, z: i32) -> Option<i32> {
+        Some(hills(f64::from(x) + 0.5, f64::from(z) + 0.5, 65.0, 20.0).ceil() as i32)
+    }
+    fn flat(_: i32, _: i32) -> Option<i32> {
+        Some(65)
+    }
+    pub(super) fn land() -> CbLand {
+        CbLand { by: 64, floor_y: super::super::bedrock_top("minecraft:overworld"), seed: SEED as u32 }
+    }
+    /// crystalbloom.wgsl's cb_chunk_at, line for line: where the pass draws piece `c` `dt` after the burst, come down
+    /// `dy` higher, and how far it has turned.
+    fn pass_at(c: &CbChunk, dy: f64, dt: f64) -> ([f64; 3], f64) {
+        let tf = dt.min(c.tl);
+        let mut p = [c.c0[0] + c.v[0] * tf, c.c0[1] + c.v[1] * tf - (0.5 * CB_G * tf * tf - dy * tf / c.tl), c.c0[2] + c.v[2] * tf];
+        if dt > c.tl {
+            let vl = norm([c.v[0], c.v[1] + dy / c.tl - CB_G * c.tl, c.v[2]]);
+            let ay = rot_axis(c.a, c.spin.0, c.spin.1 * c.tl)[1];
+            let hv = 0.25 * (c.len * ay.abs() + 2.0 * c.wid * (1.0 - ay * ay).max(0.0).sqrt());
+            let wd = (CB_WEDGE + CB_WEDGE_K * (c.len + c.wid) * (c.len + c.wid)).min(CB_WEDGE_MAX * hv / vl[1].abs().max(0.3));
+            let u = 1.0 - ((dt - c.tl) / CB_IMPACT).clamp(0.0, 1.0);
+            for j in 0..3 {
+                p[j] += vl[j] * wd * (1.0 - u * u * u);
+            }
+        }
+        (p, c.spin.1 * tf)
+    }
+    /// Piece n rested on the land the test ground gives, its ground asked and answered first.
+    pub(super) fn rest(c: &CbChunk, n: usize) -> (Option<f64>, Blocks) {
+        let tag = crate::ground::new_tag();
+        crate::ground::test_answer(tag, &cb_footprint(POINT, c));
+        cb_landed_blocks(POINT, c, SEED, n as u32, Some(&land()))
+    }
+    /// The blocks of a piece (not the plants cleared round it), as (x, y, z, block) in the world.
+    fn solid(b: &Blocks, surface_at: impl Fn(i32, i32) -> i32) -> Vec<(i32, i32, i32, &'static str)> {
+        let mut out = Vec::new();
+        for r in b.runs.iter().filter(|r| r.only.is_none()) {
+            let base = if r.surface.is_some() { surface_at(r.x, r.z) } else { 0 };
+            for y in r.y..r.y + r.height as i32 {
+                out.push((r.x, base + y, r.z, b.palette[r.block as usize]));
+            }
+        }
+        out.sort();
+        out
+    }
+    #[test]
+    fn crystalbloom_pieces_rest_whole_on_the_land() {
+        // on hilly land each piece comes down whole, as the pass draws it: its blocks are the piece the pass last drew,
+        // come down as far up or down as the mod gave it (the pass's own pose, to the last), it touches the ground, and
+        // where it would have been in the ground on flat land it lies on it or in it, nowhere hanging over it
+        crate::ground::set_test(Some(hilly));
+        let chunks = cb_chunks(SEED);
+        let (mut moved, mut most, mut hanging, mut total) = (0, 0.0f64, 0, 0u64);
+        for (n, c) in chunks.iter().enumerate() {
+            let (dy, b) = rest(c, n);
+            let dy = dy.unwrap_or_else(|| panic!("piece {n}: not rested on the ground given"));
+            if dy.abs() > 1.0 {
+                moved += 1;
+            }
+            most = most.max(dy.abs());
+            // (the pass's pose at tp, the moment it stops moving, is the one the blocks are made in)
+            let (pe, ang) = c.rest_at(dy);
+            let (pp, pang) = pass_at(c, dy, c.tp);
+            assert!((0..3).all(|j| (pe[j] - pp[j]).abs() < 1e-9) && (ang - pang).abs() < 1e-12, "piece {n}: the pass draws it elsewhere");
+            // (and it comes down there at tl, where it always did, on its path)
+            let (pl, _) = pass_at(c, dy, c.tl);
+            let (p0, _) = pass_at(c, 0.0, c.tl);
+            assert!((pl[0] - p0[0]).abs() < 1e-9 && (pl[2] - p0[2]).abs() < 1e-9 && (pl[1] - p0[1] - dy).abs() < 1e-9);
+            let blocks = solid(&b, |_, _| 0);
+            if blocks.is_empty() {
+                continue;
+            }
+            total += blocks.len() as u64;
+            let sliver = blocks.len() == 1;
+            let mut touches = false;
+            let mut lowest: std::collections::HashMap<(i32, i32), i32> = Default::default();
+            for &(x, y, z, _) in &blocks {
+                // (every block inside the piece as the pass draws it there, taken back to the spire the way the pass
+                // takes the view ray)
+                let (fx, fy, fz) = (f64::from(x) + 0.5 - POINT[0], f64::from(y) + 0.5 - POINT[1], f64::from(z) + 0.5 - POINT[2]);
+                let d = [fx - pe[0], fy - pe[1], fz - pe[2]];
+                let back = rot_axis(d, c.spin.0, -ang);
+                let xs = [c.c0[0] + back[0] / CB_LAND_SCALE - c.foot[0], c.c0[1] + back[1] / CB_LAND_SCALE - c.foot[1], c.c0[2] + back[2] / CB_LAND_SCALE - c.foot[2]];
+                let ql = [dot(xs, c.e1), dot(xs, c.a), dot(xs, c.e2)];
+                let worst = c.faces.iter().chain(c.cuts.iter()).map(|(nn, w)| (dot(*nn, ql) - w) / dot(*nn, *nn).sqrt()).fold(f64::MIN, f64::max);
+                assert!(worst < 1e-6 || (sliver && worst < 2.0 / CB_LAND_SCALE), "piece {n}: a block outside the piece ({worst})");
+                let g = land().at(POINT, x, z, CB_DET + c.tp as f32).unwrap();
+                assert!(y >= g, "piece {n}: a block under the ground");
+                touches |= y == g;
+                let e = lowest.entry((x, z)).or_insert(y);
+                *e = (*e).min(y);
+            }
+            assert!(touches, "piece {n}: does not touch the ground");
+            // (where it would have been in the ground on flat land, it lies on this land or in it)
+            let planes0 = cb_rest_world(c);
+            let lvl = c.c0[1] + c.v[1] * c.tl - 0.5 * CB_G * c.tl * c.tl - c.c0[1].min(0.0);
+            let planes = cb_rest_world_at(c, dy);
+            let mut over = 0;
+            for (&(x, z), _) in &lowest {
+                let (fx, fz) = (f64::from(x) + 0.5 - POINT[0], f64::from(z) + 0.5 - POINT[2]);
+                let (Some((ya0, _)), Some((ya, _))) = (cb_span(&planes0, fx, fz, 0.0), cb_span(&planes, fx, fz, 0.0)) else { continue };
+                let g = f64::from(land().at(POINT, x, z, CB_DET + c.tp as f32).unwrap()) - POINT[1];
+                if ya0 - lvl <= CB_REST_GAP && ya - g > CB_REST_GAP + 0.75 {
+                    over += 1;
+                }
+            }
+            if over > 0 {
+                hanging += 1;
+            }
+        }
+        eprintln!("{moved} of {} pieces rested more than a block off the target's height (at most {most:.1}); {hanging} over the ground in places; {total} blocks", chunks.len());
+        // (only where it would have to go too far into the high side to lie on the low: a cliff, a drop)
+        assert!(hanging * 20 <= chunks.len(), "{hanging} pieces hang over the ground");
+        assert!(moved * 2 > chunks.len(), "the land is hilly: most should have moved");
+        assert!(total < 45_000, "{total} blocks for the landed pieces");
+        crate::ground::set_test(None);
+    }
+    /// A piece come down on a slope of the preview's hills=20, for looking at what the pass draws beside its blocks
+    /// (tools/preview.py with hills=20 vox=1): `ORBITAL_DUMP=dir cargo test --release cb_dump_slope -- --ignored
+    /// --nocapture` writes dir/data.txt (every piece's dy, for $PREVIEW_DATA), dir/after.txt (its blocks rested whole)
+    /// and dir/before.txt (them as they were, each column counted from the ground), $PREVIEW_VOXELS files, and prints
+    /// the steepest-lying piece and where to look at it from.
+    #[test]
+    #[ignore]
+    fn cb_dump_slope() {
+        fn hill0(x: i32, z: i32) -> Option<i32> {
+            Some(hills(f64::from(x) + 0.5, f64::from(z) + 0.5, 65.0, 20.0).ceil() as i32)
+        }
+        let dir = std::path::PathBuf::from(std::env::var("ORBITAL_DUMP").expect("ORBITAL_DUMP"));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::ground::set_test(Some(hill0));
+        let point = [0.5, 65.0, 0.5];
+        let land = CbLand { by: 64, floor_y: super::super::bedrock_top("minecraft:overworld"), seed: SEED as u32 };
+        let chunks = cb_chunks(SEED);
+        let colour = |b: &str| match b {
+            "minecraft:amethyst_block" => "0.55 0.38 0.80",
+            "minecraft:calcite" => "0.85 0.86 0.84",
+            "minecraft:quartz_block" => "0.92 0.90 0.86",
+            "minecraft:packed_ice" => "0.55 0.70 0.95",
+            "minecraft:blue_ice" => "0.42 0.60 0.95",
+            "minecraft:tinted_glass" => "0.25 0.20 0.30",
+            b if b.contains("purple") => "0.50 0.25 0.70",
+            b if b.contains("magenta") => "0.75 0.30 0.70",
+            b if b.contains("pink") => "0.90 0.55 0.70",
+            b if b.contains("light_blue") => "0.45 0.70 0.90",
+            b if b.contains("cyan") => "0.25 0.60 0.65",
+            b if b.contains("blue") => "0.25 0.30 0.75",
+            _ => "0.75 0.75 0.80",
+        };
+        let (mut data, mut after, mut before) = (String::new(), String::new(), String::new());
+        let mut best = (0.0, 0usize);
+        for (n, c) in chunks.iter().enumerate() {
+            let tag = crate::ground::new_tag();
+            crate::ground::test_answer(tag, &cb_footprint(point, c));
+            let (dy, b) = cb_landed_blocks(point, c, SEED, n as u32, Some(&land));
+            let dy = dy.unwrap();
+            data += &format!("{} {dy}\n", c.id);
+            let (pe, _) = c.rest_at(dy);
+            let r = pe[0].hypot(pe[2]);
+            // (the steepest land under it, across its length)
+            let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE;
+            let g = |dx: f64, dz: f64| hills(point[0] + pe[0] + dx, point[2] + pe[2] + dz, 65.0, 20.0);
+            let slope = (g(reach, 0.0) - g(-reach, 0.0)).hypot(g(0.0, reach) - g(0.0, -reach)) / (2.0 * reach);
+            if r > 140.0 && r < 230.0 && c.len > 18.0 && slope > best.0 {
+                best = (slope, n);
+            }
+            for r in b.runs.iter().filter(|r| r.only.is_none()) {
+                for y in r.y..r.y + r.height as i32 {
+                    after += &format!("{} {y} {} {}\n", r.x, r.z, colour(b.palette[r.block as usize]));
+                }
+            }
+            let d = cb_draped_blocks(point, c, SEED, n as u32);
+            for r in d.runs.iter().filter(|r| r.only.is_none()) {
+                let base = hill0(r.x, r.z).unwrap();
+                for y in r.y..r.y + r.height as i32 {
+                    before += &format!("{} {} {} {}\n", r.x, base + y, r.z, colour(d.palette[r.block as usize]));
+                }
+            }
+        }
+        std::fs::write(dir.join("data.txt"), data).unwrap();
+        std::fs::write(dir.join("after.txt"), after).unwrap();
+        std::fs::write(dir.join("before.txt"), before).unwrap();
+        let c = chunks[best.1];
+        let (pe, _) = c.rest();
+        let dy = cb_rest_on(point, &c, &land).unwrap();
+        println!("piece {} (id {}): slope {:.2}, dy {dy:.2}, lies at {:.1} {:.1} {:.1} (+dy), len {:.1} wid {:.1}, tp {:.2} s", best.1, c.id, best.0, pe[0] + 0.5, pe[1] + 65.0, pe[2] + 0.5, c.len, c.wid, CB_DET as f64 + c.tp);
+        crate::ground::set_test(None);
+    }
+    #[test]
+    fn crystalbloom_pieces_on_flat_land_are_as_they_were() {
+        // on land at the target's height every piece out past the blast lies where it did before the ground was asked
+        // about, block for block
+        crate::ground::set_test(Some(flat));
+        let chunks = cb_chunks(SEED);
+        let mut same = 0;
+        for (n, c) in chunks.iter().enumerate() {
+            let (x, z) = c.land();
+            if x.hypot(z) < CB_BLAST * 1.07 + 30.0 {
+                continue;
+            }
+            let (dy, b) = rest(c, n);
+            let dy = dy.unwrap();
+            assert!(dy.abs() < 1e-6, "piece {n}: rested {dy} off flat land");
+            let draped = cb_draped_blocks(POINT, c, SEED, n as u32);
+            assert_eq!(solid(&b, |_, _| 0), solid(&draped, |_, _| 65), "piece {n}");
+            same += 1;
+        }
+        assert!(same > 50, "{same}");
+        crate::ground::set_test(None);
+    }
+    #[test]
+    fn crystalbloom_pass_comes_down_as_the_mod_rests() {
+        // crystalbloom.wgsl reads each piece's dy (word i * 16 + k * 2 + half, CbChunk::id) and comes down that much
+        // higher as pass_at has it
+        let wgsl = include_str!("../../shaders/crystalbloom.wgsl");
+        for line in [
+            "o.dy = cb_drop(f);",
+            "var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf - o.dy * tf / o.tl, 0.0);",
+            "let vl = normalize(o.v + vec3<f32>(0.0, o.dy / o.tl - CB_G * o.tl, 0.0));",
+            "let f = i * 16 + k * 2 + half;",
+        ] {
+            assert!(wgsl.contains(line), "crystalbloom.wgsl no longer has {line}");
+        }
+    }
+    #[test]
+    fn crystalbloom_stumps_stand_whole_on_the_land() {
+        // on hilly land the stumps are built where they stand in the world, whole, down to the ground wherever it lies
+        // lower than the crater's floor, and the crystals round them rest on the ground at their feet
+        crate::ground::set_test(Some(hilly));
+        let floor_y = super::super::bedrock_top("minecraft:overworld");
+        let mut stumps = Vec::new();
+        for i in 0..CB_N {
+            if let Some(st) = cb_stump(i, SEED, POINT) {
+                stumps.extend(cb_cluster(i, SEED, POINT, &st));
+                stumps.push(st);
+            }
+        }
+        let tag = crate::ground::new_tag();
+        let feet = cb_stump_footprint(&stumps);
+        crate::ground::test_answer(tag, &feet);
+        let feet: std::collections::HashSet<(i32, i32)> = feet.into_iter().collect();
+        let (mut built, mut down) = (0, 0);
+        for (x0, z0, _) in super::super::pk_cells(POINT, CB_BLAST * 1.1 + 4.0) {
+            let mut p = Plan { laser: &crate::lasers::CRYSTAL_BLOOM, ev: Vec::new(), rng: Rng::new(7), bx: 10, by: 64, bz: -3 };
+            cb_dig_cell(&mut p, POINT, x0, z0, 25.0, floor_y, 320, SEED, &stumps);
+            for (t, a) in p.ev {
+                let Act::Blocks(b) = a else { continue };
+                // (a stump's runs, built the tick after the dig: where it stands, not counted from the ground)
+                if (t - 25.05).abs() > 1e-4 {
+                    continue;
+                }
+                let crystal: Vec<_> = b.runs.iter().filter(|r| r.only.is_none() && feet.contains(&(r.x, r.z)) && CB_FAMILY.iter().flatten().any(|f| *f == b.palette[r.block as usize])).collect();
+                let mut lowest: std::collections::HashMap<(i32, i32), i32> = Default::default();
+                for r in crystal {
+                    assert!(r.surface.is_none(), "a stump's run at {} {} counted from the ground", r.x, r.z);
+                    let e = lowest.entry((r.x, r.z)).or_insert(r.y);
+                    *e = (*e).min(r.y);
+                }
+                for ((x, z), y) in lowest {
+                    // (down to the ground, or over it only where it leans out over it: where the lowest of it there is)
+                    let g = land().at(POINT, x, z, f32::MAX).unwrap();
+                    let bottom = stumps
+                        .iter()
+                        .filter_map(|st| {
+                            let by = if st.rests { f64::from(land().at(POINT, st.b[0].floor() as i32, st.b[2].floor() as i32, f32::MAX).unwrap()) } else { st.b[1] };
+                            // (of those it puts blocks in there: from three blocks under the ground, or over it, where it leans out over it)
+                            let (y0, y1) = st.span(f64::from(x) + 0.5, f64::from(z) + 0.5)?;
+                            let (lo, hi) = (((by + y0 - 0.5).ceil() as i32).max(g - 3), (by + y1 - 0.5).floor() as i32);
+                            (hi >= lo).then_some(lo)
+                        })
+                        .min()
+                        .unwrap_or(i32::MAX);
+                    assert!(y <= g.max(bottom), "a stump floats over the ground at {x} {y} {z} (ground {g}, its foot there {bottom})");
+                    if y <= g {
+                        down += 1;
+                    }
+                    built += 1;
+                }
+            }
+        }
+        eprintln!("{down} of {built} stump columns down to the ground, the rest leaning out over it");
+        assert!(built > 100 && down * 2 > built, "{down} of {built} stump columns down to the ground");
+        crate::ground::set_test(None);
     }
 }
 #[cfg(test)]
@@ -1624,6 +2216,12 @@ mod stage_cost {
     #[test]
     #[ignore]
     fn cb_stage_cost() {
+        // (the ground under the pieces and the stumps given at once: the hills of rested.rs, unless ORBITAL_GROUND=none)
+        if std::env::var("ORBITAL_GROUND").is_ok_and(|v| v == "none") {
+            crate::ground::set_test(None);
+        } else {
+            crate::ground::set_test(Some(super::rested::hilly));
+        }
         let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
         let mut runs: Vec<Vec<(f32, f64, usize, usize)>> = Vec::new();
         for _ in 0..3 {

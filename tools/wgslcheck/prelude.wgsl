@@ -27,6 +27,9 @@ struct Frame {
 @group(0) @binding(2) var linear_sampler: sampler;
 @group(0) @binding(3) var nearest_sampler: sampler;
 @group(0) @binding(4) var<uniform> frame: Frame;
+// The words the mod gives with render.set-data (one word, 0, until it gives some; bitcast<f32> for floats). Read
+// arrayLength(&mod_data) before indexing it.
+@group(0) @binding(5) var<storage, read> mod_data: array<u32>;
 
 struct StageIn {
     @builtin(position) position: vec4<f32>,

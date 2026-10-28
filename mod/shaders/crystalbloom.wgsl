@@ -465,6 +465,18 @@ struct CbChunk {
     L: f32,            // how long and how wide it is
     wid: f32,
     A: vec3<f32>,      // its spire's axis
+    dy: f32,           // how much higher than the target it comes down: the ground under it as it lies (cb_drop)
+}
+// How much higher than the target piece f (i * 16 + k * 2 + half) comes down: the mod rests each on the ground as it
+// really lies there and gives the pass how far up that is (render.set-data, word f), long before the burst; 0 (the land
+// at the target's height, the crater's floor in it) for any it has not given.
+fn cb_drop(f: i32) -> f32 {
+    let i = u32(f);
+    if (i >= arrayLength(&mod_data)) {
+        return 0.0;
+    }
+    let v = bitcast<f32>(mod_data[i]);
+    return select(0.0, clamp(v, -60.0, 60.0), abs(v) <= 60.0);
 }
 // Piece (k, half) of spire i (its foot F off the target, its frame a, e1, e2, radius R, height H; its break brk).
 fn cb_chunk(i: i32, k: i32, half: i32, seed: f32, F: vec3<f32>, a: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32, nseg: i32, ylo: f32, yhi: f32) -> CbChunk {
@@ -505,6 +517,7 @@ fn cb_chunk(i: i32, k: i32, half: i32, seed: f32, F: vec3<f32>, a: vec3<f32>, e1
     let rl = length(o.C0.xz + o2 * vh * o.tl);
     o.tp = max(select(o.tl, max(o.tl, cb_dig_t(rl + 20.0) + 0.15 - CB_DET), rl < 150.0), o.tl + 0.16);
     o.v = vec3<f32>(o2.x * vh, vy, o2.y * vh);
+    o.dy = cb_drop(f);
     let rate = (0.8 + 2.6 * hsn.x) * 14.0 / (14.0 + o.L * 0.35 + o.wid * 0.25) * select(-1.0, 1.0, hsn.y > 0.5);
     o.spin = vec4<f32>(normalize(hsn - 0.5 + vec3<f32>(0.0, 0.01, 0.0)), rate);
     return o;
@@ -529,9 +542,10 @@ const CB_IMPACT: f32 = 0.15;
 const CB_FADE: f32 = 0.25;
 fn cb_chunk_at(o: CbChunk, dt: f32) -> vec4<f32> {
     let tf = min(dt, o.tl);
-    var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf, 0.0);
+    // (thrown that much higher, so it comes down there at tl all the same: CbChunk::rest_at)
+    var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf - o.dy * tf / o.tl, 0.0);
     if (dt > o.tl) {
-        let vl = normalize(o.v - vec3<f32>(0.0, CB_G * o.tl, 0.0));
+        let vl = normalize(o.v + vec3<f32>(0.0, o.dy / o.tl - CB_G * o.tl, 0.0));
         // (the bigger the deeper, but never so deep that a good part of it is not left standing out, however it lies)
         let ay = rot_axis(o.A, o.spin.xyz, o.spin.w * o.tl).y;
         let hv = 0.25 * (o.L * abs(ay) + 2.0 * o.wid * sqrt(max(1.0 - ay * ay, 0.0)));

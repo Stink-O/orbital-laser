@@ -10,6 +10,7 @@
 //! changes, the sounds and the flying speed), `hud` (the status panel), `storage`
 //! (the chosen laser and the settings) and
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
+mod ground;
 mod lasers;
 mod strike;
 mod wheel;
@@ -86,6 +87,9 @@ struct Strike {
     waiting: std::collections::VecDeque<strike::Stage>,
     /// Those that go before them (`Act::Soon`), in order.
     urgent: std::collections::VecDeque<strike::Stage>,
+    /// What the pass reads as `mod_data` (`Act::Data`), and whether it changed since it was last sent.
+    data: Vec<u32>,
+    data_sent: bool,
 }
 impl Strike {
     /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
@@ -384,6 +388,7 @@ impl Orbital {
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
+        ground::clear();
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, self.approach);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
@@ -415,10 +420,13 @@ impl Orbital {
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
         let next = plan.iter().take_while(|e| e.0 < ticks as f32 * 0.05).count();
         self.skip = 0.0;
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default() });
+        render::set_data(&[]);
+        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
+        // (the world's answers to the ground asked for, before the stages that read them)
+        ground::poll();
         let carved = self.carve(CARVE_CMDS);
         let Some(s) = &mut self.strike else {
             return;
@@ -460,6 +468,15 @@ impl Orbital {
                         s.params[14] = s.params[14].max(t);
                     }
                 }
+                Act::Survey { tag, columns } => ground::ask(tag, columns),
+                Act::Data { index, value } => {
+                    let i = index as usize;
+                    if s.data.len() <= i {
+                        s.data.resize(i + 1, 0);
+                    }
+                    s.data[i] = value.to_bits();
+                    s.data_sent = false;
+                }
                 Act::Soon(job) if worked_out => s.urgent.push_back(job),
                 Act::Later(job) if worked_out => s.waiting.push_back(job),
                 Act::Later(job) | Act::Soon(job) => {
@@ -472,6 +489,10 @@ impl Orbital {
         if !cmds.is_empty() {
             world::run_commands(&cmds);
         }
+        if !s.data_sent {
+            render::set_data(&s.data);
+            s.data_sent = true;
+        }
         if !jolts.is_empty() {
             // the jolts due this tick as one (the game adds jolts up the same way, and takes only so many a call)
             let strength = jolts.iter().map(|j| j.0 * j.0).sum::<f32>().sqrt().min(1.0);
@@ -481,6 +502,7 @@ impl Orbital {
         if now >= s.length {
             render::clear_post();
             self.strike = None;
+            ground::clear();
         }
         self.carve(CARVE_CMDS.saturating_sub(carved));
     }

@@ -5,7 +5,10 @@
 //! each `--` group's over them) is drawn to OUTDIR/NN.png. Keys: t, laser, cx cy cz (the eye), yaw pitch fov, tx ty tz
 //! (the target), lx ly lz (a point to look at, in place of yaw and pitch), mx mz (the player, by default the eye), seed,
 //! mode, style, colour, night, clouds, w h (the first shot's for all), frames (timed, the median printed),
-//! gpu (part of the adapter's name).
+//! gpu (part of the adapter's name), flat, hills (the land rolling that high round the target, `hills_h`), vox (blocks
+//! from $PREVIEW_VOXELS), crater.
+//! The pass's `mod_data` (the mod's `render.set-data`) is read from $PREVIEW_DATA if set: a line `index value` a word,
+//! the value a float (its bits) or, with a trailing `u`, a word as it is; one word, 0, otherwise, as in the game.
 use std::collections::HashMap;
 
 fn hash(x: i32, z: i32) -> f32 {
@@ -15,6 +18,11 @@ fn hash(x: i32, z: i32) -> f32 {
 }
 fn ground_h(x: f32, z: f32) -> f32 {
     64.0 + 3.0 * (x * 0.031).sin() * (z * 0.027).cos() + 6.0 * (x * 0.009 + 1.0).sin() * (z * 0.011).sin()
+}
+/// With `hills=H`: rolling hills and valleys round the target, H high, the target's ground at `ty` (the Crystal Bloom's
+/// pieces come down on slopes; strike/crystal.rs's tests rest them on the same land).
+pub fn hills_h(x: f32, z: f32, ty: f32, h: f32) -> f32 {
+    ty + h * (0.5 * (x * 0.045 + 0.7).sin() * (z * 0.038).cos() + 0.5 * (x * 0.013 - z * 0.017).sin())
 }
 /// With `crater=1`, the planet killer's crater dug into it round the target (strike.rs's pk_depth0, smoothly, with the
 /// rim thrown up round it), to look at its aftermath against the shape the strike leaves.
@@ -143,7 +151,16 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             vhi[j] = vhi[j].max(k[j] + 1);
         }
     }
-    let ground = |x: f32, z: f32, crater: bool| if flat { tgt[1] } else { crater_h(x, z, crater) };
+    let hills = g("hills", 0.0);
+    let ground = |x: f32, z: f32, crater: bool| {
+        if flat {
+            tgt[1]
+        } else if hills != 0.0 {
+            hills_h(x, z, tgt[1], hills)
+        } else {
+            crater_h(x, z, crater)
+        }
+    };
     let night = g("night", 0.0) > 0.5;
     let sun = if night { norm([0.35, -0.6, 0.25]) } else { norm([0.35, 0.8, 0.25]) };
     let nk = if night { 0.08 } else { 1.0 };
@@ -367,8 +384,34 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
                 ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+                count: None,
+            },
         ],
     });
+    // (the mod's data, as render.set-data gives it: $PREVIEW_DATA, or the one word 0 the game binds without it)
+    let mut words: Vec<u32> = vec![0];
+    if let Ok(path) = std::env::var("PREVIEW_DATA") {
+        for l in std::fs::read_to_string(path).unwrap().lines() {
+            let mut it = l.split_whitespace();
+            let (Some(i), Some(v)) = (it.next(), it.next()) else { continue };
+            let i: usize = i.parse().unwrap();
+            if words.len() <= i {
+                words.resize(i + 1, 0);
+            }
+            words[i] = match v.strip_suffix('u') {
+                Some(u) => u.parse().unwrap(),
+                None => v.parse::<f32>().unwrap().to_bits(),
+            };
+        }
+    }
+    let dbuf = {
+        use wgpu::util::DeviceExt;
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&words), usage: wgpu::BufferUsages::STORAGE })
+    };
     let lin = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() });
     let nea = device.create_sampler(&Default::default());
     let sview = scene.create_view(&Default::default());
@@ -381,6 +424,7 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
             wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&lin) },
             wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&nea) },
             wgpu::BindGroupEntry { binding: 4, resource: ubuf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: dbuf.as_entire_binding() },
         ],
     });
     let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
