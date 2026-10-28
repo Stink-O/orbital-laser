@@ -527,6 +527,60 @@ fn cb_chunk_scale(o: CbChunk, dt: f32) -> f32 {
     let u = saturate(dt / o.tl);
     return 1.0 - 0.5 * u * u * (3.0 - 2.0 * u);
 }
+// Piece n of the table (pb its first word, vt its throw and when it comes down): where it is `dt` after the burst (off
+// the target) and how far it has turned, as cb_chunk_at; how big it is by then, as cb_chunk_scale; its planes (0..12
+// its spire's faces as it stood, 13..15 its cuts), and the view ray through them, as cb_hit3.
+fn cb_piece_at(pb: u32, vt: vec4<f32>, dt: f32) -> vec4<f32> {
+    let tl = vt.w;
+    let v = vt.xyz;
+    let dy = cb_drop(i32(cb_u(pb + 3u)));
+    let rate = cb_w(pb + 11u);
+    let tf = min(dt, tl);
+    var P = cb_w3(pb) + v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf - dy * tf / tl, 0.0);
+    if (dt > tl) {
+        let vl = normalize(v + vec3<f32>(0.0, dy / tl - CB_G * tl, 0.0));
+        let wd = min(cb_w(pb + 29u), CB_WEDGE_MAX * cb_w(pb + 28u) / max(abs(vl.y), 0.3));
+        let u = 1.0 - saturate((dt - tl) / CB_IMPACT);
+        P = P + vl * wd * (1.0 - u * u * u);
+    }
+    return vec4<f32>(P, rate * tf);
+}
+fn cb_piece_scale(tl: f32, dt: f32) -> f32 {
+    let u = saturate(dt / tl);
+    return 1.0 - 0.5 * u * u * (3.0 - 2.0 * u);
+}
+fn cb_piece_plane(sb: u32, pb: u32, k: i32) -> vec4<f32> {
+    return select(cb_w4(sb + 40u + u32(k) * 4u), cb_w4(pb + 12u + u32(k - 13) * 4u), k >= 13);
+}
+fn cb_hit_t(sb: u32, o: vec3<f32>, d: vec3<f32>, pb: u32) -> vec3<f32> {
+    var t0 = -1.0e9;
+    var t1 = 1.0e9;
+    var kin = 0;
+    for (var k = 0; k < 16; k = k + 1) {
+        let pl = select(cb_w4(sb + 40u + u32(k) * 4u), cb_w4(pb + 12u + u32(k - 13) * 4u), k >= 13);
+        let dn = dot(pl.xyz, d);
+        let num = pl.w - dot(pl.xyz, o);
+        if (abs(dn) < 1.0e-7) {
+            if (num < 0.0) {
+                return vec3<f32>(-1.0, -1.0, 0.0);
+            }
+            continue;
+        }
+        let t = num / dn;
+        if (dn < 0.0) {
+            if (t > t0) {
+                t0 = t;
+                kin = k;
+            }
+        } else {
+            t1 = min(t1, t);
+        }
+    }
+    if (t0 > t1 || t1 < 0.0) {
+        return vec3<f32>(-1.0, -1.0, 0.0);
+    }
+    return vec3<f32>(t0, t1, f32(kin));
+}
 // The view ray through a crystal's own faces (but its cut) and three more planes: x in, y out, z the face it goes in
 // by (13 and on: a broken face).
 fn cb_hit3(c: Crystal, o: vec3<f32>, d: vec3<f32>, x0: vec4<f32>, x1: vec4<f32>, x2: vec4<f32>) -> vec3<f32> {
@@ -1640,12 +1694,13 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
     }
     // ---- as they burst: each spire broken into its pieces (cb_chunk), thrown out, tumbling, coming down ---------------
     var sh_brk = 0.0;
-    var sh_ci = vec3<i32>(-1);
+    var sh_pc = -1;
     var sh_kin = 0;
     if (det && dt < 12.0) {
         for (var i = 0; i < CB_N; i = i + 1) {
-            let pl = cb_place(i, seed);
-            let fm = cb_form(i, seed, pl);
+            let sb = cb_sp(i);
+            let pl = cb_w4(sb);
+            let fm = cb_w4(sb + 4u);
             let F = vec3<f32>(pl.x, 0.0, pl.y);
             let Fc = crel + F;
             // (all of its pieces within reach of where it stood by now)
@@ -1653,184 +1708,145 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             if (ray_seg(rd, Fc - vec3<f32>(0.0, CB_BOWL_D + 4.0, 0.0), Fc + vec3<f32>(0.0, pl.w + 30.0, 0.0)).x > reach) {
                 continue;
             }
-            // (the spire whole as it stood: built only once a piece of it is in the way)
-            var c: Crystal;
-            var built = false;
-            let ca_ = cb_axis(fm);
-            let cfr = cb_frame(ca_, fm.w);
-            let brk = cb_break(i, seed, pl.w);
-            let H = pl.w;
-            let h0 = select(0.0, brk.x, brk.x > 0.5);
-            let span = H - h0;
-            let nseg = cb_nseg(fm.x, span);
-            let nh = select(1, 2, fm.x > 11.0);
-            var hk: array<f32, 7>;
-            var tot = 0.0;
-            for (var j = 0; j < 6; j = j + 1) {
-                if (j >= nseg) {
-                    break;
-                }
-                hk[j] = tot;
-                tot = tot + 0.45 + cb_h3(i * 16 + j, 501u, seed).x;
-            }
-            hk[nseg] = tot;
-            for (var kk = 0; kk < 6; kk = kk + 1) {
-                if (kk >= nseg) {
-                    break;
-                }
-                let ylo = h0 + span * hk[kk] / tot;
-                let yhi = h0 + span * hk[kk + 1] / tot;
-                for (var hf = 0; hf < 2; hf = hf + 1) {
-                    if (hf >= nh || (hf == 1 && kk == nseg - 1)) {
-                        break;
-                    }
-                    var o = cb_chunk(i, kk, hf, seed, F, ca_, cfr[0], cfr[1], fm.x, nseg, ylo, yhi);
-                    // (held where it lies until its blocks are in, then gone over CB_FADE, a scatter of its pixels at a
-                    // time, so the blocks show through it and the two never fight)
-                    if (dt > o.tp && frame.mod_params[3].z >= CB_DET + o.tp - 0.01) {
-                        let fu = (dt - o.tp) / CB_FADE;
-                        if (fu >= 1.0 || fract(sin(dot(rd, vec3<f32>(127.1, 311.7, 74.7)) * 1.0e3) * 43758.55) < fu) {
-                            continue;
-                        }
-                    }
-                    let at = cb_chunk_at(o, dt);
-                    let sc = cb_chunk_scale(o, dt);
-                    let Cw = crel + at.xyz;
-                    // (all of it within this of its middle: its slanted cuts and the spire's tip reach past its length)
-                    let bnd = (0.62 * o.L + 1.1 * o.wid + 2.0) * sc;
-                    let tc = dot(Cw, rd);
-                    if (tc < -bnd || tc - bnd > sh_t || dot(Cw, Cw) - tc * tc > bnd * bnd) {
+            // (its frame as it stood when they burst, its pieces' run in the table)
+            let fa = cb_w3(sb + 22u);
+            let fe1 = cb_w3(sb + 25u);
+            let fe2 = cb_w3(sb + 28u);
+            let p0 = cb_u(sb + 31u);
+            let p1 = p0 + cb_u(sb + 32u);
+            for (var n = p0; n < p1; n = n + 1u) {
+                let pb = CB_PCB + n * CB_PCW;
+                let m = cb_w4(pb + 24u);            // (when it is built, its length, width, and the reach of it)
+                // (held where it lies until its blocks are in, then gone over CB_FADE, a scatter of its pixels at a
+                // time, so the blocks show through it and the two never fight)
+                if (dt > m.x && frame.mod_params[3].z >= CB_DET + m.x - 0.01) {
+                    let fu = (dt - m.x) / CB_FADE;
+                    if (fu >= 1.0 || fract(sin(dot(rd, vec3<f32>(127.1, 311.7, 74.7)) * 1.0e3) * 43758.55) < fu) {
                         continue;
                     }
-                    if (!built) {
-                        c = cb_crystal(i, seed, CB_DET - 0.01, crel);
-                        built = true;
-                    }
-                    cb_chunk_cuts(&o, i, kk, nseg, ylo, yhi, span, fm.x, brk, seed);
-                    let oo = o.C0 + rot_axis(-Cw, o.spin.xyz, -at.w) / sc;
-                    let dd = rot_axis(rd, o.spin.xyz, -at.w) / sc;
-                    let h = cb_hit3(c, cb_to(c, oo - F), cb_to(c, dd), o.lo, o.hi, o.sp);
-                    if (h.x > 0.0 && h.x < sh_t) {
-                        let kin = i32(h.z);
-                        var nl: vec3<f32>;
-                        if (kin < 13) {
-                            nl = cb_plane(c, kin).xyz;
-                        } else if (kin == 13) {
-                            nl = o.lo.xyz;
-                        } else if (kin == 14) {
-                            nl = o.hi.xyz;
-                        } else {
-                            nl = o.sp.xyz;
-                        }
-                        sh_t = h.x;
-                        sh_n = normalize(rot_axis(cb_from(c, normalize(nl)), o.spin.xyz, at.w));
-                        sh_hue = c.hue;
-                        sh_brk = f32(kin >= 13);
-                        // (its light inside dying as it falls, each piece flickering its own way, out by when it lands)
-                        let hf_ = cb_h3(i * 16 + kk * 2 + hf, 508u, seed);
-                        let u = saturate(dt / o.tl);
-                        let flk = saturate(0.25 + 0.95 * gnoise2(vec2<f32>(dt * (2.5 + 6.0 * hf_.x), hf_.y * 61.0)) + 0.3 * (gnoise2(vec2<f32>(dt * 17.0, hf_.z * 43.0)) - 0.5));
-                        sh_glow = (0.15 + 1.2 * exp(-dt * 1.8)) * (1.0 + sh_brk * 0.6) * (1.0 - u) * (1.0 - u) * flk;
-                        sh_ci = vec3<i32>(i, kk, hf);
-                        sh_kin = kin;
-                    }
+                }
+                let vt = cb_w4(pb + 4u);
+                let at = cb_piece_at(pb, vt, dt);
+                let sc = cb_piece_scale(vt.w, dt);
+                let Cw = crel + at.xyz;
+                // (all of it within this of its middle: its slanted cuts and the spire's tip reach past its length)
+                let bnd = m.w * sc;
+                let tc = dot(Cw, rd);
+                if (tc < -bnd || tc - bnd > sh_t || dot(Cw, Cw) - tc * tc > bnd * bnd) {
+                    continue;
+                }
+                let spin = cb_w4(pb + 8u);
+                let oo = cb_w3(pb) + rot_axis(-Cw, spin.xyz, -at.w) / sc - F;
+                let dd = rot_axis(rd, spin.xyz, -at.w) / sc;
+                let h = cb_hit_t(sb, vec3<f32>(dot(oo, fe1), dot(oo, fa), dot(oo, fe2)), vec3<f32>(dot(dd, fe1), dot(dd, fa), dot(dd, fe2)), pb);
+                if (h.x > 0.0 && h.x < sh_t) {
+                    let kin = i32(h.z);
+                    let nl = cb_piece_plane(sb, pb, kin).xyz;
+                    sh_t = h.x;
+                    sh_n = normalize(rot_axis(fe1 * nl.x + fa * nl.y + fe2 * nl.z, spin.xyz, at.w));
+                    sh_pc = i32(n);
+                    sh_kin = kin;
                 }
             }
         }
     }
-    // (the piece in front: its edges catching the light, as the spires' do, and the view through it bent by it)
+    // (the piece in front: its light inside dying as it falls, each flickering its own way, out by when it lands; its
+    // edges catching the light, as the spires' do, and the view through it bent by it)
     var sh_edge = 0.0;
     var sh_thru = vec3<f32>(-1.0);
     var sh_path = 0.0;
     var sh_sheet = 0.0;
-    if (sh_ci.x >= 0 && sh_t < scene_len) {
-        let i = sh_ci.x;
-        let pl = cb_place(i, seed);
-        let c = cb_crystal(i, seed, CB_DET - 0.01, crel);
-        let brk = cb_break(i, seed, pl.w);
-        let h0 = select(0.0, brk.x, brk.x > 0.5);
-        let span = c.Hb + c.tip - h0;
-        let nseg = cb_nseg(c.R, span);
-        let ylo = cb_cut_h(i, sh_ci.y, nseg, h0, span, seed);
-        let yhi = cb_cut_h(i, sh_ci.y + 1, nseg, h0, span, seed);
-        let F = vec3<f32>(pl.x, 0.0, pl.y);
-        var o = cb_chunk(i, sh_ci.y, sh_ci.z, seed, F, c.a, c.e1, c.e2, c.R, nseg, ylo, yhi);
-        cb_chunk_cuts(&o, i, sh_ci.y, nseg, ylo, yhi, span, c.R, brk, seed);
-        let at = cb_chunk_at(o, dt);
-        let sc = cb_chunk_scale(o, dt);
-        let Xo = o.C0 + rot_axis(rd * sh_t - crel - at.xyz, o.spin.xyz, -at.w) / sc;
-        let ql = cb_to(c, Xo - F);
-        let dl = cb_to(c, rot_axis(rd, o.spin.xyz, -at.w));
-        var e1 = 1.0e9;
-        var e2 = 1.0e9;
-        var nin = vec3<f32>(0.0, 1.0, 0.0);
-        var pk: array<vec4<f32>, 16>;
-        for (var kk = 0; kk < 16; kk = kk + 1) {
-            if (kk < 13) {
-                pk[kk] = cb_plane(c, kk);
-            } else if (kk == 13) {
-                pk[kk] = o.lo;
-            } else if (kk == 14) {
-                pk[kk] = o.hi;
-            } else {
-                pk[kk] = o.sp;
-            }
-            let dpk = max((pk[kk].w - dot(pk[kk].xyz, ql)) / length(pk[kk].xyz), 0.0) * sc;
-            if (dpk < e1) {
-                e2 = e1;
-                e1 = dpk;
-            } else {
-                e2 = min(e2, dpk);
-            }
-        }
-        nin = normalize(pk[sh_kin].xyz);
-        let ew = max(0.06, sh_t * px_a * 0.6);
-        // (a thin bright line along its edges, glinting here and there along them)
-        let glint = 0.5 + 1.5 * pow(gnoise2(vec2<f32>(dot(ql, vec3<f32>(0.9, 0.6, 0.7)) * 0.8, f32(i) + dt * 2.0)), 6.0) * 6.0;
-        sh_edge = exp(-e2 / ew) * min(1.0, 0.1 / ew * 2.0) * glint;
-        // through it: bent in at the face it is seen by, out at the face it leaves by, to what lies behind
-        var dr = refract(dl, nin, 1.0 / 1.52);
-        if (dot(dr, dr) < 1.0e-6) {
-            dr = reflect(dl, nin);
-        }
-        dr = normalize(dr);
-        var tout = 1.0e9;
-        var kout = 0;
-        for (var kk = 0; kk < 16; kk = kk + 1) {
-            let dn = dot(pk[kk].xyz, dr);
-            if (dn > 1.0e-6) {
-                let t = (pk[kk].w - dot(pk[kk].xyz, ql)) / dn;
-                if (t < tout) {
-                    tout = t;
-                    kout = kk;
+    if (sh_pc >= 0) {
+        let pb = CB_PCB + u32(sh_pc) * CB_PCW;
+        let i = i32(cb_u(pb + 31u));
+        let f = i32(cb_u(pb + 3u));
+        let sb = cb_sp(i);
+        let vt = cb_w4(pb + 4u);
+        let m = cb_w4(pb + 24u);
+        let spin = cb_w4(pb + 8u);
+        sh_hue = cb_hue_of(i);
+        sh_brk = f32(sh_kin >= 13);
+        let hf_ = cb_h3(f, 508u, seed);
+        let u = saturate(dt / vt.w);
+        let flk = saturate(0.25 + 0.95 * gnoise2(vec2<f32>(dt * (2.5 + 6.0 * hf_.x), hf_.y * 61.0)) + 0.3 * (gnoise2(vec2<f32>(dt * 17.0, hf_.z * 43.0)) - 0.5));
+        sh_glow = (0.15 + 1.2 * exp(-dt * 1.8)) * (1.0 + sh_brk * 0.6) * (1.0 - u) * (1.0 - u) * flk;
+        if (sh_t < scene_len) {
+            let fa = cb_w3(sb + 22u);
+            let fe1 = cb_w3(sb + 25u);
+            let fe2 = cb_w3(sb + 28u);
+            let F = vec3<f32>(cb_w(sb), 0.0, cb_w(sb + 1u));
+            let C0 = cb_w3(pb);
+            let at = cb_piece_at(pb, vt, dt);
+            let sc = cb_piece_scale(vt.w, dt);
+            let Xo = C0 + rot_axis(rd * sh_t - crel - at.xyz, spin.xyz, -at.w) / sc - F;
+            let ql = vec3<f32>(dot(Xo, fe1), dot(Xo, fa), dot(Xo, fe2));
+            let rl = rot_axis(rd, spin.xyz, -at.w);
+            let dl = vec3<f32>(dot(rl, fe1), dot(rl, fa), dot(rl, fe2));
+            var e1 = 1.0e9;
+            var e2 = 1.0e9;
+            for (var kk = 0; kk < 16; kk = kk + 1) {
+                let pk = cb_piece_plane(sb, pb, kk);
+                let dpk = max((pk.w - dot(pk.xyz, ql)) / length(pk.xyz), 0.0) * sc;
+                if (dpk < e1) {
+                    e2 = e1;
+                    e1 = dpk;
+                } else {
+                    e2 = min(e2, dpk);
                 }
             }
-        }
-        tout = clamp(tout, 0.0, 200.0);
-        var vo = refract(dr, -normalize(pk[kout].xyz), 1.52);
-        if (dot(vo, vo) < 1.0e-6) {
-            vo = reflect(dr, -normalize(pk[kout].xyz));
-        }
-        let vw = rot_axis(cb_from(c, normalize(vo)), o.spin.xyz, at.w);
-        let Xe = rd * sh_t + rot_axis(cb_from(c, dr), o.spin.xyz, at.w) * tout * sc;
-        let behind = Xe + vw * clamp(select(scene_len, 300.0, sky) - sh_t, 3.0, 300.0);
-        let Pb = project_rel(behind);
-        if (Pb.z > 0.0) {
-            let ub = clamp(Pb.xy, vec2<f32>(0.002), vec2<f32>(0.998));
-            let bg = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, ub, 0.0).rgb);
-            // (darkened as the pass darkens the land and the sky behind)
-            sh_thru = select(bg * (1.0 - 0.7 * dark * k), mix(bg, night, dark * k), is_sky(depth_at(ub)));
-        } else {
-            sh_thru = cb_env(vw, sky_c, sun, day, dark, vec3<f32>(0.0));
-        }
-        sh_path = tout * sc;
-        // (and a cleavage sheet or two inside it, catching the light, for depth)
-        for (var fk = 0; fk < 2; fk = fk + 1) {
-            let hv = cb_h3(i * 16 + sh_ci.y * 2 + sh_ci.z, 777u + u32(fk), seed);
-            let fn_ = normalize(hv - 0.5);
-            let a0 = dot(ql - (o.C0 - F) * 0.0, fn_) - dot(cb_to(c, o.C0 - F), fn_) - (hv.x - 0.5) * o.wid * 0.6;
-            let a1 = a0 + dot(dr, fn_) * tout;
-            sh_sheet = sh_sheet + select(0.0, 0.5 * (0.4 + 0.6 * abs(dot(dr, fn_))), a0 * a1 < 0.0);
+            let nin = normalize(cb_piece_plane(sb, pb, sh_kin).xyz);
+            let ew = max(0.06, sh_t * px_a * 0.6);
+            // (a thin bright line along its edges, glinting here and there along them)
+            let glint = 0.5 + 1.5 * pow(gnoise2(vec2<f32>(dot(ql, vec3<f32>(0.9, 0.6, 0.7)) * 0.8, f32(i) + dt * 2.0)), 6.0) * 6.0;
+            sh_edge = exp(-e2 / ew) * min(1.0, 0.1 / ew * 2.0) * glint;
+            // through it: bent in at the face it is seen by, out at the face it leaves by, to what lies behind
+            var dr = refract(dl, nin, 1.0 / 1.52);
+            if (dot(dr, dr) < 1.0e-6) {
+                dr = reflect(dl, nin);
+            }
+            dr = normalize(dr);
+            var tout = 1.0e9;
+            var kout = 0;
+            for (var kk = 0; kk < 16; kk = kk + 1) {
+                let pk = cb_piece_plane(sb, pb, kk);
+                let dn = dot(pk.xyz, dr);
+                if (dn > 1.0e-6) {
+                    let t = (pk.w - dot(pk.xyz, ql)) / dn;
+                    if (t < tout) {
+                        tout = t;
+                        kout = kk;
+                    }
+                }
+            }
+            tout = clamp(tout, 0.0, 200.0);
+            let nout = normalize(cb_piece_plane(sb, pb, kout).xyz);
+            var vo = refract(dr, -nout, 1.52);
+            if (dot(vo, vo) < 1.0e-6) {
+                vo = reflect(dr, -nout);
+            }
+            let von = normalize(vo);
+            let vw = rot_axis(fe1 * von.x + fa * von.y + fe2 * von.z, spin.xyz, at.w);
+            let Xe = rd * sh_t + rot_axis(fe1 * dr.x + fa * dr.y + fe2 * dr.z, spin.xyz, at.w) * tout * sc;
+            let behind = Xe + vw * clamp(select(scene_len, 300.0, sky) - sh_t, 3.0, 300.0);
+            let Pb = project_rel(behind);
+            if (Pb.z > 0.0) {
+                let ub = clamp(Pb.xy, vec2<f32>(0.002), vec2<f32>(0.998));
+                let bg = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, ub, 0.0).rgb);
+                // (darkened as the pass darkens the land and the sky behind)
+                sh_thru = select(bg * (1.0 - 0.7 * dark * k), mix(bg, night, dark * k), is_sky(depth_at(ub)));
+            } else {
+                sh_thru = cb_env(vw, sky_c, sun, day, dark, vec3<f32>(0.0));
+            }
+            sh_path = tout * sc;
+            // (and a cleavage sheet or two inside it, catching the light, for depth)
+            let C0l = C0 - F;
+            for (var fk = 0; fk < 2; fk = fk + 1) {
+                let hv = cb_h3(f, 777u + u32(fk), seed);
+                let fn_ = normalize(hv - 0.5);
+                let a0 = dot(ql, fn_) - dot(vec3<f32>(dot(C0l, fe1), dot(C0l, fa), dot(C0l, fe2)), fn_) - (hv.x - 0.5) * m.z * 0.6;
+                let a1 = a0 + dot(dr, fn_) * tout;
+                sh_sheet = sh_sheet + select(0.0, 0.5 * (0.4 + 0.6 * abs(dot(dr, fn_))), a0 * a1 < 0.0);
+            }
         }
     }
     if (sh_t < scene_len) {
