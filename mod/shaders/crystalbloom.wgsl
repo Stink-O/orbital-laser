@@ -464,6 +464,7 @@ struct CbChunk {
     tp: f32,
     L: f32,            // how long and how wide it is
     wid: f32,
+    A: vec3<f32>,      // its spire's axis
 }
 // Piece (k, half) of spire i (its foot F off the target, its frame a, e1, e2, radius R, height H; its break brk).
 fn cb_chunk(i: i32, k: i32, half: i32, seed: f32, F: vec3<f32>, a: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32, nseg: i32, ylo: f32, yhi: f32) -> CbChunk {
@@ -486,6 +487,7 @@ fn cb_chunk(i: i32, k: i32, half: i32, seed: f32, F: vec3<f32>, a: vec3<f32>, e1
         o.wid = R * 0.6;
     }
     o.L = yhi - ylo;
+    o.A = a;
     o.C0 = F + e1 * cx.x + a * ym + e2 * cx.y;
     let f = i * 16 + k * 2 + half;
     let hm = cb_h3(f, 504u, seed);
@@ -501,7 +503,7 @@ fn cb_chunk(i: i32, k: i32, half: i32, seed: f32, F: vec3<f32>, a: vec3<f32>, e1
     let r1 = length(o.C0.xz + o2 * vh * tl0);
     o.tl = (vy + sqrt(vy * vy + 2.0 * CB_G * (y0 + cb_bowl_dep(r1)))) / CB_G;
     let rl = length(o.C0.xz + o2 * vh * o.tl);
-    o.tp = select(o.tl, max(o.tl, cb_dig_t(rl + 20.0) + 0.15 - CB_DET), rl < 150.0);
+    o.tp = max(select(o.tl, max(o.tl, cb_dig_t(rl + 20.0) + 0.15 - CB_DET), rl < 150.0), o.tl + 0.16);
     o.v = vec3<f32>(o2.x * vh, vy, o2.y * vh);
     let rate = (0.8 + 2.6 * hsn.x) * 14.0 / (14.0 + o.L * 0.35 + o.wid * 0.25) * select(-1.0, 1.0, hsn.y > 0.5);
     o.spin = vec4<f32>(normalize(hsn - 0.5 + vec3<f32>(0.0, 0.01, 0.0)), rate);
@@ -517,14 +519,19 @@ fn cb_chunk_cuts(o: ptr<function, CbChunk>, i: i32, k: i32, nseg: i32, ylo: f32,
     (*o).hi = select(cb_cut_at(i, k + 1, nseg, yhi, span, R, seed), vec4<f32>(0.0, 1.0, 0.0, 1.0e7), k == nseg - 1);
 }
 // Where a piece is `dt` after the burst (off the target) and how far it has turned: flying, then come down and driven
-// CB_WEDGE into the ground along its path, lying there until it is built (strike.rs's CbChunk::rest: keep in step).
-const CB_WEDGE: f32 = 2.0;
+// in along its path (deeper the bigger it is), lying there until it is built (strike.rs's CbChunk::rest: keep in step).
+const CB_WEDGE: f32 = 0.5;
+const CB_WEDGE_K: f32 = 0.003;
 fn cb_chunk_at(o: CbChunk, dt: f32) -> vec4<f32> {
     let tf = min(dt, o.tl);
     var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf, 0.0);
     if (dt > o.tl) {
-        let vl = o.v - vec3<f32>(0.0, CB_G * o.tl, 0.0);
-        P = P + normalize(vl) * CB_WEDGE * saturate((dt - o.tl) / 0.15);
+        let vl = normalize(o.v - vec3<f32>(0.0, CB_G * o.tl, 0.0));
+        // (the bigger the deeper, but never so deep that a good part of it is not left standing out, however it lies)
+        let ay = rot_axis(o.A, o.spin.xyz, o.spin.w * o.tl).y;
+        let hv = 0.25 * (o.L * abs(ay) + 2.0 * o.wid * sqrt(max(1.0 - ay * ay, 0.0)));
+        let wd = min(CB_WEDGE + CB_WEDGE_K * (o.L + o.wid) * (o.L + o.wid), 0.65 * hv / max(abs(vl.y), 0.3));
+        P = P + vl * wd * saturate((dt - o.tl) / 0.15);
     }
     return vec4<f32>(P, o.spin.w * tf);
 }
@@ -1697,7 +1704,8 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                     let at = cb_chunk_at(o, dt);
                     let sc = cb_chunk_scale(o, dt);
                     let Cw = crel + at.xyz;
-                    let bnd = (0.5 * length(vec2<f32>(o.L, 2.0 * o.wid)) + 2.0) * sc;
+                    // (all of it within this of its middle: its slanted cuts and the spire's tip reach past its length)
+                    let bnd = (0.62 * o.L + 1.1 * o.wid + 2.0) * sc;
                     let tc = dot(Cw, rd);
                     if (tc < -bnd || tc - bnd > sh_t || dot(Cw, Cw) - tc * tc > bnd * bnd) {
                         continue;
