@@ -4,7 +4,7 @@
 //! pieces lying by them, the shards that were thrown out lying where they came down, the fissures and the land frosted
 //! over with crystal. shaders/crystalbloom.wgsl draws the same spires, breaks them at the same heights and throws the
 //! same shards (cb_*): keep the two in step.
-use super::{Act, Blocks, Plan, Rng, Target, bedrock_top, falloff, mh, pk_cells, pk_load_rows, sky_top, sound_from, vnoise, wing_angle};
+use super::{Act, Blocks, Col, Plan, Rng, TIDY_FLOWERS, TIDY_LOOSE, Target, bedrock_top, tidy, falloff, mh, pk_cells, pk_load_rows, sky_top, sound_from, vnoise, wing_angle};
 use crate::lasers::Laser;
 use std::f64::consts::PI;
 
@@ -27,6 +27,9 @@ const CB_G: f64 = 22.0;
 /// where the heart stood; dug a chunk column at a time from the middle out at CB_DIG_V blocks a second (cb_dig_t).
 pub(super) const CB_BOWL: f64 = 88.0;
 pub(super) const CB_BOWL_D: f64 = 28.0;
+/// How deep the crater is, at most, where its floor is built only into the ground and lined again on the ground as it
+/// lies once dug (the land round it may lie lower than the target).
+const CB_RIM_D: i32 = 14;
 const CB_WELL: f64 = 10.0;
 const CB_DIG_V: f64 = 70.0;
 /// How far behind cb_dig_t a chunk column may be dug (as blocks further out): strike.wgsl waits for that and the chunk
@@ -243,6 +246,8 @@ pub(super) struct CbChunk {
 const CB_WEDGE: f64 = 0.5;
 const CB_WEDGE_K: f64 = 0.003;
 const CB_LAND_SCALE: f64 = 0.5;
+/// How high over the ground a landed piece's underside may be and still get a footing under it.
+const CB_FOOT: i32 = 3;
 /// strike.wgsl's rot_axis: v turned `ang` about the axis `a`.
 fn rot_axis(v: [f64; 3], a: [f64; 3], ang: f64) -> [f64; 3] {
     let (c, s) = (ang.cos(), ang.sin());
@@ -760,8 +765,9 @@ fn cb_punch(p: &mut Plan, point: [f64; 3], pl: [f64; 4], f: [f64; 4], seed: u32)
     let deep = (2.0 + f[0] * 0.25).round() as i32;
     let mut b = Blocks::default();
     let ext = (rh + 4.0).ceil() as i32;
-    for z in (cz.floor() as i32 - ext)..=(cz.floor() as i32 + ext) {
-        for x in (cx.floor() as i32 - ext)..=(cx.floor() as i32 + ext) {
+    let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
+    for z in (zc - ext)..=(zc + ext) {
+        for x in (xc - ext)..=(xc + ext) {
             let d = (f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz);
             let n = vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x511);
             if d < rh {
@@ -774,6 +780,13 @@ fn cb_punch(p: &mut Plan, point: [f64; 3], pl: [f64; 4], f: [f64; 4], seed: u32)
         }
     }
     p.ev.push((pl[2] as f32, Act::Blocks(Box::new(b))));
+    // the plants and the trees left over the hole and on the earth heaped round it, cleared the tick after
+    let g = ext + super::TIDY_BORDER;
+    let t = tidy(xc - g, zc - g, xc + g, zc + g, deep + 14, |x, z| {
+        let d = (f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz);
+        if d < rh + 1.5 || (d < rh + 3.5 && d < rh + 1.5 + 2.0 * vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x511)) { Col::Dug } else { Col::Kept }
+    });
+    p.ev.push((pl[2] as f32 + 0.05, Act::Blocks(Box::new(t))));
 }
 
 /// Dig the crater under chunk column (x0, z0) at `t`, straight into the chunks, and clear the land over it: the bowl
@@ -787,6 +800,9 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     let mut b = Blocks::default();
     // (what stands high over the middle, cleared on a tick of its own a little later: it is a lot of blocks)
     let mut high = Blocks::default();
+    // (what is built on the ground as it is once dug, the tick after: the shallow floor near its edge where the land
+    // lies lower than the target, and the stumps)
+    let mut post = Blocks::default();
     let mut dep = [[0i32; 18]; 18];
     for (j, row) in dep.iter_mut().enumerate() {
         for (i, d) in row.iter_mut().enumerate() {
@@ -830,16 +846,25 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
                 b.run(x, z, floor_y, floor_y, if n > 0.45 { "minecraft:pearlescent_froglight" } else if n > 0.25 { "minecraft:sea_lantern" } else { "minecraft:amethyst_block" });
                 continue;
             }
-            // the floor: its inner shell, calcite, then smooth basalt; seams of light through it near the middle
+            // the floor: its inner shell, calcite, then smooth basalt; seams of light through it near the middle. Near its
+            // edge (CB_RIM_D deep or less) only into the ground (the land may lie lower than the target there: no wall
+            // of it left standing over the land), and the ground there lined again once it is dug, as it lies
             let seam = (vnoise(fx, fz, 11.0, s ^ 0x509) - 0.5).abs() < 0.04 && r < 80.0;
-            b.run(x, z, (fy - 5).max(floor_y), fy - 3, "minecraft:smooth_basalt");
-            b.run(x, z, (fy - 2).max(floor_y), fy - 1, "minecraft:calcite");
             let gl = mh((x.wrapping_mul(97) ^ z.wrapping_mul(61)) as u32, s, 0x50f);
             let lamp = if gl > 0.993 { Some("minecraft:verdant_froglight") } else if gl > 0.986 { Some("minecraft:ochre_froglight") } else { None };
-            b.run(x, z, fy, fy, if seam { "minecraft:pearlescent_froglight" } else { lamp.unwrap_or(inner) });
+            let top_blk = if seam { "minecraft:pearlescent_froglight" } else { lamp.unwrap_or(inner) };
+            let rim = dd < CB_RIM_D;
+            let only = rim.then_some("#minecraft:sculk_replaceable");
+            for (y0, y1, blk) in [(fy - 5, fy - 3, "minecraft:smooth_basalt"), (fy - 2, fy - 1, "minecraft:calcite"), (fy, fy, top_blk)] {
+                b.put(x, z, y0.max(floor_y), y1, blk, only, false);
+            }
             // the faces down to deeper ground beside it
             if dmax > dd {
-                b.run(x, z, (by - dmax + 1).max(floor_y), fy - 1, inner);
+                b.put(x, z, (by - dmax + 1).max(floor_y), fy - 1, inner, only, false);
+            }
+            if rim {
+                post.put(x, z, -3, -2, "minecraft:calcite", Some("#minecraft:substrate_overworld"), true);
+                post.put(x, z, -1, -1, top_blk, Some("#minecraft:substrate_overworld"), true);
             }
             // the well's walls round it, in the same shells, out from it
             let ca = dx / r.max(1e-6);
@@ -853,12 +878,20 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
             let h = mh((x.wrapping_mul(73) ^ z.wrapping_mul(179)) as u32, s, 0x50a);
             if h > 0.985 - 0.02 * (1.0 - r / CB_BOWL) {
                 let tall = 1 + ((h - 0.96) * 160.0) as i32 % 4;
-                b.run(x, z, fy + 1, fy + tall, if zone > 0.5 { "minecraft:purple_stained_glass" } else { "minecraft:amethyst_block" });
-                b.run(x, z, fy + tall + 1, fy + tall + 1, "minecraft:amethyst_cluster");
+                let blk = if zone > 0.5 { "minecraft:purple_stained_glass" } else { "minecraft:amethyst_block" };
+                if rim {
+                    // (on the ground as it lies)
+                    post.put(x, z, 0, tall - 1, blk, Some("minecraft:air"), true);
+                    post.put(x, z, tall, tall, "minecraft:amethyst_cluster", Some("minecraft:air"), true);
+                } else {
+                    b.run(x, z, fy + 1, fy + tall, blk);
+                    b.run(x, z, fy + tall + 1, fy + tall + 1, "minecraft:amethyst_cluster");
+                }
             }
         }
     }
-    // the stumps standing here, built into the dug ground
+    // the stumps standing here, built on the dug ground the tick after (any tree standing where one stands felled
+    // first, so it stands on the ground and not on the trunk)
     for c in stumps {
         let (cx, cz) = (c.b[0], c.b[2]);
         if cx + c.reach < f64::from(x0) || cx - c.reach > f64::from(x0 + 16) || cz + c.reach < f64::from(z0) || cz - c.reach > f64::from(z0 + 16) {
@@ -869,12 +902,50 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
         let (za, zb) = (((cz - c.reach).floor() as i32).max(z0), ((cz + c.reach).ceil() as i32).min(z0 + 15));
         for z in za..=zb {
             for x in xa..=xb {
+                // (on the ground as it is once dug: the crater's floor, or the land round it, lower or higher than the
+                // target's; a little of it under the ground)
                 let d = dep[(z - z0 + 1) as usize][(x - x0 + 1) as usize];
-                c.column(&mut b, x, z, (by - d - 3).max(floor_y + 1), sky, None);
+                let n = post.runs.len();
+                c.column(&mut post, x, z, (by - d - 3).max(floor_y + 1), sky, Some(by - d + 1));
+                if post.runs.len() > n {
+                    b.put(x, z, -12, -1, "minecraft:air", Some(super::TIDY_LOGS), true);
+                }
             }
         }
     }
     p.ev.push((t, Act::Blocks(Box::new(b))));
+    if !post.runs.is_empty() {
+        p.ev.push((t + 0.05, Act::Blocks(Box::new(post))));
+    }
+    // the trees cut off at the edge of the blast, their leaves left hanging over the land beyond it, and what stood over
+    // the stumps, cleared the tick after (only where the blast's edge or a stump is near: inside it everything is
+    // cleared through, and the land beyond it is left as it was)
+    let bb = f64::from(super::TIDY_BORDER) + 1.0;
+    let (ex0, ez0, ex1, ez1) = (f64::from(x0) - bb, f64::from(z0) - bb, f64::from(x0 + 16) + bb, f64::from(z0 + 16) + bb);
+    let near: Vec<&CbSolid> = stumps
+        .iter()
+        .filter(|c| c.b[0] + c.reach >= ex0 && c.b[0] - c.reach <= ex1 && c.b[2] + c.reach >= ez0 && c.b[2] - c.reach <= ez1)
+        .collect();
+    let (nx, nz) = ((point[0] - ex0).clamp(0.0, ex1 - ex0) + ex0 - point[0], (point[2] - ez0).clamp(0.0, ez1 - ez0) + ez0 - point[2]);
+    let rmin = nx.hypot(nz);
+    let rmax = [(ex0, ez0), (ex1, ez0), (ex0, ez1), (ex1, ez1)].iter().map(|&(x, z)| (x - point[0]).hypot(z - point[2])).fold(0.0, f64::max);
+    if !near.is_empty() || (rmax >= CB_BLAST * 0.93 && rmin <= CB_BLAST * 1.07) {
+        let tb = tidy(x0, z0, x0 + 15, z0 + 15, 16, |x, z| {
+            let (fx, fz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
+            if near.iter().any(|c| c.span(fx, fz).is_some()) {
+                return Col::Dug;
+            }
+            let (dx, dz) = (fx - point[0], fz - point[2]);
+            let r = dx.hypot(dz);
+            let cleared = r < CB_BLAST * 0.93
+                || (r < CB_BLAST * 1.07 && r < CB_BLAST * (0.93 + 0.14 * vnoise(dx, dz, 50.0, s ^ 0x505)))
+                || cb_depth(dx, dz, s, by - floor_y) > 0;
+            if cleared { Col::Cleared } else { Col::Kept }
+        });
+        if !tb.runs.is_empty() {
+            p.ev.push((t + 0.1, Act::Blocks(Box::new(tb))));
+        }
+    }
     if !high.runs.is_empty() {
         let slot = ((x0 >> 4) ^ (z0 >> 4)).rem_euclid(8);
         p.ev.push((t + 0.6 + slot as f32 * 0.05, Act::Blocks(Box::new(high))));
@@ -918,6 +989,20 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
             }
         }
         p.ev.push((cb_crack_t(r), Act::Blocks(Box::new(b))));
+        // the plants and the trees left over the cut, cleared the tick after
+        let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
+        let g = e + super::TIDY_BORDER;
+        let t = tidy(xc - g, zc - g, xc + g, zc + g, depth + 14, |x, z| {
+            let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
+            let rr = dx.hypot(dz);
+            if rr < CB_BOWL * 0.85 || rr > len {
+                return Col::Kept;
+            }
+            let aa = cb_crack_a(i, rr, seed);
+            let cut = (dx * aa.sin() - dz * aa.cos()).abs() < hw && (dx * aa.cos() + dz * aa.sin() - r).abs() <= 2.0;
+            if cut { Col::Dug } else { Col::Kept }
+        });
+        p.ev.push((cb_crack_t(r) + 0.05, Act::Blocks(Box::new(t))));
         r += 3.0;
     }
 }
@@ -954,6 +1039,7 @@ fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
     let s = seed as u32 ^ n.wrapping_mul(0x9e37);
     // (its highest point over the ground, and where: a sliver standing out less than a block is still put down there)
     let mut top = (f64::MIN, 0, 0);
+    let mut built = false;
     for z in z0..=z1 {
         for x in x0..=x1 {
             let (fx, fz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
@@ -985,6 +1071,17 @@ fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
             if hi < lo {
                 continue;
             }
+            // (the plants and leaves it comes down through or on, and what of them would be left over it, cleared first)
+            for only in [TIDY_LOOSE, TIDY_FLOWERS] {
+                b.put(x, z, 0, hi + 2, "minecraft:air", Some(only), true);
+            }
+            // (where its underside lies a little over the ground, a footing of broken crystal and rubble under it: only
+            // into what is not ground)
+            if lo > 0 && lo <= CB_FOOT {
+                let k = mh((x.wrapping_mul(13) ^ z.wrapping_mul(29)) as u32, s, 0x541);
+                let foot = if k > 0.75 { "minecraft:amethyst_block" } else if k > 0.45 { "minecraft:cobblestone" } else { "minecraft:calcite" };
+                b.put(x, z, 0, lo - 1, foot, Some("#minecraft:replaceable"), true);
+            }
             let pz = vnoise(fx + point[0], fz + point[2], 3.0, s ^ 0x540);
             let mut y = lo;
             while y <= hi {
@@ -997,6 +1094,7 @@ fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
                     // (the faces it broke along paler and glassier, its own faces its body, patches through them)
                     let blk = if pz > 0.72 && (y + (x ^ z)).rem_euclid(3) != 0 { patch } else if (y ^ x ^ z).rem_euclid(4) == 0 { skin } else { body };
                     b.put(x, z, y, y, blk, None, true);
+                    built = true;
                     y += 1;
                 } else {
                     // (on up to where it comes within reach of a face again: the nearest face's distance tells how far)
@@ -1005,7 +1103,10 @@ fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
             }
         }
     }
-    if b.runs.is_empty() && top.0 > 0.15 {
+    if !built && top.0 > 0.15 {
+        for only in [TIDY_LOOSE, TIDY_FLOWERS] {
+            b.put(top.1, top.2, 0, 1, "minecraft:air", Some(only), true);
+        }
         b.put(top.1, top.2, 0, 0, CB_LANDED[c.family][1], None, true);
     }
     b
@@ -1196,11 +1297,14 @@ mod tests {
             }
             // (built through its middle a little over the ground, after the crater round it is dug)
             let y = (POINT[1] + (br[0] * 0.4).min(4.0)).floor() as i32;
+            // (counted from the ground as it is once dug: the crater's floor, or the land at the target's height)
+            let (dx, dz) = (f64::from(x) + 0.5 - POINT[0], f64::from(z) + 0.5 - POINT[2]);
+            let rel = y - (64 - cb_depth(dx, dz, SEED as u32, 64 + 59) + 1);
             let t = cmds
                 .iter()
-                .filter_map(|(t, c)| fill(c).map(|(n, b)| (t, n, b)))
-                .filter(|(_, n, b)| n[0] == x && n[2] == z && b != "minecraft:air" && n[1].min(n[4]) <= y && n[1].max(n[4]) >= y)
-                .map(|(t, _, _)| *t)
+                .filter_map(|(t, c)| surf_fill(c).map(|(sx, sz, y0, y1, b)| (t, sx, sz, y0, y1, b)))
+                .filter(|(_, sx, sz, y0, y1, b)| *sx == x && *sz == z && b != "minecraft:air" && *y0.min(y1) <= rel && *y0.max(y1) >= rel)
+                .map(|(t, ..)| *t)
                 .fold(f32::MIN, f32::max);
             assert!(t > 0.0, "spire {i}: no stump at {x} {y} {z}");
             let _ = f;
@@ -1232,7 +1336,9 @@ mod tests {
             // (its blocks: each inside the piece as the pass draws it at tp, taken back to the spire the way the pass
             // takes the view ray, C0 + rot(x - at, -turn) / scale, and tested against the spire's own faces and its cuts)
             let (pe, ang) = c.rest();
-            let b = cb_landed_blocks(POINT, c, SEED, n as u32);
+            let mut b = cb_landed_blocks(POINT, c, SEED, n as u32);
+            // (the piece's own blocks: not the plants cleared from under it)
+            b.runs.retain(|r| r.only.is_none());
             if b.runs.is_empty() {
                 // (only a piece wholly in the ground has none)
                 let planes = c.rest_planes();
@@ -1304,6 +1410,10 @@ mod tests {
             for (t, a) in &p.ev {
                 let Act::Blocks(b) = a else { continue };
                 for c in b.as_fills() {
+                    // (not what hangs over it, cleared after it)
+                    if c.contains(" replace ") {
+                        continue;
+                    }
                     let Some((x, z, _, _, blk)) = surf_fill(&c) else { continue };
                     if blk != "minecraft:air" {
                         continue;
@@ -1349,7 +1459,8 @@ mod tests {
             if pe[0].hypot(pe[2]) < 0.0 {
                 continue;
             }
-            let b = cb_landed_blocks(point, c, SEED, n as u32);
+            let mut b = cb_landed_blocks(point, c, SEED, n as u32);
+            b.runs.retain(|r| r.only.is_none());
             let blocks: Vec<String> = b.runs.iter().flat_map(|r| { let name = b.palette[r.block as usize]; (r.y..r.y + r.height as i32).map(move |y| format!("[{},{},{},\"{}\"]", r.x, y, r.z, name)) }).collect();
             println!("{{\"n\":{n},\"tp\":{},\"tl\":{},\"rest\":[{},{},{}],\"family\":{},\"blocks\":[{}]}}", c.tp, c.tl, pe[0], pe[1], pe[2], c.family, blocks.join(","));
         }
@@ -1377,7 +1488,8 @@ mod tests {
             }
         }
         let total: u64 = ticks.values().map(|v| v.1).sum();
-        println!("{} ticks with edits, {total} blocks in all, the last at {:.2} s", ticks.len(), *ticks.keys().last().unwrap() as f32 * 0.05);
+        let runs: usize = ticks.values().map(|v| v.0).sum();
+        println!("{} ticks with edits, {total} blocks in {runs} runs in all, the last at {:.2} s", ticks.len(), *ticks.keys().last().unwrap() as f32 * 0.05);
         let mut busy: Vec<_> = ticks.iter().map(|(k, v)| (v.1, v.0, v.2.len(), *k as f32 * 0.05)).collect();
         busy.sort_by(|a, b| b.0.cmp(&a.0));
         for (b, r, c, t) in busy.iter().take(5) {

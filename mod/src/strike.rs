@@ -123,6 +123,85 @@ impl Blocks {
     }
 }
 
+/// What a strike's edit made of a column, for `tidy`: left as it was, cleared up through everything over it (nothing
+/// is left there to hang), or dug or built on with what stood over it left standing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Col {
+    Kept,
+    Cleared,
+    Dug,
+}
+/// How far round the columns a strike changed `tidy` looks for things left hanging, and how far down a dug column's
+/// ground (its highest block that is not leaves) it looks for what is left of a trunk.
+pub(super) const TIDY_BORDER: i32 = 3;
+const TIDY_TRUNK: i32 = 10;
+/// What `tidy` clears, as vanilla's tags have it: the loose plants (grass, ferns, bushes, flowers tall and small, dry
+/// grass, leaf litter, vines, roots, mushrooms) and the leaves; flowers it leaves out (wildflowers, petals, azaleas);
+/// saplings; the trunks; and, round a dug column, what hangs (the same as the first but no mushrooms).
+pub(super) const TIDY_LOOSE: &str = "#minecraft:replaceable_by_mushrooms";
+pub(super) const TIDY_FLOWERS: &str = "#minecraft:flowers";
+pub(super) const TIDY_SAPLINGS: &str = "#minecraft:saplings";
+pub(super) const TIDY_LOGS: &str = "#minecraft:logs";
+pub(super) const TIDY_HANGING: &str = "#minecraft:replaceable_by_trees";
+
+/// What a strike left hanging round the columns x0..=x1, z0..=z1 it changed (`col` tells what it made of each, and is
+/// asked TIDY_BORDER further out too), to be edited once those changes are made (an edit reads the ground as it is
+/// then): `edit-blocks` tells nothing round what it changes, so plants whose ground went never pop off and leaves
+/// whose trunk went never decay. Over a dug column, the loose plants, flowers, saplings and leaves from its new ground
+/// up to `reach` over it (where its old ground was and the trees on it), and the trunk left standing on it; over a
+/// column left as it was within TIDY_BORDER of one changed, only what hangs two blocks or more over its ground (a
+/// plant there has nothing under it; leaves there were on a trunk that went), so the grass and flowers on its ground
+/// and the trees standing on it stay. A column cleared through needs nothing. Only filtered runs: nothing but those
+/// plants, leaves and logs changes.
+pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, mut col: impl FnMut(i32, i32) -> Col) -> Blocks {
+    let b = TIDY_BORDER;
+    let mut out = Blocks::default();
+    if x1 < x0 || z1 < z0 {
+        return out;
+    }
+    let (w, h) = ((x1 - x0 + 1 + 2 * b) as usize, (z1 - z0 + 1 + 2 * b) as usize);
+    let mut grid = vec![Col::Kept; w * h];
+    let mut any = false;
+    for j in 0..h {
+        for i in 0..w {
+            let c = col(x0 - b + i as i32, z0 - b + j as i32);
+            any |= c != Col::Kept;
+            grid[j * w + i] = c;
+        }
+    }
+    if !any {
+        return out;
+    }
+    // (whether a changed column lies within the border: along each row, then down each column)
+    let bu = b as usize;
+    let mut rows = vec![false; w * h];
+    for j in 0..h {
+        for i in 0..w {
+            rows[j * w + i] = (i.saturating_sub(bu)..=(i + bu).min(w - 1)).any(|k| grid[j * w + k] != Col::Kept);
+        }
+    }
+    for j in bu..h - bu {
+        for i in bu..w - bu {
+            let (x, z) = (x0 + (i - bu) as i32, z0 + (j - bu) as i32);
+            match grid[j * w + i] {
+                Col::Cleared => {}
+                Col::Dug => {
+                    for only in [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS] {
+                        out.put(x, z, 0, reach, "minecraft:air", Some(only), true);
+                    }
+                    out.put(x, z, -TIDY_TRUNK, -1, "minecraft:air", Some(TIDY_LOGS), true);
+                }
+                Col::Kept => {
+                    if (j - bu..=j + bu).any(|k| rows[k * w + i]) {
+                        out.put(x, z, 2, reach, "minecraft:air", Some(TIDY_HANGING), true);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// The blocks a command changes or visits, roughly, when it changes the world (`fill`, `setblock`, `summon`, through
 /// any `execute ... run`); `None` for one that doesn't (sounds, particles, titles, kills), which runs on time.
 pub fn block_cost(cmd: &str) -> Option<u64> {
@@ -3688,6 +3767,49 @@ fn pk_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, land: bo
     p.ev.push((t, Act::Blocks(Box::new(b))));
 }
 
+/// How far out the land over chunk column (x0, z0) is blown flat (pk_clear wanders it a little further column by column).
+fn pk_blast_r(x0: i32, z0: i32, seed: u32) -> f64 {
+    PK_BLAST * (0.94 + 0.12 * vnoise(f64::from(x0), f64::from(z0), 60.0, seed ^ 0x81))
+}
+/// Whether chunk column (x0, z0) is one of those the land is blown flat over (pk_cells to PK_BLAST + 4).
+fn pk_flat_in(point: [f64; 3], x0: i32, z0: i32) -> bool {
+    let nx = (point[0] - f64::from(x0)).clamp(0.0, 16.0) + f64::from(x0) - point[0];
+    let nz = (point[2] - f64::from(z0)).clamp(0.0, 16.0) + f64::from(z0) - point[2];
+    nx.hypot(nz) <= PK_BLAST + 4.0
+}
+/// The trees cut off at the edge of the land blown flat, their leaves left hanging over the land beyond it, cleared
+/// (`tidy`) in chunk column (x0, z0) at `t`; nothing where the edge is not near.
+fn pk_tidy_edge(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, seed: u32) {
+    let bb = f64::from(TIDY_BORDER) + 1.0;
+    let (ex0, ez0, ex1, ez1) = (f64::from(x0) - bb, f64::from(z0) - bb, f64::from(x0 + 16) + bb, f64::from(z0 + 16) + bb);
+    let (nx, nz) = ((point[0] - ex0).clamp(0.0, ex1 - ex0) + ex0 - point[0], (point[2] - ez0).clamp(0.0, ez1 - ez0) + ez0 - point[2]);
+    let rmin = nx.hypot(nz);
+    let rmax = [(ex0, ez0), (ex1, ez0), (ex0, ez1), (ex1, ez1)].iter().map(|&(x, z)| (x - point[0]).hypot(z - point[2])).fold(0.0, f64::max);
+    // (pk_clear's edge: its chunk column's blast, wandering 3 blocks either way)
+    if rmax < PK_BLAST * 0.94 - 3.0 || rmin > PK_BLAST * 1.06 + 3.0 {
+        return;
+    }
+    let mut blasts: Vec<((i32, i32), f64)> = Vec::new();
+    let b = tidy(x0, z0, x0 + 15, z0 + 15, 16, |x, z| {
+        let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
+        let r = dx.hypot(dz);
+        let c = (x & !15, z & !15);
+        let blast = match blasts.iter().find(|b| b.0 == c) {
+            Some(b) => b.1,
+            None => {
+                let v = pk_blast_r(c.0, c.1, seed);
+                blasts.push((c, v));
+                v
+            }
+        };
+        let cleared = pk_flat_in(point, c.0, c.1) && (r < blast - 3.0 || (r < blast + 3.0 && r < blast + 6.0 * (vnoise(dx, dz, 9.0, seed ^ 0x81) - 0.5)));
+        if cleared { Col::Cleared } else { Col::Kept }
+    });
+    if !b.runs.is_empty() {
+        p.ev.push((t, Act::Blocks(Box::new(b))));
+    }
+}
+
 /// The land over chunk column (x0, z0), `r0` to `r1` out from `point` (`r1` wandering a little column by column), cleared
 /// from y0 up to y1, at `t`.
 fn pk_clear(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, r0: f64, r1: f64, y0: i32, y1: i32, t: f32, seed: u32) {
@@ -3758,14 +3880,18 @@ fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
         });
     }
     // the land out to the edge of the blast, while the crater's walls are dug
-    let flat: Vec<(i32, i32, f64)> = pk_cells(point, PK_BLAST + 4.0).into_iter().filter(|c| c.2 > PK_LAND - 12.0).collect();
+    // (and what hangs over the land round its edge, the chunk columns round it too)
+    let flat: Vec<(i32, i32, f64)> = pk_cells(point, PK_BLAST + 4.0 + 23.0 + f64::from(TIDY_BORDER)).into_iter().filter(|c| c.2 > PK_LAND - 12.0).collect();
     for group in flat.chunks(24) {
         let group = group.to_vec();
         let t0 = pk_queue_t(pk_flat_t(group[0].2));
         p.later(t0 - 0.3, move |p| {
             for (x0, z0, r) in group {
-                let blast = PK_BLAST * (0.94 + 0.12 * vnoise(f64::from(x0), f64::from(z0), 60.0, seed ^ 0x81));
-                pk_clear(p, point, x0, z0, PK_LAND, blast, by + 1, (by + PK_ABOVE).min(sky), pk_queue_t(pk_flat_t(r)), seed);
+                if pk_flat_in(point, x0, z0) {
+                    let blast = pk_blast_r(x0, z0, seed);
+                    pk_clear(p, point, x0, z0, PK_LAND, blast, by + 1, (by + PK_ABOVE).min(sky), pk_queue_t(pk_flat_t(r)), seed);
+                }
+                pk_tidy_edge(p, point, x0, z0, pk_queue_t(pk_flat_t(r)) + 0.05, seed);
             }
         });
     }
@@ -3988,6 +4114,13 @@ fn pk_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, u0: f64, u1: f
         let e = depth + 1;
         p.at(t, surf(x, z, &format!("fill ~-{h} ~-{e} ~-{h} ~{h} ~-{e} ~{h} minecraft:magma_block strict")));
         p.at(t, surf(x, z, &format!("fill ~-{h} ~-{depth} ~-{h} ~{h} ~-1 ~{h} minecraft:air strict")));
+        // what stood on the ground it split (the plants, and the trees with their leaves) left hanging over it, and the
+        // leaves hanging over its edges, cleared straight after (counted from its middle's ground, now its floor)
+        let (top, b) = (depth + 14, h + TIDY_BORDER);
+        for only in [TIDY_LOOSE, TIDY_FLOWERS, TIDY_LOGS] {
+            p.at(t, surf(x, z, &format!("fill ~-{h} ~{depth} ~-{h} ~{h} ~{top} ~{h} minecraft:air replace {only} strict")));
+        }
+        p.at(t, surf(x, z, &format!("fill ~-{b} ~{} ~-{b} ~{b} ~{top} ~{b} minecraft:air replace #minecraft:leaves strict", depth + 2)));
         if p.rng.next() < 0.25 {
             let pitch = p.rng.uniform(0.5, 0.75);
             p.at(t, surf(x, z, &format!("playsound minecraft:block.basalt.break block @a ~ ~ ~ 4 {pitch:.2}")));
@@ -4722,6 +4855,126 @@ mod tick_budget {
         for laser in crate::lasers::LASERS {
             let ms = heaviest_tick(laser);
             assert!(ms <= proven * 1.25 + 0.5, "{}: a tick of {ms:.2} ms against the proven {proven:.2} ms", laser.key);
+        }
+    }
+    /// Every `edit-blocks` edit of a strike, with when it is due.
+    fn all_edits(laser: &'static Laser, seed: f32) -> Vec<(f32, Blocks)> {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let mut ev = plan(laser, &target, true, "minecraft:overworld", seed, [10.5, 66.0, 400.0], 0);
+        let mut out = Vec::new();
+        while let Some((t, a)) = ev.pop() {
+            match a {
+                Act::Blocks(b) => out.push((t, *b)),
+                Act::Later(job) => ev.extend(job()),
+                _ => {}
+            }
+        }
+        out
+    }
+    /// The columns (x, z) of an edit's runs clearing what hangs (`tidy`'s filters), and whether every such run only
+    /// changes what its filter names (into air).
+    fn tidied(edits: &[(f32, Blocks)]) -> std::collections::HashSet<(i32, i32)> {
+        let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING];
+        let mut cols = std::collections::HashSet::new();
+        for (_, b) in edits {
+            for r in &b.runs {
+                if r.only.is_some_and(|f| tidy.contains(&b.filters[f as usize])) {
+                    assert_eq!(b.palette[r.block as usize], "minecraft:air");
+                    cols.insert((r.x, r.z));
+                }
+            }
+        }
+        cols
+    }
+    #[test]
+    fn tidy_covers_what_changed_and_its_border_only_through_filters() {
+        // a hole dug in the middle of land cleared through on one side: every dug column cleared of what was left over
+        // it (plants, flowers, saplings, leaves, the trunk), every column left as it was within the border of a changed
+        // one cleared of only what hangs over its ground; none further out, none cleared through; every run filtered
+        let col = |x: i32, z: i32| {
+            if (x - 20).pow(2) + z * z <= 25 {
+                Col::Dug
+            } else if x < 0 {
+                Col::Cleared
+            } else {
+                Col::Kept
+            }
+        };
+        let b = tidy(-8, -12, 31, 12, 16, col);
+        let mut at: std::collections::HashMap<(i32, i32), Vec<(String, i32, i32)>> = Default::default();
+        for r in &b.runs {
+            let only = r.only.map(|f| b.filters[f as usize].to_string()).expect("a run with no filter");
+            assert!(only.starts_with("#minecraft:"), "{only}");
+            assert_eq!(b.palette[r.block as usize], "minecraft:air");
+            assert!(r.surface.is_some(), "counted from the ground");
+            at.entry((r.x, r.z)).or_default().push((only, r.y, r.y + r.height as i32 - 1));
+        }
+        for z in -12..=12 {
+            for x in -8..=31 {
+                let near = (-TIDY_BORDER..=TIDY_BORDER).any(|j| (-TIDY_BORDER..=TIDY_BORDER).any(|i| col(x + i, z + j) != Col::Kept));
+                let runs = at.get(&(x, z));
+                match col(x, z) {
+                    Col::Cleared => assert!(runs.is_none(), "{x} {z}: cleared through"),
+                    Col::Dug => {
+                        let runs = runs.expect("a dug column");
+                        for f in [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS] {
+                            assert!(runs.iter().any(|r| r.0 == f && r.1 <= 0 && r.2 >= 16), "{x} {z}: {f}");
+                        }
+                        assert!(runs.iter().any(|r| r.0 == TIDY_LOGS && r.2 < 0), "{x} {z}: the trunk");
+                    }
+                    Col::Kept if near => {
+                        let runs = runs.unwrap_or_else(|| panic!("{x} {z}: in the border"));
+                        assert!(runs.iter().all(|r| r.0 == TIDY_HANGING && r.1 >= 2 && r.2 >= 12), "{x} {z}: {runs:?}");
+                    }
+                    Col::Kept => assert!(runs.is_none(), "{x} {z}: beyond the border"),
+                }
+            }
+        }
+    }
+    #[test]
+    fn strikes_tidy_round_what_they_dig() {
+        // the crystal bloom: every column a hole or a fissure digs under the ground (an unfiltered run of air counted
+        // from it), and every column within the border round it, cleared of what was left hanging, the tick after
+        let edits = all_edits(&crate::lasers::CRYSTAL_BLOOM, 7.0);
+        let tidy_cols = tidied(&edits);
+        let mut dug = std::collections::HashSet::new();
+        for (_, b) in &edits {
+            for r in &b.runs {
+                if r.only.is_none() && r.surface.is_some() && r.y < 0 && b.palette[r.block as usize] == "minecraft:air" {
+                    dug.insert((r.x, r.z));
+                }
+            }
+            // (an edit clearing what hangs clears nothing else)
+            let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING];
+            if b.runs.first().is_some_and(|r| r.only.is_some_and(|f| tidy.contains(&b.filters[f as usize]))) {
+                assert!(b.runs.iter().filter(|r| b.palette[r.block as usize] == "minecraft:air").all(|r| r.only.is_some()));
+            }
+        }
+        assert!(dug.len() > 1000, "{} columns dug", dug.len());
+        for &(x, z) in &dug {
+            for j in -TIDY_BORDER..=TIDY_BORDER {
+                for i in -TIDY_BORDER..=TIDY_BORDER {
+                    assert!(tidy_cols.contains(&(x + i, z + j)), "{} {}: round a dug column, not tidied", x + i, z + j);
+                }
+            }
+        }
+        // the planet killer (and the crystal bloom): the land just past the edge of the blast, where the trees cut off
+        // there hang their leaves
+        for (laser, edge) in [(&crate::lasers::PLANET_KILLER, PK_BLAST * 0.94 + 3.0), (&crate::lasers::CRYSTAL_BLOOM, crystal::CB_BLAST * 0.93)] {
+            let edits = all_edits(laser, 7.0);
+            let tidy_cols = tidied(&edits);
+            let (px, pz) = (10.5, -2.5);
+            let mut seen = 0;
+            for k in 0..180 {
+                let a = f64::from(k) * 2.0 * PI / 180.0;
+                // (a column well inside the blast's edge, which is cleared, and the first one tidied out from it)
+                let r0 = edge - 6.0;
+                let hit = (0..56).map(|d| r0 + f64::from(d)).map(|r| ((px + a.cos() * r).floor() as i32, (pz + a.sin() * r).floor() as i32)).find(|c| tidy_cols.contains(c));
+                if hit.is_some() {
+                    seen += 1;
+                }
+            }
+            assert!(seen >= 175, "{}: the edge tidied along {seen} of 180 headings", laser.key);
         }
     }
 }
