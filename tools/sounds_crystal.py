@@ -11,9 +11,12 @@
   resonance  the spires humming in sync (0 is the strike's 14 s): a harmonic drone building, harmonic by harmonic, its
              pulses quickening with the light running up them, air and breathy high harmonics shimmering on top; cut dead
              0.32 s before the burst
-  shatter    the detonation: `explosion_live` played on another seed and with its own character (a sharper, brighter
-             start, a little shorter), with ringing crystalline partials, a shimmer of glitter high up and the glass of the
-             spires shattering on top of its weight
+  shatter    the detonation (the burst SHATTER_PRE = 1 s in): first the field drawing in (a sub swelling and rising, a
+             low rumble opening up and fluttering faster, a dark inhale), sucked out 15 ms before the burst; then
+             `explosion_live` played on another seed and with its own character (a sharper, brighter start, a little
+             shorter), a blow of sub (72 to 30 Hz) on the burst's sample, ringing crystalline partials, a shimmer of
+             glitter high up and the glass of the spires shattering on top of its weight; heavy chunks of crystal
+             thudding down on stone 1.5-4 s after
   tinkle     shards raining down for seconds after it: each its own glass hit (inharmonic modes struck rough, bouncing
              and skittering on stone, dull on earth), near and far, some in sprays, the odd bigger one breaking, fine
              grit settling, thinning out
@@ -34,6 +37,8 @@ import sounds_themes as T
 import sounds_pk_blast as PB
 
 TH = "crystalbloom"
+# (the shatter starts this far before the burst: the breath in, drawn over its lead-in)
+SHATTER_PRE = 1.0
 NAMES = ["wake", "punch1", "punch2", "punch3", "bloom", "resonance", "shatter", "tinkle", "after"]
 # (the vibrating modes of a free glass bar or a crystal: inharmonic, so they ring like glass, not like a string)
 GLASS = (1.0, 2.76, 5.40, 8.93, 13.3)
@@ -200,6 +205,78 @@ def glass_hit(g, size, stone, rough=1.0):
         grab = (g.random(ln // 90 + 2) ** 3)[np.minimum(np.arange(ln) // 90, ln // 90 + 1)]
         sk = band(g.standard_normal(ln), 2500, 9000) * grab * np.hanning(ln)
         y[k:k + ln] += sk[:m - k] / (np.abs(sk).max() + 1e-9) * g.uniform(0.15, 0.35)
+    return y / (np.abs(y).max() + 1e-9)
+
+
+def breath_in(g, pre):
+    """The field drawing in before it bursts, the last `pre` seconds before it (stereo, ending on the burst's sample): a
+    sub swelling and rising in pitch (24 to 44 Hz, its second harmonic for small headphones), a low rumble under it
+    opening up (a lowpass gliding 70 to 260 Hz) and fluttering faster and faster with the pressure (the resonance's
+    pulse, 7 a second, quickening), and a dark inhale over it all (noise swelling and brightening as a reversed decay
+    does, 150 Hz to 2 kHz, wide). Steepest at the end, then sucked out over the last 35 ms to nothing 15 ms before the
+    burst: nothing of it rings into the hit. Filtered first, gated last (the filters are zero-phase), so the gate holds."""
+    m = int(pre * SR)
+    tb = np.arange(m) / SR - pre                                       # seconds to the burst
+    x = np.clip((tb + pre) / (pre - 0.05), 0, 1)
+    gate = np.clip((-0.015 - tb) / 0.035, 0, 1)
+    gate = gate * gate * (3 - 2 * gate) * np.clip((tb + pre) / 0.02, 0, 1)
+    f = 24 + 20 * x ** 1.5
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    sub = (np.sin(ph) + 0.22 * np.sin(2 * ph + 0.7)) * x ** 2.2
+    rum = band(g.standard_normal(m + SR), 22, None, 2)[:m]
+    rum = T.lowpass_glide(rum, 70, 260, curve=1.8)
+    flutter = 1 + 0.4 * x * np.sin(2 * np.pi * np.cumsum(7 + 9 * x * x) / SR)
+    rum = rum / (np.std(rum[-int(0.3 * SR):]) + 1e-9) * x ** 2.6 * flutter
+    airs = []
+    for k in range(2):
+        a = band(g.standard_normal(m + SR), 150, None, 2)[:m]
+        a = T.lowpass_glide(a, 300, 3000, curve=2.2)
+        airs.append(a / (np.std(a[-int(0.3 * SR):]) + 1e-9) * np.exp((tb + 0.05) / 0.22).clip(0, 1))
+    lo = (sub * 1.0 + rum * 0.55) * gate
+    return lo + airs[0] * 0.4 * gate, lo + airs[1] * 0.4 * gate
+
+
+def sub_boom(g, n, t0):
+    """The pressure of the release, on the burst's sample: a blow of sub swinging from 72 down to 30 Hz in the first
+    tenth of a second and holding there, rounded a little (a touch of drive, so it reads on small headphones too), with
+    a rumble of noise 22-65 Hz under it, heavy for a quarter of a second and gone in a second and a half. Mono."""
+    t = np.arange(n) / SR
+    u = np.maximum(t - t0, 0.0); on = t >= t0
+    f = 30 + 42 * np.exp(-u / 0.05)
+    ph = 2 * np.pi * np.cumsum(f * on) / SR
+    env = (1 - np.exp(-u / 0.008)) * (0.65 * np.exp(-u / 0.22) + 0.35 * np.exp(-u / 0.8)) * on
+    tone = np.tanh(1.6 * np.sin(ph)) / np.tanh(1.6) * env
+    body = T.unit(band(g.standard_normal(n), 22, 65, 2))
+    body = body * (1 - np.exp(-u / 0.004)) * np.exp(-u / 0.4) * on
+    return tone + body * 0.45
+
+
+def chunk_land(g, size, near):
+    """A heavy chunk of crystal coming down on stone: the dull knock of its mass (a rough, long burst through a few low,
+    unevenly spaced modes, short-lived), the crunch of the glass as its edges break (a dense set of inharmonic modes
+    struck rough and damped hard, so it cracks rather than rings), grit off it; a big one maybe rocking and knocking
+    once more. No two alike. Mono, peak 1."""
+    m = int(0.7 * SR)
+    y = np.zeros(m)
+    hits = [(0.0, 1.0)]
+    if g.random() < 0.45:
+        hits.append((g.uniform(0.06, 0.16) * (0.7 + 0.5 * size), g.uniform(0.25, 0.5)))
+    for tk, a in hits:
+        k = int(tk * SR); mm = m - k
+        fr = np.sort(np.exp(g.uniform(np.log(70), np.log(330), 4))) * (1.25 - 0.4 * size)
+        knock = modal(g, mm, burst(g, int(0.03 * SR), g.uniform(0.006, 0.014), 40, 900), fr, g.uniform(0.02, 0.07, 4), g.lognormal(0, 0.4, 4))
+        knock = band(knock, 40, 1200)
+        nm = int(g.integers(12, 20))
+        cf = np.exp(g.uniform(np.log(480), np.log(4200), nm)) * (1.2 - 0.3 * size)
+        crunch = modal(g, mm, burst(g, int(0.012 * SR), g.uniform(0.001, 0.004)), cf, g.uniform(0.004, 0.02, nm) * (700 / cf) ** 0.3, g.lognormal(0, 0.7, nm) * (900 / cf) ** 0.4)
+        grit = band(burst(g, mm, g.uniform(0.008, 0.02)), 1200, 7000)
+        grit *= (g.random(mm // 150 + 2) ** 2)[np.minimum(np.arange(mm) // 150, mm // 150 + 1)]
+        part = (knock / (np.abs(knock).max() + 1e-9) * (0.8 + 0.3 * size) + crunch / (np.abs(crunch).max() + 1e-9) * g.uniform(0.45, 0.7)
+                + grit / (np.abs(grit).max() + 1e-9) * g.uniform(0.15, 0.3))
+        y[k:] += part * a
+    # (far ones duller)
+    if near < 0.7:
+        y = band(y, None, 1500 + 6000 * near, 2)
     return y / (np.abs(y).max() + 1e-9)
 
 
@@ -412,6 +489,7 @@ def shatter():
     # a hard glassy snap in its first milliseconds, ringing partials (a chord of crystal modes struck all at once,
     # shimmering as they beat, the high ones dying first), glitter sparkling high up for seconds, and the glass of the
     # spires shattering all round, burst on burst, thinning out into tinkling. Clean: every hit starts on its sample.
+    # All of that is built as it was (0.05 s of lead-in), then moved to SHATTER_PRE for the breath in before it.
     d = 16.0; n = int(SR * d); t = tt(d)
     t0 = 0.05
     with PB.seeded(75101):
@@ -451,7 +529,32 @@ def shatter():
         L[:m] += rtl[:m] - ((ring[0] + ring[1]) * rk * 0.12)[:m]
         R[:m] += rtr[:m] - ((ring[0] + ring[1]) * rk * 0.12)[:m]
         L, R = T.centre_lows(T.low_cut(L, 16), T.low_cut(R, 16))
-    PB.finish_blast(f"{TH}/shatter", L, R, -8.0, 0.88, 0.8)
+        # ---- on top, on their own draws (so the rest is as it was): a lead-in of PRE seconds, the breath in over it,
+        # the boom on the burst's sample, and the heavy chunks landing after it
+        g = np.random.default_rng(75301)
+        pre = SHATTER_PRE - t0
+        L = np.concatenate((np.zeros(int(pre * SR)), L)); R = np.concatenate((np.zeros(int(pre * SR)), R))
+        n2 = len(L); T0 = SHATTER_PRE
+        bL, bR = breath_in(g, 0.95)
+        kb = lv * 0.2 / (np.sqrt(np.mean(((bL + bR) / 2)[-int(0.25 * SR):-int(0.02 * SR)] ** 2)) + 1e-9)
+        k0 = int(T0 * SR) - len(bL)
+        L[k0:k0 + len(bL)] += bL * kb; R[k0:k0 + len(bR)] += bR * kb
+        boom = sub_boom(g, n2, T0)
+        boom *= lv * 1.2 / (T.loudest(boom) + 1e-9)
+        L += boom; R += boom
+        # (the chunks: 1.5-4 s after, near and far, each its own)
+        tc = T0 + 1.5
+        for _ in range(8):
+            tc += g.gamma(1.6, 0.18)
+            if tc > T0 + 4.0:
+                break
+            near = g.random() ** 1.3; size = g.uniform(0.4, 1.0)
+            y = chunk_land(g, size, near) * lv * (0.35 + 0.65 * near) * (0.6 + 0.5 * size) * 6.0
+            l, r = T.pan(y, g.uniform(-0.85, 0.85) * (0.4 + 0.6 * near))
+            k = int((tc + (1 - near) * 0.04) * SR)
+            L[k:k + len(l)] += l[:n2 - k]; R[k:k + len(r)] += r[:n2 - k]
+    # (a hair under the old ceiling: the boom's sub gives the encoder a little more to overshoot)
+    PB.finish_blast(f"{TH}/shatter", L, R, -8.0, 0.874, 0.8)
     return L, R
 
 
