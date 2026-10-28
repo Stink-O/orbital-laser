@@ -90,9 +90,11 @@ Eight lasers, five on the wheel's first page and three on its second.
   leaves a crater 480 blocks across.
 - **Crystal Bloom** (page two). A forest of crystal spires bursts out of the land, hums as one and shatters into pieces
   that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
+- **Sinkhole** (page two). Nothing from the sky: the land trembles and cracks, gives, then caves in slab by slab into a
+  pit about 225 blocks across and down to bedrock, with jagged walls, ledges and a dark abyss.
 
-Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer and
-the Crystal Bloom reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
+Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -218,10 +220,10 @@ the reason on its row first.
    what it does and click to load it. The arrows either side of the ring, the tabs over it or a right-click turn the
    page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar shows
-   `ACQUIRING TARGET…`, then the strike lands where your crosshair is.
+   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole), then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Crystal Bloom 60 and the Downfall 64.
+Mothership and the Sinkhole 34, the Meteor Storm 38, the Crystal Bloom 60 and the Downfall 64.
 
 The wheel also has:
 

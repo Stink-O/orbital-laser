@@ -93,6 +93,19 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   reaches them (the hearts of the first shards, each cluster's tallest and a few others; the rest shatter whole), and
   the fissures split open as the shock reaches them, light running along them. The well's light and a drift of motes
   fade out over the crater until the strike ends at 60 s. It reaches 1000 blocks.
+- **Sinkhole.** No beam and nothing from the sky. A seismic warning; a rumble you feel more than hear, the ground
+  trembling unevenly, birds going up off the land and scattering, and hairline cracks racing out over it from the
+  target, radiating and branching, groans and cracks heard from out over the land. At 6 s the middle gives with a sharp
+  crack: it drops four blocks, real ground and everything on it, dust puffing up, and sags three more at 7.3 s while the
+  cracks round the slabs it will break into open up. At 8.6 s the collapse: a deep boom, and the ground caves in from
+  the middle out, ring by ring, slowly at first, a stall while the ring round the middle holds, then in a rush. Each
+  slab of land (grass over dirt over stone, its own ground's height and slope) strains, rocks, tips in over its outer
+  edge and drops away into the pit, sliding in and turning as it falls, the land under it really gone; the dust boils
+  up out of the hole and rolls out low over the land, rocks grind and rattle and the slabs are heard striking the
+  bottom. Then an echoing near-silence, pebbles running down the walls, and the pit: about 225 blocks across, its rim
+  wandering, sheer and dark down to bedrock, its walls jagged in strata bands, with ledges heaped with rubble and moss,
+  roots hanging under the overhangs near the top, the world's own strata, caves and ores laid open, and a heap of
+  rubble at its foot. Where it cut a river or a lake, water pours over its rim. It reaches 1000 blocks.
 
 All of them:
 
@@ -139,13 +152,19 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   strewn with amethyst out to 235, and every mob within 160 killed. Stand at least 250 blocks back. It keeps about 770
   chunks loaded while it works; its land goes in from the detonation (22 s) and is done by about 28 s.
 
+- **Sinkhole:** a pit about 225 across (its rim wandering from about 190 to 260) down to bedrock; everything over it
+  gone (up to 36 over the target, or 28 over its own ground), its walls cut back up to about 6 under the rim, the water
+  and lava in them sealed in (water turned to barrier near the top, so a lake or river stops at the edge, tuff deeper;
+  lava to magma), and every mob within 140 killed. The middle is moved down 7 blocks with `clone` first. It keeps about
+  285 chunks loaded while it works; its land goes in slab by slab from 8.6 s and is dug to bedrock by about 23 s.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -215,7 +234,11 @@ and 0.66 s after it breaks through and surging up 0.9 s after), the heart at 6.7
 7.6 and reaches the edge of the field 4.6 s later; they resonate from 14, shards orbiting them from 15.6, a breath from
 21.68, and detonate at 22; the crater is dug from the middle out from 22.1 at 70 blocks a second, the shards land
 until about 28, the broken spires come down at 24.6 and the land is frosted and strewn by 28.2; the well's light and
-a drift of motes fade out over the crater until the strike ends at 60.
+a drift of motes fade out over the crater until the strike ends at 60. The Sinkhole's cracks race out from about 1 s,
+the birds go up from 1 s, the middle gives at 6 and sags at 7.3; the collapse sets out from the middle at 8.6, reaches
+30 blocks by 9.5, holds until 10.6, then rushes out to the rim by about 15 (each slab drawn straining 0.45 s before it
+lets go, the land under it dug 0.1 s before, and gone into the dark 3.2 s after); the pit is dug on down to bedrock from
+16 s, a chunk column at a time from the middle out, done by about 23; the strike ends at 34.
 
 ## The effects
 
@@ -269,7 +292,21 @@ from the recording; none of its audio is used. The Crystal Bloom's ([`tools/soun
 are built from the modes of struck glass (inharmonic partials, each a pair of sines a hair apart so it shimmers), glints
 of a few milliseconds by the thousand, and bursts of filtered noise for glass breaking; its detonation is the Planet
 Killer's `explosion_live` on its own seed and with its own character, with ringing crystal, glitter and shattering glass
-on top of it.
+on top of it. The Sinkhole's ([`tools/sounds_sinkhole.py`](../tools/sounds_sinkhole.py)) are rock and earth: a sub-bass
+rumble that swells and sags unevenly, groans of the ground under strain (narrow bands of noise sliding down, rock
+grinding in uneven grabs), sharp cracks of rock each with its own splinters and a crumble of grit, the give's drop, the
+collapse (`explosion_live` again, on its own seed, made earthy: its top rolled off, its low-mid pushed, a strain before
+it, rock grinding as it gives), the rockfall (a grinding roar and slabs striking the bottom, unevenly, further and
+further off) and the pebbles after, each bouncing its own way, in the pit's long echo. Each is heard late by how far
+away it is.
+
+The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
+cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
+slope once the world has said them (`world.surface-height`), and the waterfalls, where the rim's columns stand under
+water. Each slab is a convex block of land met plane by plane; it is drawn straining in place over the land as it still
+is, the mod digs the land under it, and only then does it tip and fall, so the hole is never seen open before the land
+over it has gone. The cracks are a Voronoi network stretched along the radius, and the slabs' own outlines; the pit is
+darkened where it has really been dug; the dust is a noise volume marched along the view ray.
 
 ## Stock Horizon
 

@@ -4286,7 +4286,9 @@ mod tests {
                         }
                     })
                 };
-                for y in [65, (65 + sky) / 2, sky] {
+                // (the sinkhole comes from nothing overhead: it clears what stood on the land it takes, 36 up)
+                let ys = if laser.key == "sinkhole" { vec![65, 64 + 36] } else { vec![65, (65 + sky) / 2, sky] };
+                for y in ys {
                     assert!(over(y), "{} in {dimension}: nothing clears y {y} over the target", laser.key);
                 }
                 assert!(!over(sky + 1), "{} in {dimension}: clears above y {sky}", laser.key);
