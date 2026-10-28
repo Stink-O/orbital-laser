@@ -394,7 +394,7 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
 
     // the land waking: its hum and groan from the start, heard from the middle, the ground trembling more and more
     p.at(0.2, bar("CRYSTAL BLOOM: THE LAND WAKES", laser.color));
-    p.csound(lt.min(0.6), "wake", 10.0, 1.0);
+    p.csound(lt, "wake", 10.0, 1.0);
     for k in 0..6 {
         p.shake(0.4 + k as f32 * 0.5 + lt, (0.04 + 0.02 * k as f32) * fo, 0.8);
     }
@@ -436,7 +436,8 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
         tk += 0.6 - 0.35 * u;
     }
     p.at(CB_DET, bar("DETONATION", "white"));
-    p.csound(CB_DET + lt, "shatter", 10.0, 1.0);
+    // (the burst is 0.05 s into its sound)
+    p.csound(CB_DET - 0.05 + lt, "shatter", 10.0, 1.0);
     p.shake(CB_DET + lt, fo, 4.0);
     p.csound(CB_DET + 1.4 + lt, "tinkle", 10.0, 1.0);
     p.csound(CB_DET + 5.0 + lt, "after", 9.0, 1.0);
