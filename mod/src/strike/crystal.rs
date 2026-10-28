@@ -194,7 +194,7 @@ fn cb_h3(f: usize, k: u32, seed: f32) -> [f64; 3] {
 /// The pieces spire i breaks into (strike.wgsl's cb_nseg): its cuts across, and whether each but its top is split again
 /// down its length.
 fn cb_nseg(r: f64, span: f64) -> usize {
-    ((span / (8.0 + r)) as i32).clamp(2, 6) as usize
+    ((span / (10.0 + r * 1.1)) as i32).clamp(2, 6) as usize
 }
 /// How high up its axis cut k of spire i is (strike.wgsl's cb_cut_h).
 fn cb_cut_h(i: usize, k: usize, nseg: usize, h0: f64, span: f64, seed: f32) -> f64 {
@@ -251,7 +251,7 @@ pub(super) fn cb_chunks(seed: f32) -> Vec<CbChunk> {
         let hue = cb_hue(i, seed, p);
         let _ = s;
         for k in 0..nseg {
-            let split = r > 7.0 && k < nseg - 1;
+            let split = r > 11.0 && k < nseg - 1;
             for half in 0..if split { 2 } else { 1 } {
                 let ylo = cb_cut_h(i, k, nseg, h0, span, seed);
                 let yhi = cb_cut_h(i, k + 1, nseg, h0, span, seed);
