@@ -723,11 +723,12 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
         for [x0, z0, x1, z1] in &load {
             p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
         }
-        // each spire breaking the ground: a hole round it and the earth heaped up round that
+        // each spire breaking the ground: a hole round it and the earth heaped up round that (ahead of the stages
+        // waiting their turn, the pieces' among them: it is seen as it happens)
         for i in 0..CB_N {
             let pl = cb_place(i, shader_seed);
             let f = cb_form(i, shader_seed, pl);
-            p.later(pl[2] as f32 - 0.3, move |q| cb_punch(q, point, pl, f, s));
+            p.soon(pl[2] as f32 - 0.3, move |q| cb_punch(q, point, pl, f, s));
         }
         // the crater, the land blown clear round it and the stumps, a few chunk columns a stage, nearest first
         // (no more than about five chunk columns a tick: one is put off a little, by up to what strike.wgsl allows for,
@@ -766,51 +767,96 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             p.later(CB_DET - 2.6 + i as f32 * 0.05, move |q| cb_fissure(q, point, i, shader_seed, CB_BOWL * 0.85, len));
         }
         // the pieces the spires broke into, built where they came down, on the ground as it lies there
-        // (worked out long before they come down, once the spires have all broken the ground, a pair a stage each tick
-        // while they resonate, when little else is worked out, and each stage ahead of every other waiting: the ground
-        // under a pair asked of the world, and the pair asked about CB_LAG stages before rested on it, its blocks put
-        // down and where it lies given to the pass, which flies it there; their blocks must be in on the tick each
-        // lands, and the pass holds each until they are. The ground under the stumps is asked after the pieces')
+        // (worked out long before they come down, a piece a stage, each stage ahead of every other waiting: the ground
+        // under one asked of the world, and the one asked about CB_LAG stages before rested on it, its blocks put down
+        // and where it lies given to the pass, which flies it there; their blocks must be in on the tick each lands,
+        // and the pass holds each until they are. Those clear of the holes the spires break the ground with go from the
+        // start, every other tick, leaving the rest to the spires breaking the ground; the rest, and the ground under
+        // the stumps, once every spire has broken it, every tick)
         let chunks = cb_chunks(shader_seed);
         let mut order: Vec<usize> = (0..chunks.len()).collect();
         order.sort_by(|a, b| chunks[*a].tl.total_cmp(&chunks[*b].tl));
-        let pairs: Vec<Vec<(CbChunk, u32)>> = order.chunks(2).map(|pair| pair.iter().map(|&n| (chunks[n], n as u32)).collect()).collect();
+        let holes: Vec<(f64, f64, f64)> = (0..CB_N)
+            .map(|i| {
+                let pl = cb_place(i, shader_seed);
+                (pl[0], pl[1], cb_form(i, shader_seed, pl)[0] * 1.15 + 1.0 + 6.0)
+            })
+            .collect();
+        let clear = |c: &CbChunk| {
+            let (x, z) = c.land();
+            let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 6.0;
+            holes.iter().all(|h| (x - h.0).powi(2) + (z - h.1).powi(2) > (reach + h.2).powi(2))
+        };
+        let (early, late): (Vec<usize>, Vec<usize>) = order.into_iter().partition(|&n| clear(&chunks[n]));
         let land = CbLand { by: p.by, floor_y, seed: s };
-        let pair_tags: Vec<u32> = pairs.iter().map(|_| crate::ground::new_tag()).collect();
-        let stages = (pairs.len() + groups.len()).max(pairs.len() + CB_LAG);
-        let mut pending = pairs.into_iter().zip(pair_tags.iter().copied());
-        let mut asked: std::collections::VecDeque<(Vec<(CbChunk, u32)>, u32)> = Default::default();
-        let mut groups = groups.into_iter();
-        for k in 0..stages {
-            let at = (CB_SURVEY + k as f32 * 0.05).min(CB_DET - 0.5);
-            // (what this stage asks about: a pair, or once they are all asked, a stump and the crystals round it)
-            let ask_pair = pending.next();
-            let ask_stumps = if ask_pair.is_none() { groups.next() } else { None };
-            if let Some(a) = &ask_pair {
-                asked.push_back(a.clone());
+        let mut items: Vec<(f32, CbAsk)> = Vec::new();
+        // (a tick apart until the first spires break the ground, then two, the tick between for them or a big piece's
+        // blocks; none while most of the spires break the ground)
+        let next = |t: f32| {
+            if t < CB_PUNCH0 - 0.6 {
+                t + 0.05
+            } else if (CB_BLOOM0 - 0.4..CB_SURVEY).contains(&(t + 0.1)) {
+                CB_SURVEY
+            } else {
+                t + 0.1
             }
-            let build = if k >= CB_LAG { asked.pop_front() } else { None };
-            let ask = ask_pair;
-            p.soon(at, move |q| {
-                let mut survey = |tag: u32, columns: Vec<(i32, i32)>| {
-                    #[cfg(test)]
-                    crate::ground::test_answer(tag, &columns);
-                    q.ev.push((at, Act::Survey { tag, columns }));
-                };
-                if let Some((cs, tag)) = ask {
-                    let mut columns = Vec::new();
-                    for (c, _) in &cs {
-                        columns.extend(cb_footprint(point, c));
-                    }
-                    survey(tag, columns);
-                }
-                if let Some(g) = ask_stumps {
-                    survey(crate::ground::new_tag(), cb_stump_footprint(&g));
+        };
+        let mut t = CB_SURVEY0;
+        // (two pieces a stage)
+        let pair = |ns: &[usize]| CbAsk::Pieces(ns.iter().map(|&n| (chunks[n], n as u32)).collect(), crate::ground::new_tag());
+        for ns in early.chunks(2) {
+            items.push((t, pair(ns)));
+            t = next(t);
+        }
+        t = t.max(CB_SURVEY);
+        for ns in late.chunks(2) {
+            items.push((t, pair(ns)));
+            t = next(t);
+        }
+        for g in groups {
+            // (a stump's ground a few rows of its boxes at a time, a few thousand columns a stage, worked out then)
+            let boxes = cb_stump_boxes(&g);
+            let (z0, z1) = (boxes.iter().map(|b| b[1]).min().unwrap_or(0), boxes.iter().map(|b| b[3]).max().unwrap_or(-1));
+            let (x0, x1) = (boxes.iter().map(|b| b[0]).min().unwrap_or(0), boxes.iter().map(|b| b[2]).max().unwrap_or(-1));
+            let rows = (CB_ASK_MAX as i32 / (x1 - x0 + 1).max(1)).max(1);
+            let mut z = z0;
+            while z <= z1 {
+                items.push((t, CbAsk::Rows(boxes.clone(), z, (z + rows - 1).min(z1))));
+                t = next(t);
+                z += rows;
+            }
+        }
+        // (stage k asks about item k and rests the piece of item k - CB_LAG, on item k's tick)
+        let n_items = items.len();
+        let times: Vec<f32> = items.iter().map(|i| i.0).collect();
+        let mut builds: Vec<Option<(Vec<(CbChunk, u32)>, u32)>> = items.iter().map(|i| if let CbAsk::Pieces(cs, tag) = &i.1 { Some((cs.clone(), *tag)) } else { None }).collect();
+        let mut asks: Vec<Option<CbAsk>> = items.into_iter().map(|i| Some(i.1)).collect();
+        for k in 0..n_items + CB_LAG {
+            let at = if k < n_items { times[k] } else { times[n_items - 1] + (k - n_items + 1) as f32 * 0.05 };
+            let ask = asks.get_mut(k).and_then(Option::take);
+            let build = if k >= CB_LAG { builds[k - CB_LAG].take() } else { None };
+            if ask.is_none() && build.is_none() {
+                continue;
+            }
+            // (before CB_SURVEY in turn with the rest, as stages waiting their turn: there is time; after it ahead of
+            // them, so the last are in long before they are thrown, whatever else waits then)
+            let job = move |q: &mut Plan| {
+                match ask {
+                    Some(CbAsk::Pieces(cs, tag)) => cb_survey(q, at, tag, cs.iter().flat_map(|(c, _)| cb_footprint(point, c)).collect()),
+                    Some(CbAsk::Rows(boxes, za, zb)) => cb_survey(q, at, crate::ground::new_tag(), cb_box_columns(&boxes, za, zb)),
+                    None => {}
                 }
                 if let Some((cs, tag)) = build {
-                    cb_land_pair(q, at, point, cs, shader_seed, tag, land, 10);
+                    for (c, n) in cs {
+                        cb_land_piece(q, at, point, c, n, shader_seed, tag, land, 10, 1);
+                    }
                 }
-            });
+            };
+            if at < CB_SURVEY {
+                p.later(at, job);
+            } else {
+                p.soon(at.min(CB_DET - 0.5), job);
+            }
         }
         // the land frosted with crystal and strewn with shards, a ring at a time from the middle out
         for part in 0..12u32 {
@@ -827,10 +873,25 @@ fn cb_punch(p: &mut Plan, point: [f64; 3], pl: [f64; 4], f: [f64; 4], seed: u32)
     let (cx, cz) = (point[0] + pl[0], point[2] + pl[1]);
     let rh = f[0] * 1.15 + 1.0;
     let deep = (2.0 + f[0] * 0.25).round() as i32;
-    let mut b = Blocks::default();
     let ext = (rh + 4.0).ceil() as i32;
-    let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
-    for z in (zc - ext)..=(zc + ext) {
+    let zc = cz.floor() as i32;
+    // (a big spire's in two halves, a stage each, the second the tick after: more would be more than a stage should do)
+    if ext > CB_PUNCH_HALF {
+        cb_punch_rows(p, cx, cz, rh, deep, ext, seed, pl[2] as f32, (zc - ext, zc));
+        p.soon(pl[2] as f32 - 0.25, move |p| cb_punch_rows(p, cx, cz, rh, deep, ext, seed, pl[2] as f32, (zc + 1, zc + ext)));
+    } else {
+        cb_punch_rows(p, cx, cz, rh, deep, ext, seed, pl[2] as f32, (zc - ext, zc + ext));
+    }
+}
+/// How far round a spire its hole reaches past which it is made in two halves.
+const CB_PUNCH_HALF: i32 = 22;
+/// Rows `rows` of spire hole round (cx, cz) (cb_punch), at `t0`, and the plants and trees left over them cleared the tick
+/// after (worked out on a stage of its own).
+#[allow(clippy::too_many_arguments)]
+fn cb_punch_rows(p: &mut Plan, cx: f64, cz: f64, rh: f64, deep: i32, ext: i32, seed: u32, t0: f32, rows: (i32, i32)) {
+    let mut b = Blocks::default();
+    let xc = cx.floor() as i32;
+    for z in rows.0..=rows.1 {
         for x in (xc - ext)..=(xc + ext) {
             let d = (f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz);
             let n = vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x511);
@@ -843,14 +904,20 @@ fn cb_punch(p: &mut Plan, point: [f64; 3], pl: [f64; 4], f: [f64; 4], seed: u32)
             }
         }
     }
-    p.ev.push((pl[2] as f32, Act::Blocks(Box::new(b))));
-    // the plants and the trees left over the hole and on the earth heaped round it, cleared the tick after
+    p.ev.push((t0, Act::Blocks(Box::new(b))));
+    p.soon(t0 - 0.2, move |p| cb_punch_tidy(p, cx, cz, rh, ext, deep, seed, t0, rows));
+}
+/// What cb_punch leaves to tidy round spire `pl`'s hole in rows `rows` (and the border past them), at `t0`.
+#[allow(clippy::too_many_arguments)]
+fn cb_punch_tidy(p: &mut Plan, cx: f64, cz: f64, rh: f64, ext: i32, deep: i32, seed: u32, t0: f32, rows: (i32, i32)) {
+    let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
     let g = ext + super::TIDY_BORDER;
-    let t = tidy(xc - g, zc - g, xc + g, zc + g, deep + 12, deep + 2, |x, z| {
+    let (za, zb) = (if rows.0 <= zc - ext { zc - g } else { rows.0 }, if rows.1 >= zc + ext { zc + g } else { rows.1 });
+    let t = tidy(xc - g, za, xc + g, zb, deep + 12, deep + 2, |x, z| {
         let d = (f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz);
         if d < rh + 1.5 || (d < rh + 3.5 && d < rh + 1.5 + 2.0 * vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x511)) { Col::Dug } else { Col::Kept }
     });
-    p.ev.push((pl[2] as f32 + 0.05, Act::Blocks(Box::new(t))));
+    p.ev.push((t0 + 0.05, Act::Blocks(Box::new(t))));
 }
 
 /// Dig the crater under chunk column (x0, z0) at `t`, straight into the chunks, and clear the land over it: the bowl
@@ -972,6 +1039,10 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     // first, so it stands on the ground and not on the trunk)
     let dug = CbLand { by, floor_y, seed: s };
     for c in stumps {
+        let (cx, cz) = (c.b[0], c.b[2]);
+        if cx + c.reach < f64::from(x0) || cx - c.reach > f64::from(x0 + 16) || cz + c.reach < f64::from(z0) || cz - c.reach > f64::from(z0 + 16) {
+            continue;
+        }
         // (a crystal round a stump's foot rests where its own foot is on the ground as it lies, whole: put up or down
         // to it, when the world said where that is)
         let lifted;
@@ -985,10 +1056,6 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
         } else {
             c
         };
-        let (cx, cz) = (c.b[0], c.b[2]);
-        if cx + c.reach < f64::from(x0) || cx - c.reach > f64::from(x0 + 16) || cz + c.reach < f64::from(z0) || cz - c.reach > f64::from(z0 + 16) {
-            continue;
-        }
         // (only over the columns it can reach)
         let (xa, xb) = (((cx - c.reach).floor() as i32).max(x0), ((cx + c.reach).ceil() as i32).min(x0 + 15));
         let (za, zb) = (((cz - c.reach).floor() as i32).max(z0), ((cz + c.reach).ceil() as i32).min(z0 + 15));
@@ -1000,8 +1067,10 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
                 let n = post.runs.len();
                 // (where the world said what the ground is: put where it stands in the world, so it is whole and as
                 // the pass drew it, a little of it under the ground as it lies, down to it wherever it lies lower;
-                // where not, its columns counted from the ground)
-                match dug.at(point, x, z, f32::MAX) {
+                // where not, its columns counted from the ground. CbLand::at's, from this cell's own depths)
+                let top = if d >= by - floor_y { floor_y + 1 } else { by - d + 1 };
+                let here = crate::ground::at(x, z).map(|g| if cleared[(z - z0) as usize][(x - x0) as usize] { g.min(top) } else { g });
+                match here {
                     Some(g) => c.column(&mut post, x, z, (g - 3).max(floor_y + 1), sky, None),
                     None => c.column(&mut post, x, z, (by - d - 3).max(floor_y + 1), sky, Some(by - d + 1)),
                 }
@@ -1102,24 +1171,58 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
     }
 }
 
-/// The pair of pieces `cs` (asked about as query `tag`) where they come down, once the world has said what the ground
-/// under them is (a tick or two after it was asked; waited for a tick at a time, `tries` more at most and never so
-/// late that the pass could not fly them there: then as though the land lay at the target's height).
+/// What a stage asks the ground under: a piece (its number and the query's tag), or a stump and the crystals round it.
+enum CbAsk {
+    Pieces(Vec<(CbChunk, u32)>, u32),
+    Rows(Vec<[i32; 4]>, i32, i32),
+}
+/// The most columns one stage asks about (the answers are taken in, a tick or two later, beside another stage).
+const CB_ASK_MAX: usize = 6000;
+/// Ask the world for the ground under `columns`, as query `tag`.
+fn cb_survey(q: &mut Plan, at: f32, tag: u32, columns: Vec<(i32, i32)>) {
+    #[cfg(test)]
+    crate::ground::test_answer(tag, &columns);
+    q.ev.push((at, Act::Survey { tag, columns }));
+}
+/// Piece `c` (number n, asked about as query `tag`) where it comes down, once the world has said what the ground under
+/// it is (a tick or two after it was asked; waited for a tick at a time, `tries` more at most and never so late that the
+/// pass could not fly it there). If the world could not say (its land not loaded yet: it is kept loaded from the
+/// strike's start, but takes a while to come in), asked again two seconds later, `again` more times at most, while the
+/// pieces are worked out in turn with the rest (before CB_SURVEY); then as though the land lay at the target's
+/// height.
 #[allow(clippy::too_many_arguments)]
-fn cb_land_pair(q: &mut Plan, at: f32, point: [f64; 3], cs: Vec<(CbChunk, u32)>, seed: f32, tag: u32, land: CbLand, tries: u32) {
-    if !crate::ground::ready(tag) && tries > 0 && at < CB_DET - 1.0 {
-        q.soon(at + 0.05, move |q| cb_land_pair(q, at + 0.05, point, cs, seed, tag, land, tries - 1));
+fn cb_land_piece(q: &mut Plan, at: f32, point: [f64; 3], c: CbChunk, n: u32, seed: f32, tag: u32, land: CbLand, tries: u32, again: u32) {
+    let late = CB_DET - 1.0;
+    if !crate::ground::ready(tag) && tries > 0 && at < late {
+        q.soon(at + 0.05, move |q| cb_land_piece(q, at + 0.05, point, c, n, seed, tag, land, tries - 1, again));
         return;
     }
-    for (c, n) in cs {
-        cb_landed(q, at, point, &c, seed, n, &land);
+    let rest = cb_rest_on(point, &c, &land);
+    if rest.is_none() && again > 0 && at + 2.0 < CB_SURVEY && crate::ground::ready(tag) {
+        let tag = crate::ground::new_tag();
+        cb_survey(q, at, tag, cb_footprint(point, &c));
+        q.later(at + 2.0, move |q| cb_land_piece(q, at + 2.0, point, c, n, seed, tag, land, 10, again - 1));
+        return;
     }
+    // (a big piece's blocks worked out on a stage of their own, the tick after: resting it and building it both
+    // in one would be more than a stage should do; where it lies goes to the pass now)
+    let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 1.0;
+    if let Some((dy, _)) = &rest
+        && reach > CB_BIG
+    {
+        q.ev.push((at, Act::Data { index: c.id as u32, value: *dy as f32 }));
+        q.soon(at + 0.05, move |q| cb_landed(q, at + 0.05, point, &c, seed, n, rest));
+        return;
+    }
+    cb_landed(q, at, point, &c, seed, n, rest);
 }
+/// How far a piece reaches (its box half as wide) past which it is rested and built on two stages.
+const CB_BIG: f64 = 18.0;
 /// The piece `c` where it came down, as blocks the size of it, rested on the ground as it lies there (`cb_landed_blocks`),
 /// and where it lies given to the pass at `at`, long before it is thrown.
-fn cb_landed(p: &mut Plan, at: f32, point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: &CbLand) {
+fn cb_landed(p: &mut Plan, at: f32, point: [f64; 3], c: &CbChunk, seed: f32, n: u32, rest: Option<(f64, CbGrid)>) {
     {
-        let (dy, mut b) = cb_landed_blocks(point, c, seed, n, Some(land));
+        let (dy, mut b) = cb_landed_from(point, c, seed, n, rest);
         if let Some(dy) = dy {
             p.ev.push((at, Act::Data { index: c.id as u32, value: dy as f32 }));
         }
@@ -1139,6 +1242,8 @@ fn cb_landed(p: &mut Plan, at: f32, point: [f64; 3], c: &CbChunk, seed: f32, n: 
 /// latest at about 12.9 s), and how many stages (ticks) before each pair is rested the ground under it is asked about.
 const CB_SURVEY: f32 = 13.2;
 const CB_LAG: usize = 6;
+/// When the ground under the pieces clear of the spires' holes starts to be asked about.
+const CB_SURVEY0: f32 = 0.6;
 /// How far a piece's lowest face may stand over the ground where it would be in the ground on land at the target's
 /// height (no more than half a block: it lies on it), and how much of how far it would stand out of that land it keeps
 /// standing out at least, however far it has to go down into the high side to lie so.
@@ -1173,40 +1278,45 @@ impl CbLand {
         Some(g)
     }
 }
-/// The columns a piece may come to rest over, wherever the ground under it has it lie (its columns as it lies at the
-/// target's height, and two round them).
+/// The columns a piece may come to rest over, wherever the ground under it has it lie: the box round where it lies at
+/// the target's height, and three round that (no more worked out than that: a stage has a fuel limit).
 fn cb_footprint(point: [f64; 3], c: &CbChunk) -> Vec<(i32, i32)> {
-    let planes = cb_rest_world(c);
     let (pe, _) = c.rest();
-    let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 3.0;
+    let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 1.0 + 3.0;
     let mut out = Vec::new();
     let (x0, x1) = ((point[0] + pe[0] - reach).floor() as i32, (point[0] + pe[0] + reach).ceil() as i32);
     let (z0, z1) = ((point[2] + pe[2] - reach).floor() as i32, (point[2] + pe[2] + reach).ceil() as i32);
     for z in z0..=z1 {
         for x in x0..=x1 {
-            if cb_span(&planes, f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2], 2.0).is_some() {
+            out.push((x, z));
+        }
+    }
+    out
+}
+/// The boxes a stump and the crystals round it reach over (x0, z0, x1, z1).
+fn cb_stump_boxes(g: &[CbSolid]) -> Vec<[i32; 4]> {
+    g.iter()
+        .map(|c| [(c.b[0] - c.reach).floor() as i32, (c.b[2] - c.reach).floor() as i32, (c.b[0] + c.reach).ceil() as i32, (c.b[2] + c.reach).ceil() as i32])
+        .collect()
+}
+/// The columns of rows za..=zb in any of `boxes`, each once.
+fn cb_box_columns(boxes: &[[i32; 4]], za: i32, zb: i32) -> Vec<(i32, i32)> {
+    let (x0, x1) = (boxes.iter().map(|b| b[0]).min().unwrap_or(0), boxes.iter().map(|b| b[2]).max().unwrap_or(-1));
+    let mut out = Vec::new();
+    for z in za..=zb {
+        for x in x0..=x1 {
+            if boxes.iter().any(|b| x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3]) {
                 out.push((x, z));
             }
         }
     }
     out
 }
-/// The columns a stump and the crystals round it stand in.
+/// The columns a stump and the crystals round it may stand in.
+#[cfg(test)]
 fn cb_stump_footprint(g: &[CbSolid]) -> Vec<(i32, i32)> {
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    for c in g {
-        let (xa, xb) = ((c.b[0] - c.reach).floor() as i32, (c.b[0] + c.reach).ceil() as i32);
-        let (za, zb) = ((c.b[2] - c.reach).floor() as i32, (c.b[2] + c.reach).ceil() as i32);
-        for z in za..=zb {
-            for x in xa..=xb {
-                if c.span(f64::from(x) + 0.5, f64::from(z) + 0.5).is_some() && seen.insert((x, z)) {
-                    out.push((x, z));
-                }
-            }
-        }
-    }
-    out
+    let boxes = cb_stump_boxes(g);
+    cb_box_columns(&boxes, boxes.iter().map(|b| b[1]).min().unwrap_or(0), boxes.iter().map(|b| b[3]).max().unwrap_or(-1))
 }
 /// Where the column at (fx, fz) (off the target) runs through the solid `planes` (normalised: inside where n . x <= w),
 /// each grown `grow` out: from ya up to yb.
@@ -1231,7 +1341,7 @@ fn cb_span(planes: &[([f64; 3], f64)], fx: f64, fz: f64, grow: f64) -> Option<(f
 /// ground (the lowest quarter of it), so it is wedged in rather than hovering, and lower still if that would leave it
 /// standing over the ground anywhere there (a slope, a drop, the edge of a cliff: it goes into the high side), but
 /// never so far that it stands out less than half as far as it would have.
-fn cb_rest_on(point: [f64; 3], c: &CbChunk, land: &CbLand) -> Option<f64> {
+fn cb_rest_on(point: [f64; 3], c: &CbChunk, land: &CbLand) -> Option<(f64, CbGrid)> {
     let planes = cb_rest_world(c);
     let (pe, _) = c.rest();
     let t = CB_DET + c.tp as f32;
@@ -1243,11 +1353,26 @@ fn cb_rest_on(point: [f64; 3], c: &CbChunk, land: &CbLand) -> Option<f64> {
     let (x0, x1) = ((point[0] + pe[0] - reach).floor() as i32, (point[0] + pe[0] + reach).ceil() as i32);
     let (z0, z1) = ((point[2] + pe[2] - reach).floor() as i32, (point[2] + pe[2] + reach).ceil() as i32);
     let (mut cols, mut all) = (Vec::new(), 0usize);
-    for z in z0..=z1 {
-        for x in x0..=x1 {
-            let Some((ya, yb)) = cb_span(&planes, f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2], 0.0) else { continue };
+    // (a big one's ground read every other column each way: enough to rest it on, for a quarter of the work, which a
+    // stage has only so much of)
+    let step = 1;
+    // (each column's ground worked out once, for its blocks too, a little round it as it may lie a little off this)
+    let w = x1 - x0 + 7;
+    let grid = CbGrid { land: *land, point, t, x0: x0 - 3, z0: z0 - 3, w, memo: std::cell::RefCell::new(vec![CB_UNKNOWN; (w * (z1 - z0 + 7)) as usize]) };
+    for z in (z0..=z1).step_by(step) {
+        // (it is convex: across a row it is over one run of columns, and the row is done once it has been left)
+        let mut seen = false;
+        for x in (x0..=x1).step_by(step) {
+            let (fx, fz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
+            let Some((ya, yb)) = cb_span(&planes, fx, fz, 0.0) else {
+                if seen {
+                    break;
+                }
+                continue;
+            };
+            seen = true;
             all += 1;
-            if let Some(g) = land.at(point, x, z, t) {
+            if let Some(g) = grid.at(x, z) {
                 cols.push((ya, yb, f64::from(g) - point[1]));
             }
         }
@@ -1273,7 +1398,38 @@ fn cb_rest_on(point: [f64; 3], c: &CbChunk, land: &CbLand) -> Option<f64> {
     if out > 0.0 {
         dy = dy.max(CB_REST_OUT * out - over);
     }
-    Some(dy.clamp(-60.0, 60.0))
+    Some((dy.clamp(-60.0, 60.0), grid))
+}
+/// The ground under a piece as it is when it is built (`cb_rest_on`), for its blocks.
+struct CbGrid {
+    land: CbLand,
+    point: [f64; 3],
+    t: f32,
+    x0: i32,
+    z0: i32,
+    w: i32,
+    /// What each column's ground came to, once worked out (CB_UNKNOWN: not yet; CB_NONE: the world did not say).
+    memo: std::cell::RefCell<Vec<i32>>,
+}
+const CB_UNKNOWN: i32 = i32::MIN;
+const CB_NONE: i32 = i32::MIN + 1;
+impl CbGrid {
+    fn at(&self, x: i32, z: i32) -> Option<i32> {
+        let (i, j) = (x - self.x0, z - self.z0);
+        let k = (j * self.w + i) as usize;
+        if i < 0 || j < 0 || i >= self.w || k >= self.memo.borrow().len() {
+            return self.land.at(self.point, x, z, self.t);
+        }
+        let v = self.memo.borrow()[k];
+        let v = if v == CB_UNKNOWN {
+            let g = self.land.at(self.point, x, z, self.t).unwrap_or(CB_NONE);
+            self.memo.borrow_mut()[k] = g;
+            g
+        } else {
+            v
+        };
+        (v != CB_NONE).then_some(v)
+    }
 }
 /// Each colour's landed crystal, dimmed: its body, its glassy skin, and patches through it (no light in them now).
 const CB_LANDED: [[&str; 3]; 6] = [
@@ -1289,19 +1445,22 @@ const CB_LANDED: [[&str; 3]; 6] = [
 /// down where it then is, none of it under the ground; with none, or not enough of it, as before there was any: its
 /// columns counted from the ground (the crater's floor in it, as the pass takes it), as the pass's ground is. How far up
 /// it was rested (none: not on the ground the world gave), and its blocks.
+#[cfg(test)]
 fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: Option<&CbLand>) -> (Option<f64>, Blocks) {
-    if let Some(land) = land
-        && let Some(dy) = cb_rest_on(point, c, land)
-    {
-        return (Some(dy), cb_rested_blocks(point, c, seed, n, land, dy));
+    cb_landed_from(point, c, seed, n, land.and_then(|land| cb_rest_on(point, c, land)))
+}
+/// The same, rested as `cb_rest_on` gave (none: as on land at the target's height).
+fn cb_landed_from(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, rest: Option<(f64, CbGrid)>) -> (Option<f64>, Blocks) {
+    match rest {
+        Some((dy, grid)) => (Some(dy), cb_rested_blocks(point, c, seed, n, &grid, dy, (i32::MIN, i32::MAX))),
+        None => (None, cb_draped_blocks(point, c, seed, n)),
     }
-    (None, cb_draped_blocks(point, c, seed, n))
 }
 /// Piece `c` rested `dy` up (`cb_rest_on`), as blocks where it then lies in the world: a shell of it over the ground.
-fn cb_rested_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: &CbLand, dy: f64) -> Blocks {
+fn cb_rested_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, grid: &CbGrid, dy: f64, rows: (i32, i32)) -> Blocks {
     let planes = cb_rest_world_at(c, dy);
+    let inner: Vec<([f64; 3], f64)> = planes.iter().map(|(nn, w)| (*nn, w - nn[0].abs().max(nn[1].abs()).max(nn[2].abs()))).collect();
     let (pe, _) = c.rest_at(dy);
-    let t = CB_DET + c.tp as f32;
     let lvl = c.c0[1] + c.v[1] * c.tl - 0.5 * CB_G * c.tl * c.tl + dy;
     let [body, skin, patch] = CB_LANDED[c.family];
     let reach = (0.62 * c.len + 1.1 * c.wid + 2.0) * CB_LAND_SCALE + 1.0;
@@ -1312,12 +1471,19 @@ fn cb_rested_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: &CbLa
     // (its highest point over the ground, and where: a sliver standing out less than a block is still put down there)
     let mut top = (f64::MIN, 0, 0, 0);
     let mut built = false;
-    for z in z0..=z1 {
+    for z in z0.max(rows.0)..=z1.min(rows.1) {
+        let mut seen = false;
         for x in x0..=x1 {
             let (fx, fz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
-            let Some((ya, yb)) = cb_span(&planes, fx, fz, 0.0) else { continue };
+            let Some((ya, yb)) = cb_span(&planes, fx, fz, 0.0) else {
+                if seen {
+                    break;
+                }
+                continue;
+            };
+            seen = true;
             // (the ground there, or where none was given, the low point it was rested on)
-            let g = land.at(point, x, z, t).unwrap_or((point[1] + lvl).round() as i32);
+            let g = grid.at(x, z).unwrap_or((point[1] + lvl).round() as i32);
             let gy = f64::from(g) - point[1];
             if yb - gy > top.0 {
                 top = (yb - gy, x, z, g);
@@ -1332,21 +1498,19 @@ fn cb_rested_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32, land: &CbLa
                 b.put(x, z, 0, hi - g + 2, "minecraft:air", Some(only), true);
             }
             let pz = vnoise(fx + point[0], fz + point[2], 3.0, s ^ 0x540);
-            let mut y = lo;
-            while y <= hi {
-                // (a shell a block thick, as cb_draped_blocks has it, its blocks laid out as there, up from the target's
-                // ground)
+            // (a shell a block thick, as cb_draped_blocks has it: its blocks those not inside it shrunk by that, each
+            // face as far in as it is deep as a naive digital plane; worked out at once for the column, the solid being
+            // convex. Its blocks laid out as there, up from the target's ground)
+            let (ia, ib) = cb_span(&inner, fx, fz, 0.0).unwrap_or((1.0, 0.0));
+            for y in lo..=hi {
                 let fy = f64::from(y) + 0.5 - point[1];
-                let side = planes.iter().map(|(nn, w)| w - dot(*nn, [fx, fy, fz]) - nn[0].abs().max(nn[1].abs()).max(nn[2].abs())).fold(f64::MAX, f64::min);
-                if side < 0.0 {
-                    let yp = y - point[1].floor() as i32;
-                    let blk = if pz > 0.72 && (yp + (x ^ z)).rem_euclid(3) != 0 { patch } else if (yp ^ x ^ z).rem_euclid(4) == 0 { skin } else { body };
-                    b.put(x, z, y, y, blk, None, false);
-                    built = true;
-                    y += 1;
-                } else {
-                    y += (side.floor() as i32).max(1);
+                if fy >= ia && fy <= ib {
+                    continue;
                 }
+                let yp = y - point[1].floor() as i32;
+                let blk = if pz > 0.72 && (yp + (x ^ z)).rem_euclid(3) != 0 { patch } else if (yp ^ x ^ z).rem_euclid(4) == 0 { skin } else { body };
+                b.put(x, z, y, y, blk, None, false);
+                built = true;
             }
         }
     }
@@ -2022,7 +2186,7 @@ pub(super) mod rested {
         std::fs::write(dir.join("before.txt"), before).unwrap();
         let c = chunks[best.1];
         let (pe, _) = c.rest();
-        let dy = cb_rest_on(point, &c, &land).unwrap();
+        let dy = cb_rest_on(point, &c, &land).unwrap().0;
         println!("piece {} (id {}): slope {:.2}, dy {dy:.2}, lies at {:.1} {:.1} {:.1} (+dy), len {:.1} wid {:.1}, tp {:.2} s", best.1, c.id, best.0, pe[0] + 0.5, pe[1] + 65.0, pe[2] + 0.5, c.len, c.wid, CB_DET as f64 + c.tp);
         crate::ground::set_test(None);
     }
@@ -2133,6 +2297,8 @@ mod landings {
     /// the rest; `fair` treats them as the rest), giving each landed piece's blocks: when due and the tick they go in.
     pub(super) fn landings(fair: bool) -> Vec<(f32, u32)> {
         let target = Target { block: [10, 64, -3], point: POINT };
+        // (the ground under the pieces answered at once: the hills of `rested`)
+        crate::ground::set_test(Some(super::rested::hilly));
         let mut plan = plan(&crate::lasers::CRYSTAL_BLOOM, &target, true, "minecraft:overworld", SEED, [10.5, 66.0, 330.0], 0);
         plan.sort_by(|a, b| a.0.total_cmp(&b.0));
         let (mut waiting, mut urgent): (std::collections::VecDeque<Stage>, std::collections::VecDeque<Stage>) = Default::default();
@@ -2222,12 +2388,23 @@ mod stage_cost {
         } else {
             crate::ground::set_test(Some(super::rested::hilly));
         }
-        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        // (ORBITAL_GAME=1: the strike of the fuel harness, crates/horizon-mods/tests/orbital_fuel.rs in the fork: its
+        // target, seed and hills)
+        let game = std::env::var("ORBITAL_GAME").is_ok();
+        if game {
+            fn hill(x: i32, z: i32) -> Option<i32> {
+                let (x, z) = (f64::from(x) - 0.5 + 1041.0, f64::from(z) - 0.5 - 860.0);
+                Some((43.0 + 20.0 * (0.5 * (x * 0.045 + 0.7).sin() * (z * 0.038).cos() + 0.5 * (x * 0.013 - z * 0.017).sin())).ceil() as i32)
+            }
+            crate::ground::set_test(Some(hill));
+        }
+        let target = if game { Target { block: [-1041, 42, 860], point: [-1040.5, 43.0, 860.5] } } else { Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] } };
+        let (seed, me) = if game { (19.0, [-1055.5, 230.0, 860.5]) } else { (7.0, [10.5, 66.0, 330.0]) };
         let mut runs: Vec<Vec<(f32, f64, usize, usize)>> = Vec::new();
         for _ in 0..3 {
             let key = std::env::var("ORBITAL_STAGES").map_or(7, |v| v.parse::<usize>().unwrap());
             let t0 = std::time::Instant::now();
-            let mut ev = plan(crate::lasers::LASERS[key], &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 330.0], 0);
+            let mut ev = plan(crate::lasers::LASERS[key], &target, true, "minecraft:overworld", seed, me, 0);
             let mut out = vec![(-1.0, t0.elapsed().as_secs_f64() * 1000.0, ev.len(), 0)];
             while let Some((t, a)) = ev.pop() {
                 if let Act::Later(job) | Act::Soon(job) = a {
@@ -2244,7 +2421,7 @@ mod stage_cost {
         }
         let mut best: Vec<(f32, f64, usize, usize)> = (0..runs[0].len()).map(|i| (runs[0][i].0, runs.iter().map(|r| r[i].1).fold(f64::MAX, f64::min), runs[0][i].2, runs[0][i].3)).collect();
         best.sort_by(|a, b| b.1.total_cmp(&a.1));
-        for b in best.iter().take(8) {
+        for b in best.iter().take(std::env::var("ORBITAL_TOP").map_or(8, |v| v.parse().unwrap())) {
             println!("stage at {:6.2} s: {:.3} ms, {} acts, {} runs", b.0, b.1, b.2, b.3);
         }
     }

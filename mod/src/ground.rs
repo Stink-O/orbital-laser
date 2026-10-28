@@ -8,6 +8,32 @@
 use horizon_mod_sdk::world::{self, Heightmap, SurfaceHeights};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
+
+/// A cheap hash for columns (FxHash's): the standard one costs far more fuel a lookup, and a stage looks up thousands.
+#[derive(Default)]
+struct Fx(u64);
+impl Hasher for Fx {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for b in bytes {
+            self.write_u64(u64::from(*b));
+        }
+    }
+    fn write_u32(&mut self, v: u32) {
+        self.write_u64(u64::from(v));
+    }
+    fn write_i32(&mut self, v: i32) {
+        self.write_u64(u64::from(v as u32));
+    }
+    fn write_u64(&mut self, v: u64) {
+        self.0 = (self.0.rotate_left(5) ^ v).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<Fx>>;
+type FxSet<K> = HashSet<K, BuildHasherDefault<Fx>>;
 
 /// How many columns one query asks about at most (the game takes 65,536).
 pub const PER_QUERY: usize = 65_536;
@@ -15,13 +41,15 @@ pub const PER_QUERY: usize = 65_536;
 #[derive(Default)]
 struct Store {
     /// Each query waiting for its answers (both heightmaps): its columns, and how many of its two answers are in.
-    asked: HashMap<u32, (Vec<(i32, i32)>, u8)>,
+    asked: FxMap<u32, (Vec<(i32, i32)>, u8)>,
     /// The columns' first answer, until the other comes too.
-    half: HashMap<(i32, i32), Option<i32>>,
+    half: FxMap<(i32, i32), Option<i32>>,
     /// Each column's ground (none: not loaded), once both are in.
-    ground: HashMap<(i32, i32), Option<i32>>,
+    ground: FxMap<(i32, i32), Option<i32>>,
     /// The queries answered.
-    done: HashSet<u32>,
+    done: FxSet<u32>,
+    /// Answers come in but not yet taken in (`poll` takes in so many columns a tick).
+    inbox: std::collections::VecDeque<SurfaceHeights>,
     next: u32,
     /// In the tests: the ground, given at once.
     #[cfg(test)]
@@ -57,15 +85,20 @@ pub fn ask(tag: u32, columns: Vec<(i32, i32)>) {
     STORE.with(|s| s.borrow_mut().asked.insert(tag, (columns, 0)));
 }
 
+/// Columns `poll` takes in a tick at most (more wait for the next: answers that come in together, when the world is
+/// slow, would otherwise all be taken in on one tick, beside that tick's stage).
+const POLL_COLUMNS: usize = 12_000;
+
 /// The world's answers since the last tick, kept (lib.rs, every tick).
 pub fn poll() {
     let answers = world::poll_surface_heights();
-    if answers.is_empty() {
-        return;
-    }
     STORE.with(|s| {
         let mut s = s.borrow_mut();
-        for SurfaceHeights { tag, heights } in answers {
+        s.inbox.extend(answers);
+        let mut budget = POLL_COLUMNS;
+        while budget > 0 {
+            let Some(SurfaceHeights { tag, heights }) = s.inbox.pop_front() else { break };
+            budget = budget.saturating_sub(heights.len());
             let q = tag / 2;
             let Some((cols, got)) = s.asked.remove(&q) else {
                 continue;
