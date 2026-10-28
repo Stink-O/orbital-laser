@@ -1096,7 +1096,10 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         // the cracks: a web spreading out over the land as it wakes, light seeping up through it, brighter as the spires
         // resonate, gone as they burst (only light: the land is broken for real once they have)
         let front = (CB_FIELD + 40.0) * smoothstep(0.0, 3.6, time) * (0.6 + 0.4 * smoothstep(3.0, CB_BLOOM0 + 2.0, time));
-        let reach = smoothstep(front, front - 30.0, r + 20.0 * (gnoise2(rel2 * 0.02 + vec2<f32>(seed)) - 0.5));
+        // (its edge soft and broken: a wide ramp, pushed in and out by two scales of noise, so no line shows from anywhere)
+        let en = gnoise2(rel2 * 0.013 + vec2<f32>(seed, 1.7)) * 0.65 + gnoise2(rel2 * 0.041 + vec2<f32>(4.1, seed)) * 0.35 - 0.5;
+        let rw = min(75.0, front * 0.45 + 4.0);
+        let reach = smoothstep(front, front - rw, r + rw * 1.1 * en);
         if (reach > 0.01 && !det && on_ground > 0.01) {
             let pw = scene_len * px_a;
             let w1 = max(0.004, pw * 0.05);
@@ -1120,13 +1123,15 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             // the crater where it has really been opened: its crystal lining glowing, cooling slowly, veins of light
             // through it, the well at its middle glowing deepest
             let open = cb_open(rel2, r, time);
-            if (open > 0.0 && r < CB_BOWL * 1.15) {
+            if (open > 0.0 && r < CB_BOWL * 1.25) {
                 let n = gfbm2(rel2 * 0.07 + vec2<f32>(P.y * 0.15, seed));
+                // (its glow thinning out over the rim, the edge broken)
+                let rim = smoothstep(CB_BOWL * 1.22, CB_BOWL * 0.85, r + 30.0 * (n - 0.5));
                 let veins = exp(-pow((n - 0.5) / 0.05, 2.0));
                 let deep = saturate(-dy / CB_BOWL_D);
                 let fresh = exp(-max(time - cb_dig_t(r), 0.0) / 6.0);
                 let hc = cb_hue(atan2(rel2.y, rel2.x) / TAU + 0.02 * r);
-                add = add + hc * (veins * (0.5 + 1.2 * fresh) + 0.5 * fresh * deep + smoothstep(CB_WELL * 1.6, 0.0, r) * 2.0) * open * after * 1.3 * k;
+                add = add + hc * (veins * (0.5 + 1.2 * fresh) + 0.5 * fresh * deep + smoothstep(CB_WELL * 1.6, 0.0, r) * 2.0) * open * rim * after * 1.3 * k;
                 // (and after: the seams still glowing a little, a pool of light in the well and round its mouth)
                 let late = (1.0 - after) * (1.0 - smoothstep(CB_LATE - 12.0, CB_LATE, time));
                 let wp = smoothstep(CB_WELL * 2.6, CB_WELL * 0.3, r) * (0.5 + 0.5 * deep);
@@ -1147,7 +1152,9 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                     let lat = abs(da) * r;
                     let hw = 1.0 + 2.2 * (1.0 - (r - CB_BOWL) / (cr.y - CB_BOWL));
                     let opened = smoothstep(0.0, 0.2, time - cb_crack_t(r));
-                    crack = max(crack, ((1.0 - smoothstep(hw - 0.3, hw + 0.7, lat)) + exp(-lat / (hw * 2.0)) * 0.3) * opened);
+                    // (tapering away at both its ends rather than stopping)
+                    let tap = smoothstep(cr.y, cr.y - 35.0, r + 10.0 * sin(r * 0.21 + f32(i) * 2.3)) * smoothstep(CB_BOWL * 0.8, CB_BOWL * 0.98, r);
+                    crack = max(crack, ((1.0 - smoothstep(hw * tap - 0.3, hw * tap + 0.7, lat)) + exp(-lat / (hw * 2.0)) * 0.3) * opened * tap);
                 }
                 let fade = 0.35 + 0.65 * exp(-max(dt - 1.5, 0.0) / 5.0);
                 add = add + cb_hue(ang / TAU + 0.3) * crack * fade * on_ground * after * 1.8 * k;
@@ -1160,14 +1167,14 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let front = (CB_FIELD + 40.0) * smoothstep(0.0, 3.6, time);
         let Hh = 14.0 + 30.0 * smoothstep(CB_BLOOM0, CB_RES, time);
         // (where the view ray is in the slab of air over the land, up to what it meets)
-        let y0 = tgt.y - 2.0 - cam.y;
+        let y0 = tgt.y - 40.0 - cam.y;
         let y1 = tgt.y + Hh - cam.y;
         var ta = 0.0;
         var tb = select(scene_len, 1.0e4, sky);
         if (abs(rd.y) > 1.0e-4) {
             ta = max(min(y0 / rd.y, y1 / rd.y), 0.0);
             tb = min(tb, max(y0 / rd.y, y1 / rd.y));
-        } else if (cam.y < tgt.y - 2.0 || cam.y > tgt.y + Hh) {
+        } else if (cam.y < tgt.y - 40.0 || cam.y > tgt.y + Hh) {
             tb = -1.0;
         }
         if (tb > ta) {
