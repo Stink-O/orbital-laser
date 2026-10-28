@@ -45,6 +45,9 @@ VIEWS = {
     "cbaerial": "cx=0 cy=360 cz=380 lx=0.5 ly=60 lz=0.5 mx=0 mz=330",
     # flying over it at a distance, as the clip is filmed, at night
     "cbover": "cx=320 cy=430 cz=560 lx=0.5 ly=90 lz=0.5 mx=0 mz=330 night=1",
+    # close on the ground heaving over the fifth of the first shards (4.9 to 6.2 s) and from a little further off
+    "cbheave": "cx=30 cy=76 cz=86 lx=17 ly=66 lz=56 mx=0 mz=330",
+    "cbheavefar": "cx=60 cy=110 cz=170 lx=17 ly=66 lz=56 mx=0 mz=330",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire"}

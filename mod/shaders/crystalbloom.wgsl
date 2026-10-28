@@ -568,6 +568,53 @@ fn cb_hit3(c: Crystal, o: vec3<f32>, d: vec3<f32>, x0: vec4<f32>, x1: vec4<f32>,
     return vec3<f32>(t0, t1, f32(kin));
 }
 
+// ---- the ground heaving over a shard about to break it: the land itself forced up and broken into plates ----------
+// (q off the shard's foot across the land; R how far round it heaves, H how high at the middle, g how far gone, 0..1;
+// id the shard.) The land round it is cut into plates (a Voronoi of them, finer towards the middle), each lifted with
+// the swell under its middle and tilted out from it, the cracks between them opening as it goes: x the height there,
+// y how far into its plate (from the nearest crack), z its plate's hash, w how wide the cracks are.
+fn cb_heave(q: vec2<f32>, R: f32, H: f32, g: f32, id: i32) -> vec4<f32> {
+    let cell = R * 0.3;
+    let u = q / cell;
+    let iu = floor(u);
+    var d1 = 1.0e9;
+    var d2 = 1.0e9;
+    var c1 = vec2<f32>(0.0);
+    var hz = vec3<f32>(0.0);
+    for (var j = 0; j < 9; j = j + 1) {
+        let o = iu + vec2<f32>(f32(j % 3 - 1), f32(j / 3 - 1));
+        let hh = vec3<f32>(pcg3d(vec3<u32>(vec3<i32>(i32(o.x) + 4096, i32(o.y) + 4096, id + 77)))) * (1.0 / 4294967295.0);
+        let c = o + 0.15 + 0.7 * hh.xy;
+        let dd = length(u - c);
+        if (dd < d1) {
+            d2 = d1;
+            d1 = dd;
+            c1 = c;
+            hz = hh;
+        } else {
+            d2 = min(d2, dd);
+        }
+    }
+    let edge = (d2 - d1) * 0.5 * cell;
+    let cw = c1 * cell;
+    let rc = length(cw) / R;
+    let dome = saturate(1.0 - rc * rc);
+    let swell = dome * dome;
+    // (the plate tilted up towards the middle, out over the land, and a little its own way)
+    let outd = cw / max(length(cw), 0.5);
+    let slope = H / R * (1.6 * sqrt(dome) + 0.3) * g;
+    let tilt = -outd * slope + (hz.xz - 0.5) * 0.35 * H / R * g;
+    var h = H * swell * (0.8 + 0.4 * hz.z) * g + dot(q - cw, tilt);
+    // (and outside the plates' reach, the land only swelling a little, down to nothing)
+    let rq = length(q) / R;
+    let outer = saturate(1.0 - rq * rq);
+    h = select(H * 0.12 * outer * outer * g, max(h, 0.0), rc < 0.92);
+    let w = (0.12 + cell * 0.09 * g * dome) * f32(rc < 0.92);
+    // (its edge broken off steep, a little crumbled: a slab, not a cushion)
+    h = h * smoothstep(w * 0.5, w * 0.5 + 0.5 + 0.25 * hz.y, edge);
+    return vec4<f32>(h, edge, hz.z, w);
+}
+
 // ---- dust: what each crystal throws up as it breaks the ground and comes up out of it -----------------------------
 // Round each of the first shards, the heart and each of the bloom's clusters (a "source": its foot, when it broke
 // through, how big its dust is): a burst of earth as it breaks the ground (again as it surges, and at each push), a
@@ -833,7 +880,9 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
     let sun_c = vec3<f32>(1.6, 1.5, 1.35) * day * (1.0 - 0.7 * dark);
     let hazec = srgb_to_linear(frame.fog_color.rgb) * (0.3 + 0.7 * day) * (1.0 - 0.7 * dark);
 
-    // ---- the ground over the first shards heaving before they break it, cracked, light leaking up through it -----
+    var heaved = false;
+    // ---- the ground over the first shards heaving before they break it: the land forced up in plates, cracked between
+    //      them, the crystal's light leaking up through the cracks, earth crumbling off their edges ----------------------
     for (var i = 0; i < CB_LEADS; i = i + 1) {
         let pl = cb_place(i, seed);
         let s = time - pl.z;
@@ -841,32 +890,88 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             continue;
         }
         let sb = smoothstep(-CB_BULGE, 0.0, s);
+        let g = sb * (0.8 + 0.2 * sb) + 0.25 * saturate(s * 4.0);
         let fm = cb_form(i, seed, pl);
         let S0 = crel + vec3<f32>(pl.x, 0.0, pl.y);
-        let Rd = fm.x * 3.2;
-        let Cd = S0 + vec3<f32>(0.0, fm.x * (0.45 * sb * sb + 0.15 * saturate(s * 4.0)) - Rd, 0.0);
-        let tcd = dot(Cd, rd);
-        let dc2 = dot(Cd, Cd) - tcd * tcd;
-        if (tcd > 0.0 && dc2 < Rd * Rd && dot(Cd, Cd) > Rd * Rd) {
-            let td = tcd - sqrt(Rd * Rd - dc2);
-            let pd = rd * td - Cd;
-            if (pd.y + Cd.y - S0.y > -0.5 && (sky || td < scene_len + 4.0)) {
-                let nd = pd / Rd;
-                let ang = atan2(nd.z, nd.x);
-                let pw = td * px_a / 2.0;
-                let w1 = max(0.01, pw * 0.7);
-                let cn = abs(gnoise2(vec2<f32>(ang * 7.0, nd.y * 24.0) + vec2<f32>(f32(i) * 5.0)) - 0.5);
-                let cracks = exp(-cn / w1) * pow(0.01 / w1, 1.2) * sb;
-                let torn = exp(-cn / (w1 * 6.0)) * sb * 0.7;
-                let slope = 0.55 + 0.6 * saturate(dot(nd, normalize(vec3<f32>(0.3, 1.0, 0.2))));
-                let land = vec3<f32>(0.12, 0.14, 0.08) * (0.25 + 0.75 * day) * (1.0 - 0.5 * dark) * slope;
-                col = mix(land, vec3<f32>(0.05, 0.042, 0.036) * (0.3 + 0.6 * day), saturate(torn));
-                add = cb_hue(f32(i) * 0.17 + hue_t) * cracks * (1.0 + 2.0 * sb) * k;
-                scene_len = td;
-                sky = false;
-                cloud = false;
-            }
+        let Rd = fm.x * 1.55;
+        let Hm = fm.x * 0.32;
+        // (shuddering as it is pushed)
+        let shk = vec2<f32>(sin(time * 43.0 + f32(i)), sin(time * 37.0 + f32(i) * 2.0)) * 0.12 * sb;
+        let tr = cb_cyl(rd, S0, Rd, -0.5, Hm * 1.4 + 1.0);
+        if (tr.y <= tr.x || tr.x > scene_len + 2.0) {
+            continue;
         }
+        // (marched down the ray to where it first goes under the land's new face, then closed in on it)
+        let NS = 40;
+        let dtm = (tr.y - tr.x) / f32(NS);
+        var tprev = tr.x;
+        var thit = -1.0;
+        for (var m = 0; m <= NS; m = m + 1) {
+            let tm = tr.x + dtm * f32(m);
+            let X = rd * tm - S0;
+            let hv = cb_heave(X.xz + shk, Rd, Hm, g, i);
+            if (X.y < hv.x) {
+                var a0 = tprev;
+                var a1 = tm;
+                for (var b = 0; b < 6; b = b + 1) {
+                    let am = (a0 + a1) * 0.5;
+                    let Xm = rd * am - S0;
+                    if (Xm.y < cb_heave(Xm.xz + shk, Rd, Hm, g, i).x) {
+                        a1 = am;
+                    } else {
+                        a0 = am;
+                    }
+                }
+                thit = a1;
+                break;
+            }
+            tprev = tm;
+        }
+        if (thit < 0.0 || thit > scene_len + 1.5) {
+            continue;
+        }
+        let X = rd * thit - S0;
+        let q = X.xz + shk;
+        let hv = cb_heave(q, Rd, Hm, g, i);
+        if (hv.x < 0.04 && hv.y > hv.w) {
+            continue;      // (the land as it was: left as the game drew it)
+        }
+        let e = 0.35;
+        let hx = cb_heave(q + vec2<f32>(e, 0.0), Rd, Hm, g, i).x;
+        let hz = cb_heave(q + vec2<f32>(0.0, e), Rd, Hm, g, i).x;
+        let nrm = normalize(vec3<f32>(hv.x - hx, e, hv.x - hz));
+        // the land's own colour and light: the game's ground under it, where it lay before it was lifted
+        let G = project_rel(S0 + vec3<f32>(q.x, 0.0, q.y));
+        var gc = col;
+        if (G.z > 0.0 && all(G.xy > vec2<f32>(0.0)) && all(G.xy < vec2<f32>(1.0))) {
+            gc = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, G.xy, 0.0).rgb) * (1.0 - 0.7 * dark * k);
+        }
+        // (lit again for the way it now faces, darkened as it is forced up and torn)
+        let Ls = normalize(select(vec3<f32>(0.3, 1.0, 0.2), sun, sun.y > 0.05));
+        let lam = (0.45 + 0.75 * max(dot(nrm, Ls), 0.0)) / (0.45 + 0.75 * max(Ls.y, 0.0));
+        var lc_ = gc * lam * (1.0 - 0.3 * sb) * (0.85 + 0.3 * hv.z);
+        // the plates' broken edges: raw earth, crumbling off them (grains of it, flickering as they fall)
+        let dirt = vec3<f32>(0.075, 0.055, 0.04) * (0.35 + 0.65 * day) * (1.0 - 0.5 * dark);
+        let steep = 1.0 - nrm.y;
+        let crumb = hash21(floor(q * 2.5 + vec2<f32>(0.0, time * 6.0)));
+        let torn = saturate(steep * 2.2 + smoothstep(hv.w * 3.5, hv.w * 1.2, hv.y) * (0.6 + 0.4 * crumb)) * sb;
+        lc_ = mix(lc_, dirt * (0.6 + 0.6 * crumb), torn);
+        // the cracks: deep, and the crystal's light coming up out of them, brightest as it is about to break
+        let hc = cb_hue(f32(i) * 0.17 + hue_t);
+        let pw = thit * px_a;
+        let in_crack = smoothstep(hv.w + pw, max(hv.w - pw, 0.0), hv.y) * step(0.01, hv.w);
+        // (and up the plates' broken sides a little way, from the bottom of the crack)
+        let leak = exp(-max(hv.y - hv.w, 0.0) / (0.25 + hv.w * 0.6)) * exp(-max(X.y, 0.0) / (0.6 + hv.w));
+        let rq = length(q) / Rd;
+        let bright = (0.6 + 2.4 * sb * sb) * (0.85 + 0.15 * sin(time * 30.0 + hv.z * 20.0)) * (1.0 - 0.5 * rq);
+        // (the crack a dark chasm, the light a jagged seam down its bottom, flickering along it)
+        let seam = exp(-hv.y / max(hv.w * 0.3 + pw, 0.05)) * (0.6 + 0.4 * gnoise2(q * 1.3 + vec2<f32>(time * 3.0, f32(i))));
+        col = mix(lc_, dirt * 0.25, in_crack);
+        add = hc * (seam * in_crack * 2.4 + in_crack * 0.12 + leak * 0.5 * (1.0 - in_crack)) * bright * k;
+        scene_len = thit;
+        heaved = true;
+        sky = false;
+        cloud = false;
     }
 
     // ---- the spires: solid, the nearest drawn and hiding what is behind it, hidden by anything nearer -------------
@@ -1100,7 +1205,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let en = gnoise2(rel2 * 0.013 + vec2<f32>(seed, 1.7)) * 0.65 + gnoise2(rel2 * 0.041 + vec2<f32>(4.1, seed)) * 0.35 - 0.5;
         let rw = min(75.0, front * 0.45 + 4.0);
         let reach = smoothstep(front, front - rw, r + rw * 1.1 * en);
-        if (reach > 0.01 && !det && on_ground > 0.01) {
+        if (reach > 0.01 && !det && on_ground > 0.01 && !heaved) {
             let pw = scene_len * px_a;
             let w1 = max(0.004, pw * 0.05);
             let warp = vec2<f32>(gnoise2(rel2 * 0.011 + vec2<f32>(3.0, seed)), gnoise2(rel2 * 0.011 + vec2<f32>(seed, 7.0))) * 40.0;
