@@ -290,6 +290,7 @@ pub(super) fn cb_chunks(seed: f32) -> Vec<CbChunk> {
 }
 
 /// A crystal as blocks: a convex solid given by its planes (in its own frame round `b`), and its colour.
+#[derive(Clone)]
 struct CbSolid {
     b: [f64; 3],
     e1: [f64; 3],
@@ -363,11 +364,13 @@ impl CbSolid {
         let put = |bl: &mut Blocks, a: i32, b: i32, blk: &'static str| bl.put(x, z, a - off, b - off, blk, None, rel.is_some());
         // (in coherent zones, not bands: the glassy skin a block or so thick with patches of the band's colour through
         // it, the body with veins of it, the heart glowing all the way up)
-        let fam = self.family as u32;
+        let z0 = vnoise(fx, fz, 6.0, self.seed ^ 0x532 ^ self.family as u32);
         let mut y = lo;
         while y <= hi {
+            // (a zone at a time, three blocks up)
             let fy = f64::from(y);
-            let zone = vnoise(fx + fy * 0.41, fz - fy * 0.33, 6.0, self.seed ^ 0x532 ^ fam);
+            let tri = |v: f64| (v.rem_euclid(2.0) - 1.0).abs();
+            let zone = 0.6 * z0 + 0.4 * tri(fy * 0.12 + fx * 0.07 - fz * 0.06) * tri(fy * 0.04 - fx * 0.035 + fz * 0.09 + 0.5) * 1.6;
             let blk = if side < 1.3 {
                 if zone > 0.68 { band } else { skin }
             } else if ax < self.r * 0.22 {
@@ -377,8 +380,9 @@ impl CbSolid {
             } else {
                 body
             };
-            put(bl, y, y, blk);
-            y += 1;
+            let top = (y + 2 - y.rem_euclid(3)).min(hi);
+            put(bl, y, top, blk);
+            y = top + 1;
         }
     }
 }
@@ -606,17 +610,18 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             c.2 = f64::from(t);
         }
         // (worked out well ahead, while they resonate: there are many, and the mod works out one a tick)
-        for group in cells.chunks(6) {
+        let mut stumps: Vec<CbSolid> = Vec::new();
+        for i in 0..CB_N {
+            if let Some(st) = cb_stump(i, shader_seed, point) {
+                stumps.extend(cb_cluster(i, shader_seed, point, &st));
+                stumps.push(st);
+            }
+        }
+        for group in cells.chunks(4) {
             let group = group.to_vec();
             let t0 = group[0].2 as f32;
-            p.later(t0 - 1.6, move |q| {
-                let mut stumps: Vec<CbSolid> = Vec::new();
-                for i in 0..CB_N {
-                    if let Some(st) = cb_stump(i, shader_seed, point) {
-                        stumps.extend(cb_cluster(i, shader_seed, point, &st));
-                        stumps.push(st);
-                    }
-                }
+            let stumps = stumps.clone();
+            p.later(t0 - 2.6, move |q| {
                 for (x0, z0, t) in group {
                     cb_dig_cell(q, point, x0, z0, t as f32, floor_y, sky, shader_seed, &stumps);
                 }
@@ -757,8 +762,11 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
         if cx + c.reach < f64::from(x0) || cx - c.reach > f64::from(x0 + 16) || cz + c.reach < f64::from(z0) || cz - c.reach > f64::from(z0 + 16) {
             continue;
         }
-        for z in z0..z0 + 16 {
-            for x in x0..x0 + 16 {
+        // (only over the columns it can reach)
+        let (xa, xb) = (((cx - c.reach).floor() as i32).max(x0), ((cx + c.reach).ceil() as i32).min(x0 + 15));
+        let (za, zb) = (((cz - c.reach).floor() as i32).max(z0), ((cz + c.reach).ceil() as i32).min(z0 + 15));
+        for z in za..=zb {
+            for x in xa..=xb {
                 let d = dep[(z - z0 + 1) as usize][(x - x0 + 1) as usize];
                 c.column(&mut b, x, z, (by - d - 3).max(floor_y + 1), sky, None);
             }
@@ -839,7 +847,19 @@ fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32) {
                 // (the stretch of the spike's axis over this column: along it u from 0 to ls, its radius thinning to the tip)
                 let (mut lo, mut hi, mut core) = (i32::MAX, i32::MIN, false);
                 let steps = (ls * 2.0) as i32 + 1;
-                for k in -4..=steps {
+                // (only the stretch of it that can pass over this column)
+                let along = px * dx + pz * dz;
+                let perp = (px * dz - pz * dx).abs();
+                if perp > rb + 1.0 && (px.hypot(pz) > rb + 1.0 + size * 0.06) {
+                    continue;
+                }
+                let (k0, k1) = if sl > 0.05 {
+                    let hw = (rb + 0.3) / sl;
+                    (((along / sl - hw) * 2.0).floor() as i32 - 1, ((along / sl + hw) * 2.0).ceil() as i32 + 1)
+                } else {
+                    (-4, steps)
+                };
+                for k in k0.max(-4)..=k1.min(steps) {
                     let u = f64::from(k) * 0.5;
                     let rr = rb * (1.0 - (u / ls).max(0.0)).max(0.0).powf(0.8) + 0.25;
                     let (ax, az, ay) = (dx * sl * u, dz * sl * u, cl * u);
