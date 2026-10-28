@@ -77,6 +77,20 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   the ring crushes in to a point, which drops into the crater and bursts again, and a mushroom cloud, glowing from below
   with lightning flickering in it, climbs over the crater as the daylight comes back. It reaches 1000 blocks: watch it
   from a long way off.
+- **Crystal Bloom.** The land round the target wakes: a deep hum, the daylight dimming, light welling up out of the
+  ground in a haze of colour and seeping through cracks that spread out over it. Where the first crystals are coming the
+  ground heaves and splits, and five shards punch up out of it one after another, each breaking the ground in a burst of
+  earth and rock, catching and straining there twice, then surging up a little past its height and settling; the heart,
+  330 blocks tall, comes last, in the middle. Then the bloom: a wave of spires running out over the land in clusters,
+  splayed and leaning, each growing in three pushes from a shard to a tower, the tallest hundreds of blocks, spraying
+  earth where they break the ground. They are solid crystal, faceted: violet, magenta, rose, ice, cyan and deep blue,
+  lit from inside down their hearts, flat cleavage inside them catching the light, their faces catching the sky and the
+  sun, their edges glinting, and they throw coloured light over the land and the clouds. They resonate: pulses of light
+  run up all of them together, faster and faster, the air shimmers round them, shards break off and orbit them, quicker
+  and quicker; a breath; and they detonate in a flash of colour, every spire shattering into a storm of tumbling shards
+  and a cloud of glitter, a pale shock running out over the land. The shards rain down for seconds, each landing as a real
+  crystal where it comes down; the crater is dug from the middle out, the stumps of the spires standing in it as the dig
+  reaches them, and the fissures split open as the shock reaches them, light running along them. It reaches 1000 blocks.
 
 All of them:
 
@@ -87,7 +101,7 @@ All of them:
   perspective. Nothing is painted flat on the screen but the lens: bloom, a streak and the flash.
 - **Real terrain damage.** The crater, the shaft to bedrock and what each laser leaves behind are real blocks.
 - **Point and fire.** Hold the designator on a target for under a second and it fires where your crosshair lands, up to
-  200 blocks away (1000 for the Mothership, the Downfall and the Planet Killer).
+  200 blocks away (1000 for the Mothership, the Downfall, the Planet Killer and the Crystal Bloom).
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
@@ -113,6 +127,15 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   to 40 deep out to about 400, the land charred and strewn with rubble out to 380, and every mob within 280 killed.
   Stand at least 450 blocks back. It keeps about 1,900 chunks loaded while it works; its land is done about 25
   seconds into the strike.
+- **Crystal Bloom:** everything above the ground blown clear out to about 130 blocks (24 up, to the sky over its
+  middle), a geode crater about 176 across and 28 deep (lined with amethyst over calcite over smooth basalt, here and
+  there quartz or rose glass, seams of light through its floor, crystals jutting up off it) round a crystal-lined well 20
+  across down to bedrock where the heart stood, 45 stumps of the spires standing up to 64 blocks tall out to about 150
+  (amethyst, quartz, calcite, packed and blue ice under a skin of stained glass, banded, a glowing heart of froglight or
+  sea lantern down the middle of each), the tallest spires' broken lengths lying by their stumps, nine fissures up to 18
+  deep out to about 205, crystals where the shards came down, the land frosted with calcite and amethyst out to 165 and
+  strewn with amethyst out to 235, and every mob within 160 killed. Stand at least 250 blocks back. It keeps about 770
+  chunks loaded while it works; its land goes in from the detonation (22 s) and is done by about 28 s.
 
 ## Commands
 
@@ -120,7 +143,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -183,7 +206,12 @@ every 0.4 s; their bolts set out from 3.05 to 5.45 s and strike the ring 1.14 s 
 6.6; it shudders and tightens from 6.9 and they fuse at 7.6 s; a bolt feels its way down and the beam pours down it at
 8.4, lands at 8.5, and the land bursts at 9; the chasms open over the next 2 s, the crater is dug from the middle out
 from 11 s and the land is done by about 25 s; the towers cut out at 17.65, the ring crushes in, drops into the crater
-and bursts at 18.55, and the mushroom climbs until the strike ends at 30.5.
+and bursts at 18.55, and the mushroom climbs until the strike ends at 30.5. The Crystal Bloom's land wakes from the
+start; its first shard breaks the ground at 3.5 s and the next every 0.62 s (each heaving 0.7 s before, catching 0.34
+and 0.66 s after it breaks through and surging up 0.9 s after), the heart at 6.7; the bloom sets out from the middle at
+7.6 and reaches the edge of the field 4.6 s later; they resonate from 14, shards orbiting them from 15.6, a breath from
+21.68, and detonate at 22; the crater is dug from the middle out from 22.1 at 70 blocks a second, the shards land
+until about 28, the broken spires come down at 24.6 and the land is frosted and strewn by 28.2; the strike ends at 32.
 
 ## The effects
 
@@ -209,7 +237,16 @@ view ray (their broad bends first, the kinks only near them), so each keeps the 
 ring is met where the view ray crosses its plane (a clean ellipse from any side), its heart, dome and fireballs are
 traced as spheres and domes, the towers' dust and the mushroom cloud are noise volumes marched along the view ray, and
 the dust wall is a cylinder; its towers and its chasms are placed by the same hash in the shader and in the mod, and the
-crater glows where it has just been opened as the mod digs it from the middle out.
+crater glows where it has just been opened as the mod digs it from the middle out. The Crystal Bloom has its own pass
+too ([`mod/shaders/crystalbloom.wgsl`](../mod/shaders/crystalbloom.wgsl)): each spire is a convex crystal (a hexagonal
+prism drawing in up its length under a six-faced tip, its faces a little uneven), so the view ray is met exactly, plane
+by plane, and the face it enters by is a real facet; inside it the ray is bent in (each colour a little differently),
+followed to the face it leaves by and out again, past the cleavage sheets inside, through the crystal's body, and the
+nearest spire hides what is behind it. The shards are octahedra met the same way, the glitter is points of light on
+shells round the burst found where the view ray crosses each, and the dust is a noise volume. The spires, their breaks,
+the shards' paths and the fissures are placed by the same hash in the shader and in the mod (`cb_*`), so each stump is
+built where its spire stood, each shard comes down as a crystal where it lands, and the crater glows only where the mod
+has really dug it.
 
 ## The sounds
 
@@ -217,7 +254,11 @@ The sounds ([`tools/synth_sounds.py`](../tools/synth_sounds.py)) have no samples
 and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
 ([`tools/sounds_pk_blast.py`](../tools/sounds_pk_blast.py)) are shaped to measurements of a real, very large explosion:
 its spectrum, how it rises and holds, how its bands move and how wide it sounds over time. Only the numbers were taken
-from the recording; none of its audio is used.
+from the recording; none of its audio is used. The Crystal Bloom's ([`tools/sounds_crystal.py`](../tools/sounds_crystal.py))
+are built from the modes of struck glass (inharmonic partials, each a pair of sines a hair apart so it shimmers), glints
+of a few milliseconds by the thousand, and bursts of filtered noise for glass breaking; its detonation is the Planet
+Killer's `explosion_live` on its own seed and with its own character, with ringing crystal, glitter and shattering glass
+on top of it.
 
 ## Stock Horizon
 

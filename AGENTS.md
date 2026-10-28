@@ -21,7 +21,11 @@ laser, command, capability and timing). This file is the short, factual version 
   340, splits the land in chasms out to ~400, chars it and strews rubble to 380, kills every mob within 280 and
   force-loads ~1,900 chunks from the moment it fires; its crater, rim and charred land go straight into the chunks
   through the fork's `world.edit-blocks` (new in the fork release `orbital-mod-api-4`) and are done about 25 s into the strike, the fissures' few
-  commands soon after. Only fire them in a
+  commands soon after. The Crystal Bloom clears everything above ground out to ~130 blocks (24 up, to the sky over its
+  middle), digs a geode crater ~176 across and 28 deep round a well 20 across to bedrock, leaves 45 crystal stumps up to
+  64 tall out to ~150 with broken spires lying by the tallest, opens nine fissures out to ~205, strews crystal shards
+  and frosts the land out to 235, kills every mob within 160 and force-loads the ~770 chunks within 240; its land goes
+  in through `world.edit-blocks` from the detonation at 22 s and is done by about 28 s. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
@@ -42,15 +46,15 @@ tools/check-shader.sh               # validate the post passes (a tenth of a sec
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 ```
 
-**Iterate on a strike's look offscreen first.** `tools/preview.py LASER TIMES... [--views player,far,side,up,under,aerial,tower]
+**Iterate on a strike's look offscreen first.** `tools/preview.py LASER TIMES... [--views player,far,side,up,under,aerial,tower,cbplayer,cbfar,spire,cbside,cbaerial]
 [--set key=value...] [--bench]` builds the pass exactly as the mod does, renders every moment from every view in one run
 over a synthetic scene, and writes a labelled contact sheet; `--bench` prints the pass's GPU time. Only then rebuild,
 install and check it in the game, once. In the game, `/orbital skip SECONDS` (terrain off) starts the next strike that
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall` or `planetkiller`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall and the Planet Killer are on the second. Its FLY
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller` or `crystalbloom`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer and the Crystal Bloom are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, won't start the mod.
@@ -68,8 +72,9 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 ## Layout
 
 - `mod/`: the mod (Rust for `wasm32-unknown-unknown`): `src/lib.rs` hooks, designator and strike playback,
-  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan, `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
-  pass, `shaders/downfall.wgsl` and `shaders/planetkiller.wgsl` the Downfall's and the Planet Killer's own passes (the
+  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
+  pass, `shaders/downfall.wgsl`, `shaders/planetkiller.wgsl` and `shaders/crystalbloom.wgsl` the Downfall's, the Planet
+  Killer's and the Crystal Bloom's own passes (the
   mod appends each to `strike.wgsl` up to its `fs_main`; `pass_of` in lib.rs picks a strike's),
   `horizon-mod.toml` the manifest (api 0.2 with `registries` for the content).
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.
@@ -86,11 +91,13 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many
-  blocks. `carve_queue` prints a laser's busiest ticks and commonest commands.
+  blocks. `carve_queue` prints a laser's busiest ticks and commonest commands. Those count commands only: the Crystal
+  Bloom's (and much of the Planet Killer's) land goes through `world.edit-blocks`, outside that budget; its
+  `cb_edit_profile` ignored test prints its edits' busiest ticks.
 
 ## Verifying work
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's and the
-Planet Killer's). Mod: build, install, `./play.sh`, one
+Planet Killer's, the Crystal Bloom's). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).

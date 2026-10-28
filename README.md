@@ -75,7 +75,7 @@ Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Seven lasers, five on the wheel's first page and two on its second.
+Eight lasers, five on the wheel's first page and three on its second.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -89,9 +89,11 @@ Seven lasers, five on the wheel's first page and two on its second.
   and then its black hole engine ruptures and swallows the wreck.
 - **Planet Killer** (page two). Seven towers out on the horizon strike a ring in the sky with lightning, and its beam
   leaves a crater 480 blocks across.
+- **Crystal Bloom** (page two). A forest of crystal spires bursts out of the land, hums as one and shatters in a flash of
+  colour, leaving a geode crater ringed with crystal stumps and shards.
 
-Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall and the Planet Killer
-reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer and
+the Crystal Bloom reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -216,7 +218,7 @@ the reason on its row first.
    `ACQUIRING TARGET…`, then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38 and the Downfall 64.
+Crystal Bloom 32, the Mothership 34, the Meteor Storm 38 and the Downfall 64.
 
 The wheel also has:
 
@@ -230,7 +232,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator and the Remote |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -252,7 +254,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall and the Planet Killer can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer and the Crystal Bloom can aim, and only with **LOD Distance** on in Video Settings.
 - **`STRIKE IN PROGRESS`.** One strike runs at a time. Wait for it to finish.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
