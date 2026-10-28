@@ -30,7 +30,8 @@ laser, command, capability and timing). This file is the short, factual version 
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-4` or newer (older builds won't
+- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-5` or newer (it adds
+  `world.surface-height` and `render.set-data`, which the Crystal Bloom uses to rest its pieces on the real ground; older builds won't
   start the mod): a Linux x86-64 download on the fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
@@ -57,7 +58,7 @@ In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer and the Crystal Bloom are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
-without `world.edit-blocks`, won't start the mod.
+without `world.edit-blocks`, `world.surface-height` or `render.set-data`, won't start the mod.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
@@ -88,6 +89,11 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   the game folder for that reason. Starting it elsewhere makes a fresh, empty game folder there.
 - **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
   is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
+- **The mod's post pass reads `mod_data`** (`render.set-data`, binding 5 of the prelude): the Crystal Bloom's pieces'
+  rest heights, word `i * 16 + k * 2 + half`. `tools/preview` binds it from `$PREVIEW_DATA` (`index value` lines) and
+  draws hills with `hills=H`; `cb_dump_slope` (ignored test) writes a matching data file and voxel files.
+- **`world.surface-height` answers a tick or two later** (`mod/src/ground.rs` keeps the answers; a stage asks, a later
+  one reads). In the tests `ground::set_test` answers at once; with none set the pieces lie as on flat land.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many

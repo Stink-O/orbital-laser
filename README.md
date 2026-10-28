@@ -37,7 +37,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-4` or newer.** Horizon's mod API doesn't
+> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-5` or newer.** Horizon's mod API doesn't
 > yet let a mod catch an item's use, open its own screen, draw effects or change the world, so the mod runs on a fork
 > that adds those:
 > [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world),
@@ -117,7 +117,7 @@ the Crystal Bloom reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-
 
 ## Getting started
 
-1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-4` or newer). Download
+1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-5` or newer). Download
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
    and unpack it to `~/horizon-orbital`.
 
@@ -166,7 +166,7 @@ https://github.com/Stink-O/orbital-laser
 
 It is a mod for Horizon, the Rust rewrite of Minecraft Java (https://github.com/ludovic111/horizon). It
 runs on a Horizon fork that adds the mod capabilities it needs: https://github.com/Stink-O/horizon (branch
-mod-api-input-ui-render-world, release orbital-mod-api-4 or newer, with a ready-built Linux x86-64
+mod-api-input-ui-render-world, release orbital-mod-api-5 or newer, with a ready-built Linux x86-64
 download on its releases page). When it works I can type /orbital give in the game, right-click the
 Orbital Remote (or press R) to pick a laser from a wheel, and hold the Orbital Laser Designator on a
 target to call down the strike.
@@ -178,7 +178,7 @@ Facts to rely on:
 - Minecraft is not included, and you must not download, fake or work around it. Horizon's prepared
   resources come from my own copy of Minecraft Java 26.3 (horizon-prepare with the 26.3 server jar, as
   Horizon's PLAY.txt says). If I don't have Minecraft 26.3, stop and tell me.
-- Stock Horizon can't run this mod: it needs the fork's build, orbital-mod-api-4 or newer. On Linux
+- Stock Horizon can't run this mod: it needs the fork's build, orbital-mod-api-5 or newer. On Linux
   x86-64 use the release download. Elsewhere, build the fork from source (cargo build --release -p
   horizon-client --features mods, Rust 1.85 or newer) and tell me before you start, since it takes a while.
 - This was developed and tested on Linux only. On Windows or macOS expect rough edges. Keep any fix small,
@@ -247,7 +247,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 ## If something goes wrong
 
 - **No wheel, no `/orbital` command, or the items do nothing.** You're running stock Horizon or an older fork build.
-  Start the game with `./play.sh` on `orbital-mod-api-4` or newer. On **Options → Mods**, Orbital Laser's row says why
+  Start the game with `./play.sh` on `orbital-mod-api-5` or newer. On **Options → Mods**, Orbital Laser's row says why
   if it stopped.
 - **`play.sh` can't find the build or the resources.** Set `HORIZON_ORBITAL` to the folder with the build's
   `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the prepared resources.

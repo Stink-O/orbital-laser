@@ -166,8 +166,8 @@ The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's m
 |---|---|
 | `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
-| `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, and the camera shake |
-| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the Planet Killer's go straight into the chunks' sections through `world.edit-blocks`), and sets your flying speed |
+| `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (where each of the Crystal Bloom's pieces comes to rest), and the camera shake |
+| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the Planet Killer's and the Crystal Bloom's go straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), and sets your flying speed |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -175,8 +175,9 @@ The first four are new: they are on Horizon's roadmap ("planned interfaces" in i
 [docs/mods.md](https://github.com/Stink-O/horizon/blob/mod-api-input-ui-render-world/docs/mods.md)), and the
 [fork](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world) implements them so that mods built for
 Horizon's API 0.1 still load unchanged. The mod reads its events with `input.poll` instead of the game calling new hooks,
-which is what keeps that true. The fork's later additions (`world.set-flying-speed`, `input.poll-typed` and
-`world.edit-blocks`) are needed too: a fork build without them won't start the mod.
+which is what keeps that true. The fork's later additions (`world.set-flying-speed`, `input.poll-typed`,
+`world.edit-blocks`, and `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`) are needed
+too: a fork build without them won't start the mod.
 
 A strike's world changes go through a budget of 20,000 blocks and 400 commands a tick, and the rest wait for the next
 tick. The Planet Killer's crater is too big for commands, so it is written straight into the chunks with
@@ -247,7 +248,13 @@ nearest spire hides what is behind it. The shards are octahedra met the same way
 shells round the burst found where the view ray crosses each, and the dust is a noise volume. The spires, their breaks,
 the shards' paths and the fissures are placed by the same hash in the shader and in the mod (`cb_*`), so each stump is
 built where its spire stood, each shard comes down as a crystal where it lands, and the crater glows only where the mod
-has really dug it.
+has really dug it. The pass only knows the land at the target's height, so the mod asks the world how high the ground
+really is under each of the ~200 pieces that fly out (`world.surface-height`, a pair a tick from 13 s) and rests each one
+whole on it: on a low point of the ground under it, so it is wedged in rather than hovering, deeper into the high side
+of a slope or a cliff where it would otherwise hang over the ground. It gives the pass how far up or down that is
+(`render.set-data`), long before the burst; the pass throws the piece that much higher over its flight, so the last pose
+it draws is exactly where the blocks are built, block for block the same piece. The stumps are built where they stand,
+down to the ground wherever it lies lower, and the crystals round their feet rest on the ground at their feet.
 
 ## The sounds
 
