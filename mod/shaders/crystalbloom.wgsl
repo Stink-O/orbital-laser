@@ -35,7 +35,7 @@ const CB_ORBITERS: i32 = 40;
 const CB_BOWL: f32 = 88.0;         // the crater (strike.rs's cb_depth): CB_BOWL round, CB_BOWL_D deep, a well CB_WELL round
 const CB_BOWL_D: f32 = 28.0;
 const CB_WELL: f32 = 10.0;
-const CB_DIG_V: f32 = 100.0;       // dug from the middle out at this many blocks a second (cb_dig_t)
+const CB_DIG_V: f32 = 70.0;        // dug from the middle out at this many blocks a second (cb_dig_t)
 const CB_CRACKS: i32 = 9;          // fissures running out from the crater to CB_CRACK_R, opening as the shock reaches them
 const CB_CRACK_R: f32 = 205.0;
 const CB_SHOCK_V: f32 = 170.0;
@@ -178,19 +178,20 @@ fn cb_grow(i: i32, s: f32, ph: f32) -> vec2<f32> {
     return vec2<f32>(g, sh * (0.5 + ph / 120.0));
 }
 // When the crater `r` out has been dug (strike.rs's cb_dig_t, a chunk column at a time from the middle out), and how
-// far the land at `rel2` has really been opened by `time`: after the chunk round it has been dug, its edge wandering.
+// far the land at `rel2` has really been opened by `time`: after the chunk round it has been dug (strike.rs may put one
+// off by up to CB_SLACK), its edge wandering.
 fn cb_dig_t(r: f32) -> f32 {
     return CB_DET + 0.1 + r / CB_DIG_V;
 }
 fn cb_open(rel2: vec2<f32>, r: f32, time: f32) -> f32 {
     let n = gnoise2(rel2 * 0.05) - 0.5;
-    return smoothstep(0.0, 0.25, time - cb_dig_t(r + 12.0 + 6.0 * n));
+    return smoothstep(0.0, 0.25, time - cb_dig_t(r + 20.0 + 6.0 * n));
 }
 // When the fissures open `r` out (strike.rs's cb_crack_t): as the shock reaches them, not before the land over them
 // has been cleared.
 fn cb_crack_t(r: f32) -> f32 {
     let shock = CB_DET + 0.2 + r / CB_SHOCK_V;
-    return max(shock, cb_dig_t(r + 12.0) + 0.05);
+    return max(shock, cb_dig_t(r + 20.0) + 0.05);
 }
 // Fissure i: x its heading out from the target, y how far out it runs.
 fn cb_crack(i: i32, seed: f32) -> vec2<f32> {
@@ -637,7 +638,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             // after the burst: its stump, until the real one has been built where it stands
             let pl = cb_place(i, seed);
             brk = cb_break(i, seed, pl.w);
-            if (brk.x < 0.5 || time > cb_dig_t(length(pl.xy) + cb_form(i, seed, pl).x * 1.3 + brk.x * 0.8 + 12.0) + 0.15) {
+            if (brk.x < 0.5 || time > cb_dig_t(length(pl.xy) + cb_form(i, seed, pl).x * 1.3 + brk.x * 0.8 + 20.0) + 0.15) {
                 continue;
             }
         }

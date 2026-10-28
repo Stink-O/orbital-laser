@@ -28,7 +28,10 @@ const CB_G: f64 = 22.0;
 pub(super) const CB_BOWL: f64 = 88.0;
 pub(super) const CB_BOWL_D: f64 = 28.0;
 const CB_WELL: f64 = 10.0;
-const CB_DIG_V: f64 = 100.0;
+const CB_DIG_V: f64 = 70.0;
+/// How far behind cb_dig_t a chunk column may be dug (as blocks further out): strike.wgsl waits for that and the chunk
+/// round a point (CB_SLACK + 12 out) before it shows it open.
+const CB_SLACK: f64 = 8.0;
 /// The fissures: CB_CRACKS from the crater out to CB_CRACK_R at most, opening as the shock (CB_SHOCK_V) reaches them.
 pub(super) const CB_CRACKS: usize = 9;
 const CB_CRACK_R: f64 = 205.0;
@@ -36,8 +39,8 @@ const CB_SHOCK_V: f64 = 170.0;
 /// The land blown clear out to CB_BLAST, CB_ABOVE up (to the sky over the middle, out to CB_CORE); frosted with crystal
 /// out to CB_FROST; shards strewn out to CB_STREW; the chunks out to CB_LOAD kept loaded while it works.
 pub(super) const CB_BLAST: f64 = 130.0;
-const CB_ABOVE: i32 = 32;
-const CB_CORE: f64 = 40.0;
+const CB_ABOVE: i32 = 24;
+const CB_CORE: f64 = 16.0;
 const CB_FROST: f64 = 165.0;
 pub(super) const CB_STREW: f64 = 235.0;
 const CB_THROW: f64 = 225.0;
@@ -167,7 +170,7 @@ pub(super) fn cb_crack_a(i: usize, r: f64, seed: f32) -> f64 {
 /// out, the same way: strike.wgsl's cb_crack_t).
 pub(super) fn cb_crack_t(r: f64) -> f32 {
     let shock = CB_DET + 0.2 + (r / CB_SHOCK_V) as f32;
-    shock.max(cb_dig_t(r + 12.0) + 0.05)
+    shock.max(cb_dig_t(r + 20.0) + 0.05)
 }
 
 /// strike.wgsl's pcg3d (the gradient noise's hash), for the shards' random numbers.
@@ -486,15 +489,23 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             p.later(pl[2] as f32 - 0.3, move |q| cb_punch(q, point, pl, f, s));
         }
         // the crater, the land blown clear round it and the stumps, a few chunk columns a stage, nearest first
-        let cells = pk_cells(point, CB_BLAST * 1.1 + 4.0);
+        // (no more than about five chunk columns a tick: one is put off a little, by up to what strike.wgsl allows for,
+        // when more fall due together)
+        let mut cells = pk_cells(point, CB_BLAST * 1.1 + 4.0);
+        let mut last = 0.0f32;
+        for c in cells.iter_mut() {
+            let t = cb_dig_t(c.2).max(last + 0.01).min(cb_dig_t(c.2 + CB_SLACK));
+            last = t;
+            c.2 = f64::from(t);
+        }
         // (worked out well ahead, while they resonate: there are many, and the mod works out one a tick)
         for group in cells.chunks(6) {
             let group = group.to_vec();
-            let t0 = cb_dig_t(group[0].2);
+            let t0 = group[0].2 as f32;
             p.later(t0 - 1.6, move |q| {
                 let stumps: Vec<CbSolid> = (0..CB_N).filter_map(|i| cb_stump(i, shader_seed, point)).collect();
-                for (x0, z0, r) in group {
-                    cb_dig_cell(q, point, x0, z0, cb_dig_t(r), floor_y, sky, shader_seed, &stumps);
+                for (x0, z0, t) in group {
+                    cb_dig_cell(q, point, x0, z0, t as f32, floor_y, sky, shader_seed, &stumps);
                 }
             });
         }
@@ -579,6 +590,8 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     let by = p.by;
     let s = seed as u32;
     let mut b = Blocks::default();
+    // (what stands high over the middle, cleared on a tick of its own a little later: it is a lot of blocks)
+    let mut high = Blocks::default();
     let mut dep = [[0i32; 18]; 18];
     for (j, row) in dep.iter_mut().enumerate() {
         for (i, d) in row.iter_mut().enumerate() {
@@ -595,10 +608,13 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
             let blast = CB_BLAST * (0.93 + 0.14 * vnoise(dx, dz, 50.0, s ^ 0x505));
             let core = CB_CORE * (0.9 + 0.2 * vnoise(dx, dz, 20.0, s ^ 0x506));
             let dd = dep[j][i];
-            let top = if r < core { sky } else { (by + CB_ABOVE).min(sky) };
+            let top = (by + CB_ABOVE).min(sky);
             if r < blast || dd > 0 {
                 let y0 = if dd > 0 { by - dd + 1 } else { by + 1 };
                 b.run(x, z, y0, top, "minecraft:air");
+            }
+            if r < core {
+                high.run(x, z, top + 1, sky, "minecraft:air");
             }
             let dmax = [dep[j - 1][i], dep[j + 1][i], dep[j][i - 1], dep[j][i + 1]].into_iter().max().unwrap_or(0);
             let zone = vnoise(fx, fz, 40.0, s ^ 0x507);
@@ -659,6 +675,10 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
         }
     }
     p.ev.push((t, Act::Blocks(Box::new(b))));
+    if !high.runs.is_empty() {
+        let slot = ((x0 >> 4) ^ (z0 >> 4)).rem_euclid(8);
+        p.ev.push((t + 0.6 + slot as f32 * 0.05, Act::Blocks(Box::new(high))));
+    }
 }
 
 /// Fissure i from `r0` to `r1` out: cut a few blocks wide and deep along the line strike.wgsl draws it, as it opens,
@@ -878,7 +898,7 @@ mod tests {
             let (dx, dz) = (f64::from(n[0]) + 0.5 - POINT[0], f64::from(n[2]) + 0.5 - POINT[2]);
             let r = dx.hypot(dz);
             assert!(r < CB_BOWL * 1.12 + 1.0, "dug {r:.0} out: {c}");
-            assert!(*t >= cb_dig_t(r - 12.0) - 1e-3 && *t <= cb_dig_t(r + 12.0) + 1e-3, "{r:.0} out dug at {t}: {c}");
+            assert!(*t >= cb_dig_t(r - 12.0) - 1e-3 && *t <= cb_dig_t(r + 20.0) + 1e-3, "{r:.0} out dug at {t}: {c}");
             let depth = by - n[1] + 1;
             if r > CB_WELL * 1.25 {
                 assert!(f64::from(depth) <= CB_BOWL_D + 3.0, "{r:.0} out dug {depth} deep: {c}");
@@ -910,7 +930,7 @@ mod tests {
                 .fold(f32::MIN, f32::max);
             assert!(t > 0.0, "spire {i}: no stump at {x} {y} {z}");
             let _ = f;
-            let stop = cb_dig_t(p[0].hypot(p[1]) + f[0] * 1.3 + br[0] * 0.8 + 12.0) + 0.15;
+            let stop = cb_dig_t(p[0].hypot(p[1]) + f[0] * 1.3 + br[0] * 0.8 + 20.0) + 0.15;
             assert!(t <= stop, "spire {i}: built at {t}, after the pass stops drawing it at {stop}");
         }
     }
@@ -954,7 +974,7 @@ mod tests {
                     assert!((dx * aa.sin() - dz * aa.cos()).abs() < 3.3, "fissure {i}: a cut off its line");
                     assert!((*t - cb_crack_t(r)).abs() < 0.08, "fissure {i}: cut at {t} {r:.0} out, not {}", cb_crack_t(r));
                     if r < CB_BLAST {
-                        assert!(*t >= cb_dig_t(r + 12.0), "fissure {i}: cut before the land over it is cleared");
+                        assert!(*t >= cb_dig_t(r + 20.0), "fissure {i}: cut before the land over it is cleared");
                     }
                     cuts += 1;
                 }
@@ -978,6 +998,36 @@ mod tests {
         }
         for f in 0..CB_FRAGS {
             assert!(f64::from(CB_DET) + cb_frag(f, SEED).2 < f64::from(crate::lasers::CRYSTAL_BLOOM.length) - 1.0, "shard {f}");
+        }
+    }
+    /// What its `world.edit-blocks` changes ask of the game, tick by tick: runs, blocks and chunk columns, the busiest
+    /// ticks and when the last change lands. `cargo test --release cb_edit_profile -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn cb_edit_profile() {
+        let target = Target { block: [10, 64, -3], point: POINT };
+        let mut ev = plan(&crate::lasers::CRYSTAL_BLOOM, &target, true, "minecraft:overworld", SEED, [10.5, 66.0, 330.0], 0);
+        let mut ticks: std::collections::BTreeMap<u32, (usize, u64, std::collections::HashSet<(i32, i32)>)> = Default::default();
+        while let Some((t, act)) = ev.pop() {
+            match act {
+                Act::Blocks(b) => {
+                    let e = ticks.entry((t / 0.05).ceil() as u32).or_default();
+                    for r in &b.runs {
+                        e.0 += 1;
+                        e.1 += u64::from(r.height);
+                        e.2.insert((r.x >> 4, r.z >> 4));
+                    }
+                }
+                Act::Later(job) => ev.extend(job()),
+                _ => {}
+            }
+        }
+        let total: u64 = ticks.values().map(|v| v.1).sum();
+        println!("{} ticks with edits, {total} blocks in all, the last at {:.2} s", ticks.len(), *ticks.keys().last().unwrap() as f32 * 0.05);
+        let mut busy: Vec<_> = ticks.iter().map(|(k, v)| (v.1, v.0, v.2.len(), *k as f32 * 0.05)).collect();
+        busy.sort_by(|a, b| b.0.cmp(&a.0));
+        for (b, r, c, t) in busy.iter().take(5) {
+            println!("{t:6.2} s: {b} blocks, {r} runs, {c} chunk columns");
         }
     }
 }
