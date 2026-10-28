@@ -50,7 +50,7 @@ fn cb_place(i: i32, seed: f32) -> vec4<f32> {
         let a = mh(0u, s, 1u) * TAU + f32(i) * 2.39996 + (mh(u, s, 2u) - 0.5) * 0.5;
         let r = 42.0 + 34.0 * mh(u, s, 3u);
         let t = CB_PUNCH0 + f32(i) * CB_PUNCH_DT + (mh(u, s, 4u) - 0.5) * 0.12;
-        return vec4<f32>(cos(a) * r, sin(a) * r, t, 190.0 + 90.0 * mh(u, s, 5u));
+        return vec4<f32>(cos(a) * r, sin(a) * r, t, 170.0 + 80.0 * mh(u, s, 5u));
     }
     if (i == 5) {
         return vec4<f32>((mh(u, s, 3u) - 0.5) * 4.0, (mh(u, s, 4u) - 0.5) * 4.0, CB_PUNCH0 + 5.0 * CB_PUNCH_DT + 0.1, 330.0);
@@ -84,11 +84,11 @@ fn cb_form(i: i32, seed: f32, p: vec4<f32>) -> vec4<f32> {
     if (i == 5) {
         return vec4<f32>(30.0, 0.035, mh(u, s, 13u) * TAU, mh(u, s, 14u) * TAU);
     }
-    var r = 5.0 + p.w * 0.065 + 3.0 * mh(u, s, 15u);
+    var r = 5.0 + p.w * 0.08 + 3.0 * mh(u, s, 15u);
     var lean = 0.14 + 0.36 * mh(u, s, 16u);
     var hd = out + (mh(u, s, 17u) - 0.5) * 1.3;
     if (i < 5) {
-        r = 14.0 + 5.0 * mh(u, s, 15u);
+        r = 19.0 + 6.0 * mh(u, s, 15u);
         lean = 0.08 + 0.14 * mh(u, s, 16u);
     } else if ((i - 6) % 4 > 0) {
         // (the smaller of a cluster splayed out from its tallest)

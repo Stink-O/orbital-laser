@@ -74,7 +74,7 @@ pub(super) fn cb_place(i: usize, seed: f32) -> [f64; 4] {
         let a = mh(0, s, 1) * TAU + i as f64 * 2.39996 + (mh(u, s, 2) - 0.5) * 0.5;
         let r = 42.0 + 34.0 * mh(u, s, 3);
         let t = f64::from(CB_PUNCH0) + i as f64 * f64::from(CB_PUNCH_DT) + (mh(u, s, 4) - 0.5) * 0.12;
-        return [a.cos() * r, a.sin() * r, t, 190.0 + 90.0 * mh(u, s, 5)];
+        return [a.cos() * r, a.sin() * r, t, 170.0 + 80.0 * mh(u, s, 5)];
     }
     if i == 5 {
         return [(mh(u, s, 3) - 0.5) * 4.0, (mh(u, s, 4) - 0.5) * 4.0, f64::from(CB_PUNCH0) + 5.0 * f64::from(CB_PUNCH_DT) + 0.1, 330.0];
@@ -105,11 +105,11 @@ pub(super) fn cb_form(i: usize, seed: f32, p: [f64; 4]) -> [f64; 4] {
     if i == 5 {
         return [30.0, 0.035, mh(u, s, 13) * TAU, mh(u, s, 14) * TAU];
     }
-    let mut r = 5.0 + p[3] * 0.065 + 3.0 * mh(u, s, 15);
+    let mut r = 5.0 + p[3] * 0.08 + 3.0 * mh(u, s, 15);
     let mut lean = 0.14 + 0.36 * mh(u, s, 16);
     let mut hd = out + (mh(u, s, 17) - 0.5) * 1.3;
     if i < 5 {
-        r = 14.0 + 5.0 * mh(u, s, 15);
+        r = 19.0 + 6.0 * mh(u, s, 15);
         lean = 0.08 + 0.14 * mh(u, s, 16);
     } else if (i - 6) % 4 > 0 {
         let c = (i - 6) / 4;
