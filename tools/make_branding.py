@@ -36,7 +36,7 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    shot = Image.open(ROOT / "docs" / "11-mothership.jpg").convert("RGB")
+    shot = Image.open(ROOT / "docs" / "22-crystal-bloom-prism.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H * 1.12 / shot.height), round(H * 1.12)), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width + 330, -round(H * 0.06)))
@@ -53,7 +53,9 @@ def social_preview():
     d = ImageDraw.Draw(card)
     d.text((80, 140 + logo.height + 34), "Orbital strikes for Horizon,", font=ImageFont.truetype(str(FONT), 32), fill="#C4CBD4")
     d.text((80, 140 + logo.height + 76), "the Rust rewrite of Minecraft Java", font=ImageFont.truetype(str(FONT), 32), fill="#C4CBD4")
-    d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM · MOTHERSHIP · DOWNFALL", font=ImageFont.truetype(str(FONT), 19), fill="#FF9A2E")
+    names = ImageFont.truetype(str(FONT), 19)
+    d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM", font=names, fill="#FF9A2E")
+    d.text((80, 140 + logo.height + 166), "MOTHERSHIP · DOWNFALL · PLANET KILLER · CRYSTAL BLOOM", font=names, fill="#FF9A2E")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 
