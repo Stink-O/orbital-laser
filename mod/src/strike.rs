@@ -4,6 +4,8 @@
 use crate::lasers::Laser;
 use std::f64::consts::PI;
 
+mod crystal;
+
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
 /// Mobs and dropped items this close to the impact die (players are spared).
@@ -402,6 +404,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "planetkiller" {
         return planetkiller_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "crystalbloom" {
+        return crystal::crystalbloom_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;

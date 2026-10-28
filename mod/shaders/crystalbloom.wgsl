@@ -186,6 +186,12 @@ fn cb_open(rel2: vec2<f32>, r: f32, time: f32) -> f32 {
     let n = gnoise2(rel2 * 0.05) - 0.5;
     return smoothstep(0.0, 0.25, time - cb_dig_t(r + 12.0 + 6.0 * n));
 }
+// When the fissures open `r` out (strike.rs's cb_crack_t): as the shock reaches them, not before the land over them
+// has been cleared.
+fn cb_crack_t(r: f32) -> f32 {
+    let shock = CB_DET + 0.2 + r / CB_SHOCK_V;
+    return max(shock, cb_dig_t(r + 12.0) + 0.05);
+}
 // Fissure i: x its heading out from the target, y how far out it runs.
 fn cb_crack(i: i32, seed: f32) -> vec2<f32> {
     let s = u32(seed);
@@ -414,8 +420,10 @@ fn cb_frag_v(f: i32, seed: f32, P: vec3<f32>) -> vec3<f32> {
     let out = normalize(vec3<f32>(P.x, 0.0, P.z) + vec3<f32>(0.01, 0.0, 0.0));
     let az = (h2.y - 0.5) * 1.4;
     let o2 = vec3<f32>(out.x * cos(az) - out.z * sin(az), 0.0, out.x * sin(az) + out.z * cos(az));
-    let vh = 22.0 + 70.0 * h2.z + P.y * 0.12;
     let vy = 6.0 + 40.0 * h3.z;
+    let tl = (vy + sqrt(vy * vy + 2.0 * CB_G * max(P.y, 0.0))) / CB_G;
+    // (no further out than strike.rs keeps the land loaded)
+    let vh = min(22.0 + 70.0 * h2.z + P.y * 0.12, max(225.0 - length(P.xz), 10.0) / tl);
     return o2 * vh + vec3<f32>(0.0, vy, 0.0);
 }
 // When it comes down to the target's ground (seconds after the burst).
@@ -629,7 +637,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             // after the burst: its stump, until the real one has been built where it stands
             let pl = cb_place(i, seed);
             brk = cb_break(i, seed, pl.w);
-            if (brk.x < 0.5 || time > cb_dig_t(length(pl.xy) + brk.x * 0.6 + 14.0) + 0.15) {
+            if (brk.x < 0.5 || time > cb_dig_t(length(pl.xy) + cb_form(i, seed, pl).x * 1.3 + brk.x * 0.8 + 12.0) + 0.15) {
                 continue;
             }
         }
@@ -817,7 +825,7 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                     da = da - TAU * floor(da / TAU + 0.5);
                     let lat = abs(da) * r;
                     let hw = 1.0 + 2.2 * (1.0 - (r - CB_BOWL) / (cr.y - CB_BOWL));
-                    let opened = smoothstep(0.0, 0.2, time - (CB_DET + 0.2 + r / CB_SHOCK_V));
+                    let opened = smoothstep(0.0, 0.2, time - cb_crack_t(r));
                     crack = max(crack, ((1.0 - smoothstep(hw - 0.3, hw + 0.7, lat)) + exp(-lat / (hw * 2.0)) * 0.3) * opened);
                 }
                 let fade = 0.35 + 0.65 * exp(-max(dt - 1.5, 0.0) / 5.0);
