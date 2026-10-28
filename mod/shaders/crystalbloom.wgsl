@@ -30,7 +30,6 @@ const CB_RES: f32 = 14.0;          // they resonate from here,
 const CB_ORBIT: f32 = 15.6;        // shards breaking off and orbiting them from here,
 const CB_DET: f32 = 22.0;          // and detonate
 const CB_END: f32 = 31.0;          // the light gone (the strike runs 32 s)
-const CB_FRAGS: i32 = 96;          // the shards thrown out as they burst (strike.rs lands each where it comes down)
 const CB_G: f32 = 22.0;            // how hard they fall
 const CB_ORBITERS: i32 = 32;
 const CB_BOWL: f32 = 88.0;         // the crater (strike.rs's cb_depth): CB_BOWL round, CB_BOWL_D deep, a well CB_WELL round
@@ -405,36 +404,166 @@ fn cb_shard(rd: vec3<f32>, C: vec3<f32>, sz: f32, ln: f32, ax: vec3<f32>, ang: f
     }
     return vec4<f32>(t0, normalize(rot_axis(nin, ax, ang)));
 }
-// Shard f thrown out as they burst: where it starts (from the target: x, z out over the field, y up), and (w) its hue
-// (strike.rs's cb_frag: it lands where this has it come down). Most from low down, near the middle, where the spires
-// stood thickest.
+// The hashes for the spires' chunks and the rest (strike.rs's cb_h3).
 fn cb_h3(f: i32, k: u32, seed: f32) -> vec3<f32> {
     return vec3<f32>(pcg3d(vec3<u32>(u32(f), k, u32(seed)))) * (1.0 / 4294967295.0);
 }
-fn cb_frag_from(f: i32, seed: f32) -> vec4<f32> {
-    let h1 = cb_h3(f, 41u, seed);
-    let h2 = cb_h3(f, 42u, seed);
-    let a = h1.x * TAU;
-    let r = CB_FIELD * 0.85 * sqrt(h1.y);
-    let y = 12.0 + 250.0 * pow(h1.z, 1.6) * (1.0 - 0.55 * r / CB_FIELD);
-    return vec4<f32>(cos(a) * r, y, sin(a) * r, h1.x * 0.6 + 0.3 * h2.x);
+
+// ---- the break: each spire fractures into chunks as they burst --------------------------------------------------
+// Each spire (above its break, or from the ground if it shatters whole) is cut across its length at CB_NSEG uneven
+// heights by planes tilted every which way, so its pieces are slabs and wedges, long splinters and short fragments;
+// the wider ones split again down their length. Each piece keeps the spire's own faces (it is the spire, clipped by
+// its cuts) and is thrown out from where it was, tumbling as its size allows, and comes down where strike.rs builds it
+// in blocks (cb_chunk there): keep the two in step.
+fn cb_nseg(R: f32, span: f32) -> i32 {
+    return clamp(i32(span / (8.0 + R * 1.0)), 2, 6);
 }
-// How fast it is thrown: out from the middle (turned a little off it), and up.
-fn cb_frag_v(f: i32, seed: f32, P: vec3<f32>) -> vec3<f32> {
-    let h2 = cb_h3(f, 42u, seed);
-    let h3 = cb_h3(f, 313u, seed);
-    let out = normalize(vec3<f32>(P.x, 0.0, P.z) + vec3<f32>(0.01, 0.0, 0.0));
-    let az = (h2.y - 0.5) * 1.4;
-    let o2 = vec3<f32>(out.x * cos(az) - out.z * sin(az), 0.0, out.x * sin(az) + out.z * cos(az));
-    let vy = 6.0 + 40.0 * h3.z;
-    let tl = (vy + sqrt(vy * vy + 2.0 * CB_G * max(P.y, 0.0))) / CB_G;
-    // (no further out than strike.rs keeps the land loaded)
-    let vh = min(22.0 + 70.0 * h2.z + P.y * 0.12, max(225.0 - length(P.xz), 10.0) / tl);
-    return o2 * vh + vec3<f32>(0.0, vy, 0.0);
+// How high up its axis cut k of spire i is (0 its foot, nseg its top).
+fn cb_cut_h(i: i32, k: i32, nseg: i32, h0: f32, span: f32, seed: f32) -> f32 {
+    var tot = 0.0;
+    var at = 0.0;
+    for (var j = 0; j < 6; j = j + 1) {
+        if (j >= nseg) {
+            break;
+        }
+        let w = 0.45 + cb_h3(i * 16 + j, 501u, seed).x;
+        if (j < k) {
+            at = at + w;
+        }
+        tot = tot + w;
+    }
+    return h0 + span * at / tot;
 }
-// When it comes down to the target's ground (seconds after the burst).
-fn cb_frag_land(P: vec3<f32>, v: vec3<f32>) -> f32 {
-    return (v.y + sqrt(v.y * v.y + 2.0 * CB_G * max(P.y, 0.0))) / CB_G;
+// Cut k as a plane in the spire's frame: inside (below it) where dot(xyz, q) <= w.
+fn cb_cut_plane(i: i32, k: i32, nseg: i32, h0: f32, span: f32, R: f32, seed: f32) -> vec4<f32> {
+    let h = cb_cut_h(i, k, nseg, h0, span, seed);
+    let t = (cb_h3(i * 16 + k, 502u, seed).xy - 0.5) * min(1.1, 0.4 * span / f32(nseg) / R);
+    return vec4<f32>(t.x, 1.0, t.y, h);
+}
+// The crater's depth r out, as a chunk falling in it meets it (strike.rs's cb_bowl_dep).
+fn cb_bowl_dep(r: f32) -> f32 {
+    let u = saturate(r / CB_BOWL);
+    return select(0.0, CB_BOWL_D * pow(1.0 - u * u, 0.75), r < CB_BOWL);
+}
+struct CbChunk {
+    C0: vec3<f32>,     // its middle as it breaks off (off the target)
+    v: vec3<f32>,      // how fast it is thrown
+    spin: vec4<f32>,   // the axis it tumbles about, and how fast
+    lo: vec4<f32>,     // its cuts in the spire's frame: inside where dot(xyz, q) <= w
+    hi: vec4<f32>,
+    sp: vec4<f32>,
+    tl: f32,           // when it comes down (after the burst), and when it is built in blocks there
+    tp: f32,
+    L: f32,            // how long and how wide it is
+    wid: f32,
+}
+// Piece (k, half) of spire i (its foot F off the target, its frame a, e1, e2, radius R, height H; its break brk).
+fn cb_chunk(i: i32, k: i32, half: i32, seed: f32, F: vec3<f32>, a: vec3<f32>, e1: vec3<f32>, e2: vec3<f32>, R: f32, H: f32, brk: vec4<f32>) -> CbChunk {
+    var o: CbChunk;
+    let h0 = select(0.0, brk.x, brk.x > 0.5);
+    let span = H - h0;
+    let nseg = cb_nseg(R, span);
+    let split = R > 7.0 && k < nseg - 1;
+    if (k == 0) {
+        if (brk.x > 0.5) {
+            o.lo = vec4<f32>(-brk.z, -1.0, -brk.w, -brk.x);
+        } else {
+            o.lo = -cb_cut_plane(i, 0, nseg, h0, span, R, seed);
+        }
+    } else {
+        o.lo = -cb_cut_plane(i, k, nseg, h0, span, R, seed);
+    }
+    o.hi = select(cb_cut_plane(i, k + 1, nseg, h0, span, R, seed), vec4<f32>(0.0, 1.0, 0.0, 1.0e7), k == nseg - 1);
+    let ylo = cb_cut_h(i, k, nseg, h0, span, seed);
+    let yhi = cb_cut_h(i, k + 1, nseg, h0, span, seed);
+    var ym = (ylo + yhi) * 0.5;
+    if (k == nseg - 1) {
+        ym = ylo + (yhi - ylo) * 0.4;
+    }
+    var cx = vec2<f32>(0.0);
+    o.sp = vec4<f32>(0.0, 0.0, 0.0, 1.0e7);
+    o.wid = R;
+    if (split) {
+        let hs = cb_h3(i * 16 + k, 503u, seed);
+        let ph = hs.x * TAU;
+        let n = vec2<f32>(cos(ph), sin(ph));
+        let w = (hs.y - 0.5) * R * 0.5;
+        o.sp = select(vec4<f32>(n.x, 0.0, n.y, w), vec4<f32>(-n.x, 0.0, -n.y, -w), half == 1);
+        cx = n * (w + select(-1.0, 1.0, half == 1) * R * 0.45);
+        o.wid = R * 0.6;
+    }
+    o.L = yhi - ylo;
+    o.C0 = F + e1 * cx.x + a * ym + e2 * cx.y;
+    let f = i * 16 + k * 2 + half;
+    let hm = cb_h3(f, 504u, seed);
+    let hsn = cb_h3(f, 505u, seed);
+    let out = normalize(vec2<f32>(o.C0.x + 0.01, o.C0.z));
+    let az = (hm.y - 0.5) * 0.9;
+    let o2 = vec2<f32>(out.x * cos(az) - out.y * sin(az), out.x * sin(az) + out.y * cos(az));
+    let vy = 6.0 + 17.0 * hm.z;
+    let mass = 1.4 - 0.5 * saturate(o.wid * o.L / 600.0);
+    let y0 = max(o.C0.y, 0.0);
+    let tl0 = (vy + sqrt(vy * vy + 2.0 * CB_G * y0)) / CB_G;
+    let vh = min((11.0 + 26.0 * hm.x + y0 * 0.08) * mass, max(225.0 - length(o.C0.xz), 10.0) / tl0);
+    let r1 = length(o.C0.xz + o2 * vh * tl0);
+    o.tl = (vy + sqrt(vy * vy + 2.0 * CB_G * (y0 + cb_bowl_dep(r1)))) / CB_G;
+    let rl = length(o.C0.xz + o2 * vh * o.tl);
+    o.tp = select(o.tl, max(o.tl, cb_dig_t(rl + 20.0) + 0.15 - CB_DET), rl < 150.0);
+    o.v = vec3<f32>(o2.x * vh, vy, o2.y * vh);
+    let rate = (0.8 + 2.6 * hsn.x) * 14.0 / (14.0 + o.L * 0.35 + o.wid * 0.25) * select(-1.0, 1.0, hsn.y > 0.5);
+    o.spin = vec4<f32>(normalize(hsn - 0.5 + vec3<f32>(0.0, 0.01, 0.0)), rate);
+    return o;
+}
+// Where a piece is `dt` after the burst (off the target) and how far it has turned: flying, then come down and driven
+// a little into the ground, lying there until it is built.
+fn cb_chunk_at(o: CbChunk, dt: f32) -> vec4<f32> {
+    let tf = min(dt, o.tl);
+    var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf, 0.0);
+    if (dt > o.tl) {
+        let vl = o.v - vec3<f32>(0.0, CB_G * o.tl, 0.0);
+        P = P + normalize(vl) * 5.0 * min(dt - o.tl, 0.2);
+    }
+    return vec4<f32>(P, o.spin.w * tf);
+}
+// The view ray through a crystal's own faces (but its cut) and three more planes: x in, y out, z the face it goes in
+// by (13 and on: a broken face).
+fn cb_hit3(c: Crystal, o: vec3<f32>, d: vec3<f32>, x0: vec4<f32>, x1: vec4<f32>, x2: vec4<f32>) -> vec3<f32> {
+    var t0 = -1.0e9;
+    var t1 = 1.0e9;
+    var kin = 0;
+    for (var k = 0; k < 16; k = k + 1) {
+        var pl: vec4<f32>;
+        if (k < 13) {
+            pl = cb_plane(c, k);
+        } else if (k == 13) {
+            pl = x0;
+        } else if (k == 14) {
+            pl = x1;
+        } else {
+            pl = x2;
+        }
+        let dn = dot(pl.xyz, d);
+        let num = pl.w - dot(pl.xyz, o);
+        if (abs(dn) < 1.0e-7) {
+            if (num < 0.0) {
+                return vec3<f32>(-1.0, -1.0, 0.0);
+            }
+            continue;
+        }
+        let t = num / dn;
+        if (dn < 0.0) {
+            if (t > t0) {
+                t0 = t;
+                kin = k;
+            }
+        } else {
+            t1 = min(t1, t);
+        }
+    }
+    if (t0 > t1 || t1 < 0.0) {
+        return vec3<f32>(-1.0, -1.0, 0.0);
+    }
+    return vec3<f32>(t0, t1, f32(kin));
 }
 
 // ---- dust: what each crystal throws up as it breaks the ground and comes up out of it -----------------------------
@@ -1275,27 +1404,104 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
             add = add + cb_hue(c.hue + hue_t) * exp(-qd.x / max(sz * 1.5, qd.y * px_a * 2.0)) * 0.08 * res * cb_occ(qd.y, scene_len, sky, cloud) * k;
         }
     }
-    // ---- as they burst: the shards thrown out, tumbling, glittering, falling back to the land -----------------------
-    if (det && dt < 9.0) {
-        for (var f = 0; f < CB_FRAGS; f = f + 1) {
-            let fr = cb_frag_from(f, seed);
-            let P0 = fr.xyz;
-            let v = cb_frag_v(f, seed, P0);
-            if (dt > cb_frag_land(P0, v)) {
+    // ---- as they burst: each spire broken into its pieces (cb_chunk), thrown out, tumbling, coming down ---------------
+    var sh_brk = 0.0;
+    var sh_ci = vec3<i32>(-1);
+    if (det && dt < 12.0) {
+        for (var i = 0; i < CB_N; i = i + 1) {
+            let pl = cb_place(i, seed);
+            let fm = cb_form(i, seed, pl);
+            let F = vec3<f32>(pl.x, 0.0, pl.y);
+            let Fc = crel + F;
+            // (all of its pieces within reach of where it stood by now)
+            let reach = fm.x * 1.5 + pl.w * sin(fm.y) + (40.0 + pl.w * 0.06) * min(dt, 6.0) + 10.0;
+            if (ray_seg(rd, Fc - vec3<f32>(0.0, CB_BOWL_D + 4.0, 0.0), Fc + vec3<f32>(0.0, pl.w + 30.0, 0.0)).x > reach) {
                 continue;
             }
-            let Pf = P0 + v * dt - vec3<f32>(0.0, 0.5 * CB_G * dt * dt, 0.0);
-            let hv = cb_h3(f, 313u, seed);
-            let sz = (1.5 + 5.0 * hv.x * hv.x) * smoothstep(0.0, 0.08, dt);
-            let ax = normalize(hv - 0.5 + vec3<f32>(0.0, 0.01, 0.0));
-            let sh = cb_shard(rd, crel + Pf, sz, sz * (2.0 + 1.5 * hv.y), ax, hv.z * TAU + dt * (1.0 + 4.0 * hv.y), sh_t);
-            if (sh.x > 0.0 && sh.x < sh_t) {
-                sh_t = sh.x;
-                sh_n = sh.yzw;
-                sh_hue = fr.w;
-                sh_glow = 0.6 + 4.0 * exp(-dt * 1.5);
+            var c = cb_crystal(i, seed, CB_DET - 0.01, crel);
+            let brk = cb_break(i, seed, pl.w);
+            let H = c.Hb + c.tip;
+            let h0 = select(0.0, brk.x, brk.x > 0.5);
+            let nseg = cb_nseg(c.R, H - h0);
+            let nh = select(1, 2, c.R > 7.0);
+            for (var kk = 0; kk < 6; kk = kk + 1) {
+                if (kk >= nseg) {
+                    break;
+                }
+                for (var hf = 0; hf < 2; hf = hf + 1) {
+                    if (hf >= nh || (hf == 1 && kk == nseg - 1)) {
+                        break;
+                    }
+                    let o = cb_chunk(i, kk, hf, seed, F, c.a, c.e1, c.e2, c.R, H, brk);
+                    if (dt > o.tp) {
+                        continue;
+                    }
+                    let at = cb_chunk_at(o, dt);
+                    let Cw = crel + at.xyz;
+                    let bnd = 0.5 * length(vec2<f32>(o.L, 2.0 * o.wid)) + 2.0;
+                    let tc = dot(Cw, rd);
+                    if (tc < -bnd || tc - bnd > sh_t || dot(Cw, Cw) - tc * tc > bnd * bnd) {
+                        continue;
+                    }
+                    let oo = o.C0 + rot_axis(-Cw, o.spin.xyz, -at.w);
+                    let dd = rot_axis(rd, o.spin.xyz, -at.w);
+                    let h = cb_hit3(c, cb_to(c, oo - F), cb_to(c, dd), o.lo, o.hi, o.sp);
+                    if (h.x > 0.0 && h.x < sh_t) {
+                        let kin = i32(h.z);
+                        var nl: vec3<f32>;
+                        if (kin < 13) {
+                            nl = cb_plane(c, kin).xyz;
+                        } else if (kin == 13) {
+                            nl = o.lo.xyz;
+                        } else if (kin == 14) {
+                            nl = o.hi.xyz;
+                        } else {
+                            nl = o.sp.xyz;
+                        }
+                        sh_t = h.x;
+                        sh_n = normalize(rot_axis(cb_from(c, normalize(nl)), o.spin.xyz, at.w));
+                        sh_hue = c.hue;
+                        sh_brk = f32(kin >= 13);
+                        sh_glow = (0.25 + 1.4 * exp(-dt * 1.5)) * (1.0 + sh_brk * 1.2);
+                        sh_ci = vec3<i32>(i, kk, hf);
+                    }
+                }
             }
         }
+    }
+    // (the piece in front: its edges catching the light, as the spires' do)
+    var sh_edge = 0.0;
+    if (sh_ci.x >= 0 && sh_t < scene_len) {
+        let i = sh_ci.x;
+        let pl = cb_place(i, seed);
+        let c = cb_crystal(i, seed, CB_DET - 0.01, crel);
+        let o = cb_chunk(i, sh_ci.y, sh_ci.z, seed, vec3<f32>(pl.x, 0.0, pl.y), c.a, c.e1, c.e2, c.R, c.Hb + c.tip, cb_break(i, seed, pl.w));
+        let at = cb_chunk_at(o, dt);
+        let Xo = o.C0 + rot_axis(rd * sh_t - crel - at.xyz, o.spin.xyz, -at.w);
+        let ql = cb_to(c, Xo - vec3<f32>(pl.x, 0.0, pl.y));
+        var e1 = 1.0e9;
+        var e2 = 1.0e9;
+        for (var kk = 0; kk < 16; kk = kk + 1) {
+            var pk: vec4<f32>;
+            if (kk < 13) {
+                pk = cb_plane(c, kk);
+            } else if (kk == 13) {
+                pk = o.lo;
+            } else if (kk == 14) {
+                pk = o.hi;
+            } else {
+                pk = o.sp;
+            }
+            let dpk = max((pk.w - dot(pk.xyz, ql)) / length(pk.xyz), 0.0);
+            if (dpk < e1) {
+                e2 = e1;
+                e1 = dpk;
+            } else {
+                e2 = min(e2, dpk);
+            }
+        }
+        let ew = max(0.12, sh_t * px_a * 0.8);
+        sh_edge = exp(-e2 / ew) * min(1.0, 0.12 / ew * 2.0);
     }
     if (sh_t < scene_len) {
         // a shard: its face catching the sky, its body lit from inside
@@ -1305,8 +1511,15 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
         let refl = cb_env(reflect(rd, sh_n), sky_c, sun, day, dark, base_c * 0.2);
         let inner = cb_env(refract(rd, sh_n, 0.66), sky_c, sun, day, dark, base_c * 0.2);
         let facet = 0.6 + 0.8 * fract(sin(dot(sh_n, vec3<f32>(12.9, 78.2, 37.7))) * 43758.5);
-        let cc = inner * base_c * base_c * facet * 0.3 + base_c * base_c * sh_glow * 0.6 * facet + refl * fres * 1.3
-            + sun_c * pow(max(dot(sh_n, normalize(sun - rd)), 0.0), 160.0) * 3.0;
+        // (a broken face fresh and pale, glittering; the spire's own faces deep and clear)
+        let deep = base_c * base_c;
+        let glw_c = mix(deep, mix(base_c, vec3<f32>(1.0), 0.15), sh_brk * 0.8);
+        // (light through it, bent and split: its faces each a little a different colour)
+        let disp = cb_spectrum(fract(dot(sh_n, vec3<f32>(3.1, 1.7, 2.3)) + dt * 0.2));
+        var cc = inner * deep * facet * 0.5 + glw_c * sh_glow * 0.6 * facet + refl * fres * 1.3
+            + sun_c * pow(max(dot(sh_n, normalize(sun - rd)), 0.0), 160.0) * 3.0
+            + deep * disp * 0.12 * facet * sh_glow;
+        cc = cc + (refl * 0.5 + mix(base_c, vec3<f32>(1.0), 0.4) * (0.3 + sh_glow * 0.5)) * sh_edge;
         let haze = 1.0 - exp(-sh_t / 3000.0);
         col = mix(cc * k + col * (1.0 - k), hazec, haze * 0.7);
         add = add * 0.1;

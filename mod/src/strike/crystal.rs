@@ -22,7 +22,6 @@ const CB_BLOOM0: f32 = 7.6;
 const CB_BLOOM_V: f32 = 4.6;
 const CB_RES: f32 = 14.0;
 pub(super) const CB_DET: f32 = 22.0;
-pub(super) const CB_FRAGS: usize = 96;
 const CB_G: f64 = 22.0;
 /// The crater: CB_BOWL round (its edge wandering), CB_BOWL_D deep in the middle, a well CB_WELL round down to bedrock
 /// where the heart stood; dug a chunk column at a time from the middle out at CB_DIG_V blocks a second (cb_dig_t).
@@ -44,7 +43,6 @@ const CB_ABOVE: i32 = 24;
 const CB_CORE: f64 = 16.0;
 const CB_FROST: f64 = 165.0;
 pub(super) const CB_STREW: f64 = 235.0;
-const CB_THROW: f64 = 225.0;
 const CB_LOAD: f64 = 240.0;
 
 /// Each crystal colour's blocks: its body, its glassy skin, the bands across it, and the glowing heart down its middle.
@@ -193,23 +191,102 @@ fn pcg3d(v0: [u32; 3]) -> [u32; 3] {
 fn cb_h3(f: usize, k: u32, seed: f32) -> [f64; 3] {
     pcg3d([f as u32, k, seed as u32]).map(|x| f64::from(x) / 4_294_967_295.0)
 }
-/// Shard f thrown out as they burst (strike.wgsl's cb_frag_from, cb_frag_v, cb_frag_land): where it comes down (x, z
-/// off the target), when (seconds after the burst), its hue and how big it is.
-pub(super) fn cb_frag(f: usize, seed: f32) -> (f64, f64, f64, f64, f64) {
-    let (h1, h2, h3) = (cb_h3(f, 41, seed), cb_h3(f, 42, seed), cb_h3(f, 313, seed));
-    let a = h1[0] * TAU;
-    let r = CB_FIELD * 0.85 * h1[1].sqrt();
-    let y = 12.0 + 250.0 * h1[2].powf(1.6) * (1.0 - 0.55 * r / CB_FIELD);
-    let (px, pz) = (a.cos() * r, a.sin() * r);
-    let ol = (px + 0.01).hypot(pz);
-    let (ox, oz) = ((px + 0.01) / ol, pz / ol);
-    let az = (h2[1] - 0.5) * 1.4;
-    let (o2x, o2z) = (ox * az.cos() - oz * az.sin(), ox * az.sin() + oz * az.cos());
-    let vy = 6.0 + 40.0 * h3[2];
-    let tl = (vy + (vy * vy + 2.0 * CB_G * y).sqrt()) / CB_G;
-    // (no further out than the land kept loaded)
-    let vh = (22.0 + 70.0 * h2[2] + y * 0.12).min((CB_THROW - r).max(10.0) / tl);
-    (px + o2x * vh * tl, pz + o2z * vh * tl, tl, h1[0] * 0.6 + 0.3 * h2[0], 1.5 + 5.0 * h3[0] * h3[0])
+/// The pieces spire i breaks into (strike.wgsl's cb_nseg): its cuts across, and whether each but its top is split again
+/// down its length.
+fn cb_nseg(r: f64, span: f64) -> usize {
+    ((span / (8.0 + r)) as i32).clamp(2, 6) as usize
+}
+/// How high up its axis cut k of spire i is (strike.wgsl's cb_cut_h).
+fn cb_cut_h(i: usize, k: usize, nseg: usize, h0: f64, span: f64, seed: f32) -> f64 {
+    let (mut tot, mut at) = (0.0, 0.0);
+    for j in 0..nseg {
+        let w = 0.45 + cb_h3(i * 16 + j, 501, seed)[0];
+        if j < k {
+            at += w;
+        }
+        tot += w;
+    }
+    h0 + span * at / tot
+}
+/// The crater's depth r out, as a piece falling in it meets it (strike.wgsl's cb_bowl_dep).
+fn cb_bowl_dep(r: f64) -> f64 {
+    if r < CB_BOWL { CB_BOWL_D * (1.0 - (r / CB_BOWL).powi(2)).powf(0.75) } else { 0.0 }
+}
+/// A piece of a spire as it breaks off (strike.wgsl's cb_chunk).
+#[derive(Clone, Copy)]
+pub(super) struct CbChunk {
+    /// Its middle as it breaks off, off the target.
+    pub c0: [f64; 3],
+    /// How fast it is thrown.
+    pub v: [f64; 3],
+    /// When it comes down (after the burst), and when it is built there.
+    pub tl: f64,
+    pub tp: f64,
+    /// How long and wide it is.
+    pub len: f64,
+    pub wid: f64,
+    pub family: usize,
+}
+impl CbChunk {
+    /// Where it comes down (x, z off the target).
+    pub fn land(&self) -> (f64, f64) {
+        (self.c0[0] + self.v[0] * self.tl, self.c0[2] + self.v[2] * self.tl)
+    }
+}
+/// Every piece the spires break into, as strike.wgsl throws them.
+pub(super) fn cb_chunks(seed: f32) -> Vec<CbChunk> {
+    let mut out = Vec::new();
+    for i in 0..CB_N {
+        let s = seed as u32;
+        let p = cb_place(i, seed);
+        let f = cb_form(i, seed, p);
+        let br = cb_break(i, seed, p[3]);
+        let a = [f[1].sin() * f[2].cos(), f[1].cos(), f[1].sin() * f[2].sin()];
+        let (e1, e2) = cb_frame(a, f[3]);
+        let r = f[0];
+        let h = p[3];
+        let h0 = if br[0] > 0.5 { br[0] } else { 0.0 };
+        let span = h - h0;
+        let nseg = cb_nseg(r, span);
+        let hue = cb_hue(i, seed, p);
+        let _ = s;
+        for k in 0..nseg {
+            let split = r > 7.0 && k < nseg - 1;
+            for half in 0..if split { 2 } else { 1 } {
+                let ylo = cb_cut_h(i, k, nseg, h0, span, seed);
+                let yhi = cb_cut_h(i, k + 1, nseg, h0, span, seed);
+                let ym = if k == nseg - 1 { ylo + (yhi - ylo) * 0.4 } else { (ylo + yhi) * 0.5 };
+                let (mut cx, mut wid) = ([0.0, 0.0], r);
+                if split {
+                    let hs = cb_h3(i * 16 + k, 503, seed);
+                    let ph = hs[0] * TAU;
+                    let w = (hs[1] - 0.5) * r * 0.5;
+                    let side = if half == 1 { 1.0 } else { -1.0 };
+                    cx = [ph.cos() * (w + side * r * 0.45), ph.sin() * (w + side * r * 0.45)];
+                    wid = r * 0.6;
+                }
+                let len = yhi - ylo;
+                let c0 = [p[0] + e1[0] * cx[0] + a[0] * ym + e2[0] * cx[1], e1[1] * cx[0] + a[1] * ym + e2[1] * cx[1], p[1] + e1[2] * cx[0] + a[2] * ym + e2[2] * cx[1]];
+                let fi = i * 16 + k * 2 + half;
+                let hm = cb_h3(fi, 504, seed);
+                let ol = (c0[0] + 0.01).hypot(c0[2]);
+                let (ox, oz) = ((c0[0] + 0.01) / ol, c0[2] / ol);
+                let az = (hm[1] - 0.5) * 0.9;
+                let (o2x, o2z) = (ox * az.cos() - oz * az.sin(), ox * az.sin() + oz * az.cos());
+                let vy = 6.0 + 17.0 * hm[2];
+                let mass = 1.4 - 0.5 * (wid * len / 600.0).clamp(0.0, 1.0);
+                let y0 = c0[1].max(0.0);
+                let tl0 = (vy + (vy * vy + 2.0 * CB_G * y0).sqrt()) / CB_G;
+                let vh = ((11.0 + 26.0 * hm[0] + y0 * 0.08) * mass).min((225.0 - c0[0].hypot(c0[2])).max(10.0) / tl0);
+                let r1 = (c0[0] + o2x * vh * tl0).hypot(c0[2] + o2z * vh * tl0);
+                let tl = (vy + (vy * vy + 2.0 * CB_G * (y0 + cb_bowl_dep(r1))).sqrt()) / CB_G;
+                let rl = (c0[0] + o2x * vh * tl).hypot(c0[2] + o2z * vh * tl);
+                let tp = if rl < 150.0 { tl.max(f64::from(cb_dig_t(rl + 20.0)) + 0.15 - f64::from(CB_DET)) } else { tl };
+                out.push(CbChunk { c0, v: [o2x * vh, vy, o2z * vh], tl, tp, len, wid, family: cb_family(hue) });
+            }
+        }
+    }
+    out
 }
 
 /// A crystal as blocks: a convex solid given by its planes (in its own frame round `b`), and its colour.
@@ -327,36 +404,6 @@ fn cb_stump(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
     let reach = r * 1.3 + (br[0] + CB_SINK) * f[1].sin() + 2.0;
     Some(CbSolid { b: [point[0] + p[0], point[1], point[2] + p[1]], e1, a, e2, planes, reach, r, family: cb_family(hue) })
 }
-/// The broken length of spire i lying on the land by its stump, toppled the way it leaned, for the tallest of them.
-fn cb_fallen(i: usize, seed: f32, point: [f64; 3]) -> Option<CbSolid> {
-    let p = cb_place(i, seed);
-    if i >= 5 || i % 2 == 1 {
-        return None;
-    }
-    let f = cb_form(i, seed, p);
-    let br = cb_break(i, seed, p[3]);
-    let s = seed as u32;
-    let len = (p[3] * 0.18).clamp(20.0, 45.0);
-    let rp = f[0] * 0.6;
-    let hd = f[2] + (mh(i as u32, s, 25) - 0.5) * 0.5;
-    let dist = br[0] * f[1].sin() + len * 0.5 + rp + 5.0;
-    let a = norm([hd.cos(), -0.1 - 0.1 * mh(i as u32, s, 26), hd.sin()]);
-    let (e1, e2) = cb_frame(a, f[3] + 0.4);
-    let b = [point[0] + p[0] + hd.cos() * dist, point[1] + rp * 0.5, point[2] + p[1] + hd.sin() * dist];
-    let mut planes = Vec::new();
-    for k in 0..6 {
-        let th = k as f64 * PI / 3.0;
-        planes.push(([th.cos(), 0.0, th.sin()], rp));
-    }
-    // (its ends broken across, slanting)
-    let t1 = mh(i as u32, s, 27) * TAU;
-    let t2 = mh(i as u32, s, 28) * TAU;
-    planes.push(([t1.cos() * 0.5, 1.0, t1.sin() * 0.5], len * 0.5));
-    planes.push(([t2.cos() * 0.5, -1.0, t2.sin() * 0.5], len * 0.5));
-    let hue = cb_hue(i, seed, p);
-    Some(CbSolid { b, e1, a, e2, planes, reach: len * 0.5 + rp * 0.6 + 2.0, r: rp, family: cb_family(hue) })
-}
-
 /// How deep the crater is under (dx, dz) from its middle (blocks under the target's ground; `bottom` as deep as it
 /// goes, to bedrock): a bowl, its edge wandering, its floor a little uneven; the well down the middle.
 pub(super) fn cb_depth(dx: f64, dz: f64, seed: u32, bottom: i32) -> i32 {
@@ -521,24 +568,14 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             let len = cb_crack(i, shader_seed).1;
             p.later(CB_DET - 2.6 + i as f32 * 0.05, move |q| cb_fissure(q, point, i, shader_seed, CB_BOWL * 0.85, len));
         }
-        // the shards coming down where they were thrown
-        for part in 0..8 {
-            let fs: Vec<usize> = (part..CB_FRAGS).step_by(8).collect();
-            let first = fs.iter().map(|&f| cb_frag(f, shader_seed).2).fold(f64::MAX, f64::min) as f32;
-            p.later(CB_DET + first.min(1.0) - 3.2 + part as f32 * 0.05, move |q| cb_landed(q, point, &fs, shader_seed));
-        }
-        // the broken spires lying by their stumps, once the land under them is clear
-        for i in 0..CB_N {
-            if cb_fallen(i, shader_seed, point).is_some() {
-                let t = CB_DET + 2.6 + 0.1 * i as f32;
-                p.later(t - 1.5, move |q| {
-                    if let Some(c) = cb_fallen(i, shader_seed, point) {
-                        let mut b = Blocks::default();
-                        cb_solid(&mut b, &c, -1000, Some(point[1].floor() as i32));
-                        q.ev.push((t, Act::Blocks(Box::new(b))));
-                    }
-                });
-            }
+        // the pieces the spires broke into, built where they came down
+        let chunks = cb_chunks(shader_seed);
+        let mut order: Vec<usize> = (0..chunks.len()).collect();
+        order.sort_by(|a, b| chunks[*a].tp.total_cmp(&chunks[*b].tp));
+        for part in order.chunks(16) {
+            let cs: Vec<CbChunk> = part.iter().map(|&n| chunks[n]).collect();
+            let first = cs[0].tp as f32;
+            p.later(CB_DET + first - 1.5, move |q| cb_landed(q, point, &cs, shader_seed));
         }
         // the land frosted with crystal and strewn with shards, a ring at a time from the middle out
         for part in 0..12u32 {
@@ -548,21 +585,6 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
-}
-
-/// Every block of solid `c` (no lower than `floor`), column by column.
-fn cb_solid(b: &mut Blocks, c: &CbSolid, floor: i32, rel: Option<i32>) {
-    // (round the stretch of its axis it lies along, as wide as it is)
-    let half = c.reach;
-    let (ex, ez) = (c.a[0] * half, c.a[2] * half);
-    let w = c.r * 1.25 + 1.0;
-    let (x0, x1) = ((c.b[0] - ex.abs() - w).floor() as i32, (c.b[0] + ex.abs() + w).ceil() as i32);
-    let (z0, z1) = ((c.b[2] - ez.abs() - w).floor() as i32, (c.b[2] + ez.abs() + w).ceil() as i32);
-    for z in z0..=z1 {
-        for x in x0..=x1 {
-            c.column(b, x, z, floor, i32::MAX, rel);
-        }
-    }
 }
 
 /// Spire `pl` breaking the ground as it sets off: a hole round it, the earth heaped round the hole, and its sound.
@@ -729,28 +751,62 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
     }
 }
 
-/// The shards `fs` coming down where they were thrown, each a crystal of its colour standing up out of the land, a
-/// cluster on its top.
-fn cb_landed(p: &mut Plan, point: [f64; 3], fs: &[usize], seed: f32) {
-    for &f in fs {
-        let (x, z, tl, hue, sz) = cb_frag(f, seed);
-        let [_, skin, band, _] = CB_FAMILY[cb_family(hue)];
-        let (bx, bz) = ((point[0] + x).floor() as i32, (point[2] + z).floor() as i32);
-        let h = (1.0 + sz * 0.6).round() as i32;
-        let w = i32::from(sz > 4.5);
+/// The pieces `cs` where they came down, each as blocks the size of it: driven into the ground at a slant the way it
+/// was going, a spike of its crystal (its glassy skin round its body, a cluster on its tip), broken bits heaped round
+/// its foot.
+fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32) {
+    let s = seed as u32;
+    for (n, c) in cs.iter().enumerate() {
+        let (lx, lz) = c.land();
+        let (cx, cz) = (point[0] + lx, point[2] + lz);
+        let [body, skin, band, _] = CB_FAMILY[c.family];
+        let hm = cb_h3(n, 506, seed);
+        // (how long a spike and how thick, from the piece; leaning back the way it came, 15 to 55 degrees)
+        let size = (c.len * c.wid).sqrt();
+        let ls = (size * 0.45 + 2.0).clamp(2.0, 15.0);
+        let rb = (size * 0.09).clamp(0.6, 2.6);
+        let vl = c.v[0].hypot(c.v[2]).max(1e-6);
+        let (dx, dz) = (-c.v[0] / vl, -c.v[2] / vl);
+        let lean = 0.26 + 0.7 * hm[0];
+        let (sl, cl) = (lean.sin(), lean.cos());
         let mut b = Blocks::default();
-        for dz in 0..=w {
-            for dx in 0..=w {
-                let hh = h - (dx + dz) * 2;
-                if hh <= 0 {
+        let e = (ls * sl + rb + 3.0).ceil() as i32;
+        let (bx, bz) = (cx.floor() as i32, cz.floor() as i32);
+        for z in bz - e..=bz + e {
+            for x in bx - e..=bx + e {
+                let (px, pz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+                // (the stretch of the spike's axis over this column: along it u from 0 to ls, its radius thinning to the tip)
+                let (mut lo, mut hi, mut core) = (i32::MAX, i32::MIN, false);
+                let steps = (ls * 2.0) as i32 + 1;
+                for k in -4..=steps {
+                    let u = f64::from(k) * 0.5;
+                    let rr = rb * (1.0 - (u / ls).max(0.0)).max(0.0).powf(0.8) + 0.25;
+                    let (ax, az, ay) = (dx * sl * u, dz * sl * u, cl * u);
+                    let d = (px - ax).hypot(pz - az);
+                    if d < rr {
+                        let y = ay.floor() as i32;
+                        lo = lo.min(y);
+                        hi = hi.max(y);
+                        core |= d < rr - 1.0;
+                    }
+                }
+                if hi >= lo {
+                    let blk = if core { body } else if mh((x.wrapping_mul(13) ^ z.wrapping_mul(7)) as u32, s, 0x520) > 0.75 { band } else { skin };
+                    b.put(x, z, lo, hi.max(0), blk, None, true);
+                    if hi == lo + ((ls * cl) as i32).max(0) || hi >= (ls * cl * 0.85) as i32 {
+                        b.put(x, z, hi + 1, hi + 1, "minecraft:amethyst_cluster", None, true);
+                    }
                     continue;
                 }
-                b.put(bx + dx, bz + dz, -1, hh - 2, skin, None, true);
-                b.put(bx + dx, bz + dz, hh - 1, hh - 1, band, None, true);
-                b.put(bx + dx, bz + dz, hh, hh, "minecraft:amethyst_cluster", None, true);
+                // broken bits round its foot
+                let d = px.hypot(pz);
+                let hh = mh((x.wrapping_mul(31) ^ z.wrapping_mul(57)) as u32, s, 0x521 + n as u32);
+                if d < rb + 1.0 + size * 0.06 && hh < 0.45 {
+                    b.put(x, z, 0, 0, if hh < 0.12 { band } else if hh < 0.3 { body } else { "minecraft:small_amethyst_bud" }, None, true);
+                }
             }
         }
-        p.ev.push((CB_DET + tl as f32, Act::Blocks(Box::new(b))));
+        p.ev.push((CB_DET + c.tp as f32, Act::Blocks(Box::new(b))));
     }
 }
 
@@ -942,20 +998,25 @@ mod tests {
         }
     }
     #[test]
-    fn crystalbloom_shards_land_where_thrown() {
-        // each shard the pass throws out comes down as a crystal where its path meets the ground, as it does
+    fn crystalbloom_chunks_land_where_thrown() {
+        // each piece the pass breaks the spires into comes down as blocks where its path meets the ground (the crater's
+        // floor in it), when the pass stops drawing it, inside the loaded land, before the strike ends
         let cmds = cmds([10.5, 66.0, 330.0], "minecraft:overworld");
-        for f in 0..CB_FRAGS {
-            let (x, z, tl, _, _) = cb_frag(f, SEED);
-            // (its path as strike.wgsl has it: where it is at tl, on the ground)
-            let (h1, h2, h3) = (cb_h3(f, 41, SEED), cb_h3(f, 42, SEED), cb_h3(f, 313, SEED));
-            let y0 = 12.0 + 250.0 * h1[2].powf(1.6) * (1.0 - 0.55 * 0.85 * h1[1].sqrt());
-            let vy = 6.0 + 40.0 * h3[2];
-            assert!((y0 + vy * tl - 0.5 * CB_G * tl * tl).abs() < 1e-6 && tl > 0.0 && h2[0] >= 0.0, "shard {f}");
+        let chunks = cb_chunks(SEED);
+        assert!(chunks.len() > 150, "{} pieces", chunks.len());
+        for (n, c) in chunks.iter().enumerate() {
+            let (x, z) = c.land();
+            let r = x.hypot(z);
+            let y = c.c0[1].max(0.0) + c.v[1] * c.tl - 0.5 * CB_G * c.tl * c.tl;
+            assert!(c.tl > 0.0 && c.tp >= c.tl && y < 0.5 && y > -CB_BOWL_D - 1.0, "piece {n}: comes down at {y}");
             let (bx, bz) = ((POINT[0] + x).floor() as i32, (POINT[2] + z).floor() as i32);
-            let t = CB_DET + tl as f32;
-            assert!(cmds.iter().any(|(tt, c)| (tt - t).abs() < 1e-4 && surf_fill(c).is_some_and(|s| s.0 == bx && s.1 == bz)), "shard {f} not landed at {bx} {bz}");
-            assert!(x.hypot(z) < CB_LOAD, "shard {f} lands out of the loaded land");
+            let t = CB_DET + c.tp as f32;
+            assert!(cmds.iter().any(|(tt, cc)| (tt - t).abs() < 1e-4 && surf_fill(cc).is_some_and(|s| (s.0 - bx).abs() <= 1 && (s.1 - bz).abs() <= 1)), "piece {n} not built at {bx} {bz}");
+            assert!(r < CB_LOAD - 5.0, "piece {n} lands out of the loaded land");
+            assert!(t < crate::lasers::CRYSTAL_BLOOM.length - 1.0, "piece {n} lands at {t}");
+            if r < 150.0 {
+                assert!(t >= cb_dig_t(r + 20.0), "piece {n} built before the land under it is dug");
+            }
         }
     }
     #[test]
@@ -1002,9 +1063,6 @@ mod tests {
             } else if i > 5 {
                 assert!(p[2] > cb_place(5, SEED)[2] && p[2] < f64::from(CB_DET) - 5.0, "{i}: {}", p[2]);
             }
-        }
-        for f in 0..CB_FRAGS {
-            assert!(f64::from(CB_DET) + cb_frag(f, SEED).2 < f64::from(crate::lasers::CRYSTAL_BLOOM.length) - 1.0, "shard {f}");
         }
     }
     /// What its `world.edit-blocks` changes ask of the game, tick by tick: runs, blocks and chunk columns, the busiest
