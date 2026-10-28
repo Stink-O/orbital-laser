@@ -122,6 +122,28 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     let inv_proj = [1.0 / fx, 0.0, 0.0, 0.0, 0.0, 1.0 / fy, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0 / b, 0.0, 0.0, -1.0, a / b];
 
     // ---- the synthetic scene ----
+    // (`flat=1`: the ground level at the target's height; `vox=1`: blocks standing on it, read from the file
+    // $PREVIEW_VOXELS, a line `x y z r g b` a block, colours 0-1: what a strike builds, to put beside what its pass draws)
+    let flat = g("flat", 0.0) > 0.5;
+    let mut vox: std::collections::HashMap<(i32, i32, i32), [f32; 3]> = Default::default();
+    if g("vox", 0.0) > 0.5 {
+        let text = std::fs::read_to_string(std::env::var("PREVIEW_VOXELS").expect("PREVIEW_VOXELS")).unwrap();
+        for l in text.lines() {
+            let v: Vec<f32> = l.split_whitespace().map(|x| x.parse().unwrap()).collect();
+            if v.len() == 6 {
+                vox.insert((v[0] as i32, v[1] as i32, v[2] as i32), [v[3], v[4], v[5]]);
+            }
+        }
+    }
+    let (mut vlo, mut vhi) = ([i32::MAX; 3], [i32::MIN; 3]);
+    for k in vox.keys() {
+        let k = [k.0, k.1, k.2];
+        for j in 0..3 {
+            vlo[j] = vlo[j].min(k[j]);
+            vhi[j] = vhi[j].max(k[j] + 1);
+        }
+    }
+    let ground = |x: f32, z: f32, crater: bool| if flat { tgt[1] } else { crater_h(x, z, crater) };
     let night = g("night", 0.0) > 0.5;
     let sun = if night { norm([0.35, -0.6, 0.25]) } else { norm([0.35, 0.8, 0.25]) };
     let nk = if night { 0.08 } else { 1.0 };
@@ -146,10 +168,10 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             if d[1] < 0.2 {
                 let mut t = 0.5;
                 let crater = g("crater", 0.0) > 0.5;
-                let mut prev = cam[1] - crater_h(cam[0], cam[2], crater);
+                let mut prev = cam[1] - ground(cam[0], cam[2], crater);
                 while t < 3500.0 {
                     let p = [cam[0] + d[0] * t, cam[1] + d[1] * t, cam[2] + d[2] * t];
-                    let s = p[1] - crater_h(p[0], p[2], crater);
+                    let s = p[1] - ground(p[0], p[2], crater);
                     if s < 0.0 {
                         let tt = t - s / (s - prev) * -1.0 * 0.0;
                         hit_t = tt;
@@ -164,6 +186,52 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                     }
                     prev = s;
                     t += (s * 0.5).max(0.2).min(4.0);
+                }
+            }
+            // the blocks: through the grid of them (a DDA), the nearest in front of the ground
+            if !vox.is_empty() {
+                // (into their box)
+                let (mut t0, mut t1) = (0.0f32, 1.0e9f32);
+                for j in 0..3 {
+                    if d[j].abs() < 1e-9 {
+                        if cam[j] < vlo[j] as f32 || cam[j] > vhi[j] as f32 { t1 = -1.0; }
+                        continue;
+                    }
+                    let (a0, a1) = ((vlo[j] as f32 - cam[j]) / d[j], (vhi[j] as f32 - cam[j]) / d[j]);
+                    t0 = t0.max(a0.min(a1));
+                    t1 = t1.min(a0.max(a1));
+                }
+                if t0 <= t1 {
+                    let t = t0 + 1e-4;
+                    let p = [cam[0] + d[0] * t, cam[1] + d[1] * t, cam[2] + d[2] * t];
+                    let mut cell = [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
+                    let step = [d[0].signum() as i32, d[1].signum() as i32, d[2].signum() as i32];
+                    let mut tmax = [0.0f32; 3];
+                    let mut tdel = [0.0f32; 3];
+                    for j in 0..3 {
+                        tdel[j] = if d[j].abs() < 1e-9 { 1e30 } else { 1.0 / d[j].abs() };
+                        let edge = if step[j] > 0 { cell[j] as f32 + 1.0 } else { cell[j] as f32 };
+                        tmax[j] = if d[j].abs() < 1e-9 { 1e30 } else { t + (edge - p[j]) / d[j] };
+                    }
+                    let mut tc = t;
+                    let mut face = 1usize;
+                    for _ in 0..600 {
+                        if tc > t1 + 1.0 || (hit_t > 0.0 && tc > hit_t) {
+                            break;
+                        }
+                        if let Some(col) = vox.get(&(cell[0], cell[1], cell[2])) {
+                            hit_t = tc;
+                            // (lit by its face: the top brightest, then the sides)
+                            let k = [0.75, 1.0, 0.6][face] * (0.55 + 0.45 * sun[1].max(0.2));
+                            c = [col[0] * k, col[1] * k, col[2] * k];
+                            break;
+                        }
+                        let j = if tmax[0] < tmax[1] { if tmax[0] < tmax[2] { 0 } else { 2 } } else if tmax[1] < tmax[2] { 1 } else { 2 };
+                        tc = tmax[j];
+                        tmax[j] += tdel[j];
+                        cell[j] += step[j];
+                        face = j;
+                    }
                 }
             }
             // the clouds: a layer of 12-block cells at 192

@@ -73,6 +73,8 @@ const BLOCK_BUDGET: u64 = 20_000;
 /// own, and thousands of small ones in one tick (a planet killer's fissures, cut a column at a time, with its crater's
 /// walls) hitch the game as surely as too many blocks. Every other laser stays under it.
 pub(crate) const CARVE_CMDS: usize = 400;
+/// How many of the small stages that must not wait (`Act::Soon`) a tick works out at most, besides its one other.
+pub(crate) const URGENT_PER_TICK: usize = 3;
 
 struct Strike {
     plan: Vec<(f32, Act)>,
@@ -84,6 +86,8 @@ struct Strike {
     params: [f32; 16],
     /// Stages due that wait for a tick of their own (`tick_strike` works out one a tick).
     waiting: std::collections::VecDeque<strike::Stage>,
+    /// Those that go before them (`Act::Soon`), in order.
+    urgent: std::collections::VecDeque<strike::Stage>,
 }
 impl Strike {
     /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
@@ -397,6 +401,10 @@ impl Orbital {
             params[13] = self.arrival as f32;
             params[15] = self.colours[self.laser] as f32;
         }
+        if laser.key == "crystalbloom" {
+            // (the latest landed piece's blocks in: none yet; with the terrain left alone there are none to wait for)
+            params[14] = if self.terrain { 0.0 } else { 1.0e6 };
+        }
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
@@ -409,7 +417,7 @@ impl Orbital {
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
         let next = plan.iter().take_while(|e| e.0 < ticks as f32 * 0.05).count();
         self.skip = 0.0;
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default() });
+        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default() });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
@@ -424,6 +432,15 @@ impl Orbital {
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
         // fall due together, the rest wait for the ticks after, while everything else goes on time (each is due a
         // little before its own events)
+        // The landed pieces' stages (`Act::Soon`, each small) go first: up to URGENT_PER_TICK of them a tick besides it,
+        // so a piece's blocks are in on the tick it lands however much else waits.
+        let mut urgent = 0;
+        while urgent < URGENT_PER_TICK
+            && let Some(job) = s.urgent.pop_front()
+        {
+            s.work_out(job);
+            urgent += 1;
+        }
         let mut worked_out = false;
         if let Some(job) = s.waiting.pop_front() {
             s.work_out(job);
@@ -445,7 +462,18 @@ impl Orbital {
                 Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
-                Act::Blocks(b) => world::edit_blocks(&b.edit()),
+                Act::Blocks(b) => {
+                    world::edit_blocks(&b.edit());
+                    // (a landed piece's blocks in: the pass may let it go)
+                    if let Some(t) = b.landing {
+                        s.params[14] = s.params[14].max(t);
+                    }
+                }
+                Act::Soon(job) if urgent >= URGENT_PER_TICK => s.urgent.push_back(job),
+                Act::Soon(job) => {
+                    s.work_out(job);
+                    urgent += 1;
+                }
                 Act::Later(job) if worked_out => s.waiting.push_back(job),
                 Act::Later(job) => {
                     // more of the plan, worked out now it is due

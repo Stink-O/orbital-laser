@@ -51,6 +51,9 @@ pub enum Act {
     Spare(String),
     /// Blocks changed at once, straight into the world's chunks (`world.edit-blocks`), on time.
     Blocks(Box<Blocks>),
+    /// As `Later`, but ahead of every stage already waiting for a tick of its own: what has to be in the world on the
+    /// tick it is due (a landed piece's blocks, which the pass stops drawing once they are in).
+    Soon(Stage),
 }
 
 /// Blocks changed at once (`world.edit-blocks`): runs up columns, each block its own if need be.
@@ -59,6 +62,9 @@ pub struct Blocks {
     palette: Vec<&'static str>,
     filters: Vec<&'static str>,
     pub runs: Vec<horizon_mod_sdk::world::BlockRun>,
+    /// A landed piece's blocks, due at this strike time: once they are in, the mod tells the pass (its param 14, the
+    /// latest such time in), which only then lets the piece go.
+    pub landing: Option<f32>,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -147,13 +153,14 @@ pub(super) const TIDY_HANGING: &str = "#minecraft:replaceable_by_trees";
 /// What a strike left hanging round the columns x0..=x1, z0..=z1 it changed (`col` tells what it made of each, and is
 /// asked TIDY_BORDER further out too), to be edited once those changes are made (an edit reads the ground as it is
 /// then): `edit-blocks` tells nothing round what it changes, so plants whose ground went never pop off and leaves
-/// whose trunk went never decay. Over a dug column, the loose plants, flowers, saplings and leaves from its new ground
-/// up to `reach` over it (where its old ground was and the trees on it), and the trunk left standing on it; over a
+/// whose trunk went never decay. Over a dug column, the loose plants and leaves from its new ground up to `reach` over
+/// it (where its old ground was and the trees on it), the flowers and saplings up to `plants` (where its old ground
+/// was; none if negative), and the trunk left standing on it; over a
 /// column left as it was within TIDY_BORDER of one changed, only what hangs two blocks or more over its ground (a
 /// plant there has nothing under it; leaves there were on a trunk that went), so the grass and flowers on its ground
 /// and the trees standing on it stay. A column cleared through needs nothing. Only filtered runs: nothing but those
 /// plants, leaves and logs changes.
-pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, mut col: impl FnMut(i32, i32) -> Col) -> Blocks {
+pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, mut col: impl FnMut(i32, i32) -> Col) -> Blocks {
     let b = TIDY_BORDER;
     let mut out = Blocks::default();
     if x1 < x0 || z1 < z0 {
@@ -186,8 +193,9 @@ pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, mut col: impl
             match grid[j * w + i] {
                 Col::Cleared => {}
                 Col::Dug => {
-                    for only in [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS] {
-                        out.put(x, z, 0, reach, "minecraft:air", Some(only), true);
+                    out.put(x, z, 0, reach, "minecraft:air", Some(TIDY_LOOSE), true);
+                    for only in [TIDY_FLOWERS, TIDY_SAPLINGS] {
+                        out.put(x, z, 0, plants, "minecraft:air", Some(only), true);
                     }
                     out.put(x, z, -TIDY_TRUNK, -1, "minecraft:air", Some(TIDY_LOGS), true);
                 }
@@ -305,6 +313,14 @@ impl Plan {
             p.ev
         };
         self.ev.push((at, Act::Later(Box::new(job))));
+    }
+    /// As `later`, ahead of the stages already waiting (`Act::Soon`).
+    fn soon(&mut self, at: f32, f: impl FnOnce(&mut Plan) + 'static) {
+        self.later(at, f);
+        if let Some((_, a)) = self.ev.pop() {
+            let Act::Later(job) = a else { unreachable!() };
+            self.ev.push((at, Act::Soon(job)));
+        }
     }
     fn at(&mut self, t: f32, cmd: impl Into<String>) {
         self.ev.push((t, Act::Cmd(cmd.into())));
@@ -3790,7 +3806,7 @@ fn pk_tidy_edge(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, seed: u
         return;
     }
     let mut blasts: Vec<((i32, i32), f64)> = Vec::new();
-    let b = tidy(x0, z0, x0 + 15, z0 + 15, 16, |x, z| {
+    let b = tidy(x0, z0, x0 + 15, z0 + 15, 16, -1, |x, z| {
         let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
         let r = dx.hypot(dz);
         let c = (x & !15, z & !15);
@@ -4209,7 +4225,7 @@ mod tests {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
                 Act::Sound { .. } | Act::Shake { .. } => {}
-                Act::Later(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
             }
         }
         out
@@ -4260,7 +4276,7 @@ mod tests {
             while let Some((t, act)) = ev.pop() {
                 match act {
                     Act::Shake { strength, seconds } => jolts.push((t, strength, seconds)),
-                    Act::Later(job) => ev.extend(job()),
+                    Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                     _ => {}
                 }
             }
@@ -4503,7 +4519,7 @@ mod tests {
                 while let Some((t, act)) = ev.pop() {
                     match act {
                         Act::Shake { strength, seconds } => jolts.push((t, strength, seconds)),
-                        Act::Later(job) => ev.extend(job()),
+                        Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                         _ => {}
                     }
                 }
@@ -4830,16 +4846,22 @@ mod tick_budget {
             let t0 = std::time::Instant::now();
             let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
             // the firing tick, then each stage on its own (the mod works out one a tick)
-            let mut worst = t0.elapsed().as_secs_f64() * 1000.0;
+            // (and as many of the small stages that must not wait, `Soon`, besides one of the rest, as a tick takes)
+            let first = t0.elapsed().as_secs_f64() * 1000.0;
+            let (mut later, mut soon) = (0.0f64, 0.0f64);
             while let Some((_, act)) = ev.pop() {
-                if let Act::Later(job) = act {
-                    let s = std::time::Instant::now();
-                    let more = job();
-                    worst = worst.max(s.elapsed().as_secs_f64() * 1000.0);
-                    ev.extend(more);
-                }
+                let (job, urgent) = match act {
+                    Act::Later(job) => (job, false),
+                    Act::Soon(job) => (job, true),
+                    _ => continue,
+                };
+                let s = std::time::Instant::now();
+                let more = job();
+                let ms = s.elapsed().as_secs_f64() * 1000.0;
+                if urgent { soon = soon.max(ms) } else { later = later.max(ms) }
+                ev.extend(more);
             }
-            best = best.min(worst);
+            best = best.min(first.max(later + soon * crate::URGENT_PER_TICK as f64));
         }
         best
     }
@@ -4852,8 +4874,14 @@ mod tick_budget {
             .map(heaviest_tick)
             .into_iter()
             .fold(0.0, f64::max);
+        if std::env::var("ORBITAL_TICKS").is_ok() {
+            println!("proven: {proven:.2} ms");
+        }
         for laser in crate::lasers::LASERS {
             let ms = heaviest_tick(laser);
+            if std::env::var("ORBITAL_TICKS").is_ok() {
+                println!("{}: {ms:.2} ms", laser.key);
+            }
             assert!(ms <= proven * 1.25 + 0.5, "{}: a tick of {ms:.2} ms against the proven {proven:.2} ms", laser.key);
         }
     }
@@ -4865,7 +4893,7 @@ mod tick_budget {
         while let Some((t, a)) = ev.pop() {
             match a {
                 Act::Blocks(b) => out.push((t, *b)),
-                Act::Later(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -4900,7 +4928,7 @@ mod tick_budget {
                 Col::Kept
             }
         };
-        let b = tidy(-8, -12, 31, 12, 16, col);
+        let b = tidy(-8, -12, 31, 12, 16, 6, col);
         let mut at: std::collections::HashMap<(i32, i32), Vec<(String, i32, i32)>> = Default::default();
         for r in &b.runs {
             let only = r.only.map(|f| b.filters[f as usize].to_string()).expect("a run with no filter");
@@ -4917,8 +4945,8 @@ mod tick_budget {
                     Col::Cleared => assert!(runs.is_none(), "{x} {z}: cleared through"),
                     Col::Dug => {
                         let runs = runs.expect("a dug column");
-                        for f in [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS] {
-                            assert!(runs.iter().any(|r| r.0 == f && r.1 <= 0 && r.2 >= 16), "{x} {z}: {f}");
+                        for (f, top) in [(TIDY_LOOSE, 16), (TIDY_FLOWERS, 6), (TIDY_SAPLINGS, 6)] {
+                            assert!(runs.iter().any(|r| r.0 == f && r.1 <= 0 && r.2 >= top), "{x} {z}: {f}");
                         }
                         assert!(runs.iter().any(|r| r.0 == TIDY_LOGS && r.2 < 0), "{x} {z}: the trunk");
                     }
@@ -4930,6 +4958,44 @@ mod tick_budget {
                 }
             }
         }
+    }
+    /// `cargo test --release tidy_cost -- --ignored --nocapture`: what clearing what hangs adds to a strike.
+    #[test]
+    #[ignore]
+    fn tidy_cost() {
+        let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING];
+        for laser in [&crate::lasers::CRYSTAL_BLOOM, &crate::lasers::PLANET_KILLER] {
+            let edits = all_edits(laser, 7.0);
+            let (mut runs, mut blocks, mut all_runs, mut all_blocks) = (0usize, 0u64, 0usize, 0u64);
+            for (_, b) in &edits {
+                for r in &b.runs {
+                    all_runs += 1;
+                    all_blocks += u64::from(r.height);
+                    if r.only.is_some_and(|f| tidy.contains(&b.filters[f as usize])) {
+                        runs += 1;
+                        blocks += u64::from(r.height);
+                    }
+                }
+            }
+            println!("{}: tidy {runs} runs visiting {blocks} blocks, of {all_runs} runs and {all_blocks} blocks edited", laser.key);
+        }
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let mut ev = plan(&crate::lasers::PLANET_KILLER, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
+        let (mut n, mut cost, mut all) = (0, 0u64, 0);
+        while let Some((_, a)) = ev.pop() {
+            match a {
+                Act::Cmd(c) => {
+                    all += 1;
+                    if c.contains(" replace #minecraft:leaves strict") || tidy.iter().any(|f| c.contains(&format!(" replace {f} strict"))) {
+                        n += 1;
+                        cost += block_cost(&c).unwrap_or(0);
+                    }
+                }
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                _ => {}
+            }
+        }
+        println!("planetkiller fissures: {n} more commands of {all}, visiting {cost} blocks");
     }
     #[test]
     fn strikes_tidy_round_what_they_dig() {
@@ -4997,6 +5063,7 @@ mod replay {
         let mut worst = vec![(t0.elapsed().as_secs_f64() * 1000.0, 0.0f32, 0usize)];
         let mut next = 0;
         let mut waiting: std::collections::VecDeque<Stage> = Default::default();
+        let mut urgent: std::collections::VecDeque<Stage> = Default::default();
         let mut ticks = 0u32;
         let mut spare = 0u64;
         while (ticks as f32) * 0.05 < laser.length {
@@ -5015,6 +5082,11 @@ mod replay {
                 plan.extend(rest);
             };
             let mut worked = false;
+            let mut done = 0;
+            while done < crate::URGENT_PER_TICK && let Some(job) = urgent.pop_front() {
+                out(job, &mut plan, next);
+                done += 1;
+            }
             if let Some(job) = waiting.pop_front() {
                 out(job, &mut plan, next);
                 worked = true;
@@ -5026,6 +5098,8 @@ mod replay {
                 match act {
                     Act::Cmd(c) => { std::hint::black_box(block_cost(&c)); }
                     Act::Spare(c) => spare += block_cost(&c).unwrap_or(1),
+                    Act::Soon(job) if done >= crate::URGENT_PER_TICK => urgent.push_back(job),
+                    Act::Soon(job) => { out(job, &mut plan, next); done += 1; }
                     Act::Later(job) if worked => waiting.push_back(job),
                     Act::Later(job) => { out(job, &mut plan, next); worked = true; }
                     _ => {}
@@ -5056,7 +5130,7 @@ mod replay {
             match a {
                 Act::Cmd(c) => all.push((t, c, false)),
                 Act::Spare(c) => all.push((t, c, true)),
-                Act::Later(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -5206,7 +5280,7 @@ mod replay {
             match a {
                 Act::Cmd(c) => all.push((t, c, false)),
                 Act::Spare(c) => all.push((t, c, true)),
-                Act::Later(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                 _ => {}
             }
         }

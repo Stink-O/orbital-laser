@@ -240,14 +240,18 @@ pub(super) struct CbChunk {
     pub cuts: [([f64; 3], f64); 3],
     /// The axis it tumbles about and how fast.
     pub spin: ([f64; 3], f64),
+    /// Which it is: spire i's piece k (the half of it, if split), as i * 16 + k * 2 + half (strike.wgsl's).
+    pub id: usize,
 }
 /// How far a piece is driven into the ground along its path once it comes down (strike.wgsl's CB_WEDGE), and its size
 /// then (cb_chunk_scale: it shrinks to this as it falls).
 const CB_WEDGE: f64 = 0.5;
 const CB_WEDGE_K: f64 = 0.003;
+/// How much of its height (its middle's, from the ground) a piece may be driven in at most, and how long it takes to
+/// come to rest (strike.wgsl's CB_WEDGE_MAX, CB_IMPACT).
+const CB_WEDGE_MAX: f64 = 0.4;
+const CB_IMPACT: f64 = 0.15;
 const CB_LAND_SCALE: f64 = 0.5;
-/// How high over the ground a landed piece's underside may be and still get a footing under it.
-const CB_FOOT: i32 = 3;
 /// strike.wgsl's rot_axis: v turned `ang` about the axis `a`.
 fn rot_axis(v: [f64; 3], a: [f64; 3], ang: f64) -> [f64; 3] {
     let (c, s) = (ang.cos(), ang.sin());
@@ -269,8 +273,10 @@ impl CbChunk {
         // (the bigger the deeper, but never so deep that a good part of it is not left standing out, however it lies)
         let ay = rot_axis(self.a, self.spin.0, self.spin.1 * tl)[1];
         let hv = 0.5 * CB_LAND_SCALE * (self.len * ay.abs() + 2.0 * self.wid * (1.0 - ay * ay).max(0.0).sqrt());
-        let wd = (CB_WEDGE + CB_WEDGE_K * (self.len + self.wid).powi(2)).min(0.65 * hv / vl[1].abs().max(0.3));
-        let w = wd * ((self.tp - tl) / 0.15).clamp(0.0, 1.0);
+        let wd = (CB_WEDGE + CB_WEDGE_K * (self.len + self.wid).powi(2)).min(CB_WEDGE_MAX * hv / vl[1].abs().max(0.3));
+        // (stopped hard: fast as it hits, slowing to nothing at its rest, never past it)
+        let u = ((self.tp - tl) / CB_IMPACT).clamp(0.0, 1.0);
+        let w = wd * (1.0 - (1.0 - u).powi(3));
         for j in 0..3 {
             p[j] += vl[j] * w;
         }
@@ -389,7 +395,7 @@ pub(super) fn cb_chunks(seed: f32) -> Vec<CbChunk> {
                 let tp = if rl < 150.0 { tl.max(f64::from(cb_dig_t(rl + 20.0)) + 0.15 - f64::from(CB_DET)) } else { tl }.max(tl + 0.16);
                 let rate = (0.8 + 2.6 * hsn[0]) * 14.0 / (14.0 + len * 0.35 + wid * 0.25) * if hsn[1] > 0.5 { 1.0 } else { -1.0 };
                 let spin = (norm([hsn[0] - 0.5, hsn[1] - 0.5 + 0.01, hsn[2] - 0.5]), rate);
-                out.push(CbChunk { c0, v: [o2x * vh, vy, o2z * vh], tl, tp, len, wid, family: cb_family(hue), foot: [p[0], 0.0, p[1]], e1, a, e2, faces, cuts: [lo, hi, sp], spin });
+                out.push(CbChunk { c0, v: [o2x * vh, vy, o2z * vh], tl, tp, len, wid, family: cb_family(hue), foot: [p[0], 0.0, p[1]], e1, a, e2, faces, cuts: [lo, hi, sp], spin, id: i * 16 + k * 2 + half });
             }
         }
     }
@@ -740,13 +746,14 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
             p.later(CB_DET - 2.6 + i as f32 * 0.05, move |q| cb_fissure(q, point, i, shader_seed, CB_BOWL * 0.85, len));
         }
         // the pieces the spires broke into, built where they came down
+        // (each its own stage, worked out ahead of every other stage waiting, a second before it comes down: its blocks
+        // must be in on the tick it lands, and the pass holds it until they are)
         let chunks = cb_chunks(shader_seed);
         let mut order: Vec<usize> = (0..chunks.len()).collect();
-        order.sort_by(|a, b| chunks[*a].tp.total_cmp(&chunks[*b].tp));
-        for part in order.chunks(2) {
-            let cs: Vec<CbChunk> = part.iter().map(|&n| chunks[n]).collect();
-            let first = cs[0].tp as f32;
-            p.later(CB_DET + first - 1.5, move |q| cb_landed(q, point, &cs, shader_seed));
+        order.sort_by(|a, b| chunks[*a].tl.total_cmp(&chunks[*b].tl));
+        for n in order {
+            let c = chunks[n];
+            p.soon(CB_DET + c.tl as f32 - CB_LAND_AHEAD, move |q| cb_landed(q, point, &[c], shader_seed, n as u32));
         }
         // the land frosted with crystal and strewn with shards, a ring at a time from the middle out
         for part in 0..12u32 {
@@ -782,7 +789,7 @@ fn cb_punch(p: &mut Plan, point: [f64; 3], pl: [f64; 4], f: [f64; 4], seed: u32)
     p.ev.push((pl[2] as f32, Act::Blocks(Box::new(b))));
     // the plants and the trees left over the hole and on the earth heaped round it, cleared the tick after
     let g = ext + super::TIDY_BORDER;
-    let t = tidy(xc - g, zc - g, xc + g, zc + g, deep + 14, |x, z| {
+    let t = tidy(xc - g, zc - g, xc + g, zc + g, deep + 12, deep + 2, |x, z| {
         let d = (f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz);
         if d < rh + 1.5 || (d < rh + 3.5 && d < rh + 1.5 + 2.0 * vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x511)) { Col::Dug } else { Col::Kept }
     });
@@ -930,7 +937,7 @@ fn cb_dig_cell(p: &mut Plan, point: [f64; 3], x0: i32, z0: i32, t: f32, floor_y:
     let rmin = nx.hypot(nz);
     let rmax = [(ex0, ez0), (ex1, ez0), (ex0, ez1), (ex1, ez1)].iter().map(|&(x, z)| (x - point[0]).hypot(z - point[2])).fold(0.0, f64::max);
     if !near.is_empty() || (rmax >= CB_BLAST * 0.93 && rmin <= CB_BLAST * 1.07) {
-        let tb = tidy(x0, z0, x0 + 15, z0 + 15, 16, |x, z| {
+        let tb = tidy(x0, z0, x0 + 15, z0 + 15, 16, -1, |x, z| {
             let (fx, fz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
             if near.iter().any(|c| c.span(fx, fz).is_some()) {
                 return Col::Dug;
@@ -992,7 +999,7 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
         // the plants and the trees left over the cut, cleared the tick after
         let (xc, zc) = (cx.floor() as i32, cz.floor() as i32);
         let g = e + super::TIDY_BORDER;
-        let t = tidy(xc - g, zc - g, xc + g, zc + g, depth + 14, |x, z| {
+        let t = tidy(xc - g, zc - g, xc + g, zc + g, depth + 12, depth + 2, |x, z| {
             let (dx, dz) = (f64::from(x) + 0.5 - point[0], f64::from(z) + 0.5 - point[2]);
             let rr = dx.hypot(dz);
             if rr < CB_BOWL * 0.85 || rr > len {
@@ -1010,12 +1017,23 @@ fn cb_fissure(p: &mut Plan, point: [f64; 3], i: usize, seed: f32, r0: f64, r1: f
 /// The pieces `cs` where they came down, each as blocks the size of it: driven into the ground at a slant the way it
 /// was going, a spike of its crystal (its glassy skin round its body, a cluster on its tip), broken bits heaped round
 /// its foot.
-fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32) {
-    for (n, c) in cs.iter().enumerate() {
-        let b = cb_landed_blocks(point, c, seed, n as u32);
-        p.ev.push((CB_DET + c.tp as f32, Act::Blocks(Box::new(b))));
+fn cb_landed(p: &mut Plan, point: [f64; 3], cs: &[CbChunk], seed: f32, n0: u32) {
+    for (k, c) in cs.iter().enumerate() {
+        let mut b = cb_landed_blocks(point, c, seed, n0 + k as u32);
+        let t = CB_DET + c.tp as f32;
+        b.landing = Some(t);
+        p.ev.push((t, Act::Blocks(Box::new(b))));
+        // its impact: dust puffed up and the ground cracking where it hits (on the ground as it lies there)
+        let (x, z) = ((point[0] + c.land().0).floor() as i32, (point[2] + c.land().1).floor() as i32);
+        let s = (0.6 + 0.04 * (c.len + c.wid)).min(2.5);
+        let tl = CB_DET + c.tl as f32;
+        p.at(tl, super::surf(x, z, &format!(r#"particle minecraft:block{{block_state:"minecraft:dirt"}} ~ ~0.3 ~ {s:.1} 0.3 {s:.1} 0.15 40 force"#)));
+        p.at(tl, super::surf(x, z, &format!("particle minecraft:poof ~ ~0.5 ~ {s:.1} 0.4 {s:.1} 0.04 16 force")));
+        p.at(tl, super::surf(x, z, &format!(r#"particle minecraft:block_crumble{{block_state:"minecraft:stone"}} ~ ~0.1 ~ {s:.1} 0.1 {s:.1} 0 24 force"#)));
     }
 }
+/// How long before a piece comes down its blocks are worked out.
+const CB_LAND_AHEAD: f32 = 1.5;
 /// Each colour's landed crystal, dimmed: its body, its glassy skin, and patches through it (no light in them now).
 const CB_LANDED: [[&str; 3]; 6] = [
     ["minecraft:amethyst_block", "minecraft:purple_stained_glass", "minecraft:tinted_glass"],
@@ -1074,13 +1092,6 @@ fn cb_landed_blocks(point: [f64; 3], c: &CbChunk, seed: f32, n: u32) -> Blocks {
             // (the plants and leaves it comes down through or on, and what of them would be left over it, cleared first)
             for only in [TIDY_LOOSE, TIDY_FLOWERS] {
                 b.put(x, z, 0, hi + 2, "minecraft:air", Some(only), true);
-            }
-            // (where its underside lies a little over the ground, a footing of broken crystal and rubble under it: only
-            // into what is not ground)
-            if lo > 0 && lo <= CB_FOOT {
-                let k = mh((x.wrapping_mul(13) ^ z.wrapping_mul(29)) as u32, s, 0x541);
-                let foot = if k > 0.75 { "minecraft:amethyst_block" } else if k > 0.45 { "minecraft:cobblestone" } else { "minecraft:calcite" };
-                b.put(x, z, 0, lo - 1, foot, Some("#minecraft:replaceable"), true);
             }
             let pz = vnoise(fx + point[0], fz + point[2], 3.0, s ^ 0x540);
             let mut y = lo;
@@ -1185,7 +1196,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Later(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -1370,9 +1381,10 @@ mod tests {
             let rr = reach.ceil() as i32 + 1;
             assert!(cmds.iter().any(|(tt, cc)| (tt - t).abs() < 1e-4 && surf_fill(cc).is_some_and(|s| (s.0 - bx).abs() <= rr && (s.1 - bz).abs() <= rr)), "piece {n} not built round {bx} {bz}");
         }
-        // (fewer blocks than the spikes they were before: 21,654)
+        // (a few seconds' worth of edits, spread over the landings: under twice the 21,654 of the spikes they were once;
+        // more than the 19,734 they were while driven deeper in, now that none sinks out of sight)
         eprintln!("{total} blocks for the landed pieces");
-        assert!(total < 21_654, "{total} blocks for the landed pieces");
+        assert!(total < 40_000, "{total} blocks for the landed pieces");
     }
     #[test]
     fn crystalbloom_chunk_pose_is_the_passs() {
@@ -1460,9 +1472,10 @@ mod tests {
                 continue;
             }
             let mut b = cb_landed_blocks(point, c, SEED, n as u32);
-            b.runs.retain(|r| r.only.is_none());
+            // (what it puts down, its footing too: not the plants it clears)
+            b.runs.retain(|r| b.palette[r.block as usize] != "minecraft:air");
             let blocks: Vec<String> = b.runs.iter().flat_map(|r| { let name = b.palette[r.block as usize]; (r.y..r.y + r.height as i32).map(move |y| format!("[{},{},{},\"{}\"]", r.x, y, r.z, name)) }).collect();
-            println!("{{\"n\":{n},\"tp\":{},\"tl\":{},\"rest\":[{},{},{}],\"family\":{},\"blocks\":[{}]}}", c.tp, c.tl, pe[0], pe[1], pe[2], c.family, blocks.join(","));
+            println!("{{\"n\":{n},\"id\":{},\"tp\":{},\"tl\":{},\"rest\":[{},{},{}],\"family\":{},\"blocks\":[{}]}}", c.id, c.tp, c.tl, pe[0], pe[1], pe[2], c.family, blocks.join(","));
         }
     }
     /// What its `world.edit-blocks` changes ask of the game, tick by tick: runs, blocks and chunk columns, the busiest
@@ -1483,7 +1496,7 @@ mod tests {
                         e.2.insert((r.x >> 4, r.z >> 4));
                     }
                 }
-                Act::Later(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -1494,6 +1507,91 @@ mod tests {
         busy.sort_by(|a, b| b.0.cmp(&a.0));
         for (b, r, c, t) in busy.iter().take(5) {
             println!("{t:6.2} s: {b} blocks, {r} runs, {c} chunk columns");
+        }
+    }
+}
+#[cfg(test)]
+mod landings {
+    use super::*;
+    use crate::strike::{Stage, plan};
+    const SEED: f32 = 37.0;
+    const POINT: [f64; 3] = [10.5, 65.0, -2.5];
+    /// The plan played out tick by tick as lib.rs's tick_strike does (one stage worked out a tick, `Soon` ones before
+    /// the rest; `fair` treats them as the rest), giving each landed piece's blocks: when due and the tick they go in.
+    pub(super) fn landings(fair: bool) -> Vec<(f32, u32)> {
+        let target = Target { block: [10, 64, -3], point: POINT };
+        let mut plan = plan(&crate::lasers::CRYSTAL_BLOOM, &target, true, "minecraft:overworld", SEED, [10.5, 66.0, 330.0], 0);
+        plan.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let (mut waiting, mut urgent): (std::collections::VecDeque<Stage>, std::collections::VecDeque<Stage>) = Default::default();
+        let (mut next, mut ticks) = (0usize, 0u32);
+        let mut out = Vec::new();
+        let work = |job: Stage, plan: &mut Vec<(f32, Act)>, next: usize| {
+            let mut rest = plan.split_off(next);
+            rest.extend(job());
+            rest.sort_by(|a, b| a.0.total_cmp(&b.0));
+            plan.extend(rest);
+        };
+        while next < plan.len() || !waiting.is_empty() || !urgent.is_empty() {
+            ticks += 1;
+            let now = ticks as f32 * 0.05;
+            let mut done = 0;
+            while !fair && done < crate::URGENT_PER_TICK && let Some(job) = urgent.pop_front() {
+                work(job, &mut plan, next);
+                done += 1;
+            }
+            let mut worked = false;
+            if let Some(job) = waiting.pop_front() {
+                work(job, &mut plan, next);
+                worked = true;
+            }
+            while next < plan.len() && plan[next].0 <= now {
+                let (_, act) = std::mem::replace(&mut plan[next], (0.0, Act::Cmd(String::new())));
+                next += 1;
+                match act {
+                    Act::Blocks(b) => {
+                        if let Some(t) = b.landing {
+                            out.push((t, ticks));
+                        }
+                    }
+                    Act::Soon(job) if !fair && done >= crate::URGENT_PER_TICK => urgent.push_back(job),
+                    Act::Soon(job) if !fair => {
+                        work(job, &mut plan, next);
+                        done += 1;
+                    }
+                    Act::Later(job) | Act::Soon(job) if worked => waiting.push_back(job),
+                    Act::Later(job) | Act::Soon(job) => {
+                        work(job, &mut plan, next);
+                        worked = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+    #[test]
+    fn landed_pieces_go_in_on_the_tick_they_land() {
+        // every piece's blocks go into the world on the tick the pass stops moving it (its first tick at or past tp),
+        // under the whole strike's load of stages waiting their turn, and every piece has some
+        let ls = landings(false);
+        assert_eq!(ls.len(), cb_chunks(SEED).len());
+        for (t, tick) in &ls {
+            // (its tick: the first the mod's clock, ticks * 0.05, reaches it on)
+            let mut due = (t / 0.05) as u32 - 1;
+            while (due as f32) * 0.05 < *t {
+                due += 1;
+            }
+            assert_eq!(*tick, due, "a piece due at {t:.2} s went in {} ticks late", tick - due);
+        }
+    }
+    #[test]
+    #[ignore]
+    fn landing_delays() {
+        // `cargo test --release landing_delays -- --ignored --nocapture`: the worst landing delay with the landings
+        // first in the queue, and with them waiting their turn like any other stage
+        for fair in [true, false] {
+            let worst = landings(fair).iter().map(|(t, tick)| ((*tick as f32 * 0.05 - t) / 0.05).floor() * 0.05).fold(0.0, f32::max);
+            println!("landings {}: worst {worst:.2} s late", if fair { "in turn" } else { "first" });
         }
     }
 }

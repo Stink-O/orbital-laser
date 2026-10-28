@@ -522,6 +522,11 @@ fn cb_chunk_cuts(o: ptr<function, CbChunk>, i: i32, k: i32, nseg: i32, ylo: f32,
 // in along its path (deeper the bigger it is), lying there until it is built (strike.rs's CbChunk::rest: keep in step).
 const CB_WEDGE: f32 = 0.5;
 const CB_WEDGE_K: f32 = 0.003;
+const CB_WEDGE_MAX: f32 = 0.4;
+const CB_IMPACT: f32 = 0.15;
+// How long a piece takes to fade once its blocks are in (the mod's param 14, [3].z: the latest landed piece's blocks
+// in, by strike time), leaving them.
+const CB_FADE: f32 = 0.25;
 fn cb_chunk_at(o: CbChunk, dt: f32) -> vec4<f32> {
     let tf = min(dt, o.tl);
     var P = o.C0 + o.v * tf - vec3<f32>(0.0, 0.5 * CB_G * tf * tf, 0.0);
@@ -530,8 +535,10 @@ fn cb_chunk_at(o: CbChunk, dt: f32) -> vec4<f32> {
         // (the bigger the deeper, but never so deep that a good part of it is not left standing out, however it lies)
         let ay = rot_axis(o.A, o.spin.xyz, o.spin.w * o.tl).y;
         let hv = 0.25 * (o.L * abs(ay) + 2.0 * o.wid * sqrt(max(1.0 - ay * ay, 0.0)));
-        let wd = min(CB_WEDGE + CB_WEDGE_K * (o.L + o.wid) * (o.L + o.wid), 0.65 * hv / max(abs(vl.y), 0.3));
-        P = P + vl * wd * saturate((dt - o.tl) / 0.15);
+        let wd = min(CB_WEDGE + CB_WEDGE_K * (o.L + o.wid) * (o.L + o.wid), CB_WEDGE_MAX * hv / max(abs(vl.y), 0.3));
+        // (stopped hard: fast as it hits, slowing to nothing at its rest, never past it)
+        let u = 1.0 - saturate((dt - o.tl) / CB_IMPACT);
+        P = P + vl * wd * (1.0 - u * u * u);
     }
     return vec4<f32>(P, o.spin.w * tf);
 }
@@ -1698,8 +1705,13 @@ fn crystal_bloom(in: StageIn) -> vec4<f32> {
                         break;
                     }
                     var o = cb_chunk(i, kk, hf, seed, F, ca_, cfr[0], cfr[1], fm.x, nseg, ylo, yhi);
-                    if (dt > o.tp) {
-                        continue;
+                    // (held where it lies until its blocks are in, then gone over CB_FADE, a scatter of its pixels at a
+                    // time, so the blocks show through it and the two never fight)
+                    if (dt > o.tp && frame.mod_params[3].z >= CB_DET + o.tp - 0.01) {
+                        let fu = (dt - o.tp) / CB_FADE;
+                        if (fu >= 1.0 || fract(sin(dot(rd, vec3<f32>(127.1, 311.7, 74.7)) * 1.0e3) * 43758.55) < fu) {
+                            continue;
+                        }
                     }
                     let at = cb_chunk_at(o, dt);
                     let sc = cb_chunk_scale(o, dt);
