@@ -817,5 +817,104 @@
       }
     ],
     "subtitle": "subtitles.orbital.crystalbloom.after"
+  },
+  "sinkhole.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.rumble"
+  },
+  "sinkhole.groan1": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/groan1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.groan1"
+  },
+  "sinkhole.groan2": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/groan2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.groan2"
+  },
+  "sinkhole.groan3": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/groan3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.groan3"
+  },
+  "sinkhole.crack1": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/crack1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.crack1"
+  },
+  "sinkhole.crack2": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/crack2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.crack2"
+  },
+  "sinkhole.crack3": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/crack3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.crack3"
+  },
+  "sinkhole.give": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/give",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.give"
+  },
+  "sinkhole.collapse": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/collapse",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.collapse"
+  },
+  "sinkhole.rockfall": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/rockfall",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.rockfall"
+  },
+  "sinkhole.trickle": {
+    "sounds": [
+      {
+        "name": "orbital:sinkhole/trickle",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.sinkhole.trickle"
   }
 }
