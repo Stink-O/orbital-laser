@@ -237,12 +237,21 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                         let bx = p[0].floor() as i32;
                         let bz = p[2].floor() as i32;
                         let n = hash(bx, bz);
-                        let lit = 0.55 + 0.45 * sun[1];
+                        // (on hills, lit by the slope towards the sun, so their shape reads)
+                        let lit = if hills != 0.0 {
+                            let e = 1.5;
+                            let gx = (ground(p[0] + e, p[2], crater) - ground(p[0] - e, p[2], crater)) / (2.0 * e);
+                            let gz = (ground(p[0], p[2] + e, crater) - ground(p[0], p[2] - e, crater)) / (2.0 * e);
+                            let nl = (gx * gx + 1.0 + gz * gz).sqrt();
+                            0.35 + 0.65 * ((-gx * sun[0] + sun[1] - gz * sun[2]) / nl).max(0.0)
+                        } else {
+                            0.55 + 0.45 * sun[1]
+                        };
                         c = [(0.18 + 0.06 * n) * lit, (0.36 + 0.1 * n) * lit, (0.12 + 0.04 * n) * lit];
                         if tree_h(p[0], p[2]).is_some() {
                             c = [(0.07 + 0.03 * n) * lit, (0.17 + 0.06 * n) * lit, (0.06 + 0.02 * n) * lit];
                         }
-                        if p[1] < tgt[1] - 1.5 {
+                        if p[1] < tgt[1] - 1.5 && hills == 0.0 {
                             // (rock laid open: dirt near the top, stone in bands, deepslate deep down)
                             let band = hash((p[1] / 3.0).floor() as i32, 7);
                             let dep = tgt[1] - p[1];

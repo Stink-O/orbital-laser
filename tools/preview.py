@@ -75,6 +75,11 @@ VIEWS = {
     # little left of the middle, the horizon a little under it, a 59 degree (vertical) field of view
     "plref": "cx=0 cy=68.5 cz=450 lx=12 ly=94 lz=0.5 flat=1 trees=1 fov=59 reach=450",
     # the same, looking up at the object as it drifts (the clip's 6-9 s)
+    # the same on hilly land (hills 28 high round the target, the eye in a hollow 450 off), over the land, low along
+    # the ground near the eye as the dust comes over the rise, and from high off to one side over the hills
+    "plhill": "cx=0 cy=51.5 cz=450 lx=12 ly=80 lz=0.5 hills=28 trees=1 fov=59 reach=450",
+    "plhilllow": "cx=0 cy=51.5 cz=450 lx=-40 ly=50 lz=300 hills=28 trees=1 fov=70 reach=450",
+    "plhillside": "cx=520 cy=150 cz=330 lx=0 ly=60 lz=200 hills=28 trees=1 fov=60 reach=450",
     "plrefsky": "cx=0 cy=68.5 cz=450 lx=-60 ly=330 lz=40 flat=1 trees=1 fov=59 reach=450",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
@@ -104,7 +109,8 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     if laser == "payload":
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
-        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}")
+        hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills)
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "pl_write_table", "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
@@ -160,7 +166,8 @@ def main() -> int:
             labels.append(f"{t:g} s  {v}")
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
-    env = mod_data(a.laser, out, a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
+    # (and on the first view's land: its hills, if any, in the payload's heightfield)
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
     r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         print(r.stderr, file=sys.stderr)

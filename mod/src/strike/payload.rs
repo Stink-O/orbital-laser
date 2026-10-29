@@ -16,9 +16,9 @@ use std::f64::consts::PI;
 use std::rc::Rc;
 
 const TAU: f64 = 2.0 * PI;
-/// The object shows (fading in), turns into its dive, and strikes.
+/// The object shows (fading in) high in the sky, starts its fast final descent (a fireball by then), and strikes.
 pub(super) const PL_SEEN: f32 = 3.0;
-pub(super) const PL_TURN: f32 = 11.0;
+pub(super) const PL_TURN: f32 = 10.6;
 pub(super) const PL_HIT: f32 = 13.6;
 /// The path's samples (the trail is drawn through them), from PL_SEEN to PL_HIT.
 pub(super) const PL_N: usize = 128;
@@ -56,17 +56,16 @@ const PL_BANDS: i32 = 40;
 const PL_KILL: i32 = 90;
 
 /// Where the object is and how it moves: everything worked out from the strike's seed and where the player stands.
+/// It is shot down from orbit: it shows high in the sky over the far side of the target, off to one side of it as the
+/// player looks, and comes down on one clean ballistic arc onto the target, a long shallow glide high up first, slow on
+/// the sky, then steeper and faster, the last part a fast descent.
 #[derive(Clone, Debug)]
 pub(super) struct PlGeo {
     pub seed: u32,
-    /// Its drift's start and end (from the target's ground), and its loops.
-    s0: [f64; 3],
-    s1: [f64; 3],
-    e1: [f64; 3],
-    e2: [f64; 3],
-    rho: f64,
-    omega: f64,
-    phase: f64,
+    /// Which way it comes from (from the target, level), how far off it shows, and how high.
+    dir: [f64; 3],
+    dh: f64,
+    y0: f64,
     /// The wind (blocks a second, x and z): the trail and the column drift with it.
     pub wind: (f64, f64),
 }
@@ -74,13 +73,17 @@ pub(super) struct PlGeo {
 fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
     [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
 }
+#[cfg(test)]
 fn len(a: [f64; 3]) -> f64 {
     (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt()
 }
-fn norm(a: [f64; 3]) -> [f64; 3] {
-    let l = len(a).max(1e-9);
-    [a[0] / l, a[1] / l, a[2] / l]
-}
+
+/// The arc's shape: at its start it already falls this much of its slope at the end (a shallow glide, steepening).
+const PL_GLIDE: f64 = 0.25;
+/// How far along the arc it is, against the time from showing to striking (0 to 1): this much of it a steady crawl
+/// over the sky, the rest coming faster and faster.
+const PL_CRAWL: f64 = 0.42;
+const PL_RUSH: f64 = 3.5;
 
 impl PlGeo {
     /// `me`: the player from the target's ground point.
@@ -88,70 +91,29 @@ impl PlGeo {
         let seed = seed as u32;
         let r = |k: u32| mh(k, seed, 0x9a1);
         let d = me[0].hypot(me[2]);
-        // (towards the player, and across their view)
+        // (from the target towards the player)
         let u = if d > 1.0 { [me[0] / d, 0.0, me[2] / d] } else { [0.0, 0.0, 1.0] };
-        let s = [-u[2], 0.0, u[0]];
+        // it comes from beyond the target and well off to one side (50 to 65 degrees round from straight beyond it):
+        // seen from the player, high in the sky ahead and off to one side, its arc crossing the sky to the target rather
+        // than coming straight at them
         let side = if r(1) < 0.5 { -1.0 } else { 1.0 };
-        let dd = d.clamp(60.0, 700.0);
-        // high over the target, off to one side and a little towards the player, drifting across and down
-        let s0 = [0.0, 330.0 + 40.0 * r(2), 0.0];
-        let s0 = add(add(s0, u, dd * (0.18 + 0.1 * r(3))), s, side * (150.0 + 60.0 * r(4)));
-        let s1 = [0.0, 245.0 + 25.0 * r(5), 0.0];
-        let s1 = add(add(s1, u, dd * (0.12 + 0.08 * r(6))), s, -side * (40.0 + 50.0 * r(7)));
-        // the loops: in a plane facing the player (seen from the ground they read as loops, not as waves), leaning a
-        // little back so they still corkscrew; carried across their view by the drift
-        let mid = add(s0, s1, 1.0);
-        let v = norm(add(me, [mid[0] * 0.5, mid[1] * 0.5, mid[2] * 0.5], -1.0));
-        let across = norm([-v[2], 0.0, v[0]]);
-        let along = if across[0] * (s1[0] - s0[0]) + across[2] * (s1[2] - s0[2]) < 0.0 { [-across[0], 0.0, -across[2]] } else { across };
-        let upv = [along[1] * v[2] - along[2] * v[1], along[2] * v[0] - along[0] * v[2], along[0] * v[1] - along[1] * v[0]];
-        let upv = if upv[1] < 0.0 { [-upv[0], -upv[1], -upv[2]] } else { upv };
-        let lean = 0.15 + 0.2 * r(8);
-        let e2 = norm(add(upv, v, lean));
+        let phi = (50.0 + 15.0 * r(2)).to_radians() * side;
+        let (c, s) = (phi.cos(), phi.sin());
+        let dir = [-u[0] * c + u[2] * s, 0.0, -u[2] * c - u[0] * s];
         let wa = TAU * r(9);
         let ws = 2.0 + 2.5 * r(10);
-        PlGeo {
-            seed,
-            s0,
-            s1,
-            e1: along,
-            e2,
-            rho: 38.0 + 14.0 * r(11),
-            omega: TAU / (3.6 + 1.0 * r(12)) * if r(13) < 0.5 { -1.0 } else { 1.0 },
-            phase: TAU * r(14),
-            wind: (wa.cos() * ws, wa.sin() * ws),
-        }
+        PlGeo { seed, dir, dh: 1150.0 + 300.0 * r(3), y0: 1100.0 + 200.0 * r(4), wind: (wa.cos() * ws, wa.sin() * ws) }
     }
-    fn drift(&self, t: f64) -> [f64; 3] {
-        let tau = t - f64::from(PL_SEEN);
-        let span = f64::from(PL_TURN - PL_SEEN);
-        let v = (tau / span).clamp(-0.2, 1.2);
-        let base = add(self.s0, [self.s1[0] - self.s0[0], self.s1[1] - self.s0[1], self.s1[2] - self.s0[2]], v);
-        // (the loops wax and wane: lazy, never regular)
-        let rho = self.rho * (0.65 + 0.35 * (0.8 * tau + self.phase * 0.7).sin());
-        let th = self.omega * tau + self.phase;
-        let l = add([0.0; 3], self.e1, rho * (th.cos() - self.phase.cos()));
-        let l = add(l, self.e2, rho * (th.sin() - self.phase.sin()));
-        let bob = 6.0 * (0.9 * tau + 1.3 * self.phase).sin();
-        add(add(base, l, 1.0), [0.0, 1.0, 0.0], bob)
+    /// How far along the arc it is at strike time `t`, 0 as it shows to 1 as it strikes.
+    fn along(t: f64) -> f64 {
+        let w = ((t - f64::from(PL_SEEN)) / f64::from(PL_HIT - PL_SEEN)).clamp(0.0, 1.0);
+        PL_CRAWL * w + (1.0 - PL_CRAWL) * w.powf(PL_RUSH)
     }
     /// Where it is at strike time `t` (from the target's ground), from PL_SEEN to PL_HIT.
     pub fn pos(&self, t: f64) -> [f64; 3] {
-        let turn = f64::from(PL_TURN);
-        if t <= turn {
-            return self.drift(t);
-        }
-        // the dive: a curve from where the drift left it, carried on the way it was going, bending down to the target,
-        // faster and faster
-        let p1 = self.drift(turn);
-        let v1 = add(self.drift(turn), self.drift(turn - 0.05), -1.0);
-        let c = add(p1, norm(v1), 55.0);
-        let c = add(c, [0.0, 1.0, 0.0], 15.0);
-        let w = ((t - turn) / f64::from(PL_HIT - PL_TURN)).clamp(0.0, 1.0);
-        let s = 0.3 * w + 0.7 * w * w * w;
-        let a = (1.0 - s) * (1.0 - s);
-        let b = 2.0 * (1.0 - s) * s;
-        [a * p1[0] + b * c[0], a * p1[1] + b * c[1], a * p1[2] + b * c[2]]
+        let u = Self::along(t);
+        let y = self.y0 * (1.0 - (PL_GLIDE * u + (1.0 - PL_GLIDE) * u * u));
+        add([0.0, y, 0.0], self.dir, self.dh * (1.0 - u))
     }
 }
 
@@ -202,6 +164,131 @@ pub(super) fn pl_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
         }
     }
     w.into_iter().map(f32::to_bits).collect()
+}
+
+// ---- the land's shape round it, for the pass: the dust follows it ----------------------------------------------
+/// A coarse heightfield of the land round the target, for the pass (the dust and the shockwave hug it, climbing the
+/// hills, filling the hollows, thinner in the lee of a ridge): PL_HN x PL_HN cells over a square PL_HF's second word
+/// across each way from the target. From PL_HF: the cells a side, that half-width, the lowest and highest ground (from
+/// the target's), then from PL_HF + 8 a word a cell: its height in the low 16 bits (an eighth of a block, from 512 under
+/// the target's ground), how sheltered it is from the blast by the land between in the next 8 (0 to 255).
+pub(super) const PL_HF: usize = 1024;
+pub(super) const PL_HN: usize = 96;
+/// How far the heightfield reaches round the target, for a player `dme` off.
+fn pl_hf_reach(dme: f64) -> f64 {
+    (dme * 1.25 + 150.0).clamp(260.0, 1150.0)
+}
+/// The columns the heightfield is read from (row by row, z then x).
+fn pl_hf_columns(bx: i32, bz: i32, reach: f64) -> Vec<(i32, i32)> {
+    let n = PL_HN as i32;
+    let step = 2.0 * reach / f64::from(n - 1);
+    let at = |i: i32| (-reach + step * f64::from(i)).round() as i32;
+    (0..n).flat_map(|k| (0..n).map(move |i| (bx + at(i), bz + at(k)))).collect()
+}
+/// The heightfield's ground (from the target's), from what the world gave (the first air over each column; none where
+/// the land was not loaded, guessed there from the target's ground and the player's), a trunk or a pillar caught in a
+/// cell put down to the ground round it.
+fn pl_hf_ground(heights: &[Option<f64>], reach: f64, me: [f64; 3]) -> Vec<f64> {
+    let n = PL_HN;
+    let step = 2.0 * reach / (n - 1) as f64;
+    let dme = me[0].hypot(me[2]).max(1.0);
+    let pos = |i: usize| -reach + step * i as f64;
+    let guess = |i: usize, k: usize| {
+        let r = pos(i).hypot(pos(k));
+        let s = (r / dme).clamp(0.0, 1.0);
+        me[1] * s * s * (3.0 - 2.0 * s)
+    };
+    let raw: Vec<f64> = (0..n * n).map(|c| heights[c].unwrap_or_else(|| guess(c % n, c / n))).collect();
+    let mut h = raw.clone();
+    for k in 1..n - 1 {
+        for i in 1..n - 1 {
+            let c = k * n + i;
+            let mut v = [raw[c - 1], raw[c + 1], raw[c - n], raw[c + n]];
+            v.sort_by(f64::total_cmp);
+            let med = 0.5 * (v[1] + v[2]);
+            if raw[c] > med + 4.0 {
+                h[c] = med;
+            }
+        }
+    }
+    h
+}
+/// How sheltered the cells of rows k0..k1 are: how far the land between each and the blast stands over the line from
+/// the blast, a few blocks up, to just over the cell's ground (0 to 1).
+fn pl_hf_shelter(h: &[f64], reach: f64, k0: usize, k1: usize) -> Vec<f64> {
+    let n = PL_HN;
+    let step = 2.0 * reach / (n - 1) as f64;
+    let pos = |i: usize| -reach + step * i as f64;
+    let at = |x: f64, z: f64| {
+        let fi = ((x + reach) / step).clamp(0.0, (n - 1) as f64);
+        let fk = ((z + reach) / step).clamp(0.0, (n - 1) as f64);
+        let (i, k) = ((fi as usize).min(n - 2), (fk as usize).min(n - 2));
+        let (u, v) = (fi - i as f64, fk - k as f64);
+        let c = k * n + i;
+        (h[c] * (1.0 - u) + h[c + 1] * u) * (1.0 - v) + (h[c + n] * (1.0 - u) + h[c + n + 1] * u) * v
+    };
+    (k0 * n..k1 * n)
+        .map(|c| {
+            let (x, z) = (pos(c % n), pos(c / n));
+            let r = x.hypot(z);
+            if r < 30.0 {
+                return 0.0;
+            }
+            let (src, dst) = (8.0, h[c] + 3.0);
+            let steps = ((r / step) as usize).clamp(2, 10);
+            let mut over: f64 = 0.0;
+            for j in 1..steps {
+                let f = j as f64 / steps as f64;
+                over = over.max(at(x * f, z * f) - (src + (dst - src) * f));
+            }
+            let s = (over / 14.0).clamp(0.0, 1.0);
+            s * s * (3.0 - 2.0 * s)
+        })
+        .collect()
+}
+/// The heightfield's words (from PL_HF).
+fn pl_hf_pack(h: &[f64], shelter: &[f64], reach: f64) -> Vec<u32> {
+    let (lo, hi) = h.iter().fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
+    let mut w = vec![(PL_HN as f32).to_bits(), (reach as f32).to_bits(), (lo as f32).to_bits(), (hi as f32).to_bits(), 0, 0, 0, 0];
+    let q = |x: f64| ((x + 512.0) * 8.0).round().clamp(0.0, 65535.0) as u32;
+    let b = |x: f64| (x * 255.0).round().clamp(0.0, 255.0) as u32;
+    w.extend(h.iter().zip(shelter).map(|(&g, &s)| q(g) | b(s) << 16));
+    w
+}
+/// All of it at once (the tests, tools/preview).
+#[cfg(test)]
+fn pl_hf_words(heights: &[Option<f64>], reach: f64, me: [f64; 3]) -> Vec<u32> {
+    let h = pl_hf_ground(heights, reach, me);
+    let s = pl_hf_shelter(&h, reach, 0, PL_HN);
+    pl_hf_pack(&h, &s, reach)
+}
+/// The heightfield, once the world has answered (asking again a little later until it has, while there is time): its
+/// ground on one stage, its shelter on three more (each well under a tick's fuel), then sent.
+fn pl_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, me: [f64; 3], gy: i32, at_t: f32) {
+    if !crate::ground::ready(tag) {
+        if at_t < PL_HIT {
+            q.later(at_t + 0.2, move |q| pl_hf_step(q, tag, columns, reach, me, gy, at_t + 0.2));
+        }
+        return;
+    }
+    let heights: Vec<Option<f64>> = columns
+        .iter()
+        .map(|&(x, z)| crate::ground::at(x, z).map(|g| f64::from(g + crate::ground::water(x, z).unwrap_or(0) - gy)))
+        .collect();
+    let h = Rc::new(pl_hf_ground(&heights, reach, me));
+    let parts = 3;
+    let shelter: Rc<RefCell<Vec<f64>>> = Default::default();
+    for j in 0..parts {
+        let (h, shelter) = (h.clone(), shelter.clone());
+        let t = at_t + 0.05 * (j + 1) as f32;
+        q.later(t, move |q| {
+            let (k0, k1) = (j * PL_HN / parts, (j + 1) * PL_HN / parts);
+            shelter.borrow_mut().extend(pl_hf_shelter(&h, reach, k0, k1));
+            if j + 1 == parts {
+                q.ev.push((t, Act::Words { index: PL_HF as u32, words: pl_hf_pack(&h, &shelter.borrow(), reach) }));
+            }
+        });
+    }
 }
 
 // ---- the land, read from the world ------------------------------------------------------------------------------
@@ -792,6 +879,15 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
         let s = shader_seed;
         p.later(0.05, move |q| q.ev.push((0.05, Act::Table(pl_table(s, rel)))));
     }
+    // (and the land's shape round it, asked of the world as it starts, the heightfield on a later tick)
+    {
+        let reach = pl_hf_reach(rel[0].hypot(rel[2]));
+        let columns = Rc::new(pl_hf_columns(bx, bz, reach));
+        let tag = crate::ground::new_tag();
+        let cols = columns.clone();
+        p.later(0.1, move |q| q.ev.push((0.1, Act::Survey { tag, columns: cols.to_vec() })));
+        p.later(0.4, move |q| pl_hf_step(q, tag, columns, reach, rel, by + 1, 0.4));
+    }
 
     // ---- calm, then something up there ------------------------------------------------------------------------------
     p.at(1.2, bar("ORBITAL TRACKING: OBJECT DESCENDING", "gray"));
@@ -902,7 +998,21 @@ mod table {
     fn pl_write_table() {
         let seed: f32 = std::env::var("CB_SEED").map_or(37.0, |v| v.parse().unwrap());
         let me: Vec<f64> = std::env::var("PL_ME").map_or(vec![0.0, 70.0, 300.0], |v| v.split(',').map(|x| x.parse().unwrap()).collect());
-        let w = super::pl_table(seed, [me[0] - 0.5, me[1] - 65.0, me[2] - 0.5]);
+        let rel = [me[0] - 0.5, me[1] - 65.0, me[2] - 0.5];
+        let mut w = super::pl_table(seed, rel);
+        // (the land's shape, as tools/preview draws it: PL_HILLS=H its hills (main.rs's hills_h), flat otherwise)
+        let hills: f64 = std::env::var("PL_HILLS").map_or(0.0, |v| v.parse().unwrap());
+        let reach = super::pl_hf_reach(rel[0].hypot(rel[2]));
+        let heights: Vec<Option<f64>> = super::pl_hf_columns(0, 0, reach)
+            .iter()
+            .map(|&(x, z)| {
+                let (x, z) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
+                Some(hills * (0.5 * (x * 0.045 + 0.7).sin() * (z * 0.038).cos() + 0.5 * (x * 0.013 - z * 0.017).sin()))
+            })
+            .collect();
+        let hf = super::pl_hf_words(&heights, reach, rel);
+        w.resize(super::PL_HF + hf.len(), 0);
+        w[super::PL_HF..].copy_from_slice(&hf);
         let text: String = w.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }
@@ -914,27 +1024,79 @@ mod tests {
     use crate::strike::plan;
 
     #[test]
-    fn payload_path_drifts_then_dives_onto_the_target() {
+    fn payload_path_arcs_down_from_high_up_onto_the_target() {
         for seed in [3.0, 37.0, 512.0, 991.0] {
-            let g = PlGeo::new(seed, [0.0, 5.0, 300.0]);
+            let me = [0.0, 5.0, 300.0];
+            let g = PlGeo::new(seed, me);
             let p0 = g.pos(f64::from(PL_SEEN));
-            assert!(p0[1] > 250.0, "{p0:?}");
+            assert!(p0[1] > 1000.0, "{p0:?}");
             let end = g.pos(f64::from(PL_HIT));
             assert!(len(end) < 1e-6, "{end:?}");
-            // (it never goes underground before it strikes, and it moves smoothly)
+            // (seen from the player it shows ahead of them, high and off to one side, not behind them)
+            let v = add(p0, me, -1.0);
+            let az = (-v[0] * me[0] - v[2] * me[2]) / (v[0].hypot(v[2]) * me[0].hypot(me[2]));
+            assert!(az > 0.5 && az < 0.9, "{az}");
+            let el = v[1].atan2(v[0].hypot(v[2])).to_degrees();
+            assert!(el > 25.0 && el < 55.0, "{el}");
+            // (it only ever comes down, steeper and faster as it goes, smoothly)
             let mut last = p0;
+            let mut slope = 0.0;
             let mut t = f64::from(PL_SEEN);
             while t < f64::from(PL_HIT) {
                 t += 0.02;
                 let q = g.pos(t.min(f64::from(PL_HIT)));
-                assert!(q[1] > -0.01, "{t} {q:?}");
-                assert!(len(add(q, last, -1.0)) < 14.0, "{t}");
+                let d = add(q, last, -1.0);
+                assert!(q[1] > -0.01 && d[1] <= 0.0, "{t} {q:?}");
+                assert!(len(d) < 16.0, "{t}");
+                let sl = -d[1] / d[0].hypot(d[2]).max(1e-9);
+                assert!(sl >= slope - 1e-9, "{t} {sl} {slope}");
+                slope = sl;
                 last = q;
             }
-            // (the dive is fast at the end)
-            let v = len(add(g.pos(f64::from(PL_HIT)), g.pos(f64::from(PL_HIT) - 0.05), -1.0)) / 0.05;
-            assert!(v > 200.0, "{v}");
+            assert!(slope > 1.4, "{slope}");
+            // (a slow crawl over the sky for seconds, a fast descent at the end)
+            let sp = |t: f64| len(add(g.pos(t), g.pos(t - 0.05), -1.0)) / 0.05;
+            assert!(sp(f64::from(PL_SEEN) + 3.0) < 110.0, "{}", sp(f64::from(PL_SEEN) + 3.0));
+            assert!(sp(f64::from(PL_HIT)) > 500.0, "{}", sp(f64::from(PL_HIT)));
+            assert!(g.pos(f64::from(PL_TURN))[1] > 600.0, "{:?}", g.pos(f64::from(PL_TURN)));
         }
+    }
+
+    #[test]
+    fn payload_heightfield_follows_the_land_and_shelters_behind_a_ridge() {
+        let me = [0.0, 0.0, 300.0];
+        let reach = pl_hf_reach(300.0);
+        let cols = pl_hf_columns(0, 0, reach);
+        assert_eq!(cols.len(), PL_HN * PL_HN);
+        // (a ridge 30 high across the way to the player at z 150, a trunk standing in one cell, the far corner not loaded)
+        let heights: Vec<Option<f64>> = cols
+            .iter()
+            .enumerate()
+            .map(|(c, &(x, z))| {
+                if c == 10 * PL_HN + 10 {
+                    return Some(25.0);
+                }
+                if x > 300 && z > 300 {
+                    return None;
+                }
+                Some(30.0 * (-(f64::from(z) - 150.0).powi(2) / 400.0).exp() + 0.0 * f64::from(x))
+            })
+            .collect();
+        let w = pl_hf_words(&heights, reach, me);
+        assert_eq!(w.len(), 8 + PL_HN * PL_HN);
+        assert_eq!(f32::from_bits(w[0]), PL_HN as f32);
+        let cell = |x: f64, z: f64| {
+            let step = 2.0 * reach / (PL_HN - 1) as f64;
+            let (i, k) = (((x + reach) / step).round() as usize, ((z + reach) / step).round() as usize);
+            let v = w[8 + k * PL_HN + i];
+            (f64::from(v & 0xffff) / 8.0 - 512.0, f64::from((v >> 16) & 0xff) / 255.0)
+        };
+        let step = 2.0 * reach / (PL_HN - 1) as f64;
+        assert!(cell(-reach + 10.0 * step, -reach + 10.0 * step).0.abs() < 1.0, "the trunk stays");
+        assert!((cell(0.0, 150.0).0 - 30.0).abs() < 4.0);
+        assert!(cell(0.0, 200.0).1 > 0.5, "{:?}", cell(0.0, 200.0));
+        assert!(cell(0.0, -200.0).1 < 0.05 && cell(0.0, 60.0).1 < 0.05);
+        assert!(cell(reach, reach).0.abs() < 1.0);
     }
 
     /// A forest on rolling land (its ground about 64): oaks now and then, a pond south-west of the target.

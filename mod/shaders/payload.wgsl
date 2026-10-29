@@ -12,7 +12,7 @@
 // strike/payload.rs samples the path and the column's billows into the table (pl_table, render.set-data): keep the
 // PL_* in step.
 const PL_SEEN: f32 = 3.0;          // the object shows,
-const PL_TURN: f32 = 11.0;         // turns into its dive,
+const PL_TURN: f32 = 10.6;         // starts its fast final descent, a fireball by then,
 const PL_HIT: f32 = 13.6;          // and strikes
 const PL_LEN: f32 = 44.0;          // the strike's length (lasers.rs): everything fades out over its last PL_FADE
 const PL_FADE: f32 = 7.0;
@@ -20,6 +20,7 @@ const PL_V: f32 = 343.0;           // the shockwave's front, blocks a second (wi
 const PL_P: u32 = 16u;             // the table: the path's samples from PL_P, three words each,
 const PL_PF: u32 = 400u;           // the billows from PL_PF, PL_PW words each (launch, rise, height share, radius, x, z)
 const PL_PW: u32 = 8u;
+const PL_HF: u32 = 1024u;          // the land's heightfield (payload.rs's pl_hf_words): its size, then heights, shelter
 const PL_NPUFF: i32 = 18;
 const PL_DEBRIS: i32 = 120;
 
@@ -28,6 +29,12 @@ fn pl_w(i: u32) -> f32 {
         return 0.0;
     }
     return bitcast<f32>(mod_data[i]);
+}
+fn pl_u(i: u32) -> u32 {
+    if (i >= arrayLength(&mod_data)) {
+        return 0u;
+    }
+    return mod_data[i];
 }
 fn pl_n() -> i32 {
     return i32(pl_w(0u) + 0.5);
@@ -173,27 +180,61 @@ fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
 }
 
 // ---- the dust of the shockwave: a low wall racing out over the land, rising and hanging behind it ---------------
-// Its ground at r out: the target's, rising or falling to the player's as it goes out to them.
+// The ground at r out where the heightfield does not reach (or before it is in): the target's, rising or falling to
+// the player's as it goes out to them.
 fn pl_gref(r: f32, me: vec3<f32>, C: vec3<f32>, dme: f32) -> f32 {
     return mix(0.0, me.y - C.y, smoothstep(0.0, max(dme, 1.0), r));
 }
+// The land at q (level, from the target): its ground (from the target's) and how sheltered it is from the blast by the
+// land between (0 to 1), from the heightfield, smoothly between its cells; `gref` past its edge.
+fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
+    let nf = pl_w(PL_HF);
+    if (nf < 2.0) {
+        return vec2<f32>(gref, 0.0);
+    }
+    let n = u32(nf + 0.5);
+    let R = pl_w(PL_HF + 1u);
+    let step = 2.0 * R / (nf - 1.0);
+    let fc = clamp((q + R) / step, vec2<f32>(0.0), vec2<f32>(nf - 1.001));
+    let i0 = vec2<u32>(floor(fc));
+    let t = fc - floor(fc);
+    var hv = vec4<f32>(0.0);
+    var sv = vec4<f32>(0.0);
+    for (var j = 0u; j < 4u; j = j + 1u) {
+        let c = pl_u(PL_HF + 8u + (i0.y + (j >> 1u)) * n + i0.x + (j & 1u));
+        hv[j] = f32(c & 0xffffu) / 8.0 - 512.0;
+        sv[j] = f32((c >> 16u) & 0xffu) / 255.0;
+    }
+    let g = mix(mix(hv.x, hv.y, t.x), mix(hv.z, hv.w, t.x), t.y);
+    let sh = mix(mix(sv.x, sv.y, t.x), mix(sv.z, sv.w, t.x), t.y);
+    let e = smoothstep(-step, 3.0 * step, max(abs(q.x), abs(q.y)) - R);
+    return vec2<f32>(mix(g, gref, e), sh * (1.0 - e));
+}
 // The dust at p (camera-relative), `side`: how square the ray crosses the ring there (0 along it): a dense, opaque wall
-// a few blocks high just behind a crisp, billowing front, thinning behind it into haze that rises and hangs.
-fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32, side: f32) -> f32 {
+// a few blocks high just behind a crisp, billowing front, thinning behind it into haze that rises and hangs. All of it
+// over the land's own ground (the heightfield, and close to where this pixel's ray meets the land, that point's own
+// height: `loc`, its xz from the target, how far it stands off the heightfield there, and the reach of that squared),
+// climbing the rises, filling the hollows, thinner and later in the lee of a ridge. Its density, and its height over
+// the ground.
+fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32, side: f32, loc: vec4<f32>) -> vec2<f32> {
     let q = p - C;
     let r = length(q.xz);
     let w = p + frame.camera_position.xyz;
-    let h = q.y - pl_gref(r, me, C, dme);
+    let land = pl_land(q.xz, pl_gref(r, me, C, dme));
+    let dl = q.xz - loc.xy;
+    let h = q.y - land.x - loc.z * exp(-dot(dl, dl) / loc.w);
+    let sh = land.y;
     if (h > 70.0 || h < -4.0) {
-        return 0.0;
+        return vec2<f32>(0.0, h);
     }
     // (the front billows: pushed on and held back by the turbulence it churns, more so higher up)
     let rf = PL_V * a;
     let n1 = gnoise3(w * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a, 0.0));
     let n2 = gnoise3(w * (1.0 / 3.5) + vec3<f32>(5.0, -2.0 * a, 1.0));
-    let s = rf - r + (n1 - 0.5) * 14.0 + (n2 - 0.5) * 5.0 - 0.25 * max(h, 0.0);
+    // (held back in the lee of a ridge, more so the deeper it lies under it)
+    let s = rf - r + (n1 - 0.5) * 14.0 + (n2 - 0.5) * 5.0 - 0.25 * max(h, 0.0) - 22.0 * sh;
     if (s < -3.0) {
-        return 0.0;
+        return vec2<f32>(0.0, h);
     }
     let since = max(s, 0.0) / PL_V;
     // (the wall: a person's height and more, higher as it goes and behind its front; its top ragged)
@@ -203,13 +244,13 @@ fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32, side: f3
     let hw = (5.0 + 0.012 * r) * rise * (0.35 + 1.2 * n1) * (0.6 + 0.8 * n3) + 1.5 * min(since, 6.0);
     let up = smoothstep(hw, hw * 0.35, h) * smoothstep(-4.0, 0.0, h);
     let lead = smoothstep(-3.0, 1.5, s);
-    let wall = 1.6 * exp(-s / (9.0 + 0.015 * r)) * (0.75 + 0.25 * side);
+    let wall = 1.6 * exp(-s / (9.0 + 0.015 * r)) * (0.75 + 0.25 * side) * (1.0 - 0.6 * sh);
     let haze = (0.009 * exp(-since / 2.5) + 0.0025 * exp(-since / 6.0)) * (0.5 + n2);
     // (none round the column's foot: the blast cleared it, and it would tint the smoke)
     let mid = smoothstep(45.0, 160.0, r);
     // (and what it leaves low over the land for a few seconds, in drifting patches)
-    let low = 0.22 * exp(-since / 3.0) * smoothstep(0.0, 30.0, s) * exp(-max(h, 0.0) / (2.5 + 2.0 * n1)) * smoothstep(0.35, 0.7, n3);
-    return ((wall * saturate(1.5 * n1 + 0.25 * n2) * (0.35 + 1.3 * n3) + haze) * up + low) * lead * mid;
+    let low = 0.22 * (1.0 - 0.45 * sh) * exp(-since / 3.0) * smoothstep(0.0, 30.0, s) * exp(-max(h, 0.0) / (2.5 + 2.0 * n1)) * smoothstep(0.35, 0.7, n3);
+    return vec2<f32>(((wall * saturate(1.5 * n1 + 0.25 * n2) * (0.35 + 1.3 * n3) + haze * (1.0 - 0.4 * sh)) * up + low) * lead * mid, h);
 }
 // ---- the debris: chunks and specks of earth thrown out, falling back far round it ---------------------------------
 struct PlChunk {
@@ -245,7 +286,7 @@ fn pl_chunk(i: i32, a: f32, seed: u32, C: vec3<f32>, me: vec3<f32>, dme: f32) ->
     o.p = C + dir * r0 + vec3<f32>(0.0, 2.0, 0.0) + vec3<f32>(v0.x, 0.0, v0.z) * e + vec3<f32>(0.0, v0.y * e - g * (tau - e) / k, 0.0);
     o.v = vec3<f32>(v0.x, 0.0, v0.z) * exp(-k * tau) + vec3<f32>(0.0, (v0.y + g / k) * exp(-k * tau) - g / k, 0.0);
     let r = length((o.p - C).xz);
-    let gref = C.y + pl_gref(r, me, C, dme);
+    let gref = C.y + pl_land((o.p - C).xz, pl_gref(r, me, C, dme)).x;
     o.live = smoothstep(gref - 1.0, gref + 2.0, o.p.y);
     return o;
 }
@@ -351,16 +392,18 @@ fn payload(in: StageIn) -> vec4<f32> {
             let h = ray_seg(rd, pa, pb);
             let te = min(t0 + dt * (f32(i) + h.z), thead);
             let age = max(time - te, 0.0);
-            let dive = smoothstep(PL_TURN - 0.3, PL_TURN + 0.5, te);
-            let rad = mix(1.1 + 1.7 * sqrt(age), 3.0 + 2.6 * sqrt(age), dive);
+            // (pale vapour high up, where it is still coming in; dense dark smoke where it came down burning)
+            let dive = smoothstep(PL_TURN - 1.6, PL_TURN + 0.6, te);
+            let rad = mix(3.0 + 3.0 * sqrt(age), 3.5 + 3.4 * sqrt(age), dive);
             if (h.x < rad && h.y < scene_len + rad) {
                 let chord = 2.0 * sqrt(max(rad * rad - h.x * h.x, 0.0));
                 let cp = rd * h.y;
                 let nq = gnoise3((cp + cam) / (2.5 * rad + 2.0) + vec3<f32>(f32(seed % 97u), 0.0, 0.0));
                 let nq2 = gnoise3((cp + cam) / (0.9 * rad + 1.0) + vec3<f32>(0.0, 3.0, f32(seed % 89u)));
                 let shape = mix(saturate(1.7 * nq - 0.3), 0.6 + 0.4 * nq, dive) * (0.55 + 0.9 * nq2 * (1.0 - dive * 0.5)) * saturate(1.0 - pow(h.x / rad, 2.0) * 0.85);
-                let pale = 0.24 * exp(-age / 14.0) / (1.0 + 0.25 * age);
-                let dark = 0.55 * exp(-max(age - 2.5, 0.0) / 2.0);
+                // (both hang in the sky in the shape of the arc for many seconds, drifting and thinning)
+                let pale = 0.24 * exp(-age / 20.0) / (1.0 + 0.12 * age);
+                let dark = 0.55 * exp(-max(age - 3.0, 0.0) / 9.0) / (1.0 + 0.04 * max(age - 3.0, 0.0));
                 let sig = mix(pale, dark, dive) * shape * fade;
                 let occl = saturate((scene_len - h.y) / rad + 0.5);
                 let dtau = sig * chord * occl;
@@ -374,8 +417,11 @@ fn payload(in: StageIn) -> vec4<f32> {
                 tw = tw + dtau;
                 tau = tau + dtau;
                 // (the flame tail just behind the head, in the dive)
-                let fl = dive * exp(-age / 0.2) * step(time, PL_HIT + 0.05);
+                let fl = dive * exp(-age / 0.09) * step(time, PL_HIT + 0.05);
                 glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * min(chord * 0.35, 1.6) * occl);
+                // (high up, the hot streak of air it leaves glowing behind it, white, cooling within a second)
+                let fh = (1.0 - dive) * exp(-age / 0.45) * step(time, PL_HIT);
+                glow = max(glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(chord * 0.6, 1.2) * occl);
             }
             pa = pb;
         }
@@ -476,7 +522,8 @@ fn payload(in: StageIn) -> vec4<f32> {
         } else if (cth < 0.0) {
             vis = 0.0;
         }
-        let dive = smoothstep(PL_TURN - 0.2, PL_TURN + 0.5, time);
+        // (white-hot high up, heating into a fireball as it comes down into the thick air)
+        let dive = smoothstep(PL_TURN - 1.5, PL_TURN + 0.8, time);
         let show = smoothstep(PL_SEEN - 0.2, PL_SEEN + 1.2, time);
         let flick = 0.85 + 0.15 * sin(time * 37.0) * sin(time * 23.0 + 1.0);
         let size = mix(1.6, 5.5, dive);
@@ -495,8 +542,22 @@ fn payload(in: StageIn) -> vec4<f32> {
     // ---- the dust: marched along the view ray where it crosses the shell behind the front, more sparsely inside ------
     if (a > 0.0 && a < 32.0) {
         let rf = PL_V * a;
-        let ylo = min(C.y, me.y) - 6.0;
-        let yhi = max(C.y, me.y) + 45.0;
+        // (the slab the dust stays in: over the land's lowest and highest ground, where the heightfield is in)
+        var ylo = min(C.y, me.y) - 6.0;
+        var yhi = max(C.y, me.y) + 45.0;
+        if (pl_w(PL_HF) > 1.0) {
+            ylo = min(ylo, C.y + pl_w(PL_HF + 2u) - 6.0);
+            yhi = max(yhi, C.y + pl_w(PL_HF + 3u) + 45.0);
+        }
+        // (where this pixel's ray meets the land, its own height: the dust right there sits on it, in a hollow
+        // smaller than the heightfield's cells or on a rise; a treetop or a wall counts only a little)
+        var loc = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        if (!sky) {
+            let sq = rel - C;
+            let off = sq.y - pl_land(sq.xz, pl_gref(length(sq.xz), me, C, dme)).x;
+            let stp = 2.0 * max(pl_w(PL_HF + 1u), 260.0) / 95.0;
+            loc = vec4<f32>(sq.xz, clamp(off, -30.0, 2.5 + 0.1 * max(off - 2.5, 0.0)), stp * stp * 0.6);
+        }
         var t0 = 0.0;
         var t1 = min(min(scene_len, col_t), 1600.0);
         if (abs(rd.y) > 1.0e-5) {
@@ -552,13 +613,13 @@ fn payload(in: StageIn) -> vec4<f32> {
                     let t = sa + (sb - sa) * u0 * u0;
                     let dt = (sb - sa) * (u1 * u1 - u0 * u0);
                     let p = rd * t;
-                    let den = pl_dust(p, C, a, me, dme, side);
+                    let dh = pl_dust(p, C, a, me, dme, side, loc);
+                    let den = dh.x;
                     if (den <= 0.001) {
                         continue;
                     }
                     let al = 1.0 - exp(-den * dt * 0.3);
-                    let q = p - C;
-                    let h = q.y - pl_gref(length(q.xz), me, C, dme);
+                    let h = dh.y;
                     // (its billows lit on top, darker under them and low down)
                     let wq = p + cam;
                     let bl = gnoise3(wq * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a + 0.5, 0.0));
@@ -628,6 +689,69 @@ fn payload(in: StageIn) -> vec4<f32> {
         let smoke = vec3<f32>(0.28, 0.29, 0.31) * (amb * 0.8 + sunc * 0.25);
         col = mix(col, smoke, smk * k * fade);
         col = mix(col, dirt, cov * k * fade);
+    }
+
+    // ---- the dust at the eye: as the front washes over the camera, grit thrown at the lens and streaking past, the
+    // picture flattened and warmed by the dust in the air, clearing as it settles ------------------------------------
+    if (a > 0.0 && a < 20.0) {
+        let rc = length(C.xz);
+        let tau = a - rc / PL_V;                               // since the front reached the eye
+        if (tau > -0.1 && rc > 50.0) {
+            let land = pl_land(-C.xz, pl_gref(rc, me, C, dme));
+            let hc = -C.y - land.x;                            // the eye over the ground
+            let E = smoothstep(-0.08, 0.05, tau) * (0.6 * exp(-tau / 0.8) + 0.4 * exp(-tau / 3.5))
+                * smoothstep(40.0, 8.0, hc) * smoothstep(2600.0, 900.0, rc) * smoothstep(50.0, 110.0, rc)
+                * (1.0 - 0.55 * land.y) * fade * k;
+            if (E > 0.002) {
+                let dust_c = vec3<f32>(0.6, 0.5, 0.35) * (sunc * 0.6 + amb * 0.75);
+                // (the air thick with it: contrast lost, warmed)
+                let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
+                col = mix(col, mix(vec3<f32>(lum), dust_c, 0.55), 0.25 * E);
+                col = col * mix(vec3<f32>(1.0), vec3<f32>(1.06, 0.98, 0.84), E);
+                // (a film of it on the lens, in soft blotches, fixed to the screen)
+                let pxy = in.position.xy;
+                let sres = frame.resolution.y / 1080.0;
+                let film = gnoise3(vec3<f32>(pxy / (140.0 * sres), 3.1)) * 0.65 + gnoise3(vec3<f32>(pxy / (37.0 * sres), 7.7)) * 0.35;
+                col = mix(col, dust_c * 1.15, 0.2 * E * smoothstep(0.42, 0.8, film));
+                // (specks streaking past: grains blown from the blast's side past the eye, out from where they come
+                // from on the screen, or in towards where they go when that is behind)
+                let tow = normalize(vec3<f32>(C.x, 0.0, C.z) + vec3<f32>(1.0e-3, 0.0, 0.0));
+                let pin = project_rel(tow * 1000.0);
+                let pout = project_rel(-tow * 1000.0);
+                let fwd_in = pin.z > 0.0;
+                let F = select(pout.xy, pin.xy, fwd_in) * frame.resolution.xy;
+                let dv = pxy - F;
+                let dl = max(length(dv), 1.0);
+                let th = atan2(dv.y, dv.x);
+                let lr = log(dl);
+                var sp = 0.0;
+                for (var l = 0; l < 2; l = l + 1) {
+                    let fl = f32(l);
+                    let nth = 260.0 - 90.0 * fl;
+                    let cs = 0.16 + 0.1 * fl;
+                    // (on the move: outward from where they come from, inward to where they go)
+                    let flow = (1.6 + 0.9 * fl) * a * select(-1.0, 1.0, fwd_in);
+                    let uth = (th / TAU + 0.5) * nth;
+                    let ur = (lr - flow) / cs;
+                    let ci = floor(uth);
+                    let cr = floor(ur);
+                    let hsh = mh(u32(i32(ci) + 4096), u32(i32(cr) + 4096), 0x3c1u + u32(l));
+                    if (hsh < 0.018 - 0.006 * fl) {
+                        let ct = (ci + 0.2 + 0.6 * mh(u32(i32(ci) + 4096), u32(i32(cr) + 4096), 0x3c5u)) / nth;
+                        let cl = (cr + 0.5) * cs;
+                        let across = abs((th / TAU + 0.5) - ct) * TAU * dl;
+                        let along = abs((lr - flow) - cl) * dl;
+                        let wid = (0.8 + 1.4 * fl) * sres;
+                        let lng = (4.0 + 10.0 * hsh / 0.018) * sres * (1.0 + 2.0 * exp(-tau / 0.6));
+                        sp = max(sp, smoothstep(wid + 0.8, 0.0, across) * smoothstep(lng, lng * 0.3, along) * (0.6 + 0.4 * fl));
+                    }
+                }
+                sp = sp * smoothstep(30.0 * sres, 160.0 * sres, dl);
+                let grain = dust_c * mix(1.1, 0.55, smoothstep(0.2, 0.6, lum));
+                // (the grains thrown past in the front's first second or so, a few stragglers after)
+                col = mix(col, grain, sp * 0.55 * min(E * 1.6, 1.0) * (0.25 + 0.75 * exp(-max(tau, 0.0) / 0.7)));
+            }
+        }
     }
 
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
