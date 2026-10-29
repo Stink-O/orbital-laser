@@ -95,11 +95,16 @@ impl PlGeo {
         let s0 = add(add(s0, u, dd * (0.18 + 0.1 * r(3))), s, side * (150.0 + 60.0 * r(4)));
         let s1 = [0.0, 245.0 + 25.0 * r(5), 0.0];
         let s1 = add(add(s1, u, dd * (0.12 + 0.08 * r(6))), s, -side * (40.0 + 50.0 * r(7)));
-        let along = norm([s1[0] - s0[0], 0.0, s1[2] - s0[2]]);
-        let perp = [-along[2], 0.0, along[0]];
-        // the loops: in a plane tilted up out of the horizontal, so they corkscrew
-        let tilt = 0.45 + 0.3 * r(8);
-        let e2 = norm([perp[0] * (1.0 - tilt), tilt, perp[2] * (1.0 - tilt)]);
+        // the loops: in a plane facing the player (seen from the ground they read as loops, not as waves), leaning a
+        // little back so they still corkscrew; carried across their view by the drift
+        let mid = add(s0, s1, 1.0);
+        let v = norm(add(me, [mid[0] * 0.5, mid[1] * 0.5, mid[2] * 0.5], -1.0));
+        let across = norm([-v[2], 0.0, v[0]]);
+        let along = if across[0] * (s1[0] - s0[0]) + across[2] * (s1[2] - s0[2]) < 0.0 { [-across[0], 0.0, -across[2]] } else { across };
+        let upv = [along[1] * v[2] - along[2] * v[1], along[2] * v[0] - along[0] * v[2], along[0] * v[1] - along[1] * v[0]];
+        let upv = if upv[1] < 0.0 { [-upv[0], -upv[1], -upv[2]] } else { upv };
+        let lean = 0.15 + 0.2 * r(8);
+        let e2 = norm(add(upv, v, lean));
         let wa = TAU * r(9);
         let ws = 2.0 + 2.5 * r(10);
         PlGeo {
@@ -150,19 +155,21 @@ impl PlGeo {
 /// The column's billows: (launch after the strike, rise time, share of the column's height, radius, x and z off its
 /// axis). The stem's low and narrow, then the body, then the head, the highest launched first.
 pub(super) fn pl_puffs(seed: u32) -> Vec<[f64; 6]> {
+    // (it bursts up fast, most of its height in a second, as it does in the clip, then swells and climbs slowly on:
+    // the head first, the body and the narrower stem boiling up under it)
     (0..PL_PUFFS)
         .map(|i| {
             let h = |k: u32| mh(i as u32, seed, 0x5f0 + k);
             let (t0, hf, rad) = if i < 5 {
-                (0.05 + 0.5 * h(0), 0.06 + 0.3 * (i as f64 / 5.0) + 0.06 * h(1), 24.0 + 12.0 * h(2))
+                (0.1 + 0.35 * h(0), 0.06 + 0.3 * (i as f64 / 5.0) + 0.06 * h(1), 22.0 + 10.0 * h(2))
             } else if i < 11 {
-                (0.1 + 0.7 * h(0), 0.38 + 0.36 * ((i - 5) as f64 / 6.0) + 0.06 * h(1), 34.0 + 16.0 * h(2))
+                (0.05 + 0.25 * h(0), 0.4 + 0.34 * ((i - 5) as f64 / 6.0) + 0.06 * h(1), 32.0 + 14.0 * h(2))
             } else {
-                (0.0 + 0.5 * h(0), 0.72 + 0.32 * ((i - 11) as f64 / 7.0) + 0.05 * h(1), 42.0 + 20.0 * h(2))
+                (0.0 + 0.12 * h(0), 0.74 + 0.28 * ((i - 11) as f64 / 7.0) + 0.05 * h(1), 50.0 + 18.0 * h(2))
             };
-            let tau = 3.6 + 2.4 * h(3);
+            let tau = 0.5 + 0.35 * h(3);
             let a = TAU * h(4);
-            let off = rad * (0.2 + 0.55 * h(5)) * if i < 5 { 0.6 } else { 1.0 };
+            let off = rad * (0.2 + 0.55 * h(5)) * if i < 2 { 1.1 } else if i < 5 { 0.5 } else { 1.0 };
             [t0, tau, hf, rad, a.cos() * off, a.sin() * off]
         })
         .collect()

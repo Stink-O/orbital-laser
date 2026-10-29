@@ -71,6 +71,11 @@ VIEWS = {
     "plfar": "cx=150 cy=90 cz=1000 lx=0.5 ly=150 lz=0.5 flat=1",
     "pltop": "cx=0 cy=700 cz=420 lx=0.5 ly=65 lz=0.5 flat=1",
     "plnear": "cx=0 cy=67 cz=300 lx=-30 ly=70 lz=240 flat=1",
+    # set up like the reference clip's camera: third person at head height 450 blocks off in a wood, the target a
+    # little left of the middle, the horizon a little under it, a 59 degree (vertical) field of view
+    "plref": "cx=0 cy=68.5 cz=450 lx=12 ly=94 lz=0.5 flat=1 trees=1 fov=59 reach=450",
+    # the same, looking up at the object as it drifts (the clip's 6-9 s)
+    "plrefsky": "cx=0 cy=68.5 cz=450 lx=-60 ly=330 lz=40 flat=1 trees=1 fov=59 reach=450",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -91,7 +96,7 @@ def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
     return path
 
 
-def mod_data(laser: str, out: pathlib.Path, sets: list) -> dict:
+def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -> dict:
     """The Crystal Bloom's and the Sinkhole's passes read their tables from the mod's data (render.set-data): work it out
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
@@ -99,7 +104,7 @@ def mod_data(laser: str, out: pathlib.Path, sets: list) -> dict:
     if laser == "payload":
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
-        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME="0,65,300")
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "pl_write_table", "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
@@ -153,7 +158,9 @@ def main() -> int:
         for v in views:
             shots += ["--", f"t={t}", *VIEWS[v].split()]
             labels.append(f"{t:g} s  {v}")
-    env = mod_data(a.laser, out, a.set) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
+    # (the payload's player: 300 blocks south, or as far as the first view puts them)
+    pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
+    env = mod_data(a.laser, out, a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
     r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         print(r.stderr, file=sys.stderr)

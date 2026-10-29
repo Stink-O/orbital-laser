@@ -171,6 +171,26 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     }
     let hills = g("hills", 0.0);
     let pit = g("pit", 0.0) > 0.5;
+    // (`trees=1`: a wood of blocky trees, as a heightfield (their crowns reach the ground), none within 45 of the eye)
+    let trees = g("trees", 0.0) > 0.5;
+    let tree_h = |x: f32, z: f32| -> Option<f32> {
+        if !trees || (x - cam[0]).hypot(z - cam[2]) < 45.0 {
+            return None;
+        }
+        let (bx, bz) = (x.floor() as i32, z.floor() as i32);
+        let (cx, cz) = (bx.div_euclid(7), bz.div_euclid(7));
+        if hash(cx, cz + 911) < 0.62 {
+            return None;
+        }
+        let ox = cx * 7 + 1 + (hash(cx + 5, cz) * 4.0) as i32;
+        let oz = cz * 7 + 1 + (hash(cx, cz + 5) * 4.0) as i32;
+        let rr = 2 + (hash(cx + 9, cz + 3) * 1.6) as i32;
+        let (dx, dz) = ((bx - ox).abs(), (bz - oz).abs());
+        if dx.max(dz) > rr || dx + dz > rr + 1 {
+            return None;
+        }
+        Some(7.0 + (hash(cx + 2, cz + 7) * 6.0).floor() - (dx + dz) as f32 * 0.5)
+    };
     let ground = |x: f32, z: f32, crater: bool| {
         if let Some(h) = pit.then(|| pit_h(x, z, tgt[1], time)).flatten() {
             h
@@ -182,6 +202,7 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             crater_h(x, z, crater)
         }
     };
+    let ground = |x: f32, z: f32, crater: bool| ground(x, z, crater) + tree_h(x, z).map_or(0.0, |h| h.floor());
     let night = g("night", 0.0) > 0.5;
     let sun = if night { norm([0.35, -0.6, 0.25]) } else { norm([0.35, 0.8, 0.25]) };
     let nk = if night { 0.08 } else { 1.0 };
@@ -218,6 +239,9 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                         let n = hash(bx, bz);
                         let lit = 0.55 + 0.45 * sun[1];
                         c = [(0.18 + 0.06 * n) * lit, (0.36 + 0.1 * n) * lit, (0.12 + 0.04 * n) * lit];
+                        if tree_h(p[0], p[2]).is_some() {
+                            c = [(0.07 + 0.03 * n) * lit, (0.17 + 0.06 * n) * lit, (0.06 + 0.02 * n) * lit];
+                        }
                         if p[1] < tgt[1] - 1.5 {
                             // (rock laid open: dirt near the top, stone in bands, deepslate deep down)
                             let band = hash((p[1] / 3.0).floor() as i32, 7);
