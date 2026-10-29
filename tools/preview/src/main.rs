@@ -4,7 +4,7 @@
 //! The pass (the game's prelude goes before it) is compiled once, then each shot (the keys before the first `--`, then
 //! each `--` group's over them) is drawn to OUTDIR/NN.png. Keys: t, laser, cx cy cz (the eye), yaw pitch fov, tx ty tz
 //! (the target), lx ly lz (a point to look at, in place of yaw and pitch), mx mz (the player, by default the eye), seed,
-//! mode, style, colour, night, clouds, w h (the first shot's for all), frames (timed, the median printed),
+//! mode, style, colour, night, sunel sunaz (the sun's height and bearing, degrees), clouds, w h (the first shot's for all), frames (timed, the median printed),
 //! gpu (part of the adapter's name), flat, hills (the land rolling that high round the target, `hills_h`), vox (blocks
 //! from $PREVIEW_VOXELS), crater.
 //! The pass's `mod_data` (the mod's `render.set-data`) is read from $PREVIEW_DATA if set: a line `index value` a word,
@@ -204,8 +204,25 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     };
     let ground = |x: f32, z: f32, crater: bool| ground(x, z, crater) + tree_h(x, z).map_or(0.0, |h| h.floor());
     let night = g("night", 0.0) > 0.5;
-    let sun = if night { norm([0.35, -0.6, 0.25]) } else { norm([0.35, 0.8, 0.25]) };
-    let nk = if night { 0.08 } else { 1.0 };
+    // (sunel=DEGREES: the sun that high (below the horizon if negative), sunaz=DEGREES round from +x towards +z: the
+    // sky reddens towards it near the horizon and darkens as it sets)
+    let sunel = kv.get("sunel").copied();
+    let sun = match sunel {
+        Some(el) => {
+            let (el, az) = (el.to_radians(), g("sunaz", 35.5).to_radians());
+            [el.cos() * az.cos(), el.sin(), el.cos() * az.sin()]
+        }
+        None if night => norm([0.35, -0.6, 0.25]),
+        None => norm([0.35, 0.8, 0.25]),
+    };
+    // (how much daylight, and how warm the low sun's light: as the shader works them out)
+    let sstep = |a: f32, b: f32, x: f32| {
+        let u = ((x - a) / (b - a)).clamp(0.0, 1.0);
+        u * u * (3.0 - 2.0 * u)
+    };
+    let dayk = if sunel.is_some() { (sun[1] * 2.5 + 0.35).clamp(0.0, 1.0) } else if night { 0.0 } else { 1.0 };
+    let warm = if sunel.is_some() { (1.0 - sstep(0.02, 0.4, sun[1])) * sstep(-0.15, 0.0, sun[1]) } else { 0.0 };
+    let nk = 0.08 + 0.92 * dayk;
     let mut color = vec![0u8; (w * h * 4) as usize];
     let mut depth = vec![0f32; (w * h) as usize];
     let srgb = |c: f32| (c.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0) as u8;
@@ -220,7 +237,16 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             ]);
             let mut c = {
                 let hz = (1.0 - d[1].max(0.0)).powf(3.0);
-                [0.25 + 0.45 * hz, 0.42 + 0.4 * hz, 0.85 + 0.12 * hz]
+                let mut c = [0.25 + 0.45 * hz, 0.42 + 0.4 * hz, 0.85 + 0.12 * hz];
+                if warm > 0.0 {
+                    // (the glow of the low sun along the horizon, strongest towards it, red-orange; under it all the
+                    // sky dimming and bluer)
+                    let sh = norm([sun[0], 0.0, sun[2]]);
+                    let to = ((d[0] * sh[0] + d[2] * sh[2]) / (d[0] * d[0] + d[2] * d[2]).sqrt().max(1e-4)).max(0.0);
+                    let gl = warm * hz.powf(2.0) * (0.35 + 0.65 * to.powf(3.0)) / nk;
+                    c = [c[0] * (1.0 - 0.5 * warm) + 1.3 * gl, c[1] * (1.0 - 0.5 * warm) + 0.55 * gl, c[2] * (1.0 - 0.3 * warm) + 0.15 * gl];
+                }
+                c
             };
             let mut hit_t = -1.0f32;
             // the ground: march
@@ -347,10 +373,17 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     u.extend_from_slice(&inv_proj);
     u.extend_from_slice(&[cam[0], cam[1], cam[2], 1.0]);
     u.extend_from_slice(&[w as f32, h as f32, 1.0 / w as f32, 1.0 / h as f32]);
-    u.extend_from_slice(&[time, if night { 0.6 } else { 0.25 }, 0.0, 0.0]);
+    u.extend_from_slice(&[time, if sun[1] < 0.0 { 0.6 } else { 0.25 }, 0.0, 0.0]);
     u.extend_from_slice(&[sun[0], sun[1], sun[2], 0.0]);
-    if night { u.extend_from_slice(&[0.03, 0.04, 0.08, 1.0]); } else { u.extend_from_slice(&[0.47, 0.65, 1.0, 1.0]); }
-    u.extend_from_slice(&[0.7, 0.8, 1.0, 1.0]);
+    if sunel.is_some() {
+        // (the sky's and the fog's colours as the game's go at that hour: the fog reddened by a low sun)
+        let m = |a: f32, b: f32| a + (b - a) * dayk;
+        u.extend_from_slice(&[m(0.03, 0.47), m(0.04, 0.65), m(0.08, 1.0), 1.0]);
+        u.extend_from_slice(&[m(0.04, 0.7) + 0.35 * warm * dayk, m(0.05, 0.8) - 0.15 * warm * dayk, m(0.09, 1.0) - 0.45 * warm * dayk, 1.0]);
+    } else {
+        if night { u.extend_from_slice(&[0.03, 0.04, 0.08, 1.0]); } else { u.extend_from_slice(&[0.47, 0.65, 1.0, 1.0]); }
+        u.extend_from_slice(&[0.7, 0.8, 1.0, 1.0]);
+    }
     u.extend_from_slice(&[near, far, 512.0, fov]);
     u.extend_from_slice(&[tgt[0], tgt[1], tgt[2], time]);
     u.extend_from_slice(&[tgt[0].floor() + 0.5, tgt[2].floor() + 0.5, wing, laser]);

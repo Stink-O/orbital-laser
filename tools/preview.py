@@ -93,6 +93,9 @@ VIEWS = {
     "pl3far": "cx=0 cy=120 cz=1600 lx=0.5 ly=420 lz=0.5 flat=1 fov=50 reach=1600",
     "pl3close": "cx=0 cy=67 cz=230 lx=60 ly=300 lz=0.5 flat=1 trees=1 fov=70 reach=230",
     "pl3col": "cx=0 cy=67 cz=230 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=70 reach=230",
+    # close by the crater (45 off), looking up at the column's foot and over it (with sunel=1 sunaz=200: as the user
+    # saw it at dusk)
+    "plclose": "cx=0 cy=69 cz=45 lx=0.5 ly=120 lz=0.5 flat=1 fov=75 reach=45",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",

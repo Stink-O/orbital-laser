@@ -133,6 +133,9 @@ struct PlCol {
     // so it stands as one ragged mass and not a stack of balls)
     s0: vec4<f32>,
     s1: vec4<f32>,
+    // (and the low, wide skirt it stands in, sunk in the crater and merging with the dust: its middle and radius
+    // across, 13 high)
+    sk: vec4<f32>,
 }
 // Billow i at `a` seconds after the strike: its middle and radius (w; 0 before it is launched).
 fn pl_puff(i: i32, a: f32, C: vec3<f32>, grow: f32) -> vec4<f32> {
@@ -165,8 +168,10 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     o.grow = 1.0 + 0.012 * max(a - 6.0, 0.0) + 0.006 * max(a - PL_SOFT0, 0.0);
     for (var i = 0; i < PL_NPUFF; i = i + 1) {
         var q = pl_puff(i, a, C, o.grow);
-        // (the stem's billows smaller: its trunk carries it, they only bulge it)
+        // (the stem's billows smaller: its trunk carries it, they only bulge it; the lowest sunk into the crater, so
+        // none of them sits on the ground as a ball)
         q.w = q.w * select(1.0, 0.8, i < 5);
+        q.y = q.y - 12.0 * (1.0 - smoothstep(10.0, 70.0, q.y - C.y));
         o.q[i] = q;
         if (q.w <= 0.0) {
             continue;
@@ -179,8 +184,14 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
         }
     }
     // (the stem's trunk: wide at its dusty foot, narrowing a little to its top billow)
-    o.s0 = vec4<f32>(C + vec3<f32>(0.0, 2.0, 0.0), min(o.s1.w * 1.45, 6.0 + 36.0 * saturate(a / 1.2)));
+    // (its foot under the crater's floor (some 9 deep): it rises out of the ground, its bottom never seen)
+    o.s0 = vec4<f32>(C + vec3<f32>(0.0, -12.0, 0.0), min(o.s1.w * 1.25, 8.0 + 30.0 * saturate(a / 1.2)));
     o.s1.w = o.s1.w * 0.75;
+    o.sk = vec4<f32>(C + vec3<f32>(0.0, -5.0, 0.0), (10.0 + 30.0 * saturate(a / 1.5)) * (1.0 + 0.01 * max(a - 2.0, 0.0)));
+    if (o.n > 0) {
+        o.lo = min(o.lo, min(o.s0.xyz - vec3<f32>(o.s0.w), o.sk.xyz - vec3<f32>(o.sk.w, 13.0, o.sk.w)));
+        o.hi = max(o.hi, o.sk.xyz + vec3<f32>(o.sk.w, 13.0, o.sk.w));
+    }
     // (room for the billows' lumps)
     o.lo = o.lo - vec3<f32>(34.0);
     o.hi = o.hi + vec3<f32>(34.0);
@@ -191,8 +202,18 @@ fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
     for (var i = 0; i < PL_NPUFF; i = i + 1) {
         let q = (*col).q[i];
         if (q.w > 0.0) {
-            d = smin(d, length(p - q.xyz) - q.w, 18.0);
+            // (the low ones squat and wide, spreading over the ground)
+            let low = 1.0 - smoothstep(0.0, 60.0, q.y - (*col).C.y);
+            let e = (p - q.xyz) * vec3<f32>(1.0 - 0.25 * low, 1.0 + 0.6 * low, 1.0 - 0.25 * low);
+            d = smin(d, (length(e) - q.w) / (1.0 + 0.6 * low), 18.0);
         }
+    }
+    let sk = (*col).sk;
+    if ((*col).n > 0) {
+        let r = vec3<f32>(sk.w, 13.0, sk.w);
+        let e = (p - sk.xyz) / r;
+        let k0 = length(e);
+        d = smin(d, k0 * (k0 - 1.0) / max(length(e / r), 1.0e-4), 16.0);
     }
     let s0 = (*col).s0;
     let s1 = (*col).s1;
@@ -245,7 +266,7 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.3 + 0.7 * up) + (6.0 + 6.0 * (1.0 - up)) * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) + 8.0 * (w2 - 0.5)) * lump;
     // (crisp-edged in places, wispy in others, the stem's foot loosest: the dust it stands in)
     let ew = smoothstep(0.35, 0.68, w2);
-    let edge = mix(1.4, 6.0, ew) + 12.0 * (1.0 - smoothstep(8.0, 80.0, hy));
+    let edge = mix(1.4, 6.0, ew) + 8.0 * (1.0 - smoothstep(0.0, 70.0, hy));
     var fray = 0.5;
     if (fine && d < 12.0 && soft < 0.99) {
         // (small cauliflower lumps on the middling ones, then the turbulent fray right at the edge)
@@ -402,7 +423,12 @@ fn payload(in: StageIn) -> vec4<f32> {
     let dme = length((me - C).xz);
     let sun = frame.sun.xyz;
     let day = saturate(sun.y * 2.5 + 0.35);
-    let L = normalize(select(vec3<f32>(0.3, 1.0, 0.2), sun, sun.y > 0.05));
+    // (the light: the sun's, warm orange-red as it nears the horizon and fading out as it sets; under the horizon the
+    // moon's, faint and cold, from the other side of the sky)
+    let sun_up = smoothstep(-0.12, 0.06, sun.y);
+    let warm = (1.0 - smoothstep(0.02, 0.4, sun.y)) * smoothstep(-0.2, -0.02, sun.y);
+    let moon = smoothstep(-0.02, -0.2, sun.y);
+    let L = normalize(select(-sun, sun, sun.y > -0.04) + vec3<f32>(0.0, 0.03, 0.0));
 
     let d = depth_at(uv);
     let sky = is_sky(d);
@@ -445,7 +471,9 @@ fn payload(in: StageIn) -> vec4<f32> {
     }
     skyl = skyl / nsk;
     let amb = mix(vec3<f32>(0.03, 0.035, 0.05), skyl * 0.85 + vec3<f32>(0.04), day);
-    let sunc = vec3<f32>(1.35, 1.24, 1.06) * day;
+    let sunc = mix(vec3<f32>(1.35, 1.24, 1.06), mix(vec3<f32>(1.5, 0.68, 0.3), vec3<f32>(1.3, 0.38, 0.14), smoothstep(0.0, -0.1, sun.y)), warm) * sun_up + vec3<f32>(0.07, 0.09, 0.14) * moon;
+    // (the haze along the horizon, reddened by a low sun: the light the sky gives from round about)
+    let fogl = srgb_to_linear(frame.fog_color.rgb);
     let haze_c = mix(vec3<f32>(0.02, 0.025, 0.04), skyl * 1.05, day);
 
     // ---- the flash of the strike lighting the land and the sky round it ---------------------------------------------
@@ -763,7 +791,8 @@ fn payload(in: StageIn) -> vec4<f32> {
                 var acc = vec3<f32>(0.0);
                 let j = ign(in.position.xy + vec2<f32>(fract(time * 7.0) * 37.0, 0.0));
                 let H = pl_w(5u);
-                let ph = 0.8 + 0.5 * pow(saturate(dot(rd, L)), 5.0);
+                // (looking towards a low sun, its edges and thin parts shine: the light through them)
+                let ph = 0.8 + (0.5 + 1.6 * warm) * pow(saturate(dot(rd, L)), 5.0);
                 // (how far it has settled: its billows going soft, its stem lifting off the ground and thinning
                 // first, the whole thinning to nothing over the half-minute after)
                 let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
@@ -801,9 +830,11 @@ fn payload(in: StageIn) -> vec4<f32> {
                         let fp = p + L * 5.0;
                         let face = pl_col_sdf(&cl, fp, pl_col_base(&cl, fp), false).x;
                         let lam = mix(saturate(0.2 + (face - sd.x) / 5.0), 0.65, soft);
-                        let s1 = saturate((6.0 - pl_col_base(&cl, p + L * 12.0)) / 16.0);
-                        let s2 = saturate((4.0 - pl_col_base(&cl, p + L * 32.0)) / 18.0);
-                        let s3 = saturate(-pl_col_base(&cl, p + L * 70.0) / 20.0);
+                        // (each soft, a broad ramp through the bulk's edge, so the shadow of a smooth body inside it
+                        // never draws a hard straight terminator over the lumps)
+                        let s1 = saturate((8.0 - pl_col_base(&cl, p + L * 11.0)) / 22.0);
+                        let s2 = saturate((8.0 - pl_col_base(&cl, p + L * 30.0)) / 30.0);
+                        let s3 = saturate((6.0 - pl_col_base(&cl, p + L * 62.0)) / 40.0);
                         let tsun = mix(exp(-(s1 * 10.0 + s2 * 18.0 + s3 * 22.0) * 0.3), 0.7, soft) * lam;
                         let hy = saturate((p.y - C.y) / max(H, 1.0));
                         // (smoke and dust, tan-grey, lit by the scene: warm where the sun is on it, greyed by the sky on
@@ -814,8 +845,8 @@ fn payload(in: StageIn) -> vec4<f32> {
                         let ao = mix((0.65 + 0.35 * sd.y) * (1.0 - 0.55 * deep), 0.75, soft);
                         let mv = 0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5);
                         let alb = mix(vec3<f32>(0.56, 0.48, 0.39), vec3<f32>(0.53, 0.49, 0.44), smoothstep(0.05, 0.5, hy)) * mv;
-                        let skyg = mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45);
-                        var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
+                        let skyg = mix(mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45), fogl, 0.15) * (1.0 - 0.35 * warm);
+                        var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * (1.0 - 0.6 * warm) * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
                         // (fire in it as it bursts: low down, dying fast)
                         let core = exp(min(d0, 0.0) / 26.0);
                         let fire = exp(-a / 0.25) * exp(-max(p.y - C.y, 0.0) / (16.0 + 40.0 * a)) * core;
