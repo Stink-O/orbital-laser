@@ -206,6 +206,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
+| `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
@@ -339,9 +340,11 @@ collapse (`explosion_live` again, on its own seed, made earthy: its top rolled o
 it, rock grinding as it gives), the rockfall (a grinding roar and slabs striking the bottom, unevenly, further and
 further off) and the pebbles after, each bouncing its own way, in the pit's long echo. Each is heard late by how far
 away it is. The Payload's ([`tools/sounds_payload.py`](../tools/sounds_payload.py)): a faint thin whine high up, a far rumble under it; the dive's whistle bending up and a roar of air and fire tearing louder, cut
-dead at the strike; a near-silent breath while the blast travels; the blast (`explosion_live` on its own seed, as loud
-as the Planet Killer's); the dust's rush and the wind gusting on after it; clods thudding down round the player and a
-patter of grit; and a long tail of rolls off the land, further and further off.
+dead at the strike; the ground's thump and rumble arriving first, through the land at five times the air's speed
+(`ground`), with a faint early jolt; a near-silent breath while the blast travels; the blast (`explosion_live` on its
+own seed, as loud as the Planet Killer's); the dust's rush and the wind gusting on after it; clods thudding down round the player and a
+patter of grit; and a long tail of rolls off the land, further and further off. `/orbital payloadsound alt` swaps the blast and the
+thump for alternatives in the manner of a sound designer's redesign (`blast_alt`, `ground_alt`); `main` swaps them back.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and

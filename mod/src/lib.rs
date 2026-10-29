@@ -120,6 +120,7 @@ struct Settings {
     page: usize,
     colours: Vec<usize>,
     fly: f32,
+    blast_alt: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -153,6 +154,8 @@ struct Orbital {
     page: usize,
     /// Each laser's ship colour (strike::COLOURS; only the ship lasers use theirs).
     colours: Vec<usize>,
+    /// Whether the Payload's blast and its thump through the ground are the alternative ones (`/orbital payloadsound`).
+    blast_alt: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
     fly: f32,
     /// Ticks the designator has been held, while it is.
@@ -170,7 +173,7 @@ struct Orbital {
 impl Orbital {
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -178,7 +181,8 @@ impl Orbital {
             APPROACHES[self.approach].key,
             ARRIVALS[self.arrival].key,
             self.page,
-            self.fly
+            self.fly,
+            if self.blast_alt { "alt" } else { "main" }
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -200,6 +204,7 @@ impl Orbital {
         let mut arrival = 0;
         let mut page = 0;
         let mut fly = 1.0;
+        let mut blast_alt = false;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -211,6 +216,7 @@ impl Orbital {
                 Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("page", v)) => page = v.parse::<usize>().unwrap_or(0).min(wheel::pages() - 1),
                 Some(("flyspeed", v)) => fly = wheel::parse_speed(v).unwrap_or(1.0),
+                Some(("payloadsound", v)) => blast_alt = v == "alt",
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -219,7 +225,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -398,7 +404,9 @@ impl Orbital {
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
         ground::clear();
         columns::clear();
-        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, self.approach);
+        // (the ship lasers take their approach; the Payload which blast it plays, 1 for the alternative)
+        let option = if laser.key == "payload" { usize::from(self.blast_alt) } else { self.approach };
+        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
         params[4] = hit.block_x as f32 + 0.5;
@@ -626,7 +634,7 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly } = Orbital::load();
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt } = Orbital::load();
         let state = Orbital {
             passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS), own_pass(PAYLOAD_PASS)],
             compiled: None,
@@ -647,6 +655,7 @@ impl Mod for Orbital {
             page,
             colours,
             fly,
+            blast_alt,
             aiming: None,
             skip: 0.0,
             strike: None,
@@ -799,6 +808,15 @@ impl Mod for Orbital {
                 self.update_panel();
                 Ok(Some(format!("Status panel {v}")))
             }
+            (Some("payloadsound"), Some(v @ ("main" | "alt"))) => {
+                self.blast_alt = v == "alt";
+                self.save();
+                Ok(Some(format!("Payload blast: {}", if self.blast_alt { "alternative" } else { "main" })))
+            }
+            (Some("payloadsound"), None) => Ok(Some(format!(
+                "Payload blast: {} (/orbital payloadsound main or alt)",
+                if self.blast_alt { "alternative" } else { "main" }
+            ))),
             (Some("messages"), Some(v @ ("on" | "off"))) => {
                 self.messages = v == "on";
                 self.save();

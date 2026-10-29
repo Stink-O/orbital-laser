@@ -246,6 +246,7 @@ The wheel also has:
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` | the loaded ship's colour |
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
+| `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
 [How it works](docs/HOW-IT-WORKS.md#commands) has the full details of each command. To rebind **R**: **Options →

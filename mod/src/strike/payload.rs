@@ -877,7 +877,7 @@ fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
     }
 }
 
-pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3], blast_alt: bool) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
@@ -921,14 +921,14 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     let tg = PL_HIT + (dist / PL_GROUND_V) as f32;
     let gap = PL_HIT + late - tg;
     let gv = ((1.0 / (1.0 + dist / 900.0)).clamp(0.3, 1.0) * (f64::from(gap - 0.15) / 0.85).clamp(0.3, 1.0).powi(2)) as f32;
-    p.csound(tg - 0.02, "ground", 10.0 * gv, 1.0);
+    p.csound(tg - 0.02, if blast_alt { "ground_alt" } else { "ground" }, 10.0 * gv, 1.0);
     if gap > 0.08 {
         p.shake(tg, 0.45 * (1.6 / (1.0 + dist / 400.0)).clamp(0.35, 1.0) as f32, 0.35);
     }
     // ---- the strike: a near-silent breath, the blast reaching the player late by how far it is, with the dust's rush
     // and the jolt, the debris coming down round them, the long rolling tail after -----------------------------------
     let arrive = PL_HIT + late;
-    p.csound(arrive - 0.02, "blast", 10.0, 1.0);
+    p.csound(arrive - 0.02, if blast_alt { "blast_alt" } else { "blast" }, 10.0, 1.0);
     p.csound(arrive - 0.15, "rush", 10.0, 1.0);
     p.csound(arrive + 2.4, "tail", 10.0, 1.0);
     // (the jolt as the front hits, as in the clip: a hard hit, then sharp aftershocks a tick apart every other tick for
@@ -1053,6 +1053,24 @@ mod table {
 mod tests {
     use super::*;
     use crate::strike::plan;
+
+    #[test]
+    fn payload_alternative_blast_swaps_its_two_sounds() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let sounds = |option: usize| -> Vec<String> {
+            plan(&crate::lasers::PAYLOAD, &target, false, "minecraft:overworld", 37.0, [10.5, 66.0, 450.0], option)
+                .into_iter()
+                .filter_map(|(_, a)| if let Act::Sound { event, .. } = a { Some(event) } else { None })
+                .collect()
+        };
+        let (main, alt) = (sounds(0), sounds(1));
+        let has = |v: &[String], s: &str| v.iter().any(|e| e.ends_with(s));
+        assert!(has(&main, "payload.blast") && has(&main, "payload.ground"));
+        assert!(!has(&main, "payload.blast_alt") && !has(&main, "payload.ground_alt"));
+        assert!(has(&alt, "payload.blast_alt") && has(&alt, "payload.ground_alt"));
+        assert!(!has(&alt, "payload.blast") && !has(&alt, "payload.ground"));
+        assert_eq!(main.len(), alt.len());
+    }
 
     #[test]
     fn payload_path_arcs_down_from_high_up_onto_the_target() {
