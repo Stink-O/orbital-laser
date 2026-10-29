@@ -94,13 +94,15 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   the fissures split open as the shock reaches them, light running along them. The well's light and a drift of motes
   fade out over the crater until the strike ends at 60 s. It reaches 1000 blocks.
 - **Sinkhole.** No beam and nothing from the sky. A seismic warning; a rumble you feel more than hear, the ground
-  trembling unevenly, birds going up off the land and scattering, and hairline cracks racing out over it from the
-  target, radiating and branching, groans and cracks heard from out over the land. At 6 s the middle gives with a sharp
+  trembling unevenly, birds going up off the land and scattering, and cracks racing out over it from the target in
+  spurts, a crack heard for each, dust puffing up out of them and loose bits crumbling in: they run along the very lines
+  the land will break on, hairlines at first, widening into jagged dark gaps, one side stepped down, as the slab each
+  side is about to go; groans heard from out over the land. At 6 s the middle gives with a sharp
   crack: it drops four blocks, real ground and everything on it, dust puffing up, and sags three more at 7.3 s while the
   cracks round the slabs it will break into open up. At 8.6 s the collapse: a deep boom, and the ground caves in from
   the middle out, ring by ring, slowly at first, a stall while the ring round the middle holds, then in a rush. Each
-  slab of land (grass over dirt over stone, its own ground's height and slope) strains, rocks, tips in over its outer
-  edge and drops away into the pit, sliding in and turning as it falls, the land under it really gone; the dust boils
+  slab of land, the real land it was cut from (its blocks, the snow on it, the trees standing on it, every column at its
+  own height), lurches, tips in over its outer edge and drops away into the pit, sliding in and turning as it falls, the land under it really gone; the dust boils
   up out of the hole and rolls out low over the land, rocks grind and rattle and the slabs are heard striking the
   bottom. Then an echoing near-silence, pebbles running down the walls, and the pit: about 225 blocks across, its rim
   wandering, sheer and dark down to bedrock, its walls jagged in strata bands, with ledges heaped with rubble and moss,
@@ -153,7 +155,9 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   chunks loaded while it works; its land goes in from the detonation (22 s) and is done by about 28 s.
 
 - **Sinkhole:** a pit about 225 across (its rim wandering from about 190 to 260) down to bedrock; everything over it
-  gone (up to 36 over the target, or 28 over its own ground), its walls cut back up to about 6 under the rim, the water
+  gone, every column up to its real top (a mountain it cut through, the trees and snow on it: nothing is left hanging),
+  its walls cut back up to about 6 under the rim (no more than 2.5 just under the rim's own band, so the land over them
+  is never left out over the pit) and their rock darkening downward (tuff, then deepslate, then blackstone), the water
   and lava in them sealed in (water turned to barrier near the top, so a lake or river stops at the edge, tuff deeper;
   lava to magma), and every mob within 140 killed. The middle is moved down 7 blocks with `clone` first. It keeps about
   285 chunks loaded while it works; its land goes in slab by slab from 8.6 s and is dug to bedrock by about 23 s.
@@ -187,7 +191,7 @@ The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's m
 | `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
 | `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (the Crystal Bloom's spires and pieces, and where each piece comes to rest), and the camera shake |
-| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the Planet Killer's and the Crystal Bloom's go straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), and sets your flying speed |
+| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the Planet Killer's and the Crystal Bloom's go straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs (`world.read-columns`: the names of the blocks round each column's top), and sets your flying speed |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -196,7 +200,8 @@ The first four are new: they are on Horizon's roadmap ("planned interfaces" in i
 [fork](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world) implements them so that mods built for
 Horizon's API 0.1 still load unchanged. The mod reads its events with `input.poll` instead of the game calling new hooks,
 which is what keeps that true. The fork's later additions (`world.set-flying-speed`, `input.poll-typed`,
-`world.edit-blocks`, and `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`) are needed
+`world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`, and
+`world.read-columns` from `orbital-mod-api-6`) are needed
 too: a fork build without them won't start the mod.
 
 A strike's world changes go through a budget of 20,000 blocks and 400 commands a tick, and the rest wait for the next
@@ -236,9 +241,10 @@ and 0.66 s after it breaks through and surging up 0.9 s after), the heart at 6.7
 until about 28, the broken spires come down at 24.6 and the land is frosted and strewn by 28.2; the well's light and
 a drift of motes fade out over the crater until the strike ends at 60. The Sinkhole's cracks race out from about 1 s,
 the birds go up from 1 s, the middle gives at 6 and sags at 7.3; the collapse sets out from the middle at 8.6, reaches
-30 blocks by 9.5, holds until 10.6, then rushes out to the rim by about 15 (each slab drawn straining 0.45 s before it
-lets go, the land under it dug 0.1 s before, and gone into the dark 3.2 s after); the pit is dug on down to bedrock from
-16 s, a chunk column at a time from the middle out, done by about 23; the strike ends at 34.
+30 blocks by 9.5, holds until 10.6, then rushes out to the rim by about 15 (each slab drawn in place of its land from
+when that is dug, 0.1 s before it lets go, and gone into the dark 3.2 s after); the pit is dug on down to bedrock from
+16 s, a chunk column at a time from the middle out, done by about 23; the dust settles by 34, the pit's dark fades out
+slowly from 31 and the strike ends at 40.
 
 ## The effects
 
@@ -302,11 +308,22 @@ away it is.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
-slope once the world has said them (`world.surface-height`), and the waterfalls, where the rim's columns stand under
-water. Each slab is a convex block of land met plane by plane; it is drawn straining in place over the land as it still
-is, the mod digs the land under it, and only then does it tip and fall, so the hole is never seen open before the land
-over it has gone. The cracks are a Voronoi network stretched along the radius, and the slabs' own outlines; the pit is
-darkened where it has really been dug; the dust is a noise volume marched along the view ray.
+slope once the world has said them (`world.surface-height`), the waterfalls, where the rim's columns stand under
+water, and the land itself. As it fires the mod reads the 24 blocks under the top of every column of the pit
+(`world.read-columns`, six queries of ~8,000 columns) and works them out ~3,000 columns a tick
+([`mod/src/strike/sh_land.rs`](../mod/src/strike/sh_land.rs)) into two words a column: its ground's height, the block
+on top, the one under it and one deeper (by name: about 55 materials, each a top and side colour and how much it varies
+block to block), snow lying on it, a trunk and the leaves over it, and the slab it is part of; plus each slab's bounds.
+The pass draws each slab as those blocks, marching the view ray through its columns cell by cell (a 3D DDA inside its
+bounds, after a bounding sphere), each face shaded as the game shades it and textured with texels that fade out once
+smaller than a pixel; it draws it in its place from the moment the mod digs the land under it (the same blocks where
+the real ones were), then tips and drops it, its trees going with it. A slab whose land was not read is a block of
+grass over dirt over stone, as before. The dig clears each column up to that real top. The cracks are the slabs' own
+edges, reached by spurts racing out from the middle (`sh_spurts` in the mod, `sh_crack_at` in the pass), drawn only on
+the ground's top (the land's heights), their width against the pixel's footprint across them from the derivatives of
+the ground's position, never thinner on screen than most of a pixel (wider and fainter instead) and faded out far off;
+the pit is darkened where it has really been dug, the dark fading out over the strike's last 9 s; the dust is a noise
+volume marched along the view ray.
 
 ## Stock Horizon
 

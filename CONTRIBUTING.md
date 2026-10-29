@@ -59,7 +59,7 @@ python3 tools/preview.py downfall 14 30 45    # render a strike offscreen at tho
 `tools/build_mod.py` builds the code with `cargo horizon-mod build` from the fork
 (`cargo install --git https://github.com/Stink-O/horizon --branch mod-api-input-ui-render-world cargo-horizon-mod`,
 plus `rustup target add wasm32-unknown-unknown`), then adds the items, textures and sounds. The mod it builds needs the
-fork's release `orbital-mod-api-5` or newer (the first with `world.surface-height` and `render.set-data`) to run.
+fork's release `orbital-mod-api-6` or newer (the first with `world.read-columns`) to run.
 
 `tools/preview.py` renders the real post pass on your GPU over a synthetic scene, from several views at once, so a
 change to a strike's look can be seen in seconds without the game (`--bench` adds its GPU time). In the game,

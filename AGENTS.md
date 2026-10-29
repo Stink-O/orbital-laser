@@ -27,17 +27,18 @@ laser, command, capability and timing). This file is the short, factual version 
   and frosts the land out to 235, kills every mob within 160 and force-loads the ~770 chunks within 240; its land goes
   in through `world.edit-blocks` from the detonation at 22 s and is done by about 28 s. The Sinkhole caves the land in
   under a pit ~225 across (its rim wandering from ~190 to ~260) and down to bedrock: everything over the pit is gone
-  (up to 36 over the target, or 28 over its own ground where that is higher), its walls are cut back under the rim by up
-  to ~6, water and lava in them are sealed (water to barrier near the top, tuff deeper; lava to magma), the middle is
+  (up to each column's real top: a mountain, its trees and snow, read with `world.read-columns`), its walls are cut back
+  under the rim by up to ~6 (2.5 just under the rim's own band) and darken downward (tuff, deepslate, blackstone), water and lava in them are sealed (water to barrier near the top, tuff deeper; lava to magma), the middle is
   `clone`d down 7 blocks first (at 6 and 7.3 s), mobs within 140 die and the ~285 chunks within ~152 are force-loaded;
   its land goes in slab by slab from 8.6 s and down to bedrock from 16 s, done by about 23 s. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-5` or newer (it adds
-  `world.surface-height` and `render.set-data`, which the Crystal Bloom uses to rest its pieces on the real ground; older builds won't
-  start the mod): a Linux x86-64 download on the fork's releases, or
+- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-6` or newer (it adds
+  `world.read-columns`, which the Sinkhole reads the real land of its slabs with; `orbital-mod-api-5` added
+  `world.surface-height` and `render.set-data`, which the Crystal Bloom rests its pieces on the real ground with; older
+  builds won't start the mod): a Linux x86-64 download on the fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.
@@ -63,7 +64,7 @@ In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom and the Sinkhole are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
-without `world.edit-blocks`, `world.surface-height` or `render.set-data`, won't start the mod.
+without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `render.set-data`, won't start the mod.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
@@ -100,6 +101,13 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   draws hills with `hills=H`; `cb_dump_slope` (ignored test) writes a matching data file and voxel files.
 - **`world.surface-height` answers a tick or two later** (`mod/src/ground.rs` keeps the answers; a stage asks, a later
   one reads). In the tests `ground::set_test` answers at once; with none set the pieces lie as on flat land.
+- **`world.read-columns` answers the same way** (`mod/src/columns.rs`; `Act::Read`): the Sinkhole reads the 24 blocks
+  under every pit column's world-surface top as it starts, and `strike/sh_land.rs` works them out ~3,000 columns a tick
+  (material names to colours in `MATS`, packed two words a column at `SH_GRID` of `mod_data`; keep it in step with
+  `sh_colw`/`sh_cell` in `shaders/sinkhole.wgsl`). In the tests `columns::test_answer` answers at once; the preview's
+  land is `synth_column` in `strike/sinkhole.rs` (`SH_LAND=0` leaves it out). For a local mod build against an
+  unreleased fork API, point the SDK at the fork with an uncommitted `mod/.cargo/config.toml` `[patch]`, and never
+  commit `mod/Cargo.lock` while it holds that path.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many
