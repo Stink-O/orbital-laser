@@ -95,6 +95,8 @@ struct Strike {
     /// What the pass reads as `mod_data` (`Act::Data`), and whether it changed since it was last sent.
     data: Vec<u32>,
     data_sent: bool,
+    /// Started this far in (`/orbital skip`): commands, sounds and jolts due before then are left out.
+    skipped: f32,
 }
 impl Strike {
     /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
@@ -427,15 +429,20 @@ impl Orbital {
         self.compiled = Some(pass);
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
-        // (started part way in: what was due before then is left out, sounds and world changes alike)
+        // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
+        // the pass's tables due before then are worked out on the first ticks, as the pass needs them, what they give
+        // that was due before then left out too)
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
-        let next = plan.iter().take_while(|e| e.0 < ticks as f32 * 0.05).count();
+        let skipped = ticks as f32 * 0.05;
+        let mut plan = plan;
+        plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. }));
+        let next = 0;
         self.skip = 0.0;
         // (the crystal bloom's spires and pieces, worked out once for the pass: strike::cb_table)
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true });
+        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
@@ -464,8 +471,11 @@ impl Orbital {
             if *t > now {
                 break;
             }
-            let (_, act) = std::mem::replace(&mut s.plan[s.next], (0.0, Act::Cmd(String::new())));
+            let (t, act) = std::mem::replace(&mut s.plan[s.next], (0.0, Act::Cmd(String::new())));
             s.next += 1;
+            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Spare(_) | Act::Blocks(_) | Act::Read { .. }) {
+                continue;
+            }
             match act {
                 // the strike's messages over the hotbar, unless they are switched off
                 Act::Cmd(c) if !self.messages && c.starts_with("title @s actionbar") => {}
