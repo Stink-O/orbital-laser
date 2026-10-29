@@ -193,6 +193,9 @@ fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
         return vec2<f32>(gref, 0.0);
     }
     let n = u32(nf + 0.5);
+    if (arrayLength(&mod_data) < PL_HF + 8u + n * n) {
+        return vec2<f32>(gref, 0.0);
+    }
     let R = pl_w(PL_HF + 1u);
     let step = 2.0 * R / (nf - 1.0);
     let fc = clamp((q + R) / step, vec2<f32>(0.0), vec2<f32>(nf - 1.001));
@@ -201,7 +204,7 @@ fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
     var hv = vec4<f32>(0.0);
     var sv = vec4<f32>(0.0);
     for (var j = 0u; j < 4u; j = j + 1u) {
-        let c = pl_u(PL_HF + 8u + (i0.y + (j >> 1u)) * n + i0.x + (j & 1u));
+        let c = mod_data[PL_HF + 8u + (i0.y + (j >> 1u)) * n + i0.x + (j & 1u)];
         hv[j] = f32(c & 0xffffu) / 8.0 - 512.0;
         sv[j] = f32((c >> 16u) & 0xffu) / 255.0;
     }
@@ -286,7 +289,11 @@ fn pl_chunk(i: i32, a: f32, seed: u32, C: vec3<f32>, me: vec3<f32>, dme: f32) ->
     o.p = C + dir * r0 + vec3<f32>(0.0, 2.0, 0.0) + vec3<f32>(v0.x, 0.0, v0.z) * e + vec3<f32>(0.0, v0.y * e - g * (tau - e) / k, 0.0);
     o.v = vec3<f32>(v0.x, 0.0, v0.z) * exp(-k * tau) + vec3<f32>(0.0, (v0.y + g / k) * exp(-k * tau) - g / k, 0.0);
     let r = length((o.p - C).xz);
-    let gref = C.y + pl_land((o.p - C).xz, pl_gref(r, me, C, dme)).x;
+    // (the land under it looked up only when it is down near the highest of it: it is checked for every chunk, every pixel)
+    var gref = C.y + pl_gref(r, me, C, dme);
+    if (o.p.y < max(gref, C.y + pl_w(PL_HF + 3u)) + 3.0) {
+        gref = C.y + pl_land((o.p - C).xz, gref - C.y).x;
+    }
     o.live = smoothstep(gref - 1.0, gref + 2.0, o.p.y);
     return o;
 }
