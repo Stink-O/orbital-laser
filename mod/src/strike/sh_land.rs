@@ -19,6 +19,8 @@ pub(super) const SH_GRID: usize = 8192;
 /// How deep under each column's top it is read, and how high (just the top's own air).
 pub(super) const READ_BELOW: u32 = 24;
 pub(super) const READ_ABOVE: u32 = 1;
+/// How far past the rim the land is read.
+pub(super) const READ_PAST: f64 = 12.0;
 /// The rows of the square asked about in a query (six queries for all of it, a tick each), and the columns worked out
 /// a tick.
 pub(super) const READ_ROWS: usize = 45;
@@ -458,10 +460,11 @@ impl Land {
     }
 }
 
-/// The columns of the square the land is read over, in rows z0..z1 of it: those inside the rim, and a little past it.
+/// The columns of the square the land is read over, in rows z0..z1 of it: those inside the rim, and READ_PAST past it
+/// (ground left standing: the pass lights the slabs as it sees that lit).
 pub(super) fn read_columns(g: &ShGeo, bx: i32, bz: i32, k0: usize, k1: usize) -> Vec<(i32, i32)> {
     const IN2: f64 = (super::sinkhole::SH_R * 0.84) * (super::sinkhole::SH_R * 0.84);
-    const OUT2: f64 = (super::sinkhole::SH_R * 1.16 + 1.0) * (super::sinkhole::SH_R * 1.16 + 1.0);
+    const OUT2: f64 = (super::sinkhole::SH_R * 1.16 + READ_PAST) * (super::sinkhole::SH_R * 1.16 + READ_PAST);
     let mut out = Vec::new();
     for k in k0..k1.min(SH_GW) {
         let z = bz - SH_G + k as i32;
@@ -474,7 +477,7 @@ pub(super) fn read_columns(g: &ShGeo, bx: i32, bz: i32, k0: usize, k1: usize) ->
             if r2 > OUT2 {
                 continue;
             }
-            if r2 > IN2 && r2.sqrt() > g.rim(dz.atan2(dx)) + 1.0 {
+            if r2 > IN2 && r2.sqrt() > g.rim(dz.atan2(dx)) + READ_PAST {
                 continue;
             }
             out.push((x, z));

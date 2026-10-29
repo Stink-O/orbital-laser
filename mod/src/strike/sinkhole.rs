@@ -538,9 +538,10 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
         for pair in items.chunks(2) {
             let pair = pair.to_vec();
             let geo = geo.clone();
+            let land = land.clone();
             p.later(pair[0].0 - 1.5, move |q| {
                 for (t, (x0, z0)) in pair {
-                    sh_deep(q, &geo, x0, z0, t, floor_y);
+                    sh_deep(q, &geo, &land, x0, z0, t, floor_y);
                 }
             });
         }
@@ -960,7 +961,8 @@ fn sh_rubble(zone: f64) -> &'static str {
 /// with the walls as they are cut: rubble on the ledges, moss on a few, roots hanging under the overhangs near the top;
 /// the water and lava the walls cut through sealed in (lava cooled to magma, water to barrier near the top, where it
 /// shows as water held at the edge, and to tuff deeper); and a heap of rubble at its foot, from what fell in.
-fn sh_deep(p: &mut Plan, g: &ShGeo, x0: i32, z0: i32, t: f32, floor_y: i32) {
+fn sh_deep(p: &mut Plan, g: &ShGeo, land: &Shared, x0: i32, z0: i32, t: f32, floor_y: i32) {
+    let l = land.borrow();
     let (by, bx, bz) = (p.by, p.bx, p.bz);
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let s = g.seed;
@@ -975,13 +977,18 @@ fn sh_deep(p: &mut Plan, g: &ShGeo, x0: i32, z0: i32, t: f32, floor_y: i32) {
             if r > rim + SH_OUT + 2.0 {
                 continue;
             }
+            // (the column's real top and ground, where the land was read)
+            let top = l.top_at(bx, bz, x, z);
+            let ground = l.ground_at(bx, bz, x, z, by + 1);
             if r > rim - SH_IN {
                 // (the walls' water and lava held in, out past where they are cut: lava cooled to magma, water to
-                // barrier near the top, where it shows as the water held at the edge, and to tuff deeper)
-                let top_w = by + 12;
+                // barrier near the top, where it shows as the water held at the edge, and to tuff deeper, well under
+                // any water open to the sky: a river or a lake by the rim keeps its surface)
+                let top_w = (by + 12).max(top.unwrap_or(i32::MIN));
+                let split = (by - 13).min(top.map_or(i32::MAX, |t| t - 9));
                 seal.put(x, z, floor_y + 1, top_w, "minecraft:magma_block", Some("minecraft:lava"), false);
-                seal.put(x, z, by - 12, top_w, "minecraft:barrier", Some("minecraft:water"), false);
-                seal.put(x, z, floor_y + 1, by - 13, "minecraft:tuff", Some("minecraft:water"), false);
+                seal.put(x, z, split + 1, top_w, "minecraft:barrier", Some("minecraft:water"), false);
+                seal.put(x, z, floor_y + 1, split, "minecraft:tuff", Some("minecraft:water"), false);
             }
             let (fx, fz) = (f64::from(x), f64::from(z));
             // (a column the collapse took the top of keeps it as it was dug; one past the rim is cut back under it)
@@ -1018,10 +1025,13 @@ fn sh_deep(p: &mut Plan, g: &ShGeo, x0: i32, z0: i32, t: f32, floor_y: i32) {
             if !any_air {
                 continue;
             }
-            // the ledges: rubble on top of a band standing out under one cut back, moss on some
+            // the ledges: rubble on top of a band standing out under one cut back, moss on some; only where the band
+            // under it is solid ground there and was buried under more (the land read: where the land round the pit
+            // lies at or under the bands, a valley, a river, a slope, there is no ledge, only air, water or open land)
+            let solid = |y: i32| ground.is_some_and(|g| y < g);
             for w in bands.windows(2) {
                 let ((_, lo_b, _, air_b), (_, lo_a, _, air_a)) = (w[0], w[1]);
-                if !air_b && air_a {
+                if !air_b && air_a && solid(lo_a + 2) {
                     let n = vnoise(fx, fz, 4.0, s ^ 0x790 ^ lo_a as u32);
                     if n > 0.35 {
                         let h = if n > 0.72 { 1 } else { 0 };
@@ -1031,7 +1041,7 @@ fn sh_deep(p: &mut Plan, g: &ShGeo, x0: i32, z0: i32, t: f32, floor_y: i32) {
                     }
                 }
                 // the overhangs: roots hanging from under one standing out over one cut back, near the top
-                if air_b && !air_a && lo_a > by - 32 && vnoise(fx, fz, 3.0, s ^ 0x792 ^ lo_a as u32) > 0.45 {
+                if air_b && !air_a && solid(lo_a) && lo_a > by - 32 && vnoise(fx, fz, 3.0, s ^ 0x792 ^ lo_a as u32) > 0.45 {
                     let _ = lo_b;
                     b.run(x, z, lo_a - 1, lo_a - 1, "minecraft:hanging_roots");
                 }
@@ -1578,5 +1588,215 @@ mod stage_cost {
         for b in best.iter().take(8) {
             println!("stage at {:6.2} s: {:.3} ms, {} acts, {} runs", b.0, b.1, b.2, b.3);
         }
+    }
+}
+
+#[cfg(test)]
+mod sim {
+    //! The plan's block edits played out over a model world (hills falling away to a river valley east of the pit, a
+    //! lake north of it), to find anything left floating or put down out on the land.
+    use super::*;
+    use crate::strike::plan;
+
+    const X0: i32 = -150;
+    const X1: i32 = 175;
+    const Z0: i32 = -150;
+    const Z1: i32 = 150;
+    const Y0: i32 = -64;
+    const Y1: i32 = 220;
+    const AIR: u8 = 0;
+    const STONE: u8 = 1;
+    const DIRT: u8 = 2;
+    const GRASS: u8 = 3;
+    const WATER: u8 = 4;
+    const BARRIER: u8 = 5;
+    const BEDROCK: u8 = 6;
+    /// Its ground: hills round the target (its ground block at 64), the land falling away east to a river at 50
+    /// (its bed at 44) and a lake north-west, at 58.
+    fn ground(x: i32, z: i32) -> i32 {
+        let (fx, fz) = (f64::from(x), f64::from(z));
+        let hills = 64.0 + 14.0 * (fx * 0.035).sin() * (fz * 0.03 + 0.5).cos() + 4.0 * (fx * 0.11 + fz * 0.07).sin();
+        let valley = ((fx - 135.0) / 18.0).powi(2).min(1.0);
+        let g = 44.0 + (hills - 44.0) * valley;
+        g.round() as i32
+    }
+    fn water_top(x: i32, z: i32) -> Option<i32> {
+        let g = ground(x, z);
+        if g < 50 {
+            return Some(50);
+        }
+        let lake = f64::from(x + 60).hypot(f64::from(z + 125)) < 30.0;
+        (lake && g < 64).then_some(64)
+    }
+    struct World {
+        cells: Vec<u8>,
+        names: Vec<String>,
+    }
+    impl World {
+        fn idx(x: i32, y: i32, z: i32) -> Option<usize> {
+            ((X0..X1).contains(&x) && (Y0..Y1).contains(&y) && (Z0..Z1).contains(&z))
+                .then(|| (((z - Z0) * (X1 - X0) + (x - X0)) * (Y1 - Y0) + (y - Y0)) as usize)
+        }
+        fn new() -> World {
+            let n = ((X1 - X0) * (Z1 - Z0) * (Y1 - Y0)) as usize;
+            let mut w = World { cells: vec![AIR; n], names: Vec::new() };
+            for z in Z0..Z1 {
+                for x in X0..X1 {
+                    let g = ground(x, z);
+                    let wt = water_top(x, z);
+                    for y in Y0..Y1 {
+                        let b = if y <= -60 {
+                            BEDROCK
+                        } else if y < g - 3 {
+                            STONE
+                        } else if y < g {
+                            DIRT
+                        } else if y == g {
+                            if wt.is_some() { DIRT } else { GRASS }
+                        } else if wt.is_some_and(|t| y < t) {
+                            WATER
+                        } else {
+                            AIR
+                        };
+                        if let Some(i) = World::idx(x, y, z) {
+                            w.cells[i] = b;
+                        }
+                    }
+                }
+            }
+            w
+        }
+        fn get(&self, x: i32, y: i32, z: i32) -> u8 {
+            World::idx(x, y, z).map_or(AIR, |i| self.cells[i])
+        }
+        fn id(&mut self, name: &str) -> u8 {
+            match name {
+                "minecraft:air" => AIR,
+                "minecraft:water" => WATER,
+                "minecraft:barrier" => BARRIER,
+                _ => {
+                    let i = self.names.iter().position(|n| n == name).unwrap_or_else(|| {
+                        self.names.push(name.to_string());
+                        self.names.len() - 1
+                    });
+                    10 + i as u8
+                }
+            }
+        }
+        fn matches(&self, filter: &str, b: u8) -> bool {
+            match filter {
+                "minecraft:water" => b == WATER,
+                "minecraft:lava" => false,
+                "#minecraft:base_stone_overworld" => b == STONE || (b >= 10 && ["minecraft:tuff", "minecraft:deepslate"].contains(&self.names[(b - 10) as usize].as_str())),
+                _ => false,
+            }
+        }
+        /// One above its highest block that is not air (water and barriers count).
+        fn surface(&self, x: i32, z: i32) -> i32 {
+            (Y0..Y1).rev().find(|&y| self.get(x, y, z) != AIR).map_or(Y0, |y| y + 1)
+        }
+        fn apply(&mut self, b: &Blocks) {
+            let mut heights: std::collections::HashMap<(i32, i32), i32> = Default::default();
+            for r in &b.runs {
+                if r.surface.is_some() {
+                    heights.entry((r.x, r.z)).or_insert_with(|| self.surface(r.x, r.z));
+                }
+            }
+            for r in &b.runs {
+                let base = if r.surface.is_some() { heights[&(r.x, r.z)] + r.y } else { r.y };
+                let block = self.id(b.palette[r.block as usize]);
+                for y in base..base + r.height as i32 {
+                    let Some(i) = World::idx(r.x, y, r.z) else { continue };
+                    if let Some(f) = r.only
+                        && !self.matches(b.filters[f as usize], self.cells[i])
+                    {
+                        continue;
+                    }
+                    self.cells[i] = block;
+                }
+            }
+        }
+    }
+
+    fn sim_column(x: i32, z: i32) -> Option<(i32, Vec<&'static str>)> {
+        let g = ground(x, z);
+        let wt = water_top(x, z);
+        let top = wt.unwrap_or(g + 1);
+        let block = |y: i32| -> &'static str {
+            if y < g - 3 {
+                "minecraft:stone"
+            } else if y < g {
+                "minecraft:dirt"
+            } else if y == g {
+                if wt.is_some() { "minecraft:dirt" } else { "minecraft:grass_block" }
+            } else if wt.is_some_and(|t| y < t) {
+                "minecraft:water"
+            } else {
+                "minecraft:air"
+            }
+        };
+        Some((top, (top - 24..=top).map(block).collect()))
+    }
+    fn sim_ground(x: i32, z: i32) -> Option<i32> {
+        Some(ground(x, z) + 1)
+    }
+
+    #[test]
+    fn sinkhole_leaves_the_land_round_it_clean() {
+        // nothing out past the rim's walls is put down on the land or the water, or left hanging; inside the pit,
+        // nothing solid is put down with air under it but the rubble and ledges on what is under them
+        crate::ground::set_test(Some(sim_ground));
+        crate::columns::clear();
+        let mut world = World::new();
+        let before = World::new();
+        let target = Target { block: [10, ground(10, -3), -3], point: [10.5, f64::from(ground(10, -3)) + 1.0, -2.5] };
+        let by = target.block[1];
+        let seed = 19.0;
+        let g = ShGeo::new(seed);
+        let mut ev = plan(&crate::lasers::SINKHOLE, &target, true, "minecraft:overworld", seed, [10.5, 120.0, 330.0], 0);
+        ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+        while let Some((_, a)) = ev.pop() {
+            match a {
+                Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &sim_column),
+                Act::Blocks(b) => world.apply(&b),
+                Act::Later(job) | Act::Soon(job) => {
+                    ev.extend(job());
+                    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+                }
+                _ => {}
+            }
+        }
+        crate::ground::set_test(None);
+        let (cx, cz) = (10.5, -2.5);
+        let mut bad: Vec<String> = Vec::new();
+        for z in Z0..Z1 {
+            for x in X0..X1 {
+                let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+                let past = dx.hypot(dz) - g.rim(dz.atan2(dx));
+                for y in Y0 + 1..Y1 {
+                    let (now, was) = (world.get(x, y, z), before.get(x, y, z));
+                    if now == was || now < 10 {
+                        continue;
+                    }
+                    let name = &world.names[(now - 10) as usize];
+                    // (out on the land: nothing new where it shows, on the ground or the water)
+                    // (seen from where it was open before: the sky over the land, the water; not the pit dug next to it)
+                    let open = |dx: i32, dy: i32, dz: i32| {
+                        matches!(world.get(x + dx, y + dy, z + dz), AIR | WATER) && matches!(before.get(x + dx, y + dy, z + dz), AIR | WATER)
+                    };
+                    let shows = open(0, 1, 0) || open(1, 0, 0) || open(-1, 0, 0) || open(0, 0, 1) || open(0, 0, -1);
+                    if past > 0.5 && shows && y > by - 100 {
+                        bad.push(format!("{name} at {x} {y} {z}, {past:.1} past the rim, in the open"));
+                    }
+                    // (anywhere: nothing put down where there was nothing, with nothing under it)
+                    if matches!(was, AIR | WATER) && world.get(x, y - 1, z) == AIR {
+                        bad.push(format!("{name} at {x} {y} {z} hanging ({past:.1} past the rim)"));
+                    }
+                }
+            }
+        }
+        bad.truncate(25);
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
     }
 }

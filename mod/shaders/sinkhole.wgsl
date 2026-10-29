@@ -239,6 +239,69 @@ fn sh_hit(b: u32, o: vec3<f32>, d: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(t0, t1, face);
 }
 
+// A column's top as the land's colours make it (sRGB, as lit at full light), and how high it is over its ground's top:
+// the leaves over it where a tree stands, else its block's top, tinted, or snow.
+fn sh_top_albedo(w: vec3<u32>) -> vec4<f32> {
+    let leaf = (w.y >> 16u) & 63u;
+    if (leaf > 0u) {
+        var m = sh_mat(leaf);
+        if (m.tint == 2u) {
+            m.top = m.top * sh_565(w.z >> 16u, vec3<f32>(0.467, 0.671, 0.184));
+        }
+        return vec4<f32>(m.top * 0.82, f32((w.y >> 26u) & 15u));
+    }
+    return vec4<f32>(sh_ground_albedo(w), 0.0);
+}
+fn sh_ground_albedo(w: vec3<u32>) -> vec3<f32> {
+    if (((w.x >> 30u) & 1u) == 1u) {
+        return vec3<f32>(0.95, 0.98, 0.99);
+    }
+    var m = sh_mat((w.x >> 9u) & 63u);
+    if (m.tint == 1u) {
+        m.top = m.top * sh_565(w.z & 0xffffu, vec3<f32>(0.569, 0.741, 0.349));
+    }
+    return m.top;
+}
+// How the real land beside slab b is lit this frame, channel by channel (xyz: the scene's colour over the land's
+// model of it; w: how many of its dozen columns were seen), from the tops of the columns just out past its outer edge
+// (the next ring's, or past the rim: ground still standing, in the land read), each kept only where the scene shows
+// that very top (its depth where it should be), and not under water.
+fn sh_calib(b: u32, C: vec3<f32>, dy0: f32) -> vec4<f32> {
+    let am = 0.5 * (sh_w(b) + sh_w(b + 1u));
+    let span = sh_w(b + 1u) - sh_w(b);
+    let ro = 0.5 * (sh_w(b + 4u) + sh_w(b + 5u));
+    var acc = vec3<f32>(0.0);
+    var n = 0.0;
+    for (var j = 0; j < 16; j = j + 1) {
+        let a = am + (f32(j % 4) / 3.0 - 0.5) * span * 1.1;
+        let r = ro + 2.5 + 3.0 * f32(j / 4);
+        let ci = i32(floor(r * cos(a) + 0.5)) + SH_G;
+        let ck = i32(floor(r * sin(a) + 0.5)) + SH_G;
+        let w = sh_colw(ci, ck);
+        if (w.x >> 31u == 0u || ((w.y >> 30u) & 1u) == 1u) {
+            continue;
+        }
+        let alb = sh_top_albedo(w);
+        let top = C + vec3<f32>(f32(ci - SH_G), f32(sh_col_h(w)) - dy0 + alb.w, f32(ck - SH_G));
+        let P = project_rel(top);
+        if (P.z < 0.0 || P.x < 0.0 || P.y < 0.0 || P.x > 1.0 || P.y > 1.0) {
+            continue;
+        }
+        let d = depth_at(P.xy);
+        if (is_sky(d)) {
+            continue;
+        }
+        let seen = world_offset(P.xy, d);
+        if (length(seen - top) > 1.0 + 0.008 * length(top)) {
+            continue;
+        }
+        let sc = textureSampleLevel(scene_color, linear_sampler, P.xy, 0.0).rgb;
+        acc = acc + clamp(sc / max(alb.xyz, vec3<f32>(0.03)), vec3<f32>(0.0), vec3<f32>(1.6));
+        n = n + 1.0;
+    }
+    return vec4<f32>(acc / max(n, 1.0), n);
+}
+
 // The view ray (o + t d, in slab b's frame) through the blocks of the land it carries (slab k's columns of the land's
 // square, `off` taking its frame into the square's), from tn to tf: x the distance to the block it hits (1e9 none),
 // yzw the face's normal in its frame; and the block's colour (sRGB) and the pixel's size there for `pw0` a pixel's
@@ -775,6 +838,9 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
     //      place, as the land it stands in for was (the land's own blocks, when it was read), then letting go ---------
     var hit_t = 1.0e9;
     var hit_c = vec3<f32>(0.0);
+    var hit_b = 0u;
+    var hit_base = vec3<f32>(0.0);
+    var hit_below = 0.0;
     if (n_slabs > 0 && time > SH_C0 - SH_DIG - 0.1 && time < 16.6 + SH_FALL) {
         for (var i = 0; i < n_slabs; i = i + 1) {
             let b = SH_SB + u32(i) * SH_SW;
@@ -848,20 +914,27 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
             let nw = sh_dir_from(ps, nl);
             let shade = 0.6 * nw.x * nw.x + 0.8 * nw.z * nw.z + select(0.5, 1.0, nw.y > 0.0) * nw.y * nw.y;
             // (the sky's light by the time of day, as the game darkens it towards night: 0.25 is noon)
-            let skyk = saturate(cos((frame.time.y - 0.25) * TAU) * 2.0 + 0.5);
-            let light = mix(0.2, 1.0, skyk);
-            var c = srgb_to_linear(saturate(base * shade * light));
-            // (lit as the land round it while it tips and is still at the rim; into the pit's shadow only as it sinks
-            // below where its ground was, and its dark deeper still, by how deep, eased)
-            let below = (gy + sh_w(b + 7u)) - (cam + rd * t_hit).y;
-            let shadow = smoothstep(3.0, 22.0, below);
-            c = mix(c, c * 0.3, shadow * shadow * (3.0 - 2.0 * shadow) * 0.7);
-            let pit = smoothstep(12.0, 75.0, below);
-            c = mix(c, vec3<f32>(0.012, 0.012, 0.014), pit * pit * (3.0 - 2.0 * pit) * 0.95);
-            hit_c = c;
+            hit_b = b;
+            hit_base = base * shade;
+            hit_below = (gy + sh_w(b + 7u)) - (cam + rd * t_hit).y;
         }
     }
     if (hit_t < 1.0e8) {
+        // lit as the real land round it is lit, this frame: the scene's own colour of the tops of a dozen columns of
+        // untouched ground beside where the slab lay (in the land read, seen, and where they are expected), over what
+        // the land's colours make of them, channel by channel; whatever the hour, the weather, the brightness
+        // setting or a torch near. Where none is seen, by the sky's light for the time of day (0.25 noon).
+        let cal = sh_calib(hit_b, C, dy0);
+        let skyk = saturate(cos((frame.time.y - 0.25) * TAU) * 2.0 + 0.5);
+        let light = mix(vec3<f32>(mix(0.2, 1.0, skyk)), cal.xyz, smoothstep(1.0, 4.0, cal.w));
+        var c = srgb_to_linear(saturate(hit_base * light));
+        // (lit as the land round it while it tips and is still at the rim; into the pit's shadow only as it sinks
+        // below where its ground was, and its dark deeper still, by how deep, eased)
+        let shadow = smoothstep(3.0, 22.0, hit_below);
+        c = mix(c, c * 0.3, shadow * shadow * (3.0 - 2.0 * shadow) * 0.7);
+        let pit = smoothstep(12.0, 75.0, hit_below);
+        c = mix(c, vec3<f32>(0.012, 0.012, 0.014), pit * pit * (3.0 - 2.0 * pit) * 0.95);
+        hit_c = c;
         col = mix(col, hit_c, k);
         scene_len = hit_t;
     }
