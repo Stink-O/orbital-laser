@@ -280,7 +280,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, self.blast_alt));
         }
     }
     fn open_wheel(&mut self) {
@@ -302,7 +302,7 @@ impl Orbital {
     }
     fn wheel_click(&mut self, x: f32, y: f32) {
         let (row, page) = self.wheel.as_ref().map_or((None, self.page), |w| (w.row_laser(self.laser), w.page));
-        let spot = wheel::spot(x, y, row.is_some(), page);
+        let spot = wheel::spot(x, y, wheel::Rows::of(row), page);
         // a click anywhere but the field takes the keyboard from it, leaving the speed as it was
         if let Some(w) = &mut self.wheel
             && w.typing.is_some()
@@ -364,6 +364,17 @@ impl Orbital {
                 self.wheel = None;
                 let l = LASERS[i];
                 Self::actionbar(&format!("{} LOADED: LIT {}", l.title, COLOURS[c].button), l.color);
+                world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
+            }
+            Some(wheel::Spot::Sound(k)) => {
+                // picking the Payload's blast loads it too
+                self.blast_alt = k == 1;
+                self.laser = row.unwrap_or(self.laser);
+                self.save();
+                ui::close();
+                self.wheel = None;
+                let l = LASERS[self.laser];
+                Self::actionbar(&format!("{} LOADED: {} BLAST", l.title, wheel::SOUNDS[k].0), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Centre) => {

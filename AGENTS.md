@@ -73,6 +73,8 @@ The wheel has pages of five (its arrows, its tabs or a right-click turn them); t
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `render.set-data`, won't start the mod.
+With the Payload loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
+`/orbital payloadsound`).
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 

@@ -5,8 +5,9 @@
 //! turn the page; so does a right-click). Under the ring, two rows of buttons
 //! for which way a ship laser's ship comes in and how it arrives, and a row of
 //! swatches for the colour it is lit in (shown while one is loaded, or its
-//! segment is pointed at). Over the title, the player's flying speed: a bar to
-//! click along and a field to type one in. Drawn by the game from the
+//! segment is pointed at); for the Payload, a row picking which blast it
+//! plays. Over the title, the player's flying speed: a bar to click along and a
+//! field to type one in. Drawn by the game from the
 //! shapes built here; GUI pixels, from the centre of the screen.
 use crate::lasers::{LASERS, Laser, is_ship};
 use crate::strike::{APPROACHES, ARRIVALS, COLOUR_RGB, COLOURS, Choice};
@@ -68,11 +69,48 @@ pub enum Spot {
     Arrival(usize),
     /// One of the ship's colours (strike::COLOURS).
     Colour(usize),
+    /// The Payload's blast sound: 0 the main one, 1 the alternative.
+    Sound(usize),
     /// A page arrow or tab: the page it turns to.
     Page(usize),
     /// The flying speed's bar, and its field.
     FlyBar,
     FlyField,
+}
+
+/// Which rows under the ring are showing: none, a ship laser's three, or the Payload's sound.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Rows {
+    None,
+    Ship,
+    Payload,
+}
+impl Rows {
+    /// The rows laser `i` has (if any).
+    pub fn of(i: Option<usize>) -> Self {
+        match i.map(|i| LASERS[i]) {
+            Some(l) if is_ship(l) => Rows::Ship,
+            Some(l) if l.key == "payload" => Rows::Payload,
+            _ => Rows::None,
+        }
+    }
+}
+impl From<bool> for Rows {
+    fn from(ship: bool) -> Self {
+        if ship { Rows::Ship } else { Rows::None }
+    }
+}
+/// Whether a laser has rows of its own under the ring.
+fn has_rows(i: usize) -> bool {
+    Rows::of(Some(i)) != Rows::None
+}
+
+/// The Payload's sound row: its label, then its two buttons, centred under the ring where a ship's first row is.
+pub const SOUNDS: [(&str, &str); 2] = [("MAIN", "Blast: the main one, deep and rolling"), ("ALT", "Blast: the alternative, a sharp crack, a wide roar")];
+const SOUND_LABEL_W: f32 = 72.0;
+fn sound_button(k: usize) -> Rect {
+    let w = SOUND_LABEL_W + 2.0 * BTN_W + BTN_GAP;
+    Rect { x: -w / 2.0 + SOUND_LABEL_W + k as f32 * (BTN_W + BTN_GAP), y: ROW_Y, w: BTN_W, h: BTN_H }
 }
 
 #[derive(Default)]
@@ -174,8 +212,9 @@ fn segment_angle(k: usize) -> f32 {
     PI + k as f32 * TAU / PAGE as f32
 }
 
-/// What is under the cursor on page `page` (`row`: whether the ship's rows are showing).
-pub fn spot(x: f32, y: f32, row: bool, page: usize) -> Option<Spot> {
+/// What is under the cursor on page `page` (`rows`: the rows showing under the ring; `true` for a ship's).
+pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> {
+    let rows = rows.into();
     // (the bar takes a little either side of its ends, for its first and last speeds)
     if inside(&Rect { x: BAR.x - 4.0, y: BAR.y - 2.0, w: BAR.w + 8.0, h: BAR.h + 4.0 }, x, y) {
         return Some(Spot::FlyBar);
@@ -183,7 +222,14 @@ pub fn spot(x: f32, y: f32, row: bool, page: usize) -> Option<Spot> {
     if inside(&FIELD, x, y) {
         return Some(Spot::FlyField);
     }
-    if row {
+    if rows == Rows::Payload {
+        for k in 0..SOUNDS.len() {
+            if inside(&sound_button(k), x, y) {
+                return Some(Spot::Sound(k));
+            }
+        }
+    }
+    if rows == Rows::Ship {
         for (r, items) in ROWS.iter().enumerate() {
             for k in 0..items.len() {
                 if inside(&button(r, k), x, y) {
@@ -271,13 +317,14 @@ impl Wheel {
     pub fn on_page(page: usize, fly: f32) -> Self {
         Wheel { page: page.min(pages() - 1), fly, ..Default::default() }
     }
-    /// The ship laser the rows are for, if they are showing: the one pointed at, or the one loaded.
+    /// The laser the rows are for (a ship laser, or the Payload), if they are showing: the one pointed at, or the one
+    /// loaded.
     pub fn row_laser(&self, selected: usize) -> Option<usize> {
-        self.row_for.or(is_ship(LASERS[selected]).then_some(selected))
+        self.row_for.or(has_rows(selected).then_some(selected))
     }
-    /// Whether the rows are showing.
-    pub fn row_shown(&self, selected: usize) -> bool {
-        self.row_laser(selected).is_some()
+    /// Which rows are showing.
+    pub fn rows(&self, selected: usize) -> Rows {
+        Rows::of(self.row_laser(selected))
     }
     /// Turn to page `k` (the rows close unless the loaded laser is a ship).
     pub fn turn(&mut self, k: usize) {
@@ -286,10 +333,10 @@ impl Wheel {
     }
     /// Takes a new cursor position; true when what is drawn changed.
     pub fn hover_at(&mut self, x: f32, y: f32, selected: usize) -> bool {
-        let now = spot(x, y, self.row_shown(selected), self.page);
+        let now = spot(x, y, self.rows(selected), self.page);
         let was = self.row_for;
         match now {
-            Some(Spot::Laser(i)) => self.row_for = is_ship(LASERS[i]).then_some(i),
+            Some(Spot::Laser(i)) => self.row_for = has_rows(i).then_some(i),
             Some(Spot::Centre) => self.row_for = None,
             _ => {}
         }
@@ -301,7 +348,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize]) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: bool) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -357,10 +404,26 @@ impl Wheel {
         // colour's swatch in its own)
         // (pointing at a laser that isn't a ship hides the loaded ship's rows, to make room for its blurb)
         let row = match self.hover {
-            Some(Spot::Laser(i)) if !is_ship(LASERS[i]) => None,
+            Some(Spot::Laser(i)) if !has_rows(i) => None,
             _ => self.row_laser(selected),
         };
-        if let Some(rl) = row {
+        // (the Payload's: which blast it plays, the one picked lit in its colour)
+        if let Some(rl) = row.filter(|&i| Rows::of(Some(i)) == Rows::Payload) {
+            let ms = LASERS[rl];
+            let b0 = sound_button(0);
+            text(&mut out, "BLAST SOUND", b0.x - SOUND_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
+            for (k, (name, _)) in SOUNDS.iter().enumerate() {
+                let b = sound_button(k);
+                let chosen = k == usize::from(blast_alt);
+                let hovered = self.hover == Some(Spot::Sound(k));
+                out.push(Draw::Fill((b, if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 })));
+                let rim = if chosen { 2.0 } else { 1.0 };
+                let rim_c = if chosen { argb(0xFF, ms.rgb) } else { argb(0x90, shade(ms.rgb, 0.6)) };
+                out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - rim, w: b.w, h: rim }, rim_c)));
+                text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
+            }
+        }
+        if let Some(rl) = row.filter(|&i| is_ship(LASERS[i])) {
             let ms = LASERS[rl];
             for (r, items) in ROWS.iter().enumerate() {
                 let chosen = [approach, arrival, colours.get(rl).copied().unwrap_or(0)][r];
@@ -399,6 +462,7 @@ impl Wheel {
             Some(Spot::Approach(k)) => (format!("Comes in {}", APPROACHES[k].label), 0x8C93A0),
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),
             Some(Spot::Colour(k)) => (format!("Lit {}", COLOURS[k].label), 0x8C93A0),
+            Some(Spot::Sound(k)) => (SOUNDS[k].1.to_string(), 0x8C93A0),
             Some(Spot::Page(k)) => (format!("Page {} of {}", k + 1, pages()), 0x8C93A0),
             None if pages() > 1 => ("Right-click: next page  ·  Esc to close".to_string(), 0x8C93A0),
             None => ("Esc to close".to_string(), 0x8C93A0),
@@ -622,7 +686,7 @@ mod tests {
             let s = ship(key);
             let mut w = Wheel::on_page(page_of(s), 1.0);
             let other = 0;
-            assert!(!w.row_shown(other));
+            assert_eq!(w.rows(other), Rows::None);
             let c = polar(segment_angle(s % PAGE), 60.0);
             w.hover_at(c.x, c.y, other);
             assert_eq!(w.row_laser(other), Some(s));
@@ -634,12 +698,56 @@ mod tests {
             w.hover_at(b.x + 4.0, b.y + 4.0, other);
             assert_eq!(w.hover, Some(Spot::Arrival(1)));
             w.hover_at(0.0, 0.0, other);
-            assert!(!w.row_shown(other));
+            assert_eq!(w.rows(other), Rows::None);
             assert_eq!(w.row_laser(s), Some(s));
         }
         // a loaded ship keeps its rows on the other page too
         let w = Wheel::on_page(0, 1.0);
         assert_eq!(w.row_laser(ship("downfall")), Some(ship("downfall")));
+    }
+    #[test]
+    fn payload_sound_row() {
+        let pl = ship("payload");
+        // its two buttons clickable while its row shows, nothing there otherwise, clear of the ring and of each other
+        for k in 0..SOUNDS.len() {
+            let b = sound_button(k);
+            let (x, y) = (b.x + b.w / 2.0, b.y + b.h / 2.0);
+            assert_eq!(spot(x, y, Rows::Payload, page_of(pl)), Some(Spot::Sound(k)));
+            assert_ne!(spot(x, y, Rows::None, page_of(pl)), Some(Spot::Sound(k)));
+            assert_ne!(spot(x, y, Rows::Ship, page_of(pl)), Some(Spot::Sound(k)));
+            assert!(b.y > R_OUT + 10.0 && b.x >= -160.0 && b.x + b.w <= 160.0 && b.y + b.h <= 120.0);
+            // (each hint fits the line under the ring)
+            assert!(SOUNDS[k].1.len() * 6 <= 320, "{}", SOUNDS[k].1);
+        }
+        assert!(sound_button(1).x >= sound_button(0).x + BTN_W + 2.0);
+        // the label's room left of the first button holds it
+        assert!("BLAST SOUND".len() as f32 * 6.0 <= SOUND_LABEL_W && sound_button(0).x - SOUND_LABEL_W >= -160.0);
+        // pointing at the Payload opens its row (not a ship's), and it stays open on the way down to it
+        let mut w = Wheel::on_page(page_of(pl), 1.0);
+        let other = 0;
+        assert_eq!(w.rows(other), Rows::None);
+        let c = polar(segment_angle(pl % PAGE), 60.0);
+        w.hover_at(c.x, c.y, other);
+        assert_eq!((w.row_laser(other), w.rows(other)), (Some(pl), Rows::Payload));
+        let b = sound_button(1);
+        w.hover_at(b.x + 4.0, b.y + 4.0, other);
+        assert_eq!(w.hover, Some(Spot::Sound(1)));
+        assert_eq!(w.rows(other), Rows::Payload);
+        // (and where a ship's buttons would be, nothing of theirs)
+        let b = button(1, 0);
+        w.hover_at(b.x + 4.0, b.y + 4.0, other);
+        assert!(!matches!(w.hover, Some(Spot::Arrival(_) | Spot::Colour(_))));
+        // loaded, it shows on any page; drawn, its picked button is lit
+        assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Payload);
+        let lit = |alt: bool| -> Vec<u32> {
+            Wheel::on_page(0, 1.0)
+                .draws(pl, true, true, true, 0, 0, &[0; 16], alt)
+                .into_iter()
+                .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
+                .collect()
+        };
+        assert_eq!(lit(false), vec![LASERS[pl].rgb, 0x9AA2AE]);
+        assert_eq!(lit(true), vec![0x9AA2AE, LASERS[pl].rgb]);
     }
     #[test]
     fn fits_the_smallest_gui() {

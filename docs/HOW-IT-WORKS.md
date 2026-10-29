@@ -113,20 +113,28 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   to 1,450 out from the target, beyond it and 50 to 65 degrees round to one side, so the player sees it ahead and off to
   one side), with a bloom, a faint lens streak and a short white-hot streak of air behind it. It is shot down from
   orbit: one clean ballistic arc onto the target, a shallow glide crawling slowly over the sky for seconds, then
-  steeper and faster, a thin pale trail behind it hanging in the sky in the arc's shape, drifting with the wind and
-  fading; a faint high whine and a far rumble. From about 9 s it heats into a fireball, and from 10.6 s
-  (`PAYLOAD INBOUND`) comes its fast final descent, steepest at the end (about 60 degrees, some 700 blocks a second),
-  its head an orange-yellow fireball with a flame tail, its trail a dense dark smoke column that stays hung in the
-  sky in the shape of the arc for many seconds; a roar and a tearing whistle. At 13.6 s it strikes: a brief orange flash lighting the land and the air round it and a burst of
+  steeper and faster. As it strikes the thick air there is a double crack on a sub boom, then it crackles in distinct,
+  uneven pops (a few a second, thickening), over a faint high whine and a far rumble. Its trail is a cord of lumpy
+  grey-brown smoke (a thin pale vapour for its first second or two) hung in the sky in the arc's shape: dense where it
+  is laid, then swelling, paling, breaking into beads and puffs, fraying and thinning away over twenty seconds or so,
+  drifting with the wind. From about 7 s it sheds pieces: eight glowing chunks flung off to the side, falling away
+  behind it and burning out over a second or three, each trailing its own thin smoke, and in the last seconds a spray
+  of sparks off the fireball. From about 9 s it heats into a fireball, and from 10.6 s (`PAYLOAD INBOUND`) comes its
+  fast final descent, steepest at the end (about 60 degrees, some 700 blocks a second), its head an orange-yellow
+  fireball with a soft teardrop of flame behind it, the smoke just behind that lit orange; a roar, a tearing whistle
+  and the pops coming thicker and bigger. At 13.6 s it strikes: a brief orange flash lighting the land and the air round it and a burst of
   fire, then a column of smoke bursts up out of it, most of its height in about a second as in the clip it follows,
-  eighteen billows swelling into a lumpy cauliflower mass (rounded domes on domes with creased gaps, dark slate
-  blue-grey from the sky, darker down its narrower stem, its tops a little paler where the sun catches them),
-  about 235 blocks tall, widening and climbing slowly on, leaning with the wind. The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
+  eighteen billows swelling into a lumpy cauliflower mass (rounded domes on domes with creased gaps, tan-grey smoke
+  and dust lit by the scene: warm where the sun is on it, greyed by the sky on its shadowed side, darker down its
+  narrower stem), about 235 blocks tall, widening and climbing slowly on, leaning with the wind. The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
   The shockwave races out over the land at the same speed as a wall of yellow-tan dust a person's height and more,
   billowing and crisp at its front, the leaves and grass near it shaken on the screen; it reaches the player as the
   blast does, shakes the camera, washes over them and settles in low drifting patches and a thin haze; dark chunks
   and specks of earth torn up across the blast's middle tumble out up to several hundred blocks and fall back, near
-  the player too, the big ones trailing smoke. The column stands over the crater until the strike ends at 44 s.
+  the player too, the big ones trailing smoke. The column keeps its crisp billows for about 20 s; then, as in the
+  clip it follows, it loses them: from 35 s to about 48 s the billows melt into a rounded, mottled mass with a broad
+  soft fringe, its stem lifting off the ground and thinning first, the whole drifting, widening and evenly lit, and
+  it thins to nothing by about 65 s. The strike ends at 70 s.
   It reaches 1000 blocks.
 
 All of them:
@@ -206,7 +214,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
-| `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions |
+| `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
@@ -279,7 +287,8 @@ when that is dug, 0.1 s before it lets go, and gone into the dark 3.2 s after); 
 16 s, a chunk column at a time from the middle out, done by about 23; the dust settles by 34, the pit's dark fades out
 slowly from 31 and the strike ends at 40. The Payload is calm until 3 s, comes in high across the sky until 10.6, comes down fast and strikes at 13.6;
 its blast, the dust's front and the jolt reach the player at 13.6 plus their distance over 343; the column rises
-until about 20 s and goes on growing slowly, the debris is down by about 29, and everything fades out from 37 to 44.
+until about 20 s and goes on growing slowly, the debris is down by about 29, the trail is gone by about 35, the column
+goes soft from 35 to 48 and thins away by about 65, and the strike ends at 70.
 
 ## The effects
 
@@ -339,12 +348,14 @@ grinding in uneven grabs), sharp cracks of rock each with its own splinters and 
 collapse (`explosion_live` again, on its own seed, made earthy: its top rolled off, its low-mid pushed, a strain before
 it, rock grinding as it gives), the rockfall (a grinding roar and slabs striking the bottom, unevenly, further and
 further off) and the pebbles after, each bouncing its own way, in the pit's long echo. Each is heard late by how far
-away it is. The Payload's ([`tools/sounds_payload.py`](../tools/sounds_payload.py)): a faint thin whine high up, a far rumble under it; the dive's whistle bending up and a roar of air and fire tearing louder, cut
+away it is. The Payload's ([`tools/sounds_payload.py`](../tools/sounds_payload.py)): the entry's double crack and sub boom as it strikes the thick air; its crackle, distinct uneven pops, four to seven a second, a few much bigger; a faint thin whine high up, a far rumble under it; the dive's whistle bending up, the pops thicker and a roar of air and fire tearing louder, cut
 dead at the strike; the ground's thump and rumble arriving first, through the land at five times the air's speed
 (`ground`), with a faint early jolt; a near-silent breath while the blast travels; the blast (`explosion_live` on its
-own seed, as loud as the Planet Killer's); the dust's rush and the wind gusting on after it; clods thudding down round the player and a
+own seed, as loud as the Planet Killer's; from 500 to 1,500 blocks off cross-faded into the same blast through that much
+air, its top 10 dB down, `blast_far`); the dust's rush and the wind gusting on after it; clods thudding down round the player and a
 patter of grit; and a long tail of rolls off the land, further and further off. `/orbital payloadsound alt` swaps the blast and the
-thump for alternatives in the manner of a sound designer's redesign (`blast_alt`, `ground_alt`); `main` swaps them back.
+thump for alternatives in the manner of a sound designer's redesign (`blast_alt`, `ground_alt`, `blast_alt_far`); `main`
+swaps them back; the wheel's BLAST SOUND row (shown while the Payload is loaded or pointed at) does the same.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
@@ -376,11 +387,15 @@ volume marched along the view ray.
 
 The Payload's pass ([`mod/shaders/payload.wgsl`](../mod/shaders/payload.wgsl)) reads the object's path, sampled 128
 times from 3 to 13.6 s, and the column's eighteen billows (`pl_table`, through `render.set-data` on the tick after it
-fires; the player's position as it fired is in its params). The trail is drawn through the path's samples as soft
-tubes of smoke (each bit of it carried by the wind and spreading as it ages, broken up by noise, lit on its sunward
-side); the column is marched through the billows' smooth union (worked out once a pixel), its surface bulged in
+fires; the player's position as it fired is in its params), and the pieces it sheds (from `PL_FR`: when each lets go,
+where and how fast, how long it burns; each then flies with drag and gravity worked out in the pass). The trail is drawn
+through the path's samples, each bit counted once, as soft-edged smoke whose edge and density three octaves of noise
+carried with it push in and out (the finer ones let go where a pixel spans several of them, so it does not shimmer far
+off or end-on), carried by the wind, swelling as it ages and breaking into beads as its threshold rises; eight samples at
+a time are first tested as one ball, so most rays skip it; the column is marched through the billows' smooth union (worked out once a pixel), its surface bulged in
 cellular domes at two scales (rounded tops, creased gaps), each lump lit by a look a few blocks towards the sun and
-the column's bulk shadowing it with two more, lit by the sky the scene shows; the dust is marched only through the
+the column's bulk shadowing it with two more, lit by the sky the scene shows; as it settles its lumps sink back, its edge
+becomes a broad soft fringe mottled by noise and its density thins away; the dust is marched only through the
 shell just behind the shockwave's front (and sparsely inside it), over the land's own ground: a 96 x 96 heightfield
 of it asked of the world as it fires (`world.surface-height`, from about 260 to 1,150 blocks round the target as the
 player is near or far), sent from `PL_HF` with how sheltered each cell is from the blast by the land between, and close
@@ -390,11 +405,13 @@ blocks of the ground), the picture is greyed and flattened by the dust, clearing
 after it muck lands on the lens, out of focus, as measured from a reference clip's dirt: drops near round but each its
 own (a few stretched), 2 to 7% of the picture's height, a ring darker than the middle, soft at the edge, of very
 different strengths, often with a smaller drop beside them, nearly all high on the screen, fading over ten seconds or so; the wall is thinned right round the eye so the picture over it stays clear; the debris is 120 ballistic chunks with drag, torn up across the blast's middle, each blurred
-along its motion, tumbling, the big ones trailing smoke. It costs about 0.3 to 2.4 ms at the preview's 800x450. The jolt as the front reaches the player is
+along its motion, tumbling, the big ones trailing smoke. It costs about 0.3 to 2.5 ms at the preview's 800x450 (2.8 ms
+from 230 blocks with the column filling the view). The jolt as the front reaches the player is
 `render.shake` worked to match the clips: a hard hit, sharp aftershocks every other tick for 0.7 s, then a shudder of
 smaller quick jolts fading over the next 1.7 s, over a long faint rumble.
 `tools/preview.py payload ... --views plref` looks at it as the clip it follows was filmed (450 blocks off in a wood,
-a 59 degree field of view); `plhill`, `plhilllow` and `plhillside` over hills.
+a 59 degree field of view); `plhill`, `plhilllow` and `plhillside` over hills; `pl3far`, `pl3close` and `pl3col` as the
+third clip has it (1,600 blocks off looking up at the trail, and 230 off at the object and the column).
 ## Stock Horizon
 
 0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the other lasers are mod-only): a shader pack, a sound pack and the item mod, run by

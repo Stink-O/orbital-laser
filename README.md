@@ -88,8 +88,9 @@ Nine lasers, five on the wheel's first page and four on its second.
   that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
 - **Sinkhole** (page two). Nothing from the sky: the land cracks and caves in, slab by slab, each slab carrying its
   real ground and trees as it falls, into a sheer pit about 225 blocks across and down to bedrock.
-- **Payload** (page two). A bright point high in the sky comes down on one long arc from orbit, slow at first, then fast as a fireball:
-  a column of smoke boils up, a wall of dust races out over the land and debris rains down. It leaves a bomb crater.
+- **Payload** (page two). A bright point high in the sky comes down on one long arc from orbit, slow at first, then fast as a fireball,
+  crackling and shedding burning chunks, its lumpy smoke trail hanging in the sky: a column of smoke boils up, a wall of dust
+  races out over the land and debris rains down, and the column slowly melts into a drifting haze. It leaves a bomb crater.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole and the Payload reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
@@ -225,7 +226,7 @@ the reason on its row first.
    `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload), then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Payload 44, the Crystal Bloom 60 and the Downfall 64.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60, the Downfall 64 and the Payload 70.
 
 The wheel also has:
 
@@ -234,6 +235,8 @@ The wheel also has:
 - **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the status panel shown
   at the top right while you hold either item.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
+- For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
+  same choice as `/orbital payloadsound`.
 
 | Command | What it does |
 |---|---|
@@ -246,7 +249,7 @@ The wheel also has:
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` | the loaded ship's colour |
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
-| `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative |
+| `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
 [How it works](docs/HOW-IT-WORKS.md#commands) has the full details of each command. To rebind **R**: **Options →
