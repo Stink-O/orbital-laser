@@ -20,8 +20,11 @@ const TAU: f64 = 2.0 * PI;
 pub(super) const PL_SEEN: f32 = 3.0;
 pub(super) const PL_TURN: f32 = 10.6;
 pub(super) const PL_HIT: f32 = 13.6;
-/// How long the dive's sound runs before its cut-off (tools/sounds_payload.py's `dive`: its `hit`).
-const PL_DIVE_SND: f32 = 2.6;
+/// How long the dive's sound runs before its cut-off (tools/sounds_payload.py reads it: the dive starts at PL_TURN).
+const PL_DIVE_SND: f32 = 3.0;
+/// How fast the ground carries the strike's shock (blocks a second): five times the air's, so it is felt well before
+/// the blast is heard (tools/sounds_payload.py's `ground`).
+const PL_GROUND_V: f64 = 5.0 * 343.0;
 /// The path's samples (the trail is drawn through them), from PL_SEEN to PL_HIT.
 pub(super) const PL_N: usize = 128;
 /// The column's billows.
@@ -909,9 +912,19 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     p.at(7.5, bar("ORBITAL TRACKING: OBJECT DESCENDING", "gray"));
     // ---- the dive: its roar and whistle as it comes down, cut off as it strikes ----------------------------------
     p.at(PL_TURN + 0.2, bar("PAYLOAD INBOUND", "red"));
-    // (its roar and whistle are cut off dead 2.6 s in: started that long before it strikes, so the cut falls on the
-    // strike; the final descent starts a little before, at PL_TURN, under the whine)
+    // (its roar and whistle are cut off dead PL_DIVE_SND in: started that long before it strikes, as its fast final
+    // descent starts, so the cut falls on the strike)
     p.csound(PL_HIT - PL_DIVE_SND, "dive", 10.0, 1.0);
+    // ---- the land's answer through the ground, long before the air's: a deep thump and a rumble, felt more than heard,
+    // fainter further off, and a faint early jolt with it (never on the blast's own tick). Close in, the blast comes
+    // hard on its heels and drowns it: it is made quieter there, so the two together stay under full scale.
+    let tg = PL_HIT + (dist / PL_GROUND_V) as f32;
+    let gap = PL_HIT + late - tg;
+    let gv = ((1.0 / (1.0 + dist / 900.0)).clamp(0.3, 1.0) * (f64::from(gap - 0.15) / 0.85).clamp(0.3, 1.0).powi(2)) as f32;
+    p.csound(tg - 0.02, "ground", 10.0 * gv, 1.0);
+    if gap > 0.08 {
+        p.shake(tg, 0.45 * (1.6 / (1.0 + dist / 400.0)).clamp(0.35, 1.0) as f32, 0.35);
+    }
     // ---- the strike: a near-silent breath, the blast reaching the player late by how far it is, with the dust's rush
     // and the jolt, the debris coming down round them, the long rolling tail after -----------------------------------
     let arrive = PL_HIT + late;

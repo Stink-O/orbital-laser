@@ -970,5 +970,32 @@
       }
     ],
     "subtitle": "subtitles.orbital.payload.tail"
+  },
+  "payload.ground": {
+    "sounds": [
+      {
+        "name": "orbital:payload/ground",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.ground"
+  },
+  "payload.ground_alt": {
+    "sounds": [
+      {
+        "name": "orbital:payload/ground_alt",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.ground_alt"
+  },
+  "payload.blast_alt": {
+    "sounds": [
+      {
+        "name": "orbital:payload/blast_alt",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.blast_alt"
   }
 }
