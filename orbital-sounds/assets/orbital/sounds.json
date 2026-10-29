@@ -997,5 +997,23 @@
       }
     ],
     "subtitle": "subtitles.orbital.payload.blast_alt"
+  },
+  "payload.blast_far": {
+    "sounds": [
+      {
+        "name": "orbital:payload/blast_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.blast_far"
+  },
+  "payload.blast_alt_far": {
+    "sounds": [
+      {
+        "name": "orbital:payload/blast_alt_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.blast_alt_far"
   }
 }

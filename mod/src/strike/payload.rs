@@ -877,6 +877,13 @@ fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
     }
 }
 
+/// How much of the blast is heard through a long stretch of air (`blast_far`), `dist` blocks off: none within 500,
+/// all of it past 1,500 (a smooth step between).
+fn pl_far(dist: f64) -> f32 {
+    let u = ((dist - 500.0) / 1000.0).clamp(0.0, 1.0);
+    (u * u * (3.0 - 2.0 * u)) as f32
+}
+
 pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3], blast_alt: bool) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
@@ -920,7 +927,9 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     // hard on its heels and drowns it: it is made quieter there, so the two together stay under full scale.
     let tg = PL_HIT + (dist / PL_GROUND_V) as f32;
     let gap = PL_HIT + late - tg;
-    let gv = ((1.0 / (1.0 + dist / 900.0)).clamp(0.3, 1.0) * (f64::from(gap - 0.15) / 0.85).clamp(0.3, 1.0).powi(2)) as f32;
+    // (the third clip's near strike, some 230 blocks off, has the thump about as heavy as the first clip's at 450: only
+    // right under it, where the blast lands on top of it, is it let down much)
+    let gv = ((1.0 / (1.0 + dist / 900.0)).clamp(0.3, 1.0) * (f64::from(gap - 0.05) / 0.9).clamp(0.25, 1.0).powf(1.5)) as f32;
     p.csound(tg - 0.02, if blast_alt { "ground_alt" } else { "ground" }, 10.0 * gv, 1.0);
     if gap > 0.08 {
         p.shake(tg, 0.45 * (1.6 / (1.0 + dist / 400.0)).clamp(0.35, 1.0) as f32, 0.35);
@@ -928,7 +937,15 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     // ---- the strike: a near-silent breath, the blast reaching the player late by how far it is, with the dust's rush
     // and the jolt, the debris coming down round them, the long rolling tail after -----------------------------------
     let arrive = PL_HIT + late;
-    p.csound(arrive - 0.02, if blast_alt { "blast_alt" } else { "blast" }, 10.0, 1.0);
+    // (from far off the air has taken its top: the blast cross-faded into the same one darkened, 500 to 1,500 blocks)
+    let far = pl_far(dist);
+    let (bn, bf) = if blast_alt { ("blast_alt", "blast_alt_far") } else { ("blast", "blast_far") };
+    if far < 1.0 {
+        p.csound(arrive - 0.02, bn, 10.0 * (1.0 - far), 1.0);
+    }
+    if far > 0.0 {
+        p.csound(arrive - 0.02, bf, 10.0 * far, 1.0);
+    }
     p.csound(arrive - 0.15, "rush", 10.0, 1.0);
     p.csound(arrive + 2.4, "tail", 10.0, 1.0);
     // (the jolt as the front hits, as in the clip: a hard hit, then sharp aftershocks a tick apart every other tick for
@@ -1070,6 +1087,25 @@ mod tests {
         assert!(has(&alt, "payload.blast_alt") && has(&alt, "payload.ground_alt"));
         assert!(!has(&alt, "payload.blast") && !has(&alt, "payload.ground"));
         assert_eq!(main.len(), alt.len());
+    }
+
+    #[test]
+    fn payload_blast_from_far_off_is_heard_through_the_air() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let blasts = |z: f64, option: usize| -> Vec<(String, f32)> {
+            plan(&crate::lasers::PAYLOAD, &target, false, "minecraft:overworld", 37.0, [10.5, 66.0, z], option)
+                .into_iter()
+                .filter_map(|(_, a)| if let Act::Sound { event, volume, .. } = a { Some((event, volume)) } else { None })
+                .filter(|(e, _)| e.contains("payload.blast"))
+                .collect()
+        };
+        let names = |v: &[(String, f32)]| v.iter().map(|(e, _)| e.rsplit('.').next().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(names(&blasts(300.0, 0)), ["blast"]);
+        assert_eq!(names(&blasts(2500.0, 0)), ["blast_far"]);
+        assert_eq!(names(&blasts(2500.0, 1)), ["blast_alt_far"]);
+        let mid = blasts(1000.0, 1);
+        assert_eq!(names(&mid), ["blast_alt", "blast_alt_far"]);
+        assert!((mid[0].1 + mid[1].1 - 1.0).abs() < 1e-4, "{mid:?}");
     }
 
     #[test]

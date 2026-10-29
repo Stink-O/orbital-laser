@@ -1,20 +1,22 @@
 """The Payload's sounds, all synthesised here from noise, pulses, resonators and filters (nothing sampled).
 
-Their levels and shapes over time were *measured* on two references (band levels, envelopes, stereo, transients; no
-audio from either is in this repo): a gameplay clip of an orbital bomb coming down a few hundred metres from the player,
-and a sound designer's redesign of that bomb's explosion (the `_alt` sounds). The clip's own timeline matches the
+Their levels and shapes over time were *measured* on three references (band levels, envelopes, stereo, transients; no
+audio from any is in this repo): a gameplay clip of an orbital bomb coming down a few hundred metres from the player,
+a sound designer's redesign of that bomb's explosion (the `_alt` sounds), and a longer clip of three such strikes near
+and far (the entry's boom and its pops, the approach's level, the blast from far off, the ground's thump close in). The clip's own timeline matches the
 strike's (the object strikes 13.6 s in, the blast is heard 1.3 s later), so the tables here are in strike time, at the
 levels a player about 450 blocks off hears them: each reference scaled so its blast's loudest 400 ms sits where ours
 does (-8 dB). The plan (mod/src/strike/payload.rs) plays them all at full volume in the player's ears, so how loud each
 file is against the others is how they sit in the game; its timeline is read from there.
 
-  drift       the approach (0 is when the plan starts it, PL_SEEN - 0.3 + 1.6 s): high up and far off at first, a dark
-              roar fading in and swelling as it comes, a few low resonances wandering in it, the burning object
-              crackling, a thin tearing whine over it that climbs as it closes (a doppler rise, never a held note);
-              handed over to `dive` across its first 1.4 s
+  drift       the approach (0 is when the plan starts it, PL_SEEN - 0.3 + 1.6 s): the entry, a double crack sweeping
+              down on a sub boom as it strikes the thick air (ENTRY_AT in); then a dark roar fading in and swelling as
+              it comes, a few low resonances wandering in it, the burning object crackling in distinct, uneven pops
+              (sparse at first, four to seven a second), a thin tearing whine over it that climbs as it closes (a
+              doppler rise, never a held note); handed over to `dive` across its first 1.4 s
   dive        the fast final descent (0 is PL_HIT - PL_DIVE_SND, PL_DIVE_SND before the strike): the roar louder, the
-              whine bending up into a shriek, a rush of torn air sweeping up under it, the crackle thickening, the sub
-              growing; cut off dead on the strike, the air letting go of it within a fifth of a second
+              whine bending up into a shriek, a rush of torn air sweeping up under it, the pops thicker and bigger, the
+              sub growing; cut off dead on the strike, the air letting go of it within a fifth of a second
   ground      the land's answer through the ground (0.02 s in is when its wave reaches the player: the plan plays it at
               the strike plus the distance at five times the air's speed): a deep thump, felt more than heard, a sub
               rumble under a near-silence, the ground shuddering once, a faint rattle
@@ -24,6 +26,8 @@ file is against the others is how they sit in the game; its timeline is read fro
               sooner, the low mids a little apart in the two ears)
   blast_alt   the alternative blast, in the redesign's manner: the air coming up out of the hush, a low boom, a gap, a
               bright crack and a second blow, then a wide, mid-heavy roar crackling and dying sooner; level-matched
+  blast_far, blast_alt_far   each blast through a long stretch of air (its top 10 dB down over a kilohertz): the
+              plan cross-fades into them for a player far off
   rush        the shockwave's front and its dust washing over the player (0.15 s in, with the blast): gusts buffeting
               from side to side, low pushes of air, grit and twigs thrown past, the leaves thrashing, wind dying away
   debris      what comes back down round the player: clods thudding in, stones clacking and bouncing, branches
@@ -49,7 +53,7 @@ import sounds_themes as T
 import sounds_pk_blast as PB
 
 TH = "payload"
-NAMES = ["drift", "dive", "ground", "ground_alt", "blast", "blast_alt", "rush", "debris", "tail"]
+NAMES = ["drift", "dive", "ground", "ground_alt", "blast", "blast_alt", "blast_far", "blast_alt_far", "rush", "debris", "tail"]
 ROOT = Path(__file__).resolve().parent.parent
 PEAK = 0.912                                   # decoded peaks at -0.8 dBFS
 OCT = PB.OCT                                   # 31.5 Hz .. 16 kHz
@@ -92,6 +96,20 @@ APPROACH_DB = np.array([
     [-45.5, -29.2, -17.3, -18.5, -24.1, -24.0, -30.8, -42.6, -54.5, -70.0],
     [-45.5, -29.5, -16.8, -18.4, -22.9, -23.2, -29.5, -40.3, -53.0, -68.0],
     [-45.5, -29.5, -16.5, -18.2, -22.5, -22.8, -29.0, -39.5, -52.5, -68.0]])
+# The third reference (three strikes, near and far) has the approach a few dB under the first clip's and its top
+# (2 kHz up, where ours has its whine) well under: the roar trimmed this much (dB, by octave), so the blast stands
+# further out of it and the pops are heard through it.
+APPROACH_TRIM = np.array([-3.0, -3.0, -3.5, -3.5, -3.5, -3.5, -5.0, -6.0, -5.0, -3.0])
+
+
+def approach_db():
+    return APPROACH_DB + APPROACH_TRIM
+
+
+# The pops' level (dB, the 12 ms round each at its usual size) where the drift hands over to the dive; the entry boom
+# this far into `drift`.
+POP_DB = -27.0
+ENTRY_AT = 0.35
 APPROACH_CORR = np.array([1.0, 1.0, 0.99, 0.98, 0.95, 0.92, 0.88, 0.8, 0.7, 0.6])
 
 
@@ -378,6 +396,103 @@ def crackle(d, t_at, rate_fn, level_db, lo=1400, hi=9000):
     return band(L, lo, hi, 2), band(R, lo, hi, 2)
 
 
+def pop_crackle(d, t_at, rate_fn, level_db, big=1.0):
+    """The object burning up in the air, as the third reference has it: a few distinct pops a second (4 to 8, never in
+    step), each a short broadband crack (10-25 ms, its weight in 1-8 kHz with some body under it), their sizes very
+    uneven (the 25 ms round one 3-4 dB over the roar's top as a rule, a few 8-9 dB), now and then a doublet, the bigger
+    ones with a low knock under them. Spread a little round the head, each with a faint late echo off to the other
+    side. `rate_fn` and `level_db` over strike time; `big` scales how often a big one comes."""
+    n = int(SR * d)
+    L = np.zeros(n); R = np.zeros(n)
+    for t1 in poisson_times(0.0, d - 0.08, lambda u: rate_fn(u + t_at)):
+        size = min(rng().pareto(1.9) * 0.55 + 0.4, 3.0)
+        if rng().random() < 0.06 * big:
+            size = max(size, rng().uniform(2.0, 3.0))
+        a = size * 10 ** (level_db(t1 + t_at) / 20)
+        reps = [(0.0, 1.0)]
+        if rng().random() < 0.22:                                    # (a doublet: it cracks again just after)
+            reps.append((rng().uniform(0.012, 0.06), rng().uniform(0.35, 0.8)))
+        p = rng().uniform(-0.45, 0.45)
+        for dt, g in reps:
+            tau = (0.0022 + 0.0018 * min(size, 3.0)) * rng().uniform(0.7, 1.4)
+            m = int(SR * (tau * 9 + 0.004))
+            s = np.arange(m) / SR
+            env = (1 - np.exp(-s / 0.0004)) * np.exp(-s / tau)
+            w = rng().standard_normal(m)
+            fc = np.exp(rng().uniform(np.log(1100), np.log(3600)))
+            x = band(w, fc / 3.5, fc * 2.6, 2) + 0.5 * band(w, 250, 1300, 2)
+            x = air(x, 9000) * env
+            if size > 1.8:                                           # (the big ones knock: body under the crack)
+                m2 = int(SR * 0.16)
+                s2 = np.arange(m2) / SR
+                kn = band(rng().standard_normal(m2), 110, 520, 2) * (1 - np.exp(-s2 / 0.002)) * np.exp(-s2 / 0.03)
+                x = np.concatenate([x, np.zeros(max(m2 - m, 0))])[:max(m, m2)]
+                x[:m2] += kn * 0.55 * min(size / 2.5, 1.4)
+            x = x / (np.sqrt(np.mean(x[:int(0.012 * SR) + 1] ** 2)) + 1e-9) * a * g
+            k0 = int((t1 + dt) * SR)
+            # (where it is round the head: a level and a few samples' lead between the ears)
+            itd = int(abs(p) * 14)
+            l, r = PB.pan2(x, p)
+            if p > 0:
+                l = np.concatenate([np.zeros(itd), l])[:len(x)]
+            else:
+                r = np.concatenate([np.zeros(itd), r])[:len(x)]
+            mm = min(len(x), n - k0)
+            if mm <= 0:
+                continue
+            L[k0:k0 + mm] += l[:mm]; R[k0:k0 + mm] += r[:mm]
+            # (a faint, dark echo of it, late and off to the other side)
+            PB.delay_into(L, R, np.concatenate([np.zeros(k0), x])[:n], rng().uniform(0.03, 0.09), 0.16, -p * 0.8, 500, 4500)
+    return L, R
+
+
+# The entry: as it first strikes the thick air (each strike of the third reference, about 13 s before it lands, as its
+# roar starts): a double crack sweeping down from the top (the N-wave's two bangs, 0.06-0.1 s apart) on a heavy sub
+# boom, rolling off over a second. Octave levels (dB, 31.5 Hz .. 16 kHz) over 0-0.06, 0.06-0.3 and 0.3-0.8 s from it,
+# between that clip's near strike and its far one.
+ENTRY_DB = np.array([
+    [-38.0, -25.0, -29.0, -28.0, -30.5, -30.0, -34.5, -44.0, -58.0, -80.0],
+    [-21.5, -27.5, -36.0, -36.5, -36.0, -38.5, -42.5, -51.5, -65.0, -83.0],
+    [-28.0, -34.5, -38.0, -37.5, -37.5, -40.0, -44.5, -54.0, -69.0, -85.0]])
+ENTRY_WIN = [(0.0, 0.06), (0.06, 0.3), (0.3, 0.8)]
+
+
+def entry_boom(d, t1):
+    """The entry's boom (see ENTRY_DB) at `t1` seconds into a sound `d` long: stereo, centred, a little wide in its
+    roll."""
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    u = np.maximum(t - t1, 0); on = t >= t1
+    gap = rng().uniform(0.05, 0.075)
+
+    def crack(k_at, g):
+        # a band sweeping down from 4 kHz to 150 Hz over a tenth of a second, hard on its front
+        uu = np.maximum(t - k_at, 0); o = t >= k_at
+        fc = 100 + 1500 * np.exp(-uu / 0.022)
+        x = glide_band(d, fc, 1.8) * (1 - np.exp(-uu / 0.0008)) * np.exp(-uu / 0.02) * o
+        x += T.unit(band(white(d), 60, 900, 2)) * (1 - np.exp(-uu / 0.0005)) * np.exp(-uu / 0.018) * o * 1.3
+        return air(x, 2400) * g
+
+    cr = crack(t1, 1.0) + crack(t1 + gap, 0.4)
+    sub = T.unit(band(white(d), 18, 48, 2)) * (u / 0.09) ** 2 / (1 + (u / 0.09) ** 2) * np.exp(-u / 0.5) * on
+    sub += soundlib.thump(n, t1 + 0.05, rng().uniform(42, 50), 26.0, 0.25, 5.0) * (t >= t1 + 0.05) * 0.6
+    rollL = T.unit(air(band(white(d), 50, 1500, 2), 1500)); rollR = 0.8 * rollL + 0.6 * T.unit(air(band(white(d), 50, 1500, 2), 1500))
+    renv = (1 - np.exp(-u / 0.15)) * np.exp(-u / 0.6) * on * np.exp(2.0 * PB.slow_random(n, 1.0, 6.0) / 8.686)
+    parts = [(cr, cr), (sub, sub), (rollL * renv, rollR * renv)]
+    # (each part trimmed, a few rounds, so the whole measures like ENTRY_DB in its three windows: the crack sets the first,
+    # the sub the 31.5-63 Hz after, the roll the rest)
+    gains = np.ones(3)
+    for _ in range(4):
+        L = sum(g * p[0] for g, p in zip(gains, parts)); R = sum(g * p[1] for g, p in zip(gains, parts))
+        m = (L + R) / 2
+        got = [oct_levels(m, t1 + a, t1 + b) for a, b in ENTRY_WIN]
+        gains[0] *= 10 ** (np.clip(np.mean(ENTRY_DB[0][2:7] - got[0][2:7]), -12, 12) / 20)
+        gains[1] *= 10 ** (np.clip(np.mean(ENTRY_DB[1][0:2] - got[1][0:2]), -12, 12) / 20)
+        gains[2] *= 10 ** (np.clip(np.mean(ENTRY_DB[2][2:6] - got[2][2:6]), -12, 12) / 20)
+    L = sum(g * p[0] for g, p in zip(gains, parts)); R = sum(g * p[1] for g, p in zip(gains, parts))
+    return L, R
+
+
 def drift():
     """The approach (see the top). Starts at DRIFT_AT; hands the roar over to `dive` from DIVE_AT over XF seconds."""
     end = DIVE_AT + XF - DRIFT_AT
@@ -386,19 +501,22 @@ def drift():
     t = np.arange(n) / SR
     ts = DRIFT_AT + t
     with PB.seeded(92101):
-        L, R = calibrated(lambda tab: roar_body(d, DRIFT_AT, tab), APPROACH_T - DRIFT_AT, APPROACH_DB.copy())
-        # (the reference's top is bursty: kurtosis 5-10 over 1 kHz)
-        cl, cr = crackle(d, DRIFT_AT, lambda u: 12 + 30 * np.clip((u - DRIFT_AT) / 6.0, 0, 1),
-                         lambda u: -49 + 7 * np.clip((u - DRIFT_AT) / 6.5, 0, 1))
-        wl, wr = whine(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 3, DIVE_AT], [-45, -40, -35]),
+        L, R = calibrated(lambda tab: roar_body(d, DRIFT_AT, tab), APPROACH_T - DRIFT_AT, approach_db())
+        # (it burning up: distinct pops, sparse as it enters, thickening)
+        cl, cr = pop_crackle(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT + ENTRY_AT + 0.12, DRIFT_AT + 1.5, DRIFT_AT + 4.0, DIVE_AT], [3.0, 4.5, 7.0, 6.5]) * (u > DRIFT_AT + ENTRY_AT + 0.12),
+                             lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 4.0, DIVE_AT], [POP_DB - 6, POP_DB - 2, POP_DB]))
+        wl, wr = whine(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 3, DIVE_AT], [-50, -45, -40]),
                        lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-6, 0]))
-        tl, tr = tearing(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-58, -50]), 1400, 5000)
-        L = L + cl + wl + tl; R = R + cr + wr + tr
+        tl, tr = tearing(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-63, -55]), 1400, 5000)
+        L = L + wl + tl; R = R + wr + tr
         # far off at first: fading in as it shows, the top coming up as it nears
         g = np.clip(t / 2.0, 0, 1) ** 1.5
         x = np.clip((ts - DIVE_AT) / XF, 0, 1)
         g = g * np.cos(np.pi / 2 * x)
-        L, R = L * g, R * g
+        # (the pops start with the entry, not faded in with the roar; handed over with it)
+        gc = np.cos(np.pi / 2 * np.clip(x * 1.7, 0, 1))
+        el, er = entry_boom(d, ENTRY_AT)
+        L, R = L * g + cl * gc + el, R * g + cr * gc + er
         L, R = PB.causal_lowcut(L, 20.0), PB.causal_lowcut(R, 20.0)
     finish_abs("drift", L, R, tail_fade=0.05)
 
@@ -416,15 +534,15 @@ def dive():
     u = np.clip(t / CUT, 0, 1)
     with PB.seeded(92201):
         # (the reference's last seconds hold their level; here it grows a little more in the last second, the mids most)
-        tab = APPROACH_DB.copy()
+        tab = approach_db()
         tab[-2:, 3:7] += np.array([[0.5, 1.0, 1.5, 1.5], [1.5, 2.5, 3.0, 3.0]])
         tab[-2:, 0:3] += np.array([[0.0, 0.5, 0.5], [1.0, 1.5, 1.5]])
         L, R = calibrated(lambda tb: roar_body(d, DIVE_AT, tb), APPROACH_T - DIVE_AT, tab, half=0.25)
-        wl, wr = whine(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT - 0.3, HIT], [-36, -33, -30, -29.5]),
+        wl, wr = whine(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT - 0.3, HIT], [-40, -37, -34, -33.5]),
                        lambda v: np.interp(v, [DIVE_AT, HIT - 0.6, HIT], [0, 2, 3]), flutter=1.3)
-        tl, tr = tearing(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [-52, -48, -45]), 1400, 5000, (20, 70))
-        cl, cr = crackle(d, DIVE_AT, lambda v: 40 + 60 * np.clip((v - DIVE_AT) / CUT, 0, 1) ** 2,
-                         lambda v: np.interp(v, [DIVE_AT, HIT], [-44, -40]))
+        tl, tr = tearing(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [-56, -52, -49]), 1400, 5000, (20, 70))
+        cl, cr = pop_crackle(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT], [6.5, 8.0, 10.0]),
+                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB + 1, POP_DB + 5]), big=1.6)
         # the rush of torn air: a band sweeping up under the whine, louder and faster as it comes
         fc = 330 * (1450 / 330) ** (u ** 1.8)
         rush = glide_band(d, fc, 0.9 + 0.3 * u)
@@ -929,8 +1047,36 @@ def tail():
     finish_abs("tail", L, R, tail_fade=1.0)
 
 
+# ===============================================================================================  the blast from far off
+# The third reference's far strike (some 1,600 blocks off) against its near one (some 230): the blast as heavy under
+# 250 Hz, but its crack and its first roar 8-12 dB down over 1 kHz (more over 8 kHz) for its first second, the air
+# having taken the top off. The plan cross-fades the blast into this from 500 to 1,500 blocks (payload.rs): the same
+# file through that much air, so the two sum cleanly (one sound, darkened) while they overlap.
+def far_of(name):
+    x = decoded(name)
+    if x is None:
+        raise SystemExit(f"{name} is not built yet: build it before {name}_far")
+    out = []
+    for ch in range(2):
+        y = x[:, ch]
+        lo = band(y, None, 650, 1)
+        y = lo + 0.3 * (y - lo)                                     # (a shelf: -10 dB over a kilohertz or so)
+        out.append(air(y, 6000))
+    return out
+
+
+def blast_far():
+    L, R = far_of("blast")
+    finish_abs("blast_far", L, R, tail_fade=1.0)
+
+
+def blast_alt_far():
+    L, R = far_of("blast_alt")
+    finish_abs("blast_alt_far", L, R, tail_fade=1.0)
+
+
 BUILD = {"drift": drift, "dive": dive, "ground": ground, "ground_alt": ground_alt, "blast": blast, "blast_alt": blast_alt,
-         "rush": rush, "debris": debris, "tail": tail}
+         "blast_far": blast_far, "blast_alt_far": blast_alt_far, "rush": rush, "debris": debris, "tail": tail}
 
 
 def main():
