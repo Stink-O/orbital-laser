@@ -384,8 +384,9 @@ player is near or far), sent from `PL_HF` with how sheltered each cell is from t
 to where each pixel's ray meets the land, that point's own height, so the dust climbs the rises, fills the hollows and
 is thinner and later in the lee of a ridge; it stops at the column. As the front washes over the eye (within about 40
 blocks of the ground), the picture is greyed and flattened by the dust, clearing over a few seconds, and over the second
-after it soft dark splats of muck land on the lens, out of focus, most of them high on the screen, fading slowly over
-ten seconds or so; the wall is thinned right round the eye so the picture over it stays clear; the debris is 120 ballistic chunks with drag, torn up across the blast's middle, each blurred
+after it muck lands on the lens, out of focus, as measured from a reference clip's dirt: drops near round but each its
+own (a few stretched), 2 to 7% of the picture's height, a ring darker than the middle, soft at the edge, of very
+different strengths, often with a smaller drop beside them, nearly all high on the screen, fading over ten seconds or so; the wall is thinned right round the eye so the picture over it stays clear; the debris is 120 ballistic chunks with drag, torn up across the blast's middle, each blurred
 along its motion, tumbling, the big ones trailing smoke. It costs about 0.3 to 2.4 ms at the preview's 800x450. The jolt as the front reaches the player is
 `render.shake` worked to match the clips: a hard hit, sharp aftershocks every other tick for 0.7 s, then a shudder of
 smaller quick jolts fading over the next 1.7 s, over a long faint rumble.
