@@ -55,7 +55,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 ## New in 0.5.4
 
-<!-- Sinkhole still: <p align="center"><img alt="The Sinkhole: cracks racing out over the land from the target" width="720" src="docs/25-sinkhole-cracks.jpg"></p> -->
+<p align="center"><img alt="The Sinkhole: cracks racing out over the land from the target" width="720" src="docs/25-sinkhole-cracks.jpg"></p>
 
 - **Sinkhole**, the ninth laser, on the wheel's second page and `/orbital sinkhole`. Nothing comes from the sky. A
   seismic warning, a deep rumble and birds scattering, then cracks race out over the land in spurts. The middle gives,
@@ -116,11 +116,9 @@ Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#t
 |---|---|---|---|
 | ![Crystal spires blooming out of the cracked ground](docs/21-crystal-bloom-bloom.jpg) | ![Prism beams and an aurora over the crystal spires as they resonate](docs/22-crystal-bloom-prism.jpg) | ![The spires shattering into fractured pieces](docs/23-crystal-bloom-detonation.jpg) | ![The geode crater with broken crystal pillars and shards, seen from the ground](docs/24-crystal-bloom-aftermath.jpg) |
 
-<!-- Sinkhole stills, once extracted:
 | Sinkhole | The collapse | The pit | What it leaves |
 |---|---|---|---|
-| ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, slabs tipping into the dark pit](docs/26-sinkhole-collapse.jpg) | ![The sheer pit down to bedrock, its walls banded and darkening downward](docs/27-sinkhole-pit.jpg) | ![The pit afterwards, dust settling and water pouring over its rim](docs/28-sinkhole-aftermath.jpg) |
--->
+| ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, dust boiling up out of the collapse](docs/26-sinkhole-collapse.jpg) | ![The dark pit opening as the dust settles](docs/27-sinkhole-pit.jpg) | ![The finished pit from its rim, banded walls down to bedrock](docs/28-sinkhole-aftermath.jpg) |
 
 ## Getting started
 
