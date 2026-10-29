@@ -20,6 +20,8 @@ const TAU: f64 = 2.0 * PI;
 pub(super) const PL_SEEN: f32 = 3.0;
 pub(super) const PL_TURN: f32 = 10.6;
 pub(super) const PL_HIT: f32 = 13.6;
+/// How long the dive's sound runs before its cut-off (tools/sounds_payload.py's `dive`: its `hit`).
+const PL_DIVE_SND: f32 = 2.6;
 /// The path's samples (the trail is drawn through them), from PL_SEEN to PL_HIT.
 pub(super) const PL_N: usize = 128;
 /// The column's billows.
@@ -862,6 +864,19 @@ fn pl_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
 /// The payload. Calm; the object high in the sky drifting down in lazy loops; the dive; the strike: a flash, the column
 /// boiling up, the shockwave's dust rushing out over the land and over the player, debris raining down; the column
 /// standing over it all a long time.
+/// The shockwave's jolt reaching the player at `t`, `fo` as hard (see payload_plan).
+fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
+    p.shake(t, fo, 0.7);
+    p.shake(t + 0.05, 0.4 * fo, 3.0);
+    for n in 0..4 {
+        p.shake(t + 0.1 * (n + 1) as f32, (1.0 - 0.12 * n as f32) * fo, 0.12);
+    }
+    for n in 0..17 {
+        let u = n as f32 / 17.0;
+        p.shake(t + 0.5 + 0.1 * n as f32, (0.5 * (1.0 - u).powf(1.3) + 0.08) * fo, 0.1);
+    }
+}
+
 pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
@@ -897,21 +912,27 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     p.at(7.5, bar("ORBITAL TRACKING: OBJECT DESCENDING", "gray"));
     // ---- the dive: its roar and whistle as it comes down, cut off as it strikes ----------------------------------
     p.at(PL_TURN + 0.2, bar("PAYLOAD INBOUND", "red"));
-    p.csound(PL_TURN, "dive", 10.0, 1.0);
+    // (its roar and whistle are cut off dead 2.6 s in: started that long before it strikes, so the cut falls on the
+    // strike; the final descent starts a little before, at PL_TURN, under the whine)
+    p.csound(PL_HIT - PL_DIVE_SND, "dive", 10.0, 1.0);
     // ---- the strike: a near-silent breath, the blast reaching the player late by how far it is, with the dust's rush
     // and the jolt, the debris coming down round them, the long rolling tail after -----------------------------------
     let arrive = PL_HIT + late;
     p.csound(arrive - 0.02, "blast", 10.0, 1.0);
     p.csound(arrive - 0.15, "rush", 10.0, 1.0);
     p.csound(arrive + 2.4, "tail", 10.0, 1.0);
-    p.shake(arrive, 0.85 * fo, 2.6);
-    p.shake(arrive + 0.35, 0.35 * fo, 1.5);
-    let mut ts = arrive + 0.8;
+    // (the jolt as the front hits, as in the clip: a hard hit, then sharp aftershocks a tick apart every other tick for
+    // half a second, a rumbling shudder of small quick jolts fading over the next two seconds, a long faint rumble under
+    // it all. The game's shake is smooth noise: the quick jolts, each fading within a tick or two, make it judder.
+    // Each on a tick of its own, as the jolts of one tick are sent as one, lasting as long as the longest.)
+    // (felt far out: as hard as in the clip a few hundred blocks off, still there over a kilometre away)
+    pl_jolt(&mut p, arrive, (1.6 / (1.0 + dist / 400.0)).clamp(0.35, 1.0) as f32);
+    let mut ts = arrive + 2.6;
     while ts < arrive + 7.0 {
-        let s = p.rng.uniform(0.05, 0.16) as f32 * fo;
-        let d = p.rng.uniform(0.4, 0.9) as f32;
+        let s = p.rng.uniform(0.04, 0.1) as f32 * fo;
+        let d = p.rng.uniform(0.3, 0.6) as f32;
         p.shake(ts, s, d);
-        ts += p.rng.uniform(0.35, 1.1) as f32;
+        ts += p.rng.uniform(0.5, 1.2) as f32;
     }
     // (debris thudding and pattering down round the player if they are near enough to be under it)
     if dist < 420.0 {
