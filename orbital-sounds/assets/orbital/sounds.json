@@ -916,5 +916,59 @@
       }
     ],
     "subtitle": "subtitles.orbital.sinkhole.trickle"
+  },
+  "payload.drift": {
+    "sounds": [
+      {
+        "name": "orbital:payload/drift",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.drift"
+  },
+  "payload.dive": {
+    "sounds": [
+      {
+        "name": "orbital:payload/dive",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.dive"
+  },
+  "payload.blast": {
+    "sounds": [
+      {
+        "name": "orbital:payload/blast",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.blast"
+  },
+  "payload.rush": {
+    "sounds": [
+      {
+        "name": "orbital:payload/rush",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.rush"
+  },
+  "payload.debris": {
+    "sounds": [
+      {
+        "name": "orbital:payload/debris",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.debris"
+  },
+  "payload.tail": {
+    "sounds": [
+      {
+        "name": "orbital:payload/tail",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.payload.tail"
   }
 }

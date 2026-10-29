@@ -48,6 +48,9 @@ K = {  # palette
     "J": (78, 54, 36, 255),       # dark dirt
     "l": (112, 112, 112, 255),    # stone
     "L": (70, 70, 74, 255),       # dark stone
+    "a": (206, 210, 220, 255),    # the payload's pale trail
+    "A": (74, 76, 84, 255),       # its dark smoke
+    "R": (46, 47, 52, 255),       # its darker smoke
 }
 
 def designator():
@@ -282,13 +285,32 @@ SINKHOLE_ICON = [        # the land caving in: a dark pit, its walls in strata, 
     "...dkkkkkkd.....",
 ]
 
-GRIDS = {"sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+PAYLOAD_ICON = [         # the payload: a pale trail looping high up, then the dive, dark smoke behind a fireball
+    "..........aaa...",
+    ".........a...a..",
+    "........a.....a.",
+    "..aa...a...aa.a.",
+    ".a..a.a...a..a..",
+    ".a...aA....aa...",
+    "..a.RA..........",
+    "...RA...........",
+    "..RAA...........",
+    ".RAA............",
+    ".RA.............",
+    "RAo.............",
+    "AoOo............",
+    "oOyOo...........",
+    "OyWyO...........",
+    "oOyOo...........",
+]
+
+GRIDS = {"payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:

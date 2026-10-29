@@ -16,10 +16,11 @@ import sounds_plasma
 import sounds_themes
 import sounds_crystal
 import sounds_sinkhole
+import sounds_payload
 
 ap = argparse.ArgumentParser()
 ap.add_argument("out", nargs="?", default=str(Path(__file__).resolve().parent.parent / "orbital-sounds"))
-ap.add_argument("--only", nargs="*", choices=["plasma", *sounds_themes.THEMES, sounds_crystal.TH, sounds_sinkhole.TH])
+ap.add_argument("--only", nargs="*", choices=["plasma", *sounds_themes.THEMES, sounds_crystal.TH, sounds_sinkhole.TH, sounds_payload.TH])
 args = ap.parse_args()
 
 soundlib.init(args.out)
@@ -32,6 +33,9 @@ if not args.only or sounds_crystal.TH in args.only:
 if not args.only or sounds_sinkhole.TH in args.only:
     for build in sounds_sinkhole.BUILD.values():
         build()
+if not args.only or sounds_payload.TH in args.only:
+    for build in sounds_payload.BUILD.values():
+        build()
 
 events = {n: f"orbital:{n}" for n in sounds_plasma.NAMES}
 for th in sounds_themes.THEMES:
@@ -41,6 +45,8 @@ for n in sounds_crystal.NAMES:
     events[f"{sounds_crystal.TH}.{n}"] = f"orbital:{sounds_crystal.TH}/{n}"
 for n in sounds_sinkhole.NAMES:
     events[f"{sounds_sinkhole.TH}.{n}"] = f"orbital:{sounds_sinkhole.TH}/{n}"
+for n in sounds_payload.NAMES:
+    events[f"{sounds_payload.TH}.{n}"] = f"orbital:{sounds_payload.TH}/{n}"
 sounds = {ev: {"sounds": [{"name": name, "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{ev}"} for ev, name in events.items()}
 json.dump(sounds, open(args.out + "/assets/orbital/sounds.json", "w"), indent=2)
 json.dump({"pack": {"description": "Orbital laser sound design", "min_format": 84, "max_format": 99, "pack_format": 84}},
