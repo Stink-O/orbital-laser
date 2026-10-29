@@ -186,7 +186,7 @@ fn pl_gref(r: f32, me: vec3<f32>, C: vec3<f32>, dme: f32) -> f32 {
     return mix(0.0, me.y - C.y, smoothstep(0.0, max(dme, 1.0), r));
 }
 // The land at q (level, from the target): its ground (from the target's) and how sheltered it is from the blast by the
-// land between (0 to 1), from the heightfield, smoothly between its cells; `gref` past its edge.
+// land between (0 to 1), from the heightfield, smoothly between its cells; `gref` until it is in.
 fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
     let nf = pl_w(PL_HF);
     if (nf < 2.0) {
@@ -208,10 +208,12 @@ fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
         hv[j] = f32(c & 0xffffu) / 8.0 - 512.0;
         sv[j] = f32((c >> 16u) & 0xffu) / 255.0;
     }
+    // (past its edge, the edge's ground carried on: not `gref`, which rises to wherever the player stood, up a tower
+    // or in the air)
     let g = mix(mix(hv.x, hv.y, t.x), mix(hv.z, hv.w, t.x), t.y);
     let sh = mix(mix(sv.x, sv.y, t.x), mix(sv.z, sv.w, t.x), t.y);
     let e = smoothstep(-step, 3.0 * step, max(abs(q.x), abs(q.y)) - R);
-    return vec2<f32>(mix(g, gref, e), sh * (1.0 - e));
+    return vec2<f32>(g, sh * (1.0 - e));
 }
 // The dust at p (camera-relative), `side`: how square the ray crosses the ring there (0 along it): a dense, opaque wall
 // a few blocks high just behind a crisp, billowing front, thinning behind it into haze that rises and hangs. All of it

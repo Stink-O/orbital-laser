@@ -188,19 +188,14 @@ fn pl_hf_columns(bx: i32, bz: i32, reach: f64) -> Vec<(i32, i32)> {
     (0..n).flat_map(|k| (0..n).map(move |i| (bx + at(i), bz + at(k)))).collect()
 }
 /// The heightfield's ground (from the target's), from what the world gave (the first air over each column; none where
-/// the land was not loaded, guessed there from the target's ground and the player's), a trunk or a pillar caught in a
-/// cell put down to the ground round it.
-fn pl_hf_ground(heights: &[Option<f64>], reach: f64, me: [f64; 3]) -> Vec<f64> {
+/// the land was not loaded, the mean of what was there: not the player's height, who may be up a tower or flying), a
+/// trunk or a pillar caught in a cell put down to the ground round it.
+fn pl_hf_ground(heights: &[Option<f64>], reach: f64, _me: [f64; 3]) -> Vec<f64> {
+    let _ = reach;
     let n = PL_HN;
-    let step = 2.0 * reach / (n - 1) as f64;
-    let dme = me[0].hypot(me[2]).max(1.0);
-    let pos = |i: usize| -reach + step * i as f64;
-    let guess = |i: usize, k: usize| {
-        let r = pos(i).hypot(pos(k));
-        let s = (r / dme).clamp(0.0, 1.0);
-        me[1] * s * s * (3.0 - 2.0 * s)
-    };
-    let raw: Vec<f64> = (0..n * n).map(|c| heights[c].unwrap_or_else(|| guess(c % n, c / n))).collect();
+    let (sum, cnt) = heights.iter().flatten().fold((0.0, 0.0), |(s, c), &h| (s + h, c + 1.0));
+    let guess = if cnt > 0.0 { sum / cnt } else { 0.0 };
+    let raw: Vec<f64> = heights.iter().map(|h| h.unwrap_or(guess)).collect();
     let mut h = raw.clone();
     for k in 1..n - 1 {
         for i in 1..n - 1 {
@@ -1117,7 +1112,8 @@ mod tests {
         assert!((cell(0.0, 150.0).0 - 30.0).abs() < 4.0);
         assert!(cell(0.0, 200.0).1 > 0.5, "{:?}", cell(0.0, 200.0));
         assert!(cell(0.0, -200.0).1 < 0.05 && cell(0.0, 60.0).1 < 0.05);
-        assert!(cell(reach, reach).0.abs() < 1.0);
+        // (the land not loaded: the mean of what was, a little over the flat with the ridge in it)
+        assert!(cell(reach, reach).0 > 0.0 && cell(reach, reach).0 < 5.0, "{:?}", cell(reach, reach));
     }
 
     /// A forest on rolling land (its ground about 64): oaks now and then, a pond south-west of the target.
