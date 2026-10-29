@@ -131,7 +131,7 @@ fn pl_col_dens(col: PlCol, p: vec3<f32>, C: vec3<f32>, a: f32, d0: f32, fine: bo
         let n2 = gnoise3(q * (1.0 / 12.0) + vec3<f32>(0.0, -0.6 * a, 1.3));
         d = d - 11.0 * (n2 - 0.45);
     }
-    return saturate(-d / 5.0);
+    return saturate(-d / 3.5);
 }
 // A ray against a box, camera-relative: the entry and exit distances.
 fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
@@ -158,7 +158,7 @@ fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32) -> f32 {
     let h = q.y - gref;
     let since = max(rf - r, 0.0) / PL_V;           // seconds since the front passed here
     let w = 5.0 + 0.04 * r;
-    let lead = smoothstep(rf + 4.0, rf - 3.0, r);
+    let lead = smoothstep(rf + 5.0, rf - 16.0, r);
     let wall = exp(-pow((rf - r) / w, 2.0)) * 2.4 + exp(-(rf - r) / (3.0 * w)) * 0.6;
     let hang = (0.5 * exp(-since / 4.0) + 0.14 * exp(-since / 25.0)) / (1.0 + r / 120.0);
     let far = 1.0 / (1.0 + r / 260.0);
@@ -170,7 +170,7 @@ fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32) -> f32 {
     let n1 = gnoise3((q - drift) * vec3<f32>(1.0 / 16.0, 1.0 / 10.0, 1.0 / 16.0) + vec3<f32>(0.0, -0.25 * a, 0.0));
     let hd = top * (0.4 + 0.9 * n1);
     let up = exp(-max(h, 0.0) / hd) * smoothstep(-6.0, 0.0, h);
-    var den = (wall + hang) * lead * up * far;
+    var den = (wall + hang) * lead * up * far * (0.25 + 0.75 * smoothstep(25.0, 110.0, r));
     if (den < 0.004) {
         return 0.0;
     }
@@ -195,7 +195,7 @@ fn pl_chunk(i: i32, a: f32, seed: u32, C: vec3<f32>, me: vec3<f32>, dme: f32) ->
     let sp = mix(28.0, 92.0, pow(mh(fi, seed, 0x304u), 0.7)) * (1.0 - 0.3 * big);
     let t0 = 0.03 + 0.25 * mh(fi, seed, 0x305u);
     let tau = a - t0;
-    o.s = mix(0.12, 1.5, big * big * big);
+    o.s = mix(0.08, 0.9, big * big * big);
     o.live = 0.0;
     if (tau <= 0.0) {
         return o;
@@ -369,12 +369,12 @@ fn payload(in: StageIn) -> vec4<f32> {
                         let hy = (p.y - C.y) / max(H, 1.0);
                         // (the core and the foot darker, soot-grey; the tops lighter, a little blue)
                         let core = exp(min(d0, 0.0) / 26.0);
-                        let alb = mix(vec3<f32>(0.12, 0.115, 0.11), vec3<f32>(0.34, 0.36, 0.41), saturate(hy * 1.3 + 0.1));
+                        let alb = mix(vec3<f32>(0.11, 0.115, 0.125), vec3<f32>(0.33, 0.36, 0.42), saturate(hy * 1.3 + 0.1));
                         let skyw = (0.3 + 0.7 * saturate(hy + 0.2)) * (0.2 + 0.8 * core) * (0.45 + 0.55 * saturate(p1.y - p.y + 0.5));
                         var c = alb * (sunc * tsun * ph * 1.5 + amb * skyw * 0.6 + vec3<f32>(0.05, 0.045, 0.04) * day);
                         // (fire in it as it bursts: low down, dying fast)
-                        let fire = exp(-a / 0.55) * exp(-max(p.y - C.y, 0.0) / (14.0 + 30.0 * a)) * (0.6 + 0.4 * core);
-                        c = c + vec3<f32>(5.0, 2.0, 0.45) * fire * (1.0 - core * 0.3);
+                        let fire = exp(-a / 0.3) * exp(-max(p.y - C.y, 0.0) / (10.0 + 25.0 * a)) * core;
+                        c = c + vec3<f32>(4.0, 1.3, 0.25) * fire;
                         let ext = den * 0.2 * st;
                         let al = 1.0 - exp(-ext);
                         acc = acc + tr * al * c;
@@ -474,7 +474,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let r = length(q.xz);
                 let h = q.y - mix(0.0, me.y - C.y, smoothstep(0.0, max(dme, 1.0), r));
                 let lo = 0.55 + 0.45 * saturate(h / 10.0);
-                let dc = vec3<f32>(0.6, 0.47, 0.3) * (sunc * 0.8 * lo + amb * 0.9);
+                let dc = vec3<f32>(0.58, 0.47, 0.32) * (sunc * 0.75 * lo + amb * 0.9);
                 acc = acc + tr * al * dc;
                 tr = tr * (1.0 - al);
                 if (tr < 0.02) {
