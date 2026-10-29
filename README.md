@@ -88,7 +88,7 @@ Nine lasers, five on the wheel's first page and four on its second.
   that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
 - **Sinkhole** (page two). Nothing from the sky: the land cracks and caves in, slab by slab, each slab carrying its
   real ground and trees as it falls, into a sheer pit about 225 blocks across and down to bedrock.
-- **Payload** (page two). A bright point drifts down the sky in lazy loops trailing smoke, then dives as a fireball:
+- **Payload** (page two). A bright point high in the sky comes down on one long arc from orbit, slow at first, then fast as a fireball:
   a column of smoke boils up, a wall of dust races out over the land and debris rains down. It leaves a bomb crater.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
