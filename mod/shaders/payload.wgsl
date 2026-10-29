@@ -63,12 +63,16 @@ fn pl_head(t: f32) -> vec3<f32> {
 fn pl_wind() -> vec3<f32> {
     return vec3<f32>(pl_w(3u), 0.0, pl_w(4u));
 }
-// Where a bit of the trail laid at time te has drifted to by time t: carried by the wind, rising a little, wandering.
-fn pl_trail_at(i: i32, te: f32, t: f32, seed: u32) -> vec3<f32> {
-    let age = max(t - te, 0.0);
+// How far a bit of the trail (sample i) has drifted `age` seconds after it was laid: carried by the wind, rising a
+// little, wandering.
+fn pl_trail_drift(i: i32, age: f32, seed: u32) -> vec3<f32> {
     let fi = f32(i);
     let wob = vec3<f32>(sin(fi * 0.21 + f32(seed % 61u)), 0.4 * sin(fi * 0.13 + 2.0), cos(fi * 0.17 + f32(seed % 37u)));
-    return pl_sample(i) + pl_wind() * age + vec3<f32>(0.0, 0.35 * age, 0.0) + wob * (0.35 * age);
+    return pl_wind() * age + vec3<f32>(0.0, 0.35 * age, 0.0) + wob * (0.35 * age);
+}
+// Where a bit of the trail laid at time te has drifted to by time t.
+fn pl_trail_at(i: i32, te: f32, t: f32, seed: u32) -> vec3<f32> {
+    return pl_sample(i) + pl_trail_drift(i, max(t - te, 0.0), seed);
 }
 // Where a shed piece is `s` seconds after it let go at p0 with velocity v0: slowed by the air (drag k a second),
 // falling (under gravity with that drag).
@@ -487,7 +491,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let pg = pl_trail_pt(i + 8, last, thead, time, seed) + C;
                 let cg = 0.5 * (pa + pg);
                 let ag = max(time - (t0 + dt * f32(i)), 0.0);
-                let rg = 0.65 * length(pg - pa) + 2.3 * (7.0 + 5.5 * sqrt(ag)) + 4.0;
+                let rg = 0.65 * length(pg - pa) + 3.4 * (7.0 + 5.5 * sqrt(ag)) + 4.0;
                 let tg = max(dot(cg, rd), 0.0);
                 if (length(cg - rd * tg) > rg || tg - rg > scene_len) {
                     pa = pg;
@@ -561,9 +565,28 @@ fn payload(in: StageIn) -> vec4<f32> {
             let smk = smoothstep(PL_SEEN + 1.0, PL_SEEN + 4.0, te);
             // (its core's radius: thin and tight where it is laid, swelling with age; the outer fray to twice that)
             let rad = mix(3.0 + 3.0 * sqrt(age), mix(6.0 + 5.0 * sqrt(age), 7.0 + 5.5 * sqrt(age), dive), smk);
-            if (h.x < rad * 2.3) {
-                // (the smoke's own lumps, carried with it as it drifts and rises, churning slowly)
-                let q = (cp + cam - pl_wind() * age - vec3<f32>(0.0, 0.35 * age, 0.0)) / (2.2 * rad + 3.0) + sd;
+            if (h.x < rad * 3.4) {
+                // (the smoke's own lumps, carried with it as it drifts and rises, churning slowly: looked up where the
+                // smoke was laid (fixed, so they never slide along it) and across it in its own width (so they swell
+                // with it, about its axis). Their size along it cannot follow the width without sliding, so they are
+                // looked up at the two fixed sizes either side of it, a doubling apart, and faded from one to the
+                // next as it swells.)
+                let sw = 2.2 * rad + 3.0;
+                let la = pa_ - pl_trail_drift(i, age_a, seed);
+                var lb = pb;
+                if (i < last) {
+                    lb = pb - pl_trail_drift(i + 1, max(time - (te_a + dt), 0.0), seed);
+                }
+                let laid = mix(la, lb, sz) - C;
+                let across = (cp - (pa_ + ab * sz)) / sw + sd;
+                let lv = log2(sw / 8.0);
+                let lk = floor(lv);
+                let lf = lv - lk;
+                let sA = 8.0 * exp2(lk);
+                let qa = laid / sA + across + vec3<f32>(lk * 17.3, lk * 5.1, 0.0);
+                let qb = laid / (2.0 * sA) + across + vec3<f32>((lk + 1.0) * 17.3, (lk + 1.0) * 5.1, 0.0);
+                // (two lookups faded together are evener than one: their spread put back)
+                let lsp = 1.0 / sqrt(lf * lf + (1.0 - lf) * (1.0 - lf));
                 // (the lumps are looked up once, where the ray passes nearest its axis: they are painted on a sheet
                 // through it, facing the eye. Where the trail runs away from the eye that sheet is squeezed along the
                 // trail and its lumps drawn out across it into streaks; but there the ray goes a long way through the
@@ -581,20 +604,25 @@ fn payload(in: StageIn) -> vec4<f32> {
                 var n2 = 0.5;
                 var n3 = 0.5;
                 if (w1 > 0.0) {
-                    n1 = gnoise3(q + vec3<f32>(0.0, 0.0, 0.06 * age));
+                    let o = vec3<f32>(0.0, 0.0, 0.06 * age);
+                    n1 = 0.5 + (mix(gnoise3(qa + o), gnoise3(qb + o), lf) - 0.5) * lsp;
                 }
                 if (w2 > 0.0) {
-                    n2 = gnoise3(q * 2.6 + vec3<f32>(4.0, 0.08 * age, 1.0));
+                    let o = vec3<f32>(4.0, 0.08 * age, 1.0);
+                    n2 = 0.5 + (mix(gnoise3(qa * 2.6 + o), gnoise3(qb * 2.6 + o), lf) - 0.5) * lsp;
                 }
                 if (w3 > 0.0) {
-                    n3 = gnoise3(q * 6.1 + vec3<f32>(1.0, 7.0, 0.15 * age));
+                    let o = vec3<f32>(1.0, 7.0, 0.15 * age);
+                    n3 = 0.5 + (mix(gnoise3(qa * 6.1 + o), gnoise3(qb * 6.1 + o), lf) - 0.5) * lsp;
                 }
                 let puff = 0.5 + 0.62 * w1 * (n1 - 0.5) + 0.3 * w2 * (n2 - 0.5) + 0.08 * w3 * (n3 - 0.5);
                 // (a soft profile across it, its edge pushed in and out by the lumps: ragged, no rim)
                 let rw = rad * (0.45 + 1.0 * puff);
                 let rr = h.x / rw;
-                // (and let go to nothing before the edge it is looked for within, not cut off there)
-                let prof = exp(-rr * rr * 1.4) * smoothstep(2.3, 1.5, h.x / rad);
+                // (and let go to nothing before the edge it is looked for within, not cut off there: the let-go
+                // itself pushed in and out by the lumps, or where the smoke is dense its edge would be the let-go's,
+                // smooth and straight)
+                let prof = exp(-rr * rr * 1.4) * smoothstep(2.3, 1.5, rr);
                 // (how much of the profile along the ray lies in this piece, and how much longer the ray's way through
                 // it is than straight across)
                 let ka = 1.183 * sn / rw;
@@ -699,7 +727,8 @@ fn payload(in: StageIn) -> vec4<f32> {
                         let rad = size * (0.6 + 1.1 * sqrt(age));
                         if (h.x < rad * 2.0 && h.y < scene_len + rad && (h.z < 0.9999 || j == 8)) {
                             let cp = rd * h.y;
-                            let nb = gnoise3((cp + cam) / (2.5 * rad + 1.0) + vec3<f32>(f32(f) * 7.1, 0.0, 0.1 * age));
+                            // (from the target, not the world's origin: see the trail's lumps)
+                            let nb = gnoise3((cp - C) / (2.5 * rad + 1.0) + vec3<f32>(f32(f) * 7.1, 0.0, 0.1 * age));
                             let prof = exp(-pow(h.x / (rad * (0.5 + nb)), 2.0) * 1.4);
                             let dens = saturate((nb - 0.18 - 0.25 * smoothstep(0.5, 3.5, age)) * 3.0);
                             let dtau = 0.5 * exp(-age / 1.8) * prof * dens * 1.6 * rad * fade;
