@@ -279,7 +279,7 @@ fn sh_vox(b: u32, k: i32, o: vec3<f32>, d: vec3<f32>, off: vec3<f32>, t_max: f32
         axis = 2;
     }
     var lastc = vec2<i32>(-99999);
-    var w = vec2<u32>(0u);
+    var w = vec3<u32>(0u);
     for (var i = 0; i < 160; i = i + 1) {
         if (t > tf) {
             break;
@@ -392,19 +392,26 @@ fn sh_net(q: vec2<f32>, er: vec2<f32>) -> vec2<f32> {
 
 // ---- the land as it really is (sh_land.rs): each column's ground, the blocks on it, under it and deeper, the snow on
 //      it, the trunk and leaves of a tree standing on it, and the slab it is part of ------------------------------------
-// Column (ci, ck) of the land's square: its two words (0, 0: not read, or outside it).
-fn sh_colw(ci: i32, ck: i32) -> vec2<u32> {
+// Column (ci, ck) of the land's square: its three words (0s: not read, or outside it).
+fn sh_colw(ci: i32, ck: i32) -> vec3<u32> {
     if (ci < 0 || ck < 0 || ci >= SH_GW || ck >= SH_GW) {
-        return vec2<u32>(0u);
+        return vec3<u32>(0u);
     }
-    let i = SH_GRID + 2u * u32(ck * SH_GW + ci);
-    if (i + 1u >= arrayLength(&mod_data)) {
-        return vec2<u32>(0u);
+    let i = SH_GRID + 3u * u32(ck * SH_GW + ci);
+    if (i + 2u >= arrayLength(&mod_data)) {
+        return vec3<u32>(0u);
     }
-    return vec2<u32>(mod_data[i], mod_data[i + 1u]);
+    return vec3<u32>(mod_data[i], mod_data[i + 1u], mod_data[i + 2u]);
+}
+// A 5-6-5 colour (sRGB), or `def` for 0 (not known).
+fn sh_565(c: u32, def: vec3<f32>) -> vec3<f32> {
+    if (c == 0u) {
+        return def;
+    }
+    return vec3<f32>(f32((c >> 11u) & 31u) / 31.0, f32((c >> 5u) & 63u) / 63.0, f32(c & 31u) / 31.0);
 }
 // Its ground's top, from the target's ground (one above its highest ground block).
-fn sh_col_h(w: vec2<u32>) -> i32 {
+fn sh_col_h(w: vec3<u32>) -> i32 {
     return i32(w.x & 511u) - 256;
 }
 // A material's colours (sRGB): x its top's, y its sides'; and its kind (0 plain, 1 leaves, 2 log, 3 water, 4 grassy) and
@@ -413,6 +420,7 @@ struct ShMat {
     top: vec3<f32>,
     side: vec3<f32>,
     kind: u32,
+    tint: u32,
     var_: f32,
 }
 fn sh_mat(m: u32) -> ShMat {
@@ -426,14 +434,15 @@ fn sh_mat(m: u32) -> ShMat {
     }
     o.top = vec3<f32>(f32(a & 255u), f32((a >> 8u) & 255u), f32((a >> 16u) & 255u)) / 255.0;
     o.side = vec3<f32>(f32(b & 255u), f32((b >> 8u) & 255u), f32((b >> 16u) & 255u)) / 255.0;
-    o.kind = a >> 24u;
+    o.kind = (a >> 24u) & 7u;
+    o.tint = (a >> 27u) & 3u;
     o.var_ = f32(b >> 24u) / 255.0;
     return o;
 }
 // What block of slab k is at cell c of the land's square (y from the target's ground), given its column's words and its
 // underside `ylo`: 0 none; else 1 + the material, the second the cell's part (0 ground's top block, 1 deeper ground,
 // 2 trunk, 3 leaves).
-fn sh_cell(w: vec2<u32>, k: i32, c: vec3<f32>, ylo: f32) -> vec2<u32> {
+fn sh_cell(w: vec3<u32>, k: i32, c: vec3<f32>, ylo: f32) -> vec2<u32> {
     if (w.x >> 31u == 0u || i32((w.x >> 21u) & 511u) != k + 1) {
         return vec2<u32>(0u);
     }
@@ -477,8 +486,15 @@ fn sh_cell(w: vec2<u32>, k: i32, c: vec3<f32>, ylo: f32) -> vec2<u32> {
 // own blocks look: the material's colour varying a little block to block and texel to texel (the texels fading out
 // once they are smaller than a pixel: `pw` a pixel's size, in blocks), the grass's fringe on the sides of its block,
 // snow on it, bark streaks and log rings. sRGB.
-fn sh_block_col(cell: vec2<u32>, w: vec2<u32>, c: vec3<f32>, fnrm: vec3<f32>, f: vec3<f32>, pw: f32) -> vec3<f32> {
-    let m = sh_mat(cell.x - 1u);
+fn sh_block_col(cell: vec2<u32>, w: vec3<u32>, c: vec3<f32>, fnrm: vec3<f32>, f: vec3<f32>, pw: f32) -> vec3<f32> {
+    var m = sh_mat(cell.x - 1u);
+    // (tinted as the game tints it there: grass by the biome's grass colour, leaves by its foliage colour)
+    if (m.tint == 1u) {
+        m.top = m.top * sh_565(w.z & 0xffffu, vec3<f32>(0.569, 0.741, 0.349));
+    } else if (m.tint == 2u) {
+        m.top = m.top * sh_565(w.z >> 16u, vec3<f32>(0.467, 0.671, 0.184));
+        m.side = m.top;
+    }
     let topf = fnrm.y > 0.5;
     var col = select(m.side, m.top, topf || fnrm.y < -0.5);
     // (the texel it is in on that face)
@@ -510,7 +526,9 @@ fn sh_block_col(cell: vec2<u32>, w: vec2<u32>, c: vec3<f32>, fnrm: vec3<f32>, f:
     }
     let blockv = (fh31(c) - 0.5) * m.var_;
     let leafk = select(1.0, 1.8, m.kind == 1u);
-    return col * (1.0 + blockv + tex * m.var_ * 0.9 * leafk * texk);
+    // (leaves: the darker inside of the tree showing through their gaps)
+    let leafd = select(1.0, 0.82, m.kind == 1u);
+    return col * leafd * (1.0 + blockv + tex * m.var_ * 0.9 * leafk * texk);
 }
 
 // ---- the cracks: they race out from the middle in spurts (sinkhole.rs's sh_spurts), along the lines the slabs will
@@ -682,8 +700,9 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
         let cw = sh_colw(i32(floor(Q.x + 0.5)) + SH_G, i32(floor(Q.z + 0.5)) + SH_G);
         var on_ground = abs(Q.y) < 3.0;
         if (cw.x >> 31u == 1u) {
+            // (on its ground's top, and no crack across water)
             let hy = f32(sh_col_h(cw)) - dy0;
-            on_ground = Q.y > hy - 1.05 && Q.y < hy + 0.2;
+            on_ground = Q.y > hy - 1.05 && Q.y < hy + 0.2 && ((cw.y >> 30u) & 1u) == 0u;
         }
         // the cracks, along the slabs' edges, from 1 s, racing out in spurts, the fingers running ahead here and
         // lagging there; thin at first, widening, then gaping as the slabs each side are about to go
@@ -816,7 +835,9 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
             // turning with the slab; and by the time of day)
             let nw = sh_dir_from(ps, nl);
             let shade = 0.6 * nw.x * nw.x + 0.8 * nw.z * nw.z + select(0.5, 1.0, nw.y > 0.0) * nw.y * nw.y;
-            let light = mix(0.16, 1.0, day);
+            // (the sky's light by the time of day, as the game darkens it towards night: 0.25 is noon)
+            let skyk = saturate(cos((frame.time.y - 0.25) * TAU) * 2.0 + 0.5);
+            let light = mix(0.2, 1.0, skyk);
             var c = srgb_to_linear(saturate(base * shade * light));
             // (in the shadow of the pit as it drops, and into its dark)
             let wy = (cam + rd * t_hit).y - gy;
@@ -903,7 +924,8 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
             let wx = abs(pxl.x) / span;
             let yv = pxl.y / span + (0.35 + 0.35 * flap) * (1.0 - wx) - 0.2;
             let m = step(wx, 1.0) * saturate(1.0 - abs(yv) * 1.8 / max(0.25, 1.0 / span));
-            col = mix(col, vec3<f32>(0.03, 0.03, 0.035), m * 0.9 * k * (1.0 - smoothstep(7.0, 10.0, time)));
+            // (one passing close to the eye left out: it would be a black scrawl across the view)
+            col = mix(col, vec3<f32>(0.03, 0.03, 0.035), m * 0.9 * k * (1.0 - smoothstep(7.0, 10.0, time)) * smoothstep(12.0, 30.0, dist));
         }
     }
 

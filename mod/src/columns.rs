@@ -20,10 +20,16 @@ pub struct Answer {
     pub palette: Vec<String>,
     pub bases: Vec<Option<i32>>,
     pub blocks: Vec<u16>,
+    /// Each column's grass, foliage and water tints (0xRRGGBB; 0 not loaded).
+    pub tints: Vec<u32>,
     pub per: usize,
     pub below: i32,
 }
 impl Answer {
+    /// Column i's grass and foliage tints (0 where not known).
+    pub fn tints(&self, i: usize) -> (u32, u32) {
+        (self.tints.get(3 * i).copied().unwrap_or(0), self.tints.get(3 * i + 1).copied().unwrap_or(0))
+    }
     /// Column i's blocks, bottom first (from its top less `below`), and its top; none where it is not loaded.
     pub fn column(&self, i: usize) -> Option<(i32, &[u16])> {
         let base = self.bases.get(i).copied().flatten()?;
@@ -71,10 +77,10 @@ pub fn poll() {
     }
     STORE.with(|s| {
         let mut s = s.borrow_mut();
-        for ColumnBlocks { tag, palette, bases, blocks } in answers {
+        for ColumnBlocks { tag, palette, bases, blocks, tints } in answers {
             let Some((columns, below, above)) = s.asked.remove(&tag) else { continue };
             let per = (below + above) as usize;
-            s.got.insert(tag, Rc::new(Answer { columns, palette, bases, blocks, per, below: below as i32 }));
+            s.got.insert(tag, Rc::new(Answer { columns, palette, bases, blocks, tints, per, below: below as i32 }));
         }
     });
 }
@@ -121,6 +127,8 @@ pub fn test_answer(tag: u32, columns: &[(i32, i32)], below: u32, above: u32, f: 
             }
         }
     }
-    let a = Answer { columns: columns.to_vec(), palette, bases, blocks, per, below: below as i32 };
+    // (the tints of a dappled forest east of x 40, the default's elsewhere)
+    let tints = columns.iter().flat_map(|&(x, _)| if x > 40 { [0xDF6827, 0xE68E30, 0x375154] } else { [0x91BD59, 0x77AB2F, 0x3F76E4] }).collect();
+    let a = Answer { columns: columns.to_vec(), palette, bases, blocks, tints, per, below: below as i32 };
     STORE.with(|s| s.borrow_mut().got.insert(tag, Rc::new(a)));
 }

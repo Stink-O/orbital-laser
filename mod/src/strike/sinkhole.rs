@@ -364,7 +364,7 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
     let geo = ShGeo::shared(shader_seed);
     // the land as it really is, read from the world as it starts (whether or not the terrain goes: the pass draws the
     // slabs with it either way), and worked out a few thousand columns a tick
-    let land: Shared = Rc::new(RefCell::new(Land::new(geo.slabs.len())));
+    let land: Shared = Rc::new(RefCell::new(Land::new(geo.slabs.len(), if terrain { 7 } else { 0 })));
     {
         let parts = SH_GW.div_ceil(READ_ROWS);
         let tags: Rc<Vec<u32>> = Rc::new((0..parts).map(|_| crate::columns::new_tag()).collect());
@@ -377,7 +377,7 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
             });
         }
         let (geo, land) = (geo.clone(), land.clone());
-        p.later(0.3, move |q| sh_land_step(q, geo, land, tags, 0, 0, 0.3));
+        p.later(0.3, move |q| sh_land_step(q, geo, land, tags, 0, 0, 0.3, 0));
     }
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let gy = f64::from(by) + 1.0;
@@ -505,7 +505,7 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
         let geo2 = geo.clone();
         p.later(0.25, move |q| q.ev.push((0.25, Act::Survey { tag, columns: sh_survey_columns(&geo2, q.bx, q.bz) })));
         let geo = geo.clone();
-        p.later(0.8, move |q| sh_heights(q, geo, tag, 0.8));
+        p.later(0.8, move |q| sh_heights(q, geo, tag, 0.8, terrain));
     }
     if terrain {
         let floor_y = bedrock_top(dimension);
@@ -618,17 +618,29 @@ fn sh_slab_fx(p: &mut Plan, g: &ShGeo, land: &Shared, k: usize, me: [f64; 3]) {
 
 /// The land's answers worked through, a part (a query) at a time and PER_TICK columns a tick, waiting for each to come in;
 /// given to the pass once it is all in (or as far as it got, if the world has not answered by the time the collapse is
-/// near).
-fn sh_land_step(q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, part: usize, start: usize, at: f32) {
+/// near). Columns whose chunks were not loaded yet (a strike far off, the chunks round it only now forced loaded) are
+/// asked again, a few times, until 6 s: the pass is given the land after each round (`retry` the round).
+#[allow(clippy::too_many_arguments)]
+fn sh_land_step(q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, part: usize, start: usize, at: f32, retry: u32) {
     let next = |q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, part: usize, start: usize| {
-        q.later(at + 0.05, move |q| sh_land_step(q, g, land, tags, part, start, at + 0.05));
+        q.later(at + 0.05, move |q| sh_land_step(q, g, land, tags, part, start, at + 0.05, retry));
     };
     if part >= tags.len() {
         sh_land_done(q, &g, &land, at);
+        let missing = std::mem::take(&mut land.borrow_mut().missing);
+        if !missing.is_empty() && retry < 4 && at < 5.5 {
+            // (asked again a little later, as one query)
+            let tag = crate::columns::new_tag();
+            let t = at + 0.6;
+            q.later(t, move |q| {
+                q.ev.push((t, Act::Read { tag, columns: missing, below: READ_BELOW, above: READ_ABOVE }));
+                sh_land_step(q, g, land, Rc::new(vec![tag]), 0, 0, t, retry + 1);
+            });
+        }
         return;
     }
     let Some(a) = crate::columns::get(tags[part]) else {
-        if at < SH_C0 - 1.6 {
+        if at < SH_C0 - 0.6 {
             next(q, g, land, tags, part, start);
         } else {
             sh_land_done(q, &g, &land, at);
@@ -636,7 +648,7 @@ fn sh_land_step(q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, pa
         return;
     };
     let mats: Vec<(u8, sh_land::Class)> = a.palette.iter().map(|n| sh_land::material(n)).collect();
-    let end = sh_land::work(&mut land.borrow_mut(), &g, &a, &mats, q.bx, q.by + 1, q.bz, start);
+    let end = sh_land::work(&mut land.borrow_mut(), &g, &a, &mats, q.bx, q.by + 1, q.bz, start, retry > 0);
     if end >= a.columns.len() {
         next(q, g, land, tags, part + 1, 0);
     } else {
@@ -645,16 +657,14 @@ fn sh_land_step(q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, pa
 }
 
 /// The land handed to the pass: its columns, and each slab's bounds in them (its words 15 and 18 to 23).
+/// A slab drawn as its land only once every column of it is in (one with holes in it would show the pit through them);
+/// until then, and if never, as a block of ground.
 fn sh_land_done(q: &mut Plan, g: &ShGeo, land: &Shared, at: f32) {
-    let mut l = land.borrow_mut();
-    if l.done {
-        return;
-    }
-    l.done = true;
+    let l = land.borrow();
     q.ev.push((at, Act::Words { index: SH_GRID as u32, words: l.words.clone() }));
     for (k, s) in g.slabs.iter().enumerate() {
         let b = l.bounds[k];
-        if b[0] > b[2] {
+        if b[0] > b[2] || l.missing_n[k] > 0 {
             continue;
         }
         let under = l.lowest[k] - 1 - s.thick.round() as i32;
@@ -701,10 +711,10 @@ fn sh_rim_samples(g: &ShGeo) -> Vec<(f64, f64)> {
 /// The world's answer read once it is in (tried again a little later until then, and done without after the give):
 /// each slab's ground (how high it lies over the target's, and how it slopes), and where water meets the rim (the
 /// waterfalls the pass pours over it), given to the pass.
-fn sh_heights(q: &mut Plan, g: Rc<ShGeo>, tag: u32, at: f32) {
+fn sh_heights(q: &mut Plan, g: Rc<ShGeo>, tag: u32, at: f32, terrain: bool) {
     if !crate::ground::ready(tag) {
         if at < SH_GIVE - 0.5 {
-            q.later(at + 0.2, move |q| sh_heights(q, g, tag, at + 0.2));
+            q.later(at + 0.2, move |q| sh_heights(q, g, tag, at + 0.2, terrain));
         }
         return;
     }
@@ -716,7 +726,7 @@ fn sh_heights(q: &mut Plan, g: Rc<ShGeo>, tag: u32, at: f32) {
         let hs: Vec<Option<f64>> = pts.iter().map(|&(x, z)| crate::ground::at(col(x, z).0, col(x, z).1).map(|h| f64::from(h - gy))).collect();
         let Some((top, sx, sz)) = sh_fit(&pts, &hs) else { continue };
         // (the middle's slabs went down with the give and the sag)
-        let top = if s.ring == 0 { top - 7.0 } else { top };
+        let top = if s.ring == 0 && terrain { top - 7.0 } else { top };
         let b = (SH_SB + k * SH_SW) as u32;
         q.ev.push((at, Act::Data { index: b + 7, value: top as f32 }));
         q.ev.push((at, Act::Data { index: b + 8, value: sx as f32 }));
@@ -1369,16 +1379,28 @@ mod land {
     }
     /// The plan played out in time order against the mountain, the world's answers given at once.
     fn play(seed: f32, terrain: bool) -> Played {
+        play_with(seed, terrain, 0)
+    }
+    /// As `play`, the columns east of x 50 not loaded for the first `late` queries.
+    fn play_with(seed: f32, terrain: bool, late: usize) -> Played {
         crate::ground::set_test(Some(ground));
         crate::columns::clear();
         let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
         let mut ev = plan(&crate::lasers::SINKHOLE, &target, terrain, "minecraft:overworld", seed, [10.5, 66.0, 330.0], 0);
         ev.sort_by(|a, b| b.0.total_cmp(&a.0));
         let mut out = Played { blocks: Vec::new(), words: Vec::new(), data: Default::default() };
+        let mut reads = 0;
         while let Some((t, a)) = ev.pop() {
             match a {
                 Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
-                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &column),
+                Act::Read { tag, columns, below, above } => {
+                    reads += 1;
+                    if reads <= late {
+                        crate::columns::test_answer(tag, &columns, below, above, &|x, z| if x > 50 { None } else { column(x, z) });
+                    } else {
+                        crate::columns::test_answer(tag, &columns, below, above, &column);
+                    }
+                }
                 Act::Blocks(b) => out.blocks.push((t, *b)),
                 Act::Words { index, words } => {
                     assert_eq!(index as usize, SH_GRID);
@@ -1455,7 +1477,7 @@ mod land {
         // spruces on it), inside its slab's bounds; and each slab's bounds given to the pass
         let g = ShGeo::new(7.0);
         let pl = play(7.0, true);
-        assert_eq!(pl.words.len(), 2 * SH_GW * SH_GW);
+        assert_eq!(pl.words.len(), 3 * SH_GW * SH_GW);
         let (cx, cz) = (10.5, -2.5);
         let (mut trees, mut snow, mut n) = (0, 0, 0);
         for x in -130..150 {
@@ -1463,12 +1485,14 @@ mod land {
                 let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
                 let Some(k) = g.slab_at(dx, dz) else { continue };
                 let i = Land::index(10, -3, x, z).unwrap();
-                let (c, slab) = ColInfo::from_words([pl.words[2 * i], pl.words[2 * i + 1]]).unwrap_or_else(|| panic!("{x} {z} not read"));
+                let (c, slab) = ColInfo::from_words([pl.words[3 * i], pl.words[3 * i + 1], pl.words[3 * i + 2]]).unwrap_or_else(|| panic!("{x} {z} not read"));
                 assert_eq!(slab, Some(k), "{x} {z}");
                 let m = mountain(x, z);
                 let give = if g.slabs[k].ring == 0 { 7 } else { 0 };
                 assert_eq!(c.h, m + 1 - 65 - give, "{x} {z}");
                 assert_eq!(c.top, 1);
+                // (the biome's tints: a dappled forest's east of x 40)
+                assert_eq!(c.grass >> 19, if x > 40 { 0xDF6827 >> 19 } else { 0x91BD59 >> 19 }, "{x} {z}");
                 if tree(x, z) {
                     assert_eq!((c.log, c.log_top, c.leaf, c.leaf_lo, c.leaf_hi), (29, 7, 34, 8, 11), "{x} {z}");
                     trees += 1;
@@ -1487,6 +1511,28 @@ mod land {
             }
         }
         assert!(trees > 300 && snow > 20_000 && n > 30_000, "{trees} {snow} {n}");
+    }
+
+    #[test]
+    fn sinkhole_asks_again_for_land_not_loaded_yet() {
+        // the columns not loaded when first asked are asked again, and every slab drawn as its land in the end
+        let g = ShGeo::new(7.0);
+        let pl = play_with(7.0, false, 6);
+        for k in 0..g.slabs.len() {
+            assert_eq!(pl.data.get(&((SH_SB + k * SH_SW) as u32 + 15)), Some(&1.0), "slab {k}");
+        }
+        let i = Land::index(10, -3, 90, -3).unwrap();
+        assert!(pl.words[3 * i] >> 31 == 1);
+        // never answered: those slabs stay blocks of ground
+        let pl = play_with(7.0, false, 99);
+        let (cx, cz) = (10.5, -2.5);
+        for (k, s) in g.slabs.iter().enumerate() {
+            let (x, _) = s.centroid();
+            if x + cx > 70.0 {
+                assert_eq!(pl.data.get(&((SH_SB + k * SH_SW) as u32 + 15)), None, "slab {k}");
+            }
+            let _ = cz;
+        }
     }
 
     #[test]
