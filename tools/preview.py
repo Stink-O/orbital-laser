@@ -81,6 +81,13 @@ VIEWS = {
     "plhilllow": "cx=0 cy=51.5 cz=450 lx=-40 ly=50 lz=300 hills=28 trees=1 fov=70 reach=450",
     "plhillside": "cx=520 cy=150 cz=330 lx=0 ly=60 lz=200 hills=28 trees=1 fov=60 reach=450",
     "plrefsky": "cx=0 cy=68.5 cz=450 lx=-60 ly=330 lz=40 flat=1 trees=1 fov=59 reach=450",
+    # the same, close on the old high trail as it ages and breaks up (where it showed a ladder of stripes)
+    # from high up and off to one side, looking down at the target (the middle of the frame): the column's foot over it
+    "plover": "cx=-220 cy=420 cz=260 lx=0.5 ly=65 lz=0.5 flat=1 fov=60",
+    # level from the south and from the east, 400 off, the target in the middle: where the column's foot stands
+    "plfoot": "cx=0.5 cy=70 cz=400.5 lx=0.5 ly=70 lz=0.5 fov=40 flat=1",
+    "plfoote": "cx=400.5 cy=70 cz=0.5 lx=0.5 ly=70 lz=0.5 fov=40 flat=1",
+    "pltrail": "cx=0 cy=68.5 cz=450 lx=-150 ly=430 lz=40 flat=1 trees=1 fov=22 reach=450",
     # as the third clip is filmed: across a canyon some 1,600 blocks off, looking up at the trail and the column; close
     # by (230 off) looking up at the object coming in; and the same from 230 looking at the column as it settles
     "pl3far": "cx=0 cy=120 cz=1600 lx=0.5 ly=420 lz=0.5 flat=1 fov=50 reach=1600",

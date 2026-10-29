@@ -126,7 +126,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   fire, then a column of smoke bursts up out of it, most of its height in about a second as in the clip it follows,
   eighteen billows swelling into a lumpy cauliflower mass (rounded domes on domes with creased gaps, tan-grey smoke
   and dust lit by the scene: warm where the sun is on it, greyed by the sky on its shadowed side, darker down its
-  narrower stem), about 235 blocks tall, widening and climbing slowly on, leaning with the wind. The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
+  narrower stem), about 235 blocks tall, widening and climbing slowly on, leaning with the wind from its foot up (the foot stays planted over the crater; the head drifts furthest). The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
   The shockwave races out over the land at the same speed as a wall of yellow-tan dust a person's height and more,
   billowing and crisp at its front, the leaves and grass near it shaken on the screen; it reaches the player as the
   blast does, shakes the camera, washes over them and settles in low drifting patches and a thin haze; dark chunks
@@ -390,9 +390,13 @@ The Payload's pass ([`mod/shaders/payload.wgsl`](../mod/shaders/payload.wgsl)) r
 times from 3 to 13.6 s, and the column's eighteen billows (`pl_table`, through `render.set-data` on the tick after it
 fires; the player's position as it fired is in its params), and the pieces it sheds (from `PL_FR`: when each lets go,
 where and how fast, how long it burns; each then flies with drag and gravity worked out in the pass). The trail is drawn
-through the path's samples, each bit counted once, as soft-edged smoke whose edge and density three octaves of noise
-carried with it push in and out (the finer ones let go where a pixel spans several of them, so it does not shimmer far
-off or end-on), carried by the wind, swelling as it ages and breaking into beads as its threshold rises; eight samples at
+through the path's samples as soft-edged smoke: each piece is the slab between two planes across the trail (through
+its ends, halfway round the bend at each, so the pieces fit with no seam at any angle) and the ray's whole way through
+it is counted (the profile along the ray integrated with erf, longer and denser seen glancing along it). Three octaves of
+noise carried with it push its edge and density in and out, looked up on the sheet through its axis that faces the eye;
+each lets go towards its mean (and the bead threshold to what it would let through on the whole) where a pixel spans
+several of them or where the ray runs along the trail through several, so it neither shimmers far off nor streaks
+end-on. It is carried by the wind, swelling as it ages and breaking into beads as its threshold rises; eight samples at
 a time are first tested as one ball, so most rays skip it; the column is marched through the billows' smooth union (worked out once a pixel), its surface bulged in
 cellular domes at two scales (rounded tops, creased gaps), each lump lit by a look a few blocks towards the sun and
 the column's bulk shadowing it with two more, lit by the sky the scene shows; as it settles its lumps sink back, its edge

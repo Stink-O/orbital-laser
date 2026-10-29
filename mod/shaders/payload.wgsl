@@ -76,6 +76,40 @@ fn pl_frag(p0: vec3<f32>, v0: vec3<f32>, k: f32, s: f32) -> vec3<f32> {
     let e = (1.0 - exp(-k * s)) / k;
     return p0 + v0 * e - vec3<f32>(0.0, 20.0 * (s - e) / k, 0.0);
 }
+// The ray against the line through a and b, its nearest point kept between lo and hi along it (0 at a, 1 at b): the
+// distance between them, how far along the ray, how far along ab.
+fn pl_ray_seg(rd: vec3<f32>, a: vec3<f32>, b: vec3<f32>, lo: f32, hi: f32) -> vec3<f32> {
+    let ab = b - a;
+    let l2 = max(dot(ab, ab), 1.0e-6);
+    let rab = dot(rd, ab);
+    let den = l2 - rab * rab;
+    var s = clamp(select(0.0, (rab * dot(rd, a) - dot(a, ab)) / den, den > 1.0e-6), lo, hi);
+    let t = max(dot(rd, a + ab * s), 0.0);
+    s = clamp(dot(rd * t - a, ab) / l2, lo, hi);
+    return vec3<f32>(length(rd * t - (a + ab * s)), t, s);
+}
+// Point j of the trail at strike time t: laid at its sample's time, drifted since; the one past the last laid is the
+// head's.
+fn pl_trail_pt(j: i32, last: i32, thead: f32, t: f32, seed: u32) -> vec3<f32> {
+    if (j > last) {
+        return pl_head(thead);
+    }
+    return pl_trail_at(max(j, 0), pl_w(1u) + pl_w(2u) * f32(max(j, 0)), t, seed);
+}
+// Where along the ray (from, to) it is on the side of the plane through p that n faces.
+fn pl_half(rd: vec3<f32>, p: vec3<f32>, n: vec3<f32>) -> vec2<f32> {
+    let r = dot(rd, n);
+    let c = dot(p, n);
+    if (abs(r) < 1.0e-6) {
+        return select(vec2<f32>(1.0, 0.0), vec2<f32>(-1.0e9, 1.0e9), c <= 0.0);
+    }
+    let tc = c / r;
+    return select(vec2<f32>(-1.0e9, tc), vec2<f32>(tc, 1.0e9), r > 0.0);
+}
+fn pl_erf(x: f32) -> f32 {
+    let y = clamp(x, -4.0, 4.0);
+    return tanh(1.1284 * y + 0.1009 * y * y * y);
+}
 fn smin(a: f32, b: f32, k: f32) -> f32 {
     let h = saturate(0.5 + 0.5 * (b - a) / k);
     return mix(b, a, h) - k * h * (1.0 - h);
@@ -105,8 +139,11 @@ fn pl_puff(i: i32, a: f32, C: vec3<f32>, grow: f32) -> vec4<f32> {
     // (swollen fast as it bursts out, then swelling slowly on)
     let r = pl_w(b + 3u) * (0.22 + 0.78 * (1.0 - exp(-s / (0.45 * tau)))) * grow;
     let h = 5.0 + pl_w(b + 2u) * H * rise;
-    let spread = 0.35 + 0.65 * rise;
-    let c = C + vec3<f32>(pl_w(b + 4u) * spread, h, pl_w(b + 5u) * spread) + pl_wind() * (a * (0.15 + 0.85 * h / H));
+    // (its foot planted over the crater: the low billows drawn in on the axis, off it more the higher they climb;
+    // the wind leans the column over from the ground up, its foot staying put and its head carried furthest)
+    let foot = saturate((h - 5.0) / (0.45 * H));
+    let spread = (0.35 + 0.65 * rise) * (0.15 + 0.85 * foot * foot);
+    let c = C + vec3<f32>(pl_w(b + 4u) * spread, h, pl_w(b + 5u) * spread) + pl_wind() * (a * pow(saturate(h / H), 1.6));
     return vec4<f32>(c, r);
 }
 fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
@@ -404,43 +441,86 @@ fn payload(in: StageIn) -> vec4<f32> {
         var tau = 0.0;
         var tc = vec3<f32>(0.0);
         var glow = vec3<f32>(0.0);
-        var pa = pl_trail_at(0, t0, time, seed) + C;
         let sd = vec3<f32>(f32(seed % 97u) * 3.1, f32(seed % 89u) * 1.7, 0.0);
-        var past_end = false;
+        // (the trail's points, the head's the one past the last laid)
+        var pa = pl_trail_pt(0, last, thead, time, seed) + C;
+        var pv = pa;                      // the point before pa (pa itself before the first)
+        var have_pv = true;
+        var pc = pa;                      // the point after pa, when it is known already
+        var have_pc = false;
         for (var i = 0; i <= last; i = i + 1) {
             // (eight pieces at a time looked at as one ball round them first: most rays pass well clear of it)
             if (i % 8 == 0 && i + 8 <= last) {
-                let pg = pl_trail_at(i + 8, t0 + dt * f32(i + 8), time, seed) + C;
+                let pg = pl_trail_pt(i + 8, last, thead, time, seed) + C;
                 let cg = 0.5 * (pa + pg);
                 let ag = max(time - (t0 + dt * f32(i)), 0.0);
-                let rg = 0.65 * length(pg - pa) + 2.1 * (7.0 + 5.5 * sqrt(ag)) + 4.0;
+                let rg = 0.65 * length(pg - pa) + 2.3 * (7.0 + 5.5 * sqrt(ag)) + 4.0;
                 let tg = max(dot(cg, rd), 0.0);
                 if (length(cg - rd * tg) > rg || tg - rg > scene_len) {
                     pa = pg;
-                    past_end = false;
+                    have_pv = false;
+                    have_pc = false;
                     i = i + 7;
                     continue;
                 }
             }
-            let te_b = t0 + dt * f32(i + 1);
-            var pb: vec3<f32>;
-            if (i == last) {
-                pb = pl_head(thead) + C;
-            } else {
-                pb = pl_trail_at(i + 1, te_b, time, seed) + C;
+            if (!have_pv) {
+                pv = pl_trail_pt(i - 1, last, thead, time, seed) + C;
             }
-            let h = ray_seg(rd, pa, pb);
-            // (each bit of it counted once: a piece only where the ray's nearest point falls inside it, or just past a
-            // joint on the outside of a bend, or past either end of the whole)
-            let at_end = h.z > 0.9999;
-            let at_start = h.z < 1.0e-4;
-            let counted = !(at_end || at_start) || (at_start && (i == 0 || past_end)) || (at_end && i == last);
-            past_end = at_end;
-            if (!counted) {
-                pa = pb;
+            var pb = pc;
+            if (!have_pc) {
+                pb = pl_trail_pt(i + 1, last, thead, time, seed) + C;
+            }
+            var pn = pb + (pb - pa);
+            if (i < last) {
+                pn = pl_trail_pt(i + 2, last, thead, time, seed) + C;
+            }
+            pc = pn;
+            have_pc = true;
+            let pa_ = pa;
+            let pv_ = pv;
+            pv = pa;
+            have_pv = true;
+            pa = pb;
+            // (each piece is the smoke between two planes across the trail, through its two ends and halfway round
+            // the bend at each, so that the pieces fit together with no seam, gap or overlap at any angle it is seen
+            // from; the ray's way through each is counted, not one point on it. The whole's first end capped a little
+            // past its first point, its last carried on past the head.)
+            let ab = pb - pa_;
+            let len_ab = max(length(ab), 1.0e-4);
+            let da = ab / len_ab;
+            let te_a = t0 + dt * f32(i);
+            let age_a = max(time - te_a, 0.0);
+            var na = da;
+            var oa = pa_;
+            if (i == 0) {
+                oa = pa_ - da * (2.0 + 2.0 * sqrt(age_a));
+            } else {
+                na = normalize(da + normalize(pa_ - pv_ + vec3<f32>(0.0, 1.0e-5, 0.0)));
+            }
+            var nb = da;
+            var ob = pb;
+            if (i < last) {
+                nb = normalize(da + normalize(pn - pb + vec3<f32>(0.0, 1.0e-5, 0.0)));
+            } else {
+                // (on into the ground, where it struck: not cut off square across it over the ground)
+                ob = pb + da * (12.0 + 8.0 * sqrt(max(time - thead, 0.0))) * step(PL_HIT, time);
+            }
+            let ia = pl_half(rd, oa, na);
+            let ib = pl_half(rd, ob, -nb);
+            let t1 = max(max(ia.x, ib.x), 0.0);
+            let t2 = min(min(ia.y, ib.y), scene_len);
+            if (t2 <= t1) {
                 continue;
             }
-            let te = min(t0 + dt * (f32(i) + h.z), thead);
+            let h = pl_ray_seg(rd, pa_, pb, -1.0e4, 1.0e4);
+            let tn = clamp(h.y, t1, t2);
+            let sz = clamp(dot(rd * tn - pa_, da) / len_ab, 0.0, 1.0);
+            // (the lumps looked up on the sheet through the trail's axis that faces the eye: how far along this piece
+            // the ray's way through it lies, and how far across the ray passes. Not where the ray meets the piece's
+            // end, which a ray seen glancing along it would smear into streaks.)
+            let cp = pa_ + ab * sz + (rd * h.y - (pa_ + ab * h.z));
+            let te = clamp(te_a + dt * sz, t0, thead);
             let age = max(time - te, 0.0);
             let dive = smoothstep(PL_TURN - 2.2, PL_TURN + 0.4, te);
             // (smoke rather than vapour: from a second or two after it shows, as in the third clip, where the whole
@@ -448,56 +528,83 @@ fn payload(in: StageIn) -> vec4<f32> {
             let smk = smoothstep(PL_SEEN + 1.0, PL_SEEN + 4.0, te);
             // (its core's radius: thin and tight where it is laid, swelling with age; the outer fray to twice that)
             let rad = mix(3.0 + 3.0 * sqrt(age), mix(6.0 + 5.0 * sqrt(age), 7.0 + 5.5 * sqrt(age), dive), smk);
-            if (h.x < rad * 2.1 && h.y < scene_len + rad * 2.0) {
-                let cp = rd * h.y;
+            if (h.x < rad * 2.3) {
                 // (the smoke's own lumps, carried with it as it drifts and rises, churning slowly)
                 let q = (cp + cam - pl_wind() * age - vec3<f32>(0.0, 0.35 * age, 0.0)) / (2.2 * rad + 3.0) + sd;
-                let n1 = gnoise3(q + vec3<f32>(0.0, 0.0, 0.06 * age));
-                let n2 = gnoise3(q * 2.6 + vec3<f32>(4.0, 0.08 * age, 1.0));
-                let n3 = gnoise3(q * 6.1 + vec3<f32>(1.0, 7.0, 0.15 * age));
-                // (the finer lumps let go to their mean where a pixel spans more than a few of them along it: a trail
-                // seen end-on or far off shimmers otherwise)
-                let segd = normalize(pb - pa + vec3<f32>(0.0, 1.0e-5, 0.0));
-                let along = h.y * px_a / max(length(cross(rd, segd)), 0.08) / (2.2 * rad + 3.0);
-                let w2 = saturate(2.0 - 10.0 * along * 2.6);
-                let w3 = saturate(2.0 - 10.0 * along * 6.1);
-                let puff = 0.62 * n1 + 0.3 * mix(0.5, n2, w2) + 0.08 * mix(0.5, n3, w3);
+                // (the lumps are looked up once, where the ray passes nearest its axis: they are painted on a sheet
+                // through it, facing the eye. Where the trail runs away from the eye that sheet is squeezed along the
+                // trail and its lumps drawn out across it into streaks; but there the ray goes a long way through the
+                // smoke along it and would see many lumps one behind another, evened out. So each size of lump lets go
+                // towards its mean as the stretch of trail the ray passes through (or a pixel spans) grows past it.)
+                let sn = max(length(cross(rd, da)), 0.08);
+                let qs = 1.0 / (2.2 * rad + 3.0);
+                let along = tn * px_a / sn * qs;
+                let thru = 2.0 * sqrt(max(2.1 * rad * rad - h.x * h.x, 0.0)) * abs(dot(rd, da)) / sn * qs + 1.0e-3;
+                let w1 = min(saturate(2.0 * sqrt(1.0 / thru)), saturate(2.0 - 10.0 * along));
+                let w2 = min(saturate(2.0 * sqrt(0.385 / thru)), saturate(2.0 - 10.0 * along * 2.6));
+                let w3 = min(saturate(2.0 * sqrt(0.164 / thru)), saturate(2.0 - 10.0 * along * 6.1));
+                // (each looked up only where it shows)
+                var n1 = 0.5;
+                var n2 = 0.5;
+                var n3 = 0.5;
+                if (w1 > 0.0) {
+                    n1 = gnoise3(q + vec3<f32>(0.0, 0.0, 0.06 * age));
+                }
+                if (w2 > 0.0) {
+                    n2 = gnoise3(q * 2.6 + vec3<f32>(4.0, 0.08 * age, 1.0));
+                }
+                if (w3 > 0.0) {
+                    n3 = gnoise3(q * 6.1 + vec3<f32>(1.0, 7.0, 0.15 * age));
+                }
+                let puff = 0.5 + 0.62 * w1 * (n1 - 0.5) + 0.3 * w2 * (n2 - 0.5) + 0.08 * w3 * (n3 - 0.5);
                 // (a soft profile across it, its edge pushed in and out by the lumps: ragged, no rim)
-                let rr = h.x / (rad * (0.45 + 1.0 * puff));
-                let prof = exp(-rr * rr * 1.4);
-                // (broken into beads and puffs as it ages, the gaps opening; the vapour high up breaks sooner)
-                let thr = mix(0.32, 0.12, smk) + 0.3 * smoothstep(1.5, 18.0, age);
-                let dens = saturate((puff - thr) * 2.6 + 0.3 * exp(-age / 0.8));
+                let rw = rad * (0.45 + 1.0 * puff);
+                let rr = h.x / rw;
+                // (and let go to nothing before the edge it is looked for within, not cut off there)
+                let prof = exp(-rr * rr * 1.4) * smoothstep(2.3, 1.5, h.x / rad);
+                // (how much of the profile along the ray lies in this piece, and how much longer the ray's way through
+                // it is than straight across)
+                let ka = 1.183 * sn / rw;
+                let gin = 0.5 * (pl_erf((t2 - h.y) * ka) - pl_erf((t1 - h.y) * ka)) / max(sn, 0.5);
+                // (broken into beads and puffs as it ages, the gaps opening; the vapour high up breaks sooner. Where
+                // the lumps are evened out, what they would have let through on the whole: the gaps' and the beads'
+                // mean, not the mean lump's, which the gaps would swallow)
+                let thr = mix(0.32, 0.12, smk) + 0.38 * smoothstep(1.5, 18.0, age);
+                let m = (puff - thr) * 3.2 + 0.3 * exp(-age / 0.8);
+                let sl = 3.2 * 0.14 * sqrt(0.384 * (1.0 - w1 * w1) + 0.09 * (1.0 - w2 * w2) + 0.0064 * (1.0 - w3 * w3)) + 1.0e-3;
+                let dens = saturate(sl * log(1.0 + exp(clamp(m / sl, -30.0, 30.0))));
                 // (dense where it is laid, thinning over the next twenty seconds; the vapour fainter)
                 let sig = (0.26 * exp(-age / 6.0) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk) * fade;
-                let occl = saturate((scene_len - h.y) / rad + 0.5);
-                let dtau = sig * prof * dens * 1.6 * rad * occl;
+                let dtau = sig * prof * dens * 1.6 * rad * gin;
                 // (lit on its sunward side and on its lumps' tops, darker in its creases)
-                let axis = pa + (pb - pa) * h.z;
+                let axis = pa_ + ab * sz;
                 let nrm = normalize(cp - axis - rd * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
-                let lit = (0.35 + 0.65 * saturate(dot(nrm, L) * 0.5 + 0.5)) * (0.6 + 0.8 * n1 * n1);
+                let ln = 0.5 + w1 * (n1 - 0.5);
+                let lit = (0.35 + 0.65 * saturate(dot(nrm, L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
                 // (grey-brown smoke, paler as it spreads thin; the vapour high up a pale grey)
                 var alb = mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.17, 0.145, 0.125), smk);
                 alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), smoothstep(4.0, 20.0, age));
-                var c = alb * (sunc * lit * 0.85 + amb * (0.6 + 0.4 * n1));
+                var c = alb * (sunc * lit * 0.85 + amb * (0.6 + 0.4 * ln));
                 // (just behind the head it is lit by the flame: orange, dying back within a second)
-                c = c + vec3<f32>(1.9, 0.75, 0.22) * exp(-age / 0.12) * dive * step(time, PL_HIT + 0.3) * (0.4 + 0.6 * n1);
+                c = c + vec3<f32>(1.9, 0.75, 0.22) * exp(-age / 0.12) * dive * step(time, PL_HIT + 0.3) * (0.4 + 0.6 * ln);
                 // (farther, the air between greys it to the sky)
-                c = mix(c, haze_c, (1.0 - exp(-h.y / 3000.0)) * 0.75);
+                c = mix(c, haze_c, (1.0 - exp(-tn / 3000.0)) * 0.75);
                 tc = tc + c * dtau;
                 tau = tau + dtau;
                 // (the flame tail just behind the head, in the dive)
-                let chord = 2.0 * sqrt(max(rad * rad - h.x * h.x, 0.0));
+                // (how far off its axis the ray passes within this piece: where it is nearest, or at the piece's end
+                // it leaves by, so the glow runs on smoothly from piece to piece)
+                let gx = length(rd * tn - axis);
+                let chord = 2.0 * sqrt(max(rad * rad - gx * gx, 0.0));
                 let fl = dive * exp(-age / 0.13) * step(time, PL_HIT + 0.05);
                 // (soft-edged, a teardrop narrowing back from the head, white-yellow at its root, orange back along it)
                 let fw = rad * (0.75 - 0.35 * saturate(age / 0.3));
-                let fprof = exp(-pow(h.x / max(fw, 0.5), 2.0) * 1.6) * min(fw * 0.5, 1.0);
-                glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * 1.6 * fprof * occl);
+                let fprof = exp(-pow(gx / max(fw, 0.5), 2.0) * 1.6) * min(fw * 0.5, 1.0);
+                glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * 1.6 * fprof);
                 // (high up, the hot streak of air it leaves glowing behind it, white, cooling within a second)
                 let fh = (1.0 - dive) * exp(-age / 0.45) * step(time, PL_HIT);
-                glow = max(glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(chord * 0.6, 1.2) * occl);
+                glow = max(glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(chord * 0.6, 1.2));
             }
-            pa = pb;
         }
         if (tau > 0.0) {
             let al = 1.0 - exp(-tau);
