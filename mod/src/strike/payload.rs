@@ -41,8 +41,11 @@ const PL_RIM: f64 = 1.65;
 const PL_FLAT: f64 = 85.0;
 const PL_CHAR: f64 = 100.0;
 const PL_RUBBLE: f64 = 105.0;
+/// Past the flattened land, a band this wide where the blast only half did its work: crowns stripped of their leaves
+/// (wholly near it, their tops further out), some trees knocked flat, leaves and branches strewn.
+const PL_BAND: f64 = 24.0;
 /// The land read: every column out to PL_READ, PL_BELOW under its top (a tall tree's top down to its ground).
-const PL_READ: i32 = 108;
+const PL_READ: i32 = 120;
 const PL_GW: i32 = 2 * PL_READ + 1;
 const PL_BELOW: u32 = 44;
 const PL_ABOVE: u32 = 1;
@@ -246,6 +249,17 @@ const LOG_Y: [&str; 9] = [
     "minecraft:mangrove_log",
     "minecraft:cherry_log",
     "minecraft:pale_oak_log",
+];
+const LEAF_NAMES: [&str; 9] = [
+    "minecraft:oak_leaves",
+    "minecraft:spruce_leaves",
+    "minecraft:birch_leaves",
+    "minecraft:jungle_leaves",
+    "minecraft:acacia_leaves",
+    "minecraft:dark_oak_leaves",
+    "minecraft:mangrove_leaves",
+    "minecraft:cherry_leaves",
+    "minecraft:pale_oak_leaves",
 ];
 const LEAVES: [&str; 9] = [
     "minecraft:oak_leaves[persistent=true]",
@@ -495,6 +509,17 @@ fn charred(x: i32, z: i32, r: f64, seed: u32) -> Option<&'static str> {
     }
 }
 
+/// How hard the blast still hits column (x, z) in the band past the flattened land: 1 at its inner edge, to 0 at its
+/// outer (None outside it).
+fn band(s: &Shape, x: i32, z: i32) -> Option<f64> {
+    let (r, a, _) = s.at(x, z);
+    let e = r - s.flat(a);
+    (0.0..PL_BAND).contains(&e).then(|| 1.0 - e / PL_BAND)
+}
+/// A tree in the band knocked flat (more of them near the flattened land).
+fn knocked(c: &Column, s: &Shape, x: i32, z: i32) -> bool {
+    c.trunk >= 3 && !c.fluid && band(s, x, z).is_some_and(|p| mh((x.wrapping_mul(92_821) ^ z.wrapping_mul(68_917)) as u32, s.seed, 0x91) < 0.55 * p.powf(1.3))
+}
 /// What the blast makes of column (x, z): Kept, or its new ground's top (`Some`) and whether it was cleared.
 fn new_ground(c: &Column, s: &Shape, x: i32, z: i32) -> Option<i32> {
     let (r, a, u) = s.at(x, z);
@@ -502,7 +527,7 @@ fn new_ground(c: &Column, s: &Shape, x: i32, z: i32) -> Option<i32> {
         Some(c.g - bowl(u).round() as i32)
     } else if u < PL_RIM {
         Some(c.g + heap(u).round() as i32)
-    } else if r < s.flat(a) {
+    } else if r < s.flat(a) || knocked(c, s, x, z) {
         Some(c.g)
     } else {
         None
@@ -522,7 +547,7 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
             let (x, z) = (bx - PL_READ + i, bz - PL_READ + k);
             let Some(c) = at(land, bx, bz, x, z) else { continue };
             let (r, _, u) = s.at(x, z);
-            if r > PL_CHAR + 6.0 || c.fluid {
+            if r > f64::from(PL_READ) || c.fluid {
                 continue;
             }
             let wet = wet_near(land, bx, bz, x, z);
@@ -568,6 +593,14 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
                     {
                         b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
                     }
+                    // in the band past it: the crowns stripped, in patches, wholly near it and their tops further out
+                    if let Some(p) = band(s, x, z)
+                        && c.leaves != 255
+                        && vnoise(f64::from(x), f64::from(z), 5.0, s.seed ^ 0x93) < 0.25 + 0.75 * p
+                    {
+                        let keep = ((f64::from(c.top - c.g)) * (1.0 - (0.35 + 0.8 * p).min(1.0))).floor() as i32;
+                        b.put(x, z, c.g + 1 + keep, c.top, "minecraft:air", Some(LEAF_NAMES[c.leaves as usize]), false);
+                    }
                 }
             }
         }
@@ -601,7 +634,11 @@ fn pl_felled(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32
     let lie = |x: i32, z: i32, gy: i32| -> Option<i32> {
         let c = at(land, bx, bz, x, z)?;
         let (r, a, u) = s.at(x, z);
-        if c.fluid || u < PL_RIM || r > s.flat(a) - 1.0 || (c.g - gy).abs() > 1 || wet_near(land, bx, bz, x, z) {
+        if c.fluid || u < PL_RIM || (c.g - gy).abs() > 1 || wet_near(land, bx, bz, x, z) {
+            return None;
+        }
+        // (past the flattened land: only on open ground)
+        if r > s.flat(a) - 1.0 && (band(s, x, z).is_none() || c.trunk > 0 || c.top > c.g + 1) {
             return None;
         }
         Some(c.g)
@@ -614,7 +651,7 @@ fn pl_felled(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32
                 continue;
             }
             let (r, a, u) = s.at(x, z);
-            if u < PL_RIM || r > s.flat(a) - 1.0 {
+            if u < PL_RIM || (r > s.flat(a) - 1.0 && !knocked(c, s, x, z)) {
                 continue;
             }
             let (dx, dz) = (a.cos(), a.sin());
@@ -701,6 +738,31 @@ fn pl_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
                 waves[w.min(3)].run(x2, z2, y, y, m);
                 used.insert((x2, z2));
             }
+        }
+    }
+    // leaves and broken branches strewn over the outer land and the band, of the wood that grows here
+    let mut woods = [0u32; 9];
+    for c in land.cols.iter().filter(|c| c.known && c.trunk > 0) {
+        woods[c.wood as usize] += 1;
+    }
+    let wood = (0..9).max_by_key(|&i| woods[i]).unwrap_or(0);
+    if woods[wood] > 0 {
+        for n in 0..300 {
+            let r = 45.0 + (PL_FLAT * 1.1 + PL_BAND - 45.0) * rng.next().powf(0.8);
+            let a = rng.uniform(0.0, TAU);
+            let (x, z) = ((s.cx + a.cos() * r).floor() as i32, (s.cz + a.sin() * r).floor() as i32);
+            let Some(c) = at(land, bx, bz, x, z) else { continue };
+            if c.fluid || used.contains(&(x, z)) || wet_near(land, bx, bz, x, z) {
+                continue;
+            }
+            let y = match new_ground(c, s, x, z) {
+                Some(top) if top == c.g => top + 1,
+                None if c.top <= c.g + 1 && c.trunk == 0 => c.g + 1,
+                _ => continue,
+            };
+            let m = if n % 6 == 0 { if rng.next() < 0.5 { LOG_X[wood] } else { LOG_Z[wood] } } else { LEAVES[wood] };
+            waves[3].run(x, z, y, y, m);
+            used.insert((x, z));
         }
     }
     for (i, w) in waves.into_iter().enumerate() {
@@ -818,13 +880,13 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
         }
         // the trees felled, a band of rows a stage, then the rubble
         let used: Used = Default::default();
-        let fb = 8;
+        let fb = 11;
         let rows = (PL_GW + fb - 1) / fb;
         for j in 0..fb {
             let (land, used) = (land.clone(), used.clone());
-            p.later(PL_HIT - 2.8 + 0.1 * j as f32, move |q| pl_felled(q, &land.borrow(), &shape, &used, j * rows, ((j + 1) * rows).min(PL_GW)));
+            p.later(PL_HIT - 3.0 + 0.1 * j as f32, move |q| pl_felled(q, &land.borrow(), &shape, &used, j * rows, ((j + 1) * rows).min(PL_GW)));
         }
-        p.later(PL_HIT - 1.9, move |q| pl_rubble(q, &land.borrow(), &shape, &used));
+        p.later(PL_HIT - 0.9, move |q| pl_rubble(q, &land.borrow(), &shape, &used));
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -958,6 +1020,18 @@ mod tests {
         // trees felled: logs lying along x or z
         let lying = fills.iter().filter(|f| f.contains("_log[axis=")).count();
         assert!(lying > 20, "{lying}");
+        // past the flattened land: crowns stripped, and some trees knocked flat there (logs lying beyond PL_FLAT)
+        let stripped = fills.iter().filter(|f| f.ends_with("minecraft:air replace minecraft:oak_leaves strict")).count();
+        assert!(stripped > 10, "{stripped}");
+        let far_logs = fills
+            .iter()
+            .filter(|f| f.contains("_log[axis="))
+            .filter(|f| {
+                let w: Vec<f64> = f.split_whitespace().skip(1).take(3).map(|v| v.parse().unwrap_or(0.0)).collect();
+                (w[0] - 10.0).hypot(w[2] + 3.0) > PL_FLAT * 1.15
+            })
+            .count();
+        assert!(far_logs > 3, "{far_logs}");
         // the pond left alone, and nothing dug next to it (what stood on its banks may go)
         for f in &fills {
             let w: Vec<i32> = f.split_whitespace().skip(1).take(3).map(|v| v.parse().unwrap_or(0)).collect();

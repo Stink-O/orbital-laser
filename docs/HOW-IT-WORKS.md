@@ -111,17 +111,20 @@ finish, every command, and how the mod, its effects and its sounds are made. For
 - **Payload.** No beam. A few seconds of calm and a grey line on the action bar (`ORBITAL TRACKING: OBJECT
   DESCENDING`); at 3 s a small, fiercely bright point shows high in the sky over the target (300 to 370 blocks up, off
   to one side), with a bloom and a faint lens streak round it, and drifts down and across on a lazy, looping path,
-  corkscrewing, a thin pale ribbon of smoke curling behind it and hanging in the air in its loops, drifting with the
+  its loops in a plane facing the player so they read as loops from the ground, a thin pale-grey broken ribbon of smoke curling behind it and hanging in the air in its loops, drifting with the
   wind and fading; a faint high whine and a far rumble. At 11 s (`PAYLOAD INBOUND`) it turns and dives on the target,
-  faster and faster (over 400 blocks a second at the end), its head an orange-yellow fireball with a short flame tail,
+  faster and faster (over 400 blocks a second at the end), its head an orange-yellow fireball with a flame tail,
   its trail thickening into a dense dark smoke column that stays hung in the sky in the shape of its path; a roar and
   a tearing whistle. At 13.6 s it strikes: a brief orange flash lighting the land and the air round it and a burst of
-  fire, then a column of smoke boils up out of it, eighteen billows rising and swelling into a lumpy cauliflower mass
-  (a broad stem, a darker core and foot, sunlit tops, self-shadowed), about 235 blocks tall by 20 s and still growing,
-  leaning with the wind. The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
-  The shockwave races out over the land at the same speed as a low wall of tan dust, reaches the player as the blast
-  does, shakes the camera, washes over them and hangs as haze; dark chunks and specks of earth fly out up to several
-  hundred blocks and fall back, near the player too. The column stands over the crater until the strike ends at 44 s.
+  fire, then a column of smoke bursts up out of it, most of its height in about a second as in the clip it follows,
+  eighteen billows swelling into a lumpy cauliflower mass (rounded domes on domes with creased gaps, dark slate
+  blue-grey from the sky, darker down its narrower stem, its tops a little paler where the sun catches them),
+  about 235 blocks tall, widening and climbing slowly on, leaning with the wind. The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
+  The shockwave races out over the land at the same speed as a wall of yellow-tan dust a person's height and more,
+  billowing and crisp at its front, the leaves and grass near it shaken on the screen; it reaches the player as the
+  blast does, shakes the camera, washes over them and settles in low drifting patches and a thin haze; dark chunks
+  and specks of earth torn up across the blast's middle tumble out up to several hundred blocks and fall back, near
+  the player too, the big ones trailing smoke. The column stands over the crater until the strike ends at 44 s.
   It reaches 1000 blocks.
 
 All of them:
@@ -181,9 +184,12 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   about 4 high with earth and broken stone out to about 35 from the middle; everything standing on the land swept off out to
   about 85 (each column up to its real top, read with `world.read-columns`), the trees there felled: a stump of one or
   two logs, the trunk lying on the ground pointing away from the blast, its crown crushed round its end past about 46;
-  the grass charred (coarse dirt, podzol, dirt) out to about 100, patchier further out; about 220 pieces of rubble
-  strewn out to about 105, landing over a few seconds; every mob and item within 90 killed. Nothing is dug next to
-  water or lava, and the water and lava the crater would open are sealed. It keeps about 200 chunks loaded while it
+  the grass charred (coarse dirt, podzol, dirt) out to about 100, patchier further out; past the flattened land a band
+  about 24 wide where the blast only half did its work: crowns stripped of their leaves in patches (wholly near it,
+  their tops further out) and some trees knocked flat (fewer further out); about 220 pieces of rubble strewn out to
+  about 105 and some 300 leaves and broken branches of the wood that grows there strewn out to about 115, landing over
+  a few seconds; every mob and item within 90 killed. Nothing is dug next to water or lava, and the water and lava
+  the crater would open are sealed. It keeps about 240 chunks loaded while it
   works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
 
 ## Commands
@@ -368,11 +374,14 @@ The Payload's pass ([`mod/shaders/payload.wgsl`](../mod/shaders/payload.wgsl)) r
 times from 3 to 13.6 s, and the column's eighteen billows (`pl_table`, through `render.set-data` on the tick after it
 fires; the player's position as it fired is in its params). The trail is drawn through the path's samples as soft
 tubes of smoke (each bit of it carried by the wind and spreading as it ages, broken up by noise, lit on its sunward
-side); the column is marched through the billows' smooth union, its surface heaped in lumps at two scales, shadowed
-towards the sun with two looks along it, darker at its core and foot, lit by the sky the scene shows; the dust is
-marched low over the land out to the shockwave's front, from the target's ground to the player's; the debris is
-ninety ballistic chunks with drag, each blurred along its motion. It costs about 1.0 to 1.9 ms at the preview's
-800x450.
+side); the column is marched through the billows' smooth union (worked out once a pixel), its surface bulged in
+cellular domes at two scales (rounded tops, creased gaps), each lump lit by a look a few blocks towards the sun and
+the column's bulk shadowing it with two more, lit by the sky the scene shows; the dust is marched only through the
+shell just behind the shockwave's front (and sparsely inside it), from the target's ground to the player's, and
+stops at the column; the debris is 120 ballistic chunks with drag, torn up across the blast's middle, each blurred
+along its motion, tumbling, the big ones trailing smoke. It costs about 0.3 to 2.1 ms at the preview's 800x450.
+`tools/preview.py payload ... --views plref` looks at it as the clip it follows was filmed (450 blocks off in a wood,
+a 59 degree field of view).
 ## Stock Horizon
 
 0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the other lasers are mod-only): a shader pack, a sound pack and the item mod, run by

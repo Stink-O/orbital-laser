@@ -273,6 +273,24 @@ fn payload(in: StageIn) -> vec4<f32> {
     let rd = normalize(world_offset(uv, 0.5));
     let scene = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb);
     var col = scene;
+    // (leaves and grass whipped as the blast's front goes through them: what is green near it shaken on the screen)
+    if (!sky && time > PL_HIT && time < PL_HIT + 6.0) {
+        let rfr = PL_V * (time - PL_HIT);
+        let rs = length((rel - (vec3<f32>(anchor_xz().x, block_y() + 1.0, anchor_xz().y) - cam)).xz);
+        let e = rfr - rs;
+        let gust = exp(-pow(e / 14.0, 2.0)) + 0.4 * exp(-max(e, 0.0) / 50.0) * step(0.0, e);
+        let green = scene.g > scene.r * 1.1 && scene.g > scene.b * 1.05;
+        if (gust > 0.03 && green) {
+            let fpx0 = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
+            let amp = min(0.45 * fpx0 / max(scene_len, 1.0), 7.0) * gust;
+            let ph = dot(floor(in.position.xy / 6.0), vec2<f32>(0.37, 0.71));
+            let off = vec2<f32>(sin(time * 29.0 + ph * 5.0), cos(time * 23.0 + ph * 3.0)) * amp;
+            let s2 = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv + off * frame.resolution.zw, 0.0).rgb);
+            if (s2.g > s2.r * 1.1 && s2.g > s2.b * 1.05) {
+                col = s2;
+            }
+        }
+    }
     let fade = 1.0 - smoothstep(PL_LEN - PL_FADE, PL_LEN, time);
     let a = time - PL_HIT;                                    // seconds since it struck
     let have = pl_n() > 1;
