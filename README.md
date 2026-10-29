@@ -49,32 +49,28 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
 > and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.3](#new-in-053) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [New in 0.5.4](#new-in-054) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
-## New in 0.5.3
+## New in 0.5.4
 
-<p align="center">
-  <img alt="The Crystal Bloom: crystal spires blooming out of the cracked ground" width="720" src="docs/21-crystal-bloom-bloom.jpg">
-</p>
+<!-- Sinkhole still: <p align="center"><img alt="The Sinkhole: cracks racing out over the land from the target" width="720" src="docs/25-sinkhole-cracks.jpg"></p> -->
 
-- **Crystal Bloom**, the eighth laser, on the wheel's second page and `/orbital crystalbloom`. Crystals heave up out
-  of cracked ground and 46 spires bloom over the land. They resonate with prism beams under an aurora, then shatter
-  into about 200 pieces, each landing as blocks of its own shape on the ground where it falls. It leaves a glowing
-  geode crater with a crystal-lined well to bedrock, broken pillars and shards. It lasts 60 seconds, with its own sounds.
-- **Strikes tidy up after themselves:** loose plants, leaves and cut trees are cleared at the blast's edge, the Planet
-  Killer's too.
-- **Faster.** The Crystal Bloom's pass reads a table the mod works out once a strike (the fork's new
-  `render.set-data`), about halving its GPU time at the heaviest moments.
-- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-5` (it adds `world.surface-height` and
-  `render.set-data`). Older builds won't start the mod.
+- **Sinkhole**, the ninth laser, on the wheel's second page and `/orbital sinkhole`. Nothing comes from the sky. A
+  seismic warning, a deep rumble and birds scattering, then cracks race out over the land in spurts. The middle gives,
+  and the land caves in from there outward in slabs that carry the real ground (its blocks, biome colours and trees) as
+  they tip into a dark pit. Dust boils up, then an echoing silence. It leaves a sheer pit about 225 blocks across down
+  to bedrock, its banded walls darkening downward, with ledges, roots and waterfalls where it cut a river or a lake. It
+  lasts 40 seconds, with its own sounds.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-6` (it adds `world.read-columns`, which reads the
+  real blocks and biome colours of the land). Older builds won't start the mod.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Eight lasers, five on the wheel's first page and three on its second.
+Nine lasers, five on the wheel's first page and four on its second.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -90,10 +86,8 @@ Eight lasers, five on the wheel's first page and three on its second.
   leaves a crater 480 blocks across.
 - **Crystal Bloom** (page two). A forest of crystal spires bursts out of the land, hums as one and shatters into pieces
   that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
-- **Sinkhole** (page two). Nothing from the sky: the land trembles and cracks, gives, then caves in slab by slab into a
-  pit about 225 blocks across and down to bedrock, with jagged walls, ledges and a dark abyss. The cracks race out
-  along the lines the land will break on, and each slab carries the real ground it was cut from (snow, stone, sand,
-  paths, trees) as it tips and falls.
+- **Sinkhole** (page two). Nothing from the sky: the land cracks and caves in, slab by slab, each slab carrying its
+  real ground and trees as it falls, into a sheer pit about 225 blocks across and down to bedrock.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
@@ -122,6 +116,12 @@ Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#t
 |---|---|---|---|
 | ![Crystal spires blooming out of the cracked ground](docs/21-crystal-bloom-bloom.jpg) | ![Prism beams and an aurora over the crystal spires as they resonate](docs/22-crystal-bloom-prism.jpg) | ![The spires shattering into fractured pieces](docs/23-crystal-bloom-detonation.jpg) | ![The geode crater with broken crystal pillars and shards, seen from the ground](docs/24-crystal-bloom-aftermath.jpg) |
 
+<!-- Sinkhole stills, once extracted:
+| Sinkhole | The collapse | The pit | What it leaves |
+|---|---|---|---|
+| ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, slabs tipping into the dark pit](docs/26-sinkhole-collapse.jpg) | ![The sheer pit down to bedrock, its walls banded and darkening downward](docs/27-sinkhole-pit.jpg) | ![The pit afterwards, dust settling and water pouring over its rim](docs/28-sinkhole-aftermath.jpg) |
+-->
+
 ## Getting started
 
 1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-6` or newer). Download
@@ -140,7 +140,7 @@ Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#t
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.3.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.4.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -239,7 +239,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator and the Remote |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -261,7 +261,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer and the Crystal Bloom can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom and the Sinkhole can aim, and only with **LOD Distance** on in Video Settings.
 - **`STRIKE IN PROGRESS`.** One strike runs at a time. Wait for it to finish.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
@@ -273,7 +273,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
-- **Targets must be in loaded chunks.** The four long-range lasers reach 1000 blocks across the distant terrain, where
+- **Targets must be in loaded chunks.** The five long-range lasers reach 1000 blocks across the distant terrain, where
   the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
 - **Stock Horizon** builds from before 24 October 2026 can run 0.1's setup (Plasma and Godly only, driven from outside
   the game): see [How it works](docs/HOW-IT-WORKS.md#stock-horizon).

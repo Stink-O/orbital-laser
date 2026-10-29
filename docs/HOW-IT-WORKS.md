@@ -118,7 +118,7 @@ All of them:
   perspective. Nothing is painted flat on the screen but the lens: bloom, a streak and the flash.
 - **Real terrain damage.** The crater, the shaft to bedrock and what each laser leaves behind are real blocks.
 - **Point and fire.** Hold the designator on a target for under a second and it fires where your crosshair lands, up to
-  200 blocks away (1000 for the Mothership, the Downfall, the Planet Killer and the Crystal Bloom).
+  200 blocks away (1000 for the Mothership, the Downfall, the Planet Killer, the Crystal Bloom and the Sinkhole).
 - **Custom sound design.** Each laser has its own charge-up, lock-on, impact, beam, rumble and spool-down, synthesized
   from scratch, under vanilla explosions, thunder and the sound of the ground breaking.
 - **Quiet.** Nothing it does shows up in chat.
@@ -311,7 +311,7 @@ cuts the land into (`sh_table`, through `render.set-data` on the tick after it f
 slope once the world has said them (`world.surface-height`), the waterfalls, where the rim's columns stand under
 water, and the land itself. As it fires the mod reads the 24 blocks under the top of every column of the pit
 (`world.read-columns`, six queries of ~8,000 columns) and works them out ~3,000 columns a tick
-([`mod/src/strike/sh_land.rs`](../mod/src/strike/sh_land.rs)) into two words a column: its ground's height, the block
+([`mod/src/strike/sh_land.rs`](../mod/src/strike/sh_land.rs)) into three words a column: its ground's height, the block
 on top, the one under it and one deeper (by name: about 60 materials, each a top and side colour from the game's own
 textures and how much it varies block to block; grass and most leaves tinted by the biome's grass and foliage colours
 the world answers with, the poplars', cherry's, azalea's, pale oak's, spruce's and birch's leaves their own colours),

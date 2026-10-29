@@ -1,6 +1,23 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-053); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-054); each release's notes are in [docs/releases](releases).
+
+## 0.5.3
+
+<p align="center">
+  <img alt="The Crystal Bloom: crystal spires blooming out of the cracked ground" width="720" src="21-crystal-bloom-bloom.jpg">
+</p>
+
+- **Crystal Bloom**, the eighth laser, on the wheel's second page and `/orbital crystalbloom`. Crystals heave up out
+  of cracked ground and 46 spires bloom over the land. They resonate with prism beams under an aurora, then shatter
+  into about 200 pieces, each landing as blocks of its own shape on the ground where it falls. It leaves a glowing
+  geode crater with a crystal-lined well to bedrock, broken pillars and shards. It lasts 60 seconds, with its own sounds.
+- **Strikes tidy up after themselves:** loose plants, leaves and cut trees are cleared at the blast's edge, the Planet
+  Killer's too.
+- **Faster.** The Crystal Bloom's pass reads a table the mod works out once a strike (the fork's new
+  `render.set-data`), about halving its GPU time at the heaviest moments.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-5` (it adds `world.surface-height` and
+  `render.set-data`). Older builds won't start the mod.
 
 ## 0.5.2
 
