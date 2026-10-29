@@ -97,6 +97,8 @@ struct Strike {
     data_sent: bool,
     /// Started this far in (`/orbital skip`): commands, sounds and jolts due before then are left out.
     skipped: f32,
+    /// The sounds it has played, to cut them short if it is stopped.
+    sounds: std::collections::BTreeSet<String>,
 }
 impl Strike {
     /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
@@ -285,6 +287,7 @@ impl Orbital {
     }
     fn open_wheel(&mut self) {
         let mut w = wheel::Wheel::on_page(self.page, self.fly);
+        w.striking = self.strike.is_some();
         if let Some(c) = ui::cursor() {
             w.hover_at(c.x, c.y, self.laser);
         }
@@ -389,6 +392,11 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.messages { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
+            Some(wheel::Spot::Stop) if self.strike.is_some() => {
+                world::play_sound("minecraft:ui.button.click", None, 0.6, 0.8);
+                self.stop_strike();
+            }
+            Some(wheel::Spot::Stop) => {}
             Some(wheel::Spot::Hud) => {
                 self.hud = !self.hud;
                 self.save();
@@ -461,7 +469,7 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped });
+        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
@@ -502,7 +510,10 @@ impl Orbital {
                     Some(cost) => self.carving.push_back((cost, c)),
                     None => cmds.push(c),
                 },
-                Act::Sound { event, at, volume, pitch } => world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch),
+                Act::Sound { event, at, volume, pitch } => {
+                    world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch);
+                    s.sounds.insert(event);
+                }
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
                 Act::Blocks(b) => {
@@ -560,12 +571,36 @@ impl Orbital {
             render::shake(strength, seconds);
         }
         if now >= s.length {
-            render::clear_post();
-            self.strike = None;
-            ground::clear();
-            columns::clear();
+            self.end_strike();
         }
         self.carve(CARVE_CMDS.saturating_sub(carved));
+    }
+    /// The strike is over: its pass off, what it asked of the world forgotten.
+    fn end_strike(&mut self) {
+        render::clear_post();
+        self.strike = None;
+        ground::clear();
+        columns::clear();
+        if let Some(w) = &mut self.wheel {
+            w.striking = false;
+            self.show_wheel();
+        }
+    }
+    /// Stop the strike under way: the rest of its plan and the world changes still waiting are dropped and its sounds
+    /// cut short, but the chunks it force-loaded are let go (what it has already done to the world stays).
+    fn stop_strike(&mut self) {
+        let Some(s) = &mut self.strike else { return };
+        let mut cmds: Vec<String> = s.sounds.iter().map(|e| format!("stopsound @s * {e}")).collect();
+        let rest = s.plan.drain(s.next..).filter_map(|(_, a)| match a {
+            Act::Cmd(c) | Act::Spare(c) => Some(c),
+            _ => None,
+        });
+        let queued = self.carving.drain(..).chain(self.spare.drain(..)).map(|(_, c)| c);
+        cmds.extend(rest.chain(queued).filter(|c| c.starts_with("forceload remove")));
+        world::run_commands(&cmds);
+        self.end_strike();
+        Self::actionbar("STRIKE STOPPED", "gray");
+        log::write(log::Level::Info, "strike stopped");
     }
     /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one), and no more
     /// than `room` commands; then, with what is left of it, the ones that wait for spare budget. How many it ran.
@@ -795,6 +830,13 @@ impl Mod for Orbital {
                 self.save();
                 Ok(Some(format!("The {} is lit {k}", l.title)))
             }
+            (Some("stop"), _) => {
+                if self.strike.is_none() {
+                    return Err("No strike under way".into());
+                }
+                self.stop_strike();
+                Ok(None)
+            }
             (Some("skip"), Some(v)) => {
                 let t: f32 = v.parse().map_err(|_| "/orbital skip SECONDS (0 to start at the beginning)".to_string())?;
                 if self.terrain && t > 0.0 {
@@ -839,7 +881,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | flyspeed N|reset | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),

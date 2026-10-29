@@ -46,6 +46,8 @@ const BLURB_LINES: usize = 2;
 const MSG: Rect = Rect { x: R_OUT, y: -R_OUT - 33.0, w: 84.0, h: 12.0 };
 /// The status panel's switch, under the messages'.
 const HUD: Rect = Rect { x: MSG.x, y: MSG.y + MSG.h + 2.0, w: MSG.w, h: MSG.h };
+/// Stopping the strike under way, top left, the switches' mirror; there only while one is.
+const STOP: Rect = Rect { x: -MSG.x - MSG.w, y: MSG.y, w: MSG.w, h: MSG.h * 2.0 + 2.0 };
 /// The flying speed's row over the title: the bar (a click along it sets the speed) and the field a speed is typed in.
 const FLY_Y: f32 = -R_OUT - 52.0;
 const BAR: Rect = Rect { x: -56.0, y: FLY_Y, w: 106.0, h: 12.0 };
@@ -64,6 +66,8 @@ pub enum Spot {
     Messages,
     /// The status panel's switch.
     Hud,
+    /// Stopping the strike under way.
+    Stop,
     /// One of the ship's approaches (strike::APPROACHES), or ways of arriving (strike::ARRIVALS).
     Approach(usize),
     Arrival(usize),
@@ -126,6 +130,8 @@ pub struct Wheel {
     pub typing: Option<String>,
     /// The speed a click on the bar would give, while the cursor is on it.
     bar_hover: Option<f32>,
+    /// A strike is under way: the stop button shows.
+    pub striking: bool,
 }
 
 /// How many pages of lasers there are, and the page a laser is on.
@@ -244,6 +250,9 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
     if inside(&HUD, x, y) {
         return Some(Spot::Hud);
     }
+    if inside(&STOP, x, y) {
+        return Some(Spot::Stop);
+    }
     if pages() > 1 {
         for k in 0..2 {
             if inside(&arrow(k), x, y) {
@@ -333,7 +342,7 @@ impl Wheel {
     }
     /// Takes a new cursor position; true when what is drawn changed.
     pub fn hover_at(&mut self, x: f32, y: f32, selected: usize) -> bool {
-        let now = spot(x, y, self.rows(selected), self.page);
+        let now = spot(x, y, self.rows(selected), self.page).filter(|&s| s != Spot::Stop || self.striking);
         let was = self.row_for;
         match now {
             Some(Spot::Laser(i)) => self.row_for = has_rows(i).then_some(i),
@@ -394,6 +403,13 @@ impl Wheel {
         out.push(Draw::Fill((Rect { x: HUD.x, y: HUD.y + HUD.h - 1.5, w: HUD.w, h: 1.5 }, if hud { 0xFF62D46A } else { 0xFFE0524E })));
         text(&mut out, "PANEL", HUD.x + 30.0, HUD.y + 2.0, 0xB8BEC8);
         text(&mut out, if hud { "ON" } else { "OFF" }, HUD.x + 70.0, HUD.y + 2.0, if hud { 0x7CE884 } else { 0xF06A64 });
+        // stopping the strike under way
+        if self.striking {
+            let hovered = self.hover == Some(Spot::Stop);
+            out.push(Draw::Fill((STOP, if hovered { 0xF04A1A1A } else { 0xD0101318 })));
+            out.push(Draw::Fill((Rect { x: STOP.x, y: STOP.y + STOP.h - 1.5, w: STOP.w, h: 1.5 }, 0xFFE0524E)));
+            text(&mut out, "STOP STRIKE", STOP.x + STOP.w / 2.0, STOP.y + STOP.h / 2.0 - 4.0, if hovered { 0xFFFFFF } else { 0xF06A64 });
+        }
         // title, the flying speed, the pages, hint, and what the highlighted laser does
         text(&mut out, "ORBITAL LASER", 0.0, TITLE_Y, 0xFFFFFF);
         self.fly_row(&mut out);
@@ -459,6 +475,7 @@ impl Wheel {
             Some(Spot::Centre) => ("Terrain damage on or off".to_string(), 0x8C93A0),
             Some(Spot::Messages) => ("Strike messages on or off".to_string(), 0x8C93A0),
             Some(Spot::Hud) => ("Status panel on or off".to_string(), 0x8C93A0),
+            Some(Spot::Stop) => ("End the strike now: its effects, sounds and world changes".to_string(), 0x8C93A0),
             Some(Spot::Approach(k)) => (format!("Comes in {}", APPROACHES[k].label), 0x8C93A0),
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),
             Some(Spot::Colour(k)) => (format!("Lit {}", COLOURS[k].label), 0x8C93A0),
@@ -589,6 +606,17 @@ mod tests {
         assert!(corner > R_OUT + 10.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
         let corner = (HUD.x * HUD.x + (HUD.y + HUD.h) * (HUD.y + HUD.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && HUD.y + HUD.h < arrow(1).y);
+        // the stop button: clickable only while a strike is under way, clear of the ring, the tabs and the arrows
+        let (sx, sy) = (STOP.x + STOP.w / 2.0, STOP.y + STOP.h / 2.0);
+        assert_eq!(spot(sx, sy, false, 0), Some(Spot::Stop));
+        let mut w = Wheel::on_page(0, 1.0);
+        w.hover_at(sx, sy, 0);
+        assert_eq!(w.hover, None);
+        w.striking = true;
+        w.hover_at(sx, sy, 0);
+        assert_eq!(w.hover, Some(Spot::Stop));
+        let corner = ((STOP.x + STOP.w).powi(2) + (STOP.y + STOP.h).powi(2)).sqrt();
+        assert!(corner > R_OUT + 10.0 && STOP.x + STOP.w < tab(0).x - 4.0 && STOP.y + STOP.h < arrow(0).y);
         assert_eq!(page_of(ship("downfall")), 1);
     }
     #[test]
@@ -753,7 +781,7 @@ mod tests {
     fn fits_the_smallest_gui() {
         // the game's GUI is at least 320 x 240 at any window size and GUI scale: everything stays inside it
         let (hw, hh) = (160.0, 120.0);
-        let mut boxes = vec![BAR, FIELD, MSG, HUD, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
+        let mut boxes = vec![BAR, FIELD, MSG, HUD, STOP, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
         boxes.extend((0..pages()).map(tab));
         for (r, items) in ROWS.iter().enumerate() {
             boxes.extend((0..items.len()).map(|k| button(r, k)));
