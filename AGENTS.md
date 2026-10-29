@@ -32,7 +32,7 @@ laser, command, capability and timing). This file is the short, factual version 
   `clone`d down 7 blocks first (at 6 and 7.3 s), mobs within 140 die and the ~285 chunks within ~152 are force-loaded;
   its land goes in slab by slab from 8.6 s and down to bedrock from 16 s, done by about 23 s. The Payload is a bomb,
   not a beam: it digs a crater ~42 across (its edge wandering ~10%) and 9 deep, scorched (blackstone, basalt, tuff,
-  coarse dirt, gravel, cobbled deepslate), its rim heaped up to ~4 high out to ~35 across; everything standing on the
+  coarse dirt, gravel, cobbled deepslate), its rim heaped up to ~4 high out to ~35 from the middle; everything standing on the
   land is swept off out to ~85 (up to each column's real top, read with `world.read-columns`), the trees there felled
   and lying pointing away from it (a stump of 1-2 left, their crowns crushed by their ends past ~46), the grass charred
   out to ~100, ~220 pieces of rubble strewn out to ~105, mobs and items within 90 killed and the ~200 chunks within

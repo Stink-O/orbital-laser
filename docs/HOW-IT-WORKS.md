@@ -178,7 +178,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   285 chunks loaded while it works; its land goes in slab by slab from 8.6 s and is dug to bedrock by about 23 s.
 - **Payload:** a bomb crater about 42 across (its edge wandering about 10%) and 9 deep in a bowl, its floor and walls
   scorched in broad patches (blackstone, basalt, tuff, coarse dirt, gravel, cobbled deepslate), its rim heaped up to
-  about 4 high with earth and broken stone out to about 35 across; everything standing on the land swept off out to
+  about 4 high with earth and broken stone out to about 35 from the middle; everything standing on the land swept off out to
   about 85 (each column up to its real top, read with `world.read-columns`), the trees there felled: a stump of one or
   two logs, the trunk lying on the ground pointing away from the blast, its crown crushed round its end past about 46;
   the grass charred (coarse dirt, podzol, dirt) out to about 100, patchier further out; about 220 pieces of rubble
@@ -371,7 +371,7 @@ tubes of smoke (each bit of it carried by the wind and spreading as it ages, bro
 side); the column is marched through the billows' smooth union, its surface heaped in lumps at two scales, shadowed
 towards the sun with two looks along it, darker at its core and foot, lit by the sky the scene shows; the dust is
 marched low over the land out to the shockwave's front, from the target's ground to the player's; the debris is
-ninety ballistic chunks with drag, each blurred along its motion. It costs about 1.3 to 1.9 ms at the preview's
+ninety ballistic chunks with drag, each blurred along its motion. It costs about 1.0 to 1.9 ms at the preview's
 800x450.
 ## Stock Horizon
 
