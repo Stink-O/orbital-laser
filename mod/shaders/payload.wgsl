@@ -297,13 +297,14 @@ fn payload(in: StageIn) -> vec4<f32> {
             let te = min(t0 + dt * (f32(i) + h.z), thead);
             let age = max(time - te, 0.0);
             let dive = smoothstep(PL_TURN - 0.3, PL_TURN + 0.9, te);
-            let rad = mix(1.0 + 1.0 * sqrt(age), 3.0 + 2.4 * sqrt(age), dive);
+            let rad = mix(1.1 + 1.7 * sqrt(age), 3.0 + 2.6 * sqrt(age), dive);
             if (h.x < rad && h.y < scene_len + rad) {
                 let chord = 2.0 * sqrt(max(rad * rad - h.x * h.x, 0.0));
                 let cp = rd * h.y;
                 let nq = gnoise3((cp + cam) / (2.5 * rad + 2.0) + vec3<f32>(f32(seed % 97u), 0.0, 0.0));
-                let shape = saturate(1.6 * nq - 0.15) * saturate(1.0 - pow(h.x / rad, 2.0) * 0.7);
-                let pale = 0.42 * exp(-age / 18.0);
+                let nq2 = gnoise3((cp + cam) / (0.9 * rad + 1.0) + vec3<f32>(0.0, 3.0, f32(seed % 89u)));
+                let shape = saturate(1.7 * nq - 0.3) * (0.55 + 0.9 * nq2 * (1.0 - dive * 0.5)) * saturate(1.0 - pow(h.x / rad, 2.0) * 0.85);
+                let pale = 0.3 * exp(-age / 14.0) / (1.0 + 0.25 * age);
                 let dark = 0.55 * exp(-age / 45.0);
                 let sig = mix(pale, dark, dive) * shape * fade;
                 let occl = saturate((scene_len - h.y) / rad + 0.5);

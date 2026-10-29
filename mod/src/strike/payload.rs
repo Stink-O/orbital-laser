@@ -480,7 +480,7 @@ fn ejecta(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
 fn charred(x: i32, z: i32, r: f64, seed: u32) -> Option<&'static str> {
     let n = vnoise(f64::from(x), f64::from(z), 6.0, seed ^ 0x71);
     let m = vnoise(f64::from(x), f64::from(z), 2.0, seed ^ 0x72);
-    let reach = 0.25 + 0.75 * (1.0 - ((r - 30.0) / (PL_CHAR - 30.0)).clamp(0.0, 1.0));
+    let reach = 0.12 + 0.68 * (1.0 - ((r - 30.0) / (PL_CHAR - 30.0)).clamp(0.0, 1.0)).powf(1.5);
     if 0.55 * n + 0.45 * m > 1.0 - reach {
         Some(if m > 0.66 { "minecraft:podzol" } else if n > 0.7 { "minecraft:dirt" } else { "minecraft:coarse_dirt" })
     } else {
