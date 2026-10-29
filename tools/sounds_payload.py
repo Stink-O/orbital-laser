@@ -11,8 +11,9 @@ file is against the others is how they sit in the game; its timeline is read fro
 
   drift       the approach (0 is when the plan starts it, PL_SEEN - 0.3 + 1.6 s): the entry, a double crack sweeping
               down on a sub boom as it strikes the thick air (ENTRY_AT in); then a dark roar fading in and swelling as
-              it comes, a few low resonances wandering in it, the burning object crackling in distinct, uneven pops
-              (sparse at first, four to seven a second), a thin tearing whine over it that climbs as it closes (a
+              it comes, a few low resonances wandering in it, the burning object crackling high up in distinct, uneven
+              pops (sparse at first, four to seven a second; through kilometres of air: dulled, smeared, faintly
+              echoed off the land), a thin tearing whine over it that climbs as it closes (a
               doppler rise, never a held note); handed over to `dive` across its first 1.4 s
   dive        the fast final descent (0 is PL_HIT - PL_DIVE_SND, PL_DIVE_SND before the strike): the roar louder, the
               whine bending up into a shriek, a rush of torn air sweeping up under it, the pops thicker and bigger, the
@@ -20,12 +21,15 @@ file is against the others is how they sit in the game; its timeline is read fro
   ground      the land's answer through the ground (0.02 s in is when its wave reaches the player: the plan plays it at
               the strike plus the distance at five times the air's speed): a deep thump, felt more than heard, a sub
               rumble under a near-silence, the ground shuddering once, a faint rattle
-  ground_alt  the same as the redesign has it: one boom swelling up out of the ground round 70 Hz, sliding down, dying
+  ground_alt  the same as the redesign has it: one boom swelling up out of the ground round 75 Hz, sliding down to
+              about 50, dying; a little of its own harmonics on it
   blast       the blast reaching the player (0.02 s in is its arrival): `explosion_live`, the burst this clip was
               measured for, shaped closer to it (a deeper gap after the crack, a sub swelling in, the top let down
               sooner, the low mids a little apart in the two ears)
-  blast_alt   the alternative blast, in the redesign's manner: the air coming up out of the hush, a low boom, a gap, a
-              bright crack and a second blow, then a wide, mid-heavy roar crackling and dying sooner; level-matched
+  blast_alt   the alternative blast, in the redesign's manner: the air coming up out of the hush, a low boom (round
+              50 Hz, broad, sliding down), a gap, a bright crack and a second blow, then a wide roar crackling and dying
+              sooner over a heaving 35-65 Hz weight, the lows' own harmonics carrying it on small speakers; its loudest
+              400 ms -7.5 dB, so the crack and the roar stay as loud over the added weight
   blast_far, blast_alt_far   each blast through a long stretch of air (its top 10 dB down over a kilohertz): the
               plan cross-fades into them for a player far off
   rush        the shockwave's front and its dust washing over the player (0.15 s in, with the blast): gusts buffeting
@@ -109,6 +113,13 @@ def approach_db():
 # The pops' level (dB, the 12 ms round each at its usual size) where the drift hands over to the dive; the entry boom
 # this far into `drift`.
 POP_DB = -24.0
+# (the pops' echoes off the land and the sky, against the pop itself (amplitude, before their 50-120 ms spread))
+POP_ECHO = 0.3
+# (and how much of each crack's own 6-12 ms scatter in the air is heard with it)
+POP_SMEAR = 0.4
+POP_VERB = 0.08
+# (all the pops, against the levels they had as close clicks: the smear spreads them, the air takes their top)
+POP_FAR_DB = 2.0
 ENTRY_AT = 0.35
 APPROACH_CORR = np.array([1.0, 1.0, 0.99, 0.98, 0.95, 0.92, 0.88, 0.8, 0.7, 0.6])
 
@@ -396,42 +407,68 @@ def crackle(d, t_at, rate_fn, level_db, lo=1400, hi=9000):
     return band(L, lo, hi, 2), band(R, lo, hi, 2)
 
 
-def pop_crackle(d, t_at, rate_fn, level_db, big=1.0):
-    """The object burning up in the air, as the third reference has it: a few distinct pops a second (4 to 8, never in
-    step), each a short broadband crack (10-25 ms, its weight in 1-8 kHz with some body under it), their sizes very
-    uneven (the 25 ms round one 3-4 dB over the roar's top as a rule, a few 8-9 dB), now and then a doublet, the bigger
-    ones with a low knock under them. Spread a little round the head, each with a faint late echo off to the other
-    side. `rate_fn` and `level_db` over strike time; `big` scales how often a big one comes."""
+def pop_crackle(d, t_at, rate_fn, level_db, big=1.0, air_fc=None, smear=1.0):
+    """The object burning up high in the sky, kilometres off, as the third reference has it: a few distinct pops a second
+    (4 to 8, never in step), each a crack that is still sharp at its front (rising in 1-3 ms) but heard through miles
+    of air: its top taken off (`air_fc`, Hz over strike time: the reference's pops stand most over the roar at 2-4 kHz,
+    no more at 8 kHz than at 500 Hz), smeared by the air it crossed into 25-35 ms (the reference's at -10 dB; a close
+    click is 10-15), each a little cluster of cracks, the bigger ones a rumbling crack with a low roll under it. Their
+    sizes very uneven, now and then a doublet. Nearly overhead (little apart in the two ears); each comes back once or
+    twice off the land and the sky, late (0.3-1.4 s), dull and spread out. `rate_fn` and `level_db` over strike time;
+    `big` scales how often a big one comes, `smear` how much of the air's scatter there is (less, nearer)."""
+    from scipy.signal import fftconvolve
     n = int(SR * d)
     L = np.zeros(n); R = np.zeros(n)
+    if air_fc is None:
+        air_fc = lambda v: 4200.0
+    # (the air's scatter: what smears each crack, and the land's long, dull echo of it)
+    def scatter(m, tau, lo, hi):
+        s = np.arange(m) / SR
+        h = band(rng().standard_normal(m), lo, hi, 2) * np.exp(-s / tau) * (1 - np.exp(-s / 0.001))
+        return h / (np.sqrt(np.sum(h ** 2)) + 1e-12)
     for t1 in poisson_times(0.0, d - 0.08, lambda u: rate_fn(u + t_at)):
         size = min(rng().pareto(1.9) * 0.55 + 0.4, 3.0)
         if rng().random() < 0.06 * big:
             size = max(size, rng().uniform(2.0, 3.0))
         a = size * 10 ** (level_db(t1 + t_at) / 20)
+        fa = air_fc(t1 + t_at)
         reps = [(0.0, 1.0)]
         if rng().random() < 0.22:                                    # (a doublet: it cracks again just after)
-            reps.append((rng().uniform(0.012, 0.06), rng().uniform(0.35, 0.8)))
-        p = rng().uniform(-0.45, 0.45)
+            reps.append((rng().uniform(0.015, 0.07), rng().uniform(0.35, 0.8)))
+        p = rng().uniform(-0.25, 0.25)
         for dt, g in reps:
-            tau = (0.0022 + 0.0018 * min(size, 3.0)) * rng().uniform(0.7, 1.4)
-            m = int(SR * (tau * 9 + 0.004))
+            m = int(SR * (0.06 + 0.03 * min(size, 3.0)))
             s = np.arange(m) / SR
-            env = (1 - np.exp(-s / 0.0004)) * np.exp(-s / tau)
-            w = rng().standard_normal(m)
-            fc = np.exp(rng().uniform(np.log(1100), np.log(3600)))
-            x = band(w, fc / 3.5, fc * 2.6, 2) + 0.5 * band(w, 250, 1300, 2)
-            x = air(x, 9000) * env
-            if size > 1.8:                                           # (the big ones knock: body under the crack)
-                m2 = int(SR * 0.16)
+            x = np.zeros(m)
+            # a little cluster of cracks (1-4, more for the big ones) over 5-30 ms, the first the strongest
+            nk = 1 + min(rng().poisson(0.4 + 0.6 * min(size, 3.0)), 3)
+            for j in range(nk):
+                o = 0.0 if j == 0 else rng().uniform(0.002, 0.005 + 0.006 * min(size, 3.0))
+                gj = 1.0 if j == 0 else rng().uniform(0.25, 0.7)
+                tau = (0.0026 + 0.0014 * min(size, 3.0)) * rng().uniform(0.7, 1.3)
+                ss = np.maximum(s - o, 0)
+                env = (1 - np.exp(-ss / 0.0007)) * np.exp(-ss / tau) * (s >= o)
+                w = rng().standard_normal(m)
+                fc = np.exp(rng().uniform(np.log(600), np.log(2000)))
+                x += (band(w, fc / 3.0, fc * 2.2, 2) + 1.1 * band(w, 180, 1100, 2)) * env * gj
+            # smeared by the air it came through: a diffuse 10-20 ms scatter of itself, a little darker
+            sc = scatter(int(0.06 * SR), rng().uniform(0.004, 0.009), 300, 3000)
+            x = x + fftconvolve(x, sc)[:m] * POP_SMEAR * smear
+            # (and the long, faint roll of it through the air after, 40-80 ms, darker still)
+            m = m + int(0.25 * SR)
+            x = np.concatenate([x, np.zeros(int(0.25 * SR))])
+            x = x + fftconvolve(x, scatter(int(0.25 * SR), rng().uniform(0.04, 0.08), 250, 2200))[:m] * POP_VERB
+            x = air(x, fa)
+            if size > 1.6:                                           # (the big ones rumble: a low roll under the crack)
+                m2 = int(SR * 0.4)
                 s2 = np.arange(m2) / SR
-                kn = band(rng().standard_normal(m2), 110, 520, 2) * (1 - np.exp(-s2 / 0.002)) * np.exp(-s2 / 0.03)
+                kn = band(rng().standard_normal(m2), 70, 420, 2) * (1 - np.exp(-s2 / 0.004)) * np.exp(-s2 / rng().uniform(0.06, 0.11))
+                kn *= np.exp(2.5 * PB.slow_random(m2, 8.0, 30.0) / 8.686)
                 x = np.concatenate([x, np.zeros(max(m2 - m, 0))])[:max(m, m2)]
-                x[:m2] += kn * 0.55 * min(size / 2.5, 1.4)
+                x[:m2] += kn * 0.5 * min(size / 2.5, 1.4)
             x = x / (np.sqrt(np.mean(x[:int(0.012 * SR) + 1] ** 2)) + 1e-9) * a * g
             k0 = int((t1 + dt) * SR)
-            # (where it is round the head: a level and a few samples' lead between the ears)
-            itd = int(abs(p) * 14)
+            itd = int(abs(p) * 8)
             l, r = PB.pan2(x, p)
             if p > 0:
                 l = np.concatenate([np.zeros(itd), l])[:len(x)]
@@ -441,8 +478,14 @@ def pop_crackle(d, t_at, rate_fn, level_db, big=1.0):
             if mm <= 0:
                 continue
             L[k0:k0 + mm] += l[:mm]; R[k0:k0 + mm] += r[:mm]
-            # (a faint, dark echo of it, late and off to the other side)
-            PB.delay_into(L, R, np.concatenate([np.zeros(k0), x])[:n], rng().uniform(0.03, 0.09), 0.16, -p * 0.8, 500, 4500)
+            if dt > 0:
+                continue
+            # its echoes off the land and the sky: late, dull, spread over 50-120 ms, from elsewhere
+            for e in range(1 + (rng().random() < 0.5)):
+                ir = scatter(int(0.4 * SR), rng().uniform(0.05, 0.12), 150, 1600)
+                ech = fftconvolve(x, ir)
+                PB.delay_into(L, R, np.concatenate([np.zeros(k0), ech])[:n], rng().uniform(0.3, 1.4),
+                              POP_ECHO * rng().uniform(0.6, 1.2) / (1 + e), rng().uniform(-0.7, 0.7))
     return L, R
 
 
@@ -503,8 +546,9 @@ def drift():
     with PB.seeded(92101):
         L, R = calibrated(lambda tab: roar_body(d, DRIFT_AT, tab), APPROACH_T - DRIFT_AT, approach_db())
         # (it burning up: distinct pops, sparse as it enters, thickening)
-        cl, cr = pop_crackle(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT + ENTRY_AT + 0.12, DRIFT_AT + 1.5, DRIFT_AT + 4.0, DIVE_AT], [3.0, 4.5, 7.0, 6.5]) * (u > DRIFT_AT + ENTRY_AT + 0.12),
-                             lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 4.0, DIVE_AT], [POP_DB - 6, POP_DB - 2, POP_DB]))
+        cl, cr = pop_crackle(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT + ENTRY_AT + 0.12, DRIFT_AT + 1.5, DRIFT_AT + 4.0, DIVE_AT], [3.5, 5.0, 7.5, 7.0]) * (u > DRIFT_AT + ENTRY_AT + 0.12),
+                             lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 4.0, DIVE_AT], [POP_DB - 7 + POP_FAR_DB, POP_DB - 3 + POP_FAR_DB, POP_DB - 1.5 + POP_FAR_DB]),
+                             air_fc=lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [3400.0, 4300.0]))
         wl, wr = whine(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 3, DIVE_AT], [-50, -45, -40]),
                        lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-6, 0]))
         tl, tr = tearing(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-63, -55]), 1400, 5000)
@@ -542,7 +586,8 @@ def dive():
                        lambda v: np.interp(v, [DIVE_AT, HIT - 0.6, HIT], [0, 2, 3]), flutter=1.3)
         tl, tr = tearing(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [-56, -52, -49]), 1400, 5000, (20, 70))
         cl, cr = pop_crackle(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT], [6.5, 8.0, 10.0]),
-                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB - 1, POP_DB + 4]), big=1.6)
+                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB + POP_FAR_DB, POP_DB + 4 + POP_FAR_DB]), big=1.6, smear=0.6,
+                             air_fc=lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [4600.0, 5600.0, 7000.0]))
         # the rush of torn air: a band sweeping up under the whine, louder and faster as it comes
         fc = 330 * (1450 / 330) ** (u ** 1.8)
         rush = glide_band(d, fc, 0.9 + 0.3 * u)
@@ -575,6 +620,10 @@ def dive():
         tail_ = np.convolve(last, ir)
         for ch, sgn in ((L, 1.0), (R, -1.0)):
             put(ch, tail_ * 0.55 * (1 + 0.15 * sgn), CUT - 0.05)
+        # (and mostly gone before a blast from close by lands on it: 60 blocks off the blast comes 0.17 s after the
+        # strike, its peaks at -0.8 dBFS already, and this under it put the two past full scale)
+        let_go = np.interp(t, [CUT + 0.07, CUT + 0.16], [1.0, 0.25])
+        L, R = L * let_go, R * let_go
         L, R = PB.causal_lowcut(L, 18.0), PB.causal_lowcut(R, 18.0)
     finish_abs("dive", L, R, tail_fade=0.2)
 
@@ -644,6 +693,10 @@ def ground():
     finish_abs("ground", L, R, tail_fade=0.8)
 
 
+GROUND_ALT_HARM_DB = -9.0
+GROUND_ALT_UP = 10 ** (1.5 / 20)                 # (and a little heavier than the redesign's)
+
+
 def ground_alt():
     """The land's answer as the redesign has it: one boom swelling up out of the ground over a tenth of a second, round
     70 Hz and sliding down, then a low rumble dying away steadily; nothing over 500 Hz."""
@@ -656,7 +709,7 @@ def ground_alt():
     up = GROUND_UP
     with PB.seeded(92311):
         tp = rng().uniform(0.12, 0.15)
-        f = 50.0 + rng().uniform(22, 28) * np.exp(-u / 0.3)
+        f = 47.0 + rng().uniform(29, 34) * np.exp(-u / 0.22)
         ph = 2 * np.pi * np.cumsum(f * on) / SR
         env = np.where(u < tp, (u / tp) ** 1.3, np.exp(-(u - tp) / 0.075)) * on
         boom = np.sin(ph) * env + T.unit(band(white(d), 38, 110, 2)) * env * 0.35
@@ -668,7 +721,11 @@ def ground_alt():
         g = 10 ** ((-26.0 + up - oct_levels((rL + rR) / 2 * renv, t1 + 0.22, t1 + 0.35)[1]) / 20)
         L = boom + sub + rL * renv * g
         R = boom + sub + rR * renv * g
-        L, R = PB.causal_lowcut(L, 15.0), PB.causal_lowcut(R, 15.0)
+        # (its harmonics, as the redesign's boom has its 100-120 Hz only 5-10 dB under its peak: the weight heard on
+        # small speakers too), the lowest of it (under 25 Hz, which only took headroom) let go
+        L, R = alt_harmonics(L, R, u, on, GROUND_ALT_HARM_DB, -1.0, (t1 + 0.04, t1 + 0.4))
+        L, R = PB.causal_lowcut(L, 24.0), PB.causal_lowcut(R, 24.0)
+        L, R = L * GROUND_ALT_UP, R * GROUND_ALT_UP
     finish_abs("ground_alt", L, R, tail_fade=0.6)
 
 
@@ -756,6 +813,8 @@ ALT_DB = np.array([
 ALT_TRIM = np.zeros_like(ALT_DB)
 ALT_TRIM[3:, 2:] = np.array([-2.0, -3.0, -4.5, -5.5, -5.0, -5.0, -5.0, -5.0])[:, None]
 ALT_TRIM[3:, :2] = np.array([-1.0, -1.5, -2.0, -2.5, -2.5, -2.5, -2.5, -2.5])[:, None]
+# (and its 250 Hz octave in the first half second, which came out boxy against the redesign's: 200-250 Hz 5-6 dB over)
+ALT_TRIM[:3, 3] = -4.5
 ALT_CORR_T = np.array([0.3, 0.65, 1.5, 3.0, 5.0])
 ALT_CORR = np.array([
     [0.99, 0.92, 0.74, 0.5, 0.5, 0.4, 0.25, 0.15, 0.3, 0.45],
@@ -765,10 +824,53 @@ ALT_CORR = np.array([
     [0.97, 0.85, 0.7, 0.45, 0.35, 0.35, 0.4, 0.5, 0.5, 0.5]])
 
 
+# The alternative's weight. The redesign measured in third octaves against the first version of this one (both at the
+# same loudest 400 ms): its band levels were within a few dB, but its boom sits round 50 Hz (40-63 Hz peaking 0.145 s
+# in at -6.6 dB, 10 ms; ours was a narrow 62-70 Hz one, its 63-100 Hz at -5.4 and 40-63 at -12), broad (100-150 Hz only
+# 6-10 dB under it), then 43-46 Hz through the second blow; its 40-63 Hz the loudest band from there on; and less of it
+# is over 180 Hz (1.8 dB less at the same level: the first version's 200-250 Hz stood 5 dB over the redesign's in the
+# first half second, from the 90-250 Hz punch). Its boom's
+# 35-90 Hz peak (10 ms) this much over the roar's 63 Hz octave, how fast the boom lets go, the bed of 34-66 Hz under the
+# roar (dB over the roar's own 40-63 Hz at 0.4-1.4 s, and its shape over time after the arrival), the harmonics' level.
+ALT_BOOM_DB = 11.0
+ALT_BOOM_FALL = 0.024
+ALT_BODY = 0.45
+ALT_PUNCH = 0.4
+ALT_BED_UP = 3.0
+ALT_BED_T = [0.3, 0.8, 1.5, 2.5, 3.5, 5.0, 7.0, 10.0]
+ALT_BED_DB = [0.0, 0.0, -2.0, -4.5, -7.0, -11.0, -18.0, -30.0]
+ALT_HARM_DB = -5.0
+# (its loudest 400 ms: higher than `blast`'s -8 dB, as so much more of it is under 100 Hz, where a level counts for less
+# to the ear: by a K-weighted measure (loudest 400 ms) it is then where it was before it was given its weight, -8.0
+# against -7.9, the crack and the roar as loud as they were; `blast` is -7.3; the low band rounded off ALT_LOW_CLIP dB over
+# its own loudest 400 ms)
+ALT_LEVEL = -7.5
+ALT_LOW_CLIP = 5.0
+
+
+def alt_harmonics(L, R, u, on, harm_db=None, gate_at=0.11, win=(0.12, 0.47)):
+    """The 30-110 Hz of `L`, `R` (their mid) put through a lopsided soft saturation: what comes out of it new (its 2nd
+    and 3rd harmonics, 70-175 Hz) added back, ALT_HARM_DB under the 90-250 Hz already there while the boom peaks, so
+    the weight is heard where small speakers and headphones still play, following the lows' own swells."""
+    M = (L + R) / 2
+    lo = band(M, 30, 110, 3)
+    a = np.sqrt(np.mean(lo[on] ** 2)) * 2.5 + 1e-12
+    v = lo / a
+    sat = (np.tanh(v) - v) + 0.8 * v * v / (1 + 0.4 * v * v)        # (odd from the rounding, even from its lopsidedness)
+    new = band(band(sat, 70, None, 3), None, 175, 4)    # (only what the saturation made, an octave up: 70-175 Hz)
+    new = new - np.mean(new)
+    w0, w1 = int(win[0] * SR), int(win[1] * SR)
+    harm_db = ALT_HARM_DB if harm_db is None else harm_db
+    have = np.sqrt(np.mean(band(M, 90, 250, 2)[w0:w1] ** 2))
+    got = np.sqrt(np.mean(band(new, 90, 250, 2)[w0:w1] ** 2)) + 1e-12
+    new = new * have / got * 10 ** (harm_db / 20) * np.clip((u - gate_at) / 0.04, 0, 1)   # (the hush before stays clean)
+    return L + new, R + new
+
+
 def blast_alt():
     """The alternative blast, in the redesign's manner (see ALT_DB): the air coming up out of the hush, a low boom, a
-    gap, a bright crack and a second blow, then a wide, mid-heavy roar crackling, dying sooner than `blast`'s. Same
-    level as `blast` (its loudest 400 ms -8 dB, peaks -0.8 dBFS), its arrival also 0.02 s in."""
+    gap, a bright crack and a second blow, then a wide roar crackling over a heaving low weight, dying sooner than
+    `blast`'s. Its loudest 400 ms at ALT_LEVEL, peaks -0.8 dBFS, its arrival 0.02 s in."""
     d = 11.5
     t0 = 0.02
     n = int(SR * d)
@@ -792,7 +894,7 @@ def blast_alt():
         # ---- the air coming up out of the hush: a broadband wash rising over 0.13 s, its top last
         wash = []
         for _ in range(2):
-            w_ = T.unit(band(rng().standard_normal(n), 200, 9000, 2))
+            w_ = T.unit(band(rng().standard_normal(n), 300, 9000, 2))
             w_ = band(w_, None, 2000, 1) * 0.9 + w_ * 0.06
             wash.append(w_ * np.clip(u / 0.13, 0, 1) ** 2.5 * np.exp(-np.maximum(u - 0.13, 0) / 0.03) * on * 10 ** (-28.0 / 20))
         # (what the redesign's start is measured against: its roar's 63 Hz and 1 kHz octaves at 0.5-1 s, -13 and -31 dB)
@@ -801,22 +903,32 @@ def blast_alt():
         # ---- the low blows, the same in both ears: a sub push peaking 0.11 s in (20-45 Hz, 4.5 dB over the roar's 63 Hz
         # octave); a boom of ~62 Hz swelling over 60 ms to 0.15 s and dropping away in 10 (45-90 Hz, 9.5 dB over it);
         # a punch of 90-250 Hz on its back; a second blow 0.31-0.37 s in
-        def blow_at(tp, f0, rise, fall, a):
+        def blow_env(tp, rise, fall):
             uu = u - tp
-            env = np.where(uu < 0, np.exp(-0.5 * (uu / rise) ** 2), np.exp(-uu / fall)) * on
-            ph = 2 * np.pi * np.cumsum(f0 * (1 + 0.12 * np.exp(-np.maximum(uu, 0) / 0.05)) * on) / SR
-            return np.sin(ph + rng().uniform(0, 6.28)) * env * a
-        sub = blow_at(0.11, 32.0, 0.018, 0.03, 1.0) + blow_at(0.31, 36.0, 0.015, 0.04, 0.8)
-        boom = blow_at(0.15, 62.0, 0.02, 0.011, 1.0) + blow_at(0.365, 58.0, 0.02, 0.025, 0.7) + blow_at(0.33, 66.0, 0.012, 0.02, 0.5)
-        punch = (T.unit(band(rng().standard_normal(n), 90, 260, 2)) * np.exp(-0.5 * ((u - 0.158) / 0.007) ** 2)
-                 + T.unit(band(rng().standard_normal(n), 90, 260, 2)) * np.exp(-0.5 * ((u - 0.285) / 0.012) ** 2) * 0.8) * on
+            return np.where(uu < 0, np.exp(-0.5 * (uu / rise) ** 2), np.exp(-uu / fall)) * on
+
+        def blow_at(tp, f0, rise, fall, a, sweep=0.12, body=0.0):
+            uu = u - tp
+            env = blow_env(tp, rise, fall)
+            ph = 2 * np.pi * np.cumsum(f0 * (1 + sweep * np.exp(-np.maximum(uu, 0) / 0.05)) * on) / SR
+            x = np.sin(ph + rng().uniform(0, 6.28)) * env
+            if body:                                                 # (and as broad as the redesign's: 40-170 Hz)
+                x = x + T.unit(band(rng().standard_normal(n), 38, 150, 3)) * env * body
+            return x * a
+        # (the redesign's boom sits round 50 Hz, its body 100-150 Hz only 6-10 dB under it, and sweeps down to 45 Hz
+        # through the second blow; a narrow 62 Hz one read as higher and thinner than it)
+        sub = blow_at(0.11, 30.0, 0.02, 0.035, 1.0) + blow_at(0.31, 33.0, 0.02, 0.06, 1.2)
+        boom = (blow_at(0.15, 50.0, 0.022, ALT_BOOM_FALL, 1.0, sweep=0.24, body=ALT_BODY)
+                + blow_at(0.355, 45.0, 0.02, 0.045, 0.6, sweep=0.15, body=ALT_BODY * 0.7) + blow_at(0.32, 53.0, 0.012, 0.025, 0.4))
+        punch = (T.unit(band(rng().standard_normal(n), 80, 200, 3)) * np.exp(-0.5 * ((u - 0.158) / 0.007) ** 2)
+                 + T.unit(band(rng().standard_normal(n), 80, 200, 3)) * np.exp(-0.5 * ((u - 0.285) / 0.012) ** 2) * 0.8) * on
         def peak10(x, lo, hi):
             y = band(x, lo, hi, 2)
             w = int(0.01 * SR)
             return 20 * np.log10(max(np.sqrt(np.mean(y[i:i + w] ** 2)) for i in range(0, int(0.6 * SR), w // 2)) + 1e-12)
         sub *= 10 ** ((roar63 + 4.5 - peak10(sub, 20, 45)) / 20)
-        boom *= 10 ** ((roar63 + 9.5 - peak10(boom, 45, 90)) / 20)
-        punch *= 10 ** ((roar63 + 1.5 - peak10(punch, 90, 250)) / 20)
+        boom *= 10 ** ((roar63 + ALT_BOOM_DB - peak10(boom, 35, 90)) / 20)
+        punch *= 10 ** ((roar63 + 1.5 - peak10(punch, 90, 250)) / 20) * ALT_PUNCH
         blow = sub + boom + punch
         # ---- the crack: a bright burst 0.232 s in, its mids first and its top 10-15 ms after, wide; smaller ones at
         # 0.32 and 0.34 (its 1-4 kHz 6.5 dB over the roar's 1 kHz octave)
@@ -826,10 +938,10 @@ def blast_alt():
                 uu = u - tc
                 m_env = np.where(uu < 0, 0.0, (1 - np.exp(-uu / 0.002)) * np.exp(-uu / w)) * on
                 h_env = np.where(uu < top_lag, 0.0, (1 - np.exp(-(uu - top_lag) / 0.002)) * np.exp(-(uu - top_lag) / (w * 1.1))) * on
-                mid = T.unit(band(rng().standard_normal(n), 250, 3500, 2))
+                mid = T.unit(band(rng().standard_normal(n), 380, 3500, 2))     # (no box: its 200-300 Hz the redesign's)
                 top = T.unit(band(rng().standard_normal(n), 3500, 18000, 2))
                 crack[k] += (mid * m_env + top * h_env * 10 ** (-6.0 / 20)) * a
-        cg = 10 ** ((roar1k + 8.5 - peak10((crack[0] + crack[1]) / 2, 1000, 4000)) / 20)
+        cg = 10 ** ((roar1k + 10.0 - peak10((crack[0] + crack[1]) / 2, 1000, 4000)) / 20)
         crack = [c * cg for c in crack]
         # (the wash under all of it: 250 Hz-1 kHz 4 dB under the roar's 1 kHz octave as it peaks)
         wg = 10 ** ((roar1k - 4.0 - peak10((wash[0] + wash[1]) / 2, 250, 1000)) / 20)
@@ -837,9 +949,32 @@ def blast_alt():
         # ---- crackle in the roar: a few sharp spikes up top, much bigger than the rest, thinning out
         cl, cr = crackle(d, 0.0, lambda v: 0.0 if v < t0 + 0.35 else 14.0 * np.exp(-(v - t0 - 0.35) / 1.2) + 2.0,
                          lambda v: -40.0 - 4.0 * max(v - t0 - 0.35, 0), lo=1800, hi=12000)
-        L = L + wash[0] + blow + crack[0] + cl
-        R = R + wash[1] + blow + crack[1] + cr
-        L, R = PB.causal_lowcut(L * on, 18.0), PB.causal_lowcut(R * on, 18.0)
+        # ---- the weight under the roar: a bed of 34-66 Hz swelling and heaving under it for seconds, as the redesign's
+        # 40-63 Hz is the loudest of its bands from the second blow on (where the roar's own lows wander about 60-75 Hz)
+        bed = []
+        bl0 = T.unit(band(rng().standard_normal(n), 34, 66, 3))
+        for k in range(2):
+            b_ = 0.94 * bl0 + 0.34 * T.unit(band(rng().standard_normal(n), 34, 66, 3))
+            bed.append(b_)
+        heave = np.exp((3.0 * PB.slow_random(n, 0.4, 2.5) + 1.5 * PB.slow_random(n, 3.0, 9.0)) / 8.686)
+        benv = (np.clip((u - 0.24) / 0.12, 0, 1) ** 2 * 10 ** (np.interp(u, ALT_BED_T, ALT_BED_DB) / 20) * heave * on)
+        mid0 = (L + R) / 2
+        bref = np.sqrt(np.mean(band(mid0, 40, 63, 3)[int((t0 + 0.4) * SR):int((t0 + 1.4) * SR)] ** 2))
+        bgot = np.sqrt(np.mean(band(bl0 * benv, 40, 63, 3)[int((t0 + 0.4) * SR):int((t0 + 1.4) * SR)] ** 2))
+        bed = [b_ * benv * bref / (bgot + 1e-12) * 10 ** (ALT_BED_UP / 20) for b_ in bed]
+        L = L + wash[0] + blow + crack[0] + cl + bed[0]
+        R = R + wash[1] + blow + crack[1] + cr + bed[1]
+        # ---- the lows made heard on small speakers too: their own harmonics (2nd and 3rd, 70-175 Hz), as an overdriven
+        # boom has them, following the lows exactly (the redesign's boom has its 100-150 Hz only 6-10 dB under 50 Hz)
+        L, R = alt_harmonics(L, R, u, on)
+        L, R = PB.causal_lowcut(L * on, 24.0), PB.causal_lowcut(R * on, 24.0)
+        # (the lows rounded off on their own, ALT_LOW_CLIP dB over their loudest 400 ms: the boom and the blows are what
+        # would otherwise set the peaks and have the limiter ride the crack and the roar down with them; rounded, they
+        # grow a little more of their own 100-300 Hz)
+        lows = [band(ch, None, 110, 4) for ch in (L, R)]
+        c_lo = T.loudest((lows[0] + lows[1]) / 2) * 10 ** (ALT_LOW_CLIP / 20)
+        L = L - lows[0] + PB.soft_clip(lows[0], c_lo, 0.5)
+        R = R - lows[1] + PB.soft_clip(lows[1], c_lo, 0.5)
         # (its first 0.6 s driven into a soft clip 7.5 dB over its loudest 400 ms, as the redesign's start is (its peak
         # 7.7 dB over it): dense, and the master's limiter has next to nothing left to ride down)
         free = 1 + 1e3 * np.clip((u - 0.6) / 0.1, 0, 1) ** 2
@@ -849,7 +984,7 @@ def blast_alt():
             c = lv * 10 ** (7.5 / 20) * free
             L = PB.soft_clip(L0, c, 0.5); R = PB.soft_clip(R0, c, 0.5)
             lv = T.loudest((L + R) / 2)
-    PB.finish_blast_decoded(f"{TH}/blast_alt", L, R, -8.0, PEAK, 1.5)
+    PB.finish_blast_decoded(f"{TH}/blast_alt", L, R, ALT_LEVEL, PEAK, 1.5)
 
 
 # =========================================================================================================  the rush

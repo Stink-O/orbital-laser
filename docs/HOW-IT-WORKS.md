@@ -114,7 +114,8 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   one side), with a bloom, a faint lens streak and a short white-hot streak of air behind it. It is shot down from
   orbit: one clean ballistic arc onto the target, a shallow glide crawling slowly over the sky for seconds, then
   steeper and faster. As it strikes the thick air there is a double crack on a sub boom, then it crackles in distinct,
-  uneven pops (a few a second, thickening), over a faint high whine and a far rumble. Its trail is a cord of lumpy
+  uneven pops high in the sky (a few a second, thickening, dulled and smeared by the air, the bigger ones rumbling, each
+  coming back faintly off the land), over a faint high whine and a far rumble. Its trail is a cord of lumpy
   grey-brown smoke (a thin pale vapour for its first second or two) hung in the sky in the arc's shape: dense where it
   is laid, then swelling, paling, breaking into beads and puffs, fraying and thinning away over twenty seconds or so,
   drifting with the wind. From about 7 s it sheds pieces: eight glowing chunks flung off to the side, falling away
@@ -350,13 +351,13 @@ grinding in uneven grabs), sharp cracks of rock each with its own splinters and 
 collapse (`explosion_live` again, on its own seed, made earthy: its top rolled off, its low-mid pushed, a strain before
 it, rock grinding as it gives), the rockfall (a grinding roar and slabs striking the bottom, unevenly, further and
 further off) and the pebbles after, each bouncing its own way, in the pit's long echo. Each is heard late by how far
-away it is. The Payload's ([`tools/sounds_payload.py`](../tools/sounds_payload.py)): the entry's double crack and sub boom as it strikes the thick air; its crackle, distinct uneven pops, four to seven a second, a few much bigger; a faint thin whine high up, a far rumble under it; the dive's whistle bending up, the pops thicker and a roar of air and fire tearing louder, cut
+away it is. The Payload's ([`tools/sounds_payload.py`](../tools/sounds_payload.py)): the entry's double crack and sub boom as it strikes the thick air; its crackle, distinct uneven pops, four to seven a second, a few much bigger, heard from kilometres up (their top taken off by the air, each smeared over 25-35 ms, the big ones rumbling cracks, faint dull echoes off the land a few tenths of a second to over a second later); a faint thin whine high up, a far rumble under it; the dive's whistle bending up, the pops thicker and a roar of air and fire tearing louder, cut
 dead at the strike; the ground's thump and rumble arriving first, through the land at five times the air's speed
 (`ground`), with a faint early jolt; a near-silent breath while the blast travels; the blast (`explosion_live` on its
 own seed, as loud as the Planet Killer's; from 500 to 1,500 blocks off cross-faded into the same blast through that much
 air, its top 10 dB down, `blast_far`); the dust's rush and the wind gusting on after it; clods thudding down round the player and a
 patter of grit; and a long tail of rolls off the land, further and further off. `/orbital payloadsound alt` swaps the blast and the
-thump for alternatives in the manner of a sound designer's redesign (`blast_alt`, `ground_alt`, `blast_alt_far`); `main`
+thump for alternatives in the manner of a sound designer's redesign (`blast_alt`, `ground_alt`, `blast_alt_far`: the low boom first, round 50 Hz and broad, sliding down into a second blow, a bright crack, then a wide roar over a heaving 35-65 Hz weight, with the lows' own harmonics so it carries on small speakers too); `main`
 swaps them back; the wheel's BLAST SOUND row (shown while the Payload is loaded or pointed at) does the same.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
