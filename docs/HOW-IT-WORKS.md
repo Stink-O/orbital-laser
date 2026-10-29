@@ -128,7 +128,9 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   eighteen billows and a ragged trunk under them melting into one lumpy cauliflower mass (big lumps broken by middling
   and small ones, its edge crisp in places and a torn, wispy fringe in others; tan smoke and dust, browner at its
   dusty foot, lit by the scene: sunlit tops, greyed by the sky on its shadowed side, darker deep in it and down its
-  narrower stem), about 235 blocks tall, widening and climbing slowly on, leaning with the wind from its foot up (the foot stays planted over the crater; the head drifts furthest). The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
+  narrower stem; its foot sunk under the crater's floor in a low, wide skirt of dust, so it rises out of the ground; lit
+  by the sun as the hour has it, warm orange-red as it nears the horizon, its sunward side lit and the far side dark,
+  the moon's faint cold light at night), about 235 blocks tall, widening and climbing slowly on, leaning with the wind from its foot up (the foot stays planted over the crater; the head drifts furthest). The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
   The shockwave races out over the land at the same speed as a wall of yellow-tan dust a person's height and more,
   billowing and crisp at its front, the leaves and grass near it shaken on the screen; it reaches the player as the
   blast does, shakes the camera, washes over them and settles in low drifting patches and a thin haze; dark chunks
@@ -200,7 +202,10 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   about 24 wide where the blast only half did its work: crowns stripped of their leaves in patches (wholly near it,
   their tops further out) and some trees knocked flat (fewer further out); about 220 pieces of rubble strewn out to
   about 105 and some 300 leaves and broken branches of the wood that grows there strewn out to about 115, landing over
-  a few seconds; every mob and item within 90 killed. Nothing is dug next to water or lava, and the water and lava
+  a few seconds; about 90 real blocks of the crater's ground (grass, dirt, stone, tuff, now and then a log) thrown out of
+  it as falling blocks over the first second and a half, outward and up at all speeds, coming down from its rim out to
+  about 110 by about 19 s, about half landing as blocks and the rest breaking up where they land (none drops an item);
+  every mob and item within 90 killed (not the thrown blocks). Nothing is dug next to water or lava, and the water and lava
   the crater would open are sealed. It keeps about 240 chunks loaded while it
   works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
 

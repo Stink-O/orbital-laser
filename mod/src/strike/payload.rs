@@ -67,6 +67,8 @@ const PL_PARTS: i32 = 6;
 const PL_BANDS: i32 = 40;
 /// Mobs and dropped items within PL_KILL killed as it strikes.
 const PL_KILL: i32 = 90;
+/// Real blocks thrown out of the crater as it strikes (pl_thrown).
+const PL_THROWN: usize = 90;
 
 /// Where the object is and how it moves: everything worked out from the strike's seed and where the player stands.
 /// It is shot down from orbit: it shows high in the sky over the far side of the target, off to one side of it as the
@@ -913,6 +915,58 @@ fn pl_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
     }
 }
 
+/// Real blocks thrown out of the crater as it is blasted open: the ground that was there (grass and dirt off its top, the
+/// stone and tuff under it, now and then a log of the wood growing round it), flung outward and up over the first second
+/// and a half, at all speeds, so some come down by the rim and some arc far out over the flattened land. Some land as
+/// blocks, the rest break up where they land (CancelDrop); none drops an item.
+fn pl_thrown(q: &mut Plan, land: &Land, s: &Shape) {
+    let (bx, bz) = (q.bx, q.bz);
+    let mut rng = Rng::new(u64::from(s.seed) ^ 0x7410);
+    let mut woods = [0u32; 9];
+    for c in land.cols.iter().filter(|c| c.known && c.trunk > 0) {
+        woods[c.wood as usize] += 1;
+    }
+    let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
+    let mut n = 0;
+    for _ in 0..PL_THROWN * 3 {
+        if n >= PL_THROWN {
+            break;
+        }
+        // (from anywhere in the crater, more from its middle)
+        let r = PL_CRATER_R * 0.85 * rng.next().sqrt();
+        let a = rng.uniform(0.0, TAU);
+        let (x, z) = (s.cx + a.cos() * r, s.cz + a.sin() * r);
+        let (ix, iz) = (x.floor() as i32, z.floor() as i32);
+        let Some(c) = at(land, bx, bz, ix, iz) else { continue };
+        if !c.known || c.fluid || wet_near(land, bx, bz, ix, iz) {
+            continue;
+        }
+        let deep = rng.next();
+        let blk = match (c.ground, deep) {
+            (_, d) if d < 0.08 && wood.is_some() => LOG_Y[wood.unwrap_or(0)],
+            (1, d) if d < 0.4 => "minecraft:grass_block",
+            (1 | 2, d) if d < 0.62 => "minecraft:dirt",
+            (_, d) if d < 0.72 => "minecraft:coarse_dirt",
+            (_, d) if d < 0.82 => "minecraft:cobblestone",
+            (_, d) if d < 0.9 => "minecraft:stone",
+            (_, d) if d < 0.96 => "minecraft:tuff",
+            _ => "minecraft:cobbled_deepslate",
+        };
+        // (outward from the middle (straight up near it, leaning out further off), at speeds from a lob that lands by
+        // the rim to a hard throw that comes down a hundred blocks off; blocks a tick)
+        let ang = if r > 1.0 { a } else { rng.uniform(0.0, TAU) };
+        let h = 0.35 + 2.0 * rng.next().powf(1.4);
+        let vy = 0.7 + 1.3 * rng.next();
+        let (vx, vz) = (ang.cos() * h, ang.sin() * h);
+        let y = f64::from(c.g) + 1.2 + 2.5 * rng.next();
+        // (most in the first half second, the last ones at a second and a half)
+        let t = PL_HIT + 0.05 + 1.5 * rng.next().powf(1.3) as f32;
+        let keep = if rng.next() < 0.45 { "" } else { ",CancelDrop:1b" };
+        q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b{keep},Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
+        n += 1;
+    }
+}
+
 /// The payload. Calm; the object high in the sky drifting down in lazy loops; the dive; the strike: a flash, the column
 /// boiling up, the shockwave's dust rushing out over the land and over the player, debris raining down; the column
 /// standing over it all a long time.
@@ -1029,7 +1083,7 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     }
     p.at(PL_HIT + 1.5, bar("PAYLOAD DETONATED", "gold"));
     for t in [PL_HIT + 0.1, PL_HIT + 1.5, PL_HIT + 4.0] {
-        p.at(t, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,distance=..{PL_KILL}]"));
+        p.at(t, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{PL_KILL}]"));
     }
     // (real smoke and grit round the crater, for anyone close)
     p.at(PL_HIT + 0.1, format!("particle minecraft:explosion_emitter {cx:.1} {:.1} {cz:.1} 6 3 6 0 6 force", gy + 2.0));
@@ -1083,6 +1137,10 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
         for j in 0..fb {
             let (land, used) = (land.clone(), used.clone());
             p.later(PL_HIT - 3.0 + 0.1 * j as f32, move |q| pl_felled(q, &land.borrow(), &shape, &used, j * rows, ((j + 1) * rows).min(PL_GW)));
+        }
+        {
+            let land = land.clone();
+            p.later(PL_HIT - 0.7, move |q| pl_thrown(q, &land.borrow(), &shape));
         }
         p.later(PL_HIT - 0.9, move |q| pl_rubble(q, &land.borrow(), &shape, &used));
     }
@@ -1304,7 +1362,11 @@ mod tests {
     }
 
     fn played(terrain: bool) -> Vec<(f32, Blocks)> {
+        played_all(terrain).0
+    }
+    fn played_all(terrain: bool) -> (Vec<(f32, Blocks)>, Vec<(f32, String)>) {
         crate::columns::clear();
+        let mut cmds = Vec::new();
         let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
         let mut ev = plan(&crate::lasers::PAYLOAD, &target, terrain, "minecraft:overworld", 37.0, [10.5, 66.0, 300.0], 0);
         ev.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -1314,6 +1376,7 @@ mod tests {
             match a {
                 Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &column),
                 Act::Blocks(b) => out.push((t, *b)),
+                Act::Cmd(c) => cmds.push((t, c)),
                 Act::Table(w) => {
                     assert_eq!(w.len(), PL_FR + (PL_CHUNKS + PL_SPARKS) * PL_FW);
                     table = true;
@@ -1326,7 +1389,7 @@ mod tests {
             }
         }
         assert!(table);
-        out
+        (out, cmds)
     }
 
     #[test]
@@ -1385,7 +1448,38 @@ mod tests {
 
     #[test]
     fn payload_leaves_the_land_alone_with_the_terrain_off() {
-        assert!(played(false).is_empty());
+        let (blocks, cmds) = played_all(false);
+        assert!(blocks.is_empty());
+        assert!(!cmds.iter().any(|(_, c)| c.contains("falling_block {")), "no blocks thrown with the terrain off");
+    }
+
+    #[test]
+    fn payload_throws_real_blocks_out_of_the_crater() {
+        let (_, cmds) = played_all(true);
+        let thrown: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")).collect();
+        // a fair number, over the second and a half after it strikes, a few a tick at most
+        assert!(thrown.len() >= 60 && thrown.len() <= PL_THROWN, "{} thrown", thrown.len());
+        let mut per_tick = std::collections::HashMap::new();
+        for (t, c) in &thrown {
+            assert!(*t > PL_HIT && *t < PL_HIT + 1.6, "{t}");
+            *per_tick.entry((t * 20.0) as i32).or_insert(0) += 1;
+            // never dropping an item; out of the crater (the target at 10 -3), outward and up
+            assert!(c.contains("DropItem:0b"), "{c}");
+            let w: Vec<f64> = c.split_whitespace().skip(2).take(3).map(|v| v.parse().unwrap()).collect();
+            assert!((w[0] - 10.5).hypot(w[2] + 2.5) < PL_CRATER_R, "{c}");
+            let m = c.split("Motion:[").nth(1).unwrap();
+            let v: Vec<f64> = m.trim_end_matches("]}").split(',').map(|v| v.trim_end_matches('d').parse().unwrap()).collect();
+            assert!(v[1] > 0.5, "{c}");
+            assert!((w[0] - 10.5) * v[0] + (w[2] + 2.5) * v[2] >= -1.0e-6, "{c}");
+            // of the ground that was there: no grass or leaves of a plant, nothing that flows
+            assert!(!c.contains("water") && !c.contains("lava") && !c.contains("sand\""), "{c}");
+        }
+        assert!(per_tick.values().all(|&k| k <= 12), "{per_tick:?}");
+        // some land as blocks, some break up where they land
+        let breaks = thrown.iter().filter(|(_, c)| c.contains("CancelDrop:1b")).count();
+        assert!(breaks > 10 && breaks < thrown.len() - 10, "{breaks}");
+        // and they are not killed in the air as the land round it is cleared of what lives there
+        assert!(cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block")));
     }
 }
 

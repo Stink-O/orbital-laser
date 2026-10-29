@@ -36,7 +36,8 @@ laser, command, capability and timing). This file is the short, factual version 
   land is swept off out to ~85 (up to each column's real top, read with `world.read-columns`), the trees there felled
   and lying pointing away from it (a stump of 1-2 left, their crowns crushed by their ends past ~46), the grass charred
   out to ~100, past ~85 a band ~24 wide where crowns are stripped and some trees knocked flat, leaves and branches
-  strewn, ~220 pieces of rubble strewn out to ~105, mobs and items within 90 killed and the ~240 chunks within
+  strewn, ~220 pieces of rubble strewn out to ~105, ~90 falling blocks thrown out of the crater (landing out to ~110 by
+  ~19 s, about half as blocks), mobs and items within 90 killed and the ~240 chunks within
   ~124 force-loaded; nothing is dug next to water or lava and what the crater opens is sealed. Its land goes in at
   13.65 s and the rubble lands by about 17 s. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
@@ -62,7 +63,8 @@ tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/p
 ```
 
 **Iterate on a strike's look offscreen first.** `tools/preview.py LASER TIMES... [--views player,far,side,up,under,aerial,tower,cbplayer,cbfar,spire,cbside,cbaerial]
-[--set key=value...] [--bench]` builds the pass exactly as the mod does, renders every moment from every view in one run
+[--set key=value...] [--bench]` (`--set sunel=3 sunaz=180`: the sun's height and bearing in degrees, for dusk and
+night) builds the pass exactly as the mod does, renders every moment from every view in one run
 over a synthetic scene, and writes a labelled contact sheet; `--bench` prints the pass's GPU time. Only then rebuild,
 install and check it in the game, once. In the game, `/orbital skip SECONDS` (terrain off) starts the next strike that
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
