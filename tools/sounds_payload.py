@@ -108,7 +108,7 @@ def approach_db():
 
 # The pops' level (dB, the 12 ms round each at its usual size) where the drift hands over to the dive; the entry boom
 # this far into `drift`.
-POP_DB = -27.0
+POP_DB = -24.0
 ENTRY_AT = 0.35
 APPROACH_CORR = np.array([1.0, 1.0, 0.99, 0.98, 0.95, 0.92, 0.88, 0.8, 0.7, 0.6])
 
@@ -542,7 +542,7 @@ def dive():
                        lambda v: np.interp(v, [DIVE_AT, HIT - 0.6, HIT], [0, 2, 3]), flutter=1.3)
         tl, tr = tearing(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [-56, -52, -49]), 1400, 5000, (20, 70))
         cl, cr = pop_crackle(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT], [6.5, 8.0, 10.0]),
-                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB + 1, POP_DB + 5]), big=1.6)
+                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB - 1, POP_DB + 4]), big=1.6)
         # the rush of torn air: a band sweeping up under the whine, louder and faster as it comes
         fc = 330 * (1450 / 330) ** (u ** 1.8)
         rush = glide_band(d, fc, 0.9 + 0.3 * u)
@@ -550,8 +550,10 @@ def dive():
         rr = glide_band(d, fc * 1.02, 0.9 + 0.3 * u) * 10 ** (np.interp(u, [0, 0.6, 1], [-38, -31, -26]) / 20) * np.exp(1.8 * PB.slow_random(n, 0.5, 3.0) / 8.686)
         # the weight of it bearing down: a sub coming up under the roar
         sub = T.unit(band(white(d), 24, 70, 2)) * 10 ** (np.interp(u, [0, 0.7, 1], [-42, -36, -31]) / 20)
-        L = L + wl + tl + cl + rl + sub
-        R = R + wr + tr + cr + rr + sub
+        # (its pops coming up over the hand-over, as the drift's go: never the two files' big ones together)
+        cg = np.clip(t / XF, 0, 1) ** 2
+        L = L + wl + tl + cl * cg + rl + sub
+        R = R + wr + tr + cr * cg + rr + sub
         # handed over from drift (its roar fading as this one comes up: equal power), cut dead on the strike
         g = np.sin(np.pi / 2 * np.clip(t / XF, 0, 1))
         kc = int(CUT * SR)
