@@ -312,16 +312,24 @@ slope once the world has said them (`world.surface-height`), the waterfalls, whe
 water, and the land itself. As it fires the mod reads the 24 blocks under the top of every column of the pit
 (`world.read-columns`, six queries of ~8,000 columns) and works them out ~3,000 columns a tick
 ([`mod/src/strike/sh_land.rs`](../mod/src/strike/sh_land.rs)) into two words a column: its ground's height, the block
-on top, the one under it and one deeper (by name: about 55 materials, each a top and side colour and how much it varies
-block to block), snow lying on it, a trunk and the leaves over it, and the slab it is part of; plus each slab's bounds.
+on top, the one under it and one deeper (by name: about 60 materials, each a top and side colour from the game's own
+textures and how much it varies block to block; grass and most leaves tinted by the biome's grass and foliage colours
+the world answers with, the poplars', cherry's, azalea's, pale oak's, spruce's and birch's leaves their own colours),
+snow lying on it, a trunk and the leaves over it, the slab it is part of, and whether water stands on it (a slab
+carries the bed, and no crack crosses water); plus each slab's bounds. Columns not loaded yet are asked again, and a
+slab is drawn as its land only once all of it is in.
 The pass draws each slab as those blocks, marching the view ray through its columns cell by cell (a 3D DDA inside its
 bounds, after a bounding sphere), each face shaded as the game shades it and textured with texels that fade out once
 smaller than a pixel; it draws it in its place from the moment the mod digs the land under it (the same blocks where
-the real ones were), then tips and drops it, its trees going with it. A slab whose land was not read is a block of
+the real ones were), then tips and drops it, its trees going with it, lit as the land round it (the sky's light for the time of day) until
+it sinks below where its ground was, then into the pit's shadow and dark by how deep it is. A slab whose land was not read is a block of
 grass over dirt over stone, as before. The dig clears each column up to that real top. The cracks are the slabs' own
 edges, reached by spurts racing out from the middle (`sh_spurts` in the mod, `sh_crack_at` in the pass), drawn only on
 the ground's top (the land's heights), their width against the pixel's footprint across them from the derivatives of
-the ground's position, never thinner on screen than most of a pixel (wider and fainter instead) and faded out far off;
+the ground's position, never thinner on screen than most of a pixel (wider and fainter instead) and faded out far off,
+the column under a pixel looked up a little inside the block it is on, so nothing flickers; the waterfalls pour from
+the water's own surface over the rim as it wanders, over a lip and faster and faster a little out from the wall, in
+strands of the water's biome tint with darker gaps, white where they break up, mist into the dark;
 the pit is darkened where it has really been dug, the dark fading out over the strike's last 9 s; the dust is a noise
 volume marched along the view ray.
 

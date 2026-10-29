@@ -103,7 +103,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   one reads). In the tests `ground::set_test` answers at once; with none set the pieces lie as on flat land.
 - **`world.read-columns` answers the same way** (`mod/src/columns.rs`; `Act::Read`): the Sinkhole reads the 24 blocks
   under every pit column's world-surface top as it starts, and `strike/sh_land.rs` works them out ~3,000 columns a tick
-  (material names to colours in `MATS`, packed two words a column at `SH_GRID` of `mod_data`; keep it in step with
+  (material names to colours in `MATS`, the game's textures' averages, grass and leaves tinted by the biome tints the read answers with; packed three words a column at `SH_GRID` of `mod_data`; keep it in step with
   `sh_colw`/`sh_cell` in `shaders/sinkhole.wgsl`). In the tests `columns::test_answer` answers at once; the preview's
   land is `synth_column` in `strike/sinkhole.rs` (`SH_LAND=0` leaves it out). For a local mod build against an
   unreleased fork API, point the SDK at the fork with an uncommitted `mod/.cargo/config.toml` `[patch]`, and never
