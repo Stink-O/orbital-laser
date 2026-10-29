@@ -733,13 +733,13 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let pxy = in.position.xy;
                 let res = frame.resolution.xy;
                 var dark = 0.0;
-                for (var i = 0u; i < 16u; i = i + 1u) {
+                for (var i = 0u; i < 20u; i = i + 1u) {
                     let t0 = 0.25 + 1.4 * mh(i, seed, 0x3d0u);
                     let age = tau - t0;
                     if (age <= 0.0) {
                         continue;
                     }
-                    let c = vec2<f32>(0.04 + 0.92 * mh(i, seed, 0x3d1u), 0.03 + 0.75 * pow(mh(i, seed, 0x3d2u), 1.6)) * res;
+                    let c = vec2<f32>(0.04 + 0.92 * mh(i, seed, 0x3d1u), 0.03 + 0.8 * pow(mh(i, seed, 0x3d2u), 2.0)) * res;
                     let r = (0.025 + 0.04 * mh(i, seed, 0x3d3u)) * res.y;
                     let q = length(pxy - c) / r;
                     if (q >= 1.0) {
@@ -748,9 +748,11 @@ fn payload(in: StageIn) -> vec4<f32> {
                     // (a disc a little darker at its rim, soft at its edge: a drop of muck out of focus)
                     let disc = smoothstep(1.0, 0.8, q) * (0.75 + 0.25 * smoothstep(0.4, 0.95, q));
                     let life = smoothstep(0.0, 0.08, age) * (1.0 - smoothstep(6.0, 16.0, age + 4.0 * mh(i, seed, 0x3d4u)));
-                    dark = max(dark, disc * life * (0.3 + 0.25 * mh(i, seed, 0x3d5u)));
+                    dark = max(dark, disc * life * (0.45 + 0.35 * mh(i, seed, 0x3d5u)));
                 }
-                col = mix(col, col * vec3<f32>(0.42, 0.4, 0.38), dark * vis * fade);
+                // (muck: darker and greyer than what shows through it, a little brown)
+                let lumc = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
+                col = mix(col, vec3<f32>(lumc) * vec3<f32>(0.32, 0.3, 0.28) + vec3<f32>(0.012, 0.01, 0.008), dark * vis * fade);
             }
         }
     }
