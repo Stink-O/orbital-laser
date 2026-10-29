@@ -386,7 +386,7 @@ pub const PAYLOAD: Laser = Laser {
     rgb: 0xFF8A2E,
     blurb: "A light in the sky drifts, loops and dives. Then a column of smoke and a wall of dust.",
     icon_model: "orbital:payload_icon",
-    length: 44.0,
+    length: 70.0,
     range: 1000.0,
     scorch: &[],
     bowl_r: 21,

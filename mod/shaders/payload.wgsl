@@ -14,13 +14,17 @@
 const PL_SEEN: f32 = 3.0;          // the object shows,
 const PL_TURN: f32 = 10.6;         // starts its fast final descent, a fireball by then,
 const PL_HIT: f32 = 13.6;          // and strikes
-const PL_LEN: f32 = 44.0;          // the strike's length (lasers.rs): everything fades out over its last PL_FADE
-const PL_FADE: f32 = 7.0;
+const PL_LEN: f32 = 70.0;          // the strike's length (lasers.rs): everything fades out over its last PL_FADE
+const PL_FADE: f32 = 8.0;
+const PL_SOFT0: f32 = 21.0;        // the column keeps its crisp billows this long after the strike, then loses them
+const PL_SOFT1: f32 = 34.0;        // by this, a soft, drifting, widening haze thinning away (gone by PL_LEN)
 const PL_V: f32 = 343.0;           // the shockwave's front, blocks a second (with the blast's sound: payload.rs)
 const PL_P: u32 = 16u;             // the table: the path's samples from PL_P, three words each,
 const PL_PF: u32 = 400u;           // the billows from PL_PF, PL_PW words each (launch, rise, height share, radius, x, z)
 const PL_PW: u32 = 8u;
 const PL_HF: u32 = 1024u;          // the land's heightfield (payload.rs's pl_hf_words): its size, then heights, shelter
+const PL_FR: u32 = 560u;          // the pieces it sheds coming in (payload.rs's pl_fragments), PL_FW words each
+const PL_FW: u32 = 12u;
 const PL_NPUFF: i32 = 18;
 const PL_DEBRIS: i32 = 120;
 
@@ -66,6 +70,12 @@ fn pl_trail_at(i: i32, te: f32, t: f32, seed: u32) -> vec3<f32> {
     let wob = vec3<f32>(sin(fi * 0.21 + f32(seed % 61u)), 0.4 * sin(fi * 0.13 + 2.0), cos(fi * 0.17 + f32(seed % 37u)));
     return pl_sample(i) + pl_wind() * age + vec3<f32>(0.0, 0.35 * age, 0.0) + wob * (0.35 * age);
 }
+// Where a shed piece is `s` seconds after it let go at p0 with velocity v0: slowed by the air (drag k a second),
+// falling (under gravity with that drag).
+fn pl_frag(p0: vec3<f32>, v0: vec3<f32>, k: f32, s: f32) -> vec3<f32> {
+    let e = (1.0 - exp(-k * s)) / k;
+    return p0 + v0 * e - vec3<f32>(0.0, 20.0 * (s - e) / k, 0.0);
+}
 fn smin(a: f32, b: f32, k: f32) -> f32 {
     let h = saturate(0.5 + 0.5 * (b - a) / k);
     return mix(b, a, h) - k * h * (1.0 - h);
@@ -106,7 +116,7 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     o.hi = C;
     o.a = a;
     o.C = C;
-    o.grow = 1.0 + 0.012 * max(a - 6.0, 0.0);
+    o.grow = 1.0 + 0.012 * max(a - 6.0, 0.0) + 0.006 * max(a - PL_SOFT0, 0.0);
     for (var i = 0; i < PL_NPUFF; i = i + 1) {
         let q = pl_puff(i, a, C, o.grow);
         o.q[i] = q;
@@ -162,10 +172,13 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     // (the stem's lumps smaller: it is thinner)
     let lump = 0.55 + 0.45 * smoothstep(20.0, 110.0, p.y - (*col).C.y);
     let w = gnoise3(q * (1.0 / 60.0));
-    var d = d0 - (28.0 * (b1 - 0.45) + 4.5 * (b2 - 0.45) + 16.0 * (w - 0.5)) * lump;
-    if (fine && d < 3.0) {
+    // (as it settles its billows melt away: the lumps sink back into a rounded mass, its edge a broad loose fringe)
+    let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
+    let crisp = 1.0 - 0.8 * soft;
+    var d = d0 - (28.0 * (b1 - 0.45) * crisp + 4.5 * (b2 - 0.45) * (1.0 - soft) + (16.0 + 8.0 * soft) * (w - 0.5)) * lump;
+    if (fine && d < 3.0 && soft < 0.99) {
         let b3 = gnoise3(q * (1.0 / 4.0) + vec3<f32>(5.0, 1.0, -0.8 * a));
-        d = d - 1.5 * (b3 - 0.5);
+        d = d - 1.5 * (b3 - 0.5) * (1.0 - soft);
     }
     return vec2<f32>(d, b1 * (0.4 + 0.6 * b2));
 }
@@ -379,7 +392,9 @@ fn payload(in: StageIn) -> vec4<f32> {
         }
     }
 
-    // ---- the trail: a thin pale ribbon over the drift, dense dark smoke along the dive, hung in the sky -------------
+    // ---- the trail: a cord of lumpy smoke hung along its path, pale and thin high up, dark grey-brown and dense along
+    // the dive, lit orange by the flame just behind the head; as it ages it swells, pales, breaks into beads and puffs,
+    // frays and thins away over twenty seconds or so, drifting with the wind ------------------------------------------
     if (have && time > PL_SEEN) {
         let n = pl_n();
         let t0 = pl_w(1u);
@@ -388,10 +403,25 @@ fn payload(in: StageIn) -> vec4<f32> {
         let last = min(i32(floor((thead - t0) / dt)), n - 1);
         var tau = 0.0;
         var tc = vec3<f32>(0.0);
-        var tw = 0.0;
         var glow = vec3<f32>(0.0);
         var pa = pl_trail_at(0, t0, time, seed) + C;
+        let sd = vec3<f32>(f32(seed % 97u) * 3.1, f32(seed % 89u) * 1.7, 0.0);
+        var past_end = false;
         for (var i = 0; i <= last; i = i + 1) {
+            // (eight pieces at a time looked at as one ball round them first: most rays pass well clear of it)
+            if (i % 8 == 0 && i + 8 <= last) {
+                let pg = pl_trail_at(i + 8, t0 + dt * f32(i + 8), time, seed) + C;
+                let cg = 0.5 * (pa + pg);
+                let ag = max(time - (t0 + dt * f32(i)), 0.0);
+                let rg = 0.65 * length(pg - pa) + 2.1 * (7.0 + 5.5 * sqrt(ag)) + 4.0;
+                let tg = max(dot(cg, rd), 0.0);
+                if (length(cg - rd * tg) > rg || tg - rg > scene_len) {
+                    pa = pg;
+                    past_end = false;
+                    i = i + 7;
+                    continue;
+                }
+            }
             let te_b = t0 + dt * f32(i + 1);
             var pb: vec3<f32>;
             if (i == last) {
@@ -400,46 +430,154 @@ fn payload(in: StageIn) -> vec4<f32> {
                 pb = pl_trail_at(i + 1, te_b, time, seed) + C;
             }
             let h = ray_seg(rd, pa, pb);
+            // (each bit of it counted once: a piece only where the ray's nearest point falls inside it, or just past a
+            // joint on the outside of a bend, or past either end of the whole)
+            let at_end = h.z > 0.9999;
+            let at_start = h.z < 1.0e-4;
+            let counted = !(at_end || at_start) || (at_start && (i == 0 || past_end)) || (at_end && i == last);
+            past_end = at_end;
+            if (!counted) {
+                pa = pb;
+                continue;
+            }
             let te = min(t0 + dt * (f32(i) + h.z), thead);
             let age = max(time - te, 0.0);
-            // (pale vapour high up, where it is still coming in; dense dark smoke where it came down burning)
-            let dive = smoothstep(PL_TURN - 1.6, PL_TURN + 0.6, te);
-            let rad = mix(4.0 + 3.5 * sqrt(age), 6.0 + 4.5 * sqrt(age), dive);
-            if (h.x < rad && h.y < scene_len + rad) {
-                let chord = 2.0 * sqrt(max(rad * rad - h.x * h.x, 0.0));
+            let dive = smoothstep(PL_TURN - 2.2, PL_TURN + 0.4, te);
+            // (smoke rather than vapour: from a second or two after it shows, as in the third clip, where the whole
+            // hook it draws is the same grey-brown smoke)
+            let smk = smoothstep(PL_SEEN + 1.0, PL_SEEN + 4.0, te);
+            // (its core's radius: thin and tight where it is laid, swelling with age; the outer fray to twice that)
+            let rad = mix(3.0 + 3.0 * sqrt(age), mix(6.0 + 5.0 * sqrt(age), 7.0 + 5.5 * sqrt(age), dive), smk);
+            if (h.x < rad * 2.1 && h.y < scene_len + rad * 2.0) {
                 let cp = rd * h.y;
-                let nq = gnoise3((cp + cam) / (2.5 * rad + 2.0) + vec3<f32>(f32(seed % 97u), 0.0, 0.0));
-                let nq2 = gnoise3((cp + cam) / (0.9 * rad + 1.0) + vec3<f32>(0.0, 3.0, f32(seed % 89u)));
-                let shape = mix(saturate(1.7 * nq - 0.3), 0.6 + 0.4 * nq, dive) * (0.55 + 0.9 * nq2 * (1.0 - dive * 0.5)) * saturate(1.0 - pow(h.x / rad, 2.0) * 0.85);
-                // (both hang in the sky in the shape of the arc for many seconds, drifting and thinning)
-                let pale = 0.3 * exp(-age / 20.0) / (1.0 + 0.1 * age);
-                let dark = 0.55 * exp(-max(age - 3.0, 0.0) / 9.0) / (1.0 + 0.04 * max(age - 3.0, 0.0));
-                let sig = mix(pale, dark, dive) * shape * fade;
+                // (the smoke's own lumps, carried with it as it drifts and rises, churning slowly)
+                let q = (cp + cam - pl_wind() * age - vec3<f32>(0.0, 0.35 * age, 0.0)) / (2.2 * rad + 3.0) + sd;
+                let n1 = gnoise3(q + vec3<f32>(0.0, 0.0, 0.06 * age));
+                let n2 = gnoise3(q * 2.6 + vec3<f32>(4.0, 0.08 * age, 1.0));
+                let n3 = gnoise3(q * 6.1 + vec3<f32>(1.0, 7.0, 0.15 * age));
+                // (the finer lumps let go to their mean where a pixel spans more than a few of them along it: a trail
+                // seen end-on or far off shimmers otherwise)
+                let segd = normalize(pb - pa + vec3<f32>(0.0, 1.0e-5, 0.0));
+                let along = h.y * px_a / max(length(cross(rd, segd)), 0.08) / (2.2 * rad + 3.0);
+                let w2 = saturate(2.0 - 10.0 * along * 2.6);
+                let w3 = saturate(2.0 - 10.0 * along * 6.1);
+                let puff = 0.62 * n1 + 0.3 * mix(0.5, n2, w2) + 0.08 * mix(0.5, n3, w3);
+                // (a soft profile across it, its edge pushed in and out by the lumps: ragged, no rim)
+                let rr = h.x / (rad * (0.45 + 1.0 * puff));
+                let prof = exp(-rr * rr * 1.4);
+                // (broken into beads and puffs as it ages, the gaps opening; the vapour high up breaks sooner)
+                let thr = mix(0.32, 0.12, smk) + 0.3 * smoothstep(1.5, 18.0, age);
+                let dens = saturate((puff - thr) * 2.6 + 0.3 * exp(-age / 0.8));
+                // (dense where it is laid, thinning over the next twenty seconds; the vapour fainter)
+                let sig = (0.26 * exp(-age / 6.0) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk) * fade;
                 let occl = saturate((scene_len - h.y) / rad + 0.5);
-                let dtau = sig * chord * occl;
-                // (lit on its sunward side)
+                let dtau = sig * prof * dens * 1.6 * rad * occl;
+                // (lit on its sunward side and on its lumps' tops, darker in its creases)
                 let axis = pa + (pb - pa) * h.z;
-                let nrm = normalize(cp - axis + vec3<f32>(0.0, 1.0e-4, 0.0));
-                let lit = 0.45 + 0.55 * saturate(dot(nrm, L) * 0.5 + 0.5);
-                let alb = mix(vec3<f32>(0.46, 0.47, 0.5), vec3<f32>(0.075, 0.072, 0.07), dive);
-                let c = alb * (sunc * lit * 0.85 + amb * 0.9);
+                let nrm = normalize(cp - axis - rd * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
+                let lit = (0.35 + 0.65 * saturate(dot(nrm, L) * 0.5 + 0.5)) * (0.6 + 0.8 * n1 * n1);
+                // (grey-brown smoke, paler as it spreads thin; the vapour high up a pale grey)
+                var alb = mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.17, 0.145, 0.125), smk);
+                alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), smoothstep(4.0, 20.0, age));
+                var c = alb * (sunc * lit * 0.85 + amb * (0.6 + 0.4 * n1));
+                // (just behind the head it is lit by the flame: orange, dying back within a second)
+                c = c + vec3<f32>(1.9, 0.75, 0.22) * exp(-age / 0.12) * dive * step(time, PL_HIT + 0.3) * (0.4 + 0.6 * n1);
+                // (farther, the air between greys it to the sky)
+                c = mix(c, haze_c, (1.0 - exp(-h.y / 3000.0)) * 0.75);
                 tc = tc + c * dtau;
-                tw = tw + dtau;
                 tau = tau + dtau;
                 // (the flame tail just behind the head, in the dive)
+                let chord = 2.0 * sqrt(max(rad * rad - h.x * h.x, 0.0));
                 let fl = dive * exp(-age / 0.13) * step(time, PL_HIT + 0.05);
-                glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * min(chord * 0.35, 1.6) * occl);
+                // (soft-edged, a teardrop narrowing back from the head, white-yellow at its root, orange back along it)
+                let fw = rad * (0.75 - 0.35 * saturate(age / 0.3));
+                let fprof = exp(-pow(h.x / max(fw, 0.5), 2.0) * 1.6) * min(fw * 0.5, 1.0);
+                glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * 1.6 * fprof * occl);
                 // (high up, the hot streak of air it leaves glowing behind it, white, cooling within a second)
                 let fh = (1.0 - dive) * exp(-age / 0.45) * step(time, PL_HIT);
                 glow = max(glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(chord * 0.6, 1.2) * occl);
             }
             pa = pb;
         }
-        if (tw > 0.0) {
+        if (tau > 0.0) {
             let al = 1.0 - exp(-tau);
-            col = mix(col, tc / tw, al * k);
+            col = mix(col, tc / tau, al * k);
         }
         col = col + glow * k;
+    }
+
+    // ---- the pieces it sheds coming in: glowing chunks flung off to the side, falling away behind it, burning out
+    // over a second or three, each trailing its own thin smoke; in the last seconds a spray of sparks off the fireball --
+    if (have && time > PL_HIT - 7.0 && time < PL_HIT + 7.0) {
+        let nf = min(i32(pl_w(7u) + 0.5), 32);
+        var ftau = 0.0;
+        var ftc = vec3<f32>(0.0);
+        var fglow = vec3<f32>(0.0);
+        for (var f = 0; f < nf; f = f + 1) {
+            let b = PL_FR + PL_FW * u32(f);
+            let t0 = pl_w(b);
+            let s = time - t0;
+            if (s <= 0.0) {
+                continue;
+            }
+            let life = pl_w(b + 1u);
+            let size = pl_w(b + 2u);
+            let spark = pl_w(b + 3u) > 0.5;
+            let kd = max(pl_w(b + 4u), 0.05);
+            let p0 = vec3<f32>(pl_w(b + 5u), pl_w(b + 6u), pl_w(b + 7u)) + C;
+            let v0 = vec3<f32>(pl_w(b + 8u), pl_w(b + 9u), pl_w(b + 10u));
+            if (s < life) {
+                // (the glowing piece, smeared over the last few hundredths of a second it moved: a short streak)
+                let pa = pl_frag(p0, v0, kd, s);
+                let pb = pl_frag(p0, v0, kd, max(s - select(0.03, 0.05, spark), 0.0));
+                let h = ray_seg(rd, pa, pb);
+                if (h.y < scene_len + 2.0) {
+                    let w = max(size, h.y * px_a * 0.8);
+                    let e = min(size / w, 1.0);
+                    let u = s / life;
+                    let hot = select(mix(vec3<f32>(4.0, 2.3, 1.0), vec3<f32>(2.6, 0.75, 0.12), u), vec3<f32>(4.0, 3.2, 1.8), spark);
+                    let fl = 0.75 + 0.25 * sin(time * 41.0 + f32(f) * 2.3);
+                    fglow = fglow + hot * (exp(-pow(h.x / w, 2.0)) * 3.0 + 0.25 * exp(-h.x / (w * 4.0))) * e * e * (1.0 - u * u) * fl;
+                }
+            }
+            if (!spark) {
+                // (its smoke: laid where it was while it burned, swelling and thinning after)
+                let s_hi = min(s, life);
+                let s_lo = max(s - 3.5, 0.0);
+                let qe = pl_frag(p0, v0, kd, s_hi);
+                let qs = pl_frag(p0, v0, kd, s_lo);
+                let cq = 0.5 * (qs + qe);
+                let rq = 0.75 * length(qe - qs) + 2.0 * size * (0.6 + 1.1 * sqrt(s - s_lo)) + 3.0;
+                let tq = max(dot(cq, rd), 0.0);
+                if (s_hi > s_lo && length(cq - rd * tq) < rq && tq - rq < scene_len) {
+                    var qa = qs;
+                    for (var j = 1; j <= 8; j = j + 1) {
+                        let sj = s_lo + (s_hi - s_lo) * f32(j) / 8.0;
+                        let qb = pl_frag(p0, v0, kd, sj);
+                        let h = ray_seg(rd, qa, qb);
+                        let age = s - (sj - (s_hi - s_lo) / 8.0 * (1.0 - h.z));
+                        let rad = size * (0.6 + 1.1 * sqrt(age));
+                        if (h.x < rad * 2.0 && h.y < scene_len + rad && (h.z < 0.9999 || j == 8)) {
+                            let cp = rd * h.y;
+                            let nb = gnoise3((cp + cam) / (2.5 * rad + 1.0) + vec3<f32>(f32(f) * 7.1, 0.0, 0.1 * age));
+                            let prof = exp(-pow(h.x / (rad * (0.5 + nb)), 2.0) * 1.4);
+                            let dens = saturate((nb - 0.18 - 0.25 * smoothstep(0.5, 3.5, age)) * 3.0);
+                            let dtau = 0.5 * exp(-age / 1.8) * prof * dens * 1.6 * rad * fade;
+                            var c = vec3<f32>(0.19, 0.16, 0.14) * (sunc * 0.75 + amb * 0.8);
+                            c = c + vec3<f32>(1.6, 0.6, 0.15) * exp(-age / 0.1) * step(s, life);
+                            c = mix(c, haze_c, (1.0 - exp(-h.y / 3000.0)) * 0.75);
+                            ftc = ftc + c * dtau;
+                            ftau = ftau + dtau;
+                        }
+                        qa = qb;
+                    }
+                }
+            }
+        }
+        if (ftau > 0.0) {
+            col = mix(col, ftc / ftau, (1.0 - exp(-ftau)) * k);
+        }
+        col = col + fglow * k * fade;
     }
 
     // (how far off the column stands along this ray, where it is mostly opaque: the dust and debris behind it hidden)
@@ -457,6 +595,11 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let j = ign(in.position.xy + vec2<f32>(fract(time * 7.0) * 37.0, 0.0));
                 let H = pl_w(5u);
                 let ph = 0.8 + 0.5 * pow(saturate(dot(rd, L)), 5.0);
+                // (how far it has settled: its billows going soft, its stem lifting off the ground and thinning
+                // first, the whole thinning to nothing over the half-minute after)
+                let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
+                let lift = H * 0.4 * smoothstep(PL_SOFT0, PL_SOFT1 + 4.0, a) - 30.0;
+                let thin = exp(-max(a - PL_SOFT0 - 8.0, 0.0) / 4.5);
                 var tmid = 0.0;
                 var wmid = 0.0;
                 for (var i = 0; i < 56; i = i + 1) {
@@ -472,21 +615,30 @@ fn payload(in: StageIn) -> vec4<f32> {
                     }
                     let st = max(3.5, t * 0.008) * (0.75 + 0.5 * j);
                     let sd = pl_col_sdf(&cl, p, d0, true);
-                    let den = saturate(-sd.x / 1.2);
+                    // (crisp edged while it billows; later a broad soft fringe, the stem going first and the rest
+                    // thinning away as a haze)
+                    var den = saturate(-sd.x / (1.2 + 26.0 * soft)) * thin;
+                    den = den * smoothstep(lift - 25.0, lift + 35.0, p.y - C.y);
+                    if (soft > 0.0 && den > 0.002) {
+                        // (and mottled, the haze uneven in wisps and clots)
+                        let mt = gnoise3((p + cam) * (1.0 / 11.0) - pl_wind() * (a * 0.09) + vec3<f32>(0.0, -0.05 * a, 0.0));
+                        den = den * mix(1.0, saturate(0.2 + 1.6 * mt), soft);
+                    }
                     if (den > 0.002) {
                         // (the sun: the billow's own face (a look a few blocks towards it), and the column's bulk
                         // between it and the sun (two looks further on))
                         let face = pl_col_sdf(&cl, p + L * 4.0, pl_col_base(&cl, p + L * 4.0), false).x;
-                        let lam = saturate(0.35 + (face - sd.x) / 6.0);
+                        let lam = mix(saturate(0.35 + (face - sd.x) / 6.0), 0.65, soft);
                         let s1 = saturate((4.0 - pl_col_base(&cl, p + L * 14.0)) / 14.0);
                         let s2 = saturate(-pl_col_base(&cl, p + L * 40.0) / 14.0);
-                        let tsun = exp(-(s1 * 12.0 + s2 * 28.0) * 0.25) * lam;
+                        let tsun = mix(exp(-(s1 * 12.0 + s2 * 28.0) * 0.25), 0.7, soft) * lam;
                         let hy = saturate((p.y - C.y) / max(H, 1.0));
-                        // (dark slate, blue-grey from the sky on its shadowed side, darker down its stem and in its
-                        // creases; its tops a little paler where the sun catches them)
-                        let ao = 0.35 + 0.65 * sd.y;
-                        let alb = vec3<f32>(0.3, 0.31, 0.34);
-                        var c = alb * (skyl * (0.7 * ao * (0.5 + 0.5 * hy)) + sunc * vec3<f32>(0.27, 0.29, 0.31) * (tsun * ph) + vec3<f32>(0.01) * day);
+                        // (smoke and dust, tan-grey, lit by the scene: warm where the sun is on it, greyed by the sky on
+                        // its shadowed side, darker down its stem and in its creases; once it settles, evenly lit)
+                        let ao = mix(0.35 + 0.65 * sd.y, 0.75, soft);
+                        let alb = vec3<f32>(0.54, 0.47, 0.4);
+                        let skyg = mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45);
+                        var c = alb * (skyg * (0.75 * ao * (0.55 + 0.45 * hy)) + sunc * vec3<f32>(0.85, 0.82, 0.78) * (tsun * ph) + vec3<f32>(0.01) * day);
                         // (fire in it as it bursts: low down, dying fast)
                         let core = exp(min(d0, 0.0) / 26.0);
                         let fire = exp(-a / 0.25) * exp(-max(p.y - C.y, 0.0) / (16.0 + 40.0 * a)) * core;

@@ -32,11 +32,19 @@ pub(super) const PL_PUFFS: usize = 18;
 /// The column's height (over the ground) as its rise slows, about 20 s after the strike.
 pub(super) const PL_HC: f64 = 235.0;
 /// The table (render.set-data): words 0..16 the header (samples, first sample's time, their spacing, the wind's x and
-/// z, the column's height, the billows' count); from PL_P the path, three words a sample (x, y, z from the target's
-/// ground); from PL_PF the billows, PL_PW words each (launch, rise time, height share, radius, x and z off the axis).
+/// z, the column's height, the billows' count, the shed pieces' count); from PL_P the path, three words a sample (x, y,
+/// z from the target's ground); from PL_PF the billows, PL_PW words each (launch, rise time, height share, radius, x and
+/// z off the axis); from PL_FR the shed pieces.
 pub(super) const PL_P: usize = 16;
 pub(super) const PL_PF: usize = PL_P + 3 * PL_N;
 pub(super) const PL_PW: usize = 8;
+/// The pieces it sheds coming in (from PL_FR, PL_FW words each, PL_CHUNKS burning chunks then PL_SPARKS sparks): when it
+/// lets go (strike time), how long it burns, its size (blocks), 0 for a chunk or 1 for a spark, its drag (a second),
+/// where it lets go (x, y, z from the target's ground) and its velocity then (blocks a second).
+pub(super) const PL_FR: usize = 560;
+pub(super) const PL_FW: usize = 12;
+pub(super) const PL_CHUNKS: usize = 8;
+pub(super) const PL_SPARKS: usize = 16;
 
 /// The crater's mean radius and depth, how far its rim's heap reaches (in its radii), the land flattened and the trees
 /// felled out to PL_FLAT, the grass charred out to PL_CHAR, the rubble strewn out to PL_RUBBLE.
@@ -78,7 +86,6 @@ pub(super) struct PlGeo {
 fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
     [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
 }
-#[cfg(test)]
 fn len(a: [f64; 3]) -> f64 {
     (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt()
 }
@@ -145,10 +152,51 @@ pub(super) fn pl_puffs(seed: u32) -> Vec<[f64; 6]> {
         .collect()
 }
 
+/// The pieces shed as it comes in through the air (see PL_FR). As in the third clip: a few glowing chunks breaking off
+/// in the seconds before the dive, flung out to the side and falling away behind it, each burning a second or three
+/// and trailing its own thin smoke; and in the last seconds a spray of small sparks off the fireball, gone in a moment.
+pub(super) fn pl_fragments(g: &PlGeo) -> Vec<[f64; 11]> {
+    let mut out = Vec::new();
+    let vel = |t: f64| {
+        let (a, b) = (g.pos(t - 0.02), g.pos(t + 0.02));
+        [(b[0] - a[0]) / 0.04, (b[1] - a[1]) / 0.04, (b[2] - a[2]) / 0.04]
+    };
+    for i in 0..PL_CHUNKS + PL_SPARKS {
+        let h = |k: u32| mh(i as u32, g.seed, 0x7a0 + k);
+        let spark = i >= PL_CHUNKS;
+        let hit = f64::from(PL_HIT);
+        // (the chunks let go between 6.5 and 0.7 s before it strikes, more of them later; the sparks in the last 3.5)
+        let t0 = if spark { hit - 3.5 + 3.3 * h(0).sqrt() } else { hit - 6.5 + 5.8 * h(0).powf(0.7) };
+        let p0 = g.pos(t0);
+        let v = vel(t0);
+        let sp = len(v).max(1.0);
+        let dir = [v[0] / sp, v[1] / sp, v[2] / sp];
+        // (flung out across its path, a random way round it, a little up more often than down)
+        let a = TAU * h(1);
+        let side = {
+            let up = if dir[1].abs() > 0.95 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+            let s1 = [dir[1] * up[2] - dir[2] * up[1], dir[2] * up[0] - dir[0] * up[2], dir[0] * up[1] - dir[1] * up[0]];
+            let l1 = len(s1).max(1e-9);
+            let s1 = [s1[0] / l1, s1[1] / l1, s1[2] / l1];
+            let s2 = [dir[1] * s1[2] - dir[2] * s1[1], dir[2] * s1[0] - dir[0] * s1[2], dir[0] * s1[1] - dir[1] * s1[0]];
+            add(add([0.0; 3], s1, a.cos()), s2, a.sin())
+        };
+        let kick = if spark { 40.0 + 110.0 * h(2) } else { 70.0 + 110.0 * h(2) };
+        let keep = if spark { 0.55 + 0.3 * h(3) } else { 0.35 + 0.35 * h(3) };
+        let v0 = add(add([0.0; 3], v, keep), side, kick);
+        let v0 = add(v0, [0.0, 1.0, 0.0], if spark { 0.0 } else { 15.0 * h(4) });
+        let life = if spark { 0.35 + 0.6 * h(5) } else { 1.5 + 2.2 * h(5) };
+        let size = if spark { 0.25 + 0.35 * h(6) } else { 0.9 + 1.4 * h(6) };
+        let drag = if spark { 1.8 + 1.5 * h(7) } else { 0.35 + 0.5 * h(7) };
+        out.push([t0, life, size, if spark { 1.0 } else { 0.0 }, drag, p0[0], p0[1], p0[2], v0[0], v0[1], v0[2]]);
+    }
+    out
+}
+
 /// What the pass reads (see PL_P): worked out on the tick after it fires.
 pub(super) fn pl_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
     let g = PlGeo::new(seed, me);
-    let mut w = vec![0.0f32; PL_PF + PL_PUFFS * PL_PW];
+    let mut w = vec![0.0f32; PL_FR + (PL_CHUNKS + PL_SPARKS) * PL_FW];
     let dt = f64::from(PL_HIT - PL_SEEN) / (PL_N - 1) as f64;
     w[0] = PL_N as f32;
     w[1] = PL_SEEN;
@@ -166,6 +214,12 @@ pub(super) fn pl_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
     for (i, p) in pl_puffs(g.seed).iter().enumerate() {
         for k in 0..6 {
             w[PL_PF + PL_PW * i + k] = p[k] as f32;
+        }
+    }
+    w[7] = (PL_CHUNKS + PL_SPARKS) as f32;
+    for (i, f) in pl_fragments(&g).iter().enumerate() {
+        for k in 0..11 {
+            w[PL_FR + PL_FW * i + k] = f[k] as f32;
         }
     }
     w.into_iter().map(f32::to_bits).collect()
@@ -1109,6 +1163,31 @@ mod tests {
     }
 
     #[test]
+    fn payload_sheds_its_pieces_before_it_strikes_and_they_fall_away_behind_it() {
+        let g = PlGeo::new(37.0, [0.0, 5.0, 300.0]);
+        let f = pl_fragments(&g);
+        assert_eq!(f.len(), PL_CHUNKS + PL_SPARKS);
+        for p in &f {
+            let (t0, life) = (p[0], p[1]);
+            assert!(t0 > f64::from(PL_TURN) - 4.0 && t0 < f64::from(PL_HIT) - 0.1, "{p:?}");
+            assert!(life > 0.2 && life < 4.0 && p[2] > 0.0, "{p:?}");
+            // (it lets go where the object is)
+            let at = g.pos(t0);
+            assert!(len(add(at, [p[5], p[6], p[7]], -1.0)) < 1e-6);
+            // (and falls behind it: slower than the object along its path)
+            let v = [p[8], p[9], p[10]];
+            let d = add(g.pos(t0 + 0.02), g.pos(t0 - 0.02), -1.0);
+            let along = (v[0] * d[0] + v[1] * d[1] + v[2] * d[2]) / len(d);
+            assert!(along < len(d) / 0.04, "{p:?}");
+        }
+        // (the table's words for them, where the pass reads them)
+        let w = pl_table(37.0, [0.0, 5.0, 300.0]);
+        assert_eq!(f32::from_bits(w[7]) as usize, PL_CHUNKS + PL_SPARKS);
+        assert!(w.len() <= PL_HF && PL_PF + PL_PUFFS * PL_PW <= PL_FR);
+        assert_eq!(f32::from_bits(w[PL_FR]), f[0][0] as f32);
+    }
+
+    #[test]
     fn payload_path_arcs_down_from_high_up_onto_the_target() {
         for seed in [3.0, 37.0, 512.0, 991.0] {
             let me = [0.0, 5.0, 300.0];
@@ -1236,7 +1315,7 @@ mod tests {
                 Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &column),
                 Act::Blocks(b) => out.push((t, *b)),
                 Act::Table(w) => {
-                    assert_eq!(w.len(), PL_PF + PL_PUFFS * PL_PW);
+                    assert_eq!(w.len(), PL_FR + (PL_CHUNKS + PL_SPARKS) * PL_FW);
                     table = true;
                 }
                 Act::Later(job) | Act::Soon(job) => {

@@ -81,6 +81,11 @@ VIEWS = {
     "plhilllow": "cx=0 cy=51.5 cz=450 lx=-40 ly=50 lz=300 hills=28 trees=1 fov=70 reach=450",
     "plhillside": "cx=520 cy=150 cz=330 lx=0 ly=60 lz=200 hills=28 trees=1 fov=60 reach=450",
     "plrefsky": "cx=0 cy=68.5 cz=450 lx=-60 ly=330 lz=40 flat=1 trees=1 fov=59 reach=450",
+    # as the third clip is filmed: across a canyon some 1,600 blocks off, looking up at the trail and the column; close
+    # by (230 off) looking up at the object coming in; and the same from 230 looking at the column as it settles
+    "pl3far": "cx=0 cy=120 cz=1600 lx=0.5 ly=420 lz=0.5 flat=1 fov=50 reach=1600",
+    "pl3close": "cx=0 cy=67 cz=230 lx=60 ly=300 lz=0.5 flat=1 trees=1 fov=70 reach=230",
+    "pl3col": "cx=0 cy=67 cz=230 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=70 reach=230",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
