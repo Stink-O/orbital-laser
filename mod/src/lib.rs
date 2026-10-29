@@ -10,6 +10,7 @@
 //! changes, the sounds and the flying speed), `hud` (the status panel), `storage`
 //! (the chosen laser and the settings) and
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
+mod columns;
 mod ground;
 mod lasers;
 mod strike;
@@ -392,6 +393,7 @@ impl Orbital {
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
         ground::clear();
+        columns::clear();
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, self.approach);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
@@ -433,6 +435,7 @@ impl Orbital {
     fn tick_strike(&mut self) {
         // (the world's answers to the ground asked for, before the stages that read them)
         ground::poll();
+        columns::poll();
         let carved = self.carve(CARVE_CMDS);
         let Some(s) = &mut self.strike else {
             return;
@@ -475,6 +478,15 @@ impl Orbital {
                     }
                 }
                 Act::Survey { tag, columns } => ground::ask(tag, columns),
+                Act::Read { tag, columns, below, above } => columns::ask(tag, columns, below, above),
+                Act::Words { index, words } => {
+                    let i = index as usize;
+                    if s.data.len() < i + words.len() {
+                        s.data.resize(i + words.len(), 0);
+                    }
+                    s.data[i..i + words.len()].copy_from_slice(&words);
+                    s.data_sent = false;
+                }
                 Act::Table(words) => {
                     if s.data.len() < words.len() {
                         s.data.resize(words.len(), 0);
@@ -516,6 +528,7 @@ impl Orbital {
             render::clear_post();
             self.strike = None;
             ground::clear();
+            columns::clear();
         }
         self.carve(CARVE_CMDS.saturating_sub(carved));
     }

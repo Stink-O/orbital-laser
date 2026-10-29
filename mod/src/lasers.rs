@@ -358,7 +358,7 @@ pub const SINKHOLE: Laser = Laser {
     rgb: 0xD2A257,
     blurb: "The land trembles, cracks and caves in: a pit hundreds of blocks across, down to bedrock.",
     icon_model: "orbital:sinkhole_icon",
-    length: 34.0,
+    length: 40.0,
     range: 1000.0,
     scorch: &[],
     bowl_r: 112,

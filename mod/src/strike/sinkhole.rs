@@ -10,7 +10,9 @@
 //! shaders/sinkhole.wgsl draws the same slabs, cut the same way (`ShGeo`, handed to it with render.set-data as
 //! `sh_table`), and lets each go when the mod has dug the land under it: keep the SH_* and the table in step.
 use super::{Act, Blocks, Col, Plan, Rng, Target, bedrock_top, falloff, mh, pk_cells, pk_load_rows, sky_top, sound_from, tidy, vnoise};
+use super::sh_land::{self, Land, READ_ABOVE, READ_BELOW, READ_ROWS, SH_GRID, SH_GW, SH_MAT, Shared};
 use crate::lasers::Laser;
+use std::cell::RefCell;
 use std::f64::consts::PI;
 use std::rc::Rc;
 
@@ -41,6 +43,8 @@ const SH_TOP_BAND: i32 = 5;
 /// How far in from and out past the rim a column can be cut at some depth (the bands' reach), for the walls' columns.
 const SH_IN: f64 = 13.0;
 const SH_OUT: f64 = 6.5;
+/// How far the bands just under the rim's are cut back past it at most (an overhang that far, no further).
+const SH_OVERHANG: f64 = 2.5;
 /// The chunks out to SH_LOAD kept loaded while it works.
 const SH_LOAD: f64 = SH_R * 1.2 + 18.0;
 /// Mobs and dropped items within SH_KILL killed as it goes.
@@ -51,15 +55,17 @@ const SH_KILL: i32 = 140;
 /// radius, wobble phase, sectors, first sector's angle, first slab); from SH_WF the waterfalls (the count, then four
 /// words each from SH_WF + 4: angle, half-width in radians, the water's top over the target's ground, when it pours); from
 /// SH_SB the slabs, SH_SW words each: th0, th1, rin0, rin1, rout0, rout1, when it lets go, its ground's height over
-/// the target's and its slope along x and z (from `sh_heights`), thick, g, alpha, twist, drift, (unused), grow_in,
-/// grow_out (see `ShSlab`).
+/// the target's and its slope along x and z (from `sh_heights`), thick, g, alpha, twist, drift, whether its land was read
+/// (1), grow_in, grow_out, and once its land is read (`sh_land_done`) the columns it covers in the land's square (lowest
+/// x and z, highest x and z) and how low its underside and how high what stands on it reach, from the target's ground
+/// (see `ShSlab`). From SH_MAT the materials, and from SH_GRID the land's columns (sh_land.rs).
 pub(super) const SH_RG: usize = 8;
 pub(super) const SH_RW: usize = 5;
 pub(super) const SH_MAXR: usize = 11;
 pub(super) const SH_WF: usize = 64;
 pub(super) const SH_NWF: usize = 6;
 pub(super) const SH_SB: usize = 96;
-pub(super) const SH_SW: usize = 20;
+pub(super) const SH_SW: usize = 24;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShRing {
@@ -310,6 +316,9 @@ impl ShGeo {
         let (x, z) = (ca * SH_R + 1000.0, sa * SH_R + 1000.0);
         let kk = k as u32;
         let j = 7.0 * (vnoise(x, z, 10.0, self.seed ^ (0x720 + kk)) - 0.45) + 3.0 * (vnoise(x, z, 3.5, self.seed ^ (0x760 + kk)) - 0.5);
+        // (the bands under the rim's own cut back no more than SH_OVERHANG past it: the land over them is left standing
+        // on what is under it, never out over the pit)
+        let j = if k <= 2 { j.min(SH_OVERHANG) } else { j };
         rim + j - 0.04 * f64::from((by - mid).max(0))
     }
 }
@@ -318,7 +327,7 @@ impl ShGeo {
 /// slabs' ground and the waterfalls come later, as the world says where the ground is (`sh_heights`).
 pub(super) fn sh_table(seed: f32) -> Vec<u32> {
     let g = ShGeo::shared(seed);
-    let mut w = vec![0.0f32; SH_SB + g.slabs.len() * SH_SW];
+    let mut w = vec![0.0f32; SH_MAT];
     w[0] = g.slabs.len() as f32;
     w[1] = g.rings.len() as f32;
     for i in 0..4 {
@@ -335,12 +344,14 @@ pub(super) fn sh_table(seed: f32) -> Vec<u32> {
     for (k, s) in g.slabs.iter().enumerate() {
         let b = SH_SB + k * SH_SW;
         let (gi, go) = g.grows(k);
-        let v = [s.th0, s.th1, s.rin0, s.rin1, s.rout0, s.rout1, f64::from(s.t), 0.0, 0.0, 0.0, s.thick, s.g, s.alpha, s.twist, s.drift, 0.0, gi, go, 0.0, 0.0];
+        let v = [s.th0, s.th1, s.rin0, s.rin1, s.rout0, s.rout1, f64::from(s.t), 0.0, 0.0, 0.0, s.thick, s.g, s.alpha, s.twist, s.drift, 0.0, gi, go];
         for (i, x) in v.iter().enumerate() {
             w[b + i] = *x as f32;
         }
     }
-    w.into_iter().map(f32::to_bits).collect()
+    let mut out: Vec<u32> = w.into_iter().map(f32::to_bits).collect();
+    out.extend(sh_land::mat_words());
+    out
 }
 
 /// The sinkhole. Tremors, birds going up and cracks racing out over the land; a patch in the middle gives, then sags;
@@ -351,7 +362,23 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
     let geo = ShGeo::shared(shader_seed);
-    // (the middle: the block's own, as the pass has it)
+    // the land as it really is, read from the world as it starts (whether or not the terrain goes: the pass draws the
+    // slabs with it either way), and worked out a few thousand columns a tick
+    let land: Shared = Rc::new(RefCell::new(Land::new(geo.slabs.len())));
+    {
+        let parts = SH_GW.div_ceil(READ_ROWS);
+        let tags: Rc<Vec<u32>> = Rc::new((0..parts).map(|_| crate::columns::new_tag()).collect());
+        for part in 0..parts {
+            let (geo, tags) = (geo.clone(), tags.clone());
+            let t = 0.1 + 0.05 * part as f32;
+            p.later(t, move |q| {
+                let columns = sh_land::read_columns(&geo, q.bx, q.bz, part * READ_ROWS, (part + 1) * READ_ROWS);
+                q.ev.push((t, Act::Read { tag: tags[part], columns, below: READ_BELOW, above: READ_ABOVE }));
+            });
+        }
+        let (geo, land) = (geo.clone(), land.clone());
+        p.later(0.3, move |q| sh_land_step(q, geo, land, tags, 0, 0, 0.3));
+    }
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let gy = f64::from(by) + 1.0;
     let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
@@ -380,17 +407,27 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
         sounds.push((tg, ["groan1", "groan2", "groan3"][take], a, r, p.rng.uniform(0.85, 1.12) as f32));
         tg += p.rng.uniform(0.7, 1.6) as f32;
     }
-    let mut tc = 2.0f32;
-    while tc < 8.4 {
-        let (a, r) = (p.rng.uniform(0.0, TAU), p.rng.uniform(10.0, SH_R));
-        sounds.push((tc, ["crack1", "crack2", "crack3"][p.rng.int(0, 2) as usize], a, r, p.rng.uniform(0.9, 1.15) as f32));
-        tc += p.rng.uniform(0.45, 1.5) as f32 * if tc > 5.0 { 0.6 } else { 1.0 };
+    // (the cracks racing out in spurts, a crack heard for each, where its front got to; and one more as it stalls)
+    let spurts = sh_spurts(geo.seed);
+    for (i, &(t, r)) in spurts.iter().enumerate() {
+        let a = mh(i as u32, geo.seed, 0x7c1) * TAU;
+        let r = r.min(SH_R * 1.05);
+        sounds.push((t, ["crack1", "crack2", "crack3"][i % 3], a, r, (0.85 + 0.3 * mh(i as u32, geo.seed, 0x7c2)) as f32));
+        if i % 2 == 1 {
+            sounds.push((t + SH_SPURT, ["crack2", "crack3", "crack1"][i % 3], a + 1.9, r * 0.8, 1.1));
+        }
     }
     for (t, name, a, r, pitch) in sounds {
         let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
         p.at(t + late(x, gy, z), format!("playsound orbital:sinkhole.{name} block @a {x:.1} {gy} {z:.1} 4 {pitch:.2} 0.9"));
     }
     p.at(3.6, bar("SEISMIC WARNING: THE GROUND IS GIVING WAY", "red"));
+    // (each spurt of the cracks puffing dust up out of them where it ran, and loose bits crumbling in)
+    for (i, &(t, r)) in spurts.iter().enumerate() {
+        let r0 = if i == 0 { 0.0 } else { spurts[i - 1].1 };
+        let (geo, land) = (geo.clone(), land.clone());
+        p.later(t - 0.1, move |q| sh_spurt_fx(q, &geo, &land, i, t, r0, r));
+    }
 
     // ---- the first give: a crack, the middle drops, dust puffs up; then it sags further ----------------------------
     p.at(SH_GIVE + lt - 0.02, format!("playsound orbital:sinkhole.give block @a {cx:.1} {gy} {cz:.1} 6 1.0 1.0"));
@@ -432,10 +469,11 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
     let sky = sky_top(dimension);
     for (k, t) in order.into_iter().zip(at) {
         let geo = geo.clone();
+        let land = land.clone();
         p.later(t.max(0.5), move |q| {
-            sh_slab_fx(q, &geo, k, me);
+            sh_slab_fx(q, &geo, &land, k, me);
             if terrain {
-                sh_top(q, &geo, k, sky);
+                sh_top(q, &geo, &land, k, sky);
             }
         });
     }
@@ -461,6 +499,14 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
         p.at(tk, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,distance=..{SH_KILL}]"));
     }
 
+    // the ground under the slabs and round the rim, asked of the world, and given to the pass
+    {
+        let tag = crate::ground::new_tag();
+        let geo2 = geo.clone();
+        p.later(0.25, move |q| q.ev.push((0.25, Act::Survey { tag, columns: sh_survey_columns(&geo2, q.bx, q.bz) })));
+        let geo = geo.clone();
+        p.later(0.8, move |q| sh_heights(q, geo, tag, 0.8));
+    }
     if terrain {
         let floor_y = bedrock_top(dimension);
         let point = [cx, gy, cz];
@@ -470,16 +516,6 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
         }
         for [x0, z0, x1, z1] in &load {
             p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
-        }
-        // the ground under the slabs and round the rim, asked of the world, and given to the pass
-        let tag = crate::ground::new_tag();
-        {
-            let geo = geo.clone();
-            p.later(0.3, move |q| q.ev.push((0.3, Act::Survey { tag, columns: sh_survey_columns(&geo, q.bx, q.bz) })));
-        }
-        {
-            let geo = geo.clone();
-            p.later(0.8, move |q| sh_heights(q, geo, tag, 0.8));
         }
         // the first give and the sag: the middle moved down whole, with what stands on it
         for (t, y0, y1, drop) in [(SH_GIVE, by - 12, by + 30, 4), (SH_SAG, by - 16, by + 26, 3)] {
@@ -513,13 +549,56 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
     p.ev
 }
 
-/// Slab k's crack as it lets go (every few slabs', more of the rim's: those are near enough to pick out), and the dirt
-/// it throws up.
-fn sh_slab_fx(p: &mut Plan, g: &ShGeo, k: usize, me: [f64; 3]) {
+/// The cracks' spurts (shaders/sinkhole.wgsl's sh_crack_at mirrors them): when each sets off, and how far out it has
+/// run when it stops, over SH_SPURT. They race out from the middle in fits and starts, faster than the eye can follow
+/// each, stalling between.
+pub(super) const SH_SPURTS: usize = 10;
+pub(super) const SH_SPURT: f32 = 0.2;
+pub(super) fn sh_spurts(seed: u32) -> Vec<(f32, f64)> {
+    (0..SH_SPURTS)
+        .map(|i| {
+            let t = 1.0 + 6.4 * (i as f64 + 0.15 + 0.7 * mh(i as u32, seed, 0x7c0)) / SH_SPURTS as f64;
+            let r = SH_R * 1.3 * ((i + 1) as f64 / SH_SPURTS as f64).powf(0.85);
+            (t as f32, r)
+        })
+        .collect()
+}
+
+/// Spurt i of the cracks (running from r0 out to r at `t`): dust puffing up out of the new cracks, along the slabs'
+/// edges it opened, and loose bits crumbling into them.
+fn sh_spurt_fx(p: &mut Plan, g: &ShGeo, land: &Shared, i: usize, t: f32, r0: f64, r: f64) {
+    let (cx, cz) = (f64::from(p.bx) + 0.5, f64::from(p.bz) + 0.5);
+    let gy = p.by + 1;
+    let l = land.borrow();
+    for j in 0..8u32 {
+        let h = |c: u32| mh(i as u32 * 8 + j, g.seed, c);
+        let a = h(0x7c3) * TAU;
+        let rr = r0 + (r - r0) * h(0x7c4);
+        let Some(k) = g.slab_at(rr * a.cos(), rr * a.sin()) else { continue };
+        // (on its edge: the corner of the slab nearest)
+        let (px, pz) = (rr * a.cos(), rr * a.sin());
+        let c = g.slabs[k].corners();
+        let (ex, ez) = c.iter().copied().min_by(|u, v| (u.0 - px).hypot(u.1 - pz).total_cmp(&(v.0 - px).hypot(v.1 - pz))).unwrap_or((px, pz));
+        let (x, z) = (cx + 0.5 * (ex + px), cz + 0.5 * (ez + pz));
+        let y = l.ground_at(p.bx, p.bz, x.floor() as i32, z.floor() as i32, gy).unwrap_or(gy);
+        let at = t + SH_SPURT * ((rr - r0) / (r - r0).max(1.0)) as f32;
+        p.at(at, format!(r#"particle minecraft:block{{block_state:"minecraft:dirt"}} {x:.1} {}.2 {z:.1} 1.2 0.1 1.2 0.15 14 force"#, y));
+        p.at(at + 0.05, format!("particle minecraft:campfire_cosy_smoke {x:.1} {}.1 {z:.1} 1.0 0.1 1.0 0.004 2 force", y));
+        p.at(at + 0.3, format!(r#"particle minecraft:falling_dust{{block_state:"minecraft:coarse_dirt"}} {x:.1} {}.4 {z:.1} 1.0 0.1 1.0 0 6 force"#, y));
+    }
+}
+
+/// Slab k's crack as it lets go (every few slabs', more of the rim's: those are near enough to pick out), the dirt it
+/// throws up, and the bits crumbling off its edges into the widening cracks round it the second before.
+fn sh_slab_fx(p: &mut Plan, g: &ShGeo, land: &Shared, k: usize, me: [f64; 3]) {
     let s = g.slabs[k];
     let (x, z) = s.centroid();
     let (x, z) = (f64::from(p.bx) + 0.5 + x, f64::from(p.bz) + 0.5 + z);
-    let gy = f64::from(p.by) + 1.0;
+    let gy0 = p.by + 1;
+    let l = land.borrow();
+    let (bx, bz) = (p.bx, p.bz);
+    let ground = |x: f64, z: f64| f64::from(l.ground_at(bx, bz, x.floor() as i32, z.floor() as i32, gy0).unwrap_or(gy0));
+    let gy = ground(x, z);
     let rim = s.ring + 1 >= g.rings.len();
     if mh(k as u32, g.seed, 0x7a0) < if rim { 0.22 } else { 0.08 } {
         let name = ["crack1", "crack2", "crack3"][k % 3];
@@ -529,6 +608,60 @@ fn sh_slab_fx(p: &mut Plan, g: &ShGeo, k: usize, me: [f64; 3]) {
     }
     if k % 2 == 0 {
         p.at(s.t + 0.25, format!(r#"particle minecraft:block{{block_state:"minecraft:dirt"}} {x:.1} {:.1} {z:.1} 5 1 5 0.25 40 force"#, gy - 1.0));
+    }
+    if k % 3 == 0 || rim {
+        let c = s.corners();
+        let (ex, ez) = (f64::from(bx) + 0.5 + 0.5 * (c[2].0 + c[3].0), f64::from(bz) + 0.5 + 0.5 * (c[2].1 + c[3].1));
+        p.at(s.t - 0.9, format!(r#"particle minecraft:falling_dust{{block_state:"minecraft:dirt"}} {ex:.1} {:.1} {ez:.1} 2.5 0.2 2.5 0 10 force"#, ground(ex, ez) + 0.3));
+    }
+}
+
+/// The land's answers worked through, a part (a query) at a time and PER_TICK columns a tick, waiting for each to come in;
+/// given to the pass once it is all in (or as far as it got, if the world has not answered by the time the collapse is
+/// near).
+fn sh_land_step(q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, part: usize, start: usize, at: f32) {
+    let next = |q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, part: usize, start: usize| {
+        q.later(at + 0.05, move |q| sh_land_step(q, g, land, tags, part, start, at + 0.05));
+    };
+    if part >= tags.len() {
+        sh_land_done(q, &g, &land, at);
+        return;
+    }
+    let Some(a) = crate::columns::get(tags[part]) else {
+        if at < SH_C0 - 1.6 {
+            next(q, g, land, tags, part, start);
+        } else {
+            sh_land_done(q, &g, &land, at);
+        }
+        return;
+    };
+    let mats: Vec<(u8, sh_land::Class)> = a.palette.iter().map(|n| sh_land::material(n)).collect();
+    let end = sh_land::work(&mut land.borrow_mut(), &g, &a, &mats, q.bx, q.by + 1, q.bz, start);
+    if end >= a.columns.len() {
+        next(q, g, land, tags, part + 1, 0);
+    } else {
+        next(q, g, land, tags, part, end);
+    }
+}
+
+/// The land handed to the pass: its columns, and each slab's bounds in them (its words 15 and 18 to 23).
+fn sh_land_done(q: &mut Plan, g: &ShGeo, land: &Shared, at: f32) {
+    let mut l = land.borrow_mut();
+    if l.done {
+        return;
+    }
+    l.done = true;
+    q.ev.push((at, Act::Words { index: SH_GRID as u32, words: l.words.clone() }));
+    for (k, s) in g.slabs.iter().enumerate() {
+        let b = l.bounds[k];
+        if b[0] > b[2] {
+            continue;
+        }
+        let under = l.lowest[k] - 1 - s.thick.round() as i32;
+        let base = (SH_SB + k * SH_SW) as u32;
+        for (i, v) in [(15, 1), (18, b[0]), (19, b[1]), (20, b[2]), (21, b[3]), (22, under), (23, b[5])] {
+            q.ev.push((at, Act::Data { index: base + i, value: v as f32 }));
+        }
     }
 }
 
@@ -708,20 +841,28 @@ fn sh_bands(g: &ShGeo, r: f64, a: f64, rim: f64, by: i32, floor_y: i32, top: i32
     out
 }
 
-/// Slab k's land dug out, SH_DIG_AHEAD before it lets go (the pass draws it in its place over the hole until then): its
-/// columns cut through from SH_TOP_D under the target's ground up (the walls' bands as they are cut), cleared over that
-/// from their own ground; the water and lava round the rim next to it sealed in; and the plants and leaves left hanging
-/// over the edge cleared the tick after.
-fn sh_top(p: &mut Plan, g: &ShGeo, k: usize, sky: i32) {
+/// Slab k's land dug out, SH_DIG_AHEAD before it lets go (the pass draws it in its place over the hole from then): its
+/// columns cut through from SH_TOP_D under the target's ground up to their real tops (the land's read: a mountain, the
+/// trees on it, the snow on them, all of it, so nothing is left hanging over the pit), the walls' bands as they are cut;
+/// a column not read cleared to SH_ABOVE over the target's ground and from its own ground SH_SURF_LO..SH_SURF_HI; the
+/// water and lava round the rim next to it sealed in; and the plants and leaves left hanging over the edge, and what is
+/// left of trees cut through there, cleared the tick after.
+fn sh_top(p: &mut Plan, g: &ShGeo, land: &Shared, k: usize, sky: i32) {
     let s = g.slabs[k];
     let (by, bx, bz) = (p.by, p.bx, p.bz);
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let c = s.corners();
     let (mut x0, mut z0, mut x1, mut z1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    // (its corners and the middles of its arcs)
-    let am = 0.5 * (s.th0 + s.th1);
-    let mids = [(s.rout0.max(s.rout1) * am.cos(), s.rout0.max(s.rout1) * am.sin()), (s.rin0.min(s.rin1) * am.cos(), s.rin0.min(s.rin1) * am.sin())];
-    for (x, z) in c.iter().chain(mids.iter()) {
+    // (its corners and its edges along the rings, which wander out past the corners)
+    let mut edge = Vec::with_capacity(34);
+    for i in 0..=16 {
+        let th = s.th0 + (s.th1 - s.th0) * f64::from(i) / 16.0;
+        for j in [s.ring, s.ring + 1] {
+            let r = g.ring_r(j, th);
+            edge.push((r * th.cos(), r * th.sin()));
+        }
+    }
+    for (x, z) in c.iter().chain(edge.iter()) {
         x0 = x0.min(*x);
         z0 = z0.min(*z);
         x1 = x1.max(*x);
@@ -735,6 +876,7 @@ fn sh_top(p: &mut Plan, g: &ShGeo, k: usize, sky: i32) {
     let mut b = Blocks::default();
     let mut seal = Blocks::default();
     let mut any = false;
+    let l = land.borrow();
     for z in za..=zb {
         for x in xa..=xb {
             let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
@@ -743,12 +885,16 @@ fn sh_top(p: &mut Plan, g: &ShGeo, k: usize, sky: i32) {
             match g.slab_on(r, a, rim) {
                 Some(j) if j == k => {
                     any = true;
-                    for (_, lo, hi, air) in sh_bands(g, r, a, rim, by, by - SH_TOP_D - 1, top) {
+                    let real = l.top_at(bx, bz, x, z);
+                    let hi = real.map_or(top, |t| (t - 1).min(sky).max(by - SH_TOP_BAND));
+                    for (_, lo, hi, air) in sh_bands(g, r, a, rim, by, by - SH_TOP_D - 1, hi) {
                         if air {
                             b.run(x, z, lo, hi, "minecraft:air");
                         }
                     }
-                    b.put(x, z, SH_SURF_LO, SH_SURF_HI, "minecraft:air", None, true);
+                    if real.is_none() {
+                        b.put(x, z, SH_SURF_LO, SH_SURF_HI, "minecraft:air", None, true);
+                    }
                 }
                 None if rim_slab => {
                     // (round the rim: what would run out over the edge, held in)
@@ -837,6 +983,26 @@ fn sh_deep(p: &mut Plan, g: &ShGeo, x0: i32, z0: i32, t: f32, floor_y: i32) {
                     any_air = true;
                 }
             }
+            // the walls' rock darker the deeper (the stone of them only: their ores, dirt and seals kept): tuff from a
+            // quarter of the way down, deepslate from half, blackstone at the foot, the bounds between wandering
+            if r > rim - SH_IN - 1.0 {
+                let d = f64::from(by - floor_y);
+                let wob = 7.0 * (vnoise(fx, fz, 9.0, s ^ 0x7d0) - 0.5) + 2.0 * (vnoise(fx, fz, 2.5, s ^ 0x7d1) - 0.5);
+                let z1 = by - (0.27 * d + wob) as i32;
+                let z2 = by - (0.5 * d + wob) as i32;
+                let z3 = by - (0.74 * d + wob) as i32;
+                for &(_, lo, hi, air) in &bands {
+                    if air {
+                        continue;
+                    }
+                    for (y0, y1, blk) in [(z2 + 1, z1, "minecraft:tuff"), (z3 + 1, z2, "minecraft:deepslate"), (floor_y + 1, z3, "minecraft:blackstone")] {
+                        let (y0, y1) = (lo.max(y0), hi.min(y1));
+                        if y1 >= y0 {
+                            b.put(x, z, y0, y1, blk, Some("#minecraft:base_stone_overworld"), false);
+                        }
+                    }
+                }
+            }
             if !any_air {
                 continue;
             }
@@ -893,6 +1059,16 @@ mod table {
     fn sh_write_table() {
         let seed: f32 = std::env::var("CB_SEED").map_or(37.0, |v| v.parse().unwrap());
         let mut w = super::sh_table(seed);
+        // (the land, unless SH_LAND=0: snow on a grass block over dirt over stone, flat at the preview's ground (its
+        // target's block at 0 64 0), now and then a patch of gravel or stone, spruces and a few oaks standing on it)
+        if std::env::var("SH_LAND").map_or(true, |v| v != "0") {
+            for (i, v) in synth_land(seed) {
+                if w.len() <= i as usize {
+                    w.resize(i as usize + 1, 0);
+                }
+                w[i as usize] = v;
+            }
+        }
         if let Ok(a) = std::env::var("SH_WATER") {
             let a: f32 = a.parse().unwrap();
             let g = super::ShGeo::new(seed);
@@ -905,6 +1081,74 @@ mod table {
         }
         let text: String = w.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
+    }
+
+    fn synth_column(x: i32, z: i32) -> Option<(i32, Vec<&'static str>)> {
+        use super::mh;
+        let h = |k: u32| mh((x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32, 3, k);
+        let patch = super::vnoise(f64::from(x), f64::from(z), 9.0, 77);
+        let g = 64;
+        let hh = |x: i32, z: i32, k: u32| mh((x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32, 3, k);
+        let spruce = h(1) > 0.965;
+        let oak = !spruce && h(2) > 0.992;
+        // (the leaves of a spruce standing near: two out low, one out higher, a tip over it)
+        let mut near = 99;
+        for dz in -2i32..=2 {
+            for dx in -2i32..=2 {
+                if hh(x + dx, z + dz, 1) > 0.965 {
+                    near = near.min(dx.abs() + dz.abs());
+                }
+            }
+        }
+        let canopy = |y: i32| near < 99 && ((y >= g + 3 && y <= g + 6 && near <= 2) || (y >= g + 6 && y <= g + 9 && near <= 1) || (y == g + 10 && near == 0));
+        let ground = if patch > 0.78 { "minecraft:stone" } else if patch < 0.12 { "minecraft:gravel" } else { "minecraft:grass_block" };
+        let block = |y: i32| -> &'static str {
+            if y < g - 3 {
+                "minecraft:stone"
+            } else if y < g {
+                if ground == "minecraft:grass_block" { "minecraft:dirt" } else { ground }
+            } else if y == g {
+                ground
+            } else if spruce && y <= g + 7 {
+                "minecraft:spruce_log"
+            } else if canopy(y) {
+                "minecraft:spruce_leaves"
+            } else if oak && y <= g + 4 {
+                "minecraft:oak_log"
+            } else if oak && (g + 3..=g + 6).contains(&y) {
+                "minecraft:oak_leaves"
+            } else if y == g + 1 && ground != "minecraft:gravel" {
+                "minecraft:snow"
+            } else {
+                "minecraft:air"
+            }
+        };
+        let top = (g + 2..=g + 11).rev().find(|&y| block(y) != "minecraft:air").map_or(g + 1, |y| y + 1);
+        Some((top, (top - 24..=top).map(block).collect()))
+    }
+    /// The land's words (the columns, and the slabs' bounds) for the preview's strike, as the mod works them out.
+    fn synth_land(seed: f32) -> Vec<(u32, u32)> {
+        use super::*;
+        crate::ground::set_test(Some(|_, _| Some(65)));
+        let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+        let mut ev = crate::strike::plan(&crate::lasers::SINKHOLE, &target, false, "minecraft:overworld", seed, [0.5, 100.0, 300.0], 0);
+        ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut out = Vec::new();
+        while let Some((_, a)) = ev.pop() {
+            match a {
+                Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &synth_column),
+                Act::Words { index, words } => out.extend(words.into_iter().enumerate().map(|(i, v)| (index + i as u32, v))),
+                Act::Data { index, value } => out.push((index, value.to_bits())),
+                Act::Later(job) | Act::Soon(job) => {
+                    ev.extend(job());
+                    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+                }
+                _ => {}
+            }
+        }
+        crate::ground::set_test(None);
+        out
     }
 }
 
@@ -934,7 +1178,7 @@ mod tests {
         for seed in [7.0, 37.0, 501.0] {
             let g = ShGeo::new(seed);
             assert!(g.slabs.len() > 100 && g.slabs.len() < 260, "{} slabs", g.slabs.len());
-            assert!(SH_SB + g.slabs.len() * SH_SW < 8192);
+            assert!(SH_SB + g.slabs.len() * SH_SW < SH_MAT);
             for x in -140..140 {
                 for z in -140..140 {
                     let (dx, dz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
@@ -979,8 +1223,13 @@ mod tests {
     fn sinkhole_digs_to_bedrock_under_each_slab_before_it_goes() {
         // the land under every slab is dug before the slab lets go and after the pass starts drawing it, and the pit is
         // cut on down to bedrock; nothing is cut outside the rim but the walls' bands, near it
-        let g = ShGeo::new(7.0);
-        let ev = edits(7.0);
+        for seed in [7.0, 19.0] {
+            digs_to_bedrock(seed);
+        }
+    }
+    fn digs_to_bedrock(seed: f32) {
+        let g = ShGeo::new(seed);
+        let ev = edits(seed);
         let (cx, cz) = (10.5, -2.5);
         let mut top_dug: std::collections::HashMap<(i32, i32), f32> = Default::default();
         let mut deep: std::collections::HashSet<(i32, i32)> = Default::default();
@@ -1067,6 +1316,184 @@ mod tests {
         let a = data[&(SH_WF as u32 + 4)];
         assert!(a.abs() < 0.05 || (a - TAU as f32).abs() < 0.05, "{a}");
         assert_eq!(data[&(SH_WF as u32 + 6)], 2.0);
+    }
+}
+
+#[cfg(test)]
+mod land {
+    use super::sh_land::{ColInfo, SH_G};
+    use super::*;
+    use crate::strike::plan;
+
+    /// A steep snowy mountain over the target (its ground 64): the ground block's height at (x, z).
+    fn mountain(x: i32, z: i32) -> i32 {
+        let (x, z) = (f64::from(x), f64::from(z));
+        (64.0 + 70.0 * (0.5 + 0.5 * (x * 0.021).sin() * (z * 0.018 + 0.4).cos()) + 6.0 * (x * 0.13 + z * 0.07).sin()).round() as i32
+    }
+    fn tree(x: i32, z: i32) -> bool {
+        mh((x.wrapping_mul(73) ^ z.wrapping_mul(179)) as u32, 5, 0x99) > 0.97
+    }
+    /// Its column as the world reads it: stone under dirt under a grass block, snow on it, now and then a spruce (a
+    /// trunk 7 high, its leaves 4 to 11 up); its top, and its blocks from 24 under it to it, bottom first.
+    fn column(x: i32, z: i32) -> Option<(i32, Vec<&'static str>)> {
+        let g = mountain(x, z);
+        let t = tree(x, z);
+        let block = |y: i32| -> &'static str {
+            if y < g - 3 {
+                "minecraft:stone"
+            } else if y < g {
+                "minecraft:dirt"
+            } else if y == g {
+                "minecraft:grass_block"
+            } else if t && y <= g + 7 {
+                "minecraft:spruce_log"
+            } else if t && y <= g + 11 && y >= g + 4 {
+                "minecraft:spruce_leaves"
+            } else if y == g + 1 {
+                "minecraft:snow"
+            } else {
+                "minecraft:air"
+            }
+        };
+        let top = if t { g + 12 } else { g + 2 };
+        Some((top, (top - 24..=top).map(block).collect()))
+    }
+    fn ground(x: i32, z: i32) -> Option<i32> {
+        Some(mountain(x, z) + 1)
+    }
+
+    struct Played {
+        blocks: Vec<(f32, Blocks)>,
+        words: Vec<u32>,
+        data: std::collections::HashMap<u32, f32>,
+    }
+    /// The plan played out in time order against the mountain, the world's answers given at once.
+    fn play(seed: f32, terrain: bool) -> Played {
+        crate::ground::set_test(Some(ground));
+        crate::columns::clear();
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let mut ev = plan(&crate::lasers::SINKHOLE, &target, terrain, "minecraft:overworld", seed, [10.5, 66.0, 330.0], 0);
+        ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut out = Played { blocks: Vec::new(), words: Vec::new(), data: Default::default() };
+        while let Some((t, a)) = ev.pop() {
+            match a {
+                Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &column),
+                Act::Blocks(b) => out.blocks.push((t, *b)),
+                Act::Words { index, words } => {
+                    assert_eq!(index as usize, SH_GRID);
+                    out.words = words;
+                }
+                Act::Data { index, value } => {
+                    out.data.insert(index, value);
+                }
+                Act::Later(job) | Act::Soon(job) => {
+                    ev.extend(job());
+                    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+                }
+                _ => {}
+            }
+        }
+        crate::ground::set_test(None);
+        out
+    }
+
+    #[test]
+    fn sinkhole_leaves_nothing_floating_over_a_mountain() {
+        // every column of the pit is cleared from the rim's own band up to its very top (the mountain, its trees and
+        // its snow), with nothing left between; and nothing past the rim is cut back more than SH_OVERHANG under the land
+        // over it
+        let g = ShGeo::new(19.0);
+        let pl = play(19.0, true);
+        let (cx, cz) = (10.5, -2.5);
+        let mut air: std::collections::HashMap<(i32, i32), Vec<(i32, i32)>> = Default::default();
+        for (_, b) in &pl.blocks {
+            for r in &b.runs {
+                if r.only.is_some() || r.surface.is_some() || b.palette[r.block as usize] != "minecraft:air" {
+                    continue;
+                }
+                air.entry((r.x, r.z)).or_default().push((r.y, r.y + r.height as i32 - 1));
+            }
+        }
+        let mut n = 0;
+        for x in -130..150 {
+            for z in -140..140 {
+                let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+                if g.slab_at(dx, dz).is_none() {
+                    continue;
+                }
+                let (top, _) = column(x, z).unwrap();
+                let mut spans = air.get(&(x, z)).cloned().unwrap_or_default();
+                spans.sort();
+                // (from under the rim's own band up to the top, without a gap: the ledges under it are the walls')
+                let mut reach = 64 - SH_TOP_BAND - 1;
+                for (lo, hi) in spans {
+                    if lo <= reach + 1 {
+                        reach = reach.max(hi);
+                    }
+                }
+                assert!(reach >= top - 1, "{x} {z}: cleared to {reach}, its top is {}: {:?}", top - 1, air.get(&(x, z)));
+                n += 1;
+            }
+        }
+        assert!(n > 30_000, "{n}");
+        // (the overhangs: under the rim's own band, a column cut more than SH_OVERHANG past the rim is cut only deep)
+        for (&(x, z), spans) in &air {
+            let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+            let past = dx.hypot(dz) - g.rim(dz.atan2(dx));
+            if past > SH_OVERHANG + 1.0 {
+                for &(_, hi) in spans {
+                    assert!(hi < 64 - SH_TOP_BAND - 2 * SH_BAND, "{x} {z}: {past:.1} past the rim, cut up to {hi}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sinkhole_slabs_carry_the_land_they_were_cut_from() {
+        // the pass's columns: each the slab's that digs it, with the land's real blocks (snow on the mountain, the
+        // spruces on it), inside its slab's bounds; and each slab's bounds given to the pass
+        let g = ShGeo::new(7.0);
+        let pl = play(7.0, true);
+        assert_eq!(pl.words.len(), 2 * SH_GW * SH_GW);
+        let (cx, cz) = (10.5, -2.5);
+        let (mut trees, mut snow, mut n) = (0, 0, 0);
+        for x in -130..150 {
+            for z in -140..140 {
+                let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+                let Some(k) = g.slab_at(dx, dz) else { continue };
+                let i = Land::index(10, -3, x, z).unwrap();
+                let (c, slab) = ColInfo::from_words([pl.words[2 * i], pl.words[2 * i + 1]]).unwrap_or_else(|| panic!("{x} {z} not read"));
+                assert_eq!(slab, Some(k), "{x} {z}");
+                let m = mountain(x, z);
+                let give = if g.slabs[k].ring == 0 { 7 } else { 0 };
+                assert_eq!(c.h, m + 1 - 65 - give, "{x} {z}");
+                assert_eq!(c.top, 1);
+                if tree(x, z) {
+                    assert_eq!((c.log, c.log_top, c.leaf, c.leaf_lo, c.leaf_hi), (29, 7, 34, 8, 11), "{x} {z}");
+                    trees += 1;
+                } else {
+                    assert!(c.snow && c.log == 0);
+                    snow += 1;
+                }
+                // (inside its bounds, as the pass has them)
+                let b = (SH_SB + k * SH_SW) as u32;
+                let d = |j: u32| pl.data[&(b + j)] as i32;
+                assert_eq!(d(15), 1);
+                let (ci, ck) = (x - 10 + SH_G, z + 3 + SH_G);
+                assert!(ci >= d(18) && ck >= d(19) && ci <= d(20) && ck <= d(21), "{x} {z} outside slab {k}'s bounds");
+                assert!(c.h - 1 >= d(22) && c.highest() < d(23));
+                n += 1;
+            }
+        }
+        assert!(trees > 300 && snow > 20_000 && n > 30_000, "{trees} {snow} {n}");
+    }
+
+    #[test]
+    fn sinkhole_land_is_read_with_the_terrain_off_too() {
+        let pl = play(37.0, false);
+        assert!(pl.blocks.is_empty());
+        assert!(pl.words.iter().any(|w| w >> 31 == 1));
     }
 }
 

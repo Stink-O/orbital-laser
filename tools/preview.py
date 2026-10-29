@@ -59,6 +59,8 @@ VIEWS = {
     "shaerial": "cx=0 cy=430 cz=330 lx=0.5 ly=40 lz=0.5 flat=1 pit=1",
     "shground": "cx=50 cy=69 cz=110 lx=0 ly=64 lz=20 flat=1 pit=1",
     "shclose": "cx=-20 cy=95 cz=105 lx=10 ly=55 lz=40 flat=1 pit=1",
+    # close on the slabs of the second and third rings as they let go, and over the cracks before
+    "shslab": "cx=-28 cy=80 cz=78 lx=0 ly=60 lz=30 flat=1 pit=1",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown"}

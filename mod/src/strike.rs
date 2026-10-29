@@ -5,6 +5,7 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 
 mod crystal;
+mod sh_land;
 mod sinkhole;
 
 /// Strike clock of the impact (the shader's T_FIRE).
@@ -58,6 +59,11 @@ pub enum Act {
     /// The ground under these columns, asked of the world (`world.surface-height`, ground.rs) as query `tag`: the
     /// stages after it read it (`ground::at`) once it is answered.
     Survey { tag: u32, columns: Vec<(i32, i32)> },
+    /// The blocks of these columns round their tops, asked of the world (`world.read-columns`, columns.rs) as query
+    /// `tag`: `below` under the top of each (its world-surface height) and `above` from it up.
+    Read { tag: u32, columns: Vec<(i32, i32)>, below: u32, above: u32 },
+    /// Words of what the pass reads, from word `index` on.
+    Words { index: u32, words: Vec<u32> },
     /// A word of what the pass reads (`render.set-data`, its `mod_data`): word `index` set to `value`'s bits.
     Data { index: u32, value: f32 },
     /// All of what the pass reads, from word 0 (the words past it kept): a table worked out after the strike starts.
@@ -4254,7 +4260,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } | Act::Survey { .. } | Act::Data { .. } | Act::Table(_) => {}
+                Act::Sound { .. } | Act::Shake { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
                 Act::Later(job) | Act::Soon(job) => ev.extend(job()),
             }
         }
