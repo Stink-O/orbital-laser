@@ -124,8 +124,9 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   fireball with a soft teardrop of flame behind it, the smoke just behind that lit orange; a roar, a tearing whistle
   and the pops coming thicker and bigger. At 13.6 s it strikes: a brief orange flash lighting the land and the air round it and a burst of
   fire, then a column of smoke bursts up out of it, most of its height in about a second as in the clip it follows,
-  eighteen billows swelling into a lumpy cauliflower mass (rounded domes on domes with creased gaps, tan-grey smoke
-  and dust lit by the scene: warm where the sun is on it, greyed by the sky on its shadowed side, darker down its
+  eighteen billows and a ragged trunk under them melting into one lumpy cauliflower mass (big lumps broken by middling
+  and small ones, its edge crisp in places and a torn, wispy fringe in others; tan smoke and dust, browner at its
+  dusty foot, lit by the scene: sunlit tops, greyed by the sky on its shadowed side, darker deep in it and down its
   narrower stem), about 235 blocks tall, widening and climbing slowly on, leaning with the wind from its foot up (the foot stays planted over the crater; the head drifts furthest). The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
   The shockwave races out over the land at the same speed as a wall of yellow-tan dust a person's height and more,
   billowing and crisp at its front, the leaves and grass near it shaken on the screen; it reaches the player as the
@@ -397,9 +398,10 @@ noise carried with it push its edge and density in and out, looked up on the she
 each lets go towards its mean (and the bead threshold to what it would let through on the whole) where a pixel spans
 several of them or where the ray runs along the trail through several, so it neither shimmers far off nor streaks
 end-on. It is carried by the wind, swelling as it ages and breaking into beads as its threshold rises; eight samples at
-a time are first tested as one ball, so most rays skip it; the column is marched through the billows' smooth union (worked out once a pixel), its surface bulged in
-cellular domes at two scales (rounded tops, creased gaps), each lump lit by a look a few blocks towards the sun and
-the column's bulk shadowing it with two more, lit by the sky the scene shows; as it settles its lumps sink back, its edge
+a time are first tested as one ball, so most rays skip it; the column is marched through the billows' smooth union (worked out once a pixel), its surface warped and bulged in
+cellular domes at three scales (36, 14 and 5.5 blocks; the big ones fewer up its stem) and frayed at its edge by fine
+noise, its density a ramp whose width varies over it (crisp to wispy), stepped finely as the ray closes on its edge,
+each lump lit by a look a few blocks towards the sun and the column's bulk shadowing it with three more, lit by the sky the scene shows; as it settles its lumps sink back, its edge
 becomes a broad soft fringe mottled by noise and its density thins away; the dust is marched only through the
 shell just behind the shockwave's front (and sparsely inside it), over the land's own ground: a 96 x 96 heightfield
 of it asked of the world as it fires (`world.surface-height`, from about 260 to 1,150 blocks round the target as the

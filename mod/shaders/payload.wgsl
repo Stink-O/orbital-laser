@@ -125,6 +125,10 @@ struct PlCol {
     C: vec3<f32>,
     // (the billows where they are this frame: worked out once a pixel, not at every step)
     q: array<vec4<f32>, 18>,
+    // (the stem: a trunk from the ground to the stem's highest billow (s1, radius s1.w), s0.w its radius at the foot,
+    // so it stands as one ragged mass and not a stack of balls)
+    s0: vec4<f32>,
+    s1: vec4<f32>,
 }
 // Billow i at `a` seconds after the strike: its middle and radius (w; 0 before it is launched).
 fn pl_puff(i: i32, a: f32, C: vec3<f32>, grow: f32) -> vec4<f32> {
@@ -153,9 +157,12 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     o.hi = C;
     o.a = a;
     o.C = C;
+    o.s1 = vec4<f32>(C, 0.0);
     o.grow = 1.0 + 0.012 * max(a - 6.0, 0.0) + 0.006 * max(a - PL_SOFT0, 0.0);
     for (var i = 0; i < PL_NPUFF; i = i + 1) {
-        let q = pl_puff(i, a, C, o.grow);
+        var q = pl_puff(i, a, C, o.grow);
+        // (the stem's billows smaller: its trunk carries it, they only bulge it)
+        q.w = q.w * select(1.0, 0.8, i < 5);
         o.q[i] = q;
         if (q.w <= 0.0) {
             continue;
@@ -163,10 +170,16 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
         o.lo = min(o.lo, q.xyz - vec3<f32>(q.w));
         o.hi = max(o.hi, q.xyz + vec3<f32>(q.w));
         o.n = o.n + 1;
+        if (i < 5 && q.y >= o.s1.y) {
+            o.s1 = q;
+        }
     }
+    // (the stem's trunk: wide at its dusty foot, narrowing a little to its top billow)
+    o.s0 = vec4<f32>(C + vec3<f32>(0.0, 2.0, 0.0), min(o.s1.w * 1.45, 6.0 + 36.0 * saturate(a / 1.2)));
+    o.s1.w = o.s1.w * 0.75;
     // (room for the billows' lumps)
-    o.lo = o.lo - vec3<f32>(24.0);
-    o.hi = o.hi + vec3<f32>(24.0);
+    o.lo = o.lo - vec3<f32>(34.0);
+    o.hi = o.hi + vec3<f32>(34.0);
     return o;
 }
 fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
@@ -174,8 +187,15 @@ fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
     for (var i = 0; i < PL_NPUFF; i = i + 1) {
         let q = (*col).q[i];
         if (q.w > 0.0) {
-            d = smin(d, length(p - q.xyz) - q.w, 11.0);
+            d = smin(d, length(p - q.xyz) - q.w, 18.0);
         }
+    }
+    let s0 = (*col).s0;
+    let s1 = (*col).s1;
+    if (s1.w > 0.0) {
+        let ab = s1.xyz - s0.xyz;
+        let u = saturate(dot(p - s0.xyz, ab) / max(dot(ab, ab), 1.0));
+        d = smin(d, length(p - s0.xyz - ab * u) - mix(s0.w, s1.w, u), 14.0);
     }
     return d;
 }
@@ -195,29 +215,42 @@ fn pl_dome(p: vec3<f32>) -> f32 {
     }
     return sqrt(saturate(1.0 - f1 * 1.7));
 }
-// The column's surface at p: the billows' union bulged out in lumps on lumps (big domes, smaller domes on them), with
-// how far up a dome it lies (0 deep in a crease, 1 on a crown) in .y.
-fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> vec2<f32> {
+// The column's surface at p, as the clips' smoke is: one mass, not a pile of balls. The billows' union warped and
+// bulged out in lumps on lumps on lumps (big domes, middling ones on them, small ones on those, and a fine turbulent
+// fray at the very edge), the lumps smaller down the thinner stem. In .y how far up a dome it lies (0 deep in a crease,
+// 1 on a crown), in .z how soft its edge is there (crisp in places, a loose wispy fringe in others: the density's ramp,
+// blocks), in .w the fine fray (0 to 1) the fringe is torn by.
+fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> vec4<f32> {
     let a = (*col).a;
     let q = (p - (*col).C) * vec3<f32>(1.0, 1.0 / (*col).grow, 1.0) - vec3<f32>(0.0, 2.2 * a + 10.0 * min(a, 1.5), 0.0) - pl_wind() * (a * 0.4);
-    let b1 = pl_dome(q * (1.0 / 34.0) + vec3<f32>(3.1, 0.0, 7.7));
-    // (the small lumps only where it is looked at, not where the light is looked for)
-    var b2 = 0.6;
-    if (fine) {
-        b2 = pl_dome(q * (1.0 / 12.0) + vec3<f32>(0.0, -0.3 * a, 1.3));
-    }
+    // (the billows' balls melted together and pushed about, so no one of them shows round; the lumps a little wider
+    // than they are tall, as the clips' are, in loose shelves)
+    let w = gnoise3(q * (1.0 / 55.0));
+    let w2 = gnoise3(q * (1.0 / 23.0) + vec3<f32>(9.2, -0.12 * a, 4.4));
+    let qs = q * vec3<f32>(1.0, 1.3, 1.0);
+    let b1 = pl_dome(qs * (1.0 / 36.0) + vec3<f32>(3.1, 0.0, 7.7) + 0.3 * vec3<f32>(w2 - 0.5));
+    let hy = p.y - (*col).C.y;
     // (the stem's lumps smaller: it is thinner)
-    let lump = 0.55 + 0.45 * smoothstep(20.0, 110.0, p.y - (*col).C.y);
-    let w = gnoise3(q * (1.0 / 60.0));
+    let lump = 0.7 + 0.3 * smoothstep(15.0, 110.0, hy);
     // (as it settles its billows melt away: the lumps sink back into a rounded mass, its edge a broad loose fringe)
     let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
     let crisp = 1.0 - 0.8 * soft;
-    var d = d0 - (28.0 * (b1 - 0.45) * crisp + 4.5 * (b2 - 0.45) * (1.0 - soft) + (16.0 + 8.0 * soft) * (w - 0.5)) * lump;
-    if (fine && d < 3.0 && soft < 0.99) {
-        let b3 = gnoise3(q * (1.0 / 4.0) + vec3<f32>(5.0, 1.0, -0.8 * a));
-        d = d - 1.5 * (b3 - 0.5) * (1.0 - soft);
+    let b2 = pl_dome(qs * (1.0 / 14.0) + vec3<f32>(0.0, -0.3 * a, 1.3));
+    // (up the stem the big lumps give way to middling ones: it is too thin for two of them across)
+    let up = smoothstep(25.0, 130.0, hy);
+    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.3 + 0.7 * up) + (6.0 + 6.0 * (1.0 - up)) * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) + 8.0 * (w2 - 0.5)) * lump;
+    // (crisp-edged in places, wispy in others, the stem's foot loosest: the dust it stands in)
+    let ew = smoothstep(0.35, 0.68, w2);
+    let edge = mix(1.4, 6.0, ew) + 12.0 * (1.0 - smoothstep(8.0, 80.0, hy));
+    var fray = 0.5;
+    if (fine && d < 12.0 && soft < 0.99) {
+        // (small cauliflower lumps on the middling ones, then the turbulent fray right at the edge)
+        let b3 = pl_dome(qs * (1.0 / 5.5) + vec3<f32>(1.7, -0.5 * a, -2.1));
+        d = d - 2.4 * (b3 - 0.45) * (1.0 - soft) * lump;
+        fray = gnoise3(q * (1.0 / 2.3) + vec3<f32>(5.0, 1.0, -0.8 * a));
+        d = d - 2.2 * (fray - 0.5) * (1.0 - soft) * (0.4 + 0.6 * ew);
     }
-    return vec2<f32>(d, b1 * (0.4 + 0.6 * b2));
+    return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
 }
 // A ray against a box, camera-relative: the entry and exit distances.
 fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
@@ -709,22 +742,23 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let thin = exp(-max(a - PL_SOFT0 - 8.0, 0.0) / 4.5);
                 var tmid = 0.0;
                 var wmid = 0.0;
-                for (var i = 0; i < 56; i = i + 1) {
+                for (var i = 0; i < 80; i = i + 1) {
                     if (t > t1 || tr < 0.03) {
                         break;
                     }
                     let p = rd * t;
                     let d0 = pl_col_base(&cl, p);
-                    if (d0 > 34.0) {
+                    if (d0 > 40.0) {
                         // (empty air: leap on, short of where a lump could reach)
-                        t = t + d0 - 30.0;
+                        t = t + d0 - 34.0;
                         continue;
                     }
                     let st = max(3.5, t * 0.008) * (0.75 + 0.5 * j);
                     let sd = pl_col_sdf(&cl, p, d0, true);
-                    // (crisp edged while it billows; later a broad soft fringe, the stem going first and the rest
-                    // thinning away as a haze)
-                    var den = saturate(-sd.x / (1.2 + 26.0 * soft)) * thin;
+                    // (a soft-edged volume, crisp in places and wispy in others, its fringe torn by the fine fray;
+                    // later a broad soft fringe, the stem going first and the rest thinning away as a haze)
+                    let ramp = saturate(-sd.x / (sd.z + 26.0 * soft));
+                    var den = ramp * mix(saturate(0.15 + 1.7 * sd.w), 1.0, ramp * ramp) * thin;
                     den = den * smoothstep(lift - 25.0, lift + 35.0, p.y - C.y);
                     if (soft > 0.0 && den > 0.002) {
                         // (and mottled, the haze uneven in wisps and clots)
@@ -732,20 +766,27 @@ fn payload(in: StageIn) -> vec4<f32> {
                         den = den * mix(1.0, saturate(0.2 + 1.6 * mt), soft);
                     }
                     if (den > 0.002) {
-                        // (the sun: the billow's own face (a look a few blocks towards it), and the column's bulk
-                        // between it and the sun (two looks further on))
-                        let face = pl_col_sdf(&cl, p + L * 4.0, pl_col_base(&cl, p + L * 4.0), false).x;
-                        let lam = mix(saturate(0.35 + (face - sd.x) / 6.0), 0.65, soft);
-                        let s1 = saturate((4.0 - pl_col_base(&cl, p + L * 14.0)) / 14.0);
-                        let s2 = saturate(-pl_col_base(&cl, p + L * 40.0) / 14.0);
-                        let tsun = mix(exp(-(s1 * 12.0 + s2 * 28.0) * 0.25), 0.7, soft) * lam;
+                        // (the sun: the lumps' own faces (a look a few blocks towards it, at the big and middling
+                        // lumps), gently, and the column's bulk between it and the sun (three looks further on): sunlit
+                        // tops and edges, the side and underside away from it in deep shadow)
+                        let fp = p + L * 5.0;
+                        let face = pl_col_sdf(&cl, fp, pl_col_base(&cl, fp), false).x;
+                        let lam = mix(saturate(0.2 + (face - sd.x) / 5.0), 0.65, soft);
+                        let s1 = saturate((6.0 - pl_col_base(&cl, p + L * 12.0)) / 16.0);
+                        let s2 = saturate((4.0 - pl_col_base(&cl, p + L * 32.0)) / 18.0);
+                        let s3 = saturate(-pl_col_base(&cl, p + L * 70.0) / 20.0);
+                        let tsun = mix(exp(-(s1 * 10.0 + s2 * 18.0 + s3 * 22.0) * 0.3), 0.7, soft) * lam;
                         let hy = saturate((p.y - C.y) / max(H, 1.0));
                         // (smoke and dust, tan-grey, lit by the scene: warm where the sun is on it, greyed by the sky on
-                        // its shadowed side, darker down its stem and in its creases; once it settles, evenly lit)
-                        let ao = mix(0.35 + 0.65 * sd.y, 0.75, soft);
-                        let alb = vec3<f32>(0.54, 0.47, 0.4);
+                        // its shadowed side, darker down its stem and deep in it (no dark rims round each lump: only
+                        // the creases a little shaded); browner and dustier at its foot, a little greyer up top, and
+                        // uneven through it; once it settles, evenly lit)
+                        let deep = saturate(-d0 / 45.0);
+                        let ao = mix((0.65 + 0.35 * sd.y) * (1.0 - 0.55 * deep), 0.75, soft);
+                        let mv = 0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5);
+                        let alb = mix(vec3<f32>(0.56, 0.48, 0.39), vec3<f32>(0.53, 0.49, 0.44), smoothstep(0.05, 0.5, hy)) * mv;
                         let skyg = mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45);
-                        var c = alb * (skyg * (0.75 * ao * (0.55 + 0.45 * hy)) + sunc * vec3<f32>(0.85, 0.82, 0.78) * (tsun * ph) + vec3<f32>(0.01) * day);
+                        var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
                         // (fire in it as it bursts: low down, dying fast)
                         let core = exp(min(d0, 0.0) / 26.0);
                         let fire = exp(-a / 0.25) * exp(-max(p.y - C.y, 0.0) / (16.0 + 40.0 * a)) * core;
@@ -757,7 +798,9 @@ fn payload(in: StageIn) -> vec4<f32> {
                         wmid = wmid + tr * al;
                         tr = tr * (1.0 - al);
                     }
-                    t = t + st;
+                    // (outside it, closing in on its edge in short steps, so its fine edge is not lost between them
+                    // as grain; through it, the long ones)
+                    t = t + select(st, clamp(0.6 * sd.x, 0.25 * st + 0.4, st), sd.x > 0.0);
                 }
                 if (tr < 0.999) {
                     // (the air between: farther, paler)
