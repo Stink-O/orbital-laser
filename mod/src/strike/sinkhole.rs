@@ -662,6 +662,8 @@ fn sh_land_step(q: &mut Plan, g: Rc<ShGeo>, land: Shared, tags: Rc<Vec<u32>>, pa
 fn sh_land_done(q: &mut Plan, g: &ShGeo, land: &Shared, at: f32) {
     let l = land.borrow();
     q.ev.push((at, Act::Words { index: SH_GRID as u32, words: l.words.clone() }));
+    // (the water's tint, for the waterfalls)
+    q.ev.push((at, Act::Words { index: SH_WF as u32 + 1, words: vec![l.water_tint()] }));
     for (k, s) in g.slabs.iter().enumerate() {
         let b = l.bounds[k];
         if b[0] > b[2] || l.missing_n[k] > 0 {

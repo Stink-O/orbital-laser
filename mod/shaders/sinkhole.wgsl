@@ -689,6 +689,11 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
     // (a pixel's footprint on the land, from the derivatives of where it is: here, in uniform control flow)
     let dQx = dpdx(Q);
     let dQy = dpdy(Q);
+    // (the surface's normal there, from them, towards the eye)
+    var nQ = normalize(cross(dQx, dQy) + vec3<f32>(0.0, 1.0e-9, 0.0));
+    if (dot(nQ, rel) > 0.0) {
+        nQ = -nQ;
+    }
     let dy0 = gy - (block_y() + 1.0);                         // the target's ground over its block's top
     let fade = 1.0 - smoothstep(SH_LEN - SH_FADE, SH_LEN, time);
     let fade_e = fade * fade * (3.0 - 2.0 * fade);
@@ -696,14 +701,21 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
     // ---- on the land: the cracks, and the pit's darkness where it has been dug -----------------------------------
     if (!sky && n_slabs > 0 && rq < SH_R * 1.4) {
         let pw = scene_len * px_a;
-        // (the land's column here: is this its ground's top?)
-        let cw = sh_colw(i32(floor(Q.x + 0.5)) + SH_G, i32(floor(Q.z + 0.5)) + SH_G);
-        var on_ground = abs(Q.y) < 3.0;
+        // (the land's column here, looked up a little inside the block the pixel is on, so a pixel on a block's face
+        // never flips between the columns either side of it; is this its ground's top? With a tolerance that grows
+        // with the distance, as the depth's precision falls, and softly, so nothing flickers; only on top faces, and
+        // never across water)
+        let Qs = Q - nQ * 0.08;
+        let cw = sh_colw(i32(floor(Qs.x + 0.5)) + SH_G, i32(floor(Qs.z + 0.5)) + SH_G);
+        var gw = 1.0 - smoothstep(2.5, 3.5, abs(Q.y));
         if (cw.x >> 31u == 1u) {
-            // (on its ground's top, and no crack across water)
             let hy = f32(sh_col_h(cw)) - dy0;
-            on_ground = Q.y > hy - 1.05 && Q.y < hy + 0.2 && ((cw.y >> 30u) & 1u) == 0u;
+            let tol = 0.15 + scene_len * 0.004;
+            gw = (1.0 - smoothstep(hy + tol, hy + 2.0 * tol + 0.1, Qs.y)) * smoothstep(hy - 1.1 - tol, hy - 0.95, Qs.y)
+                * select(1.0, 0.0, ((cw.y >> 30u) & 1u) == 1u);
         }
+        gw = gw * smoothstep(0.5, 0.8, nQ.y);
+        let on_ground = gw > 0.01;
         // the cracks, along the slabs' edges, from 1 s, racing out in spurts, the fingers running ahead here and
         // lagging there; thin at first, widening, then gaping as the slabs each side are about to go
         if (time > 0.9 && on_ground && time < sh_front(rq) + 0.2) {
@@ -729,9 +741,9 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
                 let band = saturate((w + drop - d) / fp + 0.5) * (1.0 - cov) * step(0.01, drop) * (1.0 - smoothstep(1.5, 4.0, fp));
                 // (dust puffing up out of it as it opens, a second or so)
                 let puff = exp(-age * 1.6) * saturate((w * 2.5 + 1.5 - e.d) / 1.5);
-                col = mix(col, vec3<f32>(0.22, 0.19, 0.16) * (amb + sunc * 0.5), 0.35 * puff * k);
-                col = col * (1.0 - 0.45 * band * k);
-                col = mix(col, vec3<f32>(0.006, 0.005, 0.005), 0.94 * cov * k);
+                col = mix(col, vec3<f32>(0.22, 0.19, 0.16) * (amb + sunc * 0.5), 0.35 * puff * k * gw);
+                col = col * (1.0 - 0.45 * band * k * gw);
+                col = mix(col, vec3<f32>(0.006, 0.005, 0.005), 0.94 * cov * k * gw);
             }
         }
         // and round the rim once it has gone: the land there torn along it
@@ -744,7 +756,7 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
             let fp = max(length(vec2<f32>(length(dQx.xz), length(dQy.xz))) * 0.7, pw * 0.35);
             let wd = max(w, 0.7 * fp);
             let crack = saturate((wd - dd) / fp + 0.5) * (w / max(wd, 1.0e-4)) * (1.0 - smoothstep(1.5, 4.0, fp));
-            col = col * (1.0 - 0.88 * crack * k * fade_e);
+            col = col * (1.0 - 0.88 * crack * k * fade_e * gw);
         }
         // the pit, where it has been dug: dark, darker the deeper, a cold haze down in it; and, until it is dug on down,
         // its floor 25 down hidden in murk; fading slowly away over the strike's last seconds (the real pit's walls
@@ -839,11 +851,13 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
             let skyk = saturate(cos((frame.time.y - 0.25) * TAU) * 2.0 + 0.5);
             let light = mix(0.2, 1.0, skyk);
             var c = srgb_to_linear(saturate(base * shade * light));
-            // (in the shadow of the pit as it drops, and into its dark)
-            let wy = (cam + rd * t_hit).y - gy;
-            let pit = smoothstep(2.0, 60.0, -wy);
-            c = mix(c, c * 0.25, smoothstep(0.0, 1.0, s) * 0.6);
-            c = mix(c, vec3<f32>(0.012, 0.012, 0.014), pow(pit, 0.7) * 0.97);
+            // (lit as the land round it while it tips and is still at the rim; into the pit's shadow only as it sinks
+            // below where its ground was, and its dark deeper still, by how deep, eased)
+            let below = (gy + sh_w(b + 7u)) - (cam + rd * t_hit).y;
+            let shadow = smoothstep(3.0, 22.0, below);
+            c = mix(c, c * 0.3, shadow * shadow * (3.0 - 2.0 * shadow) * 0.7);
+            let pit = smoothstep(12.0, 75.0, below);
+            c = mix(c, vec3<f32>(0.012, 0.012, 0.014), pit * pit * (3.0 - 2.0 * pit) * 0.95);
             hit_c = c;
         }
     }
@@ -852,47 +866,90 @@ fn sinkhole(in: StageIn) -> vec4<f32> {
         scene_len = hit_t;
     }
 
-    // ---- water pouring over the rim where the pit cut a river or a lake ------------------------------------------
+    // ---- water pouring over the rim where the pit cut a river or a lake: from the water's own surface, over the
+    //      rim as it wanders, curving over a lip and falling faster and faster, a little out from the wall; in strands
+    //      of the water's own blue (the biome's tint) with darker gaps between, breaking up into white lower down, mist
+    //      where it goes into the dark ---------------------------------------------------------------------------------
     let nwf = i32(sh_w(SH_WF));
     if (n_slabs > 0 && nwf > 0) {
+        let wt = SH_WF + 1u < arrayLength(&mod_data);
+        var tint = vec3<f32>(0.247, 0.463, 0.894);
+        if (wt && mod_data[SH_WF + 1u] != 0u) {
+            let c = mod_data[SH_WF + 1u];
+            tint = vec3<f32>(f32((c >> 16u) & 255u), f32((c >> 8u) & 255u), f32(c & 255u)) / 255.0;
+        }
+        // (the game's water: its grey texture tinted, darker for the depth showing through)
+        let blue = srgb_to_linear(tint * 0.62);
         for (var w = 0; w < min(nwf, 6); w = w + 1) {
             let b = SH_WF + 4u + u32(w) * 4u;
             let ac = sh_w(b);
             let hw = sh_w(b + 1u);
-            let ytop = sh_w(b + 2u) - 0.3;
+            let ytop = sh_w(b + 2u) - 0.12;
             let s = time - sh_w(b + 3u);
             if (s < 0.0) {
                 continue;
             }
-            let fall = min(0.5 * 30.0 * s * s, 140.0);
-            let Rw = sh_rim(ac) - 1.2;
-            // (the sheet: a cylinder round the pit's middle just inside the rim, both its sides)
+            // (its front falling, faster and faster)
+            let fall = min(0.5 * 30.0 * s * s, 160.0);
+            // the sheet: r = the rim there, less how far it has come out from the wall by the depth it has fallen
+            // (a lip over the edge, then a slight outward arc); met by a few steps from where the ray meets the
+            // cylinder through the rim at its middle, on both sides of it
+            let R0 = sh_rim(ac) - 0.8;
             let a2 = max(dot(rd.xz, rd.xz), 1.0e-8);
             let bb = -dot(rd.xz, C.xz);
-            let cc2 = dot(C.xz, C.xz) - Rw * Rw;
+            let cc2 = dot(C.xz, C.xz) - R0 * R0;
             let disc = bb * bb - a2 * cc2;
             if (disc <= 0.0) {
                 continue;
             }
             for (var side = 0; side < 2; side = side + 1) {
-                let t = (-bb + select(-1.0, 1.0, side == 1) * sqrt(disc)) / a2;
-                if (t <= 0.0 || t > scene_len) {
+                var t = (-bb + select(-1.0, 1.0, side == 1) * sqrt(disc)) / a2;
+                if (t <= 0.0) {
+                    continue;
+                }
+                for (var it = 0; it < 4; it = it + 1) {
+                    let X = rd * t - C;
+                    let d = max(ytop - X.y, 0.0);
+                    let rr = sh_rim(atan2(X.z, X.x)) + 0.35 - 0.9 * sqrt(d) - 0.04 * d;
+                    let f = length(X.xz) - rr;
+                    // (the ray's rate across the sheet, roughly: along the radius)
+                    let dr = dot(normalize(X.xz), rd.xz);
+                    t = t - f / select(dr, sign(dr) * 0.05, abs(dr) < 0.05);
+                }
+                if (t <= 0.0 || t > scene_len + 0.2) {
                     continue;
                 }
                 let X = rd * t - C;
                 let a = atan2(X.z, X.x);
                 let da = abs(atan2(sin(a - ac), cos(a - ac)));
-                let y = X.y;
-                let edge = hw * (0.85 + 0.3 * fvnoise(vec2<f32>(y * 0.1, f32(w) * 3.0)));
-                if (da > edge || y > ytop || y < ytop - fall) {
+                let d = ytop - X.y;
+                let along = (a - ac) * sh_rim(ac);
+                let edge = hw * (0.85 + 0.2 * fvnoise(vec2<f32>(d * 0.08, f32(w) * 3.0)) + 0.25 * (fvnoise(vec2<f32>(d * 0.5 - time * 3.0, f32(w) * 7.0 + sign(a - ac))) - 0.5));
+                if (da > edge || d < -0.05 || d > fall) {
                     continue;
                 }
-                let along = (a - ac) * Rw;
-                let streak = fvnoise(vec2<f32>(along * 1.4, (y + time * 22.0) * 0.08)) * 0.6 + fvnoise(vec2<f32>(along * 3.1, (y + time * 30.0) * 0.21)) * 0.4;
-                let alpha = saturate(0.45 + 0.7 * streak) * smoothstep(edge, edge * 0.7, da) * smoothstep(ytop - fall, ytop - fall + 6.0, y);
-                let foam = mix(vec3<f32>(0.25, 0.33, 0.4), vec3<f32>(0.8, 0.85, 0.9), streak) * (amb + sunc * 0.6);
-                let deep = pow(smoothstep(2.0, 100.0, -y), 0.7);
-                col = mix(col, mix(foam, vec3<f32>(0.02, 0.025, 0.03), deep * 0.9), alpha * k * fade_e);
+                // (strands of different widths, sliding down faster as it falls; their gaps darker, showing through)
+                let q = 4.0 * sqrt(max(d, 0.0)) - time * 5.5;
+                let pwf = t * px_a;
+                let st1 = fvnoise(vec2<f32>(along * 0.9, q * 0.35));
+                let st2 = fvnoise(vec2<f32>(along * 2.6 + 7.0, q * 0.9));
+                let st3 = fvnoise(vec2<f32>(along * 6.0 + 3.0, q * 2.2)) * saturate(1.5 - pwf * 3.0);
+                let strand = 0.5 * st1 + 0.32 * st2 + 0.18 * (st3 + 0.5 * (1.0 - saturate(1.5 - pwf * 3.0)));
+                let body = smoothstep(0.28, 0.62, strand);
+                // (white where it breaks up, lower down, and on the strands' crests; mist lower still)
+                let foam = smoothstep(6.0, 40.0, d) * smoothstep(0.55, 0.8, strand) + 0.35 * smoothstep(0.7, 0.9, st3) * smoothstep(1.0, 8.0, d);
+                let lip = 1.0 - smoothstep(0.0, 1.2, d);
+                let shade = mix(0.75, 1.0, lip);
+                var wc = mix(blue * shade, vec3<f32>(0.85, 0.88, 0.9) * 0.9, saturate(foam)) * (amb * 1.4 + sunc * 0.75);
+                // (into the pit's dark, and spray where it goes)
+                let deep = pow(smoothstep(4.0, 110.0, d), 0.7);
+                wc = mix(wc, vec3<f32>(0.03, 0.035, 0.04), deep * 0.85 * fade_e);
+                var alpha = mix(0.35, 0.85, body) * smoothstep(edge, edge * 0.6, da);
+                // (its front ragged as it first pours, and mist where it thins out deep down)
+                alpha = alpha * smoothstep(fall, fall - 6.0 - 4.0 * st1, d) * (1.0 - 0.5 * smoothstep(60.0, 140.0, d));
+                col = mix(col, wc, saturate(alpha) * k * fade_e);
+                let mist = smoothstep(30.0, 120.0, d) * 0.25 * (0.5 + st2);
+                col = mix(col, vec3<f32>(0.5, 0.52, 0.55) * (amb + sunc * 0.3), mist * k * fade_e * smoothstep(edge * 1.3, edge * 0.5, da));
             }
         }
     }

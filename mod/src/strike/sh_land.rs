@@ -407,6 +407,8 @@ pub(super) struct Land {
     pub missing_n: Vec<u32>,
     /// How far the middle's slabs went down before they fall (the give and the sag; none with the terrain off).
     pub give: i32,
+    /// The water's tint where it was read (summed, and how many columns).
+    pub water: [u32; 4],
 }
 impl Land {
     pub fn new(slabs: usize, give: i32) -> Self {
@@ -418,6 +420,7 @@ impl Land {
             missing: Vec::new(),
             missing_n: vec![0; slabs],
             give,
+            water: [0; 4],
         }
     }
     /// Column (x, z)'s index in the square round the target (bx, bz), if it is in it.
@@ -507,6 +510,13 @@ pub(super) fn work(land: &mut Land, g: &ShGeo, a: &crate::columns::Answer, mats:
         let mut c = col_info(stack, base, a.below, mats, gy);
         if let Some(cc) = c.as_mut() {
             (cc.grass, cc.foliage) = a.tints(i);
+            let w = a.tints.get(3 * i + 2).copied().unwrap_or(0);
+            if cc.wet && w != 0 {
+                land.water[0] += (w >> 16) & 255;
+                land.water[1] += (w >> 8) & 255;
+                land.water[2] += w & 255;
+                land.water[3] += 1;
+            }
         }
         // (the middle went down with the give and the sag, seven blocks, before any of it falls)
         if let (Some(cc), Some(k)) = (c.as_mut(), slab)
@@ -517,6 +527,17 @@ pub(super) fn work(land: &mut Land, g: &ShGeo, a: &crate::columns::Answer, mats:
         land.put(bx, bz, x, z, base, c, slab);
     }
     end
+}
+
+impl Land {
+    /// The water's tint (0xRRGGBB), the average where it was read; vanilla's where none was.
+    pub fn water_tint(&self) -> u32 {
+        let [r, g, b, n] = self.water;
+        if n == 0 {
+            return 0x3F76E4;
+        }
+        (r / n) << 16 | (g / n) << 8 | (b / n)
+    }
 }
 
 /// The shared land a strike's stages fill and read.

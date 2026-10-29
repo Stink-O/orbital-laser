@@ -61,6 +61,9 @@ VIEWS = {
     "shclose": "cx=-20 cy=95 cz=105 lx=10 ly=55 lz=40 flat=1 pit=1",
     # close on the slabs of the second and third rings as they let go, and over the cracks before
     "shslab": "cx=-28 cy=80 cz=78 lx=0 ly=60 lz=30 flat=1 pit=1",
+    # across the pit at a waterfall on its far side (SH_WATER=-1.57 in the environment)
+    "shfall": "cx=10 cy=80 cz=60 lx=0 ly=35 lz=-110 flat=1 pit=1",
+    "shfallclose": "cx=3 cy=62 cz=-70 lx=0 ly=50 lz=-112 fov=50",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown"}
