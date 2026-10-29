@@ -394,7 +394,7 @@ fn payload(in: StageIn) -> vec4<f32> {
             let age = max(time - te, 0.0);
             // (pale vapour high up, where it is still coming in; dense dark smoke where it came down burning)
             let dive = smoothstep(PL_TURN - 1.6, PL_TURN + 0.6, te);
-            let rad = mix(3.0 + 3.0 * sqrt(age), 3.5 + 3.4 * sqrt(age), dive);
+            let rad = mix(4.0 + 3.5 * sqrt(age), 6.0 + 4.5 * sqrt(age), dive);
             if (h.x < rad && h.y < scene_len + rad) {
                 let chord = 2.0 * sqrt(max(rad * rad - h.x * h.x, 0.0));
                 let cp = rd * h.y;
@@ -402,7 +402,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let nq2 = gnoise3((cp + cam) / (0.9 * rad + 1.0) + vec3<f32>(0.0, 3.0, f32(seed % 89u)));
                 let shape = mix(saturate(1.7 * nq - 0.3), 0.6 + 0.4 * nq, dive) * (0.55 + 0.9 * nq2 * (1.0 - dive * 0.5)) * saturate(1.0 - pow(h.x / rad, 2.0) * 0.85);
                 // (both hang in the sky in the shape of the arc for many seconds, drifting and thinning)
-                let pale = 0.24 * exp(-age / 20.0) / (1.0 + 0.12 * age);
+                let pale = 0.3 * exp(-age / 20.0) / (1.0 + 0.1 * age);
                 let dark = 0.55 * exp(-max(age - 3.0, 0.0) / 9.0) / (1.0 + 0.04 * max(age - 3.0, 0.0));
                 let sig = mix(pale, dark, dive) * shape * fade;
                 let occl = saturate((scene_len - h.y) / rad + 0.5);
@@ -417,7 +417,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                 tw = tw + dtau;
                 tau = tau + dtau;
                 // (the flame tail just behind the head, in the dive)
-                let fl = dive * exp(-age / 0.09) * step(time, PL_HIT + 0.05);
+                let fl = dive * exp(-age / 0.13) * step(time, PL_HIT + 0.05);
                 glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * min(chord * 0.35, 1.6) * occl);
                 // (high up, the hot streak of air it leaves glowing behind it, white, cooling within a second)
                 let fh = (1.0 - dive) * exp(-age / 0.45) * step(time, PL_HIT);
@@ -526,7 +526,7 @@ fn payload(in: StageIn) -> vec4<f32> {
         let dive = smoothstep(PL_TURN - 1.5, PL_TURN + 0.8, time);
         let show = smoothstep(PL_SEEN - 0.2, PL_SEEN + 1.2, time);
         let flick = 0.85 + 0.15 * sin(time * 37.0) * sin(time * 23.0 + 1.0);
-        let size = mix(1.6, 5.5, dive);
+        let size = mix(1.6, 8.0, dive);
         let thc = max(size / dh, px_a * 0.9);
         let hot = mix(vec3<f32>(1.0, 0.96, 0.9), vec3<f32>(1.0, 0.62, 0.2), dive);
         let core = exp(-pow(th / thc, 2.0)) * mix(14.0, 9.0, dive);
