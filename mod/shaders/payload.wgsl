@@ -224,21 +224,34 @@ fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
     }
     return d;
 }
-// Cauliflower lumps: domes over a jittered lattice (the nearest of the eight cells round p, a feature point in each),
-// rounded on top and meeting in creases: 1 on a dome's crown, 0 in a crease.
+// Cauliflower lumps: domes over a jittered lattice (a feature point in each of the eight cells round p, well jittered),
+// each its own size (big ones standing proud of small ones), rounded on top and meeting in creases: about 1 on a big
+// dome's crown, 0 in a crease. Called on a rotated domain (pl_rot), a different turn for each size, so no lattice lines up
+// with the world's axes or with another's.
 fn pl_dome(p: vec3<f32>) -> f32 {
     let b = floor(p - 0.5);
-    var f1 = 9.0;
+    var hmax = 0.0;
     for (var c = 0u; c < 8u; c = c + 1u) {
         let o = vec3<f32>(f32(c & 1u), f32((c >> 1u) & 1u), f32(c >> 2u));
         let cell = b + o;
         let q = bitcast<vec3<u32>>(vec3<i32>(cell));
         let h = pcg(q.x ^ pcg(q.y ^ pcg(q.z + 0x51u)));
-        let jit = vec3<f32>(f32(h & 1023u), f32((h >> 10u) & 1023u), f32((h >> 20u) & 1023u)) * (0.5 / 1023.0) + 0.25;
+        let jit = vec3<f32>(f32(h & 1023u), f32((h >> 10u) & 1023u), f32((h >> 20u) & 1023u)) * (0.7 / 1023.0) + 0.15;
+        let sz = 0.7 + 0.55 * f32(pcg(h) & 1023u) / 1023.0;
         let e = cell + jit - p;
-        f1 = min(f1, dot(e, e));
+        hmax = max(hmax, sz * sqrt(saturate(1.0 - dot(e, e) * 1.7 / (sz * sz))));
     }
-    return sqrt(saturate(1.0 - f1 * 1.7));
+    return hmax;
+}
+// The three turns of the lumps' domains, one a size.
+fn pl_rot(k: i32, p: vec3<f32>) -> vec3<f32> {
+    if (k == 0) {
+        return mat3x3<f32>(-0.0014, 0.9977, -0.0674, -0.2224, -0.0660, -0.9727, -0.9750, 0.0136, 0.2220) * p;
+    }
+    if (k == 1) {
+        return mat3x3<f32>(-0.6616, 0.1124, 0.7414, -0.4826, -0.8205, -0.3063, 0.5739, -0.5605, 0.5971) * p;
+    }
+    return mat3x3<f32>(-0.9891, -0.1223, 0.0816, 0.0968, -0.9594, -0.2651, 0.1107, -0.2543, 0.9608) * p;
 }
 // The column's surface at p, as the clips' smoke is: one mass, not a pile of balls. The billows' union warped and
 // bulged out in lumps on lumps on lumps (big domes, middling ones on them, small ones on those, and a fine turbulent
@@ -248,32 +261,31 @@ fn pl_dome(p: vec3<f32>) -> f32 {
 fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> vec4<f32> {
     let a = (*col).a;
     let q = (p - (*col).C) * vec3<f32>(1.0, 1.0 / (*col).grow, 1.0) - vec3<f32>(0.0, 2.2 * a + 10.0 * min(a, 1.5), 0.0) - pl_wind() * (a * 0.4);
-    // (the billows' balls melted together and pushed about, so no one of them shows round; the lumps a little wider
-    // than they are tall, as the clips' are, in loose shelves)
-    let w = gnoise3(q * (1.0 / 55.0));
-    let w2 = gnoise3(q * (1.0 / 23.0) + vec3<f32>(9.2, -0.12 * a, 4.4));
-    let qs = q * vec3<f32>(1.0, 1.3, 1.0);
-    let b1 = pl_dome(qs * (1.0 / 36.0) + vec3<f32>(3.1, 0.0, 7.7) + 0.3 * vec3<f32>(w2 - 0.5));
+    // (the billows' balls melted together and pushed about, so no one of them shows round)
+    let w = gnoise3(pl_rot(1, q * (1.0 / 55.0)));
+    let w2 = gnoise3(pl_rot(2, q * (1.0 / 23.0) + vec3<f32>(9.2, -0.12 * a, 4.4)));
+    let b1 = pl_dome(pl_rot(0, q * (1.0 / 36.0) + vec3<f32>(3.1, 0.0, 7.7) + 0.3 * vec3<f32>(w2 - 0.5)));
     let hy = p.y - (*col).C.y;
     // (the stem's lumps smaller: it is thinner)
     let lump = 0.7 + 0.3 * smoothstep(15.0, 110.0, hy);
     // (as it settles its billows melt away: the lumps sink back into a rounded mass, its edge a broad loose fringe)
     let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
     let crisp = 1.0 - 0.8 * soft;
-    let b2 = pl_dome(qs * (1.0 / 14.0) + vec3<f32>(0.0, -0.3 * a, 1.3));
+    let b2 = pl_dome(pl_rot(1, q * (1.0 / 14.0) + vec3<f32>(0.0, -0.3 * a, 1.3)));
     // (up the stem the big lumps give way to middling ones: it is too thin for two of them across)
     let up = smoothstep(25.0, 130.0, hy);
     var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.3 + 0.7 * up) + (6.0 + 6.0 * (1.0 - up)) * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) + 8.0 * (w2 - 0.5)) * lump;
-    // (crisp-edged in places, wispy in others, the stem's foot loosest: the dust it stands in)
-    let ew = smoothstep(0.35, 0.68, w2);
-    let edge = mix(1.4, 6.0, ew) + 8.0 * (1.0 - smoothstep(0.0, 70.0, hy));
+    // (crisp-edged mostly, its lumps outlined sharp against the sky, torn into fine wisps only in places; the stem's
+    // foot loosest: the dust it stands in)
+    let ew = smoothstep(0.6, 0.82, w2);
+    let edge = mix(0.8, 3.5, ew) + 6.0 * (1.0 - smoothstep(0.0, 60.0, hy));
     var fray = 0.5;
     if (fine && d < 12.0 && soft < 0.99) {
         // (small cauliflower lumps on the middling ones, then the turbulent fray right at the edge)
-        let b3 = pl_dome(qs * (1.0 / 5.5) + vec3<f32>(1.7, -0.5 * a, -2.1));
+        let b3 = pl_dome(pl_rot(2, q * (1.0 / 5.5) + vec3<f32>(1.7, -0.5 * a, -2.1)));
         d = d - 2.4 * (b3 - 0.45) * (1.0 - soft) * lump;
-        fray = gnoise3(q * (1.0 / 2.3) + vec3<f32>(5.0, 1.0, -0.8 * a));
-        d = d - 2.2 * (fray - 0.5) * (1.0 - soft) * (0.4 + 0.6 * ew);
+        fray = gnoise3(pl_rot(0, q * (1.0 / 1.8)) + vec3<f32>(5.0, 1.0, -0.8 * a));
+        d = d - 2.4 * (fray - 0.5) * (1.0 - soft) * (0.25 + 0.75 * ew);
     }
     return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
 }
@@ -800,7 +812,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let thin = exp(-max(a - PL_SOFT0 - 8.0, 0.0) / 4.5);
                 var tmid = 0.0;
                 var wmid = 0.0;
-                for (var i = 0; i < 80; i = i + 1) {
+                for (var i = 0; i < 96; i = i + 1) {
                     if (t > t1 || tr < 0.03) {
                         break;
                     }
@@ -860,7 +872,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                     }
                     // (outside it, closing in on its edge in short steps, so its fine edge is not lost between them
                     // as grain; through it, the long ones)
-                    t = t + select(st, clamp(0.6 * sd.x, 0.25 * st + 0.4, st), sd.x > 0.0);
+                    t = t + select(st, clamp(0.6 * sd.x, 0.12 * st + 0.25, st), sd.x > 0.0);
                 }
                 if (tr < 0.999) {
                     // (the air between: farther, paler)

@@ -405,7 +405,8 @@ each lets go towards its mean (and the bead threshold to what it would let throu
 several of them or where the ray runs along the trail through several, so it neither shimmers far off nor streaks
 end-on. It is carried by the wind, swelling as it ages and breaking into beads as its threshold rises; eight samples at
 a time are first tested as one ball, so most rays skip it; the column is marched through the billows' smooth union (worked out once a pixel), its surface warped and bulged in
-cellular domes at three scales (36, 14 and 5.5 blocks; the big ones fewer up its stem) and frayed at its edge by fine
+cellular domes at three scales (36, 14 and 5.5 blocks, each dome its own size and each scale's lattice turned its own
+way, so no grid shows; the big ones fewer up its stem) and frayed at its edge by fine
 noise, its density a ramp whose width varies over it (crisp to wispy), stepped finely as the ray closes on its edge,
 each lump lit by a look a few blocks towards the sun and the column's bulk shadowing it with three more, lit by the sky the scene shows; as it settles its lumps sink back, its edge
 becomes a broad soft fringe mottled by noise and its density thins away; the dust is marched only through the
