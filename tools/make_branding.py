@@ -54,8 +54,8 @@ def social_preview():
     d.text((80, 140 + logo.height + 34), "Orbital strikes for Horizon,", font=ImageFont.truetype(str(FONT), 32), fill="#C4CBD4")
     d.text((80, 140 + logo.height + 76), "the Rust rewrite of Minecraft Java", font=ImageFont.truetype(str(FONT), 32), fill="#C4CBD4")
     names = ImageFont.truetype(str(FONT), 19)
-    d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM", font=names, fill="#FF9A2E")
-    d.text((80, 140 + logo.height + 166), "MOTHERSHIP · DOWNFALL · PLANET KILLER · CRYSTAL BLOOM", font=names, fill="#FF9A2E")
+    d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM · MOTHERSHIP", font=names, fill="#FF9A2E")
+    d.text((80, 140 + logo.height + 166), "DOWNFALL · PLANET KILLER · CRYSTAL BLOOM · SINKHOLE", font=names, fill="#FF9A2E")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 
