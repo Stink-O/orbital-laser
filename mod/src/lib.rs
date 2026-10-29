@@ -36,6 +36,7 @@ const DOWNFALL_PASS: &str = include_str!("../shaders/downfall.wgsl");
 const PLANET_PASS: &str = include_str!("../shaders/planetkiller.wgsl");
 const CRYSTAL_PASS: &str = include_str!("../shaders/crystalbloom.wgsl");
 const SINKHOLE_PASS: &str = include_str!("../shaders/sinkhole.wgsl");
+const PAYLOAD_PASS: &str = include_str!("../shaders/payload.wgsl");
 fn own_pass(own: &str) -> String {
     let mut out = String::with_capacity(SHADER.len() + own.len());
     let mut skip = false;
@@ -64,6 +65,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "planetkiller" => 2,
         "crystalbloom" => 3,
         "sinkhole" => 4,
+        "payload" => 5,
         _ => 0,
     }
 }
@@ -125,10 +127,10 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's), the one the
+    /// sinkhole's, 5 the payload's), the one the
     /// game last compiled,
     /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [String; 5],
+    passes: [String; 6],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -416,6 +418,10 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
+        if laser.key == "payload" {
+            // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
+            params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
+        }
         let pass = pass_of(laser);
         render::set_post(&self.passes[pass]);
         self.compiled = Some(pass);
@@ -612,12 +618,12 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS)],
+            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS), own_pass(PAYLOAD_PASS)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
                 let mine = pass_of(LASERS[laser]);
-                (0..5).filter(|&i| i != mine).chain([mine]).collect()
+                (0..6).filter(|&i| i != mine).chain([mine]).collect()
             },
             warming: false,
             carving: std::collections::VecDeque::new(),
@@ -674,7 +680,11 @@ impl Mod for Orbital {
             } else {
                 if n % 4 == 0 {
                     // (the sinkhole comes from nothing overhead: it reads the ground under the crosshair instead)
-                    let what = if l.key == "sinkhole" { "SEISMIC SCAN" } else { "ACQUIRING TARGET" };
+                    let what = match l.key {
+                        "sinkhole" => "SEISMIC SCAN",
+                        "payload" => "DESIGNATING",
+                        _ => "ACQUIRING TARGET",
+                    };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
                 }
                 self.aiming = Some(n + 1);
@@ -822,6 +832,7 @@ mod tests {
             (super::PLANET_PASS, &["fn ray_seg(", "fn bolt_line(", "fn mh(", "fn planet_killer(", "fn lava_ramp("][..]),
             (super::CRYSTAL_PASS, &["fn ray_seg(", "fn mh(", "fn gfbm3(", "fn crystal_bloom(", "fn rot_axis("][..]),
             (super::SINKHOLE_PASS, &["fn mh(", "fn vnoise3(", "fn sinkhole(", "fn rot_axis(", "fn ign("][..]),
+            (super::PAYLOAD_PASS, &["fn mh(", "fn gnoise3(", "fn payload(", "fn ign("][..]),
         ] {
             let p = super::own_pass(own);
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
@@ -837,5 +848,6 @@ mod tests {
         assert!(!super::own_pass(super::PLANET_PASS).contains("fn downfall("));
         assert!(!super::own_pass(super::CRYSTAL_PASS).contains("fn planet_killer("));
         assert!(!super::own_pass(super::SINKHOLE_PASS).contains("fn crystal_bloom("));
+        assert!(!super::own_pass(super::PAYLOAD_PASS).contains("fn sinkhole("));
     }
 }

@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload"]
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -64,9 +64,17 @@ VIEWS = {
     # across the pit at a waterfall on its far side (SH_WATER=-1.57 in the environment)
     "shfall": "cx=10 cy=80 cz=60 lx=0 ly=35 lz=-110 flat=1 pit=1",
     "shfallclose": "cx=3 cy=62 cz=-70 lx=0 ly=50 lz=-112 fov=50",
+    # the payload (the player 300 blocks south of the target, on flat land): looking at it over the land, up at the
+    # sky where the object drifts, from far off, from overhead, and close by the player as the dust arrives
+    "plplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1",
+    "plsky": "cx=0 cy=67 cz=300 lx=0 ly=330 lz=40 flat=1",
+    "plfar": "cx=150 cy=90 cz=1000 lx=0.5 ly=150 lz=0.5 flat=1",
+    "pltop": "cx=0 cy=700 cz=420 lx=0.5 ly=65 lz=0.5 flat=1",
+    "plnear": "cx=0 cy=67 cz=300 lx=-30 ly=70 lz=240 flat=1",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
-                 "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown"}
+                 "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
+                 "payload": "plplayer,plsky,pltop"}
 
 
 def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
@@ -74,7 +82,7 @@ def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
     strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl."""
     path = out / "pass.wgsl"
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         path.write_text(pre + (SHADERS / f"{laser}.wgsl").read_text())
@@ -88,6 +96,13 @@ def mod_data(laser: str, out: pathlib.Path, sets: list) -> dict:
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
+    if laser == "payload":
+        seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
+        path = (out / "data.txt").resolve()
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME="0,65,300")
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "pl_write_table", "--", "--ignored"],
+                       cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+        return dict(os.environ, PREVIEW_DATA=str(path))
     seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
     path = (out / "data.txt").resolve()
     env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path))
@@ -130,12 +145,15 @@ def main() -> int:
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
     w, h = a.size.split("x")
     common = [f"laser={LASERS.index(a.laser)}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
+    if a.laser == "payload":
+        # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
+        common += ["mode=0", "style=65", "reach=300"]
     shots, labels = [], []
     for t in a.times:
         for v in views:
             shots += ["--", f"t={t}", *VIEWS[v].split()]
             labels.append(f"{t:g} s  {v}")
-    env = mod_data(a.laser, out, a.set) if a.laser in ("crystalbloom", "sinkhole") else None
+    env = mod_data(a.laser, out, a.set) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
     r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         print(r.stderr, file=sys.stderr)

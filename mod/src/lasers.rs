@@ -374,7 +374,35 @@ pub const SINKHOLE: Laser = Laser {
     particle_b: "particle minecraft:block{block_state:\"minecraft:stone\"} {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 9] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE];
+/// The payload, planned in `strike::payload_plan` (strike/payload.rs): no beam. Something bright high in the sky drifts
+/// down in lazy loops trailing smoke, turns and dives as a fireball and strikes; a column of smoke boils up out of it and
+/// the shockwave's dust races out over the land. The crater fields below are only what the shared tests read: its bomb
+/// crater, the felled trees, the charred grass and the rubble are planned there.
+pub const PAYLOAD: Laser = Laser {
+    key: "payload",
+    index: 9,
+    title: "PAYLOAD",
+    color: "gold",
+    rgb: 0xFF8A2E,
+    blurb: "A light in the sky drifts, loops and dives. Then a column of smoke and a wall of dust.",
+    icon_model: "orbital:payload_icon",
+    length: 44.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 21,
+    bowl_d: 9,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:coarse_dirt", 1.0)],
+    bowl_floor: ("minecraft:coarse_dirt", 0.0, "minecraft:dirt"),
+    bottom: &[],
+    particle_a: "particle minecraft:block{block_state:\"minecraft:dirt\"} {x} {y} {z} {r} 3 {r} 0.2 40 force",
+    particle_b: "particle minecraft:campfire_signal_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+};
+
+pub const LASERS: [&Laser; 10] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {
