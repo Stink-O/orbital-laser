@@ -1404,9 +1404,10 @@ mod land {
                     }
                 }
                 Act::Blocks(b) => out.blocks.push((t, *b)),
+                Act::Words { index, words } if index as usize == SH_GRID => out.words = words,
                 Act::Words { index, words } => {
-                    assert_eq!(index as usize, SH_GRID);
-                    out.words = words;
+                    // (the water's tint, by the waterfalls' words)
+                    assert_eq!((index as usize, words.len()), (SH_WF + 1, 1));
                 }
                 Act::Data { index, value } => {
                     out.data.insert(index, value);
