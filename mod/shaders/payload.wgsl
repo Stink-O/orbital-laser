@@ -245,8 +245,9 @@ fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32, side: f3
     // (the wall: a person's height and more, higher as it goes and behind its front; its top ragged)
     let n3 = gnoise3(w * (1.0 / 38.0) + vec3<f32>(0.0, -0.3 * a, 9.0));
     // (tallest a little behind the front, settling lower behind it)
-    let rise = 1.0 + 1.2 * smoothstep(0.0, 25.0, s) - 0.9 * smoothstep(30.0, 140.0, s);
-    let hw = (5.0 + 0.012 * r) * rise * (0.35 + 1.2 * n1) * (0.6 + 0.8 * n3) + 1.5 * min(since, 6.0);
+    // (low, as in the clips: a person's height to a tree's, not a cliff of it, so the picture over it stays clear)
+    let rise = 1.0 + 0.8 * smoothstep(0.0, 25.0, s) - 0.7 * smoothstep(30.0, 140.0, s);
+    let hw = (4.5 + 0.006 * r) * rise * (0.35 + 1.2 * n1) * (0.6 + 0.8 * n3) + 1.5 * min(since, 6.0);
     let up = smoothstep(hw, hw * 0.35, h) * smoothstep(-4.0, 0.0, h);
     let lead = smoothstep(-3.0, 1.5, s);
     let wall = 1.6 * exp(-s / (9.0 + 0.015 * r)) * (0.75 + 0.25 * side) * (1.0 - 0.6 * sh);
@@ -623,7 +624,9 @@ fn payload(in: StageIn) -> vec4<f32> {
                     let dt = (sb - sa) * (u1 * u1 - u0 * u0);
                     let p = rd * t;
                     let dh = pl_dust(p, C, a, me, dme, side, loc);
-                    let den = dh.x;
+                    // (thin right round the eye: the front passing over it would otherwise fill the whole picture with
+                    // dust, the sky too; the lens and the air at the eye show it there instead)
+                    let den = dh.x * smoothstep(2.0, 30.0, t);
                     if (den <= 0.001) {
                         continue;
                     }
@@ -700,9 +703,9 @@ fn payload(in: StageIn) -> vec4<f32> {
         col = mix(col, dirt, cov * k * fade);
     }
 
-    // ---- the dust at the eye: as the front washes over the camera, grit thrown at the lens and streaking past, the
-    // picture flattened and warmed by the dust in the air, clearing as it settles ------------------------------------
-    if (a > 0.0 && a < 20.0) {
+    // ---- the dust at the eye: as the front washes over the camera, the picture greyed and flattened by the dust in the
+    // air, clearing as it settles, and muck thrown on the lens -------------------------------------------------------
+    if (a > 0.0 && a < 30.0) {
         let rc = length(C.xz);
         let tau = a - rc / PL_V;                               // since the front reached the eye
         if (tau > -0.1 && rc > 50.0) {
@@ -712,53 +715,42 @@ fn payload(in: StageIn) -> vec4<f32> {
                 * smoothstep(40.0, 8.0, hc) * smoothstep(2600.0, 900.0, rc) * smoothstep(50.0, 110.0, rc)
                 * (1.0 - 0.55 * land.y) * fade * k;
             if (E > 0.002) {
-                let dust_c = vec3<f32>(0.6, 0.5, 0.35) * (sunc * 0.6 + amb * 0.75);
-                // (the air thick with it: contrast lost, warmed)
+                let dust_c = vec3<f32>(0.5, 0.46, 0.4) * (sunc * 0.55 + amb * 0.8);
+                // (the air thick with it: contrast lost, greyed and a little warmed)
                 let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
-                col = mix(col, mix(vec3<f32>(lum), dust_c, 0.55), 0.25 * E);
-                col = col * mix(vec3<f32>(1.0), vec3<f32>(1.06, 0.98, 0.84), E);
-                // (a film of it on the lens, in soft blotches, fixed to the screen)
+                col = mix(col, mix(vec3<f32>(lum), dust_c, 0.5), 0.22 * E);
+                col = col * mix(vec3<f32>(1.0), vec3<f32>(1.03, 0.99, 0.93), E);
+                // (a faint film of it on the lens, in soft blotches, fixed to the screen)
                 let pxy = in.position.xy;
-                let sres = frame.resolution.y / 1080.0;
-                let film = gnoise3(vec3<f32>(pxy / (140.0 * sres), 3.1)) * 0.65 + gnoise3(vec3<f32>(pxy / (37.0 * sres), 7.7)) * 0.35;
-                col = mix(col, dust_c * 1.15, 0.2 * E * smoothstep(0.42, 0.8, film));
-                // (specks streaking past: grains blown from the blast's side past the eye, out from where they come
-                // from on the screen, or in towards where they go when that is behind)
-                let tow = normalize(vec3<f32>(C.x, 0.0, C.z) + vec3<f32>(1.0e-3, 0.0, 0.0));
-                let pin = project_rel(tow * 1000.0);
-                let pout = project_rel(-tow * 1000.0);
-                let fwd_in = pin.z > 0.0;
-                let F = select(pout.xy, pin.xy, fwd_in) * frame.resolution.xy;
-                let dv = pxy - F;
-                let dl = max(length(dv), 1.0);
-                let th = atan2(dv.y, dv.x);
-                let lr = log(dl);
-                var sp = 0.0;
-                for (var l = 0; l < 2; l = l + 1) {
-                    let fl = f32(l);
-                    let nth = 260.0 - 90.0 * fl;
-                    let cs = 0.16 + 0.1 * fl;
-                    // (on the move: outward from where they come from, inward to where they go)
-                    let flow = (1.6 + 0.9 * fl) * a * select(-1.0, 1.0, fwd_in);
-                    let uth = (th / TAU + 0.5) * nth;
-                    let ur = (lr - flow) / cs;
-                    let ci = floor(uth);
-                    let cr = floor(ur);
-                    let hsh = mh(u32(i32(ci) + 4096), u32(i32(cr) + 4096), 0x3c1u + u32(l));
-                    if (hsh < 0.018 - 0.006 * fl) {
-                        let ct = (ci + 0.2 + 0.6 * mh(u32(i32(ci) + 4096), u32(i32(cr) + 4096), 0x3c5u)) / nth;
-                        let cl = (cr + 0.5) * cs;
-                        let across = abs((th / TAU + 0.5) - ct) * TAU * dl;
-                        let along = abs((lr - flow) - cl) * dl;
-                        let wid = (0.8 + 1.4 * fl) * sres;
-                        let lng = (4.0 + 10.0 * hsh / 0.018) * sres * (1.0 + 2.0 * exp(-tau / 0.6));
-                        sp = max(sp, smoothstep(wid + 0.8, 0.0, across) * smoothstep(lng, lng * 0.3, along) * (0.6 + 0.4 * fl));
+                let res = frame.resolution.xy;
+                let film = gnoise3(vec3<f32>(pxy / (0.13 * res.y), 3.1)) * 0.65 + gnoise3(vec3<f32>(pxy / (0.034 * res.y), 7.7)) * 0.35;
+                col = mix(col, dust_c, 0.12 * E * smoothstep(0.45, 0.8, film));
+            }
+            // (clods of wet earth and grit thrown on the lens as the front passes, out of focus: soft dark round splats,
+            // most of them high on the screen, landing over the second after it, staying a long while, fading slowly)
+            let vis = smoothstep(40.0, 8.0, hc) * smoothstep(2600.0, 900.0, rc) * smoothstep(60.0, 140.0, rc) * (1.0 - 0.5 * land.y) * k;
+            if (vis > 0.0 && tau > 0.2) {
+                let pxy = in.position.xy;
+                let res = frame.resolution.xy;
+                var dark = 0.0;
+                for (var i = 0u; i < 16u; i = i + 1u) {
+                    let t0 = 0.25 + 1.4 * mh(i, seed, 0x3d0u);
+                    let age = tau - t0;
+                    if (age <= 0.0) {
+                        continue;
                     }
+                    let c = vec2<f32>(0.04 + 0.92 * mh(i, seed, 0x3d1u), 0.03 + 0.75 * pow(mh(i, seed, 0x3d2u), 1.6)) * res;
+                    let r = (0.025 + 0.04 * mh(i, seed, 0x3d3u)) * res.y;
+                    let q = length(pxy - c) / r;
+                    if (q >= 1.0) {
+                        continue;
+                    }
+                    // (a disc a little darker at its rim, soft at its edge: a drop of muck out of focus)
+                    let disc = smoothstep(1.0, 0.8, q) * (0.75 + 0.25 * smoothstep(0.4, 0.95, q));
+                    let life = smoothstep(0.0, 0.08, age) * (1.0 - smoothstep(6.0, 16.0, age + 4.0 * mh(i, seed, 0x3d4u)));
+                    dark = max(dark, disc * life * (0.3 + 0.25 * mh(i, seed, 0x3d5u)));
                 }
-                sp = sp * smoothstep(30.0 * sres, 160.0 * sres, dl);
-                let grain = dust_c * mix(1.1, 0.55, smoothstep(0.2, 0.6, lum));
-                // (the grains thrown past in the front's first second or so, a few stragglers after)
-                col = mix(col, grain, sp * 0.55 * min(E * 1.6, 1.0) * (0.25 + 0.75 * exp(-max(tau, 0.0) / 0.7)));
+                col = mix(col, col * vec3<f32>(0.42, 0.4, 0.38), dark * vis * fade);
             }
         }
     }

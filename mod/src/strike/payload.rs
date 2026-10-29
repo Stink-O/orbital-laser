@@ -859,16 +859,18 @@ fn pl_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
 /// The payload. Calm; the object high in the sky drifting down in lazy loops; the dive; the strike: a flash, the column
 /// boiling up, the shockwave's dust rushing out over the land and over the player, debris raining down; the column
 /// standing over it all a long time.
-/// The shockwave's jolt reaching the player at `t`, `fo` as hard (see payload_plan).
+/// The shockwave's jolt reaching the player at `t`, `fo` as hard (see payload_plan): as in the clips, a hard hit and
+/// strong quick swings for over half a second (sharp aftershocks every other tick), then a shudder of smaller quick
+/// jolts fading over the next one and a half, a long faint rumble under it all.
 fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
-    p.shake(t, fo, 0.7);
-    p.shake(t + 0.05, 0.4 * fo, 3.0);
-    for n in 0..4 {
-        p.shake(t + 0.1 * (n + 1) as f32, (1.0 - 0.12 * n as f32) * fo, 0.12);
+    p.shake(t, fo, 0.8);
+    p.shake(t + 0.05, 0.45 * fo, 3.5);
+    for n in 0..6 {
+        p.shake(t + 0.1 * (n + 1) as f32, (1.0 - 0.05 * n as f32) * fo, 0.14);
     }
     for n in 0..17 {
         let u = n as f32 / 17.0;
-        p.shake(t + 0.5 + 0.1 * n as f32, (0.5 * (1.0 - u).powf(1.3) + 0.08) * fo, 0.1);
+        p.shake(t + 0.7 + 0.1 * n as f32, (0.62 * (1.0 - u).powf(1.2) + 0.08) * fo, 0.1);
     }
 }
 
