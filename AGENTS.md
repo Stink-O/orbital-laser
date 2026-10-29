@@ -30,7 +30,14 @@ laser, command, capability and timing). This file is the short, factual version 
   (up to each column's real top: a mountain, its trees and snow, read with `world.read-columns`), its walls are cut back
   under the rim by up to ~6 (2.5 just under the rim's own band) and darken downward (tuff, deepslate, blackstone), water and lava in them are sealed (water to barrier near the top, tuff deeper; lava to magma), the middle is
   `clone`d down 7 blocks first (at 6 and 7.3 s), mobs within 140 die and the ~285 chunks within ~152 are force-loaded;
-  its land goes in slab by slab from 8.6 s and down to bedrock from 16 s, done by about 23 s. Only fire them in a
+  its land goes in slab by slab from 8.6 s and down to bedrock from 16 s, done by about 23 s. The Payload is a bomb,
+  not a beam: it digs a crater ~42 across (its edge wandering ~10%) and 9 deep, scorched (blackstone, basalt, tuff,
+  coarse dirt, gravel, cobbled deepslate), its rim heaped up to ~4 high out to ~35 across; everything standing on the
+  land is swept off out to ~85 (up to each column's real top, read with `world.read-columns`), the trees there felled
+  and lying pointing away from it (a stump of 1-2 left, their crowns crushed by their ends past ~46), the grass charred
+  out to ~100, ~220 pieces of rubble strewn out to ~105, mobs and items within 90 killed and the ~200 chunks within
+  ~112 force-loaded; nothing is dug next to water or lava and what the crater opens is sealed. Its land goes in at
+  13.65 s and the rubble lands by about 17 s. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
@@ -60,8 +67,8 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom` or `sinkhole`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom and the Sinkhole are on the second. Its FLY
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole` or `payload`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital flyspeed N|reset`, `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `render.set-data`, won't start the mod.
@@ -79,9 +86,9 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 ## Layout
 
 - `mod/`: the mod (Rust for `wasm32-unknown-unknown`): `src/lib.rs` hooks, designator and strike playback,
-  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's, `src/strike/sinkhole.rs` the Sinkhole's), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
-  pass, `shaders/downfall.wgsl`, `shaders/planetkiller.wgsl`, `shaders/crystalbloom.wgsl` and `shaders/sinkhole.wgsl` the
-  Downfall's, the Planet Killer's, the Crystal Bloom's and the Sinkhole's own passes (the
+  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's, `src/strike/sinkhole.rs` the Sinkhole's, `src/strike/payload.rs` the Payload's), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
+  pass, `shaders/downfall.wgsl`, `shaders/planetkiller.wgsl`, `shaders/crystalbloom.wgsl`, `shaders/sinkhole.wgsl` and `shaders/payload.wgsl` the
+  Downfall's, the Planet Killer's, the Crystal Bloom's, the Sinkhole's and the Payload's own passes (the
   mod appends each to `strike.wgsl` up to its `fs_main`; `pass_of` in lib.rs picks a strike's),
   `horizon-mod.toml` the manifest (api 0.2 with `registries` for the content).
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.

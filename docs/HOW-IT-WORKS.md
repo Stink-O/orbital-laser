@@ -108,6 +108,21 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   wandering, sheer and dark down to bedrock, its walls jagged in strata bands, with ledges heaped with rubble and moss,
   roots hanging under the overhangs near the top, the world's own strata, caves and ores laid open, and a heap of
   rubble at its foot. Where it cut a river or a lake, water pours over its rim. It reaches 1000 blocks.
+- **Payload.** No beam. A few seconds of calm and a grey line on the action bar (`ORBITAL TRACKING: OBJECT
+  DESCENDING`); at 3 s a small, fiercely bright point shows high in the sky over the target (300 to 370 blocks up, off
+  to one side), with a bloom and a faint lens streak round it, and drifts down and across on a lazy, looping path,
+  corkscrewing, a thin pale ribbon of smoke curling behind it and hanging in the air in its loops, drifting with the
+  wind and fading; a faint high whine and a far rumble. At 11 s (`PAYLOAD INBOUND`) it turns and dives on the target,
+  faster and faster (over 400 blocks a second at the end), its head an orange-yellow fireball with a short flame tail,
+  its trail thickening into a dense dark smoke column that stays hung in the sky in the shape of its path; a roar and
+  a tearing whistle. At 13.6 s it strikes: a brief orange flash lighting the land and the air round it and a burst of
+  fire, then a column of smoke boils up out of it, eighteen billows rising and swelling into a lumpy cauliflower mass
+  (a broad stem, a darker core and foot, sunlit tops, self-shadowed), about 235 blocks tall by 20 s and still growing,
+  leaning with the wind. The sound of it is late by the distance (343 blocks a second), after a near-silent breath.
+  The shockwave races out over the land at the same speed as a low wall of tan dust, reaches the player as the blast
+  does, shakes the camera, washes over them and hangs as haze; dark chunks and specks of earth fly out up to several
+  hundred blocks and fall back, near the player too. The column stands over the crater until the strike ends at 44 s.
+  It reaches 1000 blocks.
 
 All of them:
 
@@ -161,6 +176,15 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   and lava in them sealed in (water turned to barrier near the top, so a lake or river stops at the edge, tuff deeper;
   lava to magma), and every mob within 140 killed. The middle is moved down 7 blocks with `clone` first. It keeps about
   285 chunks loaded while it works; its land goes in slab by slab from 8.6 s and is dug to bedrock by about 23 s.
+- **Payload:** a bomb crater about 42 across (its edge wandering about 10%) and 9 deep in a bowl, its floor and walls
+  scorched in broad patches (blackstone, basalt, tuff, coarse dirt, gravel, cobbled deepslate), its rim heaped up to
+  about 4 high with earth and broken stone out to about 35 across; everything standing on the land swept off out to
+  about 85 (each column up to its real top, read with `world.read-columns`), the trees there felled: a stump of one or
+  two logs, the trunk lying on the ground pointing away from the blast, its crown crushed round its end past about 46;
+  the grass charred (coarse dirt, podzol, dirt) out to about 100, patchier further out; about 220 pieces of rubble
+  strewn out to about 105, landing over a few seconds; every mob and item within 90 killed. Nothing is dug next to
+  water or lava, and the water and lava the crater would open are sealed. It keeps about 200 chunks loaded while it
+  works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
 
 ## Commands
 
@@ -168,7 +192,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -244,7 +268,9 @@ the birds go up from 1 s, the middle gives at 6 and sags at 7.3; the collapse se
 30 blocks by 9.5, holds until 10.6, then rushes out to the rim by about 15 (each slab drawn in place of its land from
 when that is dug, 0.1 s before it lets go, and gone into the dark 3.2 s after); the pit is dug on down to bedrock from
 16 s, a chunk column at a time from the middle out, done by about 23; the dust settles by 34, the pit's dark fades out
-slowly from 31 and the strike ends at 40.
+slowly from 31 and the strike ends at 40. The Payload is calm until 3 s, drifts until 11, dives and strikes at 13.6;
+its blast, the dust's front and the jolt reach the player at 13.6 plus their distance over 343; the column rises
+until about 20 s and goes on growing slowly, the debris is down by about 29, and everything fades out from 37 to 44.
 
 ## The effects
 
@@ -304,7 +330,11 @@ grinding in uneven grabs), sharp cracks of rock each with its own splinters and 
 collapse (`explosion_live` again, on its own seed, made earthy: its top rolled off, its low-mid pushed, a strain before
 it, rock grinding as it gives), the rockfall (a grinding roar and slabs striking the bottom, unevenly, further and
 further off) and the pebbles after, each bouncing its own way, in the pit's long echo. Each is heard late by how far
-away it is.
+away it is. The Payload's ([`tools/sounds_payload.py`](../tools/sounds_payload.py)): a faint thin whine that wavers as
+the object loops, a far rumble under it; the dive's whistle bending up and a roar of air and fire tearing louder, cut
+dead at the strike; a near-silent breath while the blast travels; the blast (`explosion_live` on its own seed, as loud
+as the Planet Killer's); the dust's rush and the wind gusting on after it; clods thudding down round the player and a
+patter of grit; and a long tail of rolls off the land, further and further off.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
@@ -333,6 +363,16 @@ strands of the water's biome tint with darker gaps, white where they break up, m
 the pit is darkened where it has really been dug, the dark fading out over the strike's last 9 s; the dust is a noise
 volume marched along the view ray.
 
+
+The Payload's pass ([`mod/shaders/payload.wgsl`](../mod/shaders/payload.wgsl)) reads the object's path, sampled 128
+times from 3 to 13.6 s, and the column's eighteen billows (`pl_table`, through `render.set-data` on the tick after it
+fires; the player's position as it fired is in its params). The trail is drawn through the path's samples as soft
+tubes of smoke (each bit of it carried by the wind and spreading as it ages, broken up by noise, lit on its sunward
+side); the column is marched through the billows' smooth union, its surface heaped in lumps at two scales, shadowed
+towards the sun with two looks along it, darker at its core and foot, lit by the sky the scene shows; the dust is
+marched low over the land out to the shockwave's front, from the target's ground to the player's; the debris is
+ninety ballistic chunks with drag, each blurred along its motion. It costs about 1.3 to 1.9 ms at the preview's
+800x450.
 ## Stock Horizon
 
 0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the other lasers are mod-only): a shader pack, a sound pack and the item mod, run by

@@ -88,9 +88,11 @@ Nine lasers, five on the wheel's first page and four on its second.
   that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
 - **Sinkhole** (page two). Nothing from the sky: the land cracks and caves in, slab by slab, each slab carrying its
   real ground and trees as it falls, into a sheer pit about 225 blocks across and down to bedrock.
+- **Payload** (page two). A bright point drifts down the sky in lazy loops trailing smoke, then dives as a fireball:
+  a column of smoke boils up, a wall of dust races out over the land and debris rains down. It leaves a bomb crater.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Crystal Bloom, the Sinkhole and the Payload reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -220,10 +222,10 @@ the reason on its row first.
    what it does and click to load it. The arrows either side of the ring, the tabs over it or a right-click turn the
    page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar shows
-   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole), then the strike lands where your crosshair is.
+   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload), then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60 and the Downfall 64.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Payload 44, the Crystal Bloom 60 and the Downfall 64.
 
 The wheel also has:
 
@@ -237,7 +239,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator and the Remote |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -259,7 +261,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom and the Sinkhole can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload can aim, and only with **LOD Distance** on in Video Settings.
 - **`STRIKE IN PROGRESS`.** One strike runs at a time. Wait for it to finish.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
