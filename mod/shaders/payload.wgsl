@@ -726,33 +726,61 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let film = gnoise3(vec3<f32>(pxy / (0.13 * res.y), 3.1)) * 0.65 + gnoise3(vec3<f32>(pxy / (0.034 * res.y), 7.7)) * 0.35;
                 col = mix(col, dust_c, 0.12 * E * smoothstep(0.45, 0.8, film));
             }
-            // (clods of wet earth and grit thrown on the lens as the front passes, out of focus: soft dark round splats,
-            // most of them high on the screen, landing over the second after it, staying a long while, fading slowly)
+            // (muck thrown on the lens as the front passes, out of focus, as the second clip shows it: drops near round
+            // but each its own, a few elongated, 2 to 7% of the picture's height across, a ring darker than their middle,
+            // soft over their outer quarter, mottled; some faint, some strong (letting through 55 to 90% of the light),
+            // grey; often with a smaller drop or two beside them; nearly all high on the screen; landing over the second
+            // after the front, staying a long while)
             let vis = smoothstep(40.0, 8.0, hc) * smoothstep(2600.0, 900.0, rc) * smoothstep(60.0, 140.0, rc) * (1.0 - 0.5 * land.y) * k;
             if (vis > 0.0 && tau > 0.2) {
                 let pxy = in.position.xy;
                 let res = frame.resolution.xy;
-                var dark = 0.0;
-                for (var i = 0u; i < 20u; i = i + 1u) {
+                var keep = 1.0;
+                for (var i = 0u; i < 14u; i = i + 1u) {
                     let t0 = 0.25 + 1.4 * mh(i, seed, 0x3d0u);
                     let age = tau - t0;
                     if (age <= 0.0) {
                         continue;
                     }
-                    let c = vec2<f32>(0.04 + 0.92 * mh(i, seed, 0x3d1u), 0.03 + 0.8 * pow(mh(i, seed, 0x3d2u), 2.0)) * res;
-                    let r = (0.025 + 0.04 * mh(i, seed, 0x3d3u)) * res.y;
-                    let q = length(pxy - c) / r;
-                    if (q >= 1.0) {
+                    let c = vec2<f32>(0.03 + 0.94 * mh(i, seed, 0x3d1u), 0.02 + 0.4 * pow(mh(i, seed, 0x3d2u), 1.3)) * res;
+                    let sz = mh(i, seed, 0x3d3u);
+                    let r = (0.011 + 0.026 * pow(sz, 0.8)) * res.y;
+                    let d0 = pxy - c;
+                    if (dot(d0, d0) > 9.0 * r * r) {
                         continue;
                     }
-                    // (a disc a little darker at its rim, soft at its edge: a drop of muck out of focus)
-                    let disc = smoothstep(1.0, 0.8, q) * (0.75 + 0.25 * smoothstep(0.4, 0.95, q));
                     let life = smoothstep(0.0, 0.08, age) * (1.0 - smoothstep(6.0, 16.0, age + 4.0 * mh(i, seed, 0x3d4u)));
-                    dark = max(dark, disc * life * (0.45 + 0.35 * mh(i, seed, 0x3d5u)));
+                    // (the drop and up to three smaller ones round it, each its own size, stretch, turn and strength)
+                    for (var j = 0u; j < 4u; j = j + 1u) {
+                        let hj = mh(i * 7u + j, seed, 0x3e0u);
+                        if (j > 0u && hj > 0.3) {
+                            continue;
+                        }
+                        let k2 = i * 7u + j;
+                        let rj = select(r * (0.22 + 0.3 * mh(k2, seed, 0x3e1u)), r, j == 0u);
+                        let ang = TAU * mh(k2, seed, 0x3e2u);
+                        let cj = select(c + vec2<f32>(cos(ang), sin(ang)) * r * (1.4 + 0.9 * mh(k2, seed, 0x3e3u)), c, j == 0u);
+                        let dj = pxy - cj;
+                        // (stretched along its own turn: the big ones hardly, the small ones up to twice as long)
+                        let rot = TAU * mh(k2, seed, 0x3e4u);
+                        let cr = cos(rot);
+                        let sr = sin(rot);
+                        let stretch = 1.0 + mix(0.4, 0.06, smoothstep(0.012, 0.03, rj / res.y)) * 2.0 * mh(k2, seed, 0x3e5u);
+                        let e = vec2<f32>((dj.x * cr + dj.y * sr) / stretch, -dj.x * sr + dj.y * cr);
+                        let th = atan2(e.y, e.x);
+                        let ph = TAU * mh(k2, seed, 0x3e6u);
+                        // (an edge a little uneven)
+                        let q = length(e) / rj * (1.0 + 0.05 * sin(3.0 * th + ph) + 0.035 * sin(5.0 * th - 2.0 * ph));
+                        if (q >= 1.08) {
+                            continue;
+                        }
+                        let ring = mix(0.58, 1.0, smoothstep(0.05, 0.7, q)) * (1.0 - smoothstep(0.78, 1.06, q));
+                        let mott = 0.88 + 0.24 * gnoise3(vec3<f32>(e / (0.35 * rj), f32(k2 % 97u)));
+                        let op = (0.14 + 0.34 * pow(mh(k2, seed, 0x3e7u), 0.7)) * select(0.85, 1.0, j == 0u);
+                        keep = keep * (1.0 - ring * mott * op * life);
+                    }
                 }
-                // (muck: darker and greyer than what shows through it, a little brown)
-                let lumc = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
-                col = mix(col, vec3<f32>(lumc) * vec3<f32>(0.32, 0.3, 0.28) + vec3<f32>(0.012, 0.01, 0.008), dark * vis * fade);
+                col = col * mix(1.0, keep, vis * fade);
             }
         }
     }
