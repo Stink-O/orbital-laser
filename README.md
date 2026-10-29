@@ -118,7 +118,7 @@ Crystal Bloom and the Sinkhole reach 1000. [How it works](docs/HOW-IT-WORKS.md#t
 
 | Sinkhole | The collapse | The pit | What it leaves |
 |---|---|---|---|
-| ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, dust boiling up out of the collapse](docs/26-sinkhole-collapse.jpg) | ![The dark pit opening as the dust settles](docs/27-sinkhole-pit.jpg) | ![The finished pit from its rim, banded walls down to bedrock](docs/28-sinkhole-aftermath.jpg) |
+| ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, dust boiling up out of the collapse](docs/26-sinkhole-collapse.jpg) | ![The dark pit opening as the dust settles](docs/27-sinkhole-pit.jpg) | ![The finished pit, waterfalls pouring over its rim into the dark](docs/28-sinkhole-aftermath.jpg) |
 
 ## Getting started
 
