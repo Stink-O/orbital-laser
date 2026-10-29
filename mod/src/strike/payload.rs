@@ -47,6 +47,8 @@ const PL_GW: i32 = 2 * PL_READ + 1;
 const PL_BELOW: u32 = 44;
 const PL_ABOVE: u32 = 1;
 const PL_PARTS: i32 = 6;
+/// The blast's edits worked out in this many bands of rows, a stage each.
+const PL_BANDS: i32 = 40;
 /// Mobs and dropped items within PL_KILL killed as it strikes.
 const PL_KILL: i32 = 90;
 
@@ -564,7 +566,11 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
         }
     }
     q.ev.push((PL_HIT + 0.05, Act::Blocks(Box::new(b))));
-    // what is left hanging round what changed (leaves of a tree whose trunk went, plants whose ground went)
+}
+/// What is left hanging round what changed over rows k0..k1 (leaves of a tree whose trunk went, plants whose ground
+/// went), on a stage of its own.
+fn pl_tidy_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
+    let (bx, bz) = (q.bx, q.bz);
     let col = |x: i32, z: i32| -> Col {
         match at(land, bx, bz, x, z) {
             Some(c) if !c.fluid && new_ground(c, s, x, z).is_some() && !(wet_near(land, bx, bz, x, z) && new_ground(c, s, x, z) != Some(c.g)) => Col::Cleared,
@@ -579,9 +585,10 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
 
 /// The trees felled, lying on the land pointing away from the blast (their leaves crushed round their crowns, stripped
 /// off near it), and the rubble strewn over it all, landing a few seconds after.
-fn pl_felled(q: &mut Plan, land: &Land, s: &Shape) {
+type Used = Rc<RefCell<std::collections::HashSet<(i32, i32)>>>;
+fn pl_felled(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
-    let mut used: std::collections::HashSet<(i32, i32)> = Default::default();
+    let mut used = used.borrow_mut();
     let mut b = Blocks::default();
     // (a column a log may lie on: flattened, not the crater or its rim, dry, its ground near the last one's)
     let lie = |x: i32, z: i32, gy: i32| -> Option<i32> {
@@ -592,7 +599,7 @@ fn pl_felled(q: &mut Plan, land: &Land, s: &Shape) {
         }
         Some(c.g)
     };
-    for k in 0..PL_GW {
+    for k in k0..k1 {
         for i in 0..PL_GW {
             let (x, z) = (bx - PL_READ + i, bz - PL_READ + k);
             let Some(c) = at(land, bx, bz, x, z) else { continue };
@@ -639,7 +646,11 @@ fn pl_felled(q: &mut Plan, land: &Land, s: &Shape) {
         }
     }
     q.ev.push((PL_HIT + 0.35, Act::Blocks(Box::new(b))));
-    // the rubble: chunks of the ground thrown out, more near it, landing over a few seconds
+}
+/// The rubble: chunks of the ground thrown out, more near it, landing over a few seconds.
+fn pl_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
+    let (bx, bz) = (q.bx, q.bz);
+    let mut used = used.borrow_mut();
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x7e57);
     let mut waves: Vec<Blocks> = (0..4).map(|_| Blocks::default()).collect();
     const RUBBLE: [&str; 9] = [
@@ -785,18 +796,28 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
             let land = land.clone();
             p.later(0.5, move |q| pl_land_step(q, land, tags, 0, 0.5, 0));
         }
-        // the blast's edits worked out well ahead, a band of rows a stage
+        // the blast's edits worked out well ahead, a band of rows a stage (a stage's work kept well under a tick's fuel),
+        // and what it leaves hanging round them, each on a stage of its own
         let shape = Shape { cx, cz, ph: [TAU * mh(1, geo.seed, 0xc1), TAU * mh(2, geo.seed, 0xc1), TAU * mh(3, geo.seed, 0xc1)], seed: geo.seed };
-        let bands = 8;
+        let bands = PL_BANDS;
         let rows = (PL_GW + bands - 1) / bands;
         for j in 0..bands {
-            let land = land.clone();
-            p.later(PL_HIT - 6.0 + 0.1 * j as f32, move |q| {
-                pl_blast_rows(q, &land.borrow(), &shape, j * rows, ((j + 1) * rows).min(PL_GW));
-            });
+            let (k0, k1) = (j * rows, ((j + 1) * rows).min(PL_GW));
+            let t = PL_HIT - 7.0 + 0.1 * j as f32;
+            let l1 = land.clone();
+            p.later(t, move |q| pl_blast_rows(q, &l1.borrow(), &shape, k0, k1));
+            let l2 = land.clone();
+            p.later(t + 0.05, move |q| pl_tidy_rows(q, &l2.borrow(), &shape, k0, k1));
         }
-        let land2 = land.clone();
-        p.later(PL_HIT - 4.5, move |q| pl_felled(q, &land2.borrow(), &shape));
+        // the trees felled, a band of rows a stage, then the rubble
+        let used: Used = Default::default();
+        let fb = 8;
+        let rows = (PL_GW + fb - 1) / fb;
+        for j in 0..fb {
+            let (land, used) = (land.clone(), used.clone());
+            p.later(PL_HIT - 2.8 + 0.1 * j as f32, move |q| pl_felled(q, &land.borrow(), &shape, &used, j * rows, ((j + 1) * rows).min(PL_GW)));
+        }
+        p.later(PL_HIT - 1.9, move |q| pl_rubble(q, &land.borrow(), &shape, &used));
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
