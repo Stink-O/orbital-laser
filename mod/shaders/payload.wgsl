@@ -576,7 +576,7 @@ fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
 
     // ---- the column's shadow on the land: the sun's light through its own billows, marched from the land towards the
     // sun, so it falls where the column really is (under it at noon, long across the land at a low sun); soft --------
-    if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02) {
+    if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02 && frame.mod_params[3].w < 0.5) {
         let T = pl_shadow(rel, L, a, C, ign(in.position.xy));
         col = col * (1.0 - 0.6 * (1.0 - T) * sun_up * k * fade);
     }

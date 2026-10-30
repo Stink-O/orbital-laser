@@ -200,6 +200,9 @@ struct Orbital {
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
     skip: f32,
+    /// The Payload's and the Nuke's cloud shadows on the land left out (`/orbital shadow off`: for looking at them
+    /// side by side; not kept).
+    shadow_off: bool,
     strike: Option<Strike>,
     wheel: Option<wheel::Wheel>,
     /// Seconds since the last tick, for a smooth strike clock between ticks.
@@ -516,6 +519,7 @@ impl Orbital {
         if laser.key == "payload" || laser.key == "nuke" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
+            params[15] = if self.shadow_off { 1.0 } else { 0.0 };
         }
         let pass = pass_of(laser);
         render::set_post(&self.passes[pass]);
@@ -774,6 +778,7 @@ impl Mod for Orbital {
             fast,
             aiming: None,
             skip: 0.0,
+            shadow_off: false,
             strike: None,
             wheel: None,
             since_tick: 0.0,
@@ -930,6 +935,13 @@ impl Mod for Orbital {
                 self.save();
                 self.update_panel();
                 Ok(Some(format!("Status panel {v}")))
+            }
+            (Some("shadow"), Some(v @ ("on" | "off"))) => {
+                self.shadow_off = v == "off";
+                if let Some(s) = &mut self.strike {
+                    s.params[15] = if self.shadow_off { 1.0 } else { 0.0 };
+                }
+                Ok(Some(format!("Cloud shadows {v}")))
             }
             (Some("payloadsound"), Some(v @ ("main" | "alt"))) => {
                 self.blast_alt = v == "alt";

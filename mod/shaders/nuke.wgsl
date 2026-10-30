@@ -440,6 +440,19 @@ fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(max(max(tmin.x, tmin.y), max(tmin.z, 0.0)), min(min(tmax.x, tmax.y), tmax.z));
 }
 
+// How much of the sun's light the cap lets through to a point `o` under it (camera-relative): the sun's ray from it
+// crossing the cap's level, through its broad soft disc. For the stem, the surge and the dust, which the full march
+// (pl_shadow) would cost too much for at every step.
+fn pl_cap_shade(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, hc: f32, R: f32) -> f32 {
+    let capy = C.y + hc;
+    if (L.y < 0.02 || o.y > capy) {
+        return 1.0;
+    }
+    let s = (capy - o.y) / L.y;
+    let r = length((o + L * s - C - pl_wind() * a).xz);
+    let thin = 1.0 - 0.8 * smoothstep(PL_SOFT0, PL_LEN, a);
+    return 1.0 - 0.8 * (1.0 - smoothstep(0.55 * R, 1.1 * R, r)) * smoothstep(2.0, 6.0, a) * thin;
+}
 // How much of the sun's light reaches land point `o` (camera-relative) through the cloud: its smooth body marched
 // towards the sun in a dozen steps, soft-edged (a little of its lumps' reach counted in). 1 in full sun.
 fn pl_shadow(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, j: f32) -> f32 {
@@ -745,7 +758,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     // ---- the cloud's shadow on the land: the sun's light through the cloud's own body, marched from the land towards
     // the sun, so it falls where the cloud really is: under it at noon, long and far across the land at a low sun, the
     // stem's band, the base surge's skirt; soft, and the sky still lights what lies in it -------------------------------
-    if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02) {
+    if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02 && frame.mod_params[3].w < 0.5) {
         let T = pl_shadow(rel, L, a, C, ign(in.position.xy));
         col = col * (1.0 - 0.62 * (1.0 - T) * sun_up * k * fade);
     }
@@ -1140,7 +1153,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     nl = nl + 1;
                     let lam = mix(saturate(0.2 + lc_face / 8.0), 0.65, soft);
                     // (the ring, out from under the cap's edge, catches more of the sun than the stem in its shadow)
-                    let tsun = max(mix(lc_bulk, 0.7, soft) * lam, 0.45 * ringw);
+                    // (under the cap, the stem, the surge and the ring in its shadow)
+                    let capsh = pl_cap_shade(p, L, a, C, cl.hc - 0.3 * cl.rt, cl.Rt + cl.rt);
+                    let tsun = max(mix(lc_bulk, 0.7, soft) * lam * capsh, 0.45 * ringw * capsh);
                     let hy = saturate((p.y - C.y) / max(cl.hc + cl.rt, 1.0));
                     let deep = saturate(-d0 / 70.0);
                     let ao = mix((0.55 + 0.45 * sd.y) * (1.0 - 0.6 * deep) * (1.0 - 0.6 * sky_occ), 0.75, soft);
@@ -1416,6 +1431,8 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             var tr = 1.0;
             var acc = vec3<f32>(0.0);
             let j = ign(in.position.xy + vec2<f32>(0.0, fract(time * 5.0) * 53.0));
+            // (the cap over it, for its shadow on the dust)
+            let dcl = pl_column(max(a, 0.01), C);
             // (the near crossing, the haze inside, then the far crossing: in the order the ray meets them)
             var order = array<i32, 3>(0, 2, 1);
             for (var si = 0; si < 3; si = si + 1) {
@@ -1446,7 +1463,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let wq = p + cam;
                     let bl = gnoise3(wq * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a + 0.5, 0.0));
                     let lo = (0.45 + 0.55 * saturate(h / 8.0)) * (0.55 + 0.7 * bl);
-                    let dc = vec3<f32>(0.56, 0.49, 0.37) * (sunc * 0.75 * lo + amb * 0.6);
+                    let dc = vec3<f32>(0.56, 0.49, 0.37) * (sunc * 0.75 * lo * pl_cap_shade(p, L, a, C, dcl.hc - 0.3 * dcl.rt, dcl.Rt + dcl.rt) + amb * 0.6);
                     acc = acc + tr * al * dc;
                     tr = tr * (1.0 - al);
                     if (tr < 0.02) {
