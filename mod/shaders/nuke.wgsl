@@ -792,8 +792,8 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let pg = pl_trail_pt(i + 8, last, thead, time, seed) + C;
                 let cg = 0.5 * (pa + pg);
                 let ag = max(time - (t0 + dt * f32(i)), 0.0);
-                let rg = 0.65 * length(pg - pa) + 3.4 * (7.0 + 5.5 * sqrt(ag)) + 4.0;
                 let tg = max(dot(cg, rd), 0.0);
+                let rg = 0.65 * length(pg - pa) + 3.4 * (6.0 + 4.8 * sqrt(ag) + tg * px_a) + 4.0;
                 if (length(cg - rd * tg) > rg || tg - rg > scene_len) {
                     pa = pg;
                     have_pv = false;
@@ -860,14 +860,20 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             let cp = pa_ + ab * sz + (rd * h.y - (pa_ + ab * h.z));
             let te = clamp(te_a + dt * sz, t0, thead);
             let age = max(time - te, 0.0);
-            // (the nuke's: a thin pale contrail, all of it vapour, no flame)
+            // (the nuke's: laid white-hot in the re-entry, a thick lumpy trail of ablated smoke and the ionised air
+            // glowing behind it; once it has shed its heat a thin pale vapour trail; none under the chute)
+            let heat = 1.0 - smoothstep(PL_COOL - 0.6, PL_COOL + 1.0, te);
+            let gone = smoothstep(PL_CHUTE - 0.1, PL_CHUTE + 0.35, te);
             let dive = 0.0;
             // (smoke rather than vapour: from a second or two after it shows, as in the third clip, where the whole
             // hook it draws is the same grey-brown smoke)
             let smk = 0.0;
             // (its core's radius: thin and tight where it is laid, swelling with age; the outer fray to twice that)
-            let rad = 1.6 + 1.8 * sqrt(age);
-            if (h.x < rad * 3.4) {
+            // (never thinner than a pixel, its density spread over the width it is drawn at)
+            let rad0 = mix(1.2, 5.5, heat) + mix(1.5, 4.5, heat) * sqrt(age);
+            let rad = max(rad0, tn * px_a * 0.9);
+            let thin = rad0 / rad;
+            if (h.x < rad * 3.4 && gone < 1.0) {
                 // (the smoke's own lumps, carried with it as it drifts and rises, churning slowly: looked up where the
                 // smoke was laid (fixed, so they never slide along it) and across it in its own width (so they swell
                 // with it, about its axis). Their size along it cannot follow the width without sliding, so they are
@@ -932,12 +938,12 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 // (broken into beads and puffs as it ages, the gaps opening; the vapour high up breaks sooner. Where
                 // the lumps are evened out, what they would have let through on the whole: the gaps' and the beads'
                 // mean, not the mean lump's, which the gaps would swallow)
-                let thr = mix(0.32, 0.12, smk) + 0.38 * smoothstep(1.5, 18.0, age);
+                let thr = mix(0.32, 0.12, smk) - 0.1 * heat + 0.38 * smoothstep(1.5, 18.0, age);
                 let m = (puff - thr) * 3.2 + 0.3 * exp(-age / 0.8);
                 let sl = 3.2 * 0.14 * sqrt(0.384 * (1.0 - w1 * w1) + 0.09 * (1.0 - w2 * w2) + 0.0064 * (1.0 - w3 * w3)) + 1.0e-3;
                 let dens = saturate(sl * log(1.0 + exp(clamp(m / sl, -30.0, 30.0))));
                 // (dense where it is laid, thinning over the next twenty seconds; the vapour fainter)
-                let sig = 0.5 * exp(-age / 9.0) * exp(-max(time - PL_HIT, 0.0) / 2.5) * fade;
+                let sig = mix(0.45, 0.8, heat) * exp(-age / mix(9.0, 16.0, heat)) * exp(-max(time - PL_HIT, 0.0) / 2.5) * fade * thin * (1.0 - gone);
                 let dtau = sig * prof * dens * 1.6 * rad * gin;
                 // (lit on its sunward side and on its lumps' tops, darker in its creases)
                 let axis = pa_ + ab * sz;
@@ -945,11 +951,13 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let ln = 0.5 + w1 * (n1 - 0.5);
                 let lit = (0.35 + 0.65 * saturate(dot(nrm, L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
                 // (grey-brown smoke, paler as it spreads thin; the vapour high up a pale grey)
-                var alb = mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.17, 0.145, 0.125), smk);
+                var alb = mix(mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.74, 0.71, 0.66), heat), vec3<f32>(0.17, 0.145, 0.125), smk);
                 alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), smoothstep(4.0, 20.0, age));
                 var c = alb * (sunc * lit * 0.85 + amb * (0.6 + 0.4 * ln));
                 // (just behind the head it is lit by the flame: orange, dying back within a second)
                 c = c + vec3<f32>(1.9, 0.75, 0.22) * exp(-age / 0.12) * dive * step(time, PL_HIT + 0.3) * (0.4 + 0.6 * ln);
+                // (in the re-entry, lit from within by the glowing air just behind the head)
+                c = c + vec3<f32>(2.2, 0.9, 0.35) * exp(-age / 0.35) * heat * (0.5 + 0.5 * ln);
                 // (farther, the air between greys it to the sky)
                 c = mix(c, haze_c, (1.0 - exp(-tn / 3000.0)) * 0.75);
                 tc = tc + c * dtau;
@@ -965,8 +973,13 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let fprof = exp(-pow(gx / max(fw, 0.5), 2.0) * 1.6) * min(fw * 0.5, 1.0);
                 glow = max(glow, mix(vec3<f32>(3.2, 1.0, 0.18), vec3<f32>(4.0, 2.6, 1.0), exp(-age / 0.06)) * fl * 1.6 * fprof);
                 // (high up, the hot streak of air it leaves glowing behind it, white, cooling within a second)
-                let fh = 0.0;
-                glow = max(glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(chord * 0.6, 1.2));
+                // (the re-entry's: the ionised air it leaves glowing behind it, white-yellow cooling through orange to a
+                // dull pink within a second, a core narrower than the smoke)
+                let fh = heat * exp(-age / 0.45) * step(time, PL_HIT);
+                let gr = rad * 0.5;
+                let gch = sqrt(max(1.0 - gx * gx / (gr * gr), 0.0));
+                let gcol = mix(mix(vec3<f32>(1.3, 0.35, 0.3), vec3<f32>(2.6, 0.95, 0.3), exp(-age / 0.4)), vec3<f32>(3.4, 3.0, 2.3), exp(-age / 0.1));
+                glow = max(glow, gcol * fh * gch * 1.4);
             }
         }
         if (tau > 0.0) {
@@ -1043,7 +1056,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                             let prof = exp(-pow(h.x / (rad * (0.5 + nb)), 2.0) * 1.4);
                             let dens = saturate((nb - 0.18 - 0.25 * smoothstep(0.5, 3.5, age)) * 3.0);
                             let dtau = 0.5 * exp(-age / 1.8) * prof * dens * 1.6 * rad * fade;
-                            var c = vec3<f32>(0.19, 0.16, 0.14) * (sunc * 0.75 + amb * 0.8);
+                            var c = vec3<f32>(0.45, 0.43, 0.4) * (sunc * 0.75 + amb * 0.8);
                             c = c + vec3<f32>(1.6, 0.6, 0.15) * exp(-age / 0.1) * step(s, life);
                             c = mix(c, haze_c, (1.0 - exp(-h.y / 3000.0)) * 0.75);
                             ftc = ftc + c * dtau;
@@ -1347,21 +1360,21 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             let tc0 = max(3.0 / dh, px_a * 0.9);
             let core = exp(-pow(th / tc0, 2.0)) * 16.0;
             let bloom = 1.1 / (1.0 + pow(th / (tc0 * 4.0 + 0.004), 2.0)) + 0.22 * exp(-th / 0.05);
-            let lw = 14.0 + 50.0 * heat;
+            let lw = 16.0 + 100.0 * heat;
             let s = ray_seg(rd, Hp, Hp - vd * lw);
             let ww = mix(1.6, 6.0, sqrt(s.z));
             let wpx = max(ww, s.y * px_a * 0.8);
             let sheath = exp(-pow(s.x / wpx, 2.0)) * pow(1.0 - s.z, 1.6) * (ww / wpx) * 5.0;
             let sv = rd - hn * cth;
             let upv = normalize(cross(cross(hn, vec3<f32>(0.0, 1.0, 0.0)), hn) + vec3<f32>(0.0, 1.0e-5, 0.0));
-            let streak = exp(-abs(dot(sv, upv)) / (px_a * 1.5)) * exp(-th / 0.15) * 0.35;
+            let streak = exp(-abs(dot(sv, upv)) / (px_a * 1.2)) * exp(-th / 0.035) * 0.3;
             let hot = vec3<f32>(1.0, 0.95, 0.88) * (core + bloom + streak) + mix(vec3<f32>(1.0, 0.9, 0.75), vec3<f32>(1.0, 0.42, 0.16), sqrt(s.z)) * sheath;
             col = col + hot * heat * fl * show;
         }
         // (the sun glinting off its turning fins, now and then, from any distance)
         let gph = pow(0.5 + 0.5 * sin(spin * 2.0 + 0.7), 30.0) + 0.5 * pow(0.5 + 0.5 * sin(spin * 2.0 + 2.6), 40.0);
         let gtc = max(2.0 / dh, px_a * 1.0);
-        let glint = (exp(-pow(th / gtc, 2.0)) * 3.0 + 0.25 / (1.0 + pow(th / (gtc * 5.0), 2.0))) * gph * sun_up;
+        let glint = (exp(-pow(th / (gtc * 0.6), 2.0)) * 2.5 + 0.1 / (1.0 + pow(th / (gtc * 3.0), 2.0))) * gph * sun_up;
         // (and at night a strobe on its tail, so it can be followed down)
         let blink = step(fract(time * 1.1), 0.12) * (1.0 - day) * 0.8;
         let red = exp(-pow(th / max(px_a * 1.2, 0.8 / dh), 2.0)) * 2.0 + 0.2 / (1.0 + pow(th / (px_a * 5.0), 2.0));

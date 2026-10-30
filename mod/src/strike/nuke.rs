@@ -30,7 +30,7 @@ use std::rc::Rc;
 const TAU: f64 = 2.0 * PI;
 /// The bomb shows high in the sky, falls faster from NK_TURN, and bursts at NK_HIT, NK_BURST blocks over the target's
 /// ground.
-pub(super) const NK_SEEN: f32 = 2.0;
+pub(super) const NK_SEEN: f32 = 0.8;
 pub(super) const NK_TURN: f32 = 8.0;
 pub(super) const NK_HIT: f32 = 11.0;
 pub(super) const NK_BURST: f64 = 45.0;
@@ -51,8 +51,8 @@ pub(super) const NK_PF: usize = NK_P + 3 * NK_N;
 pub(super) const NK_PW: usize = 8;
 pub(super) const NK_FR: usize = 560;
 pub(super) const NK_FW: usize = 12;
-pub(super) const NK_CHUNKS: usize = 0;
-pub(super) const NK_SPARKS: usize = 0;
+pub(super) const NK_CHUNKS: usize = 8;
+pub(super) const NK_SPARKS: usize = 24;
 
 /// The crater's mean radius and depth, how far its rim's heap reaches (in its radii), the land flattened and the trees
 /// felled out to NK_FLAT, the grass charred out to NK_CHAR, the rubble strewn out to NK_RUBBLE.
@@ -79,15 +79,16 @@ const NK_KILL: i32 = 300;
 const NK_THROWN: usize = 160;
 
 /// Where the bomb is and how it moves: everything worked out from the strike's seed and where the player stands. It
-/// shows high over the far side of the target, off to one side as the player looks, and falls on one steep arc onto
-/// the burst point, NK_BURST over the target's ground, slow on the sky at first, then faster and faster.
+/// comes in from orbit: it shows far off beyond the target and to one side as the player looks, a white-hot streak
+/// across the sky on a long shallow slant (520 blocks a second, slowing hard in the thickening air), sheds its heat and
+/// arcs over into a steep fall (NK_COOL), its chute snaps open at NK_CHUTE and it sinks the last hundred-odd blocks
+/// slowly onto the burst point, NK_BURST over the target's ground. The path is laid out from its speed and slope against
+/// time, then moved so that it ends on the burst point at NK_HIT.
 #[derive(Clone, Debug)]
 pub(super) struct NkGeo {
     pub seed: u32,
-    /// Which way it comes from (from the target, level), how far off it shows, and how high.
-    dir: [f64; 3],
-    dh: f64,
-    y0: f64,
+    /// Where it is every NK_GEO_DT seconds from NK_SEEN (from the target's ground), the last at NK_HIT.
+    path: Vec<[f64; 3]>,
     /// The wind (blocks a second, x and z): the trail and the cloud drift with it.
     pub wind: (f64, f64),
 }
@@ -98,13 +99,16 @@ fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
 fn len(a: [f64; 3]) -> f64 {
     (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt()
 }
+fn sstep(a: f64, b: f64, x: f64) -> f64 {
+    let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
 
-/// The arc's shape: at its start it already falls this much of its slope at the end (steep from the first).
-const NK_GLIDE: f64 = 0.6;
-/// How far along the arc it is, against the time from showing to bursting: this much of it a steady fall, the rest
-/// coming faster and faster.
-const NK_CRAWL: f64 = 0.3;
-const NK_RUSH: f64 = 2.4;
+/// The re-entry's heat is shed between NK_COOL - 0.6 and NK_COOL + 1.0; the chute opens at NK_CHUTE (keep both in step
+/// with nuke.wgsl's PL_COOL and PL_CHUTE).
+pub(super) const NK_COOL: f32 = 6.0;
+pub(super) const NK_CHUTE: f32 = 8.3;
+const NK_GEO_DT: f64 = 0.005;
 
 impl NkGeo {
     /// `me`: the player from the target's ground point.
@@ -113,25 +117,54 @@ impl NkGeo {
         let r = |k: u32| mh(k, seed, 0x9b1);
         let d = me[0].hypot(me[2]);
         let u = if d > 1.0 { [me[0] / d, 0.0, me[2] / d] } else { [0.0, 0.0, 1.0] };
-        // (from beyond the target and off to one side, 40 to 60 degrees round from straight beyond it)
+        // (it comes from beyond the target and off to one side, 50 to 65 degrees round from straight beyond it, so it
+        // crosses the sky as the player looks, coming towards them)
         let side = if r(1) < 0.5 { -1.0 } else { 1.0 };
-        let phi = (40.0 + 20.0 * r(2)).to_radians() * side;
+        let phi = (50.0 + 15.0 * r(2)).to_radians() * side;
         let (c, s) = (phi.cos(), phi.sin());
-        let dir = [-u[0] * c + u[2] * s, 0.0, -u[2] * c - u[0] * s];
+        let from = [-u[0] * c + u[2] * s, 0.0, -u[2] * c - u[0] * s];
         let wa = TAU * r(9);
         let ws = 2.0 + 2.0 * r(10);
-        NkGeo { seed, dir, dh: 260.0 + 90.0 * r(3), y0: 880.0 + 120.0 * r(4), wind: (wa.cos() * ws, wa.sin() * ws) }
-    }
-    /// How far along the arc it is at strike time `t`, 0 as it shows to 1 as it bursts.
-    fn along(t: f64) -> f64 {
-        let w = ((t - f64::from(NK_SEEN)) / f64::from(NK_HIT - NK_SEEN)).clamp(0.0, 1.0);
-        NK_CRAWL * w + (1.0 - NK_CRAWL) * w.powf(NK_RUSH)
+        // (its speed and its slope below the level against time: hypersonic and shallow, slowing harder as the air
+        // thickens; then arcing over, steeper and slower; then snatched by the chute to a slow, straight-down sink)
+        let v0 = 470.0 + 90.0 * r(3);
+        let g0 = (14.0 + 6.0 * r(4)).to_radians();
+        let (seen, cool, chute) = (f64::from(NK_SEEN), f64::from(NK_COOL), f64::from(NK_CHUTE));
+        let speed = |t: f64| {
+            let w = ((t - seen) / (cool - seen)).clamp(0.0, 1.0);
+            let hyper = v0 - (v0 - 165.0) * w.powf(1.5);
+            let arc = 165.0 - 45.0 * sstep(cool, chute, t);
+            let fall = 28.0 + (120.0 - 28.0) * (-(t - chute).max(0.0) / 0.22).exp();
+            if t < cool { hyper } else if t < chute { arc } else { fall }
+        };
+        let slope = |t: f64| {
+            let w = ((t - seen) / (cool - seen)).clamp(0.0, 1.0);
+            let a = g0 + (28f64.to_radians() - g0) * w * w;
+            let a = a + (72f64.to_radians() - 28f64.to_radians()) * sstep(cool - 0.3, chute, t);
+            a + (90f64.to_radians() - 72f64.to_radians()) * sstep(chute, chute + 0.9, t)
+        };
+        let n = ((f64::from(NK_HIT) - seen) / NK_GEO_DT).round() as usize;
+        let mut path = Vec::with_capacity(n + 1);
+        let mut p = [0.0f64; 3];
+        path.push(p);
+        for i in 0..n {
+            let t = seen + NK_GEO_DT * (i as f64 + 0.5);
+            let (v, a) = (speed(t), slope(t));
+            p = add(p, [-from[0] * a.cos(), -a.sin(), -from[2] * a.cos()], v * NK_GEO_DT);
+            path.push(p);
+        }
+        let shift = add([0.0, NK_BURST, 0.0], p, -1.0);
+        for q in &mut path {
+            *q = add(*q, shift, 1.0);
+        }
+        NkGeo { seed, path, wind: (wa.cos() * ws, wa.sin() * ws) }
     }
     /// Where it is at strike time `t` (from the target's ground), from NK_SEEN to NK_HIT: at NK_HIT the burst point.
     pub fn pos(&self, t: f64) -> [f64; 3] {
-        let u = Self::along(t);
-        let y = NK_BURST + (self.y0 - NK_BURST) * (1.0 - (NK_GLIDE * u + (1.0 - NK_GLIDE) * u * u));
-        add([0.0, y, 0.0], self.dir, self.dh * (1.0 - u))
+        let u = ((t - f64::from(NK_SEEN)) / NK_GEO_DT).clamp(0.0, (self.path.len() - 1) as f64);
+        let i = (u.floor() as usize).min(self.path.len() - 2);
+        let f = u - i as f64;
+        add(self.path[i], add(self.path[i + 1], self.path[i], -1.0), f)
     }
 }
 
@@ -158,9 +191,9 @@ pub(super) fn nk_puffs(seed: u32) -> Vec<[f64; 6]> {
         .collect()
 }
 
-/// The pieces shed as it comes in through the air (see NK_FR). As in the third clip: a few glowing chunks breaking off
-/// in the seconds before the dive, flung out to the side and falling away behind it, each burning a second or three
-/// and trailing its own thin smoke; and in the last seconds a spray of small sparks off the fireball, gone in a moment.
+/// The pieces shed as it comes in through the air (see NK_FR): its heat shield breaking up in the re-entry, a few
+/// glowing chunks and a spray of sparks torn off it, slowed at once by the air and falling away behind the streak,
+/// burning out (the chunks trailing their own thin smoke); none once it has shed its heat.
 pub(super) fn nk_fragments(g: &NkGeo) -> Vec<[f64; 11]> {
     let mut out = Vec::new();
     let vel = |t: f64| {
@@ -170,14 +203,14 @@ pub(super) fn nk_fragments(g: &NkGeo) -> Vec<[f64; 11]> {
     for i in 0..NK_CHUNKS + NK_SPARKS {
         let h = |k: u32| mh(i as u32, g.seed, 0x7a0 + k);
         let spark = i >= NK_CHUNKS;
-        let hit = f64::from(NK_HIT);
-        // (the chunks let go between 6.5 and 0.7 s before it strikes, more of them later; the sparks in the last 3.5)
-        let t0 = if spark { hit - 3.5 + 3.3 * h(0).sqrt() } else { hit - 6.5 + 5.8 * h(0).powf(0.7) };
+        let (seen, cool) = (f64::from(NK_SEEN), f64::from(NK_COOL));
+        // (from half a second after it shows until it cools, more of them as it slows hardest)
+        let t0 = if spark { seen + 0.6 + (cool - seen - 0.4) * h(0).powf(0.8) } else { seen + 1.0 + (cool - seen - 1.4) * h(0).powf(0.7) };
         let p0 = g.pos(t0);
         let v = vel(t0);
         let sp = len(v).max(1.0);
         let dir = [v[0] / sp, v[1] / sp, v[2] / sp];
-        // (flung out across its path, a random way round it, a little up more often than down)
+        // (flung out across its path, a random way round it)
         let a = TAU * h(1);
         let side = {
             let up = if dir[1].abs() > 0.95 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
@@ -187,13 +220,12 @@ pub(super) fn nk_fragments(g: &NkGeo) -> Vec<[f64; 11]> {
             let s2 = [dir[1] * s1[2] - dir[2] * s1[1], dir[2] * s1[0] - dir[0] * s1[2], dir[0] * s1[1] - dir[1] * s1[0]];
             add(add([0.0; 3], s1, a.cos()), s2, a.sin())
         };
-        let kick = if spark { 40.0 + 110.0 * h(2) } else { 70.0 + 110.0 * h(2) };
-        let keep = if spark { 0.55 + 0.3 * h(3) } else { 0.35 + 0.35 * h(3) };
+        let kick = if spark { 25.0 + 70.0 * h(2) } else { 15.0 + 45.0 * h(2) };
+        let keep = if spark { 0.7 + 0.2 * h(3) } else { 0.8 + 0.15 * h(3) };
         let v0 = add(add([0.0; 3], v, keep), side, kick);
-        let v0 = add(v0, [0.0, 1.0, 0.0], if spark { 0.0 } else { 15.0 * h(4) });
-        let life = if spark { 0.35 + 0.6 * h(5) } else { 1.5 + 2.2 * h(5) };
-        let size = if spark { 0.25 + 0.35 * h(6) } else { 0.9 + 1.4 * h(6) };
-        let drag = if spark { 1.8 + 1.5 * h(7) } else { 0.35 + 0.5 * h(7) };
+        let life = if spark { 0.4 + 0.6 * h(5) } else { 1.2 + 1.2 * h(5) };
+        let size = if spark { 1.0 + 1.2 * h(6) } else { 1.3 + 1.0 * h(6) };
+        let drag = if spark { 1.6 + 1.2 * h(7) } else { 0.8 + 0.6 * h(7) };
         out.push([t0, life, size, if spark { 1.0 } else { 0.0 }, drag, p0[0], p0[1], p0[2], v0[0], v0[1], v0[2]]);
     }
     out
@@ -1373,7 +1405,7 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     p.at(5.0, bar("WARNING: NUCLEAR DEVICE INBOUND", "red"));
     p.at(NK_TURN, bar("TAKE COVER", "yellow"));
     // (its fall, heard from up there: whistling down onto the burst, cut there)
-    p.csound(NK_SEEN - 0.5, "fall", 10.0, 1.0);
+    p.csound(1.5, "fall", 10.0, 1.0);
     // ---- the burst: the flash is silent; the land's answer through the ground first, felt more than heard ----------
     let tg = NK_HIT + (dist / NK_GROUND_V) as f32;
     let gap = NK_HIT + late - tg;
