@@ -55,7 +55,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 ## New in 0.5.5
 
-<!-- Payload still, once captured: <p align="center"><img alt="The Payload: a column of smoke boiling up out of the crater, a wall of dust racing out over the land" width="720" src="docs/32-payload-column.jpg"></p> -->
+<p align="center"><img alt="The Payload: a column of smoke boiling up out of the crater, the bomb's trail still hanging in the sky" width="720" src="docs/32-payload-column.jpg"></p>
 
 - **Payload**, the tenth laser, on the wheel's second page and `/orbital payload`. A bomb, not a beam. A bright point
   drifts high across the sky trailing smoke, then dives as a fireball, shedding burning chunks and crackling as it
@@ -126,11 +126,9 @@ Crystal Bloom, the Sinkhole and the Payload reach 1000. [How it works](docs/HOW-
 |---|---|---|---|
 | ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, dust boiling up out of the collapse](docs/26-sinkhole-collapse.jpg) | ![The dark pit opening as the dust settles](docs/27-sinkhole-pit.jpg) | ![The finished pit, waterfalls pouring over its rim into the dark](docs/28-sinkhole-aftermath.jpg) |
 
-<!-- Payload stills, once captured:
 | Payload | The dive | The impact | The column |
 |---|---|---|---|
-| ![A bright point high in the sky trailing a lumpy smoke trail](docs/29-payload-sky.jpg) | ![The fireball diving at the land, shedding burning chunks](docs/30-payload-dive.jpg) | ![The flash and the burst of fire as it hits](docs/31-payload-impact.jpg) | ![The column of smoke rising out of the crater, the dust wall racing out over the land](docs/32-payload-column.jpg) |
--->
+| ![A bright point high in the sky trailing a lumpy smoke trail](docs/29-payload-sky.jpg) | ![The fireball diving at the land, shedding burning chunks](docs/30-payload-dive.jpg) | ![The flash and the burst of fire as it hits](docs/31-payload-impact.jpg) | ![The column of smoke rising out of the crater, the bomb's trail still hanging in the sky](docs/32-payload-column.jpg) |
 
 ## Getting started
 

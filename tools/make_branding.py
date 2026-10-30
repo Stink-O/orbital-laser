@@ -36,7 +36,7 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    shot = Image.open(ROOT / "docs" / "22-crystal-bloom-prism.jpg").convert("RGB")
+    shot = Image.open(ROOT / "docs" / "32-payload-column.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H * 1.12 / shot.height), round(H * 1.12)), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width + 330, -round(H * 0.06)))
