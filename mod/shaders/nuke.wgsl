@@ -264,7 +264,7 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let wr = exp(-dot(uv, uv) / pow(1.7 * (*col).rt, 2.0));
     // (none on the axis: the lumps either side of it turn opposite ways, and turned there they parted in a seam down
     // the cap's middle)
-    let ang = 1.3 * (1.0 - exp(-a / 25.0)) * wr * smoothstep(0.0, 0.8 * (*col).Rt + 10.0, rho);
+    let ang = 1.8 * (1.0 - exp(-a / 30.0)) * wr * smoothstep(0.0, 0.8 * (*col).Rt + 10.0, rho);
     let cs = cos(ang);
     let sn = sin(ang);
     let uv2 = vec2<f32>(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
