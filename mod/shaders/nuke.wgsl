@@ -385,17 +385,20 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     // (the boil: for its first seconds the fireball's lumps are flung about by a churning flow of its own, racing up
     // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
     // about, not made: the same ones, carried)
-    let bo = exp(-a / 4.5) * smoothstep(0.0, 0.5, a);
-    if (bo > 0.02) {
+    let bo = exp(-a / 4.0) * smoothstep(0.0, 0.5, a);
+    let wc0 = smoothstep(hc - 1.5 * rt, hc - 0.6 * rt, q.y);
+    if (bo > 0.03 && wc0 > 0.02) {
         let wq0 = qc * (1.0 / 30.0) + vec3<f32>(0.0, -1.1 * a, 0.0);
         let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
         qc = qc + wv * (70.0 * bo);
+    }
+    if (bo > 0.03 && wc0 < 0.98) {
         let ws0 = qs * (1.0 / 24.0) + vec3<f32>(0.0, -1.6 * a, 0.0);
         let ws = vec3<f32>(gnoise3(ws0), gnoise3(ws0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(ws0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
         qs = qs + ws * (45.0 * bo);
     }
     // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
-    let wc = smoothstep(hc - 1.5 * rt, hc - 0.6 * rt, q.y);
+    let wc = wc0;
     var nz = vec4<f32>(0.0);
     var nf = vec2<f32>(0.5);
     let need_fine = fine && smoothstep(PL_SOFT0, PL_SOFT1, a) < 0.99;
