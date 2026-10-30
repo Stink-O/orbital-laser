@@ -180,8 +180,14 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
     // (the cap: a fat roll, its underside a little flattened, a dome over its middle)
     let tq = vec2<f32>(rho - Rt, (hy - hc) * select(1.35, 1.6, hy < hc));
     var d = length(tq) - rt;
-    let dome = length(vec3<f32>(q.x, (hy - hc - 0.15 * rt) * (Rt + rt) / (0.6 * rt), q.z)) - (Rt + 0.8 * rt);
-    d = smin(d, dome * 0.6 * rt / (Rt + rt), 0.3 * rt);
+    // (the dome over it higher than the roll's top, so the cap is one rounded crown, not two lobes with a dip between)
+    // (an ellipsoid's distance near enough true all round it, not squeezed sideways: squeezed, the dome's smoke
+    // thickened too slowly into it and its middle was a thin haze the glow showed through)
+    let er = vec3<f32>(Rt + 0.85 * rt, 0.86 * rt, Rt + 0.85 * rt);
+    let eq = vec3<f32>(q.x, hy - hc - 0.22 * rt, q.z);
+    let ek0 = length(eq / er);
+    let dome = ek0 * (ek0 - 1.0) / max(length(eq / (er * er)), 1.0e-6);
+    d = smin(d, dome, 0.35 * rt);
     // (the stem: from under the land up into the cap, wide at its dusty foot, narrow in the middle, flaring into the cap)
     if ((*col).st > 0.0) {
         let u = saturate(hy / max((*col).st, 1.0));
@@ -252,13 +258,17 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let dir = q.xz / rho;
     let uv = vec2<f32>(rho - (*col).Rt, q.y - (*col).hc);
     let wr = exp(-dot(uv, uv) / pow(1.7 * (*col).rt, 2.0));
-    let ang = 1.3 * (1.0 - exp(-a / 25.0)) * wr;
+    // (none on the axis: the lumps either side of it turn opposite ways, and turned there they parted in a seam down
+    // the cap's middle)
+    let ang = 1.3 * (1.0 - exp(-a / 25.0)) * wr * smoothstep(0.0, 0.8 * (*col).Rt + 10.0, rho);
     let cs = cos(ang);
     let sn = sin(ang);
     let uv2 = vec2<f32>(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
     q = vec3<f32>(dir.x * (uv2.x + (*col).Rt), uv2.y + (*col).hc, dir.y * (uv2.x + (*col).Rt));
-    // (and the stem's boiling up it)
-    q.y = q.y - 4.0 * min(a, 40.0) * (1.0 - wr) * smoothstep(0.0, 60.0, p.y - C.y) * (1.0 - smoothstep((*col).hc - 2.2 * (*col).rt, (*col).hc - 1.2 * (*col).rt, q.y)) * (1.0 - smoothstep(1.5 * (*col).sr.y, 3.0 * (*col).sr.y, rho));
+    // (and the stem's boiling up it: its lumps carried up, the same way all down it to the land, so they move without
+    // stretching; let go of over most of the cap's height, under its roll, where the roll's own churn takes over. Not
+    // too far in all: the let-go draws them out a little, and more the further they have gone)
+    q.y = q.y - 3.5 * min(a, 18.0) * (1.0 - wr) * (1.0 - smoothstep((*col).hc - 1.7 * (*col).rt, (*col).hc - 0.5 * (*col).rt, q.y));
     let S = 2.2;
     let w = gnoise3(pl_rot(1, q * (1.0 / (55.0 * S))));
     let w2 = gnoise3(pl_rot(2, q * (1.0 / (23.0 * S)) + vec3<f32>(9.2, -0.05 * a, 4.4)));
@@ -269,7 +279,9 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let crisp = 1.0 - 0.8 * soft;
     let b2 = pl_dome(pl_rot(1, q * (1.0 / (14.0 * S)) + vec3<f32>(0.0, -0.15 * a, 1.3)));
     let up = smoothstep(40.0, 200.0, hy);
-    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) + 8.0 * (w2 - 0.5)) * lump;
+    // (the crown over the middle smoother than the roll: its big swells let down, so it stays one rounded dome)
+    let crown = (1.0 - smoothstep(0.3 * (*col).Rt, (*col).Rt + 0.3 * (*col).rt, rho)) * smoothstep((*col).hc, (*col).hc + 0.5 * (*col).rt, hy);
+    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.35 * crown) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.65 * crown) + 8.0 * (w2 - 0.5)) * lump;
     let ew = smoothstep(0.6, 0.82, w2);
     let edge = mix(1.5, 6.0, ew) + 10.0 * (1.0 - smoothstep(0.0, 60.0, hy));
     var fray = 0.5;
@@ -562,7 +574,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
         col = col + fire_c * fl * (0.05 / (1.0 + pow(th / 0.08, 2.0)) + 0.012 * exp(-th / 0.7)) * k;
         if (sky) {
             // (the sky itself brighter, warm, for a while)
-            col = col + vec3<f32>(1.0, 0.78, 0.52) * (0.6 * exp(-a / 3.0) + 0.12 * exp(-a / 20.0)) * (0.35 + 0.65 * (1.0 - day)) * k * fade;
+            col = col + vec3<f32>(1.0, 0.78, 0.52) * (0.3 * exp(-a / 2.0) + 0.08 * exp(-a / 20.0)) * (0.35 + 0.65 * (1.0 - day)) * k * fade;
         } else {
             // (and the land lit by it, far out)
             let dl = length(rel - Pf);
@@ -876,7 +888,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     // ---- the mushroom cloud: raymarched, self-shadowed towards the sun, glowing from inside --------------------------
     // (the fireball's heat: white-hot for a moment, orange for seconds, a dull red glow dying over tens of seconds)
     let heat = exp(-a / 0.9);
-    let glow = 1.0 * exp(-a / 3.5) + 0.3 * exp(-a / 18.0);
+    let glow = 1.0 * exp(-a / 3.5) + 0.26 * exp(-a / 11.0);
     if (stage != 2u && have && a > 0.0) {
         var cl = pl_column(a, C);
         // (first a cheap bound: a fat stick from under the land up to the cap's core circle, leaning with the wind, as
@@ -964,9 +976,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let capw = smoothstep(cl.hc - 1.8 * cl.rt, cl.hc - 0.6 * cl.rt, p.y - C.y);
                     let core = 1.0 - exp(min(d0, 0.0) / (0.22 * cl.rt + 6.0));
                     let under = 1.0 - smoothstep(cl.hc - 0.6 * cl.rt, cl.hc + 0.5 * cl.rt, p.y - C.y);
-                    let surf = 2.2 * exp(-a / 2.0) + 0.4 * exp(-a / 6.0);
-                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * (0.35 + 1.3 * (1.0 - sd.y));
-                    let tcol = mix(mix(vec3<f32>(1.2, 0.22, 0.04), vec3<f32>(3.0, 1.25, 0.32), saturate(glow * 1.1 + 0.3 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
+                    let surf = 2.2 * exp(-a / 2.0) + 0.9 * exp(-a / 5.0);
+                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * (0.35 + 1.3 * (1.0 - sd.y));
+                    let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(3.0, 1.25, 0.32), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
                     c = c * (1.0 - saturate(e * 0.5)) + tcol * (e * 0.6 + lowlit);
@@ -1321,7 +1333,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                         keep = keep * (1.0 - ring * mott * op * life);
                     }
                 }
-                col = col * mix(1.0, keep, vis * fade);
+                // (muck, not shade: the drops scatter the light as well as stopping it, a dusty grey-brown veil)
+                let muck = vec3<f32>(0.42, 0.38, 0.33) * (sunc * 0.45 + amb * 0.9);
+                col = mix(col, col * keep + muck * (1.0 - keep) * 0.7, vis * fade);
             }
         }
     }
@@ -1329,7 +1343,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     // ---- the white-out: for a moment the whole picture is the flash, then it lets go, overexposed for a second ----
     if (stage != 1u && a > -0.02 && a < 4.0) {
         let wo = saturate(1.4 * exp(-max(a, 0.0) / 0.22)) * smoothstep(-0.02, 0.02, a);
-        col = col * (1.0 + 0.8 * exp(-max(a, 0.0) / 1.2));
+        col = col * (1.0 + 0.5 * exp(-max(a, 0.0) / 0.7));
         col = mix(col, vec3<f32>(1.35, 1.32, 1.25), wo * k);
     }
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
