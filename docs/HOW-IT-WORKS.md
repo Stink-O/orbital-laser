@@ -141,6 +141,19 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   soft fringe, its stem lifting off the ground and thinning first, the whole drifting, widening and evenly lit, and
   it thins to nothing by about 65 s. The strike ends at 70 s.
   It reaches 1000 blocks.
+- **Nuke** (page three). No beam. Warnings on the action bar (`NUCLEAR DEVICE RELEASED`, `INBOUND`, `TAKE COVER`);
+  from 2 s a dark bomb high over the target falls, faster and faster, a thin pale trail behind it and a red light
+  blinking on its tail; its fall whistles down from high overhead. At 11 s it bursts 45 blocks over the land, in
+  silence: the picture whites out for a moment, the land and the sky lit white then orange, and a white-hot fireball
+  swells to about 100 across within a second. It cools through yellow and orange to a dull red glow inside the cloud
+  as it rises, rolling into a mushroom cloud: a churning toroidal cap with a rounded crown, lit from inside and from
+  below at first, about 400 blocks up by 30 s, on a stem pulled up out of the land with its lumps boiling up it, a
+  wispy white condensation ring round the stem from 15 to 40 s, a skirt of dust round its foot, and its shadow thrown
+  across the land. The shockwave races out at 343 blocks a second, a shell bending the light at its edge, raising a
+  low wall of grey-brown dust; when it reaches the player the boom arrives with it (after the ground's thump, which
+  comes first through the land), the camera jolts and shudders, and muck lands on the lens. Earth and debris rain
+  down for half a minute. From 59 s the cloud loses its billows into a drifting haze, gone by 90 s, when the strike
+  ends. It reaches 1000 blocks.
 
 All of them:
 
@@ -209,6 +222,14 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   every mob and item within 90 killed (not the thrown blocks). Nothing is dug next to water or lava, and the water and lava
   the crater would open are sealed. It keeps about 240 chunks loaded while it
   works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
+- **Nuke:** a crater about 100 across and 18 deep, its edge wandering, its floor scorched (blackstone, basalt, tuff,
+  gravel, cobbled deepslate, coarse dirt) and glazed with greenish glass in patches near the middle, as at Trinity; its
+  rim heaped with earth and broken rock; everything standing on the land swept off out to about 180 (each column up to
+  its real top), the trees felled pointing away from it; past that out to about 280 crowns stripped and many trees
+  knocked flat; the grass charred out to about 240 in streaks running out from the middle; rubble out to about 230;
+  about 160 real blocks thrown out of the crater; every mob and item within 250 killed. Nothing is dug within two
+  blocks of water or lava, and what the crater's walls open is sealed. It keeps about 1,000 chunks loaded while it
+  works; its land goes in through `world.edit-blocks` from the middle out over about 4.6 s after the burst.
 
 ## Commands
 
@@ -216,14 +237,14 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL. FAST needs the fork's release `orbital-mod-api-7`: an older build draws the pass at full size |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's and the Nuke's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL. FAST needs the fork's release `orbital-mod-api-7`: an older build draws the pass at full size |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -301,6 +322,9 @@ slowly from 31 and the strike ends at 40. The Payload is calm until 3 s, comes i
 its blast, the dust's front and the jolt reach the player at 13.6 plus their distance over 343; the column rises
 until about 20 s and goes on growing slowly, the debris is down by about 29, the trail is gone by about 35, the column
 goes soft from 35 to 48 and thins away by about 65, and the strike ends at 70.
+The Nuke's bomb shows at 2 s and bursts at 11; its boom, the dust's front and the jolt reach the player at 11 plus
+their distance over 343 (the ground's thump at five times that speed); the cloud rises fast for 20 s and slowly after, softens from
+59 and is gone by 90, when the strike ends.
 
 ## The effects
 
@@ -368,6 +392,14 @@ air, its top 10 dB down, `blast_far`); the dust's rush and the wind gusting on a
 patter of grit; and a long tail of rolls off the land, further and further off. `/orbital payloadsound alt` swaps the blast and the
 thump for alternatives in the manner of a sound designer's redesign (`blast_alt`, `ground_alt`, `blast_alt_far`: the low boom first, round 50 Hz and broad, sliding down into a second blow, a bright crack, then a wide roar over a heaving 35-65 Hz weight, with the lows' own harmonics so it carries on small speakers too); `main`
 swaps them back; the wheel's BLAST SOUND row (shown while the Payload is loaded or pointed at) does the same.
+The Nuke's ([`tools/sounds_nuke.py`](../tools/sounds_nuke.py)): its fall, one dark roar and a falling whistle high
+overhead, cut dead on the burst; the flash is silent; the ground's thump and shudder first, through the land; the blast
+(`explosion_live` stretched long, a second crack off the ground 50-70 ms after the first, a boom sweeping from ~46 Hz
+down to ~31, a heaving sub tail, the lows' own harmonics for small speakers, the boom coming back off far land and the
+fireball's crackle in distant clusters), cross-faded from 300 to 900 blocks off into the same blast through that much
+air (`blast_far`, its mids kept so it still carries on a laptop); the shockwave's gust and grit going past, a third as
+loud past about 1,100 blocks; debris thudding and pattering down within 700 blocks; and a long rumble rolling in off
+the land for half a minute.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
@@ -430,6 +462,17 @@ own (a few stretched), 2 to 7% of the picture's height, a ring darker than the m
 different strengths, often with a smaller drop beside them, nearly all high on the screen, fading over ten seconds or so; the wall is thinned right round the eye so the picture over it stays clear; the debris is 120 ballistic chunks with drag, torn up across the blast's middle, each blurred
 along its motion, tumbling, the big ones trailing smoke. It costs about 0.3 to 2.5 ms at the preview's 800x450 (2.8 ms
 from 230 blocks with the column filling the view), and 10 to 11 ms at 1920x1080 with the column large.
+
+The Nuke's pass ([`mod/shaders/nuke.wgsl`](../mod/shaders/nuke.wgsl)) is the Payload's grown up and shares its layout
+(the path from `PL_P`, the heightfield from `PL_HF`, 160 debris chunks from `PL_DB`, `nk_table` in
+[`strike/nuke.rs`](../mod/src/strike/nuke.rs)). Its mushroom cloud is one raymarched body: a torus for the cap's roll,
+an ellipsoid crown over it, the stem and the base surge's roll and sheet, all smoothly joined, then bulged in
+cauliflower lumps (capped at `PL_DM`, which the march's bounds, gates and long steps allow for), the lumps turned round
+the roll's core as it churns and carried up the stem; lit by the sun through its own bulk and from inside by the
+fireball's heat, white to orange to a deep red as it cools. The flash, the shockwave's shell, the cloud's shadow on
+the land, the dust and the debris are drawn as the Payload's are. QUALITY FAST marches the cloud, the dust and the trail
+at half size. At 1920x1080 FAST costs about 2 to 3.7 ms and FULL 4 to 10.5 ms, the most close in with the cloud filling
+the view.
 
 At QUALITY FAST (the default, on the fork's `orbital-mod-api-7`) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)

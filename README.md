@@ -73,7 +73,7 @@ Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Ten lasers, five on each page of the wheel.
+Eleven lasers, five to a page of the wheel.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -94,9 +94,14 @@ Ten lasers, five on each page of the wheel.
 - **Payload** (page two). A bright point high in the sky comes down on one long arc from orbit, slow at first, then fast as a fireball,
   crackling and shedding burning chunks, its lumpy smoke trail hanging in the sky: a column of smoke boils up, a wall of dust
   races out over the land and debris rains down, and the column slowly melts into a drifting haze. It leaves a bomb crater.
+- **Nuke** (page three). A dark bomb falls out of the sky and bursts over the land: a blinding white flash, a fireball
+  rising into a mushroom cloud hundreds of blocks tall, its shadow across the land, and a shockwave racing out in a wall
+  of dust. The boom arrives late with the distance. It leaves a crater about 100 blocks across with a glassy floor,
+  the land flattened out to about 180 with the trees felled pointing away, the ground charred in streaks, and every mob
+  within 250 killed.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom, the Sinkhole and the Payload reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -221,10 +226,10 @@ Mods), read the reason it gives first.
    what it does and click to load it. The arrows either side of the ring, the tabs over it or a right-click turn the
    page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar shows
-   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload), then the strike lands where your crosshair is.
+   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload and the Nuke), then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60, the Downfall 64 and the Payload 70.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60, the Downfall 64, the Payload 70 and the Nuke 90.
 
 The wheel also has:
 
@@ -232,7 +237,7 @@ The wheel also has:
   flight, or type any speed up to 1000x in the box beside it and press Enter.
 - **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the status panel shown
   at the top right while you hold either item.
-- A **QUALITY** switch under them: **FAST** (the default) draws the Payload's smoke column, dust and trail at half the
+- A **QUALITY** switch under them: **FAST** (the default) draws the Payload's and the Nuke's smoke, dust and trail at half the
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
   draws every pixel (about two to three times the GPU time). FAST needs the fork's release `orbital-mod-api-7`; on an
   older build it draws at full size, the same as FULL.
@@ -246,7 +251,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator and the Remote |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -254,7 +259,7 @@ The wheel also has:
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
-| `/orbital quality full\|fast` | the Payload's smoke at full size, or at half size (faster; needs `orbital-mod-api-7`); also the wheel's QUALITY switch |
+| `/orbital quality full\|fast` | the Payload's and the Nuke's smoke at full size, or at half size (faster; needs `orbital-mod-api-7`); also the wheel's QUALITY switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
@@ -271,7 +276,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload and the Nuke can aim, and only with **LOD Distance** on in Video Settings.
 - **`STRIKE IN PROGRESS`.** One strike runs at a time. Wait for it to finish.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
