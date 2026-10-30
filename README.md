@@ -96,10 +96,11 @@ Eleven lasers, five to a page of the wheel.
   races out over the land and debris rains down, and the column slowly melts into a drifting haze. It leaves a bomb crater.
 - **Nuke** (page three). A bomb comes in from orbit, a white-hot streak across the sky, cools, opens
   its chute and sinks onto the target, then bursts over the land: a blinding white flash, a fireball
-  rising into a mushroom cloud hundreds of blocks tall, its shadow across the land, and a shockwave racing out in a wall
-  of dust. The boom arrives late with the distance. It leaves a crater about 100 blocks across with a glassy floor,
-  the land flattened out to about 180 with the trees felled pointing away, the ground charred in streaks, and every mob
-  within 250 killed.
+  boiling up into a mushroom cloud hundreds of blocks tall that rolls over on itself, its shadow across the land, and a
+  shockwave racing out in a wall of dust. The boom arrives late with the distance. It leaves a terraced crater about
+  200 blocks across and 40 deep with a glassy floor (flooded where it cuts into water), the land flattened out to about
+  230 with the trees felled pointing away, the ground charred in streaks, what faces the flash scorched out to about
+  480, and every mob within 300 killed.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.

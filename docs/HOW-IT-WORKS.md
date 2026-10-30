@@ -226,14 +226,18 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   every mob and item within 90 killed (not the thrown blocks). Nothing is dug next to water or lava, and the water and lava
   the crater would open are sealed. It keeps about 240 chunks loaded while it
   works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
-- **Nuke:** a crater about 100 across and 18 deep, its edge wandering, its floor scorched (blackstone, basalt, tuff,
-  gravel, cobbled deepslate, coarse dirt) and glazed with greenish glass in patches near the middle, as at Trinity; its
-  rim heaped with earth and broken rock; everything standing on the land swept off out to about 180 (each column up to
-  its real top), the trees felled pointing away from it; past that out to about 280 crowns stripped and many trees
-  knocked flat; the grass charred out to about 240 in streaks running out from the middle; rubble out to about 230;
-  about 160 real blocks thrown out of the crater; every mob and item within 250 killed. Nothing is dug within two
-  blocks of water or lava, and what the crater's walls open is sealed. It keeps about 1,000 chunks loaded while it
-  works; its land goes in through `world.edit-blocks` from the middle out over about 4.6 s after the burst.
+- **Nuke:** a crater about 200 across and 40 deep, its edge wandering, its walls stepped in terraces, its floor scorched
+  (blackstone, basalt, tuff, gravel, cobbled deepslate, coarse dirt) and glazed with greenish glass in patches near the
+  middle, as at Trinity; its rim a broken ridge some ten high of rock and earth turned over; everything standing on the
+  land swept off out to about 230 (each column up to its real top), the trees felled pointing away from it; past that
+  out to about 300 crowns stripped and many trees knocked flat; the grass charred out to about 290 in streaks running
+  out from the middle; rubble out to about 280; about 160 real blocks thrown out of the crater; every mob and item
+  within 300 killed. Past that, out to about 480, the flash scorches what faces the fireball (leaves burnt off, wood
+  and planks charred dark, grass burnt to bare earth, plants gone, wool blackened, the odd fire lit) and leaves what
+  the land, a tree or a wall hides from it as it was, the flash's shadows (a line of sight from the fireball over the
+  land's own heights, read as it starts). Where it cuts into a sea, a lake or a river, the crater fills with still water
+  to the water's own level; no rim is heaped in or by the water; lava it opens is sealed. It keeps about 1,150 chunks
+  loaded while it works; its land goes in through `world.edit-blocks` from the middle out after the burst.
 
 ## Commands
 
