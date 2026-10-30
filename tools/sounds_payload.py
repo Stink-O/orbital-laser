@@ -106,8 +106,24 @@ APPROACH_DB = np.array([
 APPROACH_TRIM = np.array([-3.0, -3.0, -3.5, -3.5, -3.5, -3.5, -5.0, -6.0, -5.0, -3.0])
 
 
+# The fall heard from kilometres off until its last second or so (measured on the third reference, both its strikes,
+# against ours, drift and dive together, each clip at its blast's level): ours stood 4-8 dB over it at 125 Hz-1 kHz
+# from 7 s to 12.5 s, its top (4-16 kHz) 2-8 dB less under its mids than the clip's (-19 to -23 dB against -21 to
+# -35): the roar let down that much (dB, a row per APPROACH_T), its top more, both coming back up as it arrives; the
+# pops with it, so they stand over it as they did.
+APPROACH_FAR = np.array([-3.5, -3.5, -3.5, -3.5, -3.5, -3.5, -3.5, -3.0, -1.5, 0.0, 0.0])
+APPROACH_FAR_TOP = np.array([-4.0, -4.0, -4.0, -4.0, -4.0, -4.0, -4.0, -3.5, -2.0, -0.5, 0.0])
+
+
 def approach_db():
-    return APPROACH_DB + APPROACH_TRIM
+    tab = APPROACH_DB + APPROACH_TRIM + APPROACH_FAR[:, None]
+    tab[:, 6:] += APPROACH_FAR_TOP[:, None] * np.array([0.5, 1.0, 1.0, 1.0])
+    return tab
+
+
+def nearness(ts):
+    """How close it has come, over strike time: 0 while it is kilometres up, 1 as it strikes (the last 1.5 s)."""
+    return np.clip((ts - (HIT - 1.6)) / 1.3, 0, 1)
 
 
 # The pops' level (dB, the 12 ms round each at its usual size) where the drift hands over to the dive; the entry boom
@@ -121,7 +137,9 @@ POP_VERB = 0.08
 # (all the pops, against the levels they had as close clicks: the smear spreads them, the air takes their top)
 POP_FAR_DB = 2.0
 ENTRY_AT = 0.35
-APPROACH_CORR = np.array([1.0, 1.0, 0.99, 0.98, 0.95, 0.92, 0.88, 0.8, 0.7, 0.6])
+# (how alike the two ears are, by octave: one sound overhead; its top as alike as the rest, as a hiss decorrelated in
+# the two ears up there (0.6-0.8, as it was) sat wide round the head, at the ear, all through the fall)
+APPROACH_CORR = np.array([1.0, 1.0, 0.99, 0.98, 0.96, 0.95, 0.94, 0.94, 0.93, 0.92])
 
 
 # `PB.shaped_noise`'s levels are relative (its blast is normalised after): a table's dB come out this much lower, as
@@ -362,35 +380,46 @@ def whine(d, t_at, level_db, bright_db, flutter=1.0):
     L = np.zeros(n); R = np.zeros(n)
     for k, (r, w, g) in enumerate(WHINE_MODES):
         r = r * (1 + 0.012 * PB.slow_random(n, 0.05, 0.2) * flutter)                # (each mode off on its own, slowly)
-        fl = 1 + (0.006 * PB.slow_random(n, 2.0, 7.0) + 0.012 * PB.slow_random(n, 0.2, 1.2)) * flutter
+        # (heard from far off, only its slow drift: the quick flutter and the width come with it, in its last second)
+        near = nearness(ts)
+        fl = 1 + (0.006 * PB.slow_random(n, 2.0, 7.0) * (0.3 + 0.7 * near) + 0.012 * PB.slow_random(n, 0.2, 1.2)) * flutter
         fc = WHINE_F0 * P * r * fl
         wd = w * (1 + 0.5 * np.abs(PB.slow_random(n, 0.5, 3.0)))
         x = glide_band(d, fc, wd)
         # (its level wavering, unevenly: swells and dips, never a held tone)
-        am = np.exp((2.4 * PB.slow_random(n, 0.3, 2.5) + 1.2 * PB.slow_random(n, 4.0, 14.0)) / 8.686)
+        am = np.exp((2.4 * PB.slow_random(n, 0.3, 2.5) + 1.2 * PB.slow_random(n, 4.0, 14.0) * (0.3 + 0.7 * near)) / 8.686)
         lv = 10 ** ((level_db(ts) + g + bright_db(ts) * k / 2.0) / 20)
         y = x * am * lv
         side = glide_band(d, fc * 1.003, wd) * am * lv
-        wide = 0.12 + 0.1 * k
+        wide = (0.12 + 0.1 * k) * (0.35 + 0.65 * near)
         L += y + side * wide; R += y - side * wide
     return L, R
 
 
 def tearing(d, t_at, level_db, lo=1800, hi=6500, rate=(18, 55)):
-    """Air being torn: a band of noise chopped by an irregular, fast flutter (bursts at a few tens a second), swelling
-    unevenly. `level_db` over strike time."""
+    """Air being torn: a band of noise chopped by an irregular flutter, swelling unevenly. `level_db` over strike time.
+    From kilometres up it is one sound overhead (the two ears 0.9 alike), its flutter shallow; only as it arrives
+    (`nearness`) does it chop hard and open out round the head: chopped deep, the two ears apart, it was a breath of
+    torn air right at the ear all through the fall."""
     n = int(SR * d)
     ts = t_at + np.arange(n) / SR
+    near = nearness(ts)
     out = []
     common = PB.slow_random(n, rate[0], rate[1])
+    xs = []
     for _ in range(2):
         x = T.unit(band(rng().standard_normal(n), lo, hi, 2))
+        xs.append(x)
         chop = 0.7 * common + 0.3 * PB.slow_random(n, rate[0], rate[1])
         g = np.clip(chop * 0.9 + 0.35, 0, None) ** 1.6
         g /= np.sqrt(np.mean(g ** 2)) + 1e-9
+        g = 1 + (g - 1) * (0.3 + 0.7 * near)
         sw = np.exp(3.0 * PB.slow_random(n, 0.4, 2.0) / 8.686)
-        out.append(x * g * sw * 10 ** (level_db(ts) / 20))
-    return out[0], out[1]
+        out.append(g * sw * 10 ** (level_db(ts) / 20))
+    c = 0.92 - 0.32 * near
+    x1 = c * xs[0] + np.sqrt(1 - c ** 2) * xs[1]
+    h = 0.5 + 0.5 * near                                          # (the chop the two ears' own, as it arrives)
+    return xs[0] * (out[0] * h + out[1] * (1 - h)), x1 * (out[0] * (1 - h) + out[1] * h)
 
 
 def crackle(d, t_at, rate_fn, level_db, lo=1400, hi=9000):
@@ -547,11 +576,11 @@ def drift():
         L, R = calibrated(lambda tab: roar_body(d, DRIFT_AT, tab), APPROACH_T - DRIFT_AT, approach_db())
         # (it burning up: distinct pops, sparse as it enters, thickening)
         cl, cr = pop_crackle(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT + ENTRY_AT + 0.12, DRIFT_AT + 1.5, DRIFT_AT + 4.0, DIVE_AT], [3.5, 5.0, 7.5, 7.0]) * (u > DRIFT_AT + ENTRY_AT + 0.12),
-                             lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 4.0, DIVE_AT], [POP_DB - 7 + POP_FAR_DB, POP_DB - 3 + POP_FAR_DB, POP_DB - 1.5 + POP_FAR_DB]),
+                             lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 4.0, DIVE_AT], [POP_DB - 7 + POP_FAR_DB, POP_DB - 3 + POP_FAR_DB, POP_DB - 1.5 + POP_FAR_DB]) + np.interp(u, APPROACH_T, APPROACH_FAR),
                              air_fc=lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [3400.0, 4300.0]))
         wl, wr = whine(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DRIFT_AT + 3, DIVE_AT], [-50, -45, -40]),
                        lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-6, 0]))
-        tl, tr = tearing(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-63, -55]), 1400, 5000)
+        tl, tr = tearing(d, DRIFT_AT, lambda u: np.interp(u, [DRIFT_AT, DIVE_AT], [-66, -59]), 900, 3200, (3, 10))
         L = L + wl + tl; R = R + wr + tr
         # far off at first: fading in as it shows, the top coming up as it nears
         g = np.clip(t / 2.0, 0, 1) ** 1.5
@@ -584,15 +613,19 @@ def dive():
         L, R = calibrated(lambda tb: roar_body(d, DIVE_AT, tb), APPROACH_T - DIVE_AT, tab, half=0.25)
         wl, wr = whine(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT - 0.3, HIT], [-40, -37, -34, -33.5]),
                        lambda v: np.interp(v, [DIVE_AT, HIT - 0.6, HIT], [0, 2, 3]), flutter=1.3)
-        tl, tr = tearing(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [-56, -52, -49]), 1400, 5000, (20, 70))
+        tl, tr = tearing(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [-59, -54, -49]), 1100, 4200, (5, 18))
         cl, cr = pop_crackle(d, DIVE_AT, lambda v: np.interp(v, [DIVE_AT, HIT - 1.0, HIT], [6.5, 8.0, 10.0]),
-                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB + POP_FAR_DB, POP_DB + 4 + POP_FAR_DB]), big=1.6, smear=0.6,
+                             lambda v: np.interp(v, [DIVE_AT, HIT], [POP_DB + POP_FAR_DB, POP_DB + 4 + POP_FAR_DB]) + np.interp(v, APPROACH_T, APPROACH_FAR), big=1.6, smear=0.6,
                              air_fc=lambda v: np.interp(v, [DIVE_AT, HIT - 0.8, HIT], [4600.0, 5600.0, 7000.0]))
         # the rush of torn air: a band sweeping up under the whine, louder and faster as it comes
         fc = 330 * (1450 / 330) ** (u ** 1.8)
         rush = glide_band(d, fc, 0.9 + 0.3 * u)
-        rl = rush * 10 ** (np.interp(u, [0, 0.6, 1], [-38, -31, -26]) / 20) * np.exp(1.8 * PB.slow_random(n, 0.5, 3.0) / 8.686)
-        rr = glide_band(d, fc * 1.02, 0.9 + 0.3 * u) * 10 ** (np.interp(u, [0, 0.6, 1], [-38, -31, -26]) / 20) * np.exp(1.8 * PB.slow_random(n, 0.5, 3.0) / 8.686)
+        # (one sound overhead until its last second, the two ears 0.93 alike, opening out round the head as it
+        # arrives: drawn apart in each ear all through, it was right at the ear from the start of the dive)
+        rlv = 10 ** (np.interp(u, [0, 0.6, 0.85, 1], [-43, -38, -32, -27]) / 20)
+        rl = rush * rlv * np.exp(1.8 * PB.slow_random(n, 0.5, 3.0) / 8.686)
+        c_ = np.interp(u, [0, 0.7, 1], [0.93, 0.9, 0.6])
+        rr = (c_ * rush + np.sqrt(1 - c_ ** 2) * glide_band(d, fc * 1.02, 0.9 + 0.3 * u)) * rlv * np.exp(1.8 * PB.slow_random(n, 0.5, 3.0) / 8.686)
         # the weight of it bearing down: a sub coming up under the roar
         sub = T.unit(band(white(d), 24, 70, 2)) * 10 ** (np.interp(u, [0, 0.7, 1], [-42, -36, -31]) / 20)
         # (its pops coming up over the hand-over, as the drift's go: never the two files' big ones together)
