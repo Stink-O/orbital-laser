@@ -25,7 +25,7 @@ shaders="$here/../mod/shaders"
 cat "$here/wgslcheck/prelude.wgsl" "$shaders/strike.wgsl" > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "strike.wgsl:"; echo "$out"; exit 1; }
 pre() { sed -e '/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d' -e '/^@fragment/,$d' "$shaders/strike.wgsl"; }
-for own in downfall planetkiller crystalbloom sinkhole payload; do
+for own in downfall planetkiller crystalbloom sinkhole payload nuke; do
     { cat "$here/wgslcheck/prelude.wgsl"; pre; cat "$shaders/$own.wgsl"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass (strike.wgsl up to its fs_main, then $own.wgsl):"; echo "$out"; exit 1; }
     # the game takes a pass of 256 KiB at most
@@ -33,6 +33,8 @@ for own in downfall planetkiller crystalbloom sinkhole payload; do
     [ "$size" -le 262144 ] || { echo "the $own pass is $size bytes, over the game's 256 KiB"; exit 1; }
 done
 # the payload's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
-{ cat "$here/wgslcheck/prelude.wgsl"; pre; sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d' "$shaders/payload.wgsl"; } > "$tmp"
-out=$("$bin" "$tmp" 2>&1) || { echo "the payload pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
+for own in payload nuke; do
+    { cat "$here/wgslcheck/prelude.wgsl"; pre; sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d' "$shaders/$own.wgsl"; } > "$tmp"
+    out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
+done
 echo OK

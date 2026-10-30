@@ -47,7 +47,7 @@ const BLURB_LINES: usize = 2;
 const MSG: Rect = Rect { x: R_OUT, y: -R_OUT - 33.0, w: 84.0, h: 12.0 };
 /// The status panel's switch, under the messages'.
 const HUD: Rect = Rect { x: MSG.x, y: MSG.y + MSG.h + 2.0, w: MSG.w, h: MSG.h };
-/// The quality switch, under the panel's: the Payload's smoke at full size or half (`/orbital quality`).
+/// The quality switch, under the panel's: the Payload's and the Nuke's smoke at full size or half (`/orbital quality`).
 const QUALITY: Rect = Rect { x: MSG.x, y: HUD.y + HUD.h + 2.0, w: MSG.w, h: MSG.h };
 /// Stopping the strike under way, top left, the switches' mirror; there only while one is.
 const STOP: Rect = Rect { x: -MSG.x - MSG.w, y: MSG.y, w: MSG.w, h: MSG.h * 2.0 + 2.0 };
@@ -489,7 +489,7 @@ impl Wheel {
             Some(Spot::Centre) => ("Terrain damage on or off".to_string(), 0x8C93A0),
             Some(Spot::Messages) => ("Strike messages on or off".to_string(), 0x8C93A0),
             Some(Spot::Hud) => ("Status panel on or off".to_string(), 0x8C93A0),
-            Some(Spot::Quality) => ("Payload's smoke: FAST half size, FULL every pixel".to_string(), 0x8C93A0),
+            Some(Spot::Quality) => ("Payload and Nuke smoke: FAST half size, FULL all".to_string(), 0x8C93A0),
             Some(Spot::Stop) => ("End the strike now: its effects, sounds and world changes".to_string(), 0x8C93A0),
             Some(Spot::Approach(k)) => (format!("Comes in {}", APPROACHES[k].label), 0x8C93A0),
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),

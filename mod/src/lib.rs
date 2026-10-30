@@ -37,6 +37,7 @@ const PLANET_PASS: &str = include_str!("../shaders/planetkiller.wgsl");
 const CRYSTAL_PASS: &str = include_str!("../shaders/crystalbloom.wgsl");
 const SINKHOLE_PASS: &str = include_str!("../shaders/sinkhole.wgsl");
 const PAYLOAD_PASS: &str = include_str!("../shaders/payload.wgsl");
+const NUKE_PASS: &str = include_str!("../shaders/nuke.wgsl");
 fn own_pass(own: &str) -> String {
     let mut out = String::with_capacity(SHADER.len() + own.len());
     let mut skip = false;
@@ -62,12 +63,20 @@ fn own_pass(own: &str) -> String {
 /// smoke drawn at half the width and height, on a game with mod passes' half-size stage; a game without it draws the
 /// pass's `fs_main`, at full size), FULL leaves it out.
 fn payload_pass(fast: bool) -> String {
+    split_pass(PAYLOAD_PASS, fast)
+}
+/// The Nuke's, the same way (nuke.wgsl's `[half stage]`: its cloud, dust and trail at half size).
+fn nuke_pass(fast: bool) -> String {
+    split_pass(NUKE_PASS, fast)
+}
+/// A pass with a half-size stage, at QUALITY FAST (kept) or FULL (left out).
+fn split_pass(src: &str, fast: bool) -> String {
     if fast {
-        return own_pass(PAYLOAD_PASS);
+        return own_pass(src);
     }
-    let mut own = String::with_capacity(PAYLOAD_PASS.len());
+    let mut own = String::with_capacity(src.len());
     let mut skip = false;
-    for line in PAYLOAD_PASS.lines() {
+    for line in src.lines() {
         if line.starts_with("// [half stage]") {
             skip = true;
         }
@@ -89,6 +98,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "crystalbloom" => 3,
         "sinkhole" => 4,
         "payload" => 5,
+        "nuke" => 6,
         _ => 0,
     }
 }
@@ -156,10 +166,10 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's), the one the
     /// game last compiled,
     /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [String; 6],
+    passes: [String; 7],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -450,13 +460,15 @@ impl Orbital {
         }
         self.fast = fast;
         self.save();
-        let pl = pass_of(LASERS.iter().find(|l| l.key == "payload").expect("the payload"));
-        self.passes[pl] = payload_pass(fast);
-        if self.compiled == Some(pl) {
-            self.compiled = None;
-            if self.strike.is_some() {
-                render::set_post(&self.passes[pl]);
-                self.compiled = Some(pl);
+        for (key, build) in [("payload", payload_pass as fn(bool) -> String), ("nuke", nuke_pass)] {
+            let pl = pass_of(LASERS.iter().find(|l| l.key == key).expect("the laser"));
+            self.passes[pl] = build(fast);
+            if self.compiled == Some(pl) {
+                self.compiled = None;
+                if self.strike.is_some() {
+                    render::set_post(&self.passes[pl]);
+                    self.compiled = Some(pl);
+                }
             }
         }
         self.update_panel();
@@ -501,7 +513,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" {
+        if laser.key == "payload" || laser.key == "nuke" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
         }
@@ -706,7 +718,7 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" {
+            if l.key == "payload" || l.key == "nuke" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
             if (self.fly - 1.0).abs() > 1e-4 {
@@ -739,12 +751,12 @@ impl Mod for Orbital {
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS), payload_pass(fast)],
+            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS), payload_pass(fast), nuke_pass(fast)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
                 let mine = pass_of(LASERS[laser]);
-                (0..6).filter(|&i| i != mine).chain([mine]).collect()
+                (0..7).filter(|&i| i != mine).chain([mine]).collect()
             },
             warming: false,
             carving: std::collections::VecDeque::new(),
@@ -805,7 +817,7 @@ impl Mod for Orbital {
                     // (the sinkhole comes from nothing overhead: it reads the ground under the crosshair instead)
                     let what = match l.key {
                         "sinkhole" => "SEISMIC SCAN",
-                        "payload" => "DESIGNATING",
+                        "payload" | "nuke" => "DESIGNATING",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
@@ -930,7 +942,7 @@ impl Mod for Orbital {
             ))),
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
-                Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's smoke at half size" } else { "full: every pixel" })))
+                Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's and the Nuke's smoke at half size" } else { "full: every pixel" })))
             }
             (Some("quality"), None) => Ok(Some(format!(
                 "Quality: {} (/orbital quality full or fast)",
@@ -980,8 +992,9 @@ mod tests {
             (super::CRYSTAL_PASS, &["fn ray_seg(", "fn mh(", "fn gfbm3(", "fn crystal_bloom(", "fn rot_axis("][..]),
             (super::SINKHOLE_PASS, &["fn mh(", "fn vnoise3(", "fn sinkhole(", "fn rot_axis(", "fn ign("][..]),
             (super::PAYLOAD_PASS, &["fn mh(", "fn gnoise3(", "fn payload(", "fn ign("][..]),
+            (super::NUKE_PASS, &["fn mh(", "fn gnoise3(", "fn nuke(", "fn ign("][..]),
         ] {
-            let p = if own == super::PAYLOAD_PASS { super::payload_pass(false) } else { super::own_pass(own) };
+            let p = if own == super::PAYLOAD_PASS || own == super::NUKE_PASS { super::split_pass(own, false) } else { super::own_pass(own) };
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
                 assert!(!p.contains(gone), "{gone}");
             }
@@ -997,6 +1010,10 @@ mod tests {
         assert_eq!(fast.matches("@fragment").count(), 3);
         assert!(fast.contains("fn fs_half(") && fast.contains("fn fs_join(") && fast.len() <= 256 << 10);
         assert!(!super::payload_pass(false).contains("half_picture"));
+        let fast = super::nuke_pass(true);
+        assert_eq!(fast.matches("@fragment").count(), 3);
+        assert!(fast.contains("fn fs_half(") && fast.contains("fn fs_join(") && fast.len() <= 256 << 10);
+        assert!(!super::nuke_pass(false).contains("half_picture"));
         assert!(super::SHADER.len() <= 256 << 10);
         assert!(!super::own_pass(super::PLANET_PASS).contains("fn downfall("));
         assert!(!super::own_pass(super::CRYSTAL_PASS).contains("fn planet_killer("));

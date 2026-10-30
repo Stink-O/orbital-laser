@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke"]
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -100,10 +100,17 @@ VIEWS = {
     "plclose": "cx=0 cy=69 cz=45 lx=0.5 ly=120 lz=0.5 flat=1 fov=75 reach=45",
     # high up, some 250 blocks off, the column large in the frame (as the user saw its lumps lined up in a grid)
     "plhigh": "cx=60 cy=190 cz=240 lx=0.5 ly=150 lz=0.5 flat=1 fov=60 reach=250",
+    # the nuke: from 700 blocks off on the ground (the player's), from 1,800 off, 350 off as the shockwave arrives,
+    # looking up at the bomb as it falls, from high above, and at dusk from the player's spot (add sunel=2 sunaz=200)
+    "nkplayer": "cx=0 cy=67 cz=700 lx=0.5 ly=220 lz=0.5 flat=1 trees=1 fov=70 reach=700",
+    "nkfar": "cx=150 cy=100 cz=1800 lx=0.5 ly=280 lz=0.5 flat=1 fov=60 reach=1800",
+    "nkclose": "cx=0 cy=67 cz=350 lx=0.5 ly=260 lz=0.5 flat=1 trees=1 fov=80 reach=350",
+    "nksky": "cx=0 cy=67 cz=700 lx=-150 ly=700 lz=0 flat=1 trees=1 fov=70 reach=700",
+    "nkaerial": "cx=0 cy=1100 cz=1300 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=700",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
-                 "payload": "plplayer,plsky,pltop"}
+                 "payload": "plplayer,plsky,pltop", "nuke": "nkplayer,nkfar,nkclose"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Path:
@@ -112,7 +119,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Pat
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
@@ -130,12 +137,13 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
-    if laser == "payload":
+    if laser in ("payload", "nuke"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
         env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills)
-        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "pl_write_table", "--", "--ignored"],
+        test = "nk_write_table" if laser == "nuke" else "pl_write_table"
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
     seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
@@ -183,7 +191,7 @@ def main() -> int:
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={LASERS.index(a.laser)}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
-    if a.laser == "payload":
+    if a.laser in ("payload", "nuke"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     shots = []
@@ -193,7 +201,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke") else None
     env = dict(env or os.environ)
     if a.whole:
         env["PREVIEW_WHOLE"] = "1"

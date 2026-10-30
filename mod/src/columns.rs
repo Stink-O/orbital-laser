@@ -90,6 +90,11 @@ pub fn get(tag: u32) -> Option<Rc<Answer>> {
     STORE.with(|s| s.borrow().got.get(&tag).cloned())
 }
 
+/// Query `tag`'s answer, once it is in, forgotten here (a big read's answers are taken in once and let go).
+pub fn take(tag: u32) -> Option<Rc<Answer>> {
+    STORE.with(|s| s.borrow_mut().got.remove(&tag))
+}
+
 /// Forget everything asked and answered (a new strike).
 pub fn clear() {
     STORE.with(|s| {

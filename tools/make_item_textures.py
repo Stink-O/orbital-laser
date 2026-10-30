@@ -51,6 +51,11 @@ K = {  # palette
     "a": (206, 210, 220, 255),    # the payload's pale trail
     "A": (74, 76, 84, 255),       # its dark smoke
     "R": (46, 47, 52, 255),       # its darker smoke
+    "f": (255, 246, 214, 255),    # the nuke's white-hot fireball
+    "F": (255, 168, 60, 255),     # its orange glow
+    "i": (196, 92, 40, 255),      # its glowing underside
+    "I": (150, 136, 122, 255),    # its sunlit cloud
+    "N": (98, 86, 78, 255),       # its shadowed cloud
 }
 
 def designator():
@@ -304,13 +309,32 @@ PAYLOAD_ICON = [         # the payload: a pale trail looping high up, then the d
     "oOyOo...........",
 ]
 
-GRIDS = {"payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+NUKE_ICON = [            # the nuke: a mushroom cloud, its cap glowing orange underneath, its stem on a burning land
+    "....IIIIIII.....",
+    "..IIIIfIIIII....",
+    ".IIIFfffFIIII...",
+    "IIIFFFfFFFIIIN..",
+    "INIFFiFFiFFNIN..",
+    "NNiiiNFFNiiiNN..",
+    ".NNii.FF..iNN...",
+    "......FF........",
+    ".....NFFN.......",
+    ".....IFFI.......",
+    "....NIFFIN......",
+    "....IFFFFI......",
+    "..NIFFffFFIN....",
+    ".NIIFFffFFIIN...",
+    "jjJjiFFFFijJjj..",
+    "JJjJJiiiiJJjJJ..",
+]
+
+GRIDS = {"nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:
