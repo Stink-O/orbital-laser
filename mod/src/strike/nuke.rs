@@ -72,7 +72,7 @@ const NK_BELOW: u32 = 36;
 const NK_ABOVE: u32 = 1;
 const NK_PARTS: i32 = 32;
 /// The blast's edits worked out in this many bands of rows, a stage each.
-const NK_BANDS: i32 = 180;
+const NK_BANDS: i32 = 90;
 /// Mobs and dropped items within NK_KILL killed as it bursts.
 const NK_KILL: i32 = 300;
 /// Real blocks thrown out of the crater as it bursts (nk_thrown).
@@ -609,7 +609,17 @@ fn nk_land_step(q: &mut Plan, land: Shared, tags: Rc<Vec<u32>>, part: usize, at_
         return;
     };
     take_in(&mut land.borrow_mut(), &a, q.bx, q.bz);
-    q.later(at_t + 0.05, move |q| nk_land_step(q, land, tags, part + 1, at_t + 0.05, retry));
+    // (and the parts after it already in, in the same stage: a stage a part would queue behind the blast's)
+    let mut part = part + 1;
+    let mut n = 1;
+    while part < tags.len() && n < 8 {
+        let Some(a) = crate::columns::get(tags[part]) else { break };
+        let _ = crate::columns::take(tags[part]);
+        take_in(&mut land.borrow_mut(), &a, q.bx, q.bz);
+        part += 1;
+        n += 1;
+    }
+    q.later(at_t + 0.05, move |q| nk_land_step(q, land, tags, part, at_t + 0.05, retry));
 }
 
 // ---- the crater and what lies round it -------------------------------------------------------------------------------
@@ -865,7 +875,7 @@ fn nk_felled(q: &mut Plan, shared: Shared, shape: Shape, used: Used, k0: i32, k1
     nk_felled_band(q, &shared.borrow(), &shape, &used, k0, k1);
 }
 /// The felled trees go in once the blast's bands are all in (which clear what stood there).
-const NK_LAID: f32 = NK_HIT + 0.08 + 0.025 * NK_BANDS as f32 + 0.3;
+const NK_LAID: f32 = NK_HIT + 0.08 + 0.05 * NK_BANDS as f32 + 0.3;
 fn nk_felled_band(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
     let mut used = used.borrow_mut();
@@ -1074,7 +1084,11 @@ const NK_FLASH: i32 = 480;
 const NK_FL_W: i32 = 2 * NK_FLASH + 1;
 const NK_FL_PARTS: i32 = 32;
 const NK_FL_BELOW: u32 = 30;
-const NK_FL_BANDS: i32 = 100;
+/// The line of sight worked out along NK_FL_RAYS rays out from the fireball, in NK_FL_SWEEPS stages; then the edits in
+/// NK_FL_BANDS stages of rows.
+const NK_FL_RAYS: i32 = 3400;
+const NK_FL_SWEEPS: i32 = 16;
+const NK_FL_BANDS: i32 = 12;
 /// What a column holds that the flash changes, a bit each: the leaves of each wood (0-8), the logs of each (9-17),
 /// a grass block on top (18), the plants (19-24), wool and carpet (25-26), planks of three woods (27-29).
 const FL_PLANTS: [&str; 6] = ["minecraft:short_grass", "minecraft:tall_grass", "minecraft:fern", "minecraft:large_fern", "minecraft:dandelion", "minecraft:poppy"];
@@ -1102,27 +1116,37 @@ fn fl_bit(name: &str) -> u32 {
     FL_OTHER.iter().position(|(l, _)| *l == n).map_or(0, |i| 1 << (25 + i))
 }
 struct Flash {
-    /// Each column's top (i16::MIN: not known), its ground, what it holds; over the square out to NK_FLASH.
+    /// Each column's top (i16::MIN: not known), its ground, what it holds, and the lowest of it the fireball sees
+    /// (i16::MAX: not worked out); over the square out to NK_FLASH. How many of the reads are in.
     top: Vec<i16>,
     g: Vec<i16>,
     mats: Vec<u32>,
+    seen: Vec<i16>,
+    parts: usize,
 }
 type FlashShared = Rc<RefCell<Flash>>;
 fn fl_idx(bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
     let (i, k) = (x - bx + NK_FLASH, z - bz + NK_FLASH);
     (i >= 0 && k >= 0 && i < NK_FL_W && k < NK_FL_W).then(|| (k * NK_FL_W + i) as usize)
 }
-/// The ring's columns read in part `part` (rows of the square, past NK_READ and within NK_FLASH).
+/// The ring's columns read in part `part` (a run of rows of it, past NK_READ and within NK_FLASH, about as many columns
+/// in each part: some 15,000, half a query's worth at NK_FL_BELOW deep).
 fn fl_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
-    let rows = (NK_FL_W + NK_FL_PARTS - 1) / NK_FL_PARTS;
+    let ring = |dz: i32, dx: i32| {
+        let r2 = dx * dx + dz * dz;
+        r2 > NK_READ * NK_READ && r2 <= NK_FLASH * NK_FLASH
+    };
+    let count = |dz: i32| (-NK_FLASH..=NK_FLASH).filter(|&dx| ring(dz, dx)).count();
+    let total: usize = (-NK_FLASH..=NK_FLASH).map(count).sum();
+    let per = total.div_ceil(NK_FL_PARTS as usize);
     let mut out = Vec::new();
-    for k in part * rows..((part + 1) * rows).min(NK_FL_W) {
-        let dz = k - NK_FLASH;
-        for dx in -NK_FLASH..=NK_FLASH {
-            let r2 = dx * dx + dz * dz;
-            if r2 > NK_READ * NK_READ && r2 <= NK_FLASH * NK_FLASH {
-                out.push((bx + dx, bz + dz));
-            }
+    let mut seen = 0usize;
+    for dz in -NK_FLASH..=NK_FLASH {
+        let n = count(dz);
+        let k = (seen + n / 2) / per;
+        seen += n;
+        if k as i32 == part || (part == NK_FL_PARTS - 1 && k as i32 > part) {
+            out.extend((-NK_FLASH..=NK_FLASH).filter(|&dx| ring(dz, dx)).map(|dx| (bx + dx, bz + dz)));
         }
     }
     out
@@ -1169,51 +1193,78 @@ fn nk_flash_step(q: &mut Plan, fl: FlashShared, tags: Rc<Vec<u32>>, part: usize,
         return;
     };
     fl_take_in(&mut fl.borrow_mut(), &a, q.bx, q.bz);
+    fl.borrow_mut().parts += 1;
+    // (the next but one asked for only now: a few megabytes an answer, they are kept in hand two at a time)
+    if part + 2 < tags.len() {
+        let columns = fl_columns(q.bx, q.bz, part as i32 + 2);
+        q.ev.push((at_t, Act::Read { tag: tags[part + 2], columns, below: NK_FL_BELOW, above: 1 }));
+    }
     q.later(at_t + 0.05, move |q| nk_flash_step(q, fl, tags, part + 1, at_t + 0.05));
 }
-/// The flash's scorching over rows k0..k1 of its square: each column's lowest block the fireball sees (the land, the
-/// trees and the walls between looked along the line to it, closely near the column, coarsely further off), and what
-/// lies over that changed, more surely the nearer it is.
-fn nk_flash_rows(q: &mut Plan, fl: &Flash, land: &Land, s: &Shape, gy: i32, k0: i32, k1: i32, at_t: f32) {
+/// The flash's line of sight along rays j0..j1 out from the fireball: going out along each, the steepest the land and
+/// what stands on it rise towards the fireball so far, and so for each column past the blast's reach the lowest of it
+/// the fireball sees over them (the land, the trees and the walls between). Waits for the land to be in.
+fn nk_flash_sweep(q: &mut Plan, fl: FlashShared, land: Shared, s: Shape, gy: i32, j0: i32, j1: i32, now: f32) {
+    if (fl.borrow().parts < NK_FL_PARTS as usize || !land.borrow().done) && now < NK_HIT - 1.5 {
+        q.later(now + 0.1, move |q| nk_flash_sweep(q, fl, land, s, gy, j0, j1, now + 0.1));
+        return;
+    }
     let (bx, bz) = (q.bx, q.bz);
     let hb = f64::from(gy) + NK_BURST;
-    let height = |x: i32, z: i32| -> Option<f64> {
-        if let Some(c) = at(land, bx, bz, x, z) {
-            return Some(f64::from(c.top));
+    let land = land.borrow();
+    let mut fl = fl.borrow_mut();
+    for j in j0..j1 {
+        let th = TAU * f64::from(j) / f64::from(NK_FL_RAYS);
+        let (ux, uz) = (th.cos(), th.sin());
+        // (the steepest slope from the fireball to anything passed so far)
+        let mut m = f64::NEG_INFINITY;
+        let mut last = (i32::MIN, i32::MIN);
+        let mut d = 2.0;
+        while d <= f64::from(NK_FLASH) {
+            let (x, z) = ((s.cx + ux * d).floor() as i32, (s.cz + uz * d).floor() as i32);
+            if (x, z) != last {
+                last = (x, z);
+                let h = if let Some(c) = at(&land, bx, bz, x, z) {
+                    Some(f64::from(c.top))
+                } else {
+                    fl_idx(bx, bz, x, z).filter(|&i| fl.top[i] != i16::MIN).map(|i| f64::from(fl.top[i]))
+                };
+                if d > f64::from(NK_READ)
+                    && let Some(i) = fl_idx(bx, bz, x, z)
+                {
+                    // (seen from its own top down to where the slope so far passes over it)
+                    let lo = (hb + m * d).ceil();
+                    let lo = if lo.is_finite() { lo.clamp(-32000.0, 32000.0) as i16 } else { i16::MIN };
+                    fl.seen[i] = fl.seen[i].min(lo);
+                }
+                if let Some(h) = h {
+                    m = m.max((h + 1.0 - hb) / d);
+                }
+            }
+            d += 0.7;
         }
-        let ix = fl_idx(bx, bz, x, z)?;
-        (fl.top[ix] != i16::MIN).then(|| f64::from(fl.top[ix]))
-    };
+    }
+}
+/// The flash's scorching over rows k0..k1 of its square: what lies over the lowest of each column the fireball sees
+/// changed, more surely the nearer it is.
+fn nk_flash_rows(q: &mut Plan, fl: &Flash, s: &Shape, k0: i32, k1: i32, at_t: f32) {
+    let (bx, bz) = (q.bx, q.bz);
     let mut b = Blocks::default();
     for k in k0..k1 {
         for i in 0..NK_FL_W {
             let (x, z) = (bx - NK_FLASH + i, bz - NK_FLASH + k);
             let ix = (k * NK_FL_W + i) as usize;
             let m = fl.mats[ix];
-            if m == 0 || fl.top[ix] == i16::MIN {
+            if m == 0 || fl.top[ix] == i16::MIN || fl.seen[ix] == i16::MAX {
                 continue;
             }
-            let (dx, dz) = (s.cx - (f64::from(x) + 0.5), s.cz - (f64::from(z) + 0.5));
-            let r = dx.hypot(dz);
+            let r = (s.cx - (f64::from(x) + 0.5)).hypot(s.cz - (f64::from(z) + 0.5));
             if r <= f64::from(NK_READ) || r > f64::from(NK_FLASH) {
                 continue;
             }
-            let (ux, uz) = (dx / r, dz / r);
-            // (the line from the fireball to a height y here passes over a point s blocks on towards it at
-            // y + (hb - y) * s / r: blocked where the land or what stands on it reaches over that)
-            let mut hs = f64::NEG_INFINITY;
-            let mut sd = 1.0;
-            while sd < r - 60.0 {
-                let (sx, sz) = ((f64::from(x) + 0.5 + ux * sd).floor() as i32, (f64::from(z) + 0.5 + uz * sd).floor() as i32);
-                if let Some(h) = height(sx, sz) {
-                    let f = sd / r;
-                    hs = hs.max((h + 1.0 - hb * f) / (1.0 - f));
-                }
-                sd += if sd < 16.0 { 1.0 } else if sd < 48.0 { 2.0 } else if sd < 96.0 { 6.0 } else { 16.0 };
-            }
             let top = i32::from(fl.top[ix]);
             let g = i32::from(fl.g[ix]);
-            let lo = (hs.ceil() as i32).max(g);
+            let lo = i32::from(fl.seen[ix]).max(g);
             if lo > top {
                 continue;
             }
@@ -1413,8 +1464,8 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         order.sort_by_key(|&j| (2 * j + 1 - bands).abs());
         for (n, &j) in order.iter().enumerate() {
             let (k0, k1) = (j * rows, ((j + 1) * rows).min(NK_GW));
-            let t = 3.0 + 0.02 * n as f32;
-            let at = NK_HIT + 0.08 + 0.025 * n as f32;
+            let t = 3.0 + 0.04 * n as f32;
+            let at = NK_HIT + 0.08 + 0.05 * n as f32;
             let l1 = land.clone();
             p.later(t, move |q| nk_blast_rows(q, l1, shape, k0, k1, at, t));
         }
@@ -1439,11 +1490,13 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
             top: vec![i16::MIN; (NK_FL_W * NK_FL_W) as usize],
             g: vec![0; (NK_FL_W * NK_FL_W) as usize],
             mats: vec![0; (NK_FL_W * NK_FL_W) as usize],
+            seen: vec![i16::MAX; (NK_FL_W * NK_FL_W) as usize],
+            parts: 0,
         }));
         let ftags: Rc<Vec<u32>> = Rc::new((0..NK_FL_PARTS).map(|_| crate::columns::new_tag()).collect());
-        for part in 0..NK_FL_PARTS {
+        for part in 0..2 {
             let ftags = ftags.clone();
-            let t = 1.8 + 0.05 * part as f32;
+            let t = 1.0 + 0.05 * part as f32;
             p.later(t, move |q| {
                 let columns = fl_columns(q.bx, q.bz, part);
                 q.ev.push((t, Act::Read { tag: ftags[part as usize], columns, below: NK_FL_BELOW, above: 1 }));
@@ -1451,15 +1504,21 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         }
         {
             let fl = fl.clone();
-            p.later(2.0, move |q| nk_flash_step(q, fl, ftags, 0, 2.0));
+            p.later(1.2, move |q| nk_flash_step(q, fl, ftags, 0, 1.2));
+        }
+        let gyi = by + 1;
+        let per = (NK_FL_RAYS + NK_FL_SWEEPS - 1) / NK_FL_SWEEPS;
+        for j in 0..NK_FL_SWEEPS {
+            let (fl, land) = (fl.clone(), land.clone());
+            let t = 4.5 + 0.1 * j as f32;
+            p.later(t, move |q| nk_flash_sweep(q, fl, land, shape, gyi, j * per, ((j + 1) * per).min(NK_FL_RAYS), t));
         }
         let rows = (NK_FL_W + NK_FL_BANDS - 1) / NK_FL_BANDS;
-        let gyi = by + 1;
         for j in 0..NK_FL_BANDS {
-            let (fl, land) = (fl.clone(), land.clone());
-            let t = 5.2 + 0.05 * j as f32;
-            let at = NK_HIT + 0.05 + 0.016 * j as f32;
-            p.later(t, move |q| nk_flash_rows(q, &fl.borrow(), &land.borrow(), &shape, gyi, j * rows, ((j + 1) * rows).min(NK_FL_W), at));
+            let fl = fl.clone();
+            let t = 8.0 + 0.1 * j as f32;
+            let at = NK_HIT + 0.05 + 0.12 * j as f32;
+            p.later(t, move |q| nk_flash_rows(q, &fl.borrow(), &shape, j * rows, ((j + 1) * rows).min(NK_FL_W), at));
         }
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
