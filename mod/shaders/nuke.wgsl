@@ -178,13 +178,13 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
     let rt = (*col).rt;
     let hc = (*col).hc;
     // (the cap: a fat roll, its underside a little flattened, a dome over its middle)
-    let tq = vec2<f32>(rho - Rt, (hy - hc) * select(1.35, 1.6, hy < hc));
+    let tq = vec2<f32>(rho - Rt, (hy - hc) * select(1.6, 1.6, hy < hc));
     var d = length(tq) - rt;
     // (the dome over it higher than the roll's top, so the cap is one rounded crown, not two lobes with a dip between)
     // (an ellipsoid's distance near enough true all round it, not squeezed sideways: squeezed, the dome's smoke
     // thickened too slowly into it and its middle was a thin haze the glow showed through)
-    let er = vec3<f32>(Rt + 0.85 * rt, 0.86 * rt, Rt + 0.85 * rt);
-    let eq = vec3<f32>(q.x, hy - hc - 0.22 * rt, q.z);
+    let er = vec3<f32>(Rt + 0.8 * rt, 1.0 * rt, Rt + 0.8 * rt);
+    let eq = vec3<f32>(q.x, hy - hc - 0.3 * rt, q.z);
     let ek0 = length(eq / er);
     let dome = ek0 * (ek0 - 1.0) / max(length(eq / (er * er)), 1.0e-6);
     d = smin(d, dome, 0.35 * rt);
@@ -208,7 +208,7 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
         d = smin(d, ds + 14.0 * smoothstep(0.0, 0.6, inner.x) + settle, 22.0);
         // (and a low sheet of dust inside the roll, from it in to the stem's foot: a skirt, not a tyre)
         let sheet = max(rho - sg.x, abs(hy - 0.2 * sg.z) - 0.32 * sg.z);
-        d = smin(d, sheet + 4.0 + settle, 18.0);
+        d = smin(d, sheet + 11.0 + settle, 18.0);
     }
     // (the ring round the stem: a thin flat collar)
     var dr = 1.0e6;
@@ -285,7 +285,7 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let up = smoothstep(40.0, 200.0, hy);
     // (the crown over the middle smoother than the roll: its big swells let down, so it stays one rounded dome)
     let crown = (1.0 - smoothstep(0.3 * (*col).Rt, (*col).Rt + 0.3 * (*col).rt, rho)) * smoothstep((*col).hc, (*col).hc + 0.5 * (*col).rt, hy);
-    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.35 * crown) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.65 * crown) + 8.0 * (w2 - 0.5)) * lump;
+    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.2 * crown) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.35 * crown) + 8.0 * (w2 - 0.5)) * lump;
     let ew = smoothstep(0.6, 0.82, w2);
     let edge = mix(1.5, 6.0, ew) + 10.0 * (1.0 - smoothstep(0.0, 60.0, hy));
     var fray = 0.5;
@@ -969,6 +969,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     ringw = rd0 / max(rd0 + den, 1.0e-4);
                     den = den + rd0;
                 }
+                // (the base surge's dust thinner than the cloud's smoke: the land shows through it in places)
+                let sw = (1.0 - smoothstep(25.0, 70.0, p.y - C.y)) * smoothstep(0.8 * cl.sr.x, 1.6 * cl.sr.x, length((p - C).xz));
+                den = den * (1.0 - 0.5 * sw);
                 if (soft > 0.0 && den > 0.002) {
                     let mt = gnoise3((p + cam) * (1.0 / 20.0) - pl_wind() * (a * 0.09) + vec3<f32>(0.0, -0.05 * a, 0.0));
                     den = den * mix(1.0, saturate(0.2 + 1.6 * mt), soft);
@@ -991,7 +994,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let ao = mix((0.65 + 0.35 * sd.y) * (1.0 - 0.55 * deep), 0.75, soft);
                     let mv = 0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5);
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
-                    var alb = mix(vec3<f32>(0.52, 0.46, 0.39), sootc, smoothstep(0.08, 0.45, hy)) * mv;
+                    var alb = mix(vec3<f32>(0.43, 0.38, 0.32), sootc, smoothstep(0.08, 0.45, hy)) * mv;
                     alb = mix(alb, vec3<f32>(0.85, 0.86, 0.88), ringw);
                     let skyg = mix(mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45), fogl, 0.15) * (1.0 - 0.35 * warm);
                     var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * (1.0 - 0.6 * warm) * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
