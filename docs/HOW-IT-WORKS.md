@@ -223,6 +223,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL. FAST needs the fork's release `orbital-mod-api-7`: an older build draws the pass at full size |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -252,7 +253,9 @@ Horizon's API 0.1 still load unchanged. The mod reads its events with `input.pol
 which is what keeps that true. The fork's later additions (`world.set-flying-speed`, `input.poll-typed`,
 `world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`, and
 `world.read-columns` from `orbital-mod-api-6`) are needed
-too: a fork build without them won't start the mod.
+too: a fork build without them won't start the mod. `orbital-mod-api-7` adds a half-size stage to a mod's post pass
+(no new import: the pass's source says whether it has one), which QUALITY FAST uses; on `orbital-mod-api-6` the mod
+runs as before, drawing the Payload's pass at full size.
 
 A strike's world changes go through a budget of 20,000 blocks and 400 commands a tick, and the rest wait for the next
 tick. The Planet Killer's crater is too big for commands, so it is written straight into the chunks with
@@ -426,7 +429,19 @@ after it muck lands on the lens, out of focus, as measured from a reference clip
 own (a few stretched), 2 to 7% of the picture's height, a ring darker than the middle, soft at the edge, of very
 different strengths, often with a smaller drop beside them, nearly all high on the screen, fading over ten seconds or so; the wall is thinned right round the eye so the picture over it stays clear; the debris is 120 ballistic chunks with drag, torn up across the blast's middle, each blurred
 along its motion, tumbling, the big ones trailing smoke. It costs about 0.3 to 2.5 ms at the preview's 800x450 (2.8 ms
-from 230 blocks with the column filling the view). The jolt as the front reaches the player is
+from 230 blocks with the column filling the view), and 10 to 11 ms at 1920x1080 with the column large.
+
+At QUALITY FAST (the default, on the fork's `orbital-mod-api-7`) the pass is drawn in two stages. `fs_half`, at half
+the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)
+as premultiplied colour and transmittance, composited in the same order as the whole pass, for each two by two of the
+picture's pixels marched to alternately the nearest and the farthest of their depths; beside it go the depth it
+marched to, the column's distance and whether any debris still in the air passes near. `fs_join`, at full size, takes
+the four nearest of its pixels weighted bilinearly and by how close their depth is to its own pixel's (from the 4 x 4
+round it, the nearest in depth, if none is close), so the smoke's edges against blocks and the sky stay where they are,
+and then draws what must be sharp: the flash, the falling object, the pieces' glow (hidden behind the column), the
+debris (only near where the half stage found some) and the dust at the eye and on the lens. At 1920x1080 with the column
+large that is about 3 ms for the half stage and 1 for the join, against 11 for FULL; it looks the same but for the
+column's very edge, a touch softer, and the dither in thin dust, a little coarser. The jolt as the front reaches the player is
 `render.shake` worked to match the clips: a hard hit, sharp aftershocks every other tick for 0.7 s, then a shudder of
 smaller quick jolts fading over the next 1.7 s, over a long faint rumble.
 `tools/preview.py payload ... --views plref` looks at it as the clip it follows was filmed (450 blocks off in a wood,

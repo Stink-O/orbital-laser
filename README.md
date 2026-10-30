@@ -234,6 +234,10 @@ The wheel also has:
   flight, or type any speed up to 1000x in the box beside it and press Enter.
 - **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the status panel shown
   at the top right while you hold either item.
+- A **QUALITY** switch under them: **FAST** (the default) draws the Payload's smoke column, dust and trail at half the
+  width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
+  draws every pixel (about two to three times the GPU time). FAST needs the fork's release `orbital-mod-api-7`; on an
+  older build it draws at full size, the same as FULL.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
 - For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
   same choice as `/orbital payloadsound`.
@@ -250,6 +254,7 @@ The wheel also has:
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
+| `/orbital quality full\|fast` | the Payload's smoke at full size, or at half size (faster; needs `orbital-mod-api-7`); also the wheel's QUALITY switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 

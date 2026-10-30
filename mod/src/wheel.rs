@@ -1,6 +1,7 @@
 //! The laser wheel (capability `ui`): a ring of segments, one per laser, round
-//! a centre button that switches terrain damage, and a switch over the ring's
-//! top right for the strikes' messages over the hotbar. The lasers are laid out in
+//! a centre button that switches terrain damage, and switches over the ring's
+//! top right for the strikes' messages over the hotbar, the status panel and
+//! the heavy smoke's quality. The lasers are laid out in
 //! pages of five (arrows either side of the ring and numbered tabs over it
 //! turn the page; so does a right-click). Under the ring, two rows of buttons
 //! for which way a ship laser's ship comes in and how it arrives, and a row of
@@ -46,6 +47,8 @@ const BLURB_LINES: usize = 2;
 const MSG: Rect = Rect { x: R_OUT, y: -R_OUT - 33.0, w: 84.0, h: 12.0 };
 /// The status panel's switch, under the messages'.
 const HUD: Rect = Rect { x: MSG.x, y: MSG.y + MSG.h + 2.0, w: MSG.w, h: MSG.h };
+/// The quality switch, under the panel's: the Payload's smoke at full size or half (`/orbital quality`).
+const QUALITY: Rect = Rect { x: MSG.x, y: HUD.y + HUD.h + 2.0, w: MSG.w, h: MSG.h };
 /// Stopping the strike under way, top left, the switches' mirror; there only while one is.
 const STOP: Rect = Rect { x: -MSG.x - MSG.w, y: MSG.y, w: MSG.w, h: MSG.h * 2.0 + 2.0 };
 /// The flying speed's row over the title: the bar (a click along it sets the speed) and the field a speed is typed in.
@@ -66,6 +69,8 @@ pub enum Spot {
     Messages,
     /// The status panel's switch.
     Hud,
+    /// The quality switch.
+    Quality,
     /// Stopping the strike under way.
     Stop,
     /// One of the ship's approaches (strike::APPROACHES), or ways of arriving (strike::ARRIVALS).
@@ -250,6 +255,9 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
     if inside(&HUD, x, y) {
         return Some(Spot::Hud);
     }
+    if inside(&QUALITY, x, y) {
+        return Some(Spot::Quality);
+    }
     if inside(&STOP, x, y) {
         return Some(Spot::Stop);
     }
@@ -357,7 +365,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: bool) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: bool, fast: bool) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -403,6 +411,12 @@ impl Wheel {
         out.push(Draw::Fill((Rect { x: HUD.x, y: HUD.y + HUD.h - 1.5, w: HUD.w, h: 1.5 }, if hud { 0xFF62D46A } else { 0xFFE0524E })));
         text(&mut out, "PANEL", HUD.x + 30.0, HUD.y + 2.0, 0xB8BEC8);
         text(&mut out, if hud { "ON" } else { "OFF" }, HUD.x + 70.0, HUD.y + 2.0, if hud { 0x7CE884 } else { 0xF06A64 });
+        // and the quality: FAST (the heavy smoke at half size) or FULL (every pixel)
+        let hovered = self.hover == Some(Spot::Quality);
+        out.push(Draw::Fill((QUALITY, if hovered { 0xF0262A31 } else { 0xD0101318 })));
+        out.push(Draw::Fill((Rect { x: QUALITY.x, y: QUALITY.y + QUALITY.h - 1.5, w: QUALITY.w, h: 1.5 }, if fast { 0xFF62D46A } else { 0xFFE8B04A })));
+        text(&mut out, "QUALITY", QUALITY.x + 30.0, QUALITY.y + 2.0, 0xB8BEC8);
+        text(&mut out, if fast { "FAST" } else { "FULL" }, QUALITY.x + 70.0, QUALITY.y + 2.0, if fast { 0x7CE884 } else { 0xF0C060 });
         // stopping the strike under way
         if self.striking {
             let hovered = self.hover == Some(Spot::Stop);
@@ -475,6 +489,7 @@ impl Wheel {
             Some(Spot::Centre) => ("Terrain damage on or off".to_string(), 0x8C93A0),
             Some(Spot::Messages) => ("Strike messages on or off".to_string(), 0x8C93A0),
             Some(Spot::Hud) => ("Status panel on or off".to_string(), 0x8C93A0),
+            Some(Spot::Quality) => ("Payload's smoke: FAST half size, FULL every pixel".to_string(), 0x8C93A0),
             Some(Spot::Stop) => ("End the strike now: its effects, sounds and world changes".to_string(), 0x8C93A0),
             Some(Spot::Approach(k)) => (format!("Comes in {}", APPROACHES[k].label), 0x8C93A0),
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),
@@ -601,11 +616,14 @@ mod tests {
         for page in 0..pages() {
             assert_eq!(spot(MSG.x + MSG.w / 2.0, MSG.y + MSG.h / 2.0, true, page), Some(Spot::Messages));
             assert_eq!(spot(HUD.x + HUD.w / 2.0, HUD.y + HUD.h / 2.0, true, page), Some(Spot::Hud));
+            assert_eq!(spot(QUALITY.x + QUALITY.w / 2.0, QUALITY.y + QUALITY.h / 2.0, true, page), Some(Spot::Quality));
         }
         let corner = (MSG.x * MSG.x + (MSG.y + MSG.h) * (MSG.y + MSG.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
         let corner = (HUD.x * HUD.x + (HUD.y + HUD.h) * (HUD.y + HUD.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && HUD.y + HUD.h < arrow(1).y);
+        let corner = (QUALITY.x * QUALITY.x + (QUALITY.y + QUALITY.h) * (QUALITY.y + QUALITY.h)).sqrt();
+        assert!(corner > R_OUT + 10.0 && QUALITY.y + QUALITY.h < arrow(1).y && QUALITY.y >= HUD.y + HUD.h);
         // the stop button: clickable only while a strike is under way, clear of the ring, the tabs and the arrows
         let (sx, sy) = (STOP.x + STOP.w / 2.0, STOP.y + STOP.h / 2.0);
         assert_eq!(spot(sx, sy, false, 0), Some(Spot::Stop));
@@ -769,7 +787,7 @@ mod tests {
         assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Payload);
         let lit = |alt: bool| -> Vec<u32> {
             Wheel::on_page(0, 1.0)
-                .draws(pl, true, true, true, 0, 0, &[0; 16], alt)
+                .draws(pl, true, true, true, 0, 0, &[0; 16], alt, true)
                 .into_iter()
                 .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                 .collect()
@@ -781,13 +799,21 @@ mod tests {
     fn fits_the_smallest_gui() {
         // the game's GUI is at least 320 x 240 at any window size and GUI scale: everything stays inside it
         let (hw, hh) = (160.0, 120.0);
-        let mut boxes = vec![BAR, FIELD, MSG, HUD, STOP, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
+        let mut boxes = vec![BAR, FIELD, MSG, HUD, QUALITY, STOP, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
         boxes.extend((0..pages()).map(tab));
         for (r, items) in ROWS.iter().enumerate() {
             boxes.extend((0..items.len()).map(|k| button(r, k)));
         }
         for b in &boxes {
             assert!(b.x >= -hw && b.x + b.w <= hw && b.y >= -hh && b.y + b.h <= hh, "{:?}", (b.x, b.y, b.w, b.h));
+        }
+        // and none on another (but the fly row's span, round its bar and field)
+        let apart = |a: &Rect, b: &Rect| a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+        let clickable: Vec<&Rect> = boxes.iter().filter(|b| b.w != 220.0).collect();
+        for (i, a) in clickable.iter().enumerate() {
+            for b in &clickable[i + 1..] {
+                assert!(apart(a, b), "{:?} on {:?}", (a.x, a.y, a.w, a.h), (b.x, b.y, b.w, b.h));
+            }
         }
         assert!(R_OUT + 3.0 + 4.0 <= INFO_Y && INFO_Y + 9.0 + 4.0 <= ROW_Y);
         // every blurb in two lines that fit across, under the ring

@@ -60,6 +60,7 @@ python3 install.py                  # install the mod into Horizon's game folder
 python3 tools/build_mod.py          # build the mod from source into dist/orbital (needs cargo-horizon-mod from the fork)
 tools/check-shader.sh               # validate the post passes (a tenth of a second)
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
+tools/preview.py payload 18 --quality both --bench   # the Payload at QUALITY FULL and FAST side by side, timed
 ```
 
 **Iterate on a strike's look offscreen first.** `tools/preview.py LASER TIMES... [--views player,far,side,up,under,aerial,tower,cbplayer,cbfar,spire,cbside,cbaerial]
@@ -70,13 +71,17 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole` or `payload`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole` or `payload`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital quality full|fast`, `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `render.set-data`, won't start the mod.
 With the Payload loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
-`/orbital payloadsound`).
+`/orbital payloadsound`). The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
+between sessions, default FAST) picks whether the Payload's smoke is drawn at full size or at half size: FAST gives the
+game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
+`orbital-mod-api-7`; an older fork compiles the same source and draws its `fs_main` at full size, so FAST needs no new
+import and the mod still starts on `orbital-mod-api-6`.
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
@@ -120,6 +125,16 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   land is `synth_column` in `strike/sinkhole.rs` (`SH_LAND=0` leaves it out). For a local mod build against an
   unreleased fork API, point the SDK at the fork with an uncommitted `mod/.cargo/config.toml` `[patch]`, and never
   commit `mod/Cargo.lock` while it holds that path.
+- **The Payload's pass has a half-size stage** (QUALITY FAST): between `// [half stage]` and `// [end half stage]`
+  at the end of `shaders/payload.wgsl`, `fs_half` (the column, the trail, the dust and the pieces' smoke, as
+  premultiplied colour and transmittance, marched to alternately the nearest and the farthest depth of each two by two
+  pixels; beside it the ray's length, the column's distance and whether debris is near) and `fs_join` (a joint
+  bilateral upsample against the full-size depth, then the sharp parts: the flash, the object, the pieces' glow, the
+  debris, the lens). Both call `payload(in, stage, ...)`, stage 0 the whole pass (fs_main), so FULL's look is the same
+  code. The pass declares the fork's bindings 6 and 7 itself (the prelude doesn't), so the source compiles on every
+  fork; `payload_pass` in lib.rs drops the section for FULL. `tools/preview.py payload T --quality both` shows FULL and
+  FAST side by side (`--whole`: FAST as a fork without the stage draws it). The Planet Killer, the Crystal Bloom and
+  the Sinkhole could take the same split.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many

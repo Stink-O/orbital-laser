@@ -58,6 +58,29 @@ fn own_pass(own: &str) -> String {
     out.push_str(own);
     out
 }
+/// The Payload's pass at QUALITY FULL or FAST: FAST keeps its half-size stage (`[half stage]` in payload.wgsl: the
+/// smoke drawn at half the width and height, on a game with mod passes' half-size stage; a game without it draws the
+/// pass's `fs_main`, at full size), FULL leaves it out.
+fn payload_pass(fast: bool) -> String {
+    if fast {
+        return own_pass(PAYLOAD_PASS);
+    }
+    let mut own = String::with_capacity(PAYLOAD_PASS.len());
+    let mut skip = false;
+    for line in PAYLOAD_PASS.lines() {
+        if line.starts_with("// [half stage]") {
+            skip = true;
+        }
+        if !skip {
+            own.push_str(line);
+            own.push('\n');
+        }
+        if line.starts_with("// [end half stage]") {
+            skip = false;
+        }
+    }
+    own_pass(&own)
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -123,6 +146,7 @@ struct Settings {
     colours: Vec<usize>,
     fly: f32,
     blast_alt: bool,
+    fast: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -160,6 +184,8 @@ struct Orbital {
     blast_alt: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
     fly: f32,
+    /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
+    fast: bool,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
@@ -175,7 +201,7 @@ struct Orbital {
 impl Orbital {
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nquality={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -184,7 +210,8 @@ impl Orbital {
             ARRIVALS[self.arrival].key,
             self.page,
             self.fly,
-            if self.blast_alt { "alt" } else { "main" }
+            if self.blast_alt { "alt" } else { "main" },
+            if self.fast { "fast" } else { "full" }
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -207,6 +234,7 @@ impl Orbital {
         let mut page = 0;
         let mut fly = 1.0;
         let mut blast_alt = false;
+        let mut fast = true;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -219,6 +247,7 @@ impl Orbital {
                 Some(("page", v)) => page = v.parse::<usize>().unwrap_or(0).min(wheel::pages() - 1),
                 Some(("flyspeed", v)) => fly = wheel::parse_speed(v).unwrap_or(1.0),
                 Some(("payloadsound", v)) => blast_alt = v == "alt",
+                Some(("quality", v)) => fast = v != "full",
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -227,7 +256,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -282,7 +311,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, self.blast_alt));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, self.blast_alt, self.fast));
         }
     }
     fn open_wheel(&mut self) {
@@ -397,6 +426,11 @@ impl Orbital {
                 self.stop_strike();
             }
             Some(wheel::Spot::Stop) => {}
+            Some(wheel::Spot::Quality) => {
+                self.set_quality(!self.fast);
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.fast { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
             Some(wheel::Spot::Hud) => {
                 self.hud = !self.hud;
                 self.save();
@@ -406,6 +440,26 @@ impl Orbital {
             }
             None => {}
         }
+    }
+
+    /// QUALITY FAST or FULL: the Payload's pass built again for it, and given to the game at once if a Payload strike
+    /// is drawing it (else compiled ahead of the next, as the passes are).
+    fn set_quality(&mut self, fast: bool) {
+        if fast == self.fast {
+            return;
+        }
+        self.fast = fast;
+        self.save();
+        let pl = pass_of(LASERS.iter().find(|l| l.key == "payload").expect("the payload"));
+        self.passes[pl] = payload_pass(fast);
+        if self.compiled == Some(pl) {
+            self.compiled = None;
+            if self.strike.is_some() {
+                render::set_post(&self.passes[pl]);
+                self.compiled = Some(pl);
+            }
+        }
+        self.update_panel();
     }
 
     // ---- the strike ----
@@ -652,6 +706,9 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
+            if l.key == "payload" {
+                lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
+            }
             if (self.fly - 1.0).abs() > 1e-4 {
                 lines.push((format!("Flying speed: {}", wheel::speed_label(self.fly)), 0x6FC8FF));
             }
@@ -680,9 +737,9 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt } = Orbital::load();
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast } = Orbital::load();
         let state = Orbital {
-            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS), own_pass(PAYLOAD_PASS)],
+            passes: [SHADER.to_string(), own_pass(DOWNFALL_PASS), own_pass(PLANET_PASS), own_pass(CRYSTAL_PASS), own_pass(SINKHOLE_PASS), payload_pass(fast)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
@@ -702,6 +759,7 @@ impl Mod for Orbital {
             colours,
             fly,
             blast_alt,
+            fast,
             aiming: None,
             skip: 0.0,
             strike: None,
@@ -870,6 +928,14 @@ impl Mod for Orbital {
                 "Payload blast: {} (/orbital payloadsound main or alt)",
                 if self.blast_alt { "alternative" } else { "main" }
             ))),
+            (Some("quality"), Some(v @ ("full" | "fast"))) => {
+                self.set_quality(v == "fast");
+                Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's smoke at half size" } else { "full: every pixel" })))
+            }
+            (Some("quality"), None) => Ok(Some(format!(
+                "Quality: {} (/orbital quality full or fast)",
+                if self.fast { "fast" } else { "full" }
+            ))),
             (Some("messages"), Some(v @ ("on" | "off"))) => {
                 self.messages = v == "on";
                 self.save();
@@ -881,7 +947,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -915,7 +981,7 @@ mod tests {
             (super::SINKHOLE_PASS, &["fn mh(", "fn vnoise3(", "fn sinkhole(", "fn rot_axis(", "fn ign("][..]),
             (super::PAYLOAD_PASS, &["fn mh(", "fn gnoise3(", "fn payload(", "fn ign("][..]),
         ] {
-            let p = super::own_pass(own);
+            let p = if own == super::PAYLOAD_PASS { super::payload_pass(false) } else { super::own_pass(own) };
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
                 assert!(!p.contains(gone), "{gone}");
             }
@@ -925,6 +991,12 @@ mod tests {
             assert_eq!(p.matches("@fragment").count(), 1);
             assert!(p.len() <= 256 << 10);
         }
+        // the payload's at QUALITY FULL is the one above; at FAST it keeps its half-size stage, still under 256 KiB
+        assert_eq!(super::payload_pass(false).matches("@fragment").count(), 1);
+        let fast = super::payload_pass(true);
+        assert_eq!(fast.matches("@fragment").count(), 3);
+        assert!(fast.contains("fn fs_half(") && fast.contains("fn fs_join(") && fast.len() <= 256 << 10);
+        assert!(!super::payload_pass(false).contains("half_picture"));
         assert!(super::SHADER.len() <= 256 << 10);
         assert!(!super::own_pass(super::PLANET_PASS).contains("fn downfall("));
         assert!(!super::own_pass(super::CRYSTAL_PASS).contains("fn planet_killer("));
