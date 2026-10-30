@@ -225,13 +225,13 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     var o: PlCol;
     o.a = a;
     o.C = C + pl_wind() * (0.0 * a);
-    // (the fireball: swelling to sixty in half a second, then slowly on; rising, slowly at first, then climbing to
-    // over four hundred as its rise slows; its roll opening out into the cap's ring)
+    // (the fireball: swelling to sixty in half a second, then slowly on; punching up fast, boiling, its stem close behind,
+    // to some 250 by four seconds and over four hundred as its rise slows; its roll opening out into the cap's ring)
     o.rt = 56.0 * (1.0 - exp(-a / 0.45)) + 26.0 * (1.0 - exp(-a / 14.0)) + 0.15 * a;
-    o.hc = PL_BURST + 385.0 * (1.0 - exp(-a / 15.0)) * smoothstep(0.0, 2.5, a + 0.5);
+    o.hc = PL_BURST + 385.0 * (1.0 - exp(-a / 7.0)) * smoothstep(0.0, 1.5, a + 0.3);
     o.Rt = 80.0 * (1.0 - exp(-a / 6.0)) + 70.0 * (1.0 - exp(-a / 28.0)) + 0.3 * a;
     // (the stem pulled up out of the land under it, from a couple of seconds on)
-    o.st = min(o.hc - 0.15 * o.rt, max(a - 1.0, 0.0) * 55.0);
+    o.st = min(o.hc - 0.15 * o.rt, max(a - 0.6, 0.0) * 95.0);
     o.sr = vec3<f32>(34.0 + 30.0 * saturate(a / 6.0), 20.0 + 8.0 * saturate(a / 20.0), 26.0 + 0.3 * o.Rt);
     // (the condensation ring: a thin white collar round the stem, from 4 s, gone by 30)
     o.ring = vec3<f32>(0.42 * o.hc + 10.0, o.sr.y * 2.0 + 30.0 + 0.6 * a, smoothstep(4.0, 9.0, a) * (1.0 - smoothstep(16.0, 30.0, a)));
@@ -379,9 +379,21 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let sn = sin(ang);
     let uvr = vec2<f32>(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
     let sc = 150.0 / (Rt + rt);
-    let qc = vec3<f32>(dir.x * (Rt + uvr.x) * sc, uvr.y * sc + 400.0, dir.y * (Rt + uvr.x) * sc);
+    var qc = vec3<f32>(dir.x * (Rt + uvr.x) * sc, uvr.y * sc + 400.0, dir.y * (Rt + uvr.x) * sc);
     // (the stem's: rising with the air drawn up it, the same all the way down to the land)
-    let qs = q - vec3<f32>(0.0, 6.0 * a, 0.0);
+    var qs = q - vec3<f32>(0.0, 6.0 * a, 0.0);
+    // (the boil: for its first seconds the fireball's lumps are flung about by a churning flow of its own, racing up
+    // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
+    // about, not made: the same ones, carried)
+    let bo = exp(-a / 4.5) * smoothstep(0.0, 0.5, a);
+    if (bo > 0.02) {
+        let wq0 = qc * (1.0 / 30.0) + vec3<f32>(0.0, -1.1 * a, 0.0);
+        let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
+        qc = qc + wv * (70.0 * bo);
+        let ws0 = qs * (1.0 / 24.0) + vec3<f32>(0.0, -1.6 * a, 0.0);
+        let ws = vec3<f32>(gnoise3(ws0), gnoise3(ws0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(ws0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
+        qs = qs + ws * (45.0 * bo);
+    }
     // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
     let wc = smoothstep(hc - 1.5 * rt, hc - 0.6 * rt, q.y);
     var nz = vec4<f32>(0.0);
