@@ -1015,5 +1015,68 @@
       }
     ],
     "subtitle": "subtitles.orbital.payload.blast_alt_far"
+  },
+  "nuke.fall": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/fall",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.fall"
+  },
+  "nuke.ground": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/ground",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.ground"
+  },
+  "nuke.blast": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/blast",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.blast"
+  },
+  "nuke.blast_far": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/blast_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.blast_far"
+  },
+  "nuke.shockwave": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/shockwave",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.shockwave"
+  },
+  "nuke.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.rumble"
+  },
+  "nuke.debris": {
+    "sounds": [
+      {
+        "name": "orbital:nuke/debris",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.nuke.debris"
   }
 }
