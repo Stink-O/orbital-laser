@@ -1098,7 +1098,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     // ---- the mushroom cloud: raymarched, self-shadowed towards the sun, glowing from inside --------------------------
     // (the fireball's heat: white-hot for a moment, orange for seconds, a dull red glow dying over tens of seconds)
     let heat = exp(-a / 0.9);
-    let glow = 1.0 * exp(-a / 3.5) + 0.26 * exp(-a / 11.0);
+    // (as filmed (Plumbbob Fizeau): a blazing orange ball for some five seconds, then going out fast; by eight or nine
+    // seconds a dark sooty roll with a little red deep in it)
+    let glow = 1.0 * (1.0 - smoothstep(4.5, 9.0, a)) + 0.12 * exp(-a / 10.0);
     if (stage != 2u && have && a > 0.0) {
         var cl = pl_column(a, C);
         // (first a cheap bound: a fat stick from under the land up to the cap's core circle, leaning with the wind, as
@@ -1123,7 +1125,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             var lc_face = 0.0;
             var lc_bulk = 1.0;
             var sky_occ = 0.0;
-            let sootc = mix(vec3<f32>(0.2, 0.16, 0.13), vec3<f32>(0.6, 0.54, 0.48), smoothstep(2.0, 22.0, a));
+            let sootc = mix(vec3<f32>(0.17, 0.13, 0.11), vec3<f32>(0.46, 0.41, 0.37), smoothstep(7.0, 40.0, a));
             for (var i = 0; i < 128; i = i + 1) {
                 if (t > t1 || tr < 0.03) {
                     break;
@@ -1205,9 +1207,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let ringc = exp(-dot(gv, gv) / pow(0.55 * cl.rt, 2.0));
                     let core = mix(1.0 - exp(min(d0, 0.0) / (0.22 * cl.rt + 6.0)), ringc, smoothstep(2.0, 9.0, a));
                     let under = 1.0 - smoothstep(cl.hc - 0.6 * cl.rt, cl.hc + 0.5 * cl.rt, p.y - C.y);
-                    let surf = 2.2 * exp(-a / 2.0) + 0.9 * exp(-a / 5.0);
-                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * (0.12 + 2.0 * (1.0 - sd.y) * (1.0 - sd.y));
-                    let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(3.0, 1.25, 0.32), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
+                    let surf = 1.5 * (1.0 - smoothstep(4.5, 8.5, a)) + 0.6 * exp(-a / 1.2);
+                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * (0.1 + 2.3 * (1.0 - sd.y) * (1.0 - sd.y));
+                    let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(2.8, 0.95, 0.16), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
                     // (at night its own glow is most of what lights it, and shows for longer)
@@ -1711,9 +1713,14 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
 
     // ---- the white-out: for a moment the whole picture is the flash, then it lets go, overexposed for a second ----
     if (stage != 1u && a > -0.02 && a < 4.0) {
+        // (as filmed: the whole frame a pinkish white, then washed orange for a second or so, then the exposure drops
+        // dark for a moment before the sky comes back)
         let wo = saturate(1.4 * exp(-max(a, 0.0) / 0.22)) * smoothstep(-0.02, 0.02, a);
-        col = col * (1.0 + 0.5 * exp(-max(a, 0.0) / 0.7));
-        col = mix(col, vec3<f32>(1.35, 1.32, 1.25), wo * k);
+        col = col * (1.0 + 0.4 * exp(-max(a, 0.0) / 0.6));
+        let ow = smoothstep(0.08, 0.35, a) * (1.0 - smoothstep(1.1, 2.1, a));
+        col = mix(col, col * vec3<f32>(1.5, 0.8, 0.35) + vec3<f32>(0.38, 0.14, 0.02), ow * k);
+        col = col * (1.0 - 0.32 * exp(-pow((a - 2.5) / 0.55, 2.0)) * k);
+        col = mix(col, vec3<f32>(1.4, 1.24, 1.32), wo * k);
     }
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     if (capture() > 2.5) {
