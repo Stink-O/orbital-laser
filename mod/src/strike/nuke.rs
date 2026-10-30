@@ -1327,12 +1327,12 @@ fn nk_flash_rows(q: &mut Plan, fl: &Flash, s: &Shape, k0: i32, k1: i32, at_t: f3
             if lo > top {
                 continue;
             }
-            // (surely near the blast's reach, a third as often at the flash's)
-            let p = 1.0 - 0.65 * ((r - f64::from(NK_READ)) / f64::from(NK_FLASH - NK_READ)).powf(1.3);
+            // (all of it near the blast's reach, still more than half at the flash's)
+            let p = 1.0 - 0.45 * ((r - f64::from(NK_READ)) / f64::from(NK_FLASH - NK_READ)).powf(1.5);
             let h0 = (x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32;
             let roll = |salt: u32| mh(h0, s.seed, salt);
             for w in 0..9 {
-                if m & (1 << w) != 0 && roll(0xf1) < 0.9 * p {
+                if m & (1 << w) != 0 && roll(0xf1) < p {
                     b.put(x, z, lo, top, "minecraft:air", Some(LEAF_NAMES[w]), false);
                 }
                 if m & (1 << (9 + w)) != 0 && w != 5 && roll(0xf2) < p {
