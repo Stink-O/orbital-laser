@@ -27,6 +27,8 @@ const PL_FR: u32 = 560u;          // the pieces it sheds coming in (payload.rs's
 const PL_FW: u32 = 12u;
 const PL_NPUFF: i32 = 18;
 const PL_DEBRIS: i32 = 120;
+const PL_DB: u32 = 10496u;         // the debris (payload.rs's pl_debris_words), PL_DW words each
+const PL_DW: u32 = 10u;
 
 fn pl_w(i: u32) -> f32 {
     if (i >= arrayLength(&mod_data)) {
@@ -128,7 +130,8 @@ struct PlCol {
     a: f32,
     C: vec3<f32>,
     // (the billows where they are this frame: worked out once a pixel, not at every step)
-    q: array<vec4<f32>, 18>,
+    // (packed as half floats, from C: it keeps the march's registers free; half a block is lost at most)
+    q: array<vec2<u32>, 18>,
     // (the stem: a trunk from the ground to the stem's highest billow (s1, radius s1.w), s0.w its radius at the foot,
     // so it stands as one ragged mass and not a stack of balls)
     s0: vec4<f32>,
@@ -172,7 +175,7 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
         // none of them sits on the ground as a ball)
         q.w = q.w * select(1.0, 0.8, i < 5);
         q.y = q.y - 12.0 * (1.0 - smoothstep(10.0, 70.0, q.y - C.y));
-        o.q[i] = q;
+        o.q[i] = vec2<u32>(pack2x16float(q.xy - C.xy), pack2x16float(vec2<f32>(q.z - C.z, q.w)));
         if (q.w <= 0.0) {
             continue;
         }
@@ -199,12 +202,16 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
 }
 fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
     var d = 1.0e6;
+    let pc = p - (*col).C;
     for (var i = 0; i < PL_NPUFF; i = i + 1) {
-        let q = (*col).q[i];
+        let qp = (*col).q[i];
+        let qa = unpack2x16float(qp.x);
+        let qb = unpack2x16float(qp.y);
+        let q = vec4<f32>(qa, qb);
         if (q.w > 0.0) {
             // (the low ones squat and wide, spreading over the ground)
-            let low = 1.0 - smoothstep(0.0, 60.0, q.y - (*col).C.y);
-            let e = (p - q.xyz) * vec3<f32>(1.0 - 0.25 * low, 1.0 + 0.6 * low, 1.0 - 0.25 * low);
+            let low = 1.0 - smoothstep(0.0, 60.0, q.y);
+            let e = (pc - q.xyz) * vec3<f32>(1.0 - 0.25 * low, 1.0 + 0.6 * low, 1.0 - 0.25 * low);
             d = smin(d, (length(e) - q.w) / (1.0 + 0.6 * low), 18.0);
         }
     }
@@ -385,40 +392,39 @@ struct PlChunk {
     s: f32,
     live: f32,
 }
-fn pl_chunk(i: i32, a: f32, seed: u32, C: vec3<f32>, me: vec3<f32>, dme: f32) -> PlChunk {
+fn pl_chunk(i: i32, a: f32, eka: f32, C: vec3<f32>) -> PlChunk {
     var o: PlChunk;
-    let fi = u32(i);
-    let ang = mh(fi, seed, 0x301u) * TAU;
-    let big = mh(fi, seed, 0x303u);
-    // (torn up all over the blast's middle, each as the blast reaches it, not all from one point: most thrown
-    // a few hundred blocks, a third far, some of those coming down round the player)
-    let r0 = 6.0 + 40.0 * sqrt(mh(fi, seed, 0x306u));
-    let far = mh(fi, seed, 0x307u) < 0.35;
-    let el = select(0.35 + 0.85 * mh(fi, seed, 0x302u), 0.45 + 0.4 * mh(fi, seed, 0x302u), far);
-    let sp = select(mix(30.0, 80.0, pow(mh(fi, seed, 0x304u), 0.7)), mix(90.0, 135.0, mh(fi, seed, 0x304u)), far) * (1.0 - 0.25 * big);
-    let t0 = r0 / PL_V + 0.12 * mh(fi, seed, 0x305u);
-    let tau = a - t0;
-    o.s = mix(0.12, 1.1, big * big * big);
+    // (its numbers worked out once by payload.rs's pl_debris_words: its bearing, how far out it is torn up as the blast
+    // reaches it, its speed out and up (most thrown a few hundred blocks, a third far), when, its size, e^(k t0))
+    let b = PL_DB + PL_DW * u32(i);
+    let tau = a - pl_w(b + 5u);
+    o.s = pl_w(b + 6u);
     o.live = 0.0;
     if (tau <= 0.0) {
         return o;
     }
-    let dir = vec3<f32>(cos(ang), 0.0, sin(ang));
-    let v0 = vec3<f32>(dir.x * cos(el), sin(el), dir.z * cos(el)) * sp;
+    let dir = vec3<f32>(pl_w(b), 0.0, pl_w(b + 1u));
+    let vh = pl_w(b + 3u);
+    let vy = pl_w(b + 4u);
     // (a little drag: they slow, and fall less than straight)
     let k = 0.06;
-    let e = (1.0 - exp(-k * tau)) / k;
+    let ek = eka * pl_w(b + 7u);
+    let e = (1.0 - ek) / k;
     let g = 9.8;
-    o.p = C + dir * r0 + vec3<f32>(0.0, 2.0, 0.0) + vec3<f32>(v0.x, 0.0, v0.z) * e + vec3<f32>(0.0, v0.y * e - g * (tau - e) / k, 0.0);
-    o.v = vec3<f32>(v0.x, 0.0, v0.z) * exp(-k * tau) + vec3<f32>(0.0, (v0.y + g / k) * exp(-k * tau) - g / k, 0.0);
-    let r = length((o.p - C).xz);
-    // (the land under it looked up only when it is down near the highest of it: it is checked for every chunk, every pixel)
-    var gref = C.y + pl_gref(r, me, C, dme);
-    if (o.p.y < max(gref, C.y + pl_w(PL_HF + 3u)) + 3.0) {
-        gref = C.y + pl_land((o.p - C).xz, gref - C.y).x;
-    }
-    o.live = smoothstep(gref - 1.0, gref + 2.0, o.p.y);
+    o.p = C + dir * (pl_w(b + 2u) + vh * e) + vec3<f32>(0.0, 2.0 + vy * e - g * (tau - e) / k, 0.0);
+    o.v = dir * (vh * ek) + vec3<f32>(0.0, (vy + g / k) * ek - g / k, 0.0);
+    o.live = 1.0;
     return o;
+}
+// How much of a chunk is still in the air (0 once it is down): the land under it looked up only when it is down near the
+// highest of it, and only for the chunks near this pixel's ray.
+fn pl_chunk_up(ch: PlChunk, C: vec3<f32>, me: vec3<f32>, dme: f32) -> f32 {
+    let r = length((ch.p - C).xz);
+    var gref = C.y + pl_gref(r, me, C, dme);
+    if (ch.p.y < max(gref, C.y + pl_w(PL_HF + 3u)) + 3.0) {
+        gref = C.y + pl_land((ch.p - C).xz, gref - C.y).x;
+    }
+    return smoothstep(gref - 1.0, gref + 2.0, ch.p.y);
 }
 
 fn payload(in: StageIn) -> vec4<f32> {
@@ -792,7 +798,12 @@ fn payload(in: StageIn) -> vec4<f32> {
     // (how far off the column stands along this ray, where it is mostly opaque: the dust and debris behind it hidden)
     var col_t = 1.0e9;
     // ---- the column: raymarched, self-shadowed towards the sun, dark at its core, fire in it as it bursts ----------
-    if (have && a > 0.0) {
+    // (first a cheap bound round all it could be, a fat stick from under the crater to over its top, leaning with the
+    // wind: most of the picture is well clear of it, and need not work out where its eighteen billows are)
+    let cgrow = 1.0 + 0.012 * max(a - 6.0, 0.0) + 0.006 * max(a - PL_SOFT0, 0.0);
+    let ctop = C + vec3<f32>(0.0, 5.0 + 1.08 * pl_w(5u) * (1.0 + 0.006 * a) * cgrow, 0.0) + pl_wind() * a;
+    let cbound = pl_ray_seg(rd, C - vec3<f32>(0.0, 30.0, 0.0), ctop, 0.0, 1.0);
+    if (have && a > 0.0 && cbound.x < 130.0 * cgrow + 50.0) {
         var cl = pl_column(a, C);
         if (cl.n > 0) {
             let tb = pl_box(rd, cl.lo, cl.hi);
@@ -812,6 +823,9 @@ fn payload(in: StageIn) -> vec4<f32> {
                 let thin = exp(-max(a - PL_SOFT0 - 8.0, 0.0) / 4.5);
                 var tmid = 0.0;
                 var wmid = 0.0;
+                var nl = 0;
+                var lc_face = 0.0;
+                var lc_bulk = 1.0;
                 for (var i = 0; i < 96; i = i + 1) {
                     if (t > t1 || tr < 0.03) {
                         break;
@@ -839,15 +853,21 @@ fn payload(in: StageIn) -> vec4<f32> {
                         // (the sun: the lumps' own faces (a look a few blocks towards it, at the big and middling
                         // lumps), gently, and the column's bulk between it and the sun (three looks further on): sunlit
                         // tops and edges, the side and underside away from it in deep shadow)
-                        let fp = p + L * 5.0;
-                        let face = pl_col_sdf(&cl, fp, pl_col_base(&cl, fp), false).x;
-                        let lam = mix(saturate(0.2 + (face - sd.x) / 5.0), 0.65, soft);
-                        // (each soft, a broad ramp through the bulk's edge, so the shadow of a smooth body inside it
-                        // never draws a hard straight terminator over the lumps)
-                        let s1 = saturate((8.0 - pl_col_base(&cl, p + L * 11.0)) / 22.0);
-                        let s2 = saturate((8.0 - pl_col_base(&cl, p + L * 30.0)) / 30.0);
-                        let s3 = saturate((6.0 - pl_col_base(&cl, p + L * 62.0)) / 40.0);
-                        let tsun = mix(exp(-(s1 * 10.0 + s2 * 18.0 + s3 * 22.0) * 0.3), 0.7, soft) * lam;
+                        // (looked for afresh while what lies behind still shows through much, and kept once it hardly
+                        // does: deep in it they cost as much and show little)
+                        if (tr > 0.25 || nl == 0) {
+                            let fp = p + L * 5.0;
+                            lc_face = pl_col_sdf(&cl, fp, pl_col_base(&cl, fp), false).x - sd.x;
+                            // (the bulk's shadow: three looks further on, each soft, a broad ramp through the bulk's
+                            // edge, so the shadow of a smooth body inside it never draws a hard straight terminator)
+                            let s1 = saturate((8.0 - pl_col_base(&cl, p + L * 11.0)) / 22.0);
+                            let s2 = saturate((8.0 - pl_col_base(&cl, p + L * 30.0)) / 30.0);
+                            let s3 = saturate((6.0 - pl_col_base(&cl, p + L * 62.0)) / 40.0);
+                            lc_bulk = exp(-(s1 * 10.0 + s2 * 18.0 + s3 * 22.0) * 0.3);
+                        }
+                        nl = nl + 1;
+                        let lam = mix(saturate(0.2 + lc_face / 5.0), 0.65, soft);
+                        let tsun = mix(lc_bulk, 0.7, soft) * lam;
                         let hy = saturate((p.y - C.y) / max(H, 1.0));
                         // (smoke and dust, tan-grey, lit by the scene: warm where the sun is on it, greyed by the sky on
                         // its shadowed side, darker down its stem and deep in it (no dark rims round each lump: only
@@ -872,7 +892,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                     }
                     // (outside it, closing in on its edge in short steps, so its fine edge is not lost between them
                     // as grain; through it, the long ones)
-                    t = t + select(st, clamp(0.6 * sd.x, 0.12 * st + 0.25, st), sd.x > 0.0);
+                    t = t + select(st, max(0.55 * sd.x, (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), sd.x > 0.0);
                 }
                 if (tr < 0.999) {
                     // (the air between: farther, paler)
@@ -964,14 +984,14 @@ fn payload(in: StageIn) -> vec4<f32> {
             let oa = (-bb - sqrt(dout)) / a2;
             let ob = (-bb + sqrt(dout)) / a2;
             var seg = array<vec2<f32>, 3>(vec2<f32>(oa, ob), vec2<f32>(0.0, -1.0), vec2<f32>(0.0, -1.0));
-            var ns = array<i32, 3>(20, 0, 0);
+            var ns = array<i32, 3>(16, 0, 0);
             if (din > 0.0 && Ri > 0.0) {
                 let ia = (-bb - sqrt(din)) / a2;
                 let ib = (-bb + sqrt(din)) / a2;
                 seg[0] = vec2<f32>(oa, ia);
                 seg[1] = vec2<f32>(ib, ob);
                 seg[2] = vec2<f32>(ia, ib);
-                ns = array<i32, 3>(14, 12, 10);
+                ns = array<i32, 3>(12, 10, 6);
             }
             // (how square the ray crosses the ring: along it, at the ring's sides from far off, it would pile up)
             let mid_t = clamp(-bb / a2, t0, t1);
@@ -1023,19 +1043,36 @@ fn payload(in: StageIn) -> vec4<f32> {
     }
 
     // ---- the debris: dark chunks and specks of earth, tumbling as they fly and fall, the big ones trailing smoke ----
-    if (a > 0.0 && a < 16.0) {
+    if (a > 0.0 && a < 16.0 && pl_w(8u) > 0.5) {
         let fpx = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
         let pxy = in.position.xy;
         let lim = min(scene_len, col_t);
         var cov = 0.0;
         var smk = 0.0;
+        // (below the lowest of the land, a chunk is down: no need to look for the land under it)
+        var low = min(C.y, me.y) - 4.0;
+        if (pl_w(PL_HF) > 1.0) {
+            low = min(low, C.y + pl_w(PL_HF + 2u) - 4.0);
+        }
+        let wpx = 1.0 / fpx;
+        let eka = exp(-0.06 * a);
         for (var i = 0; i < PL_DEBRIS; i = i + 1) {
-            let ch = pl_chunk(i, a, seed, C, me, dme);
-            if (ch.live <= 0.0) {
+            var ch = pl_chunk(i, a, eka, C);
+            if (ch.live <= 0.0 || ch.p.y < low) {
                 continue;
             }
             let dist = length(ch.p);
             if (dist > lim || dist < 1.0) {
+                continue;
+            }
+            // (first a cheap look at how far off this pixel's ray it is, in the world: most are well clear)
+            let off = length(ch.p - rd * dot(ch.p, rd));
+            let reach_w = ch.s * 4.5 + length(ch.v) * 0.8 + 1.5 + 6.0 * dist * wpx;
+            if (off > reach_w) {
+                continue;
+            }
+            ch.live = pl_chunk_up(ch, C, me, dme);
+            if (ch.live <= 0.0) {
                 continue;
             }
             let s0 = project_rel(ch.p);
@@ -1056,7 +1093,7 @@ fn payload(in: StageIn) -> vec4<f32> {
             let ab = q1 - q0;
             let w = saturate(dot(pxy - q0, ab) / max(dot(ab, ab), 1.0e-4));
             let e = length(pxy - (q0 + ab * w));
-            let spin = a * (3.0 + 6.0 * mh(u32(i), seed, 0x308u));
+            let spin = a * pl_w(PL_DB + PL_DW * u32(i) + 8u);
             let th = atan2(pxy.y - q0.y, pxy.x - q0.x);
             let lump = 1.0 + 0.28 * sin(th * 3.0 + f32(i) + spin) + 0.12 * sin(th * 5.0 - spin * 1.3);
             let c = saturate(rad * lump + 0.5 - e) * ch.live * saturate(rad / max(length(ab) * 0.5, rad));

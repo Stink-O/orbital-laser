@@ -219,9 +219,39 @@ pub(super) fn pl_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
         }
     }
     w[7] = (PL_CHUNKS + PL_SPARKS) as f32;
+    w[8] = PL_DEBRIS as f32;
     for (i, f) in pl_fragments(&g).iter().enumerate() {
         for k in 0..11 {
             w[PL_FR + PL_FW * i + k] = f[k] as f32;
+        }
+    }
+    w.into_iter().map(f32::to_bits).collect()
+}
+
+/// The debris the pass draws (chunks and specks of earth thrown out, falling back far round it): from PL_DB, PL_DW words
+/// each, worked out once here rather than for every chunk at every pixel: its bearing (x and z), how far out it is torn
+/// up, its speed out and up, when it is thrown (after the strike), its size, e^(k t0) (k its drag), its spin. Keep in
+/// step with payload.wgsl's pl_chunk.
+pub(super) const PL_DB: usize = 10496;
+pub(super) const PL_DW: usize = 10;
+pub(super) const PL_DEBRIS: usize = 120;
+fn pl_debris_words(seed: u32) -> Vec<u32> {
+    let mut w = vec![0.0f32; PL_DEBRIS * PL_DW];
+    let v = f64::from(343.0f32);
+    for i in 0..PL_DEBRIS {
+        let h = |k: u32| mh(i as u32, seed, k);
+        let ang = h(0x301) * TAU;
+        let big = h(0x303);
+        // (torn up all over the blast's middle, each as the blast reaches it, not all from one point: most thrown a
+        // few hundred blocks, a third far, some of those coming down round the player)
+        let r0 = 6.0 + 40.0 * h(0x306).sqrt();
+        let far = h(0x307) < 0.35;
+        let el = if far { 0.45 + 0.4 * h(0x302) } else { 0.35 + 0.85 * h(0x302) };
+        let sp = (if far { 90.0 + 45.0 * h(0x304) } else { 30.0 + 50.0 * h(0x304).powf(0.7) }) * (1.0 - 0.25 * big);
+        let t0 = r0 / v + 0.12 * h(0x305);
+        let row = [ang.cos(), ang.sin(), r0, el.cos() * sp, el.sin() * sp, t0, 0.12 + 0.98 * big * big * big, (0.06 * t0).exp(), 3.0 + 6.0 * h(0x308), 0.0];
+        for (k, x) in row.iter().enumerate() {
+            w[PL_DW * i + k] = *x as f32;
         }
     }
     w.into_iter().map(f32::to_bits).collect()
@@ -1007,7 +1037,10 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     // the pass's table, on the tick after it fires
     {
         let s = shader_seed;
-        p.later(0.05, move |q| q.ev.push((0.05, Act::Table(pl_table(s, rel)))));
+        p.later(0.05, move |q| {
+            q.ev.push((0.05, Act::Table(pl_table(s, rel))));
+            q.ev.push((0.05, Act::Words { index: PL_DB as u32, words: pl_debris_words(s as u32) }));
+        });
     }
     // (and the land's shape round it, asked of the world as it starts, the heightfield on a later tick)
     {
@@ -1173,6 +1206,9 @@ mod table {
         let hf = super::pl_hf_words(&heights, reach, rel);
         w.resize(super::PL_HF + hf.len(), 0);
         w[super::PL_HF..].copy_from_slice(&hf);
+        let db = super::pl_debris_words(seed as u32);
+        w.resize(super::PL_DB + db.len(), 0);
+        w[super::PL_DB..].copy_from_slice(&db);
         let text: String = w.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }
@@ -1241,7 +1277,7 @@ mod tests {
         // (the table's words for them, where the pass reads them)
         let w = pl_table(37.0, [0.0, 5.0, 300.0]);
         assert_eq!(f32::from_bits(w[7]) as usize, PL_CHUNKS + PL_SPARKS);
-        assert!(w.len() <= PL_HF && PL_PF + PL_PUFFS * PL_PW <= PL_FR);
+        assert!(w.len() <= PL_HF && PL_PF + PL_PUFFS * PL_PW <= PL_FR && PL_HF + 8 + PL_HN * PL_HN <= PL_DB);
         assert_eq!(f32::from_bits(w[PL_FR]), f[0][0] as f32);
     }
 

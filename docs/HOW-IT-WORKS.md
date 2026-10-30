@@ -397,7 +397,9 @@ volume marched along the view ray.
 The Payload's pass ([`mod/shaders/payload.wgsl`](../mod/shaders/payload.wgsl)) reads the object's path, sampled 128
 times from 3 to 13.6 s, and the column's eighteen billows (`pl_table`, through `render.set-data` on the tick after it
 fires; the player's position as it fired is in its params), and the pieces it sheds (from `PL_FR`: when each lets go,
-where and how fast, how long it burns; each then flies with drag and gravity worked out in the pass). The trail is drawn
+where and how fast, how long it burns; each then flies with drag and gravity worked out in the pass), and the 120
+debris chunks' numbers (from `PL_DB`, `pl_debris_words`: worked out once there rather than for every chunk at every
+pixel; each pixel looks for the land under a chunk only once it is near its ray). The trail is drawn
 through the path's samples as soft-edged smoke: each piece is the slab between two planes across the trail (through
 its ends, halfway round the bend at each, so the pieces fit with no seam at any angle) and the ray's whole way through
 it is counted (the profile along the ray integrated with erf, longer and denser seen glancing along it). Three octaves of
@@ -408,8 +410,11 @@ end-on. It is carried by the wind, swelling as it ages and breaking into beads a
 a time are first tested as one ball, so most rays skip it; the column is marched through the billows' smooth union (worked out once a pixel), its surface warped and bulged in
 cellular domes at three scales (36, 14 and 5.5 blocks, each dome its own size and each scale's lattice turned its own
 way, so no grid shows; the big ones fewer up its stem) and frayed at its edge by fine
-noise, its density a ramp whose width varies over it (crisp to wispy), stepped finely as the ray closes on its edge,
-each lump lit by a look a few blocks towards the sun and the column's bulk shadowing it with three more, lit by the sky the scene shows; as it settles its lumps sink back, its edge
+noise, its density a ramp whose width varies over it (crisp to wispy), stepped finely as the ray closes on its edge (and in long strides through the air round it, the stride growing on a
+ray that skims it), the billows kept as half floats from the target so the march keeps its registers, a cheap bound
+round the whole first so most of the picture never works out where the billows are,
+each lump lit by a look a few blocks towards the sun and the column's bulk shadowing it with three more (looked for
+afresh while what lies behind still shows through, kept deeper in), lit by the sky the scene shows; as it settles its lumps sink back, its edge
 becomes a broad soft fringe mottled by noise and its density thins away; the dust is marched only through the
 shell just behind the shockwave's front (and sparsely inside it), over the land's own ground: a 96 x 96 heightfield
 of it asked of the world as it fires (`world.surface-height`, from about 260 to 1,150 blocks round the target as the
