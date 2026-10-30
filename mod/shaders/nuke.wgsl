@@ -3,7 +3,8 @@
 // file, and sets it for a nuke strike only. Validate with tools/check-shader.sh.
 
 // ---- laser 10: the nuke -------------------------------------------------------------------------------------------
-// No beam. A dark bomb shows high in the sky and falls, faster and faster, a thin pale trail behind it; it bursts
+// No beam. The bomb comes in from orbit, a white-hot streak across the sky with a thick trail, sheds its heat, arcs
+// over into a steep fall (a finned casing, turning, glinting) and sinks under its orange and white chute; it bursts
 // PL_BURST over the land: a blinding white flash whites out the picture and lights the land and the sky; a fireball
 // swells white-orange, rises and darkens into a mushroom cloud hundreds of blocks tall (a fat, churning toroidal cap
 // with a ragged underside, glowing orange inside for tens of seconds, a stem pulled up out of the land, a condensation

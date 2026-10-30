@@ -1,15 +1,15 @@
 //! The nuke's plan: the Payload's big brother (strike/payload.rs, whose land reading, crater, felled trees, rubble and
-//! thrown blocks this follows, scaled up). A dark bomb shows high in the sky over the target and falls, steeper and
-//! faster, a thin pale trail behind it; it bursts NK_BURST blocks over the land: a blinding white flash, a fireball
-//! swelling and rising into a mushroom cloud hundreds of blocks tall, its stem pulled up out of the land, the shockwave
-//! racing out over it in a wall of dust, debris and real blocks thrown far round it.
+//! thrown blocks this follows, scaled up). A bomb comes in from orbit, a white-hot streak across the sky, sheds its
+//! heat, arcs over into a steep fall and sinks under its chute (NkGeo); it bursts NK_BURST blocks over the land: a
+//! blinding white flash, a fireball swelling and rising into a mushroom cloud hundreds of blocks tall, its stem pulled
+//! up out of the land, the shockwave racing out over it in a wall of dust, debris and real blocks thrown far round it.
 //!
-//! The timeline (strike seconds; the sounds arrive late by the distance, 343 blocks a second, as the Payload's):
-//! 0 fired; NK_SEEN (2.0) the bomb shows ~900 up; `nuke.fall` from 1.5 to the burst; NK_HIT (11.0) the burst (the
-//! flash is silent); `nuke.ground` as the ground carries the shock (five times the air's speed); `nuke.blast` (or
-//! `nuke.blast_far` past ~300 blocks, cross-faded to 900) as the air does, `nuke.shockwave` with it as the front passes
-//! the player, `nuke.rumble` 1.5 s after it (30 to 40 s), `nuke.debris` 3 s after it within 700 blocks; the strike ends
-//! at 90 s (lasers.rs's length).
+//! The timeline (strike seconds; the sounds arrive late by the distance, 343 blocks a second, as the Payload's): 0
+//! fired; NK_SEEN (0.8) the bomb shows, far off and high; NK_COOL (6.0) its heat shed; NK_CHUTE (8.3) its chute opens;
+//! `nuke.fall` from 1.5 to the burst; NK_HIT (11.0) the burst (the flash is silent); `nuke.ground` as the ground
+//! carries the shock (five times the air's speed); `nuke.blast` (or `nuke.blast_far` past ~300 blocks, cross-faded to
+//! 900) as the air does, `nuke.shockwave` with it as the front passes the player, `nuke.rumble` 1.5 s after it (30 to
+//! 40 s), `nuke.debris` 3 s after it within 700 blocks; the strike ends at 90 s (lasers.rs's length).
 //!
 //! What it leaves is real blocks: a crater about NK_CRATER_R * 2 (200) across and NK_CRATER_D (40) deep, its walls
 //! stepped in terraces and scorched, glazed with greenish glass on its floor, its rim a broken ridge of rock and earth
@@ -19,8 +19,8 @@
 //! (300); past that, out to NK_FLASH (480), what faces the fireball scorched by its flash and what is hidden from it
 //! left as it was (nk_flash_rows). Nothing that flows; nothing dug next to water or lava; the odd fire far out.
 //!
-//! shaders/nuke.wgsl draws the bomb, its trail, the flash, the fireball, the mushroom cloud, the shockwave, the dust and
-//! the debris from the table `nk_table` hands it (render.set-data). Keep the NK_* here and there in step.
+//! shaders/nuke.wgsl draws the bomb, its trail, the flash, the fireball, the mushroom cloud, the shockwave, the dust
+//! and the debris from the table `nk_table` hands it (render.set-data). Keep the NK_* here and there in step.
 use super::{Act, Blocks, Col, Plan, Rng, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
 use crate::lasers::Laser;
 use std::cell::RefCell;

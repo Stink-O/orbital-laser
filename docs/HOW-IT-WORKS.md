@@ -142,8 +142,12 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   it thins to nothing by about 65 s. The strike ends at 70 s.
   It reaches 1000 blocks.
 - **Nuke** (page three). No beam. Warnings on the action bar (`NUCLEAR DEVICE RELEASED`, `INBOUND`, `TAKE COVER`);
-  from 2 s a dark bomb high over the target falls, faster and faster, a thin pale trail behind it and a red light
-  blinking on its tail; its fall whistles down from high overhead. At 11 s it bursts 45 blocks over the land, in
+  from 0.8 s the bomb comes in from orbit far beyond the target and off to one side: a white-hot streak across the
+  sky, its plasma sheath and glowing wake behind it, a thick lumpy trail of ablated smoke and burning pieces torn off
+  it. It sheds its heat by about 7 s and arcs over into a steep fall, its casing (an ogive nose, four fins) turning
+  slowly, the sun glinting off it, a thin vapour trail behind; at 8.3 s its orange and white ribbon chute snaps open
+  and it sinks slowly onto the target (a strobe on it at night), a pinprick of white at it the instant before it
+  bursts. Its fall whistles down from high overhead. At 11 s it bursts 45 blocks over the land, in
   silence: the picture whites out for a moment, the land and the sky lit white then orange, and a white-hot fireball
   swells to about 100 across within a second. It cools through yellow and orange to a dull red glow inside the cloud
   as it rises, rolling into a mushroom cloud: a churning toroidal cap with a rounded crown, lit from inside and from
