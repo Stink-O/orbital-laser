@@ -4,7 +4,7 @@
 
 // ---- laser 10: the nuke -------------------------------------------------------------------------------------------
 // No beam. The bomb comes in from orbit, a white-hot streak across the sky with a thick trail, sheds its heat, arcs
-// over into a steep fall (a finned casing, turning, glinting) and sinks under its orange and white chute; it bursts
+// over into a steep dive (a finned casing, spinning up, glinting), faster and faster, a vapour collar round it; it bursts
 // PL_BURST over the land: a blinding white flash whites out the picture and lights the land and the sky; a fireball
 // swells white-orange, rises and darkens into a mushroom cloud hundreds of blocks tall (a fat, churning toroidal cap
 // with a ragged underside, glowing orange inside for tens of seconds, a stem pulled up out of the land, a condensation
@@ -13,7 +13,7 @@
 // strike/nuke.rs samples the path into the table (nk_table, render.set-data): keep the PL_* in step with its NK_*.
 const PL_SEEN: f32 = 0.8;          // the bomb shows, coming in from orbit white-hot,
 const PL_COOL: f32 = 6.0;          // sheds its heat and arcs over into its fall,
-const PL_CHUTE: f32 = 8.3;         // its chute opens,
+const PL_DIVE: f32 = 8.0;          // dives faster and faster, its nose heating again,
 const PL_HIT: f32 = 11.0;          // and bursts,
 const PL_BURST: f32 = 45.0;        // this high over the target's ground
 const PL_LEN: f32 = 90.0;          // the strike's length (lasers.rs): everything fades out over its last PL_FADE
@@ -125,7 +125,7 @@ fn smin(a: f32, b: f32, k: f32) -> f32 {
     return mix(b, a, h) - k * h * (1.0 - h);
 }
 
-// ---- the bomb's shape (the fall's): a casing, its fins, its chute ------------------------------------------------
+// ---- the bomb's shape (the fall's): a casing, its fins, the vapour round it in the dive ------------------------------------------------
 const NK_BS: f32 = 1.3;            // the casing's scale: about 16 long and 3.4 across
 // A cone from radius r1 at y 0 to r2 at y h, its ends rounded (iq's round cone).
 fn nk_rcone(p: vec3<f32>, r1: f32, r2: f32, h: f32) -> f32 {
@@ -141,15 +141,10 @@ fn nk_rcone(p: vec3<f32>, r1: f32, r2: f32, h: f32) -> f32 {
     }
     return dot(q, vec2<f32>(a, b)) - r1;
 }
-fn nk_seg2(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
-    let pa = p - a;
-    let ba = b - a;
-    return length(pa - ba * saturate(dot(pa, ba) / dot(ba, ba)));
-}
 // The bomb at p (its own frame: y along it, nose first, from its middle): the distance, and what is there (0 the body,
-// 1 the fins and tail, 2 the nose, 3 the canopy, 4 the lines). `spin`: how far it has turned; `ch`: the chute (how far
-// open, how far behind the tail its skirt is, its radius; none at 0 open).
-fn nk_bomb(p0: vec3<f32>, spin: f32, ch: vec4<f32>) -> vec2<f32> {
+// 1 the fins and tail, 2 the nose, 3 the vapour collar). `spin`: how far it has turned; `vc`: how much of the collar
+// there is (none at 0).
+fn nk_bomb(p0: vec3<f32>, spin: f32, vc: f32) -> vec2<f32> {
     let p = p0 / NK_BS;
     var d = nk_rcone(p - vec3<f32>(0.0, -4.2, 0.0), 1.3, 1.3, 7.4);
     d = min(d, nk_rcone(p - vec3<f32>(0.0, -6.0, 0.0), 0.75, 1.3, 1.8));
@@ -172,33 +167,17 @@ fn nk_bomb(p0: vec3<f32>, spin: f32, ch: vec4<f32>) -> vec2<f32> {
         d = df;
     }
     d = d * NK_BS;
-    if (ch.w > 0.0) {
-        // (the canopy: a shell over the skirt, ch.y behind the tail, long and narrow as it streams, a dome once open,
-        // scalloped between its twelve gores)
-        let tail = 8.3 * NK_BS;
-        let hh = -p0.y - tail - ch.y;
-        let r = length(p0.xz);
-        let ang = atan2(p0.z, p0.x) + spin;
-        let sc = 1.0 - 0.05 * (1.0 - abs(sin(ang * 6.0)));
-        let rl = ch.z * ch.x * sc;
-        let rv = ch.z * mix(1.9, 0.78, saturate(ch.x));
-        let e = length(vec2<f32>(r / max(rl, 0.3), hh / rv));
-        var dc = abs((e - 1.0) * min(max(rl, 0.3), rv)) - 0.3;
-        dc = max(dc, -hh);
-        if (dc < d) {
+    if (vc > 0.0) {
+        // (the vapour collar of its dive near the speed of sound: a thin cone of cloud opening back from its shoulders,
+        // growing as it gathers speed)
+        let yc = 2.4 * NK_BS - p0.y;
+        let rc = length(p0.xz);
+        let ln = 9.0 * vc;
+        let dcn = abs(dot(vec2<f32>(rc, yc), vec2<f32>(0.82, -0.57))) - 0.25;
+        let dv = max(dcn, max(-yc, yc - ln));
+        if (dv < d) {
             m = 3.0;
-            d = dc;
-        }
-        // (the lines: from the skirt to a point a little behind the tail, then one riser to it)
-        let sec = TAU / 12.0;
-        let a2 = (fract((ang - spin) / sec + 0.5) - 0.5) * sec;
-        let pl = vec2<f32>(r * cos(a2), -p0.y);
-        let conf = tail + 3.0;
-        let dl0 = nk_seg2(pl, vec2<f32>(rl * 0.97, tail + ch.y), vec2<f32>(0.0, conf));
-        let dl = min(length(vec2<f32>(dl0, r * sin(a2))), nk_seg2(vec2<f32>(r, -p0.y), vec2<f32>(0.0, tail - 0.5), vec2<f32>(0.0, conf))) - 0.08;
-        if (dl < d) {
-            m = 4.0;
-            d = dl;
+            d = dv;
         }
     }
     return vec2<f32>(d, m);
@@ -862,16 +841,17 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             let te = clamp(te_a + dt * sz, t0, thead);
             let age = max(time - te, 0.0);
             // (the nuke's: laid white-hot in the re-entry, a thick lumpy trail of ablated smoke and the ionised air
-            // glowing behind it; once it has shed its heat a thin pale vapour trail; none under the chute)
+            // glowing behind it; once it has shed its heat a pale vapour trail, thickening as it dives faster)
             let heat = 1.0 - smoothstep(PL_COOL - 0.6, PL_COOL + 1.0, te);
-            let gone = smoothstep(PL_CHUTE - 0.1, PL_CHUTE + 0.35, te);
+            let gone = 0.0;
+            let dv = smoothstep(PL_DIVE - 1.0, PL_HIT, te);
             let dive = 0.0;
             // (smoke rather than vapour: from a second or two after it shows, as in the third clip, where the whole
             // hook it draws is the same grey-brown smoke)
             let smk = 0.0;
             // (its core's radius: thin and tight where it is laid, swelling with age; the outer fray to twice that)
             // (never thinner than a pixel, its density spread over the width it is drawn at)
-            let rad0 = mix(1.2, 5.5, heat) + mix(1.5, 4.5, heat) * sqrt(age);
+            let rad0 = mix(1.2 + 3.0 * dv, 5.5, heat) + mix(1.5 + 1.5 * dv, 4.5, heat) * sqrt(age);
             let rad = max(rad0, tn * px_a * 0.9);
             let thin = rad0 / rad;
             if (h.x < rad * 3.4 && gone < 1.0) {
@@ -944,7 +924,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let sl = 3.2 * 0.14 * sqrt(0.384 * (1.0 - w1 * w1) + 0.09 * (1.0 - w2 * w2) + 0.0064 * (1.0 - w3 * w3)) + 1.0e-3;
                 let dens = saturate(sl * log(1.0 + exp(clamp(m / sl, -30.0, 30.0))));
                 // (dense where it is laid, thinning over the next twenty seconds; the vapour fainter)
-                let sig = mix(0.45, 0.8, heat) * exp(-age / mix(9.0, 16.0, heat)) * exp(-max(time - PL_HIT, 0.0) / 2.5) * fade * thin * (1.0 - gone);
+                let sig = mix(0.45 + 0.35 * dv, 0.8, heat) * exp(-age / mix(9.0, 16.0, heat)) * exp(-max(time - PL_HIT, 0.0) / 2.5) * fade * thin * (1.0 - gone);
                 let dtau = sig * prof * dens * 1.6 * rad * gin;
                 // (lit on its sunward side and on its lumps' tops, darker in its creases)
                 let axis = pa_ + ab * sz;
@@ -952,7 +932,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let ln = 0.5 + w1 * (n1 - 0.5);
                 let lit = (0.35 + 0.65 * saturate(dot(nrm, L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
                 // (grey-brown smoke, paler as it spreads thin; the vapour high up a pale grey)
-                var alb = mix(mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.74, 0.71, 0.66), heat), vec3<f32>(0.17, 0.145, 0.125), smk);
+                var alb = mix(mix(mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.72, 0.72, 0.74), dv), vec3<f32>(0.74, 0.71, 0.66), heat), vec3<f32>(0.17, 0.145, 0.125), smk);
                 alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), smoothstep(4.0, 20.0, age));
                 var c = alb * (sunc * lit * 0.85 + amb * (0.6 + 0.4 * ln));
                 // (just behind the head it is lit by the flame: orange, dying back within a second)
@@ -976,7 +956,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 // (high up, the hot streak of air it leaves glowing behind it, white, cooling within a second)
                 // (the re-entry's: the ionised air it leaves glowing behind it, white-yellow cooling through orange to a
                 // dull pink within a second, a core narrower than the smoke)
-                let fh = heat * exp(-age / 0.45) * step(time, PL_HIT);
+                let fh = max(heat, 0.1 * dv * dv) * exp(-age / mix(0.45, 0.25, dv)) * step(time, PL_HIT);
                 let gr = rad * 0.5;
                 let gch = sqrt(max(1.0 - gx * gx / (gr * gr), 0.0));
                 let gcol = mix(mix(vec3<f32>(1.3, 0.35, 0.3), vec3<f32>(2.6, 0.95, 0.3), exp(-age / 0.4)), vec3<f32>(3.4, 3.0, 2.3), exp(-age / 0.1));
@@ -1224,8 +1204,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     }
 
     // ---- the bomb: a white-hot streak coming in from orbit, its plasma sheath and ionised wake; its heat shed, the
-    // casing (an ogive nose, a long body, four fins at its tail, turning slowly, the sun glinting off it), its chute
-    // snapping open and the bomb sinking under it; a pinprick of light the instant before it bursts ---------------
+    // casing (an ogive nose, a long body, four fins at its tail, spinning faster as it dives, the sun glinting off it),
+    // diving faster and faster, a collar of vapour round it, its nose glowing again; a pinprick of light the instant
+    // before it bursts --------------------------------------------------------------------------------------------
     if (stage != 1u && have && time > PL_SEEN - 0.1 && time < PL_HIT + 0.03) {
         let tb = min(time, PL_HIT);
         let H0 = pl_head(tb);
@@ -1245,32 +1226,24 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             vis = 0.0;
         }
         let show = smoothstep(PL_SEEN - 0.1, PL_SEEN + 0.35, time) * vis * k;
-        // (its way, nose first; how hot it still is; how far the chute is open)
+        // (its way, nose first; how hot it still is; how hard it is diving: its nose heating again, the vapour round it)
         let vd = normalize(H0 - pl_head(tb - 0.06) + vec3<f32>(0.0, -1.0e-4, 0.0));
         let heat = 1.0 - smoothstep(PL_COOL - 0.6, PL_COOL + 1.0, time);
-        let tch = time - PL_CHUTE;
-        let chu = select(0.0, 1.0, tch > 0.0);
-        // (the frame it is drawn in: y along it, nose first, swinging under the chute and coning a little before)
-        var sw = vec2<f32>(0.03 * sin(time * 1.7), 0.03 * cos(time * 1.3));
-        if (tch > 0.0) {
-            sw = vec2<f32>(0.16 * sin(tch * 2.1 - 0.4), 0.07 * sin(tch * 1.5 + 1.0)) * (1.0 - exp(-tch / 0.5)) + sw;
-        }
+        let dive = smoothstep(PL_DIVE, PL_HIT, time);
+        let vc = smoothstep(PL_HIT - 2.2, PL_HIT - 0.3, time);
+        // (the frame it is drawn in: y along it, nose first, coning a little, less as it gathers speed)
+        let sw = vec2<f32>(sin(time * 1.7), cos(time * 1.3)) * mix(0.04, 0.012, dive);
         let e1 = normalize(cross(vd, select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(vd.y) > 0.9)));
         let e2 = cross(vd, e1);
         let ay = normalize(vd + e1 * sw.x + e2 * sw.y);
         let ax = normalize(cross(ay, e2));
         let az = cross(ax, ay);
-        let spin = time * mix(2.3, 0.7, chu);
-        // (the chute: streaming out behind it, then blooming open with a snap, breathing as it sinks)
-        var chp = vec4<f32>(0.0);
-        if (tch > 0.0) {
-            let o = smoothstep(0.08, 0.5, tch);
-            let br = 1.0 + 0.1 * sin(tch * 11.0) * exp(-tch / 0.35) + 0.035 * sin(tch * 4.3);
-            chp = vec4<f32>(0.08 + 0.92 * o * br, mix(5.0, 26.0, smoothstep(0.0, 0.16, tch)), 14.0, 1.0);
-        }
-        // (marched in the frame, within a sphere round it and its chute)
-        let reach = select(11.0, 46.0, tch > 0.0);
-        let cen = Hp - ay * select(0.0, 28.0, tch > 0.0);
+        // (its fins spin it up as it dives: the glints come faster and faster)
+        let sd8 = max(time - PL_COOL, 0.0);
+        let spin = time * 2.3 + 0.32 * sd8 * sd8;
+        // (marched in the frame, within a sphere round it)
+        let reach = 13.0;
+        let cen = Hp;
         let bq = dot(rd, cen);
         let disc = bq * bq - dot(cen, cen) + reach * reach;
         if (disc > 0.0 && show > 0.0) {
@@ -1286,7 +1259,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 }
                 let pw = tt * px_a;
                 let w = rd * tt - Hp;
-                let r = nk_bomb(vec3<f32>(dot(w, ax), dot(w, ay), dot(w, az)), spin, chp);
+                let r = nk_bomb(vec3<f32>(dot(w, ax), dot(w, ay), dot(w, az)), spin, vc);
                 let rr = r.x / pw;
                 if (rr < best) {
                     best = rr;
@@ -1300,16 +1273,12 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             }
             var cov = saturate(0.6 - best) / 0.6;
             let pw = bt * px_a;
-            if (bm > 3.5) {
-                // (the lines: far finer than a pixel from most places, a faint grey thread)
-                cov = min(cov, 0.25 / pw);
-            }
             if (cov > 0.0) {
                 let w = rd * bt - Hp;
                 let q = vec3<f32>(dot(w, ax), dot(w, ay), dot(w, az));
                 let ep = max(0.05, 0.4 * pw);
                 let ex = vec2<f32>(1.0, -1.0);
-                let nl = normalize(ex.xyy * nk_bomb(q + ex.xyy * ep, spin, chp).x + ex.yyx * nk_bomb(q + ex.yyx * ep, spin, chp).x + ex.yxy * nk_bomb(q + ex.yxy * ep, spin, chp).x + ex.xxx * nk_bomb(q + ex.xxx * ep, spin, chp).x);
+                let nl = normalize(ex.xyy * nk_bomb(q + ex.xyy * ep, spin, vc).x + ex.yyx * nk_bomb(q + ex.yyx * ep, spin, vc).x + ex.yxy * nk_bomb(q + ex.yxy * ep, spin, vc).x + ex.xxx * nk_bomb(q + ex.xxx * ep, spin, vc).x);
                 var n = normalize(ax * nl.x + ay * nl.y + az * nl.z);
                 var alb = vec3<f32>(0.4, 0.41, 0.42);
                 var spec = 1.0;
@@ -1322,31 +1291,26 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     alb = vec3<f32>(0.12, 0.12, 0.13);
                 } else if (bm < 2.5) {
                     alb = vec3<f32>(0.09, 0.085, 0.08);
-                } else if (bm < 3.5) {
-                    // (the canopy: orange and white gores, the ribbons' gaps showing the sky through)
-                    let ang = atan2(q.z, q.x) + spin;
-                    let gore = i32(floor(ang / (TAU / 12.0) + 12.0)) % 2;
-                    alb = select(vec3<f32>(0.85, 0.83, 0.78), vec3<f32>(0.9, 0.3, 0.05), gore == 0);
-                    let hh = -q.y - 8.3 * NK_BS - chp.y;
-                    let gap = smoothstep(0.62, 0.7, fract(hh / 1.6)) * (1.0 - smoothstep(0.86, 0.94, fract(hh / 1.6)));
-                    cov = cov * (1.0 - 0.55 * gap * saturate(1.2 / pw));
+                } else {
+                    // (the vapour: a thin white veil, flickering, thinning to its trailing edge)
+                    let fade_v = 1.0 - saturate((2.4 * NK_BS - q.y) / (9.0 * vc + 0.01));
+                    alb = vec3<f32>(0.95, 0.96, 1.0);
                     spec = 0.0;
+                    cov = cov * vc * 0.35 * fade_v * (0.75 + 0.25 * sin(time * 53.0 + q.y * 3.0));
                     if (dot(n, rd) > 0.0) {
                         n = -n;
                     }
-                } else {
-                    alb = vec3<f32>(0.3, 0.29, 0.27);
-                    spec = 0.0;
                 }
                 let ndl = dot(n, L);
                 // (the canopy lets the sun through: lit from behind as well)
-                let dif = select(max(ndl, 0.0), max(ndl, 0.0) + 0.45 * max(-ndl, 0.0), bm > 2.5 && bm < 3.5);
+                let dif = select(max(ndl, 0.0), 0.5 + 0.5 * abs(ndl), bm > 2.5);
                 var c = alb * (sunc * dif * 0.95 + amb * (0.55 + 0.45 * n.y));
                 c = c + sunc * spec * (pow(max(dot(reflect(rd, n), L), 0.0), 90.0) * 5.0 + pow(max(dot(reflect(rd, n), L), 0.0), 8.0) * 0.15);
                 // (still hot from the re-entry: the nose glowing red, the body dull red behind it, cooling)
-                let warmb = smoothstep(PL_COOL + 2.2, PL_COOL - 0.4, time);
+                // (and heating again in the dive: the nose dull red, then orange, its edges brightest)
+                let warmb = max(smoothstep(PL_COOL + 2.2, PL_COOL - 0.4, time), 0.8 * dive * dive);
                 let wn = select(0.35 * saturate((q.y / NK_BS + 3.0) / 6.0), 1.0, bm > 1.5 && bm < 2.5) * select(1.0, 0.0, bm > 2.5);
-                c = c + mix(vec3<f32>(1.6, 0.28, 0.06), vec3<f32>(3.0, 1.6, 0.6), heat) * warmb * warmb * wn;
+                c = c + mix(vec3<f32>(1.6, 0.28, 0.06), vec3<f32>(3.0, 1.6, 0.6), max(heat, 0.6 * dive * dive)) * warmb * warmb * wn;
                 c = mix(c, haze_c, (1.0 - exp(-bt / 3000.0)) * 0.75);
                 col = mix(col, c, cov * show);
             }
@@ -1372,14 +1336,24 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             let hot = vec3<f32>(1.0, 0.95, 0.88) * (core + bloom + streak) + mix(vec3<f32>(1.0, 0.9, 0.75), vec3<f32>(1.0, 0.42, 0.16), sqrt(s.z)) * sheath;
             col = col + hot * heat * fl * show;
         }
+        // (the dive's heat: a small orange glow at its nose and a short hot wake, growing to the burst)
+        if (dive > 0.001) {
+            let s = ray_seg(rd, Hp + vd * 9.0, Hp - vd * (4.0 + 22.0 * dive));
+            let ww = mix(0.8, 2.2, s.z);
+            let wpx = max(ww, s.y * px_a * 0.8);
+            let wake = exp(-pow(s.x / wpx, 2.0)) * pow(1.0 - s.z, 2.0) * (ww / wpx);
+            let tc1 = max(2.0 / dh, px_a * 0.9);
+            let nose = exp(-pow(th / tc1, 2.0)) * 1.2 + 0.15 / (1.0 + pow(th / (tc1 * 4.0 + 0.002), 2.0));
+            col = col + vec3<f32>(2.4, 0.95, 0.3) * (nose + wake * 0.8) * dive * dive * show;
+        }
         // (the sun glinting off its turning fins, now and then, from any distance)
         let gph = pow(0.5 + 0.5 * sin(spin * 2.0 + 0.7), 30.0) + 0.5 * pow(0.5 + 0.5 * sin(spin * 2.0 + 2.6), 40.0);
         let gtc = max(2.0 / dh, px_a * 1.0);
         let glint = (exp(-pow(th / (gtc * 0.6), 2.0)) * 2.5 + 0.1 / (1.0 + pow(th / (gtc * 3.0), 2.0))) * gph * sun_up;
-        // (and at night a strobe on its tail, so it can be followed down)
-        let blink = step(fract(time * 1.1), 0.12) * (1.0 - day) * 0.8;
+        // (and at night a strobe on its tail, so it can be followed down, blinking faster as it nears)
+        let blink = step(fract(time * 1.1 + 0.25 * sd8 * sd8), 0.14) * (1.0 - day) * 0.8;
         let red = exp(-pow(th / max(px_a * 1.2, 0.8 / dh), 2.0)) * 2.0 + 0.2 / (1.0 + pow(th / (px_a * 5.0), 2.0));
-        col = col + (sunc * glint + vec3<f32>(2.4, 0.12, 0.05) * red * blink) * (1.0 - heat) * show;
+        col = col + (sunc * glint * (1.0 + dive) + vec3<f32>(2.4, 0.12, 0.05) * red * blink) * (1.0 - heat) * show;
         // (the instant before: a pinprick of white at it, swelling)
         let pin = pow(saturate((time - (PL_HIT - 0.22)) / 0.22), 3.0);
         if (pin > 0.0) {
