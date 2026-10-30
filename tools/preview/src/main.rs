@@ -7,6 +7,9 @@
 //! mode, style, colour, night, sunel sunaz (the sun's height and bearing, degrees), clouds, w h (the first shot's for all), frames (timed, the median printed),
 //! gpu (part of the adapter's name), flat, hills (the land rolling that high round the target, `hills_h`), vox (blocks
 //! from $PREVIEW_VOXELS), crater.
+//! A pass with a half-size stage (`fs_half` and `fs_join`, as the Horizon fork's orbital-mod-api-7 draws it) is drawn
+//! in its two stages, as the game does (the time printed is both together); with PREVIEW_WHOLE=1 in the environment,
+//! as a game without the stages does: `fs_main` alone.
 //! The pass's `mod_data` (the mod's `render.set-data`) is read from $PREVIEW_DATA if set: a line `index value` a word,
 //! the value a float (its bits) or, with a trailing `u`, a word as it is; one word, 0, otherwise, as in the game.
 use std::collections::HashMap;
@@ -408,6 +411,7 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         .unwrap();
     let prelude = include_str!("../../wgslcheck/prelude.wgsl");
     let src = format!("{prelude}\n{}", std::fs::read_to_string(shader_path).unwrap());
+    let src_has_half = src.contains("fn fs_half(");
     let t_compile = std::time::Instant::now();
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: None, source: wgpu::ShaderSource::Wgsl(src.into()) });
     let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
@@ -465,9 +469,7 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         ty: wgpu::BindingType::Texture { sample_type, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
         count: None,
     };
-    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: None,
-        entries: &[
+    let entries = [
             tex_entry(0, wgpu::TextureSampleType::Float { filterable: true }),
             tex_entry(1, wgpu::TextureSampleType::Depth),
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
@@ -484,8 +486,12 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
                 ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
                 count: None,
             },
-        ],
-    });
+            // (the half-size stage's pictures, for the join)
+            tex_entry(6, wgpu::TextureSampleType::Float { filterable: true }),
+            tex_entry(7, wgpu::TextureSampleType::Float { filterable: true }),
+        ];
+    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &entries[..6] });
+    let bgl_join = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &entries });
     // (the mod's data, as render.set-data gives it: $PREVIEW_DATA, or the one word 0 the game binds without it)
     let mut words: Vec<u32> = vec![0];
     if let Ok(path) = std::env::var("PREVIEW_DATA") {
@@ -509,39 +515,64 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let lin = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() });
     let nea = device.create_sampler(&Default::default());
     let sview = scene.create_view(&Default::default());
-    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: None,
-        layout: &bgl,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&sview) },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&dview) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&lin) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&nea) },
-            wgpu::BindGroupEntry { binding: 4, resource: ubuf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: dbuf.as_entire_binding() },
-        ],
-    });
+    // (the half-size stage's pictures, as the game makes them: half the width and height, rounded up)
+    let half_size = wgpu::Extent3d { width: w.div_ceil(2), height: h.div_ceil(2), depth_or_array_layers: 1 };
+    let half_tex = || {
+        device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: half_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default())
+    };
+    let halves = [half_tex(), half_tex()];
+    let mut bentries = vec![
+        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&sview) },
+        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&dview) },
+        wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&lin) },
+        wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&nea) },
+        wgpu::BindGroupEntry { binding: 4, resource: ubuf.as_entire_binding() },
+        wgpu::BindGroupEntry { binding: 5, resource: dbuf.as_entire_binding() },
+    ];
+    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl, entries: &bentries });
+    bentries.push(wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&halves[0]) });
+    bentries.push(wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&halves[1]) });
+    let bg_join = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl_join, entries: &bentries });
     let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
-    let pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: None,
-        layout: Some(&pl),
-        vertex: wgpu::VertexState { module: &module, entry_point: Some("horizon_mod_post_vertex"), compilation_options: Default::default(), buffers: &[] },
-        fragment: Some(wgpu::FragmentState {
-            module: &module,
-            entry_point: Some("fs_main"),
-            compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL })],
-        }),
-        primitive: Default::default(),
-        depth_stencil: None,
-        multisample: Default::default(),
-        multiview_mask: None,
-        cache: None,
-    });
+    let pl_join = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bgl_join)], immediate_size: 0 });
+    let target_of = |format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL });
+    let pipeline = |layout, entry: &str, targets: &[Option<wgpu::ColorTargetState>]| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
+            layout: Some(layout),
+            vertex: wgpu::VertexState { module: &module, entry_point: Some("horizon_mod_post_vertex"), compilation_options: Default::default(), buffers: &[] },
+            fragment: Some(wgpu::FragmentState { module: &module, entry_point: Some(entry), compilation_options: Default::default(), targets }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        })
+    };
+    // (the two stages when the pass has them, unless a game without them is asked for; the half-size stage writes both
+    // its pictures here, as the payload's does)
+    let split = src_has_half && std::env::var("PREVIEW_WHOLE").is_err();
+    let pipe = if split {
+        pipeline(&pl_join, "fs_join", &[target_of(wgpu::TextureFormat::Rgba8Unorm)])
+    } else {
+        pipeline(&pl, "fs_main", &[target_of(wgpu::TextureFormat::Rgba8Unorm)])
+    };
+    let half_pipe = split.then(|| pipeline(&pl, "fs_half", &[target_of(wgpu::TextureFormat::Rgba16Float), target_of(wgpu::TextureFormat::Rgba16Float)]));
     eprintln!("compile: {:.0} ms", t_compile.elapsed().as_secs_f64() * 1000.0);
-    let qs = device.create_query_set(&wgpu::QuerySetDescriptor { label: None, ty: wgpu::QueryType::Timestamp, count: 2 });
-    let qbuf = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 16, usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
-    let qread = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 16, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    let qs = device.create_query_set(&wgpu::QuerySetDescriptor { label: None, ty: wgpu::QueryType::Timestamp, count: 4 });
+    let qbuf = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 32, usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
+    let qread = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 32, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
     let tview = target.create_view(&Default::default());
     let mut warm = shots.iter().any(|s| s.frames > 1);
     for (n, sh) in shots.iter().enumerate() {
@@ -574,35 +605,59 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     warm = false;
     for _ in 0..draws {
         let mut enc = device.create_command_encoder(&Default::default());
-        {
+        let attach = |view| {
+            Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+            })
+        };
+        if let Some(half_pipe) = &half_pipe {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &tview,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
-                })],
-                timestamp_writes: Some(wgpu::RenderPassTimestampWrites { query_set: &qs, beginning_of_pass_write_index: Some(0), end_of_pass_write_index: Some(1) }),
+                color_attachments: &[attach(&halves[0]), attach(&halves[1])],
+                timestamp_writes: Some(wgpu::RenderPassTimestampWrites { query_set: &qs, beginning_of_pass_write_index: Some(0), end_of_pass_write_index: Some(2) }),
                 ..Default::default()
             });
-            pass.set_pipeline(&pipe);
+            pass.set_pipeline(half_pipe);
             pass.set_bind_group(0, &bg, &[]);
             pass.draw(0..3, 0..1);
         }
-        enc.resolve_query_set(&qs, 0..2, &qbuf, 0);
-        enc.copy_buffer_to_buffer(&qbuf, 0, &qread, 0, 16);
+        {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[attach(&tview)],
+                timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
+                    query_set: &qs,
+                    beginning_of_pass_write_index: Some(if split { 3 } else { 0 }),
+                    end_of_pass_write_index: Some(1),
+                }),
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipe);
+            pass.set_bind_group(0, if split { &bg_join } else { &bg }, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        enc.resolve_query_set(&qs, 0..if split { 4 } else { 2 }, &qbuf, 0);
+        enc.copy_buffer_to_buffer(&qbuf, 0, &qread, 0, 32);
         queue.submit([enc.finish()]);
         qread.slice(..).map_async(wgpu::MapMode::Read, |_| {});
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         let ts: Vec<u64> = bytemuck::cast_slice(&qread.slice(..).get_mapped_range().unwrap()).to_vec();
         qread.unmap();
-        times.push((ts[1] - ts[0]) as f64 * queue.get_timestamp_period() as f64 / 1.0e6);
+        let ms = |a: u64, b: u64| b.wrapping_sub(a) as f64 * queue.get_timestamp_period() as f64 / 1.0e6;
+        times.push((ms(ts[0], ts[1]), if split { ms(ts[0], ts[2]) } else { 0.0 }, if split { ms(ts[3], ts[1]) } else { 0.0 }));
     }
     let keep = times.len() - sh.frames.max(1) as usize;
     let times = &mut times[keep..];
-    times.sort_by(|a, b| a.total_cmp(b));
-    eprintln!("{n:02}: pass {:.2} ms (median of {})", times[times.len() / 2], times.len());
+    times.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let (all, half, join) = times[times.len() / 2];
+    if split {
+        eprintln!("{n:02}: pass {all:.2} ms (median of {}; the half-size stage {half:.2}, the join {join:.2})", times.len());
+    } else {
+        eprintln!("{n:02}: pass {all:.2} ms (median of {})", times.len());
+    }
 
     let pad = (w * 4).div_ceil(256) * 256;
     let rb = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: (pad * h) as u64, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });

@@ -5,7 +5,8 @@
 #   tools/check-shader.sh              # checks every pass: mod/shaders/strike.wgsl, and the downfall's, the planet
 #                                      # killer's and the crystal bloom's (strike.wgsl up to its fs_main less the other
 #                                      # lasers' own functions, then mod/shaders/downfall.wgsl, planetkiller.wgsl or
-#                                      # crystalbloom.wgsl, as the mod builds them)
+#                                      # crystalbloom.wgsl, as the mod builds them; the payload's with its
+#                                      # half-size stage and without, QUALITY FAST and FULL)
 #   tools/check-shader.sh other.wgsl   # another pass
 #
 # Why it exists: the game only logs that a mod's post pass did not compile. This prints the real error, with its line.
@@ -31,4 +32,7 @@ for own in downfall planetkiller crystalbloom sinkhole payload; do
     size=$(( $(pre | wc -c) + $(wc -c < "$shaders/$own.wgsl") ))
     [ "$size" -le 262144 ] || { echo "the $own pass is $size bytes, over the game's 256 KiB"; exit 1; }
 done
+# the payload's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
+{ cat "$here/wgslcheck/prelude.wgsl"; pre; sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d' "$shaders/payload.wgsl"; } > "$tmp"
+out=$("$bin" "$tmp" 2>&1) || { echo "the payload pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 echo OK

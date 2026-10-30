@@ -7,6 +7,8 @@ sheet. Seconds a sheet, against a rebuild, a restart and a whole strike in the g
     tools/preview.py downfall 28 30 --views far,under  # from those views
     tools/preview.py mothership 12 --bench             # and how long the pass takes on the GPU (median of 9)
     tools/preview.py downfall 30 --set mode=2 colour=1 # any of the preview's keys (see tools/preview/src/main.rs)
+    tools/preview.py payload 18 --quality both --bench # QUALITY FULL and FAST side by side (the payload's half-size
+                                                       # stage; --whole: FAST as a game without the stages draws it)
 
 The sheet is dist/preview/<laser>.jpg (each frame beside it as NN.png). The scene is not the game's: what the pass
 reads from the world (its depth, the clouds, the time of day) is like it, not the same. The look and the timing are the
@@ -104,15 +106,20 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "payload": "plplayer,plsky,pltop"}
 
 
-def build_pass(laser: str, out: pathlib.Path) -> pathlib.Path:
+def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Path:
     """The pass as the mod builds it (mod/src/lib.rs): strike.wgsl, or for the downfall and the planet killer
-    strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl."""
-    path = out / "pass.wgsl"
+    strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl. Its
+    half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
+    path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
     if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
-        path.write_text(pre + (SHADERS / f"{laser}.wgsl").read_text())
+        own = (SHADERS / f"{laser}.wgsl").read_text()
+        if not fast:
+            own = subprocess.run(["sed", "-e", r"/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d"],
+                                 input=own, capture_output=True, text=True, check=True).stdout
+        path.write_text(pre + own)
     else:
         path.write_text(strike)
     return path
@@ -161,6 +168,9 @@ def main() -> int:
     ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="more of the preview's keys, for every shot")
     ap.add_argument("--size", default="800x450")
     ap.add_argument("--bench", action="store_true", help="time the pass (median of 9 draws a shot)")
+    ap.add_argument("--quality", choices=["full", "fast", "both"], default="full",
+                    help="QUALITY FULL, FAST (the half-size stage), or both side by side (a column each a view)")
+    ap.add_argument("--whole", action="store_true", help="FAST drawn as a game without half-size stages draws it: fs_main alone")
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "dist" / "preview")
     a = ap.parse_args()
 
@@ -169,36 +179,54 @@ def main() -> int:
     subprocess.run(["cargo", "build", "--release", "--quiet"], cwd=tool, check=True)
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
-    shader = build_pass(a.laser, out)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
+    qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={LASERS.index(a.laser)}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
     if a.laser == "payload":
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
-    shots, labels = [], []
+    shots = []
     for t in a.times:
         for v in views:
             shots += ["--", f"t={t}", *VIEWS[v].split()]
-            labels.append(f"{t:g} s  {v}")
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
     env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload") else None
-    r = subprocess.run([str(exe), str(shader), str(out), *common, *shots], capture_output=True, text=True, env=env)
-    if r.returncode != 0:
-        print(r.stderr, file=sys.stderr)
-        return 1
-    if a.bench:
-        for line, label in zip([l for l in r.stderr.splitlines() if ": pass " in l], labels):
-            print(f"{label:>18}: {line.split(': pass ')[1]}")
+    env = dict(env or os.environ)
+    if a.whole:
+        env["PREVIEW_WHOLE"] = "1"
+    # each quality's frames, in their own folder; on the sheet a row a moment, a column a view (and a quality)
+    frames, labels = {}, {}
+    for q in qualities:
+        qout = out / q if len(qualities) > 1 else out
+        qout.mkdir(parents=True, exist_ok=True)
+        shader = build_pass(a.laser, out, q == "fast")
+        r = subprocess.run([str(exe), str(shader), str(qout), *common, *shots], capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            print(r.stderr, file=sys.stderr)
+            return 1
+        tag = f"  {q.upper()}" if len(qualities) > 1 or q != "full" else ""
+        n = 0
+        times = [l.split(": pass ")[1] for l in r.stderr.splitlines() if ": pass " in l]
+        for t in a.times:
+            for v in views:
+                label = f"{t:g} s  {v}{tag}"
+                frames[(t, v, q)] = Image.open(qout / f"{n:02}.png").convert("RGB")
+                labels[(t, v, q)] = label
+                if a.bench:
+                    print(f"{label:>24}: {times[n]}")
+                n += 1
+    keys = [(t, v, q) for t in a.times for v in views for q in qualities]
+    cols = len(views) * len(qualities)
     # the sheet: a row a moment, a column a view
-    frames = [Image.open(out / f"{i:02}.png").convert("RGB") for i in range(len(labels))]
-    fw, fh = frames[0].size
-    sheet = Image.new("RGB", (fw * len(views), fh * len(a.times)))
+    fw, fh = frames[keys[0]].size
+    sheet = Image.new("RGB", (fw * cols, fh * len(a.times)))
     d = ImageDraw.Draw(sheet)
-    for i, (f, label) in enumerate(zip(frames, labels)):
-        x, y = fw * (i % len(views)), fh * (i // len(views))
+    for i, key in enumerate(keys):
+        f, label = frames[key], labels[key]
+        x, y = fw * (i % cols), fh * (i // cols)
         sheet.paste(f, (x, y))
         d.rectangle([x, y, x + 8 * len(label) + 10, y + 18], fill=(0, 0, 0))
         d.text((x + 5, y + 3), label, fill=(255, 255, 255))

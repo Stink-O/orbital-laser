@@ -1,6 +1,14 @@
 // Put before a mod's post pass (capability `render`, docs/mods.md): what the pass is given. The world's picture
 // and depth, a uniform describing the frame, a full-screen triangle, and a few helpers. The renderer's depth is
 // reversed (1 at the near plane, 0 at the far plane and for the sky); the helpers turn it back into positions.
+//
+// A pass may be drawn in two stages: with `@fragment fn fs_half` and `@fragment fn fs_join` besides `fs_main`, the
+// game draws fs_half into one or two RGBA16F pictures half the width and height (rounded up; its locations 0 and 1),
+// then fs_join over the world in place of fs_main. fs_join reads them as bindings 6 and 7, which the pass declares
+// itself, so the same source compiles (and runs fs_main) on a game without the stages:
+//     @group(0) @binding(6) var half_picture: texture_2d<f32>;
+//     @group(0) @binding(7) var half_extra: texture_2d<f32>;
+// fs_half may not read them. `frame.resolution` is the world's picture's in both stages.
 
 struct Frame {
     view: mat4x4<f32>,

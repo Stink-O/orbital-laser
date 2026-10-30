@@ -427,8 +427,24 @@ fn pl_chunk_up(ch: PlChunk, C: vec3<f32>, me: vec3<f32>, dme: f32) -> f32 {
     return smoothstep(gref - 1.0, gref + 2.0, ch.p.y);
 }
 
-fn payload(in: StageIn) -> vec4<f32> {
-    let uv = in.uv;
+// What a stage of the pass gives: the picture (the whole pass and the join), or the half-size stage's (premultiplied
+// colour and transmittance) and beside it how far its ray went and the column's distance (`fs_half`).
+struct PlOut {
+    c: vec4<f32>,
+    e: vec4<f32>,
+}
+// Over what a half-size stage has gathered so far: smoke of colour c covering x of what is behind (col * (1 - x) + c * x).
+fn pl_over(h: ptr<function, vec4<f32>>, c: vec3<f32>, x: f32) {
+    *h = vec4<f32>((*h).rgb * (1.0 - x) + c * x, (*h).a * (1.0 - x));
+}
+// The pass, in one of three stages: 0 the whole of it at full size (fs_main); 1 the half-size stage (fs_half: the
+// smoke, the trail, the dust and the pieces' smoke, over a two by two of the picture's pixels, marched to alternately
+// the nearest and the farthest of their depths), returned as premultiplied colour and transmittance; 2 the join
+// (fs_join: the rest, sharp, at full size, with the half-size stage's `up` (colour, transmittance) laid over the picture
+// where that stage drew them; `up_e`: the column's distance, and whether a piece of debris may be near this pixel).
+fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
+    let up_t = up_e.x;
+    var uv = in.uv;
     let time = now();
     let cam = frame.camera_position.xyz;
     let k = intensity_v();
@@ -448,15 +464,33 @@ fn payload(in: StageIn) -> vec4<f32> {
     let moon = smoothstep(-0.02, -0.2, sun.y);
     let L = normalize(select(-sun, sun, sun.y > -0.04) + vec3<f32>(0.0, 0.03, 0.0));
 
-    let d = depth_at(uv);
+    var d = 0.0;
+    if (stage == 1u) {
+        // (the two by two of the picture's pixels this one stands for: its middle, and alternately the nearest and the
+        // farthest of their depths, so that at an edge both sides are marched and the join finds the one it matches)
+        let full = vec2<i32>(frame.resolution.xy);
+        let q = vec2<i32>(floor(in.position.xy)) * 2;
+        let q1 = min(q + vec2<i32>(1), full - vec2<i32>(1));
+        let d0 = textureLoad(scene_depth, q, 0);
+        let d1 = textureLoad(scene_depth, vec2<i32>(q1.x, q.y), 0);
+        let d2 = textureLoad(scene_depth, vec2<i32>(q.x, q1.y), 0);
+        let d3 = textureLoad(scene_depth, q1, 0);
+        let hq = vec2<i32>(floor(in.position.xy));
+        d = select(min(min(d0, d1), min(d2, d3)), max(max(d0, d1), max(d2, d3)), ((hq.x + hq.y) & 1) == 0);
+        uv = (vec2<f32>(q) + 1.0) * frame.resolution.zw;
+    } else {
+        d = depth_at(uv);
+    }
     let sky = is_sky(d);
     let rel = world_offset(uv, select(d, 0.5, sky));
     let scene_len = select(1.0e9, length(rel), !sky);
     let rd = normalize(world_offset(uv, 0.5));
     let scene = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb);
     var col = scene;
+    // (the half-size stage's own: what it has gathered, over what lies behind)
+    var hc = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     // (leaves and grass whipped as the blast's front goes through them: what is green near it shaken on the screen)
-    if (!sky && time > PL_HIT && time < PL_HIT + 6.0) {
+    if (stage != 1u && !sky && time > PL_HIT && time < PL_HIT + 6.0) {
         let rfr = PL_V * (time - PL_HIT);
         let rs = length((rel - (vec3<f32>(anchor_xz().x, block_y() + 1.0, anchor_xz().y) - cam)).xz);
         let e = rfr - rs;
@@ -496,7 +530,7 @@ fn payload(in: StageIn) -> vec4<f32> {
 
     // ---- the flash of the strike lighting the land and the sky round it ---------------------------------------------
     var flash = 0.0;
-    if (a > 0.0 && a < 3.0) {
+    if (stage != 1u && a > 0.0 && a < 3.0) {
         flash = exp(-a / 0.16) + 0.25 * exp(-a / 0.9);
         let Pf = C + vec3<f32>(0.0, 10.0, 0.0);
         let df = length(Pf);
@@ -515,7 +549,11 @@ fn payload(in: StageIn) -> vec4<f32> {
     // ---- the trail: a cord of lumpy smoke hung along its path, pale and thin high up, dark grey-brown and dense along
     // the dive, lit orange by the flame just behind the head; as it ages it swells, pales, breaks into beads and puffs,
     // frays and thins away over twenty seconds or so, drifting with the wind ------------------------------------------
-    if (have && time > PL_SEEN) {
+    // (the join: the half-size stage's smoke over the picture, where the trail's would go)
+    if (stage == 2u) {
+        col = col * up.a + up.rgb;
+    }
+    if (stage != 2u && have && time > PL_SEEN) {
         let n = pl_n();
         let t0 = pl_w(1u);
         let dt = pl_w(2u);
@@ -715,9 +753,17 @@ fn payload(in: StageIn) -> vec4<f32> {
         }
         if (tau > 0.0) {
             let al = 1.0 - exp(-tau);
-            col = mix(col, tc / tau, al * k);
+            if (stage == 0u) {
+                col = mix(col, tc / tau, al * k);
+            } else {
+                pl_over(&hc, tc / tau, al * k);
+            }
         }
-        col = col + glow * k;
+        if (stage == 0u) {
+            col = col + glow * k;
+        } else {
+            hc = vec4<f32>(hc.rgb + glow * k, hc.a);
+        }
     }
 
     // ---- the pieces it sheds coming in: glowing chunks flung off to the side, falling away behind it, burning out
@@ -740,12 +786,13 @@ fn payload(in: StageIn) -> vec4<f32> {
             let kd = max(pl_w(b + 4u), 0.05);
             let p0 = vec3<f32>(pl_w(b + 5u), pl_w(b + 6u), pl_w(b + 7u)) + C;
             let v0 = vec3<f32>(pl_w(b + 8u), pl_w(b + 9u), pl_w(b + 10u));
-            if (s < life) {
+            if (stage != 1u && s < life) {
                 // (the glowing piece, smeared over the last few hundredths of a second it moved: a short streak)
                 let pa = pl_frag(p0, v0, kd, s);
                 let pb = pl_frag(p0, v0, kd, max(s - select(0.03, 0.05, spark), 0.0));
                 let h = ray_seg(rd, pa, pb);
-                if (h.y < scene_len + 2.0) {
+                // (in the join, hidden behind the column, which the half-size stage drew)
+                if (h.y < select(scene_len + 2.0, min(scene_len + 2.0, up_t), stage == 2u)) {
                     let w = max(size, h.y * px_a * 0.8);
                     let e = min(size / w, 1.0);
                     let u = s / life;
@@ -754,7 +801,7 @@ fn payload(in: StageIn) -> vec4<f32> {
                     fglow = fglow + hot * (exp(-pow(h.x / w, 2.0)) * 3.0 + 0.25 * exp(-h.x / (w * 4.0))) * e * e * (1.0 - u * u) * fl;
                 }
             }
-            if (!spark) {
+            if (stage != 2u && !spark) {
                 // (its smoke: laid where it was while it burned, swelling and thinning after)
                 let s_hi = min(s, life);
                 let s_lo = max(s - 3.5, 0.0);
@@ -790,20 +837,24 @@ fn payload(in: StageIn) -> vec4<f32> {
             }
         }
         if (ftau > 0.0) {
-            col = mix(col, ftc / ftau, (1.0 - exp(-ftau)) * k);
+            if (stage == 0u) {
+                col = mix(col, ftc / ftau, (1.0 - exp(-ftau)) * k);
+            } else {
+                pl_over(&hc, ftc / ftau, (1.0 - exp(-ftau)) * k);
+            }
         }
         col = col + fglow * k * fade;
     }
 
     // (how far off the column stands along this ray, where it is mostly opaque: the dust and debris behind it hidden)
-    var col_t = 1.0e9;
+    var col_t = select(1.0e9, up_t, stage == 2u);
     // ---- the column: raymarched, self-shadowed towards the sun, dark at its core, fire in it as it bursts ----------
     // (first a cheap bound round all it could be, a fat stick from under the crater to over its top, leaning with the
     // wind: most of the picture is well clear of it, and need not work out where its eighteen billows are)
     let cgrow = 1.0 + 0.012 * max(a - 6.0, 0.0) + 0.006 * max(a - PL_SOFT0, 0.0);
     let ctop = C + vec3<f32>(0.0, 5.0 + 1.08 * pl_w(5u) * (1.0 + 0.006 * a) * cgrow, 0.0) + pl_wind() * a;
     let cbound = pl_ray_seg(rd, C - vec3<f32>(0.0, 30.0, 0.0), ctop, 0.0, 1.0);
-    if (have && a > 0.0 && cbound.x < 130.0 * cgrow + 50.0) {
+    if (stage != 2u && have && a > 0.0 && cbound.x < 130.0 * cgrow + 50.0) {
         var cl = pl_column(a, C);
         if (cl.n > 0) {
             let tb = pl_box(rd, cl.lo, cl.hi);
@@ -902,14 +953,18 @@ fn payload(in: StageIn) -> vec4<f32> {
                     }
                     let ap = 1.0 - exp(-dist / 2600.0);
                     let ccol = mix(acc / max(1.0 - tr, 1.0e-4), haze_c, ap * 0.8);
-                    col = mix(col, ccol, (1.0 - tr) * k * fade);
+                    if (stage == 0u) {
+                        col = mix(col, ccol, (1.0 - tr) * k * fade);
+                    } else {
+                        pl_over(&hc, ccol, (1.0 - tr) * k * fade);
+                    }
                 }
             }
         }
     }
 
     // ---- the object: a white-hot point, bloom round it; a fireball in the dive ------------------------------------
-    if (have && time > PL_SEEN - 0.2 && time < PL_HIT + 0.04) {
+    if (stage != 1u && have && time > PL_SEEN - 0.2 && time < PL_HIT + 0.04) {
         let Hp = pl_head(time) + C;
         let dh = length(Hp);
         let hn = Hp / dh;
@@ -944,7 +999,7 @@ fn payload(in: StageIn) -> vec4<f32> {
     }
 
     // ---- the dust: marched along the view ray where it crosses the shell behind the front, more sparsely inside ------
-    if (a > 0.0 && a < 32.0) {
+    if (stage != 2u && a > 0.0 && a < 32.0) {
         let rf = PL_V * a;
         // (the slab the dust stays in: over the land's lowest and highest ground, where the heightfield is in)
         var ylo = min(C.y, me.y) - 6.0;
@@ -1038,12 +1093,61 @@ fn payload(in: StageIn) -> vec4<f32> {
                     }
                 }
             }
-            col = mix(col, col * tr + acc, k * fade);
+            if (stage == 0u) {
+                col = mix(col, col * tr + acc, k * fade);
+            } else {
+                let kf = k * fade;
+                hc = vec4<f32>(hc.rgb * (1.0 - kf + kf * tr) + acc * kf, hc.a * (1.0 - kf + kf * tr));
+            }
         }
     }
 
     // ---- the debris: dark chunks and specks of earth, tumbling as they fly and fall, the big ones trailing smoke ----
-    if (a > 0.0 && a < 16.0 && pl_w(8u) > 0.5) {
+    if (stage == 1u) {
+        // (whether a piece of the debris still in the air passes near here, a few pixels wider than the join looks for
+        // them: the join looks only near those that are; most of the picture has none near it)
+        var near = 0.0;
+        if (a > 0.0 && a < 16.0 && pl_w(8u) > 0.5) {
+            var low = min(C.y, me.y) - 4.0;
+            if (pl_w(PL_HF) > 1.0) {
+                low = min(low, C.y + pl_w(PL_HF + 2u) - 4.0);
+            }
+            let fpx = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
+            let wpx = 1.0 / fpx;
+            let eka = exp(-0.06 * a);
+            // (the middle of the two by two this pixel stands for, in the picture's pixels)
+            let pxy = (floor(in.position.xy) * 2.0 + 1.0);
+            for (var i = 0; i < PL_DEBRIS; i = i + 1) {
+                let ch = pl_chunk(i, a, eka, C);
+                if (ch.live <= 0.0 || ch.p.y < low) {
+                    continue;
+                }
+                let dist = length(ch.p);
+                let off = length(ch.p - rd * dot(ch.p, rd));
+                if (dist < 1.0 || off > ch.s * 4.5 + length(ch.v) * 0.8 + 1.5 + 9.0 * dist * wpx) {
+                    continue;
+                }
+                // (as the join looks for it on the screen, three pixels wider)
+                let s0 = project_rel(ch.p);
+                if (s0.z < 0.0) {
+                    continue;
+                }
+                let rad = max(ch.s * fpx / dist, 0.55);
+                let reach = select(rad * 1.4 + length(ch.v) * 0.03 * fpx / dist + 2.0, rad * 3.0 + length(ch.v) * 0.6 * fpx / dist + 4.0, smoothstep(0.45, 0.8, ch.s) > 0.0);
+                if (length(pxy - s0.xy * frame.resolution.xy) > reach + 3.0) {
+                    continue;
+                }
+                if (pl_chunk_up(ch, C, me, dme) > 0.0) {
+                    near = 1.0;
+                    break;
+                }
+            }
+        }
+        // (how far its ray went, and the column's distance, for the join to match its pixels against and hide what lies
+        // behind the column; both kept within a half float)
+        return PlOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(col_t, 6.0e4), near, 0.0));
+    }
+    if ((stage == 0u || up_e.y > 0.0) && a > 0.0 && a < 16.0 && pl_w(8u) > 0.5) {
         let fpx = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
         let pxy = in.position.xy;
         let lim = min(scene_len, col_t);
@@ -1203,12 +1307,96 @@ fn payload(in: StageIn) -> vec4<f32> {
         let ycc_y = srgb.g * 0.5 + (srgb.r + srgb.b) * 0.25;
         let ycc_co = srgb.r - srgb.b;
         let ycc_cg = srgb.g - (srgb.r + srgb.b) * 0.5;
-        return vec4<f32>(ycc_y, select(ycc_cg, ycc_co, chk < 0.25) * 0.5 + 0.5, 0.0, 1.0);
+        return PlOut(vec4<f32>(ycc_y, select(ycc_cg, ycc_co, chk < 0.25) * 0.5 + 0.5, 0.0, 1.0), vec4<f32>(0.0));
     }
-    return vec4<f32>(srgb, 1.0);
+    return PlOut(vec4<f32>(srgb, 1.0), vec4<f32>(0.0));
 }
 
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
-    return payload(in);
+    return payload(in, 0u, vec4<f32>(0.0), vec2<f32>(1.0e9, 1.0)).c;
 }
+
+// [half stage]
+// QUALITY FAST (mod/src/lib.rs keeps this only then): on a game with mod passes' half-size stage (docs/mods.md of the
+// Horizon fork, release orbital-mod-api-7), the smoke is drawn at half the width and height by fs_half and laid over
+// the full-size picture by fs_join; a game without it compiles these too and draws fs_main alone, at full size.
+@group(0) @binding(6) var half_picture: texture_2d<f32>;
+@group(0) @binding(7) var half_extra: texture_2d<f32>;
+
+struct PlHalf {
+    @location(0) c: vec4<f32>,
+    @location(1) e: vec4<f32>,
+}
+@fragment
+fn fs_half(in: StageIn) -> PlHalf {
+    let o = payload(in, 1u, vec4<f32>(0.0), vec2<f32>(1.0e9, 1.0));
+    return PlHalf(o.c, o.e);
+}
+
+// The half-size stage's smoke at this pixel (whose ray goes `len` blocks): the four nearest of its pixels, each weighed
+// by how near it is (bilinearly) and by how near the depth it was marched to is to this pixel's, so that across an edge
+// against a block or the sky only the ones on this pixel's side count (a joint bilateral upsample); if none is, the
+// nearest in depth round it. In .x of the second the column's distance of the one that counts most, in .y whether any of the
+// four has debris near it.
+fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
+    let hs = vec2<i32>(textureDimensions(half_picture));
+    let h = floor(pos) * 0.5 - 0.25;
+    let i0 = vec2<i32>(floor(h));
+    let f = h - floor(h);
+    let lp = min(len, 6.0e4);
+    var acc = vec4<f32>(0.0);
+    var sw = 0.0;
+    var best_w = -1.0;
+    var best_t = 1.0e9;
+    var near_dz = 1.0e9;
+    var near_c = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    var near_t = 1.0e9;
+    var debris = 0.0;
+    for (var k = 0; k < 4; k = k + 1) {
+        let o = vec2<i32>(k & 1, k >> 1u);
+        let q = clamp(i0 + o, vec2<i32>(0), hs - vec2<i32>(1));
+        let c = textureLoad(half_picture, q, 0);
+        let e = textureLoad(half_extra, q, 0);
+        let bw = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1);
+        let dz = abs(e.x - lp) / max(lp, 1.0);
+        debris = max(debris, e.z);
+        let w = bw * exp(-dz * 24.0);
+        acc = acc + c * w;
+        sw = sw + w;
+        if (w > best_w) {
+            best_w = w;
+            best_t = e.y;
+        }
+        if (dz < near_dz) {
+            near_dz = dz;
+            near_c = c;
+            near_t = e.y;
+        }
+    }
+    if (sw < 1.0e-3) {
+        // (none of the four on this pixel's side, as for a speck of sky through leaves: the nearest in depth of the four
+        // by four round it)
+        for (var k = 0; k < 16; k = k + 1) {
+            let q = clamp(i0 + vec2<i32>((k & 3) - 1, (k >> 2u) - 1), vec2<i32>(0), hs - vec2<i32>(1));
+            let e = textureLoad(half_extra, q, 0);
+            let dz = abs(e.x - lp) / max(lp, 1.0);
+            if (dz < near_dz) {
+                near_dz = dz;
+                near_c = textureLoad(half_picture, q, 0);
+                near_t = e.y;
+            }
+        }
+        return PlOut(near_c, vec4<f32>(near_t, debris, 0.0, 0.0));
+    }
+    return PlOut(acc / sw, vec4<f32>(best_t, debris, 0.0, 0.0));
+}
+
+@fragment
+fn fs_join(in: StageIn) -> @location(0) vec4<f32> {
+    let d = depth_at(in.uv);
+    let len = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
+    let u = pl_up(in.position.xy, len);
+    return payload(in, 2u, u.c, vec2<f32>(select(u.e.x, 1.0e9, u.e.x >= 6.0e4), u.e.y)).c;
+}
+// [end half stage]
