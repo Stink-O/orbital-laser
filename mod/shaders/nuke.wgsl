@@ -1266,11 +1266,11 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
         if (tch > 0.0) {
             let o = smoothstep(0.08, 0.5, tch);
             let br = 1.0 + 0.1 * sin(tch * 11.0) * exp(-tch / 0.35) + 0.035 * sin(tch * 4.3);
-            chp = vec4<f32>(0.08 + 0.92 * o * br, mix(5.0, 24.0, smoothstep(0.0, 0.16, tch)), 12.0, 1.0);
+            chp = vec4<f32>(0.08 + 0.92 * o * br, mix(5.0, 26.0, smoothstep(0.0, 0.16, tch)), 14.0, 1.0);
         }
         // (marched in the frame, within a sphere round it and its chute)
-        let reach = select(11.0, 30.0 + 12.0, tch > 0.0);
-        let cen = Hp - ay * select(0.0, 26.0, tch > 0.0);
+        let reach = select(11.0, 46.0, tch > 0.0);
+        let cen = Hp - ay * select(0.0, 28.0, tch > 0.0);
         let bq = dot(rd, cen);
         let disc = bq * bq - dot(cen, cen) + reach * reach;
         if (disc > 0.0 && show > 0.0) {
