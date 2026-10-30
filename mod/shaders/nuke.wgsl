@@ -18,6 +18,8 @@ const PL_LEN: f32 = 90.0;          // the strike's length (lasers.rs): everythin
 const PL_FADE: f32 = 10.0;
 const PL_SOFT0: f32 = 48.0;        // the cloud keeps its crisp billows this long after the burst, then loses them
 const PL_SOFT1: f32 = 72.0;        // by this, a soft, drifting haze thinning away (gone by PL_LEN)
+const PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
+                                   // march's bounds and gates all allow for
 const PL_V: f32 = 343.0;           // the shockwave's front, blocks a second (with the blast's sound: nuke.rs)
 const PL_P: u32 = 16u;             // the table: the path's samples from PL_P, three words each,
 const PL_PF: u32 = 400u;
@@ -277,6 +279,9 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
         fray = gnoise3(pl_rot(0, q * (1.0 / (1.8 * S))) + vec3<f32>(5.0, 1.0, -0.4 * a));
         d = d - 3.5 * (fray - 0.5) * (1.0 - soft) * (0.25 + 0.75 * ew);
     }
+    // (the lumps' height capped smoothly at PL_DM, so that nothing stands out past the bounds the march allows)
+    let bump = max(d0 - d, 0.0);
+    d = d0 - bump / sqrt(sqrt(1.0 + pow(bump / PL_DM, 4.0))) + max(d - d0, 0.0);
     return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
 }
 // A ray against a box, camera-relative: the entry and exit distances.
@@ -874,12 +879,15 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     let glow = 1.0 * exp(-a / 3.5) + 0.3 * exp(-a / 18.0);
     if (stage != 2u && have && a > 0.0) {
         var cl = pl_column(a, C);
-        // (first a cheap bound: a fat stick from under the land to over the cap, leaning with the wind)
-        let ctop = C + vec3<f32>(0.0, cl.hc + 1.5 * cl.rt, 0.0) + pl_wind() * a;
+        // (first a cheap bound: a fat stick from under the land up to the cap's core circle, leaning with the wind, as
+        // wide as the cap's rim and its lumps; its rounded top holds the dome. Its top at the core's height, not over
+        // the cap: from a point higher up the rim's lumps lie further off than the rim's radius, and were cut off)
+        let ctop = C + vec3<f32>(0.0, cl.hc, 0.0) + pl_wind() * a;
         let cbound = pl_ray_seg(rd, C - vec3<f32>(0.0, 20.0, 0.0), ctop, 0.0, 1.0);
+        let crad = max(cl.Rt + cl.rt, max(cl.surge.x + cl.surge.y, 0.8 * cl.rt + 0.15 * cl.rt)) + PL_DM + 30.0 + 0.2 * length(pl_wind()) * a;
         let tb = pl_box(rd, cl.lo, cl.hi);
         let t1 = min(tb.y, scene_len);
-        if (cbound.x < max(cl.Rt + cl.rt * 1.6, cl.surge.x + cl.surge.y) + 60.0 && t1 > tb.x) {
+        if (cbound.x < crad && t1 > tb.x) {
             var t = tb.x;
             var tr = 1.0;
             var acc = vec3<f32>(0.0);
@@ -902,15 +910,16 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let d0 = b2.x;
                 let dr = b2.y;
                 let db = min(d0, dr);
-                if (db > 70.0) {
-                    t = t + db - 60.0;
+                // (far from it, a long step: the body's distance is up to 1.6 times too long under the cap's roll)
+                if (db > PL_DM + 14.0) {
+                    t = t + (db - PL_DM - 4.0) * 0.62;
                     continue;
                 }
                 let st = max(5.0, t * 0.009) * (0.75 + 0.5 * j);
                 var den = 0.0;
                 var ringw = 0.0;
                 var sd = vec4<f32>(d0, 0.5, 4.0, 0.5);
-                if (d0 < 60.0) {
+                if (d0 < PL_DM + 4.0) {
                     sd = pl_col_sdf(&cl, p, d0, true);
                     let ramp = saturate(-sd.x / (sd.z + 40.0 * soft));
                     den = ramp * mix(saturate(0.15 + 1.7 * sd.w), 1.0, ramp * ramp) * thin;
