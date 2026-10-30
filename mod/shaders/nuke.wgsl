@@ -776,7 +776,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
     // stem's band, the base surge's skirt; soft, and the sky still lights what lies in it -------------------------------
     if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02 && frame.mod_params[3].w < 0.5) {
         let T = pl_shadow(rel, L, a, C, ign(in.position.xy));
-        col = col * (1.0 - 0.62 * (1.0 - T) * sun_up * k * fade);
+        col = col * (1.0 - 0.72 * (1.0 - T) * sun_up * k * fade);
     }
 
     // ---- the trail: a cord of lumpy smoke hung along its path, pale and thin high up, dark grey-brown and dense along
