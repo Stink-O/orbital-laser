@@ -521,6 +521,8 @@ struct Column {
     fluid: bool,
     /// The fluid is lava (kept apart, sealed as ever).
     lava: bool,
+    /// The water's own surface here (not what hangs over it).
+    wtop: i32,
     g: i32,
     top: i32,
     trunk: u8,
@@ -586,6 +588,9 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
                     break;
                 }
                 Kind::Fluid => {
+                    if !c.fluid {
+                        c.wtop = base + j as i32;
+                    }
                     c.fluid = true;
                     c.lava |= lavas.get(blocks[j] as usize).copied().unwrap_or(false);
                     top.get_or_insert(base + j as i32);
@@ -641,7 +646,7 @@ fn nk_land_step(q: &mut Plan, land: Shared, tags: Rc<Vec<u32>>, part: usize, at_
                         && c.fluid
                         && !c.lava
                     {
-                        wl = Some(wl.map_or(c.top, |w: i32| w.max(c.top)));
+                        wl = Some(wl.map_or(c.wtop, |w: i32| w.max(c.wtop)));
                     }
                 }
             }
