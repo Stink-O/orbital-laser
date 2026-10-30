@@ -482,6 +482,8 @@ fn kind(name: &str) -> (Kind, u8) {
 struct Column {
     known: bool,
     fluid: bool,
+    /// The fluid is lava (kept apart, sealed as ever).
+    lava: bool,
     g: i32,
     top: i32,
     trunk: u8,
@@ -522,6 +524,7 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
 /// One answer taken in: each column's ground, what stands on it and over it.
 fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
     let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
+    let lavas: Vec<bool> = a.palette.iter().map(|n| n.contains("lava")).collect();
     for (i, &(x, z)) in a.columns.iter().enumerate() {
         let Some((surface, blocks)) = a.column(i) else {
             land.missing.push((x, z));
@@ -543,6 +546,7 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
                 }
                 Kind::Fluid => {
                     c.fluid = true;
+                    c.lava |= lavas.get(blocks[j] as usize).copied().unwrap_or(false);
                     top.get_or_insert(base + j as i32);
                 }
                 Kind::Leaves => {
@@ -715,39 +719,63 @@ fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
 fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
     let mut b = Blocks::default();
+    // (the water's surface round the crater, the highest within its rim's reach: what floods it)
+    let reach = (PL_CRATER_R * PL_RIM * 1.15) as i32;
+    let mut wl: Option<i32> = None;
+    for dz in -reach..=reach {
+        for dx in -reach..=reach {
+            if dx * dx + dz * dz <= reach * reach
+                && let Some(c) = at(land, bx, bz, bx + dx, bz + dz)
+                && c.fluid
+                && !c.lava
+            {
+                wl = Some(wl.map_or(c.top, |w: i32| w.max(c.top)));
+            }
+        }
+    }
     for k in k0..k1 {
         for i in 0..PL_GW {
             let (x, z) = (bx - PL_READ + i, bz - PL_READ + k);
             let Some(c) = at(land, bx, bz, x, z) else { continue };
             let (r, _, u) = s.at(x, z);
-            if r > f64::from(PL_READ) || c.fluid {
+            if r > f64::from(PL_READ) || c.lava {
                 continue;
             }
             let wet = wet_near(land, bx, bz, x, z);
             match new_ground(c, s, x, z) {
-                Some(top) if top < c.g && !wet => {
-                    // the crater: dug, everything over it gone, its new face scorched (two deep near the middle), and
-                    // what water or lava lies just under it sealed
-                    b.run(x, z, top + 1, c.top.max(c.g), "minecraft:air");
-                    b.put(x, z, top - 3, top - 1, "minecraft:stone", Some("minecraft:water"), false);
+                Some(top) if top < c.g => {
+                    // the crater: dug, everything over it gone, its new face scorched (two deep near the middle), the
+                    // lava under it sealed; cut into the water as into the land: below the water's level it is filled
+                    // with still water (no higher than the land stood), not left dry behind a wall
+                    let old = c.top.max(c.g);
+                    match wl {
+                        Some(w) if w > top => {
+                            b.run(x, z, top + 1, w.min(old), "minecraft:water");
+                            if old > w {
+                                b.run(x, z, w + 1, old, "minecraft:air");
+                            }
+                        }
+                        _ => b.run(x, z, top + 1, old, "minecraft:air"),
+                    }
                     b.put(x, z, top - 3, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
-                    let d = if u < 0.6 { 1 } else { 0 };
-                    for y in top - d..=top {
-                        b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
+                    if wl.is_none_or(|w| w <= top) {
+                        let d = if u < 0.6 { 1 } else { 0 };
+                        for y in top - d..=top {
+                            b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
+                        }
                     }
                 }
-                Some(top) if top > c.g && !wet => {
-                    // the rim: earth heaped on it, what stood there swept off
+                Some(top) if top > c.g && !wet && !c.fluid => {
+                    // the rim: earth heaped on it, what stood there swept off (none heaped in or by the water)
                     for y in c.g + 1..=top {
                         b.run(x, z, y, y, ejecta(x, y, z, s.seed));
                     }
                     if c.top > top {
                         b.run(x, z, top + 1, c.top, "minecraft:air");
                     }
-                    // (and the water or lava the crater's wall would open, under it, sealed)
-                    b.put(x, z, c.g - PL_CRATER_D as i32 - 2, c.g, "minecraft:dirt", Some("minecraft:water"), false);
                     b.put(x, z, c.g - PL_CRATER_D as i32 - 2, c.g, "minecraft:stone", Some("minecraft:lava"), false);
                 }
+                _ if c.fluid => {}
                 Some(_) => {
                     // flattened: everything standing on the land swept off (a felled tree's stump left), the grass charred
                     let stump = if c.trunk > 0 { 1 + (mh((x * 31 + z * 17) as u32, s.seed, 0x81) * 2.0) as i32 } else { 0 };
@@ -786,7 +814,7 @@ fn pl_tidy_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
     let col = |x: i32, z: i32| -> Col {
         match at(land, bx, bz, x, z) {
-            Some(c) if !c.fluid && new_ground(c, s, x, z).is_some() && !(wet_near(land, bx, bz, x, z) && new_ground(c, s, x, z) != Some(c.g)) => Col::Cleared,
+            Some(c) if !c.fluid && new_ground(c, s, x, z).is_some() => Col::Cleared,
             _ => Col::Kept,
         }
     };
