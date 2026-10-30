@@ -11,11 +11,13 @@
 //! the player, `nuke.rumble` 1.5 s after it (30 to 40 s), `nuke.debris` 3 s after it within 700 blocks; the strike ends
 //! at 90 s (lasers.rs's length).
 //!
-//! What it leaves is real blocks: a crater about NK_CRATER_R * 2 (100) across and NK_CRATER_D (18) deep (scorched,
-//! its rim heaped with what it threw out), the land flattened round it out to about NK_FLAT (180; the trees felled and
-//! lying pointing away from it), past that out to NK_FLAT + NK_BAND (280) crowns stripped and many trees knocked
-//! flat, the grass charred out to about NK_CHAR (240), rubble strewn out to NK_RUBBLE (230), mobs and dropped items
-//! killed within NK_KILL (250). Nothing that burns, flows or spreads; nothing dug next to water or lava.
+//! What it leaves is real blocks: a crater about NK_CRATER_R * 2 (200) across and NK_CRATER_D (40) deep, its walls
+//! stepped in terraces and scorched, glazed with greenish glass on its floor, its rim a broken ridge of rock and earth
+//! turned over; the land flattened round it out to about NK_FLAT (230; the trees felled and lying pointing away from
+//! it), past that out to NK_FLAT + NK_BAND (300) crowns stripped and many trees knocked flat, the grass charred out to
+//! about NK_CHAR (290) in streaks, rubble strewn out to NK_RUBBLE (280), mobs and dropped items killed within NK_KILL
+//! (300); past that, out to NK_FLASH (480), what faces the fireball scorched by its flash and what is hidden from it
+//! left as it was (nk_flash_rows). Nothing that flows; nothing dug next to water or lava; the odd fire far out.
 //!
 //! shaders/nuke.wgsl draws the bomb, its trail, the flash, the fireball, the mushroom cloud, the shockwave, the dust and
 //! the debris from the table `nk_table` hands it (render.set-data). Keep the NK_* here and there in step.
@@ -1062,6 +1064,200 @@ fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
     }
 }
 
+// ---- the flash: what faces the fireball past the blast's reach, scorched ---------------------------------------------
+/// Past the land the blast knocks over (NK_READ) out to NK_FLASH, what the flash sees is scorched: the leaves facing
+/// it burnt off, the wood and planks charred dark, the grass burnt to bare earth, the plants gone, wool blackened,
+/// the odd fire lit; what the land, a tree or a wall hides from it is left as it was (the flash's shadows). Read as it
+/// starts (NK_FL_PARTS queries, NK_FL_BELOW under each column's top), worked out in NK_FL_BANDS stages ahead and put in
+/// over the second and a half after the burst.
+const NK_FLASH: i32 = 480;
+const NK_FL_W: i32 = 2 * NK_FLASH + 1;
+const NK_FL_PARTS: i32 = 32;
+const NK_FL_BELOW: u32 = 30;
+const NK_FL_BANDS: i32 = 100;
+/// What a column holds that the flash changes, a bit each: the leaves of each wood (0-8), the logs of each (9-17),
+/// a grass block on top (18), the plants (19-24), wool and carpet (25-26), planks of three woods (27-29).
+const FL_PLANTS: [&str; 6] = ["minecraft:short_grass", "minecraft:tall_grass", "minecraft:fern", "minecraft:large_fern", "minecraft:dandelion", "minecraft:poppy"];
+const FL_OTHER: [(&str, &str); 5] = [
+    ("minecraft:white_wool", "minecraft:black_wool"),
+    ("minecraft:white_carpet", "minecraft:black_carpet"),
+    ("minecraft:oak_planks", "minecraft:dark_oak_planks"),
+    ("minecraft:spruce_planks", "minecraft:dark_oak_planks"),
+    ("minecraft:birch_planks", "minecraft:dark_oak_planks"),
+];
+fn fl_bit(name: &str) -> u32 {
+    let n = name.split('[').next().unwrap_or(name);
+    if let Some(i) = LEAF_NAMES.iter().position(|l| *l == n) {
+        return 1 << i;
+    }
+    if let Some(i) = LOG_Y.iter().position(|l| *l == n) {
+        return 1 << (9 + i);
+    }
+    if n == "minecraft:grass_block" {
+        return 1 << 18;
+    }
+    if let Some(i) = FL_PLANTS.iter().position(|l| *l == n) {
+        return 1 << (19 + i);
+    }
+    FL_OTHER.iter().position(|(l, _)| *l == n).map_or(0, |i| 1 << (25 + i))
+}
+struct Flash {
+    /// Each column's top (i16::MIN: not known), its ground, what it holds; over the square out to NK_FLASH.
+    top: Vec<i16>,
+    g: Vec<i16>,
+    mats: Vec<u32>,
+}
+type FlashShared = Rc<RefCell<Flash>>;
+fn fl_idx(bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
+    let (i, k) = (x - bx + NK_FLASH, z - bz + NK_FLASH);
+    (i >= 0 && k >= 0 && i < NK_FL_W && k < NK_FL_W).then(|| (k * NK_FL_W + i) as usize)
+}
+/// The ring's columns read in part `part` (rows of the square, past NK_READ and within NK_FLASH).
+fn fl_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
+    let rows = (NK_FL_W + NK_FL_PARTS - 1) / NK_FL_PARTS;
+    let mut out = Vec::new();
+    for k in part * rows..((part + 1) * rows).min(NK_FL_W) {
+        let dz = k - NK_FLASH;
+        for dx in -NK_FLASH..=NK_FLASH {
+            let r2 = dx * dx + dz * dz;
+            if r2 > NK_READ * NK_READ && r2 <= NK_FLASH * NK_FLASH {
+                out.push((bx + dx, bz + dz));
+            }
+        }
+    }
+    out
+}
+fn fl_take_in(fl: &mut Flash, a: &crate::columns::Answer, bx: i32, bz: i32) {
+    let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
+    let bits: Vec<u32> = a.palette.iter().map(|n| fl_bit(n)).collect();
+    for (i, &(x, z)) in a.columns.iter().enumerate() {
+        let Some((surface, blocks)) = a.column(i) else { continue };
+        let Some(ix) = fl_idx(bx, bz, x, z) else { continue };
+        let base = surface - a.below;
+        let mut top = None;
+        let mut m = 0u32;
+        for j in (0..blocks.len()).rev() {
+            let b = blocks[j] as usize;
+            let (k, _) = kinds.get(b).copied().unwrap_or((Kind::Loose, 0));
+            if k == Kind::Air {
+                continue;
+            }
+            top.get_or_insert(base + j as i32);
+            m |= bits.get(b).copied().unwrap_or(0);
+            if k == Kind::Ground || k == Kind::Fluid {
+                fl.g[ix] = (base + j as i32) as i16;
+                if k == Kind::Fluid {
+                    m = 0;
+                }
+                break;
+            }
+        }
+        if let Some(t) = top {
+            fl.top[ix] = t as i16;
+            fl.mats[ix] = m;
+        }
+    }
+}
+fn nk_flash_step(q: &mut Plan, fl: FlashShared, tags: Rc<Vec<u32>>, part: usize, at_t: f32) {
+    if part >= tags.len() {
+        return;
+    }
+    let Some(a) = crate::columns::take(tags[part]) else {
+        if at_t < NK_HIT - 4.5 {
+            q.later(at_t + 0.1, move |q| nk_flash_step(q, fl, tags, part, at_t + 0.1));
+        }
+        return;
+    };
+    fl_take_in(&mut fl.borrow_mut(), &a, q.bx, q.bz);
+    q.later(at_t + 0.05, move |q| nk_flash_step(q, fl, tags, part + 1, at_t + 0.05));
+}
+/// The flash's scorching over rows k0..k1 of its square: each column's lowest block the fireball sees (the land, the
+/// trees and the walls between looked along the line to it, closely near the column, coarsely further off), and what
+/// lies over that changed, more surely the nearer it is.
+fn nk_flash_rows(q: &mut Plan, fl: &Flash, land: &Land, s: &Shape, gy: i32, k0: i32, k1: i32, at_t: f32) {
+    let (bx, bz) = (q.bx, q.bz);
+    let hb = f64::from(gy) + NK_BURST;
+    let height = |x: i32, z: i32| -> Option<f64> {
+        if let Some(c) = at(land, bx, bz, x, z) {
+            return Some(f64::from(c.top));
+        }
+        let ix = fl_idx(bx, bz, x, z)?;
+        (fl.top[ix] != i16::MIN).then(|| f64::from(fl.top[ix]))
+    };
+    let mut b = Blocks::default();
+    for k in k0..k1 {
+        for i in 0..NK_FL_W {
+            let (x, z) = (bx - NK_FLASH + i, bz - NK_FLASH + k);
+            let ix = (k * NK_FL_W + i) as usize;
+            let m = fl.mats[ix];
+            if m == 0 || fl.top[ix] == i16::MIN {
+                continue;
+            }
+            let (dx, dz) = (s.cx - (f64::from(x) + 0.5), s.cz - (f64::from(z) + 0.5));
+            let r = dx.hypot(dz);
+            if r <= f64::from(NK_READ) || r > f64::from(NK_FLASH) {
+                continue;
+            }
+            let (ux, uz) = (dx / r, dz / r);
+            // (the line from the fireball to a height y here passes over a point s blocks on towards it at
+            // y + (hb - y) * s / r: blocked where the land or what stands on it reaches over that)
+            let mut hs = f64::NEG_INFINITY;
+            let mut sd = 1.0;
+            while sd < r - 60.0 {
+                let (sx, sz) = ((f64::from(x) + 0.5 + ux * sd).floor() as i32, (f64::from(z) + 0.5 + uz * sd).floor() as i32);
+                if let Some(h) = height(sx, sz) {
+                    let f = sd / r;
+                    hs = hs.max((h + 1.0 - hb * f) / (1.0 - f));
+                }
+                sd += if sd < 16.0 { 1.0 } else if sd < 48.0 { 2.0 } else if sd < 96.0 { 6.0 } else { 16.0 };
+            }
+            let top = i32::from(fl.top[ix]);
+            let g = i32::from(fl.g[ix]);
+            let lo = (hs.ceil() as i32).max(g);
+            if lo > top {
+                continue;
+            }
+            // (surely near the blast's reach, a third as often at the flash's)
+            let p = 1.0 - 0.65 * ((r - f64::from(NK_READ)) / f64::from(NK_FLASH - NK_READ)).powf(1.3);
+            let h0 = (x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32;
+            let roll = |salt: u32| mh(h0, s.seed, salt);
+            for w in 0..9 {
+                if m & (1 << w) != 0 && roll(0xf1) < 0.9 * p {
+                    b.put(x, z, lo, top, "minecraft:air", Some(LEAF_NAMES[w]), false);
+                }
+                if m & (1 << (9 + w)) != 0 && w != 5 && roll(0xf2) < p {
+                    b.put(x, z, lo, top, "minecraft:dark_oak_log", Some(LOG_Y[w]), false);
+                }
+            }
+            let plants = (m >> 19) & 0x3f;
+            if g + 1 >= lo {
+                for (n, name) in FL_PLANTS.iter().enumerate() {
+                    if plants & (1 << n) != 0 && roll(0xf3) < 0.95 * p {
+                        let to = if roll(0xf4) < 0.08 { "minecraft:dead_bush" } else { "minecraft:air" };
+                        b.put(x, z, g + 1, g + 2, to, Some(name), false);
+                    }
+                }
+            }
+            if m & (1 << 18) != 0 && g >= lo && roll(0xf5) < p {
+                let to = if roll(0xf6) < 0.3 { "minecraft:podzol" } else { "minecraft:coarse_dirt" };
+                b.put(x, z, g, g, to, Some("minecraft:grass_block"), false);
+                // (now and then a fire on the bare ground, where nothing over it would carry it up)
+                if m & 0x1ff == 0 && plants == 0 && roll(0xf7) < 1.0 / 5000.0 {
+                    b.put(x, z, g + 1, g + 1, "minecraft:fire", Some("minecraft:air"), false);
+                }
+            }
+            for (n, (from, to)) in FL_OTHER.iter().enumerate() {
+                if m & (1 << (25 + n)) != 0 && roll(0xf8) < p {
+                    b.put(x, z, lo, top, to, Some(from), false);
+                }
+            }
+        }
+    }
+    if !b.runs.is_empty() {
+        q.ev.push((at_t, Act::Blocks(Box::new(b))));
+    }
+}
+
 /// The shockwave's jolt reaching the player at `t`, `fo` as hard: the Payload's (a hard hit, strong quick swings, a
 /// shudder fading), harder and longer.
 fn nk_jolt(p: &mut Plan, t: f32, fo: f32) {
@@ -1234,7 +1430,37 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
             let land = land.clone();
             p.later(NK_HIT - 0.7 + 0.1 * part as f32, move |q| nk_thrown(q, &land.borrow(), &shape, part));
         }
-        p.later(NK_HIT - 0.9, move |q| nk_rubble(q, &land.borrow(), &shape, &used));
+        {
+            let land = land.clone();
+            p.later(NK_HIT - 0.9, move |q| nk_rubble(q, &land.borrow(), &shape, &used));
+        }
+        // the flash's scorching past the blast's reach: the ring read as it starts, worked out a band of rows a stage
+        let fl: FlashShared = Rc::new(RefCell::new(Flash {
+            top: vec![i16::MIN; (NK_FL_W * NK_FL_W) as usize],
+            g: vec![0; (NK_FL_W * NK_FL_W) as usize],
+            mats: vec![0; (NK_FL_W * NK_FL_W) as usize],
+        }));
+        let ftags: Rc<Vec<u32>> = Rc::new((0..NK_FL_PARTS).map(|_| crate::columns::new_tag()).collect());
+        for part in 0..NK_FL_PARTS {
+            let ftags = ftags.clone();
+            let t = 1.8 + 0.05 * part as f32;
+            p.later(t, move |q| {
+                let columns = fl_columns(q.bx, q.bz, part);
+                q.ev.push((t, Act::Read { tag: ftags[part as usize], columns, below: NK_FL_BELOW, above: 1 }));
+            });
+        }
+        {
+            let fl = fl.clone();
+            p.later(2.0, move |q| nk_flash_step(q, fl, ftags, 0, 2.0));
+        }
+        let rows = (NK_FL_W + NK_FL_BANDS - 1) / NK_FL_BANDS;
+        let gyi = by + 1;
+        for j in 0..NK_FL_BANDS {
+            let (fl, land) = (fl.clone(), land.clone());
+            let t = 5.2 + 0.05 * j as f32;
+            let at = NK_HIT + 0.05 + 0.016 * j as f32;
+            p.later(t, move |q| nk_flash_rows(q, &fl.borrow(), &land.borrow(), &shape, gyi, j * rows, ((j + 1) * rows).min(NK_FL_W), at));
+        }
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -1371,7 +1597,7 @@ mod tests {
     fn pond(x: i32, z: i32) -> bool {
         ((x + 40) * (x + 40) + (z - 30) * (z - 30)) < 49
     }
-    fn column(x: i32, z: i32) -> Option<(i32, Vec<&'static str>)> {
+    fn column(x: i32, z: i32, below: u32, above: u32) -> Option<(i32, Vec<&'static str>)> {
         let g = ground_h(x, z);
         let t = tree(x, z);
         let wet = pond(x, z);
@@ -1396,7 +1622,7 @@ mod tests {
             }
         };
         let top = if t { g + 9 } else { g + 2 };
-        let (below, above) = (NK_BELOW as i32, NK_ABOVE as i32);
+        let (below, above) = (below as i32, above as i32);
         Some((top, (top - below..top + above).map(block).collect()))
     }
 
@@ -1413,7 +1639,7 @@ mod tests {
         let mut table = false;
         while let Some((t, a)) = ev.pop() {
             match a {
-                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &column),
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| column(x, z, below, above)),
                 Act::Blocks(b) => out.push((t, *b)),
                 Act::Cmd(c) => cmds.push((t, c)),
                 Act::Table(w) => {
@@ -1483,6 +1709,29 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn nuke_flash_scorches_what_faces_it_past_the_blast() {
+        let (out, _) = played_all(true);
+        let (mut scorched, mut leaves, mut far) = (0, 0, 0);
+        for (t, b) in &out {
+            for f in b.as_fills() {
+                let w: Vec<f64> = f.split_whitespace().skip(1).take(3).filter_map(|v| v.parse().ok()).collect();
+                if w.len() < 3 {
+                    continue;
+                }
+                let r = (w[0] - 10.0).hypot(w[2] + 3.0);
+                if r > f64::from(NK_READ) + 1.0 {
+                    assert!(r < f64::from(NK_FLASH) + 1.5, "{f}");
+                    assert!(*t > NK_HIT && *t < NK_HIT + 2.0, "{t} {f}");
+                    scorched += 1;
+                    leaves += usize::from(f.contains("air replace minecraft:oak_leaves"));
+                    far += usize::from(r > 440.0);
+                }
+            }
+        }
+        assert!(scorched > 1000 && leaves > 100 && far > 10, "{scorched} {leaves} {far}");
     }
 
     #[test]
