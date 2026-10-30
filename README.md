@@ -180,48 +180,38 @@ themselves.
 Set up Orbital Laser on this computer and get a test strike working, end to end:
 https://github.com/Stink-O/orbital-laser
 
-It is a mod for Horizon, the Rust rewrite of Minecraft Java (https://github.com/ludovic111/horizon). It
-runs on a Horizon fork that adds the mod capabilities it needs: https://github.com/Stink-O/horizon (branch
-mod-api-input-ui-render-world, release orbital-mod-api-7 (orbital-mod-api-6 also works), with a
-ready-built Linux x86-64 download on its releases page). When it works I can type /orbital give in the game, right-click the
-Orbital Remote (or press R) to pick a laser from a wheel, and hold the Orbital Laser Designator on a
-target to call down the strike.
+Orbital Laser is a mod for Horizon, the Rust rewrite of Minecraft Java. It runs on a Horizon fork that
+adds the mod capabilities it needs. Before doing anything, read README.md (especially "Getting started",
+"If something goes wrong" and "Known gaps") and AGENTS.md from the repository: they say which fork release,
+which Minecraft version and which commands the current release needs. Trust them over anything you
+remember, since they change with each release.
 
-Before doing anything, read these from the repository: README.md (especially "Getting started", "If
-something goes wrong" and "Known gaps") and AGENTS.md.
-
-Facts to rely on:
-- Minecraft is not included, and you must not download, fake or work around it. Horizon's prepared
-  resources come from my own copy of Minecraft Java 26.3 (horizon-prepare with the 26.3 server jar, as
-  Horizon's PLAY.txt says). If I don't have Minecraft 26.3, stop and tell me.
-- Stock Horizon can't run this mod: it needs the fork's build, orbital-mod-api-6 or newer
-  (orbital-mod-api-7 recommended). On Linux x86-64 use the release download. Elsewhere, build the fork from source (cargo build --release -p
-  horizon-client --features mods, Rust 1.85 or newer) and tell me before you start, since it takes a while.
-- This was developed and tested on Linux only. On Windows or macOS expect rough edges. Keep any fix small,
-  and tell me exactly what you changed and why.
-- install.py needs Python 3.8 or newer. If it's missing, ask me before installing anything.
-- A real strike is destructive and permanent: a crater about 60 blocks across, a shaft down to bedrock, and
-  every mob and dropped item within 40 blocks killed. The bigger lasers go much further: the Planet Killer
-  flattens the land out to 340 blocks and digs a crater 480 across. Use a throwaway creative world (play.sh
-  makes one called OrbitalTest), never one of my real worlds, and ask me before the first strike with
-  terrain damage on. The wheel's centre button and `/orbital terrain off` turn terrain damage off.
-- Run install.py with the game closed. Don't edit my saves or settings beyond what install.py does.
+Ground rules:
+- Minecraft is not included. Horizon's resources come from my own copy of Minecraft Java, the version the
+  README names. Don't download, fake or work around it; if I don't have it, stop and tell me.
+- Stock Horizon can't run this mod: use the fork's build the README names. Use its ready-built download
+  if there is one for my system; otherwise build it from source, and tell me before you start, since that
+  takes a while.
+- Check what my system has before installing anything, and ask me before installing tools or packages.
+- Strikes are destructive and permanent: they dig craters and kill mobs, and the biggest lasers reshape
+  hundreds of blocks of land. Only use a throwaway creative world (play.sh makes one), never one of my
+  real worlds, and ask me before the first strike with terrain damage on. Terrain damage can be turned
+  off (the README says how); test with it off first.
+- Install with the game closed. Don't change my saves or settings beyond what the installer does.
+- If you have to work around something on my system, keep the fix small and tell me exactly what you
+  changed and why.
 
 Steps:
-1. Download and unpack the Orbital Laser build of Horizon to ~/horizon-orbital, and give it prepared
-   resources (horizon-prepare, or HORIZON_RESOURCES pointing at an existing Horizon's
-   .local/horizon-client/26.3).
-2. Download the latest Orbital Laser release zip (or clone the repository), and run `python3 install.py`.
-3. Run `./play.sh` and wait for the world to load. In the game: `/orbital give`, then `/orbital terrain off`.
-4. Test safely first: press R and check the wheel opens and closes, then hold the designator on the ground
-   for a second and check the strike plays with sound and nothing in chat. Ask me before a strike with
-   terrain damage on.
-5. Tell me how to use it: R or the remote for the wheel, hold the designator on a target to fire, and
-   Options > Controls > Key Binds to rebind R.
+1. Get the fork's build of Horizon and its prepared resources, as the README describes.
+2. Get the latest Orbital Laser release (or clone the repository) and run its installer.
+3. Start the game in a throwaway world and give me the mod's items.
+4. Test safely: open the laser wheel, then fire one strike with terrain damage off, and check it plays
+   with sound and no errors in chat. Ask me before a strike with terrain damage on.
+5. Tell me how to use it: how to open the wheel, fire, and rebind the keys.
 
 Report each step's result as you go. If a step fails, show me the exact command and message, say what you
-think is wrong, and fix it. Don't guess past a failure. If the mod shows as stopped on Options > Mods, read
-the reason on its row first.
+think is wrong, and fix it. Don't guess past a failure. If the game shows the mod as stopped (Options >
+Mods), read the reason it gives first.
 ````
 
 ## How to play
