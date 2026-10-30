@@ -204,7 +204,11 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
         let k0 = length(e);
         let ds = (k0 - 1.0) * min(sg.y, sg.z);
         // (a roll, not a disc: thin inside it, thinning away as the dust settles)
-        d = smin(d, ds + 30.0 * smoothstep(0.0, 0.6, inner.x) + 22.0 * smoothstep(18.0, 70.0, (*col).a), 22.0);
+        let settle = 22.0 * smoothstep(18.0, 70.0, (*col).a);
+        d = smin(d, ds + 14.0 * smoothstep(0.0, 0.6, inner.x) + settle, 22.0);
+        // (and a low sheet of dust inside the roll, from it in to the stem's foot: a skirt, not a tyre)
+        let sheet = max(rho - sg.x, abs(hy - 0.2 * sg.z) - 0.32 * sg.z);
+        d = smin(d, sheet + 4.0 + settle, 18.0);
     }
     // (the ring round the stem: a thin flat collar)
     var dr = 1.0e6;
@@ -579,6 +583,26 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             // (and the land lit by it, far out)
             let dl = length(rel - Pf);
             col = col + scene * fire_c * fl * 0.9 / (1.0 + pow(dl / 320.0, 2.0)) * k;
+        }
+    }
+
+    // ---- the cloud's shadow on the land: the cap's, a broad soft-edged disc thrown away from the sun, and the stem's
+    // band; the sky still lights what lies in it -------------------------------------------------------------------
+    if (stage != 1u && !sky && have && a > 1.5 && L.y > 0.04) {
+        let cs = pl_column(a, C);
+        let lean = pl_wind() * a;
+        let capc = C + vec3<f32>(0.0, cs.hc, 0.0) + lean;
+        let sl = (capc.y - rel.y) / L.y;
+        if (sl > 0.0) {
+            let r = length((rel + L * sl - capc).xz);
+            let R = cs.Rt + 0.9 * cs.rt;
+            var shd = (1.0 - smoothstep(0.7 * R, 1.15 * R, r)) * smoothstep(1.5, 6.0, a);
+            // (the stem: the sun's ray from here past it, as near as it comes to its axis)
+            let sg = pl_ray_seg(L, C - rel, C + vec3<f32>(0.0, cs.st, 0.0) + lean * 0.4 - rel, 0.0, 1.0);
+            shd = max(shd, (1.0 - smoothstep(0.7 * cs.sr.y, 1.4 * cs.sr.y, sg.x)) * step(0.5, sg.y) * smoothstep(3.0, 8.0, a));
+            // (thinning as the cloud does)
+            shd = shd * (1.0 - 0.7 * smoothstep(PL_SOFT0, PL_SOFT1, a)) * sun_up;
+            col = col * (1.0 - 0.58 * shd * k * fade);
         }
     }
 
@@ -967,7 +991,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let ao = mix((0.65 + 0.35 * sd.y) * (1.0 - 0.55 * deep), 0.75, soft);
                     let mv = 0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5);
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
-                    var alb = mix(vec3<f32>(0.55, 0.46, 0.36), sootc, smoothstep(0.08, 0.45, hy)) * mv;
+                    var alb = mix(vec3<f32>(0.52, 0.46, 0.39), sootc, smoothstep(0.08, 0.45, hy)) * mv;
                     alb = mix(alb, vec3<f32>(0.85, 0.86, 0.88), ringw);
                     let skyg = mix(mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45), fogl, 0.15) * (1.0 - 0.35 * warm);
                     var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * (1.0 - 0.6 * warm) * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
@@ -981,7 +1005,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(3.0, 1.25, 0.32), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
-                    c = c * (1.0 - saturate(e * 0.5)) + tcol * (e * 0.6 + lowlit);
+                    // (at night its own glow is most of what lights it, and shows for longer)
+                    let en = e * (1.0 + 1.6 * (1.0 - day));
+                    c = c * (1.0 - saturate(en * 0.5)) + tcol * (en * 0.6 + lowlit);
                     let ext = den * 0.32 * st;
                     let al = 1.0 - exp(-ext);
                     acc = acc + tr * al * c;
@@ -1123,7 +1149,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let wq = p + cam;
                     let bl = gnoise3(wq * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a + 0.5, 0.0));
                     let lo = (0.45 + 0.55 * saturate(h / 8.0)) * (0.55 + 0.7 * bl);
-                    let dc = vec3<f32>(0.62, 0.55, 0.34) * (sunc * 0.75 * lo + amb * 0.6);
+                    let dc = vec3<f32>(0.56, 0.49, 0.37) * (sunc * 0.75 * lo + amb * 0.6);
                     acc = acc + tr * al * dc;
                     tr = tr * (1.0 - al);
                     if (tr < 0.02) {
