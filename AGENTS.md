@@ -47,7 +47,8 @@ laser, command, capability and timing). This file is the short, factual version 
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-6` or newer (it adds
   `world.read-columns`, which the Sinkhole reads the real land of its slabs with; `orbital-mod-api-5` added
   `world.surface-height` and `render.set-data`, which the Crystal Bloom rests its pieces on the real ground with; older
-  builds won't start the mod): a Linux x86-64 download on the fork's releases, or
+  builds won't start the mod; `orbital-mod-api-7`, recommended, adds the half-size stage QUALITY FAST draws the
+  Payload's smoke with): a Linux x86-64 download on the fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.

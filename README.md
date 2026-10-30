@@ -37,9 +37,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-6` or newer.** Horizon's mod API doesn't
-> yet let a mod catch an item's use, open its own screen, draw effects or change the world, so the mod runs on a fork
-> that adds those:
+> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-6` or newer (`orbital-mod-api-7`
+> recommended).** Horizon's mod API doesn't yet let a mod catch an item's use, open its own screen, draw effects or
+> change the world, so the mod runs on a fork that adds those:
 > [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world),
 > with a ready-built Linux download on its [releases](https://github.com/Stink-O/horizon/releases). Older fork builds
 > won't start the mod. You also need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
@@ -49,28 +49,31 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
 > and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.4](#new-in-054) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [New in 0.5.5](#new-in-055) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
-## New in 0.5.4
+## New in 0.5.5
 
-<p align="center"><img alt="The Sinkhole: cracks racing out over the land from the target" width="720" src="docs/25-sinkhole-cracks.jpg"></p>
+<!-- Payload still, once captured: <p align="center"><img alt="The Payload: a column of smoke boiling up out of the crater, a wall of dust racing out over the land" width="720" src="docs/32-payload-column.jpg"></p> -->
 
-- **Sinkhole**, the ninth laser, on the wheel's second page and `/orbital sinkhole`. Nothing comes from the sky. A
-  seismic warning, a deep rumble and birds scattering, then cracks race out over the land in spurts. The middle gives,
-  and the land caves in from there outward in slabs that carry the real ground (its blocks, biome colours and trees) as
-  they tip into a dark pit. Dust boils up, then an echoing silence. It leaves a sheer pit about 225 blocks across down
-  to bedrock, its banded walls darkening downward, with ledges, roots and waterfalls where it cut a river or a lake. It
-  lasts 40 seconds, with its own sounds.
-- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-6` (it adds `world.read-columns`, which reads the
-  real blocks and biome colours of the land). Older builds won't start the mod.
+- **Payload**, the tenth laser, on the wheel's second page and `/orbital payload`. A bomb, not a beam. A bright point
+  drifts high across the sky trailing smoke, then dives as a fireball, shedding burning chunks and crackling as it
+  tears through the air. It hits, a ragged column of smoke rises out of the crater and a wall of dust races out over
+  the land. It leaves a crater about 42 blocks across, the land swept bare out to about 85 with the trees felled
+  pointing away from it, and every mob within 90 killed. It lasts 70 seconds, its sounds arriving late with the
+  distance. Two blasts to pick from: the wheel's **BLAST SOUND** row or `/orbital payloadsound main|alt`.
+- **STOP STRIKE** on the wheel (top left while a strike runs) and `/orbital stop` end a strike there and then.
+- **QUALITY FAST or FULL** on the wheel and `/orbital quality`: FAST (the default) draws the Payload's smoke at half
+  size, about 4 ms a frame at 1080p instead of 11.
+- **Best on the next Orbital Laser build of Horizon**, `orbital-mod-api-7` (it adds a half-size stage for a mod's
+  post pass, which QUALITY FAST uses). `orbital-mod-api-6` still runs it, drawing the smoke at full size.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Nine lasers, five on the wheel's first page and four on its second.
+Ten lasers, five on each page of the wheel.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -123,9 +126,16 @@ Crystal Bloom, the Sinkhole and the Payload reach 1000. [How it works](docs/HOW-
 |---|---|---|---|
 | ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, dust boiling up out of the collapse](docs/26-sinkhole-collapse.jpg) | ![The dark pit opening as the dust settles](docs/27-sinkhole-pit.jpg) | ![The finished pit, waterfalls pouring over its rim into the dark](docs/28-sinkhole-aftermath.jpg) |
 
+<!-- Payload stills, once captured:
+| Payload | The dive | The impact | The column |
+|---|---|---|---|
+| ![A bright point high in the sky trailing a lumpy smoke trail](docs/29-payload-sky.jpg) | ![The fireball diving at the land, shedding burning chunks](docs/30-payload-dive.jpg) | ![The flash and the burst of fire as it hits](docs/31-payload-impact.jpg) | ![The column of smoke rising out of the crater, the dust wall racing out over the land](docs/32-payload-column.jpg) |
+-->
+
 ## Getting started
 
-1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-6` or newer). Download
+1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-7`; `orbital-mod-api-6` runs it too, with QUALITY FAST
+   drawing at full size). Download
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
    and unpack it to `~/horizon-orbital`.
 
@@ -141,7 +151,7 @@ Crystal Bloom, the Sinkhole and the Payload reach 1000. [How it works](docs/HOW-
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.4.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.5.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -174,8 +184,8 @@ https://github.com/Stink-O/orbital-laser
 
 It is a mod for Horizon, the Rust rewrite of Minecraft Java (https://github.com/ludovic111/horizon). It
 runs on a Horizon fork that adds the mod capabilities it needs: https://github.com/Stink-O/horizon (branch
-mod-api-input-ui-render-world, release orbital-mod-api-6 or newer, with a ready-built Linux x86-64
-download on its releases page). When it works I can type /orbital give in the game, right-click the
+mod-api-input-ui-render-world, release orbital-mod-api-7 (orbital-mod-api-6 also works), with a
+ready-built Linux x86-64 download on its releases page). When it works I can type /orbital give in the game, right-click the
 Orbital Remote (or press R) to pick a laser from a wheel, and hold the Orbital Laser Designator on a
 target to call down the strike.
 
@@ -186,8 +196,8 @@ Facts to rely on:
 - Minecraft is not included, and you must not download, fake or work around it. Horizon's prepared
   resources come from my own copy of Minecraft Java 26.3 (horizon-prepare with the 26.3 server jar, as
   Horizon's PLAY.txt says). If I don't have Minecraft 26.3, stop and tell me.
-- Stock Horizon can't run this mod: it needs the fork's build, orbital-mod-api-6 or newer. On Linux
-  x86-64 use the release download. Elsewhere, build the fork from source (cargo build --release -p
+- Stock Horizon can't run this mod: it needs the fork's build, orbital-mod-api-6 or newer
+  (orbital-mod-api-7 recommended). On Linux x86-64 use the release download. Elsewhere, build the fork from source (cargo build --release -p
   horizon-client --features mods, Rust 1.85 or newer) and tell me before you start, since it takes a while.
 - This was developed and tested on Linux only. On Windows or macOS expect rough edges. Keep any fix small,
   and tell me exactly what you changed and why.
@@ -238,6 +248,8 @@ The wheel also has:
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
   draws every pixel (about two to three times the GPU time). FAST needs the fork's release `orbital-mod-api-7`; on an
   older build it draws at full size, the same as FULL.
+- **STOP STRIKE** at the top left while a strike is under way: it ends the strike there and then (what it has already
+  done to the world stays), the same as `/orbital stop`.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
 - For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
   same choice as `/orbital payloadsound`.

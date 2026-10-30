@@ -1,6 +1,21 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-054); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-055); each release's notes are in [docs/releases](releases).
+
+## 0.5.4
+
+<p align="center">
+  <img alt="The Sinkhole: cracks racing out over the land from the target" width="720" src="25-sinkhole-cracks.jpg">
+</p>
+
+- **Sinkhole**, the ninth laser, on the wheel's second page and `/orbital sinkhole`. Nothing comes from the sky. A
+  seismic warning, a deep rumble and birds scattering, then cracks race out over the land in spurts. The middle gives,
+  and the land caves in from there outward in slabs that carry the real ground (its blocks, biome colours and trees) as
+  they tip into a dark pit. Dust boils up, then an echoing silence. It leaves a sheer pit about 225 blocks across down
+  to bedrock, its banded walls darkening downward, with ledges, roots and waterfalls where it cut a river or a lake. It
+  lasts 40 seconds, with its own sounds.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-6` (it adds `world.read-columns`, which reads the
+  real blocks and biome colours of the land). Older builds won't start the mod.
 
 ## 0.5.3
 
