@@ -223,8 +223,8 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   a few seconds; about 90 real blocks of the crater's ground (grass, dirt, stone, tuff, now and then a log) thrown out of
   it as falling blocks over the first second and a half, outward and up at all speeds, coming down from its rim out to
   about 110 by about 19 s, about half landing as blocks and the rest breaking up where they land (none drops an item);
-  every mob and item within 90 killed (not the thrown blocks). Nothing is dug next to water or lava, and the water and lava
-  the crater would open are sealed. It keeps about 240 chunks loaded while it
+  every mob and item within 90 killed (not the thrown blocks). Where it cuts into water the crater fills with still water to
+  the water's own level, with no rim heaped in or by it; lava it opens is sealed. It keeps about 240 chunks loaded while it
   works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
 - **Nuke:** a crater about 200 across and 40 deep, its edge wandering, its walls stepped in terraces, its floor scorched
   (blackstone, basalt, tuff, gravel, cobbled deepslate, coarse dirt) and glazed with greenish glass in patches near the
