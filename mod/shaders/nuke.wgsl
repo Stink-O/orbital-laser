@@ -195,7 +195,8 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
         let inner = vec2<f32>(max(sg.x - rho, 0.0) / (sg.x * 0.9), 0.0);
         let k0 = length(e);
         let ds = (k0 - 1.0) * min(sg.y, sg.z);
-        d = smin(d, ds + 18.0 * smoothstep(0.0, 1.0, inner.x), 30.0);
+        // (a roll, not a disc: thin inside it, thinning away as the dust settles)
+        d = smin(d, ds + 30.0 * smoothstep(0.0, 0.6, inner.x) + 22.0 * smoothstep(18.0, 70.0, (*col).a), 22.0);
     }
     // (the ring round the stem: a thin flat collar)
     var dr = 1.0e6;

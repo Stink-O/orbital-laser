@@ -68,9 +68,9 @@ const NK_READ: i32 = 280;
 const NK_GW: i32 = 2 * NK_READ + 1;
 const NK_BELOW: u32 = 36;
 const NK_ABOVE: u32 = 1;
-const NK_PARTS: i32 = 24;
+const NK_PARTS: i32 = 32;
 /// The blast's edits worked out in this many bands of rows, a stage each.
-const NK_BANDS: i32 = 120;
+const NK_BANDS: i32 = 180;
 /// Mobs and dropped items within NK_KILL killed as it bursts.
 const NK_KILL: i32 = 250;
 /// Real blocks thrown out of the crater as it bursts (nk_thrown).
@@ -825,7 +825,7 @@ fn nk_felled(q: &mut Plan, shared: Shared, shape: Shape, used: Used, k0: i32, k1
     nk_felled_band(q, &shared.borrow(), &shape, &used, k0, k1);
 }
 /// The felled trees go in once the blast's bands are all in (which clear what stood there).
-const NK_LAID: f32 = NK_HIT + 0.08 + 0.035 * NK_BANDS as f32 + 0.3;
+const NK_LAID: f32 = NK_HIT + 0.08 + 0.025 * NK_BANDS as f32 + 0.3;
 fn nk_felled_band(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
     let mut used = used.borrow_mut();
@@ -976,17 +976,17 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
 /// stone and tuff under it, now and then a log of the wood growing round it), flung outward and up over the first second
 /// and a half, at all speeds, so some come down by the rim and some arc far out over the flattened land. Some land as
 /// blocks, the rest break up where they land (CancelDrop); none drops an item.
-fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape) {
+fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
     let (bx, bz) = (q.bx, q.bz);
-    let mut rng = Rng::new(u64::from(s.seed) ^ 0x7410);
+    let mut rng = Rng::new(u64::from(s.seed) ^ 0x7410 ^ (part << 20));
     let mut woods = [0u32; 9];
     for c in land.cols.iter().filter(|c| c.known && c.trunk > 0) {
         woods[c.wood as usize] += 1;
     }
     let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
     let mut n = 0;
-    for _ in 0..NK_THROWN * 3 {
-        if n >= NK_THROWN {
+    for _ in 0..NK_THROWN * 3 / 2 {
+        if n >= NK_THROWN / 2 {
             break;
         }
         // (from anywhere in the crater, more from its middle)
@@ -1172,7 +1172,7 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         for (n, &j) in order.iter().enumerate() {
             let (k0, k1) = (j * rows, ((j + 1) * rows).min(NK_GW));
             let t = 3.0 + 0.02 * n as f32;
-            let at = NK_HIT + 0.08 + 0.035 * n as f32;
+            let at = NK_HIT + 0.08 + 0.025 * n as f32;
             let l1 = land.clone();
             p.later(t, move |q| nk_blast_rows(q, l1, shape, k0, k1, at, t));
         }
@@ -1184,9 +1184,9 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
             let (land, used) = (land.clone(), used.clone());
             p.later(5.0 + 0.05 * j as f32, move |q| nk_felled(q, land, shape, used, j * rows, ((j + 1) * rows).min(NK_GW), 5.0));
         }
-        {
+        for part in 0..2u64 {
             let land = land.clone();
-            p.later(NK_HIT - 0.7, move |q| nk_thrown(q, &land.borrow(), &shape));
+            p.later(NK_HIT - 0.7 + 0.1 * part as f32, move |q| nk_thrown(q, &land.borrow(), &shape, part));
         }
         p.later(NK_HIT - 0.9, move |q| nk_rubble(q, &land.borrow(), &shape, &used));
     }
