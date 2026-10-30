@@ -714,7 +714,8 @@ fn new_ground(c: &Column, s: &Shape, x: i32, z: i32) -> Option<i32> {
 }
 /// Water or lava within a column's reach: dig nothing there or next to it.
 fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
-    [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dz)| at(land, bx, bz, x + dx, z + dz).is_some_and(|c| c.fluid))
+    // (the nuke's crater is deep: two columns of ground kept between it and any water)
+    [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2), (1, 1), (1, -1), (-1, 1), (-1, -1)].iter().any(|(dx, dz)| at(land, bx, bz, x + dx, z + dz).is_some_and(|c| c.fluid))
 }
 
 /// The crater, the rim's heap, the flattened land and the charred grass, over rows k0..k1 of the land's square.
@@ -749,6 +750,12 @@ fn nk_blast_band(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32, at_t: f
                     b.run(x, z, top + 1, c.top.max(c.g), "minecraft:air");
                     b.put(x, z, top - 3, top - 1, "minecraft:stone", Some("minecraft:water"), false);
                     b.put(x, z, top - 3, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
+                    // (and what water or lava the crater's walls open, in the ground round it, sealed: 18 deep it cuts
+                    // into the water under the land near the sea's level)
+                    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                        b.put(x + dx, z + dz, top - 3, c.g, "minecraft:stone", Some("minecraft:water"), false);
+                        b.put(x + dx, z + dz, top - 3, c.g, "minecraft:stone", Some("minecraft:lava"), false);
+                    }
                     let d = if u < 0.6 { 1 } else { 0 };
                     for y in top - d..=top {
                         b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
