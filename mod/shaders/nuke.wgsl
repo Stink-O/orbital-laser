@@ -154,7 +154,7 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     // (the condensation ring: a thin white collar round the stem, from 4 s, gone by 30)
     o.ring = vec3<f32>(0.42 * o.hc + 10.0, o.sr.y * 2.0 + 30.0 + 0.6 * a, smoothstep(4.0, 9.0, a) * (1.0 - smoothstep(16.0, 30.0, a)));
     // (the base surge: dust rolling out over the ground round the stem's foot)
-    o.surge = vec3<f32>(30.0 + 190.0 * (1.0 - exp(-a / 12.0)), 24.0 + 0.1 * a, 9.0 + 11.0 * saturate(a / 12.0));
+    o.surge = vec3<f32>(30.0 + 160.0 * (1.0 - exp(-a / 12.0)), 24.0 + 0.1 * a, 8.0 + 9.0 * saturate(a / 12.0));
     let top = o.hc + 1.4 * o.rt;
     let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 90.0;
     let lean = pl_wind() * a;
@@ -971,7 +971,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 }
                 // (the base surge's dust thinner than the cloud's smoke: the land shows through it in places)
                 let sw = (1.0 - smoothstep(25.0, 70.0, p.y - C.y)) * smoothstep(0.8 * cl.sr.x, 1.6 * cl.sr.x, length((p - C).xz));
-                den = den * (1.0 - 0.5 * sw);
+                den = den * (1.0 - 0.7 * sw);
                 if (soft > 0.0 && den > 0.002) {
                     let mt = gnoise3((p + cam) * (1.0 / 20.0) - pl_wind() * (a * 0.09) + vec3<f32>(0.0, -0.05 * a, 0.0));
                     den = den * mix(1.0, saturate(0.2 + 1.6 * mt), soft);
@@ -996,6 +996,8 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
                     var alb = mix(vec3<f32>(0.43, 0.38, 0.32), sootc, smoothstep(0.08, 0.45, hy)) * mv;
                     alb = mix(alb, vec3<f32>(0.85, 0.86, 0.88), ringw);
+                    // (the surge's dust darker and browner than the cloud: earth, not smoke)
+                    alb = alb * (1.0 - 0.3 * sw);
                     let skyg = mix(mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45), fogl, 0.15) * (1.0 - 0.35 * warm);
                     var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * (1.0 - 0.6 * warm) * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
                     // (lit from inside: the fireball's heat in the cap's core and its underside, white-hot at first,
