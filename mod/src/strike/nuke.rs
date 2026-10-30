@@ -647,7 +647,11 @@ fn heap(u: f64) -> f64 {
 fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
     let n = vnoise(f64::from(x) + f64::from(y) * 0.37, f64::from(z), 4.5, seed ^ 0x51);
     let m = vnoise(f64::from(x), f64::from(z) - f64::from(y) * 0.5, 2.2, seed ^ 0x52);
-    if u < 0.55 && n > 0.62 {
+    // (the middle of the floor fused by the fireball into a greenish glass, as at Trinity, in a few glazed patches)
+    let g = vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x53);
+    if u < 0.42 && g > 0.66 {
+        "minecraft:green_stained_glass"
+    } else if u < 0.55 && n > 0.62 {
         "minecraft:blackstone"
     } else if n > 0.7 {
         "minecraft:basalt"
@@ -676,11 +680,16 @@ fn ejecta(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
         "minecraft:dirt"
     }
 }
-/// The charred grass round it: coarse dirt and podzol, patchier further out.
-fn charred(x: i32, z: i32, r: f64, seed: u32) -> Option<&'static str> {
+/// The charred grass round it: coarse dirt and podzol, patchier further out, in streaks running out from the middle
+/// (the flash's and the blast's, as burnt round a ground zero) that carry it further out along them.
+fn charred(x: i32, z: i32, r: f64, a: f64, seed: u32) -> Option<&'static str> {
     let n = vnoise(f64::from(x), f64::from(z), 6.0, seed ^ 0x71);
     let m = vnoise(f64::from(x), f64::from(z), 2.0, seed ^ 0x72);
-    let reach = 0.25 + 0.7 * (1.0 - ((r - 80.0) / (NK_CHAR - 80.0)).clamp(0.0, 1.0)).powf(1.3);
+    // (looked up round a circle, so the streaks close up with no seam: about seventy of them, uneven)
+    let k = 11.0 + 0.004 * r;
+    let st = vnoise(a.cos() * k, a.sin() * k, 1.0, seed ^ 0x73);
+    let out = (r + 45.0 * (st - 0.5)).max(0.0);
+    let reach = 0.25 + 0.7 * (1.0 - ((out - 80.0) / (NK_CHAR - 80.0)).clamp(0.0, 1.0)).powf(1.3) + 0.22 * (st - 0.5);
     if 0.55 * n + 0.45 * m > 1.0 - reach {
         Some(if m > 0.66 { "minecraft:podzol" } else if n > 0.7 { "minecraft:dirt" } else { "minecraft:coarse_dirt" })
     } else {
@@ -738,7 +747,7 @@ fn nk_blast_band(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32, at_t: f
         for i in 0..NK_GW {
             let (x, z) = (bx - NK_READ + i, bz - NK_READ + k);
             let Some(c) = at(land, bx, bz, x, z) else { continue };
-            let (r, _, u) = s.at(x, z);
+            let (r, ang, u) = s.at(x, z);
             if r > f64::from(NK_READ) || c.fluid {
                 continue;
             }
@@ -780,14 +789,14 @@ fn nk_blast_band(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32, at_t: f
                         b.run(x, z, c.g + 1 + stump, c.top, "minecraft:air");
                     }
                     if c.ground == 1
-                        && let Some(m) = charred(x, z, r, s.seed)
+                        && let Some(m) = charred(x, z, r, ang, s.seed)
                     {
                         b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
                     }
                 }
                 None => {
                     if c.ground == 1
-                        && let Some(m) = charred(x, z, r, s.seed)
+                        && let Some(m) = charred(x, z, r, ang, s.seed)
                     {
                         b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
                     }
