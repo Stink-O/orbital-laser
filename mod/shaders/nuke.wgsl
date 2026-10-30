@@ -386,7 +386,7 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
     // about, not made: the same ones, carried)
     let bo = exp(-a / 4.0) * smoothstep(0.0, 0.5, a);
-    let wc0 = smoothstep(hc - 1.5 * rt, hc - 0.6 * rt, q.y);
+    let wc0 = smoothstep(hc - 1.45 * rt, hc - 1.1 * rt, q.y);
     if (bo > 0.03 && wc0 > 0.02) {
         let wq0 = qc * (1.0 / 30.0) + vec3<f32>(0.0, -1.1 * a, 0.0);
         let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
