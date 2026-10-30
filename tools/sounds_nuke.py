@@ -97,7 +97,7 @@ def volumes(dist):
         "ground": float(np.clip(1.0 / (1.0 + dist / 1200.0), 0.35, 1.0) * np.clip((gap - 0.05) / 0.9, 0.3, 1.0) ** 1.2),
         "blast": 1.0 - far,
         "blast_far": far,
-        "shockwave": 1.0,
+        "shockwave": float(np.clip(1.15 / (1.0 + dist / 450.0), 0.3, 1.0)),   # nuke.rs's nk_shock_vol
         "rumble": 1.0,
         "debris": (0.5 + 0.5 * near) if dist < 700 else 0.0,
         "debris2": (0.25 + 0.4 * near) if near > 0.3 else 0.0,

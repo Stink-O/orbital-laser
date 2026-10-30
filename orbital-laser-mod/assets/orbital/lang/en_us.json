@@ -1,4 +1,22 @@
 {
   "item.orbital.laser_designator": "Orbital Laser Designator",
-  "item.orbital.remote": "Orbital Remote"
+  "item.orbital.remote": "Orbital Remote",
+  "subtitles.orbital.payload.drift": "Payload drifts overhead",
+  "subtitles.orbital.payload.dive": "Payload dives",
+  "subtitles.orbital.payload.rush": "Blast wave rushes past",
+  "subtitles.orbital.payload.ground": "Ground shudders",
+  "subtitles.orbital.payload.ground_alt": "Ground shudders",
+  "subtitles.orbital.payload.blast": "Payload explodes",
+  "subtitles.orbital.payload.blast_alt": "Payload explodes",
+  "subtitles.orbital.payload.blast_far": "Distant explosion",
+  "subtitles.orbital.payload.blast_alt_far": "Distant explosion",
+  "subtitles.orbital.payload.debris": "Debris rains down",
+  "subtitles.orbital.payload.tail": "Explosion echoes",
+  "subtitles.orbital.nuke.fall": "Bomb falls",
+  "subtitles.orbital.nuke.ground": "Ground heaves",
+  "subtitles.orbital.nuke.blast": "Nuclear blast",
+  "subtitles.orbital.nuke.blast_far": "Distant nuclear blast",
+  "subtitles.orbital.nuke.shockwave": "Shockwave roars past",
+  "subtitles.orbital.nuke.rumble": "Blast rumbles",
+  "subtitles.orbital.nuke.debris": "Debris rains down"
 }

@@ -1045,6 +1045,11 @@ fn nk_jolt(p: &mut Plan, t: f32, fo: f32) {
     }
 }
 
+/// How loud the shockwave's gust is `dist` blocks off: all of it within ~70 blocks, a half at ~600, a third past ~1,100.
+fn nk_shock_vol(dist: f64) -> f32 {
+    (1.15 / (1.0 + dist / 450.0)).clamp(0.3, 1.0) as f32
+}
+
 /// How much of the blast is heard as the far one (`blast_far`), `dist` blocks off: none within 300, all of it past 900.
 fn nk_far(dist: f64) -> f32 {
     let u = ((dist - 300.0) / 600.0).clamp(0.0, 1.0);
@@ -1108,7 +1113,9 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     if far > 0.0 {
         p.csound(arrive - 0.02, "blast_far", 10.0 * far, 1.0);
     }
-    p.csound(arrive - 0.2, "shockwave", 10.0, 1.0);
+    // (the gust of the front going past: violent close by, a third as loud a kilometre and more off, where it is a gust
+    // of wind and grit and no more)
+    p.csound(arrive - 0.2, "shockwave", 10.0 * nk_shock_vol(dist), 1.0);
     p.csound(arrive + 1.5, "rumble", 10.0, 1.0);
     nk_jolt(&mut p, arrive, (2.2 / (1.0 + dist / 600.0)).clamp(0.5, 1.0) as f32);
     let mut ts = arrive + 4.2;
