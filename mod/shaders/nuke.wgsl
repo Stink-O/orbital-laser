@@ -150,14 +150,14 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     o.st = min(o.hc - 0.4 * o.rt, max(a - 1.2, 0.0) * 55.0);
     o.sr = vec3<f32>(34.0 + 30.0 * saturate(a / 6.0), 20.0 + 8.0 * saturate(a / 20.0), 26.0 + 0.3 * o.Rt);
     // (the condensation ring: a thin white collar round the stem, from 4 s, gone by 30)
-    o.ring = vec3<f32>(0.42 * o.hc + 10.0, o.sr.y * 2.0 + 30.0 + 0.6 * a, smoothstep(3.5, 6.5, a) * (1.0 - smoothstep(20.0, 32.0, a)));
+    o.ring = vec3<f32>(0.42 * o.hc + 10.0, o.sr.y * 2.0 + 30.0 + 0.6 * a, smoothstep(4.0, 9.0, a) * (1.0 - smoothstep(16.0, 30.0, a)));
     // (the base surge: dust rolling out over the ground round the stem's foot)
     o.surge = vec3<f32>(30.0 + 190.0 * (1.0 - exp(-a / 12.0)), 24.0 + 0.1 * a, 9.0 + 11.0 * saturate(a / 12.0));
     let top = o.hc + 1.4 * o.rt;
-    let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 40.0;
+    let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 90.0;
     let lean = pl_wind() * a;
     o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0, -w + min(lean.z, 0.0));
-    o.hi = C + vec3<f32>(w + max(lean.x, 0.0), top + 40.0, w + max(lean.z, 0.0));
+    o.hi = C + vec3<f32>(w + max(lean.x, 0.0), top + 90.0, w + max(lean.z, 0.0));
     return o;
 }
 // The cloud's lean with the wind at p (its head carried furthest, its foot staying put).
@@ -202,8 +202,8 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
     var dr = 1.0e6;
     let rg = (*col).ring;
     if (rg.z > 0.01) {
-        let e = vec2<f32>((rho - rg.y) / 30.0, (hy - rg.x) / 10.0);
-        dr = (length(e) - 1.0) * 10.0;
+        let e = vec2<f32>((rho - rg.y) / 34.0, (hy - rg.x) / 13.0);
+        dr = (length(e) - 1.0) * 13.0;
     }
     return vec2<f32>(d, dr);
 }
@@ -917,8 +917,10 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 }
                 // (the ring: thin and white, its edge soft)
                 if (dr < 12.0) {
-                    let rn = gnoise3((p + cam) * (1.0 / 9.0) + vec3<f32>(0.0, 0.0, 0.1 * a));
-                    let rd0 = saturate((-dr + 10.0 * (rn - 0.5)) / 6.0) * cl.ring.z * 0.3;
+                    // (wispy: torn into strands and gaps by two sizes of noise, soft through its whole depth)
+                    let rn = gnoise3((p + cam) * (1.0 / 7.0) + vec3<f32>(0.0, 0.0, 0.15 * a));
+                    let rb = gnoise3((p + cam) * vec3<f32>(1.0 / 40.0, 1.0 / 14.0, 1.0 / 40.0) + vec3<f32>(3.0, 0.0, 0.05 * a));
+                    let rd0 = saturate((-dr + 12.0 * (rn - 0.5)) / 14.0) * smoothstep(0.3, 0.7, rb) * cl.ring.z * 0.12;
                     ringw = rd0 / max(rd0 + den, 1.0e-4);
                     den = den + rd0;
                 }
@@ -937,14 +939,15 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     }
                     nl = nl + 1;
                     let lam = mix(saturate(0.2 + lc_face / 8.0), 0.65, soft);
-                    let tsun = mix(lc_bulk, 0.7, soft) * lam;
+                    // (the ring, out from under the cap's edge, catches more of the sun than the stem in its shadow)
+                    let tsun = max(mix(lc_bulk, 0.7, soft) * lam, 0.45 * ringw);
                     let hy = saturate((p.y - C.y) / max(cl.hc + cl.rt, 1.0));
                     let deep = saturate(-d0 / 70.0);
                     let ao = mix((0.65 + 0.35 * sd.y) * (1.0 - 0.55 * deep), 0.75, soft);
                     let mv = 0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5);
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
                     var alb = mix(vec3<f32>(0.55, 0.46, 0.36), sootc, smoothstep(0.08, 0.45, hy)) * mv;
-                    alb = mix(alb, vec3<f32>(0.95, 0.95, 0.97), ringw);
+                    alb = mix(alb, vec3<f32>(0.85, 0.86, 0.88), ringw);
                     let skyg = mix(mix(skyl, vec3<f32>(dot(skyl, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.45), fogl, 0.15) * (1.0 - 0.35 * warm);
                     var c = alb * (skyg * (0.48 * ao * (0.3 + 0.7 * hy)) + vec3<f32>(0.2, 0.17, 0.13) * day * (1.0 - 0.6 * warm) * ao + sunc * vec3<f32>(0.95, 0.85, 0.72) * (1.05 * tsun * ph));
                     // (lit from inside: the fireball's heat in the cap's core and its underside, white-hot at first,
@@ -958,8 +961,6 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
                     c = c * (1.0 - saturate(e * 0.5)) + tcol * (e * 0.6 + lowlit);
-                    // (the ring bright white, lit by the whole sky as much as the sun)
-                    c = mix(c, vec3<f32>(0.92, 0.93, 0.95) * (skyg * 0.9 + sunc * 0.55 + vec3<f32>(0.06)), ringw);
                     let ext = den * 0.32 * st;
                     let al = 1.0 - exp(-ext);
                     acc = acc + tr * al * c;
