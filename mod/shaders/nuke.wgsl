@@ -1006,7 +1006,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let core = 1.0 - exp(min(d0, 0.0) / (0.22 * cl.rt + 6.0));
                     let under = 1.0 - smoothstep(cl.hc - 0.6 * cl.rt, cl.hc + 0.5 * cl.rt, p.y - C.y);
                     let surf = 2.2 * exp(-a / 2.0) + 0.9 * exp(-a / 5.0);
-                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * (0.35 + 1.3 * (1.0 - sd.y));
+                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * (0.12 + 2.0 * (1.0 - sd.y) * (1.0 - sd.y));
                     let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(3.0, 1.25, 0.32), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
