@@ -306,6 +306,34 @@ fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(max(max(tmin.x, tmin.y), max(tmin.z, 0.0)), min(min(tmax.x, tmax.y), tmax.z));
 }
 
+// How much of the sun's light reaches land point `o` (camera-relative) through the column: its billows' smooth body
+// marched towards the sun in ten steps, soft-edged. 1 in full sun.
+fn pl_shadow(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, j: f32) -> f32 {
+    // (first, whether the sun's ray passes near the column at all: the stick from its foot to its top)
+    let cgrow = 1.0 + 0.012 * max(a - 6.0, 0.0) + 0.006 * max(a - PL_SOFT0, 0.0);
+    let ctop = C + vec3<f32>(0.0, 5.0 + 1.08 * pl_w(5u) * (1.0 + 0.006 * a) * cgrow, 0.0) + pl_wind() * a;
+    let sg = pl_ray_seg(L, C - vec3<f32>(0.0, 30.0, 0.0) - o, ctop - o, 0.0, 1.0);
+    if (sg.x > 130.0 * cgrow + 40.0) {
+        return 1.0;
+    }
+    var cs = pl_column(a, C);
+    if (cs.n == 0) {
+        return 1.0;
+    }
+    let tb = pl_box(L, cs.lo - o, cs.hi - o);
+    if (tb.y <= tb.x) {
+        return 1.0;
+    }
+    let n = 10;
+    let dt = (tb.y - tb.x) / f32(n);
+    var tau = 0.0;
+    for (var i = 0; i < n; i = i + 1) {
+        tau = tau + saturate(0.35 - pl_col_base(&cs, o + L * (tb.x + (f32(i) + j) * dt)) / 30.0);
+    }
+    let thin = 1.0 - 0.85 * smoothstep(PL_SOFT0, PL_SOFT1 + 10.0, a);
+    return exp(-tau * dt * 0.03 * thin * smoothstep(0.3, 1.5, a));
+}
+
 // ---- the dust of the shockwave: a low wall racing out over the land, rising and hanging behind it ---------------
 // The ground at r out where the heightfield does not reach (or before it is in): the target's, rising or falling to
 // the player's as it goes out to them.
@@ -544,6 +572,13 @@ fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             let dl = length(rel - Pf);
             col = col + scene * fire_c * flash * 2.0 / (1.0 + pow(dl / 45.0, 2.0)) * k;
         }
+    }
+
+    // ---- the column's shadow on the land: the sun's light through its own billows, marched from the land towards the
+    // sun, so it falls where the column really is (under it at noon, long across the land at a low sun); soft --------
+    if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02) {
+        let T = pl_shadow(rel, L, a, C, ign(in.position.xy));
+        col = col * (1.0 - 0.6 * (1.0 - T) * sun_up * k * fade);
     }
 
     // ---- the trail: a cord of lumpy smoke hung along its path, pale and thin high up, dark grey-brown and dense along

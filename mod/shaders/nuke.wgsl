@@ -310,6 +310,32 @@ fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(max(max(tmin.x, tmin.y), max(tmin.z, 0.0)), min(min(tmax.x, tmax.y), tmax.z));
 }
 
+// How much of the sun's light reaches land point `o` (camera-relative) through the cloud: its smooth body marched
+// towards the sun in a dozen steps, soft-edged (a little of its lumps' reach counted in). 1 in full sun.
+fn pl_shadow(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, j: f32) -> f32 {
+    var cs = pl_column(a, C);
+    let tb = pl_box(L, cs.lo - o, cs.hi - o);
+    if (tb.y <= tb.x) {
+        return 1.0;
+    }
+    // (first, whether the sun's ray passes near the cloud at all: the stick from its foot to its cap's core)
+    let ctop = C + vec3<f32>(0.0, cs.hc, 0.0) + pl_wind() * a;
+    let sg = pl_ray_seg(L, C - o, ctop - o, 0.0, 1.0);
+    if (sg.x > max(cs.Rt + cs.rt, cs.surge.x + cs.surge.y) + 40.0) {
+        return 1.0;
+    }
+    let n = 14;
+    let dt = (tb.y - tb.x) / f32(n);
+    var tau = 0.0;
+    for (var i = 0; i < n; i = i + 1) {
+        let d = pl_col_base2(&cs, o + L * (tb.x + (f32(i) + j) * dt)).x;
+        tau = tau + saturate(0.35 - d / 45.0);
+    }
+    // (thinning as the cloud does, late on)
+    let thin = 1.0 - 0.8 * smoothstep(PL_SOFT0, PL_LEN, a);
+    return exp(-tau * dt * 0.022 * thin * smoothstep(0.3, 2.0, a));
+}
+
 // ---- the dust of the shockwave: a low wall racing out over the land, rising and hanging behind it ---------------
 // The ground at r out where the heightfield does not reach (or before it is in): the target's, rising or falling to
 // the player's as it goes out to them.
@@ -586,24 +612,12 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
         }
     }
 
-    // ---- the cloud's shadow on the land: the cap's, a broad soft-edged disc thrown away from the sun, and the stem's
-    // band; the sky still lights what lies in it -------------------------------------------------------------------
-    if (stage != 1u && !sky && have && a > 1.5 && L.y > 0.04) {
-        let cs = pl_column(a, C);
-        let lean = pl_wind() * a;
-        let capc = C + vec3<f32>(0.0, cs.hc, 0.0) + lean;
-        let sl = (capc.y - rel.y) / L.y;
-        if (sl > 0.0) {
-            let r = length((rel + L * sl - capc).xz);
-            let R = cs.Rt + 0.9 * cs.rt;
-            var shd = (1.0 - smoothstep(0.7 * R, 1.15 * R, r)) * smoothstep(1.5, 6.0, a);
-            // (the stem: the sun's ray from here past it, as near as it comes to its axis)
-            let sg = pl_ray_seg(L, C - rel, C + vec3<f32>(0.0, cs.st, 0.0) + lean * 0.4 - rel, 0.0, 1.0);
-            shd = max(shd, (1.0 - smoothstep(0.7 * cs.sr.y, 1.4 * cs.sr.y, sg.x)) * step(0.5, sg.y) * smoothstep(3.0, 8.0, a));
-            // (thinning as the cloud does)
-            shd = shd * (1.0 - 0.7 * smoothstep(PL_SOFT0, PL_SOFT1, a)) * sun_up;
-            col = col * (1.0 - 0.58 * shd * k * fade);
-        }
+    // ---- the cloud's shadow on the land: the sun's light through the cloud's own body, marched from the land towards
+    // the sun, so it falls where the cloud really is: under it at noon, long and far across the land at a low sun, the
+    // stem's band, the base surge's skirt; soft, and the sky still lights what lies in it -------------------------------
+    if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02) {
+        let T = pl_shadow(rel, L, a, C, ign(in.position.xy));
+        col = col * (1.0 - 0.62 * (1.0 - T) * sun_up * k * fade);
     }
 
     // ---- the trail: a cord of lumpy smoke hung along its path, pale and thin high up, dark grey-brown and dense along
@@ -936,6 +950,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             var nl = 0;
             var lc_face = 0.0;
             var lc_bulk = 1.0;
+            var sky_occ = 0.0;
             let sootc = mix(vec3<f32>(0.2, 0.16, 0.13), vec3<f32>(0.6, 0.54, 0.48), smoothstep(2.0, 22.0, a));
             for (var i = 0; i < 128; i = i + 1) {
                 if (t > t1 || tr < 0.03) {
@@ -983,7 +998,10 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                         let s1 = saturate((10.0 - pl_col_base(&cl, p + L * 20.0)) / 34.0);
                         let s2 = saturate((10.0 - pl_col_base(&cl, p + L * 55.0)) / 46.0);
                         let s3 = saturate((8.0 - pl_col_base(&cl, p + L * 120.0)) / 60.0);
-                        lc_bulk = exp(-(s1 * 10.0 + s2 * 18.0 + s3 * 22.0) * 0.3);
+                        lc_bulk = exp(-(s1 * 10.0 + s2 * 18.0 + s3 * 22.0) * 0.42);
+                        // (the sky's light shut out from under the cap and deep in it: what lies under more of it
+                        // darker, its tops lit)
+                        sky_occ = saturate((12.0 - pl_col_base(&cl, p + vec3<f32>(0.0, 50.0, 0.0))) / 60.0) * 0.5 + saturate((12.0 - pl_col_base(&cl, p + vec3<f32>(0.0, 130.0, 0.0))) / 80.0) * 0.5;
                     }
                     nl = nl + 1;
                     let lam = mix(saturate(0.2 + lc_face / 8.0), 0.65, soft);
@@ -991,7 +1009,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let tsun = max(mix(lc_bulk, 0.7, soft) * lam, 0.45 * ringw);
                     let hy = saturate((p.y - C.y) / max(cl.hc + cl.rt, 1.0));
                     let deep = saturate(-d0 / 70.0);
-                    let ao = mix((0.65 + 0.35 * sd.y) * (1.0 - 0.55 * deep), 0.75, soft);
+                    let ao = mix((0.55 + 0.45 * sd.y) * (1.0 - 0.6 * deep) * (1.0 - 0.6 * sky_occ), 0.75, soft);
                     let mv = 0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5);
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
                     var alb = mix(vec3<f32>(0.43, 0.38, 0.32), sootc, smoothstep(0.08, 0.45, hy)) * mv;
