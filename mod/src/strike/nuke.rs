@@ -72,7 +72,7 @@ const NK_BELOW: u32 = 36;
 const NK_ABOVE: u32 = 1;
 const NK_PARTS: i32 = 32;
 /// The blast's edits worked out in this many bands of rows, a stage each.
-const NK_BANDS: i32 = 90;
+const NK_BANDS: i32 = 150;
 /// Mobs and dropped items within NK_KILL killed as it bursts.
 const NK_KILL: i32 = 300;
 /// Real blocks thrown out of the crater as it bursts (nk_thrown).
@@ -644,7 +644,7 @@ fn nk_land_step(q: &mut Plan, land: Shared, tags: Rc<Vec<u32>>, part: usize, at_
     // (and the parts after it already in, in the same stage: a stage a part would queue behind the blast's)
     let mut part = part + 1;
     let mut n = 1;
-    while part < tags.len() && n < 8 {
+    while part < tags.len() && n < 2 {
         let Some(a) = crate::columns::get(tags[part]) else { break };
         let _ = crate::columns::take(tags[part]);
         take_in(&mut land.borrow_mut(), &a, q.bx, q.bz);
@@ -907,7 +907,7 @@ fn nk_felled(q: &mut Plan, shared: Shared, shape: Shape, used: Used, k0: i32, k1
     nk_felled_band(q, &shared.borrow(), &shape, &used, k0, k1);
 }
 /// The felled trees go in once the blast's bands are all in (which clear what stood there).
-const NK_LAID: f32 = NK_HIT + 0.08 + 0.05 * NK_BANDS as f32 + 0.3;
+const NK_LAID: f32 = NK_HIT + 0.08 + 0.03 * NK_BANDS as f32 + 0.3;
 fn nk_felled_band(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
     let mut used = used.borrow_mut();
@@ -1119,7 +1119,7 @@ const NK_FL_BELOW: u32 = 30;
 /// The line of sight worked out along NK_FL_RAYS rays out from the fireball, in NK_FL_SWEEPS stages; then the edits in
 /// NK_FL_BANDS stages of rows.
 const NK_FL_RAYS: i32 = 3400;
-const NK_FL_SWEEPS: i32 = 16;
+const NK_FL_SWEEPS: i32 = 24;
 const NK_FL_BANDS: i32 = 12;
 /// What a column holds that the flash changes, a bit each: the leaves of each wood (0-8), the logs of each (9-17),
 /// a grass block on top (18), the plants (19-24), wool and carpet (25-26), planks of three woods (27-29).
@@ -1164,11 +1164,22 @@ fn fl_idx(bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
 /// The ring's columns read in part `part` (a run of rows of it, past NK_READ and within NK_FLASH, about as many columns
 /// in each part: some 15,000, half a query's worth at NK_FL_BELOW deep).
 fn fl_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
-    let ring = |dz: i32, dx: i32| {
-        let r2 = dx * dx + dz * dz;
-        r2 > NK_READ * NK_READ && r2 <= NK_FLASH * NK_FLASH
+    // (each row's run out to the flash's reach less the run within the blast's: the widest dx in each)
+    let half = |r: i32, dz: i32| -> i32 {
+        let m = r * r - dz * dz;
+        if m < 0 {
+            return -1;
+        }
+        let mut w = f64::from(m).sqrt() as i32;
+        while w * w > m {
+            w -= 1;
+        }
+        while (w + 1) * (w + 1) <= m {
+            w += 1;
+        }
+        w
     };
-    let count = |dz: i32| (-NK_FLASH..=NK_FLASH).filter(|&dx| ring(dz, dx)).count();
+    let count = |dz: i32| (2 * half(NK_FLASH, dz) + 1 - (2 * half(NK_READ, dz) + 1).max(0)).max(0) as usize;
     let total: usize = (-NK_FLASH..=NK_FLASH).map(count).sum();
     let per = total.div_ceil(NK_FL_PARTS as usize);
     let mut out = Vec::new();
@@ -1178,7 +1189,8 @@ fn fl_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
         let k = (seen + n / 2) / per;
         seen += n;
         if k as i32 == part || (part == NK_FL_PARTS - 1 && k as i32 > part) {
-            out.extend((-NK_FLASH..=NK_FLASH).filter(|&dx| ring(dz, dx)).map(|dx| (bx + dx, bz + dz)));
+            let (wo, wi) = (half(NK_FLASH, dz), half(NK_READ, dz));
+            out.extend((-wo..=wo).filter(|&dx| dx.abs() > wi).map(|dx| (bx + dx, bz + dz)));
         }
     }
     out
@@ -1218,6 +1230,15 @@ fn nk_flash_step(q: &mut Plan, fl: FlashShared, tags: Rc<Vec<u32>>, part: usize,
     if part >= tags.len() {
         return;
     }
+    // (its square made on its first stage, not as the strike is planned: a few megabytes)
+    if fl.borrow().top.is_empty() {
+        let n = (NK_FL_W * NK_FL_W) as usize;
+        let mut f = fl.borrow_mut();
+        f.top = vec![i16::MIN; n];
+        f.g = vec![0; n];
+        f.mats = vec![0; n];
+        f.seen = vec![i16::MAX; n];
+    }
     let Some(a) = crate::columns::take(tags[part]) else {
         if at_t < NK_HIT - 4.5 {
             q.later(at_t + 0.1, move |q| nk_flash_step(q, fl, tags, part, at_t + 0.1));
@@ -1245,6 +1266,9 @@ fn nk_flash_sweep(q: &mut Plan, fl: FlashShared, land: Shared, s: Shape, gy: i32
     let hb = f64::from(gy) + NK_BURST;
     let land = land.borrow();
     let mut fl = fl.borrow_mut();
+    if fl.top.is_empty() {
+        return;
+    }
     for j in j0..j1 {
         let th = TAU * f64::from(j) / f64::from(NK_FL_RAYS);
         let (ux, uz) = (th.cos(), th.sin());
@@ -1282,6 +1306,9 @@ fn nk_flash_sweep(q: &mut Plan, fl: FlashShared, land: Shared, s: Shape, gy: i32
 fn nk_flash_rows(q: &mut Plan, fl: &Flash, s: &Shape, k0: i32, k1: i32, at_t: f32) {
     let (bx, bz) = (q.bx, q.bz);
     let mut b = Blocks::default();
+    if fl.top.is_empty() {
+        return;
+    }
     for k in k0..k1 {
         for i in 0..NK_FL_W {
             let (x, z) = (bx - NK_FLASH + i, bz - NK_FLASH + k);
@@ -1496,8 +1523,8 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         order.sort_by_key(|&j| (2 * j + 1 - bands).abs());
         for (n, &j) in order.iter().enumerate() {
             let (k0, k1) = (j * rows, ((j + 1) * rows).min(NK_GW));
-            let t = 3.0 + 0.04 * n as f32;
-            let at = NK_HIT + 0.08 + 0.05 * n as f32;
+            let t = 2.8 + 0.025 * n as f32;
+            let at = NK_HIT + 0.08 + 0.03 * n as f32;
             let l1 = land.clone();
             p.later(t, move |q| nk_blast_rows(q, l1, shape, k0, k1, at, t));
         }
@@ -1519,10 +1546,10 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         }
         // the flash's scorching past the blast's reach: the ring read as it starts, worked out a band of rows a stage
         let fl: FlashShared = Rc::new(RefCell::new(Flash {
-            top: vec![i16::MIN; (NK_FL_W * NK_FL_W) as usize],
-            g: vec![0; (NK_FL_W * NK_FL_W) as usize],
-            mats: vec![0; (NK_FL_W * NK_FL_W) as usize],
-            seen: vec![i16::MAX; (NK_FL_W * NK_FL_W) as usize],
+            top: Vec::new(),
+            g: Vec::new(),
+            mats: Vec::new(),
+            seen: Vec::new(),
             parts: 0,
         }));
         let ftags: Rc<Vec<u32>> = Rc::new((0..NK_FL_PARTS).map(|_| crate::columns::new_tag()).collect());
