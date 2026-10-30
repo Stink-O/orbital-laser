@@ -1120,7 +1120,8 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         p.csound(arrive - 0.02, "blast", 10.0 * (1.0 - far), 1.0);
     }
     if far > 0.0 {
-        p.csound(arrive - 0.02, "blast_far", 10.0 * far, 1.0);
+        // (and quieter yet the further off it is: a kilometre and a half off, about three quarters as loud)
+        p.csound(arrive - 0.02, "blast_far", 10.0 * far * ((1.25 / (1.0 + dist / 2000.0)).min(1.0) as f32), 1.0);
     }
     // (the gust of the front going past: violent close by, a third as loud a kilometre and more off, where it is a gust
     // of wind and grit and no more)

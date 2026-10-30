@@ -42,7 +42,7 @@ How each is made:
     python3 tools/sounds_nuke.py                     # writes orbital-sounds/assets/orbital/sounds/nuke/*.ogg, adds the
                                                      # nuke.* events to sounds.json (nothing else touched)
     python3 tools/sounds_nuke.py --only blast        # one (the blast before blast_far and the ones ducked under it)
-    python3 tools/sounds_nuke.py --listen DIR        # also WAVs of each, and the whole strike heard from 200 and 600
+    python3 tools/sounds_nuke.py --listen DIR        # also WAVs of each, and the whole strike heard from 200, 600 and 1500
                                                      # blocks, with their peaks, loudness and the blast's spectrum
 """
 import argparse, json, subprocess, sys
@@ -96,7 +96,7 @@ def volumes(dist):
         "fall": 1.0,
         "ground": float(np.clip(1.0 / (1.0 + dist / 1200.0), 0.35, 1.0) * np.clip((gap - 0.05) / 0.9, 0.3, 1.0) ** 1.2),
         "blast": 1.0 - far,
-        "blast_far": far,
+        "blast_far": far * min(1.25 / (1.0 + dist / 2000.0), 1.0),
         "shockwave": float(np.clip(1.15 / (1.0 + dist / 450.0), 0.3, 1.0)),   # nuke.rs's nk_shock_vol
         "rumble": 1.0,
         "debris": (0.5 + 0.5 * near) if dist < 700 else 0.0,
@@ -198,12 +198,16 @@ def smooth_gain(need, release=0.12):
     return out
 
 
-def duck_under(L, R, layouts, extra=()):
+def duck_under(L, R, layouts, extra=(), own=None):
     """`L`, `R` eased down where, played with what `layouts` put under it, the sum would pass the ceiling. `layouts`:
     lists of (file, start against this sound, volume), one list for each way they can sound together (the near blast
-    or the far one); `extra`: (pitch, start of this sound against the first's, layouts) for a repeat of this sound."""
+    or the far one); `extra`: (pitch, start of this sound against the first's, layouts) for a repeat of this sound;
+    `own`: the most this sound itself plays at with each layout (nuke.rs lets some down with the distance)."""
     x = np.stack([L, R], axis=1)
-    need = duck_need(x, [bed(len(x), lay) for lay in layouts])
+    own = own or [1.0] * len(layouts)
+    need = np.ones(len(x))
+    for lay, v in zip(layouts, own):
+        need = np.minimum(need, duck_need(x * v, [bed(len(x), lay)]))
     for pitch, at, lays in extra:
         xp = pitched(x, pitch)
         np_ = duck_need(xp, [bed(len(xp), lay) for lay in lays])
@@ -421,11 +425,12 @@ def blast_far():
             hi = band(y, 1500, None, 2)
             hi = hi * soft_on
             mid = mid * np.sqrt(soft_on)
-            out.append(lo * 1.1 + mid * 0.45 + P.air(hi, 5000) * 0.14)
+            # (a kilometre of air takes little off under 1.5 kHz: the mids kept, so it still carries on small speakers)
+            out.append(lo * 0.75 + mid * 1.2 + P.air(hi, 5000) * 0.3)
         L, R = out
         # (more of the low thunder rolling off the land)
         rl, rr = PB.thunder_rolls(d, BLAST_LEAD + 0.8, count=14, length=14.0)
-        g = T.loudest((L + R) / 2) * 0.5 / (T.loudest((rl + rr) / 2) + 1e-9)
+        g = T.loudest((L + R) / 2) * 0.35 / (T.loudest((rl + rr) / 2) + 1e-9)
         L += rl * g; R += rr * g
         # (and a long dark outdoor reverb: the land and the sky it came over)
         for i, ch in enumerate((L, R)):
@@ -433,8 +438,15 @@ def blast_far():
             m = n + len(ir)
             wet = np.fft.irfft(np.fft.rfft(ch, m) * np.fft.rfft(ir, m), m)[:n]
             ch += wet * 0.55
+        # (the lows' own harmonics, as the near blast has them, so a laptop or a phone still hears the boom's weight)
+        lo = band((L + R) / 2, None, 90, 3)
+        c = np.percentile(np.abs(lo), 99.0) * 0.35 + 1e-9
+        h = band(np.tanh(lo / c) * c, 70, 420, 2)
+        h = h / (T.loudest(h) + 1e-9) * T.loudest(lo) * 10 ** (-4.0 / 20)
+        L += h; R += h
         f = T.fade(n, 0.002, 4.0)
         L, R = PB.causal_lowcut(L * f, 15.0), PB.causal_lowcut(R * f, 15.0)
+    # (its loudness a little under the near blast's (about -13 LUFS to its -12.5), its mids now carrying more of it)
     finish_at("blast_far", L, R, -12.5, tail_fade=3.0, knee=0.5, peak=BLAST_PEAK)
 
 
@@ -499,7 +511,8 @@ def shockwave():
         L, R = PB.causal_lowcut(L * g0, 14.0), PB.causal_lowcut(R * g0, 14.0)
         L, R = scaled(L, R, -14.0)
         a = SHOCK_FRONT - BLAST_LEAD
-        L, R = duck_under(L, R, [[("blast", a, 1.0)], [("blast_far", a, 1.0)]])
+        # (with the far blast it plays at nk_shock_vol of 300 blocks and more: at most 0.69)
+        L, R = duck_under(L, R, [[("blast", a, 1.0)], [("blast_far", a, 1.0)]], own=[1.0, 0.69])
     finish("shockwave", L, R, tail_fade=0.8)
 
 
@@ -715,7 +728,7 @@ def listen(out):
     for dist in (60, 100, 150, 250, 300, 450, 750, 900, 1500):
         x, _ = mixdown(dist)
         print(f"  the whole strike {dist:4d} blocks off peaks at {20 * np.log10(np.abs(x).max()):.2f} dBFS")
-    for dist in (200, 600):
+    for dist in (200, 600, 1500):
         x, start = mixdown(dist)
         pk = np.abs(x).max()
         p = out / f"nuke_full_{dist}blocks.wav"
