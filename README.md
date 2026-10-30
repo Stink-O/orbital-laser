@@ -94,8 +94,8 @@ Eleven lasers, five to a page of the wheel.
 - **Payload** (page two). A bright point high in the sky comes down on one long arc from orbit, slow at first, then fast as a fireball,
   crackling and shedding burning chunks, its lumpy smoke trail hanging in the sky: a column of smoke boils up, a wall of dust
   races out over the land and debris rains down, and the column slowly melts into a drifting haze. It leaves a bomb crater.
-- **Nuke** (page three). A bomb comes in from orbit, a white-hot streak across the sky, cools, opens
-  its chute and sinks onto the target, then bursts over the land: a blinding white flash, a fireball
+- **Nuke** (page three). A bomb comes in from orbit, a white-hot streak across the sky, cools and
+  dives onto the target, faster and faster, then bursts over the land: a blinding white flash, a fireball
   boiling up into a mushroom cloud hundreds of blocks tall that rolls over on itself, its shadow across the land, and a
   shockwave racing out in a wall of dust. The boom arrives late with the distance. It leaves a terraced crater about
   200 blocks across and 40 deep with a glassy floor (flooded where it cuts into water), the land flattened out to about

@@ -5,7 +5,7 @@ copied.
 Timeline the files are built for, as mod/src/strike/nuke.rs plays them (0 = the burst, the silent flash, NK_HIT = 11 s
 into the strike; `dist` = the player's distance from the burst in blocks; `arrive` = dist / 343):
 
-  fall        starts FALL_CUT s before the burst (NK_SEEN - 0.5) and is cut dead on it (FALL_CUT s into the file)
+  fall        starts FALL_CUT s before the burst (at 1.5 s) and is cut dead on it (FALL_CUT s into the file)
   ground      at dist / GROUND_V - GROUND_LEAD (the ground carries it five times faster than the air)
   blast       at arrive - BLAST_LEAD (BLAST_LEAD s of near-silence in the file, then the crack)
   blast_far   the same, cross-faded in by distance (`far_mix`: 300 to 900 blocks, smoothstep)
@@ -15,11 +15,10 @@ into the strike; `dist` = the player's distance from the burst in blocks; `arriv
 
 How each is made:
 
-  fall        a dark roar (noise through a lowpass that opens as it comes down, its lows heavy), a falling whistle
-              (two noise-excited resonances sliding down, never a pure tone), a low ominous drone under it (a narrow
-              band of noise round 50 Hz with its own octave), all one source high in the sky: the same in both ears,
-              darkened, in a long dark distant reverb. `nearness` keeps it far, narrow and dark until the last ~1.5 s,
-              when the top opens, it widens a little and swells; cut dead on the detonation.
+  fall        the descent (see `fall`): a distant re-entry rumble and the bomb burning up in distant clusters of pops,
+              growing louder; a short lull as the heat goes; then the dive: a tearing roar and a whistle climbing in
+              pitch, louder and louder, all one source high in the sky (the same in both ears, darkened, in a long
+              distant reverb) until its last ~1.5 s, when the top opens and it widens; cut dead on the burst.
   blast       `explosion_live` (sounds_pk_blast.py: the roar, crack, pressure swing and debris of a very large
               explosion, synthesised to measured band levels) stretched long, and over it: a second hard crack 50-70 ms
               after the first (the airburst's wave and its reflection off the ground, the Mach stem), a boom sweeping
@@ -255,64 +254,111 @@ def distant_verb(x, length=3.5, wet=0.6, darken=(2200, 300), decay=1.4, corr=0.8
 
 
 # ============================================================================================================  the fall
-def nearness(t):
-    """0 while the bomb is far up, 1 at the detonation: only its last ~1.5 s close in."""
-    return np.clip((t - (FALL_CUT - 1.5)) / 1.3, 0, 1) ** 1.3
+# nuke.rs's descent, in strike time: the bomb shows at 0.8 s, a white-hot streak in from orbit slowing hard on a shallow
+# slope, sparks breaking off; its heat shed about 6-7 s, the casing gliding a moment; from 7.2 s it arcs over into a
+# steep dive, faster and faster (to ~330 blocks a second), its nose glowing again in the last 2 s; the burst at 11.0 s.
+FALL_AT = 1.5                                  # (the plan starts the file then; FALL_CUT s later is the burst)
+HIT = FALL_AT + FALL_CUT
+COOL, DIVE = 6.0, 7.2
+
+
+def nearness(ts):
+    """0 while the bomb is far up, 1 at the burst: only its last ~1.5 s close in (strike time)."""
+    return np.clip((ts - (HIT - 1.5)) / 1.3, 0, 1) ** 1.3
+
+
+def db_curve(ts, pts):
+    xs, ys = zip(*pts)
+    return 10 ** (np.interp(ts, xs, ys) / 20)
 
 
 def fall():
+    """Three parts, one source high in the sky until its last second or so:
+      re-entry (1.5-6 s)  a distant rumble of torn air (low noise through a dark lowpass, its lows heavy, wavering) and the
+                          bomb burning up: pops in uneven clusters through kilometres of air, with their echoes off the
+                          land (sounds_payload's `pop_crackle`), all growing louder; narrow, dark, in a distant reverb
+      the lull (6-7.2 s)  the heat gone: the roar sinks away to a thin breath of wind and a low drone, the pops stop
+      the dive (7.2-11 s) a tearing roar and a whistle climbing in pitch (two noise-excited resonances, ~480 Hz up to
+                          ~1.5 kHz, never a pure tone), the air chopped harder, a sub weight bearing down, the top opening
+                          and the sound widening only in its last ~1.5 s, a few last pops as the nose glows again; louder
+                          and louder to the hard cut on the burst"""
     d = FALL_CUT + 1.0
     n = int(SR * d)
     t = np.arange(n) / SR
-    prog = np.clip(t / FALL_CUT, 0, 1)
-    near = nearness(t)
-    with PB.seeded(77101):
-        # ---- the roar: dark noise, a lowpass opening as it comes down; its lows heavy, wavering slowly
+    ts = FALL_AT + t
+    near = nearness(ts)
+    dive = np.clip((ts - DIVE) / (HIT - DIVE), 0, 1)               # (0 at the arc-over, 1 at the burst)
+    with PB.seeded(77111):
+        # ---- the re-entry rumble: low noise, a dark lowpass, wavering slowly; gone with the heat
         x = white(d)
-        lows = T.unit(band(x, 35, 160, 2))
-        mids = T.unit(band(x, 120, 6000, 1))
-        fc = 380 + 900 * prog ** 1.6 + 4200 * near ** 1.5
-        mids = T.unit(PB.lowpass_track(mids, fc))
-        wav = np.exp(2.2 * PB.slow_random(n, 0.2, 1.5) / 8.686)
-        roar = (lows * 10 ** ((-36 + 14 * prog ** 1.4 + 5 * near) / 20)
-                + mids * 10 ** ((-39 + 15 * prog ** 1.4 + 9 * near) / 20)) * wav
-        # ---- the whistle: two resonances sliding down (1500 -> 620 Hz), the upper one coming up as it nears
-        f0 = 620 + 880 * np.exp(-2.1 * prog) - 60 * near
-        f0 = f0 * (1 + 0.004 * PB.slow_random(n, 0.3, 1.5) + 0.004 * near * PB.slow_random(n, 3.0, 7.0))
-        wh = (P.glide_band(d, f0, 0.07) + 0.45 * P.glide_band(d, f0 * 1.52, 0.09) * (0.4 + 0.6 * near)
-              + 0.2 * P.glide_band(d, f0 * 2.06, 0.1) * near)
-        wh_air = 1400 + 1500 * prog + 6000 * near ** 1.5
-        wh = PB.lowpass_track(wh, wh_air)
-        wh *= 10 ** ((-37 + 17 * prog ** 1.2 + 6 * near) / 20) * np.exp(1.8 * PB.slow_random(n, 0.4, 2.5) / 8.686)
-        # ---- the drone: a narrow band round ~52 Hz (falling a little) and its octave, swelling: weight bearing down
-        fd = 54 - 6 * prog
-        dr = P.glide_band(d, fd, 0.35) + 0.5 * P.glide_band(d, fd * 2.0, 0.3) + 0.25 * P.glide_band(d, fd * 3.0, 0.3)
-        dr *= 10 ** ((-44 + 16 * prog ** 1.5 + 6 * near) / 20) * np.exp(1.5 * PB.slow_random(n, 0.1, 0.8) / 8.686)
-        dry = roar + wh + dr
-        # ---- far up: in a long, dark, distant reverb, narrow; drier and a little wider in its last moment
-        wet_amt = 0.85 - 0.45 * near
+        lows = T.unit(band(x, 30, 180, 2))
+        mids = T.unit(band(x, 120, 5000, 1))
+        fc_re = np.interp(ts, [FALL_AT, COOL, COOL + 0.8], [420, 750, 300])
+        wav = np.exp(2.6 * PB.slow_random(n, 0.25, 1.8) / 8.686)
+        re_g = db_curve(ts, [(FALL_AT, -48), (3.0, -41), (5.0, -35), (COOL - 0.2, -32), (COOL + 0.5, -44), (DIVE, -56), (DIVE + 0.3, -70)])
+        reentry = (lows * 1.0 + T.unit(PB.lowpass_track(mids, fc_re)) * 0.6) * wav * re_g
+        # ---- the dive's roar: a lowpass opening as it closes, heavy lows, louder and louder
+        fc_dv = 500 + 1800 * dive ** 1.6 + 5000 * near ** 1.4
+        dv_mid = T.unit(PB.lowpass_track(T.unit(band(white(d), 150, 9000, 1)), fc_dv))
+        dv_low = T.unit(band(white(d), 35, 160, 2))
+        dv_g = db_curve(ts, [(DIVE - 0.4, -70), (DIVE, -42), (DIVE + 1.0, -30), (HIT - 1.5, -24), (HIT - 0.5, -18), (HIT, -14)])
+        roar = (dv_mid + 0.8 * dv_low) * dv_g * np.exp(1.8 * PB.slow_random(n, 0.4, 2.5) / 8.686)
+        # ---- the whistle, climbing (its speed pushing it up): two resonances and a third near the end
+        f0 = 480 * (1500 / 480) ** (dive ** 1.5)
+        f0 = f0 * (1 + 0.004 * PB.slow_random(n, 0.3, 1.5) + 0.006 * near * PB.slow_random(n, 3.0, 8.0))
+        wh = (P.glide_band(d, f0, 0.07) + 0.5 * P.glide_band(d, f0 * 1.51, 0.09) * (0.4 + 0.6 * dive)
+              + 0.25 * P.glide_band(d, f0 * 2.07, 0.1) * near)
+        wh = PB.lowpass_track(wh, 1600 + 2500 * dive + 6000 * near ** 1.5)
+        wh_g = db_curve(ts, [(DIVE - 0.2, -80), (DIVE + 0.3, -46), (DIVE + 1.5, -36), (HIT - 1.0, -26), (HIT, -19)])
+        wh = wh * wh_g * np.exp(2.0 * PB.slow_random(n, 0.5, 3.0) / 8.686)
+        # ---- the air torn: a band chopped by an uneven flutter, deeper and faster as it comes
+        tear = T.unit(band(white(d), 900, 4500, 2))
+        chop = np.clip(0.35 + 0.9 * PB.slow_random(n, 8.0, 30.0), 0, None) ** 1.6
+        chop /= np.sqrt(np.mean(chop ** 2)) + 1e-9
+        chop = 1 + (chop - 1) * (0.25 + 0.75 * dive)
+        tear = PB.lowpass_track(tear * chop, 2500 + 6000 * near)
+        tear = tear * db_curve(ts, [(DIVE, -80), (DIVE + 0.8, -50), (HIT - 1.5, -38), (HIT, -24)])
+        # ---- weight bearing down: a sub coming up under the dive
+        sub = T.unit(band(white(d), 24, 70, 2)) * db_curve(ts, [(DIVE, -70), (DIVE + 1.0, -40), (HIT - 0.5, -26), (HIT, -22)])
+        # ---- the lull: a thin breath of wind and a low drone holding the tension
+        breath = T.unit(PB.lowpass_track(band(white(d), 200, 3000, 1), np.full(n, 1200.0)))
+        breath *= db_curve(ts, [(COOL - 0.5, -70), (COOL + 0.3, -46), (DIVE, -44), (DIVE + 0.8, -60)])
+        drone = (P.glide_band(d, np.full(n, 46.0), 0.3) + 0.5 * P.glide_band(d, np.full(n, 92.0), 0.3))
+        drone *= db_curve(ts, [(FALL_AT, -64), (COOL, -50), (DIVE, -40), (HIT, -32)])
+        dry = reentry + roar + wh + tear + sub + breath + drone
+        # ---- far up: one source overhead, in a long dark reverb, drier and a little wider only as it arrives
         L, R = distant_verb(dry, 4.0, 1.0, darken=(1800, 260), decay=1.5, corr=0.9)
+        wet_amt = 0.85 - 0.5 * near
         L = dry + (L - dry) * wet_amt; R = dry + (R - dry) * wet_amt
-        side = P.glide_band(d, f0 * 1.003, 0.08) * 10 ** ((-37 + 17 * prog ** 1.2 + 6 * near) / 20) * 0.25 * near
-        side += T.unit(PB.lowpass_track(band(white(d), 300, 8000, 1), fc)) * 10 ** ((-42 + 15 * prog ** 1.4 + 9 * near) / 20) * 0.3 * near
+        side = (P.glide_band(d, f0 * 1.004, 0.08) * wh_g * 0.3 + T.unit(band(white(d), 600, 8000, 1)) * dv_g * 0.4) * near
         L, R = L + side, R - side
-        # ---- fade in from nothing; cut dead on the detonation, a breath of dark air after (0.12 s)
-        g = np.clip(t / 2.5, 0, 1) ** 2
+        # ---- the re-entry burning up: distant clusters of pops, thickening, gone with the heat; a few as the nose glows
+        rate = lambda u: (np.interp(u, [FALL_AT, 3.0, 5.0, COOL - 0.3, COOL + 0.3], [3.0, 5.0, 8.0, 8.0, 0.0])
+                          + np.interp(u, [HIT - 2.0, HIT - 1.0, HIT], [0.0, 4.0, 7.0]))
+        lvl = lambda u: (np.interp(u, [FALL_AT, 5.0, COOL, HIT - 2.0, HIT], [-44.0, -35.0, -34.0, -32.0, -24.0]))
+        cl, cr = P.pop_crackle(d, FALL_AT, rate, lvl, big=1.2,
+                               air_fc=lambda u: np.interp(u, [FALL_AT, COOL, HIT - 1.0, HIT], [3000.0, 3800.0, 4500.0, 6500.0]))
+        L, R = L + cl, R + cr
+        # ---- fade in from nothing; cut dead on the burst, a breath of dark air after (gone in a tenth of a second)
+        g = np.clip(t / 1.5, 0, 1) ** 2
         kc = int(FALL_CUT * SR)
-        k6 = int(0.005 * SR)
+        k6 = int(0.004 * SR)
         g[kc - k6:kc] *= 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, k6))
         g[kc:] = 0
         last = band((L + R)[kc - int(0.04 * SR):kc] * 0.5, 60, 900, 2)
         m = int(0.3 * SR)
         s = np.arange(m) / SR
-        ir = band(rng().standard_normal(m), 60, 800, 2) * np.exp(-s / 0.05) * (1 - np.exp(-s / 0.003))
+        ir = band(rng().standard_normal(m), 60, 800, 2) * np.exp(-s / 0.04) * (1 - np.exp(-s / 0.003))
         ir /= np.sqrt(np.sum(ir ** 2)) + 1e-9
-        tl = np.convolve(last, ir)[: int(0.3 * SR)] * 0.25
+        tl = np.convolve(last, ir)[:m] * 0.15
         L, R = L * g, R * g
         P.put(L, tl, FALL_CUT - 0.04); P.put(R, tl, FALL_CUT - 0.04)
         L, R = PB.causal_lowcut(L, 22.0), PB.causal_lowcut(R, 22.0)
-    L, R = scaled(L[:int((FALL_CUT + 0.5) * SR)], R[:int((FALL_CUT + 0.5) * SR)], -16.5)
-    finish("fall", L, R, tail_fade=0.2)
+    # (the last half second at -13 dB: the build ends at its loudest, on the cut)
+    L, R = L[:int((FALL_CUT + 0.4) * SR)], R[:int((FALL_CUT + 0.4) * SR)]
+    k0, k1 = int((FALL_CUT - 0.45) * SR), int((FALL_CUT - 0.05) * SR)
+    gl = 10 ** (-13.0 / 20) / (np.sqrt(np.mean(((L + R) / 2)[k0:k1] ** 2)) + 1e-12)
+    finish("fall", L * gl, R * gl, tail_fade=0.2)
 
 
 # ===========================================================================================================  the blast
