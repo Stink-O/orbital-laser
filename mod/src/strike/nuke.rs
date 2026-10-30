@@ -54,17 +54,17 @@ pub(super) const NK_SPARKS: usize = 0;
 
 /// The crater's mean radius and depth, how far its rim's heap reaches (in its radii), the land flattened and the trees
 /// felled out to NK_FLAT, the grass charred out to NK_CHAR, the rubble strewn out to NK_RUBBLE.
-const NK_CRATER_R: f64 = 50.0;
-const NK_CRATER_D: f64 = 18.0;
-const NK_RIM: f64 = 1.5;
-const NK_FLAT: f64 = 180.0;
-const NK_CHAR: f64 = 240.0;
-const NK_RUBBLE: f64 = 230.0;
+const NK_CRATER_R: f64 = 100.0;
+const NK_CRATER_D: f64 = 40.0;
+const NK_RIM: f64 = 1.4;
+const NK_FLAT: f64 = 230.0;
+const NK_CHAR: f64 = 290.0;
+const NK_RUBBLE: f64 = 280.0;
 /// Past the flattened land, a band this wide where the blast only half did its work: crowns stripped of their leaves,
 /// many trees knocked flat, leaves and branches strewn.
-const NK_BAND: f64 = 100.0;
+const NK_BAND: f64 = 70.0;
 /// The land read: every column out to NK_READ, NK_BELOW under its top (a tall tree's top down to its ground).
-const NK_READ: i32 = 280;
+const NK_READ: i32 = 300;
 const NK_GW: i32 = 2 * NK_READ + 1;
 const NK_BELOW: u32 = 36;
 const NK_ABOVE: u32 = 1;
@@ -72,7 +72,7 @@ const NK_PARTS: i32 = 32;
 /// The blast's edits worked out in this many bands of rows, a stage each.
 const NK_BANDS: i32 = 180;
 /// Mobs and dropped items within NK_KILL killed as it bursts.
-const NK_KILL: i32 = 250;
+const NK_KILL: i32 = 300;
 /// Real blocks thrown out of the crater as it bursts (nk_thrown).
 const NK_THROWN: usize = 160;
 
@@ -638,10 +638,25 @@ impl Shape {
 }
 /// How deep the crater is at u (its radii out): a bowl; and how high its rim's heap stands past it.
 fn bowl(u: f64) -> f64 {
-    if u < 1.0 { NK_CRATER_D * (1.0 - u * u).powf(0.75) } else { 0.0 }
+    if u >= 1.0 {
+        return 0.0;
+    }
+    // (a broad bowl, its walls stepped in terraces five deep where they slumped, the steps rounded off)
+    let d = NK_CRATER_D * (1.0 - u * u).powf(0.7);
+    let k = d / 5.0;
+    let step = k.floor() + ((k.fract() - 0.55) / 0.45).clamp(0.0, 1.0).powi(2);
+    // (the floor itself not stepped)
+    let w = ((u - 0.35) / 0.2).clamp(0.0, 1.0);
+    d * (1.0 - w) + step * 5.0 * w
 }
-fn heap(u: f64) -> f64 {
-    if u < 1.0 || u > NK_RIM { 0.0 } else { 6.0 * (-(u - 1.1).powi(2) / 0.04).exp() + 1.0 * (1.0 - (u - 1.0) / (NK_RIM - 1.0)) }
+/// The rim's heap past the edge (u in crater radii): the land thrown up and turned over, a broken ridge some ten high
+/// just past the edge, falling away over the next forty percent, ragged (`n`, 0 to 1, breaks it up).
+fn heap(u: f64, n: f64) -> f64 {
+    if u < 1.0 || u > NK_RIM {
+        return 0.0;
+    }
+    let ridge = 10.0 * (-(u - 1.07).powi(2) / 0.006).exp() + 3.0 * (1.0 - (u - 1.0) / (NK_RIM - 1.0));
+    ridge * (0.35 + 0.95 * n)
 }
 /// The scorched ground of the crater's floor and walls: broad patches of one or another.
 fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
@@ -668,9 +683,15 @@ fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
 /// The rim's heap: earth and broken rock thrown out of the crater.
 fn ejecta(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
     let n = vnoise(f64::from(x) * 1.3 + f64::from(y) * 0.71, f64::from(z) * 1.3, 3.0, seed ^ 0x61);
-    if n > 0.74 {
+    // (the deep rock the crater dug up, turned over onto its rim in slabs)
+    let m = vnoise(f64::from(x), f64::from(z) + f64::from(y) * 1.7, 5.0, seed ^ 0x62);
+    if m > 0.78 {
+        "minecraft:deepslate"
+    } else if m < 0.14 {
+        "minecraft:tuff"
+    } else if n > 0.74 {
         "minecraft:cobblestone"
-    } else if n > 0.62 {
+    } else if n > 0.6 {
         "minecraft:stone"
     } else if n < 0.2 {
         "minecraft:rooted_dirt"
@@ -689,7 +710,7 @@ fn charred(x: i32, z: i32, r: f64, a: f64, seed: u32) -> Option<&'static str> {
     let k = 11.0 + 0.004 * r;
     let st = vnoise(a.cos() * k, a.sin() * k, 1.0, seed ^ 0x73);
     let out = (r + 45.0 * (st - 0.5)).max(0.0);
-    let reach = 0.25 + 0.7 * (1.0 - ((out - 80.0) / (NK_CHAR - 80.0)).clamp(0.0, 1.0)).powf(1.3) + 0.22 * (st - 0.5);
+    let reach = 0.25 + 0.7 * (1.0 - ((out - NK_CRATER_R * 1.5) / (NK_CHAR - NK_CRATER_R * 1.5)).clamp(0.0, 1.0)).powf(1.3) + 0.22 * (st - 0.5);
     if 0.55 * n + 0.45 * m > 1.0 - reach {
         Some(if m > 0.66 { "minecraft:podzol" } else if n > 0.7 { "minecraft:dirt" } else { "minecraft:coarse_dirt" })
     } else {
@@ -714,7 +735,8 @@ fn new_ground(c: &Column, s: &Shape, x: i32, z: i32) -> Option<i32> {
     if u < 1.0 {
         Some(c.g - bowl(u).round() as i32)
     } else if u < NK_RIM {
-        Some(c.g + heap(u).round() as i32)
+        let n = vnoise(f64::from(x), f64::from(z), 4.0, s.seed ^ 0x35);
+        Some(c.g + heap(u, n).round() as i32)
     } else if r < s.flat(a) || knocked(c, s, x, z) {
         Some(c.g)
     } else {
@@ -765,7 +787,7 @@ fn nk_blast_band(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32, at_t: f
                         b.put(x + dx, z + dz, top - 3, c.g, "minecraft:stone", Some("minecraft:water"), false);
                         b.put(x + dx, z + dz, top - 3, c.g, "minecraft:stone", Some("minecraft:lava"), false);
                     }
-                    let d = if u < 0.6 { 1 } else { 0 };
+                    let d = if u < 0.75 { 1 } else { 0 };
                     for y in top - d..=top {
                         b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
                     }
@@ -924,7 +946,7 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
         "minecraft:andesite",
         "minecraft:mossy_cobblestone",
     ];
-    for _ in 0..700 {
+    for _ in 0..1200 {
         let r = NK_CRATER_R * 1.05 + (NK_RUBBLE - NK_CRATER_R * 1.05) * rng.next().powf(1.7);
         let a = rng.uniform(0.0, TAU);
         let (x, z) = ((s.cx + a.cos() * r).floor() as i32, (s.cz + a.sin() * r).floor() as i32);
@@ -964,7 +986,7 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
     let wood = (0..9).max_by_key(|&i| woods[i]).unwrap_or(0);
     if woods[wood] > 0 {
         for n in 0..1200 {
-            let r = 110.0 + (NK_FLAT * 1.1 + NK_BAND - 110.0) * rng.next().powf(0.8);
+            let r = NK_CRATER_R * 1.45 + (NK_FLAT * 1.1 + NK_BAND - NK_CRATER_R * 1.45) * rng.next().powf(0.8);
             let a = rng.uniform(0.0, TAU);
             let (x, z) = ((s.cx + a.cos() * r).floor() as i32, (s.cz + a.sin() * r).floor() as i32);
             let Some(c) = at(land, bx, bz, x, z) else { continue };
