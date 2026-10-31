@@ -748,6 +748,7 @@ fn pl_chunk_up(ch: PlChunk, C: vec3<f32>, me: vec3<f32>, dme: f32) -> f32 {
     return smoothstep(gref - 1.0, gref + 2.0, ch.p.y);
 }
 
+// [cloud fns] (an earlier version's cloud's own functions go here: mod/shaders/nuke_cloud/)
 // What a stage of the pass gives: the picture (the whole pass and the join), or the half-size stage's (premultiplied
 // colour and transmittance) and beside it how far its ray went and the column's distance (`fs_half`).
 struct PlOut {
@@ -1230,6 +1231,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // (how far off the cloud stands along this ray, where it is mostly opaque: the dust and debris behind it hidden)
     var col_t = select(1.0e9, up_t, stage == 2u);
+    // [cloud] (the cloud, swapped for an earlier version's by /orbital nukecloud: mod/shaders/nuke_cloud/)
     // ---- the mushroom cloud: raymarched, self-shadowed towards the sun, glowing from inside --------------------------
     // (the fireball's heat: white-hot for a moment, orange for seconds, a dull red glow dying over tens of seconds)
     let heat = exp(-a / 0.6);
@@ -1412,6 +1414,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         }
     }
 
+    // [end cloud]
     // ---- the bomb: a white-hot streak coming in from orbit, its plasma sheath and ionised wake; its heat shed, the
     // casing (an ogive nose, a long body, four fins at its tail, spinning faster as it dives, the sun glinting off it),
     // diving faster and faster, a collar of vapour round it, its nose glowing again; a pinprick of light the instant

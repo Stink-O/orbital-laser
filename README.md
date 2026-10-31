@@ -248,6 +248,9 @@ The wheel also has:
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
 - For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
   same choice as `/orbital payloadsound`.
+- For the Nuke, a **CLOUD** row: its arrows (or a click on the name) step through the cloud's earlier versions, v1
+  FIRST CLOUD to v9 CURRENT, for comparing them; the same as `/orbital nukecloud`. Switching during a strike shows the
+  new one at once (with `/orbital skip`, the plume-up can be watched again in each).
 
 | Command | What it does |
 |---|---|
@@ -261,6 +264,7 @@ The wheel also has:
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
+| `/orbital nukecloud 1-9\|current` | which of the Nuke's clouds it draws (an earlier version's, the rest of the strike today's); alone it lists them; also the wheel's CLOUD row |
 | `/orbital quality full\|fast` | the Payload's and the Nuke's smoke at full size, or at half size (faster; needs `orbital-mod-api-7`); also the wheel's QUALITY switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
