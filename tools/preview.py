@@ -184,7 +184,7 @@ def main() -> int:
     ap.add_argument("--quality", choices=["full", "fast", "both"], default="full",
                     help="QUALITY FULL, FAST (the half-size stage), or both side by side (a column each a view)")
     ap.add_argument("--whole", action="store_true", help="FAST drawn as a game without half-size stages draws it: fs_main alone")
-    ap.add_argument("--cloud", default="current", help="the Nuke's cloud: 1-8 (an earlier one, tools/nuke_cloud.py) or current")
+    ap.add_argument("--cloud", default="current", help="the Nuke's cloud: 1-8 (an earlier one, tools/nuke_cloud.py), 10 (v3's with today's look) or current (9)")
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "dist" / "preview")
     a = ap.parse_args()
     # (`--set nkcloud=N` is the same as `--cloud N`)

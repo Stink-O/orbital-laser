@@ -33,6 +33,8 @@ VERSIONS = [
     (7, "73fe7bf", "BILLOWS"),
     (8, "1ba6527", "BOIL ON BILLOWS"),
 ]
+# (9 is today's, nuke.wgsl itself; 10 V3 PLUS is v3's cloud with today's look, made by hand: extract leaves it be)
+CURRENT = 9
 CLOUD_A = "    // ---- the mushroom cloud:"
 CLOUD_B = "    // ---- the bomb:"
 
@@ -158,7 +160,7 @@ def main():
         return
     if sys.argv[1:2] == ["splice"]:
         n = sys.argv[2]
-        version = None if n in ("0", "current", str(len(VERSIONS) + 1)) else (OUT / f"v{int(n)}.wgsl").read_text()
+        version = None if n in ("0", "current", str(CURRENT)) else (OUT / f"v{int(n)}.wgsl").read_text()
         src = splice(NUKE.read_text(), version)
         if "--fast" not in sys.argv:
             src = re.sub(r"(?ms)^// \[half stage\].*?^// \[end half stage\]\n?", "", src)

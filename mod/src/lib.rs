@@ -45,9 +45,10 @@ fn payload_pass(fast: bool) -> &'static str {
     PASS_PAYLOAD[usize::from(fast)]
 }
 /// The Nuke's, the same way (nuke.wgsl's `[half stage]`: its cloud, dust and trail at half size), with cloud version
-/// `cloud` (an index of `wheel::CLOUDS`; the last is today's: mod/shaders/nuke_cloud/vN.wgsl spliced in by build.rs).
+/// `cloud` (an index of `wheel::CLOUDS`; `wheel::CURRENT` is today's, the others mod/shaders/nuke_cloud/vN.wgsl
+/// spliced in by build.rs).
 fn nuke_pass(fast: bool, cloud: usize) -> &'static str {
-    PASS_NUKE[cloud.min(PASS_NUKE.len() - 1)][usize::from(fast)]
+    PASS_NUKE[if cloud < PASS_NUKE.len() { cloud } else { wheel::CURRENT }][usize::from(fast)]
 }
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
@@ -167,7 +168,7 @@ struct Orbital {
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
     fast: bool,
-    /// Which of the Nuke's clouds its pass draws (an index of `wheel::CLOUDS`, the last today's: `/orbital nukecloud`,
+    /// Which of the Nuke's clouds its pass draws (an index of `wheel::CLOUDS`, `wheel::CURRENT` today's: `/orbital nukecloud`,
     /// the wheel's CLOUD row; `nuke_pass`).
     cloud: usize,
     /// Seconds until a new cloud is handed to the game (`set_cloud`): stepping through them on the wheel compiles only
@@ -226,7 +227,7 @@ impl Orbital {
         let mut fly = 1.0;
         let mut blast_alt = false;
         let mut fast = true;
-        let mut cloud = wheel::CLOUDS.len() - 1;
+        let mut cloud = wheel::CURRENT;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -480,7 +481,7 @@ impl Orbital {
     /// each (`/orbital skip`). The pass is ready-made (build.rs): picking one costs the mod nothing; the game's
     /// compiling it is what the wait spares, a compile a click while stepping through them.
     fn set_cloud(&mut self, cloud: usize, settle: f32) {
-        let cloud = cloud.min(wheel::CLOUDS.len() - 1);
+        let cloud = if cloud < wheel::CLOUDS.len() { cloud } else { wheel::CURRENT };
         if cloud == self.cloud {
             return;
         }
@@ -773,7 +774,7 @@ impl Orbital {
             if l.key == "payload" || l.key == "nuke" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" && self.cloud + 1 != wheel::CLOUDS.len() {
+            if l.key == "nuke" && self.cloud != wheel::CURRENT {
                 lines.push((format!("Cloud: {}", wheel::CLOUDS[self.cloud].0), 0xFFB070));
             }
             if (self.fly - 1.0).abs() > 1e-4 {
@@ -1051,7 +1052,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | nukecloud [1-9|current] | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | nukecloud [1-10|current] | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -1106,14 +1107,15 @@ mod tests {
         assert!(!super::nuke_pass(false, 8).contains("half_picture"));
         // every earlier cloud, FULL and FAST: the old cloud in, today's out, one fragment entry (three at FAST), small
         assert_eq!(super::PASS_NUKE.len(), super::wheel::CLOUDS.len());
-        assert_eq!(super::passbuild::CLOUD_FILES + 1, super::wheel::CLOUDS.len());
+        assert_eq!(super::passbuild::CLOUD_COUNT, super::wheel::CLOUDS.len());
+        assert_eq!(super::passbuild::CLOUD_CURRENT, super::wheel::CURRENT);
         for c in 0..super::wheel::CLOUDS.len() {
             for fast in [false, true] {
                 let p = super::nuke_pass(fast, c);
                 assert_eq!(p.matches("@fragment").count(), if fast { 3 } else { 1 });
                 assert!(p.len() <= 256 << 10, "{c}");
                 let tag = format!("fn v{}_pl_col_sdf(", c + 1);
-                assert_eq!(p.contains(&tag), c + 1 < super::wheel::CLOUDS.len(), "{c}");
+                assert_eq!(p.contains(&tag), c != super::wheel::CURRENT, "{c}");
                 assert_eq!(p.matches("    // ---- the mushroom cloud: raymarched").count(), 1, "{c}");
                 assert!(p.contains("fn nuke(") && p.contains("// ---- the bomb"));
             }
@@ -1136,7 +1138,7 @@ mod tests {
                 }
             }
         }
-        let each = t0.elapsed().as_secs_f64() * 1.0e6 / (100.0 * 18.0);
+        let each = t0.elapsed().as_secs_f64() * 1.0e6 / (100.0 * 2.0 * super::wheel::CLOUDS.len() as f64);
         println!("a switch: {each:.3} us ({n})");
         assert!(each < 5.0, "{each} us");
     }

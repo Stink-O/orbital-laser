@@ -3,9 +3,10 @@
 //! building a pass of some 200 KB in one call took the mod past its fuel. Also compiled into the tests.
 #![allow(dead_code)]
 
-/// The Nuke's earlier clouds' files in shaders/nuke_cloud (v1.wgsl ...), written by tools/nuke_cloud.py extract; the
-/// last of `wheel::CLOUDS` is today's.
-pub const CLOUD_FILES: usize = 8;
+/// The Nuke's clouds (`wheel::CLOUDS`): files in shaders/nuke_cloud (v1.wgsl ..., written by tools/nuke_cloud.py
+/// extract; v10.wgsl by hand, v3's with today's look), but for `CLOUD_CURRENT`, today's (nuke.wgsl itself).
+pub const CLOUD_COUNT: usize = 10;
+pub const CLOUD_CURRENT: usize = 8;
 
 /// A laser's own pass: strike.wgsl (`shader`) up to its fs_main, less the other lasers' own functions (marked
 /// `[lasers pass only]`), then `own` (see shaders/downfall.wgsl, shaders/planetkiller.wgsl ...).

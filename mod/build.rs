@@ -40,12 +40,12 @@ fn main() {
     writeln!(rs, "const PASS_PAYLOAD: [&str; 2] = [{}];", p.join(", ")).unwrap();
     let nuke = read("nuke.wgsl");
     let mut n = Vec::new();
-    for c in 0..=passbuild::CLOUD_FILES {
-        let src = if c < passbuild::CLOUD_FILES { passbuild::nuke_cloud_pass(&nuke, &read(&format!("nuke_cloud/v{}.wgsl", c + 1))) } else { nuke.clone() };
+    for c in 0..passbuild::CLOUD_COUNT {
+        let src = if c != passbuild::CLOUD_CURRENT { passbuild::nuke_cloud_pass(&nuke, &read(&format!("nuke_cloud/v{}.wgsl", c + 1))) } else { nuke.clone() };
         let v: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_nuke_{c}_{f}.wgsl"), passbuild::split_pass(&shader, &src, f))).collect();
         n.push(format!("[{}]", v.join(", ")));
     }
-    writeln!(rs, "/// The Nuke's with each of its clouds (`wheel::CLOUDS`, the last today's), at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "/// The Nuke's with each of its clouds (`wheel::CLOUDS`, `wheel::CURRENT` today's), at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_NUKE: [[&str; 2]; {}] = [{}];", n.len(), n.join(", ")).unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }

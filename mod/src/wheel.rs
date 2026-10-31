@@ -126,9 +126,10 @@ fn sound_button(k: usize) -> Rect {
     Rect { x: -w / 2.0 + SOUND_LABEL_W + k as f32 * (BTN_W + BTN_GAP), y: ROW_Y, w: BTN_W, h: BTN_H }
 }
 
-/// The Nuke's clouds, oldest first, the last today's (`/orbital nukecloud`; mod/build.rs builds their
-/// sources, tools/nuke_cloud.py writes them): the wheel's name for each and the commit it came from.
-pub const CLOUDS: [(&str, &str); 9] = [
+/// The Nuke's clouds, oldest first, `CURRENT` today's, then v10, v3's with today's look (`/orbital nukecloud`;
+/// mod/build.rs builds their sources, tools/nuke_cloud.py writes them): the wheel's name for each and the commit it
+/// came from.
+pub const CLOUDS: [(&str, &str); 10] = [
     ("v1 FIRST CLOUD", "f7212de"),
     ("v2 ROUND CROWN", "59f7989"),
     ("v3 FOLDING", "12c9f80"),
@@ -138,16 +139,19 @@ pub const CLOUDS: [(&str, &str); 9] = [
     ("v7 BILLOWS", "73fe7bf"),
     ("v8 BOIL ON BILLOWS", "1ba6527"),
     ("v9 CURRENT", "today's"),
+    ("v10 V3 PLUS", "v3, today's look"),
 ];
+/// Today's cloud (nuke.wgsl itself), the default.
+pub const CURRENT: usize = 8;
 /// The setting's and the command's name for cloud `c`: its number, or `current` for today's.
 pub fn cloud_key(c: usize) -> String {
-    if c + 1 >= CLOUDS.len() { "current".to_string() } else { (c + 1).to_string() }
+    if c == CURRENT || c >= CLOUDS.len() { "current".to_string() } else { (c + 1).to_string() }
 }
-/// A cloud from `1`..`9` or `current` (also `v5`).
+/// A cloud from `1`..`10` or `current` (also `v5`).
 pub fn parse_cloud(s: &str) -> Option<usize> {
     let s = s.trim().trim_start_matches(['v', 'V']);
     if s.eq_ignore_ascii_case("current") {
-        return Some(CLOUDS.len() - 1);
+        return Some(CURRENT);
     }
     s.parse::<usize>().ok().filter(|&n| (1..=CLOUDS.len()).contains(&n)).map(|n| n - 1)
 }
@@ -524,7 +528,7 @@ impl Wheel {
             let n = cloud_name();
             out.push(Draw::Fill((n, 0xE0101318)));
             out.push(Draw::Fill((Rect { x: n.x, y: n.y + n.h - 2.0, w: n.w, h: 2.0 }, argb(0xFF, ms.rgb))));
-            text(&mut out, CLOUDS[cloud.min(CLOUDS.len() - 1)].0, n.x + n.w / 2.0, n.y + 2.0, ms.rgb);
+            text(&mut out, CLOUDS.get(cloud).unwrap_or(&CLOUDS[CURRENT]).0, n.x + n.w / 2.0, n.y + 2.0, ms.rgb);
         }
         if let Some(rl) = row.filter(|&i| is_ship(LASERS[i])) {
             let ms = LASERS[rl];
@@ -569,7 +573,7 @@ impl Wheel {
             Some(Spot::Colour(k)) => (format!("Lit {}", COLOURS[k].label), 0x8C93A0),
             Some(Spot::Sound(k)) => (SOUNDS[k].1.to_string(), 0x8C93A0),
             Some(Spot::Cloud(k)) => {
-                let c = CLOUDS[cloud.min(CLOUDS.len() - 1)];
+                let c = *CLOUDS.get(cloud).unwrap_or(&CLOUDS[CURRENT]);
                 (format!("{} cloud  ·  now {} ({})", if k == 0 { "Older" } else { "Newer" }, c.0, c.1), 0x8C93A0)
             }
             Some(Spot::Page(k)) => (format!("Page {} of {}", k + 1, pages()), 0x8C93A0),
@@ -896,13 +900,17 @@ mod tests {
             }
         }
         // the keys
-        assert_eq!(parse_cloud("current"), Some(CLOUDS.len() - 1));
+        assert_eq!(parse_cloud("current"), Some(CURRENT));
         assert_eq!(parse_cloud("9"), Some(8));
+        assert_eq!(parse_cloud("10"), Some(9));
         assert_eq!(parse_cloud("v1"), Some(0));
         assert_eq!(parse_cloud("0"), None);
-        assert_eq!(parse_cloud("10"), None);
+        assert_eq!(parse_cloud("11"), None);
         assert_eq!(cloud_key(4), "5");
-        assert_eq!(cloud_key(8), "current");
+        assert_eq!(cloud_key(CURRENT), "current");
+        assert_eq!(cloud_key(9), "10");
+        assert_eq!(parse_cloud(&cloud_key(9)), Some(9));
+        assert_eq!(CLOUDS[9].0, "v10 V3 PLUS");
         // pointing at the Nuke opens its row; loaded, it shows on any page, its name drawn
         let mut w = Wheel::on_page(page_of(nk), 1.0);
         let c = polar(segment_angle(nk % PAGE), 60.0);
