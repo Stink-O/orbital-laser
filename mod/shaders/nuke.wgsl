@@ -1219,7 +1219,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             var lc_bulk = 1.0;
             var sky_occ = 0.0;
             // (dark brown as the fire goes out, by eight or nine seconds; lifting to Fizeau's grey-brown by twenty, paler on)
-            let sootc = mix(mix(vec3<f32>(0.2, 0.14, 0.1), vec3<f32>(0.38, 0.32, 0.27), smoothstep(9.0, 20.0, a)), vec3<f32>(0.5, 0.46, 0.42), smoothstep(20.0, 45.0, a));
+            let sootc = mix(mix(vec3<f32>(0.2, 0.14, 0.1), vec3<f32>(0.44, 0.37, 0.31), smoothstep(9.0, 20.0, a)), vec3<f32>(0.56, 0.51, 0.46), smoothstep(20.0, 45.0, a));
             for (var i = 0; i < 128; i = i + 1) {
                 if (t > t1 || tr < 0.03) {
                     break;
