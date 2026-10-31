@@ -26,6 +26,9 @@ How each is made:
               a sub tail at 18-45 Hz heaving for ~15 s, the lows' own 2nd-4th harmonics (a soft-clipped copy of them,
               band-passed 70-420 Hz) so laptop and phone speakers imply the bass, the boom coming back off far land
               four times (darker each), and the fireball's crackle as distant clusters of pops with their echoes.
+              Then overdriven (`overdrive`), as if recorded too close: the 40-400 Hz body through a soft tanh (8 dB of
+              drive held for the boom's first half second, easing off through the tail), the crack compressed and a
+              little gritty, the sub under 40 Hz left clean.
   blast_far   the blast through kilometres of air: everything over ~300 Hz let down (10-25 dB, more the higher), the
               crack's front smeared over ~40 ms, more low thunder rolls and a long dark outdoor reverb.
   shockwave   the blast wave going past: a low push of air, a violent roaring gust (wind noise whose octave levels
@@ -393,6 +396,73 @@ def pop_clusters(d, t_lo, t_hi, rate, level_db, decay):
     return L, R
 
 
+# ---- the overdrive: the boom heard too close, the microphone and the air overwhelmed
+DRIVE_DB = 8.0           # the low-mid body's drive at its strongest (the boom's first HOLD s), easing off after
+CRACK_DRIVE_DB = 4.0     # the crack's (over SPLIT_HI): a little grit, mostly a fast compressor's
+HOLD, EASE = 0.5, 1.4    # the drive held for HOLD s after the crack, then its dB falling away with time constant EASE
+SPLIT_LO, SPLIT_HI = 40.0, 400.0
+RATIO = 2.5              # the crack's compressor
+CRACK_LIFT_DB = 2.0      # and the crack lifted this much over its old energy (the body's new harmonics would mask it)
+MAKEUP = 0.6             # each band's make-up gain, as the drive's own (in dB) times this: the tail, undriven, untouched
+
+
+def drive_env(n, t0, top_db):
+    """The drive (a gain, 1 = none) at every sample: `top_db` from the crack for HOLD s, then easing off exponentially."""
+    u = np.maximum(np.arange(n) / SR - t0, 0)
+    return 10 ** (top_db * np.exp(-np.maximum(u - HOLD, 0) / EASE) / 20)
+
+
+def overdrive(L, R, t0):
+    """Saturate the blast like a huge explosion recorded too close, without mush or fizz: split at SPLIT_LO and
+    SPLIT_HI (zero-phase, so the bands sum back exactly); the sub under SPLIT_LO left clean; the low-mid body driven
+    into a slightly asymmetric tanh (odd and a few even harmonics: the boom read as huge on small speakers too), its
+    output band-limited to 35-2500 Hz so nothing new turns up in the sub or as fizz; the crack and the roar above
+    SPLIT_HI through a fast compressor (2 ms attack, 50 ms release, RATIO:1) and a gentle tanh, for grit. The drive is
+    strongest on the boom's first HOLD s and eases off through the tail; small signals pass through at unity gain
+    (`c / g * tanh(g x / c)`), so it only rounds and thickens the loud part, and `finish_at` sets the level after."""
+    n = len(L)
+    gb = drive_env(n, t0, DRIVE_DB)
+    gc = drive_env(n, t0, CRACK_DRIVE_DB)
+    mono = (L + R) / 2
+    body_ref = np.percentile(np.abs(band(mono, SPLIT_LO, SPLIT_HI, 2)), 99.9) + 1e-12
+    top_ref = np.percentile(np.abs(band(mono, SPLIT_HI, None, 2)), 99.9) + 1e-12
+    # (the compressor's detector: the crack band's level, shared by both ears so the image holds)
+    det = np.abs(band(mono, SPLIT_HI, None, 2)) / top_ref
+    a_at, a_rel = np.exp(-1 / (0.002 * SR)), np.exp(-1 / (0.05 * SR))
+    from scipy.signal import lfilter
+    fast = lfilter([1 - a_at], [1, -a_at], det)                       # (attack-smoothed; release below)
+    env = np.empty(n)
+    st = 0.0
+    for i, v in enumerate(fast):
+        st = v if v > st else v + (st - v) * a_rel
+        env[i] = st
+    thr = 0.45
+    comp = np.where(env > thr, (env / thr) ** (1 / RATIO - 1), 1.0)
+    frac = np.log(gc) / np.log(10 ** (CRACK_DRIVE_DB / 20))           # (1 on the crack, 0 once the drive is gone)
+    comp = comp ** frac
+    bias = 0.15                                                        # (the asymmetry: a few even harmonics)
+    bands = []
+    for x in (L, R):
+        sub = band(x, None, SPLIT_LO, 2)
+        rest = x - sub
+        body = band(rest, None, SPLIT_HI, 2)
+        top = rest - body
+        z = gb * body / body_ref
+        sat = (np.tanh(z + bias) - np.tanh(bias)) / (1 - np.tanh(bias) ** 2)   # (unity slope at 0)
+        body_d = band(sat * body_ref / gb, 35, 2500, 2)
+        top_d = np.tanh(gc * top * comp / top_ref) * top_ref / gc
+        bands.append((sub, body, top, body_d, top_d))
+    # (made up by MAKEUP of the drive: the loud part's peaks still rounded down, its quieter body brought up; the tail,
+    # where the drive is gone, exactly as it was)
+    # (the crack made up to the energy it had over its first HOLD s, the make-up eased off with the drive: its peaks held
+    # down, what follows them brought up, so it is as loud as it was, a little more, and grittier)
+    h0, h1 = int(t0 * SR), int((t0 + HOLD) * SR)
+    e = lambda k: np.sqrt(sum(np.mean(b[k][h0:h1] ** 2) for b in bands))
+    mb, mt = gb ** MAKEUP, (e(2) / (e(4) + 1e-12) * 10 ** (CRACK_LIFT_DB / 20)) ** frac
+    print(f"  overdrive: body {DRIVE_DB:.1f} dB, crack {CRACK_DRIVE_DB:.1f} dB and up to {-20 * np.log10(comp.min()):.1f} dB of compression, made up {20 * np.log10(mt.max()):.1f} dB")
+    return [sub + body_d * mb + top_d * mt for sub, _, _, body_d, top_d in bands]
+
+
 def blast():
     d = 26.0
     n = int(SR * d)
@@ -450,6 +520,7 @@ def blast():
         h = band(h, 70, 420, 2)
         h = h / (T.loudest(h) + 1e-9) * T.loudest(lo) * 10 ** (-5.0 / 20)
         L += h; R += h
+        L, R = overdrive(L * on, R * on, t0)
         L, R = PB.causal_lowcut(L * on, 15.0), PB.causal_lowcut(R * on, 15.0)
     finish_at("blast", L, R, -6.5, tail_fade=3.0, knee=0.5, peak=BLAST_PEAK)
 
