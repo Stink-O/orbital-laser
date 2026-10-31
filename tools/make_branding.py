@@ -57,6 +57,7 @@ def social_preview():
     names = ImageFont.truetype(str(FONT), 19)
     d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM · MOTHERSHIP", font=names, fill="#FF9A2E")
     d.text((80, 140 + logo.height + 166), "DOWNFALL · PLANET KILLER · CRYSTAL BLOOM · SINKHOLE · PAYLOAD", font=names, fill="#FF9A2E")
+    d.text((80, 140 + logo.height + 196), "NUKE", font=names, fill="#FF9A2E")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 
