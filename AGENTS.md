@@ -38,17 +38,19 @@ laser, command, capability and timing). This file is the short, factual version 
   out to ~100, past ~85 a band ~24 wide where crowns are stripped and some trees knocked flat, leaves and branches
   strewn, ~220 pieces of rubble strewn out to ~105, ~90 falling blocks thrown out of the crater (landing out to ~110 by
   ~19 s, about half as blocks), mobs and items within 90 killed and the ~240 chunks within
-  ~124 force-loaded; where it cuts into water the crater fills with still water to the water's own level (no rim in or
-  by it), lava is sealed. Its land goes in at
-  13.65 s and the rubble lands by about 17 s. The Nuke is the Payload's big brother (`strike/nuke.rs`,
+  ~124 force-loaded; water it cuts into is dug like any other block (what is left flows in, as round TNT); the lava in
+  the ground it bares is sealed. Its land goes in from 13.65 s, from the middle out
+  with the shockwave, and the rubble lands by about 17 s. The Nuke is the Payload's big brother (`strike/nuke.rs`,
   `shaders/nuke.wgsl`): a bomb bursts 45 over the land at 11 s; it digs a terraced crater ~200 across and 40 deep
-  (flooded the same way where it cuts into water), flattens everything standing out to ~230 (trees felled pointing
+  (water dug like any block), flattens everything standing out to ~230 (trees felled pointing
   away), strips crowns and knocks trees flat out to ~300, chars the grass to ~290, strews rubble to ~280, throws ~160
   falling blocks, kills every mob and item within 300 and force-loads the ~1,150 chunks within ~304; past that, out to
   480, its flash scorches what faces the fireball (a line of sight over the land's heights; read with a second set of
   32 `world.read-columns` queries, two in flight at a time, not force-loaded). Its land goes in through
-  `world.edit-blocks` in 150 bands from the middle out after the burst; every stage stays under ~1.3 ms natively (the
-  `nk_stage_cost` ignored test), since a stage over the tick's fuel stops the mod ("took too long"). `/orbital shadow
+  `world.edit-blocks` as one wave from the middle out (`Wave`, `nk_work` in nuke.rs: one chain of stages, ring by ring,
+  split by angle, never by rows), each ring as the shockwave reaches it or as soon after as 350,000 blocks a second
+  allows (`NK_RATE`), each chunk's edits on one tick (`Wave::chunk`: the game redraws its sections once); every stage stays under ~1.3 ms natively wherever it lands (`nuke_no_stage_too_heavy_anywhere`,
+  ignored: run it on its own; `nk_wave_profile` prints the wave tick by tick), since a stage over the tick's fuel stops the mod ("took too long"). `/orbital shadow
   off|on` (not kept) hides the Nuke's and the Payload's cloud shadows, for comparing. Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.

@@ -223,9 +223,11 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   a few seconds; about 90 real blocks of the crater's ground (grass, dirt, stone, tuff, now and then a log) thrown out of
   it as falling blocks over the first second and a half, outward and up at all speeds, coming down from its rim out to
   about 110 by about 19 s, about half landing as blocks and the rest breaking up where they land (none drops an item);
-  every mob and item within 90 killed (not the thrown blocks). Where it cuts into water the crater fills with still water to
-  the water's own level, with no rim heaped in or by it; lava it opens is sealed. It keeps about 240 chunks loaded while it
-  works; its land goes in at 13.65 s (`world.edit-blocks`), the rubble by about 17 s.
+  every mob and item within 90 killed (not the thrown blocks). Water it cuts into is dug like any other block, and what is
+  left of it flows in, as round a TNT blast; no rim is heaped in or by the water, and the lava in the ground it bares is
+  sealed. It
+  keeps about 240 chunks loaded while it works; its land goes in from 13.65 s (`world.edit-blocks`), from the middle out
+  as the shockwave reaches it, the rubble by about 17 s.
 - **Nuke:** a crater about 200 across and 40 deep, its edge wandering, its walls stepped in terraces, its floor scorched
   (blackstone, basalt, tuff, gravel, cobbled deepslate, coarse dirt) and glazed with greenish glass in patches near the
   middle, as at Trinity; its rim a broken ridge some ten high of rock and earth turned over; everything standing on the
@@ -235,9 +237,12 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   within 300 killed. Past that, out to about 480, the flash scorches what faces the fireball (leaves burnt off, wood
   and planks charred dark, grass burnt to bare earth, plants gone, wool blackened, the odd fire lit) and leaves what
   the land, a tree or a wall hides from it as it was, the flash's shadows (a line of sight from the fireball over the
-  land's own heights, read as it starts). Where it cuts into a sea, a lake or a river, the crater fills with still water
-  to the water's own level; no rim is heaped in or by the water; lava it opens is sealed. It keeps about 1,150 chunks
-  loaded while it works; its land goes in through `world.edit-blocks` from the middle out after the burst.
+  land's own heights, read as it starts). Water it cuts into is dug like any other block, and what is left of it flows
+  in, as round a TNT blast; the lava in the ground it bares is sealed. It keeps about 1,150 chunks loaded while it works. Its land goes in
+  through `world.edit-blocks` as one wave from the middle out: the crater (from about 0.2 s after the burst, done by
+  about 3 s), its rim, the flattened land and its felled trees and charred grass, the stripped crowns (out to 300 by
+  about 9 s), then the flash's scorching (out to 480 by about 12 s), each chunk's changes on one tick; it trails the
+  shockwave so the game stays smooth.
 
 ## Commands
 
