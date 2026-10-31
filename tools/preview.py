@@ -107,6 +107,12 @@ VIEWS = {
     "nkclose": "cx=0 cy=67 cz=350 lx=0.5 ly=260 lz=0.5 flat=1 trees=1 fov=80 reach=350",
     "nksky": "cx=0 cy=67 cz=700 lx=-150 ly=700 lz=0 flat=1 trees=1 fov=70 reach=700",
     "nkaerial": "cx=0 cy=1100 cz=1300 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=700",
+    # the fireball's foot: low by the ground 260 off; on hills with the target on a slope (from the player's spot and
+    # low, 260 off); and on hills with the target 13 over the land round it (a hit on a treetop or a ledge)
+    "nklow": "cx=0 cy=67 cz=260 lx=0.5 ly=50 lz=0.5 flat=1 trees=1 fov=75 reach=260",
+    "nkhill": "cx=0 cy=110 cz=700 lx=0.5 ly=150 lz=0.5 hills=40 flush=1 trees=1 fov=70 reach=700",
+    "nkhilllow": "cx=0 cy=63 cz=260 lx=0.5 ly=50 lz=0.5 hills=40 flush=1 trees=1 fov=75 reach=260",
+    "nkdip": "cx=0 cy=140 cz=420 lx=0.5 ly=70 lz=0.5 hills=-40 trees=1 fov=70 reach=700",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -146,7 +152,8 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
-        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills)
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills,
+                   PL_FLUSH="1" if "flush=1" in sets else "0")
         test = "nk_write_table" if laser == "nuke" else "pl_write_table"
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
