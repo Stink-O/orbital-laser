@@ -9,6 +9,7 @@ into the strike; `dist` = the player's distance from the burst in blocks; `arriv
   ground      at dist / GROUND_V - GROUND_LEAD (the ground carries it five times faster than the air)
   blast       at arrive - BLAST_LEAD (BLAST_LEAD s of near-silence in the file, then the crack)
   blast_far   the same, cross-faded in by distance (`far_mix`: 300 to 900 blocks, smoothstep)
+  blast_alt, blast_alt_far   in their place with `/orbital nukesound alt`, at the same moments
   shockwave   at arrive - SHOCK_FRONT (its front SHOCK_FRONT s into the file, on the blast's crack)
   rumble      at arrive + RUMBLE_AFTER (the blast's file RUMBLE_AFTER + BLAST_LEAD s ahead of it)
   debris      at arrive + 3.0 within 700 blocks, and again at arrive + 9.0 at pitch 0.9 closer than ~490
@@ -31,6 +32,14 @@ How each is made:
               little gritty, the sub under 40 Hz left clean.
   blast_far   the blast through kilometres of air: everything over ~300 Hz let down (10-25 dB, more the higher), the
               crack's front smeared over ~40 ms, more low thunder rolls and a long dark outdoor reverb.
+  blast_alt   `/orbital nukesound alt`: the Payload's ALT scaled up. Tonal blows, noise only as texture on them: a boom
+              ~68 Hz dropping to ~42 in a fifth of a second and on to ~34, its octave, third and driven harmonics
+              stacked on it, a sub push, the ground's reflection 0.3 s on and a third blow 0.8 s in; a sharp, heavy
+              crack on its front; a dark roar under it; a long thunder roll, a heaving 30-60 Hz bed, the boom back off
+              far land five times, distant crackling. Glue on the body, then `blast`'s overdrive (the sub clean). It
+              then makes room (`alt_room`) for the shockwave, rumble, debris and ground, which are ducked under MAIN's
+              blasts only.
+  blast_alt_far  `blast_alt` through the same air as `blast_far`.
   shockwave   the blast wave going past: a low push of air, a violent roaring gust (wind noise whose octave levels
               follow a table, boiled by random surges, one side then the other), grit and debris rattling past
               (ticks and small modal hits), leaves and dust thrashing, dying away over ~4 s.
@@ -59,7 +68,7 @@ import sounds_pk_blast as PB
 import sounds_payload as P
 
 TH = "nuke"
-NAMES = ["fall", "ground", "blast", "blast_far", "shockwave", "rumble", "debris"]
+NAMES = ["fall", "ground", "blast", "blast_far", "blast_alt", "blast_alt_far", "shockwave", "rumble", "debris"]
 ROOT = Path(__file__).resolve().parent.parent
 PEAK = 10 ** (-1.2 / 20)                       # every file's decoded peak (dBFS), under -1 with the encoder's jitter
 BLAST_PEAK = 10 ** (-2.0 / 20)                 # the blasts': a little room for what plays over them
@@ -76,6 +85,8 @@ BLAST_LEAD = 0.02
 SHOCK_FRONT = 0.2
 RUMBLE_AFTER = 1.5
 DEBRIS_AFTER = (3.0, 9.0)
+# (what plays over a blast is ducked under each of these; the ALT blasts instead make room for it: `alt_room`)
+BLASTS = ("blast", "blast_far")
 
 
 def rng():
@@ -106,11 +117,12 @@ def volumes(dist):
     }
 
 
-def schedule(dist):
-    """(event, file, start time against the burst, pitch) as nuke.rs plays them."""
+def schedule(dist, alt=False):
+    """(event, file, start time against the burst, pitch) as nuke.rs plays them (`alt`: with `/orbital nukesound alt`)."""
     late = dist / SPEED
+    bn, bf = ("blast_alt", "blast_alt_far") if alt else ("blast", "blast_far")
     return [("fall", "fall", -FALL_CUT, 1.0), ("ground", "ground", dist / GROUND_V - GROUND_LEAD, 1.0),
-            ("blast", "blast", late - BLAST_LEAD, 1.0), ("blast_far", "blast_far", late - BLAST_LEAD, 1.0),
+            ("blast", bn, late - BLAST_LEAD, 1.0), ("blast_far", bf, late - BLAST_LEAD, 1.0),
             ("shockwave", "shockwave", late - SHOCK_FRONT, 1.0), ("rumble", "rumble", late + RUMBLE_AFTER, 1.0),
             ("debris", "debris", late + DEBRIS_AFTER[0], 1.0), ("debris2", "debris", late + DEBRIS_AFTER[1], 0.9)]
 
@@ -526,12 +538,18 @@ def blast():
 
 
 def blast_far():
-    x = decoded("blast")
+    L, R = far_of("blast", 77401, 32.0)
+    # (its loudness a little under the near blast's (about -13 LUFS to its -12.5), its mids now carrying more of it)
+    finish_at("blast_far", L, R, -12.5, tail_fade=3.0, knee=0.5, peak=BLAST_PEAK)
+
+
+def far_of(name, seed, d):
+    """Blast `name` through kilometres of air (see `blast_far`), before its level is set."""
+    x = decoded(name)
     if x is None:
-        raise SystemExit("blast is not built yet: build it before blast_far")
-    d = 32.0
+        raise SystemExit(f"{name} is not built yet: build it before {name}_far")
     n = int(SR * d)
-    with PB.seeded(77401):
+    with PB.seeded(seed):
         out = []
         tt_ = np.arange(n) / SR - BLAST_LEAD
         soft_on = np.clip(tt_ / 0.07, 0, 1) ** 2                 # (the crack's front softened: its top rising over 70 ms)
@@ -563,8 +581,204 @@ def blast_far():
         L += h; R += h
         f = T.fade(n, 0.002, 4.0)
         L, R = PB.causal_lowcut(L * f, 15.0), PB.causal_lowcut(R * f, 15.0)
-    # (its loudness a little under the near blast's (about -13 LUFS to its -12.5), its mids now carrying more of it)
-    finish_at("blast_far", L, R, -12.5, tail_fade=3.0, knee=0.5, peak=BLAST_PEAK)
+    return L, R
+
+
+# ======================================================================================================  the ALT blast
+ALT_D = 30.0
+ALT_LEVEL = -5.6          # its loudest 400 ms (`blast`'s -6.5: the lows count for less to the ear; `alt_room` takes some back)
+ALT_OCT = 0.25            # each blow's octave, against its fundamental
+ALT_H3 = 0.15             # and its third partial
+ALT_HARM = 0.4            # each blow's own harmonics (its sine driven), against its fundamental
+ALT_ROAR_DB = -17.0       # the roar's level against the blows' 30-120 Hz over their first 0.4 s
+ALT_CRACK_DB = -7.0       # the crack's peak against the same
+ALT_HARM_DB = -10.0       # the lows' harmonics (`sounds_payload.alt_harmonics`)
+ALT_LOW_CLIP = 2.5        # the lows rounded off this far over their loudest 400 ms (see the end of `blast_alt`)
+ALT_CLIP = 6.0            # and the first 0.6 s this far over the whole's
+ALT_TAIL_DB = -9.0        # the tail (the thunder roll; the bed and the echoes with it) against the blows' 30-120 Hz
+ALT_FAR_LEVEL = -11.0     # `blast_alt_far`'s loudest 400 ms
+ALT_PEAK = 10 ** (-1.6 / 20)   # the ALT blasts' peaks (MAIN's -2.0), and what plays over them kept under ALT_CEIL with them
+ALT_CEIL = 10 ** (-1.45 / 20)
+
+
+def glue(L, R, ratio=2.0, att=0.01, rel=0.25, over_db=6.0):
+    """The 40-400 Hz body compressed `ratio`:1 over a threshold `over_db` under its loudest (the detector shared by the
+    two ears), made up halfway: the hit and the roar's body held together. The sub and the top pass untouched."""
+    from scipy.signal import lfilter
+    bodies = [band(x, SPLIT_LO, SPLIT_HI, 2) for x in (L, R)]
+    det = np.sqrt(lfilter([1 - np.exp(-1 / (0.005 * SR))], [1, -np.exp(-1 / (0.005 * SR))], ((bodies[0] + bodies[1]) / 2) ** 2))
+    thr = det.max() * 10 ** (-over_db / 20)
+    a_at, a_rel = np.exp(-1 / (att * SR)), np.exp(-1 / (rel * SR))
+    want = np.where(det > thr, (det / thr) ** (1 / ratio - 1), 1.0)
+    g = np.empty(len(want))
+    st = 1.0
+    for i, v in enumerate(want):
+        st = v + (st - v) * (a_at if v < st else a_rel)
+        g[i] = st
+    mk = 10 ** (over_db * (1 - 1 / ratio) / 2 / 20)
+    return [x - b + b * g * mk for x, b in zip((L, R), bodies)]
+
+
+def blast_alt():
+    """The alternative blast, the Payload's ALT (`sounds_payload.blast_alt`) scaled up to the Nuke: tonal blows first,
+    noise only as texture on them. A sub push; the boom, ~68 Hz dropping to ~42 in a fifth of a second and on to ~33
+    over two seconds, its harmonics stacked on it (the sine itself driven, odd and even); a sharp, heavy crack on its
+    front (a 150-400 Hz knock under a 0.4-4 kHz burst, its top a few ms behind); the ground's reflection 0.3 s on and
+    a third blow 0.8 s in, deeper each; a dark roar textured over them, boiling; then the Nuke's tail: a long thunder
+    roll, a heaving 30-60 Hz bed, the boom back off far land five times, distant crackling; the lows' harmonics for
+    small speakers, glue on the body and `blast`'s overdrive, the sub clean under it."""
+    d = ALT_D
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    t0 = BLAST_LEAD
+    u = np.maximum(t - t0, 0)
+    on = t >= t0
+    with PB.seeded(77352):
+        L = np.zeros(n); R = np.zeros(n)
+
+        def blow(tp, f_hi, f_lo, f_end, drop, rise, decs, a, drive=3.5):
+            """One tonal blow at `tp`: f_hi to f_lo over `drop` s, then on down to f_end over ~2 s; rising over
+            `rise`, decaying by `decs` ((weight, time constant), ...); its harmonics from the sine driven `drive`."""
+            uu = np.maximum(u - tp, 0)
+            m = (u >= tp) & on
+            f = f_end + (f_lo - f_end) * np.exp(-uu / 0.9) + (f_hi - f_lo) * np.exp(-uu / drop)
+            ph = 2 * np.pi * np.cumsum(f * m) / SR + rng().uniform(0, 6.28)
+            env = (1 - np.exp(-uu / rise)) * sum(w * np.exp(-uu / tc) for w, tc in decs) * m
+            s_ = np.sin(ph)
+            harm = (np.tanh(drive * s_ + 0.3) - np.tanh(0.3)) / np.tanh(drive)          # (odd and some even)
+            harm = band(harm - s_ * 0.9, None, 700, 2)
+            oct2 = np.sin(2 * ph + rng().uniform(0, 6.28))                                # (its octave, stacked)
+            h3 = np.sin(3 * ph + rng().uniform(0, 6.28))                                   # (and its twelfth)
+            return (s_ + ALT_OCT * oct2 + ALT_H3 * h3 + ALT_HARM * harm) * env * a
+
+        # ---- the blows: a sub push, the boom, the ground's reflection, a third deeper and later
+        sub = blow(0.0, 40.0, 33.0, 30.0, 0.05, 0.004, ((0.7, 0.2), (0.3, 1.0)), 0.8, drive=1.0)
+        boom = blow(0.01, 68.0, 42.0, 34.0, 0.07, 0.006, ((0.4, 0.3), (0.35, 1.6), (0.25, 4.5)), 1.0)
+        boom += blow(0.31, 52.0, 37.0, 31.0, 0.06, 0.012, ((0.6, 0.25), (0.4, 1.4)), 0.65)
+        boom += blow(0.82, 44.0, 34.0, 29.0, 0.08, 0.03, ((0.6, 0.4), (0.4, 2.0)), 0.45)
+        # (the boom's body, a texture on it: 40-110 Hz noise following it)
+        benv = np.abs(boom)
+        benv = band(benv, None, 12, 1)
+        body = T.unit(band(white(d), 40, 110, 3)) * np.maximum(benv, 0) * 0.6
+        low = sub + boom + body
+        # ---- the crack: sharp and heavy, on the boom's front; smaller ones on the reflection
+        crack = [np.zeros(n), np.zeros(n)]
+        for tc, a, w in ((0.012, 1.0, 0.03), (0.016, 0.6, 0.018), (0.315, 0.35, 0.02), (0.33, 0.25, 0.012)):
+            for k in range(2):
+                uu = u - tc
+                e = np.where(uu < 0, 0.0, (1 - np.exp(-np.maximum(uu, 0) / 0.0015)) * np.exp(-np.maximum(uu, 0) / w)) * on
+                et = np.where(uu < 0.004, 0.0, np.exp(-np.maximum(uu - 0.004, 0) / (w * 0.8))) * on
+                knock = T.unit(band(rng().standard_normal(n), 150, 400, 2)) * e * 0.9
+                mid = T.unit(band(rng().standard_normal(n), 400, 4000, 2)) * e
+                top = T.unit(band(rng().standard_normal(n), 4000, 14000, 2)) * et * 0.3
+                crack[k] += (knock + mid + top) * a
+        # ---- the roar, a texture: dark, wide, boiling, from 0.05 s, decaying over seconds
+        renv = (1 - np.exp(-np.maximum(u - 0.05, 0) / 0.08)) * (0.5 * np.exp(-u / 1.4) + 0.5 * np.exp(-u / 5.0)) * (u > 0.05) * on
+        roar = []
+        shared = band(white(d), 60, 2500, 1)
+        for _ in range(2):
+            x = band(0.7 * shared + 0.7 * band(white(d), 60, 2500, 1), None, 1400, 1)
+            boil = np.exp((2.6 * PB.slow_random(n, 1.5, 10.0) + 1.2 * PB.slow_random(n, 12.0, 40.0)) / 8.686)
+            roar.append(T.unit(x) * boil * renv)
+        # ---- the levels: the boom the loudest thing, the crack over the roar, the roar under the boom
+        pk = lambda x, a, b: np.sqrt(np.mean(band(x, a, b, 2)[int(t0 * SR):int((t0 + 0.4) * SR)] ** 2)) + 1e-12
+        lref = pk(low, 30, 120)
+        rg = lref * 10 ** (ALT_ROAR_DB / 20) / pk((roar[0] + roar[1]) / 2, 30, 4000)
+        cg = lref * 10 ** (ALT_CRACK_DB / 20) / (np.abs((crack[0] + crack[1]) / 2).max() + 1e-12)
+        L += low + roar[0] * rg + crack[0] * cg
+        R += low + roar[1] * rg + crack[1] * cg
+        # ---- the Nuke's tail: a long thunder roll, a heaving 30-60 Hz bed, the boom back off far land, crackling
+        rl, rr = PB.thunder_rolls(d, t0 + 1.0, count=20, length=24.0)
+        g = lref * 10 ** (ALT_TAIL_DB / 20) / (T.loudest((rl + rr) / 2) + 1e-9)
+        L += rl * g; R += rr * g
+        b0 = T.unit(band(white(d), 30, 60, 3))
+        bed_env = np.clip((u - 0.3) / 0.4, 0, 1) ** 2 * 10 ** (np.interp(u, [0, 1, 3, 6, 12, 20, 28, d], np.array([-9, -9, -11, -14, -19, -26, -36, -60]) + ALT_TAIL_DB + 3.0) / 20) * on
+        heave = np.exp((3.0 * PB.slow_random(n, 0.2, 1.5) + 1.5 * PB.slow_random(n, 2.0, 6.0)) / 8.686)
+        for ch, sg in ((L, 1.0), (R, -1.0)):
+            ch += (0.94 * b0 + sg * 0.34 * T.unit(band(white(d), 30, 60, 3))) * bed_env * heave * lref
+        src = band((L + R) / 2, None, 900, 2) * 10 ** ((ALT_TAIL_DB + 12.0) / 20)
+        for dt, gn, hi in ((0.9, 0.34, 700), (1.9, 0.28, 500), (3.1, 0.22, 350), (4.8, 0.17, 260), (7.2, 0.12, 200)):
+            ech = band(src, 22, hi * rng().uniform(0.85, 1.15), 2)
+            ir_n = int(0.6 * SR); s = np.arange(ir_n) / SR
+            ir = rng().standard_normal(ir_n) * np.exp(-s / 0.14)
+            ir /= np.sqrt(np.sum(ir ** 2))
+            ech = np.fft.irfft(np.fft.rfft(ech, n + ir_n) * np.fft.rfft(ir, n + ir_n), n + ir_n)[:n]
+            l, r = PB.pan2(ech * gn, rng().uniform(-0.7, 0.7))
+            P.put(L, l, dt); P.put(R, r, dt)
+        cl, cr_ = pop_clusters(d, t0 + 0.8, t0 + 12.0, 2.6, 20 * np.log10(lref) - 14.0, 4.0)
+        L += cl; R += cr_
+        # ---- a short outdoor space round it all (the tail wider than the hit)
+        for i, ch in enumerate((L, R)):
+            ir = T.outdoor_ir(4.0, 40 + i, density=40.0, darken=(2400, 200), decay=1.8)
+            mm = n + len(ir)
+            ch += np.fft.irfft(np.fft.rfft(ch, mm) * np.fft.rfft(ir, mm), mm)[:n] * 0.3
+        # ---- the lows' harmonics (the Payload ALT's), the glue, `blast`'s overdrive, the sub clean under it
+        L, R = P.alt_harmonics(L, R, u, on, ALT_HARM_DB, -1.0, (t0 + 0.02, t0 + 0.4))
+        L, R = glue(L, R)
+        L, R = overdrive(L * on, R * on, t0)
+        f_ = T.fade(n, 0.002, 4.0)
+        L, R = PB.causal_lowcut(L * on * f_, 18.0), PB.causal_lowcut(R * on * f_, 18.0)
+        # (as the Payload's ALT: the lows rounded off on their own ALT_LOW_CLIP dB over their loudest 400 ms, then the
+        # first 0.6 s into a soft clip ALT_CLIP dB over the whole's, so the master's limiter has little left to ride)
+        lows = [band(ch, None, 110, 4) for ch in (L, R)]
+        c_lo = T.loudest((lows[0] + lows[1]) / 2) * 10 ** (ALT_LOW_CLIP / 20)
+        L = L - lows[0] + PB.soft_clip(lows[0], c_lo, 0.5)
+        R = R - lows[1] + PB.soft_clip(lows[1], c_lo, 0.5)
+        free = 1 + 1e3 * np.clip((u - 0.6) / 0.1, 0, 1) ** 2
+        L0, R0 = L, R
+        lv = T.loudest((L + R) / 2)
+        for _ in range(4):
+            c = lv * 10 ** (ALT_CLIP / 20) * free
+            L = PB.soft_clip(L0, c, 0.5); R = PB.soft_clip(R0, c, 0.5)
+            lv = T.loudest((L + R) / 2)
+    finish_at("blast_alt", L, R, ALT_LEVEL, tail_fade=3.0, knee=0.5, peak=ALT_PEAK)
+    alt_room("blast_alt")
+
+
+def blast_alt_far():
+    L, R = far_of("blast_alt", 77451, ALT_D + 4.0)
+    finish_at("blast_alt_far", L, R, ALT_FAR_LEVEL, tail_fade=3.0, knee=0.5, peak=ALT_PEAK)
+    alt_room("blast_alt_far")
+
+
+def alt_room(name):
+    """An ALT blast (as written) eased down where what plays over it (the shockwave, the rumble, both debris, each at
+    the most nuke.rs plays it, and the ground's thump as it falls at each distance) would take the sum past ALT_CEIL: MAIN's other sounds are ducked under
+    MAIN's blasts and stay exactly as they are; the ALT, held at its ceiling for seconds, makes the room instead."""
+    x = decoded(name)
+    n = len(x)
+    lay = [("shockwave", SHOCK_FRONT, 1.0), ("rumble", RUMBLE_AFTER, 1.0), ("debris", DEBRIS_AFTER[0], 1.0), ("debris", DEBRIS_AFTER[1], 0.9)]
+    b = np.zeros((n, 2))
+    for nm, after, pitch in lay:
+        c = decoded(nm)
+        if c is None:
+            print(f"  ({nm} not built yet: no room made for it)")
+            continue
+        c = pitched(c, pitch)
+        k = int(round((after + BLAST_LEAD) * SR)) if nm != "shockwave" else int(round((BLAST_LEAD - SHOCK_FRONT) * SR))
+        lo, hi = max(0, k), min(n, k + len(c))
+        if hi > lo:
+            b[lo:hi] += c[lo - k:hi - k]
+    # (and the ground's thump, which comes earlier the further off the player is, at the volume nuke.rs gives it there)
+    gr = decoded("ground")
+    beds = [b]
+    for dist in (30, 60, 100, 150, 200, 300, 450, 600, 900):
+        if gr is None:
+            break
+        gb = b.copy()
+        k = -int(round(dist * (1 / SPEED - 1 / GROUND_V) * SR))
+        lo, hi = max(0, k), min(n, k + len(gr))
+        if hi > lo:
+            gb[lo:hi] += gr[lo - k:hi - k] * volumes(dist)["ground"]
+        beds.append(gb)
+    g = smooth_gain(np.minimum.reduce([duck_need(x, [bb], ALT_CEIL) for bb in beds]))
+    print(f"  room made: at most {20 * np.log10(g.min() + 1e-9):.1f} dB, {np.mean(g < 0.89) * n / SR:.2f} s of it over 1 dB")
+    old = P.TH
+    P.TH = TH
+    try:
+        P.finish_abs(name, x[:, 0] * g, x[:, 1] * g, peak=ALT_PEAK, tail_fade=0.05)
+    finally:
+        P.TH = old
 
 
 # =======================================================================================================  the shockwave
@@ -629,7 +843,7 @@ def shockwave():
         L, R = scaled(L, R, -14.0)
         a = SHOCK_FRONT - BLAST_LEAD
         # (with the far blast it plays at nk_shock_vol of 300 blocks and more: at most 0.69)
-        L, R = duck_under(L, R, [[("blast", a, 1.0)], [("blast_far", a, 1.0)]], own=[1.0, 0.69])
+        L, R = duck_under(L, R, [[(bl, a, 1.0)] for bl in BLASTS], own=[1.0, 0.69])
     finish("shockwave", L, R, tail_fade=0.8)
 
 
@@ -679,7 +893,7 @@ def rumble():
         L, R = PB.causal_lowcut(L * f, 15.0), PB.causal_lowcut(R * f, 15.0)
         L, R = scaled(L, R, -16.0)
         a, b = -(RUMBLE_AFTER + BLAST_LEAD), -(RUMBLE_AFTER + SHOCK_FRONT)
-        L, R = duck_under(L, R, [[("blast", a, 1.0), ("shockwave", b, 1.0)], [("blast_far", a, 1.0), ("shockwave", b, 1.0)]])
+        L, R = duck_under(L, R, [[(bl, a, 1.0), ("shockwave", b, 1.0)] for bl in BLASTS])
     finish("rumble", L, R, tail_fade=2.0)
 
 
@@ -743,7 +957,7 @@ def debris():
         # its first play and for the repeat at pitch 0.9)
         def lay(t1, v):
             return [[(bl, -(t1 + BLAST_LEAD), 1.0), ("shockwave", -(t1 + SHOCK_FRONT), 1.0), ("rumble", -(t1 - RUMBLE_AFTER), 1.0)]
-                    for bl in ("blast", "blast_far")]
+                    for bl in BLASTS]
         t1, t2 = DEBRIS_AFTER
         L, R = duck_under(L, R, lay(t1, 1.0), extra=[(0.9, 0.0, lay(t2, 1.0))])
     finish("debris", L, R, tail_fade=0.5)
@@ -775,7 +989,8 @@ def ground():
     finish_at("ground", L, R, -14.5, tail_fade=0.6, knee=0.55)
 
 
-BUILD = {"fall": fall, "ground": ground, "blast": blast, "blast_far": blast_far, "shockwave": shockwave,
+BUILD = {"fall": fall, "ground": ground, "blast": blast, "blast_far": blast_far,
+         "blast_alt": blast_alt, "blast_alt_far": blast_alt_far, "shockwave": shockwave,
          "rumble": rumble, "debris": debris}
 
 
@@ -798,10 +1013,10 @@ def write_wav(path, x):
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR); w.writeframes(pcm.tobytes())
 
 
-def mixdown(dist):
+def mixdown(dist, alt=False):
     """The whole strike at `dist` blocks: (stereo array, the burst's time in it). Starts at the strike's 0 (fire)."""
     vol = volumes(dist)
-    ev = [e for e in schedule(dist) if vol[e[0]] > 0]
+    ev = [e for e in schedule(dist, alt) if vol[e[0]] > 0]
     start = -(11.0)
     clips = {}
     for nm, f, at, pitch in ev:
@@ -842,22 +1057,25 @@ def listen(out):
         write_wav(p, x)
         lufs, tp, _ = measure(p)
         rows.append((p.name, len(x) / SR, 20 * np.log10(np.abs(x).max()), tp, lufs))
-    for dist in (60, 100, 150, 250, 300, 450, 750, 900, 1500):
-        x, _ = mixdown(dist)
-        print(f"  the whole strike {dist:4d} blocks off peaks at {20 * np.log10(np.abs(x).max()):.2f} dBFS")
-    for dist in (200, 600, 1500):
-        x, start = mixdown(dist)
-        pk = np.abs(x).max()
-        p = out / f"nuke_full_{dist}blocks.wav"
-        write_wav(p, x)
-        lufs, tp, _ = measure(p)
-        rows.append((p.name + f"  (detonation at {-start:.1f} s)", len(x) / SR, 20 * np.log10(pk), tp, lufs))
+    for alt in (False, True):
+        for dist in (60, 100, 150, 250, 300, 450, 750, 900, 1500):
+            x, _ = mixdown(dist, alt)
+            print(f"  the whole strike{' (alt)' if alt else ''} {dist:4d} blocks off peaks at {20 * np.log10(np.abs(x).max()):.2f} dBFS")
+    for alt in (False, True):
+        for dist in (60, 200, 600, 700, 1500):
+            x, start = mixdown(dist, alt)
+            pk = np.abs(x).max()
+            p = out / f"nuke{'_alt' if alt else ''}_full_{dist}blocks.wav"
+            write_wav(p, x)
+            lufs, tp, _ = measure(p)
+            rows.append((p.name + f"  (detonation at {-start:.1f} s)", len(x) / SR, 20 * np.log10(pk), tp, lufs))
     print(f"\n{'file':52s} {'len':>6s} {'peak':>7s} {'TP':>7s} {'LUFS':>7s}")
     for r in rows:
         print(f"{r[0]:52s} {r[1]:6.1f} {r[2]:7.2f} {r[3]:7.2f} {r[4]:7.1f}")
-    share, lowf, octs = spectrum_report(decoded("blast"))
-    print("\nblast, first 3 s: " + share)
-    print(f"  strongest low frequency {lowf:.1f} Hz; octaves (dB) " + " ".join(f"{int(fc)}:{v:.1f}" for fc, v in zip(OCT, octs)))
+    for nm in ("blast", "blast_alt"):
+        share, lowf, octs = spectrum_report(decoded(nm))
+        print(f"\n{nm}, first 3 s: " + share)
+        print(f"  strongest low frequency {lowf:.1f} Hz; octaves (dB) " + " ".join(f"{int(fc)}:{v:.1f}" for fc, v in zip(OCT, octs)))
 
 
 def main():
