@@ -201,7 +201,7 @@ struct PlCol {
     hi: vec3<f32>,
     // (the boil's billows (pl_billows): their middles from C and radii, packed as half floats; bm which of them a ray
     // passes near enough to look up, none unless set)
-    bq: array<vec2<u32>, 16>,
+    bq: array<vec2<u32>, 12>,
     bm: u32,
     // (how deep in the crease between two billows the last point looked up lies: 1 right in it)
     kb: f32,
@@ -240,16 +240,15 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
 fn pl_lean(col: ptr<function, PlCol>, hy: f32) -> vec3<f32> {
     return pl_wind() * ((*col).a * pow(saturate(hy / max((*col).hc, 1.0)), 1.5));
 }
-const PL_NB: u32 = 16u;            // the boil's billows: the first PL_NBC in the fireball and the cap, the rest up the stem
-const PL_NBC: u32 = 12u;
+const PL_NB: u32 = 12u;            // the boil's billows, all in the fireball and the cap (none up the stem: billows climbing
+                                   // it read as things crawling up a tube)
 // A billow's uniform random k (0 to 1) for billow i in its life n.
 fn pl_bh(i: u32, n: i32, k: u32) -> f32 {
     return f32(pcg(pcg(i * 0x9e37u + bitcast<u32>(n) * 0x85ebu + 0x2c1u) + k * 0x68e3u) & 0xffffu) / 65535.0;
 }
 // The boil (Plumbbob Fizeau's first fifteen seconds): billows welling up inside the fireball, swelling out through its
 // surface as they ride round its roll (up its inside, out over its top, down its outside), each a lobe standing out of
-// the one beside it, then sinking back into it as the next wells up; up the stem, billows of dust and smoke climbing
-// into the cap. Each is born at nothing deep in the body and dies back into it, so none pops in or out. Their middles
+// the one beside it, then sinking back into it as the next wells up. Each is born at nothing deep in the body and dies back into it, so none pops in or out. Their middles
 // from C (leaning with the wind) and radii, worked out once a ray, packed into the column's bq.
 fn pl_billows(col: ptr<function, PlCol>) {
     let a = (*col).a;
@@ -258,40 +257,23 @@ fn pl_billows(col: ptr<function, PlCol>) {
     let hc = (*col).hc;
     // (most violent from the first second to some twelve, once the flash has let go; calming over the next ten)
     let envc = smoothstep(0.02, 0.5, a) * (1.0 - smoothstep(12.0, 22.0, a));
-    let envs = smoothstep(0.8, 2.5, a) * (1.0 - smoothstep(10.0, 22.0, a));
     for (var i = 0u; i < PL_NB; i = i + 1u) {
-        var c = vec3<f32>(0.0);
-        var r = 0.0;
-        if (i < PL_NBC) {
-            // (its life: some three to four seconds, slower as the cloud calms, each a different phase)
-            let lf = 2.6 + 1.6 * pl_bh(i, -1, 0u);
-            // (fast at first, half as fast by twelve seconds)
-            let s = (9.0 * (1.0 - exp(-a / 9.0)) + 0.25 * a) / lf + pl_bh(i, -1, 1u) * 0.999;
-            let n = i32(floor(s));
-            let u = fract(s);
-            // (round the axis at its own bearing, drifting; round the roll from low inside out over the top)
-            let ph = 6.2832 * pl_bh(i, n, 2u) + 0.25 * (pl_bh(i, n, 3u) - 0.5) * a;
-            let th0 = 0.8 + 2.3 * pl_bh(i, n, 4u);
-            let th = th0 - u * (1.3 + 1.0 * pl_bh(i, n, 5u));
-            let R = rt * (0.25 + 0.7 * smoothstep(0.0, 0.6, u));
-            let sn = sin(th);
-            let rho = Rt + R * cos(th);
-            let y = hc + R * sn * select(0.6, 0.95, sn > 0.0) + 0.3 * rt * max(sn, 0.0);
-            c = vec3<f32>(cos(ph) * rho, y, sin(ph) * rho);
-            r = rt * (0.4 + 0.25 * pl_bh(i, n, 6u)) * pow(sin(3.1416 * u), 0.6) * envc;
-        } else {
-            // (up the stem: from its foot to its top, and into the cap)
-            let lf = 1.8 + 0.9 * pl_bh(i, -1, 0u);
-            let s = a / lf + pl_bh(i, -1, 1u) * 0.999;
-            let n = i32(floor(s));
-            let u = fract(s);
-            let y = (0.1 + 0.95 * u) * (*col).st;
-            let ph = 6.2832 * pl_bh(i, n, 2u);
-            let sr = (*col).sr;
-            let rs = mix(mix(sr.x, sr.y, smoothstep(0.0, 0.3, u)), sr.z, smoothstep(0.65, 1.0, u));
-            c = vec3<f32>(cos(ph), 0.0, sin(ph)) * (0.45 * rs) + vec3<f32>(0.0, y, 0.0);
-            r = rs * (0.7 + 0.25 * pl_bh(i, n, 3u)) * pow(sin(3.1416 * u), 0.5) * envs * step(1.0, (*col).st);
-        }
+        // (its life: some three to four seconds, slower as the cloud calms, each a different phase)
+        let lf = 2.6 + 1.6 * pl_bh(i, -1, 0u);
+        // (fast at first, half as fast by twelve seconds)
+        let s = (9.0 * (1.0 - exp(-a / 9.0)) + 0.25 * a) / lf + pl_bh(i, -1, 1u) * 0.999;
+        let n = i32(floor(s));
+        let u = fract(s);
+        // (round the axis at its own bearing, drifting; round the roll from low inside out over the top)
+        let ph = 6.2832 * pl_bh(i, n, 2u) + 0.25 * (pl_bh(i, n, 3u) - 0.5) * a;
+        let th0 = 0.8 + 2.3 * pl_bh(i, n, 4u);
+        let th = th0 - u * (1.3 + 1.0 * pl_bh(i, n, 5u));
+        let R = rt * (0.25 + 0.7 * smoothstep(0.0, 0.6, u));
+        let sn = sin(th);
+        let rho = Rt + R * cos(th);
+        let y = hc + R * sn * select(0.6, 0.95, sn > 0.0) + 0.3 * rt * max(sn, 0.0);
+        var c = vec3<f32>(cos(ph) * rho, y, sin(ph) * rho);
+        let r = rt * (0.4 + 0.25 * pl_bh(i, n, 6u)) * pow(sin(3.1416 * u), 0.6) * envc;
         c = c + pl_lean(col, c.y);
         (*col).bq[i] = vec2<u32>(pack2x16float(c.xy), pack2x16float(vec2<f32>(c.z, r)));
     }
@@ -441,12 +423,15 @@ fn pl_rot(k: i32, p: vec3<f32>) -> vec3<f32> {
 // round the cap's roll as it churns (up its inside, out over its top, down its outside), boiling slowly up the stem.
 // .x the distance, .y how far up a dome it lies, .z how soft its edge is, .w the fine fray.
 // The cloud's lumps at material point qm: the big swell, the bend of the big lumps, the big lumps and the middling ones.
-fn pl_nz(qm: vec3<f32>) -> vec4<f32> {
+// tw: for the stem, how far the bend has churned on (xyz, in its own lattice) and how hard it bends the lumps (w), so
+// they twist and melt into each other where they are, none of them kept long enough to be followed up it.
+fn pl_nz(qm: vec3<f32>, tw: vec4<f32>) -> vec4<f32> {
     let S = 2.2;
     let w = gnoise3(pl_rot(1, qm * (1.0 / (55.0 * S))));
-    let w2 = gnoise3(pl_rot(2, qm * (1.0 / (23.0 * S)) + vec3<f32>(9.2, 0.0, 4.4)));
-    let b1 = pl_dome(pl_rot(0, qm * (1.0 / (36.0 * S)) + vec3<f32>(3.1, 0.0, 7.7) + 0.3 * vec3<f32>(w2 - 0.5)));
-    let b2 = pl_dome(pl_rot(1, qm * (1.0 / (14.0 * S)) + vec3<f32>(0.0, 0.0, 1.3)));
+    let w2 = gnoise3(pl_rot(2, qm * (1.0 / (23.0 * S)) + vec3<f32>(9.2, 0.0, 4.4) + tw.xyz));
+    let bend = (0.3 + tw.w) * vec3<f32>(w2 - 0.5);
+    let b1 = pl_dome(pl_rot(0, qm * (1.0 / (36.0 * S)) + vec3<f32>(3.1, 0.0, 7.7) + bend));
+    let b2 = pl_dome(pl_rot(1, qm * (1.0 / (14.0 * S)) + vec3<f32>(0.0, 0.0, 1.3) + 1.6 * tw.w * vec3<f32>(0.5 - w2, w2 - 0.5, 0.5 - w2)));
     return vec4<f32>(w, w2, b1, b2);
 }
 // And its small lumps and its fray.
@@ -479,8 +464,11 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let uvr = vec2<f32>(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
     let sc = 150.0 / (Rt + rt);
     var qc = vec3<f32>(dir.x * (Rt + uvr.x) * sc, uvr.y * sc + 400.0, dir.y * (Rt + uvr.x) * sc);
-    // (the stem's: rising with the air drawn up it, the same all the way down to the land)
-    var qs = q - vec3<f32>(0.0, 6.0 * a, 0.0);
+    // (the stem's: a turbulent column churning where it is, its lumps stretched up it into streaks and folds and slowly
+    // twisting into each other, rising only slowly: none to be followed up it (lumps carried up at the air's speed
+    // read as things crawling up a tube))
+    var qs = vec3<f32>(q.x, (q.y - 1.5 * a) * 0.65, q.z);
+    let tws = vec4<f32>(0.14 * a, 0.05 * a, -0.11 * a, 0.7);
     // (the boil: for its first seconds the fireball's lumps are flung about by a churning flow of its own, racing up
     // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
     // about, not made: the same ones, carried)
@@ -493,23 +481,18 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
         let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
         qc = qc + wv * (38.0 * bo);
     }
-    // (up the stem only for its first seconds: its billows carry its boil on)
-    if (bo > 0.03 && a < 4.0 && wc0 < 0.98) {
-        let ws0 = qs * (1.0 / 24.0) + vec3<f32>(0.0, -1.6 * a, 0.0);
-        let ws = vec3<f32>(gnoise3(ws0), gnoise3(ws0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(ws0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
-        qs = qs + ws * (30.0 * bo * (1.0 - smoothstep(2.0, 4.0, a)));
-    }
+    // (none up the stem: its lumps churn by their own bend, tws)
     // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
     let wc = wc0;
     var nz = vec4<f32>(0.0);
     // (the spread two fadings together lose put back)
     let ls = 1.0 / sqrt(wc * wc + (1.0 - wc) * (1.0 - wc));
     if (wc > 0.98) {
-        nz = pl_nz(qc);
+        nz = pl_nz(qc, vec4<f32>(0.0));
     } else if (wc < 0.02) {
-        nz = pl_nz(qs);
+        nz = pl_nz(qs, tws);
     } else {
-        nz = vec4<f32>(0.5, 0.5, 0.62, 0.62) + (mix(pl_nz(qs), pl_nz(qc), wc) - vec4<f32>(0.5, 0.5, 0.62, 0.62)) * ls;
+        nz = vec4<f32>(0.5, 0.5, 0.62, 0.62) + (mix(pl_nz(qs, tws), pl_nz(qc, vec4<f32>(0.0)), wc) - vec4<f32>(0.5, 0.5, 0.62, 0.62)) * ls;
     }
     let w = nz.x;
     let w2 = nz.y;
@@ -517,12 +500,14 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let b2 = nz.w;
     let hy = p.y - C.y;
     let lump = 1.6 * (0.6 + 0.4 * smoothstep(20.0, 160.0, hy));
+    // (up the stem its big lumps let down and its middling ones up: a churning surface, not a stack of balls)
+    let stm = 1.0 - wc;
     let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
     let crisp = 1.0 - 0.8 * soft;
     let up = smoothstep(40.0, 200.0, hy);
     // (the crown over the middle smoother than the roll: its big swells let down, so it stays one rounded dome)
     let crown = (1.0 - smoothstep(0.3 * (*col).Rt, (*col).Rt + 0.3 * (*col).rt, rho)) * smoothstep((*col).hc, (*col).hc + 0.5 * (*col).rt, hy);
-    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.2 * crown) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.35 * crown) + 8.0 * (w2 - 0.5)) * lump;
+    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.2 * crown) * (1.0 - 0.5 * stm) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) * (1.0 + 0.9 * stm) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.35 * crown) * (1.0 - 0.3 * stm) + 8.0 * (w2 - 0.5)) * lump;
     let ew = smoothstep(0.6, 0.82, w2);
     let edge = mix(1.5, 6.0, ew) + 10.0 * (1.0 - smoothstep(0.0, 60.0, hy));
     var fray = 0.5;
@@ -543,7 +528,7 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
         let ffr = 1.0 - smoothstep(0.35, 0.8, pxw / per);
         let fb3 = 1.0 - smoothstep(0.35, 0.8, pxw / (3.0 * per));
         let b3 = nf.x;
-        d = d - 4.0 * (b3 - 0.45) * (1.0 - soft) * lump * fb3;
+        d = d - (4.0 + 3.0 * stm) * (b3 - 0.45) * (1.0 - soft) * lump * fb3;
         fray = mix(0.5, nf.y, ffr);
         d = d - 3.5 * (fray - 0.5) * (1.0 - soft) * (0.25 + 0.75 * ew);
     }
