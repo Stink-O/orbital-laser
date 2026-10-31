@@ -159,3 +159,6 @@ Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shad
 Planet Killer's, the Crystal Bloom's, the Sinkhole's). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)
+during and after it: if it reports the mod stopped (out of fuel, a panic, a failed start), the run failed, whatever it
+looked like.
