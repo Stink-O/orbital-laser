@@ -205,11 +205,16 @@ struct PlCol {
     bm: u32,
     // (how deep in the crease between two billows the last point looked up lies: 1 right in it)
     kb: f32,
+    // (and the smooth body's own distance there, without the billows, and the nearest billow's)
+    dbody: f32,
+    dbill: f32,
 }
 fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     var o: PlCol;
     o.bm = 0u;
     o.kb = 0.0;
+    o.dbody = 0.0;
+    o.dbill = 1.0e6;
     o.a = a;
     o.C = C + pl_wind() * (0.0 * a);
     // (the fireball: swelling to sixty in half a second, then slowly on; punching up fast, boiling, its stem close behind,
@@ -251,7 +256,8 @@ fn pl_billows(col: ptr<function, PlCol>) {
     let Rt = (*col).Rt;
     let rt = (*col).rt;
     let hc = (*col).hc;
-    let envc = smoothstep(0.02, 0.5, a) * (1.0 - smoothstep(11.0, 24.0, a));
+    // (most violent from the first second to some twelve, once the flash has let go; calming over the next ten)
+    let envc = smoothstep(0.02, 0.5, a) * (1.0 - smoothstep(12.0, 22.0, a));
     let envs = smoothstep(0.8, 2.5, a) * (1.0 - smoothstep(10.0, 22.0, a));
     for (var i = 0u; i < PL_NB; i = i + 1u) {
         var c = vec3<f32>(0.0);
@@ -259,7 +265,8 @@ fn pl_billows(col: ptr<function, PlCol>) {
         if (i < PL_NBC) {
             // (its life: some three to four seconds, slower as the cloud calms, each a different phase)
             let lf = 2.6 + 1.6 * pl_bh(i, -1, 0u);
-            let s = (a + 0.6 * a * a / (a + 12.0)) / lf + pl_bh(i, -1, 1u) * 0.999;
+            // (fast at first, half as fast by twelve seconds)
+            let s = (9.0 * (1.0 - exp(-a / 9.0)) + 0.25 * a) / lf + pl_bh(i, -1, 1u) * 0.999;
             let n = i32(floor(s));
             let u = fract(s);
             // (round the axis at its own bearing, drifting; round the roll from low inside out over the top)
@@ -309,6 +316,7 @@ fn pl_bmask(col: ptr<function, PlCol>, rd: vec3<f32>, m: f32) -> u32 {
 fn pl_bunion(col: ptr<function, PlCol>, pc: vec3<f32>, d0: f32) -> f32 {
     var d = d0;
     var kb = 0.0;
+    var dmin = 1.0e6;
     var m = (*col).bm;
     loop {
         if (m == 0u) {
@@ -321,10 +329,14 @@ fn pl_bunion(col: ptr<function, PlCol>, pc: vec3<f32>, d0: f32) -> f32 {
         let db = length(pc - vec3<f32>(qa, qb.x)) - qb.y;
         let k = 0.2 * qb.y + 4.0;
         let h = saturate(0.5 + 0.5 * (db - d) / k);
-        kb = max(kb, 4.0 * h * (1.0 - h));
+        // (the crease's soot over a broad soft band: a narrow one, cut by the lumps, showed as swirled rings)
+        let hc = saturate(0.5 + 0.5 * (db - d) / (3.0 * k));
+        kb = max(kb, 4.0 * hc * (1.0 - hc));
+        dmin = min(dmin, db);
         d = mix(db, d, h) - k * h * (1.0 - h);
     }
     (*col).kb = kb;
+    (*col).dbill = dmin;
     return d;
 }
 // The cloud's smooth body at p (camera-relative): the cap (the roll round its core circle, a dome over it), the stem,
@@ -380,6 +392,8 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
     }
     // (the boil's billows, those the ray looks up)
     (*col).kb = 0.0;
+    (*col).dbody = d;
+    (*col).dbill = 1.0e6;
     if ((*col).bm != 0u) {
         d = pl_bunion(col, p - C, d);
     }
@@ -470,17 +484,17 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     // (the boil: for its first seconds the fireball's lumps are flung about by a churning flow of its own, racing up
     // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
     // about, not made: the same ones, carried)
-    let bo = exp(-a / 4.0) * smoothstep(0.0, 0.5, a);
+    let bo = (0.3 + 0.7 * exp(-a / 3.0)) * smoothstep(0.0, 0.5, a) * (1.0 - smoothstep(10.0, 18.0, a));
     let wc0 = smoothstep(hc - 1.45 * rt, hc - 1.1 * rt, q.y);
     if (bo > 0.03 && wc0 > 0.02) {
         let wq0 = qc * (1.0 / 30.0) + vec3<f32>(0.0, -1.1 * a, 0.0);
         let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
-        qc = qc + wv * (70.0 * bo);
+        qc = qc + wv * (38.0 * bo);
     }
     if (bo > 0.03 && wc0 < 0.98) {
         let ws0 = qs * (1.0 / 24.0) + vec3<f32>(0.0, -1.6 * a, 0.0);
         let ws = vec3<f32>(gnoise3(ws0), gnoise3(ws0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(ws0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
-        qs = qs + ws * (45.0 * bo);
+        qs = qs + ws * (30.0 * bo);
     }
     // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
     let wc = wc0;
@@ -519,14 +533,26 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
         } else {
             nf = vec2<f32>(0.62, 0.5) + (mix(pl_nz_fine(qs), pl_nz_fine(qc), wc) - vec2<f32>(0.62, 0.5)) * ls;
         }
+        // (each let go where it is finer than a pixel or so, which would only shimmer in swirls: the fray's size in the
+        // world, against the width a pixel spans that far off)
+        let per = mix(3.96, 3.96 / sc, wc);
+        let pxw = length(p) * 0.0012;
+        let ffr = 1.0 - smoothstep(0.35, 0.8, pxw / per);
+        let fb3 = 1.0 - smoothstep(0.35, 0.8, pxw / (3.0 * per));
         let b3 = nf.x;
-        d = d - 4.0 * (b3 - 0.45) * (1.0 - soft) * lump;
-        fray = nf.y;
+        d = d - 4.0 * (b3 - 0.45) * (1.0 - soft) * lump * fb3;
+        fray = mix(0.5, nf.y, ffr);
         d = d - 3.5 * (fray - 0.5) * (1.0 - soft) * (0.25 + 0.75 * ew);
     }
     // (the lumps' height capped smoothly at PL_DM, so that nothing stands out past the bounds the march allows)
     let bump = max(d0 - d, 0.0);
     d = d0 - bump / sqrt(sqrt(1.0 + pow(bump / PL_DM, 4.0))) + max(d - d0, 0.0);
+    // (the billows wear the lumps at half their height: their round crowns showing, and no deep folds where a lump's
+    // slope fights a billow's curve)
+    if ((*col).dbill < 1.0e5) {
+        let disp = d - d0;
+        d = smin((*col).dbody + disp, (*col).dbill + 0.5 * disp, 8.0);
+    }
     return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
 }
 // A ray against a box, camera-relative: the entry and exit distances.
@@ -840,7 +866,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // ---- the flash: the burst lighting the land and the sky, white then orange, the sky staying brighter a while ----
     // (the light it gives: blinding for a moment, strong for seconds, a glow under the cloud for tens of seconds)
-    let fl = select(0.0, 9.0 * exp(-a / 0.25) + 1.6 * exp(-a / 2.5) + 0.35 * exp(-a / 16.0), a > 0.0) * fade;
+    let fl = select(0.0, 9.0 * exp(-a / 0.15) + 1.0 * exp(-a / 1.2) + 0.15 * exp(-a / 10.0), a > 0.0) * fade;
     if (stage != 1u && a > 0.0) {
         let Pf = C + vec3<f32>(0.0, PL_BURST + 80.0 * saturate(a / 15.0), 0.0);
         let df = length(Pf);
@@ -851,7 +877,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         col = col + fire_c * fl * (0.05 / (1.0 + pow(th / 0.08, 2.0)) + 0.012 * exp(-th / 0.7)) * k;
         if (sky) {
             // (the sky itself brighter, warm, for a while)
-            col = col + vec3<f32>(1.0, 0.78, 0.52) * (0.3 * exp(-a / 2.0) + 0.08 * exp(-a / 20.0)) * (0.35 + 0.65 * (1.0 - day)) * k * fade;
+            col = col + vec3<f32>(1.0, 0.78, 0.52) * (0.25 * exp(-a / 0.8) + 0.025 * exp(-a / 8.0)) * (0.35 + 0.65 * (1.0 - day)) * k * fade;
         } else {
             // (and the land lit by it, far out)
             let dl = length(rel - Pf);
@@ -1187,7 +1213,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     var col_t = select(1.0e9, up_t, stage == 2u);
     // ---- the mushroom cloud: raymarched, self-shadowed towards the sun, glowing from inside --------------------------
     // (the fireball's heat: white-hot for a moment, orange for seconds, a dull red glow dying over tens of seconds)
-    let heat = exp(-a / 0.9);
+    let heat = exp(-a / 0.6);
     // (as filmed (Plumbbob Fizeau): a blazing orange ball for some five seconds, then going out fast; by eight or nine
     // seconds a dark sooty roll with a little red deep in it)
     let glow = 1.0 * (1.0 - smoothstep(4.5, 9.0, a)) + 0.12 * exp(-a / 10.0);
@@ -1218,6 +1244,10 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             var lc_face = 0.0;
             var lc_bulk = 1.0;
             var sky_occ = 0.0;
+            // (how far up a lump, and how deep in a crease, where the ray first meets the smoke: its glow and its soot are
+            // the surface's, not each step's deeper in, whose lumps cut in slices would show as rings)
+            var em_y = 0.5;
+            var em_k = 0.0;
             // (dark brown as the fire goes out, by eight or nine seconds; lifting to Fizeau's grey-brown by twenty, paler on)
             let sootc = mix(mix(vec3<f32>(0.2, 0.14, 0.1), vec3<f32>(0.44, 0.37, 0.31), smoothstep(9.0, 20.0, a)), vec3<f32>(0.56, 0.51, 0.46), smoothstep(20.0, 45.0, a));
             for (var i = 0; i < 128; i = i + 1) {
@@ -1228,6 +1258,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 let b2 = pl_col_base2(&cl, p);
                 // (the crease between two billows broken up by the lumps over it: sooty in their own creases, not a ring)
                 let kb0 = cl.kb;
+                let dbody = cl.dbody;
                 let d0 = b2.x;
                 let dr = b2.y;
                 let db = min(d0, dr);
@@ -1266,7 +1297,11 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     den = den * mix(1.0, saturate(0.2 + 1.6 * mt), soft);
                 }
                 if (den > 0.002) {
-                    if (nl == 0 || (tr > 0.5 && nl < 3)) {
+                    if (nl == 0) {
+                        em_y = sd.y;
+                        em_k = kb0;
+                    }
+                    if (tr > 0.25 || nl == 0) {
                         let fp = p + L * 9.0;
                         lc_face = pl_col_sdf(&cl, fp, pl_col_base2(&cl, fp).x, false).x - sd.x;
                         // (the light through the bulk: the smooth body's, without the billows)
@@ -1289,7 +1324,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     let hy = saturate((p.y - C.y) / max(cl.hc + cl.rt, 1.0));
                     let deep = saturate(-d0 / 70.0);
                     let ao = mix((0.55 + 0.45 * sd.y) * (1.0 - 0.6 * deep) * (1.0 - 0.6 * sky_occ), 0.75, soft);
-                    let kb = kb0 * saturate(1.5 - 1.6 * sd.y);
+                    let kb = em_k * saturate(1.5 - 1.6 * em_y);
                     let mv = (0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5)) * (1.0 - 0.35 * kb);
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
                     var alb = mix(vec3<f32>(0.43, 0.38, 0.32), sootc, smoothstep(0.08, 0.45, hy)) * mv;
@@ -1308,10 +1343,11 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     let qg = p - C - pl_lean(&cl, p.y - C.y);
                     let gv = vec2<f32>(length(qg.xz) - cl.Rt, (qg.y - cl.hc) * 1.2);
                     let ringc = exp(-dot(gv, gv) / pow(0.55 * cl.rt, 2.0));
-                    let core = mix(1.0 - exp(min(d0, 0.0) / (0.22 * cl.rt + 6.0)), ringc, smoothstep(2.0, 9.0, a));
+                    // (deep in the smooth body, not in a billow: the billows' surfaces cut through it in swirls)
+                    let core = mix(1.0 - exp(min(dbody, 0.0) / (0.22 * cl.rt + 6.0)), ringc, smoothstep(2.0, 9.0, a));
                     let under = 1.0 - smoothstep(cl.hc - 0.6 * cl.rt, cl.hc + 0.5 * cl.rt, p.y - C.y);
                     let surf = 1.5 * (1.0 - smoothstep(4.5, 8.5, a)) + 0.6 * exp(-a / 1.2);
-                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * mix(0.1 + 2.3 * (1.0 - sd.y) * (1.0 - sd.y), (0.05 + 0.75 * smoothstep(0.2, 1.0, sd.y)) * (1.0 - 0.8 * kb), smoothstep(1.0, 3.0, a));
+                    let e = (heat * 5.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * mix(0.1 + 2.3 * (1.0 - sd.y) * (1.0 - sd.y), (0.05 + 0.75 * smoothstep(0.2, 1.0, em_y)) * (1.0 - 0.6 * kb), smoothstep(0.3, 1.3, a));
                     let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(2.8, 0.95, 0.16), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
@@ -1328,7 +1364,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 }
                 // (well clear of it, a longer step: the lumps' slopes are steepest only close in)
                 let dm = min(sd.x, dr);
-                t = t + select(st, max(dm * mix(0.55, 0.8, smoothstep(8.0, 40.0, dm)), (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), dm > 0.0);
+                t = t + select(st, max(dm * 0.55, (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), dm > 0.0);
             }
             if (tr < 0.999) {
                 let dist = tmid / max(wmid, 1.0e-4);
@@ -1820,11 +1856,12 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     if (stage != 1u && a > -0.02 && a < 4.0) {
         // (as filmed: the whole frame a pinkish white, then washed orange for a second or so, then the exposure drops
         // dark for a moment before the sky comes back)
-        let wo = saturate(1.4 * exp(-max(a, 0.0) / 0.22)) * smoothstep(-0.02, 0.02, a);
-        col = col * (1.0 + 0.4 * exp(-max(a, 0.0) / 0.6));
-        let ow = smoothstep(0.08, 0.35, a) * (1.0 - smoothstep(1.1, 2.1, a));
-        col = mix(col, col * vec3<f32>(1.5, 0.8, 0.35) + vec3<f32>(0.38, 0.14, 0.02), ow * k);
-        col = col * (1.0 - 0.32 * exp(-pow((a - 2.5) / 0.55, 2.0)) * k);
+        // (short and hard: the picture back within half a second, so the fireball's first boiling is seen)
+        let wo = saturate(1.6 * exp(-max(a, 0.0) / 0.11)) * smoothstep(-0.02, 0.02, a);
+        col = col * (1.0 + 0.4 * exp(-max(a, 0.0) / 0.22));
+        let ow = smoothstep(0.04, 0.14, a) * (1.0 - smoothstep(0.3, 0.6, a));
+        col = mix(col, col * vec3<f32>(1.5, 0.8, 0.35) + vec3<f32>(0.38, 0.14, 0.02), ow * k * 0.7);
+        col = col * (1.0 - 0.18 * exp(-pow((a - 0.75) / 0.25, 2.0)) * k);
         col = mix(col, vec3<f32>(1.4, 1.24, 1.32), wo * k);
     }
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
