@@ -1945,7 +1945,7 @@ fn nk_far(dist: f64) -> f32 {
 /// The nuke. Calm; the bomb high in the sky falling; the burst: the flash (silent), the fireball and the mushroom cloud,
 /// the shockwave's dust over the land and over the player late by how far they are, with the blast and its jolt, the
 /// debris coming down, the long rumble after; the cloud standing over it all a long time.
-pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3], blast_alt: bool) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
@@ -1993,12 +1993,14 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     // ---- the air's: the blast, the shockwave's roar as the front passes, the jolt, the long rumble after -------------
     let arrive = NK_HIT + late;
     let far = nk_far(dist);
+    // (`/orbital nukesound alt`: the alternative, a slow swelling roar, at the same moments)
+    let (bn, bf) = if blast_alt { ("blast_alt", "blast_alt_far") } else { ("blast", "blast_far") };
     if far < 1.0 {
-        p.csound(arrive - 0.02, "blast", 10.0 * (1.0 - far), 1.0);
+        p.csound(arrive - 0.02, bn, 10.0 * (1.0 - far), 1.0);
     }
     if far > 0.0 {
         // (and quieter yet the further off it is: a kilometre and a half off, about three quarters as loud)
-        p.csound(arrive - 0.02, "blast_far", 10.0 * far * ((1.25 / (1.0 + dist / 2000.0)).min(1.0) as f32), 1.0);
+        p.csound(arrive - 0.02, bf, 10.0 * far * ((1.25 / (1.0 + dist / 2000.0)).min(1.0) as f32), 1.0);
     }
     // (the gust of the front going past: violent close by, a third as loud a kilometre and more off, where it is a gust
     // of wind and grit and no more)
@@ -2122,6 +2124,20 @@ mod tests {
         assert!(has(&far, "blast").is_none() && has(&far, "blast_far").is_some());
         assert!(has(&far, "blast_far").unwrap() > has(&near, "blast").unwrap() + 3.0);
         assert!(has(&far, "ground").unwrap() < has(&far, "blast_far").unwrap());
+        // (`/orbital nukesound alt`: the alternative blasts, at the same moments, the rest as they were)
+        let alt = |z: f64| -> Vec<(f32, String, f32)> {
+            plan(&crate::lasers::NUKE, &target, false, "minecraft:overworld", 37.0, [10.5, 66.0, z], 1)
+                .into_iter()
+                .filter_map(|(t, a)| if let Act::Sound { event, volume, .. } = a { Some((t, event, volume)) } else { None })
+                .collect()
+        };
+        for (main, alt) in [(near, alt(200.0)), (far, alt(1500.0))] {
+            assert_eq!(main.len(), alt.len());
+            for (m, a) in main.iter().zip(&alt) {
+                assert_eq!((m.0, m.2, m.1.replace("blast", "blast_alt")), (a.0, a.2, a.1.clone()));
+            }
+            assert!(alt.iter().all(|e| !e.1.ends_with("nuke.blast") && !e.1.ends_with("nuke.blast_far")));
+        }
     }
 
     #[test]

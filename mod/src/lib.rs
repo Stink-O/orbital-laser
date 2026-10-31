@@ -208,7 +208,7 @@ struct Settings {
     page: usize,
     colours: Vec<usize>,
     fly: f32,
-    blast_alt: bool,
+    blast_alt: [bool; 2],
     fast: bool,
 }
 
@@ -252,8 +252,9 @@ struct Orbital {
     page: usize,
     /// Each laser's ship colour (strike::COLOURS; only the ship lasers use theirs).
     colours: Vec<usize>,
-    /// Whether the Payload's blast and its thump through the ground are the alternative ones (`/orbital payloadsound`).
-    blast_alt: bool,
+    /// Whether each of wheel::SOUND_LASERS plays its alternative blast (`/orbital payloadsound`, `/orbital nukesound`;
+    /// the Payload's thump through the ground swaps with it).
+    blast_alt: [bool; 2],
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
@@ -331,7 +332,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nquality={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -340,7 +341,8 @@ impl Orbital {
             ARRIVALS[self.arrival].key,
             self.page,
             self.fly,
-            if self.blast_alt { "alt" } else { "main" },
+            if self.blast_alt[0] { "alt" } else { "main" },
+            if self.blast_alt[1] { "alt" } else { "main" },
             if self.fast { "fast" } else { "full" }
         );
         let mut text = text;
@@ -366,7 +368,7 @@ impl Orbital {
         let mut arrival = 0;
         let mut page = 0;
         let mut fly = 1.0;
-        let mut blast_alt = false;
+        let mut blast_alt = [false; 2];
         let mut fast = true;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
@@ -379,7 +381,9 @@ impl Orbital {
                 Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("page", v)) => page = v.parse::<usize>().unwrap_or(0).min(wheel::pages() - 1),
                 Some(("flyspeed", v)) => fly = wheel::parse_speed(v).unwrap_or(1.0),
-                Some(("payloadsound", v)) => blast_alt = v == "alt",
+                Some((k, v)) if wheel::SOUND_LASERS.iter().any(|s| s.1 == k) => {
+                    blast_alt[wheel::SOUND_LASERS.iter().position(|s| s.1 == k).unwrap_or(0)] = v == "alt";
+                }
                 Some(("quality", v)) => fast = v != "full",
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
@@ -444,7 +448,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, self.blast_alt, self.fast));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast));
         }
     }
     fn open_wheel(&mut self) {
@@ -532,14 +536,16 @@ impl Orbital {
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Sound(k)) => {
-                // picking the Payload's blast loads it too
-                self.blast_alt = k == 1;
+                // picking the Payload's or the Nuke's blast loads it too
                 self.laser = row.unwrap_or(self.laser);
+                if let Some(s) = wheel::sound_of(LASERS[self.laser].key) {
+                    self.blast_alt[s] = k == 1;
+                }
                 self.save();
                 ui::close();
                 self.wheel = None;
                 let l = LASERS[self.laser];
-                Self::actionbar(&format!("{} LOADED: {} BLAST", l.title, wheel::SOUNDS[k].0), l.color);
+                Self::actionbar(&format!("{} LOADED: {} BLAST", l.title, wheel::SOUNDS[k]), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Centre) => {
@@ -616,8 +622,8 @@ impl Orbital {
         let seed = (clock % 997 + 1) as f32; // a fresh look every strike
         ground::clear();
         columns::clear();
-        // (the ship lasers take their approach; the Payload which blast it plays, 1 for the alternative)
-        let option = if laser.key == "payload" { usize::from(self.blast_alt) } else { self.approach };
+        // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
+        let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
         meter::spend(FIRE_COST);
         let mut params = [0.0f32; 16];
@@ -1130,15 +1136,20 @@ impl Mod for Orbital {
                 }
                 Ok(Some(format!("Cloud shadows {v}")))
             }
-            (Some("payloadsound"), Some(v @ ("main" | "alt"))) => {
-                self.blast_alt = v == "alt";
-                self.save();
-                Ok(Some(format!("Payload blast: {}", if self.blast_alt { "alternative" } else { "main" })))
+            (Some(c), v) if wheel::SOUND_LASERS.iter().any(|s| s.1 == c) => {
+                let s = wheel::SOUND_LASERS.iter().position(|s| s.1 == c).unwrap_or(0);
+                let name = wheel::SOUND_LASERS[s].2;
+                let said = |alt: bool| if alt { "alternative" } else { "main" };
+                match v {
+                    Some(v @ ("main" | "alt")) => {
+                        self.blast_alt[s] = v == "alt";
+                        self.save();
+                        Ok(Some(format!("{name} blast: {}", said(self.blast_alt[s]))))
+                    }
+                    None => Ok(Some(format!("{name} blast: {} (/orbital {c} main or alt)", said(self.blast_alt[s])))),
+                    Some(_) => Err(format!("/orbital {c} main or alt")),
+                }
             }
-            (Some("payloadsound"), None) => Ok(Some(format!(
-                "Payload blast: {} (/orbital payloadsound main or alt)",
-                if self.blast_alt { "alternative" } else { "main" }
-            ))),
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
                 Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's and the Nuke's smoke at half size" } else { "full: every pixel" })))
@@ -1158,7 +1169,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),

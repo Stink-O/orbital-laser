@@ -247,7 +247,8 @@ The wheel also has:
   done to the world stays), the same as `/orbital stop`.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
 - For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
-  same choice as `/orbital payloadsound`.
+  same choice as `/orbital payloadsound`. The Nuke has one too: **MAIN** (a hard crack, an overdriven boom) or **ALT**
+  (a rounder, bassier boom and a longer thunder roll), as `/orbital nukesound`.
 
 | Command | What it does |
 |---|---|
@@ -260,7 +261,7 @@ The wheel also has:
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` | the loaded ship's colour |
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
-| `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
+| `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's and the Nuke's smoke at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |

@@ -259,6 +259,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
+| `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital quality full`, `/orbital quality fast` | how the Payload's and the Nuke's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
@@ -422,7 +423,9 @@ down to ~31, a heaving sub tail, the lows' own harmonics for small speakers, the
 fireball's crackle in distant clusters), cross-faded from 300 to 900 blocks off into the same blast through that much
 air (`blast_far`, its mids kept so it still carries on a laptop); the shockwave's gust and grit going past, a third as
 loud past about 1,100 blocks; debris thudding and pattering down within 700 blocks; and a long rumble rolling in off
-the land for half a minute.
+the land for half a minute. `/orbital nukesound alt` (or the BLAST SOUND row) swaps the blast for the Payload's ALT scaled up
+(`blast_alt`, `blast_alt_far`): a tonal boom dropping from ~68 Hz to ~40 with its harmonics stacked on it, a sharp,
+heavy crack, two more blows after it, then a long thunder roll and the boom echoing off far land.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and

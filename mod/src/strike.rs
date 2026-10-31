@@ -558,7 +558,7 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
         return payload::payload_plan(laser, target, terrain, dimension, shader_seed, me, approach == 1);
     }
     if laser.key == "nuke" {
-        return nuke::nuke_plan(laser, target, terrain, dimension, shader_seed, me);
+        return nuke::nuke_plan(laser, target, terrain, dimension, shader_seed, me, approach == 1);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
