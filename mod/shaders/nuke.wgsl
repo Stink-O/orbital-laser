@@ -484,17 +484,20 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     // (the boil: for its first seconds the fireball's lumps are flung about by a churning flow of its own, racing up
     // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
     // about, not made: the same ones, carried)
-    let bo = (0.3 + 0.7 * exp(-a / 3.0)) * smoothstep(0.0, 0.5, a) * (1.0 - smoothstep(10.0, 18.0, a));
+    // (the churn's own warp strongest early, gone by eight seconds: the billows carry the boil on, and its six lookups a step
+    // cost more than its last few blocks of push are worth)
+    let bo = (0.3 + 0.7 * exp(-a / 3.0)) * smoothstep(0.0, 0.5, a) * (1.0 - smoothstep(4.0, 8.0, a));
     let wc0 = smoothstep(hc - 1.45 * rt, hc - 1.1 * rt, q.y);
     if (bo > 0.03 && wc0 > 0.02) {
         let wq0 = qc * (1.0 / 30.0) + vec3<f32>(0.0, -1.1 * a, 0.0);
         let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
         qc = qc + wv * (38.0 * bo);
     }
-    if (bo > 0.03 && wc0 < 0.98) {
+    // (up the stem only for its first seconds: its billows carry its boil on)
+    if (bo > 0.03 && a < 4.0 && wc0 < 0.98) {
         let ws0 = qs * (1.0 / 24.0) + vec3<f32>(0.0, -1.6 * a, 0.0);
         let ws = vec3<f32>(gnoise3(ws0), gnoise3(ws0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(ws0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
-        qs = qs + ws * (30.0 * bo);
+        qs = qs + ws * (30.0 * bo * (1.0 - smoothstep(2.0, 4.0, a)));
     }
     // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
     let wc = wc0;
@@ -554,6 +557,37 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
         d = smin((*col).dbody + disp, (*col).dbill + 0.5 * disp, 8.0);
     }
     return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
+}
+// A ray from the camera against a ball (middle c, radius r) and an upright cylinder (axis through c.xz, radius r,
+// from height ylo to yhi), camera-relative: the entry and exit distances (entry over exit when it misses).
+fn pl_sph(rd: vec3<f32>, c: vec3<f32>, r: f32) -> vec2<f32> {
+    let b = dot(rd, c);
+    let h = b * b - dot(c, c) + r * r;
+    if (h < 0.0) {
+        return vec2<f32>(1.0e9, -1.0e9);
+    }
+    let q = sqrt(h);
+    return vec2<f32>(b - q, b + q);
+}
+fn pl_cyl(rd: vec3<f32>, c: vec3<f32>, r: f32, ylo: f32, yhi: f32) -> vec2<f32> {
+    let a2 = max(dot(rd.xz, rd.xz), 1.0e-8);
+    let b = dot(rd.xz, c.xz);
+    let h = b * b - a2 * (dot(c.xz, c.xz) - r * r);
+    if (h < 0.0) {
+        return vec2<f32>(1.0e9, -1.0e9);
+    }
+    let q = sqrt(h);
+    var lo = (b - q) / a2;
+    var hi = (b + q) / a2;
+    if (abs(rd.y) > 1.0e-6) {
+        let ya = ylo / rd.y;
+        let yb = yhi / rd.y;
+        lo = max(lo, min(ya, yb));
+        hi = min(hi, max(ya, yb));
+    } else if (ylo > 0.0 || yhi < 0.0) {
+        return vec2<f32>(1.0e9, -1.0e9);
+    }
+    return vec2<f32>(lo, hi);
 }
 // A ray against a box, camera-relative: the entry and exit distances.
 fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
@@ -1225,11 +1259,21 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         let ctop = C + vec3<f32>(0.0, cl.hc, 0.0) + pl_wind() * a;
         let cbound = pl_ray_seg(rd, C - vec3<f32>(0.0, 20.0, 0.0), ctop, 0.0, 1.0);
         let crad = max(cl.Rt + 1.35 * cl.rt, max(cl.surge.x + cl.surge.y, 0.8 * cl.rt + 0.15 * cl.rt)) + PL_DM + 30.0 + 0.2 * length(pl_wind()) * a;
-        let tb = pl_box(rd, cl.lo, cl.hi);
+        // (and tighter: where the ray is in the ball round the cap, the cylinder round the stem and its ring, or the flat
+        // one round the base surge, with room for the lumps and the billows; the box's corners left out)
+        let lw = pl_wind() * a;
+        let capc = C + vec3<f32>(0.0, cl.hc + 0.2 * cl.rt, 0.0) + lw;
+        let sp = pl_sph(rd, capc, cl.Rt + 1.65 * cl.rt + PL_DM + 12.0);
+        let stc = C + 0.5 * lw;
+        let srm = max(1.45 * max(max(cl.sr.x, cl.sr.y), cl.sr.z), cl.ring.y + 36.0);
+        let cy = pl_cyl(rd, stc, srm + PL_DM + 16.0 + 0.5 * length(lw), C.y - 25.0, capc.y);
+        let su = pl_cyl(rd, C, cl.surge.x + cl.surge.y + PL_DM + 12.0, C.y - 25.0, C.y + 2.0 * cl.surge.z + PL_DM + 16.0);
+        let tb0 = pl_box(rd, cl.lo, cl.hi);
+        let tb = vec2<f32>(max(tb0.x, min(min(sp.x, cy.x), su.x)), min(tb0.y, max(max(sp.y, cy.y), su.y)));
         let t1 = min(tb.y, scene_len);
         if (cbound.x < crad && t1 > tb.x) {
             pl_billows(&cl);
-            let bmask = pl_bmask(&cl, rd, PL_DM + 20.0);
+            let bmask = pl_bmask(&cl, rd, 0.5 * PL_DM + 20.0);
             cl.bm = bmask;
             var t = tb.x;
             var tr = 1.0;
@@ -1301,7 +1345,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                         em_y = sd.y;
                         em_k = kb0;
                     }
-                    if (nl == 0 || (tr > 0.5 && nl < 3)) {
+                    if (nl == 0 || (tr > 0.5 && nl < 2)) {
                         let fp = p + L * 9.0;
                         lc_face = pl_col_sdf(&cl, fp, pl_col_base2(&cl, fp).x, false).x - sd.x;
                         // (the light through the bulk: the smooth body's, without the billows)
