@@ -155,6 +155,15 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   fork; `payload_pass` in lib.rs drops the section for FULL. `tools/preview.py payload T --quality both` shows FULL and
   FAST side by side (`--whole`: FAST as a fork without the stage draws it). The Planet Killer, the Crystal Bloom and
   the Sinkhole could take the same split.
+- **A call into the mod has a fuel limit** (a tick 50 million WebAssembly instructions, a frame 10 million; past it the
+  game stops the mod for good: "it took too long"). `mod/src/meter.rs` counts each call's work (the loops that do the
+  heavy work `spend`), and what can wait (a stage, a job of the Nuke's, an edit, a command, an answer taken in) waits
+  for the next tick once it reads `SOFT`; a stage counts at least `STAGE_COST`. Keep any one stage well under a tick:
+  split it rather than let it grow. The fork's `mod_soak` example (`cargo run --release -p horizon-mods --features
+  fuel-trace --example mod_soak -- COPY_OF_dist/orbital N SEED`, `SOAK_LASERS=nuke`, `SOAK_TRACE=1`) plays the real
+  mod.wasm headless and prints every hook's worst fuel; `stress::thousands_of_strikes` (ignored) plays fire, stop and
+  re-fire sequences through lib.rs's own playback natively. The game logs a call that uses half its fuel, and on a
+  stop which hook and the mod's stack.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many

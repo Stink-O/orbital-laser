@@ -96,6 +96,7 @@ impl Blocks {
     /// from the column's ground (one above its highest motion-blocking block, leaves left out), read before the edit.
     fn put(&mut self, x: i32, z: i32, y0: i32, y1: i32, block: &'static str, only: Option<&'static str>, surface: bool) {
         use horizon_mod_sdk::world::{BlockRun, Heightmap};
+        crate::meter::spend(60 + 8 * self.palette.len() as u64);
         if y1 < y0 {
             return;
         }
@@ -129,6 +130,7 @@ impl Blocks {
     /// The runs sorted into the ticks they go in at (`when` of each run's column): a wave's edits, in order.
     pub(super) fn split_by(&self, when: impl Fn(i32, i32) -> f32) -> Vec<(f32, Blocks)> {
         let mut out: std::collections::BTreeMap<i32, Blocks> = Default::default();
+        crate::meter::spend(200 * self.runs.len() as u64);
         for r in &self.runs {
             let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_default();
             let block = Self::index(&mut b.palette, self.palette[r.block as usize]);
@@ -194,6 +196,7 @@ pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, 
         return out;
     }
     let (w, h) = ((x1 - x0 + 1 + 2 * b) as usize, (z1 - z0 + 1 + 2 * b) as usize);
+    crate::meter::spend(250 * (w * h) as u64);
     let mut grid = vec![Col::Kept; w * h];
     let mut any = false;
     for j in 0..h {
@@ -334,6 +337,10 @@ impl Plan {
         let (laser, bx, by, bz) = (self.laser, self.bx, self.by, self.bz);
         let seed = (self.rng.next() * 9.0e15) as u64;
         let job = move || {
+            // (in the tests, which work stages out one after another with no ticks between, each as if on a tick of
+            // its own: `meter`)
+            #[cfg(test)]
+            crate::meter::reset();
             let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed), bx, by, bz };
             f(&mut p);
             p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -350,6 +357,8 @@ impl Plan {
         }
     }
     fn at(&mut self, t: f32, cmd: impl Into<String>) {
+        // (a command written out: `meter`)
+        crate::meter::spend(2_500);
         self.ev.push((t, Act::Cmd(cmd.into())));
     }
     /// Everything left standing over a blast of radius `r`, from `y0` up to the sky: a laser comes down from orbit,
@@ -677,85 +686,101 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
 
     if terrain {
-        let r_mouth = laser.shaft_r;
-        let floor_y = bedrock_top(dimension);
+        // (worked out over the first ticks, a part a tick, not as it fires: their thousands of commands are too much
+        // work for one tick)
+        let (r_mouth, floor_y) = (laser.shaft_r, bedrock_top(dimension));
+        let point = target.point;
         // 1. the blast: everything standing above the ground in a wide disc is vaporised (the black hole clears
         //    further, so the ground it tears its debris from is level with the target)
         let (blast_r, sky) = (if blackhole { 52 } else { 44 }, sky_top(dimension));
-        for c in p.disc(blast_r, by + 1, (by + 60).min(sky), "minecraft:air", 0.12, None) {
-            p.at(t + 0.15, c);
-        }
-        p.clear_above(t + 0.15, blast_r, by + 61, sky, 0.12);
+        p.later(0.1, move |p| {
+            for c in p.disc(blast_r, by + 1, (by + 60).min(sky), "minecraft:air", 0.12, None) {
+                p.at(t + 0.15, c);
+            }
+            p.clear_above(t + 0.15, blast_r, by + 61, sky, 0.12);
+        });
         // 2. scorched earth: what the ground round the crater turns into (the black hole drains it once it has
         //    torn its debris up)
-        let t_scorch = if blackhole { t + 7.6 } else { t + 0.4 };
-        for &(rad, block, rough, repl) in laser.scorch {
-            for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
-                let dt = p.rng.next() as f32 * 2.2;
-                p.at(t_scorch + dt, c);
+        p.later(0.15, move |p| {
+            let laser = p.laser;
+            let t_scorch = if blackhole { t + 7.6 } else { t + 0.4 };
+            for &(rad, block, rough, repl) in laser.scorch {
+                for c in p.disc(rad, by - 3, by + 1, block, f64::from(rough), Some(repl)) {
+                    let dt = p.rng.next() as f32 * 2.2;
+                    p.at(t_scorch + dt, c);
+                }
             }
-        }
+        });
         // 3. the bowl: a rough paraboloid crater, outer layers first, its walls fused as it goes
-        let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
-        for d in (0..bowl_d).step_by(2) {
-            let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(3);
-            let tl = t + 0.5 + d as f32 * 0.28;
-            p.dig(r, by - d - 1, by - d, tl, f64::from(laser.bowl_rough), 2);
-            p.mottle(r, by - d - 1, by - d, tl, 16);
-            for _ in 0..3 {
-                let dt = p.rng.uniform(0.0, 0.25) as f32;
-                let name = *p.rng.pick(&["block.stone.break", "block.gravel.break", "block.grass.break"]);
-                let pitch = p.rng.uniform(0.55, 0.9);
-                p.ground_sound(tl + dt, name, 9.0, pitch);
+        p.later(0.2, move |p| {
+            let laser = p.laser;
+            let (bowl_r, bowl_d) = (laser.bowl_r, laser.bowl_d);
+            for d in (0..bowl_d).step_by(2) {
+                let r = ((f64::from(bowl_r) * (1.0 - f64::from(d) / (f64::from(bowl_d) + 0.5)).sqrt()) as i32).max(3);
+                let tl = t + 0.5 + d as f32 * 0.28;
+                p.dig(r, by - d - 1, by - d, tl, f64::from(laser.bowl_rough), 2);
+                p.mottle(r, by - d - 1, by - d, tl, 16);
+                for _ in 0..3 {
+                    let dt = p.rng.uniform(0.0, 0.25) as f32;
+                    let name = *p.rng.pick(&["block.stone.break", "block.gravel.break", "block.grass.break"]);
+                    let pitch = p.rng.uniform(0.55, 0.9);
+                    p.ground_sound(tl + dt, name, 9.0, pitch);
+                }
             }
-        }
-        let (fb, fr, fq) = laser.bowl_floor;
-        for c in p.disc(bowl_r - 4, by - bowl_d, by - bowl_d + 1, fb, f64::from(fr), Some(fq)) {
-            p.at(t + 4.2, c);
-        }
+            let (fb, fr, fq) = laser.bowl_floor;
+            for c in p.disc(bowl_r - 4, by - bowl_d, by - bowl_d + 1, fb, f64::from(fr), Some(fq)) {
+                p.at(t + 4.2, c);
+            }
+        });
         // 4. the shaft: drills on down through the bowl, funnelling in and then running straight to bedrock
-        let steps = ((by - bowl_d - floor_y) / 4 + 1).max(1);
-        for i in 0..steps {
-            let y_hi = by - bowl_d - 4 * i;
-            if y_hi < floor_y {
-                break;
+        p.later(0.25, move |p| {
+            let laser = p.laser;
+            let bowl_d = laser.bowl_d;
+            let steps = ((by - bowl_d - floor_y) / 4 + 1).max(1);
+            for i in 0..steps {
+                let y_hi = by - bowl_d - 4 * i;
+                if y_hi < floor_y {
+                    break;
+                }
+                let r = ((f64::from(r_mouth) - f64::from(i) * f64::from(r_mouth - laser.shaft_min) / 14.0).round() as i32)
+                    .max(laser.shaft_min);
+                let ts = t + 1.2 + i as f32 * (8.2 / steps as f32);
+                p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
+                p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
+                let pitch = p.rng.uniform(0.5, 0.8);
+                p.ground_sound(ts, if y_hi < 0 { "block.deepslate.break" } else { "block.stone.break" }, 8.0, pitch);
+                if i % 2 == 0 {
+                    let pitch = p.rng.uniform(0.6, 0.9);
+                    p.ground_sound(ts + 0.1, "block.gravel.break", 6.0, pitch);
+                }
+                let fmt = |s: &str, y: i32, rr: f64| {
+                    s.replace("{x}", &format!("{}", f64::from(bx) + 0.5))
+                        .replace("{y}", &y.to_string())
+                        .replace("{z}", &format!("{}", f64::from(bz) + 0.5))
+                        .replace("{r}", &format!("{rr:.1}"))
+                };
+                p.at(ts, fmt(laser.particle_a, by + 1, f64::from(r) * 0.6));
+                p.at(ts, fmt(laser.particle_b, y_hi, f64::from(r) * 0.4));
             }
-            let r = ((f64::from(r_mouth) - f64::from(i) * f64::from(r_mouth - laser.shaft_min) / 14.0).round() as i32)
-                .max(laser.shaft_min);
-            let ts = t + 1.2 + i as f32 * (8.2 / steps as f32);
-            p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
-            p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
-            let pitch = p.rng.uniform(0.5, 0.8);
-            p.ground_sound(ts, if y_hi < 0 { "block.deepslate.break" } else { "block.stone.break" }, 8.0, pitch);
-            if i % 2 == 0 {
-                let pitch = p.rng.uniform(0.6, 0.9);
-                p.ground_sound(ts + 0.1, "block.gravel.break", 6.0, pitch);
+            // 5. the bottom of the shaft
+            let tb = t + 9.6;
+            for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
+                for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
+                    p.at(tb + 0.1 * k as f32, c);
+                }
             }
-            let fmt = |s: &str, y: i32, rr: f64| {
-                s.replace("{x}", &format!("{}", f64::from(bx) + 0.5))
-                    .replace("{y}", &y.to_string())
-                    .replace("{z}", &format!("{}", f64::from(bz) + 0.5))
-                    .replace("{r}", &format!("{rr:.1}"))
-            };
-            p.at(ts, fmt(laser.particle_a, by + 1, f64::from(r) * 0.6));
-            p.at(ts, fmt(laser.particle_b, y_hi, f64::from(r) * 0.4));
-        }
-        // 5. the bottom of the shaft
-        let tb = t + 9.6;
-        for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
-            for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
-                p.at(tb + 0.1 * k as f32, c);
+        });
+        p.later(0.3, move |p| {
+            if plasma {
+                plasma_aftermath(p);
             }
-        }
-        if plasma {
-            plasma_aftermath(&mut p);
-        }
-        if godly {
-            godly_aftermath(&mut p);
-        }
-        if blackhole {
-            blackhole_aftermath(&mut p, target.point, shader_seed);
-        }
+            if godly {
+                godly_aftermath(p);
+            }
+            if blackhole {
+                blackhole_aftermath(p, point, shader_seed);
+            }
+        });
     }
     if godly {
         p.at(t + 1.0, format!("execute positioned {tx} {ty} {tz} run effect give @a[distance=..60] minecraft:regeneration 15 1 true"));
@@ -2482,7 +2507,12 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
         p.later(DF_OPEN - 0.3, move |q| df_hole(q, &g, floor_y, 0));
         p.later(DF_OPEN + 0.2, move |q| df_hole(q, &g, floor_y, 1));
         p.later(DF_OPEN + 5.0, move |q| df_hole(q, &g, floor_y, 2));
-        p.later(DF_OPEN + DF_LIFE - 0.3, move |q| df_hole(q, &g, floor_y, 3));
+        p.later(DF_OPEN + 5.05, move |q| df_hole(q, &g, floor_y, 6));
+        p.later(DF_OPEN + 5.1, move |q| df_hole(q, &g, floor_y, 7));
+        p.later(DF_OPEN + 5.15, move |q| df_hole(q, &g, floor_y, 8));
+        for k in 0..3 {
+            p.later(DF_OPEN + DF_LIFE - 0.3 + 0.05 * f32::from(k), move |q| df_hole(q, &g, floor_y, 3 + k));
+        }
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -2935,12 +2965,18 @@ fn df_hole(p: &mut Plan, g: &DfGeo, floor_y: i32, stage: u8) {
     if stage == 2 {
         // once everything it tears up round it has gone: its crater opened out to its full size, swallowing the end of
         // the slot the wreck lay in, then rubble thrown back into it, and the whole site scarred
+        // (each on a stage of its own: thousands of commands)
         df_crater(p, f64::INFINITY, t + 8.3, 2.4);
-        df_rubble(p, g, t + 10.7);
-        df_scar(p, g, t + 10.9);
     }
-    if stage == 3 {
-        df_hole_collapse(p, g, floor_y, DF_CRATER_D);
+    if stage == 6 {
+        df_rubble(p, g, t + 10.7);
+    }
+    if stage == 7 || stage == 8 {
+        df_scar(p, g, t + 10.9, stage - 7);
+    }
+    // (the collapse in three stages, its shaft's top, middle and bottom: thousands of commands)
+    if (3..6).contains(&stage) {
+        df_hole_collapse(p, g, floor_y, DF_CRATER_D, stage - 3);
     }
 }
 /// The black hole's crater: a bowl DF_CRATER_R across and DF_CRATER_D deep at its middle, falling away steeper towards
@@ -3066,6 +3102,7 @@ fn df_rubble(p: &mut Plan, g: &DfGeo, t: f32) {
 }
 /// A smooth noise over the land (0 to 1), `scale` blocks across.
 fn vnoise(x: f64, z: f64, scale: f64, seed: u32) -> f64 {
+    crate::meter::spend(250);
     let (fx, fz) = (x / scale, z / scale);
     let (ix, iz) = (fx.floor(), fz.floor());
     let (tx, tz) = (fx - ix, fz - iz);
@@ -3077,14 +3114,15 @@ fn vnoise(x: f64, z: f64, scale: f64, seed: u32) -> f64 {
 /// The site's ground, scarred: patches over the crater, the slot and the gouge, each a few blocks of scorched stone,
 /// blackstone, basalt, tuff, coarse dirt or gravel, in broad stretches of one or another (a smooth noise picks), glassy
 /// obsidian and the odd seam of magma nearer the hole. Only the top layers of the ground are changed, on the spare budget.
-fn df_scar(p: &mut Plan, g: &DfGeo, t: f32) {
+/// (`side`: the half of it to one side of the slot, 0, or the other, 1: thousands of commands, a stage each)
+fn df_scar(p: &mut Plan, g: &DfGeo, t: f32, side: u8) {
     let seed = g.seed;
     let skid = (g.ps.0 - g.c0.0).hypot(g.ps.1 - g.c0.1);
     let back = ((g.c0.0 - g.ps.0) * g.hf.0 + (g.c0.1 - g.ps.1) * g.hf.1).min(0.0) - 60.0;
     let mut a = (-DF_CRATER_R - 30.0).min(back);
     while a < DF_REAL_A + 10.0 {
-        let mut b = -190.0;
-        while b < 190.0 {
+        let (mut b, b1) = if side == 0 { (-190.0, 0.0) } else { (0.0, 190.0) };
+        while b < b1 {
             let ja = a + p.rng.uniform(-2.5, 2.5);
             let jb = b + p.rng.uniform(-2.5, 2.5);
             let (x, z) = (g.ps.0 + g.hf.0 * ja - g.hf.1 * jb, g.ps.1 + g.hf.1 * ja + g.hf.0 * jb);
@@ -3131,19 +3169,25 @@ fn df_scar(p: &mut Plan, g: &DfGeo, t: f32) {
     }
 }
 /// It collapses: the shaft bored to bedrock, lined, and what it was still holding thrown out over the land.
-fn df_hole_collapse(p: &mut Plan, g: &DfGeo, floor_y: i32, bowl_d: i32) {
+fn df_hole_collapse(p: &mut Plan, g: &DfGeo, floor_y: i32, bowl_d: i32, part: u8) {
     let laser = p.laser;
     let by = p.by;
     let tc = DF_OPEN + DF_LIFE;
     let mut y_hi = by - bowl_d;
     let mut i = 0;
+    let steps = ((y_hi - floor_y) / 4 + 1).max(1);
     while y_hi >= floor_y {
-        let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.2).round() as i32).max(laser.shaft_min);
-        let ts = tc + 0.1 + i as f32 * 0.06;
-        p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
-        p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
+        if i * 3 / steps == i32::from(part) {
+            let r = ((f64::from(laser.shaft_r) - f64::from(i) * 0.2).round() as i32).max(laser.shaft_min);
+            let ts = tc + 0.1 + i as f32 * 0.06;
+            p.dig(r, (y_hi - 3).max(floor_y), y_hi, ts, f64::from(laser.shaft_rough), 1);
+            p.mottle(r, (y_hi - 3).max(floor_y), y_hi, ts, 3);
+        }
         y_hi -= 4;
         i += 1;
+    }
+    if part < 2 {
+        return;
     }
     for (k, &(rad, lo, hi, block)) in laser.bottom.iter().enumerate() {
         for c in p.disc(rad, floor_y + lo, floor_y + hi, block, 0.0, None) {
@@ -3363,7 +3407,7 @@ fn pk_depth(dx: f64, dz: f64, seed: u32, bottom: i32) -> i32 {
         let stepped = (q.floor() + f * f * (3.0 - 2.0 * f) - ph) * PK_TERRACE;
         stepped.max(smooth * 0.35).min(smooth + 4.0) + 3.0 * (vnoise(dx, dz, 7.0, seed ^ 0x18) - 0.5)
     };
-    (d.round() as i32).clamp(0, bottom)
+    (d.round() as i32).clamp(0, bottom.max(0))
 }
 
 /// The planet killer: seven towers grind up out of the land far out round the horizon (each heard from where it stands)
@@ -3696,7 +3740,7 @@ fn pk_shaft_r(ca: f64, sa: f64, depth: f64, seed: u32) -> f64 {
 }
 /// The most the shaft's radius can be.
 /// The rim and the charred land are worked out in this many parts round the crater, a tick each.
-const PK_PARTS: u32 = 24;
+const PK_PARTS: u32 = 48;
 const PK_SHAFT_MAX: f64 = PK_SHAFT * 1.18 + 3.0 + 5.0 + 9.0 + 5.0;
 
 /// Dig the crater under chunk column (x0, z0) at `t` (with the land over it, from PK_ABOVE up, `land`), straight into
@@ -3969,11 +4013,11 @@ fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
     // the rim, the charred land, the rubble
     let t_rim = pk_queue_t(pk_land_t(PK_BLAST) + 0.5);
     for part in 0..PK_PARTS {
-        p.later(t_rim - 0.3 + part as f32 * 0.03, move |p| pk_rim(p, point, seed, part, t_rim + part as f32 * 0.03));
+        p.later(t_rim - 0.3 + part as f32 * 0.015, move |p| pk_rim(p, point, seed, part, t_rim + part as f32 * 0.015));
     }
     let t_char = pk_queue_t(pk_land_t(PK_BLAST) + 1.5);
     for part in 0..PK_PARTS {
-        p.later(t_char - 0.3 + part as f32 * 0.03, move |p| pk_char(p, point, seed, part, t_char + part as f32 * 0.03));
+        p.later(t_char - 0.3 + part as f32 * 0.015, move |p| pk_char(p, point, seed, part, t_char + part as f32 * 0.015));
     }
 }
 
@@ -4926,13 +4970,31 @@ mod tick_budget {
         }
         best
     }
+    /// All of `laser`'s plan worked out at once, every stage with it (the best of three runs, in milliseconds).
+    fn whole_plan(laser: &'static Laser) -> f64 {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        (0..3)
+            .map(|_| {
+                let t0 = std::time::Instant::now();
+                let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
+                while let Some((_, act)) = ev.pop() {
+                    if let Act::Later(job) | Act::Soon(job) = act {
+                        ev.extend(job());
+                    }
+                }
+                t0.elapsed().as_secs_f64() * 1000.0
+            })
+            .fold(f64::MAX, f64::min)
+    }
     #[test]
     fn no_tick_outworks_the_proven_lasers() {
         // a mod's tick has a fuel limit, and a stage that overran it stopped the whole mod. The plasma's, godly's and
         // black hole's firing ticks (each its whole plan at once) have always fitted: no tick of any strike may do much
         // more than the heaviest of them
+        // (their whole plans as they used to be worked out, all in the tick they fired: now their terrain comes on the
+        // ticks after, a part a tick)
         let proven = [&crate::lasers::PLASMA, &crate::lasers::GODLY, &crate::lasers::BLACK_HOLE]
-            .map(heaviest_tick)
+            .map(whole_plan)
             .into_iter()
             .fold(0.0, f64::max);
         if std::env::var("ORBITAL_TICKS").is_ok() {
@@ -5436,6 +5498,7 @@ pub(super) mod sim {
         let mut ticks = 0u32;
         loop {
             ticks += 1;
+            crate::meter::reset();
             let now = ticks as f32 * 0.05;
             let mut worked_out = false;
             let mut run = |job: Stage, due: f32, plan: &mut Vec<(f32, Act)>, next: usize, out: &mut Played| {

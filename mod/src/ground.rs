@@ -5,14 +5,14 @@
 //! A column's ground is the first air over it, solid ground only: the lower of its height without leaves (logs and
 //! water count) and its ocean floor (leaves count, water does not), so a piece comes to rest on the land under a tree's
 //! leaves and on the bed of a lake, not on its water.
-use horizon_mod_sdk::world::{self, Heightmap, SurfaceHeights};
+use crate::sdk::world::{self, Heightmap, SurfaceHeights};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
 
 /// A cheap hash for columns (FxHash's): the standard one costs far more fuel a lookup, and a stage looks up thousands.
 #[derive(Default)]
-struct Fx(u64);
+pub(crate) struct Fx(u64);
 impl Hasher for Fx {
     fn finish(&self) -> u64 {
         self.0
@@ -32,8 +32,8 @@ impl Hasher for Fx {
         self.0 = (self.0.rotate_left(5) ^ v).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
     }
 }
-type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<Fx>>;
-type FxSet<K> = HashSet<K, BuildHasherDefault<Fx>>;
+pub(crate) type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<Fx>>;
+pub(crate) type FxSet<K> = HashSet<K, BuildHasherDefault<Fx>>;
 
 /// How many columns one query asks about at most (the game takes 65,536).
 pub const PER_QUERY: usize = 65_536;
@@ -52,6 +52,8 @@ struct Store {
     done: FxSet<u32>,
     /// Answers come in but not yet taken in (`poll` takes in so many columns a tick).
     inbox: std::collections::VecDeque<SurfaceHeights>,
+    /// How many columns of the first of them are in.
+    taken: usize,
     next: u32,
     /// In the tests: the ground, given at once.
     #[cfg(test)]
@@ -89,48 +91,70 @@ pub fn ask(tag: u32, columns: Vec<(i32, i32)>) {
 
 /// Columns `poll` takes in a tick at most (more wait for the next: answers that come in together, when the world is
 /// slow, would otherwise all be taken in on one tick, beside that tick's stage).
-const POLL_COLUMNS: usize = 12_000;
+const POLL_COLUMNS: usize = 3_000;
 
-/// The world's answers since the last tick, kept (lib.rs, every tick).
+/// The world's answers since the last tick, kept (lib.rs, every tick): as many columns of them a tick as
+/// POLL_COLUMNS and the tick's work (`meter`) allow, a big answer over several ticks.
 pub fn poll() {
     let answers = world::poll_surface_heights();
     STORE.with(|s| {
         let mut s = s.borrow_mut();
+        let s = &mut *s;
         s.inbox.extend(answers);
         let mut budget = POLL_COLUMNS;
-        while budget > 0 {
-            let Some(SurfaceHeights { tag, heights }) = s.inbox.pop_front() else { break };
-            budget = budget.saturating_sub(heights.len());
+        while budget > 0 && !crate::meter::full() {
+            let Some(front) = s.inbox.front() else { break };
+            let (tag, len) = (front.tag, front.heights.len());
             let q = tag / 2;
-            let Some((cols, got)) = s.asked.remove(&q) else {
+            let Some((cols, got)) = s.asked.get(&q) else {
+                // (an answer to a query no longer asked about: an earlier strike's)
+                s.inbox.pop_front();
+                s.taken = 0;
                 continue;
             };
-            let heights = heights.into_iter().chain(std::iter::repeat(None));
+            let got = *got;
+            // (this tick's share of it, from where the last tick left it)
+            let (i0, i1) = (s.taken, (s.taken + budget).min(cols.len()));
+            budget -= i1 - i0;
+            crate::meter::spend(3_600 * (i1 - i0) as u64 + 200);
             let floor = tag % 2 == 1;
-            if got == 0 {
-                // (the first of its two answers: kept until the other comes)
-                for (c, h) in cols.iter().zip(heights) {
-                    s.half.insert(*c, (h, floor));
+            for i in i0..i1 {
+                let c = cols[i];
+                let h = if i < len { s.inbox[0].heights[i] } else { None };
+                if got == 0 {
+                    // (the first of its two answers: kept until the other comes)
+                    s.half.insert(c, (h, floor));
+                    continue;
                 }
-                s.asked.insert(q, (cols, 1));
-                continue;
-            }
-            for (c, h) in cols.iter().zip(heights) {
-                let (other, other_floor) = s.half.remove(c).unwrap_or((None, !floor));
+                let (other, other_floor) = s.half.remove(&c).unwrap_or((None, !floor));
                 let g = match (other, h) {
                     (Some(a), Some(b)) => {
                         // (water: the height without leaves over the ocean floor's)
                         let (top, bed) = if other_floor { (b, a) } else { (a, b) };
                         if top > bed {
-                            s.wet.insert(*c, top - bed);
+                            s.wet.insert(c, top - bed);
                         }
                         Some(a.min(b))
                     }
                     _ => None,
                 };
-                s.ground.insert(*c, g);
+                s.ground.insert(c, g);
             }
-            s.done.insert(q);
+            if i1 < cols.len() {
+                s.taken = i1;
+                continue;
+            }
+            // (all of it in)
+            s.inbox.pop_front();
+            s.taken = 0;
+            if got == 0 {
+                if let Some(e) = s.asked.get_mut(&q) {
+                    e.1 = 1;
+                }
+            } else {
+                s.asked.remove(&q);
+                s.done.insert(q);
+            }
         }
     });
 }

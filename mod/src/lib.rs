@@ -13,16 +13,19 @@
 mod columns;
 mod ground;
 mod lasers;
+mod meter;
 mod pace;
+mod sdk;
 mod strike;
 mod wheel;
 
 use horizon_mod_sdk::{
-    Mod, Registration, game,
+    Mod, Registration,
     hud::{self, Corner, Line},
     input::{self, Event},
-    log, render, storage, ui, world,
+    storage, ui,
 };
+use sdk::{game, log, render, world};
 use lasers::{LASERS, is_ship};
 use strike::{APPROACHES, ARRIVALS, Act, COLOUR_RGB, COLOURS, FIRE, Target};
 
@@ -74,10 +77,49 @@ const BLOCK_BUDGET: u64 = 20_000;
 /// own, and thousands of small ones in one tick (a planet killer's fissures, cut a column at a time, with its crater's
 /// walls) hitch the game as surely as too many blocks. Every other laser stays under it.
 pub(crate) const CARVE_CMDS: usize = 400;
+/// What a world-changing command costs the mod to hand over (`meter`), roughly.
+const CMD_COST: u64 = 3_000;
+/// What a stage of a plan costs at the least (`meter`): what it counts of itself, if more, instead.
+const STAGE_COST: u64 = 2_000_000;
+/// What working out a strike's plan as it fires costs (`meter`), about.
+const FIRE_COST: u64 = 8_000_000;
+/// What an edit costs the mod to hand over (`meter`): its runs copied and written out for the game, roughly.
+fn edit_cost(b: &strike::Blocks) -> u64 {
+    3_000 + 100 * b.runs.len() as u64
+}
+
+/// A part of a strike's plan a stage gave (`Strike::more`): in order of time, then of when it was given.
+struct Given {
+    t: f32,
+    seq: u64,
+    act: Act,
+}
+impl PartialEq for Given {
+    fn eq(&self, o: &Self) -> bool {
+        self.cmp(o) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for Given {}
+impl PartialOrd for Given {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for Given {
+    // (reversed: the heap gives the earliest first)
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        o.t.total_cmp(&self.t).then(o.seq.cmp(&self.seq))
+    }
+}
 
 struct Strike {
+    /// The plan as it fired, in order, and how far through it the strike is.
     plan: Vec<(f32, Act)>,
     next: usize,
+    /// What its stages gave since, earliest first (a heap: a stage's few acts go in without the rest of the plan being
+    /// gone through again, which in a long plan cost more than the stage).
+    more: std::collections::BinaryHeap<Given>,
+    given: u64,
     ticks: u32,
     /// Seconds it runs (the laser's `length`).
     length: f32,
@@ -96,13 +138,42 @@ struct Strike {
     sounds: std::collections::BTreeSet<String>,
 }
 impl Strike {
-    /// Work out a stage of the plan and merge what it gives in after what has run (both are in order, so the sort only
-    /// merges two runs).
+    /// Work out a stage of the plan, what it gives due after what was due before it at the same time.
     fn work_out(&mut self, job: strike::Stage) {
-        let mut rest = self.plan.split_off(self.next);
-        rest.extend(job());
-        rest.sort_by(|a, b| a.0.total_cmp(&b.0));
-        self.plan.extend(rest);
+        let before = meter::spent();
+        let out = job();
+        let depth = u64::from(64 - (self.more.len() as u64 + out.len() as u64).leading_zeros());
+        meter::spend(out.len() as u64 * (100 + 30 * depth));
+        for (t, act) in out {
+            self.given += 1;
+            self.more.push(Given { t, seq: self.given, act });
+        }
+        // (a stage counts as some work however little of it it counts itself: `meter`)
+        let own = meter::spent() - before;
+        meter::spend(STAGE_COST.saturating_sub(own));
+    }
+    /// When what falls due next does: the plan's next act or a stage's.
+    fn next_due(&self) -> Option<f32> {
+        match (self.plan.get(self.next).map(|e| e.0), self.more.peek().map(|g| g.t)) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+    /// What falls due next, taken: the plan's first when the two are due together.
+    fn take_due(&mut self) -> Option<(f32, Act)> {
+        let from_plan = match (self.plan.get(self.next).map(|e| e.0), self.more.peek().map(|g| g.t)) {
+            (Some(a), Some(b)) => a <= b,
+            (Some(_), None) => true,
+            (None, Some(_)) => false,
+            (None, None) => return None,
+        };
+        if from_plan {
+            let e = std::mem::replace(&mut self.plan[self.next], (0.0, Act::Cmd(String::new())));
+            self.next += 1;
+            Some(e)
+        } else {
+            self.more.pop().map(|g| (g.t, g.act))
+        }
     }
 }
 
@@ -187,9 +258,66 @@ struct Orbital {
     since_tick: f32,
     /// The HUD panel last sent.
     panel: Vec<(String, u32)>,
+    /// `/orbital meter N`: each tick whose work (`meter`) comes to N instructions or more is logged.
+    meter_log: Option<u64>,
+    ticks: u64,
+}
+
+thread_local! {
+    /// `/orbital meter trace`: each part of a strike's tick logged with what the meter says by then (`fuel:`, which the
+    /// fork's soak harness tells the fuel used by then of).
+    static TRACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+fn trace(what: &str) {
+    if TRACE.with(std::cell::Cell::get) {
+        log::write(log::Level::Info, &format!("fuel: {what} (meter {:.2}M)", meter::spent() as f64 / 1e6));
+    }
 }
 
 impl Orbital {
+    /// The mod's state with these settings, nothing under way.
+    fn new(settings: Settings) -> Orbital {
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, cloud } = settings;
+        Orbital {
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast, cloud)],
+            compiled: None,
+            // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
+            warm_queue: {
+                let mine = pass_of(LASERS[laser]);
+                (0..7).filter(|&i| i != mine).chain([mine]).collect()
+            },
+            warming: false,
+            carving: std::collections::VecDeque::new(),
+            spare: std::collections::VecDeque::new(),
+            edits: std::collections::VecDeque::new(),
+            edited: false,
+            edit_ticks: 0,
+            edits_late: 0,
+            pace: pace::Pace::default(),
+            laser,
+            terrain,
+            messages,
+            hud,
+            approach,
+            arrival,
+            page,
+            colours,
+            fly,
+            blast_alt,
+            fast,
+            cloud,
+            cloud_due: None,
+            aiming: None,
+            skip: 0.0,
+            shadow_off: false,
+            strike: None,
+            wheel: None,
+            since_tick: 0.0,
+            panel: Vec::new(),
+            meter_log: None,
+            ticks: 0,
+        }
+    }
     fn save(&self) {
         let text = format!(
             "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nquality={}\nnukecloud={}\n",
@@ -217,6 +345,9 @@ impl Orbital {
     }
     fn load() -> Settings {
         let text = storage::get(SETTINGS).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        Self::parse(&text)
+    }
+    fn parse(text: &str) -> Settings {
         let mut laser = 0;
         let mut terrain = true;
         let mut messages = true;
@@ -515,6 +646,7 @@ impl Orbital {
         // (the ship lasers take their approach; the Payload which blast it plays, 1 for the alternative)
         let option = if laser.key == "payload" { usize::from(self.blast_alt) } else { self.approach };
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
+        meter::spend(FIRE_COST);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
         params[4] = hit.block_x as f32 + 0.5;
@@ -560,14 +692,16 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
         // (the world's answers to the ground asked for, before the stages that read them)
         ground::poll();
         columns::poll();
+        trace("polled");
         let carved = self.carve(CARVE_CMDS);
+        trace("carved");
         let Some(s) = &mut self.strike else {
             self.edit();
             return;
@@ -581,17 +715,22 @@ impl Orbital {
         // little before its own events)
         // (the stages that must not wait, `Act::Soon`, go before the rest: a landed piece's blocks must be in on the tick
         // it lands however much else waits)
+        // (and none once the tick's work is over the meter's mark: `meter`; the stages and edits it leaves wait)
         let mut worked_out = false;
-        if let Some(job) = s.urgent.pop_front().or_else(|| s.waiting.pop_front()) {
+        if !meter::full()
+            && let Some(job) = s.urgent.pop_front().or_else(|| s.waiting.pop_front())
+        {
             s.work_out(job);
             worked_out = true;
+            trace("stage");
         }
-        while let Some((t, _)) = s.plan.get(s.next) {
-            if *t > now {
+        while let Some(t) = s.next_due() {
+            // (what is due waits a tick once the tick has done all it should: `meter`)
+            if t > now || meter::over() {
                 break;
             }
-            let (t, act) = std::mem::replace(&mut s.plan[s.next], (0.0, Act::Cmd(String::new())));
-            s.next += 1;
+            meter::spend(300);
+            let Some((t, act)) = s.take_due() else { break };
             if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Spare(_) | Act::Blocks(_) | Act::Read { .. }) {
                 continue;
             }
@@ -610,13 +749,17 @@ impl Orbital {
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
                 // (a landed piece's blocks in on the tick it lands, whatever waits: the pass may then let it go)
                 Act::Blocks(b) if b.landing.is_some() => {
+                    meter::spend(edit_cost(&b));
                     world::edit_blocks(&b.edit());
                     if let Some(t) = b.landing {
                         s.params[14] = s.params[14].max(t);
                     }
                 }
                 // the rest in order, as many a tick as the frame time allows (`edit`)
-                Act::Blocks(b) => self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b)),
+                Act::Blocks(b) => {
+                    meter::spend(60 * b.runs.len() as u64);
+                    self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b))
+                }
                 Act::Survey { tag, columns } => ground::ask(tag, columns),
                 Act::Read { tag, columns, below, above } => columns::ask(tag, columns, below, above),
                 Act::Words { index, words } => {
@@ -642,17 +785,20 @@ impl Orbital {
                     s.data[i] = value.to_bits();
                     s.data_sent = false;
                 }
-                Act::Soon(job) if worked_out => s.urgent.push_back(job),
-                Act::Later(job) if worked_out => s.waiting.push_back(job),
+                Act::Soon(job) if worked_out || meter::full() => s.urgent.push_back(job),
+                Act::Later(job) if worked_out || meter::full() => s.waiting.push_back(job),
                 Act::Later(job) | Act::Soon(job) => {
                     // more of the plan, worked out now it is due
                     s.work_out(job);
                     worked_out = true;
+                    trace("due stage");
                 }
             }
         }
+        trace("due");
         // (the edits due go in before the tick's commands, as they always have)
         self.edit();
+        trace("edits");
         let Some(s) = &mut self.strike else {
             return;
         };
@@ -673,6 +819,7 @@ impl Orbital {
             self.end_strike();
         }
         self.carve(CARVE_CMDS.saturating_sub(carved));
+        trace("end");
     }
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
@@ -690,12 +837,14 @@ impl Orbital {
     fn stop_strike(&mut self) {
         let Some(s) = &mut self.strike else { return };
         let mut cmds: Vec<String> = s.sounds.iter().map(|e| format!("stopsound @s * {e}")).collect();
-        let rest = s.plan.drain(s.next..).filter_map(|(_, a)| match a {
+        let more = std::mem::take(&mut s.more).into_vec().into_iter().map(|g| (g.t, g.act));
+        let rest = s.plan.drain(s.next..).chain(more).filter_map(|(_, a)| match a {
             Act::Cmd(c) | Act::Spare(c) => Some(c),
             _ => None,
         });
         self.edits.clear();
         self.edits_late = 0;
+        self.edited = false;
         let queued = self.carving.drain(..).chain(self.spare.drain(..)).map(|(_, c)| c);
         cmds.extend(rest.chain(queued).filter(|c| c.starts_with("forceload remove")));
         world::run_commands(&cmds);
@@ -708,11 +857,21 @@ impl Orbital {
     fn edit(&mut self) {
         let budget = self.pace.tick(self.edited || !self.edits.is_empty());
         let n = pace::Pace::release(budget, self.edits.iter().map(|e| e.0)).min(self.edits.len());
-        self.edited = n > 0;
-        for (_, due, b) in self.edits.drain(..n) {
+        // (and no more than the tick's work allows, `meter`: however long the queue, a tick hands the game only so
+        // many runs; the first goes in unless the tick has already done all it should)
+        let mut m = 0;
+        while m < n {
+            if meter::over() || (m > 0 && meter::spent() >= meter::EDITS) {
+                break;
+            }
+            let (_, due, b) = &self.edits[m];
             self.edits_late = self.edits_late.max(self.edit_ticks - due);
+            meter::spend(edit_cost(b));
             world::edit_blocks(&b.edit());
+            m += 1;
         }
+        self.edits.drain(..m);
+        self.edited = m > 0;
         self.edit_ticks += 1;
         if self.edits.is_empty() && self.edits_late > 0 {
             log::write(log::Level::Info, &format!("block edits paced: the last went in {:.2} s late", self.edits_late as f32 * 0.05));
@@ -728,9 +887,13 @@ impl Orbital {
         let mut spent = 0;
         let mut cmds = Vec::new();
         while let Some((cost, _)) = self.carving.front() {
-            if !cmds.is_empty() && (spent + cost > BLOCK_BUDGET || cmds.len() >= room) {
+            if !cmds.is_empty() && (spent + cost > BLOCK_BUDGET || cmds.len() >= room || meter::full()) {
                 break;
             }
+            if meter::over() {
+                break;
+            }
+            meter::spend(CMD_COST);
             spent += cost;
             if let Some((_, c)) = self.carving.pop_front() {
                 cmds.push(c);
@@ -741,9 +904,13 @@ impl Orbital {
             && self.edits.is_empty()
             && let Some((cost, _)) = self.spare.front()
         {
-            if (spent + cost > BLOCK_BUDGET || cmds.len() >= room) && (spent > 0 || !cmds.is_empty()) {
+            if (spent + cost > BLOCK_BUDGET || cmds.len() >= room || meter::full()) && (spent > 0 || !cmds.is_empty()) {
                 break;
             }
+            if meter::over() {
+                break;
+            }
+            meter::spend(CMD_COST);
             spent += cost;
             if let Some((_, c)) = self.spare.pop_front() {
                 cmds.push(c);
@@ -805,50 +972,15 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, cloud } = Orbital::load();
-        let state = Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast, cloud)],
-            compiled: None,
-            // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
-            warm_queue: {
-                let mine = pass_of(LASERS[laser]);
-                (0..7).filter(|&i| i != mine).chain([mine]).collect()
-            },
-            warming: false,
-            carving: std::collections::VecDeque::new(),
-            spare: std::collections::VecDeque::new(),
-            edits: std::collections::VecDeque::new(),
-            edited: false,
-            edit_ticks: 0,
-            edits_late: 0,
-            pace: pace::Pace::default(),
-            laser,
-            terrain,
-            messages,
-            hud,
-            approach,
-            arrival,
-            page,
-            colours,
-            fly,
-            blast_alt,
-            fast,
-            cloud,
-            cloud_due: None,
-            aiming: None,
-            skip: 0.0,
-            shadow_off: false,
-            strike: None,
-            wheel: None,
-            since_tick: 0.0,
-            panel: Vec::new(),
-        };
+        let state = Orbital::new(Orbital::load());
         // the game keeps the flying speed from here on, in every world
         state.apply_fly();
         Ok((state, Registration::new().command("orbital").on_tick().on_frame()))
     }
 
     fn tick(&mut self, _tick: u64) {
+        meter::reset();
+        self.ticks += 1;
         self.since_tick = 0.0;
         for event in input::poll() {
             match event {
@@ -891,9 +1023,18 @@ impl Mod for Orbital {
         }
         self.tick_strike();
         self.update_panel();
+        meter::end(self.ticks);
+        if let Some(n) = self.meter_log
+            && meter::spent() >= n
+        {
+            let (q, c) = (self.edits.len(), self.carving.len() + self.spare.len());
+            let w = self.strike.as_ref().map_or(0, |s| s.waiting.len() + s.urgent.len());
+            log::write(log::Level::Info, &format!("meter: tick {} spent {:.2}M ({q} edits, {c} commands, {w} stages waiting)", self.ticks, meter::spent() as f64 / 1e6));
+        }
     }
 
     fn frame(&mut self, seconds: f32) {
+        meter::reset();
         self.since_tick += seconds;
         self.pace.frame(seconds);
         if let Some(t) = &mut self.cloud_due {
@@ -937,6 +1078,7 @@ impl Mod for Orbital {
     }
 
     fn command(&mut self, _name: &str, args: &str) -> Result<Option<String>, String> {
+        meter::reset();
         let mut words = args.split_whitespace();
         match (words.next(), words.next()) {
             (Some("give"), _) => {
@@ -970,6 +1112,15 @@ impl Mod for Orbital {
                 self.colours[self.laser] = COLOURS.iter().position(|c| c.key == k).unwrap_or(0);
                 self.save();
                 Ok(Some(format!("The {} is lit {k}", l.title)))
+            }
+            (Some("meter"), Some("trace")) => {
+                TRACE.with(|t| t.set(!t.get()));
+                Ok(Some(format!("Tracing the strike's ticks: {}", TRACE.with(std::cell::Cell::get))))
+            }
+            (Some("meter"), v) => {
+                self.meter_log = v.and_then(|v| v.parse::<f64>().ok()).map(|m| (m * 1e6) as u64);
+                let (peak, tick) = meter::take_peak();
+                Ok(Some(format!("Busiest tick since the last look: {:.2}M (tick {tick}); logging ticks over {}", peak as f64 / 1e6, self.meter_log.map_or("none".into(), |m| format!("{:.2}M", m as f64 / 1e6)))))
             }
             (Some("stop"), _) => {
                 if self.strike.is_none() {
@@ -1141,5 +1292,286 @@ mod tests {
         let each = t0.elapsed().as_secs_f64() * 1.0e6 / (100.0 * 2.0 * super::wheel::CLOUDS.len() as f64);
         println!("a switch: {each:.3} us ({n})");
         assert!(each < 5.0, "{each} us");
+    }
+}
+
+/// Strikes played through the mod's own playback (`tick_strike`, `edit`, `carve`, `stop_strike`, `fire`) against the
+/// stand-in world of sdk.rs: fired again and again at one spot, stopped part way and fired again at once, the world's
+/// answers to the reads coming at once, late, all together or never, the frames now quick and now slow (the edits
+/// paced down and piling up). No tick may do more work (`meter`, which the fork's fuel harness ties to the game's
+/// fuel) than a fair share of a tick's fuel, and a stop leaves nothing queued for the next strike to start on.
+#[cfg(test)]
+mod stress {
+    use super::*;
+    use horizon_mod_sdk::{
+        game::Player,
+        world::{ColumnBlocks, Hit, SurfaceHeights},
+    };
+    use sdk::fake;
+
+    /// The most work a tick may do: well under the 50 million instructions of a tick's fuel.
+    const CAP: u64 = 32_000_000;
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n.max(1)
+        }
+    }
+
+    /// The land round the target: hills, now and then deep craters of earlier strikes with water in their floor and
+    /// lava under it, and trees.
+    fn ground(x: i32, z: i32, cratered: bool) -> i32 {
+        let (fx, fz) = (f64::from(x), f64::from(z));
+        let mut h = 66.0 + 8.0 * (fx / 37.0).sin() * (fz / 53.0).cos();
+        if cratered {
+            let r = (fx - 1000.0).hypot(fz + 2000.0);
+            if r < 110.0 {
+                h -= 45.0 * (1.0 - (r / 110.0).powi(2));
+            }
+        }
+        h as i32
+    }
+    fn column(x: i32, z: i32, below: u32, above: u32, cratered: bool) -> (i32, Vec<&'static str>) {
+        let g = ground(x, z, cratered);
+        let tree = (x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) % 40 == 0;
+        let wet = cratered && g < 40;
+        let top = if tree { g + 7 } else if wet { 41 } else { g + 1 };
+        let blocks = (top - below as i32..top + above as i32)
+            .map(|y| match y {
+                _ if y < g - 30 && cratered && (x + z) % 5 == 0 => "minecraft:lava",
+                _ if y < g - 3 => "minecraft:stone",
+                _ if y < g => "minecraft:dirt",
+                _ if y == g => "minecraft:grass_block",
+                _ if wet && y <= 40 => "minecraft:water",
+                _ if tree && y <= g + 5 => "minecraft:oak_log",
+                _ if tree && y <= g + 7 => "minecraft:oak_leaves",
+                _ => "minecraft:air",
+            })
+            .collect();
+        (top, blocks)
+    }
+    fn answer(tag: u32, cols: &[(i32, i32)], below: u32, above: u32, cratered: bool) -> ColumnBlocks {
+        let mut palette: Vec<String> = Vec::new();
+        let (mut bases, mut blocks) = (Vec::new(), Vec::new());
+        for &(x, z) in cols {
+            let (top, names) = column(x, z, below, above, cratered);
+            bases.push(Some(top));
+            for n in names {
+                let i = palette.iter().position(|p| p == n).unwrap_or_else(|| {
+                    palette.push(n.to_string());
+                    palette.len() - 1
+                });
+                blocks.push(i as u16);
+            }
+        }
+        let tints = cols.iter().flat_map(|_| [0x91BD59, 0x77AB2F, 0x3F76E4]).collect();
+        ColumnBlocks { tag, palette, bases, blocks, tints }
+    }
+
+    /// How the world answers a sequence's reads.
+    #[derive(Clone, Copy, Debug)]
+    enum Answers {
+        Next,
+        Late(u64),
+        /// Held, then all at once every so many ticks.
+        Bunched(u64),
+        /// Not at all (the land not loaded, the reads lost).
+        Never,
+    }
+
+    struct Soak {
+        o: Orbital,
+        rng: Rng,
+        tick: u64,
+        answers: Answers,
+        cratered: bool,
+        reads: Vec<(u64, u32, Vec<(i32, i32)>, u32, u32)>,
+        surveys: Vec<(u64, u32, Vec<(i32, i32)>)>,
+        frame: f32,
+        worst: (u64, String),
+    }
+    impl Soak {
+        fn new(seed: u64) -> Self {
+            fake::with(|w| *w = fake::Fake::default());
+            let mut o = Orbital::new(Orbital::parse(""));
+            o.terrain = true;
+            Soak { o, rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1), tick: 0, answers: Answers::Next, cratered: false, reads: Vec::new(), surveys: Vec::new(), frame: 0.016, worst: (0, String::new()) }
+        }
+        fn due(&mut self) -> u64 {
+            match self.answers {
+                Answers::Next => self.tick + 1,
+                Answers::Late(n) => self.tick + 1 + self.rng.below(n),
+                Answers::Bunched(n) => (self.tick / n + 1) * n,
+                Answers::Never => u64::MAX,
+            }
+        }
+        /// One tick: the world's answers due handed over, the frames drawn, the strike's tick played.
+        fn step(&mut self, what: &str) {
+            self.tick += 1;
+            let (reads, surveys) = fake::with(|w| (std::mem::take(&mut w.reads), std::mem::take(&mut w.surveys)));
+            for (tag, cols, below, above) in reads {
+                let due = self.due();
+                self.reads.push((due, tag, cols, below, above));
+            }
+            for (tag, cols) in surveys {
+                let due = self.due();
+                self.surveys.push((due, tag, cols));
+            }
+            let now = self.tick;
+            let cratered = self.cratered;
+            let (ready, wait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.reads).into_iter().partition(|r| r.0 <= now);
+            self.reads = wait;
+            let (sready, swait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.surveys).into_iter().partition(|r| r.0 <= now);
+            self.surveys = swait;
+            fake::with(|w| {
+                for (_, tag, cols, below, above) in ready {
+                    w.columns.push(answer(tag, &cols, below, above, cratered));
+                }
+                // (the game keeps 16 answers for a mod between its polls, the latest)
+                let n = w.columns.len();
+                w.columns.drain(..n.saturating_sub(16));
+                for (_, tag, cols) in sready {
+                    let heights = cols.iter().map(|&(x, z)| Some(ground(x, z, cratered) + 1)).collect();
+                    w.heights.push(SurfaceHeights { tag, heights });
+                }
+            });
+            // (the frames: quick, or slow for a while)
+            if self.rng.below(60) == 0 {
+                self.frame = [0.007, 0.016, 0.016, 0.045, 0.09, 0.2][self.rng.below(6) as usize];
+            }
+            for _ in 0..3 {
+                self.o.pace.frame(self.frame);
+            }
+            meter::reset();
+            self.o.tick_strike();
+            let spent = meter::spent();
+            if spent > self.worst.0 {
+                let t = self.o.strike.as_ref().map_or(-1.0, |s| s.ticks as f32 * 0.05);
+                self.worst = (spent, format!("{what} at {t:.2} s ({} edits, {} commands waiting)", self.o.edits.len(), self.o.carving.len() + self.o.spare.len()));
+            }
+        }
+        fn fire(&mut self, laser: usize, at: (i32, i32)) {
+            let g = ground(at.0, at.1, self.cratered);
+            fake::with(|w| {
+                w.hit = Some(Hit { block_x: at.0, block_y: g, block_z: at.1, x: f64::from(at.0) + 0.5, y: f64::from(g + 1), z: f64::from(at.1) + 0.5, block: "minecraft:grass_block".into() });
+                w.player = Some(Player { x: f64::from(at.0) + 0.5, y: f64::from(g) + 40.0, z: f64::from(at.1) + 150.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() });
+                w.clock = 1000 + self.tick;
+            });
+            self.o.laser = laser;
+            // (as the mod's tick fires it: in the tick, before the strike's playback)
+            self.tick += 1;
+            meter::reset();
+            self.o.fire();
+            self.o.tick_strike();
+            let spent = meter::spent();
+            if spent > self.worst.0 {
+                self.worst = (spent, format!("{} firing", LASERS[laser].key));
+            }
+        }
+        fn stop(&mut self) {
+            meter::reset();
+            self.o.stop_strike();
+            // nothing left for the next strike to start on
+            assert!(self.o.strike.is_none() && self.o.edits.is_empty() && self.o.carving.is_empty() && self.o.spare.is_empty());
+            assert!(!self.o.edited);
+        }
+    }
+
+    fn soak(sequences: u64, seed: u64) -> (u64, String) {
+        let mut s = Soak::new(seed);
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "nuke", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole"]
+            .iter()
+            .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
+            .collect();
+        for n in 0..sequences {
+            let laser = lasers[s.rng.below(lasers.len() as u64) as usize];
+            s.cratered = s.rng.below(2) == 0;
+            s.answers = match s.rng.below(5) {
+                0 => Answers::Next,
+                1 => Answers::Late(10),
+                2 => Answers::Late(60),
+                3 => Answers::Bunched(10 + s.rng.below(60)),
+                _ => Answers::Never,
+            };
+            let off = if s.rng.below(4) == 0 { 120 } else { 16 };
+            let at = (1000 + s.rng.below(2 * off + 1) as i32 - off as i32, -2000 + s.rng.below(2 * off + 1) as i32 - off as i32);
+            s.fire(laser, at);
+            // stopped at once, soon, late or never; fired again at once or a little later
+            let ticks = match s.rng.below(6) {
+                0 => 1 + s.rng.below(5),
+                1 => 5 + s.rng.below(60),
+                2 => 60 + s.rng.below(300),
+                3 => 300 + s.rng.below(500),
+                _ => (LASERS[laser].length * 20.0) as u64 + 40,
+            };
+            let what = format!("#{n} {} {:?}", LASERS[laser].key, s.answers);
+            for _ in 0..ticks {
+                s.step(&what);
+                if s.o.strike.is_none() {
+                    break;
+                }
+            }
+            if s.o.strike.is_some() {
+                s.stop();
+            }
+            for _ in 0..[0, 0, 1, 3, 20][s.rng.below(5) as usize] {
+                s.step(&what);
+            }
+        }
+        s.worst
+    }
+
+    #[test]
+    fn no_tick_overworks_through_fire_stop_and_refire() {
+        let (worst, at) = soak(40, 1);
+        eprintln!("worst tick: {:.2}M ({at})", worst as f64 / 1e6);
+        assert!(worst <= CAP, "a tick of {:.2}M: {at}", worst as f64 / 1e6);
+    }
+
+    /// `ORBITAL_SOAK=N cargo test --release thousands_of_strikes -- --ignored --nocapture`: N sequences (default 2000).
+    #[test]
+    #[ignore]
+    fn thousands_of_strikes() {
+        let n = std::env::var("ORBITAL_SOAK").ok().and_then(|v| v.parse().ok()).unwrap_or(2000);
+        let (worst, at) = soak(n, 7);
+        eprintln!("{n} sequences, worst tick: {:.2}M ({at})", worst as f64 / 1e6);
+        assert!(worst <= CAP, "a tick of {:.2}M: {at}", worst as f64 / 1e6);
+    }
+
+    #[test]
+    fn an_artificially_heavy_stage_slows_the_strike_and_never_overworks_a_tick() {
+        // a plan of stages each far more work than a tick should do (counted as such), with edits due beside them:
+        // the stages wait a tick each, the edits and commands wait while the tick is full, and all of it goes in
+        fake::with(|w| *w = fake::Fake::default());
+        let mut o = Orbital::new(Orbital::parse(""));
+        let heavy = |k: u32| -> strike::Stage {
+            Box::new(move || {
+                meter::spend(meter::SOFT - 1);
+                (0..400).map(|i| (0.05 * f32::from(k as u16), Act::Cmd(format!("setblock {i} {k} 0 minecraft:stone")))).collect()
+            })
+        };
+        let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
+        plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default() });
+        let mut worst = 0;
+        let mut ticks = 0;
+        while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {
+            meter::reset();
+            o.tick_strike();
+            worst = worst.max(meter::spent());
+            ticks += 1;
+            assert!(ticks < 2000, "it never finished");
+        }
+        let ran = fake::with(|w| w.commands);
+        assert_eq!(ran, 60 * 400 + 3000, "every command ran");
+        assert!(ticks > 60, "a stage a tick at most: {ticks}");
+        assert!(worst <= meter::HARD + 2 * meter::SOFT, "a tick of {:.2}M", worst as f64 / 1e6);
     }
 }

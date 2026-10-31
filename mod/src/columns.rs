@@ -4,7 +4,7 @@
 //!
 //! The columns are read from their world-surface height (one above the highest block that is not air: the top of a tree,
 //! the snow on a peak, the water of a lake), `below` under it and `above` from it up.
-use horizon_mod_sdk::world::{self, ColumnBlocks, Heightmap};
+use crate::sdk::world::{self, ColumnBlocks, Heightmap};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -78,6 +78,8 @@ pub fn poll() {
     STORE.with(|s| {
         let mut s = s.borrow_mut();
         for ColumnBlocks { tag, palette, bases, blocks, tints } in answers {
+            // (each column's answer handed over and lifted out of it: `meter`)
+            crate::meter::spend(60 * bases.len() as u64 + blocks.len() as u64 / 4 + 2_000);
             let Some((columns, below, above)) = s.asked.remove(&tag) else { continue };
             let per = (below + above) as usize;
             s.got.insert(tag, Rc::new(Answer { columns, palette, bases, blocks, tints, per, below: below as i32 }));

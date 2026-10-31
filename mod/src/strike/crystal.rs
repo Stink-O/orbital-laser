@@ -609,7 +609,7 @@ pub(super) fn cb_depth(dx: f64, dz: f64, seed: u32, bottom: i32) -> i32 {
     }
     let u = r / edge;
     let d = CB_BOWL_D * (1.0 - u * u).powf(0.75) + 2.5 * (vnoise(dx, dz, 14.0, seed ^ 0x503) - 0.5);
-    (d.round() as i32).clamp(0, bottom)
+    (d.round() as i32).clamp(0, bottom.max(0))
 }
 fn cb_well_r(ca: f64, sa: f64, seed: u32) -> f64 {
     CB_WELL * (1.0 + 0.2 * (vnoise(ca * 60.0 + 1000.0, sa * 60.0 + 1000.0, 9.0, seed ^ 0x504) * 2.0 - 1.0))

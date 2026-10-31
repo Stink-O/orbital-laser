@@ -72,7 +72,7 @@ const NK_READ: i32 = 300;
 const NK_GW: i32 = 2 * NK_READ + 1;
 const NK_BELOW: u32 = 36;
 const NK_ABOVE: u32 = 1;
-const NK_PARTS: i32 = 32;
+const NK_PARTS: i32 = 64;
 /// Mobs and dropped items within NK_KILL killed as it bursts.
 const NK_KILL: i32 = 300;
 /// Real blocks thrown out of the crater as it bursts (nk_thrown).
@@ -393,6 +393,7 @@ fn nk_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, 
         }
         return;
     }
+    crate::meter::spend(600 * columns.len() as u64);
     let heights: Vec<Option<f64>> = columns
         .iter()
         .map(|&(x, z)| crate::ground::at(x, z).map(|g| f64::from(g + crate::ground::water(x, z).unwrap_or(0) - gy)))
@@ -405,6 +406,7 @@ fn nk_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, 
         let t = at_t + 0.05 * (j + 1) as f32;
         q.later(t, move |q| {
             let (k0, k1) = (j * NK_HN / parts, (j + 1) * NK_HN / parts);
+            crate::meter::spend(9_000_000);
             shelter.borrow_mut().extend(nk_hf_shelter(&h, reach, k0, k1));
             if j + 1 == parts {
                 q.ev.push((t, Act::Words { index: NK_HF as u32, words: nk_hf_pack(&h, &shelter.borrow(), reach) }));
@@ -540,6 +542,7 @@ struct Land {
 }
 
 fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
+    crate::meter::spend(30);
     let (i, k) = (x - bx + NK_READ, z - bz + NK_READ);
     if i < 0 || k < 0 || i >= NK_GW || k >= NK_GW {
         return None;
@@ -576,6 +579,7 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
             }
         }
     }
+    crate::meter::spend(60 * out.len() as u64);
     out
 }
 
@@ -589,6 +593,7 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
             continue;
         };
         let base = surface - a.below;
+        crate::meter::spend(600 + 50 * blocks.len() as u64);
         let mut c = Column { known: true, leaves: 255, ..Default::default() };
         let mut top = None;
         let mut g = None;
@@ -664,6 +669,7 @@ impl Shape {
     /// What the blast makes of column (x, z): how far its ground goes down (or up, its rim's heap), whether it is
     /// flattened, and how far out it is (in the crater's radii).
     fn at(&self, x: i32, z: i32) -> (f64, f64, f64) {
+        crate::meter::spend(500);
         let (dx, dz) = (f64::from(x) + 0.5 - self.cx, f64::from(z) + 0.5 - self.cz);
         let r = dx.hypot(dz);
         let a = dz.atan2(dx);
@@ -805,10 +811,10 @@ fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
 const NK_RATE: f64 = 350_000.0;
 /// The rings (NK_RING wide) are worked out in parts of about NK_ITEM columns, split by angle, never by rows.
 const NK_RING: f64 = 4.0;
-const NK_ITEM: f64 = 450.0;
+const NK_ITEM: f64 = 250.0;
 /// The flash's rings: wider, in bigger parts (most of its columns change nothing).
 const NK_FL_RING: f64 = 8.0;
-const NK_FL_ITEM: f64 = 6000.0;
+const NK_FL_ITEM: f64 = 3000.0;
 /// What a column at radius r is expected to change (blocks), for the wave's pace.
 fn nk_cost(r: f64) -> f64 {
     let u = r / NK_CRATER_R;
@@ -897,6 +903,7 @@ impl Sector {
         }
         let (x0, z0, x1, z1) = ((x0 - 1.0).floor() as i32, (z0 - 1.0).floor() as i32, (x1 + 1.0).ceil() as i32, (z1 + 1.0).ceil() as i32);
         let mut out = Vec::new();
+        crate::meter::spend(200 * ((x1 - x0 + 1) as u64) * ((z1 - z0 + 1) as u64));
         let (q0, q1) = (self.r0 * self.r0, self.r1 * self.r1);
         for z in z0..=z1 {
             let dz = f64::from(z) + 0.5 - cz;
@@ -952,6 +959,7 @@ fn seal_lo(land: &Land, bx: i32, bz: i32, x: i32, z: i32, top: i32, r: f64, ang:
 /// The blast's edits to column (x, z): the crater dug, its rim heaped, the land flattened
 /// and charred, the crowns stripped.
 fn nk_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z: i32, cleared: Option<&mut bool>) {
+    crate::meter::spend(400);
     let Some(c) = at(land, bx, bz, x, z) else { return };
     let (r, ang, u) = s.at(x, z);
     if r > f64::from(NK_READ) || c.lava {
@@ -1044,7 +1052,7 @@ impl Due {
 /// One part of a ring of the blast: its edits as the wave reaches it, what they leave hanging tidied the tick after,
 /// and the trees standing in it felled (lying out over the land past it, once the wave has swept that too).
 /// How much more than its estimate it cost (1 for land of the usual height: tall forest is dearer).
-fn nk_blast_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut std::collections::HashSet<(i32, i32)>, cache: &mut [u8], wave: &Wave, sec: &Sector) -> f64 {
+fn nk_blast_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cache: &mut [u8], wave: &Wave, sec: &Sector) -> f64 {
     let (bx, bz) = (q.bx, q.bz);
     let (cells, [x0, z0, x1, z1]) = sec.cells(s.cx, s.cz);
     let t = sec.when(wave);
@@ -1132,7 +1140,8 @@ fn nk_blast_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut std::collectio
 
 /// The trees standing on `cells` felled, lying on the land pointing away from the blast (their leaves crushed round
 /// their crowns, stripped off near it), each put in once the wave has swept the land it lies on.
-type Used = std::collections::HashSet<(i32, i32)>;
+// (a cheap hash: the standard one costs far more fuel a lookup)
+type Used = crate::ground::FxSet<(i32, i32)>;
 fn nk_fell(due: &mut Due, land: &Land, s: &Shape, used: &mut Used, wave: &Wave, bx: i32, bz: i32, cells: &[(i32, i32)]) {
     // (a column a log may lie on: flattened, not the crater or its rim, dry, its ground near the last one's)
     let lie = |x: i32, z: i32, gy: i32| -> Option<i32> {
@@ -1148,6 +1157,7 @@ fn nk_fell(due: &mut Due, land: &Land, s: &Shape, used: &mut Used, wave: &Wave, 
         Some(c.g)
     };
     for &(x, z) in cells {
+        crate::meter::spend(40);
         let Some(c) = at(land, bx, bz, x, z) else { continue };
         if c.trunk < 3 || c.fluid {
             continue;
@@ -1218,6 +1228,7 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, wave: &Wave)
         "minecraft:andesite",
         "minecraft:mossy_cobblestone",
     ];
+    crate::meter::spend(2_400 * 600);
     for _ in 0..1200 {
         let r = NK_CRATER_R * 1.05 + (NK_RUBBLE - NK_CRATER_R * 1.05) * rng.next().powf(1.7);
         let a = rng.uniform(0.0, TAU);
@@ -1285,6 +1296,7 @@ fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, wave: &Wave, part: u64) {
     let woods = land.woods;
     let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
     let mut n = 0;
+    crate::meter::spend(NK_THROWN as u64 * 3 / 2 * 3_000);
     for _ in 0..NK_THROWN * 3 / 2 {
         if n >= NK_THROWN / 2 {
             break;
@@ -1332,7 +1344,7 @@ fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, wave: &Wave, part: u64) {
 /// and put in as the wave reaches them, last of all.
 const NK_FLASH: i32 = 480;
 const NK_FL_W: i32 = 2 * NK_FLASH + 1;
-const NK_FL_PARTS: i32 = 32;
+const NK_FL_PARTS: i32 = 96;
 const NK_FL_BELOW: u32 = 30;
 /// The line of sight worked out along NK_FL_RAYS rays out from the fireball, in NK_FL_SWEEPS parts; then the edits in
 /// parts of its ring.
@@ -1407,6 +1419,7 @@ fn fl_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
         if k as i32 == part || (part == NK_FL_PARTS - 1 && k as i32 > part) {
             let (wo, wi) = (half(NK_FLASH, dz), half(NK_READ, dz));
             out.extend((-wo..=wo).filter(|&dx| dx.abs() > wi).map(|dx| (bx + dx, bz + dz)));
+            crate::meter::spend(60 * (2 * wo + 1) as u64);
         }
     }
     out
@@ -1417,6 +1430,7 @@ fn fl_take_in(fl: &mut Flash, a: &crate::columns::Answer, bx: i32, bz: i32) {
     for (i, &(x, z)) in a.columns.iter().enumerate() {
         let Some((surface, blocks)) = a.column(i) else { continue };
         let Some(ix) = fl_idx(bx, bz, x, z) else { continue };
+        crate::meter::spend(600 + 50 * blocks.len() as u64);
         let base = surface - a.below;
         let mut top = None;
         let mut m = 0u32;
@@ -1457,6 +1471,7 @@ fn nk_flash_sweep(fl: &mut Flash, land: &Land, s: &Shape, bx: i32, bz: i32, gy: 
         let mut m = f64::NEG_INFINITY;
         let mut last = (i32::MIN, i32::MIN);
         let mut d = 2.0;
+        crate::meter::spend(140 * u64::from(NK_FLASH as u32));
         while d <= f64::from(NK_FLASH) {
             let (x, z) = ((s.cx + ux * d).floor() as i32, (s.cz + uz * d).floor() as i32);
             if (x, z) != last {
@@ -1493,6 +1508,7 @@ fn nk_flash_part(q: &mut Plan, fl: &Flash, s: &Shape, wave: &Wave, sec: &Sector)
     let (cells, _) = sec.cells(s.cx, s.cz);
     {
         for &(x, z) in &cells {
+            crate::meter::spend(120);
             let Some(ix) = fl_idx(bx, bz, x, z) else { continue };
             let m = fl.mats[ix];
             if m == 0 || fl.top[ix] == i16::MIN || fl.seen[ix] == i16::MAX {
@@ -1558,6 +1574,8 @@ fn nk_flash_part(q: &mut Plan, fl: &Flash, s: &Shape, wave: &Wave, sec: &Sector)
 /// the blast's parts ring by ring from the middle out, the flash's line of sight and its parts.
 /// Each stage does about NK_BUDGET columns' worth (well under a tick's fuel).
 const NK_BUDGET: f64 = 1200.0;
+/// About what a unit of that work costs in instructions (the game's count of the stages' fuel over their estimates).
+const NK_UNIT: f64 = 15_000.0;
 enum Job {
     Thrown(u64),
     Rubble,
@@ -1682,19 +1700,27 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
         let mut spent = 0.0;
         // the reads: the land's rings one a stage from the middle out, then the flash's ring two at a time
         if wk.asked < wk.tags.len() {
-            let part = wk.asked;
-            q.ev.push((now, Act::Read { tag: wk.tags[part], columns: read_columns(bx, bz, part as i32), below: NK_BELOW, above: NK_ABOVE }));
-            wk.asked += 1;
-            spent += 150.0;
-        } else if wk.fasked < wk.ftags.len() && wk.fasked < wk.ftaken + 2 {
-            let part = wk.fasked;
-            q.ev.push((now, Act::Read { tag: wk.ftags[part], columns: fl_columns(bx, bz, part as i32), below: NK_FL_BELOW, above: 1 }));
-            wk.fasked += 1;
-            spent += 150.0;
+            // (two a stage: the parts are small, so none is much to take in on a tick)
+            for _ in 0..2.min(wk.tags.len() - wk.asked) {
+                let part = wk.asked;
+                q.ev.push((now, Act::Read { tag: wk.tags[part], columns: read_columns(bx, bz, part as i32), below: NK_BELOW, above: NK_ABOVE }));
+                wk.asked += 1;
+                spent += 75.0;
+            }
+        } else {
+            for _ in 0..2 {
+                if wk.fasked < wk.ftags.len() && wk.fasked < wk.ftaken + 6 {
+                    let part = wk.fasked;
+                    q.ev.push((now, Act::Read { tag: wk.ftags[part], columns: fl_columns(bx, bz, part as i32), below: NK_FL_BELOW, above: 1 }));
+                    wk.fasked += 1;
+                    spent += 50.0;
+                }
+            }
         }
-        // their answers taken in as they come (two of the land's, one of the flash's)
-        for _ in 0..2 {
+        // their answers taken in as they come (up to four of the land's, one of the flash's)
+        for _ in 0..4 {
             if wk.taken < wk.asked
+                && !crate::meter::full()
                 && let Some(a) = crate::columns::take(wk.tags[wk.taken])
             {
                 take_in(&mut wk.land, &a, bx, bz);
@@ -1732,14 +1758,20 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             } else {
                 wk.fl.seen = vec![i16::MAX; n];
             }
+            crate::meter::spend(6 * n as u64);
             spent += 500.0;
-        } else if wk.ftaken < wk.fasked
-            && let Some(a) = crate::columns::take(wk.ftags[wk.ftaken])
-        {
-            fl_take_in(&mut wk.fl, &a, bx, bz);
-            wk.fl.parts += 1;
-            wk.ftaken += 1;
-            spent += 400.0;
+        } else {
+            for _ in 0..3 {
+                if wk.ftaken < wk.fasked
+                    && !crate::meter::full()
+                    && let Some(a) = crate::columns::take(wk.ftags[wk.ftaken])
+                {
+                    fl_take_in(&mut wk.fl, &a, bx, bz);
+                    wk.fl.parts += 1;
+                    wk.ftaken += 1;
+                    spent += 130.0;
+                }
+            }
         }
         // the jobs: the first that can be done (never past one of the wave's parts that cannot yet: they go in order)
         loop {
@@ -1756,10 +1788,13 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             }
             let Some(i) = pick else { break };
             let c = Work::cost(&wk.jobs[i]);
-            if spent > 0.0 && spent + c > NK_BUDGET {
+            // (and none past the tick's mark for its work, whatever the estimates said: `meter`)
+            if spent > 0.0 && (spent + c > NK_BUDGET || crate::meter::full()) {
                 break;
             }
             spent += c;
+            // (what the job is expected to cost, on top of what its loops count: `meter` reads high, not low)
+            crate::meter::spend((c * NK_UNIT) as u64);
             let job = wk.jobs.remove(i).unwrap_or(Job::Rubble);
             match job {
                 Job::Thrown(part) => nk_thrown(q, &wk.land, &wk.s, &wk.wave, part),
@@ -1920,8 +1955,12 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         }
         // the land's work, one chain of stages from as it starts: its changes going in from the middle out with the wave
         let shape = Shape { cx, cz, ph: [TAU * mh(1, geo.seed, 0xc1), TAU * mh(2, geo.seed, 0xc1), TAU * mh(3, geo.seed, 0xc1)], seed: geo.seed };
-        let work = Rc::new(RefCell::new(Work::new(shape, by + 1)));
-        p.later(0.15, move |q| nk_work(q, work, 0.15));
+        // (its state made on a stage of its own, not as it fires: the land's square of columns is some megabytes)
+        p.later(0.15, move |q| {
+            crate::meter::spend(12_000_000);
+            let work = Rc::new(RefCell::new(Work::new(shape, by + 1)));
+            q.later(0.2, move |q| nk_work(q, work, 0.2));
+        });
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
