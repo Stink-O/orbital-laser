@@ -560,6 +560,7 @@ impl Orbital {
         // (the stages that must not wait, `Act::Soon`, go before the rest: a landed piece's blocks must be in on the tick
         // it lands however much else waits)
         let mut worked_out = false;
+        let mut nblocks = 0usize;
         if let Some(job) = s.urgent.pop_front().or_else(|| s.waiting.pop_front()) {
             s.work_out(job);
             worked_out = true;
@@ -587,6 +588,7 @@ impl Orbital {
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
                 Act::Blocks(b) => {
+                    nblocks += b.runs.len();
                     world::edit_blocks(&b.edit());
                     // (a landed piece's blocks in: the pass may let it go)
                     if let Some(t) = b.landing {
@@ -626,6 +628,9 @@ impl Orbital {
                     worked_out = true;
                 }
             }
+        }
+        if nblocks > 0 {
+            log::write(log::Level::Info, &format!("tick {now:.2} runs {nblocks} waiting {}", s.waiting.len()));
         }
         if !cmds.is_empty() {
             world::run_commands(&cmds);

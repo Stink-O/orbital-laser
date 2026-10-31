@@ -173,12 +173,17 @@ pub(super) struct Flood {
     floor: Vec<i32>,
     heap: std::collections::BinaryHeap<std::cmp::Reverse<(i32, u32)>>,
     labelled: bool,
+    seen: Vec<bool>,
+    stack: Vec<usize>,
+    body: Vec<u32>,
+    scan: usize,
+    draining: bool,
     pub done: bool,
 }
 impl Flood {
     pub fn new(rb: i32) -> Self {
         let n = ((2 * rb + 1) * (2 * rb + 1)) as usize;
-        Flood { rb, lvl: vec![i32::MIN; n], big: vec![false; n], floor: vec![i32::MAX; n], heap: Default::default(), labelled: false, done: false }
+        Flood { rb, lvl: vec![i32::MIN; n], big: vec![false; n], floor: vec![i32::MAX; n], heap: Default::default(), labelled: false, seen: Vec::new(), stack: Vec::new(), body: Vec::new(), scan: 0, draining: false, done: false }
     }
     fn idx(&self, bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
         let w = 2 * self.rb + 1;
@@ -202,34 +207,58 @@ impl Flood {
             water_at(x, z)
         };
         if !self.labelled {
-            self.labelled = true;
-            let mut seen = vec![false; w * w];
-            let mut stack = Vec::new();
-            let mut body = Vec::new();
-            for i0 in 0..w * w {
-                if seen[i0] || water(i0).is_none() {
-                    continue;
-                }
-                seen[i0] = true;
-                stack.push(i0);
-                body.clear();
-                while let Some(i) = stack.pop() {
-                    body.push(i);
+            // (the bodies of water found and measured, a part a stage: each column looked at once)
+            if self.seen.is_empty() {
+                self.seen = vec![false; w * w];
+            }
+            let mut n = 0;
+            while n < budget.saturating_mul(3) {
+                if let Some(i) = self.stack.pop() {
+                    n += 1;
+                    self.body.push(i as u32);
                     let (x, z) = (i % w, i / w);
                     for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
-                        if nx < w && nz < w && !seen[nz * w + nx] && water(nz * w + nx).is_some() {
-                            seen[nz * w + nx] = true;
-                            stack.push(nz * w + nx);
+                        if nx < w && nz < w && !self.seen[nz * w + nx] && water(nz * w + nx).is_some() {
+                            self.seen[nz * w + nx] = true;
+                            self.stack.push(nz * w + nx);
                         }
                     }
+                    continue;
                 }
-                if body.len() >= FLOOD_BODY {
-                    for &i in &body {
+                // (a body done: big enough, the crater floods from it)
+                if !self.body.is_empty() {
+                    if !self.draining && self.body.len() < FLOOD_BODY {
+                        self.body.clear();
+                        continue;
+                    }
+                    // (its columns marked and flooded from, a part a stage)
+                    self.draining = true;
+                    while n < budget.saturating_mul(3)
+                        && let Some(i) = self.body.pop()
+                    {
+                        let i = i as usize;
                         self.big[i] = true;
                         if let Some(l) = water(i) {
                             self.heap.push(std::cmp::Reverse((l, i as u32)));
                         }
+                        n += 2;
                     }
+                    if self.body.is_empty() {
+                        self.draining = false;
+                    }
+                    continue;
+                }
+                if self.scan >= w * w {
+                    self.labelled = true;
+                    self.seen = Vec::new();
+                    return;
+                }
+                let i0 = self.scan;
+                self.scan += 1;
+                n += 1;
+                if !self.seen[i0] && water(i0).is_some() {
+                    self.seen[i0] = true;
+                    self.stack.push(i0);
                 }
             }
             return;
