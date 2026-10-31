@@ -1301,7 +1301,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                         em_y = sd.y;
                         em_k = kb0;
                     }
-                    if (tr > 0.25 || nl == 0) {
+                    if (nl == 0 || (tr > 0.5 && nl < 3)) {
                         let fp = p + L * 9.0;
                         lc_face = pl_col_sdf(&cl, fp, pl_col_base2(&cl, fp).x, false).x - sd.x;
                         // (the light through the bulk: the smooth body's, without the billows)
