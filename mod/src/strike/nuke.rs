@@ -31,11 +31,12 @@ use std::rc::Rc;
 
 const TAU: f64 = 2.0 * PI;
 /// The bomb shows high in the sky, falls faster from NK_TURN, and bursts at NK_HIT, NK_BURST blocks over the target's
-/// ground.
+/// ground: low, so the fireball meets the land from its first frames (the pass sets it on the heightfield's ground
+/// round the target, pl_g0 in nuke.wgsl, and spreads its foot over it, pl_foot).
 pub(super) const NK_SEEN: f32 = 0.8;
 pub(super) const NK_TURN: f32 = 8.0;
 pub(super) const NK_HIT: f32 = 11.0;
-pub(super) const NK_BURST: f64 = 45.0;
+pub(super) const NK_BURST: f64 = 12.0;
 /// How fast the ground carries the strike's shock (blocks a second): five times the air's.
 const NK_GROUND_V: f64 = 5.0 * 343.0;
 /// The path's samples (the trail is drawn through them), from NK_SEEN to NK_HIT.
@@ -1942,12 +1943,12 @@ mod table {
         // (the land's shape, as tools/preview draws it: NK_HILLS=H its hills (main.rs's hills_h), flat otherwise)
         let hills: f64 = std::env::var("PL_HILLS").map_or(0.0, |v| v.parse().unwrap());
         let reach = super::nk_hf_reach(rel[0].hypot(rel[2]));
+        let f = |x: f64, z: f64| hills * (0.5 * (x * 0.045 + 0.7).sin() * (z * 0.038).cos() + 0.5 * (x * 0.013 - z * 0.017).sin());
+        // (PL_FLUSH=1: moved so the target's own ground is the target's, as the preview's `flush=1` draws it)
+        let f0 = if std::env::var("PL_FLUSH").is_ok_and(|v| v == "1") { f(0.5, 0.5) } else { 0.0 };
         let heights: Vec<Option<f64>> = super::nk_hf_columns(0, 0, reach)
             .iter()
-            .map(|&(x, z)| {
-                let (x, z) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
-                Some(hills * (0.5 * (x * 0.045 + 0.7).sin() * (z * 0.038).cos() + 0.5 * (x * 0.013 - z * 0.017).sin()))
-            })
+            .map(|&(x, z)| Some(f(f64::from(x) + 0.5, f64::from(z) + 0.5) - f0))
             .collect();
         let hf = super::nk_hf_words(&heights, reach, rel);
         w.resize(super::NK_HF + hf.len(), 0);

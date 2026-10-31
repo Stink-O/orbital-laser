@@ -147,7 +147,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   it. It sheds its heat by about 7 s, its casing (an ogive nose, four fins) showing, the sun glinting off it, and
   arcs over into a steep dive, faster and faster (to about 330 blocks a second), spinning up so the glints come
   quicker, its vapour trail thickening, a collar of vapour round it and its nose glowing again in the last seconds (a
-  strobe on it at night), a pinprick of white at it the instant before it bursts. Its fall whistles down from high overhead. At 11 s it bursts 45 blocks over the land, in
+  strobe on it at night), a pinprick of white at it the instant before it bursts. Its fall whistles down from high overhead. At 11 s it bursts 12 blocks over the land (the ground round the target, not a treetop it hit), in
   silence: the picture whites out for a moment, the land and the sky lit white then orange, and a white-hot fireball
   swells to about 100 across within a second. It cools through yellow and orange to a dull red glow inside the cloud
   as it rises, rolling into a mushroom cloud: a churning toroidal cap with a rounded crown, lit from inside and from

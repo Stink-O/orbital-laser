@@ -5,7 +5,8 @@
 // ---- laser 10: the nuke -------------------------------------------------------------------------------------------
 // No beam. The bomb comes in from orbit, a white-hot streak across the sky with a thick trail, sheds its heat, arcs
 // over into a steep dive (a finned casing, spinning up, glinting), faster and faster, a vapour collar round it; it bursts
-// PL_BURST over the land: a blinding white flash whites out the picture and lights the land and the sky; a fireball
+// PL_BURST over the land (the real ground under it: pl_g0), low enough that the fireball meets it at once and spreads
+// over it (pl_foot) before it lifts: a blinding white flash whites out the picture and lights the land and the sky; a fireball
 // swells white-orange, rises and darkens into a mushroom cloud hundreds of blocks tall (a fat, churning toroidal cap
 // with a ragged underside, glowing orange inside for tens of seconds, a stem pulled up out of the land, a condensation
 // ring round the stem, a ground-hugging base surge); the shockwave races out as a shell of distortion over the land,
@@ -15,7 +16,7 @@ const PL_SEEN: f32 = 0.8;          // the bomb shows, coming in from orbit white
 const PL_COOL: f32 = 6.0;          // sheds its heat and arcs over into its fall,
 const PL_DIVE: f32 = 8.0;          // dives faster and faster, its nose heating again,
 const PL_HIT: f32 = 11.0;          // and bursts,
-const PL_BURST: f32 = 45.0;        // this high over the target's ground
+const PL_BURST: f32 = 12.0;        // this high over the ground under the target (pl_g0)
 const PL_LEN: f32 = 90.0;          // the strike's length (lasers.rs): everything fades out over its last PL_FADE
 const PL_FADE: f32 = 10.0;
 const PL_SOFT0: f32 = 48.0;        // the cloud keeps its crisp billows this long after the burst, then loses them
@@ -232,7 +233,7 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     let top = o.hc + 1.4 * o.rt;
     let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 90.0;
     let lean = pl_wind() * a;
-    o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0, -w + min(lean.z, 0.0));
+    o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0 - pl_foot_low(a, o.rt), -w + min(lean.z, 0.0));
     o.hi = C + vec3<f32>(w + max(lean.x, 0.0), top + 90.0, w + max(lean.z, 0.0));
     return o;
 }
@@ -349,6 +350,9 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
     // to a cap over an open ring, by degrees)
     dome = max(dome, hc - mix(0.9, 0.12, fold) * rt - hy);
     d = smin(d, dome, 0.35 * rt);
+    // (the fireball's foot: for its first seconds spread over the ground it burst just over, a flattened dome on the
+    // land (pl_foot), not a ball floating over it)
+    d = smin(d, pl_foot((*col).a, rt, rho, hy), 0.3 * rt + 4.0);
     // (the stem: from under the land up into the cap, wide at its dusty foot, narrow in the middle, flaring into the cap)
     if ((*col).st > 0.0) {
         let u = saturate(hy / max((*col).st, 1.0));
@@ -659,6 +663,36 @@ fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
     let e = smoothstep(-step, 3.0 * step, max(abs(q.x), abs(q.y)) - R);
     return vec2<f32>(g, sh * (1.0 - e));
 }
+// The ground under the burst (from the target's): the heightfield's round the target, so a strike aimed at a
+// treetop, a ledge or the top of a slope still bursts just over the land, not over the air beside it; the target's own
+// until the heightfield is in. Never over the target's (the designator hit something there).
+fn pl_g0() -> f32 {
+    var g = pl_land(vec2<f32>(0.0), 0.0).x;
+    for (var i = 0; i < 4; i = i + 1) {
+        let an = 1.5708 * f32(i) + 0.785;
+        g = g + pl_land(vec2<f32>(cos(an), sin(an)) * 14.0, 0.0).x;
+    }
+    return clamp(g / 5.0, -40.0, 0.0);
+}
+// How strongly the fireball's foot is there at `a` seconds after the burst: from the first frames, letting go of the
+// ground over its third and fourth seconds as the ball lifts away on its stem.
+fn pl_foot_k(a: f32) -> f32 {
+    return 1.0 - smoothstep(1.2, 3.8, a);
+}
+// The fireball's foot at (rho, hy) from the burst's ground (`rt` the ball's radius): a broad dome hugging the land, a
+// third wider than the ball and half as high, so the fire spreads along the ground under it; below the ground a ball
+// (hidden by the land, there so the foot meets every slope round it). Its distance, sunk away as it lets go.
+fn pl_foot(a: f32, rt: f32, rho: f32, hy: f32) -> f32 {
+    let s = pl_foot_k(a);
+    let rf = 1.3 * rt + 6.0;
+    let hf = select(0.55 * rt + 4.0, rf, hy < 0.0) * (0.35 + 0.65 * s);
+    let e = vec2<f32>(rho / rf, hy / hf);
+    return (length(e) - 1.0) * min(rf, hf) + (1.0 - s) * (0.6 * rt + 40.0);
+}
+// How far under the burst's ground the foot reaches (the cloud's box).
+fn pl_foot_low(a: f32, rt: f32) -> f32 {
+    return select(0.0, 1.3 * rt + 6.0, pl_foot_k(a) > 0.0);
+}
 // The dust at p (camera-relative), `side`: how square the ray crosses the ring there (0 along it): a dense, opaque wall
 // a few blocks high just behind a crisp, billowing front, thinning behind it into haze that rises and hangs. All of it
 // over the land's own ground (the heightfield, and close to where this pixel's ray meets the land, that point's own
@@ -776,6 +810,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     let anc = anchor_xz();
     let gy = block_y() + 1.0;
     let C = vec3<f32>(anc.x, gy, anc.y) - cam;              // the strike's point, on the target's ground
+    let Cb = C + vec3<f32>(0.0, pl_g0(), 0.0);              // the ground under the burst (the cloud's foot)
     let me = vec3<f32>(frame.mod_params[3].x, frame.mod_params[3].y, frame.mod_params[3].z) - cam;
     let dme = length((me - C).xz);
     let sun = frame.sun.xyz;
@@ -853,7 +888,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // ---- the shockwave: a shell racing out from the burst at the speed of sound, bending the light where the eye looks
     // along it (its edge on the picture), a faint white sheen of condensation on it for the first seconds ------------
-    let Pb = C + vec3<f32>(0.0, PL_BURST, 0.0);
+    let Pb = Cb + vec3<f32>(0.0, PL_BURST, 0.0);
     if (stage != 1u && a > 0.0 && a < 9.0) {
         let Rs = PL_V * a;
         let bq = dot(rd, Pb);
@@ -867,7 +902,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 th = bq + sq;
             }
             let hp = rd * th;
-            if (th > 0.0 && th < scene_len + 4.0 && hp.y > C.y - 4.0) {
+            if (th > 0.0 && th < scene_len + 4.0 && hp.y > Cb.y - 4.0) {
                 // (grazing: the shell seen edge-on, a band some tens of blocks thick along its outline)
                 let edge = exp(-sq / (0.045 * Rs + 8.0));
                 let sf = (1.0 - smoothstep(4.0, 9.0, a)) * k;
@@ -888,7 +923,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     // (the light it gives: blinding for a moment, strong for seconds, a glow under the cloud for tens of seconds)
     let fl = select(0.0, 9.0 * exp(-a / 0.15) + 1.0 * exp(-a / 1.2) + 0.15 * exp(-a / 10.0), a > 0.0) * fade;
     if (stage != 1u && a > 0.0) {
-        let Pf = C + vec3<f32>(0.0, PL_BURST + 80.0 * saturate(a / 15.0), 0.0);
+        let Pf = Cb + vec3<f32>(0.0, PL_BURST + 80.0 * saturate(a / 15.0), 0.0);
         let df = length(Pf);
         let cth = dot(rd, Pf / df);
         let th = sqrt(max(2.0 * (1.0 - cth), 0.0));
@@ -902,6 +937,11 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             // (and the land lit by it, far out)
             let dl = length(rel - Pf);
             col = col + scene * fire_c * fl * 0.9 / (1.0 + pow(dl / 320.0, 2.0)) * k;
+            // (and the ground the fireball spreads over glowing hot round its foot, for its first seconds)
+            let rg = length((rel - Cb).xz);
+            let rtg = 56.0 * (1.0 - exp(-a / 0.45));
+            let hot = (2.0 * exp(-a / 0.8) + 0.5 * exp(-a / 3.0)) * (1.0 - smoothstep(0.9 * rtg + 6.0, 1.7 * rtg + 24.0, rg)) * (1.0 - smoothstep(10.0, 40.0, abs(rel.y - Cb.y)));
+            col = col + scene * vec3<f32>(3.0, 1.15, 0.32) * hot * k * fade;
         }
     }
 
@@ -909,7 +949,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     // the sun, so it falls where the cloud really is: under it at noon, long and far across the land at a low sun, the
     // stem's band, the base surge's skirt; soft, and the sky still lights what lies in it -------------------------------
     if (stage != 1u && !sky && have && a > 0.3 && L.y > 0.02 && frame.mod_params[3].w < 0.5) {
-        let T = pl_shadow(rel, L, a, C, ign(in.position.xy));
+        let T = pl_shadow(rel, L, a, Cb, ign(in.position.xy));
         col = col * (1.0 - 0.72 * (1.0 - T) * sun_up * k * fade);
     }
 
@@ -1231,6 +1271,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // (how far off the cloud stands along this ray, where it is mostly opaque: the dust and debris behind it hidden)
     var col_t = select(1.0e9, up_t, stage == 2u);
+    // (the cloud stands on the ground under the burst, Cb: its C, whichever cloud it is)
+    {
+    let C = Cb;
     // [cloud] (the cloud, swapped for an earlier version's by /orbital nukecloud: mod/shaders/nuke_cloud/)
     // ---- the mushroom cloud: raymarched, self-shadowed towards the sun, glowing from inside --------------------------
     // (the fireball's heat: white-hot for a moment, orange for seconds, a dull red glow dying over tens of seconds)
@@ -1415,6 +1458,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     }
 
     // [end cloud]
+    }
     // ---- the bomb: a white-hot streak coming in from orbit, its plasma sheath and ionised wake; its heat shed, the
     // casing (an ogive nose, a long body, four fins at its tail, spinning faster as it dives, the sun glinting off it),
     // diving faster and faster, a collar of vapour round it, its nose glowing again; a pinprick of light the instant
@@ -1632,7 +1676,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             var acc = vec3<f32>(0.0);
             let j = ign(in.position.xy + vec2<f32>(0.0, fract(time * 5.0) * 53.0));
             // (the cap over it, for its shadow on the dust)
-            let dcl = pl_column(max(a, 0.01), C);
+            let dcl = pl_column(max(a, 0.01), Cb);
             // (the near crossing, the haze inside, then the far crossing: in the order the ray meets them)
             var order = array<i32, 3>(0, 2, 1);
             for (var si = 0; si < 3; si = si + 1) {
