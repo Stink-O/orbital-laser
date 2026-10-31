@@ -173,6 +173,7 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         }
     }
     let hills = g("hills", 0.0);
+    let flush = g("flush", 0.0) > 0.5;
     let pit = g("pit", 0.0) > 0.5;
     // (`trees=1`: a wood of blocky trees, as a heightfield (their crowns reach the ground), none within 45 of the eye)
     let trees = g("trees", 0.0) > 0.5;
@@ -200,7 +201,8 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         } else if flat {
             tgt[1]
         } else if hills != 0.0 {
-            hills_h(x, z, tgt[1], hills)
+            // (`flush=1`: the hills moved down or up so the target's own ground is at `ty`, as the designator hits it)
+            hills_h(x, z, tgt[1], hills) - if flush { hills_h(tgt[0], tgt[2], tgt[1], hills) - tgt[1] } else { 0.0 }
         } else {
             crater_h(x, z, crater)
         }

@@ -41,7 +41,7 @@ laser, command, capability and timing). This file is the short, factual version 
   ~124 force-loaded; water it cuts into is dug like any other block (what is left flows in, as round TNT); the lava in
   the ground it bares is sealed. Its land goes in from 13.65 s, from the middle out
   with the shockwave, and the rubble lands by about 17 s. The Nuke is the Payload's big brother (`strike/nuke.rs`,
-  `shaders/nuke.wgsl`): a bomb bursts 45 over the land at 11 s; it digs a terraced crater ~200 across and 40 deep
+  `shaders/nuke.wgsl`): a bomb bursts 12 over the land at 11 s, its fireball spread over the ground; it digs a terraced crater ~200 across and 40 deep
   (water dug like any block), flattens everything standing out to ~230 (trees felled pointing
   away), strips crowns and knocks trees flat out to ~300, chars the grass to ~290, strews rubble to ~280, throws ~160
   falling blocks, kills every mob and item within 300 and force-loads the ~1,150 chunks within ~304; past that, out to

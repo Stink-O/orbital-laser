@@ -47,7 +47,7 @@ fn v7_pl_column(a: f32, C: vec3<f32>) -> v7_PlCol {
     let top = o.hc + 1.4 * o.rt;
     let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 90.0;
     let lean = pl_wind() * a;
-    o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0, -w + min(lean.z, 0.0));
+    o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0 - pl_foot_low(a, o.rt), -w + min(lean.z, 0.0));
     o.hi = C + vec3<f32>(w + max(lean.x, 0.0), top + 90.0, w + max(lean.z, 0.0));
     return o;
 }
@@ -175,6 +175,9 @@ fn v7_pl_col_base2(col: ptr<function, v7_PlCol>, p: vec3<f32>) -> vec2<f32> {
     // to a cap over an open ring, by degrees)
     dome = max(dome, hc - mix(0.9, 0.12, fold) * rt - hy);
     d = smin(d, dome, 0.35 * rt);
+    // (the fireball's foot: for its first seconds spread over the ground it burst just over, a flattened dome on the
+    // land (pl_foot), not a ball floating over it)
+    d = smin(d, pl_foot((*col).a, rt, rho, hy), 0.3 * rt + 4.0);
     // (the stem: from under the land up into the cap, wide at its dusty foot, narrow in the middle, flaring into the cap)
     if ((*col).st > 0.0) {
         let u = saturate(hy / max((*col).st, 1.0));
