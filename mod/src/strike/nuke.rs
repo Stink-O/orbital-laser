@@ -17,11 +17,14 @@
 //! it), past that out to NK_FLAT + NK_BAND (300) crowns stripped and many trees knocked flat, the grass charred out to
 //! about NK_CHAR (290) in streaks, rubble strewn out to NK_RUBBLE (280), mobs and dropped items killed within NK_KILL
 //! (300); past that, out to NK_FLASH (480), what faces the fireball scorched by its flash and what is hidden from it
-//! left as it was (nk_flash_rows). Nothing that flows; nothing dug next to water or lava; the odd fire far out.
+//! left as it was (nk_flash_part). All of it goes in as one wave from the middle out, each ring as the shockwave
+//! reaches it or as soon after as the world takes the blocks (Wave, nk_work). Water only where the crater breaks into a
+//! lake, a river or the sea, to its own level (Flood); the water and lava in the ground it bares sealed; the odd fire far
+//! out.
 //!
 //! shaders/nuke.wgsl draws the bomb, its trail, the flash, the fireball, the mushroom cloud, the shockwave, the dust
 //! and the debris from the table `nk_table` hands it (render.set-data). Keep the NK_* here and there in step.
-use super::{Act, Blocks, Col, Plan, Rng, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
+use super::{Act, Blocks, Col, Plan, Rng, TIDY_BORDER, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
 use crate::lasers::Laser;
 use std::cell::RefCell;
 use std::f64::consts::PI;
@@ -71,8 +74,6 @@ const NK_GW: i32 = 2 * NK_READ + 1;
 const NK_BELOW: u32 = 36;
 const NK_ABOVE: u32 = 1;
 const NK_PARTS: i32 = 32;
-/// The blast's edits worked out in this many bands of rows, a stage each.
-const NK_BANDS: i32 = 150;
 /// Mobs and dropped items within NK_KILL killed as it bursts.
 const NK_KILL: i32 = 300;
 /// Real blocks thrown out of the crater as it bursts (nk_thrown).
@@ -535,10 +536,7 @@ struct Land {
     missing: Vec<(i32, i32)>,
     /// Every part taken in (the stages that use it wait for it).
     done: bool,
-    /// The water's surface round the crater (the highest water within its rim's reach), which floods it to that level.
-    wl: Option<i32>,
 }
-type Shared = Rc<RefCell<Land>>;
 
 fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
     let (i, k) = (x - bx + NK_READ, z - bz + NK_READ);
@@ -548,15 +546,32 @@ fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
     land.cols.get((k * NK_GW + i) as usize).filter(|c| c.known)
 }
 
-/// The columns read in part `part` (rows of the square, within NK_READ of the target).
+/// How far out part `part` of the land's read reaches: the parts are rings from the middle out, as many columns in
+/// each (the wave's stages wait only for the rings they reach into).
+fn read_reach(part: i32) -> f64 {
+    f64::from(NK_READ) * (f64::from(part + 1) / f64::from(NK_PARTS)).sqrt()
+}
+/// The columns read in part `part`: those of its ring.
 fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
-    let rows = (NK_GW + NK_PARTS - 1) / NK_PARTS;
+    let r1 = read_reach(part).min(f64::from(NK_READ));
+    let q0 = if part == 0 { -1.0 } else { read_reach(part - 1).powi(2) };
+    let q1 = r1 * r1;
+    let n = r1.ceil() as i32;
     let mut out = Vec::new();
-    for k in part * rows..((part + 1) * rows).min(NK_GW) {
-        let dz = k - NK_READ;
-        for dx in -NK_READ..=NK_READ {
-            if dx * dx + dz * dz <= NK_READ * NK_READ {
-                out.push((bx + dx, bz + dz));
+    for dz in -n..=n {
+        let d = f64::from(dz * dz);
+        if d > q1 {
+            continue;
+        }
+        // (the row's run within r1 less its run within r0)
+        let wo = (q1 - d).sqrt().floor() as i32;
+        let wi = if q0 >= d { (q0 - d).sqrt().floor() as i32 } else { -1 };
+        for dx in -wo..=wo {
+            let e = d + f64::from(dx * dx);
+            if dx.abs() > wi || e > q0 {
+                if e > q0 && e <= q1 {
+                    out.push((bx + dx, bz + dz));
+                }
             }
         }
     }
@@ -627,59 +642,6 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
             land.cols[(kk * NK_GW + ii) as usize] = c;
         }
     }
-}
-
-/// The land's parts taken in a stage each, as they are answered (and the columns not loaded yet asked again, once).
-fn nk_land_step(q: &mut Plan, land: Shared, tags: Rc<Vec<u32>>, part: usize, at_t: f32, retry: u32) {
-    if part >= tags.len() {
-        {
-            // (the water's level round the crater: what floods it)
-            let mut l = land.borrow_mut();
-            l.done = true;
-            let reach = (NK_CRATER_R * NK_RIM * 1.15) as i32;
-            let mut wl: Option<i32> = None;
-            for dz in -reach..=reach {
-                for dx in -reach..=reach {
-                    if dx * dx + dz * dz <= reach * reach
-                        && let Some(c) = at(&l, q.bx, q.bz, q.bx + dx, q.bz + dz)
-                        && c.fluid
-                        && !c.lava
-                    {
-                        wl = Some(wl.map_or(c.wtop, |w: i32| w.max(c.wtop)));
-                    }
-                }
-            }
-            l.wl = wl;
-        }
-        let missing = std::mem::take(&mut land.borrow_mut().missing);
-        if !missing.is_empty() && retry < 2 && at_t < NK_HIT - 4.0 {
-            let tag = crate::columns::new_tag();
-            let t = at_t + 0.8;
-            q.later(t, move |q| {
-                q.ev.push((t, Act::Read { tag, columns: missing, below: NK_BELOW, above: NK_ABOVE }));
-                q.later(t + 0.15, move |q| nk_land_step(q, land, Rc::new(vec![tag]), 0, t + 0.15, retry + 1));
-            });
-        }
-        return;
-    }
-    let Some(a) = crate::columns::take(tags[part]) else {
-        if at_t < NK_HIT - 4.0 {
-            q.later(at_t + 0.1, move |q| nk_land_step(q, land, tags, part, at_t + 0.1, retry));
-        }
-        return;
-    };
-    take_in(&mut land.borrow_mut(), &a, q.bx, q.bz);
-    // (and the parts after it already in, in the same stage: a stage a part would queue behind the blast's)
-    let mut part = part + 1;
-    let mut n = 1;
-    while part < tags.len() && n < 2 {
-        let Some(a) = crate::columns::get(tags[part]) else { break };
-        let _ = crate::columns::take(tags[part]);
-        take_in(&mut land.borrow_mut(), &a, q.bx, q.bz);
-        part += 1;
-        n += 1;
-    }
-    q.later(at_t + 0.05, move |q| nk_land_step(q, land, tags, part, at_t + 0.05, retry));
 }
 
 // ---- the crater and what lies round it -------------------------------------------------------------------------------
@@ -791,29 +753,39 @@ fn charred(x: i32, z: i32, r: f64, a: f64, seed: u32) -> Option<&'static str> {
 }
 
 /// How hard the blast still hits column (x, z) in the band past the flattened land: 1 at its inner edge, to 0 at its
-/// outer (None outside it).
-fn band(s: &Shape, x: i32, z: i32) -> Option<f64> {
-    let (r, a, _) = s.at(x, z);
+/// outer (None outside it). (`ra`: its radius and bearing, from `Shape::at`.)
+fn band_ra(s: &Shape, (r, a): (f64, f64)) -> Option<f64> {
     let e = r - s.flat(a);
     (0.0..NK_BAND).contains(&e).then(|| 1.0 - e / NK_BAND)
 }
-/// A tree in the band knocked flat (more of them near the flattened land).
-fn knocked(c: &Column, s: &Shape, x: i32, z: i32) -> bool {
-    c.trunk >= 3 && !c.fluid && band(s, x, z).is_some_and(|p| mh((x.wrapping_mul(92_821) ^ z.wrapping_mul(68_917)) as u32, s.seed, 0x91) < 0.75 * p.powf(1.1))
+fn band(s: &Shape, x: i32, z: i32) -> Option<f64> {
+    let (r, a, _) = s.at(x, z);
+    band_ra(s, (r, a))
 }
-/// What the blast makes of column (x, z): Kept, or its new ground's top (`Some`) and whether it was cleared.
-fn new_ground(c: &Column, s: &Shape, x: i32, z: i32) -> Option<i32> {
-    let (r, a, u) = s.at(x, z);
+/// A tree in the band knocked flat (more of them near the flattened land).
+fn knocked_ra(c: &Column, s: &Shape, x: i32, z: i32, ra: (f64, f64)) -> bool {
+    c.trunk >= 3 && !c.fluid && band_ra(s, ra).is_some_and(|p| mh((x.wrapping_mul(92_821) ^ z.wrapping_mul(68_917)) as u32, s.seed, 0x91) < 0.75 * p.powf(1.1))
+}
+fn knocked(c: &Column, s: &Shape, x: i32, z: i32) -> bool {
+    let (r, a, _) = s.at(x, z);
+    knocked_ra(c, s, x, z, (r, a))
+}
+/// What the blast makes of column (x, z): Kept, or its new ground's top (`Some`) and whether it was cleared. (`rau`:
+/// `Shape::at`'s.)
+fn new_ground_at(c: &Column, s: &Shape, x: i32, z: i32, (r, a, u): (f64, f64, f64)) -> Option<i32> {
     if u < 1.0 {
         Some(c.g - bowl(u).round() as i32)
     } else if u < NK_RIM {
         let n = vnoise(f64::from(x), f64::from(z), 4.0, s.seed ^ 0x35);
         Some(c.g + heap(u, n).round() as i32)
-    } else if r < s.flat(a) || knocked(c, s, x, z) {
+    } else if r < s.flat(a) || knocked_ra(c, s, x, z, (r, a)) {
         Some(c.g)
     } else {
         None
     }
+}
+fn new_ground(c: &Column, s: &Shape, x: i32, z: i32) -> Option<i32> {
+    new_ground_at(c, s, x, z, s.at(x, z))
 }
 /// Water or lava within a column's reach: dig nothing there or next to it.
 fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
@@ -821,135 +793,421 @@ fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
     [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2), (1, 1), (1, -1), (-1, 1), (-1, -1)].iter().any(|(dx, dz)| at(land, bx, bz, x + dx, z + dz).is_some_and(|c| c.fluid))
 }
 
-/// The crater, the rim's heap, the flattened land and the charred grass, over rows k0..k1 of the land's square.
-fn nk_blast_rows(q: &mut Plan, shared: Shared, shape: Shape, k0: i32, k1: i32, at_t: f32, now: f32) {
-    // (the land not all in yet: wait for it, a while)
-    if !shared.borrow().done && now < NK_HIT - 2.0 {
-        q.later(now + 0.1, move |q| nk_blast_rows(q, shared, shape, k0, k1, at_t, now + 0.1));
-        return;
+// ---- the wave: the land's changes from the middle out ------------------------------------------------------------
+/// The blast's changes go into the world as one wave from the middle out, a ring at a time: each ring as the shockwave
+/// reaches it, or as soon after as the world takes the blocks the rings inside it change (NK_RATE a second, of what
+/// each ring is expected to change: `nk_cost`); the crater first, then its rim, the flattened land and its felled
+/// trees, the charred grass, the stripped crowns, and last the flash's scorching out to NK_FLASH.
+const NK_RATE: f64 = 1_500_000.0;
+/// The rings (NK_RING wide) are worked out in parts of about NK_ITEM columns, split by angle, never by rows.
+const NK_RING: f64 = 4.0;
+const NK_ITEM: f64 = 700.0;
+/// The flash's rings: wider, in bigger parts (most of its columns change nothing).
+const NK_FL_RING: f64 = 8.0;
+const NK_FL_ITEM: f64 = 6000.0;
+/// What a column at radius r is expected to change (blocks), for the wave's pace.
+fn nk_cost(r: f64) -> f64 {
+    let u = r / NK_CRATER_R;
+    if u < 1.0 {
+        bowl(u) + 8.0
+    } else if u < NK_RIM {
+        heap(u, 0.5) + 4.0
+    } else if r < NK_FLAT {
+        4.0
+    } else if r < f64::from(NK_READ) {
+        2.0
+    } else {
+        // (the flash's: few blocks, but its parts are worked out last, and the wave waits for them)
+        2.2
     }
-    {
-        let land = shared.borrow();
-        nk_blast_band(q, &land, &shape, k0, k1, at_t);
-    }
-    q.later(now, move |q| nk_tidy_rows(q, &shared.borrow(), &shape, k0, k1, at_t + 0.1));
 }
-fn nk_blast_band(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32, at_t: f32) {
-    let (bx, bz) = (q.bx, q.bz);
-    let mut b = Blocks::default();
-    for k in k0..k1 {
-        for i in 0..NK_GW {
-            let (x, z) = (bx - NK_READ + i, bz - NK_READ + k);
-            let Some(c) = at(land, bx, bz, x, z) else { continue };
-            let (r, ang, u) = s.at(x, z);
-            if r > f64::from(NK_READ) || c.lava {
-                continue;
-            }
-            let wet = wet_near(land, bx, bz, x, z);
-            match new_ground(c, s, x, z) {
-                Some(top) if top < c.g => {
-                    // the crater: dug, everything over it gone, its new face scorched (two deep near the middle), the
-                    // lava it opens sealed; cut into the water as into the land: where the water's level stands over its
-                    // new floor, it is filled with still water to that level (the sea, the lake or the river it cut
-                    // into come in), not left dry behind a wall
-                    let old = c.top.max(c.g);
-                    match land.wl {
-                        Some(w) if w > top => {
-                            // (no higher than the land stood: never water heaped over it)
-                            b.run(x, z, top + 1, w.min(old), "minecraft:water");
-                            if old > w {
-                                b.run(x, z, w + 1, old, "minecraft:air");
-                            }
-                        }
-                        _ => b.run(x, z, top + 1, old, "minecraft:air"),
-                    }
-                    b.put(x, z, top - 3, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
-                    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-                        b.put(x + dx, z + dz, top - 3, c.g, "minecraft:stone", Some("minecraft:lava"), false);
-                    }
-                    // (the floor scorched where it is dry; under the water, its bed left as dug)
-                    if land.wl.is_none_or(|w| w <= top) {
-                        let d = if u < 0.75 { 1 } else { 0 };
-                        for y in top - d..=top {
-                            b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
-                        }
-                    }
-                }
-                Some(top) if top > c.g && !wet && !c.fluid => {
-                    // the rim: earth heaped on it, what stood there swept off (none heaped in or by the water)
-                    for y in c.g + 1..=top {
-                        b.run(x, z, y, y, ejecta(x, y, z, s.seed));
-                    }
-                    if c.top > top {
-                        b.run(x, z, top + 1, c.top, "minecraft:air");
-                    }
-                    b.put(x, z, c.g - NK_CRATER_D as i32 - 2, c.g, "minecraft:stone", Some("minecraft:lava"), false);
-                }
-                _ if c.fluid => {}
-                Some(_) => {
-                    // flattened: everything standing on the land swept off (a felled tree's stump left), the grass charred
-                    let stump = if c.trunk > 0 { 1 + (mh((x * 31 + z * 17) as u32, s.seed, 0x81) * 2.0) as i32 } else { 0 };
-                    if c.top > c.g + stump {
-                        b.run(x, z, c.g + 1 + stump, c.top, "minecraft:air");
-                    }
-                    if c.ground == 1
-                        && let Some(m) = charred(x, z, r, ang, s.seed)
-                    {
-                        b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
-                    }
-                }
-                None => {
-                    if c.ground == 1
-                        && let Some(m) = charred(x, z, r, ang, s.seed)
-                    {
-                        b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
-                    }
-                    // in the band past it: the crowns stripped, in patches, wholly near it and their tops further out
-                    if let Some(p) = band(s, x, z)
-                        && c.leaves != 255
-                        && vnoise(f64::from(x), f64::from(z), 5.0, s.seed ^ 0x93) < 0.25 + 0.75 * p
-                    {
-                        let keep = ((f64::from(c.top - c.g)) * (1.0 - (0.35 + 0.8 * p).min(1.0))).floor() as i32;
-                        b.put(x, z, c.g + 1 + keep, c.top, "minecraft:air", Some(LEAF_NAMES[c.leaves as usize]), false);
-                    }
+/// When the wave reaches radius r (a block at a time out to past NK_FLASH).
+#[derive(Clone)]
+struct Wave(Rc<Vec<f32>>);
+impl Wave {
+    fn new() -> Self {
+        let mut out = Vec::new();
+        let mut work = 0.0;
+        for r in 0..=NK_FLASH + 16 {
+            let rf = f64::from(r);
+            let shock = (rf * rf + NK_BURST * NK_BURST).sqrt() / 343.0;
+            // (from the moment the shock touches the ground under the burst)
+            out.push(NK_HIT + 0.05 + shock.max(NK_BURST / 343.0 + work / NK_RATE) as f32);
+            work += TAU * (rf + 0.5) * nk_cost(rf + 0.5);
+        }
+        Wave(Rc::new(out))
+    }
+    fn at(&self, r: f64) -> f32 {
+        self.0[(r.max(0.0) as usize).min(self.0.len() - 1)]
+    }
+}
+/// A part of a ring: radii r0..r1 from the target's middle, its angles a0 to a0 + da.
+#[derive(Clone, Copy, Debug)]
+struct Sector {
+    r0: f64,
+    r1: f64,
+    a0: f64,
+    da: f64,
+}
+impl Sector {
+    fn holds(&self, dx: f64, dz: f64) -> bool {
+        let q = dx * dx + dz * dz;
+        if q < self.r0 * self.r0 || q >= self.r1 * self.r1 {
+            return false;
+        }
+        self.da >= TAU - 1e-9 || (dz.atan2(dx) - self.a0).rem_euclid(TAU) < self.da
+    }
+    /// The block columns whose middles lie in it, round (cx, cz); and the box they lie in.
+    fn cells(&self, cx: f64, cz: f64) -> (Vec<(i32, i32)>, [i32; 4]) {
+        // (its box: the corners and wherever it crosses an axis)
+        let (mut x0, mut z0, mut x1, mut z1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        let mut add = |a: f64, r: f64| {
+            let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
+            x0 = x0.min(x);
+            z0 = z0.min(z);
+            x1 = x1.max(x);
+            z1 = z1.max(z);
+        };
+        let n = 12;
+        for k in 0..=n {
+            let a = self.a0 + self.da.min(TAU) * f64::from(k) / f64::from(n);
+            add(a, self.r0);
+            add(a, self.r1);
+        }
+        let (x0, z0, x1, z1) = ((x0 - 1.0).floor() as i32, (z0 - 1.0).floor() as i32, (x1 + 1.0).ceil() as i32, (z1 + 1.0).ceil() as i32);
+        let mut out = Vec::new();
+        let (q0, q1) = (self.r0 * self.r0, self.r1 * self.r1);
+        for z in z0..=z1 {
+            let dz = f64::from(z) + 0.5 - cz;
+            for x in x0..=x1 {
+                let dx = f64::from(x) + 0.5 - cx;
+                let q = dx * dx + dz * dz;
+                if q >= q0 && q < q1 && self.holds(dx, dz) {
+                    out.push((x, z));
                 }
             }
         }
+        (out, [x0, z0, x1, z1])
     }
-    q.ev.push((at_t, Act::Blocks(Box::new(b))));
 }
-/// What is left hanging round what changed over rows k0..k1 (leaves of a tree whose trunk went, plants whose ground
-/// went), on a stage of its own.
-fn nk_tidy_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32, at_t: f32) {
-    let (bx, bz) = (q.bx, q.bz);
-    let col = |x: i32, z: i32| -> Col {
-        match at(land, bx, bz, x, z) {
-            Some(c) if !c.fluid && new_ground(c, s, x, z).is_some() => Col::Cleared,
-            _ => Col::Kept,
+/// The rings from r0 to r1, `w` wide (twice that past the crater), each split by angle into parts of about `item`
+/// columns and no more than `arc` blocks along (their seams turned from ring to ring).
+fn sectors(r0: f64, r1: f64, w: f64, item: f64, arc: f64) -> Vec<Sector> {
+    let mut out = Vec::new();
+    let mut r = r0;
+    let mut k = 0;
+    while r < r1 {
+        let w = if r >= NK_CRATER_R { 2.0 * w } else { w };
+        // (no ring left thinner than half its width at the end)
+        let e = if r + 1.5 * w >= r1 { r1 } else { r + w };
+        let n = (PI * (e * e - r * r) / item).ceil().max((TAU * e / arc).ceil()).max(1.0);
+        let turn = TAU * (f64::from(k) * 0.618_034).fract();
+        for j in 0..n as usize {
+            out.push(Sector { r0: r, r1: e, a0: turn + TAU * j as f64 / n, da: if n <= 1.0 { TAU } else { TAU / n } });
         }
-    };
-    let t = tidy(bx - NK_READ, bz - NK_READ + k0, bx + NK_READ, bz - NK_READ + k1 - 1, 40, -1, col);
-    if !t.runs.is_empty() {
-        q.ev.push((at_t, Act::Blocks(Box::new(t))));
+        r = e;
+        k += 1;
+    }
+    out
+}
+
+// ---- the water: only what the crater breaks into, to its own level ----------------------------------------------
+/// A body of water at the surface (water standing over the ground, read from the top down: never what lies in the
+/// ground under it) floods the crater only when it is at least FL_BODY columns (a lake, a river, the sea; a pond or a
+/// puddle the blast boils away) and touches what the crater digs; then the crater fills to that water's own surface,
+/// and only where it is joined to it through what was dug below that surface.
+const NK_BODY: usize = 400;
+/// The flood's square round the target (the crater's farthest edge and a little).
+const NK_FB: i32 = (NK_CRATER_R * 1.3) as i32 + 4;
+const NK_FBW: i32 = 2 * NK_FB + 1;
+struct Flood {
+    /// Each column's water level (i32::MIN: dry), whether it is water of a body big enough to flood the crater.
+    lvl: Vec<i32>,
+    big: Vec<bool>,
+    /// The new floors worked out so far (i32::MAX: not yet), and the columns still to flood from (lowest level first).
+    floor: Vec<i32>,
+    heap: std::collections::BinaryHeap<std::cmp::Reverse<(i32, u32)>>,
+    labelled: bool,
+    done: bool,
+}
+impl Flood {
+    fn new() -> Self {
+        let n = (NK_FBW * NK_FBW) as usize;
+        Flood { lvl: vec![i32::MIN; n], big: vec![false; n], floor: vec![i32::MAX; n], heap: Default::default(), labelled: false, done: false }
+    }
+    fn idx(bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
+        let (i, k) = (x - bx + NK_FB, z - bz + NK_FB);
+        (i >= 0 && k >= 0 && i < NK_FBW && k < NK_FBW).then(|| (k * NK_FBW + i) as usize)
+    }
+    /// The level the crater is flooded to at (x, z), if it is.
+    fn level(&self, bx: i32, bz: i32, x: i32, z: i32) -> Option<i32> {
+        Self::idx(bx, bz, x, z).map(|i| self.lvl[i]).filter(|&l| l != i32::MIN)
+    }
+    fn big(&self, bx: i32, bz: i32, x: i32, z: i32) -> bool {
+        Self::idx(bx, bz, x, z).is_some_and(|i| self.big[i])
+    }
+    /// One stage of it (`budget` columns): the bodies of water found and measured, then the crater flooded from them.
+    fn step(&mut self, land: &Land, s: &Shape, bx: i32, bz: i32, budget: usize) {
+        let w = NK_FBW as usize;
+        let col = |i: usize| at(land, bx, bz, bx - NK_FB + (i % w) as i32, bz - NK_FB + (i / w) as i32);
+        let water = |i: usize| col(i).filter(|c| c.fluid && !c.lava);
+        if !self.labelled {
+            self.labelled = true;
+            let mut seen = vec![false; w * w];
+            let mut stack = Vec::new();
+            let mut body = Vec::new();
+            for i0 in 0..w * w {
+                if seen[i0] || water(i0).is_none() {
+                    continue;
+                }
+                seen[i0] = true;
+                stack.push(i0);
+                body.clear();
+                while let Some(i) = stack.pop() {
+                    body.push(i);
+                    let (x, z) = (i % w, i / w);
+                    for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
+                        if nx < w && nz < w && !seen[nz * w + nx] && water(nz * w + nx).is_some() {
+                            seen[nz * w + nx] = true;
+                            stack.push(nz * w + nx);
+                        }
+                    }
+                }
+                if body.len() >= NK_BODY {
+                    for &i in &body {
+                        self.big[i] = true;
+                        if let Some(c) = water(i) {
+                            self.heap.push(std::cmp::Reverse((c.wtop, i as u32)));
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        // (out from the water, lowest level first, into the columns the crater digs below that level)
+        let mut n = 0;
+        while n < budget {
+            let Some(std::cmp::Reverse((l, i))) = self.heap.pop() else {
+                self.done = true;
+                return;
+            };
+            n += 1;
+            let i = i as usize;
+            let (x, z) = (i % w, i / w);
+            for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
+                if nx >= w || nz >= w {
+                    continue;
+                }
+                let j = nz * w + nx;
+                if self.lvl[j] != i32::MIN {
+                    continue;
+                }
+                if self.floor[j] == i32::MAX {
+                    let (cx, cz) = (bx - NK_FB + nx as i32, bz - NK_FB + nz as i32);
+                    self.floor[j] = match col(j) {
+                        Some(c) if !c.lava => match new_ground(c, s, cx, cz) {
+                            Some(t) if t < c.g => t,
+                            _ => i32::MIN + 1,
+                        },
+                        _ => i32::MIN + 1,
+                    };
+                }
+                // (dug, and below the water's level: flooded to it)
+                if self.floor[j] != i32::MIN + 1 && self.floor[j] < l {
+                    self.lvl[j] = l;
+                    self.heap.push(std::cmp::Reverse((l, j as u32)));
+                }
+            }
+            // (and the water's own columns where the crater digs them)
+            if self.lvl[i] == i32::MIN && self.big[i] {
+                let (cx, cz) = (bx - NK_FB + x as i32, bz - NK_FB + z as i32);
+                if let Some(c) = col(i)
+                    && let Some(t) = new_ground(c, s, cx, cz)
+                    && t < c.g
+                {
+                    self.lvl[i] = l;
+                }
+            }
+        }
     }
 }
 
-/// The trees felled, lying on the land pointing away from the blast (their leaves crushed round their crowns, stripped
-/// off near it), and the rubble strewn over it all, landing a few seconds after.
-type Used = Rc<RefCell<std::collections::HashSet<(i32, i32)>>>;
-fn nk_felled(q: &mut Plan, shared: Shared, shape: Shape, used: Used, k0: i32, k1: i32, now: f32) {
-    if !shared.borrow().done && now < NK_HIT - 1.0 {
-        q.later(now + 0.1, move |q| nk_felled(q, shared, shape, used, k0, k1, now + 0.1));
+/// How far down the ground under column (x, z)'s new floor `top` is opened to its neighbours: down past the lowest of
+/// their new floors (each worked out near enough from its ground and how far out it lies), so the water and lava in the
+/// ground there are sealed over the whole of the face the crater bares.
+fn seal_lo(land: &Land, bx: i32, bz: i32, x: i32, z: i32, top: i32, r: f64, ang: f64, u: f64) -> i32 {
+    let rc = if u > 1e-6 { r / u } else { NK_CRATER_R };
+    let (ca, sa) = (ang.cos(), ang.sin());
+    let mut lo = top;
+    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        let Some(n) = at(land, bx, bz, x + dx, z + dz) else { continue };
+        let un = u + (f64::from(dx) * ca + f64::from(dz) * sa) / rc;
+        let f = if un < 1.0 { n.g - bowl(un.max(0.0)).round() as i32 } else { n.g };
+        lo = lo.min(f);
+    }
+    lo - 3
+}
+
+/// The blast's edits to column (x, z): the crater dug (flooded only as `fl` says), its rim heaped, the land flattened
+/// and charred, the crowns stripped.
+fn nk_blast_col(b: &mut Blocks, land: &Land, fl: &Flood, s: &Shape, bx: i32, bz: i32, x: i32, z: i32, cleared: Option<&mut bool>) {
+    let Some(c) = at(land, bx, bz, x, z) else { return };
+    let (r, ang, u) = s.at(x, z);
+    if r > f64::from(NK_READ) || c.lava {
         return;
     }
-    nk_felled_band(q, &shared.borrow(), &shape, &used, k0, k1);
+    let wet = wet_near(land, bx, bz, x, z);
+    let ng = new_ground_at(c, s, x, z, (r, ang, u));
+    if let Some(k) = cleared {
+        *k = !c.fluid && ng.is_some();
+    }
+    match ng {
+        Some(top) if top < c.g => {
+            // the crater: dug, everything over it gone, its new face scorched (two deep near the middle), the water and
+            // lava in the ground it bares sealed; where it broke into a body of water at the surface (a lake, a river,
+            // the sea) and is joined to it below its level, filled with still water to that level (never higher than
+            // the land stood)
+            let old = c.top.max(c.g);
+            let lvl = fl.level(bx, bz, x, z).filter(|&w| w > top);
+            match lvl {
+                Some(w) => {
+                    b.run(x, z, top + 1, w.min(old), "minecraft:water");
+                    if old > w {
+                        b.run(x, z, w + 1, old, "minecraft:air");
+                    }
+                }
+                None => b.run(x, z, top + 1, old, "minecraft:air"),
+            }
+            let lo = seal_lo(land, bx, bz, x, z, top, r, ang, u);
+            b.put(x, z, lo, top - 1, "minecraft:stone", Some("minecraft:water"), false);
+            b.put(x, z, lo, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
+            // (the floor scorched where it is dry; under the water, its bed left as dug)
+            if lvl.is_none() {
+                let d = if u < 0.75 { 1 } else { 0 };
+                for y in top - d..=top {
+                    b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
+                }
+            }
+        }
+        Some(top) if top > c.g && !wet && !c.fluid => {
+            // the rim: earth heaped on it, what stood there swept off (none heaped in or by the water); right by the
+            // crater's edge, what its wall bares sealed
+            for y in c.g + 1..=top {
+                b.run(x, z, y, y, ejecta(x, y, z, s.seed));
+            }
+            if c.top > top {
+                b.run(x, z, top + 1, c.top, "minecraft:air");
+            }
+            if u < 1.08 {
+                let lo = seal_lo(land, bx, bz, x, z, c.g, r, ang, u);
+                if lo < c.g - 3 {
+                    b.put(x, z, lo, c.g, "minecraft:stone", Some("minecraft:water"), false);
+                    b.put(x, z, lo, c.g, "minecraft:stone", Some("minecraft:lava"), false);
+                }
+            }
+        }
+        _ if c.fluid => {
+            // (a pond or a puddle near enough boiled away; a lake, a river or the sea left as it is)
+            if r < NK_FLAT && !fl.big(bx, bz, x, z) && c.wtop > c.g {
+                b.put(x, z, c.g + 1, c.wtop, "minecraft:air", Some("minecraft:water"), false);
+            }
+        }
+        Some(_) => {
+            // flattened: everything standing on the land swept off (a felled tree's stump left), the grass charred
+            let stump = if c.trunk > 0 { 1 + (mh((x * 31 + z * 17) as u32, s.seed, 0x81) * 2.0) as i32 } else { 0 };
+            if c.top > c.g + stump {
+                b.run(x, z, c.g + 1 + stump, c.top, "minecraft:air");
+            }
+            if c.ground == 1
+                && let Some(m) = charred(x, z, r, ang, s.seed)
+            {
+                b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
+            }
+        }
+        None => {
+            if c.ground == 1
+                && let Some(m) = charred(x, z, r, ang, s.seed)
+            {
+                b.put(x, z, c.g, c.g, m, Some("minecraft:grass_block"), false);
+            }
+            // in the band past it: the crowns stripped, in patches, wholly near it and their tops further out
+            if c.leaves != 255
+                && let Some(p) = band_ra(s, (r, ang))
+                && vnoise(f64::from(x), f64::from(z), 5.0, s.seed ^ 0x93) < 0.25 + 0.75 * p
+            {
+                let keep = ((f64::from(c.top - c.g)) * (1.0 - (0.35 + 0.8 * p).min(1.0))).floor() as i32;
+                b.put(x, z, c.g + 1 + keep, c.top, "minecraft:air", Some(LEAF_NAMES[c.leaves as usize]), false);
+            }
+        }
+    }
 }
-/// The felled trees go in once the blast's bands are all in (which clear what stood there).
-const NK_LAID: f32 = NK_HIT + 0.08 + 0.03 * NK_BANDS as f32 + 0.3;
-fn nk_felled_band(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32) {
+
+/// Edits sorted into the ticks they go in at.
+#[derive(Default)]
+struct Due(std::collections::BTreeMap<i32, Blocks>);
+impl Due {
+    fn get(&mut self, t: f32) -> &mut Blocks {
+        self.0.entry((t / 0.05).ceil() as i32).or_default()
+    }
+    fn push(self, q: &mut Plan) {
+        for (k, b) in self.0 {
+            if !b.runs.is_empty() {
+                q.ev.push((k as f32 * 0.05, Act::Blocks(Box::new(b))));
+            }
+        }
+    }
+}
+
+/// One part of a ring of the blast: its edits as the wave reaches it, what they leave hanging tidied the tick after,
+/// and the trees standing in it felled (lying out over the land past it, once the wave has swept that too).
+fn nk_blast_part(q: &mut Plan, land: &Land, fl: &Flood, s: &Shape, used: &mut std::collections::HashSet<(i32, i32)>, wave: &Wave, sec: &Sector) {
     let (bx, bz) = (q.bx, q.bz);
-    let mut used = used.borrow_mut();
+    let (cells, [x0, z0, x1, z1]) = sec.cells(s.cx, s.cz);
+    let t = wave.at(sec.r0);
     let mut b = Blocks::default();
+    // (what each column was made, for the tidying: cleared through or left)
+    let gw = (x1 - x0 + 1) as usize;
+    let mut grid = vec![false; gw * (z1 - z0 + 1) as usize];
+    for &(x, z) in &cells {
+        nk_blast_col(&mut b, land, fl, s, bx, bz, x, z, grid.get_mut((z - z0) as usize * gw + (x - x0) as usize));
+    }
+    if !b.runs.is_empty() {
+        q.ev.push((t, Act::Blocks(Box::new(b))));
+    }
+    // (what is left hanging round what changed: leaves of a tree whose trunk went, plants whose ground went)
+    // (well within the flattened land, where every column is cleared through, nothing is left hanging: only by water,
+    // lava or a column not read)
+    let inner = sec.r1 + f64::from(TIDY_BORDER) + 1.0 < 0.86 * NK_FLAT;
+    let need = !inner || grid.iter().zip(0..).any(|(&k, i)| !k && sec.holds(f64::from(x0 + i % gw as i32) + 0.5 - s.cx, f64::from(z0 + i / gw as i32) + 0.5 - s.cz)) || {
+        let b = TIDY_BORDER;
+        (z0 - b..=z1 + b).any(|z| (x0 - b..=x1 + b).any(|x| at(land, bx, bz, x, z).is_none_or(|c| c.fluid)))
+    };
+    // (the columns round it, outside it, as the wave leaves them: so nothing is tidied twice)
+    let tb = if !need { Blocks::default() } else { tidy(x0, z0, x1, z1, 40, -1, |x, z| {
+        let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
+        if x >= x0 && z >= z0 && x <= x1 && z <= z1 && sec.holds(dx, dz) {
+            return if grid[(z - z0) as usize * gw + (x - x0) as usize] { Col::Cleared } else { Col::Kept };
+        }
+        match at(land, bx, bz, x, z) {
+            Some(c) if c.fluid => Col::Kept,
+            // (well within the flattened land: cleared through, whatever its edge does)
+            Some(_) if dx * dx + dz * dz < (0.86 * NK_FLAT).powi(2) => Col::Cleared,
+            Some(c) if new_ground(c, s, x, z).is_some() => Col::Cleared,
+            _ => Col::Kept,
+        }
+    }) };
+    if !tb.runs.is_empty() {
+        q.ev.push((t + 0.1, Act::Blocks(Box::new(tb))));
+    }
+    let mut due = Due::default();
+    nk_fell(&mut due, land, s, used, wave, bx, bz, &cells);
+    due.push(q);
+}
+
+/// The trees standing on `cells` felled, lying on the land pointing away from the blast (their leaves crushed round
+/// their crowns, stripped off near it), each put in once the wave has swept the land it lies on.
+type Used = std::collections::HashSet<(i32, i32)>;
+fn nk_fell(due: &mut Due, land: &Land, s: &Shape, used: &mut Used, wave: &Wave, bx: i32, bz: i32, cells: &[(i32, i32)]) {
     // (a column a log may lie on: flattened, not the crater or its rim, dry, its ground near the last one's)
     let lie = |x: i32, z: i32, gy: i32| -> Option<i32> {
         let c = at(land, bx, bz, x, z)?;
@@ -963,60 +1221,66 @@ fn nk_felled_band(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1
         }
         Some(c.g)
     };
-    for k in k0..k1 {
-        for i in 0..NK_GW {
-            let (x, z) = (bx - NK_READ + i, bz - NK_READ + k);
-            let Some(c) = at(land, bx, bz, x, z) else { continue };
-            if c.trunk < 3 || c.fluid {
-                continue;
+    for &(x, z) in cells {
+        let Some(c) = at(land, bx, bz, x, z) else { continue };
+        if c.trunk < 3 || c.fluid {
+            continue;
+        }
+        let (r, a, u) = s.at(x, z);
+        if u < NK_RIM || (r > s.flat(a) - 1.0 && !knocked(c, s, x, z)) {
+            continue;
+        }
+        let (dx, dz) = (a.cos(), a.sin());
+        let (sx, sz, log) = if dx.abs() > dz.abs() { (dx.signum() as i32, 0, LOG_X[c.wood as usize]) } else { (0, dz.signum() as i32, LOG_Z[c.wood as usize]) };
+        let h = |kk: u32| mh((x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32, s.seed, kk);
+        let want = (i32::from(c.trunk) - 1).clamp(2, 4 + (h(1) * 4.0) as i32);
+        let mut last = None;
+        let mut gy = c.g;
+        let mut put: Vec<(i32, i32, i32, &'static str)> = Vec::new();
+        for n in 1..=want {
+            let (lx, lz) = (x + sx * n, z + sz * n);
+            if used.contains(&(lx, lz)) {
+                break;
             }
-            let (r, a, u) = s.at(x, z);
-            if u < NK_RIM || (r > s.flat(a) - 1.0 && !knocked(c, s, x, z)) {
-                continue;
-            }
-            let (dx, dz) = (a.cos(), a.sin());
-            let (sx, sz, log) = if dx.abs() > dz.abs() { (dx.signum() as i32, 0, LOG_X[c.wood as usize]) } else { (0, dz.signum() as i32, LOG_Z[c.wood as usize]) };
-            let h = |kk: u32| mh((x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32, s.seed, kk);
-            let want = (i32::from(c.trunk) - 1).clamp(2, 4 + (h(1) * 4.0) as i32);
-            let mut last = None;
-            let mut gy = c.g;
-            for n in 1..=want {
-                let (lx, lz) = (x + sx * n, z + sz * n);
-                if used.contains(&(lx, lz)) {
-                    break;
+            let Some(g2) = lie(lx, lz, gy) else { break };
+            put.push((lx, lz, g2 + 1, log));
+            used.insert((lx, lz));
+            gy = g2;
+            last = Some((lx, lz));
+        }
+        // (the crown crushed round its end, further out where the blast has not stripped it)
+        if let (Some((lx, lz)), true) = (last, r > 110.0 && c.leaves != 255) {
+            let leaves = LEAVES[c.leaves as usize];
+            for (ox, oz) in [(sx, sz), (sz, sx), (-sz, -sx), (sx + sz, sz + sx), (sx - sz, sz - sx)] {
+                let (fx, fz) = (lx + ox, lz + oz);
+                if used.contains(&(fx, fz)) {
+                    continue;
                 }
-                let Some(g2) = lie(lx, lz, gy) else { break };
-                b.run(lx, lz, g2 + 1, g2 + 1, log);
-                used.insert((lx, lz));
-                gy = g2;
-                last = Some((lx, lz, g2));
-            }
-            // (the crown crushed round its end, further out where the blast has not stripped it)
-            if let (Some((lx, lz, _)), true) = (last, r > 110.0 && c.leaves != 255) {
-                let leaves = LEAVES[c.leaves as usize];
-                for (ox, oz) in [(sx, sz), (sz, sx), (-sz, -sx), (sx + sz, sz + sx), (sx - sz, sz - sx)] {
-                    let (fx, fz) = (lx + ox, lz + oz);
-                    if used.contains(&(fx, fz)) {
-                        continue;
-                    }
-                    if let Some(g2) = lie(fx, fz, gy) {
-                        b.run(fx, fz, g2 + 1, g2 + 1, leaves);
-                        used.insert((fx, fz));
-                    }
+                if let Some(g2) = lie(fx, fz, gy) {
+                    put.push((fx, fz, g2 + 1, leaves));
+                    used.insert((fx, fz));
                 }
             }
-            // (and the stump: what is left standing of the trunk, its top broken)
-            let _ = LOG_Y;
+        }
+        if put.is_empty() {
+            continue;
+        }
+        // (down once the wave has swept the farthest of it, a ring past)
+        let far = put.iter().map(|&(px, pz, _, _)| (f64::from(px) + 0.5 - s.cx).hypot(f64::from(pz) + 0.5 - s.cz)).fold(0.0, f64::max);
+        let b = due.get(wave.at(far + NK_RING + 1.0) + 0.1);
+        for (px, pz, y, m) in put {
+            b.run(px, pz, y, y, m);
         }
     }
-    q.ev.push((NK_LAID, Act::Blocks(Box::new(b))));
 }
+
 /// The rubble: chunks of the ground thrown out, more near it, landing over a few seconds.
-fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
+/// Each lands a second or two after the wave has swept where it lands, the nearer sooner.
+fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, wave: &Wave) {
     let (bx, bz) = (q.bx, q.bz);
-    let mut used = used.borrow_mut();
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x7e57);
-    let mut waves: Vec<Blocks> = (0..4).map(|_| Blocks::default()).collect();
+    let mut due = Due::default();
+    let lands = |r: f64, k: f64| wave.at(r + NK_RING) + (0.6 + 1.6 * (r / NK_RUBBLE).min(1.2) + 0.4 * k) as f32;
     const RUBBLE: [&str; 9] = [
         "minecraft:cobblestone",
         "minecraft:cobblestone",
@@ -1043,8 +1307,8 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
             None => continue,
         };
         let m = *rng.pick(&RUBBLE);
-        let w = ((r / NK_RUBBLE) * 3.99) as usize;
-        waves[w.min(3)].run(x, z, y, y, m);
+        let t = lands(r, rng.next());
+        due.get(t).run(x, z, y, y, m);
         used.insert((x, z));
         // (now and then a bigger chunk: two side by side)
         if rng.next() < 0.25 && r < 140.0 {
@@ -1055,7 +1319,7 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
                 && let Some(t2) = new_ground(c2, s, x2, z2)
                 && t2 + 1 == y
             {
-                waves[w.min(3)].run(x2, z2, y, y, m);
+                due.get(t).run(x2, z2, y, y, m);
                 used.insert((x2, z2));
             }
         }
@@ -1081,22 +1345,18 @@ fn nk_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
                 _ => continue,
             };
             let m = if n % 6 == 0 { if rng.next() < 0.5 { LOG_X[wood] } else { LOG_Z[wood] } } else { LEAVES[wood] };
-            waves[3].run(x, z, y, y, m);
+            due.get(lands(r, rng.next())).run(x, z, y, y, m);
             used.insert((x, z));
         }
     }
-    for (i, w) in waves.into_iter().enumerate() {
-        if !w.runs.is_empty() {
-            q.ev.push((NK_LAID + 0.3 + 0.9 * i as f32, Act::Blocks(Box::new(w))));
-        }
-    }
+    due.push(q);
 }
 
 /// Real blocks thrown out of the crater as it is blasted open: the ground that was there (grass and dirt off its top, the
 /// stone and tuff under it, now and then a log of the wood growing round it), flung outward and up over the first second
 /// and a half, at all speeds, so some come down by the rim and some arc far out over the flattened land. Some land as
 /// blocks, the rest break up where they land (CancelDrop); none drops an item.
-fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
+fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, wave: &Wave, part: u64) {
     let (bx, bz) = (q.bx, q.bz);
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x7410 ^ (part << 20));
     let mut woods = [0u32; 9];
@@ -1136,8 +1396,8 @@ fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
         let vy = 1.0 + 1.8 * rng.next();
         let (vx, vz) = (ang.cos() * h, ang.sin() * h);
         let y = f64::from(c.g) + 1.2 + 2.5 * rng.next();
-        // (most in the first half second, the last ones at a second and a half)
-        let t = NK_HIT + 0.05 + 1.5 * rng.next().powf(1.3) as f32;
+        // (as the wave digs the crater out there, the middle's first, a few at a time over the next second)
+        let t = wave.at(r) + 0.05 + 1.2 * rng.next().powf(1.3) as f32;
         let keep = if rng.next() < 0.45 { "" } else { ",CancelDrop:1b" };
         q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b{keep},Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
         n += 1;
@@ -1148,17 +1408,16 @@ fn nk_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
 /// Past the land the blast knocks over (NK_READ) out to NK_FLASH, what the flash sees is scorched: the leaves facing
 /// it burnt off, the wood and planks charred dark, the grass burnt to bare earth, the plants gone, wool blackened,
 /// the odd fire lit; what the land, a tree or a wall hides from it is left as it was (the flash's shadows). Read as it
-/// starts (NK_FL_PARTS queries, NK_FL_BELOW under each column's top), worked out in NK_FL_BANDS stages ahead and put in
-/// over the second and a half after the burst.
+/// starts (NK_FL_PARTS queries, NK_FL_BELOW under each column's top), worked out in parts of its ring after the blast's
+/// and put in as the wave reaches them, last of all.
 const NK_FLASH: i32 = 480;
 const NK_FL_W: i32 = 2 * NK_FLASH + 1;
 const NK_FL_PARTS: i32 = 32;
 const NK_FL_BELOW: u32 = 30;
-/// The line of sight worked out along NK_FL_RAYS rays out from the fireball, in NK_FL_SWEEPS stages; then the edits in
-/// NK_FL_BANDS stages of rows.
+/// The line of sight worked out along NK_FL_RAYS rays out from the fireball, in NK_FL_SWEEPS parts; then the edits in
+/// parts of its ring.
 const NK_FL_RAYS: i32 = 3400;
 const NK_FL_SWEEPS: i32 = 24;
-const NK_FL_BANDS: i32 = 12;
 /// What a column holds that the flash changes, a bit each: the leaves of each wood (0-8), the logs of each (9-17),
 /// a grass block on top (18), the plants (19-24), wool and carpet (25-26), planks of three woods (27-29).
 const FL_PLANTS: [&str; 6] = ["minecraft:short_grass", "minecraft:tall_grass", "minecraft:fern", "minecraft:large_fern", "minecraft:dandelion", "minecraft:poppy"];
@@ -1194,7 +1453,6 @@ struct Flash {
     seen: Vec<i16>,
     parts: usize,
 }
-type FlashShared = Rc<RefCell<Flash>>;
 fn fl_idx(bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
     let (i, k) = (x - bx + NK_FLASH, z - bz + NK_FLASH);
     (i >= 0 && k >= 0 && i < NK_FL_W && k < NK_FL_W).then(|| (k * NK_FL_W + i) as usize)
@@ -1264,46 +1522,11 @@ fn fl_take_in(fl: &mut Flash, a: &crate::columns::Answer, bx: i32, bz: i32) {
         }
     }
 }
-fn nk_flash_step(q: &mut Plan, fl: FlashShared, tags: Rc<Vec<u32>>, part: usize, at_t: f32) {
-    if part >= tags.len() {
-        return;
-    }
-    // (its square made on its first stage, not as the strike is planned: a few megabytes)
-    if fl.borrow().top.is_empty() {
-        let n = (NK_FL_W * NK_FL_W) as usize;
-        let mut f = fl.borrow_mut();
-        f.top = vec![i16::MIN; n];
-        f.g = vec![0; n];
-        f.mats = vec![0; n];
-        f.seen = vec![i16::MAX; n];
-    }
-    let Some(a) = crate::columns::take(tags[part]) else {
-        if at_t < NK_HIT - 4.5 {
-            q.later(at_t + 0.1, move |q| nk_flash_step(q, fl, tags, part, at_t + 0.1));
-        }
-        return;
-    };
-    fl_take_in(&mut fl.borrow_mut(), &a, q.bx, q.bz);
-    fl.borrow_mut().parts += 1;
-    // (the next but one asked for only now: a few megabytes an answer, they are kept in hand two at a time)
-    if part + 2 < tags.len() {
-        let columns = fl_columns(q.bx, q.bz, part as i32 + 2);
-        q.ev.push((at_t, Act::Read { tag: tags[part + 2], columns, below: NK_FL_BELOW, above: 1 }));
-    }
-    q.later(at_t + 0.05, move |q| nk_flash_step(q, fl, tags, part + 1, at_t + 0.05));
-}
 /// The flash's line of sight along rays j0..j1 out from the fireball: going out along each, the steepest the land and
 /// what stands on it rise towards the fireball so far, and so for each column past the blast's reach the lowest of it
 /// the fireball sees over them (the land, the trees and the walls between). Waits for the land to be in.
-fn nk_flash_sweep(q: &mut Plan, fl: FlashShared, land: Shared, s: Shape, gy: i32, j0: i32, j1: i32, now: f32) {
-    if (fl.borrow().parts < NK_FL_PARTS as usize || !land.borrow().done) && now < NK_HIT - 1.5 {
-        q.later(now + 0.1, move |q| nk_flash_sweep(q, fl, land, s, gy, j0, j1, now + 0.1));
-        return;
-    }
-    let (bx, bz) = (q.bx, q.bz);
+fn nk_flash_sweep(fl: &mut Flash, land: &Land, s: &Shape, bx: i32, bz: i32, gy: i32, j0: i32, j1: i32) {
     let hb = f64::from(gy) + NK_BURST;
-    let land = land.borrow();
-    let mut fl = fl.borrow_mut();
     if fl.top.is_empty() {
         return;
     }
@@ -1318,7 +1541,7 @@ fn nk_flash_sweep(q: &mut Plan, fl: FlashShared, land: Shared, s: Shape, gy: i32
             let (x, z) = ((s.cx + ux * d).floor() as i32, (s.cz + uz * d).floor() as i32);
             if (x, z) != last {
                 last = (x, z);
-                let h = if let Some(c) = at(&land, bx, bz, x, z) {
+                let h = if let Some(c) = at(land, bx, bz, x, z) {
                     Some(f64::from(c.top))
                 } else {
                     fl_idx(bx, bz, x, z).filter(|&i| fl.top[i] != i16::MIN).map(|i| f64::from(fl.top[i]))
@@ -1339,18 +1562,18 @@ fn nk_flash_sweep(q: &mut Plan, fl: FlashShared, land: Shared, s: Shape, gy: i32
         }
     }
 }
-/// The flash's scorching over rows k0..k1 of its square: what lies over the lowest of each column the fireball sees
-/// changed, more surely the nearer it is.
-fn nk_flash_rows(q: &mut Plan, fl: &Flash, s: &Shape, k0: i32, k1: i32, at_t: f32) {
+/// The flash's scorching over a part of its ring: what lies over the lowest of each column the fireball sees changed,
+/// more surely the nearer it is, as the wave reaches it.
+fn nk_flash_part(q: &mut Plan, fl: &Flash, s: &Shape, wave: &Wave, sec: &Sector) {
     let (bx, bz) = (q.bx, q.bz);
     let mut b = Blocks::default();
     if fl.top.is_empty() {
         return;
     }
-    for k in k0..k1 {
-        for i in 0..NK_FL_W {
-            let (x, z) = (bx - NK_FLASH + i, bz - NK_FLASH + k);
-            let ix = (k * NK_FL_W + i) as usize;
+    let (cells, _) = sec.cells(s.cx, s.cz);
+    {
+        for &(x, z) in &cells {
+            let Some(ix) = fl_idx(bx, bz, x, z) else { continue };
             let m = fl.mats[ix];
             if m == 0 || fl.top[ix] == i16::MIN || fl.seen[ix] == i16::MAX {
                 continue;
@@ -1402,7 +1625,243 @@ fn nk_flash_rows(q: &mut Plan, fl: &Flash, s: &Shape, k0: i32, k1: i32, at_t: f3
         }
     }
     if !b.runs.is_empty() {
-        q.ev.push((at_t, Act::Blocks(Box::new(b))));
+        q.ev.push((wave.at(sec.r0), Act::Blocks(Box::new(b))));
+    }
+}
+
+// ---- the land's work: one stage a tick, in order --------------------------------------------------------------------
+/// All the land's work is one chain of stages, a tick each, so none of it ever waits behind the rest or queues out of
+/// order: the land read (its rings asked from the middle out and taken in as they are answered), the flash's ring read,
+/// the water's flood, the blast's parts ring by ring from the middle out, the flash's line of sight and its parts.
+/// Each stage does about NK_BUDGET columns' worth (well under a tick's fuel).
+const NK_BUDGET: f64 = 1850.0;
+enum Job {
+    Flood,
+    Thrown(u64),
+    Rubble,
+    Sweep(i32, i32),
+    Blast(Sector),
+    Flash(Sector),
+}
+struct Work {
+    land: Land,
+    fl: Flash,
+    flood: Flood,
+    s: Shape,
+    wave: Wave,
+    used: Used,
+    gy: i32,
+    tags: Vec<u32>,
+    asked: usize,
+    taken: usize,
+    retry: Option<u32>,
+    retried: bool,
+    ftags: Vec<u32>,
+    fasked: usize,
+    ftaken: usize,
+    jobs: std::collections::VecDeque<Job>,
+    sweeps: usize,
+}
+impl Work {
+    fn new(s: Shape, gy: i32) -> Self {
+        let mut jobs = std::collections::VecDeque::new();
+        jobs.push_back(Job::Flood);
+        jobs.push_back(Job::Thrown(0));
+        jobs.push_back(Job::Thrown(1));
+        let per = (NK_FL_RAYS + NK_FL_SWEEPS - 1) / NK_FL_SWEEPS;
+        for j in 0..NK_FL_SWEEPS {
+            jobs.push_back(Job::Sweep(j * per, ((j + 1) * per).min(NK_FL_RAYS)));
+        }
+        let mut rubble = false;
+        for sec in sectors(0.0, f64::from(NK_READ) + 1.0, NK_RING, NK_ITEM, 150.0) {
+            if !rubble && sec.r0 >= NK_CRATER_R * NK_RIM {
+                jobs.push_back(Job::Rubble);
+                rubble = true;
+            }
+            jobs.push_back(Job::Blast(sec));
+        }
+        for sec in sectors(f64::from(NK_READ) + 1.0, f64::from(NK_FLASH) + 1.0, NK_FL_RING, NK_FL_ITEM, 1000.0) {
+            jobs.push_back(Job::Flash(sec));
+        }
+        Work {
+            land: Land { cols: vec![Column::default(); (NK_GW * NK_GW) as usize], missing: Vec::new(), done: false },
+            fl: Flash { top: Vec::new(), g: Vec::new(), mats: Vec::new(), seen: Vec::new(), parts: 0 },
+            flood: Flood::new(),
+            s,
+            wave: Wave::new(),
+            used: Default::default(),
+            gy,
+            tags: (0..NK_PARTS).map(|_| crate::columns::new_tag()).collect(),
+            asked: 0,
+            taken: 0,
+            retry: None,
+            retried: false,
+            ftags: (0..NK_FL_PARTS).map(|_| crate::columns::new_tag()).collect(),
+            fasked: 0,
+            ftaken: 0,
+            jobs,
+            sweeps: NK_FL_SWEEPS as usize,
+        }
+    }
+    /// How far out the land is in (every column within it read).
+    fn ready(&self) -> f64 {
+        if self.land.done {
+            return f64::INFINITY;
+        }
+        let r = if self.taken == 0 { 0.0 } else { read_reach(self.taken as i32 - 1) };
+        let (bx, bz) = (self.s.cx.floor() as i32, self.s.cz.floor() as i32);
+        let m = self.land.missing.iter().map(|&(x, z)| f64::from(x - bx).hypot(f64::from(z - bz)) - 1.0).fold(f64::INFINITY, f64::min);
+        r.min(m)
+    }
+    /// Whether job `j` can be done now; and whether the jobs after it must wait for it (the wave's parts go in order).
+    fn can(&self, j: &Job) -> (bool, bool) {
+        match j {
+            Job::Flood => (self.ready() >= 1.42 * f64::from(NK_FB) + 3.0, true),
+            Job::Thrown(_) => (self.flood.done && self.ready() >= NK_CRATER_R * 1.3, false),
+            Job::Rubble => (self.flood.done && self.land.done, false),
+            Job::Sweep(..) => (self.land.done && self.ftaken >= NK_FL_PARTS as usize, false),
+            Job::Blast(sec) => (self.flood.done && self.ready() >= sec.r1 + 12.0, true),
+            Job::Flash(_) => (self.sweeps == 0, true),
+        }
+    }
+    fn cost(j: &Job) -> f64 {
+        match j {
+            Job::Flood => 600.0,
+            Job::Thrown(_) => 900.0,
+            Job::Rubble => NK_BUDGET,
+            Job::Sweep(j0, j1) => 12.0 * f64::from(j1 - j0),
+            Job::Blast(s) | Job::Flash(s) => {
+                let a = s.da.min(TAU) / 2.0 * (s.r1 * s.r1 - s.r0 * s.r0);
+                // (a column's work: the crater's, its rim's, the flattened land's, the band's past it (tidied), the
+                // flash's, measured)
+                let u = s.r0 / NK_CRATER_R;
+                let k = if matches!(j, Job::Flash(_)) {
+                    1.0 / 19.0
+                } else if u < 1.0 {
+                    0.95
+                } else if u < NK_RIM {
+                    0.55
+                } else if s.r1 + 4.0 < 0.86 * NK_FLAT {
+                    0.7
+                } else {
+                    1.3
+                };
+                a * k
+            }
+        }
+    }
+}
+
+/// One stage of the land's work.
+fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
+    let more = {
+        let mut guard = w.borrow_mut();
+        let wk = &mut *guard;
+        let (bx, bz) = (q.bx, q.bz);
+        let mut spent = 0.0;
+        // the reads: the land's rings one a stage from the middle out, then the flash's ring two at a time
+        if wk.asked < wk.tags.len() {
+            let part = wk.asked;
+            q.ev.push((now, Act::Read { tag: wk.tags[part], columns: read_columns(bx, bz, part as i32), below: NK_BELOW, above: NK_ABOVE }));
+            wk.asked += 1;
+            spent += 150.0;
+        } else if wk.fasked < wk.ftags.len() && wk.fasked < wk.ftaken + 2 {
+            let part = wk.fasked;
+            q.ev.push((now, Act::Read { tag: wk.ftags[part], columns: fl_columns(bx, bz, part as i32), below: NK_FL_BELOW, above: 1 }));
+            wk.fasked += 1;
+            spent += 150.0;
+        }
+        // their answers taken in as they come (two of the land's, one of the flash's)
+        for _ in 0..2 {
+            if wk.taken < wk.asked
+                && let Some(a) = crate::columns::take(wk.tags[wk.taken])
+            {
+                take_in(&mut wk.land, &a, bx, bz);
+                wk.taken += 1;
+                spent += 300.0;
+            }
+        }
+        if wk.taken == wk.tags.len() && !wk.land.done {
+            // (the columns not loaded yet asked again, once, while there is time)
+            if wk.land.missing.is_empty() || wk.retried || now > NK_HIT - 1.0 {
+                wk.land.done = true;
+            } else if let Some(tag) = wk.retry {
+                if let Some(a) = crate::columns::take(tag) {
+                    wk.land.missing.clear();
+                    take_in(&mut wk.land, &a, bx, bz);
+                    wk.land.missing.clear();
+                    wk.retried = true;
+                    wk.land.done = true;
+                }
+            } else if now > 1.6 {
+                let tag = crate::columns::new_tag();
+                q.ev.push((now, Act::Read { tag, columns: wk.land.missing.clone(), below: NK_BELOW, above: NK_ABOVE }));
+                wk.retry = Some(tag);
+            }
+        }
+        if wk.ftaken < wk.fasked
+            && let Some(a) = crate::columns::take(wk.ftags[wk.ftaken])
+        {
+            if wk.fl.top.is_empty() {
+                let n = (NK_FL_W * NK_FL_W) as usize;
+                wk.fl = Flash { top: vec![i16::MIN; n], g: vec![0; n], mats: vec![0; n], seen: vec![i16::MAX; n], parts: 0 };
+                spent += 1200.0;
+            }
+            fl_take_in(&mut wk.fl, &a, bx, bz);
+            wk.fl.parts += 1;
+            wk.ftaken += 1;
+            spent += 400.0;
+        }
+        // the jobs: the first that can be done (never past one of the wave's parts that cannot yet: they go in order)
+        loop {
+            let mut pick = None;
+            for (i, j) in wk.jobs.iter().enumerate() {
+                let (can, blocks) = wk.can(j);
+                if can {
+                    pick = Some(i);
+                    break;
+                }
+                if blocks {
+                    break;
+                }
+            }
+            let Some(i) = pick else { break };
+            let c = Work::cost(&wk.jobs[i]);
+            if spent > 0.0 && spent + c > NK_BUDGET {
+                break;
+            }
+            spent += c;
+            let job = wk.jobs.remove(i).unwrap_or(Job::Rubble);
+            match job {
+                Job::Flood => {
+                    let s = wk.s;
+                    wk.flood.step(&wk.land, &s, bx, bz, 12_000);
+                    if !wk.flood.done {
+                        wk.jobs.push_front(Job::Flood);
+                    }
+                    break;
+                }
+                Job::Thrown(part) => nk_thrown(q, &wk.land, &wk.s, &wk.wave, part),
+                Job::Rubble => {
+                    let wave = wk.wave.clone();
+                    nk_rubble(q, &wk.land, &wk.s, &mut wk.used, &wave);
+                }
+                Job::Sweep(j0, j1) => {
+                    nk_flash_sweep(&mut wk.fl, &wk.land, &wk.s, bx, bz, wk.gy, j0, j1);
+                    wk.sweeps -= 1;
+                }
+                Job::Blast(sec) => {
+                    let wave = wk.wave.clone();
+                    nk_blast_part(q, &wk.land, &wk.flood, &wk.s, &mut wk.used, &wave, &sec);
+                }
+                Job::Flash(sec) => nk_flash_part(q, &wk.fl, &wk.s, &wk.wave, &sec),
+            }
+        }
+        !wk.jobs.is_empty()
+    };
+    // (and given up long after the burst if the world never answers)
+    if more && now < NK_HIT + 12.0 {
+        q.later(now + 0.05, move |q| nk_work(q, w, now + 0.05));
     }
 }
 
@@ -1529,7 +1988,6 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     }
 
     if terrain {
-        let land: Shared = Rc::new(RefCell::new(Land { cols: vec![Column::default(); (NK_GW * NK_GW) as usize], missing: Vec::new(), done: false, wl: None }));
         let point = [cx, gy, cz];
         let load = pk_load_rows(point, 0.0, NK_READ as f64 + 4.0);
         for [x0, z0, x1, z1] in &load {
@@ -1538,85 +1996,10 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         for [x0, z0, x1, z1] in &load {
             p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
         }
-        // the land read as it starts (a query a part, each a stage of its own), taken in a stage a part
-        let tags: Rc<Vec<u32>> = Rc::new((0..NK_PARTS).map(|_| crate::columns::new_tag()).collect());
-        for part in 0..NK_PARTS {
-            let tags = tags.clone();
-            let t = 0.1 + 0.05 * part as f32;
-            p.later(t, move |q| {
-                let columns = read_columns(q.bx, q.bz, part);
-                q.ev.push((t, Act::Read { tag: tags[part as usize], columns, below: NK_BELOW, above: NK_ABOVE }));
-            });
-        }
-        {
-            let land = land.clone();
-            p.later(0.6, move |q| nk_land_step(q, land, tags, 0, 0.6, 0));
-        }
-        // the blast's edits worked out ahead, a band of rows a stage, the middle's first (their blocks going in after
-        // the burst, a band a tick or so, from the middle out), and what each leaves hanging, each on a stage of its own
+        // the land's work, one chain of stages from as it starts: its changes going in from the middle out with the wave
         let shape = Shape { cx, cz, ph: [TAU * mh(1, geo.seed, 0xc1), TAU * mh(2, geo.seed, 0xc1), TAU * mh(3, geo.seed, 0xc1)], seed: geo.seed };
-        let bands = NK_BANDS;
-        let rows = (NK_GW + bands - 1) / bands;
-        let mut order: Vec<i32> = (0..bands).collect();
-        order.sort_by_key(|&j| (2 * j + 1 - bands).abs());
-        for (n, &j) in order.iter().enumerate() {
-            let (k0, k1) = (j * rows, ((j + 1) * rows).min(NK_GW));
-            let t = 2.8 + 0.025 * n as f32;
-            let at = NK_HIT + 0.08 + 0.03 * n as f32;
-            let l1 = land.clone();
-            p.later(t, move |q| nk_blast_rows(q, l1, shape, k0, k1, at, t));
-        }
-        // the trees felled, a band of rows a stage, then the rubble and the blocks thrown
-        let used: Used = Default::default();
-        let fb = 26;
-        let rows = (NK_GW + fb - 1) / fb;
-        for j in 0..fb {
-            let (land, used) = (land.clone(), used.clone());
-            p.later(5.0 + 0.05 * j as f32, move |q| nk_felled(q, land, shape, used, j * rows, ((j + 1) * rows).min(NK_GW), 5.0));
-        }
-        for part in 0..2u64 {
-            let land = land.clone();
-            p.later(NK_HIT - 0.7 + 0.1 * part as f32, move |q| nk_thrown(q, &land.borrow(), &shape, part));
-        }
-        {
-            let land = land.clone();
-            p.later(NK_HIT - 0.9, move |q| nk_rubble(q, &land.borrow(), &shape, &used));
-        }
-        // the flash's scorching past the blast's reach: the ring read as it starts, worked out a band of rows a stage
-        let fl: FlashShared = Rc::new(RefCell::new(Flash {
-            top: Vec::new(),
-            g: Vec::new(),
-            mats: Vec::new(),
-            seen: Vec::new(),
-            parts: 0,
-        }));
-        let ftags: Rc<Vec<u32>> = Rc::new((0..NK_FL_PARTS).map(|_| crate::columns::new_tag()).collect());
-        for part in 0..2 {
-            let ftags = ftags.clone();
-            let t = 1.0 + 0.05 * part as f32;
-            p.later(t, move |q| {
-                let columns = fl_columns(q.bx, q.bz, part);
-                q.ev.push((t, Act::Read { tag: ftags[part as usize], columns, below: NK_FL_BELOW, above: 1 }));
-            });
-        }
-        {
-            let fl = fl.clone();
-            p.later(1.2, move |q| nk_flash_step(q, fl, ftags, 0, 1.2));
-        }
-        let gyi = by + 1;
-        let per = (NK_FL_RAYS + NK_FL_SWEEPS - 1) / NK_FL_SWEEPS;
-        for j in 0..NK_FL_SWEEPS {
-            let (fl, land) = (fl.clone(), land.clone());
-            let t = 4.5 + 0.1 * j as f32;
-            p.later(t, move |q| nk_flash_sweep(q, fl, land, shape, gyi, j * per, ((j + 1) * per).min(NK_FL_RAYS), t));
-        }
-        let rows = (NK_FL_W + NK_FL_BANDS - 1) / NK_FL_BANDS;
-        for j in 0..NK_FL_BANDS {
-            let fl = fl.clone();
-            let t = 8.0 + 0.1 * j as f32;
-            let at = NK_HIT + 0.05 + 0.12 * j as f32;
-            p.later(t, move |q| nk_flash_rows(q, &fl.borrow(), &shape, j * rows, ((j + 1) * rows).min(NK_FL_W), at));
-        }
+        let work = Rc::new(RefCell::new(Work::new(shape, by + 1)));
+        p.later(0.15, move |q| nk_work(q, work, 0.15));
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -1753,13 +2136,33 @@ mod tests {
     fn pond(x: i32, z: i32) -> bool {
         ((x + 40) * (x + 40) + (z - 30) * (z - 30)) < 49
     }
+    thread_local! {
+        /// The land the tests' world answers with: 0 the forest with its pond; 1 the forest over an aquifer (water
+        /// in the ground 8 to 14 under it everywhere) with a river 200 off; 2 the forest by the sea (west of x -50,
+        /// its surface at 62); 3 the forest with a river through the crater (12 wide at z 75, its surface at 62).
+        static LAND: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    }
+    /// The water standing over column (x, z), if any: its bed and its surface.
+    fn water_at(x: i32, z: i32) -> Option<(i32, i32)> {
+        match LAND.with(|l| l.get()) {
+            0 => pond(x, z).then(|| (ground_h(x, z) - 3, ground_h(x, z))),
+            1 => ((z - 197).abs() < 6).then_some((55, 62)),
+            2 => (x < -50).then_some((50, 62)),
+            3 => ((z - 75).abs() < 6).then_some((55, 62)),
+            _ => None,
+        }
+    }
     fn column(x: i32, z: i32, below: u32, above: u32) -> Option<(i32, Vec<&'static str>)> {
-        let g = ground_h(x, z);
-        let t = tree(x, z);
-        let wet = pond(x, z);
+        let land = LAND.with(|l| l.get());
+        let wet = water_at(x, z);
+        let g = if land == 0 { ground_h(x, z) } else { wet.map_or(64, |w| w.0) };
+        let t = wet.is_none() && tree(x, z);
         let block = |y: i32| -> &'static str {
-            if wet {
-                return if y < g - 3 { "minecraft:dirt" } else if y <= g { "minecraft:water" } else { "minecraft:air" };
+            if let Some((bed, top)) = wet {
+                return if y < bed { "minecraft:dirt" } else if y <= top { "minecraft:water" } else { "minecraft:air" };
+            }
+            if land == 1 && y < g - 8 && y >= g - 14 {
+                return "minecraft:water";
             }
             if y < g - 3 {
                 "minecraft:stone"
@@ -1777,7 +2180,7 @@ mod tests {
                 "minecraft:air"
             }
         };
-        let top = if t { g + 9 } else { g + 2 };
+        let top = if let Some((_, w)) = wet { w } else if t { g + 9 } else { g + 2 };
         let (below, above) = (below as i32, above as i32);
         Some((top, (top - below..top + above).map(block).collect()))
     }
@@ -1814,24 +2217,20 @@ mod tests {
     }
 
     #[test]
-    fn nuke_digs_a_crater_fells_the_trees_and_floods_to_the_waters_level() {
+    fn nuke_digs_a_crater_fells_the_trees_and_boils_its_pond_away() {
+        LAND.with(|l| l.set(0));
         let blocks = played(true);
         assert!(!blocks.is_empty());
         let fills: Vec<String> = blocks.iter().flat_map(|(_, b)| b.as_fills()).collect();
-        // nothing that burns or flows is placed (the fire is the flash's, far out); the water only still water, up to
-        // the pond's level, which the crater cut into
-        let pond_top = (-60..-20).flat_map(|x| (10..50).map(move |z| (x, z))).filter(|&(x, z)| pond(x, z)).map(|(x, z)| ground_h(x, z)).max().unwrap();
+        // nothing that burns or flows is placed (the fire is the flash's, far out); the pond in the crater is too small
+        // to flood it: no water at all
         for f in &fills {
-            for bad in ["lava ", "magma", "sand ", "concrete_powder"] {
+            for bad in ["lava ", "magma", "sand ", "concrete_powder", "water "] {
                 assert!(!f.contains(&format!(" minecraft:{bad}")) || f.contains(" replace "), "{f}");
             }
-            if f.contains(" minecraft:water") {
-                let y1: i32 = f.split_whitespace().nth(5).unwrap().parse().unwrap();
-                assert!(y1 <= pond_top, "{f}");
-            }
         }
-        // the middle dug about NK_CRATER_D deep (and flooded to the pond's level)
-        let mid = fills.iter().find(|f| f.starts_with("fill 10 ") && f.contains(" -3 10 ") && f.contains("minecraft:water")).expect("the middle dug");
+        // the middle dug about NK_CRATER_D deep
+        let mid = fills.iter().find(|f| f.starts_with("fill 10 ") && f.contains(" -3 10 ") && f.ends_with("minecraft:air strict")).expect("the middle dug");
         let y0: i32 = mid.split_whitespace().nth(2).unwrap().parse().unwrap();
         assert!((ground_h(10, -3) - y0 + 1 - NK_CRATER_D as i32).abs() <= 1, "{mid}");
         // trees felled: logs lying along x or z
@@ -1849,15 +2248,6 @@ mod tests {
             })
             .count();
         assert!(far_logs > 3, "{far_logs}");
-        // the pond left alone, and nothing dug next to it (what stood on its banks may go)
-        for f in &fills {
-            let w: Vec<i32> = f.split_whitespace().skip(1).take(3).map(|v| v.parse().unwrap_or(0)).collect();
-            if f.contains("minecraft:air") && w.len() == 3 {
-                let (x, y, z) = (w[0], w[1], w[2]);
-                let near = pond(x, z) || pond(x + 1, z) || pond(x - 1, z) || pond(x, z + 1) || pond(x, z - 1);
-                assert!(!near || y > ground_h(x, z), "{f}");
-            }
-        }
         // the crown of a felled tree never left in the air: every leaves block at a tree's column cleared
         for x in -100..120 {
             for z in -100..100 {
@@ -1865,12 +2255,98 @@ mod tests {
                     continue;
                 }
                 let r = (f64::from(x) - 10.0).hypot(f64::from(z) + 3.0);
-                if r < 70.0 && !pond(x, z) {
+                if r < 70.0 && water_at(x, z).is_none() {
                     let g = ground_h(x, z);
                     assert!(fills.iter().any(|f| f.starts_with(&format!("fill {x} ")) && f.contains(&format!(" {z} {x} ")) && f.contains("minecraft:air") && f.contains(&format!(" {} {z} ", g + 8))), "tree at {x} {z} left standing");
                 }
             }
         }
+    }
+
+    /// The water placed (still water, not a filter): each run's column, its lowest and its highest.
+    fn water_placed(blocks: &[(f32, Blocks)]) -> Vec<(i32, i32, i32, i32)> {
+        blocks
+            .iter()
+            .flat_map(|(_, b)| b.as_fills())
+            .filter(|f| f.ends_with(" minecraft:water strict") && !f.contains(" replace "))
+            .map(|f| {
+                let w: Vec<i32> = f.split_whitespace().skip(1).take(6).map(|v| v.parse().unwrap()).collect();
+                (w[0], w[2], w[1], w[4])
+            })
+            .collect()
+    }
+    fn sealed(blocks: &[(f32, Blocks)]) -> usize {
+        blocks.iter().flat_map(|(_, b)| b.as_fills()).filter(|f| f.ends_with("minecraft:stone replace minecraft:water strict")).count()
+    }
+
+    #[test]
+    fn nuke_crater_far_from_water_stays_dry_over_an_aquifer() {
+        // (the water in the ground under it is not a body it breaks into: sealed where the crater bares it, never
+        // flooding it; nor the river 200 off)
+        LAND.with(|l| l.set(1));
+        let blocks = played(true);
+        assert!(water_placed(&blocks).is_empty(), "{:?}", &water_placed(&blocks)[..5.min(water_placed(&blocks).len())]);
+        assert!(sealed(&blocks) > 10_000, "{}", sealed(&blocks));
+        // (and the crater's floor scorched: it is dry)
+        let fills: Vec<String> = blocks.iter().flat_map(|(_, b)| b.as_fills()).collect();
+        assert!(fills.iter().any(|f| f.starts_with("fill 10 ") && f.contains(" -3 10 ") && (f.contains("blackstone") || f.contains("basalt") || f.contains("coarse_dirt") || f.contains("glass") || f.contains("tuff") || f.contains("gravel") || f.contains("deepslate"))));
+        LAND.with(|l| l.set(0));
+    }
+
+    #[test]
+    fn nuke_crater_at_the_sea_floods_to_the_seas_level() {
+        LAND.with(|l| l.set(2));
+        let blocks = played(true);
+        let w = water_placed(&blocks);
+        assert!(!w.is_empty());
+        // never over the sea's surface; the middle, joined to it below that, flooded to it
+        assert!(w.iter().all(|r| r.3 <= 62), "{:?}", w.iter().find(|r| r.3 > 62));
+        assert!(w.iter().any(|r| r.0 == 10 && r.1 == -3 && r.3 == 62), "the middle flooded");
+        // only in the crater
+        assert!(w.iter().all(|r| (f64::from(r.0) - 10.0).hypot(f64::from(r.1) + 3.0) < NK_CRATER_R * 1.3), "{:?}", w.iter().find(|r| (f64::from(r.0) - 10.0).hypot(f64::from(r.1) + 3.0) >= NK_CRATER_R * 1.3));
+        LAND.with(|l| l.set(0));
+    }
+
+    #[test]
+    fn nuke_crater_cut_by_a_river_floods_to_the_rivers_level() {
+        LAND.with(|l| l.set(3));
+        let blocks = played(true);
+        let w = water_placed(&blocks);
+        assert!(w.iter().all(|r| r.3 <= 62));
+        assert!(w.iter().any(|r| r.0 == 10 && r.1 == -3 && r.3 == 62), "the middle flooded");
+        // (on the far side of the crater from the river, where it digs less than a block or two below the river's
+        // surface, none)
+        assert!(w.iter().all(|r| r.2 <= 62 && r.3 >= r.2));
+        LAND.with(|l| l.set(0));
+    }
+
+    #[test]
+    fn nuke_land_changes_sweep_out_from_the_middle_with_the_wave() {
+        // played as the mod plays it (one stage a tick): nothing changes before the wave reaches it, the wave keeps up
+        // (no edit goes in late), and it sweeps out from the middle
+        LAND.with(|l| l.set(0));
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let ev = plan(&crate::lasers::NUKE, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
+        let p = crate::strike::sim::play(ev, 30.0, &column);
+        let wave = Wave::new();
+        let mut last = 0.0f64;
+        let mut by_tick: std::collections::BTreeMap<i32, Vec<f64>> = Default::default();
+        for (t, due, b) in &p.edits {
+            assert!(t - due < 0.2, "an edit {:.2} s late", t - due);
+            for u in &b.runs {
+                let r = (f64::from(u.x) + 0.5 - 10.5).hypot(f64::from(u.z) + 0.5 + 2.5);
+                assert!(*t >= wave.at(r - 2.0 * NK_RING - 4.0) - 0.06, "at {r:.0} at {t:.2}, before the wave ({:.2})", wave.at(r));
+                by_tick.entry((t / 0.05).round() as i32).or_default().push(r);
+            }
+        }
+        // (the middle of what changes each tick, while the wave runs, further out tick by tick)
+        for (k, mut rs) in by_tick.into_iter().filter(|(k, _)| (*k as f32) * 0.05 < wave.at(f64::from(NK_FLASH))) {
+            rs.sort_by(f64::total_cmp);
+            let m = rs[rs.len() / 2];
+            assert!(m >= last - 30.0, "tick {k}: {m:.0} after {last:.0}");
+            last = last.max(m);
+        }
+        assert!(last > 400.0, "{last}");
     }
 
     #[test]
@@ -1911,7 +2387,7 @@ mod tests {
         assert!(thrown.len() >= 60 && thrown.len() <= NK_THROWN, "{} thrown", thrown.len());
         let mut per_tick = std::collections::HashMap::new();
         for (t, c) in &thrown {
-            assert!(*t > NK_HIT && *t < NK_HIT + 1.6, "{t}");
+            assert!(*t > NK_HIT && *t < NK_HIT + 2.2, "{t}");
             *per_tick.entry((t * 20.0) as i32).or_insert(0) += 1;
             // never dropping an item; out of the crater (the target at 10 -3), outward and up
             assert!(c.contains("DropItem:0b"), "{c}");
@@ -1931,6 +2407,50 @@ mod tests {
         // and they are not killed in the air as the land round it is cleared of what lives there
         assert!(cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block")));
     }
+    /// `cargo test --release nk_wave_profile -- --ignored --nocapture`: the land's edits as the mod plays them out
+    /// (one stage a tick): how far out they reach a quarter second at a time, how many blocks, and the latest stage.
+    #[test]
+    #[ignore]
+    fn nk_wave_profile() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let ev = plan(&crate::lasers::NUKE, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
+        let p = crate::strike::sim::play(ev, 30.0, &column);
+        let mut bins: std::collections::BTreeMap<i32, (u64, usize, f64, f64, Vec<f64>)> = Default::default();
+        let mut per_tick: std::collections::BTreeMap<i32, u64> = Default::default();
+        let mut late = 0.0f32;
+        for (t, due, b) in &p.edits {
+            late = late.max(t - due);
+            let e = bins.entry((t / 0.25) as i32).or_insert((0, 0, f64::MAX, 0.0, Vec::new()));
+            for u in &b.runs {
+                let r = (f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0);
+                if u.only.is_none() && u.surface.is_none() {
+                    e.0 += u64::from(u.height);
+                }
+                e.1 += 1;
+                e.2 = e.2.min(r);
+                e.3 = e.3.max(r);
+                e.4.push(r);
+                if u.only.is_none() && u.surface.is_none() {
+                    *per_tick.entry((t / 0.05).round() as i32).or_default() += u64::from(u.height);
+                }
+            }
+        }
+        for (k, (blocks, runs, lo, hi, mut rs)) in bins {
+            rs.sort_by(f64::total_cmp);
+            let pc = |f: f64| rs[((rs.len() - 1) as f64 * f) as usize];
+            println!("{:6.2} s: {blocks:8} blocks {runs:7} runs, r {lo:5.0} [{:5.0} {:5.0} {:5.0}] {hi:5.0}", k as f32 * 0.25, pc(0.1), pc(0.5), pc(0.9));
+        }
+        let worst = p.stages.iter().map(|s| s.1 - s.0).fold(0.0f32, f32::max);
+        let heavy = p.stages.iter().map(|s| s.2).fold(0.0f64, f64::max);
+        let busiest = per_tick.values().max().copied().unwrap_or(0);
+        if std::env::var("NK_STAGES").is_ok() {
+            for st in p.stages.iter().take(400) {
+                println!("stage due {:6.2} ran {:6.2} {:.3} ms", st.0, st.1, st.2);
+            }
+        }
+        println!("{} stages, the latest {worst:.2} s late, the heaviest {heavy:.3} ms; edits at most {late:.2} s late; busiest tick {busiest} blocks set (unfiltered)", p.stages.len());
+    }
+
 }
 
 #[cfg(test)]
@@ -1972,6 +2492,18 @@ mod stage_cost {
         out.sort_by(|a, b| b.1.total_cmp(&a.1));
         for b in out.iter().take(8) {
             println!("stage at {:6.2} s: {:.3} ms, {} acts", b.0, b.1, b.2);
+        }
+    }
+}
+#[cfg(test)]
+mod wave_t {
+    #[test]
+    #[ignore]
+    fn nk_wave_times() {
+        let w = super::Wave::new();
+        for r in [0.0, 25.0, 50.0, 75.0, 100.0, 140.0, 180.0, 230.0, 300.0, 380.0, 480.0] {
+            let shock = ((r * r + super::NK_BURST * super::NK_BURST) as f64).sqrt() / 343.0;
+            println!("r {r:4}: {:.2} s after the burst (the shock {:.2})", w.at(r) - super::NK_HIT, shock);
         }
     }
 }

@@ -5399,3 +5399,77 @@ mod replay {
         println!("world changes all made by {done_at:.1} s, the spare ones by {spare_at:.1} s");
     }
 }
+
+/// The mod's playing of a plan, tick by tick, as lib.rs's `tick_strike` does it (one stage worked out a tick, the
+/// urgent first, the rest waiting in turn; the world's reads answered at once by `answer`), for the tests and the
+/// profilers: what was edited when, and how late each stage ran.
+#[cfg(test)]
+pub(super) mod sim {
+    use super::*;
+    use std::collections::VecDeque;
+    pub struct Played {
+        /// The tick's time each edit went in, the time it was due, its blocks.
+        pub edits: Vec<(f32, f32, Blocks)>,
+        /// The commands run (as due, queued ones as their tick goes).
+        pub cmds: Vec<(f32, String)>,
+        /// Each stage: when it fell due, when it ran, how long it took (ms).
+        pub stages: Vec<(f32, f32, f64)>,
+    }
+    pub type Answer<'a> = &'a dyn Fn(i32, i32, u32, u32) -> Option<(i32, Vec<&'static str>)>;
+    pub fn play(mut plan: Vec<(f32, Act)>, length: f32, answer: Answer) -> Played {
+        crate::columns::clear();
+        plan.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut out = Played { edits: Vec::new(), cmds: Vec::new(), stages: Vec::new() };
+        let (mut urgent, mut waiting): (VecDeque<(f32, Stage)>, VecDeque<(f32, Stage)>) = Default::default();
+        let mut next = 0;
+        let mut ticks = 0u32;
+        loop {
+            ticks += 1;
+            let now = ticks as f32 * 0.05;
+            let mut worked_out = false;
+            let mut run = |job: Stage, due: f32, plan: &mut Vec<(f32, Act)>, next: usize, out: &mut Played| {
+                let s = std::time::Instant::now();
+                let more = job();
+                out.stages.push((due, now, s.elapsed().as_secs_f64() * 1000.0));
+                let mut rest = plan.split_off(next);
+                rest.extend(more);
+                rest.sort_by(|a, b| a.0.total_cmp(&b.0));
+                plan.extend(rest);
+            };
+            if let Some((due, job)) = urgent.pop_front().or_else(|| waiting.pop_front()) {
+                run(job, due, &mut plan, next, &mut out);
+                worked_out = true;
+            }
+            while next < plan.len() && plan[next].0 <= now {
+                let (t, act) = std::mem::replace(&mut plan[next], (0.0, Act::Cmd(String::new())));
+                next += 1;
+                match act {
+                    Act::Cmd(c) | Act::Spare(c) => out.cmds.push((now, c)),
+                    Act::Blocks(b) => out.edits.push((now, t, *b)),
+                    Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| answer(x, z, below, above)),
+                    Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
+                    Act::Soon(job) if worked_out => urgent.push_back((t, job)),
+                    Act::Later(job) if worked_out => waiting.push_back((t, job)),
+                    Act::Later(job) | Act::Soon(job) => {
+                        run(job, t, &mut plan, next, &mut out);
+                        worked_out = true;
+                    }
+                    _ => {}
+                }
+            }
+            if now >= length && urgent.is_empty() && waiting.is_empty() {
+                break;
+            }
+        }
+        out
+    }
+    /// The middle radius of an edit's runs from (cx, cz), and its least and most.
+    pub fn reach(b: &Blocks, cx: f64, cz: f64) -> (f64, f64, f64) {
+        let mut r: Vec<f64> = b.runs.iter().map(|u| (f64::from(u.x) + 0.5 - cx).hypot(f64::from(u.z) + 0.5 - cz)).collect();
+        if r.is_empty() {
+            return (0.0, 0.0, 0.0);
+        }
+        r.sort_by(f64::total_cmp);
+        (r[0], r[r.len() / 2], r[r.len() - 1])
+    }
+}
