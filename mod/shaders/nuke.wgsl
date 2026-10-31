@@ -1226,7 +1226,8 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 }
                 let p = rd * t;
                 let b2 = pl_col_base2(&cl, p);
-                let kb = cl.kb;
+                // (the crease between two billows broken up by the lumps over it: sooty in their own creases, not a ring)
+                let kb0 = cl.kb;
                 let d0 = b2.x;
                 let dr = b2.y;
                 let db = min(d0, dr);
@@ -1288,6 +1289,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     let hy = saturate((p.y - C.y) / max(cl.hc + cl.rt, 1.0));
                     let deep = saturate(-d0 / 70.0);
                     let ao = mix((0.55 + 0.45 * sd.y) * (1.0 - 0.6 * deep) * (1.0 - 0.6 * sky_occ), 0.75, soft);
+                    let kb = kb0 * saturate(1.5 - 1.6 * sd.y);
                     let mv = (0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5)) * (1.0 - 0.35 * kb);
                     // (dusty brown low down, sooty grey-brown up in the cap, a little pink-tan as it ages)
                     var alb = mix(vec3<f32>(0.43, 0.38, 0.32), sootc, smoothstep(0.08, 0.45, hy)) * mv;
@@ -1309,13 +1311,14 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     let core = mix(1.0 - exp(min(d0, 0.0) / (0.22 * cl.rt + 6.0)), ringc, smoothstep(2.0, 9.0, a));
                     let under = 1.0 - smoothstep(cl.hc - 0.6 * cl.rt, cl.hc + 0.5 * cl.rt, p.y - C.y);
                     let surf = 1.5 * (1.0 - smoothstep(4.5, 8.5, a)) + 0.6 * exp(-a / 1.2);
-                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * mix(0.1 + 2.3 * (1.0 - sd.y) * (1.0 - sd.y), (0.04 + 0.85 * smoothstep(0.2, 1.0, sd.y)) * (1.0 - 0.8 * kb), smoothstep(1.0, 3.0, a));
+                    let e = (heat * 7.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * mix(0.1 + 2.3 * (1.0 - sd.y) * (1.0 - sd.y), (0.05 + 0.75 * smoothstep(0.2, 1.0, sd.y)) * (1.0 - 0.8 * kb), smoothstep(1.0, 3.0, a));
                     let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(2.8, 0.95, 0.16), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
                     let lowlit = (1.0 - capw) * (heat * 2.0 + 0.6 * glow) * exp(-max(p.y - C.y, 0.0) / 90.0) * 0.4;
                     // (at night its own glow is most of what lights it, and shows for longer)
                     let en = e * (1.0 + 1.6 * (1.0 - day));
-                    c = c * (1.0 - saturate(en * 0.5)) + tcol * (en * 0.6 + lowlit);
+                    // (while it burns, the light on its sooty skin small beside its own: dark in its creases, not pale)
+                    c = c * (1.0 - 0.6 * capw * (1.0 - smoothstep(4.0, 8.0, a))) * (1.0 - saturate(en * 1.2)) + tcol * (en * 0.6 + lowlit);
                     let ext = den * 0.32 * st;
                     let al = 1.0 - exp(-ext);
                     acc = acc + tr * al * c;
@@ -1333,7 +1336,8 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     col_t = dist;
                 }
                 let ap = 1.0 - exp(-dist / 4000.0);
-                let ccol = mix(acc / max(1.0 - tr, 1.0e-4), haze_c, ap * 0.75);
+                // (the air's haze over it: thin over the burning ball, whose own light outshines it)
+                let ccol = mix(acc / max(1.0 - tr, 1.0e-4), haze_c, ap * 0.75 * mix(0.25, 1.0, smoothstep(5.0, 9.0, a)));
                 if (stage == 0u) {
                     col = mix(col, ccol, (1.0 - tr) * k * fade);
                 } else {
