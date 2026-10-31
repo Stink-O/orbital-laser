@@ -1,6 +1,6 @@
 // v8 BOIL ON BILLOWS: the Nuke's cloud as it was at 1ba6527 2026-10-31 01:14 Nuke: the churn's warp let go by eight seconds (by four up the stem), the billows carrying the boil on: FAST back under 5.5 m
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 8.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 8.
 // [cloud fns]
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----
 struct v8_PlCol {

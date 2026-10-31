@@ -10,7 +10,8 @@ Each version file holds, from that commit's nuke.wgsl, the cloud's own functions
 mushroom cloud" up to "the bomb"), every name they define prefixed `vN_` so they sit beside today's. The pass is
 today's nuke.wgsl with those functions at its `// [cloud fns]` line and the block in place of the lines between
 `// [cloud]` and `// [end cloud]`: so only the cloud is the old one; the fall, the flash, the shockwave, the dust, the
-debris and the shadow on the land are today's. Keep the splice in step with `nuke_cloud_pass` in mod/src/lib.rs.
+debris and the shadow on the land are today's. Keep the splice in step with `nuke_cloud_pass` in mod/src/passbuild.rs
+(mod/build.rs builds every version's pass ahead of time with it).
 """
 import pathlib
 import re
@@ -20,7 +21,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NUKE = ROOT / "mod/shaders/nuke.wgsl"
 OUT = ROOT / "mod/shaders/nuke_cloud"
-# (number, commit, the wheel's label) oldest first; keep in step with NUKE_CLOUDS in mod/src/lib.rs
+# (number, commit, the wheel's label) oldest first; keep in step with CLOUDS in mod/src/wheel.rs and CLOUD_FILES in
+# mod/src/passbuild.rs
 VERSIONS = [
     (1, "f7212de", "FIRST CLOUD"),
     (2, "59f7989", "ROUND CROWN"),
@@ -111,8 +113,8 @@ def extract(n, commit, label):
     head = subprocess.run(["git", "log", "-1", "--format=%h %ad %s", "--date=format:%Y-%m-%d %H:%M", commit], cwd=ROOT,
                           check=True, capture_output=True, text=True).stdout.strip()
     text = [f"// v{n} {label}: the Nuke's cloud as it was at {head[:150]}",
-            "// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's",
-            "// nuke_cloud_pass for /orbital nukecloud " + str(n) + ".",
+            "// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by",
+            "// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud " + str(n) + ".",
             "// [cloud fns]"]
     for _, lines in sorted(extra):
         text += lines

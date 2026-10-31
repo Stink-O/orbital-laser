@@ -1,6 +1,6 @@
 // v2 ROUND CROWN: the Nuke's cloud as it was at 59f7989 2026-10-30 21:06 Nuke: the fireball's glow in the creases between dark sooty billows, not an even peach over the whole cap
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 2.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 2.
 // [cloud fns]
 const v2_PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----

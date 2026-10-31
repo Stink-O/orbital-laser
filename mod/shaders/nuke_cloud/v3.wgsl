@@ -1,6 +1,6 @@
 // v3 FOLDING: the Nuke's cloud as it was at 12c9f80 2026-10-30 21:50 Nuke: the cloud forms by folding: the fireball's ball flattens and its underside is drawn up into a hollow the stem rises int
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 3.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 3.
 // [cloud fns]
 const v3_PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----

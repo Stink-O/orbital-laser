@@ -126,7 +126,7 @@ fn sound_button(k: usize) -> Rect {
     Rect { x: -w / 2.0 + SOUND_LABEL_W + k as f32 * (BTN_W + BTN_GAP), y: ROW_Y, w: BTN_W, h: BTN_H }
 }
 
-/// The Nuke's clouds, oldest first, the last today's (`/orbital nukecloud`; mod/src/lib.rs's NUKE_CLOUDS holds their
+/// The Nuke's clouds, oldest first, the last today's (`/orbital nukecloud`; mod/build.rs builds their
 /// sources, tools/nuke_cloud.py writes them): the wheel's name for each and the commit it came from.
 pub const CLOUDS: [(&str, &str); 9] = [
     ("v1 FIRST CLOUD", "f7212de"),

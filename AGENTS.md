@@ -95,8 +95,9 @@ without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `re
 With the Payload loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound`); with the Nuke, a CLOUD row steps through its cloud's earlier versions (`/orbital nukecloud`:
 `mod/shaders/nuke_cloud/vN.wgsl`, written by `tools/nuke_cloud.py extract` from the commits it lists, spliced into
-`nuke.wgsl` at its `// [cloud fns]` and in place of `// [cloud]`…`// [end cloud]` by `nuke_cloud_pass` in lib.rs; only
-the selected one goes to the game; `tools/preview.py nuke T --cloud N`). The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
+`nuke.wgsl` at its `// [cloud fns]` and in place of `// [cloud]`…`// [end cloud]` by `mod/build.rs`
+(`src/passbuild.rs`), which builds every pass ahead of time: a switch only picks a ready-made one, compiled by the
+game after the clicks settle; `tools/preview.py nuke T --cloud N`). The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
 between sessions, default FAST) picks whether the Payload's and the Nuke's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7`; an older fork compiles the same source and draws its `fs_main` at full size, so FAST needs no new

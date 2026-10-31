@@ -1,6 +1,6 @@
 // v6 FIZEAU: the Nuke's cloud as it was at c969abe 2026-10-30 22:51 Nuke: the stem's and the cap's lumps handed over in a thin band low in the neck, where only the stem passes, not across the c
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 6.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 6.
 // [cloud fns]
 const v6_PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----

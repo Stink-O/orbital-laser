@@ -1,6 +1,6 @@
 // v4 CARRIED LUMPS: the Nuke's cloud as it was at 3570696 2026-10-30 22:12 Nuke: the cloud's lumps are its material's, carried with it: up the stem with the rising air, and in the cap carried up with 
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 4.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 4.
 // [cloud fns]
 const v4_PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----

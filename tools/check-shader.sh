@@ -38,7 +38,7 @@ for own in payload nuke; do
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done
 # the Nuke's earlier clouds (/orbital nukecloud: mod/shaders/nuke_cloud/vN.wgsl spliced into nuke.wgsl by
-# tools/nuke_cloud.py, as mod/src/lib.rs's nuke_cloud_pass does), each at QUALITY FULL and FAST
+# tools/nuke_cloud.py, as mod/build.rs does with src/passbuild.rs's nuke_cloud_pass), each at QUALITY FULL and FAST
 for v in "$shaders"/nuke_cloud/v*.wgsl; do
     n=$(basename "$v" .wgsl); n=${n#v}
     for q in "" --fast; do

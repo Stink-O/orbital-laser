@@ -1,6 +1,6 @@
 // v7 BILLOWS: the Nuke's cloud as it was at 73fe7bf 2026-10-30 23:50 Nuke: the fireball and the cap boil: billows welling up, riding round the roll and sinking back, sooty creases between them; 
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 7.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 7.
 // [cloud fns]
 const v7_PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----

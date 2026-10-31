@@ -1,6 +1,6 @@
 // v1 FIRST CLOUD: the Nuke's cloud as it was at f7212de 2026-10-30 19:07 Nuke: the condensation ring soft and wispy, fading in and out and lit as the cloud is; room for the cap's lumps
-// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by mod/src/lib.rs's
-// nuke_cloud_pass for /orbital nukecloud 1.
+// Written by tools/nuke_cloud.py extract (don't edit by hand); spliced into nuke.wgsl by
+// mod/build.rs (src/passbuild.rs nuke_cloud_pass) for /orbital nukecloud 1.
 // [cloud fns]
 // ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----
 struct v1_PlCol {
