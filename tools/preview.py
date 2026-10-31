@@ -119,7 +119,7 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "payload": "plplayer,plsky,pltop", "nuke": "nkplayer,nkfar,nkclose"}
 
 
-def build_pass(laser: str, out: pathlib.Path, fast: bool = False, cloud: str = "current") -> pathlib.Path:
+def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Path:
     """The pass as the mod builds it (mod/src/lib.rs): strike.wgsl, or for the downfall and the planet killer
     strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl. Its
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
@@ -129,11 +129,6 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, cloud: str = "
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
-        if laser == "nuke" and cloud not in ("current", "0", "9"):
-            # (an earlier cloud, spliced in as the mod does: tools/nuke_cloud.py)
-            sys.path.insert(0, str(ROOT / "tools"))
-            import nuke_cloud
-            own = nuke_cloud.splice(own, (SHADERS / "nuke_cloud" / f"v{int(cloud.lstrip('v'))}.wgsl").read_text())
         if not fast:
             own = subprocess.run(["sed", "-e", r"/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d"],
                                  input=own, capture_output=True, text=True, check=True).stdout
@@ -191,13 +186,8 @@ def main() -> int:
     ap.add_argument("--quality", choices=["full", "fast", "both"], default="full",
                     help="QUALITY FULL, FAST (the half-size stage), or both side by side (a column each a view)")
     ap.add_argument("--whole", action="store_true", help="FAST drawn as a game without half-size stages draws it: fs_main alone")
-    ap.add_argument("--cloud", default="current", help="the Nuke's cloud: 1-8 (an earlier one, tools/nuke_cloud.py), 10 (v3's with today's look) or current (9)")
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "dist" / "preview")
     a = ap.parse_args()
-    # (`--set nkcloud=N` is the same as `--cloud N`)
-    for kv in [kv for kv in a.set if kv.startswith("nkcloud=")]:
-        a.cloud = kv.split("=", 1)[1]
-        a.set.remove(kv)
 
     tool = ROOT / "tools" / "preview"
     exe = tool / "target" / "release" / "preview"
@@ -227,7 +217,7 @@ def main() -> int:
     for q in qualities:
         qout = out / q if len(qualities) > 1 else out
         qout.mkdir(parents=True, exist_ok=True)
-        shader = build_pass(a.laser, out, q == "fast", a.cloud)
+        shader = build_pass(a.laser, out, q == "fast")
         r = subprocess.run([str(exe), str(shader), str(qout), *common, *shots], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             print(r.stderr, file=sys.stderr)

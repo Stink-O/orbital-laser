@@ -22,8 +22,6 @@ const PL_FADE: f32 = 10.0;
 const PL_SOFT0: f32 = 48.0;        // the cloud keeps its crisp billows this long after the burst, then loses them
 const PL_SOFT1: f32 = 72.0;        // by this, a soft, drifting haze thinning away (gone by PL_LEN)
 const PL_CHURN: f32 = 7.0;        // the roll's lumps carried this long before they are let go (pl_col_sdf)
-const PL_DM: f32 = 55.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
-                                   // march's bounds and gates all allow for
 const PL_V: f32 = 343.0;           // the shockwave's front, blocks a second (with the blast's sound: nuke.rs)
 const PL_P: u32 = 16u;             // the table: the path's samples from PL_P, three words each,
 const PL_PF: u32 = 400u;
@@ -184,409 +182,6 @@ fn nk_bomb(p0: vec3<f32>, spin: f32, vc: f32) -> vec2<f32> {
     return vec2<f32>(d, m);
 }
 
-// ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----
-struct PlCol {
-    a: f32,
-    C: vec3<f32>,
-    // (the cap: its core circle's height over the ground and radius, the roll's radius about it; the stem's top height
-    // and its radius at the foot, in the middle and at the top; the ring round the stem: its height, radius and how
-    // much of it shows; the base surge: its radius and its roll's width and height)
-    hc: f32,
-    Rt: f32,
-    rt: f32,
-    st: f32,
-    sr: vec3<f32>,
-    ring: vec3<f32>,
-    surge: vec3<f32>,
-    lo: vec3<f32>,
-    hi: vec3<f32>,
-    // (the boil's billows (pl_billows): their middles from C and radii, packed as half floats; bm which of them a ray
-    // passes near enough to look up, none unless set)
-    bq: array<vec2<u32>, 12>,
-    bm: u32,
-    // (how deep in the crease between two billows the last point looked up lies: 1 right in it)
-    kb: f32,
-    // (and the smooth body's own distance there, without the billows, and the nearest billow's)
-    dbody: f32,
-    dbill: f32,
-}
-fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
-    var o: PlCol;
-    o.bm = 0u;
-    o.kb = 0.0;
-    o.dbody = 0.0;
-    o.dbill = 1.0e6;
-    o.a = a;
-    o.C = C + pl_wind() * (0.0 * a);
-    // (the fireball: swelling to sixty in half a second, then slowly on; punching up fast, boiling, its stem close behind,
-    // to some 250 by four seconds and over four hundred as its rise slows; its roll opening out into the cap's ring)
-    o.rt = 56.0 * (1.0 - exp(-a / 0.45)) + 26.0 * (1.0 - exp(-a / 14.0)) + 0.15 * a;
-    o.hc = PL_BURST + 385.0 * (1.0 - exp(-a / 7.0)) * smoothstep(0.0, 1.5, a + 0.3);
-    o.Rt = 80.0 * (1.0 - exp(-a / 6.0)) + 70.0 * (1.0 - exp(-a / 28.0)) + 0.3 * a;
-    // (the stem pulled up out of the land under it, from a couple of seconds on)
-    o.st = min(o.hc - 0.15 * o.rt, max(a - 0.6, 0.0) * 95.0);
-    o.sr = vec3<f32>(34.0 + 30.0 * saturate(a / 6.0), 20.0 + 8.0 * saturate(a / 20.0), 26.0 + 0.3 * o.Rt);
-    // (the condensation ring: a thin white collar round the stem, from 4 s, gone by 30)
-    o.ring = vec3<f32>(0.42 * o.hc + 10.0, o.sr.y * 2.0 + 30.0 + 0.6 * a, smoothstep(4.0, 9.0, a) * (1.0 - smoothstep(16.0, 30.0, a)));
-    // (the base surge: dust rolling out over the ground round the stem's foot)
-    o.surge = vec3<f32>(30.0 + 95.0 * (1.0 - exp(-a / 10.0)), 20.0 + 0.1 * a, 7.0 + 7.0 * saturate(a / 12.0));
-    let top = o.hc + 1.4 * o.rt;
-    let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 90.0;
-    let lean = pl_wind() * a;
-    o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0 - pl_foot_low(a, o.rt), -w + min(lean.z, 0.0));
-    o.hi = C + vec3<f32>(w + max(lean.x, 0.0), top + 90.0, w + max(lean.z, 0.0));
-    return o;
-}
-// The cloud's lean with the wind at p (its head carried furthest, its foot staying put).
-fn pl_lean(col: ptr<function, PlCol>, hy: f32) -> vec3<f32> {
-    return pl_wind() * ((*col).a * pow(saturate(hy / max((*col).hc, 1.0)), 1.5));
-}
-const PL_NB: u32 = 12u;            // the boil's billows, all in the fireball and the cap (none up the stem: billows climbing
-                                   // it read as things crawling up a tube)
-// A billow's uniform random k (0 to 1) for billow i in its life n.
-fn pl_bh(i: u32, n: i32, k: u32) -> f32 {
-    return f32(pcg(pcg(i * 0x9e37u + bitcast<u32>(n) * 0x85ebu + 0x2c1u) + k * 0x68e3u) & 0xffffu) / 65535.0;
-}
-// The boil (Plumbbob Fizeau's first fifteen seconds): billows welling up inside the fireball, swelling out through its
-// surface as they ride round its roll (up its inside, out over its top, down its outside), each a lobe standing out of
-// the one beside it, then sinking back into it as the next wells up. Each is born at nothing deep in the body and dies back into it, so none pops in or out. Their middles
-// from C (leaning with the wind) and radii, worked out once a ray, packed into the column's bq.
-fn pl_billows(col: ptr<function, PlCol>) {
-    let a = (*col).a;
-    let Rt = (*col).Rt;
-    let rt = (*col).rt;
-    let hc = (*col).hc;
-    // (most violent from the first second to some twelve, once the flash has let go; calming over the next ten)
-    let envc = smoothstep(0.02, 0.5, a) * (1.0 - smoothstep(12.0, 22.0, a));
-    for (var i = 0u; i < PL_NB; i = i + 1u) {
-        // (its life: some three to four seconds, slower as the cloud calms, each a different phase)
-        let lf = 2.6 + 1.6 * pl_bh(i, -1, 0u);
-        // (fast at first, half as fast by twelve seconds)
-        let s = (9.0 * (1.0 - exp(-a / 9.0)) + 0.25 * a) / lf + pl_bh(i, -1, 1u) * 0.999;
-        let n = i32(floor(s));
-        let u = fract(s);
-        // (round the axis at its own bearing, drifting; round the roll from low inside out over the top)
-        let ph = 6.2832 * pl_bh(i, n, 2u) + 0.25 * (pl_bh(i, n, 3u) - 0.5) * a;
-        let th0 = 0.8 + 2.3 * pl_bh(i, n, 4u);
-        let th = th0 - u * (1.3 + 1.0 * pl_bh(i, n, 5u));
-        let R = rt * (0.25 + 0.7 * smoothstep(0.0, 0.6, u));
-        let sn = sin(th);
-        let rho = Rt + R * cos(th);
-        let y = hc + R * sn * select(0.6, 0.95, sn > 0.0) + 0.3 * rt * max(sn, 0.0);
-        var c = vec3<f32>(cos(ph) * rho, y, sin(ph) * rho);
-        let r = rt * (0.4 + 0.25 * pl_bh(i, n, 6u)) * pow(sin(3.1416 * u), 0.6) * envc;
-        c = c + pl_lean(col, c.y);
-        (*col).bq[i] = vec2<u32>(pack2x16float(c.xy), pack2x16float(vec2<f32>(c.z, r)));
-    }
-}
-// Which billows a ray from the camera along rd may come near enough to be looked up (within `m` of their surfaces).
-fn pl_bmask(col: ptr<function, PlCol>, rd: vec3<f32>, m: f32) -> u32 {
-    var bm = 0u;
-    for (var i = 0u; i < PL_NB; i = i + 1u) {
-        let qa = unpack2x16float((*col).bq[i].x);
-        let qb = unpack2x16float((*col).bq[i].y);
-        if (qb.y > 0.5) {
-            let c = (*col).C + vec3<f32>(qa, qb.x);
-            let tc = max(dot(c, rd), 0.0);
-            if (length(c - rd * tc) < qb.y + m) {
-                bm = bm | (1u << i);
-            }
-        }
-    }
-    return bm;
-}
-// The billows the ray looks up, melted into the cloud's body d at p (from C, leaning).
-fn pl_bunion(col: ptr<function, PlCol>, pc: vec3<f32>, d0: f32) -> f32 {
-    var d = d0;
-    var kb = 0.0;
-    var dmin = 1.0e6;
-    var m = (*col).bm;
-    loop {
-        if (m == 0u) {
-            break;
-        }
-        let i = firstTrailingBit(m);
-        m = m & (m - 1u);
-        let qa = unpack2x16float((*col).bq[i].x);
-        let qb = unpack2x16float((*col).bq[i].y);
-        let db = length(pc - vec3<f32>(qa, qb.x)) - qb.y;
-        let k = 0.2 * qb.y + 4.0;
-        let h = saturate(0.5 + 0.5 * (db - d) / k);
-        // (the crease's soot over a broad soft band: a narrow one, cut by the lumps, showed as swirled rings)
-        let hc = saturate(0.5 + 0.5 * (db - d) / (3.0 * k));
-        kb = max(kb, 4.0 * hc * (1.0 - hc));
-        dmin = min(dmin, db);
-        d = mix(db, d, h) - k * h * (1.0 - h);
-    }
-    (*col).kb = kb;
-    (*col).dbill = dmin;
-    return d;
-}
-// The cloud's smooth body at p (camera-relative): the cap (the roll round its core circle, a dome over it), the stem,
-// the base surge; and in .y how much of the ring is there instead (the ring kept apart: it is white).
-fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
-    let C = (*col).C;
-    let hy0 = p.y - C.y;
-    let q = p - C - pl_lean(col, hy0);
-    let hy = q.y;
-    let rho = length(q.xz);
-    let Rt = (*col).Rt;
-    let rt = (*col).rt;
-    let hc = (*col).hc;
-    // (the cap: a fat roll, its underside a little flattened, a dome over its middle. As the ring forms its outer edge
-    // curls down and under, hanging lower than its inner edge, where the air is drawn in and up)
-    let fold = smoothstep(3.0, 14.0, (*col).a);
-    let lo_k = mix(1.6, mix(1.9, 1.12, smoothstep(-0.4 * rt, 0.6 * rt, rho - Rt)), fold);
-    let tq = vec2<f32>(rho - Rt, (hy - hc) * select(1.6, lo_k, hy < hc));
-    var d = length(tq) - rt;
-    // (the dome over it higher than the roll's top, so the cap is one rounded crown, not two lobes with a dip between)
-    // (an ellipsoid's distance near enough true all round it, not squeezed sideways: squeezed, the dome's smoke
-    // thickened too slowly into it and its middle was a thin haze the glow showed through)
-    let er = vec3<f32>(Rt + 0.8 * rt, 1.0 * rt, Rt + 0.8 * rt);
-    let eq = vec3<f32>(q.x, hy - hc - 0.3 * rt, q.z);
-    let ek0 = length(eq / er);
-    var dome = ek0 * (ek0 - 1.0) / max(length(eq / (er * er)), 1.0e-6);
-    // (its underside drawn up into a hollow as the ring forms, the stem rising into it: from a ball with a flat bottom
-    // to a cap over an open ring, by degrees)
-    dome = max(dome, hc - mix(0.9, 0.12, fold) * rt - hy);
-    d = smin(d, dome, 0.35 * rt);
-    // (the fireball's foot: for its first seconds spread over the ground it burst just over, a flattened dome on the
-    // land (pl_foot), not a ball floating over it)
-    d = smin(d, pl_foot((*col).a, rt, rho, hy), 0.3 * rt + 4.0);
-    // (the stem: from under the land up into the cap, wide at its dusty foot, narrow in the middle, flaring into the cap)
-    if ((*col).st > 0.0) {
-        let u = saturate(hy / max((*col).st, 1.0));
-        let sr = (*col).sr;
-        let rs = mix(mix(sr.x, sr.y, smoothstep(0.0, 0.3, u)), sr.z, smoothstep(0.65, 1.0, u)) * (0.92 + 0.16 * sin(hy * 0.045 + 1.3));
-        let ds = max(rho - rs, max(hy - (*col).st, -hy - 20.0));
-        d = smin(d, ds, 26.0);
-    }
-    // (the base surge: a low roll of dust round the foot, out where the land is)
-    let sg = (*col).surge;
-    if ((*col).a > 0.2) {
-        let e = vec2<f32>((rho - sg.x) / sg.y, (hy - 0.3 * sg.z) / sg.z);
-        let inner = vec2<f32>(max(sg.x - rho, 0.0) / (sg.x * 0.9), 0.0);
-        let k0 = length(e);
-        let ds = (k0 - 1.0) * min(sg.y, sg.z);
-        // (a roll, not a disc: thin inside it, thinning away as the dust settles)
-        // (and rising out of the ground as the blast reaches it, not there all at once)
-        let settle = 30.0 * smoothstep(14.0, 50.0, (*col).a) + 40.0 * (1.0 - smoothstep(0.2, 2.5, (*col).a));
-        d = smin(d, ds + 14.0 * smoothstep(0.0, 0.6, inner.x) + settle, 22.0);
-        // (and a low sheet of dust inside the roll, from it in to the stem's foot: a skirt, not a tyre)
-        let sheet = max(rho - sg.x, abs(hy - 0.2 * sg.z) - 0.32 * sg.z);
-        d = smin(d, sheet + 11.0 + settle, 18.0);
-    }
-    // (the boil's billows, those the ray looks up)
-    (*col).kb = 0.0;
-    (*col).dbody = d;
-    (*col).dbill = 1.0e6;
-    if ((*col).bm != 0u) {
-        d = pl_bunion(col, p - C, d);
-    }
-    // (the ring round the stem: a thin flat collar)
-    var dr = 1.0e6;
-    let rg = (*col).ring;
-    if (rg.z > 0.01) {
-        let e = vec2<f32>((rho - rg.y) / 34.0, (hy - rg.x) / 13.0);
-        dr = (length(e) - 1.0) * 13.0;
-    }
-    return vec2<f32>(d, dr);
-}
-fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
-    let b = pl_col_base2(col, p);
-    return min(b.x, b.y);
-}
-// Cauliflower lumps: domes over a jittered lattice (a feature point in each of the eight cells round p, well jittered),
-// each its own size, rounded on top and meeting in creases: about 1 on a big dome's crown, 0 in a crease.
-fn pl_dome(p: vec3<f32>) -> f32 {
-    let b = floor(p - 0.5);
-    var hmax = 0.0;
-    for (var c = 0u; c < 8u; c = c + 1u) {
-        let o = vec3<f32>(f32(c & 1u), f32((c >> 1u) & 1u), f32(c >> 2u));
-        let cell = b + o;
-        let q = bitcast<vec3<u32>>(vec3<i32>(cell));
-        // (one hash a cell, three words: its jitter, and its size)
-        let h = pcg3d(q + vec3<u32>(0u, 0u, 0x51u));
-        let jit = vec3<f32>(h >> vec3<u32>(22u)) * (0.7 / 1023.0) + 0.15;
-        let sz = 0.7 + 0.55 * f32((h.x >> 12u) & 1023u) / 1023.0;
-        let e = cell + jit - p;
-        hmax = max(hmax, sz * sqrt(saturate(1.0 - dot(e, e) * 1.7 / (sz * sz))));
-    }
-    return hmax;
-}
-fn pl_rot(k: i32, p: vec3<f32>) -> vec3<f32> {
-    if (k == 0) {
-        return mat3x3<f32>(-0.0014, 0.9977, -0.0674, -0.2224, -0.0660, -0.9727, -0.9750, 0.0136, 0.2220) * p;
-    }
-    if (k == 1) {
-        return mat3x3<f32>(-0.6616, 0.1124, 0.7414, -0.4826, -0.8205, -0.3063, 0.5739, -0.5605, 0.5971) * p;
-    }
-    return mat3x3<f32>(-0.9891, -0.1223, 0.0816, 0.0968, -0.9594, -0.2651, 0.1107, -0.2543, 0.9608) * p;
-}
-// The cloud's surface at p: its smooth body bulged out in lumps on lumps (as the Payload's column), the lumps carried
-// round the cap's roll as it churns (up its inside, out over its top, down its outside), boiling slowly up the stem.
-// .x the distance, .y how far up a dome it lies, .z how soft its edge is, .w the fine fray.
-// The cloud's lumps at material point qm: the big swell, the bend of the big lumps, the big lumps and the middling ones.
-// tw: for the stem, how far the bend has churned on (xyz, in its own lattice) and how hard it bends the lumps (w), so
-// they twist and melt into each other where they are, none of them kept long enough to be followed up it.
-fn pl_nz(qm: vec3<f32>, tw: vec4<f32>) -> vec4<f32> {
-    let S = 2.2;
-    let w = gnoise3(pl_rot(1, qm * (1.0 / (55.0 * S))));
-    let w2 = gnoise3(pl_rot(2, qm * (1.0 / (23.0 * S)) + vec3<f32>(9.2, 0.0, 4.4) + tw.xyz));
-    let bend = (0.3 + tw.w) * vec3<f32>(w2 - 0.5);
-    let b1 = pl_dome(pl_rot(0, qm * (1.0 / (36.0 * S)) + vec3<f32>(3.1, 0.0, 7.7) + bend));
-    let b2 = pl_dome(pl_rot(1, qm * (1.0 / (14.0 * S)) + vec3<f32>(0.0, 0.0, 1.3) + 1.6 * tw.w * vec3<f32>(0.5 - w2, w2 - 0.5, 0.5 - w2)));
-    return vec4<f32>(w, w2, b1, b2);
-}
-// And its small lumps and its fray.
-fn pl_nz_fine(qm: vec3<f32>) -> vec2<f32> {
-    let S = 2.2;
-    return vec2<f32>(pl_dome(pl_rot(2, qm * (1.0 / (5.5 * S)) + vec3<f32>(1.7, 0.0, -2.1))), gnoise3(pl_rot(0, qm * (1.0 / (1.8 * S))) + vec3<f32>(5.0, 1.0, 0.0)));
-}
-// The cloud's surface at p: its smooth body bulged out in lumps on lumps (as the Payload's column). The lumps are its
-// material's, looked up where that material started, so they move with it and none ever comes from nowhere: up the
-// stem with the rising air; in the cap, carried up with it, swelling as it swells, and round its roll (up the inside,
-// out over the top, down the outside, back in under it). .x the distance, .y how far up a dome it lies, .z how soft
-// its edge is, .w the fine fray.
-fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> vec4<f32> {
-    let a = (*col).a;
-    let C = (*col).C;
-    let q = p - C - pl_lean(col, p.y - C.y);
-    let Rt = (*col).Rt;
-    let rt = (*col).rt;
-    let hc = (*col).hc;
-    let rho = max(length(q.xz), 1.0e-3);
-    let dir = q.xz / rho;
-    // (the cap's own frame: about its core, scaled with it, turned round its roll by how far it has churned, most
-    // through the roll and none on the axis, where the two sides would part in a seam)
-    let uv = vec2<f32>(rho - Rt, q.y - hc);
-    let wq = dot(uv, uv) / pow(1.9 * rt, 2.0);
-    let wr = exp(-wq) * smoothstep(0.0, 0.8 * Rt + 10.0, rho);
-    let ang = 1.25 * (1.0 - exp(-a / 6.0)) * wr;
-    let cs = cos(ang);
-    let sn = sin(ang);
-    let uvr = vec2<f32>(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
-    let sc = 150.0 / (Rt + rt);
-    var qc = vec3<f32>(dir.x * (Rt + uvr.x) * sc, uvr.y * sc + 400.0, dir.y * (Rt + uvr.x) * sc);
-    // (the stem's: a turbulent column churning where it is, its lumps stretched up it into streaks and folds and slowly
-    // twisting into each other, rising only slowly: none to be followed up it (lumps carried up at the air's speed
-    // read as things crawling up a tube))
-    var qs = vec3<f32>(q.x, (q.y - 1.5 * a) * 0.65, q.z);
-    let tws = vec4<f32>(0.14 * a, 0.05 * a, -0.11 * a, 0.7);
-    // (the boil: for its first seconds the fireball's lumps are flung about by a churning flow of its own, racing up
-    // through it, tumbling over each other; it calms over the next ten seconds into the slow roll. The lumps are pushed
-    // about, not made: the same ones, carried)
-    // (the churn's own warp strongest early, gone by eight seconds: the billows carry the boil on, and its six lookups a step
-    // cost more than its last few blocks of push are worth)
-    let bo = (0.3 + 0.7 * exp(-a / 3.0)) * smoothstep(0.0, 0.5, a) * (1.0 - smoothstep(4.0, 8.0, a));
-    let wc0 = smoothstep(hc - 1.45 * rt, hc - 1.1 * rt, q.y);
-    if (bo > 0.03 && wc0 > 0.02) {
-        let wq0 = qc * (1.0 / 30.0) + vec3<f32>(0.0, -1.1 * a, 0.0);
-        let wv = vec3<f32>(gnoise3(wq0), gnoise3(wq0 + vec3<f32>(5.2, 1.7, 1.3)), gnoise3(wq0 + vec3<f32>(2.1, 3.9, 8.4))) - vec3<f32>(0.5);
-        qc = qc + wv * (38.0 * bo);
-    }
-    // (none up the stem: its lumps churn by their own bend, tws)
-    // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
-    let wc = wc0;
-    var nz = vec4<f32>(0.0);
-    // (the spread two fadings together lose put back)
-    let ls = 1.0 / sqrt(wc * wc + (1.0 - wc) * (1.0 - wc));
-    if (wc > 0.98) {
-        nz = pl_nz(qc, vec4<f32>(0.0));
-    } else if (wc < 0.02) {
-        nz = pl_nz(qs, tws);
-    } else {
-        nz = vec4<f32>(0.5, 0.5, 0.62, 0.62) + (mix(pl_nz(qs, tws), pl_nz(qc, vec4<f32>(0.0)), wc) - vec4<f32>(0.5, 0.5, 0.62, 0.62)) * ls;
-    }
-    let w = nz.x;
-    let w2 = nz.y;
-    let b1 = nz.z;
-    let b2 = nz.w;
-    let hy = p.y - C.y;
-    let lump = 1.6 * (0.6 + 0.4 * smoothstep(20.0, 160.0, hy));
-    // (up the stem its big lumps let down and its middling ones up: a churning surface, not a stack of balls)
-    let stm = 1.0 - wc;
-    let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
-    let crisp = 1.0 - 0.8 * soft;
-    let up = smoothstep(40.0, 200.0, hy);
-    // (the crown over the middle smoother than the roll: its big swells let down, so it stays one rounded dome)
-    let crown = (1.0 - smoothstep(0.3 * (*col).Rt, (*col).Rt + 0.3 * (*col).rt, rho)) * smoothstep((*col).hc, (*col).hc + 0.5 * (*col).rt, hy);
-    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.2 * crown) * (1.0 - 0.5 * stm) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) * (1.0 + 0.9 * stm) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.35 * crown) * (1.0 - 0.3 * stm) + 8.0 * (w2 - 0.5)) * lump;
-    let ew = smoothstep(0.6, 0.82, w2);
-    let edge = mix(1.5, 6.0, ew) + 10.0 * (1.0 - smoothstep(0.0, 60.0, hy));
-    var fray = 0.5;
-    if (fine && d < 20.0 && soft < 0.99) {
-        // (looked up only near the surface the bigger lumps make)
-        var nf = vec2<f32>(0.5);
-        if (wc > 0.98) {
-            nf = pl_nz_fine(qc);
-        } else if (wc < 0.02) {
-            nf = pl_nz_fine(qs);
-        } else {
-            nf = vec2<f32>(0.62, 0.5) + (mix(pl_nz_fine(qs), pl_nz_fine(qc), wc) - vec2<f32>(0.62, 0.5)) * ls;
-        }
-        // (each let go where it is finer than a pixel or so, which would only shimmer in swirls: the fray's size in the
-        // world, against the width a pixel spans that far off)
-        let per = mix(3.96, 3.96 / sc, wc);
-        let pxw = length(p) * 0.0012;
-        let ffr = 1.0 - smoothstep(0.35, 0.8, pxw / per);
-        let fb3 = 1.0 - smoothstep(0.35, 0.8, pxw / (3.0 * per));
-        let b3 = nf.x;
-        d = d - (4.0 + 3.0 * stm) * (b3 - 0.45) * (1.0 - soft) * lump * fb3;
-        fray = mix(0.5, nf.y, ffr);
-        d = d - 3.5 * (fray - 0.5) * (1.0 - soft) * (0.25 + 0.75 * ew);
-    }
-    // (the lumps' height capped smoothly at PL_DM, so that nothing stands out past the bounds the march allows)
-    let bump = max(d0 - d, 0.0);
-    d = d0 - bump / sqrt(sqrt(1.0 + pow(bump / PL_DM, 4.0))) + max(d - d0, 0.0);
-    // (the billows wear the lumps at half their height: their round crowns showing, and no deep folds where a lump's
-    // slope fights a billow's curve)
-    if ((*col).dbill < 1.0e5) {
-        let disp = d - d0;
-        d = smin((*col).dbody + disp, (*col).dbill + 0.5 * disp, 8.0);
-    }
-    return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
-}
-// A ray from the camera against a ball (middle c, radius r) and an upright cylinder (axis through c.xz, radius r,
-// from height ylo to yhi), camera-relative: the entry and exit distances (entry over exit when it misses).
-fn pl_sph(rd: vec3<f32>, c: vec3<f32>, r: f32) -> vec2<f32> {
-    let b = dot(rd, c);
-    let h = b * b - dot(c, c) + r * r;
-    if (h < 0.0) {
-        return vec2<f32>(1.0e9, -1.0e9);
-    }
-    let q = sqrt(h);
-    return vec2<f32>(b - q, b + q);
-}
-fn pl_cyl(rd: vec3<f32>, c: vec3<f32>, r: f32, ylo: f32, yhi: f32) -> vec2<f32> {
-    let a2 = max(dot(rd.xz, rd.xz), 1.0e-8);
-    let b = dot(rd.xz, c.xz);
-    let h = b * b - a2 * (dot(c.xz, c.xz) - r * r);
-    if (h < 0.0) {
-        return vec2<f32>(1.0e9, -1.0e9);
-    }
-    let q = sqrt(h);
-    var lo = (b - q) / a2;
-    var hi = (b + q) / a2;
-    if (abs(rd.y) > 1.0e-6) {
-        let ya = ylo / rd.y;
-        let yb = yhi / rd.y;
-        lo = max(lo, min(ya, yb));
-        hi = min(hi, max(ya, yb));
-    } else if (ylo > 0.0 || yhi < 0.0) {
-        return vec2<f32>(1.0e9, -1.0e9);
-    }
-    return vec2<f32>(lo, hi);
-}
-// A ray against a box, camera-relative: the entry and exit distances.
-fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
-    let inv = 1.0 / select(rd, vec3<f32>(1.0e-6), abs(rd) < vec3<f32>(1.0e-6));
-    let ta = lo * inv;
-    let tb = hi * inv;
-    let tmin = min(ta, tb);
-    let tmax = max(ta, tb);
-    return vec2<f32>(max(max(tmin.x, tmin.y), max(tmin.z, 0.0)), min(min(tmax.x, tmax.y), tmax.z));
-}
 
 // How much of the sun's light the cap lets through to a point `o` under it (camera-relative): the sun's ray from it
 // crossing the cap's level, through its broad soft disc. For the stem, the surge and the dust, which the full march
@@ -600,31 +195,6 @@ fn pl_cap_shade(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, hc: f32, R: f3
     let r = length((o + L * s - C - pl_wind() * a).xz);
     let thin = 1.0 - 0.8 * smoothstep(PL_SOFT0, PL_LEN, a);
     return 1.0 - 0.8 * (1.0 - smoothstep(0.55 * R, 1.1 * R, r)) * smoothstep(2.0, 6.0, a) * thin;
-}
-// How much of the sun's light reaches land point `o` (camera-relative) through the cloud: its smooth body marched
-// towards the sun in a dozen steps, soft-edged (a little of its lumps' reach counted in). 1 in full sun.
-fn pl_shadow(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, j: f32) -> f32 {
-    var cs = pl_column(a, C);
-    let tb = pl_box(L, cs.lo - o, cs.hi - o);
-    if (tb.y <= tb.x) {
-        return 1.0;
-    }
-    // (first, whether the sun's ray passes near the cloud at all: the stick from its foot to its cap's core)
-    let ctop = C + vec3<f32>(0.0, cs.hc, 0.0) + pl_wind() * a;
-    let sg = pl_ray_seg(L, C - o, ctop - o, 0.0, 1.0);
-    if (sg.x > max(cs.Rt + cs.rt, cs.surge.x + cs.surge.y) + 40.0) {
-        return 1.0;
-    }
-    let n = 14;
-    let dt = (tb.y - tb.x) / f32(n);
-    var tau = 0.0;
-    for (var i = 0; i < n; i = i + 1) {
-        let d = pl_col_base2(&cs, o + L * (tb.x + (f32(i) + j) * dt)).x;
-        tau = tau + saturate(0.35 - d / 45.0);
-    }
-    // (thinning as the cloud does, late on)
-    let thin = 1.0 - 0.8 * smoothstep(PL_SOFT0, PL_LEN, a);
-    return exp(-tau * dt * 0.022 * thin * smoothstep(0.3, 2.0, a));
 }
 
 // ---- the dust of the shockwave: a low wall racing out over the land, rising and hanging behind it ---------------
@@ -782,7 +352,248 @@ fn pl_chunk_up(ch: PlChunk, C: vec3<f32>, me: vec3<f32>, dme: f32) -> f32 {
     return smoothstep(gref - 1.0, gref + 2.0, ch.p.y);
 }
 
-// [cloud fns] (an earlier version's cloud's own functions go here: mod/shaders/nuke_cloud/)
+const PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
+// ---- the mushroom cloud: a fireball rising into a toroidal cap on a stem, a ring round the stem, a base surge -----
+struct PlCol {
+    a: f32,
+    C: vec3<f32>,
+    // (the cap: its core circle's height over the ground and radius, the roll's radius about it; the stem's top height
+    // and its radius at the foot, in the middle and at the top; the ring round the stem: its height, radius and how
+    // much of it shows; the base surge: its radius and its roll's width and height)
+    hc: f32,
+    Rt: f32,
+    rt: f32,
+    st: f32,
+    sr: vec3<f32>,
+    ring: vec3<f32>,
+    surge: vec3<f32>,
+    lo: vec3<f32>,
+    hi: vec3<f32>,
+}
+fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
+    var o: PlCol;
+    o.a = a;
+    o.C = C + pl_wind() * (0.0 * a);
+    // (the fireball: swelling to sixty in half a second, then slowly on; rising, slowly at first, then climbing to
+    // over four hundred as its rise slows; its roll opening out into the cap's ring)
+    o.rt = 56.0 * (1.0 - exp(-a / 0.45)) + 26.0 * (1.0 - exp(-a / 14.0)) + 0.15 * a;
+    o.hc = PL_BURST + 385.0 * (1.0 - exp(-a / 15.0)) * smoothstep(0.0, 2.5, a + 0.5);
+    o.Rt = 80.0 * (1.0 - exp(-a / 6.0)) + 70.0 * (1.0 - exp(-a / 28.0)) + 0.3 * a;
+    // (the stem pulled up out of the land under it, from a couple of seconds on)
+    o.st = min(o.hc - 0.15 * o.rt, max(a - 1.0, 0.0) * 55.0);
+    o.sr = vec3<f32>(34.0 + 30.0 * saturate(a / 6.0), 20.0 + 8.0 * saturate(a / 20.0), 26.0 + 0.3 * o.Rt);
+    // (the condensation ring: a thin white collar round the stem, from 4 s, gone by 30)
+    o.ring = vec3<f32>(0.42 * o.hc + 10.0, o.sr.y * 2.0 + 30.0 + 0.6 * a, smoothstep(4.0, 9.0, a) * (1.0 - smoothstep(16.0, 30.0, a)));
+    // (the base surge: dust rolling out over the ground round the stem's foot)
+    o.surge = vec3<f32>(30.0 + 160.0 * (1.0 - exp(-a / 12.0)), 24.0 + 0.1 * a, 8.0 + 9.0 * saturate(a / 12.0));
+    let top = o.hc + 1.4 * o.rt;
+    let w = max(o.Rt + o.rt * 1.6, o.surge.x + o.surge.y) + 90.0;
+    let lean = pl_wind() * a;
+    o.lo = C + vec3<f32>(-w + min(lean.x, 0.0), -20.0 - pl_foot_low(a, o.rt), -w + min(lean.z, 0.0));
+    o.hi = C + vec3<f32>(w + max(lean.x, 0.0), top + 90.0, w + max(lean.z, 0.0));
+    return o;
+}
+// The cloud's lean with the wind at p (its head carried furthest, its foot staying put).
+fn pl_lean(col: ptr<function, PlCol>, hy: f32) -> vec3<f32> {
+    return pl_wind() * ((*col).a * pow(saturate(hy / max((*col).hc, 1.0)), 1.5));
+}
+// The cloud's smooth body at p (camera-relative): the cap (the roll round its core circle, a dome over it), the stem,
+// the base surge; and in .y how much of the ring is there instead (the ring kept apart: it is white).
+fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
+    let C = (*col).C;
+    let hy0 = p.y - C.y;
+    let q = p - C - pl_lean(col, hy0);
+    let hy = q.y;
+    let rho = length(q.xz);
+    let Rt = (*col).Rt;
+    let rt = (*col).rt;
+    let hc = (*col).hc;
+    // (the cap: a fat roll, its underside a little flattened, a dome over its middle. As the ring forms its outer edge
+    // curls down and under, hanging lower than its inner edge, where the air is drawn in and up)
+    let fold = smoothstep(3.0, 14.0, (*col).a);
+    let lo_k = mix(1.6, mix(1.9, 1.12, smoothstep(-0.4 * rt, 0.6 * rt, rho - Rt)), fold);
+    let tq = vec2<f32>(rho - Rt, (hy - hc) * select(1.6, lo_k, hy < hc));
+    var d = length(tq) - rt;
+    // (the dome over it higher than the roll's top, so the cap is one rounded crown, not two lobes with a dip between)
+    // (an ellipsoid's distance near enough true all round it, not squeezed sideways: squeezed, the dome's smoke
+    // thickened too slowly into it and its middle was a thin haze the glow showed through)
+    let er = vec3<f32>(Rt + 0.8 * rt, 1.0 * rt, Rt + 0.8 * rt);
+    let eq = vec3<f32>(q.x, hy - hc - 0.3 * rt, q.z);
+    let ek0 = length(eq / er);
+    var dome = ek0 * (ek0 - 1.0) / max(length(eq / (er * er)), 1.0e-6);
+    // (its underside drawn up into a hollow as the ring forms, the stem rising into it: from a ball with a flat bottom
+    // to a cap over an open ring, by degrees)
+    dome = max(dome, hc - mix(0.9, 0.12, fold) * rt - hy);
+    d = smin(d, dome, 0.35 * rt);
+    // (the fireball's foot: for its first seconds spread over the ground it burst just over, a flattened dome on the
+    // land (pl_foot), not a ball floating over it)
+    d = smin(d, pl_foot((*col).a, rt, rho, hy), 0.3 * rt + 4.0);
+    // (the stem: from under the land up into the cap, wide at its dusty foot, narrow in the middle, flaring into the cap)
+    if ((*col).st > 0.0) {
+        let u = saturate(hy / max((*col).st, 1.0));
+        let sr = (*col).sr;
+        let rs = mix(mix(sr.x, sr.y, smoothstep(0.0, 0.3, u)), sr.z, smoothstep(0.65, 1.0, u)) * (0.92 + 0.16 * sin(hy * 0.045 + 1.3));
+        let ds = max(rho - rs, max(hy - (*col).st, -hy - 20.0));
+        d = smin(d, ds, 26.0);
+    }
+    // (the base surge: a low roll of dust round the foot, out where the land is)
+    let sg = (*col).surge;
+    if ((*col).a > 0.2) {
+        let e = vec2<f32>((rho - sg.x) / sg.y, (hy - 0.3 * sg.z) / sg.z);
+        let inner = vec2<f32>(max(sg.x - rho, 0.0) / (sg.x * 0.9), 0.0);
+        let k0 = length(e);
+        let ds = (k0 - 1.0) * min(sg.y, sg.z);
+        // (a roll, not a disc: thin inside it, thinning away as the dust settles)
+        // (and rising out of the ground as the blast reaches it, not there all at once)
+        let settle = 22.0 * smoothstep(18.0, 70.0, (*col).a) + 40.0 * (1.0 - smoothstep(0.2, 2.5, (*col).a));
+        d = smin(d, ds + 14.0 * smoothstep(0.0, 0.6, inner.x) + settle, 22.0);
+        // (and a low sheet of dust inside the roll, from it in to the stem's foot: a skirt, not a tyre)
+        let sheet = max(rho - sg.x, abs(hy - 0.2 * sg.z) - 0.32 * sg.z);
+        d = smin(d, sheet + 11.0 + settle, 18.0);
+    }
+    // (the ring round the stem: a thin flat collar)
+    var dr = 1.0e6;
+    let rg = (*col).ring;
+    if (rg.z > 0.01) {
+        let e = vec2<f32>((rho - rg.y) / 34.0, (hy - rg.x) / 13.0);
+        dr = (length(e) - 1.0) * 13.0;
+    }
+    return vec2<f32>(d, dr);
+}
+fn pl_col_base(col: ptr<function, PlCol>, p: vec3<f32>) -> f32 {
+    let b = pl_col_base2(col, p);
+    return min(b.x, b.y);
+}
+// Cauliflower lumps: domes over a jittered lattice (a feature point in each of the eight cells round p, well jittered),
+// each its own size, rounded on top and meeting in creases: about 1 on a big dome's crown, 0 in a crease.
+fn pl_dome(p: vec3<f32>) -> f32 {
+    let b = floor(p - 0.5);
+    var hmax = 0.0;
+    for (var c = 0u; c < 8u; c = c + 1u) {
+        let o = vec3<f32>(f32(c & 1u), f32((c >> 1u) & 1u), f32(c >> 2u));
+        let cell = b + o;
+        let q = bitcast<vec3<u32>>(vec3<i32>(cell));
+        let h = pcg(q.x ^ pcg(q.y ^ pcg(q.z + 0x51u)));
+        let jit = vec3<f32>(f32(h & 1023u), f32((h >> 10u) & 1023u), f32((h >> 20u) & 1023u)) * (0.7 / 1023.0) + 0.15;
+        let sz = 0.7 + 0.55 * f32(pcg(h) & 1023u) / 1023.0;
+        let e = cell + jit - p;
+        hmax = max(hmax, sz * sqrt(saturate(1.0 - dot(e, e) * 1.7 / (sz * sz))));
+    }
+    return hmax;
+}
+fn pl_rot(k: i32, p: vec3<f32>) -> vec3<f32> {
+    if (k == 0) {
+        return mat3x3<f32>(-0.0014, 0.9977, -0.0674, -0.2224, -0.0660, -0.9727, -0.9750, 0.0136, 0.2220) * p;
+    }
+    if (k == 1) {
+        return mat3x3<f32>(-0.6616, 0.1124, 0.7414, -0.4826, -0.8205, -0.3063, 0.5739, -0.5605, 0.5971) * p;
+    }
+    return mat3x3<f32>(-0.9891, -0.1223, 0.0816, 0.0968, -0.9594, -0.2651, 0.1107, -0.2543, 0.9608) * p;
+}
+// The cloud's surface at p: its smooth body bulged out in lumps on lumps (as the Payload's column), the lumps carried
+// round the cap's roll as it churns (up its inside, out over its top, down its outside), boiling slowly up the stem.
+// .x the distance, .y how far up a dome it lies, .z how soft its edge is, .w the fine fray.
+fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> vec4<f32> {
+    let a = (*col).a;
+    let C = (*col).C;
+    var q = p - C - pl_lean(col, p.y - C.y);
+    // (the roll: the cap's big lumps carried round its core circle, up the inside, out over the top, down the outside
+    // and back in under it, nearly as one through the roll and letting go outside it. Turned on and on they would wind
+    // up into streaks, so they are carried for a while and then let go, two sets of them half a turn of that apart,
+    // each fading in as the other fades out: the flow goes on and never winds up. The smaller lumps stay put.)
+    let rho = max(length(q.xz), 1.0e-3);
+    let dir = q.xz / rho;
+    let uv = vec2<f32>(rho - (*col).Rt, q.y - (*col).hc);
+    let wq = dot(uv, uv) / pow(1.6 * (*col).rt, 2.0);
+    // (none on the axis: the lumps either side of it turn opposite ways, and turned there they parted in a seam down
+    // the cap's middle)
+    let wr = exp(-wq * wq) * smoothstep(0.0, 0.8 * (*col).Rt + 10.0, rho);
+    // (how fast it turns, radians a second: quickening as the ring forms, slowing as it spreads)
+    let om = 0.25 * (1.0 - exp(-a / 2.0)) * exp(-a / 12.0) + 0.04;
+    let ph = fract(a / PL_CHURN);
+    let wA = 1.0 - abs(2.0 * ph - 1.0);
+    // (and the stem's boiling up it: its lumps carried up, the same way all down it to the land, so they move without
+    // stretching; let go of over most of the cap's height, under its roll, where the roll's own churn takes over)
+    q.y = q.y - 3.5 * min(a, 18.0) * (1.0 - exp(-wq * wq)) * (1.0 - smoothstep((*col).hc - 1.7 * (*col).rt, (*col).hc - 0.5 * (*col).rt, q.y));
+    let S = 2.2;
+    let w = gnoise3(pl_rot(1, q * (1.0 / (55.0 * S))));
+    let w2 = gnoise3(pl_rot(2, q * (1.0 / (23.0 * S)) + vec3<f32>(9.2, -0.05 * a, 4.4)));
+    var b1 = 0.0;
+    // (the light's look at it, not the eye's: only the set more there, near enough)
+    let kd = select(0, 1, wA < 0.5);
+    var wsum = 0.0;
+    for (var k = select(kd, 0, fine); k < select(kd + 1, 2, fine); k = k + 1) {
+        let tk = fract(ph + 0.5 * f32(k)) * PL_CHURN;
+        let ang = om * tk * wr;
+        let cs = cos(ang);
+        let sn = sin(ang);
+        let uv2 = vec2<f32>(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
+        let qk = vec3<f32>(dir.x * (uv2.x + (*col).Rt), q.y + uv2.y - uv.y, dir.y * (uv2.x + (*col).Rt));
+        // (each set its own lumps, a new lot each time it starts over)
+        let cyc = floor(a / PL_CHURN + 0.5 * f32(k));
+        wsum = wsum + select(1.0 - wA, wA, k == 0);
+        b1 = b1 + select(1.0 - wA, wA, k == 0) * pl_dome(pl_rot(0, qk * (1.0 / (36.0 * S)) + vec3<f32>(3.1 + 7.3 * cyc, 0.0, 7.7 - 4.1 * cyc + 2.9 * f32(k)) + 0.3 * vec3<f32>(w2 - 0.5)));
+    }
+    // (two half sets added are evener than one: their spread put back)
+    b1 = select(b1 / max(wsum, 1.0e-3), 0.62 + (b1 - 0.62) / sqrt(wA * wA + (1.0 - wA) * (1.0 - wA)), fine);
+    let hy = p.y - C.y;
+    let lump = 1.6 * (0.6 + 0.4 * smoothstep(20.0, 160.0, hy));
+    let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
+    let crisp = 1.0 - 0.8 * soft;
+    let b2 = pl_dome(pl_rot(1, q * (1.0 / (14.0 * S)) + vec3<f32>(0.0, -0.15 * a, 1.3)));
+    let up = smoothstep(40.0, 200.0, hy);
+    // (the crown over the middle smoother than the roll: its big swells let down, so it stays one rounded dome)
+    let crown = (1.0 - smoothstep(0.3 * (*col).Rt, (*col).Rt + 0.3 * (*col).rt, rho)) * smoothstep((*col).hc, (*col).hc + 0.5 * (*col).rt, hy);
+    var d = d0 - (26.0 * (b1 - 0.45) * crisp * (0.4 + 0.6 * up) * (1.0 - 0.2 * crown) + 9.0 * (b2 - 0.45) * (1.0 - 0.7 * soft) + (18.0 + 8.0 * soft) * (w - 0.5) * (1.0 - 0.35 * crown) + 8.0 * (w2 - 0.5)) * lump;
+    let ew = smoothstep(0.6, 0.82, w2);
+    let edge = mix(1.5, 6.0, ew) + 10.0 * (1.0 - smoothstep(0.0, 60.0, hy));
+    var fray = 0.5;
+    if (fine && d < 20.0 && soft < 0.99) {
+        let b3 = pl_dome(pl_rot(2, q * (1.0 / (5.5 * S)) + vec3<f32>(1.7, -0.25 * a, -2.1)));
+        d = d - 4.0 * (b3 - 0.45) * (1.0 - soft) * lump;
+        fray = gnoise3(pl_rot(0, q * (1.0 / (1.8 * S))) + vec3<f32>(5.0, 1.0, -0.4 * a));
+        d = d - 3.5 * (fray - 0.5) * (1.0 - soft) * (0.25 + 0.75 * ew);
+    }
+    // (the lumps' height capped smoothly at PL_DM, so that nothing stands out past the bounds the march allows)
+    let bump = max(d0 - d, 0.0);
+    d = d0 - bump / sqrt(sqrt(1.0 + pow(bump / PL_DM, 4.0))) + max(d - d0, 0.0);
+    return vec4<f32>(d, b1 * (0.45 + 0.55 * b2), edge, fray);
+}
+// A ray against a box, camera-relative: the entry and exit distances.
+fn pl_box(rd: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> vec2<f32> {
+    let inv = 1.0 / select(rd, vec3<f32>(1.0e-6), abs(rd) < vec3<f32>(1.0e-6));
+    let ta = lo * inv;
+    let tb = hi * inv;
+    let tmin = min(ta, tb);
+    let tmax = max(ta, tb);
+    return vec2<f32>(max(max(tmin.x, tmin.y), max(tmin.z, 0.0)), min(min(tmax.x, tmax.y), tmax.z));
+}
+
+// How much of the sun's light reaches land point `o` (camera-relative) through the cloud: its smooth body marched
+// towards the sun in a dozen steps, soft-edged (a little of its lumps' reach counted in). 1 in full sun.
+fn pl_shadow(o: vec3<f32>, L: vec3<f32>, a: f32, C: vec3<f32>, j: f32) -> f32 {
+    var cs = pl_column(a, C);
+    let tb = pl_box(L, cs.lo - o, cs.hi - o);
+    if (tb.y <= tb.x) {
+        return 1.0;
+    }
+    // (first, whether the sun's ray passes near the cloud at all: the stick from its foot to its cap's core)
+    let ctop = C + vec3<f32>(0.0, cs.hc, 0.0) + pl_wind() * a;
+    let sg = pl_ray_seg(L, C - o, ctop - o, 0.0, 1.0);
+    if (sg.x > max(cs.Rt + cs.rt, cs.surge.x + cs.surge.y) + 40.0) {
+        return 1.0;
+    }
+    let n = 14;
+    let dt = (tb.y - tb.x) / f32(n);
+    var tau = 0.0;
+    for (var i = 0; i < n; i = i + 1) {
+        let d = pl_col_base2(&cs, o + L * (tb.x + (f32(i) + j) * dt)).x;
+        tau = tau + saturate(0.35 - d / 45.0);
+    }
+    // (thinning as the cloud does, late on)
+    let thin = 1.0 - 0.8 * smoothstep(PL_SOFT0, PL_LEN, a);
+    return exp(-tau * dt * 0.022 * thin * smoothstep(0.3, 2.0, a));
+}
 // What a stage of the pass gives: the picture (the whole pass and the join), or the half-size stage's (premultiplied
 // colour and transmittance) and beside it how far its ray went and the column's distance (`fs_half`).
 struct PlOut {
@@ -1271,10 +1082,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // (how far off the cloud stands along this ray, where it is mostly opaque: the dust and debris behind it hidden)
     var col_t = select(1.0e9, up_t, stage == 2u);
-    // (the cloud stands on the ground under the burst, Cb: its C, whichever cloud it is)
+    // (the cloud stands on the ground under the burst, Cb: its C)
     {
     let C = Cb;
-    // [cloud] (the cloud, swapped for an earlier version's by /orbital nukecloud: mod/shaders/nuke_cloud/)
     // ---- the mushroom cloud: raymarched, self-shadowed towards the sun, glowing from inside --------------------------
     // (the fireball's heat: white-hot for a moment, orange for seconds, a dull red glow dying over tens of seconds)
     let heat = exp(-a / 0.6);
@@ -1288,23 +1098,10 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         // the cap: from a point higher up the rim's lumps lie further off than the rim's radius, and were cut off)
         let ctop = C + vec3<f32>(0.0, cl.hc, 0.0) + pl_wind() * a;
         let cbound = pl_ray_seg(rd, C - vec3<f32>(0.0, 20.0, 0.0), ctop, 0.0, 1.0);
-        let crad = max(cl.Rt + 1.35 * cl.rt, max(cl.surge.x + cl.surge.y, 0.8 * cl.rt + 0.15 * cl.rt)) + PL_DM + 30.0 + 0.2 * length(pl_wind()) * a;
-        // (and tighter: where the ray is in the ball round the cap, the cylinder round the stem and its ring, or the flat
-        // one round the base surge, with room for the lumps and the billows; the box's corners left out)
-        let lw = pl_wind() * a;
-        let capc = C + vec3<f32>(0.0, cl.hc + 0.2 * cl.rt, 0.0) + lw;
-        let sp = pl_sph(rd, capc, cl.Rt + 1.65 * cl.rt + PL_DM + 12.0);
-        let stc = C + 0.5 * lw;
-        let srm = max(1.45 * max(max(cl.sr.x, cl.sr.y), cl.sr.z), cl.ring.y + 36.0);
-        let cy = pl_cyl(rd, stc, srm + PL_DM + 16.0 + 0.5 * length(lw), C.y - 25.0, capc.y);
-        let su = pl_cyl(rd, C, cl.surge.x + cl.surge.y + PL_DM + 12.0, C.y - 25.0, C.y + 2.0 * cl.surge.z + PL_DM + 16.0);
-        let tb0 = pl_box(rd, cl.lo, cl.hi);
-        let tb = vec2<f32>(max(tb0.x, min(min(sp.x, cy.x), su.x)), min(tb0.y, max(max(sp.y, cy.y), su.y)));
+        let crad = max(cl.Rt + cl.rt, max(cl.surge.x + cl.surge.y, 0.8 * cl.rt + 0.15 * cl.rt)) + PL_DM + 30.0 + 0.2 * length(pl_wind()) * a;
+        let tb = pl_box(rd, cl.lo, cl.hi);
         let t1 = min(tb.y, scene_len);
         if (cbound.x < crad && t1 > tb.x) {
-            pl_billows(&cl);
-            let bmask = pl_bmask(&cl, rd, 0.5 * PL_DM + 20.0);
-            cl.bm = bmask;
             var t = tb.x;
             var tr = 1.0;
             var acc = vec3<f32>(0.0);
@@ -1318,8 +1115,8 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             var lc_face = 0.0;
             var lc_bulk = 1.0;
             var sky_occ = 0.0;
-            // (how far up a lump, and how deep in a crease, where the ray first meets the smoke: its glow and its soot are
-            // the surface's, not each step's deeper in, whose lumps cut in slices would show as rings)
+            // (how far up a lump where the ray first meets the smoke: its glow and its soot are the surface's, not each
+            // step's deeper in, whose lumps cut in slices would show as rings)
             var em_y = 0.5;
             var em_k = 0.0;
             // (dark brown as the fire goes out, by eight or nine seconds; lifting to Fizeau's grey-brown by twenty, paler on)
@@ -1330,9 +1127,6 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 }
                 let p = rd * t;
                 let b2 = pl_col_base2(&cl, p);
-                // (the crease between two billows broken up by the lumps over it: sooty in their own creases, not a ring)
-                let kb0 = cl.kb;
-                let dbody = cl.dbody;
                 let d0 = b2.x;
                 let dr = b2.y;
                 let db = min(d0, dr);
@@ -1373,13 +1167,13 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 if (den > 0.002) {
                     if (nl == 0) {
                         em_y = sd.y;
-                        em_k = kb0;
+                        // (soot in broken patches over the creases between its lumps, carried with the cloud: not rings)
+                        let qs = p - C - pl_lean(&cl, p.y - C.y);
+                        em_k = smoothstep(0.42, 0.68, gnoise3(qs * (1.0 / 48.0) + vec3<f32>(2.3, -0.03 * a, 5.1)));
                     }
-                    if (nl == 0 || (tr > 0.5 && nl < 2)) {
+                    if (tr > 0.25 || nl == 0) {
                         let fp = p + L * 9.0;
                         lc_face = pl_col_sdf(&cl, fp, pl_col_base2(&cl, fp).x, false).x - sd.x;
-                        // (the light through the bulk: the smooth body's, without the billows)
-                        cl.bm = 0u;
                         let s1 = saturate((10.0 - pl_col_base(&cl, p + L * 20.0)) / 34.0);
                         let s2 = saturate((10.0 - pl_col_base(&cl, p + L * 55.0)) / 46.0);
                         let s3 = saturate((8.0 - pl_col_base(&cl, p + L * 120.0)) / 60.0);
@@ -1387,7 +1181,6 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                         // (the sky's light shut out from under the cap and deep in it: what lies under more of it
                         // darker, its tops lit)
                         sky_occ = saturate((12.0 - pl_col_base(&cl, p + vec3<f32>(0.0, 80.0, 0.0))) / 70.0);
-                        cl.bm = bmask;
                     }
                     nl = nl + 1;
                     let lam = mix(saturate(0.25 + lc_face / 7.0), 0.65, soft);
@@ -1417,10 +1210,10 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     let qg = p - C - pl_lean(&cl, p.y - C.y);
                     let gv = vec2<f32>(length(qg.xz) - cl.Rt, (qg.y - cl.hc) * 1.2);
                     let ringc = exp(-dot(gv, gv) / pow(0.55 * cl.rt, 2.0));
-                    // (deep in the smooth body, not in a billow: the billows' surfaces cut through it in swirls)
-                    let core = mix(1.0 - exp(min(dbody, 0.0) / (0.22 * cl.rt + 6.0)), ringc, smoothstep(2.0, 9.0, a));
+                    let core = mix(1.0 - exp(min(d0, 0.0) / (0.22 * cl.rt + 6.0)), ringc, smoothstep(2.0, 9.0, a));
                     let under = 1.0 - smoothstep(cl.hc - 0.6 * cl.rt, cl.hc + 0.5 * cl.rt, p.y - C.y);
                     let surf = 1.5 * (1.0 - smoothstep(4.5, 8.5, a)) + 0.6 * exp(-a / 1.2);
+                    // (from its first second, the glow on its lumps' crowns, their creases sooty)
                     let e = (heat * 5.0 + surf + glow * (0.06 + 3.2 * core * core * (exp(-a / 6.0) + 0.12)) * (0.3 + 1.4 * under)) * capw * (1.0 - ringw) * mix(0.1 + 2.3 * (1.0 - sd.y) * (1.0 - sd.y), (0.05 + 0.75 * smoothstep(0.2, 1.0, em_y)) * (1.0 - 0.6 * kb), smoothstep(0.3, 1.3, a));
                     let tcol = mix(mix(vec3<f32>(0.9, 0.13, 0.03), vec3<f32>(2.8, 0.95, 0.16), saturate(glow * 1.3 + 0.15 * core)), vec3<f32>(3.4, 3.0, 2.4), heat);
                     // (and the land's glow, under it, on the stem and the surge, at first)
@@ -1436,9 +1229,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     wmid = wmid + tr * al;
                     tr = tr * (1.0 - al);
                 }
-                // (well clear of it, a longer step: the lumps' slopes are steepest only close in)
-                let dm = min(sd.x, dr);
-                t = t + select(st, max(dm * 0.55, (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), dm > 0.0);
+                t = t + select(st, max(0.55 * min(sd.x, dr), (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), min(sd.x, dr) > 0.0);
             }
             if (tr < 0.999) {
                 let dist = tmid / max(wmid, 1.0e-4);
@@ -1456,8 +1247,6 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             }
         }
     }
-
-    // [end cloud]
     }
     // ---- the bomb: a white-hot streak coming in from orbit, its plasma sheath and ionised wake; its heat shed, the
     // casing (an ogive nose, a long body, four fins at its tail, spinning faster as it dives, the sun glinting off it),

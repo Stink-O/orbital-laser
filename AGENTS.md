@@ -87,17 +87,14 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload` or `nuke`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukecloud 1-9|current`, `/orbital quality full|fast`, `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload` or `nuke`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital quality full|fast`, `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `render.set-data`, won't start the mod.
 With the Payload loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
-`/orbital payloadsound`); with the Nuke, a CLOUD row steps through its cloud's earlier versions (`/orbital nukecloud`:
-`mod/shaders/nuke_cloud/vN.wgsl`, written by `tools/nuke_cloud.py extract` from the commits it lists, spliced into
-`nuke.wgsl` at its `// [cloud fns]` and in place of `// [cloud]`…`// [end cloud]` by `mod/build.rs`
-(`src/passbuild.rs`), which builds every pass ahead of time: a switch only picks a ready-made one, compiled by the
-game after the clicks settle; `tools/preview.py nuke T --cloud N`). The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
+`/orbital payloadsound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
+only picks a ready-made one. The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
 between sessions, default FAST) picks whether the Payload's and the Nuke's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7`; an older fork compiles the same source and draws its `fs_main` at full size, so FAST needs no new

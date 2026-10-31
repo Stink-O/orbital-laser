@@ -32,20 +32,9 @@ for own in downfall planetkiller crystalbloom sinkhole payload nuke; do
     size=$(( $(pre | wc -c) + $(wc -c < "$shaders/$own.wgsl") ))
     [ "$size" -le 262144 ] || { echo "the $own pass is $size bytes, over the game's 256 KiB"; exit 1; }
 done
-# the payload's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
+# the payload's and the nuke's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
 for own in payload nuke; do
     { cat "$here/wgslcheck/prelude.wgsl"; pre; sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d' "$shaders/$own.wgsl"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
-done
-# the Nuke's earlier clouds (/orbital nukecloud: mod/shaders/nuke_cloud/vN.wgsl spliced into nuke.wgsl by
-# tools/nuke_cloud.py, as mod/build.rs does with src/passbuild.rs's nuke_cloud_pass), each at QUALITY FULL and FAST
-for v in "$shaders"/nuke_cloud/v*.wgsl; do
-    n=$(basename "$v" .wgsl); n=${n#v}
-    for q in "" --fast; do
-        { cat "$here/wgslcheck/prelude.wgsl"; pre; python3 "$here/nuke_cloud.py" splice "$n" $q; } > "$tmp"
-        out=$("$bin" "$tmp" 2>&1) || { echo "the nuke pass with cloud v$n ${q:-(full)}:"; echo "$out"; exit 1; }
-        size=$(( $(wc -c < "$tmp") - $(wc -c < "$here/wgslcheck/prelude.wgsl") ))
-        [ "$size" -le 262144 ] || { echo "the nuke pass with cloud v$n is $size bytes, over the game's 256 KiB"; exit 1; }
-    done
 done
 echo OK

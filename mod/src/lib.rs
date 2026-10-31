@@ -36,7 +36,7 @@ const LOCK_TICKS: u32 = 14;
 // Every post pass, built ahead of time from the shader files by build.rs (src/passbuild.rs): PASS_OWN (the other
 // lasers', strike.wgsl itself, then the downfall's, the planet killer's, the crystal bloom's and the sinkhole's: strike.wgsl
 // up to its fs_main less the other lasers' own functions, then shaders/downfall.wgsl ...), PASS_PAYLOAD and PASS_NUKE (at
-// QUALITY FULL and FAST, the Nuke's with each of its clouds). A switch only picks one: building a pass of some 200 KB in the
+// QUALITY FULL and FAST). A switch only picks one: building a pass of some 200 KB in the
 // game took the mod past its fuel in one call.
 include!(concat!(env!("OUT_DIR"), "/passes.rs"));
 #[cfg(test)]
@@ -47,11 +47,9 @@ mod passbuild;
 fn payload_pass(fast: bool) -> &'static str {
     PASS_PAYLOAD[usize::from(fast)]
 }
-/// The Nuke's, the same way (nuke.wgsl's `[half stage]`: its cloud, dust and trail at half size), with cloud version
-/// `cloud` (an index of `wheel::CLOUDS`; `wheel::CURRENT` is today's, the others mod/shaders/nuke_cloud/vN.wgsl
-/// spliced in by build.rs).
-fn nuke_pass(fast: bool, cloud: usize) -> &'static str {
-    PASS_NUKE[if cloud < PASS_NUKE.len() { cloud } else { wheel::CURRENT }][usize::from(fast)]
+/// The Nuke's, the same way (nuke.wgsl's `[half stage]`: its cloud, dust and trail at half size).
+fn nuke_pass(fast: bool) -> &'static str {
+    PASS_NUKE[usize::from(fast)]
 }
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
@@ -66,8 +64,6 @@ fn pass_of(l: &lasers::Laser) -> usize {
     }
 }
 const SETTINGS: &str = "settings";
-/// Seconds the wheel's CLOUD row waits for the clicks to stop before the game compiles the cloud picked.
-const CLOUD_SETTLE: f32 = 0.3;
 /// Vanilla's flying speed (creative flight), which the wheel's speeds multiply.
 const VANILLA_FLY: f32 = 0.05;
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
@@ -198,7 +194,6 @@ struct Settings {
     fly: f32,
     blast_alt: bool,
     fast: bool,
-    cloud: usize,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -247,12 +242,6 @@ struct Orbital {
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
     fast: bool,
-    /// Which of the Nuke's clouds its pass draws (an index of `wheel::CLOUDS`, `wheel::CURRENT` today's: `/orbital nukecloud`,
-    /// the wheel's CLOUD row; `nuke_pass`).
-    cloud: usize,
-    /// Seconds until a new cloud is handed to the game (`set_cloud`): stepping through them on the wheel compiles only
-    /// the one it settles on.
-    cloud_due: Option<f32>,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
@@ -285,9 +274,9 @@ fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, cloud } = settings;
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast, cloud)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
@@ -313,8 +302,6 @@ impl Orbital {
             fly,
             blast_alt,
             fast,
-            cloud,
-            cloud_due: None,
             aiming: None,
             skip: 0.0,
             shadow_off: false,
@@ -328,7 +315,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nquality={}\nnukecloud={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nquality={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -338,8 +325,7 @@ impl Orbital {
             self.page,
             self.fly,
             if self.blast_alt { "alt" } else { "main" },
-            if self.fast { "fast" } else { "full" },
-            wheel::cloud_key(self.cloud)
+            if self.fast { "fast" } else { "full" }
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -366,7 +352,6 @@ impl Orbital {
         let mut fly = 1.0;
         let mut blast_alt = false;
         let mut fast = true;
-        let mut cloud = wheel::CURRENT;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -380,7 +365,6 @@ impl Orbital {
                 Some(("flyspeed", v)) => fly = wheel::parse_speed(v).unwrap_or(1.0),
                 Some(("payloadsound", v)) => blast_alt = v == "alt",
                 Some(("quality", v)) => fast = v != "full",
-                Some(("nukecloud", v)) => cloud = wheel::parse_cloud(v).unwrap_or(cloud),
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -389,7 +373,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, cloud }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -444,7 +428,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, self.blast_alt, self.fast, self.cloud));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, self.blast_alt, self.fast));
         }
     }
     fn open_wheel(&mut self) {
@@ -542,20 +526,6 @@ impl Orbital {
                 Self::actionbar(&format!("{} LOADED: {} BLAST", l.title, wheel::SOUNDS[k].0), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
-            Some(wheel::Spot::Cloud(k)) => {
-                // stepping through the Nuke's clouds loads it too, and leaves the wheel open to step on
-                let n = wheel::CLOUDS.len();
-                self.set_cloud(if k == 0 { (self.cloud + n - 1) % n } else { (self.cloud + 1) % n }, CLOUD_SETTLE);
-                if let Some(i) = row {
-                    if self.laser != i {
-                        self.laser = i;
-                        self.save();
-                        self.update_panel();
-                    }
-                }
-                world::play_sound("minecraft:ui.button.click", None, 0.6, if k == 0 { 1.0 } else { 1.4 });
-                self.show_wheel();
-            }
             Some(wheel::Spot::Centre) => {
                 self.terrain = !self.terrain;
                 self.save();
@@ -598,8 +568,7 @@ impl Orbital {
         self.fast = fast;
         self.save();
         self.rebuild("payload", payload_pass(fast));
-        self.cloud_due = None;
-        self.rebuild("nuke", nuke_pass(fast, self.cloud));
+        self.rebuild("nuke", nuke_pass(fast));
         self.update_panel();
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
@@ -613,26 +582,6 @@ impl Orbital {
                 render::set_post(&self.passes[pl]);
                 self.compiled = Some(pl);
             }
-        }
-    }
-    /// The Nuke's cloud version `cloud` (an index of `wheel::CLOUDS`), its pass handed to the game `settle` seconds on
-    /// (if no other is picked by then), at once if a Nuke strike is under way, so the plume-up can be watched again in
-    /// each (`/orbital skip`). The pass is ready-made (build.rs): picking one costs the mod nothing; the game's
-    /// compiling it is what the wait spares, a compile a click while stepping through them.
-    fn set_cloud(&mut self, cloud: usize, settle: f32) {
-        let cloud = if cloud < wheel::CLOUDS.len() { cloud } else { wheel::CURRENT };
-        if cloud == self.cloud {
-            return;
-        }
-        self.cloud = cloud;
-        self.save();
-        self.cloud_due = Some(settle);
-        self.update_panel();
-    }
-    /// A cloud picked and waiting (`set_cloud`) handed to the game now.
-    fn apply_cloud(&mut self) {
-        if self.cloud_due.take().is_some() {
-            self.rebuild("nuke", nuke_pass(self.fast, self.cloud));
         }
     }
 
@@ -681,7 +630,6 @@ impl Orbital {
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = if self.shadow_off { 1.0 } else { 0.0 };
         }
-        self.apply_cloud();
         let pass = pass_of(laser);
         render::set_post(&self.passes[pass]);
         self.compiled = Some(pass);
@@ -949,9 +897,6 @@ impl Orbital {
             if l.key == "payload" || l.key == "nuke" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" && self.cloud != wheel::CURRENT {
-                lines.push((format!("Cloud: {}", wheel::CLOUDS[self.cloud].0), 0xFFB070));
-            }
             if (self.fly - 1.0).abs() > 1e-4 {
                 lines.push((format!("Flying speed: {}", wheel::speed_label(self.fly)), 0x6FC8FF));
             }
@@ -1045,12 +990,6 @@ impl Mod for Orbital {
         meter::reset();
         self.since_tick += seconds;
         self.pace.frame(seconds);
-        if let Some(t) = &mut self.cloud_due {
-            *t -= seconds;
-            if *t <= 0.0 {
-                self.apply_cloud();
-            }
-        }
         // Compile the post passes as the world loads, not when the first strike fires (that costs about a second): set
         // each for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
         // the last one compiled for the strikes after; loading a laser that needs another one compiles that one the
@@ -1177,21 +1116,6 @@ impl Mod for Orbital {
                 "Payload blast: {} (/orbital payloadsound main or alt)",
                 if self.blast_alt { "alternative" } else { "main" }
             ))),
-            (Some("nukecloud"), Some(v)) => {
-                let c = wheel::parse_cloud(v).ok_or_else(|| format!("/orbital nukecloud <1-{}|current>", wheel::CLOUDS.len()))?;
-                self.set_cloud(c, 0.0);
-                Ok(Some(format!(
-                    "Nuke cloud {} ({}){}",
-                    wheel::CLOUDS[c].0,
-                    wheel::CLOUDS[c].1,
-                    if self.strike.is_some() { ": drawn now" } else { "" }
-                )))
-            }
-            (Some("nukecloud"), None) => Ok(Some(format!(
-                "Nuke clouds (/orbital nukecloud N or current): {}; now {}",
-                wheel::CLOUDS.iter().map(|c| c.0).collect::<Vec<_>>().join(", "),
-                wheel::CLOUDS[self.cloud].0
-            ))),
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
                 Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's and the Nuke's smoke at half size" } else { "full: every pixel" })))
@@ -1211,7 +1135,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | nukecloud [1-10|current] | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -1244,7 +1168,7 @@ mod tests {
             (super::PASS_OWN[3], &["fn ray_seg(", "fn mh(", "fn gfbm3(", "fn crystal_bloom(", "fn rot_axis("][..]),
             (super::PASS_OWN[4], &["fn mh(", "fn vnoise3(", "fn sinkhole(", "fn rot_axis(", "fn ign("][..]),
             (super::payload_pass(false), &["fn mh(", "fn gnoise3(", "fn payload(", "fn ign("][..]),
-            (super::nuke_pass(false, 8), &["fn mh(", "fn gnoise3(", "fn nuke(", "fn ign("][..]),
+            (super::nuke_pass(false), &["fn mh(", "fn gnoise3(", "fn nuke(", "fn ign("][..]),
         ] {
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
                 assert!(!p.contains(gone), "{gone}");
@@ -1260,24 +1184,14 @@ mod tests {
         assert_eq!(fast.matches("@fragment").count(), 3);
         assert!(fast.contains("fn fs_half(") && fast.contains("fn fs_join(") && fast.len() <= 256 << 10);
         assert!(!super::payload_pass(false).contains("half_picture"));
-        let fast = super::nuke_pass(true, 8);
-        assert_eq!(fast.matches("@fragment").count(), 3);
-        assert!(fast.contains("fn fs_half(") && fast.contains("fn fs_join(") && fast.len() <= 256 << 10);
-        assert!(!super::nuke_pass(false, 8).contains("half_picture"));
-        // every earlier cloud, FULL and FAST: the old cloud in, today's out, one fragment entry (three at FAST), small
-        assert_eq!(super::PASS_NUKE.len(), super::wheel::CLOUDS.len());
-        assert_eq!(super::passbuild::CLOUD_COUNT, super::wheel::CLOUDS.len());
-        assert_eq!(super::passbuild::CLOUD_CURRENT, super::wheel::CURRENT);
-        for c in 0..super::wheel::CLOUDS.len() {
-            for fast in [false, true] {
-                let p = super::nuke_pass(fast, c);
-                assert_eq!(p.matches("@fragment").count(), if fast { 3 } else { 1 });
-                assert!(p.len() <= 256 << 10, "{c}");
-                let tag = format!("fn v{}_pl_col_sdf(", c + 1);
-                assert_eq!(p.contains(&tag), c != super::wheel::CURRENT, "{c}");
-                assert_eq!(p.matches("    // ---- the mushroom cloud: raymarched").count(), 1, "{c}");
-                assert!(p.contains("fn nuke(") && p.contains("// ---- the bomb"));
-            }
+        for fast in [false, true] {
+            let p = super::nuke_pass(fast);
+            assert_eq!(p.matches("@fragment").count(), if fast { 3 } else { 1 });
+            assert_eq!(p.contains("fn fs_half(") && p.contains("fn fs_join("), fast);
+            assert!(p.len() <= 256 << 10);
+            assert!(!p.contains("half_picture") || fast);
+            assert_eq!(p.matches("    // ---- the mushroom cloud: raymarched").count(), 1);
+            assert!(p.contains("fn nuke(") && p.contains("// ---- the bomb") && !p.contains("v10_"));
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
@@ -1286,18 +1200,16 @@ mod tests {
         assert!(!super::payload_pass(false).contains("fn sinkhole("));
     }
     #[test]
-    fn switching_cloud_or_quality_costs_nothing() {
+    fn switching_quality_costs_nothing() {
         // a switch picks a ready-made pass (build.rs): no building, microseconds for every one of them back to back
         let t0 = std::time::Instant::now();
         let mut n = 0usize;
-        for _ in 0..100 {
-            for c in 0..super::wheel::CLOUDS.len() {
-                for fast in [false, true] {
-                    n += super::nuke_pass(fast, c).len() + super::payload_pass(fast).len();
-                }
+        for _ in 0..1000 {
+            for fast in [false, true] {
+                n += super::nuke_pass(fast).len() + super::payload_pass(fast).len();
             }
         }
-        let each = t0.elapsed().as_secs_f64() * 1.0e6 / (100.0 * 2.0 * super::wheel::CLOUDS.len() as f64);
+        let each = t0.elapsed().as_secs_f64() * 1.0e6 / 2000.0;
         println!("a switch: {each:.3} us ({n})");
         assert!(each < 5.0, "{each} us");
     }

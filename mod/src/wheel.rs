@@ -7,7 +7,7 @@
 //! for which way a ship laser's ship comes in and how it arrives, and a row of
 //! swatches for the colour it is lit in (shown while one is loaded, or its
 //! segment is pointed at); for the Payload, a row picking which blast it
-//! plays; for the Nuke, a row stepping through its earlier clouds. Over the title, the player's flying speed: a bar to click along and a
+//! plays. Over the title, the player's flying speed: a bar to click along and a
 //! field to type one in. Drawn by the game from the
 //! shapes built here; GUI pixels, from the centre of the screen.
 use crate::lasers::{LASERS, Laser, is_ship};
@@ -80,8 +80,6 @@ pub enum Spot {
     Colour(usize),
     /// The Payload's blast sound: 0 the main one, 1 the alternative.
     Sound(usize),
-    /// The Nuke's cloud: 0 the version before, 1 the one after (`CLOUDS`).
-    Cloud(usize),
     /// A page arrow or tab: the page it turns to.
     Page(usize),
     /// The flying speed's bar, and its field.
@@ -89,13 +87,12 @@ pub enum Spot {
     FlyField,
 }
 
-/// Which rows under the ring are showing: none, a ship laser's three, the Payload's sound, or the Nuke's cloud.
+/// Which rows under the ring are showing: none, a ship laser's three, or the Payload's sound.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Rows {
     None,
     Ship,
     Payload,
-    Nuke,
 }
 impl Rows {
     /// The rows laser `i` has (if any).
@@ -103,7 +100,6 @@ impl Rows {
         match i.map(|i| LASERS[i]) {
             Some(l) if is_ship(l) => Rows::Ship,
             Some(l) if l.key == "payload" => Rows::Payload,
-            Some(l) if l.key == "nuke" => Rows::Nuke,
             _ => Rows::None,
         }
     }
@@ -126,50 +122,6 @@ fn sound_button(k: usize) -> Rect {
     Rect { x: -w / 2.0 + SOUND_LABEL_W + k as f32 * (BTN_W + BTN_GAP), y: ROW_Y, w: BTN_W, h: BTN_H }
 }
 
-/// The Nuke's clouds, oldest first, `CURRENT` today's, then v10, v3's with today's look (`/orbital nukecloud`;
-/// mod/build.rs builds their sources, tools/nuke_cloud.py writes them): the wheel's name for each and the commit it
-/// came from.
-pub const CLOUDS: [(&str, &str); 10] = [
-    ("v1 FIRST CLOUD", "f7212de"),
-    ("v2 ROUND CROWN", "59f7989"),
-    ("v3 FOLDING", "12c9f80"),
-    ("v4 CARRIED LUMPS", "3570696"),
-    ("v5 BOIL-UP", "6cb04f9"),
-    ("v6 FIZEAU", "c969abe"),
-    ("v7 BILLOWS", "73fe7bf"),
-    ("v8 BOIL ON BILLOWS", "1ba6527"),
-    ("v9 CURRENT", "today's"),
-    ("v10 V3 PLUS", "v3, today's look"),
-];
-/// Today's cloud (nuke.wgsl itself), the default.
-pub const CURRENT: usize = 8;
-/// The setting's and the command's name for cloud `c`: its number, or `current` for today's.
-pub fn cloud_key(c: usize) -> String {
-    if c == CURRENT || c >= CLOUDS.len() { "current".to_string() } else { (c + 1).to_string() }
-}
-/// A cloud from `1`..`10` or `current` (also `v5`).
-pub fn parse_cloud(s: &str) -> Option<usize> {
-    let s = s.trim().trim_start_matches(['v', 'V']);
-    if s.eq_ignore_ascii_case("current") {
-        return Some(CURRENT);
-    }
-    s.parse::<usize>().ok().filter(|&n| (1..=CLOUDS.len()).contains(&n)).map(|n| n - 1)
-}
-/// The Nuke's cloud row: its label, the arrow back, the name, the arrow on, centred under the ring.
-const CLOUD_LABEL_W: f32 = 36.0;
-const CLOUD_ARROW_W: f32 = 16.0;
-const CLOUD_NAME_W: f32 = 114.0;
-fn cloud_row_x() -> f32 {
-    -(CLOUD_LABEL_W + 2.0 * CLOUD_ARROW_W + CLOUD_NAME_W + 2.0 * BTN_GAP) / 2.0
-}
-/// Its arrows (0 back, 1 on), and between them the name's box.
-fn cloud_button(k: usize) -> Rect {
-    let x = cloud_row_x() + CLOUD_LABEL_W + k as f32 * (CLOUD_ARROW_W + CLOUD_NAME_W + 2.0 * BTN_GAP);
-    Rect { x, y: ROW_Y, w: CLOUD_ARROW_W, h: BTN_H }
-}
-fn cloud_name() -> Rect {
-    Rect { x: cloud_row_x() + CLOUD_LABEL_W + CLOUD_ARROW_W + BTN_GAP, y: ROW_Y, w: CLOUD_NAME_W, h: BTN_H }
-}
 
 #[derive(Default)]
 pub struct Wheel {
@@ -287,17 +239,6 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
             if inside(&sound_button(k), x, y) {
                 return Some(Spot::Sound(k));
             }
-        }
-    }
-    if rows == Rows::Nuke {
-        for k in 0..2 {
-            if inside(&cloud_button(k), x, y) {
-                return Some(Spot::Cloud(k));
-            }
-        }
-        // (a click on the name steps on, as the arrow after it)
-        if inside(&cloud_name(), x, y) {
-            return Some(Spot::Cloud(1));
         }
     }
     if rows == Rows::Ship {
@@ -425,7 +366,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: bool, fast: bool, cloud: usize) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: bool, fast: bool) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -513,23 +454,6 @@ impl Wheel {
                 text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
             }
         }
-        // (the Nuke's: which of its clouds it draws, stepped through with the arrows either side of its name)
-        if let Some(rl) = row.filter(|&i| Rows::of(Some(i)) == Rows::Nuke) {
-            let ms = LASERS[rl];
-            let b0 = cloud_button(0);
-            text(&mut out, "CLOUD", b0.x - CLOUD_LABEL_W / 2.0 - 1.0, b0.y + 2.0, 0xB8BEC8);
-            for (k, arrow) in ["<", ">"].iter().enumerate() {
-                let b = cloud_button(k);
-                let hovered = self.hover == Some(Spot::Cloud(k));
-                out.push(Draw::Fill((b, if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 })));
-                out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - 1.0, w: b.w, h: 1.0 }, argb(0x90, shade(ms.rgb, 0.6)))));
-                text(&mut out, arrow, b.x + b.w / 2.0, b.y + 2.0, if hovered { ms.rgb } else { 0x9AA2AE });
-            }
-            let n = cloud_name();
-            out.push(Draw::Fill((n, 0xE0101318)));
-            out.push(Draw::Fill((Rect { x: n.x, y: n.y + n.h - 2.0, w: n.w, h: 2.0 }, argb(0xFF, ms.rgb))));
-            text(&mut out, CLOUDS.get(cloud).unwrap_or(&CLOUDS[CURRENT]).0, n.x + n.w / 2.0, n.y + 2.0, ms.rgb);
-        }
         if let Some(rl) = row.filter(|&i| is_ship(LASERS[i])) {
             let ms = LASERS[rl];
             for (r, items) in ROWS.iter().enumerate() {
@@ -572,10 +496,6 @@ impl Wheel {
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),
             Some(Spot::Colour(k)) => (format!("Lit {}", COLOURS[k].label), 0x8C93A0),
             Some(Spot::Sound(k)) => (SOUNDS[k].1.to_string(), 0x8C93A0),
-            Some(Spot::Cloud(k)) => {
-                let c = *CLOUDS.get(cloud).unwrap_or(&CLOUDS[CURRENT]);
-                (format!("{} cloud  ·  now {} ({})", if k == 0 { "Older" } else { "Newer" }, c.0, c.1), 0x8C93A0)
-            }
             Some(Spot::Page(k)) => (format!("Page {} of {}", k + 1, pages()), 0x8C93A0),
             None if pages() > 1 => ("Right-click: next page  ·  Esc to close".to_string(), 0x8C93A0),
             None => ("Esc to close".to_string(), 0x8C93A0),
@@ -868,61 +788,13 @@ mod tests {
         assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Payload);
         let lit = |alt: bool| -> Vec<u32> {
             Wheel::on_page(0, 1.0)
-                .draws(pl, true, true, true, 0, 0, &[0; 16], alt, true, 8)
+                .draws(pl, true, true, true, 0, 0, &[0; 16], alt, true)
                 .into_iter()
                 .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                 .collect()
         };
         assert_eq!(lit(false), vec![LASERS[pl].rgb, 0x9AA2AE]);
         assert_eq!(lit(true), vec![0x9AA2AE, LASERS[pl].rgb]);
-    }
-    #[test]
-    fn nuke_cloud_row() {
-        let nk = ship("nuke");
-        // its arrows (and the name) clickable while its row shows, nothing there otherwise
-        for (k, b) in [(0, cloud_button(0)), (1, cloud_button(1)), (1, cloud_name())] {
-            let (x, y) = (b.x + b.w / 2.0, b.y + b.h / 2.0);
-            assert_eq!(spot(x, y, Rows::Nuke, page_of(nk)), Some(Spot::Cloud(k)));
-            assert_ne!(spot(x, y, Rows::Payload, page_of(nk)), Some(Spot::Cloud(k)));
-            assert_ne!(spot(x, y, Rows::None, page_of(nk)), Some(Spot::Cloud(k)));
-            assert!(b.y > R_OUT + 10.0 && b.x >= -160.0 && b.x + b.w <= 160.0 && b.y + b.h <= 120.0);
-        }
-        assert!(cloud_name().x >= cloud_button(0).x + CLOUD_ARROW_W + 2.0 && cloud_button(1).x >= cloud_name().x + CLOUD_NAME_W + 2.0);
-        // every name fits its box, the label its room, every hint the line under the ring
-        assert!("CLOUD".len() as f32 * 6.0 <= CLOUD_LABEL_W && cloud_row_x() >= -160.0);
-        for c in 0..CLOUDS.len() {
-            assert!(CLOUDS[c].0.len() as f32 * 6.0 + 4.0 <= CLOUD_NAME_W, "{}", CLOUDS[c].0);
-            let w = Wheel { hover: Some(Spot::Cloud(0)), ..Wheel::on_page(page_of(nk), 1.0) };
-            for d in w.draws(nk, true, true, true, 0, 0, &[0; 16], false, true, c) {
-                if let Draw::Text((t, ..)) = d {
-                    assert!(t.len() <= 320 / 6 + 4, "{t}");
-                }
-            }
-        }
-        // the keys
-        assert_eq!(parse_cloud("current"), Some(CURRENT));
-        assert_eq!(parse_cloud("9"), Some(8));
-        assert_eq!(parse_cloud("10"), Some(9));
-        assert_eq!(parse_cloud("v1"), Some(0));
-        assert_eq!(parse_cloud("0"), None);
-        assert_eq!(parse_cloud("11"), None);
-        assert_eq!(cloud_key(4), "5");
-        assert_eq!(cloud_key(CURRENT), "current");
-        assert_eq!(cloud_key(9), "10");
-        assert_eq!(parse_cloud(&cloud_key(9)), Some(9));
-        assert_eq!(CLOUDS[9].0, "v10 V3 PLUS");
-        // pointing at the Nuke opens its row; loaded, it shows on any page, its name drawn
-        let mut w = Wheel::on_page(page_of(nk), 1.0);
-        let c = polar(segment_angle(nk % PAGE), 60.0);
-        w.hover_at(c.x, c.y, 0);
-        assert_eq!(w.rows(0), Rows::Nuke);
-        assert_eq!(Wheel::on_page(0, 1.0).rows(nk), Rows::Nuke);
-        let names: Vec<String> = Wheel::on_page(0, 1.0)
-            .draws(nk, true, true, true, 0, 0, &[0; 16], false, true, 4)
-            .into_iter()
-            .filter_map(|d| if let Draw::Text((t, ..)) = d { Some(t) } else { None })
-            .collect();
-        assert!(names.iter().any(|t| t == "v5 BOIL-UP"));
     }
     #[test]
     fn fits_the_smallest_gui() {
@@ -933,8 +805,7 @@ mod tests {
         for (r, items) in ROWS.iter().enumerate() {
             boxes.extend((0..items.len()).map(|k| button(r, k)));
         }
-        let nuke_row = [cloud_button(0), cloud_name(), cloud_button(1)];
-        for b in boxes.iter().chain(&nuke_row) {
+        for b in &boxes {
             assert!(b.x >= -hw && b.x + b.w <= hw && b.y >= -hh && b.y + b.h <= hh, "{:?}", (b.x, b.y, b.w, b.h));
         }
         // and none on another (but the fly row's span, round its bar and field)

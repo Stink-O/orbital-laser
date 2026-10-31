@@ -1,6 +1,5 @@
 //! Builds every post pass ahead of time (src/passbuild.rs) into OUT_DIR, and `passes.rs` there naming them, for lib.rs
-//! to `include!`: the game is handed a ready-made `&'static str`, so switching QUALITY or the Nuke's cloud costs the mod
-//! nothing.
+//! to `include!`: the game is handed a ready-made `&'static str`, so switching QUALITY costs the mod nothing.
 #[path = "src/passbuild.rs"]
 mod passbuild;
 
@@ -13,7 +12,6 @@ fn main() {
     let shaders = root.join("shaders");
     println!("cargo:rerun-if-changed=src/passbuild.rs");
     println!("cargo:rerun-if-changed=shaders");
-    println!("cargo:rerun-if-changed=shaders/nuke_cloud");
     let read = |name: &str| {
         let p = shaders.join(name);
         println!("cargo:rerun-if-changed={}", p.display());
@@ -39,13 +37,8 @@ fn main() {
     writeln!(rs, "/// The Payload's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_PAYLOAD: [&str; 2] = [{}];", p.join(", ")).unwrap();
     let nuke = read("nuke.wgsl");
-    let mut n = Vec::new();
-    for c in 0..passbuild::CLOUD_COUNT {
-        let src = if c != passbuild::CLOUD_CURRENT { passbuild::nuke_cloud_pass(&nuke, &read(&format!("nuke_cloud/v{}.wgsl", c + 1))) } else { nuke.clone() };
-        let v: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_nuke_{c}_{f}.wgsl"), passbuild::split_pass(&shader, &src, f))).collect();
-        n.push(format!("[{}]", v.join(", ")));
-    }
-    writeln!(rs, "/// The Nuke's with each of its clouds (`wheel::CLOUDS`, `wheel::CURRENT` today's), at QUALITY FULL and FAST.").unwrap();
-    writeln!(rs, "const PASS_NUKE: [[&str; 2]; {}] = [{}];", n.len(), n.join(", ")).unwrap();
+    let n: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_nuke_{f}.wgsl"), passbuild::split_pass(&shader, &nuke, f))).collect();
+    writeln!(rs, "/// The Nuke's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_NUKE: [&str; 2] = [{}];", n.join(", ")).unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }
