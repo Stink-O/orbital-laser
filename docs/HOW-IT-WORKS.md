@@ -155,7 +155,9 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   wispy white condensation ring round the stem from 15 to 40 s, a skirt of dust round its foot, and its shadow thrown
   across the land. The shockwave races out at 343 blocks a second, a shell bending the light at its edge, raising a
   low wall of grey-brown dust; when it reaches the player the boom arrives with it (after the ground's thump, which
-  comes first through the land), the camera jolts and shudders, and muck lands on the lens. Earth and debris rain
+  comes first through the land), the camera is jolted hard (the picture itself knocked about on top of the game's
+  shake) and shudders for eight seconds or so, the player is knocked back and up as by an explosion (thrown a little
+  over a jump's height and some six blocks back within 200 blocks, less further off, none past 600), and muck lands on the lens, out of focus. Earth and debris rain
   down for half a minute. From 59 s the cloud loses its billows into a drifting haze, gone by 90 s, when the strike
   ends. It reaches 1000 blocks.
 
@@ -336,7 +338,7 @@ its blast, the dust's front and the jolt reach the player at 13.6 plus their dis
 until about 20 s and goes on growing slowly, the debris is down by about 29, the trail is gone by about 35, the column
 goes soft from 35 to 48 and thins away by about 65, and the strike ends at 70.
 The Nuke's bomb shows at 2 s and bursts at 11; its boom, the dust's front and the jolt reach the player at 11 plus
-their distance over 343 (the ground's thump at five times that speed); the cloud rises fast for 20 s and slowly after, softens from
+their distance over 343 (the ground's thump at five times that speed), the knockback with it; the cloud rises fast for 20 s and slowly after, softens from
 59 and is gone by 90, when the strike ends.
 
 ## The effects

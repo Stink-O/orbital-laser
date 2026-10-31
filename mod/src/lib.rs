@@ -133,6 +133,22 @@ struct Strike {
     /// The sounds it has played, to cut them short if it is stopped.
     sounds: std::collections::BTreeSet<String>,
 }
+
+/// A blast front's knockback for a player standing at `at` (`Act::Shove`): their velocity's kick, blocks a tick, away
+/// from `from` along the ground at `out` and up at `up`, as much of it as `strike::knock_share` gives (the lift a third
+/// of it at the least); none past its reach. The game adds it to the player's motion (`world.push-player`): they are
+/// thrown, collide as they go and fall back under gravity, as from an explosion.
+fn knockback(from: [f64; 3], at: [f64; 3], out: f32, up: f32, reach: f32) -> Option<[f32; 3]> {
+    let (dx, dz) = (at[0] - from[0], at[2] - from[2]);
+    let d = dx.hypot(dz);
+    let k = strike::knock_share(d, reach);
+    if k < 0.03 {
+        return None;
+    }
+    // (straight out from under the middle; right under it, any way)
+    let (ux, uz) = if d > 0.5 { ((dx / d) as f32, (dz / d) as f32) } else { (0.0, 1.0) };
+    Some([ux * out * k, up * (0.35 + 0.65 * k.min(1.0)), uz * out * k])
+}
 impl Strike {
     /// Work out a stage of the plan, what it gives due after what was due before it at the same time.
     fn work_out(&mut self, job: strike::Stage) {
@@ -687,7 +703,7 @@ impl Orbital {
             }
             meter::spend(300);
             let Some((t, act)) = s.take_due() else { break };
-            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Spare(_) | Act::Blocks(_) | Act::Read { .. }) {
+            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Spare(_) | Act::Blocks(_) | Act::Read { .. }) {
                 continue;
             }
             match act {
@@ -702,6 +718,13 @@ impl Orbital {
                     s.sounds.insert(event);
                 }
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
+                Act::Shove { from, out, up, reach } => {
+                    if let Some(p) = game::get_player()
+                        && let Some([x, y, z]) = knockback(from, [p.x, p.y, p.z], out, up, reach)
+                    {
+                        world::push_player(x, y, z);
+                    }
+                }
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
                 // (a landed piece's blocks in on the tick it lands, whatever waits: the pass may then let it go)
                 Act::Blocks(b) if b.landing.is_some() => {
@@ -1212,6 +1235,46 @@ mod tests {
         let each = t0.elapsed().as_secs_f64() * 1.0e6 / 2000.0;
         println!("a switch: {each:.3} us ({n})");
         assert!(each < 5.0, "{each} us");
+    }
+}
+
+#[cfg(test)]
+mod shove_tests {
+    use super::knockback;
+
+    #[test]
+    fn the_knockback_throws_the_player_back_and_up_fading_with_distance() {
+        let from = [0.0, 76.0, 0.0];
+        let mut last = f32::MAX;
+        for d in [0.0, 50.0, 200.0, 300.0, 400.0, 500.0, 540.0] {
+            let [x, y, z] = knockback(from, [d * 0.6, 64.0, d * 0.8], 0.8, 0.55, 600.0).unwrap();
+            let h = x.hypot(z);
+            assert!(h <= last + 1e-6 && h <= 0.95 && y > 0.18 && y <= 0.6, "{d}: {x} {y} {z}");
+            if d > 0.0 {
+                assert!(x > 0.0 && z > 0.0 && (x / z - 0.75).abs() < 1e-4);
+            }
+            last = h;
+        }
+        assert!((knockback(from, [120.0, 64.0, 160.0], 0.8, 0.55, 600.0).unwrap()[1] - 0.55).abs() < 1e-6);
+        assert!(knockback(from, [600.0, 64.0, 0.0], 0.8, 0.55, 600.0).is_none());
+    }
+    #[test]
+    fn the_nuke_shoves_once_as_its_front_arrives() {
+        use crate::strike::{Act, Target};
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let nuke = crate::lasers::LASERS.iter().find(|l| l.key == "nuke").unwrap();
+        let mut ev = crate::strike::plan(nuke, &target, false, "minecraft:overworld", 7.0, [10.5, 66.0, 297.0], 0);
+        let (mut shoves, mut jolt) = (Vec::new(), f32::MAX);
+        while let Some((t, act)) = ev.pop() {
+            match act {
+                Act::Shove { out, reach, .. } => shoves.push((t, out, reach)),
+                Act::Shake { strength, .. } if strength > 0.9 => jolt = jolt.min(t),
+                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                _ => {}
+            }
+        }
+        assert_eq!(shoves.len(), 1);
+        assert!((shoves[0].0 - jolt).abs() < 0.01, "{shoves:?} {jolt}");
     }
 }
 

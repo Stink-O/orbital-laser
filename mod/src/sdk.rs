@@ -68,6 +68,7 @@ pub mod fake {
             super::with(|w| w.commands += commands.len() as u64);
         }
         pub fn play_sound(_event: &str, _at: Option<(f64, f64, f64)>, _volume: f32, _pitch: f32) {}
+        pub fn push_player(_x: f32, _y: f32, _z: f32) {}
         pub fn edit_blocks(edit: &BlockEdit) {
             super::with(|w| {
                 w.edits += 1;

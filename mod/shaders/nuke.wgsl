@@ -1651,7 +1651,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 col = mix(col, mix(vec3<f32>(lum), dust_c, 0.5), 0.22 * E);
                 col = col * mix(vec3<f32>(1.0), vec3<f32>(1.03, 0.99, 0.93), E);
                 // (a faint film of it on the lens, in soft blotches, fixed to the screen)
-                let pxy = in.position.xy;
+                let pxy = pl_px;
                 let res = frame.resolution.xy;
                 // (as out of focus as the drops: broad, soft-edged, no fine grain)
                 let film = gnoise3(vec3<f32>(pxy / (0.15 * res.y), 3.1)) * 0.8 + gnoise3(vec3<f32>(pxy / (0.07 * res.y), 7.7)) * 0.2;
@@ -1665,7 +1665,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             // after the front, staying a long while)
             let vis = smoothstep(60.0, 10.0, hc) * smoothstep(6000.0, 2500.0, rc) * smoothstep(120.0, 260.0, rc) * (1.0 - 0.5 * land.y) * k;
             if (vis > 0.0 && tau > 0.2) {
-                let pxy = in.position.xy;
+                let pxy = pl_px;
                 let res = frame.resolution.xy;
                 var keep = 1.0;
                 var shine = 0.0;
@@ -1739,7 +1739,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     }
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     if (capture() > 2.5) {
-        let sp = floor(in.position.xy);
+        let sp = floor(pl_px);
         let chk = fract((sp.x + sp.y) * 0.5);
         let ycc_y = srgb.g * 0.5 + (srgb.r + srgb.b) * 0.25;
         let ycc_co = srgb.r - srgb.b;
@@ -1749,8 +1749,52 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     return PlOut(vec4<f32>(srgb, 1.0), vec4<f32>(0.0));
 }
 
+
+// ---- the jolt on the picture: the game's camera shake (nuke.rs's nk_jolt) tops out at a few degrees, so as the
+// shockwave reaches the player the picture itself is knocked about too: a hard hit, ringing out fast, then a heavy
+// shudder dying away over some eight seconds; hardest within a few hundred blocks, a tremor a couple of kilometres off.
+// Shifted and turned a little (never more than a degree or so) and zoomed in just enough that no edge shows. The
+// lens's own marks stay put (pl_px). -----------------------------------------------------------------------------
+var<private> pl_px: vec2<f32>;
+fn pl_jolt(in: StageIn) -> StageIn {
+    pl_px = in.position.xy;
+    let tgt = vec3<f32>(anchor_xz().x, block_y() + 1.0 + PL_BURST, anchor_xz().y);
+    let me = vec3<f32>(frame.mod_params[3].x, frame.mod_params[3].y, frame.mod_params[3].z);
+    let dist = length(me - tgt);
+    let s = now() - PL_HIT - dist / PL_V;                  // since the front reached the player
+    if (s <= 0.0 || s > 10.0 || intensity_v() <= 0.0) {
+        return in;
+    }
+    let g = clamp(1.7 / (1.0 + dist / 450.0), 0.2, 1.0);
+    // (the hit: a slam, then swinging hard and fast, three or four times, dying in under a second)
+    let hit = 0.03 * g * exp(-s / 0.3) * smoothstep(0.0, 0.02, s);
+    let ring = vec2<f32>(
+        0.65 * sin(s * 47.0 + 0.6) + 0.35 * sin(s * 83.0 + 2.1),
+        0.65 * cos(s * 41.0 + 1.3) + 0.35 * sin(s * 71.0 + 0.4)
+    );
+    // (the shudder: heavier and slower, the ground still heaving under the player, fading over seconds)
+    let shud = 0.0065 * g * exp(-s / 2.6) * smoothstep(0.1, 0.5, s);
+    let sh = vec2<f32>(
+        0.55 * sin(s * 17.0 + 0.3) + 0.3 * sin(s * 29.0 + 1.9) + 0.15 * sin(s * 53.0),
+        0.55 * cos(s * 15.0 + 2.2) + 0.3 * sin(s * 31.0 + 0.7) + 0.15 * cos(s * 59.0)
+    );
+    let off = ring * hit + sh * shud;
+    // (and a turn: up to about a degree in the hit, a fraction of one in the shudder)
+    let roll = 0.018 * g * exp(-s / 0.4) * sin(s * 37.0 + 0.9) + 0.003 * g * exp(-s / 2.6) * sin(s * 11.0);
+    let res = frame.resolution.xy;
+    let asp = res.x / res.y;
+    let zoom = 1.0 + 2.2 * (hit + shud) + 1.1 * abs(roll) * asp;
+    // (in picture heights about the middle, so the turn is round)
+    var q = (in.uv - 0.5) * vec2<f32>(asp, 1.0) / zoom;
+    q = vec2<f32>(q.x * cos(roll) - q.y * sin(roll), q.x * sin(roll) + q.y * cos(roll)) + off;
+    var o = in;
+    o.uv = clamp(q / vec2<f32>(asp, 1.0) + 0.5, vec2<f32>(0.0), vec2<f32>(1.0));
+    o.position = vec4<f32>(o.uv * res, in.position.zw);
+    return o;
+}
 @fragment
-fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
+fn fs_main(in0: StageIn) -> @location(0) vec4<f32> {
+    let in = pl_jolt(in0);
     return nuke(in, 0u, vec4<f32>(0.0), vec3<f32>(1.0e9, 1.0, 0.0)).c;
 }
 
@@ -1767,6 +1811,7 @@ struct PlHalf {
 }
 @fragment
 fn fs_half(in: StageIn) -> PlHalf {
+    pl_px = in.position.xy;
     let o = nuke(in, 1u, vec4<f32>(0.0), vec3<f32>(1.0e9, 1.0, 0.0));
     return PlHalf(o.c, o.e);
 }
@@ -1835,7 +1880,9 @@ fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
 }
 
 @fragment
-fn fs_join(in: StageIn) -> @location(0) vec4<f32> {
+fn fs_join(in0: StageIn) -> @location(0) vec4<f32> {
+    // (jolted as fs_main is: the half-size picture, drawn steady, read where the jolted pixel looks)
+    let in = pl_jolt(in0);
     let d = depth_at(in.uv);
     let len = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
     let u = pl_up(in.position.xy, len);

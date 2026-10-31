@@ -47,6 +47,10 @@ pub enum Act {
     Sound { event: String, at: Option<[f64; 3]>, volume: f32, pitch: f32 },
     /// A jolt of the real camera (`render.shake`): `strength` 0 to 1, fading out over `seconds`.
     Shake { strength: f32, seconds: f32 },
+    /// The player knocked back by a blast's front (`world.push-player`, lib.rs's `knockback`): thrown away from `from`
+    /// (its middle) at `out` blocks a tick and up at `up`, as hard as `knock_share` says for where they are then (all
+    /// of it within a third of `reach`, none past it); then they fall back under gravity.
+    Shove { from: [f64; 3], out: f32, up: f32, reach: f32 },
     /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
     /// much work for the one tick it fires in (a mod's tick has a fuel limit).
     Later(Stage),
@@ -315,6 +319,15 @@ fn sound_from(p: [f64; 3], me: [f64; 3]) -> (f32, f64) {
 /// squares a jolt's strength, so a third of it is a faint tremor.)
 fn falloff(d: f64) -> f32 {
     (1.4 / (1.0 + d / 100.0)).min(1.0) as f32
+}
+
+/// How much of a blast front's knockback reaches the player `d` blocks (along the ground) from its middle: all of it
+/// within a third of `reach` (an eighth more right under it), fading smoothly to none at `reach`.
+pub fn knock_share(d: f64, reach: f32) -> f32 {
+    let reach = f64::from(reach.max(1.0));
+    let u = ((d - reach / 3.0) / (reach * 2.0 / 3.0)).clamp(0.0, 1.0);
+    let close = 1.0 + 0.125 * (1.0 - d / (reach / 3.0)).max(0.0);
+    (close * (1.0 - u * u * (3.0 - 2.0 * u))) as f32
 }
 
 /// `then`, run on the ground at column (x, z): `~ ~ ~` is the first air block above the surface.
@@ -4323,7 +4336,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
+                Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
                 Act::Later(job) | Act::Soon(job) => ev.extend(job()),
             }
         }

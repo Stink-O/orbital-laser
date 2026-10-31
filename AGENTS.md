@@ -51,12 +51,18 @@ laser, command, capability and timing). This file is the short, factual version 
   split by angle, never by rows), each ring as the shockwave reaches it or as soon after as 350,000 blocks a second
   allows (`NK_RATE`), each chunk's edits on one tick (`Wave::chunk`: the game redraws its sections once); every stage stays under ~1.3 ms natively wherever it lands (`nuke_no_stage_too_heavy_anywhere`,
   ignored: run it on its own; `nk_wave_profile` prints the wave tick by tick), since a stage over the tick's fuel stops the mod ("took too long"). `/orbital shadow
-  off|on` (not kept) hides the Nuke's and the Payload's cloud shadows, for comparing. Only fire them in a
+  off|on` (not kept) hides the Nuke's and the Payload's cloud shadows, for comparing. As the Nuke's front reaches the
+  player it knocks them back and up (`Act::Shove`, lib.rs's `knockback`: a kick to their velocity through the fork's
+  `world.push-player`, 0.8 blocks a tick out and 0.55 up within 200, fading to none at 600, `strike::knock_share`;
+  they fly a jump's height or so and some six blocks back, then fall) and jolts the camera
+  (`nk_jolt`) and the picture itself (nuke.wgsl's `pl_jolt`, on top of the game's shake, which tops out at a few
+  degrees). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-6` or newer (it adds
+- **Stock Horizon can't run the mod.** It needs the fork's build with `world.push-player` (the Nuke's knockback; on the
+  fork branch, not yet in a release: the next one, `orbital-mod-api-8`, will carry it), release `orbital-mod-api-6` or newer (it adds
   `world.read-columns`, which the Sinkhole reads the real land of its slabs with; `orbital-mod-api-5` added
   `world.surface-height` and `render.set-data`, which the Crystal Bloom rests its pieces on the real ground with; older
   builds won't start the mod; `orbital-mod-api-7`, recommended, adds the half-size stage QUALITY FAST draws the

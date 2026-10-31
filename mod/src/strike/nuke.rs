@@ -1823,19 +1823,35 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
     }
 }
 
-/// The shockwave's jolt reaching the player at `t`, `fo` as hard: the Payload's (a hard hit, strong quick swings, a
-/// shudder fading), harder and longer.
+/// The shockwave's jolt reaching the player at `t`, `fo` as hard: a violent hit (the camera at the game's hardest for
+/// some two seconds, kicked again and again), then a heavy shudder dying away over eight or nine. The game's shake tops
+/// out at a few degrees, so the pass knocks the picture about on top of it (nuke.wgsl's `pl_jolt`). Some 70 jolts, a
+/// few a tick: nothing the tick's work notices.
 fn nk_jolt(p: &mut Plan, t: f32, fo: f32) {
-    p.shake(t, fo, 1.4);
-    p.shake(t + 0.05, 0.6 * fo, 6.0);
-    for n in 0..10 {
-        p.shake(t + 0.1 * (n + 1) as f32, (1.0 - 0.04 * n as f32) * fo, 0.16);
+    p.shake(t, fo, 2.6);
+    // (kicked again and again through the hit: each short, hard, the camera's swing renewed)
+    for n in 0..18 {
+        let u = n as f32 / 18.0;
+        p.shake(t + 0.06 + 0.09 * n as f32, (1.0 - 0.35 * u) * fo, 0.22);
     }
-    for n in 0..30 {
-        let u = n as f32 / 30.0;
-        p.shake(t + 1.1 + 0.1 * n as f32, (0.7 * (1.0 - u).powf(1.2) + 0.1) * fo, 0.12);
+    // (the shudder: a long heavy one under it, and quick heaves in it, slowing and fading)
+    p.shake(t + 0.4, 0.8 * fo, 9.0);
+    let mut ts = t + 1.7;
+    let mut n = 0;
+    while ts < t + 9.0 {
+        let u = (ts - t - 1.7) / 7.3;
+        p.shake(ts, (0.75 * (1.0 - u).powf(1.3) + 0.12) * fo, 0.3);
+        ts += 0.12 + 0.1 * u;
+        n += 1;
     }
+    debug_assert!(n < 60);
 }
+
+/// The front's knockback close in (`Act::Shove`): blocks a tick out from the blast and up (a jump's is 0.42: thrown a
+/// little over a jump's height, some six blocks back), and past how far none (`strike::knock_share`).
+const NK_KNOCK_OUT: f32 = 0.8;
+const NK_KNOCK_UP: f32 = 0.55;
+const NK_KNOCK_REACH: f32 = 600.0;
 
 /// How loud the shockwave's gust is `dist` blocks off: all of it within ~70 blocks, a half at ~600, a third past ~1,100.
 fn nk_shock_vol(dist: f64) -> f32 {
@@ -1910,9 +1926,11 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     // of wind and grit and no more)
     p.csound(arrive - 0.2, "shockwave", 10.0 * nk_shock_vol(dist), 1.0);
     p.csound(arrive + 1.5, "rumble", 10.0, 1.0);
-    nk_jolt(&mut p, arrive, (2.2 / (1.0 + dist / 600.0)).clamp(0.5, 1.0) as f32);
-    let mut ts = arrive + 4.2;
-    while ts < arrive + 16.0 {
+    nk_jolt(&mut p, arrive, (2.4 / (1.0 + dist / 500.0)).clamp(0.35, 1.0) as f32);
+    // (and the front knocks the player back and up: hardest within two hundred, none past six hundred)
+    p.ev.push((arrive, Act::Shove { from: [cx, gy + NK_BURST, cz], out: NK_KNOCK_OUT, up: NK_KNOCK_UP, reach: NK_KNOCK_REACH }));
+    let mut ts = arrive + 9.0;
+    while ts < arrive + 18.0 {
         let s = p.rng.uniform(0.05, 0.14) as f32 * fo;
         let d = p.rng.uniform(0.4, 0.9) as f32;
         p.shake(ts, s, d);
