@@ -1273,12 +1273,14 @@ fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 // (a faint film of it on the lens, in soft blotches, fixed to the screen)
                 let pxy = in.position.xy;
                 let res = frame.resolution.xy;
-                let film = gnoise3(vec3<f32>(pxy / (0.13 * res.y), 3.1)) * 0.65 + gnoise3(vec3<f32>(pxy / (0.034 * res.y), 7.7)) * 0.35;
-                col = mix(col, dust_c, 0.12 * E * smoothstep(0.45, 0.8, film));
+                // (as out of focus as the drops: broad, soft-edged, no fine grain)
+                let film = gnoise3(vec3<f32>(pxy / (0.15 * res.y), 3.1)) * 0.8 + gnoise3(vec3<f32>(pxy / (0.07 * res.y), 7.7)) * 0.2;
+                col = mix(col, dust_c, 0.12 * E * smoothstep(0.35, 0.95, film));
             }
-            // (muck thrown on the lens as the front passes, out of focus, as the second clip shows it: drops near round
-            // but each its own, a few elongated, 2 to 7% of the picture's height across, a ring darker than their middle,
-            // soft over their outer quarter, mottled; some faint, some strong (letting through 55 to 90% of the light),
+            // (muck thrown on the lens as the front passes, far out of focus, as the second clip shows it: drops near
+            // round but each its own, a few drawn out into soft streaks, 2 to 7% of the picture's height across, blurred
+            // discs a touch denser towards the rim, feathered over their outer half with no outline, faintly mottled and
+            // faintly lit on the side the light comes from; some faint, some strong (letting through 55 to 90% of the light),
             // grey; often with a smaller drop or two beside them; nearly all high on the screen; landing over the second
             // after the front, staying a long while)
             let vis = smoothstep(40.0, 8.0, hc) * smoothstep(2600.0, 900.0, rc) * smoothstep(60.0, 140.0, rc) * (1.0 - 0.5 * land.y) * k;
@@ -1286,6 +1288,7 @@ fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                 let pxy = in.position.xy;
                 let res = frame.resolution.xy;
                 var keep = 1.0;
+                var shine = 0.0;
                 for (var i = 0u; i < 14u; i = i + 1u) {
                     let t0 = 0.25 + 1.4 * mh(i, seed, 0x3d0u);
                     let age = tau - t0;
@@ -1296,7 +1299,7 @@ fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     let sz = mh(i, seed, 0x3d3u);
                     let r = (0.011 + 0.026 * pow(sz, 0.8)) * res.y;
                     let d0 = pxy - c;
-                    if (dot(d0, d0) > 9.0 * r * r) {
+                    if (dot(d0, d0) > 16.0 * r * r) {
                         continue;
                     }
                     let life = smoothstep(0.0, 0.08, age) * (1.0 - smoothstep(6.0, 16.0, age + 4.0 * mh(i, seed, 0x3d4u)));
@@ -1321,16 +1324,22 @@ fn payload(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                         let ph = TAU * mh(k2, seed, 0x3e6u);
                         // (an edge a little uneven)
                         let q = length(e) / rj * (1.0 + 0.05 * sin(3.0 * th + ph) + 0.035 * sin(5.0 * th - 2.0 * ph));
-                        if (q >= 1.08) {
+                        if (q >= 1.4) {
                             continue;
                         }
-                        let ring = mix(0.58, 1.0, smoothstep(0.05, 0.7, q)) * (1.0 - smoothstep(0.78, 1.06, q));
-                        let mott = 0.88 + 0.24 * gnoise3(vec3<f32>(e / (0.35 * rj), f32(k2 % 97u)));
+                        // (a defocused disc: feathered from under half its radius out past its edge, a little denser
+                        // towards the rim, its mottling blurred to a faint unevenness)
+                        let body = 1.0 - smoothstep(0.3, 1.38, q);
+                        let ring = body * mix(0.9, 1.15, smoothstep(0.1, 0.8, q));
+                        let mott = 0.94 + 0.12 * gnoise3(vec3<f32>(e / (0.8 * rj), f32(k2 % 97u)));
                         let op = (0.14 + 0.34 * pow(mh(k2, seed, 0x3e7u), 0.7)) * select(0.85, 1.0, j == 0u);
                         keep = keep * (1.0 - ring * mott * op * life);
+                        // (and the light caught in it, faintly, on its upper side)
+                        shine = shine + body * smoothstep(0.3, -0.9, dj.y / rj) * op * life;
                     }
                 }
-                col = col * mix(1.0, keep, vis * fade);
+                col = col * mix(1.0, keep, vis * fade)
+                    + vec3<f32>(0.42, 0.38, 0.33) * (sunc * 0.45 + amb * 0.9) * 0.4 * min(shine, 1.0) * vis * fade;
             }
         }
     }
