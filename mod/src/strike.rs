@@ -3740,7 +3740,7 @@ fn pk_shaft_r(ca: f64, sa: f64, depth: f64, seed: u32) -> f64 {
 }
 /// The most the shaft's radius can be.
 /// The rim and the charred land are worked out in this many parts round the crater, a tick each.
-const PK_PARTS: u32 = 48;
+const PK_PARTS: u32 = 96;
 const PK_SHAFT_MAX: f64 = PK_SHAFT * 1.18 + 3.0 + 5.0 + 9.0 + 5.0;
 
 /// Dig the crater under chunk column (x0, z0) at `t` (with the land over it, from PK_ABOVE up, `land`), straight into
@@ -4013,11 +4013,11 @@ fn pk_crater(p: &mut Plan, point: [f64; 3], floor_y: i32, sky: i32, seed: u32) {
     // the rim, the charred land, the rubble
     let t_rim = pk_queue_t(pk_land_t(PK_BLAST) + 0.5);
     for part in 0..PK_PARTS {
-        p.later(t_rim - 0.3 + part as f32 * 0.015, move |p| pk_rim(p, point, seed, part, t_rim + part as f32 * 0.015));
+        p.later(t_rim - 0.3 + part as f32 * 0.0075, move |p| pk_rim(p, point, seed, part, t_rim + part as f32 * 0.0075));
     }
     let t_char = pk_queue_t(pk_land_t(PK_BLAST) + 1.5);
     for part in 0..PK_PARTS {
-        p.later(t_char - 0.3 + part as f32 * 0.015, move |p| pk_char(p, point, seed, part, t_char + part as f32 * 0.015));
+        p.later(t_char - 0.3 + part as f32 * 0.0075, move |p| pk_char(p, point, seed, part, t_char + part as f32 * 0.0075));
     }
 }
 

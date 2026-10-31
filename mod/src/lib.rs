@@ -85,7 +85,7 @@ const STAGE_COST: u64 = 2_000_000;
 const FIRE_COST: u64 = 8_000_000;
 /// What an edit costs the mod to hand over (`meter`): its runs copied and written out for the game, roughly.
 fn edit_cost(b: &strike::Blocks) -> u64 {
-    3_000 + 100 * b.runs.len() as u64
+    3_000 + 600 * b.runs.len() as u64
 }
 
 /// A part of a strike's plan a stage gave (`Strike::more`): in order of time, then of when it was given.
@@ -144,6 +144,14 @@ impl Strike {
         let out = job();
         let depth = u64::from(64 - (self.more.len() as u64 + out.len() as u64).leading_zeros());
         meter::spend(out.len() as u64 * (100 + 30 * depth));
+        // (and what it made: the work of a stage that counts little of itself shows in the runs and commands it gives,
+        // so the rest of the tick waits for it)
+        let made: u64 = out.iter().map(|(_, a)| match a {
+            Act::Blocks(b) => 1_000 * b.runs.len() as u64,
+            Act::Cmd(_) | Act::Spare(_) => 1_000,
+            _ => 0,
+        }).sum();
+        meter::spend(made);
         for (t, act) in out {
             self.given += 1;
             self.more.push(Given { t, seq: self.given, act });
