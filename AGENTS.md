@@ -61,12 +61,11 @@ laser, command, capability and timing). This file is the short, factual version 
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build with `world.push-player` (the Nuke's knockback; on the
-  fork branch, not yet in a release: the next one, `orbital-mod-api-8`, will carry it), release `orbital-mod-api-6` or newer (it adds
-  `world.read-columns`, which the Sinkhole reads the real land of its slabs with; `orbital-mod-api-5` added
-  `world.surface-height` and `render.set-data`, which the Crystal Bloom rests its pieces on the real ground with; older
-  builds won't start the mod; `orbital-mod-api-7`, recommended, adds the half-size stage QUALITY FAST draws the
-  Payload's smoke with): a Linux x86-64 download on the fork's releases, or
+- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-8` or newer (it adds
+  `world.push-player`, the Nuke's knockback; `orbital-mod-api-7` added the half-size stage QUALITY FAST draws the
+  Payload's and the Nuke's smoke with, `orbital-mod-api-6` `world.read-columns`, `orbital-mod-api-5`
+  `world.surface-height` and `render.set-data`; older builds won't start the mod): a Linux x86-64 download on the
+  fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
 - **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.
@@ -97,14 +96,15 @@ In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
-without `world.edit-blocks`, `world.surface-height`, `world.read-columns` or `render.set-data`, won't start the mod.
+without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player` or `render.set-data`,
+won't start the mod.
 With the Payload loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
 only picks a ready-made one. The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
 between sessions, default FAST) picks whether the Payload's and the Nuke's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
-`orbital-mod-api-7`; an older fork compiles the same source and draws its `fs_main` at full size, so FAST needs no new
-import and the mod still starts on `orbital-mod-api-6`.
+`orbital-mod-api-7` (an older fork would compile the same source and draw its `fs_main` at full size; FAST needs no
+import of its own).
 R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
 under a second fires. Rebind R in Options > Controls > Key Binds.
 
@@ -189,8 +189,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 ## Verifying work
 
-Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's and the
-Planet Killer's, the Crystal Bloom's, the Sinkhole's). Mod: build, install, `./play.sh`, one
+Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
+Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's and the Nuke's). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)

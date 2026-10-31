@@ -1,6 +1,24 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-055); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-056); each release's notes are in [docs/releases](releases).
+
+## 0.5.5
+
+<p align="center">
+  <img alt="The Payload: a column of smoke boiling up out of the crater, the bomb's trail still hanging in the sky" width="720" src="32-payload-column.jpg">
+</p>
+
+- **Payload**, the tenth laser, on the wheel's second page and `/orbital payload`. A bomb, not a beam. A bright point
+  drifts high across the sky trailing smoke, then dives as a fireball, shedding burning chunks and crackling as it
+  tears through the air. It hits, a ragged column of smoke rises out of the crater and a wall of dust races out over
+  the land. It leaves a crater about 42 blocks across, the land swept bare out to about 85 with the trees felled
+  pointing away from it, and every mob within 90 killed. It lasts 70 seconds, its sounds arriving late with the
+  distance. Two blasts to pick from: the wheel's **BLAST SOUND** row or `/orbital payloadsound main|alt`.
+- **STOP STRIKE** on the wheel (top left while a strike runs) and `/orbital stop` end a strike there and then.
+- **QUALITY FAST or FULL** on the wheel and `/orbital quality`: FAST (the default) draws the Payload's smoke at half
+  size, about 4 ms a frame at 1080p instead of 11.
+- **Best on the next Orbital Laser build of Horizon**, `orbital-mod-api-7` (it adds a half-size stage for a mod's
+  post pass, which QUALITY FAST uses). `orbital-mod-api-6` still runs it, drawing the smoke at full size.
 
 ## 0.5.4
 

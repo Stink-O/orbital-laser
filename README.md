@@ -37,9 +37,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-6` or newer (`orbital-mod-api-7`
-> recommended).** Horizon's mod API doesn't yet let a mod catch an item's use, open its own screen, draw effects or
-> change the world, so the mod runs on a fork that adds those:
+> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-8` or newer.** Horizon's mod API doesn't
+> yet let a mod catch an item's use, open its own screen, draw effects or change the world, so the mod runs on a
+> fork that adds those:
 > [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world),
 > with a ready-built Linux download on its [releases](https://github.com/Stink-O/horizon/releases). Older fork builds
 > won't start the mod. You also need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
@@ -49,25 +49,23 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
 > and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.5](#new-in-055) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [New in 0.5.6](#new-in-056) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
-## New in 0.5.5
+## New in 0.5.6
 
-<p align="center"><img alt="The Payload: a column of smoke boiling up out of the crater, the bomb's trail still hanging in the sky" width="720" src="docs/32-payload-column.jpg"></p>
+<!-- Nuke still, once captured: <p align="center"><img alt="The Nuke: a mushroom cloud hundreds of blocks tall over the land, its shadow across the ground" width="720" src="docs/35-nuke-cloud.jpg"></p> -->
 
-- **Payload**, the tenth laser, on the wheel's second page and `/orbital payload`. A bomb, not a beam. A bright point
-  drifts high across the sky trailing smoke, then dives as a fireball, shedding burning chunks and crackling as it
-  tears through the air. It hits, a ragged column of smoke rises out of the crater and a wall of dust races out over
-  the land. It leaves a crater about 42 blocks across, the land swept bare out to about 85 with the trees felled
-  pointing away from it, and every mob within 90 killed. It lasts 70 seconds, its sounds arriving late with the
-  distance. Two blasts to pick from: the wheel's **BLAST SOUND** row or `/orbital payloadsound main|alt`.
-- **STOP STRIKE** on the wheel (top left while a strike runs) and `/orbital stop` end a strike there and then.
-- **QUALITY FAST or FULL** on the wheel and `/orbital quality`: FAST (the default) draws the Payload's smoke at half
-  size, about 4 ms a frame at 1080p instead of 11.
-- **Best on the next Orbital Laser build of Horizon**, `orbital-mod-api-7` (it adds a half-size stage for a mod's
-  post pass, which QUALITY FAST uses). `orbital-mod-api-6` still runs it, drawing the smoke at full size.
+- **Nuke**, the eleventh laser, on the wheel's third page and `/orbital nuke`. A white-hot streak across the sky, a
+  dive, then a blinding flash, a fireball boiling up into a mushroom cloud and a shockwave in a wall of dust that
+  knocks you off your feet. It leaves a terraced crater about 200 blocks across, the land flattened out to about 230
+  and scorched out to about 480. It lasts 90 seconds.
+- **The Payload** casts its cloud's shadow on the land, and its craters cut into water naturally.
+- **No more "took too long".** Big strikes are split into small steps, so no laser stops the mod, and terrain goes in
+  paced by the frame rate, with much less stutter.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-8` (it adds `world.push-player`, the Nuke's
+  knockback). Older builds won't start the mod.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -137,10 +135,15 @@ Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works]
 |---|---|---|---|
 | ![A bright point high in the sky trailing a lumpy smoke trail](docs/29-payload-sky.jpg) | ![The fireball diving at the land, shedding burning chunks](docs/30-payload-dive.jpg) | ![The flash and the burst of fire as it hits](docs/31-payload-impact.jpg) | ![The column of smoke rising out of the crater, the bomb's trail still hanging in the sky](docs/32-payload-column.jpg) |
 
+<!-- Nuke stills, once captured:
+| Nuke | The flash | The cloud | The crater |
+|---|---|---|---|
+| ![The bomb coming in from orbit, a white-hot streak across the sky](docs/33-nuke-fall.jpg) | ![The blinding white flash as it bursts over the land](docs/34-nuke-flash.jpg) | ![The mushroom cloud rolling over on itself, its shadow across the land, the dust wall racing out](docs/35-nuke-cloud.jpg) | ![The terraced crater with its glassy floor and broken rim, the land flattened round it](docs/36-nuke-crater.jpg) |
+-->
+
 ## Getting started
 
-1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-7`; `orbital-mod-api-6` runs it too, with QUALITY FAST
-   drawing at full size). Download
+1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-8` or newer). Download
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
    and unpack it to `~/horizon-orbital`.
 
@@ -156,7 +159,7 @@ Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works]
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.5.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.6.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -241,8 +244,7 @@ The wheel also has:
   at the top right while you hold either item.
 - A **QUALITY** switch under them: **FAST** (the default) draws the Payload's and the Nuke's smoke, dust and trail at half the
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
-  draws every pixel (about two to three times the GPU time). FAST needs the fork's release `orbital-mod-api-7`; on an
-  older build it draws at full size, the same as FULL.
+  draws every pixel (about two to three times the GPU time).
 - **STOP STRIKE** at the top left while a strike is under way: it ends the strike there and then (what it has already
   done to the world stays), the same as `/orbital stop`.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
@@ -261,7 +263,7 @@ The wheel also has:
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt` | the Payload's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
-| `/orbital quality full\|fast` | the Payload's and the Nuke's smoke at full size, or at half size (faster; needs `orbital-mod-api-7`); also the wheel's QUALITY switch |
+| `/orbital quality full\|fast` | the Payload's and the Nuke's smoke at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
@@ -271,7 +273,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 ## If something goes wrong
 
 - **No wheel, no `/orbital` command, or the items do nothing.** You're running stock Horizon or an older fork build.
-  Start the game with `./play.sh` on `orbital-mod-api-6` or newer. On **Options → Mods**, Orbital Laser's row says why
+  Start the game with `./play.sh` on `orbital-mod-api-8` or newer. On **Options → Mods**, Orbital Laser's row says why
   if it stopped.
 - **`play.sh` can't find the build or the resources.** Set `HORIZON_ORBITAL` to the folder with the build's
   `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the prepared resources.
@@ -290,7 +292,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
-- **Targets must be in loaded chunks.** The five long-range lasers reach 1000 blocks across the distant terrain, where
+- **Targets must be in loaded chunks.** The seven long-range lasers reach 1000 blocks across the distant terrain, where
   the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
 - **Stock Horizon** builds from before 24 October 2026 can run 0.1's setup (Plasma and Godly only, driven from outside
   the game): see [How it works](docs/HOW-IT-WORKS.md#stock-horizon).

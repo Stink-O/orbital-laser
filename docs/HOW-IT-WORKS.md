@@ -259,7 +259,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's and the Nuke's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL. FAST needs the fork's release `orbital-mod-api-7`: an older build draws the pass at full size |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's and the Nuke's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -278,7 +278,7 @@ The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's m
 | `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
 | `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (the Crystal Bloom's spires and pieces, and where each piece comes to rest), and the camera shake |
-| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the Planet Killer's and the Crystal Bloom's go straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs (`world.read-columns`: the names of the blocks round each column's top), and sets your flying speed |
+| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the big lasers' land goes straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs and the Payload and the Nuke sweep and scorch (`world.read-columns`: the names of the blocks round each column's top), sets your flying speed, and throws you back as the Nuke's shockwave passes (`world.push-player`) |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -287,16 +287,24 @@ The first four are new: they are on Horizon's roadmap ("planned interfaces" in i
 [fork](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world) implements them so that mods built for
 Horizon's API 0.1 still load unchanged. The mod reads its events with `input.poll` instead of the game calling new hooks,
 which is what keeps that true. The fork's later additions (`world.set-flying-speed`, `input.poll-typed`,
-`world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`, and
-`world.read-columns` from `orbital-mod-api-6`) are needed
-too: a fork build without them won't start the mod. `orbital-mod-api-7` adds a half-size stage to a mod's post pass
-(no new import: the pass's source says whether it has one), which QUALITY FAST uses; on `orbital-mod-api-6` the mod
-runs as before, drawing the Payload's pass at full size.
+`world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`,
+`world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
+`orbital-mod-api-8`) are needed too: a fork build without them won't start the mod. `orbital-mod-api-7` added a
+half-size stage to a mod's post pass (no new import: the pass's source says whether it has one), which QUALITY FAST
+uses.
 
 A strike's world changes go through a budget of 20,000 blocks and 400 commands a tick, and the rest wait for the next
 tick. The Planet Killer's crater is too big for commands, so it is written straight into the chunks with
 `world.edit-blocks`, a run up each column at a time, about 1.5 million blocks a second, without telling the blocks round
 it (no sand falls, no water or lava flows).
+
+Each call into the mod has a fuel limit (a tick about 50 million WebAssembly instructions); past it the game stops the
+mod ("it took too long"). A work meter (`mod/src/meter.rs`) counts each call's work and puts off what can wait (a
+stage of a strike's plan, an edit, a command) to the next tick, and the heavy plans are split into small stages, so no
+laser comes near it. Block edits are also paced by the frame time (`mod/src/pace.rs`): each chunk an edit changes is
+sent to the client again whole, so while frames run long fewer edits go in a tick, and a big wave's outer rings take a
+little longer instead of stalling the picture. The fork's `orbital-mod-api-8` makes those re-sent chunks much cheaper
+for the client.
 
 ## A strike
 
@@ -489,7 +497,7 @@ the land, the dust and the debris are drawn as the Payload's are. QUALITY FAST m
 at half size. At 1920x1080 FAST costs about 2 to 3.7 ms and FULL 4 to 10.5 ms, the most close in with the cloud filling
 the view.
 
-At QUALITY FAST (the default, on the fork's `orbital-mod-api-7`) the pass is drawn in two stages. `fs_half`, at half
+At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)
 as premultiplied colour and transmittance, composited in the same order as the whole pass, for each two by two of the
 picture's pixels marched to alternately the nearest and the farthest of their depths; beside it go the depth it
