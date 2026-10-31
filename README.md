@@ -55,7 +55,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 ## New in 0.5.6
 
-<!-- Nuke still, once captured: <p align="center"><img alt="The Nuke: a mushroom cloud hundreds of blocks tall over the land, its shadow across the ground" width="720" src="docs/35-nuke-cloud.jpg"></p> -->
+<p align="center"><img alt="The Nuke: a mushroom cloud hundreds of blocks tall towering over its crater" width="720" src="docs/35-nuke-cloud.jpg"></p>
 
 - **Nuke**, the eleventh laser, on the wheel's third page and `/orbital nuke`. A white-hot streak across the sky, a
   dive, then a blinding flash, a fireball boiling up into a mushroom cloud and a shockwave in a wall of dust that
@@ -135,11 +135,9 @@ Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works]
 |---|---|---|---|
 | ![A bright point high in the sky trailing a lumpy smoke trail](docs/29-payload-sky.jpg) | ![The fireball diving at the land, shedding burning chunks](docs/30-payload-dive.jpg) | ![The flash and the burst of fire as it hits](docs/31-payload-impact.jpg) | ![The column of smoke rising out of the crater, the bomb's trail still hanging in the sky](docs/32-payload-column.jpg) |
 
-<!-- Nuke stills, once captured:
 | Nuke | The flash | The cloud | The crater |
 |---|---|---|---|
-| ![The bomb coming in from orbit, a white-hot streak across the sky](docs/33-nuke-fall.jpg) | ![The blinding white flash as it bursts over the land](docs/34-nuke-flash.jpg) | ![The mushroom cloud rolling over on itself, its shadow across the land, the dust wall racing out](docs/35-nuke-cloud.jpg) | ![The terraced crater with its glassy floor and broken rim, the land flattened round it](docs/36-nuke-crater.jpg) |
--->
+| ![The bomb's smoke trail arcing over into its dive](docs/33-nuke-fall.jpg) | ![The fireball bursting on the ground, the shockwave's dome racing out over a wall of dust](docs/34-nuke-flash.jpg) | ![The mushroom cloud towering over its crater](docs/35-nuke-cloud.jpg) | ![The terraced crater with its glassy floor and broken rim, the land flattened round it](docs/36-nuke-crater.jpg) |
 
 ## Getting started
 
