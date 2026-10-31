@@ -13,6 +13,7 @@
 mod columns;
 mod ground;
 mod lasers;
+mod pace;
 mod strike;
 mod wheel;
 
@@ -138,6 +139,15 @@ struct Orbital {
     carving: std::collections::VecDeque<(u64, String)>,
     /// World changes that wait for spare block budget (`Act::Spare`): what stands high over a blast.
     spare: std::collections::VecDeque<(u64, String)>,
+    /// Block edits waiting for room in a tick's budget (`pace`), in order, each with its cost and the tick it was due
+    /// (`edit_ticks`); they outlive the strike that made them too.
+    edits: std::collections::VecDeque<(u32, u64, Box<strike::Blocks>)>,
+    /// Whether edits went in on the tick before, how many a tick may go in, by the frame time, the ticks counted, and
+    /// the most ticks an edit has waited since the queue was last empty.
+    edited: bool,
+    edit_ticks: u64,
+    edits_late: u64,
+    pace: pace::Pace,
     laser: usize,
     terrain: bool,
     /// Whether the strikes put their messages over the hotbar (the replies to the player's own clicks always show).
@@ -558,6 +568,7 @@ impl Orbital {
         columns::poll();
         let carved = self.carve(CARVE_CMDS);
         let Some(s) = &mut self.strike else {
+            self.edit();
             return;
         };
         s.ticks += 1;
@@ -596,13 +607,15 @@ impl Orbital {
                 }
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Spare(c) => self.spare.push_back((strike::block_cost(&c).unwrap_or(1), c)),
-                Act::Blocks(b) => {
+                // (a landed piece's blocks in on the tick it lands, whatever waits: the pass may then let it go)
+                Act::Blocks(b) if b.landing.is_some() => {
                     world::edit_blocks(&b.edit());
-                    // (a landed piece's blocks in: the pass may let it go)
                     if let Some(t) = b.landing {
                         s.params[14] = s.params[14].max(t);
                     }
                 }
+                // the rest in order, as many a tick as the frame time allows (`edit`)
+                Act::Blocks(b) => self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b)),
                 Act::Survey { tag, columns } => ground::ask(tag, columns),
                 Act::Read { tag, columns, below, above } => columns::ask(tag, columns, below, above),
                 Act::Words { index, words } => {
@@ -637,6 +650,11 @@ impl Orbital {
                 }
             }
         }
+        // (the edits due go in before the tick's commands, as they always have)
+        self.edit();
+        let Some(s) = &mut self.strike else {
+            return;
+        };
         if !cmds.is_empty() {
             world::run_commands(&cmds);
         }
@@ -675,12 +693,30 @@ impl Orbital {
             Act::Cmd(c) | Act::Spare(c) => Some(c),
             _ => None,
         });
+        self.edits.clear();
+        self.edits_late = 0;
         let queued = self.carving.drain(..).chain(self.spare.drain(..)).map(|(_, c)| c);
         cmds.extend(rest.chain(queued).filter(|c| c.starts_with("forceload remove")));
         world::run_commands(&cmds);
         self.end_strike();
         Self::actionbar("STRIKE STOPPED", "gray");
         log::write(log::Level::Info, "strike stopped");
+    }
+    /// Make the waiting block edits, in order, as many as this tick's budget allows (`pace`: all of them while the
+    /// frames are quick, at least one).
+    fn edit(&mut self) {
+        let budget = self.pace.tick(self.edited || !self.edits.is_empty());
+        let n = pace::Pace::release(budget, self.edits.iter().map(|e| e.0)).min(self.edits.len());
+        self.edited = n > 0;
+        for (_, due, b) in self.edits.drain(..n) {
+            self.edits_late = self.edits_late.max(self.edit_ticks - due);
+            world::edit_blocks(&b.edit());
+        }
+        self.edit_ticks += 1;
+        if self.edits.is_empty() && self.edits_late > 0 {
+            log::write(log::Level::Info, &format!("block edits paced: the last went in {:.2} s late", self.edits_late as f32 * 0.05));
+            self.edits_late = 0;
+        }
     }
     /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one), and no more
     /// than `room` commands; then, with what is left of it, the ones that wait for spare budget. How many it ran.
@@ -699,7 +735,9 @@ impl Orbital {
                 cmds.push(c);
             }
         }
+        // (nor while edits wait: the spare budget's forceloads must not let their chunks go under them)
         while self.carving.is_empty()
+            && self.edits.is_empty()
             && let Some((cost, _)) = self.spare.front()
         {
             if (spent + cost > BLOCK_BUDGET || cmds.len() >= room) && (spent > 0 || !cmds.is_empty()) {
@@ -778,6 +816,11 @@ impl Mod for Orbital {
             warming: false,
             carving: std::collections::VecDeque::new(),
             spare: std::collections::VecDeque::new(),
+            edits: std::collections::VecDeque::new(),
+            edited: false,
+            edit_ticks: 0,
+            edits_late: 0,
+            pace: pace::Pace::default(),
             laser,
             terrain,
             messages,
@@ -851,6 +894,7 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         self.since_tick += seconds;
+        self.pace.frame(seconds);
         if let Some(t) = &mut self.cloud_due {
             *t -= seconds;
             if *t <= 0.0 {

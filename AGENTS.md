@@ -161,6 +161,12 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   blocks. `carve_queue` prints a laser's busiest ticks and commonest commands. Those count commands only: the Crystal
   Bloom's (and much of the Planet Killer's) land goes through `world.edit-blocks`, outside that budget; its
   `cb_edit_profile` ignored test prints its edits' busiest ticks.
+- **Block edits are paced by the frame time** (`mod/src/pace.rs`): every chunk an edit changes is resent whole to the
+  client, so a wave costs the frame per chunk, which grows with its radius (`nk_wave_profile` prints the chunks per
+  quarter second). Edits wait in order and go in as fast as they are due while the frames are quick; while the
+  smoothed frame time runs long (over 25 ms and 1.4 times what it was before the edits) fewer go in a tick, down to a
+  floor. A landed piece's edit never waits, and `Act::Spare` (the forceload removes) waits for the edits. The log
+  says `block edits paced: the last went in N s late` when they were held back.
 
 ## Verifying work
 

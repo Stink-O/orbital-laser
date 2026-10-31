@@ -2408,8 +2408,15 @@ mod tests {
         let mut per_tick: std::collections::BTreeMap<i32, u64> = Default::default();
         let mut all_tick: std::collections::BTreeMap<i32, (u64, u64)> = Default::default();
         let mut late = 0.0f32;
+        // (the chunks each quarter second's and each tick's edits touch: a chunk changed is sent whole to the client)
+        let mut chunks: std::collections::BTreeMap<i32, std::collections::HashSet<(i32, i32)>> = Default::default();
+        let mut tick_chunks: std::collections::BTreeMap<i32, std::collections::HashSet<(i32, i32)>> = Default::default();
         for (t, due, b) in &p.edits {
             late = late.max(t - due);
+            for u in &b.runs {
+                chunks.entry((t / 0.25) as i32).or_default().insert((u.x >> 4, u.z >> 4));
+                tick_chunks.entry((t / 0.05).round() as i32).or_default().insert((u.x >> 4, u.z >> 4));
+            }
             let e = bins.entry((t / 0.25) as i32).or_insert((0, 0, f64::MAX, 0.0, Vec::new()));
             for u in &b.runs {
                 let r = (f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0);
@@ -2431,7 +2438,8 @@ mod tests {
         for (k, (blocks, runs, lo, hi, mut rs)) in bins {
             rs.sort_by(f64::total_cmp);
             let pc = |f: f64| rs[((rs.len() - 1) as f64 * f) as usize];
-            println!("{:6.2} s: {blocks:8} blocks {runs:7} runs, r {lo:5.0} [{:5.0} {:5.0} {:5.0}] {hi:5.0}", k as f32 * 0.25, pc(0.1), pc(0.5), pc(0.9));
+            let n = chunks.get(&k).map_or(0, |c| c.len());
+            println!("{:6.2} s: {blocks:8} blocks {runs:7} runs {n:5} chunks, r {lo:5.0} [{:5.0} {:5.0} {:5.0}] {hi:5.0}", k as f32 * 0.25, pc(0.1), pc(0.5), pc(0.9));
         }
         let worst = p.stages.iter().map(|s| s.1 - s.0).fold(0.0f32, f32::max);
         let heavy = p.stages.iter().map(|s| s.2).fold(0.0f64, f64::max);
@@ -2459,6 +2467,7 @@ mod tests {
                 println!("stage due {:6.2} ran {:6.2} {:.3} ms", st.0, st.1, st.2);
             }
         }
+        println!("busiest tick {} chunks", tick_chunks.values().map(|c| c.len()).max().unwrap_or(0));
         println!("{} stages, the latest {worst:.2} s late, the heaviest {heavy:.3} ms; edits at most {late:.2} s late; busiest tick {busiest} blocks set (unfiltered), {} blocks touched, {} runs", p.stages.len(), all_tick.values().map(|v| v.0).max().unwrap_or(0), all_tick.values().map(|v| v.1).max().unwrap_or(0));
     }
 
