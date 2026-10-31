@@ -26,6 +26,8 @@ pub mod fake {
         pub edits: u64,
         pub runs: u64,
         pub commands: u64,
+        /// The forceload commands run (the stress test loads the chunks they name a while later).
+        pub forceloads: Vec<String>,
         pub logs: Vec<String>,
     }
     thread_local! {
@@ -65,7 +67,10 @@ pub mod fake {
             super::with(|w| w.hit.clone())
         }
         pub fn run_commands(commands: &[String]) {
-            super::with(|w| w.commands += commands.len() as u64);
+            super::with(|w| {
+                w.commands += commands.len() as u64;
+                w.forceloads.extend(commands.iter().filter(|c| c.starts_with("forceload")).cloned());
+            });
         }
         pub fn play_sound(_event: &str, _at: Option<(f64, f64, f64)>, _volume: f32, _pitch: f32) {}
         pub fn push_player(_x: f32, _y: f32, _z: f32) {}

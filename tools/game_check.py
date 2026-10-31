@@ -6,7 +6,8 @@
     tools/game_check.py check                # after it: one look at the new lines
 
 `watch` and `check` exit 1 with the line found when the new lines say `mod orbital stopped`, `did not start`,
-`panicked`, or name `orbital` at WARN or ERROR level; 0 when they are clean. A run they fail is a failed run: its
+`panicked`, that a call of the mod's used over half its fuel (`used N of its 50M fuel`: the game logs only those), or
+name `orbital` at WARN or ERROR level; 0 when they are clean. A run they fail is a failed run: its
 results are not good, whatever it looked like. The log is the control socket's (/run/user/$UID/horizon-control.log),
 else the game folder's logs/latest.log ($HORIZON_HOME, default ~/.local/share/horizon).
 """
@@ -17,7 +18,10 @@ import sys
 import time
 
 MARK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "orbital-game-check.mark"
-BAD = re.compile(r"mod orbital stopped|did not start|panicked|(WARN|ERROR)\].*orbital", re.IGNORECASE)
+BAD = re.compile(
+    r"mod orbital stopped|did not start|panicked|mod orbital's \w+ used [\d.]+M of its|(WARN|ERROR)\].*orbital",
+    re.IGNORECASE,
+)
 
 
 def log_path() -> pathlib.Path:

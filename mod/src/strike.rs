@@ -88,7 +88,9 @@ pub struct Blocks {
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
-        match list.iter().position(|b| *b == name) {
+        // (by the name's address first: the names are literals, so the same one almost always is the same str, and
+        // comparing the text of each in the list is most of what an edit's run costs)
+        match list.iter().position(|b| std::ptr::eq(*b, name)).or_else(|| list.iter().position(|b| *b == name)) {
             Some(i) => i as u32,
             None => {
                 list.push(name);

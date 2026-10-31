@@ -166,7 +166,14 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   fuel-trace --example mod_soak -- COPY_OF_dist/orbital N SEED`, `SOAK_LASERS=nuke`, `SOAK_TRACE=1`) plays the real
   mod.wasm headless and prints every hook's worst fuel; `stress::thousands_of_strikes` (ignored) plays fire, stop and
   re-fire sequences through lib.rs's own playback natively. The game logs a call that uses half its fuel, and on a
-  stop which hook and the mod's stack.
+  stop which hook and the mod's stack. Both play targets far off on land not loaded (the far terrain's LOD: only the
+  player's surroundings loaded, the target's chunks coming slowly or never once forceloaded), the player up to 1000
+  blocks away, and stops in the first seconds and round the burst; `mod_soak` fails any call over half its fuel
+  (`SOAK_MAX`). The meter can't see work it isn't told of: the native soak (release) fails a tick that takes more
+  than 3 ms past what its counted work explains (`thousands_of_strikes`). Never scan everything left (columns not
+  loaded, jobs, rings) each time a stage asks what's ready: keep it O(what's due). The Nuke's land waits for columns
+  not loaded, asking again a ring at a time, and goes in late as they come; it leaves out what never loads (logged
+  `nuke: N columns of the land never loaded`).
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many

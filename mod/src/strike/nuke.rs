@@ -535,7 +535,8 @@ struct Column {
 
 struct Land {
     cols: Vec<Column>,
-    missing: Vec<(i32, i32)>,
+    /// The columns of each ring (part) of the read the world had not loaded when it answered, asked again till it has.
+    missing: Vec<Vec<(i32, i32)>>,
     /// How many trunks of each wood stand on it (the commonest is the one strewn and thrown).
     woods: [u32; 9],
     /// Every part taken in (the stages that use it wait for it).
@@ -571,30 +572,37 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
         // (the row's run within r1 less its run within r0)
         let wo = (q1 - d).sqrt().floor() as i32;
         let wi = if q0 >= d { (q0 - d).sqrt().floor() as i32 } else { -1 };
-        for dx in -wo..=wo {
+        // (only the ring's own columns gone over, not the whole disc within it: the outer rings' discs are some
+        // hundred thousand columns, and two are asked a stage)
+        let keep = |dx: i32| {
             let e = d + f64::from(dx * dx);
-            if dx.abs() > wi || e > q0 {
-                if e > q0 && e <= q1 {
-                    out.push((bx + dx, bz + dz));
-                }
-            }
+            e > q0 && e <= q1
+        };
+        if wi < 0 {
+            out.extend((-wo..=wo).filter(|&dx| keep(dx)).map(|dx| (bx + dx, bz + dz)));
+        } else {
+            out.extend((-wo..-wi).chain(wi + 1..=wo).filter(|&dx| keep(dx)).map(|dx| (bx + dx, bz + dz)));
         }
     }
-    crate::meter::spend(60 * out.len() as u64);
+    crate::meter::spend(60 * out.len() as u64 + 200 * (2 * n + 1) as u64);
     out
 }
 
-/// One answer taken in: each column's ground, what stands on it and over it.
-fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
+/// One answer for ring `part` taken in: each column's ground, what stands on it and over it (those not loaded kept to
+/// be asked again).
+fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: usize) {
     let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
     let lavas: Vec<bool> = a.palette.iter().map(|n| n.contains("lava")).collect();
+    crate::meter::spend(2_000 + 4_000 * a.palette.len() as u64);
     for (i, &(x, z)) in a.columns.iter().enumerate() {
         let Some((surface, blocks)) = a.column(i) else {
-            land.missing.push((x, z));
+            crate::meter::spend(60);
+            land.missing[part].push((x, z));
             continue;
         };
         let base = surface - a.below;
-        crate::meter::spend(600 + 50 * blocks.len() as u64);
+        // (as the game counts it: some 2M a part's answer of 4,400 columns)
+        crate::meter::spend(200 + 12 * blocks.len() as u64);
         let mut c = Column { known: true, leaves: 255, ..Default::default() };
         let mut top = None;
         let mut g = None;
@@ -1577,6 +1585,11 @@ fn nk_flash_part(q: &mut Plan, fl: &Flash, s: &Shape, wave: &Wave, sec: &Sector)
 const NK_BUDGET: f64 = 1200.0;
 /// About what a unit of that work costs in instructions (the game's count of the stages' fuel over their estimates).
 const NK_UNIT: f64 = 15_000.0;
+/// How long the land's work waits for columns the world has not loaded (a target far off, its chunks forceloaded and
+/// generated as the strike goes on) before it leaves them out: some 35 s after the burst.
+const NK_LAND_BY: f32 = NK_HIT + 35.0;
+/// How long, once the crater's land is in, it waits for more of the rest to come.
+const NK_PATIENCE: f32 = 4.0;
 enum Job {
     Thrown(u64),
     Rubble,
@@ -1597,8 +1610,14 @@ struct Work {
     tags: Vec<u32>,
     asked: usize,
     taken: usize,
-    retry: Option<u32>,
-    retried: bool,
+    /// The ring of unloaded columns asked again (one at a time, the rings in turn): its tag, ring, columns and when.
+    retry: Option<(u32, usize, Vec<(i32, i32)>, f32)>,
+    /// The ring to ask again next, and when.
+    rnext: usize,
+    rat: f32,
+    /// Columns not loaded at the last stage, and when last some came.
+    left: usize,
+    came: f32,
     ftags: Vec<u32>,
     fasked: usize,
     ftaken: usize,
@@ -1626,7 +1645,7 @@ impl Work {
             jobs.push_back(Job::Flash(sec));
         }
         Work {
-            land: Land { cols: vec![Column::default(); (NK_GW * NK_GW) as usize], missing: Vec::new(), woods: [0; 9], done: false },
+            land: Land { cols: vec![Column::default(); (NK_GW * NK_GW) as usize], missing: vec![Vec::new(); NK_PARTS as usize], woods: [0; 9], done: false },
             fl: Flash { top: Vec::new(), g: Vec::new(), mats: Vec::new(), seen: Vec::new(), parts: 0 },
             s,
             wave: Wave::new(),
@@ -1637,7 +1656,10 @@ impl Work {
             asked: 0,
             taken: 0,
             retry: None,
-            retried: false,
+            rnext: 0,
+            rat: 0.0,
+            left: usize::MAX,
+            came: 0.0,
             ftags: (0..NK_FL_PARTS).map(|_| crate::columns::new_tag()).collect(),
             fasked: 0,
             ftaken: 0,
@@ -1645,15 +1667,28 @@ impl Work {
             sweeps: NK_FL_SWEEPS as usize,
         }
     }
-    /// How far out the land is in (every column within it read).
+    /// How far out the land is in (every column within it read): out to the rings taken in, short of the first ring
+    /// with columns the world had not loaded (those asked again, and the ring being asked). A few dozen steps however
+    /// much is missing: it is asked again for each job each stage.
     fn ready(&self) -> f64 {
         if self.land.done {
             return f64::INFINITY;
         }
+        crate::meter::spend(400);
         let r = if self.taken == 0 { 0.0 } else { read_reach(self.taken as i32 - 1) };
-        let (bx, bz) = (self.s.cx.floor() as i32, self.s.cz.floor() as i32);
-        let m = self.land.missing.iter().map(|&(x, z)| f64::from(x - bx).hypot(f64::from(z - bz)) - 1.0).fold(f64::INFINITY, f64::min);
-        r.min(m)
+        let mut first = self.land.missing.iter().position(|m| !m.is_empty()).unwrap_or(usize::MAX);
+        if let Some((_, part, _, _)) = &self.retry {
+            first = first.min(*part);
+        }
+        if first == usize::MAX {
+            return r;
+        }
+        let inner = if first == 0 { 0.0 } else { read_reach(first as i32 - 1) };
+        r.min(inner - 1.0)
+    }
+    /// Columns still not loaded.
+    fn unloaded(&self) -> usize {
+        self.land.missing.iter().map(Vec::len).sum::<usize>() + self.retry.as_ref().map_or(0, |r| r.2.len())
     }
     /// Whether job `j` can be done now; and whether the jobs after it must wait for it (the wave's parts go in order).
     fn can(&self, j: &Job) -> (bool, bool) {
@@ -1719,34 +1754,72 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             }
         }
         // their answers taken in as they come (up to four of the land's, one of the flash's)
+        // (their take-in counts high: the game's count of its fuel is a fraction of the meter's)
         for _ in 0..4 {
             if wk.taken < wk.asked
                 && !crate::meter::full()
                 && let Some(a) = crate::columns::take(wk.tags[wk.taken])
             {
-                take_in(&mut wk.land, &a, bx, bz);
+                let part = wk.taken;
+                take_in(&mut wk.land, &a, bx, bz, part);
+                if part == 0 {
+                    // (the burst's ground from the land read, not from where the designator's ray met it: far off that is
+                    // the far terrain's rough copy of it)
+                    if let Some(c) = wk.land.cols.get((NK_READ * NK_GW + NK_READ) as usize).filter(|c| c.known) {
+                        wk.gy = if c.fluid { c.wtop } else { c.g } + 1;
+                    }
+                }
                 wk.taken += 1;
                 spent += 300.0;
             }
         }
         if wk.taken == wk.tags.len() && !wk.land.done {
-            // (the columns not loaded yet asked again, once, while there is time)
-            if wk.land.missing.is_empty() || wk.retried || now > NK_HIT - 1.0 {
-                wk.land.done = true;
-            } else if let Some(tag) = wk.retry {
+            // (the columns the world had not loaded yet, as at a target far off in the far terrain, its chunks only
+            // forceloaded as the strike began: asked again a ring at a time, the rings in turn, until it has, and the
+            // land's work waits for them (parked: a few steps a stage), its changes going in late as they come; given up
+            // on long after the burst)
+            if let Some((tag, part, _, since)) = &wk.retry {
+                let (tag, part, since) = (*tag, *part, *since);
                 if let Some(a) = crate::columns::take(tag) {
-                    wk.land.missing.clear();
-                    take_in(&mut wk.land, &a, bx, bz);
-                    wk.land.missing.clear();
-                    wk.retried = true;
-                    wk.land.done = true;
+                    take_in(&mut wk.land, &a, bx, bz, part);
+                    wk.retry = None;
+                    spent += 300.0;
+                } else if now > since + 3.0 {
+                    // (the answer lost: its columns asked again later)
+                    if let Some((_, part, cols, _)) = wk.retry.take() {
+                        wk.land.missing[part] = cols;
+                    }
                 }
-            } else if now > 1.6 {
-                let tag = crate::columns::new_tag();
-                q.ev.push((now, Act::Read { tag, columns: wk.land.missing.clone(), below: NK_BELOW, above: NK_ABOVE }));
-                wk.retry = Some(tag);
+            }
+            let left = wk.unloaded();
+            if left < wk.left && wk.left != usize::MAX {
+                wk.came = now;
+            }
+            wk.left = left;
+            // (the crater's land in and nothing more coming for a while, as land that will not load past the edge of
+            // what the world has: the rest left out, not the whole of the land held back for it)
+            let stalled = now - wk.came > NK_PATIENCE && wk.ready() >= NK_CRATER_R * 1.3;
+            if left == 0 {
+                wk.land.done = true;
+            } else if now > NK_LAND_BY || stalled {
+                crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("nuke: {left} columns of the land never loaded; the terrain left out there"));
+                wk.land.done = true;
+            } else if wk.retry.is_none() && now >= wk.rat {
+                let n = wk.land.missing.len();
+                if let Some(part) = (0..n).map(|j| (wk.rnext + j) % n).find(|&j| !wk.land.missing[j].is_empty()) {
+                    let cols = std::mem::take(&mut wk.land.missing[part]);
+                    crate::meter::spend(40 * cols.len() as u64);
+                    let tag = crate::columns::new_tag();
+                    q.ev.push((now, Act::Read { tag, columns: cols.clone(), below: NK_BELOW, above: NK_ABOVE }));
+                    wk.retry = Some((tag, part, cols, now));
+                    wk.rnext = part + 1;
+                    // (the next a little later: the world given time to load them)
+                    wk.rat = now + 0.1;
+                    spent += 150.0;
+                }
             }
         }
+        crate::trace("nk land taken");
         // (the flash's square made a part a stage as its first answer comes: some megabytes)
         let n = (NK_FL_W * NK_FL_W) as usize;
         if wk.fasked > 0 && wk.fl.seen.is_empty() {
@@ -1759,7 +1832,7 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             } else {
                 wk.fl.seen = vec![i16::MAX; n];
             }
-            crate::meter::spend(6 * n as u64);
+            crate::meter::spend(12 * n as u64);
             spent += 500.0;
         } else {
             for _ in 0..3 {
@@ -1774,10 +1847,12 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 }
             }
         }
+        crate::trace("nk flash taken");
         // the jobs: the first that can be done (never past one of the wave's parts that cannot yet: they go in order)
         loop {
             let mut pick = None;
             for (i, j) in wk.jobs.iter().enumerate() {
+                crate::meter::spend(300);
                 let (can, blocks) = wk.can(j);
                 if can {
                     pick = Some(i);
@@ -1797,6 +1872,7 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             // (what the job is expected to cost, on top of what its loops count: `meter` reads high, not low)
             crate::meter::spend((c * NK_UNIT) as u64);
             let job = wk.jobs.remove(i).unwrap_or(Job::Rubble);
+            let job_kind = match &job { Job::Thrown(_) => 0, Job::Rubble => 1, Job::Sweep(..) => 2, Job::Blast(_) => 3, Job::Flash(_) => 4 };
             match job {
                 Job::Thrown(part) => nk_thrown(q, &wk.land, &wk.s, &wk.wave, part),
                 Job::Rubble => {
@@ -1814,11 +1890,13 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 }
                 Job::Flash(sec) => nk_flash_part(q, &wk.fl, &wk.s, &wk.wave, &sec),
             }
+            crate::trace(match &job_kind { 0 => "nk thrown", 1 => "nk rubble", 2 => "nk sweep", 3 => "nk blast", _ => "nk flash" });
         }
         !wk.jobs.is_empty()
     };
-    // (and given up long after the burst if the world never answers)
-    if more && now < NK_HIT + 12.0 {
+    // (and given up long after the burst if the world never answers: the land's changes may go in this late, a target
+    // far off loading slowly)
+    if more && now < NK_LAND_BY + 25.0 {
         q.later(now + 0.05, move |q| nk_work(q, w, now + 0.05));
     }
 }

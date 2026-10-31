@@ -42,6 +42,11 @@ pub fn spent() -> u64 {
 pub fn full() -> bool {
     spent() >= SOFT
 }
+/// Whether `n` more instructions' worth fits under `SOFT` (for work whose size is known before it starts: what is
+/// next after something has been done this call waits unless it fits).
+pub fn room(n: u64) -> bool {
+    spent().saturating_add(n) <= SOFT
+}
 /// Whether even the first of a kind of work should wait.
 pub fn over() -> bool {
     spent() >= HARD

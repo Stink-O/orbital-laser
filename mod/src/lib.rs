@@ -169,7 +169,7 @@ impl Strike {
             self.more.push(Given { t, seq: self.given, act });
         }
         // (a stage counts as some work however little of it it counts itself: `meter`)
-        let own = meter::spent() - before;
+        let own = meter::spent().saturating_sub(before);
         meter::spend(STAGE_COST.saturating_sub(own));
     }
     /// When what falls due next does: the plan's next act or a stage's.
@@ -281,7 +281,7 @@ thread_local! {
     /// fork's soak harness tells the fuel used by then of).
     static TRACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
-fn trace(what: &str) {
+pub(crate) fn trace(what: &str) {
     if TRACE.with(std::cell::Cell::get) {
         log::write(log::Level::Info, &format!("fuel: {what} (meter {:.2}M)", meter::spent() as f64 / 1e6));
     }
@@ -1340,10 +1340,50 @@ mod stress {
             .collect();
         (top, blocks)
     }
-    fn answer(tag: u32, cols: &[(i32, i32)], below: u32, above: u32, cratered: bool) -> ColumnBlocks {
+    /// Which of the world's chunks are loaded: those round the player, and those forceloaded once they have been
+    /// generated (a while after: far off, in the far terrain's LOD, the land under a target is not loaded until then).
+    struct Loaded {
+        me: (i32, i32),
+        view: i32,
+        forced: std::collections::HashMap<(i32, i32), u64>,
+        /// How slowly the forceloaded chunks come (times the usual; 0: not while the strike lasts).
+        slow: u64,
+        now: u64,
+    }
+    impl Loaded {
+        fn has(&self, x: i32, z: i32) -> bool {
+            let (cx, cz) = (x >> 4, z >> 4);
+            (cx - (self.me.0 >> 4)).abs() <= self.view && (cz - (self.me.1 >> 4)).abs() <= self.view || self.forced.get(&(cx, cz)).is_some_and(|&t| t <= self.now)
+        }
+        fn command(&mut self, c: &str) {
+            let w: Vec<&str> = c.split_whitespace().collect();
+            let n: Vec<i32> = w.iter().skip(2).filter_map(|v| v.parse().ok()).collect();
+            if n.len() < 2 {
+                return;
+            }
+            let (x1, z1) = if n.len() >= 4 { (n[2], n[3]) } else { (n[0], n[1]) };
+            for cx in (n[0].min(x1) >> 4)..=(n[0].max(x1) >> 4) {
+                for cz in (n[1].min(z1) >> 4)..=(n[1].max(z1) >> 4) {
+                    if w[1] == "add" {
+                        let h = (cx.wrapping_mul(73_856_093) ^ cz.wrapping_mul(19_349_663)).unsigned_abs() as u64 % 140;
+                        let at = if self.slow == 0 { u64::MAX } else { self.now + (10 + h) * self.slow };
+                        self.forced.entry((cx, cz)).or_insert(at);
+                    } else {
+                        self.forced.remove(&(cx, cz));
+                    }
+                }
+            }
+        }
+    }
+    fn answer(tag: u32, cols: &[(i32, i32)], below: u32, above: u32, cratered: bool, loaded: &Loaded) -> ColumnBlocks {
         let mut palette: Vec<String> = Vec::new();
         let (mut bases, mut blocks) = (Vec::new(), Vec::new());
         for &(x, z) in cols {
+            if !loaded.has(x, z) {
+                bases.push(None);
+                blocks.extend(std::iter::repeat_n(0u16, (below + above) as usize));
+                continue;
+            }
             let (top, names) = column(x, z, below, above, cratered);
             bases.push(Some(top));
             for n in names {
@@ -1379,13 +1419,20 @@ mod stress {
         surveys: Vec<(u64, u32, Vec<(i32, i32)>)>,
         frame: f32,
         worst: (u64, String),
+        loaded: Loaded,
+        /// The spot the strikes are round (moved far off for a fresh one).
+        home: (i32, i32),
+        /// The most a tick took past what its counted work explains (release builds: work the meter does not count
+        /// shows here), and where.
+        slowest: (std::time::Duration, String),
     }
     impl Soak {
         fn new(seed: u64) -> Self {
             fake::with(|w| *w = fake::Fake::default());
             let mut o = Orbital::new(Orbital::parse(""));
             o.terrain = true;
-            Soak { o, rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1), tick: 0, answers: Answers::Next, cratered: false, reads: Vec::new(), surveys: Vec::new(), frame: 0.016, worst: (0, String::new()) }
+            let loaded = Loaded { me: (1000, -1850), view: 12, forced: Default::default(), slow: 1, now: 0 };
+            Soak { o, rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1), tick: 0, answers: Answers::Next, cratered: false, reads: Vec::new(), surveys: Vec::new(), frame: 0.016, worst: (0, String::new()), loaded, home: (1000, -2000), slowest: Default::default() }
         }
         fn due(&mut self) -> u64 {
             match self.answers {
@@ -1408,6 +1455,10 @@ mod stress {
                 self.surveys.push((due, tag, cols));
             }
             let now = self.tick;
+            self.loaded.now = now;
+            for c in fake::with(|w| std::mem::take(&mut w.forceloads)) {
+                self.loaded.command(&c);
+            }
             let cratered = self.cratered;
             let (ready, wait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.reads).into_iter().partition(|r| r.0 <= now);
             self.reads = wait;
@@ -1415,13 +1466,13 @@ mod stress {
             self.surveys = swait;
             fake::with(|w| {
                 for (_, tag, cols, below, above) in ready {
-                    w.columns.push(answer(tag, &cols, below, above, cratered));
+                    w.columns.push(answer(tag, &cols, below, above, cratered, &self.loaded));
                 }
                 // (the game keeps 16 answers for a mod between its polls, the latest)
                 let n = w.columns.len();
                 w.columns.drain(..n.saturating_sub(16));
                 for (_, tag, cols) in sready {
-                    let heights = cols.iter().map(|&(x, z)| Some(ground(x, z, cratered) + 1)).collect();
+                    let heights = cols.iter().map(|&(x, z)| self.loaded.has(x, z).then(|| ground(x, z, cratered) + 1)).collect();
                     w.heights.push(SurfaceHeights { tag, heights });
                 }
             });
@@ -1433,8 +1484,17 @@ mod stress {
                 self.o.pace.frame(self.frame);
             }
             meter::reset();
+            let began = std::time::Instant::now();
             self.o.tick_strike();
+            let took = began.elapsed();
             let spent = meter::spent();
+            // (how much longer it took than the work the meter counted would: a natively built instruction is well
+            // under half a nanosecond)
+            let over = took.saturating_sub(std::time::Duration::from_nanos(spent / 2));
+            if over > self.slowest.0 {
+                let t = self.o.strike.as_ref().map_or(-1.0, |s| s.ticks as f32 * 0.05);
+                self.slowest = (over, format!("{what} at {t:.2} s, {:.1} ms for {:.2}M counted", took.as_secs_f64() * 1e3, spent as f64 / 1e6));
+            }
             if spent > self.worst.0 {
                 let t = self.o.strike.as_ref().map_or(-1.0, |s| s.ticks as f32 * 0.05);
                 self.worst = (spent, format!("{what} at {t:.2} s ({} edits, {} commands waiting)", self.o.edits.len(), self.o.carving.len() + self.o.spare.len()));
@@ -1444,7 +1504,7 @@ mod stress {
             let g = ground(at.0, at.1, self.cratered);
             fake::with(|w| {
                 w.hit = Some(Hit { block_x: at.0, block_y: g, block_z: at.1, x: f64::from(at.0) + 0.5, y: f64::from(g + 1), z: f64::from(at.1) + 0.5, block: "minecraft:grass_block".into() });
-                w.player = Some(Player { x: f64::from(at.0) + 0.5, y: f64::from(g) + 40.0, z: f64::from(at.1) + 150.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() });
+                w.player = Some(Player { x: f64::from(self.loaded.me.0) + 0.5, y: f64::from(g) + 40.0, z: f64::from(self.loaded.me.1) + 0.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() });
                 w.clock = 1000 + self.tick;
             });
             self.o.laser = laser;
@@ -1467,7 +1527,19 @@ mod stress {
         }
     }
 
-    fn soak(sequences: u64, seed: u64) -> (u64, String) {
+    /// `bound`: the most a tick may take past what its counted work explains (release builds only; tight only where
+    /// the test runs alone: other tests beside it slow it down).
+    fn soak(sequences: u64, seed: u64, bound: f64) -> (u64, String) {
+        let (worst, at, slow, slow_at) = soak_timed(sequences, seed);
+        eprintln!("most uncounted in a tick: {:.2} ms ({slow_at})", slow.as_secs_f64() * 1e3);
+        // (in a release build, where a tick's time says something of its work: work the meter does not count, as a
+        // scan over every column not yet loaded asked for each job, shows here even though the meter cannot see it)
+        if !cfg!(debug_assertions) && std::env::var_os("ORBITAL_NO_TIMING").is_none() {
+            assert!(slow.as_secs_f64() < bound, "a tick took {:.2} ms more than its counted work: {slow_at}", slow.as_secs_f64() * 1e3);
+        }
+        (worst, at)
+    }
+    fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
         let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "nuke", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole"]
             .iter()
@@ -1483,18 +1555,33 @@ mod stress {
                 3 => Answers::Bunched(10 + s.rng.below(60)),
                 _ => Answers::Never,
             };
+            // at and round the same spot, or (a third of the time) at a fresh one far off, never loaded: its land in the
+            // far terrain's LOD, only the player's surroundings loaded and the target's chunks coming as they are
+            // forceloaded, slowly or not at all; the player by it, some hundreds of blocks off, or near the
+            // designator's reach
+            if s.rng.below(3) == 0 {
+                s.home = (s.home.0 + 3000 + s.rng.below(5000) as i32, s.home.1 - 2000 + s.rng.below(4000) as i32);
+                s.loaded.view = [6, 8, 12][s.rng.below(3) as usize];
+            }
+            s.loaded.slow = [1, 1, 4, 20, 0][s.rng.below(5) as usize];
             let off = if s.rng.below(4) == 0 { 120 } else { 16 };
-            let at = (1000 + s.rng.below(2 * off + 1) as i32 - off as i32, -2000 + s.rng.below(2 * off + 1) as i32 - off as i32);
+            let at = (s.home.0 + s.rng.below(2 * off + 1) as i32 - off as i32, s.home.1 + s.rng.below(2 * off + 1) as i32 - off as i32);
+            let d = [150, 400 + s.rng.below(200) as i32, 500 + s.rng.below(500) as i32][s.rng.below(3) as usize];
+            let a = s.rng.below(360) as f64 * std::f64::consts::PI / 180.0;
+            s.loaded.me = (at.0 + (a.cos() * f64::from(d)) as i32, at.1 + (a.sin() * f64::from(d)) as i32);
             s.fire(laser, at);
-            // stopped at once, soon, late or never; fired again at once or a little later
-            let ticks = match s.rng.below(6) {
+            // stopped at once, soon, in the land read's first seconds, round the burst, late or never; fired again at
+            // once or a little later
+            let ticks = match s.rng.below(8) {
                 0 => 1 + s.rng.below(5),
                 1 => 5 + s.rng.below(60),
                 2 => 60 + s.rng.below(300),
                 3 => 300 + s.rng.below(500),
+                4 => 20 + s.rng.below(40),
+                5 => 210 + s.rng.below(100),
                 _ => (LASERS[laser].length * 20.0) as u64 + 40,
             };
-            let what = format!("#{n} {} {:?}", LASERS[laser].key, s.answers);
+            let what = format!("#{n} {} {:?} from {d} off, chunks x{}", LASERS[laser].key, s.answers, s.loaded.slow);
             for _ in 0..ticks {
                 s.step(&what);
                 if s.o.strike.is_none() {
@@ -1508,22 +1595,55 @@ mod stress {
                 s.step(&what);
             }
         }
-        s.worst
+        (s.worst.0, s.worst.1, s.slowest.0, s.slowest.1)
+    }
+
+    /// A Nuke called in on land far off, in the far terrain's LOD (none of it loaded as it fires, the player 800 blocks
+    /// away): its land's work waits for the chunks it forceloads, a few steps a tick, and its terrain goes in once they
+    /// have loaded, late; if they never do, it is left out (and said so) and nothing stalls.
+    #[test]
+    fn a_nuke_on_far_unloaded_land_waits_for_it_cheaply() {
+        let nuke = LASERS.iter().position(|l| l.key == "nuke").expect("the nuke");
+        for slow in [4, 20, 0] {
+            let mut s = Soak::new(3);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(nuke, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 2200, "it never ended");
+            }
+            let (edits, logs) = fake::with(|w| (w.edits, w.logs.clone()));
+            let left = logs.iter().any(|l| l.contains("never loaded"));
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {}", s.worst.0 as f64 / 1e6, s.worst.1, if left { "land left out" } else { "all of it in" });
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow == 0 {
+                assert!(left, "the land never loaded and nothing said so");
+            } else {
+                // (the crater dug once the land came: thousands of edits; all of it when it came within the time, the
+                // slowest some of it given up on and said so)
+                assert!(edits > 1000, "the crater never went in ({edits} edits)");
+                assert!(slow > 4 || !left, "the land came but was left out");
+            }
+        }
     }
 
     #[test]
     fn no_tick_overworks_through_fire_stop_and_refire() {
-        let (worst, at) = soak(40, 1);
+        let (worst, at) = soak(40, 1, 0.02);
         eprintln!("worst tick: {:.2}M ({at})", worst as f64 / 1e6);
         assert!(worst <= CAP, "a tick of {:.2}M: {at}", worst as f64 / 1e6);
     }
 
-    /// `ORBITAL_SOAK=N cargo test --release thousands_of_strikes -- --ignored --nocapture`: N sequences (default 2000).
+    /// `ORBITAL_SOAK=N cargo test --release thousands_of_strikes -- --ignored --nocapture`: N sequences (default 2000),
+    /// and no tick more than 3 ms past what its counted work explains (the Nuke's old scan over every column not loaded
+    /// for each job, uncounted, took 5 ms over: in the game 50M fuel, the mod stopped).
     #[test]
     #[ignore]
     fn thousands_of_strikes() {
         let n = std::env::var("ORBITAL_SOAK").ok().and_then(|v| v.parse().ok()).unwrap_or(2000);
-        let (worst, at) = soak(n, 7);
+        let (worst, at) = soak(n, 7, 0.003);
         eprintln!("{n} sequences, worst tick: {:.2}M ({at})", worst as f64 / 1e6);
         assert!(worst <= CAP, "a tick of {:.2}M: {at}", worst as f64 / 1e6);
     }
