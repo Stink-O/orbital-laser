@@ -21,7 +21,7 @@ const PL_FADE: f32 = 10.0;
 const PL_SOFT0: f32 = 48.0;        // the cloud keeps its crisp billows this long after the burst, then loses them
 const PL_SOFT1: f32 = 72.0;        // by this, a soft, drifting haze thinning away (gone by PL_LEN)
 const PL_CHURN: f32 = 7.0;        // the roll's lumps carried this long before they are let go (pl_col_sdf)
-const PL_DM: f32 = 70.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
+const PL_DM: f32 = 55.0;           // the most the cloud's lumps stand out of its smooth body (pl_col_sdf), which the
                                    // march's bounds and gates all allow for
 const PL_V: f32 = 343.0;           // the shockwave's front, blocks a second (with the blast's sound: nuke.rs)
 const PL_P: u32 = 16u;             // the table: the path's samples from PL_P, three words each,
@@ -405,9 +405,10 @@ fn pl_dome(p: vec3<f32>) -> f32 {
         let o = vec3<f32>(f32(c & 1u), f32((c >> 1u) & 1u), f32(c >> 2u));
         let cell = b + o;
         let q = bitcast<vec3<u32>>(vec3<i32>(cell));
-        let h = pcg(q.x ^ pcg(q.y ^ pcg(q.z + 0x51u)));
-        let jit = vec3<f32>(f32(h & 1023u), f32((h >> 10u) & 1023u), f32((h >> 20u) & 1023u)) * (0.7 / 1023.0) + 0.15;
-        let sz = 0.7 + 0.55 * f32(pcg(h) & 1023u) / 1023.0;
+        // (one hash a cell, three words: its jitter, and its size)
+        let h = pcg3d(q + vec3<u32>(0u, 0u, 0x51u));
+        let jit = vec3<f32>(h >> vec3<u32>(22u)) * (0.7 / 1023.0) + 0.15;
+        let sz = 0.7 + 0.55 * f32((h.x >> 12u) & 1023u) / 1023.0;
         let e = cell + jit - p;
         hmax = max(hmax, sz * sqrt(saturate(1.0 - dot(e, e) * 1.7 / (sz * sz))));
     }
@@ -484,25 +485,14 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     // (the one over the other through the neck under the cap: the two looked up and their lumps faded across)
     let wc = wc0;
     var nz = vec4<f32>(0.0);
-    var nf = vec2<f32>(0.5);
-    let need_fine = fine && smoothstep(PL_SOFT0, PL_SOFT1, a) < 0.99;
+    // (the spread two fadings together lose put back)
+    let ls = 1.0 / sqrt(wc * wc + (1.0 - wc) * (1.0 - wc));
     if (wc > 0.98) {
         nz = pl_nz(qc);
-        if (need_fine && d0 < 50.0) {
-            nf = pl_nz_fine(qc);
-        }
     } else if (wc < 0.02) {
         nz = pl_nz(qs);
-        if (need_fine && d0 < 50.0) {
-            nf = pl_nz_fine(qs);
-        }
     } else {
-        // (the spread two fadings together lose put back)
-        let ls = 1.0 / sqrt(wc * wc + (1.0 - wc) * (1.0 - wc));
         nz = vec4<f32>(0.5, 0.5, 0.62, 0.62) + (mix(pl_nz(qs), pl_nz(qc), wc) - vec4<f32>(0.5, 0.5, 0.62, 0.62)) * ls;
-        if (need_fine && d0 < 50.0) {
-            nf = vec2<f32>(0.62, 0.5) + (mix(pl_nz_fine(qs), pl_nz_fine(qc), wc) - vec2<f32>(0.62, 0.5)) * ls;
-        }
     }
     let w = nz.x;
     let w2 = nz.y;
@@ -520,6 +510,15 @@ fn pl_col_sdf(col: ptr<function, PlCol>, p: vec3<f32>, d0: f32, fine: bool) -> v
     let edge = mix(1.5, 6.0, ew) + 10.0 * (1.0 - smoothstep(0.0, 60.0, hy));
     var fray = 0.5;
     if (fine && d < 20.0 && soft < 0.99) {
+        // (looked up only near the surface the bigger lumps make)
+        var nf = vec2<f32>(0.5);
+        if (wc > 0.98) {
+            nf = pl_nz_fine(qc);
+        } else if (wc < 0.02) {
+            nf = pl_nz_fine(qs);
+        } else {
+            nf = vec2<f32>(0.62, 0.5) + (mix(pl_nz_fine(qs), pl_nz_fine(qc), wc) - vec2<f32>(0.62, 0.5)) * ls;
+        }
         let b3 = nf.x;
         d = d - 4.0 * (b3 - 0.45) * (1.0 - soft) * lump;
         fray = nf.y;
@@ -635,7 +634,11 @@ fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32, side: f3
     // (the front billows: pushed on and held back by the turbulence it churns, more so higher up)
     let rf = PL_V * a;
     let n1 = gnoise3(w * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a, 0.0));
-    let n2 = gnoise3(w * (1.0 / 3.5) + vec3<f32>(5.0, -2.0 * a, 1.0));
+    // (its fine churn only near the front: well behind it, where the wall has gone, the haze's patches are big ones)
+    var n2 = 0.5;
+    if (rf - r - 0.25 * max(h, 0.0) - 22.0 * sh < 170.0) {
+        n2 = gnoise3(w * (1.0 / 3.5) + vec3<f32>(5.0, -2.0 * a, 1.0));
+    }
     // (held back in the lee of a ridge, more so the deeper it lies under it)
     let s = rf - r + (n1 - 0.5) * 14.0 + (n2 - 0.5) * 5.0 - 0.25 * max(h, 0.0) - 22.0 * sh;
     if (s < -3.0) {
@@ -714,8 +717,9 @@ fn pl_over(h: ptr<function, vec4<f32>>, c: vec3<f32>, x: f32) {
 // smoke, the trail, the dust and the pieces' smoke, over a two by two of the picture's pixels, marched to alternately
 // the nearest and the farthest of their depths), returned as premultiplied colour and transmittance; 2 the join
 // (fs_join: the rest, sharp, at full size, with the half-size stage's `up` (colour, transmittance) laid over the picture
-// where that stage drew them; `up_e`: the column's distance, and whether a piece of debris may be near this pixel).
-fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
+// where that stage drew them; `up_e`: the column's distance, and the first and last of the debris that may be near
+// this pixel, each one more than its number (0: none)).
+fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     let up_t = up_e.x;
     var uv = in.uv;
     let time = now();
@@ -1109,10 +1113,11 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
             let b = PL_FR + PL_FW * u32(f);
             let t0 = pl_w(b);
             let s = time - t0;
-            if (s <= 0.0) {
+            let life = pl_w(b + 1u);
+            // (gone, glow and smoke, three and a half seconds after it burns out: nothing more looked up for it)
+            if (s <= 0.0 || s > life + 3.6) {
                 continue;
             }
-            let life = pl_w(b + 1u);
             let size = pl_w(b + 2u);
             let spark = pl_w(b + 3u) > 0.5;
             let kd = max(pl_w(b + 4u), 0.05);
@@ -1260,7 +1265,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     den = den * mix(1.0, saturate(0.2 + 1.6 * mt), soft);
                 }
                 if (den > 0.002) {
-                    if (tr > 0.25 || nl == 0) {
+                    if (nl == 0 || (tr > 0.5 && nl < 3)) {
                         let fp = p + L * 9.0;
                         lc_face = pl_col_sdf(&cl, fp, pl_col_base2(&cl, fp).x, false).x - sd.x;
                         // (the light through the bulk: the smooth body's, without the billows)
@@ -1318,7 +1323,9 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     wmid = wmid + tr * al;
                     tr = tr * (1.0 - al);
                 }
-                t = t + select(st, max(0.55 * min(sd.x, dr), (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), min(sd.x, dr) > 0.0);
+                // (well clear of it, a longer step: the lumps' slopes are steepest only close in)
+                let dm = min(sd.x, dr);
+                t = t + select(st, max(dm * mix(0.55, 0.8, smoothstep(8.0, 40.0, dm)), (0.12 * st + 0.25) * min(1.0 + 0.06 * f32(i), 2.5)), dm > 0.0);
             }
             if (tr < 0.999) {
                 let dist = tmid / max(wmid, 1.0e-4);
@@ -1606,6 +1613,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
         // (whether a piece of the debris still in the air passes near here, a few pixels wider than the join looks for
         // them: the join looks only near those that are; most of the picture has none near it)
         var near = 0.0;
+        var near_hi = 0.0;
         if (a > 0.0 && a < 24.0 && pl_w(8u) > 0.5) {
             var low = min(C.y, me.y) - 4.0;
             if (pl_w(PL_HF) > 1.0) {
@@ -1637,16 +1645,19 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
                     continue;
                 }
                 if (pl_chunk_up(ch, C, me, dme) > 0.0) {
-                    near = 1.0;
-                    break;
+                    // (the first and the last near it: the join looks through those only)
+                    near = select(near, f32(i + 1), near == 0.0);
+                    near_hi = f32(i + 1);
                 }
             }
         }
         // (how far its ray went, and the column's distance, for the join to match its pixels against and hide what lies
         // behind the column; both kept within a half float)
-        return PlOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(col_t, 6.0e4), near, 0.0));
+        return PlOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(col_t, 6.0e4), near, near_hi));
     }
     if ((stage == 0u || up_e.y > 0.0) && a > 0.0 && a < 24.0 && pl_w(8u) > 0.5) {
+        let i_lo = select(0, i32(up_e.y + 0.5) - 1, stage == 2u);
+        let i_hi = select(PL_DEBRIS, i32(up_e.z + 0.5), stage == 2u);
         let fpx = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
         let pxy = in.position.xy;
         let lim = min(scene_len, col_t);
@@ -1659,7 +1670,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
         }
         let wpx = 1.0 / fpx;
         let eka = exp(-0.06 * a);
-        for (var i = 0; i < PL_DEBRIS; i = i + 1) {
+        for (var i = i_lo; i < i_hi; i = i + 1) {
             var ch = pl_chunk(i, a, eka, C);
             if (ch.live <= 0.0 || ch.p.y < low) {
                 continue;
@@ -1826,7 +1837,7 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> PlOut {
 
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
-    return nuke(in, 0u, vec4<f32>(0.0), vec2<f32>(1.0e9, 1.0)).c;
+    return nuke(in, 0u, vec4<f32>(0.0), vec3<f32>(1.0e9, 1.0, 0.0)).c;
 }
 
 // [half stage]
@@ -1842,15 +1853,15 @@ struct PlHalf {
 }
 @fragment
 fn fs_half(in: StageIn) -> PlHalf {
-    let o = nuke(in, 1u, vec4<f32>(0.0), vec2<f32>(1.0e9, 1.0));
+    let o = nuke(in, 1u, vec4<f32>(0.0), vec3<f32>(1.0e9, 1.0, 0.0));
     return PlHalf(o.c, o.e);
 }
 
 // The half-size stage's smoke at this pixel (whose ray goes `len` blocks): the four nearest of its pixels, each weighed
 // by how near it is (bilinearly) and by how near the depth it was marched to is to this pixel's, so that across an edge
 // against a block or the sky only the ones on this pixel's side count (a joint bilateral upsample); if none is, the
-// nearest in depth round it. In .x of the second the column's distance of the one that counts most, in .y whether any of the
-// four has debris near it.
+// nearest in depth round it. In .x of the second the column's distance of the one that counts most, in .y and .z the
+// first and the last of the debris near any of the four (one more than their numbers; 0: none).
 fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
     let hs = vec2<i32>(textureDimensions(half_picture));
     let h = floor(pos) * 0.5 - 0.25;
@@ -1864,7 +1875,8 @@ fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
     var near_dz = 1.0e9;
     var near_c = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     var near_t = 1.0e9;
-    var debris = 0.0;
+    var debris = 1.0e4;
+    var debris_hi = 0.0;
     for (var k = 0; k < 4; k = k + 1) {
         let o = vec2<i32>(k & 1, k >> 1u);
         let q = clamp(i0 + o, vec2<i32>(0), hs - vec2<i32>(1));
@@ -1872,7 +1884,10 @@ fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
         let e = textureLoad(half_extra, q, 0);
         let bw = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1);
         let dz = abs(e.x - lp) / max(lp, 1.0);
-        debris = max(debris, e.z);
+        if (e.z > 0.5) {
+            debris = min(debris, e.z);
+            debris_hi = max(debris_hi, e.w);
+        }
         let w = bw * exp(-dz * 24.0);
         acc = acc + c * w;
         sw = sw + w;
@@ -1886,6 +1901,7 @@ fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
             near_t = e.y;
         }
     }
+    debris = select(0.0, debris, debris_hi > 0.5);
     if (sw < 1.0e-3) {
         // (none of the four on this pixel's side, as for a speck of sky through leaves: the nearest in depth of the four
         // by four round it)
@@ -1899,9 +1915,9 @@ fn pl_up(pos: vec2<f32>, len: f32) -> PlOut {
                 near_t = e.y;
             }
         }
-        return PlOut(near_c, vec4<f32>(near_t, debris, 0.0, 0.0));
+        return PlOut(near_c, vec4<f32>(near_t, debris, debris_hi, 0.0));
     }
-    return PlOut(acc / sw, vec4<f32>(best_t, debris, 0.0, 0.0));
+    return PlOut(acc / sw, vec4<f32>(best_t, debris, debris_hi, 0.0));
 }
 
 @fragment
@@ -1909,6 +1925,6 @@ fn fs_join(in: StageIn) -> @location(0) vec4<f32> {
     let d = depth_at(in.uv);
     let len = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
     let u = pl_up(in.position.xy, len);
-    return nuke(in, 2u, u.c, vec2<f32>(select(u.e.x, 1.0e9, u.e.x >= 6.0e4), u.e.y)).c;
+    return nuke(in, 2u, u.c, vec3<f32>(select(u.e.x, 1.0e9, u.e.x >= 6.0e4), u.e.y, u.e.z)).c;
 }
 // [end half stage]
