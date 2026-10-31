@@ -126,6 +126,17 @@ impl Blocks {
             runs: self.runs.clone(),
         }
     }
+    /// The runs sorted into the ticks they go in at (`when` of each run's column): a wave's edits, in order.
+    pub(super) fn split_by(&self, when: impl Fn(i32, i32) -> f32) -> Vec<(f32, Blocks)> {
+        let mut out: std::collections::BTreeMap<i32, Blocks> = Default::default();
+        for r in &self.runs {
+            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_default();
+            let block = Self::index(&mut b.palette, self.palette[r.block as usize]);
+            let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
+            b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
+        }
+        out.into_iter().map(|(k, b)| (k as f32 * 0.05, b)).collect()
+    }
     /// The runs as the fills they stand for (for the tests and the profilers).
     #[cfg(test)]
     pub fn as_fills(&self) -> Vec<String> {
@@ -144,6 +155,124 @@ impl Blocks {
             .collect()
     }
 }
+
+// ---- a crater's water: only what it breaks into, to its own level ---------------------------------------------
+/// A body of water at the surface (water standing over the ground, read from the top down: never what lies in the
+/// ground under it) floods the crater only when it is at least FLOOD_BODY columns (a lake, a river, the sea; a pond or a
+/// puddle the blast boils away) and touches what the crater digs; then the crater fills to that water's own surface,
+/// and only where it is joined to it through what was dug below that surface.
+pub(super) const FLOOD_BODY: usize = 400;
+/// Worked out over a square `rb` round the target (`step` a stage at a time), from what the land read says: where
+/// water stands at the surface (its surface) and how deep the crater digs each column (its new floor, where it digs).
+pub(super) struct Flood {
+    rb: i32,
+    /// Each column's water level (i32::MIN: dry), whether it is water of a body big enough to flood the crater.
+    lvl: Vec<i32>,
+    big: Vec<bool>,
+    /// The new floors worked out so far (i32::MAX: not yet), and the columns still to flood from (lowest level first).
+    floor: Vec<i32>,
+    heap: std::collections::BinaryHeap<std::cmp::Reverse<(i32, u32)>>,
+    labelled: bool,
+    pub done: bool,
+}
+impl Flood {
+    pub fn new(rb: i32) -> Self {
+        let n = ((2 * rb + 1) * (2 * rb + 1)) as usize;
+        Flood { rb, lvl: vec![i32::MIN; n], big: vec![false; n], floor: vec![i32::MAX; n], heap: Default::default(), labelled: false, done: false }
+    }
+    fn idx(&self, bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
+        let w = 2 * self.rb + 1;
+        let (i, k) = (x - bx + self.rb, z - bz + self.rb);
+        (i >= 0 && k >= 0 && i < w && k < w).then(|| (k * w + i) as usize)
+    }
+    /// The level the crater is flooded to at (x, z), if it is.
+    pub fn level(&self, bx: i32, bz: i32, x: i32, z: i32) -> Option<i32> {
+        self.idx(bx, bz, x, z).map(|i| self.lvl[i]).filter(|&l| l != i32::MIN)
+    }
+    pub fn big(&self, bx: i32, bz: i32, x: i32, z: i32) -> bool {
+        self.idx(bx, bz, x, z).is_some_and(|i| self.big[i])
+    }
+    /// One stage of it (`budget` columns): the bodies of water found and measured, then the crater flooded from them.
+    pub fn step(&mut self, bx: i32, bz: i32, water_at: impl Fn(i32, i32) -> Option<i32>, floor_at: impl Fn(i32, i32) -> Option<i32>, budget: usize) {
+        let rb = self.rb;
+        let w = (2 * rb + 1) as usize;
+        let xz = |i: usize| (bx - rb + (i % w) as i32, bz - rb + (i / w) as i32);
+        let water = |i: usize| {
+            let (x, z) = xz(i);
+            water_at(x, z)
+        };
+        if !self.labelled {
+            self.labelled = true;
+            let mut seen = vec![false; w * w];
+            let mut stack = Vec::new();
+            let mut body = Vec::new();
+            for i0 in 0..w * w {
+                if seen[i0] || water(i0).is_none() {
+                    continue;
+                }
+                seen[i0] = true;
+                stack.push(i0);
+                body.clear();
+                while let Some(i) = stack.pop() {
+                    body.push(i);
+                    let (x, z) = (i % w, i / w);
+                    for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
+                        if nx < w && nz < w && !seen[nz * w + nx] && water(nz * w + nx).is_some() {
+                            seen[nz * w + nx] = true;
+                            stack.push(nz * w + nx);
+                        }
+                    }
+                }
+                if body.len() >= FLOOD_BODY {
+                    for &i in &body {
+                        self.big[i] = true;
+                        if let Some(l) = water(i) {
+                            self.heap.push(std::cmp::Reverse((l, i as u32)));
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        // (out from the water, lowest level first, into the columns the crater digs below that level)
+        let mut n = 0;
+        while n < budget {
+            let Some(std::cmp::Reverse((l, i))) = self.heap.pop() else {
+                self.done = true;
+                return;
+            };
+            n += 1;
+            let i = i as usize;
+            let (x, z) = (i % w, i / w);
+            for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
+                if nx >= w || nz >= w {
+                    continue;
+                }
+                let j = nz * w + nx;
+                if self.lvl[j] != i32::MIN {
+                    continue;
+                }
+                if self.floor[j] == i32::MAX {
+                    let (cx, cz) = xz(j);
+                    self.floor[j] = floor_at(cx, cz).unwrap_or(i32::MIN + 1);
+                }
+                // (dug, and below the water's level: flooded to it)
+                if self.floor[j] != i32::MIN + 1 && self.floor[j] < l {
+                    self.lvl[j] = l;
+                    self.heap.push(std::cmp::Reverse((l, j as u32)));
+                }
+            }
+            // (and the water's own columns where the crater digs them)
+            if self.lvl[i] == i32::MIN && self.big[i] {
+                let (cx, cz) = xz(i);
+                if floor_at(cx, cz).is_some() {
+                    self.lvl[i] = l;
+                }
+            }
+        }
+    }
+}
+
 
 /// What a strike's edit made of a column, for `tidy`: left as it was, cleared up through everything over it (nothing
 /// is left there to hang), or dug or built on with what stood over it left standing.

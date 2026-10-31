@@ -9,7 +9,7 @@
 //!
 //! shaders/payload.wgsl draws the object, its trail, the column, the dust and the debris from the table `pl_table` hands
 //! it (render.set-data): the path sampled, the column's billows. Keep the PL_* here and there in step.
-use super::{Act, Blocks, Col, Plan, Rng, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
+use super::{Act, Blocks, Col, Flood, Plan, Rng, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
 use crate::lasers::Laser;
 use std::cell::RefCell;
 use std::f64::consts::PI;
@@ -720,29 +720,52 @@ fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
     [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dz)| at(land, bx, bz, x + dx, z + dz).is_some_and(|c| c.fluid))
 }
 
+/// When the blast reaches radius r of the land (its edits go in from the middle out with the shockwave).
+fn pl_wave(r: f64) -> f32 {
+    PL_HIT + 0.05 + (r / 343.0) as f32
+}
+fn pl_wave_at(s: &Shape, x: i32, z: i32) -> f32 {
+    pl_wave((f64::from(x) + 0.5 - s.cx).hypot(f64::from(z) + 0.5 - s.cz))
+}
+/// The crater's flood (strike.rs's Flood) is worked out over this square round the target.
+const PL_FB: i32 = (PL_CRATER_R * 1.3) as i32 + 4;
+/// How far down the ground under column (x, z)'s new floor `top` is opened to its neighbours (nuke.rs's seal_lo).
+fn seal_lo(land: &Land, bx: i32, bz: i32, x: i32, z: i32, top: i32, r: f64, ang: f64, u: f64) -> i32 {
+    let rc = if u > 1e-6 { r / u } else { PL_CRATER_R };
+    let (ca, sa) = (ang.cos(), ang.sin());
+    let mut lo = top;
+    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        let Some(n) = at(land, bx, bz, x + dx, z + dz) else { continue };
+        let un = u + (f64::from(dx) * ca + f64::from(dz) * sa) / rc;
+        let f = if un < 1.0 { n.g - bowl(un.max(0.0)).round() as i32 } else { n.g };
+        lo = lo.min(f);
+    }
+    lo - 3
+}
+/// The crater's flood, from the land read: only what it breaks into of a lake, a river or the sea, to its level.
+fn pl_flood(land: &Land, s: &Shape, bx: i32, bz: i32) -> Flood {
+    let mut f = Flood::new(PL_FB);
+    while !f.done {
+        f.step(
+            bx,
+            bz,
+            |x, z| at(land, bx, bz, x, z).filter(|c| c.fluid && !c.lava).map(|c| c.wtop),
+            |x, z| at(land, bx, bz, x, z).filter(|c| !c.lava).and_then(|c| new_ground(c, s, x, z).filter(|&t| t < c.g)),
+            usize::MAX,
+        );
+    }
+    f
+}
+
 /// The crater, the rim's heap, the flattened land and the charred grass, over rows k0..k1 of the land's square.
-fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
+fn pl_blast_rows(q: &mut Plan, land: &Land, fl: &Flood, s: &Shape, k0: i32, k1: i32) {
     let (bx, bz) = (q.bx, q.bz);
     let mut b = Blocks::default();
-    // (the water's surface round the crater, the highest within its rim's reach: what floods it)
-    let reach = (PL_CRATER_R * PL_RIM * 1.15) as i32;
-    let mut wl: Option<i32> = None;
-    for dz in -reach..=reach {
-        for dx in -reach..=reach {
-            if dx * dx + dz * dz <= reach * reach
-                && let Some(c) = at(land, bx, bz, bx + dx, bz + dz)
-                && c.fluid
-                && !c.lava
-            {
-                wl = Some(wl.map_or(c.wtop, |w: i32| w.max(c.wtop)));
-            }
-        }
-    }
     for k in k0..k1 {
         for i in 0..PL_GW {
             let (x, z) = (bx - PL_READ + i, bz - PL_READ + k);
             let Some(c) = at(land, bx, bz, x, z) else { continue };
-            let (r, _, u) = s.at(x, z);
+            let (r, ang, u) = s.at(x, z);
             if r > f64::from(PL_READ) || c.lava {
                 continue;
             }
@@ -753,17 +776,21 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
                     // lava under it sealed; cut into the water as into the land: below the water's level it is filled
                     // with still water (no higher than the land stood), not left dry behind a wall
                     let old = c.top.max(c.g);
-                    match wl {
-                        Some(w) if w > top => {
+                    let lvl = fl.level(bx, bz, x, z).filter(|&w| w > top);
+                    match lvl {
+                        Some(w) => {
                             b.run(x, z, top + 1, w.min(old), "minecraft:water");
                             if old > w {
                                 b.run(x, z, w + 1, old, "minecraft:air");
                             }
                         }
-                        _ => b.run(x, z, top + 1, old, "minecraft:air"),
+                        None => b.run(x, z, top + 1, old, "minecraft:air"),
                     }
-                    b.put(x, z, top - 3, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
-                    if wl.is_none_or(|w| w <= top) {
+                    // (the water and lava in the ground it bares sealed: its floor and the faces it opens)
+                    let lo = seal_lo(land, bx, bz, x, z, top, r, ang, u);
+                    b.put(x, z, lo, top - 1, "minecraft:stone", Some("minecraft:water"), false);
+                    b.put(x, z, lo, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
+                    if lvl.is_none() {
                         let d = if u < 0.6 { 1 } else { 0 };
                         for y in top - d..=top {
                             b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
@@ -778,9 +805,20 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
                     if c.top > top {
                         b.run(x, z, top + 1, c.top, "minecraft:air");
                     }
-                    b.put(x, z, c.g - PL_CRATER_D as i32 - 2, c.g, "minecraft:stone", Some("minecraft:lava"), false);
+                    if u < 1.1 {
+                        let lo = seal_lo(land, bx, bz, x, z, c.g, r, ang, u);
+                        if lo < c.g - 3 {
+                            b.put(x, z, lo, c.g, "minecraft:stone", Some("minecraft:water"), false);
+                            b.put(x, z, lo, c.g, "minecraft:stone", Some("minecraft:lava"), false);
+                        }
+                    }
                 }
-                _ if c.fluid => {}
+                _ if c.fluid => {
+                    // (a pond or a puddle near enough boiled away; a lake, a river or the sea left as it is)
+                    if r < PL_FLAT * 0.6 && !fl.big(bx, bz, x, z) && c.wtop > c.g {
+                        b.put(x, z, c.g + 1, c.wtop, "minecraft:air", Some("minecraft:water"), false);
+                    }
+                }
                 Some(_) => {
                     // flattened: everything standing on the land swept off (a felled tree's stump left), the grass charred
                     let stump = if c.trunk > 0 { 1 + (mh((x * 31 + z * 17) as u32, s.seed, 0x81) * 2.0) as i32 } else { 0 };
@@ -811,7 +849,10 @@ fn pl_blast_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
             }
         }
     }
-    q.ev.push((PL_HIT + 0.05, Act::Blocks(Box::new(b))));
+    // (in from the middle out, as the shockwave reaches each column)
+    for (t, b) in b.split_by(|x, z| pl_wave_at(s, x, z)) {
+        q.ev.push((t, Act::Blocks(Box::new(b))));
+    }
 }
 /// What is left hanging round what changed over rows k0..k1 (leaves of a tree whose trunk went, plants whose ground
 /// went), on a stage of its own.
@@ -824,8 +865,8 @@ fn pl_tidy_rows(q: &mut Plan, land: &Land, s: &Shape, k0: i32, k1: i32) {
         }
     };
     let t = tidy(bx - PL_READ, bz - PL_READ + k0, bx + PL_READ, bz - PL_READ + k1 - 1, 40, -1, col);
-    if !t.runs.is_empty() {
-        q.ev.push((PL_HIT + 0.2, Act::Blocks(Box::new(t))));
+    for (t, b) in t.split_by(|x, z| pl_wave_at(s, x, z) + 0.15) {
+        q.ev.push((t, Act::Blocks(Box::new(b))));
     }
 }
 
@@ -895,7 +936,10 @@ fn pl_felled(q: &mut Plan, land: &Land, s: &Shape, used: &Used, k0: i32, k1: i32
             let _ = LOG_Y;
         }
     }
-    q.ev.push((PL_HIT + 0.35, Act::Blocks(Box::new(b))));
+    // (each log down once the blast has swept where it lies)
+    for (t, b) in b.split_by(|x, z| pl_wave_at(s, x, z) + 0.3) {
+        q.ev.push((t, Act::Blocks(Box::new(b))));
+    }
 }
 /// The rubble: chunks of the ground thrown out, more near it, landing over a few seconds.
 fn pl_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &Used) {
@@ -1188,11 +1232,20 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
         let shape = Shape { cx, cz, ph: [TAU * mh(1, geo.seed, 0xc1), TAU * mh(2, geo.seed, 0xc1), TAU * mh(3, geo.seed, 0xc1)], seed: geo.seed };
         let bands = PL_BANDS;
         let rows = (PL_GW + bands - 1) / bands;
+        let flood: Rc<RefCell<Option<Flood>>> = Default::default();
+        {
+            let (land, flood) = (land.clone(), flood.clone());
+            p.later(PL_HIT - 7.2, move |q| *flood.borrow_mut() = Some(pl_flood(&land.borrow(), &shape, q.bx, q.bz)));
+        }
         for j in 0..bands {
             let (k0, k1) = (j * rows, ((j + 1) * rows).min(PL_GW));
             let t = PL_HIT - 7.0 + 0.1 * j as f32;
-            let l1 = land.clone();
-            p.later(t, move |q| pl_blast_rows(q, &l1.borrow(), &shape, k0, k1));
+            let (l1, fl) = (land.clone(), flood.clone());
+            p.later(t, move |q| {
+                let fl = fl.borrow();
+                let none = Flood::new(0);
+                pl_blast_rows(q, &l1.borrow(), fl.as_ref().unwrap_or(&none), &shape, k0, k1);
+            });
             let l2 = land.clone();
             p.later(t + 0.05, move |q| pl_tidy_rows(q, &l2.borrow(), &shape, k0, k1));
         }
@@ -1401,13 +1454,31 @@ mod tests {
     fn pond(x: i32, z: i32) -> bool {
         ((x + 40) * (x + 40) + (z - 30) * (z - 30)) < 49
     }
+    thread_local! {
+        /// The land the tests' world answers with: 0 the forest with its pond; 1 the forest over an aquifer (water
+        /// in the ground 8 to 14 under it); 2 by the sea (west of x -5, its surface at 62); 3 a river through the
+        /// crater (12 wide at z 15, its surface at 62).
+        static LAND: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    }
+    fn water_at(x: i32, z: i32) -> Option<(i32, i32)> {
+        match LAND.with(|l| l.get()) {
+            0 => pond(x, z).then(|| (ground_h(x, z) - 3, ground_h(x, z))),
+            2 => (x < -5).then_some((54, 62)),
+            3 => ((z - 15).abs() < 6).then_some((57, 62)),
+            _ => None,
+        }
+    }
     fn column(x: i32, z: i32) -> Option<(i32, Vec<&'static str>)> {
-        let g = ground_h(x, z);
-        let t = tree(x, z);
-        let wet = pond(x, z);
+        let land = LAND.with(|l| l.get());
+        let wet = water_at(x, z);
+        let g = if land == 0 { ground_h(x, z) } else { wet.map_or(64, |w| w.0) };
+        let t = wet.is_none() && tree(x, z);
         let block = |y: i32| -> &'static str {
-            if wet {
-                return if y < g - 3 { "minecraft:dirt" } else if y <= g { "minecraft:water" } else { "minecraft:air" };
+            if let Some((bed, top)) = wet {
+                return if y < bed { "minecraft:dirt" } else if y <= top { "minecraft:water" } else { "minecraft:air" };
+            }
+            if land == 1 && y < g - 8 && y >= g - 14 {
+                return "minecraft:water";
             }
             if y < g - 3 {
                 "minecraft:stone"
@@ -1425,9 +1496,56 @@ mod tests {
                 "minecraft:air"
             }
         };
-        let top = if t { g + 9 } else { g + 2 };
+        let top = if let Some((_, w)) = wet { w } else if t { g + 9 } else { g + 2 };
         let (below, above) = (PL_BELOW as i32, PL_ABOVE as i32);
         Some((top, (top - below..top + above).map(block).collect()))
+    }
+
+    fn water_placed(blocks: &[(f32, Blocks)]) -> Vec<(i32, i32, i32, i32)> {
+        blocks
+            .iter()
+            .flat_map(|(_, b)| b.as_fills())
+            .filter(|f| f.ends_with(" minecraft:water strict") && !f.contains(" replace "))
+            .map(|f| {
+                let w: Vec<i32> = f.split_whitespace().skip(1).take(6).map(|v| v.parse().unwrap()).collect();
+                (w[0], w[2], w[1], w[4])
+            })
+            .collect()
+    }
+    #[test]
+    fn payload_crater_over_an_aquifer_stays_dry_and_sealed() {
+        LAND.with(|l| l.set(1));
+        let blocks = played(true);
+        assert!(water_placed(&blocks).is_empty());
+        let sealed = blocks.iter().flat_map(|(_, b)| b.as_fills()).filter(|f| f.ends_with("minecraft:stone replace minecraft:water strict")).count();
+        assert!(sealed > 500, "{sealed}");
+        LAND.with(|l| l.set(0));
+    }
+    #[test]
+    fn payload_crater_at_the_sea_or_a_river_floods_to_its_level() {
+        for land in [2, 3] {
+            LAND.with(|l| l.set(land));
+            let w = water_placed(&played(true));
+            assert!(w.iter().all(|r| r.3 <= 62), "{land}: {:?}", w.iter().find(|r| r.3 > 62));
+            assert!(w.iter().any(|r| r.0 == 10 && r.1 == -3 && r.3 == 62), "{land}: the middle flooded");
+            assert!(w.iter().all(|r| (f64::from(r.0) - 10.0).hypot(f64::from(r.1) + 3.0) < PL_CRATER_R * 1.3));
+        }
+        LAND.with(|l| l.set(0));
+    }
+    #[test]
+    fn payload_land_changes_sweep_out_from_the_middle() {
+        LAND.with(|l| l.set(0));
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let ev = plan(&crate::lasers::PAYLOAD, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 300.0], 0);
+        let p = crate::strike::sim::play(ev, 30.0, &|x, z, _, _| column(x, z));
+        assert!(!p.edits.is_empty());
+        for (t, due, b) in &p.edits {
+            assert!(t - due < 0.2, "an edit {:.2} s late", t - due);
+            for u in &b.runs {
+                let r = (f64::from(u.x) + 0.5 - 10.5).hypot(f64::from(u.z) + 0.5 + 2.5);
+                assert!(*t >= pl_wave(r - 4.0) - 0.06, "at {r:.0} at {t:.2}, before the blast ({:.2})", pl_wave(r));
+            }
+        }
     }
 
     fn played(terrain: bool) -> Vec<(f32, Blocks)> {

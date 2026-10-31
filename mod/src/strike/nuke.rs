@@ -24,7 +24,7 @@
 //!
 //! shaders/nuke.wgsl draws the bomb, its trail, the flash, the fireball, the mushroom cloud, the shockwave, the dust
 //! and the debris from the table `nk_table` hands it (render.set-data). Keep the NK_* here and there in step.
-use super::{Act, Blocks, Col, Plan, Rng, TIDY_BORDER, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
+use super::{Act, Blocks, Col, Flood, Plan, Rng, TIDY_BORDER, Target, falloff, mh, pk_load_rows, sound_from, tidy, vnoise};
 use crate::lasers::Laser;
 use std::cell::RefCell;
 use std::f64::consts::PI;
@@ -912,125 +912,9 @@ fn sectors(r0: f64, r1: f64, w: f64, item: f64, arc: f64) -> Vec<Sector> {
 }
 
 // ---- the water: only what the crater breaks into, to its own level ----------------------------------------------
-/// A body of water at the surface (water standing over the ground, read from the top down: never what lies in the
-/// ground under it) floods the crater only when it is at least FL_BODY columns (a lake, a river, the sea; a pond or a
-/// puddle the blast boils away) and touches what the crater digs; then the crater fills to that water's own surface,
-/// and only where it is joined to it through what was dug below that surface.
-const NK_BODY: usize = 400;
-/// The flood's square round the target (the crater's farthest edge and a little).
+/// The crater's flood (strike.rs's Flood) is worked out over this square round the target: its farthest edge and a
+/// little.
 const NK_FB: i32 = (NK_CRATER_R * 1.3) as i32 + 4;
-const NK_FBW: i32 = 2 * NK_FB + 1;
-struct Flood {
-    /// Each column's water level (i32::MIN: dry), whether it is water of a body big enough to flood the crater.
-    lvl: Vec<i32>,
-    big: Vec<bool>,
-    /// The new floors worked out so far (i32::MAX: not yet), and the columns still to flood from (lowest level first).
-    floor: Vec<i32>,
-    heap: std::collections::BinaryHeap<std::cmp::Reverse<(i32, u32)>>,
-    labelled: bool,
-    done: bool,
-}
-impl Flood {
-    fn new() -> Self {
-        let n = (NK_FBW * NK_FBW) as usize;
-        Flood { lvl: vec![i32::MIN; n], big: vec![false; n], floor: vec![i32::MAX; n], heap: Default::default(), labelled: false, done: false }
-    }
-    fn idx(bx: i32, bz: i32, x: i32, z: i32) -> Option<usize> {
-        let (i, k) = (x - bx + NK_FB, z - bz + NK_FB);
-        (i >= 0 && k >= 0 && i < NK_FBW && k < NK_FBW).then(|| (k * NK_FBW + i) as usize)
-    }
-    /// The level the crater is flooded to at (x, z), if it is.
-    fn level(&self, bx: i32, bz: i32, x: i32, z: i32) -> Option<i32> {
-        Self::idx(bx, bz, x, z).map(|i| self.lvl[i]).filter(|&l| l != i32::MIN)
-    }
-    fn big(&self, bx: i32, bz: i32, x: i32, z: i32) -> bool {
-        Self::idx(bx, bz, x, z).is_some_and(|i| self.big[i])
-    }
-    /// One stage of it (`budget` columns): the bodies of water found and measured, then the crater flooded from them.
-    fn step(&mut self, land: &Land, s: &Shape, bx: i32, bz: i32, budget: usize) {
-        let w = NK_FBW as usize;
-        let col = |i: usize| at(land, bx, bz, bx - NK_FB + (i % w) as i32, bz - NK_FB + (i / w) as i32);
-        let water = |i: usize| col(i).filter(|c| c.fluid && !c.lava);
-        if !self.labelled {
-            self.labelled = true;
-            let mut seen = vec![false; w * w];
-            let mut stack = Vec::new();
-            let mut body = Vec::new();
-            for i0 in 0..w * w {
-                if seen[i0] || water(i0).is_none() {
-                    continue;
-                }
-                seen[i0] = true;
-                stack.push(i0);
-                body.clear();
-                while let Some(i) = stack.pop() {
-                    body.push(i);
-                    let (x, z) = (i % w, i / w);
-                    for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
-                        if nx < w && nz < w && !seen[nz * w + nx] && water(nz * w + nx).is_some() {
-                            seen[nz * w + nx] = true;
-                            stack.push(nz * w + nx);
-                        }
-                    }
-                }
-                if body.len() >= NK_BODY {
-                    for &i in &body {
-                        self.big[i] = true;
-                        if let Some(c) = water(i) {
-                            self.heap.push(std::cmp::Reverse((c.wtop, i as u32)));
-                        }
-                    }
-                }
-            }
-            return;
-        }
-        // (out from the water, lowest level first, into the columns the crater digs below that level)
-        let mut n = 0;
-        while n < budget {
-            let Some(std::cmp::Reverse((l, i))) = self.heap.pop() else {
-                self.done = true;
-                return;
-            };
-            n += 1;
-            let i = i as usize;
-            let (x, z) = (i % w, i / w);
-            for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
-                if nx >= w || nz >= w {
-                    continue;
-                }
-                let j = nz * w + nx;
-                if self.lvl[j] != i32::MIN {
-                    continue;
-                }
-                if self.floor[j] == i32::MAX {
-                    let (cx, cz) = (bx - NK_FB + nx as i32, bz - NK_FB + nz as i32);
-                    self.floor[j] = match col(j) {
-                        Some(c) if !c.lava => match new_ground(c, s, cx, cz) {
-                            Some(t) if t < c.g => t,
-                            _ => i32::MIN + 1,
-                        },
-                        _ => i32::MIN + 1,
-                    };
-                }
-                // (dug, and below the water's level: flooded to it)
-                if self.floor[j] != i32::MIN + 1 && self.floor[j] < l {
-                    self.lvl[j] = l;
-                    self.heap.push(std::cmp::Reverse((l, j as u32)));
-                }
-            }
-            // (and the water's own columns where the crater digs them)
-            if self.lvl[i] == i32::MIN && self.big[i] {
-                let (cx, cz) = (bx - NK_FB + x as i32, bz - NK_FB + z as i32);
-                if let Some(c) = col(i)
-                    && let Some(t) = new_ground(c, s, cx, cz)
-                    && t < c.g
-                {
-                    self.lvl[i] = l;
-                }
-            }
-        }
-    }
-}
 
 /// How far down the ground under column (x, z)'s new floor `top` is opened to its neighbours: down past the lowest of
 /// their new floors (each worked out near enough from its ground and how far out it lies), so the water and lava in the
@@ -1686,7 +1570,7 @@ impl Work {
         Work {
             land: Land { cols: vec![Column::default(); (NK_GW * NK_GW) as usize], missing: Vec::new(), done: false },
             fl: Flash { top: Vec::new(), g: Vec::new(), mats: Vec::new(), seen: Vec::new(), parts: 0 },
-            flood: Flood::new(),
+            flood: Flood::new(NK_FB),
             s,
             wave: Wave::new(),
             used: Default::default(),
@@ -1835,7 +1719,14 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             match job {
                 Job::Flood => {
                     let s = wk.s;
-                    wk.flood.step(&wk.land, &s, bx, bz, 12_000);
+                    let land = &wk.land;
+                    wk.flood.step(
+                        bx,
+                        bz,
+                        |x, z| at(land, bx, bz, x, z).filter(|c| c.fluid && !c.lava).map(|c| c.wtop),
+                        |x, z| at(land, bx, bz, x, z).filter(|c| !c.lava).and_then(|c| new_ground(c, &s, x, z).filter(|&t| t < c.g)),
+                        12_000,
+                    );
                     if !wk.flood.done {
                         wk.jobs.push_front(Job::Flood);
                     }
