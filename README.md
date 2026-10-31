@@ -46,8 +46,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > repository or the downloads.
 
 > [!WARNING]
-> **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
-> and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
+> **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). On macOS (Apple Silicon) every
+> laser but Downfall works ([#3](https://github.com/Stink-O/orbital-laser/issues/3)); Windows is untested. The
+> ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
 **Contents:** [New in 0.5.6](#new-in-056) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
@@ -287,7 +288,10 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 ## Known gaps
 
 - **It needs a Horizon fork** until Horizon adds these capabilities upstream. The ready-built fork is Linux x86-64 only.
-- **Linux only so far.** Windows and macOS are untested.
+- **macOS: Downfall crashes the game** ([#3](https://github.com/Stink-O/orbital-laser/issues/3)): Metal fails to
+  compile its post pass. The other lasers work on Apple Silicon (an M4 with 0.5.5, an M5 Pro with 0.5.6, fork built from source). If the
+  Nuke or Downfall is the loaded laser when the game starts, it crashes at startup: set `laser=plasma` in
+  `horizon-mods/.horizon-mod-data/orbital/settings` in your game folder. Windows is untested.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
