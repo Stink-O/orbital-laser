@@ -34,6 +34,8 @@ const TAU: f64 = 2.0 * PI;
 /// The rod shows high in the sky at RD_SEEN and strikes at RD_HIT, on the target's ground (RD_BURST over it: none).
 pub(super) const RD_SEEN: f32 = 1.0;
 pub(super) const RD_HIT: f32 = 7.0;
+/// The descent's sound (`rod.hiss`, tools/sounds_rod.py) starts this long before the impact, cut on it.
+const RD_HISS: f32 = 5.8;
 pub(super) const RD_BURST: f64 = 0.0;
 /// How fast the ground carries the strike's shock (blocks a second): five times the air's.
 const RD_GROUND_V: f64 = 5.0 * 343.0;
@@ -1562,7 +1564,7 @@ pub(super) fn rod_plan(laser: &'static Laser, target: &Target, terrain: bool, _d
     // ---- the fall: silent, but for a faint hiss right at the end, cut dead on the impact ----------------------------
     p.at(0.4, bar("KINETIC STRIKE: ROD RELEASED", "white"));
     p.at(RD_HIT - 2.5, bar("IMPACT IMMINENT", "red"));
-    p.csound(RD_HIT - 1.6, "hiss", 10.0, 1.0);
+    p.csound(RD_HIT - RD_HISS, "hiss", 10.0, 1.0);
     // ---- the impact: the flash is silent; the ground's answer first, felt more than heard ---------------------------
     let tg = RD_HIT + (dist / RD_GROUND_V) as f32;
     let gap = RD_HIT + late - tg;
@@ -1581,6 +1583,8 @@ pub(super) fn rod_plan(laser: &'static Laser, target: &Target, terrain: bool, _d
         p.csound(arrive - 0.02, "blast_far", 10.0 * far * ((1.25 / (1.0 + dist / 2000.0)).min(1.0) as f32), 1.0);
     }
     p.csound(arrive + 1.0, "rumble", 10.0, 1.0);
+    // (the rod left standing in the crater humming as it cools: heard round it, where it stands, not in the ears)
+    p.ev.push((arrive + 1.0, Act::Sound { event: laser.sound("hum"), at: Some([cx, gy - 20.0, cz]), volume: 1.0, pitch: 1.0 }));
     rd_jolt(&mut p, arrive, (2.0 / (1.0 + dist / 400.0)).clamp(0.3, 1.0) as f32);
     p.ev.push((arrive, Act::Shove { from: [cx, gy, cz], out: RD_KNOCK_OUT, up: RD_KNOCK_UP, reach: RD_KNOCK_REACH }));
     let mut ts = arrive + 6.0;
@@ -1688,14 +1692,14 @@ mod tests {
         };
         let near = sounds(200.0);
         let has = |v: &[(f32, String, f32)], s: &str| v.iter().find(|e| e.1 == format!("orbital:rod.{s}")).map(|e| e.0);
-        for s in ["hiss", "blast", "ground", "debris", "rumble"] {
+        for s in ["hiss", "blast", "ground", "debris", "rumble", "hum"] {
             assert!(has(&near, s).is_some(), "{s}");
         }
         assert!(has(&near, "blast_far").is_none());
         // (the fall is silent but for the hiss, cut on the impact; the flash too: nothing of the impact is heard until
         // the ground and the air carry it)
         assert!(near.iter().all(|e| e.1.ends_with("hiss") || e.0 > RD_HIT), "{near:?}");
-        assert!((has(&near, "hiss").unwrap() - (RD_HIT - 1.6)).abs() < 1e-4);
+        assert!((has(&near, "hiss").unwrap() - (RD_HIT - RD_HISS)).abs() < 1e-4);
         let far = sounds(1500.0);
         assert!(has(&far, "blast").is_none() && has(&far, "blast_far").is_some() && has(&far, "debris").is_none());
         assert!(has(&far, "blast_far").unwrap() > has(&near, "blast").unwrap() + 3.0);
