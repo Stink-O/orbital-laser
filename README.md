@@ -105,7 +105,7 @@ Thirteen lasers, five to a page of the wheel.
   quick stark impact frames round the impact point (black-and-white silhouettes with jagged impact lines and the rod
   among them, the negative, a faint echo), a blinding radiant burst with rays fanning out, the land rippling out in rings like
   water, a jet of molten rock up its path, a short plume of dust spreading into a haze and a ring of dust racing out
-  over the land, then one colossal crack-boom, late with the distance. The crater caves in on it from its edge to its middle, and it leaves
+  over the land, then one colossal crack-boom, late with the distance. The crater is blasted out round it in a moment, then lined in white and gold from the rod out, and it leaves
   itself standing in a hallowed crater about 120 blocks across and 50 deep, the floor round its foot heaved up in
   broken slabs: the rod, 13 blocks thick and 130 tall over the crater's floor, its top 80 over
   the land, polished blackstone banded in gold and capped with light; the crater lined in quartz, calcite and gold with

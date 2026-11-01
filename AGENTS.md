@@ -60,16 +60,19 @@ laser, command, capability and timing). This file is the short, factual version 
   same reads, `Wave`, pacing and far-land waiting): plumb over the target, a hard last burst of speed eased in over
   its last half second to about 2,300 blocks a second (`RdGeo::left`: under 40 blocks a frame, so it reads), impact
   at 7 s (`RD_HIT`, which the sounds key off); a crater ~120 across and 50 deep with steep walls (`bowl`: a punch)
-  lined in quartz, calcite and gold (`scorched`), a bleached rim (`ejecta`) out to ~90, the crater caving in from its
-  edge to its middle (`Wave`: two waves from `RD_CAVE`, 72, the crater's inward from 7.4 s to the rod's foot by ~9.1, still a chunk's edits on one tick; the land's outward, at `RD_OUT` of
-  the rate while the crater caves in), the floor round the rod's foot heaved up in broken, tilted slabs out to ~22
+  lined in quartz, calcite and gold (`scorched`), a bleached rim (`ejecta`) out to ~90, the crater dug out first
+  and lined after (`Wave`: the carve, air over every crater column's floor and the lava it bares sealed, out from the
+  middle with the shock at `RD_CARVE_RATE` from 7.1 s, the whole pit open by ~7.7, ~60 chunks; then, `RD_LINE_GAP`
+  after, the lining from the rod out at `RD_RATE`, the rod and the heave by ~8.05, the floor to its walls by ~8.6, on
+  out over the rim and the land; a chunk's edits on one tick in each, `carve_chunk` and `chunk`), the floor round the rod's foot heaved up in broken, tilted slabs out to ~22
   from its axis (`rd_heave`; its ring of light kept clear), the rod left standing in
   its middle (`rd_rod_col`: 13 wide, 130 over the floor, its top 80 over the land, and 40 under it, driven in deeper on land so
   high its top would pass 318 (`rd_rod_base`; rod.wgsl's `rd_top_end`), polished blackstone banded in gold, a ring of
   light round its foot; keep rod.wgsl's `RD_R`, `RD_L`, `RD_TOP_END` in step), trees felled to ~200 (a band of
   stripped crowns to ~240), the grass blessed (white concrete, calcite, quartz, gold, lights, pale moss: `charred`) and
   rubble strewn in ~17 rays out to ~250, ~120 falling blocks thrown up in a cone, mobs killed within 200, the ~830
-  chunks within ~260 force-loaded; its land goes in from ~7.4 s, the crater and the rod by ~9.1 s, all by ~13.5 s. Its
+  chunks within ~260 force-loaded; its land goes in from 7.1 s, the pit dug by ~7.7, the rod by ~8.05 (rod.wgsl's `RD_LET_GO`, 1.8,
+  draws it till then and a margin), the crater lined by ~8.6, all by ~13.5 s. Its
   knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
   Its pass has impact frames (`rd_impact`, `rd_if_beat`: three stark pulses in 0.16 s, 2, 3 and 1 frames at 60 with
   the picture between, each a ragged star round the impact point, smaller and fainter each time, timed by the strike
@@ -111,7 +114,7 @@ tools/preview.py payload 18 --quality both --bench   # the Payload at QUALITY FU
 tools/preview.py rod 7.05 9 25 --views rdnear,rdstand  # the Rod's impact frames, its jet, it standing (views rd*)
 RD_VOX_OUT=/tmp/h.vox cargo test --release rod_heaves_the_floor_round_its_foot   # (in mod/) the heave as voxels: then
 PREVIEW_VOXELS=/tmp/h.vox tools/preview.py rod 40 --views rdfoot,rdfootup --set vox=1
-RD_CAVE_OUT=/tmp/c.txt cargo test --release rd_cave_order -- --ignored --nocapture  # the crater caving in, by time
+RD_CAVE_OUT=/tmp/c.txt cargo test --release rd_cave_order -- --ignored --nocapture  # the crater dug, then lined, by tick
 python3 tools/sounds_rod.py --listen DIR             # the Rod's sounds (and listening mixdowns from 200 and 600 blocks)
 tools/world_snapshot.py save|restore|reset WORLD [NAME]  # snapshot a world and put it back (refuses while it's open; reset leaves, restores, rejoins)
 ```

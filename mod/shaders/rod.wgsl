@@ -465,7 +465,7 @@ const RD_L: f32 = 171.0;           // its length (rod.rs's RD_ROD_UP + RD_ROD_DO
 const RD_NOSE: f32 = 16.0;         // its nose, rounded to a blunt point over this much of its length
 const RD_DOWN: f32 = 40.0;         // how much of it ends up under the crater's floor (rod.rs's RD_ROD_DOWN)
 const RD_TOP_END: f32 = 80.0;      // where its top ends up, from the target's ground (rod.rs: 50 deep, 130 over the floor)
-const RD_LET_GO: f32 = 2.9;        // drawn till this long after it strikes, its blocks surely in, then let go over a second
+const RD_LET_GO: f32 = 1.8;        // drawn till this long after it strikes, its blocks surely in (rod.rs: by ~1.0), then let go over a second
 const RD_SINK: f32 = 0.12;         // how fast it drives in as it strikes (its tail gone under the land in a fifth of a second)
 const RD_FLOOR: f32 = -50.0;       // the crater's floor under it (rod.rs's RD_CRATER_D)
 const RD_RIP_V: f32 = 190.0;       // the ripple through the land: its front's speed, blocks a second,
@@ -1303,8 +1303,9 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // ---- the rod: dark metal, nose down, its nose blazing white-gold and the light running up it, a golden rim of light
     // round it, a glint where the sun catches it; driven into the land as it strikes -----------------------------------
-    // (once it stands, its blocks are in the world: drawn till they are surely in (the crater caves in on it from its
-    // edge, its middle and the rod last, by some 2.1 s: rod.rs's Wave), then let go over a second)
+    // (once it stands, its blocks are in the world: drawn till they are surely in (the crater dug out round it by some
+    // 0.7 s, then lined from the rod out, the rod's own blocks first, in by some 1.0 s: rod.rs's Wave), then let go
+    // over a second)
     if (stage != 1u && have && time > PL_SEEN - 0.1 && a < RD_LET_GO + 1.0) {
         let h = rd_rod_hit(rd, N, px_a, scene_len + 1.0);
         if (h.cov > 0.0) {

@@ -177,8 +177,8 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   up its path and falling back by 6 s, 256 chunks of rock thrown up in a steep cone (two in five of them molten,
   glowing and cooling as they fly), molten spatter landing round it and cooling, a short plume of dust (about 90
   high, spreading wider and wider into a haze as it rises and fades, gone 13 s after) and a low ring of dust racing
-  out at 343 blocks a second. The rod drives in and stays, the crater caving in on it from its edge to its middle over the next two
-  seconds, the rod standing in the crater's middle, the floor round its foot heaved up in broken slabs, its blocks glowing in
+  out at 343 blocks a second. The rod drives in and stays, the crater blasted out round it in the next 0.7 s, out from the middle
+  with the shock, then lined from the rod out (its blocks in a second after it strikes) over the next 0.8 s, the rod standing in the crater's middle, the floor round its foot heaved up in broken slabs, its blocks glowing in
   slow bands of light while the strike runs, its tip shining, its light rising softly out of the crater and the air
   over it shimmering, the crater's floor white-hot round its foot and cooling over about 20 s, the column of light
   calming into a quiet pillar. The crack-boom arrives late with the distance, the ground's thump first; the camera
@@ -428,7 +428,7 @@ The Nuke's bomb shows at 2 s and bursts at 11; its boom, the dust's front and th
 their distance over 343 (the ground's thump at five times that speed), the knockback with it; the cloud rises fast for 20 s and slowly after, softens from
 59 and is gone by 90, when the strike ends.
 The Rod shows at 1 s and strikes at 7 (its last hard burst of speed over its last half second); its impact frames
-run from 7 to 7.16; its crater caves in from its edge (7.4) to the rod's foot (about 9.1); its crack-boom, the dust ring's front, the jolt and the knockback reach the player at 7 plus their
+run from 7 to 7.16; its crater is dug out from its middle (7.1) to its edge (7.7) and lined from the rod (about 8.05) to its walls (about 8.6); its crack-boom, the dust ring's front, the jolt and the knockback reach the player at 7 plus their
 distance over 343; the jet is up and back down by about 13, the plume rises for about 4 s and spreads into a haze gone
 by 20, the debris is down by about 28, the rod's glow calms over a minute, and the strike ends at 60.
 

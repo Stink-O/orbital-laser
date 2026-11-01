@@ -761,32 +761,55 @@ fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
     [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2), (1, 1), (1, -1), (-1, 1), (-1, -1)].iter().any(|(dx, dz)| at(land, bx, bz, x + dx, z + dz).is_some_and(|c| c.fluid))
 }
 
-// ---- the wave: the crater caving in from its edge to the rod, the land round it from the edge out --------------------
-/// The blast's changes go into the world as two waves from the crater's edge (RD_CAVE), a ring at a time: one inward,
-/// the crater caving in on the rod from its edge to its middle (its outer blocks first, the rod's foot last), and one
-/// outward, the rim, the flattened land and its felled trees, the dusted grass, the stripped crowns, out to the land
-/// read. Each ring goes in as the shockwave reaches it, or as soon after as the world takes the blocks the rings before
-/// it on its wave change (`rd_cost`): the crater's at RD_RATE a second, the land's round it at RD_OUT of that while the
-/// crater is caving in and at the whole of it after.
+// ---- the wave: the crater dug out, then lined, the land round it after ----------------------------------------------
+/// The blast's changes go into the world in two waves, a ring at a time from the middle out. The first, the carve, digs
+/// the crater out as it strikes: every block over each column's finished floor turned to air (and the lava in the
+/// ground it bares sealed), out with the shockwave as fast as the world takes the air (RD_CARVE_RATE a second, by
+/// `rd_carve_cost`), so the pit opens at once, done by some 0.7 s after the impact. The second, the lining, follows
+/// once the whole pit is open (RD_LINE_GAP after it): from the rod out, the rod and the heaved slabs round its foot
+/// first, then the floor's quartz, calcite and gold out to its walls, then on out over the rim, the flattened land and
+/// its felled trees, the dusted grass, the stripped crowns, out to the land read, as soon as the world takes the blocks
+/// the rings before it change (`rd_cost`, at RD_RATE a second). A chunk's edits go in on one tick in each: twice in the
+/// crater (dug, then lined), once round it.
 const RD_RATE: f64 = 350_000.0;
-const RD_OUT: f64 = 0.35;
-/// Where the two waves part: just past the crater's edge however its edge wanders (RD_CRATER_R times its wobble, at
-/// most some 1.16).
+/// The carve's pace: air is cheap to set, so it runs at more than twice the lining's.
+const RD_CARVE_RATE: f64 = 900_000.0;
+/// How long the pit stands open, dug to its floor, before the lining begins at its middle.
+const RD_LINE_GAP: f64 = 0.1;
+/// How far out the carve reaches: just past the crater's edge however its edge wanders (RD_CRATER_R times its wobble,
+/// at most some 1.16).
 const RD_CAVE: usize = 72;
+/// How far out its wave runs: to the middle of the farthest chunk holding any of the crater (RD_CAVE and the half
+/// diagonal of a chunk).
+const RD_CARVE_TO: usize = RD_CAVE + 12;
 /// The rings (RD_RING wide) are worked out in parts of about RD_ITEM columns, split by angle, never by rows.
 const RD_RING: f64 = 4.0;
 const RD_ITEM: f64 = 250.0;
-/// What a column at radius r is expected to change (blocks), for the wave's pace.
+/// What the carve is expected to turn to air in a column at radius r (blocks): the crater's depth there, what stood
+/// over its ground and its share of its chunk sent again, the depth spread over a chunk's width (each chunk is dug on
+/// one tick, when the wave reaches its middle: so the chunks round the crater's edge, part pit and part not, are dug
+/// over the ticks their share takes, not all on the last).
+fn rd_carve_cost(r: f64) -> f64 {
+    let mut d = 0.0;
+    for k in -8..=8 {
+        let u = (r + f64::from(k)).max(0.0) / RD_CRATER_R;
+        d += bowl(u) / 17.0;
+    }
+    // (and a chunk sent again a share of each of its columns, as in the pace's count: a chunk as much as 2,048 blocks)
+    d + 8.0
+}
+/// What the lining is expected to change in a column at radius r (blocks), for its pace: in the crater a block or two
+/// of its floor (and the chunk sent again), the rod's whole height, the heave's slabs; round it the land's changes.
 fn rd_cost(r: f64) -> f64 {
     let u = r / RD_CRATER_R;
     if r < 8.0 {
         // (the rod stands there: all of its height)
-        bowl(u) + 8.0 + f64::from(RD_ROD_UP + RD_ROD_DOWN)
+        8.0 + f64::from(RD_ROD_UP + RD_ROD_DOWN)
     } else if r < RD_HEAVE_R {
         // (the floor heaved up round its foot)
-        bowl(u) + 12.0
+        8.0 + 6.0
     } else if u < 1.0 {
-        bowl(u) + 8.0
+        8.0
     } else if u < RD_RIM {
         heap(u, 0.5) + 8.0
     } else if r < RD_FLAT {
@@ -796,55 +819,71 @@ fn rd_cost(r: f64) -> f64 {
         6.0
     }
 }
-/// When the waves reach radius r (a block at a time out to past RD_READ): falling from the crater's edge in to its
-/// middle, rising from the edge out.
+/// When the waves reach radius r (a block at a time): the carve (`carve`, out to RD_CARVE_TO) and the lining (`line`,
+/// out to past RD_READ), both rising from the middle out.
 #[derive(Clone)]
-struct Wave(Rc<Vec<f32>>);
+struct Wave {
+    carve: Rc<Vec<f32>>,
+    line: Rc<Vec<f32>>,
+}
 impl Wave {
     fn new() -> Self {
-        let n = RD_READ as usize + 16;
-        let mut out = vec![0.0f32; n + 1];
         let shock = |r: f64| (r * r + RD_BURST * RD_BURST).sqrt() / 343.0;
-        // (the crater, from its edge in: from the moment the shock reaches its edge)
-        let edge = shock(RD_CAVE as f64);
+        // (the carve: out with the shock, or as soon after it as the air goes in)
+        let mut carve = vec![0.0f32; RD_CARVE_TO];
         let mut work = 0.0;
-        for r in (0..RD_CAVE).rev() {
+        for (r, o) in carve.iter_mut().enumerate() {
             let rf = r as f64;
-            out[r] = RD_HIT + 0.05 + (edge + work / RD_RATE) as f32;
+            *o = RD_HIT + 0.05 + shock(rf).max(work / RD_CARVE_RATE) as f32;
+            work += TAU * (rf + 0.5) * rd_carve_cost(rf + 0.5);
+        }
+        // (the lining: from the middle once the whole pit is open)
+        let start = f64::from(carve[RD_CARVE_TO - 1] - RD_HIT) + RD_LINE_GAP;
+        let n = RD_READ as usize + 16;
+        let mut line = vec![0.0f32; n + 1];
+        let mut work = 0.0;
+        for (r, o) in line.iter_mut().enumerate() {
+            let rf = r as f64;
+            *o = RD_HIT + (start + work / RD_RATE).max(0.05 + shock(rf)) as f32;
             work += TAU * (rf + 0.5) * rd_cost(rf + 0.5);
         }
-        // (how long it takes, and the work the land round it gets done meanwhile at its share of the rate)
-        let cave = work / RD_RATE;
-        let early = cave * RD_RATE * RD_OUT;
-        let mut work = 0.0;
-        for (r, o) in out.iter_mut().enumerate().skip(RD_CAVE) {
-            let rf = r as f64;
-            let tw = if work <= early { work / (RD_RATE * RD_OUT) } else { cave + (work - early) / RD_RATE };
-            *o = RD_HIT + 0.05 + shock(rf).max(tw) as f32;
-            work += TAU * (rf + 0.5) * rd_cost(rf + 0.5);
-        }
-        Wave(Rc::new(out))
+        Wave { carve: Rc::new(carve), line: Rc::new(line) }
     }
+    /// When the lining reaches radius r.
     fn at(&self, r: f64) -> f32 {
-        self.0[(r.max(0.0) as usize).min(self.0.len() - 1)]
+        self.line[(r.max(0.0) as usize).min(self.line.len() - 1)]
     }
-    /// The first moment the waves reach any of radii r0..r1 (at either end, or where they part).
+    /// When the carve reaches radius r (its last ring's past the crater).
+    fn carve_at(&self, r: f64) -> f32 {
+        self.carve[(r.max(0.0) as usize).min(RD_CARVE_TO - 1)]
+    }
+    /// When the carve is done: the whole pit open.
+    #[cfg(test)]
+    fn dug(&self) -> f32 {
+        self.carve[RD_CARVE_TO - 1]
+    }
+    /// The first moment either wave reaches any of radii r0..r1.
     #[cfg(test)]
     fn first(&self, r0: f64, r1: f64) -> f32 {
-        let mut t = self.at(r0).min(self.at(r1));
-        if r0 <= RD_CAVE as f64 && r1 >= RD_CAVE as f64 - 1.0 {
-            t = t.min(self.at(RD_CAVE as f64 - 1.0)).min(self.at(RD_CAVE as f64));
-        }
-        t
+        let t = self.at(r0).min(self.at(r1));
+        if r0 < RD_CARVE_TO as f64 { t.min(self.carve_at(r0)) } else { t }
     }
-    /// When the waves have swept the whole of the chunk column holding block column (x, z) (`cx`, `cz` the target's
-    /// middle): the latest of its nearest and its farthest point (the crater's wave reaching it from outside in, the
-    /// land's from inside out). Every edit to a chunk goes in on the one tick, so the game redraws each of its sections
-    /// once, not once a ring.
+    /// When the lining has swept the whole of the chunk column holding block column (x, z) (`cx`, `cz` the target's
+    /// middle): the later of its nearest and its farthest point. Every edit to a chunk goes in on the one tick (in the
+    /// crater one tick to dig it, one to line it), so the game redraws each of its sections once a wave, not once a
+    /// ring.
     fn chunk(&self, cx: f64, cz: f64, x: i32, z: i32) -> f32 {
-        let (mx, mz) = (f64::from((x >> 4) * 16) + 8.0, f64::from((z >> 4) * 16) + 8.0);
-        let d = (mx - cx).hypot(mz - cz);
+        let d = Self::chunk_d(cx, cz, x, z);
         self.at(d - 11.4).max(self.at(d + 11.4))
+    }
+    /// The carve's for that chunk: as it reaches the chunk's middle (its cost is spread over a chunk's width for that,
+    /// `rd_carve_cost`; the shock there a tick at most from any of it).
+    fn carve_chunk(&self, cx: f64, cz: f64, x: i32, z: i32) -> f32 {
+        self.carve_at(Self::chunk_d(cx, cz, x, z))
+    }
+    fn chunk_d(cx: f64, cz: f64, x: i32, z: i32) -> f64 {
+        let (mx, mz) = (f64::from((x >> 4) * 16) + 8.0, f64::from((z >> 4) * 16) + 8.0);
+        (mx - cx).hypot(mz - cz)
     }
 }
 /// A part of a ring: radii r0..r1 from the target's middle, its angles a0 to a0 + da.
@@ -944,9 +983,10 @@ fn seal_lo(land: &Land, bx: i32, bz: i32, x: i32, z: i32, top: i32, r: f64, ang:
     lo - 3
 }
 
-/// The blast's edits to column (x, z): the crater dug, its rim heaped, the land flattened
-/// and charred, the crowns stripped.
-fn rd_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z: i32, cleared: Option<&mut bool>) {
+/// The blast's edits to column (x, z): the crater dug (into `cv`, the carve's: air over its floor, the lava it
+/// bares sealed) and lined (its floor, the heave, the rod), its rim heaped, the land flattened and charred, the crowns
+/// stripped (into `b`, the lining's).
+fn rd_blast_col(b: &mut Blocks, cv: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z: i32, cleared: Option<&mut bool>) {
     crate::meter::spend(400);
     let Some(c) = at(land, bx, bz, x, z) else { return };
     let (r, ang, u) = s.at(x, z);
@@ -965,10 +1005,12 @@ fn rd_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32
             // the sea) and is joined to it below its level, filled with still water to that level (never higher than
             // the land stood)
             // (water it cuts into goes like any other block: what is left of it flows in, as round a TNT blast)
-            b.run(x, z, top + 1, c.top.max(c.g), "minecraft:air");
-            // (the lava in the ground it bares sealed: lava pouring in would burn everything)
+            // (dug out first, as it strikes: the pit open to its floor before any of it is lined)
+            cv.run(x, z, top + 1, c.top.max(c.g), "minecraft:air");
+            // (the lava in the ground it bares sealed as it is dug: lava pouring in would burn everything)
             let lo = seal_lo(land, bx, bz, x, z, top, r, ang, u);
-            b.put(x, z, lo, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
+            cv.put(x, z, lo, top - 1, "minecraft:stone", Some("minecraft:lava"), false);
+            // (then lined: its floor, the heave round the rod's foot, the rod)
             let d = if u < 0.62 { 1 } else { 0 };
             for y in top - d..=top {
                 b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
@@ -1175,14 +1217,18 @@ fn rd_blast_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cache: &
     let (bx, bz) = (q.bx, q.bz);
     let (cells, [x0, z0, x1, z1]) = sec.cells(s.cx, s.cz);
     let t = sec.when(wave);
-    let mut b = Blocks::default();
+    let (mut b, mut cv) = (Blocks::default(), Blocks::default());
     // (what each column was made, for the tidying: cleared through or left)
     let gw = (x1 - x0 + 1) as usize;
     let mut grid = vec![false; gw * (z1 - z0 + 1) as usize];
     for &(x, z) in &cells {
-        rd_blast_col(&mut b, land, s, bx, bz, x, z, grid.get_mut((z - z0) as usize * gw + (x - x0) as usize));
+        rd_blast_col(&mut b, &mut cv, land, s, bx, bz, x, z, grid.get_mut((z - z0) as usize * gw + (x - x0) as usize));
     }
-    // (each chunk's edits on the tick the wave has swept all of it: its sections redrawn once)
+    // (each chunk's edits on the tick each wave has swept all of it: its sections redrawn once a wave; the crater's dug
+    // out on the carve's, as it reaches the chunk's middle, well before the lining's)
+    for (tc, b) in cv.split_by(|x, z| wave.carve_chunk(s.cx, s.cz, x, z)) {
+        q.ev.push((tc, Act::Blocks(Box::new(b))));
+    }
     let when = |x: i32, z: i32| wave.chunk(s.cx, s.cz, x, z).max(t);
     for (tc, b) in b.split_by(when) {
         q.ev.push((tc, Act::Blocks(Box::new(b))));
@@ -1461,7 +1507,7 @@ fn rd_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
         let vy = 2.0 + 2.6 * rng.next();
         let (vx, vz) = (ang.cos() * h, ang.sin() * h);
         let y = f64::from(c.g) + 1.2 + 2.5 * rng.next();
-        // (as it strikes, with the shock: not with the crater's caving in, which reaches its middle last)
+        // (as it strikes, with the shock and the carve)
         let t = RD_HIT + 0.1 + (r / 343.0) as f32 + 1.25 * rng.next().powf(1.3) as f32;
         let keep = if rng.next() < 0.45 { "" } else { ",CancelDrop:1b" };
         q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b{keep},Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
@@ -2276,12 +2322,97 @@ mod tests {
         assert_eq!(RD_ROD_UP - RD_CRATER_D as i32, 80);
         assert!(fills.iter().any(|f| f.starts_with(&format!("fill {bx} {top} {bz} ")) && f.contains("minecraft:ochre_froglight")));
         assert_eq!(top - ground_h(bx, bz), RD_ROD_UP - RD_CRATER_D as i32);
+        // (all of it in a moment after the pit is dug, and well before the pass lets go of the rod it draws)
+        let rod_in = blocks
+            .iter()
+            .filter(|(_, b)| b.as_fills().iter().any(|f| ["polished_blackstone ", "ochre_froglight "].iter().any(|m| f.contains(&format!("minecraft:{m}")))))
+            .map(|(t, _)| *t)
+            .fold(0.0f32, f32::max);
+        assert!(rod_in > Wave::new().dug() && rod_in < RD_HIT + let_go() - 0.5, "the rod in at {rod_in:.2}, let go from {:.2}", RD_HIT + let_go());
         // (nothing thrown out of the crater from round it, to come down on it)
         let (_, cmds) = played_all(true);
         for (_, c) in cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")) {
             let w: Vec<f64> = c.split_whitespace().skip(2).take(3).map(|v| v.parse().unwrap()).collect();
             assert!((w[0] - 10.5).hypot(w[2] + 2.5) >= 13.9, "{c}");
         }
+    }
+
+    /// The pass's RD_LET_GO: how long after it strikes the drawn rod is drawn before it lets go of it (over a second)
+    /// to the rod's blocks.
+    fn let_go() -> f32 {
+        let src = include_str!("../../shaders/rod.wgsl");
+        let l = src.lines().find(|l| l.starts_with("const RD_LET_GO: f32 = ")).expect("RD_LET_GO");
+        l.trim_start_matches("const RD_LET_GO: f32 = ").split(';').next().unwrap().trim().parse().unwrap()
+    }
+
+    #[test]
+    fn rod_digs_its_crater_out_then_lines_it() {
+        // played as the mod plays it: the whole pit dug out first, quickly, out from the middle (air over every crater
+        // column's floor, and the lava it bares sealed: nothing else), each chunk on one tick; then lined from the rod
+        // out, never a column before it was dug; the rod's blocks in well before the pass lets go of the drawn one
+        for land in [0u8, 1, 3, 10] {
+            LAND.with(|l| l.set(land));
+            let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+            let ev = plan(&crate::lasers::ROD, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
+            let p = crate::strike::sim::play(ev, 30.0, &column);
+            let wave = Wave::new();
+            let open = wave.dug() + 0.5 * RD_LINE_GAP as f32;
+            let mut dug: std::collections::HashMap<(i32, i32), (f32, i32)> = Default::default();
+            let mut chunk_ticks: std::collections::HashMap<(i32, i32), std::collections::HashSet<i32>> = Default::default();
+            let (mut first, mut last) = (f32::MAX, 0.0f32);
+            for (t, due, b) in &p.edits {
+                if *due > open {
+                    continue;
+                }
+                for (u, f) in b.runs.iter().zip(b.as_fills()) {
+                    let r = (f64::from(u.x) + 0.5 - 10.5).hypot(f64::from(u.z) + 0.5 + 2.5);
+                    assert!(r < RD_CAVE as f64, "land {land}: dug at {r:.0}: {f}");
+                    let air = f.ends_with(" minecraft:air strict");
+                    assert!(air || f.ends_with(" minecraft:stone replace minecraft:lava strict"), "land {land}: in the carve: {f}");
+                    if air {
+                        dug.insert((u.x, u.z), (*t, u.y));
+                    }
+                    chunk_ticks.entry((u.x >> 4, u.z >> 4)).or_default().insert((t / 0.05).round() as i32);
+                    first = first.min(*t);
+                    last = last.max(*t);
+                }
+            }
+            // (all of the crater: every column dug out down to its floor, deep in the middle)
+            let crater = dug.len();
+            eprintln!("land {land}: {crater} columns dug from {first:.2} to {last:.2}, {} chunks", chunk_ticks.len());
+            assert!(crater as f64 > 0.9 * PI * RD_CRATER_R * RD_CRATER_R, "land {land}: {crater} columns dug");
+            assert!(dug.get(&(10, -3)).is_some_and(|d| d.1 <= 64 - RD_CRATER_D as i32 + 2), "land {land}: {:?}", dug.get(&(10, -3)));
+            assert!(first >= RD_HIT && last <= RD_HIT + 1.0, "land {land}: dug from {first:.2} to {last:.2}");
+            for (c, ticks) in &chunk_ticks {
+                assert_eq!(ticks.len(), 1, "land {land}: chunk {c:?} dug over the ticks {ticks:?}");
+            }
+            // (each dug column lined after it was dug: every block it gets other than air)
+            let mut lined: std::collections::HashMap<(i32, i32), f32> = Default::default();
+            for (t, due, b) in &p.edits {
+                if *due <= open {
+                    continue;
+                }
+                for (u, f) in b.runs.iter().zip(b.as_fills()) {
+                    if let Some(&(td, _)) = dug.get(&(u.x, u.z))
+                        && u.only.is_none()
+                        && !f.ends_with(" minecraft:air strict")
+                    {
+                        assert!(*t > td, "land {land}: {f} at {t:.2}, dug at {td:.2}");
+                        let e = lined.entry((u.x, u.z)).or_insert(*t);
+                        *e = e.min(*t);
+                    }
+                }
+            }
+            assert_eq!(lined.len(), crater, "land {land}: every column dug lined");
+            let lined_from = lined.values().copied().fold(f32::MAX, f32::min);
+            assert!(lined_from > last, "land {land}: lined from {lined_from:.2}, before the pit was dug ({last:.2})");
+            // (the rod and the heave first: in within a second and a quarter of the strike, the pass drawing the rod
+            // well past it)
+            let rod = lined.iter().filter(|((x, z), _)| (x - 10).pow(2) + (z + 3).pow(2) < (RD_HEAVE_R * RD_HEAVE_R) as i32).map(|(_, t)| *t).fold(0.0f32, f32::max);
+            assert!(rod < RD_HIT + 1.25, "land {land}: the rod and the heave in by {rod:.2}");
+            assert!(rod + 0.5 < RD_HIT + let_go(), "land {land}: the rod in by {rod:.2}, let go from {:.2}", RD_HIT + let_go());
+        }
+        LAND.with(|l| l.set(0));
     }
 
     /// What the strike's edits leave in the box round the target (`r` columns round it, y0..=y1), each block the last
@@ -2371,6 +2502,17 @@ mod tests {
         // (a broad ring of it, some ten blocks wide; a few blocks high, the highest some eight; cracks through it; the
         // lifted edges of slabs standing clear of the floor)
         eprintln!("heave: {lifted} columns lifted, {highest} high, {cracks} cracks, {over_air} overhangs");
+        // (heaved after the pit is dug, with the rod, first of the lining)
+        let wave = Wave::new();
+        for (t, b) in &blocks {
+            for (u, f) in b.runs.iter().zip(b.as_fills()) {
+                let (dx, dz) = (u.x - bx, u.z - bz);
+                let r = f64::from(dx * dx + dz * dz).sqrt();
+                if r > 8.0 && r < RD_HEAVE_R && u.y > floor + 1 && !f.contains("minecraft:air") {
+                    assert!(*t > wave.dug() && *t < wave.at(0.0) + 0.35, "{f} at {t:.2}");
+                }
+            }
+        }
         assert!(lifted > 200, "{lifted} columns heaved");
         assert!((5..=10).contains(&highest), "{highest} high");
         assert!(cracks > 8, "{cracks} cracks");
@@ -2485,42 +2627,55 @@ mod tests {
         LAND.with(|l| l.set(0));
     }
 
-    /// The middle of what changes each tick, while the waves run: past the crater's edge further out tick by tick (but
-    /// for `out` blocks), in the crater further in (but for `inw`); the crater caved in to its middle within 2.5 s of
-    /// the strike. The farthest out it got.
+    /// The middle of what changes each tick, while the waves run, both sweeping out from the middle: the carve's (the
+    /// edits due before the lining begins) further out tick by tick but for `inw` blocks, the crater dug from its
+    /// middle to past its edge within a second of the strike; the lining's (all the rest) further out tick by tick but
+    /// for `out` blocks, the rod lined within a second and a half. The farthest out the lining got.
     fn sweeps(edits: &[(f32, f32, Blocks)], out: f64, inw: f64, what: &str) -> f64 {
+        let wave = Wave::new();
+        let open = wave.dug() + 0.5 * RD_LINE_GAP as f32;
         let mut by: std::collections::BTreeMap<i32, (Vec<f64>, Vec<f64>)> = Default::default();
-        for (t, _, b) in edits {
+        let (mut dug_to, mut dug_by, mut rod_by) = (0.0f64, 0.0f32, f32::MAX);
+        let mut dug_least = f64::MAX;
+        for (t, due, b) in edits {
             for u in &b.runs {
                 let r = (f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0);
                 let e = by.entry((t / 0.05).round() as i32).or_default();
-                if r < RD_CAVE as f64 - 2.0 { e.1.push(r) } else { e.0.push(r) }
+                if *due <= open {
+                    e.1.push(r);
+                    dug_to = dug_to.max(r);
+                    dug_least = dug_least.min(r);
+                    dug_by = dug_by.max(*t);
+                } else {
+                    e.0.push(r);
+                    if r < 3.0 {
+                        rod_by = rod_by.min(*t);
+                    }
+                }
             }
         }
-        let end = Wave::new().at(f64::from(RD_READ));
-        let (mut last, mut least, mut done) = (0.0f64, f64::MAX, 0.0f32);
+        let end = wave.at(f64::from(RD_READ));
+        let (mut last, mut carved) = (0.0f64, 0.0f64);
         for (k, (mut ro, mut ri)) in by {
             let t = k as f32 * 0.05;
             if !ro.is_empty() {
                 ro.sort_by(f64::total_cmp);
                 let m = ro[ro.len() / 2];
                 if t < end {
-                    assert!(m >= last - out, "{what}: tick {k}: {m:.0} after {last:.0}");
+                    assert!(m >= last - out, "{what}: tick {k}: the lining at {m:.0} after {last:.0}");
                 }
                 last = last.max(m);
             }
             if !ri.is_empty() {
                 ri.sort_by(f64::total_cmp);
                 let m = ri[ri.len() / 2];
-                assert!(m <= least + inw, "{what}: tick {k}: the crater at {m:.0} after {least:.0}");
-                least = least.min(m);
-                if ri[0] < 3.0 {
-                    done = done.max(t);
-                }
+                assert!(m >= carved - inw, "{what}: tick {k}: the carve at {m:.0} after {carved:.0}");
+                carved = carved.max(m);
             }
         }
         // (none at all where there is no ground to dig, as over the deep sea)
-        assert!(least == f64::MAX || least < 12.0 && done > RD_HIT && done < RD_HIT + 2.5, "{what}: the crater in to {least:.0} by {done:.2}");
+        assert!(dug_least == f64::MAX || dug_least < 12.0 && dug_to > 55.0 && dug_by > RD_HIT && dug_by <= RD_HIT + 1.0, "{what}: the crater dug from {dug_least:.0} to {dug_to:.0} by {dug_by:.2}");
+        assert!(dug_least == f64::MAX || rod_by > dug_by && rod_by < RD_HIT + 1.5, "{what}: the rod lined at {rod_by:.2}, the pit dug by {dug_by:.2}");
         last
     }
 
@@ -2585,10 +2740,13 @@ mod tests {
         // and they are not killed in the air as the land round it is cleared of what lives there
         assert!(cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block")));
     }
-    /// `RD_CAVE_OUT=path cargo test --release rd_cave_order -- --ignored --nocapture`: the crater caving in, as the mod
-    /// plays it: a tenth of a second at a time, how far out what goes in lies in the crater (its nearest, middle and
-    /// farthest) and how many chunks; and with RD_CAVE_OUT, a line `x z t` for each column out to 110 from the target,
-    /// when its first edit went in (for a top-down picture of it).
+    /// `RD_CAVE_OUT=path cargo test --release rd_cave_order -- --ignored --nocapture`: the crater dug out, then lined,
+    /// as the mod plays it: a tick at a time while either goes on in the crater (and on out to 1.6 s after the strike),
+    /// each wave's edits that tick (`dig` the carve's, `line` the lining's): how far out they lie (their nearest,
+    /// 10th, middle, 90th percentile and farthest), how many chunks and how many blocks; then the carve's duration and
+    /// chunks; and with RD_CAVE_OUT, a line `x z dug lined changed` for each column out to 110 from the target, when it
+    /// was dug out (-1: never, outside the crater), when its first block other than air went in (-1: none) and when the
+    /// lining first changed it at all (-1: never), for a top-down sheet of it.
     #[test]
     #[ignore]
     fn rd_cave_order() {
@@ -2596,29 +2754,62 @@ mod tests {
         let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
         let ev = plan(&crate::lasers::ROD, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
         let p = crate::strike::sim::play(ev, 30.0, &column);
-        let mut first: std::collections::HashMap<(i32, i32), f32> = Default::default();
-        let mut bins: std::collections::BTreeMap<i32, (Vec<f64>, std::collections::HashSet<(i32, i32)>)> = Default::default();
-        for (t, _, b) in &p.edits {
-            for u in &b.runs {
+        let wave = Wave::new();
+        let open = wave.dug() + 0.5 * RD_LINE_GAP as f32;
+        let mut dug: std::collections::HashMap<(i32, i32), f32> = Default::default();
+        let mut lined: std::collections::HashMap<(i32, i32), f32> = Default::default();
+        let mut changed: std::collections::HashMap<(i32, i32), f32> = Default::default();
+        type Bin = (Vec<f64>, std::collections::HashSet<(i32, i32)>, u64);
+        let mut bins: std::collections::BTreeMap<(i32, u8), Bin> = Default::default();
+        let mut carve_chunks = std::collections::HashSet::new();
+        let (mut c0, mut c1, mut carve_blocks) = (f32::MAX, 0.0f32, 0u64);
+        for (t, due, b) in &p.edits {
+            let carve = *due <= open;
+            for (u, f) in b.runs.iter().zip(b.as_fills()) {
                 let r = (f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0);
+                let air = f.contains("minecraft:air") && u.only.is_none();
                 if r < 110.0 {
-                    let e = first.entry((u.x - 10, u.z + 3)).or_insert(*t);
-                    *e = e.min(*t);
+                    if carve && air {
+                        let e = dug.entry((u.x - 10, u.z + 3)).or_insert(*t);
+                        *e = e.min(*t);
+                    } else if !air && u.only.is_none() {
+                        let e = lined.entry((u.x - 10, u.z + 3)).or_insert(*t);
+                        *e = e.min(*t);
+                    }
+                    if !carve {
+                        let e = changed.entry((u.x - 10, u.z + 3)).or_insert(*t);
+                        *e = e.min(*t);
+                    }
                 }
-                if r < RD_CAVE as f64 - 2.0 {
-                    let e = bins.entry((t / 0.1) as i32).or_default();
+                if carve {
+                    carve_chunks.insert((u.x >> 4, u.z >> 4));
+                    c0 = c0.min(*t);
+                    c1 = c1.max(*t);
+                    carve_blocks += u64::from(u.height);
+                }
+                if r < RD_CAVE as f64 || *t < RD_HIT + 1.6 {
+                    let e = bins.entry(((t / 0.05).round() as i32, u8::from(!carve))).or_default();
                     e.0.push(r);
                     e.1.insert((u.x >> 4, u.z >> 4));
+                    e.2 += u64::from(u.height);
                 }
             }
         }
-        for (k, (mut rs, ch)) in bins {
+        println!("  time  wave   r: least [ 10th middle  90th] most  chunks   blocks");
+        for ((k, ph), (mut rs, ch, n)) in bins {
             rs.sort_by(f64::total_cmp);
             let pc = |f: f64| rs[((rs.len() - 1) as f64 * f) as usize];
-            println!("{:5.1} s: crater r {:4.0} [{:4.0} {:4.0} {:4.0}] {:4.0}, {:3} chunks, {:6} runs", k as f32 * 0.1, pc(0.0), pc(0.1), pc(0.5), pc(0.9), pc(1.0), ch.len(), rs.len());
+            println!("{:6.2} s {}: {:4.0} [{:4.0} {:5.0} {:5.0}] {:4.0} {:6} {:8}", k as f32 * 0.05, if ph == 0 { "dig " } else { "line" }, pc(0.0), pc(0.1), pc(0.5), pc(0.9), pc(1.0), ch.len(), n);
         }
+        println!("the carve: {c0:.2} to {c1:.2} s ({:.2} s, done {:.2} s after the strike), {} chunks, {carve_blocks} blocks", c1 - c0, c1 - RD_HIT, carve_chunks.len());
+        let rod = lined.iter().filter(|(k, _)| k.0 * k.0 + k.1 * k.1 <= RD_ROD_R2).map(|(_, t)| *t).fold(0.0f32, f32::max);
+        println!("the rod's columns all lined by {rod:.2} s ({:.2} after the strike); the lining begins {:.2}", rod - RD_HIT, wave.at(0.0));
         if let Ok(path) = std::env::var("RD_CAVE_OUT") {
-            let text: String = first.iter().map(|((x, z), t)| format!("{x} {z} {t:.3}\n")).collect();
+            let mut keys: Vec<(i32, i32)> = dug.keys().chain(changed.keys()).copied().collect();
+            keys.sort_unstable();
+            keys.dedup();
+            let get = |m: &std::collections::HashMap<(i32, i32), f32>, k| m.get(k).copied().unwrap_or(-1.0);
+            let text: String = keys.iter().map(|k| format!("{} {} {:.3} {:.3} {:.3}\n", k.0, k.1, get(&dug, k), get(&lined, k), get(&changed, k))).collect();
             std::fs::write(path, text).unwrap();
         }
     }
@@ -2747,9 +2938,12 @@ mod wave_t {
     #[ignore]
     fn rd_wave_times() {
         let w = super::Wave::new();
-        for r in [0.0, 25.0, 50.0, 75.0, 100.0, 140.0, 180.0, 230.0, 300.0, 380.0, 480.0] {
+        println!("the pit dug by {:.2} s after the burst", w.dug() - super::RD_HIT);
+        for r in [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 71.0, 75.0, 100.0, 140.0, 180.0, 230.0, 300.0, 380.0, 480.0] {
             let shock = ((r * r + super::RD_BURST * super::RD_BURST) as f64).sqrt() / 343.0;
-            println!("r {r:4}: {:.2} s after the burst (the shock {:.2})", w.at(r) - super::RD_HIT, shock);
+            let carve = if r < super::RD_CAVE as f64 { format!("dug {:.2}, ", w.carve_at(r) - super::RD_HIT) } else { String::new() };
+            println!("r {r:4}: {carve}lined {:.2} s after the burst (the shock {:.2})", w.at(r) - super::RD_HIT, shock);
         }
     }
+
 }
