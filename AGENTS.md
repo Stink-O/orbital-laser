@@ -107,7 +107,9 @@ laser, command, capability and timing). This file is the short, factual version 
   `world.surface-height` and `render.set-data`; older builds won't start the mod): a Linux x86-64 download on the
   fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
-- **Tested on Linux only.** On Windows and macOS keep fixes small and tell the user what you changed.
+- **Tested on Linux only** (a user reports Windows 11 working, the fork built from source with `--features mods`; on
+  macOS the Downfall's pass crashes Metal's compiler). On Windows and macOS keep fixes small and tell the user what you
+  changed.
 - Run `install.py` with the game closed. Don't touch the user's saves or settings beyond what it does.
 
 ## Commands

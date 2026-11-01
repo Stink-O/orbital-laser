@@ -46,8 +46,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > repository or the downloads.
 
 > [!WARNING]
-> **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
-> and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
+> **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
+> a user (the fork built from source); on macOS the Downfall crashes the game (see [Known gaps](#known-gaps)). The
+> ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
 **Contents:** [New in 0.5.7](#new-in-057) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
@@ -179,6 +180,17 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Sup
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
    and unpack it to `~/horizon-orbital`.
 
+   **On Windows and macOS**, build it from source instead: branch `mod-api-input-ui-render-world` of
+   [Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), with the mod runtime
+   switched on:
+
+   ```sh
+   cargo build --release -p horizon-client --features mods
+   ```
+
+   Without `--features mods` the mod only half-loads: its items are there, but `/orbital` is an unknown command, and
+   the game's log says `1 mod(s) not started: this build has no mod runtime (build with --features mods)`.
+
    It needs Horizon's prepared resources, made once from your own Minecraft 26.3 (Horizon's
    [PLAY.txt](https://github.com/ludovic111/horizon) explains the server jar and Java 25):
 
@@ -191,6 +203,12 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Sup
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
+   If `horizon-prepare --prepare` says your `26.3.json` is *a 26.3 version file Horizon does not know yet*, your copy
+   is fine: Mojang republished it, and the fork's `research-lock.json` doesn't list the new hashes yet. Until the next
+   fork release has them, copy [upstream Horizon's `research-lock.json`](https://github.com/ludovic111/horizon/blob/main/research-lock.json)
+   over the one at the top of the fork's folder (it's read as `horizon-prepare` runs: nothing to rebuild) and run it
+   again.
+
 2. **Install the mod.** Download `orbital-laser-v0.5.7.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
@@ -201,7 +219,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Sup
    It copies the mod into Horizon's game folder (`~/.local/share/horizon/horizon-mods/orbital`, or `$HORIZON_HOME`) and
    switches it on. If 0.1's shader pack and sound pack are installed, it takes them out.
 
-3. **Play.** From the same folder:
+3. **Play.** From the same folder, in a terminal:
 
    ```sh
    ./play.sh                 # a creative test world called OrbitalTest
@@ -209,6 +227,9 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Sup
    ```
 
    It starts the Orbital Laser build on your normal game folder, so your worlds, settings and mods are all there.
+   Always start the game this way: Horizon's own launcher, or a stock `horizon-client`, can't run the mod. If
+   `play.sh` can't find the build it says what's missing (started without a terminal, it also writes that to
+   `play-error.txt` beside it).
 
 4. **In the game,** type `/orbital give` for the Designator and the Remote.
 
@@ -316,11 +337,17 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 
 ## If something goes wrong
 
-- **No wheel, no `/orbital` command, or the items do nothing.** You're running stock Horizon or an older fork build.
-  Start the game with `./play.sh` on `orbital-mod-api-8` or newer. On **Options → Mods**, Orbital Laser's row says why
-  if it stopped.
-- **`play.sh` can't find the build or the resources.** Set `HORIZON_ORBITAL` to the folder with the build's
-  `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the prepared resources.
+- **Options → Mods says `orbital — Can't be read: horizon-mod.toml: capability world is for server mods`.** That's
+  stock Horizon, not the Orbital Laser build: the mod is installed fine, but stock Horizon can't run it. Quit, and
+  start the game with `./play.sh` from a terminal (it finds the build in `~/horizon-orbital`, or tells you how to get
+  it).
+- **No wheel, no `/orbital` command, or the items do nothing.** You're running stock Horizon, an older fork build, or
+  one built without `--features mods` (the log says *this build has no mod runtime*). Start the game with `./play.sh`
+  on `orbital-mod-api-8` or newer. On **Options → Mods**, Orbital Laser's row says why if it stopped.
+- **`play.sh` can't find the build or the resources, or says the build isn't the Orbital Laser one.** Set
+  `HORIZON_ORBITAL` to the folder with the build's `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the
+  prepared resources. Double-clicking `play.sh` in a file manager may show nothing: run it from a terminal to see its
+  messages (or read `play-error.txt` beside it).
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
@@ -332,7 +359,15 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 ## Known gaps
 
 - **It needs a Horizon fork** until Horizon adds these capabilities upstream. The ready-built fork is Linux x86-64 only.
-- **Linux only so far.** Windows and macOS are untested.
+- **Tested on Linux.** Reported working on Windows 11 by a user (the fork built from source, `--features mods`).
+- **macOS (Apple Silicon): the Downfall crashes the game.** Apple's Metal shader compiler fails on its effects
+  (`XPC_ERROR_CONNECTION_INTERRUPTED` in `Device::create_render_pipeline`), and the Nuke's can when it's the laser
+  loaded as the game starts. The other lasers work. The fork's next release (`orbital-mod-api-9`) stops the crash: a
+  pass the driver can't build is skipped and tried again later, so on those Macs the Downfall's strike may run without
+  its visuals (the mod still needs only `orbital-mod-api-8`). Since 0.5.7 the mod builds a laser's effects only once
+  you're playing, and if the game closed while it built them, the next start loads the Plasma instead and says so in
+  chat. On 0.5.6 or older, if the game crashes every time it starts, set `laser=plasma` in
+  `horizon-mods/.horizon-mod-data/orbital/settings` in the game folder (or delete that file).
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.

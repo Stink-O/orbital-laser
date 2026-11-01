@@ -431,9 +431,9 @@ pub const NUKE: Laser = Laser {
     particle_b: "particle minecraft:campfire_signal_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
 };
 
-/// The Rod from God, planned in `strike::rod_plan` (strike/rod.rs): a tungsten rod dropped from orbit, kinetic, no
-/// explosive. A thin white-hot streak tears straight down out of the sky in silence, then one enormous impact: a sharp
-/// flash, a shockwave, a fountain of rock round a column of dust, a deep punch of a crater. The crater fields below are
+/// The Rod from God, planned in `strike::rod_plan` (strike/rod.rs): a radiant golden rod falling plumb from above like
+/// a star, kinetic, no explosive; stark impact frames as it strikes, a shockwave, a fountain of rock round a column of
+/// dust, and the rod left standing in a hallowed crater. The crater fields below are
 /// only what the shared tests read: its crater, rim, felled trees and rubble are planned there.
 pub const ROD: Laser = Laser {
     key: "rod",
@@ -441,7 +441,7 @@ pub const ROD: Laser = Laser {
     title: "ROD FROM GOD",
     color: "white",
     rgb: 0xDDE6F0,
-    blurb: "A tungsten rod dropped from orbit. Silence, then one enormous impact.",
+    blurb: "A golden star falls from the sky and strikes in stark flashes. The rod is left standing.",
     icon_model: "orbital:rod_icon",
     length: 60.0,
     range: 1000.0,

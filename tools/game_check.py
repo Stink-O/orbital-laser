@@ -19,7 +19,7 @@ import time
 
 MARK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "orbital-game-check.mark"
 BAD = re.compile(
-    r"mod orbital stopped|did not start|panicked|mod orbital's \w+ used [\d.]+M of its|(WARN|ERROR)\].*orbital",
+    r"mod orbital stopped|did not start|panicked|post pass did not compile|mod orbital's \w+ used [\d.]+M of its|(WARN|ERROR)\].*orbital",
     re.IGNORECASE,
 )
 
