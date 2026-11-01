@@ -145,6 +145,9 @@ struct Strike {
     sounds: std::collections::BTreeSet<String>,
 }
 
+/// How many looks a strike's seed picks from (1 to SEEDS).
+const SEEDS: u32 = 997;
+
 /// A blast front's knockback for a player standing at `at` (`Act::Shove`): their velocity's kick, blocks a tick, away
 /// from `from` along the ground at `out` and up at `up`, as much of it as `strike::knock_share` gives (the lift a third
 /// of it at the least); none past its reach. The game adds it to the player's motion (`world.push-player`): they are
@@ -225,6 +228,7 @@ struct Settings {
     knock: bool,
     follow: bool,
     follow_distance: f64,
+    seed_lock: Option<u32>,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -286,6 +290,11 @@ struct Orbital {
     following: Option<follow::Follow>,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
+    /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
+    /// crater every time from the same spot, for repeat takes. None, a fresh seed every strike (the default).
+    seed_lock: Option<u32>,
+    /// The last strike's seed (`/orbital seed lock` keeps it).
+    last_seed: u32,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
@@ -320,7 +329,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance } = settings;
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
             compiled: None,
@@ -353,6 +362,8 @@ impl Orbital {
             follow,
             following: None,
             follow_distance,
+            seed_lock,
+            last_seed: 1,
             aiming: None,
             skip: 0.0,
             shadow_off: false,
@@ -367,7 +378,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\nfollowdistance={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -382,7 +393,8 @@ impl Orbital {
             if self.impact { "on" } else { "off" },
             if self.knock { "on" } else { "off" },
             if self.follow { "on" } else { "off" },
-            self.follow_distance
+            self.follow_distance,
+            self.seed_lock.map_or("random".to_string(), |s| s.to_string())
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -413,6 +425,7 @@ impl Orbital {
         let mut knock = true;
         let mut follow = false;
         let mut follow_distance = follow::DISTANCE;
+        let mut seed_lock = None;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -434,6 +447,7 @@ impl Orbital {
                 Some(("followdistance", v)) => {
                     follow_distance = v.parse::<f64>().ok().filter(|d| d.is_finite()).map_or(follow::DISTANCE, |d| d.clamp(follow::DISTANCE_MIN, follow::DISTANCE_MAX));
                 }
+                Some(("seed", v)) => seed_lock = v.parse::<u32>().ok().filter(|s| (1..=SEEDS).contains(s)),
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -442,7 +456,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -497,7 +511,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow, self.seed_lock));
         }
     }
     fn open_wheel(&mut self) {
@@ -635,6 +649,12 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.follow { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
+            Some(wheel::Spot::Seed) => {
+                self.seed_lock = if self.seed_lock.is_some() { None } else { Some(self.last_seed) };
+                self.save();
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.seed_lock.is_some() { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
             Some(wheel::Spot::Hud) => {
                 self.hud = !self.hud;
                 self.save();
@@ -730,7 +750,10 @@ impl Orbital {
         let me = player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]);
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
-        let seed = (clock % 997 + 1) as f32; // a fresh look every strike
+        // a fresh look every strike, unless one is held (`/orbital seed`)
+        let seed = self.seed_lock.unwrap_or((clock % u64::from(SEEDS)) as u32 + 1);
+        self.last_seed = seed;
+        let seed = seed as f32;
         ground::clear();
         columns::clear();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
@@ -1294,6 +1317,28 @@ impl Mod for Orbital {
                 self.set_impact(v == "on");
                 Ok(Some(format!("Impact frames {v} (the Rod from God's stark flash frames as it strikes)")))
             }
+            (Some("seed"), Some("random")) => {
+                self.seed_lock = None;
+                self.save();
+                Ok(Some("Seed: random (a fresh look every strike)".to_string()))
+            }
+            (Some("seed"), Some("lock")) => {
+                self.seed_lock = Some(self.last_seed);
+                self.save();
+                Ok(Some(format!("Seed: held at {} (the last strike's look, every strike; /orbital seed random to free it)", self.last_seed)))
+            }
+            (Some("seed"), Some(v)) => match v.parse::<u32>() {
+                Ok(n) if (1..=SEEDS).contains(&n) => {
+                    self.seed_lock = Some(n);
+                    self.save();
+                    Ok(Some(format!("Seed: held at {n} (the same look every strike; /orbital seed random to free it)")))
+                }
+                _ => Err(format!("/orbital seed 1-{SEEDS} | lock | random")),
+            },
+            (Some("seed"), None) => Ok(Some(match self.seed_lock {
+                Some(n) => format!("Seed: held at {n} (/orbital seed random | lock | N)"),
+                None => format!("Seed: random, the last strike's was {} (/orbital seed lock to keep it)", self.last_seed),
+            })),
             (Some("knockback"), Some(v @ ("on" | "off"))) => {
                 self.knock = v == "on";
                 self.save();
@@ -1359,7 +1404,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | impactframes on|off | knockback on|off | follow on|off|distance N | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | impactframes on|off | knockback on|off | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -1873,6 +1918,9 @@ mod stress {
         let kept = Orbital::parse("knockback=off\nfollow=on\nfollowdistance=90\n");
         assert!(!kept.knock && kept.follow && kept.follow_distance == 90.0);
         let plain = Orbital::parse("followdistance=nonsense");
+        assert_eq!(Orbital::parse("seed=412").seed_lock, Some(412));
+        assert_eq!(Orbital::parse("seed=random").seed_lock, None);
+        assert_eq!(Orbital::parse("seed=5000").seed_lock, None);
         assert!(plain.knock && !plain.follow && plain.follow_distance == follow::DISTANCE);
         let nuke = LASERS.iter().position(|l| l.key == "nuke").expect("the nuke");
         for on in [true, false] {
