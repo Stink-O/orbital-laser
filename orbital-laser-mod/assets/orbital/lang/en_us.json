@@ -21,10 +21,11 @@
   "subtitles.orbital.nuke.shockwave": "Shockwave roars past",
   "subtitles.orbital.nuke.rumble": "Blast rumbles",
   "subtitles.orbital.nuke.debris": "Debris rains down",
-  "subtitles.orbital.rod.hiss": "Rod hisses down",
+  "subtitles.orbital.rod.hiss": "Rod sings down from orbit",
   "subtitles.orbital.rod.ground": "Ground jolts",
   "subtitles.orbital.rod.blast": "Kinetic impact",
   "subtitles.orbital.rod.blast_far": "Distant impact",
   "subtitles.orbital.rod.rumble": "Impact rumbles",
-  "subtitles.orbital.rod.debris": "Debris rains down"
+  "subtitles.orbital.rod.debris": "Debris rains down",
+  "subtitles.orbital.rod.hum": "Rod hums as it cools"
 }

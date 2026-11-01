@@ -1150,5 +1150,14 @@
       }
     ],
     "subtitle": "subtitles.orbital.rod.debris"
+  },
+  "rod.hum": {
+    "sounds": [
+      {
+        "name": "orbital:rod/hum",
+        "attenuation_distance": 160
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.hum"
   }
 }
