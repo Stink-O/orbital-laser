@@ -94,7 +94,7 @@ fn sc_form(t: f32) -> f32 {
     return smoothstep(0.0, SC_FORMED, t);
 }
 fn sc_fade(t: f32) -> f32 {
-    return 1.0 - smoothstep(SC_CLEAR, SC_LEN - 3.0, t);
+    return 1.0 - smoothstep(SC_CLEAR, SC_LEN - 1.0, t);
 }
 // How far out the deck reaches, and the anvil.
 fn sc_deck_r(t: f32) -> f32 {
@@ -129,7 +129,8 @@ fn sc_shape(q: vec3<f32>, t: f32) -> f32 {
     let ar = sc_anvil_r(t);
     let sag = 18.0 * (1.0 - smoothstep(0.0, ar, ra));
     let anv = min(min(q.y - (SC_ANV0 + 12.0 * smoothstep(0.3, 1.0, ra / ar) - sag), SC_ANV1 - 14.0 * smoothstep(0.4, 1.0, ra / ar) - q.y) / 12.0, (ar - ra) / 60.0) - 3.0 * (1.0 - smoothstep(5.0, 8.0, t));
-    return max(deck, anv) - 1.8 * (1.0 - smoothstep(0.0, 4.0, t));
+    // (and as it dies away it is eaten away from its edges in, thinning to nothing, not just fading)
+    return max(deck, anv) - 1.8 * (1.0 - smoothstep(0.0, 4.0, t)) - 9.0 * pow(1.0 - sc_fade(t), 1.3);
 }
 // The cloud's density at q (0 to 1), its lumps turning with the storm (faster in close, where the wall cloud turns),
 // boiling up the tower; and in .y how far up its lumps lie (0 in a crease, 1 on a crown).
@@ -315,7 +316,7 @@ fn vx_den(f: VxFunnel, p: vec3<f32>, t: f32) -> vec2<f32> {
     let vis = smoothstep(f.low - 0.04, f.low + 0.04, s) * step(p.y, f.top.y + 4.0);
     var fun = smoothstep(rs, rs * 0.45, d) * (0.55 + 0.45 * bands) * vis;
     // (the cone it hangs from, merging into the cloud's base)
-    fun = max(fun, smoothstep(0.75, 1.0, s) * smoothstep(rs * 1.3, rs * 0.5, d) * 0.7);
+    fun = max(fun, smoothstep(0.75, 1.0, s) * smoothstep(rs * 1.3, rs * 0.5, d) * 0.35 * vis);
     // (the dust and debris whirled round its foot while it touches: a squat, ragged, turning cloud)
     var dust = 0.0;
     let hy = p.y - f.foot.y;
@@ -416,7 +417,7 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
                 let top = mix(SC_TOP, SC_TOWER, tower);
                 let h01 = saturate((q.y - base) / max(top - base, 1.0));
                 // (lit from above: deep in it, and its underside, dark; a look towards the sun for its own lumps)
-                var sun_t = exp(-max(top - q.y, 0.0) * 0.022);
+                var sun_t = exp(-min(max(top - q.y, 0.0), 110.0) * 0.022);
                 if (fine) {
                     let q2 = q + L * 16.0;
                     sun_t = sun_t * exp(-saturate(sc_shape(q2, time) + 0.5) * 1.4);
@@ -427,8 +428,8 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
                 let alb = mix(mix(vec3<f32>(0.1, 0.14, 0.11), vec3<f32>(0.3, 0.33, 0.31), smoothstep(0.0, 0.35, h01)), vec3<f32>(0.6, 0.61, 0.63), smoothstep(0.35, 1.0, h01)) * (0.85 + 0.3 * dn.y);
                 let e = sc_flash_at(fl, p);
                 let ambg = mix(amb, vec3<f32>(dot(amb, vec3<f32>(0.2126, 0.7152, 0.0722))), 0.65);
-                let c = alb * (ambg * (0.3 + 0.7 * h01) + sunc * sun_t * 0.85 * ph) + fc * e * (0.5 + 0.5 * alb);
-                let ext = dn.x * 0.07 * dt;
+                let c = alb * (ambg * (0.45 + 0.55 * h01) * (2.0 - fade) + sunc * mix(0.6, sun_t, fade) * 0.85 * ph) + fc * e * (0.5 + 0.5 * alb);
+                let ext = dn.x * 0.07 * dt * (0.35 + 0.65 * fade);
                 let al = 1.0 - exp(-ext);
                 sc_over(&acc, c, al);
                 tmid = tmid + acc.a * al * t;
@@ -513,12 +514,14 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
             for (var i = 0; i < nn; i = i + 1) {
                 let t = ft0 + (f32(i) + j) * fdt;
                 let p = rd * t;
-                let dd = vx_den(f, p, time);
+                // (only under the cloud's base: inside it the cloud hides it, and its cone merges into the base)
+                let qb = p - C;
+                let dd = vx_den(f, p, time) * smoothstep(sc_base(length(qb.xz)) - 1.0, sc_base(length(qb.xz)) - 18.0, qb.y);
                 let den = dd.x + dd.y;
                 if (den > 0.002) {
                     let e = sc_flash_at(fl, p);
                     let s01 = saturate((p.y - f.foot.y) / max(f.top.y - f.foot.y, 1.0));
-                    let fcol = mix(vec3<f32>(0.13, 0.15, 0.15), vec3<f32>(0.3, 0.32, 0.33), s01);
+                    let fcol = mix(vec3<f32>(0.13, 0.15, 0.15), vec3<f32>(0.24, 0.26, 0.27), s01) * (1.0 - 0.45 * smoothstep(0.6, 1.0, s01));
                     let dcol = vec3<f32>(0.34, 0.28, 0.21);
                     let alb = (fcol * dd.x + dcol * dd.y) / den;
                     let c = alb * (amb * 1.1 + sunc * 0.12) + fc * e * 0.5 * alb;
@@ -657,7 +660,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     var fin = 0.0;
     if (tf > 0.0 && tf < 1.6) {
         fin = exp(-tf / 0.09) + 0.8 * exp(-max(tf - 0.12, 0.0) / 0.07) * step(0.12, tf) + 0.7 * exp(-max(tf - 0.3, 0.0) / 0.08) * step(0.3, tf) + 0.5 * exp(-max(tf - 0.55, 0.0) / 0.1) * step(0.55, tf) + 0.15 * exp(-tf / 0.6);
-        fl.p[0] = vec4<f32>(C + vec3<f32>(0.0, SC_WALL + 20.0, 0.0), fin * 5.0);
+        fl.p[0] = vec4<f32>(C + vec3<f32>(0.0, SC_WALL + 14.0, 0.0), fin * 2.2);
         if (stage != 1u && !sky) {
             let dl = length(rel - C);
             gflash = gflash + vec3<f32>(0.85, 0.88, 1.1) * fin * 14.0 / (1.0 + dl * dl / 900.0);
@@ -730,8 +733,10 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             for (var i = 0u; i < 5u; i = i + 1u) {
                 let a = TAU * f32(i) / 5.0 + f32(seed % 7u);
                 let foot = C + vec3<f32>(cos(a) * 2.0, 0.0, sin(a) * 2.0);
-                let root = C + vec3<f32>(cos(a * 1.7) * 14.0, SC_WALL + 6.0, sin(a * 1.3) * 14.0);
-                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), select(1.7, 3.6, i == 0u), saturate(tf / 0.03), scene_len);
+                // (one thick channel straight down, four thinner ones from further round the wall cloud joining it)
+                let rr = select(34.0, 0.0, i == 0u);
+                let root = C + vec3<f32>(cos(a) * rr, SC_WALL + 6.0, sin(a) * rr);
+                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), select(1.3, 4.0, i == 0u), saturate(tf / 0.03), scene_len);
                 core = core + m.x * fin;
                 glow = glow + m.y * fin;
             }
