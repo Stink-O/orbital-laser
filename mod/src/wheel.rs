@@ -58,9 +58,14 @@ const STOP: Rect = Rect { x: -MSG.x - MSG.w, y: MSG.y, w: MSG.w, h: MSG.h * 2.0 
 /// and the follow camera's under it (the camera chasing the Nuke's or the Payload's bomb down, `/orbital follow`).
 const KNOCK: Rect = Rect { x: STOP.x, y: QUALITY.y, w: MSG.w, h: MSG.h };
 const FOLLOW: Rect = Rect { x: STOP.x, y: IMPACT.y, w: MSG.w, h: MSG.h };
-/// The seed's switch under the follow camera's: a strike's look held (the same trail and cloud every time) or a fresh
-/// one each strike (`/orbital seed`).
+/// The seed's row under the follow camera's switch: its field (the seed a strike's look comes from: the one held, or
+/// the last strike's; a click types another, Enter sets it), and under it the lock's switch (on, every strike uses the
+/// field's seed: the same trail and cloud every time; off, a fresh one each strike), `/orbital seed`.
 const SEED: Rect = Rect { x: STOP.x, y: IMPACT.y + IMPACT.h + 2.0, w: MSG.w, h: MSG.h };
+const SEED_FIELD: Rect = Rect { x: SEED.x + 40.0, y: SEED.y, w: SEED.w - 40.0, h: SEED.h };
+const LOCK: Rect = Rect { x: STOP.x, y: SEED.y + SEED.h + 2.0, w: MSG.w, h: MSG.h };
+/// Characters the seed's field holds (seeds run 1 to 997).
+const SEED_CHARS: usize = 3;
 /// The impact frames' row's buttons, as the blast sound's.
 const IMPACT_FX: [&str; 2] = ["ON", "OFF"];
 /// The flying speed's row over the title: the bar (a click along it sets the speed) and the field a speed is typed in.
@@ -88,8 +93,9 @@ pub enum Spot {
     /// The knockback's switch, and the follow camera's.
     Knock,
     Follow,
-    /// The seed's switch: held or random.
-    Seed,
+    /// The seed's field, and its lock's switch.
+    SeedField,
+    SeedLock,
     /// Stopping the strike under way.
     Stop,
     /// One of the ship's approaches (strike::APPROACHES), or ways of arriving (strike::ARRIVALS).
@@ -167,6 +173,8 @@ pub struct Wheel {
     /// The flying speed shown, in times vanilla's, and what has been typed in its field while it has the keyboard.
     pub fly: f32,
     pub typing: Option<String>,
+    /// The keyboard is the seed's field's (rather than the speed's) while typing.
+    pub seed_typing: bool,
     /// The speed a click on the bar would give, while the cursor is on it.
     bar_hover: Option<f32>,
     /// A strike is under way: the stop button shows.
@@ -243,6 +251,14 @@ pub fn speed_label(m: f32) -> String {
     let s = format!("{m:.2}");
     format!("{}x", s.trim_end_matches('0').trim_end_matches('.'))
 }
+/// What typing adds to the seed's field: digits, up to its length.
+pub fn type_seed(field: &mut String, text: &str) {
+    for c in text.chars() {
+        if c.is_ascii_digit() && field.len() < SEED_CHARS {
+            field.push(c);
+        }
+    }
+}
 /// What typing adds to the field: digits and a point, up to its length.
 pub fn type_into(field: &mut String, text: &str) {
     for c in text.chars() {
@@ -298,8 +314,11 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
     if inside(&FOLLOW, x, y) {
         return Some(Spot::Follow);
     }
-    if inside(&SEED, x, y) {
-        return Some(Spot::Seed);
+    if inside(&SEED_FIELD, x, y) {
+        return Some(Spot::SeedField);
+    }
+    if inside(&LOCK, x, y) {
+        return Some(Spot::SeedLock);
     }
     if inside(&STOP, x, y) {
         return Some(Spot::Stop);
@@ -408,7 +427,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: bool, knock: bool, follow: bool, seed: Option<u32>, last: Option<u32>) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: bool, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -468,13 +487,25 @@ impl Wheel {
             text(&mut out, label, b.x + 31.0, b.y + 2.0, 0xB8BEC8);
             text(&mut out, if on { "ON" } else { "OFF" }, b.x + 71.0, b.y + 2.0, if on { 0x7CE884 } else { 0xF06A64 });
         }
-        // and the seed: held (its number) or random
-        let hovered = self.hover == Some(Spot::Seed);
-        out.push(Draw::Fill((SEED, if hovered { 0xF0262A31 } else { 0xD0101318 })));
-        out.push(Draw::Fill((Rect { x: SEED.x, y: SEED.y + SEED.h - 1.5, w: SEED.w, h: 1.5 }, if seed.is_some() { 0xFFE8B04A } else { 0xFF62D46A })));
+        // and the seed: its field (lit while it has the keyboard), the lock's switch under it
+        let typing = self.typing.as_deref().filter(|_| self.seed_typing);
+        out.push(Draw::Fill((SEED, 0xD0101318)));
         text(&mut out, "SEED", SEED.x + 20.0, SEED.y + 2.0, 0xB8BEC8);
-        let held = seed.map(|n| n.to_string());
-        text(&mut out, held.as_deref().unwrap_or("RANDOM"), SEED.x + 58.0, SEED.y + 2.0, if seed.is_some() { 0xF0C060 } else { 0x7CE884 });
+        let body = if typing.is_some() { 0xF0262A31 } else if self.hover == Some(Spot::SeedField) { 0xF0202429 } else { 0xE0101318 };
+        out.push(Draw::Fill((SEED_FIELD, body)));
+        let rim = if typing.is_some() { 0xFFFFFFFF } else if locked { 0xFFE8B04A } else { 0xC06FC8FF };
+        out.push(Draw::Fill((Rect { x: SEED_FIELD.x, y: SEED_FIELD.y + SEED_FIELD.h - 1.5, w: SEED_FIELD.w, h: 1.5 }, rim)));
+        let (shown, colour) = match (typing, seed) {
+            (Some(t), _) => (format!("{t}_"), 0xFFFFFF),
+            (None, Some(n)) => (n.to_string(), if locked { 0xF0C060 } else { 0x6FC8FF }),
+            (None, None) => ("-".to_string(), 0x7C8594),
+        };
+        text(&mut out, &shown, SEED_FIELD.x + SEED_FIELD.w / 2.0, SEED_FIELD.y + 2.0, colour);
+        let hovered = self.hover == Some(Spot::SeedLock);
+        out.push(Draw::Fill((LOCK, if hovered { 0xF0262A31 } else { 0xD0101318 })));
+        out.push(Draw::Fill((Rect { x: LOCK.x, y: LOCK.y + LOCK.h - 1.5, w: LOCK.w, h: 1.5 }, if locked { 0xFFE8B04A } else { 0xFF62D46A })));
+        text(&mut out, "LOCK SEED", LOCK.x + 31.0, LOCK.y + 2.0, 0xB8BEC8);
+        text(&mut out, if locked { "ON" } else { "OFF" }, LOCK.x + 71.0, LOCK.y + 2.0, if locked { 0xF0C060 } else { 0x7CE884 });
         // stopping the strike under way
         if self.striking {
             let hovered = self.hover == Some(Spot::Stop);
@@ -559,6 +590,7 @@ impl Wheel {
         // few words what a click does
         let (info, rgb) = match self.hover {
             Some(Spot::Laser(i)) => (LASERS[i].title.to_string(), LASERS[i].rgb),
+            _ if self.typing.is_some() && self.seed_typing => ("Type a seed, 1 to 997  ·  Enter to set it".to_string(), 0x8C93A0),
             _ if self.typing.is_some() => ("Type a speed  ·  Enter to set it".to_string(), 0x8C93A0),
             Some(Spot::FlyBar) => (format!("Fly at {}", speed_label(self.bar_hover.unwrap_or(self.fly))), 0x8C93A0),
             Some(Spot::FlyField) => ("Click to type a speed, up to 1000x".to_string(), 0x8C93A0),
@@ -570,14 +602,12 @@ impl Wheel {
             Some(Spot::Impact(_)) => ("Impact frames off: no flashes as the Rod strikes".to_string(), 0x8C93A0),
             Some(Spot::Knock) => ("The Nuke's and the Rod's push on you on or off".to_string(), 0x8C93A0),
             Some(Spot::Follow) => ("Camera chases the Nuke's or Payload's bomb down".to_string(), 0x8C93A0),
-            Some(Spot::Seed) => (
-                match (seed, last) {
-                    (Some(n), _) => format!("Seed {n} held: the same look every strike. Click for random"),
-                    (None, Some(n)) => format!("Random. Click to hold the last strike's look, seed {n}"),
-                    (None, None) => "Random: a fresh look every strike. Fire one, then click to hold it".to_string(),
-                },
+            Some(Spot::SeedField) => (
+                if locked { "Click to type a seed, 1 to 997: every strike looks the same" } else { "The last strike's seed. Click to type another, then lock it" }.to_string(),
                 0x8C93A0,
             ),
+            Some(Spot::SeedLock) if locked => ("Lock on: every strike uses the seed above. Click for random".to_string(), 0x8C93A0),
+            Some(Spot::SeedLock) => ("Lock the seed above: the same trail and cloud every strike".to_string(), 0x8C93A0),
             Some(Spot::Stop) => ("End the strike now: its effects, sounds and world changes".to_string(), 0x8C93A0),
             Some(Spot::Approach(k)) => (format!("Comes in {}", APPROACHES[k].label), 0x8C93A0),
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),
@@ -618,7 +648,7 @@ impl Wheel {
         }
         out.push(Draw::Fill((Rect { x: at - 2.0, y: BAR.y, w: 4.0, h: BAR.h }, 0xFFFFFFFF)));
         // the field: lit while it has the keyboard
-        let typing = self.typing.as_deref();
+        let typing = self.typing.as_deref().filter(|_| !self.seed_typing);
         let body = if typing.is_some() { 0xF0262A31 } else if self.hover == Some(Spot::FlyField) { 0xF0202429 } else { 0xE0101318 };
         out.push(Draw::Fill((FIELD, body)));
         let rim = if typing.is_some() { 0xFFFFFFFF } else { argb(0xC0, ACCENT) };
@@ -707,7 +737,8 @@ mod tests {
             assert_eq!(spot(QUALITY.x + QUALITY.w / 2.0, QUALITY.y + QUALITY.h / 2.0, true, page), Some(Spot::Quality));
             assert_eq!(spot(KNOCK.x + KNOCK.w / 2.0, KNOCK.y + KNOCK.h / 2.0, true, page), Some(Spot::Knock));
             assert_eq!(spot(FOLLOW.x + FOLLOW.w / 2.0, FOLLOW.y + FOLLOW.h / 2.0, true, page), Some(Spot::Follow));
-            assert_eq!(spot(SEED.x + SEED.w / 2.0, SEED.y + SEED.h / 2.0, true, page), Some(Spot::Seed));
+            assert_eq!(spot(SEED_FIELD.x + SEED_FIELD.w / 2.0, SEED.y + SEED.h / 2.0, true, page), Some(Spot::SeedField));
+            assert_eq!(spot(LOCK.x + LOCK.w / 2.0, LOCK.y + LOCK.h / 2.0, true, page), Some(Spot::SeedLock));
         }
         let corner = (MSG.x * MSG.x + (MSG.y + MSG.h) * (MSG.y + MSG.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
@@ -877,7 +908,7 @@ mod tests {
             assert_eq!(w.hover, Some(Spot::Sound(1)));
             assert_eq!(w.rows(other), Rows::Sound);
             // (its own hint under the ring)
-            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, true, true, false, None, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
+            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, true, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
             assert!(hint, "{key}");
             // (and where a ship's buttons would be, nothing of theirs)
             let b = button(1, 0);
@@ -887,7 +918,7 @@ mod tests {
             assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Sound);
             let lit = |alt: [bool; 2]| -> Vec<u32> {
                 Wheel::on_page(0, 1.0)
-                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, true, true, false, None, None)
+                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, true, true, false, false, None)
                     .into_iter()
                     .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                     .collect()
@@ -903,7 +934,7 @@ mod tests {
     fn fits_the_smallest_gui() {
         // the game's GUI is at least 320 x 240 at any window size and GUI scale: everything stays inside it
         let (hw, hh) = (160.0, 120.0);
-        let mut boxes = vec![BAR, FIELD, MSG, HUD, QUALITY, STOP, KNOCK, FOLLOW, SEED, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
+        let mut boxes = vec![BAR, FIELD, MSG, HUD, QUALITY, STOP, KNOCK, FOLLOW, SEED, LOCK, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
         boxes.extend((0..pages()).map(tab));
         for (r, items) in ROWS.iter().enumerate() {
             boxes.extend((0..items.len()).map(|k| button(r, k)));

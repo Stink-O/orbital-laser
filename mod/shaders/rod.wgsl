@@ -1573,14 +1573,14 @@ const RD_IF_END: f32 = 0.16;
 fn rd_if_beat(a: f32, seed: u32) -> vec3<f32> {
     let j1 = (mh(1u, seed, 0x4d1u) - 0.5) * 0.012;
     let j2 = (mh(2u, seed, 0x4d1u) - 0.5) * 0.014;
-    if (a < 0.034) {
-        return vec3<f32>(0.0, 0.62, 0.92);
+    if (a < 0.05) {
+        return vec3<f32>(0.0, 1.5, 1.0);
     }
-    if (a >= 0.05 + j1 && a < 0.1 + j1) {
-        return vec3<f32>(1.0, 0.36, 0.85);
+    if (a >= 0.066 + j1 && a < 0.116 + j1) {
+        return vec3<f32>(1.0, 0.85, 0.95);
     }
     if (a >= 0.136 + j2 && a < 0.153 + j2) {
-        return vec3<f32>(2.0, 0.26, 0.36);
+        return vec3<f32>(2.0, 0.5, 0.6);
     }
     return vec3<f32>(-1.0, 0.0, 0.0);
 }
@@ -1741,10 +1741,10 @@ fn pl_jolt(in: StageIn) -> StageIn {
     var o = in;
     let ai = now() - PL_HIT;
     if (ai > 0.0 && ai < RD_IF_END && frame.mod_params[3].w < 1.5 && intensity_v() > 0.0) {
-        // (the punch: in by a fourteenth at once, easing back over the beats)
+        // (the punch: in by a ninth at once, easing back over the beats)
         let C = vec3<f32>(anchor_xz().x, block_y() + 1.0, anchor_xz().y) - frame.camera_position.xyz;
         let P = clamp(rd_if_point(C), vec2<f32>(0.2), vec2<f32>(0.8));
-        let z = 1.0 + 0.07 * exp(-ai / 0.05);
+        let z = 1.0 + 0.11 * exp(-ai / 0.06);
         o.uv = P + (in.uv - P) / z;
         o.position = vec4<f32>(o.uv * res, in.position.zw);
     }

@@ -485,10 +485,12 @@ impl Orbital {
     /// What was typed on the wheel: into the flying speed's field while it has the keyboard; Enter sets the speed,
     /// Backspace takes a character off.
     fn typed(&mut self, t: input::Typed) {
+        let seed = self.wheel.as_ref().is_some_and(|w| w.seed_typing);
         let Some(field) = self.wheel.as_mut().and_then(|w| w.typing.as_mut()) else {
             return;
         };
         match t {
+            input::Typed::Text(s) if seed => wheel::type_seed(field, &s),
             input::Typed::Text(s) => wheel::type_into(field, &s),
             input::Typed::Key(k) if k == "key.keyboard.backspace" => {
                 field.pop();
@@ -497,6 +499,25 @@ impl Orbital {
                 let typed = std::mem::take(field);
                 if let Some(w) = &mut self.wheel {
                     w.typing = None;
+                    w.seed_typing = false;
+                }
+                if seed {
+                    // the field's seed: the one held, if the lock is on; otherwise the one the lock would hold
+                    match typed.parse::<u32>().ok().filter(|n| (1..=SEEDS).contains(n)) {
+                        Some(n) => {
+                            self.last_seed = n;
+                            self.fired = true;
+                            if self.seed_lock.is_some() {
+                                self.seed_lock = Some(n);
+                                self.save();
+                            }
+                            world::play_sound("minecraft:ui.button.click", None, 0.6, 1.6);
+                        }
+                        None if !typed.is_empty() => world::play_sound("minecraft:ui.button.click", None, 0.6, 0.6),
+                        None => {}
+                    }
+                    self.show_wheel();
+                    return;
                 }
                 match wheel::parse_speed(&typed) {
                     Some(m) => {
@@ -516,7 +537,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow, self.seed_lock, self.fired.then_some(self.last_seed)));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
         }
     }
     fn open_wheel(&mut self) {
@@ -543,9 +564,10 @@ impl Orbital {
         // a click anywhere but the field takes the keyboard from it, leaving the speed as it was
         if let Some(w) = &mut self.wheel
             && w.typing.is_some()
-            && spot != Some(wheel::Spot::FlyField)
+            && spot != Some(if w.seed_typing { wheel::Spot::SeedField } else { wheel::Spot::FlyField })
         {
             w.typing = None;
+            w.seed_typing = false;
             self.show_wheel();
         }
         match spot {
@@ -556,6 +578,10 @@ impl Orbital {
             }
             Some(wheel::Spot::FlyField) => {
                 if let Some(w) = &mut self.wheel {
+                    if w.seed_typing {
+                        w.typing = None;
+                    }
+                    w.seed_typing = false;
                     w.typing.get_or_insert_with(String::new);
                 }
                 world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
@@ -654,7 +680,15 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.follow { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
-            Some(wheel::Spot::Seed) => {
+            Some(wheel::Spot::SeedField) => {
+                if let Some(w) = &mut self.wheel {
+                    w.typing = Some(String::new());
+                    w.seed_typing = true;
+                }
+                world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
+                self.show_wheel();
+            }
+            Some(wheel::Spot::SeedLock) => {
                 self.seed_lock = if self.seed_lock.is_some() { None } else { Some(self.last_seed) };
                 self.save();
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.seed_lock.is_some() { 1.6 } else { 1.0 });
@@ -1094,7 +1128,7 @@ impl Orbital {
     fn update_panel(&mut self) {
         let held = input::held().is_some_and(|h| h.id == DESIGNATOR || h.id == REMOTE);
         let holding = self.hud && held;
-        let mut lines: Vec<(String, u32)> = if holding {
+        let lines: Vec<(String, u32)> = if holding {
             let l = LASERS[self.laser];
             let mut lines = vec![
                 ("Orbital Laser".to_string(), 0xFFFFFF),
@@ -1128,16 +1162,7 @@ impl Orbital {
         } else {
             Vec::new()
         };
-        // the last strike's seed, to hold it if its look was good: in the status panel, or alone in the top left
-        let mut left = false;
-        if self.fired && (held || self.strike.is_some()) {
-            let seed = match self.seed_lock {
-                Some(n) => (format!("Seed {n} (held)"), 0xF0C060),
-                None => (format!("Seed {} (random: /orbital seed lock to hold it)", self.last_seed), 0xA8B0BC),
-            };
-            left = lines.is_empty();
-            lines.push(seed);
-        }
+        let left = false;
         if lines != self.panel || left != self.panel_left {
             if lines.is_empty() {
                 hud::clear();
