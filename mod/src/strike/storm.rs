@@ -661,9 +661,17 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         // edits made even if the strike is stopped)
         if terrain {
             p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking as @e[type=!minecraft:player,distance=..3.5] run damage @s 5 minecraft:lightning_bolt"));
-            p.ev.push(douse(x, z, 6, b.t + 1.5));
-            p.ev.push(douse(x, z, 7, b.t + 5.0));
-            p.ev.push(douse(x, z, 11, b.t + 12.0));
+            // (its douses worked out in a stage of their own as it strikes, not all the storm's at once as it fires: a
+            // hundred-odd bolts' were most of the fire tick; a cleanup stage, so a stopped strike still makes them)
+            let t = b.t;
+            p.later(t + 0.5, move |q| {
+                q.ev.push(douse(x, z, 6, t + 1.5));
+                q.ev.push(douse(x, z, 7, t + 5.0));
+                q.ev.push(douse(x, z, 11, t + 12.0));
+            });
+            if let Some((at, Act::Later(job))) = p.ev.pop() {
+                p.ev.push((at, Act::Cleanup(job)));
+            }
         }
         p.at(b.t + 0.6, format!("execute positioned {x} 0 {z} positioned over motion_blocking_no_leaves run particle minecraft:large_smoke ~0.5 ~0.5 ~0.5 1 0.6 1 0.02 14 force"));
         if terrain {
@@ -1121,5 +1129,22 @@ mod tests {
         assert_eq!(f32::from_bits(w[SC_F + VX_W]) as f64, f[1].t0 as f32 as f64);
         // (the funnels overlap through the storm, all touching down before the finale)
         assert!(f.iter().all(|f| f.t1 < f64::from(SC_FINALE) && f.t0 > f64::from(SC_STORM0)));
+    }
+}
+
+/// The plan as it is made on the fire tick stays light (`meter`): what is heavy waits for stages of its own.
+#[cfg(test)]
+#[test]
+fn sc_fire_cost() {
+    crate::ground::clear();
+    let laser = crate::lasers::LASERS.iter().find(|l| l.key == "supercell").unwrap();
+    let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+    for terrain in [false, true] {
+        crate::meter::reset();
+        let t = std::time::Instant::now();
+        let ev = crate::strike::plan(laser, &target, terrain, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+        let spent = crate::meter::spent();
+        println!("terrain {terrain}: plan {:.2}M on the meter, {:?}, {} acts", spent as f64 / 1e6, t.elapsed(), ev.len());
+        assert!(spent < 2_000_000, "the plan took {:.2}M", spent as f64 / 1e6);
     }
 }
