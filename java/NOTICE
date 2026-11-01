@@ -31,6 +31,9 @@ src/client/resources/assets/orbital/shaders/post
                          regenerate them with the tools, do not edit them. strike.vsh is a full-screen triangle written for
                          this port.
 
+docs/*.jpg               Screenshots of this mod running in Minecraft, taken by Ramingen (Copyright (c) 2026 Ramingen,
+                         MIT License). They show the game's own terrain and interface, as screenshots of the mod do.
+
 Third-party material
 --------------------
 
