@@ -817,7 +817,10 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             let cover = form * (1.0 - smoothstep(sc_deck_r(time) * 0.75, sc_deck_r(time) * 1.05, rr));
             // (and wet where the rain falls: darker, a little cooler)
             let wet = sc_rain(time) * sc_fade(time) * (1.0 - smoothstep(sc_deck_r(time) * 0.55, sc_deck_r(time) * 0.8, rr));
-            col = col * (1.0 - 0.3 * form - 0.42 * cover) * mix(vec3<f32>(1.0), vec3<f32>(0.9, 1.0, 0.94), cover) * mix(vec3<f32>(1.0), vec3<f32>(0.84, 0.86, 0.9), wet);
+            // (the storm's shadow reaching on past its deck, under the anvil and the murk round it: the land round a
+            // player watching from a few hundred blocks off dims too, not just what lies under the cloud)
+            let shade = form * (1.0 - smoothstep(sc_deck_r(time), sc_deck_r(time) * 1.9, rr));
+            col = col * (1.0 - 0.3 * form - 0.42 * cover) * (1.0 - 0.3 * shade * (1.0 - cover)) * mix(vec3<f32>(1.0), vec3<f32>(0.9, 1.0, 0.94), max(cover, 0.6 * shade)) * mix(vec3<f32>(1.0), vec3<f32>(0.84, 0.86, 0.9), wet);
             col = col + scene * gflash * k;
             // (the finale's shockwave: a bright ring racing out over the land at 140 blocks a second, as its edits go,
             // a wall of dust and smoke rising behind it, settling into a haze)
