@@ -409,7 +409,8 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
                 t = t + max(dt, (-sh - 2.6) * 11.0);
                 continue;
             }
-            let dn = sc_den(q, time, fine);
+            // (thinned round the eye: from inside it, or flying through its scud, the storm round about still shows)
+            let dn = sc_den(q, time, fine) * vec2<f32>(smoothstep(12.0, 70.0, t), 1.0);
             if (dn.x > 0.003) {
                 let r = length(q.xz);
                 let base = sc_base(r);
@@ -709,7 +710,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     }
 
     // ---- the bolts, over it all (hidden by the cloud only for an eye above it) ----------------------------------------
-    let cam_above = smoothstep(C.y + SC_BASE - 10.0, C.y + SC_BASE + 30.0, 0.0);
+    let cam_above = smoothstep(C.y + SC_TOP - 20.0, C.y + SC_TOP + 20.0, 0.0);
     let behind = mix(1.0, vol_a, cam_above);
     if (have) {
         let px = in.position.xy;
@@ -750,32 +751,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
         col = mix(col, vec3<f32>(1.3, 1.32, 1.45), saturate(wo));
     }
 
-    // ---- the rain close by, for an eye in it: streaks falling past, slanted by the wind ------------------------------
-    let rk = sc_rain(time) * sc_fade(time);
-    let crr = length(C.xz);
-    let inside = rk * (1.0 - smoothstep(sc_deck_r(time) * 0.6, sc_deck_r(time) * 0.8, crr)) * (1.0 - smoothstep(C.y + SC_BASE - 20.0, C.y + SC_BASE, 0.0));
-    if (inside > 0.01) {
-        let res = frame.resolution.xy;
-        let sc = res.y / 1080.0;
-        var streak = 0.0;
-        for (var layer = 0; layer < 3; layer = layer + 1) {
-            let fl2 = f32(layer);
-            let dk = 4.0 + 7.0 * fl2 * fl2 + 3.0 * fl2;
-            if (scene_len < dk) {
-                continue;
-            }
-            let w = (9.0 - 2.5 * fl2) * sc;
-            let pp = in.position.xy + vec2<f32>(in.position.y * 0.12, 0.0);
-            let cidx = floor(pp.x / w);
-            let h = fh21(vec2<f32>(cidx, fl2 * 17.0));
-            let h2 = fh21(vec2<f32>(cidx * 1.7, fl2 * 5.0 + 3.0));
-            let len = (220.0 - 50.0 * fl2) * sc;
-            let v = fract((pp.y - time * (2600.0 - 600.0 * fl2) * sc) / len + h);
-            let across = 1.0 - abs(fract(pp.x / w) - 0.5) * 2.0;
-            streak = streak + smoothstep(0.86, 1.0, v) * step(0.45, h2) * pow(across, 6.0) * (0.6 - 0.15 * fl2);
-        }
-        col = col + vec3<f32>(0.6, 0.65, 0.72) * streak * inside * (amb0 * 0.9 + vec3<f32>(0.03) + vec3<f32>(0.8) * min(sky_flash, 2.0)) * k;
-    }
+    // (the rain close by is the game's own: the world's weather rains while the storm lasts, strike/storm.rs)
 
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     if (capture() > 2.5) {
