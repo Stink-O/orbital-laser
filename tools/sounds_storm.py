@@ -18,25 +18,32 @@ weight) on the loudest clusters, and low rolls following the arrivals; then the 
               of it swelling with the wind; the wash further off darker
   rumble      thunder from a flicker in the cloud, kilometres off (5 variants): an intra-cloud channel, long and high,
               so no crack, a soft, long roll with echoes, narrow and dark, up in the sky
-  crack       a bolt's thunder close by (6 variants; 0 is when it reaches the player): the ripping crack of the
-              strokes on the near channel, a heavy tonal boom, then the channel's roll and the land's echoes
-  crack_far   a bolt's thunder from further off (5 variants): a dull clap, a deeper, longer roll, more echo
+  crack       a bolt's thunder close by, within ~90 blocks (6 variants; 0 is when it reaches the player): the ripping
+              crack of the strokes on the near channel, a heavy tonal boom (a 46-58 Hz fundamental falling, its
+              harmonics on it), its body gently overdriven, then a short roll and the land's echoes (6 s, so a fast run
+              of them stays a run of claps, not a wall)
+  crack_mid   a bolt 90-260 blocks off (5 variants): a duller clap with a little tearing left in it, the boom, a
+              lower roll, more echo (6 s)
+  crack_far   a bolt further off (5 variants): mostly rumble, its clap only a soft knock under a deep, long roll
   finale      the colossal strike: a long tearing rip of many strokes, a huge crack, three tonal blows overdriven like
               a blast recorded too close, the discharge fizzing, a roll dying over twelve seconds off the land
   roar        a funnel's roar (4 variants, mono, played where the funnel is every second, 3 s each, a constant-power
               window, so the overlapping copies sum to one steady roar that moves with it): a deep turbulent rumble, the
               freight-train roar boiling over it, a rushing top, debris rattling and thudding in it
 
-Vanilla's own thunder is stopped as each bolt plays it (strike/storm.rs): it is a full-scale boom (0 dBFS, nothing
-over 6 kHz) that would bury these or clip with them; its first ~50 ms still sounds with the terrain on. Every file's
-decoded true peak is held under -1.15 dBTP and the levels are set against each other so the whole strike's mix (as the
-plan plays them, `--listen`) peaks at or under -1 dBTP.
+The bolts are not vanilla's (strike/storm.rs strikes the land itself): a vanilla bolt plays its own full-scale
+thunder at the flash, whatever the distance, which `stopsound` could only cut a tick or more in, a pop and a click
+before ours arrived. Each variant is its own event too (`supercell.crack3`), so the plan picks the take and never plays
+one of the last two again. Every file's decoded true peak is held under -1.15 dBTP and the levels are set against each
+other so the whole strike's mix peaks at or under -1 dBTP. `--listen` mixes it as Horizon plays it: every file summed
+to mono ((L+R)/2, as the game decodes it), played to the listener at 0.596 in each ear, its pitch a change of speed,
+on the tick it is due, then the game's output limiter.
 
     python3 tools/sounds_storm.py                # writes orbital-sounds/assets/orbital/sounds/supercell/*.ogg and adds
                                                  # the events to sounds.json, leaving every other sound as it is
     python3 tools/sounds_storm.py --only crack   # one
-    python3 tools/sounds_storm.py --listen DIR   # and the WAV and MP3 of each, and the strike's mix as heard 60, 200, 600
-                                                 # and 1500 blocks off, in DIR (and their true peaks)
+    python3 tools/sounds_storm.py --listen DIR   # and the WAV and MP3 of each, and the strike's mix as heard 60, 150, 500
+                                                 # and 1500 blocks off, as the game mixes it, in DIR (and their peaks)
 """
 import argparse, json, os, subprocess, sys, wave
 from pathlib import Path
@@ -52,12 +59,14 @@ import sounds_nuke as N
 
 TH = "supercell"
 ROOT = Path(__file__).resolve().parent.parent
-VARIANTS = {"rumble": 5, "crack": 6, "crack_far": 5, "roar": 4}
-NAMES = ["buildup", "gusts", "rain", "rumble", "crack", "crack_far", "finale", "roar"]
+VARIANTS = {"rumble": 5, "crack": 6, "crack_mid": 5, "crack_far": 5, "roar": 4}
+NAMES = ["buildup", "gusts", "rain", "rumble", "crack", "crack_mid", "crack_far", "finale", "roar"]
+# (the plan picks these takes itself: each variant its own event as well as the group's)
+PICKED = ("rumble", "crack", "crack_mid", "crack_far")
 # Each file's loudest 400 ms (dB; mono files as the game plays them): set against each other so the strike's mix stays
 # under -1 dBTP (`--listen` checks it).
-LEVEL = {"buildup": -19.0, "gusts": -23.0, "rain": -28.5, "rumble": -24.0, "crack": -14.5, "crack_far": -20.0,
-         "finale": -10.8, "roar": -22.0}
+LEVEL = {"buildup": -19.0, "gusts": -23.0, "rain": -28.5, "rumble": -25.5, "crack": -14.0, "crack_mid": -17.5,
+         "crack_far": -21.0, "finale": -10.8, "roar": -22.0}
 TP_MAX = 10 ** (-1.15 / 20)
 C = 343.0
 LISTEN = None
@@ -245,9 +254,11 @@ def sky_verb(L, R, length, wet, darken, decay, corr):
 
 
 def thunder(seed, d, ground_d, height, run, branches, strokes, boom, crack_db, roll_db, boom_db, verb, taps, width,
-            t0=0.03, intra=False, fc_ref=60.0, rip=None, roll_corr=0.8, echo_pan=0.6):
+            t0=0.03, intra=False, fc_ref=60.0, rip=None, roll_corr=0.8, echo_pan=0.6, clap=None):
     """One bolt's thunder (see the module's notes), its first arrival `t0` s in. `boom`: the tonal blows as (delay after
-    the first arrival, f_hi, f_lo, f_end, drop, rise, decays, gain); `verb`: (length, wet, darken, decay, corr)."""
+    the first arrival, f_hi, f_lo, f_end, drop, rise, decays, gain); `verb`: (length, wet, darken, decay, corr); `clap`:
+    (lo Hz, hi Hz, dB): the near channel's blast at each stroke, a short burst of air shoved (the clap the ear takes for
+    the strike itself), so it stands out of the roll before it."""
     n = n_of(d)
     with PB.seeded(seed):
         az = rng().uniform(0, 2 * np.pi)
@@ -266,6 +277,17 @@ def thunder(seed, d, ground_d, height, run, branches, strokes, boom, crack_db, r
                 P.put(x, seg * rng().uniform(0.3, 1.0) * (0.35 + 0.65 * u), t0 + length * u + rng().uniform(-0.003, 0.003))
             x = x / (np.abs(x).max() + 1e-12) * 10 ** (rdb / 20)
             l, r = PB.pan2(x, rng().uniform(-0.3, 0.3))
+            L += l; R += r
+        if clap is not None:
+            lo, hi, cdb = clap
+            x = np.zeros(n)
+            for s0, a0 in strokes:
+                m = n_of(0.12)
+                u_ = np.arange(m) / SR
+                b_ = band(rng().standard_normal(m), lo, hi, 2) * np.exp(-u_ / rng().uniform(0.018, 0.032)) * np.minimum(u_ / 0.0015, 1)
+                P.put(x, b_ * a0, t0 + s0)
+            x = x / (np.abs(x).max() + 1e-12) * 10 ** (cdb / 20)
+            l, r = PB.pan2(x, rng().uniform(-0.2, 0.2))
             L += l; R += r
         e = env_of(ts, amps, d, t0)
         rl, rr = low_rolls(d, e ** 0.8, corr=roll_corr)
@@ -482,46 +504,88 @@ def build_rumble(v):
     write(f"rumble{v}", (L, R), LEVEL["rumble"])
 
 
+def body_drive(L, R, t0, db=3.0, hold=0.4, ease=0.9):
+    """The 40-400 Hz body gently overdriven (a lopsided tanh, unity for small signals), most on the boom's first `hold`
+    s and easing off after: the clap thickened as if recorded close, the sub and the crack's top left clean."""
+    n = len(L)
+    u = np.maximum(np.arange(n) / SR - t0, 0)
+    g = 10 ** (db * np.exp(-np.maximum(u - hold, 0) / ease) / 20)
+    ref = np.percentile(np.abs(band((L + R) / 2, 40, 400, 2)), 99.9) + 1e-12
+    bias = 0.12
+    out = []
+    for x in (L, R):
+        body = band(x, 40, 400, 2)
+        z = g * body / ref
+        sat = (np.tanh(z + bias) - np.tanh(bias)) / (1 - np.tanh(bias) ** 2)
+        out.append(x - body + band(sat * ref / g, 35, 2500, 2) * g ** 0.5)
+    return out
+
+
 def build_crack(v):
-    """A bolt close by: its strokes ripping on the near channel, a heavy boom, the roll, the land's echoes."""
-    d = 7.5
+    """A bolt close by: its strokes ripping on the near channel, a heavy boom, a short roll, the land's echoes."""
+    d = 6.0
     with PB.seeded(93000 + 31 * v):
-        gd = rng().uniform(35, 110)
-        h = rng().uniform(900, 1700)
+        gd = rng().uniform(25, 80)
+        h = rng().uniform(900, 1600)
         k = int(rng().integers(3, 6))
         st = strokes_of(k)
-        f = rng().uniform(60, 76)
-        boom = [(0.004, f * 1.45, f, f * 0.74, 0.05, 0.003, ((0.55, 0.22), (0.35, 0.8), (0.1, 2.0)), 1.0),
-                (st[1][0] + 0.004, f * 1.2, f * 0.92, f * 0.7, 0.06, 0.006, ((0.6, 0.3), (0.4, 1.0)), 0.45),
-                (rng().uniform(0.5, 1.1), f * 0.95, f * 0.8, f * 0.66, 0.2, 0.06, ((0.5, 0.6), (0.5, 1.8)), 0.5),
-                (rng().uniform(1.6, 2.8), f * 0.85, f * 0.72, f * 0.62, 0.3, 0.12, ((1.0, 1.6),), 0.32)]
-        rip = (1500, 12000, st[-1][0] + rng().uniform(0.03, 0.08), int(rng().integers(28, 60)), -2.0)
-        run, br = rng().uniform(600, 2500), int(rng().integers(4, 9))
+        f = rng().uniform(46, 58)
+        boom = [(0.004, f * 1.45, f, f * 0.7, 0.05, 0.003, ((0.55, 0.22), (0.35, 0.7), (0.1, 1.6)), 1.0),
+                (st[1][0] + 0.004, f * 1.2, f * 0.92, f * 0.68, 0.06, 0.006, ((0.6, 0.3), (0.4, 0.9)), 0.5),
+                (rng().uniform(0.45, 0.9), f * 0.95, f * 0.8, f * 0.64, 0.2, 0.06, ((0.5, 0.5), (0.5, 1.4)), 0.3),
+                (rng().uniform(1.3, 2.2), f * 0.85, f * 0.72, f * 0.6, 0.3, 0.12, ((1.0, 1.2),), 0.15)]
+        rip = (1200, 14000, st[-1][0] + rng().uniform(0.05, 0.1), int(rng().integers(40, 80)), -1.5)
+        run, br = rng().uniform(400, 1500), int(rng().integers(4, 8))
     L, R = thunder(93500 + 31 * v, d, gd, h, run, br, st, boom,
-                   0.0, -17.0, -13.0, (3.0, 0.32, (2400, 220), 1.1, 0.7),
-                   [(0.35, 0.3, 2400), (0.8, 0.22, 1500), (1.45, 0.15, 900), (2.3, 0.1, 600)], 0.7, rip=rip)
-    # (the boom's body driven a little, as a recording too close: power, the sub kept clean)
+                   0.0, -26.0, -12.0, (2.6, 0.16, (2400, 220), 0.8, 0.7),
+                   [(0.3, 0.16, 2400), (0.7, 0.11, 1500), (1.25, 0.07, 900), (2.0, 0.05, 600)], 0.7, rip=rip,
+                   clap=(250, 9000, 2.0))
+    # (the boom's body driven a little and held together, as a recording too close: power, the sub kept clean)
+    L, R = body_drive(L, R, 0.03, 3.0)
     L, R = N.glue(L, R)
-    L, R = fades(L, 0.0, 1.2), fades(R, 0.0, 1.2)
+    L, R = fades(L, 0.0, 1.0), fades(R, 0.0, 1.0)
     write(f"crack{v}", (L, R), LEVEL["crack"], knee=0.6)
 
 
+def build_crack_mid(v):
+    """A bolt 90-260 blocks off: a duller clap with a little tearing left in it, the boom, a longer roll, more echo."""
+    d = 6.0
+    with PB.seeded(93700 + 31 * v):
+        gd = rng().uniform(150, 300)
+        h = rng().uniform(1000, 2000)
+        st = strokes_of(int(rng().integers(2, 5)))
+        f = rng().uniform(44, 54)
+        boom = [(0.01, f * 1.35, f, f * 0.72, 0.08, 0.01, ((0.5, 0.3), (0.5, 1.1)), 1.0),
+                (rng().uniform(0.5, 1.1), f * 1.0, f * 0.84, f * 0.68, 0.22, 0.08, ((0.5, 0.6), (0.5, 1.6)), 0.3),
+                (rng().uniform(1.6, 2.8), f * 0.88, f * 0.74, f * 0.64, 0.3, 0.15, ((1.0, 1.5),), 0.18)]
+        rip = (900, 6000, st[-1][0] + rng().uniform(0.04, 0.08), int(rng().integers(12, 24)), -9.0)
+        run, br = rng().uniform(800, 2200), int(rng().integers(4, 8))
+    L, R = thunder(93900 + 31 * v, d, gd, h, run, br, st, boom,
+                   -3.0, -27.0, -12.0, (3.2, 0.2, (1600, 200), 1.1, 0.78),
+                   [(0.5, 0.16, 1400), (1.1, 0.11, 900), (1.9, 0.08, 600), (2.9, 0.05, 400)], 0.5, t0=0.04, fc_ref=50.0,
+                   rip=rip, roll_corr=0.85, echo_pan=0.45, clap=(150, 3800, 4.0))
+    L, R = body_drive(L, R, 0.04, 2.0)
+    L, R = fades(L, 0.0, 1.6), fades(R, 0.0, 1.6)
+    write(f"crack_mid{v}", (L, R), LEVEL["crack_mid"], knee=0.6)
+
+
 def build_crack_far(v):
-    """A bolt further off: a dull clap, a deeper, longer roll, more of the land's echo, narrower."""
+    """A bolt further off: mostly rumble, the clap only a soft knock under a deep, long roll, more of the land's echo,
+    narrower."""
     d = 9.0
     with PB.seeded(94000 + 31 * v):
         gd = rng().uniform(450, 1100)
         h = rng().uniform(1100, 2200)
         st = strokes_of(int(rng().integers(2, 5)))
-        f = rng().uniform(52, 64)
-        boom = [(0.02, f * 1.25, f, f * 0.8, 0.12, 0.03, ((0.5, 0.4), (0.5, 1.4)), 1.0),
+        f = rng().uniform(40, 50)
+        boom = [(0.02, f * 1.25, f, f * 0.8, 0.12, 0.03, ((0.5, 0.4), (0.5, 1.4)), 0.8),
                 (rng().uniform(0.6, 1.4), f * 1.05, f * 0.85, f * 0.72, 0.25, 0.1, ((0.5, 0.8), (0.5, 2.2)), 0.6),
                 (rng().uniform(2.0, 3.5), f * 0.9, f * 0.75, f * 0.66, 0.3, 0.2, ((1.0, 1.8),), 0.4)]
         run, br = rng().uniform(1000, 3000), int(rng().integers(4, 8))
     L, R = thunder(94500 + 31 * v, d, gd, h, run, br, st, boom,
-                   0.0, -13.0, -12.0, (4.5, 0.55, (1300, 180), 1.8, 0.82),
+                   -6.0, -15.0, -11.0, (4.5, 0.45, (1300, 180), 1.6, 0.82),
                    [(0.6, 0.32, 900), (1.4, 0.24, 600), (2.4, 0.16, 400), (3.6, 0.1, 300)], 0.3, t0=0.06, fc_ref=45.0,
-                   roll_corr=0.9, echo_pan=0.35)
+                   roll_corr=0.9, echo_pan=0.35, clap=(70, 700, 0.0))
     L, R = fades(L, 0.0, 1.5), fades(R, 0.0, 1.5)
     write(f"crack_far{v}", (L, R), LEVEL["crack_far"], knee=0.6)
 
@@ -610,29 +674,60 @@ def build_roar(v):
 
 
 # ===========================================================================================================  listening
+def game_limiter(mix, block=512, release=0.2):
+    """audio.rs's output limiter: a callback's peak over 1 scales it down, the gain recovering over `release` s."""
+    lp, rel = 1.0, np.exp(-1 / (release * SR))
+    hits = 0
+    for s0 in range(0, len(mix), block):
+        blk = mix[s0:s0 + block]
+        pk = max(1.0, float(np.abs(blk).max()))
+        hits += pk > 1.0
+        lp = max(lp, pk)
+        k = np.arange(len(blk))
+        blk *= (1 / np.maximum(lp * rel ** k, pk))[:, None]
+        lp = max(lp * rel ** len(blk), pk)
+    return hits * block / SR
+
+
 def listen_mix(z, out):
-    """The strike's sounds as a player `z` blocks off hears them (their times and volumes from the plan), mixed."""
+    """The strike's sounds as a player `z` blocks off hears them in Horizon (their times, takes, volumes and pitches
+    from the plan), mixed as the game does: each file summed to mono, 0.596 in each ear (a sound played to the
+    listener), its pitch a change of speed, on its tick, then the output limiter."""
     tl = Path(out) / f"timeline_{z}.txt"
     subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "sc_write_sounds", "--", "--ignored"], cwd=ROOT / "mod",
                    env=dict(os.environ, SC_OUT=str(tl.resolve()), SC_ME=str(z)), check=True, capture_output=True)
-    d = 75.0
+    d = 66.0
     mix = np.zeros((n_of(d), 2))
     pick = np.random.default_rng(z)
+    files = {}
     for line in tl.read_text().splitlines():
-        t, ev, vol = line.split()
+        t, ev, vol, pitch = line.split()[:4]
+        if not ev.startswith(f"orbital:{TH}."):
+            continue
         name = ev.split(".", 1)[1]
-        f = f"{out}/{name}{pick.integers(VARIANTS[name]) + 1}.wav" if name in VARIANTS else f"{out}/{name}.wav"
-        with wave.open(f) as w:
-            y = np.frombuffer(w.readframes(w.getnframes()), "<i2").astype(float).reshape(-1, w.getnchannels()) / 32768
-        i = n_of(float(t))
+        f = f"{out}/{name}.wav" if os.path.exists(f"{out}/{name}.wav") else f"{out}/{name}{pick.integers(VARIANTS[name]) + 1}.wav"
+        if f not in files:
+            with wave.open(f) as w:
+                y = np.frombuffer(w.readframes(w.getnframes()), "<i2").astype(float).reshape(-1, w.getnchannels()) / 32768
+            files[f] = y.mean(axis=1)
+        y = files[f]
+        p = float(pitch)
+        if abs(p - 1) > 1e-4:
+            pos = np.arange(0, len(y) - 1, p)
+            i0 = pos.astype(int)
+            y = y[i0] * (1 - (pos - i0)) + y[i0 + 1] * (pos - i0)
+        i = n_of(np.ceil(float(t) * 20 - 1e-6) / 20)
         m = min(len(y), len(mix) - i)
         if m > 0:
-            mix[i:i + m] += y[:m] * min(float(vol), 1.0)
+            mix[i:i + m] += (y[:m] * min(float(vol), 1.0) * 0.596)[:, None]
+    pre = 20 * np.log10(np.abs(mix).max() + 1e-12)
+    held = game_limiter(mix)
     path = f"{out}/storm_mix_{z}"
     N.write_wav(path + ".wav", mix)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path + ".wav", "-b:a", "192k", path + ".mp3"], check=True)
     lufs, tp, _ = N.measure(path + ".wav")
-    print(f"mix {z} blocks off: peak {20 * np.log10(np.abs(mix).max()):.2f} dBFS, true peak {tp:.2f} dBTP, {lufs:.1f} LUFS -> {path}.wav")
+    print(f"mix {z} blocks off: peak {pre:.2f} dBFS before the game's limiter ({held:.1f} s held down), true peak {tp:.2f} dBTP, "
+          f"{lufs:.1f} LUFS -> {path}.wav")
     return tp
 
 
@@ -640,6 +735,7 @@ BUILD = {
     "buildup": build_buildup, "gusts": build_gusts, "rain": build_rain,
     "rumble": lambda: [build_rumble(v) for v in range(1, VARIANTS["rumble"] + 1)],
     "crack": lambda: [build_crack(v) for v in range(1, VARIANTS["crack"] + 1)],
+    "crack_mid": lambda: [build_crack_mid(v) for v in range(1, VARIANTS["crack_mid"] + 1)],
     "crack_far": lambda: [build_crack_far(v) for v in range(1, VARIANTS["crack_far"] + 1)],
     "finale": build_finale,
     "roar": lambda: [build_roar(v) for v in range(1, VARIANTS["roar"] + 1)],
@@ -666,9 +762,12 @@ def main():
             # (the roar is heard where the funnel is, out to 320 blocks; the rest follow the player)
             dist = 320 if name == "roar" else 256
             sounds[ev] = {"sounds": [{"name": f, "attenuation_distance": dist} for f in files], "subtitle": f"subtitles.orbital.{ev}"}
+            if name in PICKED:
+                for v in range(VARIANTS[name]):
+                    sounds[f"{ev}{v + 1}"] = {"sounds": [{"name": files[v], "attenuation_distance": dist}], "subtitle": f"subtitles.orbital.{ev}"}
         path.write_text(json.dumps(sounds, indent=2))
     if LISTEN and not a.only:
-        worst = max(listen_mix(z, LISTEN) for z in (60, 200, 600, 1500))
+        worst = max(listen_mix(z, LISTEN) for z in (60, 150, 500, 1500))
         print(f"worst true peak over the mixes: {worst:.2f} dBTP")
 
 
