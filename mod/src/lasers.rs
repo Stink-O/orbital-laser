@@ -471,7 +471,7 @@ pub const SUPERCELL: Laser = Laser {
     rgb: 0x4FB8C8,
     blurb: "A storm called down: lightning all round, funnels wandering, then one colossal strike.",
     icon_model: "orbital:supercell_icon",
-    length: 64.0,
+    length: 42.0,
     range: 1000.0,
     scorch: &[],
     bowl_r: 10,

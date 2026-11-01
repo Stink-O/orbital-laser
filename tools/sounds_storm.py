@@ -8,7 +8,7 @@ the rest rolls in over seconds; a bolt's three to five return strokes, 40-90 ms 
 crack rips. Under it a tonal boom (a falling 40-75 Hz fundamental, its harmonics stacked on it so a phone hears the
 weight) on the loudest clusters, and low rolls following the arrivals; then the land's echoes.
 
-  buildup     the storm forming (0 is the strike's start): a hush, the wind rising out of it in gusts and a low
+  buildup     the storm forming (0 is the strike's start, 9 s): a hush, the wind rising out of it in gusts and a low
               pressure swell, leaves stirring, two far rolls of thunder (narrow, high, dark), the first heavy drops
   gusts       the storm's wind (14 s, faded in and out over 1.8 s, so the plan's beds overlap into one): a deep buffet,
               a broad rush rising and falling with each gust, a howl whose pitch climbs with the gust, leaves and grass
@@ -25,8 +25,10 @@ weight) on the loudest clusters, and low rolls following the arrivals; then the 
   crack_mid   a bolt 90-260 blocks off (5 variants): a duller clap with a little tearing left in it, the boom, a
               lower roll, more echo (6 s)
   crack_far   a bolt further off (5 variants): mostly rumble, its clap only a soft knock under a deep, long roll
-  finale      the colossal strike: a long tearing rip of many strokes, a huge crack, three tonal blows overdriven like
-              a blast recorded too close, the discharge fizzing, a roll dying over twelve seconds off the land
+  finale      the colossal strike, the bolts collapsing into it (FIN_PRE s in: the plan plays it that early): the last
+              waves' cracks stacking up faster and louder, the air fizzing, the near channels' zipper; then eight
+              channels' crack at once, a deep tonal boom (64 Hz falling to 31, harmonics on it) and its body gently
+              overdriven, the roll swelling again ~2.3 s in and rolling on fifteen seconds, debris raining down
   roar        a funnel's roar (4 variants, mono, played where the funnel is every second, 3 s each, a constant-power
               window, so the overlapping copies sum to one steady roar that moves with it): a deep turbulent rumble, the
               freight-train roar boiling over it, a rushing top, debris rattling and thudding in it
@@ -66,7 +68,7 @@ PICKED = ("rumble", "crack", "crack_mid", "crack_far")
 # Each file's loudest 400 ms (dB; mono files as the game plays them): set against each other so the strike's mix stays
 # under -1 dBTP (`--listen` checks it).
 LEVEL = {"buildup": -19.0, "gusts": -23.0, "rain": -28.5, "rumble": -25.5, "crack": -14.0, "crack_mid": -17.5,
-         "crack_far": -21.0, "finale": -10.8, "roar": -22.0}
+         "crack_far": -21.0, "finale": -8.6, "roar": -22.0}
 TP_MAX = 10 ** (-1.15 / 20)
 C = 343.0
 LISTEN = None
@@ -254,16 +256,25 @@ def sky_verb(L, R, length, wet, darken, decay, corr):
 
 
 def thunder(seed, d, ground_d, height, run, branches, strokes, boom, crack_db, roll_db, boom_db, verb, taps, width,
-            t0=0.03, intra=False, fc_ref=60.0, rip=None, roll_corr=0.8, echo_pan=0.6, clap=None):
+            t0=0.03, intra=False, fc_ref=60.0, rip=None, roll_corr=0.8, echo_pan=0.6, clap=None, multi=()):
     """One bolt's thunder (see the module's notes), its first arrival `t0` s in. `boom`: the tonal blows as (delay after
     the first arrival, f_hi, f_lo, f_end, drop, rise, decays, gain); `verb`: (length, wet, darken, decay, corr); `clap`:
     (lo Hz, hi Hz, dB): the near channel's blast at each stroke, a short burst of air shoved (the clap the ear takes for
-    the strike itself), so it stands out of the roll before it."""
+    the strike itself), so it stands out of the roll before it. `multi`: more channels striking the same point, (ground
+    distance, delay, weight) each: their arrivals laid in with the first's, so the crack is many cracks at once, a ragged
+    cluster of fronts rather than one."""
     n = n_of(d)
     with PB.seeded(seed):
         az = rng().uniform(0, 2 * np.pi)
         segs = channel(ground_d, az, height, run, branches, intra=intra)
         ts, amps, dist, pans = arrivals(segs, strokes)
+        r0 = min(np.linalg.norm(q[0]) for q in segs)
+        for gd2, dt2, w2 in multi:
+            s2 = channel(gd2, rng().uniform(0, 2 * np.pi), height * rng().uniform(0.8, 1.1), run * 0.5, max(branches // 2, 2), intra=intra)
+            t2, a2, d2, p2 = arrivals(s2, strokes)
+            off = dt2 + (min(np.linalg.norm(q[0]) for q in s2) - r0) / C
+            ts, amps = np.concatenate([ts, t2 + off]), np.concatenate([amps, a2 * w2])
+            dist, pans = np.concatenate([dist, d2]), np.concatenate([pans, p2])
         L, R = pulses(d, t0, ts, amps, dist, pans, width=width, fc_ref=fc_ref)
         pk = max(np.abs(L).max(), np.abs(R).max()) + 1e-12
         L, R = L / pk * 10 ** (crack_db / 20), R / pk * 10 ** (crack_db / 20)
@@ -456,7 +467,7 @@ def build_rain():
 
 # ==========================================================================================================  build-up
 def build_buildup():
-    d = 12.0
+    d = 9.0
     n = n_of(d)
     t = np.arange(n) / SR
     with PB.seeded(91101):
@@ -469,11 +480,11 @@ def build_buildup():
         L += (sw * 0.5 + hum) * 0.35; R += (sw * 0.5 + hum) * 0.35
         # (the first heavy drops near the end)
         dl, dr = rain(d, 0.25)
-        ramp = np.clip((t - 8.5) / 3.5, 0, 1) ** 2
+        ramp = np.clip((t - 5.0) / 3.0, 0, 1) ** 2
         L += dl * ramp * 0.5; R += dr * ramp * 0.5
         lv = T.loudest((L + R) / 2)
         # (two far rolls of thunder, up in the cloud)
-        for t1, s, db in ((5.2, 91111, -6.0), (9.4, 91112, -3.0)):
+        for t1, s, db in ((2.6, 91111, -6.0), (5.4, 91112, -3.0)):
             rl, rr = rumble_one(s, d - t1)
             gg = lv * 10 ** (db / 20) / (T.loudest((rl + rr) / 2) + 1e-12)
             P.put(L, rl * gg, t1); P.put(R, rr * gg, t1)
@@ -590,42 +601,156 @@ def build_crack_far(v):
     write(f"crack_far{v}", (L, R), LEVEL["crack_far"], knee=0.6)
 
 
-def build_finale():
-    """The colossal strike: seven bolts at once on the target, a long tearing rip of their many strokes, a huge crack,
-    three tonal blows overdriven like a blast recorded too close (the sub clean), the discharge fizzing, a long roll
-    off the land dying over twelve seconds."""
-    d = 16.0
+# How far into the finale its crack is (storm.rs's FIN_PRE): the run-in before it, the bolts' last waves collapsing
+# onto the target, their cracks stacking up faster and faster.
+FIN_PRE = 1.2
+
+
+def run_in(d, lv):
+    """The finale's run-in (FIN_PRE s, then on under the crack): the last waves' cracks stacking up, faster and louder,
+    each a clap, a few fronts and a thump of boom; their rolls piling into a rising low swell; the air fizzing more and
+    more; and in its last 150 ms the near channels' tearing, a dense zipper of fronts (as a close strike's recordings
+    open, ~20 dB under the crack). Stereo, `lv` the crack's loudest."""
     n = n_of(d)
     t = np.arange(n) / SR
+    L = np.zeros(n); R = np.zeros(n)
+    # (the cracks: a dozen or so, the gaps closing from 0.2 s to 0.03, each louder: -19 dB to -9 under the crack)
+    ons, g = [], 0.03
+    tt = FIN_PRE - 0.04
+    while tt > 0.05 and len(ons) < 15:
+        ons.append(tt)
+        tt -= g * rng().uniform(0.8, 1.2)
+        g = min(g * 1.3, 0.2)
+    ons = sorted(ons)
+    for k, t1 in enumerate(ons):
+        u = k / max(len(ons) - 1, 1)
+        a = lv * 10 ** ((-19 + 10 * u ** 1.5) / 20)
+        m = n_of(0.5)
+        su = np.arange(m) / SR
+        clap = (band(rng().standard_normal(m), 180, 1500, 2) + 0.4 * band(rng().standard_normal(m), 1500, 9000, 2))
+        clap *= np.exp(-su / rng().uniform(0.015, 0.03)) * np.minimum(su / 0.001, 1)
+        fr = np.zeros(m)
+        for j in range(int(rng().integers(3, 7))):
+            w = nwave(rng().uniform(0.0015, 0.004))
+            P.put(fr, w * rng().uniform(0.4, 1.0), rng().uniform(0, 0.03))
+        f = rng().uniform(55, 80)
+        thump = np.sin(2 * np.pi * np.cumsum(f * (1 + 0.5 * np.exp(-su / 0.03))) / SR) * np.exp(-su / 0.14) * (1 - np.exp(-su / 0.004))
+        x = T.unit(clap) * 0.5 + T.unit(band(fr, 100, 12000, 2)) * 0.35 + thump * 1.1
+        l, r = PB.pan2(x * a / (np.abs(x).max() + 1e-12), rng().uniform(-0.5, 0.5))
+        P.put(L, l, t1); P.put(R, r, t1)
+    # (their rolls piling up: a low swell rising to the crack)
+    sw = np.clip(t / FIN_PRE, 0, 1) ** 2.2 * (t < FIN_PRE + 0.3) * np.exp(-np.maximum(t - FIN_PRE, 0) / 0.1)
+    for side, x in ((0, L), (1, R)):
+        x += T.unit(band(white(d), 30, 220, 2)) * sw * lv * 10 ** (-18 / 20)
+    # (the air fizzing, and the zipper of the near channels' tearing right before the crack)
+    fz = T.unit(band(white(d), 2000, 9000, 2)) * np.clip(N.grains(d, 900.0, (0.0008, 0.002)), 0, 8)
+    fz *= np.clip(t / FIN_PRE, 0, 1) ** 3 * (t < FIN_PRE) * lv * 10 ** (-27 / 20)
+    L += fz; R += np.roll(fz, 23)
+    zp = np.zeros(n)
+    tz = FIN_PRE - 0.15
+    while tz < FIN_PRE:
+        u = (tz - FIN_PRE + 0.15) / 0.15
+        P.put(zp, nwave(rng().uniform(0.0008, 0.002)) * (0.3 + 0.7 * u) * rng().uniform(0.5, 1.0), tz)
+        tz += rng().uniform(0.002, 0.007)
+    zp = band(zp, 300, 12000, 2)
+    zp *= lv * 10 ** (-20 / 20) / (np.abs(zp).max() + 1e-12)
+    l, r = PB.pan2(zp, rng().uniform(-0.3, 0.3))
+    return L + l, R + r
+
+
+def debris(d, t0, lv):
+    """What the strike throws up coming down: clods and stones thudding and clacking from half a second after the crack
+    for five seconds, thick at first; a hiss of grit and dirt raining with them. Stereo, spread wide."""
+    n = n_of(d)
+    t = np.arange(n) / SR
+    L = np.zeros(n); R = np.zeros(n)
+    for t1 in P.poisson_times(t0 + 0.45, t0 + 6.0, lambda u: 34.0 * np.exp(-(u - t0 - 0.45) / 1.6) + 2.0):
+        m = n_of(0.3)
+        late = np.exp(-(t1 - t0 - 0.45) / 2.5)
+        if rng().random() < 0.5:
+            h = P.modal_hit(m, rng().uniform(450, 2600), [1.0, rng().uniform(1.4, 2.3), rng().uniform(2.6, 4.0)],
+                            [rng().uniform(0.01, 0.04), 0.012, 0.006], [1.0, 0.6, 0.35], 0.5, 8000)
+            g = rng().uniform(0.15, 1.0) ** 1.5 * 0.5
+        else:
+            h = T.thud(m, rng().uniform(0.5, 1.6))
+            g = rng().uniform(0.3, 1.0)
+        h = h / (np.abs(h).max() + 1e-12) * g * lv * 10 ** (-13 / 20) * (0.35 + 0.65 * late)
+        l, r = PB.pan2(h, rng().uniform(-0.8, 0.8))
+        P.put(L, l, t1); P.put(R, r, t1)
+    gr = np.clip(N.grains(d, 300.0, (0.002, 0.006)), 0, 6) ** 1.4
+    env = np.clip((t - t0 - 0.5) / 0.4, 0, 1) * np.exp(-np.maximum(t - t0 - 0.9, 0) / 1.8)
+    hs = T.unit(band(white(d), 1200, 7000, 2)) * gr * env * lv * 10 ** (-26 / 20)
+    return L + hs, R + np.roll(hs, 211)
+
+
+def build_finale():
+    """The colossal strike, the bolts collapsing into it: the run-in (`run_in`: the last waves' cracks stacking up
+    faster and louder, the air fizzing, the near channels' zipper), then at FIN_PRE the crack of eight channels striking
+    one point together (a ragged cluster of fronts over ~30 ms, as a close strike's recording opens: the energy
+    heaviest at 80-250 Hz, falling ~6 dB an octave above, the top gone ~20 dB in 0.7 s), a deep tonal boom (a 64 Hz
+    blow falling to 44 and on to 31, its octave, twelfth and driven harmonics on it, re-struck by the strokes), the
+    40-400 Hz body gently overdriven and held about a second, then the roll swelling again ~2.3 s in and rolling on for
+    fifteen seconds off the land and round the sky; the discharge fizzing; debris raining down (`debris`)."""
+    d = FIN_PRE + 17.0
+    n = n_of(d)
+    t = np.arange(n) / SR
+    tc = FIN_PRE
     with PB.seeded(95001):
         st = [(0.0, 1.0)]
         s = 0.0
-        for _ in range(9):
-            s += rng().uniform(0.03, 0.075)
+        for _ in range(11):
+            s += rng().uniform(0.03, 0.08)
             st.append((s, rng().uniform(0.5, 0.95)))
-        boom = [(0.004, 82.0, 52.0, 38.0, 0.05, 0.003, ((0.5, 0.3), (0.35, 1.0), (0.15, 2.6)), 1.0),
-                (0.16, 70.0, 46.0, 36.0, 0.06, 0.006, ((0.6, 0.4), (0.4, 1.4)), 0.6),
-                (0.55, 58.0, 42.0, 34.0, 0.15, 0.03, ((0.5, 0.8), (0.5, 2.4)), 0.5),
-                (1.6, 50.0, 38.0, 33.0, 0.3, 0.12, ((1.0, 2.4),), 0.35)]
-        rip = (1200, 13000, s + 0.06, 160, -1.0)
-    L, R = thunder(95101, d, 40.0, 1800.0, 3500.0, 14, st, boom, 0.0, -14.0, -9.0, (6.0, 0.5, (1800, 160), 3.0, 0.75),
-                   [(0.4, 0.34, 2000), (0.95, 0.26, 1300), (1.7, 0.2, 800), (2.7, 0.14, 500), (4.0, 0.1, 350),
-                    (5.6, 0.07, 280), (7.4, 0.05, 240)], 0.8, rip=rip)
-    # (the discharge rolling on round the sky: two long rolls high up, further off each)
+        boom = [(0.004, 64.0, 44.0, 32.0, 0.06, 0.004, ((0.55, 0.3), (0.35, 0.8), (0.1, 2.0)), 1.0),
+                (0.17, 58.0, 42.0, 32.0, 0.07, 0.006, ((0.6, 0.35), (0.4, 1.0)), 0.6),
+                (0.55, 52.0, 40.0, 31.0, 0.15, 0.03, ((0.6, 0.5), (0.4, 1.4)), 0.4),
+                (2.3, 48.0, 38.0, 30.0, 0.3, 0.1, ((0.7, 0.7), (0.3, 2.0)), 0.4),
+                (4.6, 44.0, 36.0, 30.0, 0.4, 0.2, ((1.0, 1.8),), 0.18)]
+        rip = (900, 13000, s + 0.08, 220, -1.5)
+        multi = [(rng().uniform(25, 60), rng().uniform(0.002, 0.03), rng().uniform(0.5, 1.0)) for _ in range(7)]
+    L, R = thunder(95101, d, 30.0, 1800.0, 3500.0, 16, st, boom, 0.0, -23.0, -8.0, (6.5, 0.24, (1700, 150), 2.4, 0.75),
+                   [(0.4, 0.34, 2000), (0.95, 0.26, 1300), (1.7, 0.2, 800), (2.3, 0.3, 600), (2.9, 0.16, 450),
+                    (4.0, 0.12, 350), (5.6, 0.08, 280), (7.4, 0.06, 240), (9.5, 0.04, 200)], 0.8, t0=tc, rip=rip,
+                   clap=(150, 1400, 1.0), multi=multi)
     lv = T.loudest((L + R) / 2)
-    for t1, sd, db in ((2.2, 95301, -9.0), (4.6, 95302, -13.0)):
+    with PB.seeded(95401):
+        # (the crack's clap broadband but tilted, as measured: the top ~8 dB under its body)
+        cl = np.zeros(n)
+        for s0, a0 in st[:6]:
+            m = n_of(0.15)
+            su = np.arange(m) / SR
+            b_ = (band(rng().standard_normal(m), 1400, 11000, 2) * np.exp(-su / rng().uniform(0.01, 0.02))) * np.minimum(su / 0.0008, 1)
+            P.put(cl, b_ * a0, tc + s0 + rng().uniform(0, 0.02))
+        cl *= lv * 10 ** (-6 / 20) / (np.abs(cl).max() + 1e-12)
+        l, r = PB.pan2(cl, rng().uniform(-0.3, 0.3))
+        L += l; R += np.roll(r, 7)
+        # (the body: 40-250 Hz held about a second, then falling, under the rolls)
+        bd = T.unit(band(white(d), 40, 250, 2)) * np.clip(1 + 0.4 * PB.slow_random(n, 2.0, 12.0), 0.2, None)
+        u = np.maximum(t - tc, 0)
+        bd *= (t >= tc) * (1 - np.exp(-u / 0.02)) * np.where(u < 0.9, 1 - 0.3 * u / 0.9, 0.7 * np.exp(-(u - 0.9) / 0.45))
+        L += bd * lv * 10 ** (-9 / 20); R += np.roll(bd, 31) * lv * 10 ** (-9 / 20)
+        # (the run-in before it)
+        rl, rr = run_in(d, lv)
+        L += rl; R += rr
+    # (the discharge rolling on round the sky: long rolls high up, further off each)
+    for t1, sd, db in ((tc + 2.2, 95301, -14.0), (tc + 4.6, 95302, -20.0), (tc + 7.8, 95303, -26.0)):
         rl, rr = rumble_one(sd, d - t1)
         g = lv * 10 ** (db / 20) / (T.loudest((rl + rr) / 2) + 1e-12)
         P.put(L, rl * g, t1); P.put(R, rr * g, t1)
     with PB.seeded(95201):
         # (the discharge fizzing and crackling for a second and a half)
         fz = T.unit(band(white(d), 1500, 9000, 2)) * np.clip(N.grains(d, 500.0, (0.001, 0.003, 0.008)), 0, 8) ** 1.2
-        fz *= np.exp(-np.maximum(t - 0.05, 0) / 0.6) * (t > 0.05) * (1 - np.exp(-np.maximum(t - 0.05, 0) / 0.02))
-        lv = T.loudest((L + R) / 2)
+        fz *= np.exp(-np.maximum(t - tc - 0.05, 0) / 0.6) * (t > tc + 0.05) * (1 - np.exp(-np.maximum(t - tc - 0.05, 0) / 0.02))
         L += fz * lv * 0.12; R += np.roll(fz, 37) * lv * 0.12
-    L, R = N.glue(L, R)
-    L, R = N.overdrive(L, R, 0.03)
-    L, R = fades(L, 0.0, 2.5), fades(R, 0.0, 2.5)
+        dl, dr = debris(d, tc, lv)
+        L += dl; R += dr
+    # (the body driven gently, as a strike recorded too close: the sub and the crack's top clean)
+    L, R = body_drive(L, R, tc, 4.0, hold=0.6, ease=1.2)
+    # (the roll dying away: from a second after the crack it falls a further 9 dB over six seconds, as it rolls off)
+    u = np.maximum(t - tc - 1.0, 0)
+    g = 10 ** (-9.0 * (1 - np.exp(-u / 3.0)) / 20)
+    L, R = L * g, R * g
+    L, R = fades(L, 0.0, 3.0), fades(R, 0.0, 3.0)
     write("finale", (L, R), LEVEL["finale"], knee=0.55)
 
 
@@ -696,7 +821,7 @@ def listen_mix(z, out):
     tl = Path(out) / f"timeline_{z}.txt"
     subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "sc_write_sounds", "--", "--ignored"], cwd=ROOT / "mod",
                    env=dict(os.environ, SC_OUT=str(tl.resolve()), SC_ME=str(z)), check=True, capture_output=True)
-    d = 66.0
+    d = 60.0
     mix = np.zeros((n_of(d), 2))
     pick = np.random.default_rng(z)
     files = {}
