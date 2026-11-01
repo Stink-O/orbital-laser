@@ -163,7 +163,7 @@ def reset(world: str, name: str) -> None:
     r = ctl("open", world, timeout=120)
     if r is None or "error" in r:
         die(f"couldn't open {world} again: {r}")
-    ctl("wait-ready", "--timeout", "120", timeout=130)
+    ctl("wait-ready", "120", timeout=130)
     print(f"{world} reset to snapshot {name} and open")
 
 
