@@ -91,8 +91,8 @@ laser, command, capability and timing). This file is the short, factual version 
   deep at each, the funnels' tracks scoured (plants, leaves, a few falling blocks), and a finale crater ~70 across and
   24 deep with fulgurite glass veins out to ~85, an overturned rim, trees blasted and set alight out to 95, the land
   scorched to 112, 60 blocks thrown, mobs within 80 killed. It never touches the world's weather (the pass draws the
-  rain). Each bolt's fires are put out 1.5, 5 and 12 s after it, and every fire within 150 twice as it ends, these as
-  `Act::Cleanup`/`Blocks::cleanup`, which lib.rs still makes after `/orbital stop`. Force-loads the chunks within 154.
+  rain). The fires its bolts light are left burning (they burn out or spread as fire does; a stop leaves them too).
+  Force-loads the chunks within 154.
   Its thunder (`tools/sounds_storm.py`; `sc_thunder` schedules it) is late by the distance and picked by it: `crack`
   within 90 blocks, `crack_mid` to 260, `crack_far` (mostly rumble) past that, each take its own event
   (`supercell.crack3`) so none plays twice running; bolts heard within 0.15 s of each other are one louder clap, never

@@ -129,7 +129,7 @@ Thirteen lasers, five to a page of the wheel.
   and faster, thin funnels come down and wander over the land, the bolts draw in on the target, a rapid run of them
   lands on it, a moment's hush, then one colossal strike at 29 seconds. It leaves small
   scorched pits, the funnels' scoured tracks and a crater about 70 across with veins of fused glass branching out
-  through the ground round it; the fires it lights are put out.
+  through the ground round it; the fires it lights are left burning, and can spread.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Supercell reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.

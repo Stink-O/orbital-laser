@@ -2088,22 +2088,19 @@ mod stress {
             let edits = fake::with(|w| w.edits);
             eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
             assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
-            assert!(edits > 50, "the pits and the sweeps went in ({edits} edits)");
+            assert!(edits > 50, "the pits went in ({edits} edits)");
         }
-        // (stopped in the storm: the fires it lit are still put out, its sweeps worked out a stage a tick after it)
+        // (stopped in the storm: nothing of it left waiting, its fires left burning)
         let mut s = Soak::new(6);
         s.fire(sc, (0, 0));
         for _ in 0..400 {
             s.step("stop");
         }
         s.stop();
-        let (before, cleanup) = (fake::with(|w| w.edits), s.o.cleanup.len());
-        assert!(cleanup >= 12, "the sweeps left undone ({cleanup} stages)");
         for _ in 0..200 {
             s.step("after");
         }
-        let after = fake::with(|w| w.edits);
-        assert!(s.o.cleanup.is_empty() && s.o.edits.is_empty() && after >= before + 12, "{before} -> {after}");
+        assert!(s.o.cleanup.is_empty() && s.o.edits.is_empty());
         assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
     }
 

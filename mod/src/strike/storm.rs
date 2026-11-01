@@ -11,9 +11,8 @@
 //! What it leaves is light: a small scorched pit where each bolt struck (blackstone, basalt, tinted glass, a seam of
 //! magma, glassy sand), charred grass round it, the funnels' scoured tracks; and the finale's: a crater about 70 across
 //! and 24 deep, fulgurite veins of glass branching out from it, an overturned rim, the trees round it blasted and set
-//! alight, the land scorched far out (`fc_band`). The world's weather is left alone (the pass draws the rain): the fires
-//! the bolts light are put out round each soon after it strikes (`douse`) and swept out within SC_SWEEP as it ends, as
-//! `cleanup` work lib.rs still does if the strike is stopped.
+//! alight, the land scorched far out (`fc_band`). The world's weather is left alone (the pass draws the rain), and the fires
+//! the bolts light are left burning, to burn out or spread as fire does.
 //!
 //! The bolts are not vanilla's `lightning_bolt`s: one plays its own full-scale thunder at the flash, however far off,
 //! and `stopsound` can only cut it a tick or more in (a pop and a click, then ours on top). Each bolt instead hurts what
@@ -62,9 +61,8 @@ pub(super) const SC_NF: usize = 3;
 pub(super) const SC_K: usize = 1024;
 pub(super) const SC_I: usize = SC_K + 3 * SC_NK;
 pub(super) const SC_NI: usize = 64;
-/// How far out the fires are swept as it ends, and the bands a sweep is split into (a stage each).
+/// How far out it works in the land (the chunks forceloaded for it).
 const SC_SWEEP: f64 = 150.0;
-const SC_SWEEP_BANDS: usize = 12;
 
 /// A bolt: when, and where off the middle.
 #[derive(Clone, Copy, Debug)]
@@ -480,51 +478,6 @@ fn fc_thrown(q: &mut Plan, t: f32, seed: u32) {
     }
 }
 
-/// The fires put out round (x, z) at `t` out to `r`, from 28 under each column's top (its highest trunk: the crowns round
-/// it hang below) to 30 over it: the
-/// bolt's own fires, before they spread. Made even if the strike is stopped (`cleanup`).
-fn douse(x: i32, z: i32, r: i32, t: f32) -> (f32, Act) {
-    let mut b = Blocks { cleanup: true, ..Default::default() };
-    for dz in -r..=r {
-        for dx in -r..=r {
-            if dx * dx + dz * dz <= r * r {
-                b.put(x + dx, z + dz, -28, 30, "minecraft:air", Some("#minecraft:fire"), true);
-            }
-        }
-    }
-    (t, Act::Blocks(Box::new(b)))
-}
-
-/// The fires swept out of band `k` of SC_SWEEP_BANDS (equal areas out to SC_SWEEP) at `t`: every fire from 30 under each
-/// column's top (a column's top is its highest trunk or stem: the crowns round it hang below it) to 42 over it put out.
-/// Only fire changes.
-fn sweep(q: &mut Plan, k: usize, t: f32) {
-    let (bx, bz) = (q.bx, q.bz);
-    let r0 = SC_SWEEP * (k as f64 / SC_SWEEP_BANDS as f64).sqrt();
-    let r1 = SC_SWEEP * ((k + 1) as f64 / SC_SWEEP_BANDS as f64).sqrt();
-    let mut b = Blocks { cleanup: true, ..Default::default() };
-    let ri = r1.ceil() as i32;
-    for dz in -ri..=ri {
-        let z = f64::from(dz);
-        // (the row's columns between the band's two circles: one span either side, or one across where it misses r0)
-        let outer = (r1 * r1 - z * z).max(0.0).sqrt();
-        let inner = (r0 * r0 - z * z).max(0.0).sqrt();
-        let xo = outer.floor() as i32;
-        let xi = if r0 * r0 > z * z { inner.ceil() as i32 } else { -1 };
-        let mut span = |a: i32, c: i32| {
-            for dx in a..=c {
-                b.put(bx + dx, bz + dz, -30, 42, "minecraft:air", Some("#minecraft:fire"), true);
-            }
-        };
-        if xi < 0 {
-            span(-xo, xo);
-        } else if xi <= xo {
-            span(-xo, -xi);
-            span(xi, xo);
-        }
-    }
-    q.ev.push((t, Act::Blocks(Box::new(b))));
-}
 
 /// How far into the finale's sound its crack is (tools/sounds_storm.py's FIN_PRE): before it, the run-in, its bolts'
 /// cracks (`FIN_RUN`) stacking up faster and faster into it.
@@ -721,22 +674,10 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     let bolts = sc_bolts(s, mer);
     for b in &bolts {
         let (x, z) = ((cx + b.x).floor() as i32, (cz + b.z).floor() as i32);
-        // (with the terrain on, what stands at its foot hurt as by a vanilla bolt, its foot set alight with its pit (`pit`)
-        // and the fires put out a second and a half after, again at 5 s and wider at 12 s, before they spread: those
-        // edits made even if the strike is stopped)
+        // (with the terrain on, what stands at its foot hurt as by a vanilla bolt, its foot set alight with its pit (`pit`):
+        // its fires left burning, to burn out or spread as fire does)
         if terrain {
             p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking as @e[type=!minecraft:player,distance=..3.5] run damage @s 5 minecraft:lightning_bolt"));
-            // (its douses worked out in a stage of their own as it strikes, not all the storm's at once as it fires: a
-            // hundred-odd bolts' were most of the fire tick; a cleanup stage, so a stopped strike still makes them)
-            let t = b.t;
-            p.later(t + 0.5, move |q| {
-                q.ev.push(douse(x, z, 6, t + 1.5));
-                q.ev.push(douse(x, z, 7, t + 5.0));
-                q.ev.push(douse(x, z, 11, t + 12.0));
-            });
-            if let Some((at, Act::Later(job))) = p.ev.pop() {
-                p.ev.push((at, Act::Cleanup(job)));
-            }
         }
         p.at(b.t + 0.6, format!("execute positioned {x} 0 {z} positioned over motion_blocking_no_leaves run particle minecraft:large_smoke ~0.5 ~0.5 ~0.5 1 0.6 1 0.02 14 force"));
         if terrain {
@@ -747,7 +688,7 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
                 let rc = 3.5 + 2.0 * q.rng.next();
                 let mut rng = Rng::new((x as u64) << 32 ^ z as u32 as u64 ^ u64::from(s));
                 pit(&mut e, &mut rng, x, z, rp, rc, s);
-                // (its foot and a few blocks round it set alight, as a vanilla bolt's: put out from 1.5 s, `douse`)
+                // (its foot and a few blocks round it set alight, as a vanilla bolt's, and left burning)
                 for k in 0..4u32 {
                     let (dx, dz) = if k == 0 { (0, 0) } else { ((rng.next() * 3.0) as i32 - 1, (rng.next() * 3.0) as i32 - 1) };
                     put_on(&mut e, x + dx, z + dz, 0, 0, "minecraft:fire", Some("minecraft:air"), horizon_mod_sdk::world::Heightmap::MotionBlocking);
@@ -864,7 +805,7 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         p.later(tf - 0.5, move |q| fc_thrown(q, tf, s));
     }
 
-    // ---- the storm dies away: the rain stops, the fires it left are put out -------------------------------------------------
+    // ---- the storm dies away: the rain stops, the fires it left burning ------------------------------------------------------
     p.at(SC_CLEAR + 1.0, bar("STORM DISSIPATING", "gray"));
     if terrain {
         let load = pk_load_rows([cx, gy, cz], 0.0, SC_SWEEP + 4.0);
@@ -873,16 +814,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         }
         for [x0, z0, x1, z1] in &load {
             p.ev.push((len - 0.5, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
-        }
-        // (worked out even if the strike is stopped: `Act::Cleanup`)
-        for t0 in [SC_CLEAR + 3.0, len - 3.0] {
-            for k in 0..SC_SWEEP_BANDS {
-                let t = t0 + 0.1 * k as f32;
-                p.later(t - 0.3, move |q| sweep(q, k, t));
-                if let Some((at, Act::Later(job))) = p.ev.pop() {
-                    p.ev.push((at, Act::Cleanup(job)));
-                }
-            }
         }
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -1149,7 +1080,7 @@ mod tests {
     }
 
     #[test]
-    fn supercell_pits_are_small_its_finale_crater_is_70_across_and_its_fires_are_put_out() {
+    fn supercell_pits_are_small_its_finale_crater_is_70_across_and_its_fires_burn_on() {
         let (blocks, cmds, _, _) = played(true, [10.5, 66.0, 297.5]);
         let fills: Vec<(f32, String)> = blocks.iter().flat_map(|(t, b)| b.as_fills().into_iter().map(move |f| (*t, f))).collect();
         // nothing that flows or burns placed; the digs a couple of blocks deep at a bolt, at most 6 at the finale
@@ -1177,12 +1108,8 @@ mod tests {
         }).count();
         assert!(far_glass > 40, "{far_glass}");
         assert!(fills.iter().any(|(t, f)| (*t - SC_FINALE).abs() < 1.0 && f.contains("minecraft:fire replace minecraft:air")));
-        // (each bolt's fires put out three times after it, from 1.5 s on)
-        let dousings = fills.iter().filter(|(t, f)| *t < SC_CLEAR && f.contains("replace #minecraft:fire")).count();
-        assert!(dousings > sc_bolts(37, [0.0, 300.0]).len() * 2 * 100, "{dousings}");
-        // (the fires put out, out to SC_SWEEP, twice as it ends)
-        let swept: Vec<&(f32, String)> = fills.iter().filter(|(t, f)| *t > SC_CLEAR && f.contains("replace #minecraft:fire")).collect();
-        assert!(swept.len() as f64 > 2.0 * 0.95 * PI * SC_SWEEP * SC_SWEEP, "{}", swept.len());
+        // (its fires left burning: nothing puts them out)
+        assert!(!fills.iter().any(|(_, f)| f.contains("replace #minecraft:fire")));
         // (the chunks it works in forceloaded and let go)
         assert!(cmds.iter().any(|(_, c)| c.starts_with("forceload add")) && cmds.iter().any(|(_, c)| c.starts_with("forceload remove")));
         // (the funnels' tracks scoured: plants and leaves only, and a few blocks thrown)
