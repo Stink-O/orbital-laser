@@ -34,6 +34,9 @@ const EYE: f64 = 1.62;
 const KICK: f64 = 3.9;
 /// The most kicks a tick (so no more than 117 blocks a tick, whatever goes wrong).
 const KICKS: usize = 30;
+/// The fastest the camera moves the player, blocks a tick on any axis: the game's collision sweep of a move this
+/// long stays a few percent of its million-block budget (a 230-block jump in one tick crashed the game).
+const VMAX: f64 = 24.0;
 
 /// How the orbit backs off for each bomb: from `safe_from` seconds before it bursts to `safe_by` before, out to `safe`
 /// (or the orbit's own distance, if more); then `grow` times that as the cloud climbs, `settle` seconds after the burst.
@@ -194,7 +197,14 @@ impl Follow {
         let next = t + 0.05;
         let eye = lerp(from, self.orbit(next, dir), ease(self.join, self.join + JOIN, next));
         let want = sub(sub(eye, [0.0, EYE, 0.0]), feet);
-        let mut kick = sub(want, self.velocity);
+        // (never faster than VMAX a tick on any axis, the kicks taking it back down if it is: the game sweeps the
+        // player's box along its whole move for collisions, and gives up, crashing, past a million blocks)
+        let mut total = want;
+        let fast = total.iter().fold(0.0f64, |a, v| a.max(v.abs()));
+        if fast > VMAX {
+            total = total.map(|v| v * VMAX / fast);
+        }
+        let mut kick = sub(total, self.velocity);
         // (however far off, no more than KICKS a tick)
         let most = KICK * KICKS as f64;
         let big = kick.iter().fold(0.0f64, |a, v| a.max(v.abs()));
@@ -266,6 +276,9 @@ mod tests {
                 assert!(kick.iter().all(|v| v.abs() <= 4.0));
                 p.velocity = add(p.velocity, kick.map(f64::from), 1.0);
             }
+            // never a move the game's collision sweep can't take (its budget a million blocks)
+            let sweep = (p.velocity[0].abs() + 0.6) * (p.velocity[1].abs() + 1.8) * (p.velocity[2].abs() + 0.6);
+            assert!(sweep < 100_000.0, "{key} at {t}: velocity {:?} sweeps {sweep:.0}", p.velocity);
             // how near the blast
             if t >= f.path.hit - 0.1 && t <= f.path.hit + 15.0 {
                 nearest = nearest.min(len(sub(eye, f.centre(f.path.hit))));
@@ -289,9 +302,10 @@ mod tests {
                 assert!(f.join > f.path.seen && f.join < f.path.hit - 2.0, "{key}: joins at {}", f.join);
             }
         }
-        // held still a few ticks (their chunk not ready): back on the orbit once moving again
+        // held still a few ticks (their chunk not ready): catching back up at no more than VMAX a tick, a tick or two
+        // behind (never a jump the game's collision sweep can't take)
         let (_, worst, _) = play("nuke", false, |k| (180..184).contains(&k), 0.0);
-        assert!(worst < 3.0, "{worst}");
+        assert!(worst < 2.0 * VMAX, "{worst}");
         // the game's drag 3% other than the mod's: still on the orbit, near enough (it corrects each tick)
         for off in [-0.03, 0.03] {
             let (_, worst, _) = play("nuke", true, |_| false, off);
