@@ -313,8 +313,9 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     for (i, b) in bolts.iter().enumerate() {
         let (x, z) = ((cx + b.x).floor() as i32, (cz + b.z).floor() as i32);
         p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
-        // (vanilla's thunder stopped on the ticks after the bolt plays it)
-        for k in 1..4 {
+        // (vanilla's thunder stopped on the ticks after the bolt plays it: the summon runs on the tick after it is due,
+        // the bolt plays its thunder later that tick, after the mod's commands; a few ticks' worth, in case it is late)
+        for k in 1..6 {
             p.at(b.t + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
         }
         let (late, d) = sound_from([cx + b.x, gy, cz + b.z], me);
