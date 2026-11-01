@@ -280,14 +280,29 @@ fn fc_band(q: &mut Plan, k: usize, t: f32, seed: u32, veins: &crate::ground::FxM
     let r0 = FC_SCORCH * (k as f64 / FC_BANDS as f64).sqrt();
     let r1 = FC_SCORCH * ((k + 1) as f64 / FC_BANDS as f64).sqrt();
     let mut b = Blocks { cleanup: false, ..Default::default() };
+    // (only the band's own columns visited, a row's span either side of the middle: never the square round it)
     let ri = r1.ceil() as i32;
+    let mut cols = Vec::new();
     for dz in -ri..=ri {
-        for dx in -ri..=ri {
+        let z2 = f64::from(dz) * f64::from(dz);
+        let xo = (r1 * r1 - z2).max(0.0).sqrt().ceil() as i32;
+        let xi = if r0 * r0 > z2 { ((r0 * r0 - z2).sqrt().floor() as i32 - 1).max(0) } else { -1 };
+        crate::meter::spend(300);
+        let mut span = |a: i32, c: i32| cols.extend((a..=c).map(|dx| (dx, dz)));
+        if xi < 0 {
+            span(-xo, xo);
+        } else {
+            span(-xo, -xi);
+            span(xi, xo);
+        }
+    }
+    for (dx, dz) in cols {
+        {
             let r = f64::from(dx).hypot(f64::from(dz));
+            crate::meter::spend(400);
             if r < r0 || r >= r1 {
                 continue;
             }
-            crate::meter::spend(120);
             let (x, z) = (bx + dx, bz + dz);
             let wob = 0.9 + 0.2 * vnoise(f64::from(x), f64::from(z), 7.0, seed ^ 0x71);
             let rr = r / wob;
