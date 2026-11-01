@@ -431,7 +431,35 @@ pub const NUKE: Laser = Laser {
     particle_b: "particle minecraft:campfire_signal_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
 };
 
-pub const LASERS: [&Laser; 11] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE];
+/// The Rod from God, planned in `strike::rod_plan` (strike/rod.rs): a tungsten rod dropped from orbit, kinetic, no
+/// explosive. A thin white-hot streak tears straight down out of the sky in silence, then one enormous impact: a sharp
+/// flash, a shockwave, a fountain of rock round a column of dust, a deep punch of a crater. The crater fields below are
+/// only what the shared tests read: its crater, rim, felled trees and rubble are planned there.
+pub const ROD: Laser = Laser {
+    key: "rod",
+    index: 11,
+    title: "ROD FROM GOD",
+    color: "white",
+    rgb: 0xDDE6F0,
+    blurb: "A tungsten rod dropped from orbit. Silence, then one enormous impact.",
+    icon_model: "orbital:rod_icon",
+    length: 60.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 30,
+    bowl_d: 25,
+    bowl_rough: 0.06,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:deepslate", 1.0)],
+    bowl_floor: ("minecraft:deepslate", 0.0, "minecraft:tuff"),
+    bottom: &[],
+    particle_a: "particle minecraft:block{block_state:\"minecraft:stone\"} {x} {y} {z} {r} 3 {r} 0.2 40 force",
+    particle_b: "particle minecraft:campfire_signal_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+};
+
+pub const LASERS: [&Laser; 12] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

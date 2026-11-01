@@ -35,7 +35,7 @@ const REMOTE: &str = "orbital:remote";
 const LOCK_TICKS: u32 = 14;
 // Every post pass, built ahead of time from the shader files by build.rs (src/passbuild.rs): PASS_OWN (the other
 // lasers', strike.wgsl itself, then the downfall's, the planet killer's, the crystal bloom's and the sinkhole's: strike.wgsl
-// up to its fs_main less the other lasers' own functions, then shaders/downfall.wgsl ...), PASS_PAYLOAD and PASS_NUKE (at
+// up to its fs_main less the other lasers' own functions, then shaders/downfall.wgsl ...), PASS_PAYLOAD, PASS_NUKE and PASS_ROD (at
 // QUALITY FULL and FAST). A switch only picks one: building a pass of some 200 KB in the
 // game took the mod past its fuel in one call.
 include!(concat!(env!("OUT_DIR"), "/passes.rs"));
@@ -51,6 +51,10 @@ fn payload_pass(fast: bool) -> &'static str {
 fn nuke_pass(fast: bool) -> &'static str {
     PASS_NUKE[usize::from(fast)]
 }
+/// The Rod from God's, the same way (rod.wgsl's `[half stage]`: its dust column, dust ring and trail at half size).
+fn rod_pass(fast: bool) -> &'static str {
+    PASS_ROD[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -60,6 +64,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "sinkhole" => 4,
         "payload" => 5,
         "nuke" => 6,
+        "rod" => 7,
         _ => 0,
     }
 }
@@ -210,6 +215,7 @@ struct Settings {
     fly: f32,
     blast_alt: [bool; 2],
     fast: bool,
+    impact: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -219,10 +225,10 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's), the one the
     /// game last compiled,
     /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [&'static str; 7],
+    passes: [&'static str; 8],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -259,6 +265,9 @@ struct Orbital {
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
     fast: bool,
+    /// The Rod from God's impact frames (`/orbital impactframes`, the wheel's IMPACT FX switch): its stark full-screen
+    /// flash frames as it strikes, on (the default) or off.
+    impact: bool,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
@@ -291,14 +300,14 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast } = settings;
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
                 let mine = pass_of(LASERS[laser]);
-                (0..7).filter(|&i| i != mine).chain([mine]).collect()
+                (0..8).filter(|&i| i != mine).chain([mine]).collect()
             },
             warming: false,
             carving: std::collections::VecDeque::new(),
@@ -319,6 +328,7 @@ impl Orbital {
             fly,
             blast_alt,
             fast,
+            impact,
             aiming: None,
             skip: 0.0,
             shadow_off: false,
@@ -332,7 +342,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -343,7 +353,8 @@ impl Orbital {
             self.fly,
             if self.blast_alt[0] { "alt" } else { "main" },
             if self.blast_alt[1] { "alt" } else { "main" },
-            if self.fast { "fast" } else { "full" }
+            if self.fast { "fast" } else { "full" },
+            if self.impact { "on" } else { "off" }
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -370,6 +381,7 @@ impl Orbital {
         let mut fly = 1.0;
         let mut blast_alt = [false; 2];
         let mut fast = true;
+        let mut impact = true;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -385,6 +397,7 @@ impl Orbital {
                     blast_alt[wheel::SOUND_LASERS.iter().position(|s| s.1 == k).unwrap_or(0)] = v == "alt";
                 }
                 Some(("quality", v)) => fast = v != "full",
+                Some(("impactframes", v)) => impact = v != "off",
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -393,7 +406,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -448,7 +461,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact));
         }
     }
     fn open_wheel(&mut self) {
@@ -570,6 +583,11 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.fast { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
+            Some(wheel::Spot::Impact) => {
+                self.set_impact(!self.impact);
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
             Some(wheel::Spot::Hud) => {
                 self.hud = !self.hud;
                 self.save();
@@ -591,7 +609,24 @@ impl Orbital {
         self.save();
         self.rebuild("payload", payload_pass(fast));
         self.rebuild("nuke", nuke_pass(fast));
+        self.rebuild("rod", rod_pass(fast));
         self.update_panel();
+    }
+    /// The Rod's impact frames on or off, kept, and at once for a strike under way.
+    fn set_impact(&mut self, on: bool) {
+        self.impact = on;
+        self.save();
+        let flags = self.flags_of(11);
+        if let Some(s) = &mut self.strike
+            && s.params[7] == 11.0
+        {
+            s.params[15] = flags;
+        }
+    }
+    /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
+    /// shadow off`), and for the Rod from God 2 more if its impact frames are.
+    fn flags_of(&self, index: u32) -> f32 {
+        f32::from(u8::from(self.shadow_off)) + if index == 11 && !self.impact { 2.0 } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
     /// ahead of the next, as the passes are).
@@ -647,10 +682,10 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
-            params[15] = if self.shadow_off { 1.0 } else { 0.0 };
+            params[15] = self.flags_of(laser.index);
         }
         let pass = pass_of(laser);
         render::set_post(&self.passes[pass]);
@@ -923,7 +958,7 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
             if (self.fly - 1.0).abs() > 1e-4 {
@@ -995,7 +1030,7 @@ impl Mod for Orbital {
                     // (the sinkhole comes from nothing overhead: it reads the ground under the crosshair instead)
                     let what = match l.key {
                         "sinkhole" => "SEISMIC SCAN",
-                        "payload" | "nuke" => "DESIGNATING",
+                        "payload" | "nuke" | "rod" => "DESIGNATING",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
@@ -1129,10 +1164,19 @@ impl Mod for Orbital {
                 self.update_panel();
                 Ok(Some(format!("Status panel {v}")))
             }
+            (Some("impactframes"), Some(v @ ("on" | "off"))) => {
+                self.set_impact(v == "on");
+                Ok(Some(format!("Impact frames {v} (the Rod from God's stark flash frames as it strikes)")))
+            }
+            (Some("impactframes"), None) => Ok(Some(format!("Impact frames: {} (/orbital impactframes on or off)", if self.impact { "on" } else { "off" }))),
             (Some("shadow"), Some(v @ ("on" | "off"))) => {
                 self.shadow_off = v == "off";
-                if let Some(s) = &mut self.strike {
-                    s.params[15] = if self.shadow_off { 1.0 } else { 0.0 };
+                let flags = |o: &Self, i: f32| o.flags_of(i as u32);
+                if let Some(i) = self.strike.as_ref().map(|s| s.params[7]) {
+                    let f = flags(self, i);
+                    if let Some(s) = &mut self.strike {
+                        s.params[15] = f;
+                    }
                 }
                 Ok(Some(format!("Cloud shadows {v}")))
             }
@@ -1152,7 +1196,7 @@ impl Mod for Orbital {
             }
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
-                Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's and the Nuke's smoke at half size" } else { "full: every pixel" })))
+                Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's, the Nuke's and the Rod's smoke at half size" } else { "full: every pixel" })))
             }
             (Some("quality"), None) => Ok(Some(format!(
                 "Quality: {} (/orbital quality full or fast)",
@@ -1169,7 +1213,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | impactframes on|off | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -1203,6 +1247,7 @@ mod tests {
             (super::PASS_OWN[4], &["fn mh(", "fn vnoise3(", "fn sinkhole(", "fn rot_axis(", "fn ign("][..]),
             (super::payload_pass(false), &["fn mh(", "fn gnoise3(", "fn payload(", "fn ign("][..]),
             (super::nuke_pass(false), &["fn mh(", "fn gnoise3(", "fn nuke(", "fn ign("][..]),
+            (super::rod_pass(false), &["fn mh(", "fn gnoise3(", "fn rod(", "fn ign("][..]),
         ] {
             for gone in ["fn singularity(", "fn meteor_storm(", "fn mothership(", "fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    if (th_is"] {
                 assert!(!p.contains(gone), "{gone}");
@@ -1226,6 +1271,9 @@ mod tests {
             assert!(!p.contains("half_picture") || fast);
             assert_eq!(p.matches("    // ---- the mushroom cloud: raymarched").count(), 1);
             assert!(p.contains("fn nuke(") && p.contains("// ---- the bomb") && !p.contains("v10_"));
+            let r = super::rod_pass(fast);
+            assert_eq!(r.matches("@fragment").count(), if fast { 3 } else { 1 });
+            assert!(r.len() <= 256 << 10 && r.contains("fn rod(") && !r.contains("fn nuke("));
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
@@ -1552,7 +1600,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "nuke", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -1619,6 +1667,36 @@ mod stress {
             let mut s = Soak::new(3);
             s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
             s.fire(nuke, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 2200, "it never ended");
+            }
+            let (edits, logs) = fake::with(|w| (w.edits, w.logs.clone()));
+            let left = logs.iter().any(|l| l.contains("never loaded"));
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {}", s.worst.0 as f64 / 1e6, s.worst.1, if left { "land left out" } else { "all of it in" });
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow == 0 {
+                assert!(left, "the land never loaded and nothing said so");
+            } else {
+                // (the crater dug once the land came: thousands of edits; all of it when it came within the time, the
+                // slowest some of it given up on and said so)
+                assert!(edits > 1000, "the crater never went in ({edits} edits)");
+                assert!(slow > 4 || !left, "the land came but was left out");
+            }
+        }
+    }
+
+    /// The Rod from God called in on land far off, as the Nuke is (`a_nuke_on_far_unloaded_land_waits_for_it_cheaply`):
+    /// its land waits for the chunks, cheaply, and what never loads is left out and said so.
+    #[test]
+    fn a_rod_on_far_unloaded_land_waits_for_it_cheaply() {
+        let rod = LASERS.iter().position(|l| l.key == "rod").expect("the rod");
+        for slow in [4, 20, 0] {
+            let mut s = Soak::new(3);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(rod, (1000, -2000));
             let mut ticks = 0;
             while s.o.strike.is_some() {
                 s.step("far");
