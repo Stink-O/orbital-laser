@@ -267,7 +267,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   up to about 15 high out to about 90 with the ground overturned on it (dirt at its foot, stone over that, deepslate and
   tuff on top); everything standing on the land swept off out to about 200, the trees felled pointing away from it,
   past that out to about 240 crowns stripped and some trees knocked flat; the grass dusted with coarse dirt and gravel
-  all round the rim and in about 17 rays out to about 200; about 1,000 pieces of rubble strewn in the same rays out to
+  all round the rim and in about 17 rays out to about 200; hundreds of pieces of rubble strewn in the same rays out to
   250; about 120 real blocks thrown up out of the crater in a steep cone; every mob and item within 200 killed. Water
   it cuts into is dug like any other block; the lava in the ground it bares is sealed. It keeps about 830 chunks loaded
   while it works; its land goes in through `world.edit-blocks` as the Nuke's does, one wave from the middle out: the
