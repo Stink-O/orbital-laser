@@ -312,8 +312,9 @@ and 24 deep, fused (its face blackstone, basalt, tinted glass and obsidian, magm
 of glass and magma wandering and forking out through the ground to 55-85 blocks, showing at the top; an overturned rim
 up to 5 high of stone and raw earth; the trees round it blasted (trunks gone under the rim, charred to basalt out to
 70, crowns torn off to 62) and set alight out to 95; plants burnt off to 95, the grass scorched in thinning patches out
-to 112; 60 blocks of the ground thrown out; every mob within 80 killed. With the terrain on the bolts are real (`summon
-minecraft:lightning_bolt`): they light fires and hurt what they hit. The world's weather is left alone: each bolt's fires
+to 112; 60 blocks of the ground thrown out; every mob within 80 killed. With the terrain on each bolt hurts what stands at its
+foot (as a vanilla bolt would, `damage ... minecraft:lightning_bolt`) and sets a few fires there; the bolts are not
+vanilla's, whose own full-scale thunder plays at the flash however far off and could only be cut a tick in. The world's weather is left alone: each bolt's fires
 are put out 1.5 s, 5 s and 12 s after it (within 6, 7 and 11 blocks, from 28 under each column's top to 30 over it, so the crowns hanging round a tall trunk are reached),
 and every fire within 150 blocks twice as it ends (the finale's too); those edits and sweeps are still made if the strike
 is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
@@ -520,22 +521,25 @@ The Supercell's ([`tools/sounds_storm.py`](../tools/sounds_storm.py)) model the 
 bolt's channel is a tortuous path from the ground up into the cloud and on along its base, with branches, and every
 few metres of it sends its own short pressure pulse (an N-wave, longer and duller the further it has come), arriving
 as far behind the flash as that bit of the channel is far away and loudest where the channel crosses the line of sight;
-three to five return strokes 40-90 ms apart re-fire it. So a close bolt (`crack`, 6 takes, within 110 blocks) rips
-and cracks bright, then booms (a falling 45-75 Hz fundamental with its harmonics stacked on it, so a phone hears the
-weight) and rolls in off the rest of the channel and the land's echoes; further off (`crack_far`, 5 takes) it is a
-dull clap and a deeper, longer roll; a flicker in the cloud (`rumble`, 5 takes, none in the seconds round the finale)
-is a long, soft roll high up, narrow and dark. Each is late by the distance and let down while the cracks before it
-still roll, so a run of near bolts never piles up. The storm builds out of a hush (the wind rising in gusts, a low
+three to five return strokes 40-90 ms apart re-fire it. So a close bolt (`crack`, 6 takes, within 90 blocks) rips
+and cracks bright, then booms (a falling 46-58 Hz fundamental with its harmonics stacked on it, so a phone hears the
+weight, its body gently overdriven) and rolls in off the rest of the channel and the land's echoes, over six seconds;
+90-260 blocks off (`crack_mid`, 5 takes) it is a duller clap with a little tearing left and a longer roll; further
+(`crack_far`, 5 takes) it is mostly rumble, the clap a soft knock under a deep, long roll; a flicker in the cloud
+(`rumble`, 5 takes, none in the seconds round the finale nor within 0.4 s of a bolt's) is a long, soft roll high up,
+narrow and dark, under the bolts. Each is late by the distance (343 blocks a second), 4 dB quieter each time the
+distance doubles, never starting within 0.15 s of another (it would flam), let down a little (never more than 3 dB)
+while louder thunder still rolls, and a take of its own: the plan picks it (each take is its own event too) and never
+one of the last two of its kind, its pitch spread 0.9-1.06. The storm builds out of a hush (the wind rising in gusts, a low
 pressure swell, leaves stirring, far rolls, the first heavy drops); the wind (a buffet, a rush, a howl climbing with
 each gust, leaves thrashing) and the rain (a wide wash of drops, near drops ticking and plipping, heavier ones on the
-ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. Vanilla's own thunder
-is stopped as each bolt plays it (a full-scale boom with nothing over 6 kHz, which buried the crack and clipped with
-it); its impact crackle stays. The finale is a long tearing rip of many strokes, a huge crack, three tonal blows
+ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. The finale is a long tearing rip of many strokes, a huge crack, three tonal blows
 overdriven like a blast recorded too close, the discharge fizzing and a roll dying over twelve seconds. Each funnel's
 roar (mono, a deep rumble, the freight-train roar boiling over it, debris rattling in it) is played where the funnel is
 every second, three-second copies whose constant-power windows overlap into one steady roar that follows it.
-`python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60, 200, 600 and 1500 blocks off: every
-file's decoded true peak is under -1.15 dBTP and the mixes under -1.5.
+`python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60, 150, 500 and 1500 blocks off, mixed
+as Horizon plays it (every file summed to mono, as the game decodes it, 0.596 in each ear, on its tick, then the game's
+output limiter): every file's decoded true peak is under -1.15 dBTP.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and

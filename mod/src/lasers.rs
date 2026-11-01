@@ -461,7 +461,7 @@ pub const ROD: Laser = Laser {
 
 /// The supercell, planned in `strike::supercell_plan` (strike/storm.rs, its funnels in strike/vortex.rs): no beam. A storm
 /// is called down on the target: a wall cloud and an anvil-topped storm cloud boil up and spread, lightning strikes all
-/// over the land under it (real bolts), funnels wander over the land, then one colossal strike on the target. The
+/// over the land under it, funnels wander over the land, then one colossal strike on the target. The
 /// crater fields below are only what the shared tests read: its pits, its tracks and its crater are planned there.
 pub const SUPERCELL: Laser = Laser {
     key: "supercell",

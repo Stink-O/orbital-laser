@@ -1,7 +1,7 @@
 //! The Supercell's plan: a storm called down on the target. The sky darkens and a huge, low, slowly turning wall cloud
 //! and an anvil-topped storm cloud boil up over it and spread; the wind gusts, thunder rumbles far off. Then the storm:
-//! lightning all over the land under the cloud out to SC_REACH, faster and faster, each bolt a real vanilla
-//! `lightning_bolt` (its fire, its flash, what it strikes), heavy rain falling out of the cloud, and a few thin funnels
+//! lightning all over the land under the cloud out to SC_REACH, faster and faster (with the terrain on, each bolt
+//! hurting what it hits and setting its foot alight), heavy rain falling out of the cloud, and a few thin funnels
 //! (vortex.rs) coming down out of the wall cloud and wandering over the land. Then one colossal strike on the target
 //! itself, a shockwave and a jolt, and the storm dies away.
 //!
@@ -12,9 +12,11 @@
 //! the bolts light are put out round each soon after it strikes (`douse`) and swept out within SC_SWEEP as it ends, as
 //! `cleanup` work lib.rs still does if the strike is stopped.
 //!
-//! Vanilla's own thunder is stopped as each bolt plays it (`stopsound` on the ticks after): it is a full-scale boom with
-//! no crack, which would bury ours or clip with it; ours (tools/sounds_storm.py) is the crack and the roll, delayed by
-//! distance. Its impact crackle stays.
+//! The bolts are not vanilla's `lightning_bolt`s: one plays its own full-scale thunder at the flash, however far off,
+//! and `stopsound` can only cut it a tick or more in (a pop and a click, then ours on top). Each bolt instead hurts what
+//! stands at its foot (`damage ... minecraft:lightning_bolt`) and sets a few fires there, as a vanilla bolt does. Its
+//! thunder (tools/sounds_storm.py) arrives late by the distance (343 blocks a second) and is chosen by it (`thunder_of`):
+//! a crack close by, a duller clap further, mostly rumble far off; the take picked here, never one of the last two.
 //!
 //! shaders/supercell.wgsl draws the cloud, the rain, the bolts, the funnels and the flashes from the table `sc_table`
 //! hands it (render.set-data). Keep the SC_* here and there in step.
@@ -26,6 +28,8 @@ use std::rc::Rc;
 
 /// The storm's timeline: the cloud formed by SC_FORMED, the bolts from SC_STORM0 to SC_STORM1, the colossal strike at
 /// SC_FINALE, the rain stopping and the cloud dying away from SC_CLEAR (gone by the strike's end, lasers.rs's length).
+/// (SC_FORMED only the pass reads: kept here in step with it.)
+#[allow(dead_code)]
 pub(super) const SC_FORMED: f32 = 9.0;
 pub(super) const SC_STORM0: f32 = 9.5;
 pub(super) const SC_STORM1: f32 = 42.0;
@@ -429,6 +433,87 @@ fn sweep(q: &mut Plan, k: usize, t: f32) {
     q.ev.push((t, Act::Blocks(Box::new(b))));
 }
 
+/// How loud a bolt's thunder is `d` blocks off, as a file's loudest 400 ms in dB (tools/sounds_storm.py's LEVEL): a
+/// -12 at 60 blocks (a close crack's own -14 is its most: its volume can't pass 1), then 4 dB down each time the
+/// distance doubles (a channel kilometres long, not a point: thunder fades slower than a bang, and a bolt seen must be
+/// heard well over the wind and the rain).
+fn thunder_db(d: f64) -> f64 {
+    -12.0 - 4.0 * (d.max(60.0) / 60.0).log2()
+}
+/// The rumble's level (sounds_storm.py's LEVEL).
+const RUMBLE_DB: f64 = -25.5;
+/// The thunder of a bolt `d` blocks off: its sound, how many takes it has and the takes' level (sounds_storm.py's
+/// LEVEL). A crack close by, a duller clap further off, mostly rumble past 260.
+fn thunder_of(d: f64) -> (&'static str, u32, f64) {
+    if d < 90.0 {
+        ("crack", 6, -14.0)
+    } else if d < 260.0 {
+        ("crack_mid", 5, -17.5)
+    } else {
+        ("crack_far", 5, -21.0)
+    }
+}
+/// The takes played so far, so the next of a kind is never one of its last two.
+#[derive(Default)]
+struct Takes(Vec<(&'static str, u32)>);
+impl Takes {
+    fn pick(&mut self, kind: &'static str, n: u32, h: f64) -> u32 {
+        let recent: Vec<u32> = self.0.iter().rev().filter(|(k, _)| *k == kind).take(2).map(|(_, v)| *v).collect();
+        let free: Vec<u32> = (1..=n).filter(|v| !recent.contains(v)).collect();
+        let v = free[((h * free.len() as f64) as usize).min(free.len() - 1)];
+        self.0.push((kind, v));
+        v
+    }
+}
+/// A bolt's thunder as the player hears it.
+#[derive(Clone, Debug)]
+pub(super) struct Heard {
+    pub at: f32,
+    pub event: String,
+    pub volume: f32,
+    pub pitch: f32,
+    pub d: f64,
+}
+/// The bolts' thunder at the player `me` (the target's middle at `c`), in the order it reaches them: late by the
+/// distance, a crack, a clap or a rumble by it (`thunder_of`), its level by it (`thunder_db`). Two never start within
+/// 0.15 s of each other (the later heard 0.18 s after the earlier, in its roll, rather than flamming with it), and one
+/// heard while louder thunder still rolls is let down a little, never more than 3 dB, so a fast run stays a run of
+/// claps and never piles up past full scale.
+pub(super) fn sc_thunder(seed: u32, bolts: &[Bolt], me: [f64; 3], c: [f64; 3]) -> Vec<Heard> {
+    let mut order: Vec<(f32, f64, usize)> = bolts
+        .iter()
+        .enumerate()
+        .map(|(i, b)| {
+            let (late, d) = sound_from([c[0] + b.x, c[1], c[2] + b.z], me);
+            (b.t + late, d, i)
+        })
+        .collect();
+    order.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut takes = Takes::default();
+    let mut rolling: Vec<(f32, f32)> = Vec::new();
+    let mut out = Vec::new();
+    for (at0, d, i) in order {
+        let (kind, n, level) = thunder_of(d);
+        let loud = 10f64.powf(thunder_db(d) / 20.0) as f32;
+        let at = match rolling.last() {
+            Some(&(t, _)) if at0 - t < 0.15 => t + 0.18,
+            _ => at0,
+        };
+        let busy: f32 = rolling.iter().map(|(t, l)| l * (-(at - t).max(0.0) / 1.2).exp()).sum();
+        let duck = (1.0 / (1.0 + 0.5 * busy / loud)).max(0.7);
+        rolling.push((at, loud * duck));
+        let take = takes.pick(kind, n, mh(i as u32, seed, 0xd2));
+        out.push(Heard {
+            at,
+            event: format!("{kind}{take}"),
+            volume: (10f64.powf((thunder_db(d) - level) / 20.0) as f32 * duck).min(1.0),
+            pitch: 0.9 + 0.16 * mh(i as u32, seed, 0xd1) as f32,
+            d,
+        });
+    }
+    out
+}
+
 pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
@@ -459,57 +544,27 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the build-up: the sky darkening, the wind, thunder far off ---------------------------------------------------
     p.at(0.5, bar("ORBITAL WEATHER CONTROL: STORM FORMING", "dark_aqua"));
     p.csound(0.0, "buildup", 10.0, 1.0);
+    // (the wind and the rain a bed under the thunder: each clap stands out of them)
     for (i, t) in [10.0f32, 23.0, 36.0].iter().enumerate() {
-        p.csound(*t, "gusts", [8.0, 9.0, 8.5][i], 1.0);
+        p.csound(*t, "gusts", [5.0, 5.5, 5.0][i], 1.0);
     }
     for (i, t) in [6.0f32, 16.0, 26.0, 36.0, 44.0].iter().enumerate() {
-        p.csound(*t, "rain", [5.0, 8.0, 9.0, 9.0, 7.0][i], 1.0);
+        p.csound(*t, "rain", [4.5, 6.0, 6.0, 6.0, 5.5][i], 1.0);
     }
     p.at(SC_STORM0, bar("SUPERCELL", "dark_aqua"));
 
-    // ---- the flickers in the cloud: thunder far off for about half of them (none rolling into the finale's crack:
-    // the two together would pass full scale) --------------------------------------------------------------------------
-    for (i, k) in sc_flickers(s).iter().enumerate() {
-        if i % 2 == 0 {
-            let (late, d) = sound_from([cx + f64::from(k[1]), gy + 100.0, cz + f64::from(k[2])], me);
-            let at = k[0] + late;
-            if at > SC_FINALE - 6.0 && at < SC_FINALE + 3.0 {
-                continue;
-            }
-            let v = (1.4 / (1.0 + d / 200.0)).clamp(0.3, 0.9) as f32;
-            p.csound(at, "rumble", 10.0 * v, 0.9 + 0.2 * mh(i as u32, s, 0xd0) as f32);
-        }
-    }
-
     // ---- the bolts ------------------------------------------------------------------------------------------------------
     let bolts = sc_bolts(s, mer);
-    // (the cracks heard while others still roll are let down, so a fast run of near bolts never piles up past full scale)
-    let mut load: Vec<(f32, f32)> = Vec::new();
-    for (i, b) in bolts.iter().enumerate() {
+    for b in &bolts {
         let (x, z) = ((cx + b.x).floor() as i32, (cz + b.z).floor() as i32);
-        // (a real bolt, with the terrain on: its fire, what it strikes; vanilla's thunder stopped on the ticks after the
-        // bolt plays it: the summon runs on the tick after it is due, the bolt plays its thunder later that tick, after
-        // the mod's commands; a few ticks' worth, in case it is late. Its fires put out a second and a half after, again
-        // at 5 s and wider at 12 s, before they spread: those edits made even if the strike is stopped)
+        // (with the terrain on, what stands at its foot hurt as by a vanilla bolt, its foot set alight with its pit (`pit`)
+        // and the fires put out a second and a half after, again at 5 s and wider at 12 s, before they spread: those
+        // edits made even if the strike is stopped)
         if terrain {
-            p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
-            for k in 1..6 {
-                p.at(b.t + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
-            }
+            p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking as @e[type=!minecraft:player,distance=..3.5] run damage @s 5 minecraft:lightning_bolt"));
             p.ev.push(douse(x, z, 6, b.t + 1.5));
             p.ev.push(douse(x, z, 7, b.t + 5.0));
             p.ev.push(douse(x, z, 11, b.t + 12.0));
-        }
-        let (late, d) = sound_from([cx + b.x, gy, cz + b.z], me);
-        let v0 = (1.5 / (1.0 + d / 110.0)).clamp(0.3, 1.0) as f32;
-        let at = b.t + late;
-        let busy: f32 = load.iter().map(|(t, v)| v * (-(at - t).abs() / 2.0).exp()).sum();
-        let v = v0 / (1.0 + 1.6 * busy);
-        load.push((at, v));
-        let near = d < 110.0;
-        p.csound(b.t + 0.05 + late, if near { "crack" } else { "crack_far" }, 10.0 * v, 0.94 + 0.12 * mh(i as u32, s, 0xd1) as f32);
-        if d < 120.0 {
-            p.shake(b.t + 0.05 + late, (0.25 * (1.0 - d / 120.0)) as f32 + 0.05, 0.5);
         }
         p.at(b.t + 0.6, format!("execute positioned {x} 0 {z} positioned over motion_blocking_no_leaves run particle minecraft:large_smoke ~0.5 ~0.5 ~0.5 1 0.6 1 0.02 14 force"));
         if terrain {
@@ -520,8 +575,37 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
                 let rc = 3.5 + 2.0 * q.rng.next();
                 let mut rng = Rng::new((x as u64) << 32 ^ z as u32 as u64 ^ u64::from(s));
                 pit(&mut e, &mut rng, x, z, rp, rc, s);
+                // (its foot and a few blocks round it set alight, as a vanilla bolt's: put out from 1.5 s, `douse`)
+                for k in 0..4u32 {
+                    let (dx, dz) = if k == 0 { (0, 0) } else { ((rng.next() * 3.0) as i32 - 1, (rng.next() * 3.0) as i32 - 1) };
+                    put_on(&mut e, x + dx, z + dz, 0, 0, "minecraft:fire", Some("minecraft:air"), horizon_mod_sdk::world::Heightmap::MotionBlocking);
+                }
                 q.ev.push((t + 0.1, Act::Blocks(Box::new(e))));
             });
+        }
+    }
+    // (their thunder, in the order it reaches the player)
+    let heard = sc_thunder(s, &bolts, me, [cx, gy, cz]);
+    for h in &heard {
+        p.csound(h.at, &h.event, 10.0 * h.volume, h.pitch);
+        if h.d < 120.0 {
+            p.shake(h.at, (0.25 * (1.0 - h.d / 120.0)) as f32 + 0.05, 0.5);
+        }
+    }
+
+    // ---- the flickers in the cloud: thunder far off for about half of them, under the bolts' (none rolling into the
+    // finale's crack, nor within 0.4 s of a bolt's: each clap heard on its own) ---------------------------------------------
+    let mut takes = Takes::default();
+    for (i, k) in sc_flickers(s).iter().enumerate() {
+        if i % 2 == 0 {
+            let (late, d) = sound_from([cx + f64::from(k[1]), gy + 100.0, cz + f64::from(k[2])], me);
+            let at = k[0] + late;
+            if (at > SC_FINALE - 6.0 && at < SC_FINALE + 3.0) || heard.iter().any(|h| (h.at - at).abs() < 0.4) {
+                continue;
+            }
+            let v = 10f64.powf((thunder_db(d) - 6.0 - RUMBLE_DB) / 20.0).min(0.9) as f32;
+            let take = takes.pick("rumble", 5, mh(i as u32, s, 0xd3));
+            p.csound(at, &format!("rumble{take}"), 10.0 * v, 0.9 + 0.2 * mh(i as u32, s, 0xd0) as f32);
         }
     }
 
@@ -554,17 +638,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the finale: one colossal strike on the target, a shockwave and a jolt ---------------------------------------------
     let tf = SC_FINALE;
     p.at(tf - 3.0, bar("ORBITAL WEATHER CONTROL: DISCHARGE", "aqua"));
-    if terrain {
-        for k in 0..7 {
-            let a = 2.0 * PI * f64::from(k) / 7.0;
-            let rr = if k == 0 { 0.0 } else { 4.0 };
-            let (x, z) = ((cx + a.cos() * rr).floor() as i32, (cz + a.sin() * rr).floor() as i32);
-            p.at(tf + 0.05 * (k % 3) as f32, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
-        }
-        for k in 1..7 {
-            p.at(tf + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
-        }
-    }
     // (heard and felt late by the distance: the crack, the jolt at the Rod's strength, its push)
     let (late, dist) = sound_from([cx, gy, cz], me);
     p.csound(tf + 0.05 + late, "finale", 10.0, 1.0);
@@ -664,7 +737,8 @@ mod table {
 }
 
 /// `SC_OUT=path SC_ME=z cargo test --release sc_write_sounds -- --ignored`: the sounds a player SC_ME blocks south of the
-/// target hears (`t event volume`, the roar's at their points' distance), for tools/sounds_storm.py's listening mix.
+/// target hears (`t event volume pitch`, the roar's at their points' distance), for tools/sounds_storm.py's listening
+/// mix (SC_TERRAIN=1: as planned with the terrain on).
 #[cfg(test)]
 #[test]
 #[ignore]
@@ -673,15 +747,16 @@ fn sc_write_sounds() {
     let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
     let me = [0.5, 66.0, 0.5 + z];
     let laser = crate::lasers::LASERS.iter().find(|l| l.key == "supercell").unwrap();
-    let mut ev = crate::strike::plan(laser, &target, false, "minecraft:overworld", 37.0, me, 0);
+    let terrain = std::env::var("SC_TERRAIN").is_ok_and(|v| v == "1");
+    let mut ev = crate::strike::plan(laser, &target, terrain, "minecraft:overworld", 37.0, me, 0);
     let mut out = String::new();
     ev.sort_by(|a, b| b.0.total_cmp(&a.0));
     while let Some((t, a)) = ev.pop() {
         match a {
-            Act::Sound { event, at, volume, .. } => {
+            Act::Sound { event, at, volume, pitch } => {
                 // (a positioned sound: as the game fades it, linearly to its range, 320 blocks)
                 let v = at.map_or(volume, |p| volume * (1.0 - ((p[0] - me[0]).hypot(p[2] - me[2]) / 320.0).min(1.0)) as f32);
-                out += &format!("{t:.3} {event} {v:.3}\n");
+                out += &format!("{t:.3} {event} {v:.3} {pitch:.3}\n");
             }
             Act::Later(job) | Act::Cleanup(job) => {
                 ev.extend(job());
@@ -727,28 +802,63 @@ mod tests {
     }
 
     #[test]
-    fn supercell_strikes_real_bolts_under_its_cloud_and_stops_vanillas_thunder() {
+    fn supercell_strikes_its_bolts_under_its_cloud_without_vanillas_thunder() {
         let me = [10.5, 66.0, 297.5];
         let (_, cmds, other, _) = played(true, me);
-        let bolts: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.contains("summon minecraft:lightning_bolt")).collect();
-        assert_eq!(bolts.len(), SC_NB + 7);
+        // (no vanilla bolt, whose own thunder can't be silenced in time: each bolt hurts what is at its foot instead)
+        assert!(!cmds.iter().any(|(_, c)| c.contains("lightning_bolt ~") || c.starts_with("stopsound")));
+        let bolts: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.contains("run damage @s 5 minecraft:lightning_bolt")).collect();
+        assert_eq!(bolts.len(), SC_NB);
         for (t, c) in &bolts {
-            assert!(*t >= SC_STORM0 && *t <= SC_FINALE + 0.1, "{t}");
+            assert!(*t >= SC_STORM0 && *t <= SC_STORM1 + 0.1, "{t}");
             let w: Vec<f64> = c.split_whitespace().map(|v| v.parse().unwrap_or(0.0)).collect();
             assert!((w[2] - 10.5).hypot(w[4] + 2.5) < SC_REACH + 2.0, "{c}");
-            // (each followed by vanilla's thunder stopped)
-            assert!(cmds.iter().any(|(t2, s)| s.starts_with("stopsound") && *t2 > *t && *t2 < t + 0.2), "{t}");
         }
         // (faster and faster: more in the storm's second half than its first)
         let mid = 0.5 * (SC_STORM0 + SC_STORM1);
         assert!(bolts.iter().filter(|(t, _)| *t > mid).count() > bolts.iter().filter(|(t, _)| *t < mid).count() + 10);
-        // (each heard, and a crack for each; the world's weather left alone; the pass's table given)
+        // (each heard, a take of its own; the world's weather left alone; the pass's table given)
         let sounds: Vec<&str> = other.iter().filter_map(|(_, a)| if let Act::Sound { event, .. } = a { Some(event.as_str()) } else { None }).collect();
         assert_eq!(sounds.iter().filter(|e| e.contains("supercell.crack")).count(), SC_NB);
         assert!(sounds.iter().any(|e| e.ends_with("supercell.finale")) && sounds.iter().any(|e| e.ends_with("supercell.roar")));
         assert!(!cmds.iter().any(|(_, c)| c.starts_with("weather")));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Table(w) if w.len() == SC_K + 3 * SC_NK)));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Shove { .. })));
+    }
+
+    #[test]
+    fn supercell_thunder_is_late_by_the_distance_its_takes_never_repeat_and_it_never_flams() {
+        for z in [20.0, 150.0, 500.0] {
+            let me = [0.5, 66.0, 0.5 + z];
+            let bolts = sc_bolts(37, [0.0, z]);
+            let heard = sc_thunder(37, &bolts, me, [0.5, 65.0, 0.5]);
+            assert_eq!(heard.len(), SC_NB);
+            for w in heard.windows(2) {
+                // (in the order heard, never two starting together, never the same take twice running)
+                assert!(w[1].at - w[0].at >= 0.149, "{} {}", w[0].at, w[1].at);
+                assert_ne!(w[0].event, w[1].event);
+            }
+            for w in heard.windows(3) {
+                let kind = |e: &str| e.trim_end_matches(char::is_numeric).to_string();
+                if kind(&w[0].event) == kind(&w[2].event) {
+                    assert_ne!(w[0].event, w[2].event);
+                }
+            }
+            for h in &heard {
+                // (no sooner than the sound could come, a crack only close by, a rumble only far off)
+                let b = bolts.iter().map(|b| (b.t + (h.d / 343.0) as f32 - h.at).abs()).fold(f32::MAX, f32::min);
+                assert!(b < 0.5, "{h:?}");
+                assert!(h.event.starts_with(thunder_of(h.d).0) && h.volume > 0.05 && h.volume <= 1.0, "{h:?}");
+                assert!((0.89..1.07).contains(&h.pitch));
+            }
+            // (and louder the nearer: the nearest bolt's crack louder than the farthest's)
+            let near = heard.iter().min_by(|a, b| a.d.total_cmp(&b.d)).unwrap();
+            let far = heard.iter().max_by(|a, b| a.d.total_cmp(&b.d)).unwrap();
+            let loud = |h: &Heard| 20.0 * f64::from(h.volume).log10() + thunder_of(h.d).2;
+            // (by the distance's fall-off, less at most the 3 dB a crack is let down while louder thunder rolls)
+            assert!(loud(near) - loud(far) > thunder_db(near.d) - thunder_db(far.d) - 3.1, "{near:?} {far:?}");
+            assert!(thunder_db(near.d) > thunder_db(far.d) + 1.0);
+        }
     }
 
     #[test]
