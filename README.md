@@ -49,23 +49,32 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Windows and macOS are untested,
 > and the ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.6](#new-in-056) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [New in 0.5.7](#new-in-057) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
-## New in 0.5.6
+## New in 0.5.7
 
-<p align="center"><img alt="The Nuke: a mushroom cloud hundreds of blocks tall towering over its crater" width="720" src="docs/35-nuke-cloud.jpg"></p>
+<p align="center"><img alt="The Rod from God standing in its crater, banded in gold, the land round it bleached white and gold" width="720" src="docs/40-rod-crater.jpg"></p>
 
-- **Nuke**, the eleventh laser, on the wheel's third page and `/orbital nuke`. A white-hot streak across the sky, a
-  dive, then a blinding flash, a fireball boiling up into a mushroom cloud and a shockwave in a wall of dust that
-  knocks you off your feet. It leaves a terraced crater about 200 blocks across, the land flattened out to about 230
-  and scorched out to about 480. It lasts 90 seconds.
-- **The Payload** casts its cloud's shadow on the land, and its craters cut into water naturally.
-- **No more "took too long".** Big strikes are split into small steps, so no laser stops the mod, and terrain goes in
-  paced by the frame rate, with much less stutter.
-- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-8` (it adds `world.push-player`, the Nuke's
-  knockback). Older builds won't start the mod.
+- **Rod from God**, the twelfth laser, on the wheel's third page and `/orbital rod`. A colossal rod of dark forged metal
+  dropped from orbit, with no explosive. It comes straight down onto the target as a golden-white star with god rays
+  streaming from it, puts on a last hard burst of speed and slams in. The picture holds on the hit for about a fifth of
+  a second of impact frames, then lets go into a blinding burst, a jet of molten rock and a ring of dust racing out
+  over the land. The crater is blasted out first and then lined in quartz, calcite and gold, and the rod stays
+  standing in it, 171 blocks long with 130 of them over the crater floor, the floor round its foot heaved up in broken
+  slabs. It has its own sounds and lasts 60 seconds.
+- **Impact frames in three looks:** KANADA (the default), BLACK FLASH and CINEMATIC, or OFF, on the wheel's
+  **IMPACT FX** row or with `/orbital impactframes`. **Photosensitivity:** they are a fifth of a second of hard
+  full-screen cuts. `/orbital impactframes off` leaves them out.
+- **For filming:** a follow camera that orbits the Nuke's or the Payload's bomb as it comes in (`/orbital follow`, the
+  wheel's FOLLOW switch), a KNOCKBACK switch for the Nuke and the Rod, a seed you can type or lock for repeat takes of
+  the same strike (`/orbital seed`), and `tools/world_snapshot.py` to put a world back between takes.
+- **The wheel rearranged:** the strike options down the left (SEED and LOCK SEED, then KNOCKBACK and FOLLOW for the
+  lasers they apply to), MESSAGES, PANEL and QUALITY down the right with a red STOP STRIKE under them during a strike,
+  and the IMPACT FX and BLAST SOUND rows under the ring.
+- A thirteenth laser, the **Supercell**, is on the third page as well (`/orbital supercell`).
+- Still needs the Orbital Laser build of Horizon `orbital-mod-api-8` or newer, the same as 0.5.6.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -102,8 +111,9 @@ Thirteen lasers, five to a page of the wheel.
 - **Rod from God** (page three). A colossal rod of dark forged metal dropped from orbit, kinetic, no explosive, and
   holy: it comes straight down onto the target, a golden-white star high overhead that grows fast, god rays streaming
   from it and a column of light down its path, and in its last fraction of a second it slams in. It strikes: the
-  picture freezes on the hit for a fifth of a second of hard-cut impact frames (black-and-white silhouettes with
-  thick lines rushing into the point, a close-up in negative with gold lines, gold and umber), then lets go with a blur, a blinding radiant burst with rays fanning out, the land rippling out in rings like
+  picture freezes on the hit for a fifth of a second of hard-cut impact frames (by default black-and-white
+  silhouettes with thick lines rushing into the point, a close-up in negative with gold lines, gold and umber; BLACK
+  FLASH and CINEMATIC are the other looks), then lets go with a blur, a blinding radiant burst with rays fanning out, the land rippling out in rings like
   water, a jet of molten rock up its path, a short plume of dust spreading into a haze and a ring of dust racing out
   over the land, then one colossal crack-boom, late with the distance. The crater is blasted out round it in a moment, then lined in white and gold from the rod out, and it leaves
   itself standing in a hallowed crater about 120 blocks across and 50 deep, the floor round its foot heaved up in
@@ -111,12 +121,12 @@ Thirteen lasers, five to a page of the wheel.
   the land, polished blackstone banded in gold and capped with light; the crater lined in quartz, calcite and gold with
   veins of glowstone, rays of white and gold over pale grass round it, rubble out to about 250, the trees felled out to
   about 200, and every mob within 200 killed.
-  **Photosensitivity:** its impact frames are a fifth of a second of hard black, white and gold cuts over the whole picture; `/orbital impactframes off` (or the wheel's
-  IMPACT FX switch) leaves them out.
-
+  **Photosensitivity:** its impact frames are a fifth of a second of hard cuts over the whole picture;
+  `/orbital impactframes off` (or OFF on the wheel's IMPACT FX row) leaves them out.
 - **Supercell** (page three). A storm called down: the sky darkens and a turning wall cloud and an anvil-topped storm
-  cloud boil up over the target, rain pouring out of them; real lightning strikes all over the land under it, faster
-  and faster, thin funnels come down and wander over the land, then one colossal strike on the target. It leaves small
+  cloud boil up over the target, rain pouring out of them; lightning strikes all over the land under it, faster
+  and faster, thin funnels come down and wander over the land, the bolts draw in on the target, a rapid run of them
+  lands on it, a moment's hush, then one colossal strike at 29 seconds. It leaves small
   scorched pits, the funnels' scoured tracks and a crater about 70 across with veins of fused glass branching out
   through the ground round it; the fires it lights are put out.
 
@@ -159,6 +169,10 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Sup
 |---|---|---|---|
 | ![The bomb's smoke trail arcing over into its dive](docs/33-nuke-fall.jpg) | ![The fireball bursting on the ground, the shockwave's dome racing out over a wall of dust](docs/34-nuke-flash.jpg) | ![The mushroom cloud towering over its crater](docs/35-nuke-cloud.jpg) | ![The terraced crater with its glassy floor and broken rim, the land flattened round it](docs/36-nuke-crater.jpg) |
 
+| Rod from God | The impact frames | The burst | What it leaves |
+|---|---|---|---|
+| ![The rod coming straight down onto the land, glowing white, god rays round it](docs/37-rod-fall.jpg) | ![An impact frame: the rod and the land as gold and umber silhouettes, thick lines converging on the point](docs/38-rod-impact-frames.jpg) | ![The radiant burst as it strikes, rays fanning out over the land](docs/39-rod-burst.jpg) | ![The rod standing in its crater, the land round it bleached white and gold](docs/40-rod-crater.jpg) |
+
 ## Getting started
 
 1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-8` or newer). Download
@@ -177,7 +191,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God and the Sup
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.6.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.7.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -252,21 +266,25 @@ Mods), read the reason it gives first.
    `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod), then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60, the Downfall 64, the Rod from God 60, the Payload 70 and the Nuke 90.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell 42, the Crystal Bloom and the Rod from God 60, the Downfall 64, the Payload 70 and the Nuke 90.
 
 The wheel also has:
 
 - **FLY SPEED** over the title, for getting round the craters: click along the bar for 1x to 40x vanilla's creative
   flight, or type any speed up to 1000x in the box beside it and press Enter.
-- **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the status panel shown
-  at the top right while you hold either item.
-- A **QUALITY** switch under them: **FAST** (the default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail at half the
+- Down the right, **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the
+  status panel shown at the top right while you hold either item, and a **QUALITY** switch under them: **FAST** (the
+  default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail and the Supercell's storm at half the
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
   draws every pixel (about two to three times the GPU time).
-- An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: its impact frames on (the
-  default) or off, as `/orbital impactframes`.
-- **STOP STRIKE** at the top left while a strike is under way: it ends the strike there and then (what it has already
-  done to the world stays), the same as `/orbital stop`.
+- **STOP STRIKE**, a red button under QUALITY while a strike is under way: it ends the strike there and then (what it
+  has already done to the world stays), the same as `/orbital stop`.
+- Down the left, the strike options. **SEED** shows the last strike's seed, or takes one you type (1 to 997), and
+  **LOCK SEED** keeps it, so a strike plays out the same way take after take (`/orbital seed`). Under them, for the
+  lasers they apply to: **KNOCKBACK** (the Nuke and the Rod), whether the blast pushes you, and **FOLLOW** (the Nuke
+  and the Payload), the follow camera.
+- An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: **OFF**, **KANADA** (the
+  default), **BLACK FLASH** or **CINEMATIC**, as `/orbital impactframes`.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
 - For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
   same choice as `/orbital payloadsound`. The Nuke has one too: **MAIN** (a hard crack, an overdriven boom) or **ALT**
@@ -276,7 +294,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator and the Remote |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -285,11 +303,11 @@ The wheel also has:
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
-| `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, or off; also the wheel's IMPACT FX switch |
+| `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks (Kanada is the default), or off; kept; also the wheel's IMPACT FX row |
 | `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays); also the wheel's KNOCKBACK switch |
 | `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
 | `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
-| `/orbital supercell` | loads the Supercell |
+| `/orbital seed N\|lock\|random` | hold every strike's look at seed N (1 to 997), lock it at the last strike's, or go back to a fresh one each time; also the wheel's SEED field and LOCK SEED switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
@@ -318,7 +336,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
-- **Targets must be in loaded chunks.** The seven long-range lasers reach 1000 blocks across the distant terrain, where
+- **Targets must be in loaded chunks.** The nine long-range lasers reach 1000 blocks across the distant terrain, where
   the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
 - **Stock Horizon** builds from before 24 October 2026 can run 0.1's setup (Plasma and Godly only, driven from outside
   the game): see [How it works](docs/HOW-IT-WORKS.md#stock-horizon).

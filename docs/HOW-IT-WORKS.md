@@ -168,7 +168,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   widening and dimming as it ages, the oldest first), a starburst, a streak and ghosts in the lens, the air shimmering
   round it and its light lying on the land under it; for its last moments its shape: a rod 13 blocks thick and 171
   long, nose down, its nose white-hot, gold and carved bands round it, a bow of glowing air round its nose and in its
-  last second the shock cone. At 7 s it strikes: impact frames (the picture held on the hit for a fifth of a second while hard cuts of two or three frames play over it, Kanada style: black silhouettes with thick lines converging on the point, on white; a close-up three times as near in negative with gold lines; gold and umber two-tone; each cut punching the camera in and shaking it; then a zoom blur and a colour split as it lets go), a blinding white-gold burst with god rays fanning out of it, the land rippling out in rings
+  last second the shock cone. At 7 s it strikes: impact frames (the picture held on the hit for a fifth of a second while hard cuts of two or three frames play over it, by default Kanada style: black silhouettes with thick lines converging on the point, on white; a close-up three times as near in negative with gold lines; gold and umber two-tone; each cut punching the camera in and shaking it; then a zoom blur and a colour split as it lets go. The other looks: BLACK FLASH, black lightning cracking out of the point in a crimson glow over a pale negative; CINEMATIC, a white-out with the rod burned black into it and a shockwave ring split in colour tearing out across the frozen picture), a blinding white-gold burst with god rays fanning out of it, the land rippling out in rings
   like water for a few seconds, a hemispherical shockwave bending the light, a narrow jet of molten rock shot some 300
   up its path and falling back by 6 s, 256 chunks of rock thrown up in a steep cone (two in five of them molten,
   glowing and cooling as they fly), molten spatter landing round it and cooling, a short plume of dust (about 90
@@ -180,7 +180,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   calming into a quiet pillar. The crack-boom arrives late with the distance, the ground's thump first; the camera
   and the picture are jolted hard (sharper and shorter than the Nuke's) and the player knocked back and up (none past
   450). It reaches 1000 blocks. **Photosensitivity:** the impact frames are a fifth of a second of hard black, white and gold cuts over the whole picture;
-  `/orbital impactframes off` or the wheel's IMPACT FX switch leaves them out.
+  `/orbital impactframes off` or OFF on the wheel's IMPACT FX row leaves them out.
 
 - **Supercell** (page three, `/orbital supercell`). A storm called down on the target, no beam. Over six and a half seconds the sky
   darkens and a storm cloud boils up over the target and spreads 300 blocks out: a low dark deck, a wall cloud hanging
@@ -295,7 +295,8 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   quartz bricks with seams of gold; the rod standing in its middle (13 wide, 130 over the floor, its top 80 over the land
   round it, and 40 under the floor, driven in deeper on land so high its top would pass the world's height: polished blackstone, banded in gold and chiseled polished blackstone, a collar of
   gold at its foot and two bands round its top, capped with ochre froglight and gold; a ring of glowstone and
-  shroomlight set in the floor round it); its rim heaped up to about 15 high out to about 90 with the ground overturned
+  shroomlight set in the floor round it); the floor past that ring heaved up round its foot out to about 22 in about
+  eleven broken slabs, tilted towards it or away, a few blocks high; its rim heaped up to about 15 high out to about 90 with the ground overturned
   on it and bleached (dirt at its foot, stone over that, calcite, diorite and end stone on top, flecks of raw gold);
   everything standing on the land swept off out to about 200, the trees felled pointing away from it, past that out to
   about 240 crowns stripped and some trees knocked flat; all round the rim and in about 17 rays out to about 200 the
@@ -331,7 +332,7 @@ goes in through `world.edit-blocks`.
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -339,13 +340,13 @@ goes in through `world.edit-blocks`.
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
-| `/orbital impactframes on`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) on (the default) or off; kept between sessions; also the wheel's IMPACT FX row, under the ring while the Rod is pointed at or loaded |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, top left |
-| `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point, so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch |
+| `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
+| `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke or the Rod is pointed at or loaded |
+| `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
 | `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
-| `/orbital supercell` | loads the Supercell |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
-| `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
+| `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
 
@@ -513,14 +514,18 @@ loud past about 1,100 blocks; debris thudding and pattering down within 700 bloc
 the land for half a minute. `/orbital nukesound alt` (or the BLAST SOUND row) swaps the blast for the Payload's ALT scaled up
 (`blast_alt`, `blast_alt_far`): a tonal boom dropping from ~68 Hz to ~40 with its harmonics stacked on it, a sharp,
 heavy crack, two more blows after it, then a long thunder roll and the boom echoing off far land.
-The Rod's ([`tools/sounds_rod.py`](../tools/sounds_rod.py), on the Nuke's tools): silence through the fall but for a
-thin hiss (3-9 kHz grains and a faint whine gliding up, one sound high overhead, cut dead on the impact); the ground's
-thump first (~46 Hz falling to ~22, a shudder); then the blast: a supersonic double crack (the bow shock, then 85 ms on
-the tail shock and the impact, dry), at once a tonal boom (~60 Hz dropping to ~45 and on to ~40, its octave, twelfth and
-driven harmonics stacked on it, a sub push, the ground's rebound 0.24 s on), noise only as texture on it, a short dry
-tail (a few seconds of thunder roll, three echoes off far land); cross-faded from 250 to 800 blocks off into the same
-blast through that much air (`blast_far`); the rumble rolling in for ~20 s; debris landing within 500 blocks. Every
-layering of them peaks under -1 dBTP.
+The Rod's ([`tools/sounds_rod.py`](../tools/sounds_rod.py), on the Nuke's tools): its fall is heavenly rather than
+fiery, a sung chord (a stack of fifths on F#3, `oo` opening to `ah`) out of the sky, climbing a fourth and swelling as it
+nears, glassy partials over it and a bowed-metal resonance under it, a rush of air sliding up in the last second, one
+source high overhead; a hypersonic crack a tenth of a second before the impact and the chord cut dead on it. The
+ground's thump comes first (~46 Hz falling to ~22, a shudder); then the blast: one very hard crack and at once a tonal
+boom (~60 Hz dropping to ~45 and on to ~40, its octave, twelfth and driven harmonics stacked on it), a sub push, the
+ground's rebound 0.24 s on, a clang (a giant metal spike struck end-on, its low modes ringing on for a second or so)
+and a crunch of rock, then a short dry tail (a few seconds of thunder roll, four echoes off far land); cross-faded
+from 250 to 800 blocks off into the same blast through that much air (`blast_far`); the rumble rolling in for ~20 s;
+debris landing within 500 blocks; and the rod left standing hums as it cools (a low resonant hum on B1, the clang's
+modes singing faintly, the metal ticking and groaning, ~26 s, placed at the rod). Every layering of them peaks under
+-1 dBTP.
 
 The Supercell's ([`tools/sounds_storm.py`](../tools/sounds_storm.py)) model the thunder rather than draw it: each
 bolt's channel is a tortuous path from the ground up into the cloud and on along its base, with branches, and every

@@ -1,6 +1,22 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-056); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-057); each release's notes are in [docs/releases](releases).
+
+## 0.5.6
+
+<p align="center">
+  <img alt="The Nuke: a mushroom cloud hundreds of blocks tall towering over its crater" width="720" src="35-nuke-cloud.jpg">
+</p>
+
+- **Nuke**, the eleventh laser, on the wheel's third page and `/orbital nuke`. A white-hot streak across the sky, a
+  dive, then a blinding flash, a fireball boiling up into a mushroom cloud and a shockwave in a wall of dust that
+  knocks you off your feet. It leaves a terraced crater about 200 blocks across, the land flattened out to about 230
+  and scorched out to about 480. It lasts 90 seconds.
+- **The Payload** casts its cloud's shadow on the land, and its craters cut into water naturally.
+- **No more "took too long".** Big strikes are split into small steps, so no laser stops the mod, and terrain goes in
+  paced by the frame rate, with much less stutter.
+- **Needs the next Orbital Laser build of Horizon**, `orbital-mod-api-8` (it adds `world.push-player`, the Nuke's
+  knockback). Older builds won't start the mod.
 
 ## 0.5.5
 
