@@ -457,15 +457,26 @@ the land for half a minute. `/orbital nukesound alt` (or the BLAST SOUND row) sw
 (`blast_alt`, `blast_alt_far`): a tonal boom dropping from ~68 Hz to ~40 with its harmonics stacked on it, a sharp,
 heavy crack, two more blows after it, then a long thunder roll and the boom echoing off far land.
 
-The Supercell's ([`tools/sounds_storm.py`](../tools/sounds_storm.py)): the storm building (wind rising in gusts, a thin
-whistle, a sub rumble swelling, thunder far off), the wind's and the rain's beds overlapping through the storm, a soft
-dark roll for the flickers in the cloud, and for each bolt a crack: close in a ripping burst of snaps, then a heavy
-falling-sine boom with its harmonics rolling on in swells (`crack`), further off duller and longer (`crack_far`), late
-by the distance and let down while the cracks before it still roll, so a run of near bolts never piles up. Vanilla's
-own thunder is stopped as each bolt plays it (a full-scale boom with nothing over 6 kHz, which buried the crack and
-clipped with it); its impact crackle stays. The finale's crack is a long tearing rip, a huge snap, four blows of sub and a twelve-second roll;
-each funnel's roar (mono) is played where the funnel is every second, the copies overlapping into one that follows it.
-`python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60 and 300 blocks off: it peaks under -1 dBFS.
+The Supercell's ([`tools/sounds_storm.py`](../tools/sounds_storm.py)) model the thunder rather than draw it: each
+bolt's channel is a tortuous path from the ground up into the cloud and on along its base, with branches, and every
+few metres of it sends its own short pressure pulse (an N-wave, longer and duller the further it has come), arriving
+as far behind the flash as that bit of the channel is far away and loudest where the channel crosses the line of sight;
+three to five return strokes 40-90 ms apart re-fire it. So a close bolt (`crack`, 6 takes, within 110 blocks) rips
+and cracks bright, then booms (a falling 45-75 Hz fundamental with its harmonics stacked on it, so a phone hears the
+weight) and rolls in off the rest of the channel and the land's echoes; further off (`crack_far`, 5 takes) it is a
+dull clap and a deeper, longer roll; a flicker in the cloud (`rumble`, 5 takes, none in the seconds round the finale)
+is a long, soft roll high up, narrow and dark. Each is late by the distance and let down while the cracks before it
+still roll, so a run of near bolts never piles up. The storm builds out of a hush (the wind rising in gusts, a low
+pressure swell, leaves stirring, far rolls, the first heavy drops); the wind (a buffet, a rush, a howl climbing with
+each gust, leaves thrashing) and the rain (a wide wash of drops, near drops ticking and plipping, heavier ones on the
+ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. Vanilla's own thunder
+is stopped as each bolt plays it (a full-scale boom with nothing over 6 kHz, which buried the crack and clipped with
+it); its impact crackle stays. The finale is a long tearing rip of many strokes, a huge crack, three tonal blows
+overdriven like a blast recorded too close, the discharge fizzing and a roll dying over twelve seconds. Each funnel's
+roar (mono, a deep rumble, the freight-train roar boiling over it, debris rattling in it) is played where the funnel is
+every second, three-second copies whose constant-power windows overlap into one steady roar that follows it.
+`python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60, 200, 600 and 1500 blocks off: every
+file's decoded true peak is under -1.15 dBTP and the mixes under -1.5.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and

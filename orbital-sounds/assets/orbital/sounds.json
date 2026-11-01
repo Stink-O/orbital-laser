@@ -1137,6 +1137,14 @@
       {
         "name": "orbital:supercell/rumble3",
         "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/rumble4",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/rumble5",
+        "attenuation_distance": 256
       }
     ],
     "subtitle": "subtitles.orbital.supercell.rumble"
@@ -1154,6 +1162,18 @@
       {
         "name": "orbital:supercell/crack3",
         "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack4",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack5",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack6",
+        "attenuation_distance": 256
       }
     ],
     "subtitle": "subtitles.orbital.supercell.crack"
@@ -1170,6 +1190,14 @@
       },
       {
         "name": "orbital:supercell/crack_far3",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack_far4",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack_far5",
         "attenuation_distance": 256
       }
     ],

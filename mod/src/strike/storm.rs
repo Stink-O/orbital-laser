@@ -467,12 +467,17 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     }
     p.at(SC_STORM0, bar("SUPERCELL", "dark_aqua"));
 
-    // ---- the flickers in the cloud: thunder far off for about half of them --------------------------------------------
+    // ---- the flickers in the cloud: thunder far off for about half of them (none rolling into the finale's crack:
+    // the two together would pass full scale) --------------------------------------------------------------------------
     for (i, k) in sc_flickers(s).iter().enumerate() {
         if i % 2 == 0 {
             let (late, d) = sound_from([cx + f64::from(k[1]), gy + 100.0, cz + f64::from(k[2])], me);
+            let at = k[0] + late;
+            if at > SC_FINALE - 6.0 && at < SC_FINALE + 3.0 {
+                continue;
+            }
             let v = (1.4 / (1.0 + d / 200.0)).clamp(0.3, 0.9) as f32;
-            p.csound(k[0] + late, "rumble", 10.0 * v, 0.9 + 0.2 * mh(i as u32, s, 0xd0) as f32);
+            p.csound(at, "rumble", 10.0 * v, 0.9 + 0.2 * mh(i as u32, s, 0xd0) as f32);
         }
     }
 
@@ -498,10 +503,10 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         let (late, d) = sound_from([cx + b.x, gy, cz + b.z], me);
         let v0 = (1.5 / (1.0 + d / 110.0)).clamp(0.3, 1.0) as f32;
         let at = b.t + late;
-        let busy: f32 = load.iter().map(|(t, v)| v * (-(at - t).abs() / 1.2).exp()).sum();
-        let v = v0 / (1.0 + 0.9 * busy);
+        let busy: f32 = load.iter().map(|(t, v)| v * (-(at - t).abs() / 2.0).exp()).sum();
+        let v = v0 / (1.0 + 1.6 * busy);
         load.push((at, v));
-        let near = d < 170.0;
+        let near = d < 110.0;
         p.csound(b.t + 0.05 + late, if near { "crack" } else { "crack_far" }, 10.0 * v, 0.94 + 0.12 * mh(i as u32, s, 0xd1) as f32);
         if d < 120.0 {
             p.shake(b.t + 0.05 + late, (0.25 * (1.0 - d / 120.0)) as f32 + 0.05, 0.5);
