@@ -123,6 +123,10 @@ VIEWS = {
     "scaerial": "cx=0 cy=700 cz=600 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
     "scfunnel": "cx=0 cy=68 cz=160 lx=0.5 ly=85 lz=0.5 flat=1 trees=1 fov=60 reach=160",
     "scnight": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=300 night=1",
+    # the first funnel of seed 37 (13.9 to 29.4 s, wandering about x 25..48, z -12..41) close (~150 off) and far (~400),
+    # over a wood
+    "vxclose": "cx=35 cy=72 cz=165 lx=35 ly=75 lz=15 flat=1 trees=1 fov=60 reach=300",
+    "vxfar": "cx=35 cy=85 cz=415 lx=35 ly=85 lz=15 flat=1 trees=1 fov=45 reach=300",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",

@@ -547,8 +547,16 @@ body (the deck, the lowered wall cloud, the tower, the anvil) bulged by turning 
 cauliflower domes up the tower, lit from above by its depth and a look towards the sun, its base green-black, and from
 inside by the three brightest flashes of the moment; the rain is ten samples of curtains under the base, streaked in long bands falling and drifting with the wind, never hiding more than 45% of what is behind, sparse thin streaks falling past an eye under it (more at the edges of the picture), the land under it darkened wet; the
 funnels (the vortex section, `vx_*`) are tapered, curving vortices wound with spiral bands, a turning dust cloud at the
-foot. The bolts are drawn on the picture between their projected root and foot (`bolt_line`, three forks), hidden by
-what stands in front. QUALITY FAST marches the cloud, the rain and the funnels at half size: at 1920x1080 FAST costs
+foot (a condensation funnel tapering from a cone in the wall cloud's base to a rope at the ground, leaning the way it
+goes and writhing in a slow S, wound with striations spinning fastest near the ground; a debris cloud and flung pieces
+whirling round its foot; it lowers out of the cloud with its tip narrowing, the dust kicking up before it touches, and
+ropes out into a thin twisting rope before it lifts; its foot on the land under the trees, `vortex::ground_track`:
+the lowest ground round each track sample, smoothed along it). The bolts are drawn on the picture between their
+projected root and foot: a faint stepped leader creeping down for a few frames, then the return stroke lighting the
+whole channel at once and two to four re-strokes over a few tenths of a second, each several frames long at 60 fps;
+the channel kinked at four scales (piecewise-linear noise, so it bends sharply), a thin white-violet core in a wide
+bloom, five forks branching down and fading; a few positive bolts from the anvil, brighter; spider lightning crawling
+along the cloud's base with the flickers; all hidden by what stands in front. QUALITY FAST marches the cloud, the rain and the funnels at half size: at 1920x1080 FAST costs
 about 1.8 to 2.8 ms and FULL 2.3 to 8.3 ms (the most under the cloud near the end of the storm).
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half

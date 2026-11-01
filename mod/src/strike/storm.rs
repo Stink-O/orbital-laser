@@ -129,7 +129,8 @@ pub(super) fn sc_table(seed: u32, me: [f64; 2], dy: &dyn Fn(f64, f64) -> Option<
         w[o + 3] = f(dy(b.x, b.z).unwrap_or(0.0));
     }
     for (k, fu) in funnels.iter().enumerate() {
-        let words = vortex::vx_words(fu, |p| dy(p[0], p[1]).unwrap_or(0.0));
+        let track = vortex::ground_track(&fu.path, |x, z| dy(x, z));
+        let words = vortex::vx_words(fu, &track);
         w[SC_F + VX_W * k..SC_F + VX_W * (k + 1)].copy_from_slice(&words);
     }
     for (i, k) in flick.iter().enumerate() {
@@ -146,7 +147,9 @@ fn sc_columns(seed: u32, me: [f64; 2], bx: i32, bz: i32) -> Vec<(i32, i32)> {
     let mut out = vec![(bx, bz)];
     out.extend(sc_bolts(seed, me).iter().map(|b| c(b.x, b.z)));
     for f in sc_funnels(seed) {
-        out.extend(f.path.iter().map(|p| c(p[0], p[1])));
+        for p in &f.path {
+            out.extend(vortex::VX_PROBE.iter().map(|&(dx, dz)| c(p[0] + f64::from(dx), p[1] + f64::from(dz))));
+        }
     }
     out
 }
@@ -523,7 +526,8 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         let fr = f.clone();
         p.later(f.t0 as f32 - 0.5, move |q| {
             let (bx, by, bz) = (q.bx, q.by, q.bz);
-            vortex::roar(q, &fr, "orbital:supercell.roar", [cx, gy, cz], |pt| gy + ground_dy(bx, by, bz, pt[0], pt[1]).unwrap_or(0.0));
+            let track = vortex::ground_track(&fr.path, |x, z| ground_dy(bx, by, bz, x, z));
+            vortex::roar(q, &fr, "orbital:supercell.roar", [cx, gy, cz], &track);
         });
         if k == 0 {
             p.at(f.t0 as f32 + 1.0, bar("FUNNEL CLOUD", "gray"));
@@ -634,7 +638,21 @@ mod table {
     fn sc_write_table() {
         let seed: f32 = std::env::var("CB_SEED").map_or(37.0, |v| v.parse().unwrap());
         let me: Vec<f64> = std::env::var("PL_ME").map_or(vec![0.0, 70.0, 300.0], |v| v.split(',').map(|x| x.parse().unwrap()).collect());
-        let w = super::sc_table(seed as u32, [me[0] - 0.5, me[2] - 0.5], &|_, _| Some(0.0));
+        // (SC_FOREST=1: the land a wood, trunks 9 high now and then, as the world's ground counts them; SC_RAW=1: the
+        // funnels' feet on the ground right under them, unsmoothed, as they were before `ground_track`)
+        let forest = std::env::var("SC_FOREST").is_ok_and(|v| v == "1");
+        let ground = move |x: f64, z: f64| -> Option<f64> {
+            let trunk = forest && (x.floor() as i64 * 7 + z.floor() as i64 * 13).rem_euclid(9) == 0;
+            Some(if trunk { 9.0 } else { 0.0 })
+        };
+        let mut w = super::sc_table(seed as u32, [me[0] - 0.5, me[2] - 0.5], &ground);
+        if std::env::var("SC_RAW").is_ok_and(|v| v == "1") {
+            for (k, f) in super::sc_funnels(seed as u32).iter().enumerate() {
+                let raw: Vec<f64> = f.path.iter().map(|p| ground(p[0], p[1]).unwrap_or(0.0)).collect();
+                let words = super::vortex::vx_words(f, &raw);
+                w[super::SC_F + super::VX_W * k..super::SC_F + super::VX_W * (k + 1)].copy_from_slice(&words);
+            }
+        }
         let text: String = w.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }

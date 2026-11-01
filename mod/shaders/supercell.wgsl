@@ -24,7 +24,7 @@ const SC_BW: u32 = 4u;
 const SC_F: u32 = 400u;            // the funnels from SC_F, VX_W words each (vortex.rs's vx_words)
 const VX_W: u32 = 148u;
 const VX_DT: f32 = 0.5;
-const VX_DOWN: f32 = 2.5;
+const VX_DOWN: f32 = 3.5;
 const SC_K: u32 = 1024u;           // the flickers in the cloud from SC_K (t, x, z)
 // The cloud's heights over the target's ground: the deck's base, the wall cloud's (lower, under its middle), the
 // deck's top, the tower's, and the anvil's underside and top.
@@ -175,35 +175,88 @@ struct ScFlash {
 }
 
 // ---- the bolts ------------------------------------------------------------------------------------------------------
-// How bright bolt (or the finale) is `a` seconds after it strikes: its leader, then a return stroke and one or two
-// more, as vanilla's re-strike, the channel glowing faintly between.
+// As lightning is: a faint stepped leader, a dim branching tree, creeping down from the cloud in a few frames
+// (SC_LEAD); then the return stroke lighting the whole channel at once at full brightness; then two to four re-strokes
+// flickering down the same channel over a few tenths of a second, each lasting several frames at 60 fps; a brief
+// afterglow. The channel is tortuous: kinked every few blocks at every scale (piecewise-linear noise, so it bends
+// sharply, never smoothly), forking downward in branches that taper and fade; a thin white-violet core in a wide bloom.
+const SC_LEAD: f32 = 0.09;
+// The return stroke and re-strokes of bolt `n` (its hash) `a` seconds after the return stroke: 1 at a stroke's peak.
 fn sc_stroke(a: f32, n: u32) -> f32 {
-    if (a < 0.0 || a > 0.9) {
+    if (a < 0.0 || a > 1.0) {
         return 0.0;
     }
-    var s = exp(-a / 0.05) * step(0.0, a);
-    if (n >= 1u) {
-        s = s + 0.8 * exp(-max(a - 0.13, 0.0) / 0.04) * step(0.13, a);
+    let count = 2u + n % 3u;
+    var s = 0.0;
+    var ts = 0.0;
+    for (var k = 0u; k <= count; k = k + 1u) {
+        let h = f32(pcg(n * 13u + k) & 1023u) / 1023.0;
+        let dk = select(0.05 + 0.1 * h, 0.0, k == 0u);
+        ts = ts + dk;
+        s = s + select(0.55 + 0.35 * h, 1.0, k == 0u) * exp(-max(a - ts, 0.0) / 0.045) * step(ts, a);
     }
-    if (n >= 2u) {
-        s = s + 0.6 * exp(-max(a - 0.3, 0.0) / 0.05) * step(0.3, a);
-    }
-    return s + 0.12 * exp(-a / 0.3);
+    // (the channel glowing on faintly between the strokes, and after)
+    return s + 0.1 * exp(-a / 0.35);
 }
-// Bolt i: its foot (off the middle, on the ground) and when.
+// The leader: how far down the cloud's branching tree has crept by `a` seconds after the return stroke (negative a).
+fn sc_leader(a: f32) -> f32 {
+    return saturate((a + SC_LEAD) / SC_LEAD);
+}
+// Bolt i: its foot (off the middle, on the ground) and when its return stroke is.
 fn sc_bolt(i: u32) -> vec4<f32> {
     let o = SC_B + SC_BW * i;
     return vec4<f32>(sc_w(o + 1u), sc_w(o + 3u), sc_w(o + 2u), sc_w(o));
 }
-// Where a bolt's channel leaves the cloud over its foot f (off the middle): a little off to one side.
+// Whether bolt i is a positive bolt: a rarer, brighter one out of the anvil, from high and far off.
+fn sc_positive(i: u32, seed: u32) -> bool {
+    return mh(i, seed, 0x5au) < 0.08;
+}
+// Where a bolt's channel leaves the cloud over its foot f (off the middle): out of the base a little off to one side,
+// or for a positive bolt out of the anvil's underside, high and further out.
 fn sc_root(f: vec3<f32>, i: u32, seed: u32) -> vec3<f32> {
     let a = TAU * mh(i, seed, 0x51u);
     let r = length(f.xz);
+    if (sc_positive(i, seed)) {
+        let out = f.xz / max(r, 1.0);
+        return vec3<f32>(f.x + out.x * 45.0, SC_ANV0 - 8.0, f.z + out.y * 45.0);
+    }
     return vec3<f32>(f.x + 22.0 * cos(a) * mh(i, seed, 0x52u), sc_base(r) + 4.0, f.z + 22.0 * sin(a) * mh(i, seed, 0x52u));
 }
-// A bolt from root a to foot b (camera-relative), drawn on the picture: its jagged channel and a few forks, hidden by
-// what stands in front of it. x: the hot core, y: the glow.
-fn sc_draw_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, wmul: f32, grow: f32, scene_len: f32) -> vec2<f32> {
+// Piecewise-linear noise in [-1, 1]: sharp kinks, no smooth curves.
+fn sc_lin(x: f32, s: f32) -> f32 {
+    let i = floor(x);
+    let f = x - i;
+    return mix(fh21(vec2<f32>(i, s)), fh21(vec2<f32>(i + 1.0, s)), f) * 2.0 - 1.0;
+}
+// The channel's sideways kink at u of its way (0 its root, 1 its end), in its lengths: four scales of kinks, the
+// finest every couple of blocks on a bolt of a hundred.
+fn sc_kink(u: f32, s: f32) -> f32 {
+    return 0.11 * sc_lin(u * 4.0, s) + 0.05 * sc_lin(u * 11.0, s + 1.7) + 0.024 * sc_lin(u * 29.0, s + 3.1) + 0.011 * sc_lin(u * 70.0, s + 5.3);
+}
+// One kinked channel on the picture from sa to sb (pixels), `w` its core's half-width there: x its core, y its bloom,
+// z how far along it the nearest point is. The kink is pinned at the end (`pin`: the foot on the ground).
+fn sc_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: bool) -> vec3<f32> {
+    let ab = sb - sa;
+    let L = max(length(ab), 1.0);
+    let dir = ab / L;
+    let nrm = vec2<f32>(-dir.y, dir.x);
+    let ap = px - sa;
+    let u = clamp(dot(ap, dir) / L, 0.0, 1.0);
+    let env = select(1.0, sqrt(max(1.0 - u, 0.0)) * 1.15, pin) * smoothstep(0.0, 0.04, u);
+    let k0 = sc_kink(u, s) * env;
+    let k1 = sc_kink(u + 0.004, s) * env;
+    let slope = (k1 - k0) / 0.004;
+    let off = (dot(ap, nrm) - k0 * L) / sqrt(1.0 + slope * slope);
+    let along = dot(ap, dir) - u * L;
+    let d = length(vec2<f32>(off, along));
+    let core = exp(-pow(d / w, 2.0));
+    let g = 1.0 / (1.0 + pow(d / (w * 9.0), 2.0));
+    return vec3<f32>(core, g * g, u);
+}
+// A bolt from root a to foot b (camera-relative), drawn on the picture: its channel and five forks (each kinked, branching
+// down and out, tapering and fading), hidden by what stands in front of it. `lead`: how far down the leader has crept
+// (1: the whole channel). x: the hot core, y: the bloom.
+fn sc_draw_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, wmul: f32, lead: f32, scene_len: f32) -> vec2<f32> {
     let pa = project_rel(a);
     let pb = project_rel(b);
     if (pa.z < 0.0 || pb.z < 0.0) {
@@ -212,54 +265,66 @@ fn sc_draw_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, wmul: f32,
     let res = frame.resolution.xy;
     let sa = pa.xy * res;
     let sb = pb.xy * res;
-    let L = length(sb - sa);
+    let ab = sb - sa;
+    let L = max(length(ab), 1.0);
     let dist = length(0.5 * (a + b));
     let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
-    let w = clamp(0.55 * focal / dist, 0.9, 7.0) * wmul;
+    let w = clamp(0.35 * focal / dist, 0.7, 4.0) * wmul;
     // (far from it on the picture: nothing to draw)
-    let ab = sb - sa;
-    let u0 = saturate(dot(px - sa, ab) / max(dot(ab, ab), 1.0));
-    if (length(px - (sa + ab * u0)) > 0.32 * L + 30.0 * w) {
+    let u0 = saturate(dot(px - sa, ab) / (L * L));
+    if (length(px - (sa + ab * u0)) > 0.45 * L + 40.0 * w) {
         return vec2<f32>(0.0);
     }
-    var core = 0.0;
-    var glow = 0.0;
-    let m = bolt_line(px, sa, sb, seed, seed * 0.37, w);
-    let bd = mix(length(a), length(b), m.z);
-    let seen = select(0.0, 1.0, scene_len > bd - 3.0) * step(m.z, grow);
-    core = core + m.x * seen;
-    glow = glow + m.y * seen;
-    let dir = ab / max(L, 1.0);
+    let la = length(a);
+    let lb = length(b);
+    let m = sc_channel(px, sa, sb, seed, w, true);
+    let seen = select(0.0, 1.0, scene_len > mix(la, lb, m.z) - 3.0) * smoothstep(lead + 0.01, lead - 0.01, m.z);
+    var core = m.x * seen;
+    var glow = m.y * seen;
+    let dir = ab / L;
     let nrm = vec2<f32>(-dir.y, dir.x);
-    for (var j = 0; j < 3; j = j + 1) {
+    for (var j = 0; j < 5; j = j + 1) {
         let fj = f32(j);
-        let u = 0.18 + 0.22 * fj + 0.08 * fract(seed * 0.618 + fj * 0.37);
-        if (u > grow) {
+        let hu = fract(seed * 0.618 + fj * 0.377);
+        let u = 0.1 + 0.62 * fract(hu + fj * 0.21);
+        if (u > lead) {
             continue;
         }
-        let root = sa + ab * u + nrm * bolt_disp(L, u, seed, seed * 0.37);
+        let root = sa + ab * u + nrm * sc_kink(u, seed) * sqrt(1.0 - u) * 1.15 * L;
         let side = select(-1.0, 1.0, fract(seed * 0.71 + fj * 0.53) > 0.5);
-        let bdir = normalize(dir + nrm * side * (0.7 + 0.5 * fract(seed * 1.3 + fj)));
-        let len = L * (0.18 + 0.14 * fract(seed * 0.9 + fj * 0.77));
-        let f = bolt_line(px, root, root + bdir * len, seed + 5.0 + fj * 3.0, seed, w * 0.6);
-        let fd = mix(length(a), length(b), u + f.z * 0.3);
-        let fs = select(0.0, 1.0, scene_len > fd - 3.0) * step(u + f.z * (1.0 - u), grow + 0.05);
-        core = core + f.x * fs * (1.0 - 0.6 * f.z);
-        glow = glow + f.y * fs * 0.6;
+        let bdir = normalize(dir + nrm * side * (0.55 + 0.6 * fract(seed * 1.3 + fj * 0.7)));
+        let len = L * (0.12 + 0.22 * fract(seed * 0.9 + fj * 0.77)) * (1.0 - 0.5 * u);
+        let f = sc_channel(px, root, root + bdir * len, seed + 7.0 + fj * 3.3, w * 0.55, false);
+        // (it creeps out as the leader passes it, and fades and thins along its length)
+        let grown = smoothstep(f.z - 0.02, f.z + 0.02, (lead - u) * 3.0);
+        let fade = pow(1.0 - f.z, 1.6);
+        let fs = select(0.0, 1.0, scene_len > mix(la, lb, u + f.z * 0.25) - 3.0) * grown * fade;
+        core = core + f.x * fs;
+        glow = glow + f.y * fs * 0.7;
     }
     return vec2<f32>(core, glow);
 }
 
 // ---- the vortex: a funnel let down out of the cloud (vortex.rs) --------------------------------------------------
-// A thin rotating funnel: a tapered vortex from its foot on the land up to the wall cloud's base, curving a little, its
-// surface wound in spiral bands that climb as it turns, a swirl of dust and debris round its foot while it touches.
-// It comes down out of the cloud as a lowering cone, and lifts by roping out from the ground up. A full tornado scales
-// it: vx_radius with the funnel's touch radius (and the cloud's base), the debris cloud's radius and height with it.
+// A condensation funnel hanging from the wall cloud: wide where it leaves the cloud's base, tapering smoothly to a
+// narrow cone or rope at the ground, leaning a little the way it travels and bending in a slow sinuous curve; its edge
+// fairly sharp, wound with striations that spiral round it and up it as it turns, fastest near the ground. At its foot,
+// once it nears the land, a squat debris cloud whirls up, wider than the funnel and dust-coloured, with pieces flung
+// round it and out. It forms by lowering out of the cloud (the debris kicking up before it touches), matures, then
+// ropes out (thinning to a twisted, sinuous rope) and lifts back up as it dies. Lit as the storm is: darker on its side
+// away from the light, silhouetted against what is brighter behind it.
+// A full tornado scales it: VX_RT (the cone's width at the cloud) and the foot's width with the funnel's touch radius
+// (vortex.rs's `touch_r`), the debris cloud with it, the march's bound (vx_bound) with both.
+const VX_ROPE: f32 = 4.0;          // it ropes out over this long before it is gone, lifting off over the last 1.6 (vortex.rs's VX_LIFT)
+const VX_RT: f32 = 11.0;           // the cone's radius where it leaves the cloud's base
 struct VxFunnel {
-    foot: vec3<f32>,       // camera-relative
+    foot: vec3<f32>,       // camera-relative, on the land (vortex.rs smooths the land under it)
     top: vec3<f32>,
+    vel: vec2<f32>,        // its foot's way over the land, blocks a second
     low: f32,              // the share of it from the ground up not (yet, or any more) drawn
     touch: f32,            // how much it is on the land
+    debris: f32,           // how much dust is whirled up round its foot
+    rope: f32,             // how far it has roped out (0 mature, 1 a thin rope)
     r: f32,                // its touch radius
     spin: f32,
 }
@@ -278,55 +343,103 @@ fn vx_at(k: u32, t: f32, C: vec3<f32>) -> VxFunnel {
     let pb = vec3<f32>(sc_w(b), sc_w(b + 2u), sc_w(b + 1u));
     let p = mix(pa, pb, fr);
     f.foot = C + p;
-    // (its top in the wall cloud's base, lagging in towards the middle)
-    f.top = C + vec3<f32>(p.x * 0.6 + 8.0 * sin(t * 0.21 + f32(k)), sc_base(length(p.xz) * 0.6) + 6.0, p.z * 0.6 + 8.0 * cos(t * 0.17 + f32(k)));
+    f.vel = (pb.xz - pa.xz) / VX_DT;
+    // (its top in the wall cloud's base, drawn in towards the middle and ahead of its foot: it leans the way it goes)
+    let top_xz = p.xz * 0.85 + f.vel * 1.2;
+    f.top = C + vec3<f32>(top_xz.x, sc_base(length(top_xz)) + 3.0, top_xz.y);
     let down = smoothstep(t0, t0 + VX_DOWN, t);
-    let up = smoothstep(t1 - VX_DOWN, t1, t);
-    f.low = max(1.0 - down, up);
-    f.touch = smoothstep(t0 + 0.8 * VX_DOWN, t0 + VX_DOWN, t) * (1.0 - smoothstep(t1 - VX_DOWN, t1 - 0.8 * VX_DOWN, t));
+    let lift = smoothstep(t1 - 1.6, t1, t);
+    f.low = max(1.0 - down, lift);
+    f.touch = smoothstep(t0 + 0.8 * VX_DOWN, t0 + VX_DOWN, t) * (1.0 - smoothstep(t1 - 1.8, t1 - 1.2, t));
+    f.debris = smoothstep(t0 + 0.45 * VX_DOWN, t0 + VX_DOWN, t) * (1.0 - smoothstep(t1 - 2.0, t1 - 0.6, t));
+    f.rope = smoothstep(t1 - VX_ROPE, t1 - 1.2, t);
     f.r = sc_w(o + 3u);
     f.spin = f32(k) * 2.1;
     if (t < t0 || t > t1) {
         f.low = 1.0;
+        f.debris = 0.0;
     }
     return f;
 }
-// The funnel's radius at s of its way up (0 its foot, 1 its top), from its thin foot to the wide cone it hangs from.
+// The funnel's radius at s of its way up (0 its foot, 1 the cloud's base): a narrow foot, flaring into the wide cone it
+// hangs from; thinned to a rope as it dies.
 fn vx_radius(f: VxFunnel, s: f32) -> f32 {
-    return mix(1.1 + 0.35 * f.r, 11.0, pow(s, 2.4));
+    let foot = (1.0 + 0.4 * f.r) * mix(1.0, 0.55, f.rope);
+    let cone = mix(VX_RT, VX_RT * 0.35, f.rope);
+    // (and as it lowers, its tip a narrowing point)
+    let tip = smoothstep(f.low - 0.02, f.low + 0.3, s);
+    return mix(foot, cone, pow(s, mix(3.5, 5.0, f.rope))) * mix(0.25, 1.0, tip);
 }
-// The funnel's axis at s of its way up: curving off the straight line a little, swaying.
+// The funnel's axis at s of its way up: from its foot to its top, bending in a slow S that writhes as it turns, more
+// as it ropes out.
 fn vx_axis(f: VxFunnel, s: f32, t: f32) -> vec3<f32> {
-    let bend = vec3<f32>(sin(t * 0.37 + f.spin), 0.0, cos(t * 0.29 + f.spin)) * 7.0 * sin(3.14159 * s);
-    return mix(f.foot, f.top, s) + bend;
+    let along = mix(f.foot, f.top, s);
+    let side = normalize(vec3<f32>(-(f.top - f.foot).z, 0.0, (f.top - f.foot).x) + vec3<f32>(1.0e-3, 0.0, 0.0));
+    let amp = mix(3.0, 10.0, f.rope) * sin(3.14159 * s) * (1.0 - 0.7 * f.low);
+    let w1 = sin(s * 5.0 - t * 0.9 + f.spin) * amp;
+    let w2 = cos(s * 3.0 - t * 0.6 + f.spin * 1.3) * amp * 0.6;
+    return along + side * w1 + vec3<f32>(side.z, 0.0, -side.x) * w2;
 }
-// The funnel's density at camera-relative p (x), and its dust's (y).
-fn vx_den(f: VxFunnel, p: vec3<f32>, t: f32) -> vec2<f32> {
+// How far round the funnel reaches from its axis (the march's bound): the cone, the debris cloud.
+fn vx_bound(f: VxFunnel) -> f32 {
+    return VX_RT + 14.0 + 3.0 * f.r;
+}
+// The funnel at camera-relative p: x its density, y its dust's, z how far it lies out on the funnel's surface (0 at the
+// axis, 1 at its edge: the shading's side), w the striation there.
+fn vx_den(f: VxFunnel, p: vec3<f32>, t: f32) -> vec4<f32> {
     let H = max(f.top.y - f.foot.y, 10.0);
     let s = saturate((p.y - f.foot.y) / H);
     let ax = vx_axis(f, s, t);
     let e = (p - ax).xz;
     let d = length(e);
     let th = atan2(e.y, e.x);
-    // (spiral bands winding up it, climbing as it turns; the funnel's edge shredded by them)
-    let spin = t * 7.0 + f.spin;
-    let bands = 0.5 + 0.5 * sin(3.0 * th - spin + p.y * 0.35);
-    let n = gnoise3(vec3<f32>(cos(th) * 1.5, sin(th) * 1.5, p.y * 0.12 - t * 1.8) + vec3<f32>(f.spin));
-    let rs = vx_radius(f, s) * (0.85 + 0.35 * n);
-    let vis = smoothstep(f.low - 0.04, f.low + 0.04, s) * step(p.y, f.top.y + 4.0);
-    var fun = smoothstep(rs, rs * 0.45, d) * (0.55 + 0.45 * bands) * vis;
-    // (the cone it hangs from, merging into the cloud's base)
-    fun = max(fun, smoothstep(0.75, 1.0, s) * smoothstep(rs * 1.3, rs * 0.5, d) * 0.35 * vis);
-    // (the dust and debris whirled round its foot while it touches: a squat, ragged, turning cloud)
+    // (it turns, fastest near the ground; its striations spiral round it and climb as it turns)
+    let w = mix(9.0, 2.5, s);
+    let thr = th - w * t - f.spin;
+    let stri = 0.5 + 0.5 * sin(6.0 * thr + p.y * 0.55);
+    let n = gnoise3(vec3<f32>(cos(thr) * 2.0, sin(thr) * 2.0, p.y * 0.09 - t * 1.4) + vec3<f32>(f.spin));
+    let rs = vx_radius(f, s) * (0.9 + 0.12 * stri + 0.18 * (n - 0.5));
+    let vis = smoothstep(f.low - 0.03, f.low + 0.03, s);
+    let fun = smoothstep(rs, rs * 0.8, d) * (0.75 + 0.25 * stri) * vis;
+    // (the debris cloud whirled round its foot: squat, ragged, dust-coloured, turning fast, wider than the funnel)
     var dust = 0.0;
     let hy = p.y - f.foot.y;
-    if (f.touch > 0.01 && hy < 16.0) {
-        let rd0 = (4.5 + 2.2 * f.r) * (0.75 + 0.5 * gnoise3(vec3<f32>(cos(th - t * 3.0) * 2.0, sin(th - t * 3.0) * 2.0, hy * 0.2 + f.spin)));
+    if (f.debris > 0.01 && hy < 26.0) {
         let dd = length((p - f.foot).xz);
-        dust = smoothstep(rd0, rd0 * 0.35, dd) * smoothstep(16.0, 1.0, hy) * smoothstep(-1.0, 1.0, hy) * f.touch;
-        dust = dust * (0.5 + 0.5 * sin(2.0 * th - t * 9.0 + hy * 0.5 + f.spin));
+        let thd = atan2((p - f.foot).z, (p - f.foot).x) - 7.0 * t - f.spin;
+        let rd0 = (5.0 + 2.6 * f.r) * (0.8 + 0.45 * gnoise3(vec3<f32>(cos(thd) * 1.8, sin(thd) * 1.8, hy * 0.12 - t * 0.6 + f.spin)));
+        let top = 7.0 + 14.0 * smoothstep(rd0, 0.0, dd);
+        dust = smoothstep(rd0, rd0 * 0.45, dd) * smoothstep(top, top * 0.3, hy) * smoothstep(-1.5, 1.0, hy) * f.debris;
+        dust = dust * (0.55 + 0.45 * sin(3.0 * thd + hy * 0.4)) * 1.7;
     }
-    return vec2<f32>(fun, dust);
+    return vec4<f32>(fun, dust, saturate(d / max(rs, 0.5)), stri);
+}
+// The pieces flung round a funnel's foot (a few dozen, each a tumbling dark speck orbiting and climbing, some thrown
+// out), on the picture: how much of this pixel they cover.
+fn vx_pieces(px: vec2<f32>, f: VxFunnel, t: f32, scene_len: f32) -> f32 {
+    if (f.debris < 0.02) {
+        return 0.0;
+    }
+    let res = frame.resolution.xy;
+    let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
+    var cover = 0.0;
+    for (var i = 0u; i < 16u; i = i + 1u) {
+        let h = vec3<f32>(f32(pcg(i * 3u + 1u) & 1023u), f32(pcg(i * 3u + 2u) & 1023u), f32(pcg(i * 3u + 3u) & 1023u)) / 1023.0;
+        let life = fract(t * (0.25 + 0.2 * h.x) + h.y);
+        let r = (4.0 + 2.5 * f.r) * (0.7 + 0.6 * h.z) + 10.0 * life * life * step(0.7, h.x);
+        let a = TAU * h.x + t * (5.0 - 2.5 * h.z) + f.spin;
+        let y = 1.0 + 26.0 * life * (0.4 + 0.6 * h.y) - 30.0 * max(life - 0.75, 0.0);
+        let q = f.foot + vec3<f32>(cos(a) * r, y, sin(a) * r);
+        let pq = project_rel(q);
+        if (pq.z < 0.0) {
+            continue;
+        }
+        let dq = length(q);
+        let sz = max(0.28 * focal / dq * (0.4 + 0.8 * h.z), 0.5);
+        let dpx = length(px - pq.xy * res);
+        cover = max(cover, smoothstep(sz + 0.7, sz - 0.3, dpx) * select(0.0, 1.0, scene_len > dq) * f.debris * smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.9, 1.0, life)));
+    }
+    return cover;
 }
 
 // What the volumetric part has gathered: colour (premultiplied), transmittance, and its distance.
@@ -509,13 +622,16 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
             if (f.low >= 0.999) {
                 continue;
             }
+            let bnd = vx_bound(f);
             let sg = pl_ray_seg(rd, f.foot, f.top, 0.0, 1.0);
-            if (sg.x > 22.0 + 6.0 * f.r || sg.y - 40.0 > scene_len) {
+            if (sg.x > bnd || sg.y - bnd > scene_len) {
                 continue;
             }
-            let ft0 = max(sg.y - 40.0, 0.0);
-            let ft1 = min(sg.y + 40.0, scene_len);
-            let nn = select(18, 28, fine);
+            // (marched only across it: its width where the ray passes nearest, and the dust's round its foot)
+            let half = vx_radius(f, sg.z) * 1.3 + 4.0 + select(0.0, 6.0 + 3.0 * f.r, sg.z < 0.4);
+            let ft0 = max(sg.y - half, 0.0);
+            let ft1 = min(sg.y + half, scene_len);
+            let nn = select(18, 26, fine);
             let fdt = (ft1 - ft0) / f32(nn);
             var fa = vec4<f32>(0.0, 0.0, 0.0, 1.0);
             var ftm = 0.0;
@@ -524,16 +640,24 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
                 let p = rd * t;
                 // (only under the cloud's base: inside it the cloud hides it, and its cone merges into the base)
                 let qb = p - C;
-                let dd = vx_den(f, p, time) * smoothstep(sc_base(length(qb.xz)) - 1.0, sc_base(length(qb.xz)) - 18.0, qb.y);
+                let v4 = vx_den(f, p, time);
+                // (inside the cloud the cloud hides it: where the cloud's smooth body begins, it is gone)
+                let dd = v4.xy * smoothstep(0.4, -0.6, sc_shape(qb, time)) * smoothstep(sc_base(length(qb.xz)) + 1.0, sc_base(length(qb.xz)) - 6.0, qb.y);
                 let den = dd.x + dd.y;
                 if (den > 0.002) {
                     let e = sc_flash_at(fl, p);
                     let s01 = saturate((p.y - f.foot.y) / max(f.top.y - f.foot.y, 1.0));
-                    let fcol = mix(vec3<f32>(0.13, 0.15, 0.15), vec3<f32>(0.24, 0.26, 0.27), s01) * (1.0 - 0.45 * smoothstep(0.6, 1.0, s01));
-                    let dcol = vec3<f32>(0.34, 0.28, 0.21);
+                    // (lit as the storm is: the side towards the light and the sky paler, the far side and the cone
+                    // under the cloud darker, the striations' grooves a little darker)
+                    let ax = vx_axis(f, s01, time);
+                    let nrm = normalize(vec3<f32>((p - ax).x, 0.0, (p - ax).z) + vec3<f32>(0.0, 1.0e-3, 0.0));
+                    let lit = 0.55 + 0.45 * dot(nrm, normalize(vec3<f32>(L.x, 0.0, L.z) + vec3<f32>(1.0e-3, 0.0, 0.0)));
+                    let rim = smoothstep(0.55, 1.0, v4.z);
+                    let fcol = mix(vec3<f32>(0.16, 0.18, 0.18), vec3<f32>(0.27, 0.29, 0.3), s01 * 0.5 + 0.5 * rim) * (0.8 + 0.25 * v4.w) * (1.0 - 0.4 * smoothstep(0.7, 1.0, s01));
+                    let dcol = vec3<f32>(0.36, 0.3, 0.22);
                     let alb = (fcol * dd.x + dcol * dd.y) / den;
-                    let c = alb * (amb * 1.1 + sunc * 0.12) + fc * e * 0.5 * alb;
-                    let al = 1.0 - exp(-den * 0.55 * fdt);
+                    let c = alb * (amb * (0.75 + 0.6 * lit) + sunc * 0.15 * lit) + fc * e * 0.5 * alb;
+                    let al = 1.0 - exp(-den * 0.9 * fdt);
                     sc_over(&fa, c, al);
                     ftm = ftm + t * al;
                     if (fa.a < 0.03) {
@@ -628,10 +752,10 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
         for (var i = 0u; i < min(nb, 96u); i = i + 1u) {
             let b = sc_bolt(i);
             let a = time - b.w;
-            if (a < 0.0 || a > 0.9) {
+            if (a < 0.0 || a > 1.0) {
                 continue;
             }
-            let I = sc_stroke(a, pcg(i ^ seed) % 3u);
+            let I = sc_stroke(a, pcg(i ^ seed)) * select(1.0, 1.6, sc_positive(i, seed));
             let root = C + sc_root(b.xyz, i, seed);
             let foot = C + b.xyz;
             let fp = vec4<f32>(root + vec3<f32>(0.0, 20.0, 0.0), I * 2.5);
@@ -733,6 +857,21 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     // ---- the bolts, over it all (hidden by the cloud only for an eye above it) ----------------------------------------
     let cam_above = smoothstep(C.y + SC_TOP - 20.0, C.y + SC_TOP + 20.0, 0.0);
     let behind = mix(1.0, vol_a, cam_above);
+    // (the pieces flung round the funnels' feet: dark specks against the dust and the sky)
+    if (have) {
+        let nf = u32(sc_w(2u) + 0.5);
+        for (var kf = 0u; kf < min(nf, 4u); kf = kf + 1u) {
+            let f = vx_at(kf, time, C);
+            if (f.debris < 0.02) {
+                continue;
+            }
+            let sg = pl_ray_seg(rd, f.foot, f.foot + vec3<f32>(0.0, 30.0, 0.0), 0.0, 1.0);
+            if (sg.x < 14.0 + 3.0 * f.r) {
+                let cv = vx_pieces(in.position.xy, f, time, scene_len);
+                col = mix(col, vec3<f32>(0.07, 0.06, 0.05) * (amb0 + vec3<f32>(0.05)), cv * k);
+            }
+        }
+    }
     if (have) {
         let px = in.position.xy;
         let nb = u32(sc_w(0u) + 0.5);
@@ -741,13 +880,44 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
         for (var i = 0u; i < min(nb, 96u); i = i + 1u) {
             let b = sc_bolt(i);
             let a = time - b.w;
-            if (a < 0.0 || a > 0.9) {
+            if (a < -SC_LEAD || a > 1.0) {
                 continue;
             }
-            let I = sc_stroke(a, pcg(i ^ seed) % 3u);
+            let pos = sc_positive(i, seed);
             let root = C + sc_root(b.xyz, i, seed);
             let foot = C + b.xyz;
-            let m = sc_draw_bolt(px, root, foot, f32(pcg(i * 7u + seed) % 1000u) * 0.13 + 3.0, 1.0, saturate(a / 0.04), scene_len);
+            let sd = f32(pcg(i * 7u + seed) % 1000u) * 0.13 + 3.0;
+            if (a < 0.0) {
+                // (the stepped leader: a dim branching tree creeping down)
+                let m = sc_draw_bolt(px, root, foot, sd, 0.6, sc_leader(a), scene_len);
+                core = core + m.x * 0.12;
+                glow = glow + m.y * 0.1;
+                continue;
+            }
+            let I = sc_stroke(a, pcg(i ^ seed)) * select(1.0, 1.5, pos);
+            let m = sc_draw_bolt(px, root, foot, sd, select(1.0, 1.6, pos), 1.0, scene_len);
+            core = core + m.x * I;
+            glow = glow + m.y * I;
+        }
+        // (spider lightning: some of the flickers crawl along the cloud's base in branching channels)
+        let nk = u32(sc_w(3u) + 0.5);
+        for (var i = 0u; i < min(nk, 64u); i = i + 1u) {
+            if (mh(i, seed, 0x62u) > 0.5) {
+                continue;
+            }
+            let o = SC_K + 3u * i;
+            let a = time - sc_w(o);
+            if (a < 0.0 || a > 0.5) {
+                continue;
+            }
+            let p0 = vec3<f32>(sc_w(o + 1u), 0.0, sc_w(o + 2u));
+            let ang = TAU * mh(i, seed, 0x63u);
+            let len = 60.0 + 80.0 * mh(i, seed, 0x64u);
+            let p1 = p0 + vec3<f32>(cos(ang) * len, 0.0, sin(ang) * len);
+            let ra = C + vec3<f32>(p0.x, sc_base(length(p0.xz)) - 2.0, p0.z);
+            let rb = C + vec3<f32>(p1.x, sc_base(length(p1.xz)) - 2.0, p1.z);
+            let I = (exp(-a / 0.07) + 0.6 * exp(-max(a - 0.15, 0.0) / 0.06) * step(0.15, a)) * 0.6;
+            let m = sc_draw_bolt(px, ra, rb, f32(i) * 3.7 + 11.0, 0.7, saturate(a / 0.12), scene_len);
             core = core + m.x * I;
             glow = glow + m.y * I;
         }
@@ -758,12 +928,12 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
                 // (one thick channel straight down, four thinner ones from further round the wall cloud joining it)
                 let rr = select(28.0 + 22.0 * f32(i % 3u), 0.0, i == 0u);
                 let root = C + vec3<f32>(cos(a) * rr, SC_WALL + 6.0, sin(a) * rr);
-                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), select(1.8, 6.0, i == 0u), saturate(tf / 0.03), scene_len);
+                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), select(2.0, 5.0, i == 0u), saturate(tf / 0.05), scene_len);
                 core = core + m.x * fin;
                 glow = glow + m.y * fin;
             }
         }
-        col = col + (vec3<f32>(2.2, 2.3, 3.0) * min(core, 3.0) * 2.2 + vec3<f32>(0.45, 0.42, 1.0) * glow * 1.3) * behind * k;
+        col = col + (vec3<f32>(2.4, 2.4, 3.2) * min(core, 3.0) * 2.4 + vec3<f32>(0.42, 0.4, 1.0) * glow * 1.2) * behind * k;
     }
     // (the finale: the picture whited out for an instant, fading as the eye recovers, less from far off)
     if (tf > 0.0 && tf < 1.5) {

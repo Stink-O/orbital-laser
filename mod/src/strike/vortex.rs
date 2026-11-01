@@ -20,7 +20,9 @@ pub(super) const VX_DT: f64 = 0.5;
 pub(super) const VX_S: usize = 48;
 pub(super) const VX_W: usize = 4 + 3 * VX_S;
 /// Seconds a funnel takes to come down out of the cloud to the land, and to lift back off it.
-pub(super) const VX_DOWN: f64 = 2.5;
+pub(super) const VX_DOWN: f64 = 3.5;
+/// Seconds before it is gone that it lifts off the land (it ropes out over the 4 s before: supercell.wgsl's VX_ROPE).
+pub(super) const VX_LIFT: f64 = 1.6;
 
 #[derive(Clone, Debug)]
 pub(super) struct Funnel {
@@ -48,7 +50,7 @@ impl Funnel {
             let u = ((x - a) / (b - a)).clamp(0.0, 1.0);
             u * u * (3.0 - 2.0 * u)
         };
-        s(self.t0 + 0.8 * VX_DOWN, self.t0 + VX_DOWN, t) * (1.0 - s(self.t1 - VX_DOWN, self.t1 - 0.8 * VX_DOWN, t))
+        s(self.t0 + 0.8 * VX_DOWN, self.t0 + VX_DOWN, t) * (1.0 - s(self.t1 - VX_LIFT - 0.2, self.t1 - VX_LIFT + 0.4, t))
     }
 }
 
@@ -81,9 +83,37 @@ pub(super) fn wander(seed: u32, k: u32, start: [f64; 2], h0: f64, speed: f64, t0
     Funnel { t0, t1: t0 + (n - 1) as f64 * VX_DT, path, touch_r }
 }
 
+/// Where the land is asked round each sample of a track (`ground_track`): the sample's own column and eight round it,
+/// three and four blocks out.
+pub(super) const VX_PROBE: [(i32, i32); 9] = [(0, 0), (3, 0), (-3, 0), (0, 3), (0, -3), (3, 3), (-3, -3), (3, -3), (-3, 3)];
+/// The land under a funnel's track, as its foot glides over it: at each sample the lowest of the land round it
+/// (`ground`: the world's ground, which counts a tree's trunk), so it never climbs a tree or a wall it passes, then
+/// smoothed along the track (twice over two seconds or so) so it never hops on a step of the land. None where nothing
+/// round a sample is known: the known ones round it carry over, 0 if there are none.
+pub(super) fn ground_track(path: &[[f64; 2]], ground: impl Fn(f64, f64) -> Option<f64>) -> Vec<f64> {
+    crate::meter::spend(2_000 * path.len() as u64);
+    let raw: Vec<Option<f64>> = path
+        .iter()
+        .map(|p| VX_PROBE.iter().filter_map(|&(dx, dz)| ground(p[0] + f64::from(dx), p[1] + f64::from(dz))).reduce(f64::min))
+        .collect();
+    let known: Vec<(usize, f64)> = raw.iter().enumerate().filter_map(|(i, v)| v.map(|v| (i, v))).collect();
+    let mut h: Vec<f64> = (0..path.len())
+        .map(|i| raw[i].unwrap_or_else(|| known.iter().min_by_key(|(j, _)| j.abs_diff(i)).map_or(0.0, |k| k.1)))
+        .collect();
+    for _ in 0..2 {
+        h = (0..h.len())
+            .map(|i| {
+                let (a, b) = (i.saturating_sub(2), (i + 2).min(h.len() - 1));
+                h[a..=b].iter().sum::<f64>() / (b - a + 1) as f64
+            })
+            .collect();
+    }
+    h
+}
+
 /// The pass's words for a funnel (VX_W of them): t0, t1, how many samples, its touch radius, then each sample's x, z
-/// (off the middle) and the ground's height there over the middle's (`dy`; 0 where it is not known).
-pub(super) fn vx_words(f: &Funnel, dy: impl Fn([f64; 2]) -> f64) -> Vec<u32> {
+/// (off the middle) and the land's height there over the middle's (`dy`, from `ground_track`: one a sample).
+pub(super) fn vx_words(f: &Funnel, dy: &[f64]) -> Vec<u32> {
     let mut w = vec![0u32; VX_W];
     w[0] = (f.t0 as f32).to_bits();
     w[1] = (f.t1 as f32).to_bits();
@@ -92,7 +122,7 @@ pub(super) fn vx_words(f: &Funnel, dy: impl Fn([f64; 2]) -> f64) -> Vec<u32> {
     for (i, p) in f.path.iter().enumerate() {
         w[4 + 3 * i] = (p[0] as f32).to_bits();
         w[5 + 3 * i] = (p[1] as f32).to_bits();
-        w[6 + 3 * i] = (dy(*p) as f32).to_bits();
+        w[6 + 3 * i] = (dy.get(i).copied().unwrap_or(0.0) as f32).to_bits();
     }
     w
 }
@@ -155,13 +185,14 @@ pub(super) fn scour(q: &mut Plan, f: &Funnel, k0: usize, k1: usize, cx: i32, cz:
 }
 
 /// The funnel's roar, played where it is every second of its life (each a few seconds long, faded in and out, so they
-/// overlap into one that moves with it): quieter while it is aloft. `ground(x, z)`: the land's height under a point off
-/// the middle `c`.
-pub(super) fn roar(q: &mut Plan, f: &Funnel, event: &str, c: [f64; 3], ground: impl Fn([f64; 2]) -> f64) {
+/// overlap into one that moves with it): quieter while it is aloft. `track`: the land under its track over `c`'s
+/// (`ground_track`).
+pub(super) fn roar(q: &mut Plan, f: &Funnel, event: &str, c: [f64; 3], track: &[f64]) {
     let mut t = f.t0;
     while t < f.t1 - 0.5 {
         let p = f.at(t + 0.8);
-        let at = [c[0] + p[0], ground(p) + 6.0, c[2] + p[1]];
+        let k = (((t + 0.8 - f.t0) / VX_DT).round() as usize).min(track.len().saturating_sub(1));
+        let at = [c[0] + p[0], c[1] + track.get(k).copied().unwrap_or(0.0) + 6.0, c[2] + p[1]];
         let v = 0.45 + 0.55 * f.touch(t + 0.8);
         q.ev.push((t as f32, Act::Sound { event: event.to_string(), at: Some(at), volume: v as f32, pitch: 1.0 }));
         t += 1.0;
@@ -186,5 +217,22 @@ mod tests {
             assert!(f.touch(0.5 * (f.t0 + f.t1)) > 0.99);
             assert!(f.touch(f.t1) < 1e-9);
         }
+    }
+
+    #[test]
+    fn a_funnel_glides_over_the_land_under_the_trees() {
+        let f = wander(37, 0, [40.0, -10.0], 1.2, 5.0, 14.0, 30.0, 95.0, 4.0);
+        // (flat land at 0 with trunks 8 high every few blocks, and a step of 4 half way)
+        let ground = |x: f64, z: f64| -> Option<f64> {
+            let step = if x > 45.0 { 4.0 } else { 0.0 };
+            let trunk = ((x.floor() as i64 * 7 + z.floor() as i64 * 13) % 9) == 0;
+            Some(step + if trunk { 8.0 } else { 0.0 })
+        };
+        let h = ground_track(&f.path, ground);
+        assert_eq!(h.len(), f.path.len());
+        for w in h.windows(2) {
+            assert!((w[1] - w[0]).abs() < 1.5, "a hop: {w:?}");
+        }
+        assert!(h.iter().all(|&v| v < 4.5), "it climbed a tree: {h:?}");
     }
 }
