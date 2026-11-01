@@ -36,8 +36,8 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    # (a taller crop of the Payload's column than docs/32, so its foot and the land under it fit the card)
-    shot = Image.open(ROOT / "docs" / "branding" / "payload-card.jpg").convert("RGB")
+    # (the Rod from God as it strikes, its rays fanning out)
+    shot = Image.open(ROOT / "docs" / "branding" / "rod-card.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H / shot.height), H), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width + 200, 0))
