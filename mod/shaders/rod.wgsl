@@ -1609,10 +1609,11 @@ fn rd_if_mask(uv: vec2<f32>, P: vec2<f32>, asp: f32, a: f32) -> f32 {
     var v = 0.25 * (rd_if_tone(uv + vec2<f32>(o.x, o.y)) + rd_if_tone(uv + vec2<f32>(-o.x, o.y)) + rd_if_tone(uv + vec2<f32>(o.x, -o.y)) + rd_if_tone(uv - o));
     let q = (uv - P) * vec2<f32>(asp, 1.0);
     let r = length(q);
-    // (the burst: a ragged white star round the point, growing beat by beat)
+    // (the burst: a small hot core at the point, flattened along the ground, its edge broken finely rather than spiked)
     let th = atan2(q.y, q.x);
-    let star = 0.05 + 0.04 * a / RD_IF_END + 0.025 * sin(th * 7.0 + 1.3) * sin(th * 11.0 + 0.4);
-    v = v + 1.5 * (1.0 - smoothstep(star * 0.8, star, r));
+    let qe = q * vec2<f32>(0.55, 1.6);
+    let core = 0.022 + 0.012 * a / RD_IF_END + 0.004 * sin(th * 23.0 + 1.3) * sin(th * 37.0 + 0.4);
+    v = v + 1.5 * (1.0 - smoothstep(core * 0.7, core, length(qe)));
     return smoothstep(0.5, 0.6, v);
 }
 // The impact lines at uv for beat `b`: thin, jagged wedges bursting out from the point, each its own width and start,
