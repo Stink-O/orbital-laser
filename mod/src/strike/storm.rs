@@ -1,9 +1,10 @@
 //! The Supercell's plan: a storm called down on the target. The sky darkens and a huge, low, slowly turning wall cloud
-//! and an anvil-topped storm cloud boil up over it and spread; the wind gusts, thunder rumbles far off. Then the storm:
-//! lightning all over the land under the cloud out to SC_REACH, faster and faster (with the terrain on, each bolt
-//! hurting what it hits and setting its foot alight), heavy rain falling out of the cloud, and a few thin funnels
-//! (vortex.rs) coming down out of the wall cloud and wandering over the land. Then one colossal strike on the target
-//! itself, a shockwave and a jolt, and the storm dies away.
+//! and an anvil-topped storm cloud boil up over it and spread; the wind gusts, thunder rumbles far off. Then the storm,
+//! building with no pause: lightning all over the land under the cloud out to SC_REACH, small lone bolts coming faster,
+//! then waves of more and more at once (with the terrain on, each bolt hurting what it hits and setting its foot
+//! alight), drawing in onto the target until they collapse into one colossal strike on it, a shockwave and a jolt;
+//! heavy rain falling out of the cloud, a few thin funnels (vortex.rs) coming down out of the wall cloud and wandering
+//! over the land; then the storm dies away.
 //!
 //! What it leaves is light: a small scorched pit where each bolt struck (blackstone, basalt, tinted glass, a seam of
 //! magma, glassy sand), charred grass round it, the funnels' scoured tracks; and the finale's: a crater about 70 across
@@ -26,28 +27,37 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 use std::rc::Rc;
 
-/// The storm's timeline: the cloud formed by SC_FORMED, the bolts from SC_STORM0 to SC_STORM1, the colossal strike at
-/// SC_FINALE, the rain stopping and the cloud dying away from SC_CLEAR (gone by the strike's end, lasers.rs's length).
-/// (SC_FORMED only the pass reads: kept here in step with it.)
+/// The storm's timeline: the cloud formed by SC_FORMED; the bolts from SC_STORM0 to SC_STORM1, building (`sc_bolts`):
+/// the flurry's lone small bolts coming faster, from SC_WAVES more and more of them at once up to SC_CAP, from SC_CONV
+/// their feet drawn in on the target and their roots in to the wall cloud's middle; then with no pause the colossal
+/// strike at SC_FINALE, the bolts collapsing into it; the rain stopping and the cloud dying away from SC_CLEAR (gone by
+/// the strike's end, lasers.rs's length). (SC_FORMED, SC_WAVES and SC_CONV the pass reads too: kept here in step.)
 #[allow(dead_code)]
-pub(super) const SC_FORMED: f32 = 9.0;
-pub(super) const SC_STORM0: f32 = 9.5;
-pub(super) const SC_STORM1: f32 = 42.0;
-pub(super) const SC_FINALE: f32 = 45.0;
-pub(super) const SC_CLEAR: f32 = 50.0;
-/// The bolts over the storm, and how far out from the middle they strike.
-pub(super) const SC_NB: usize = 72;
+pub(super) const SC_FORMED: f32 = 6.5;
+pub(super) const SC_STORM0: f32 = 4.0;
+pub(super) const SC_WAVES: f32 = 15.0;
+pub(super) const SC_CONV: f32 = 24.0;
+pub(super) const SC_STORM1: f32 = 28.7;
+pub(super) const SC_FINALE: f32 = 29.0;
+pub(super) const SC_CLEAR: f32 = 32.5;
+/// The most bolts over the storm (the table's room), the most striking at once, and how far out from the middle they
+/// strike before they draw in.
+pub(super) const SC_NB: usize = 128;
+pub(super) const SC_CAP: usize = 5;
 pub(super) const SC_REACH: f64 = 120.0;
 /// The flickers in the cloud (no bolt to the ground).
 pub(super) const SC_NK: usize = 56;
-/// The table (`mod_data`): a header (bolts, finale time, funnels, flickers), the bolts from SC_B (SC_BW words each: t,
-/// x, z off the middle, the ground there over the middle's), the funnels from SC_F (VX_W words each), the flickers
-/// from SC_K (t, x, z).
+/// The table (`mod_data`): a header (bolts, finale time, funnels, flickers, the middle's ground), the bolts from SC_B
+/// (SC_BW words each: t, x, z off the middle, the ground there over the middle's; in the order they strike), the
+/// funnels from SC_F (VX_W words each), the flickers from SC_K (t, x, z), and from SC_I for each whole second the first
+/// bolt still to be seen then (struck no more than a second and a bit before it), so the pass looks at only those.
 pub(super) const SC_B: usize = 16;
 pub(super) const SC_BW: usize = 4;
-pub(super) const SC_F: usize = SC_B + SC_BW * 96;
+pub(super) const SC_F: usize = SC_B + SC_BW * SC_NB;
 pub(super) const SC_NF: usize = 3;
 pub(super) const SC_K: usize = 1024;
+pub(super) const SC_I: usize = SC_K + 3 * SC_NK;
+pub(super) const SC_NI: usize = 64;
 /// How far out the fires are swept as it ends, and the bands a sweep is split into (a stage each).
 const SC_SWEEP: f64 = 150.0;
 const SC_SWEEP_BANDS: usize = 12;
@@ -60,15 +70,57 @@ pub(super) struct Bolt {
     pub z: f64,
 }
 
-/// The bolts of strike `seed` (the player at `me`, off the middle): coming faster and faster over the storm, anywhere
-/// under the cloud out to SC_REACH (a little more of them further in), never within 10 blocks of the player.
+fn smooth(a: f64, b: f64, x: f64) -> f64 {
+    let u = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    u * u * (3.0 - 2.0 * u)
+}
+/// How many bolts strike at once at `t`: one through the flurry, then more and more up to SC_CAP by SC_CONV.
+pub(super) fn sc_at_once(t: f64, h: f64) -> usize {
+    let u = ((t - f64::from(SC_WAVES)) / f64::from(SC_CONV - SC_WAVES)).clamp(0.0, 1.0);
+    (1.0 + (SC_CAP as f64 - 1.0) * u.powf(1.3) + 0.7 * (h - 0.5)).round().clamp(1.0, SC_CAP as f64) as usize
+}
+/// The gap after a wave struck at `t` to the next: 1.7 s as the flurry starts, closing to 0.6 by SC_WAVES, to 0.45 by
+/// SC_CONV and 0.36 at the end.
+fn sc_gap(t: f64, h: f64) -> f64 {
+    let (s0, sw, sc, s1) = (f64::from(SC_STORM0), f64::from(SC_WAVES), f64::from(SC_CONV), f64::from(SC_STORM1));
+    let g = if t < sw {
+        1.7 * (0.6f64 / 1.7).powf(((t - s0) / (sw - s0)).clamp(0.0, 1.0))
+    } else if t < sc {
+        0.6 + (0.45 - 0.6) * (t - sw) / (sc - sw)
+    } else {
+        0.45 + (0.36 - 0.45) * ((t - sc) / (s1 - sc)).clamp(0.0, 1.0)
+    };
+    g * (0.75 + 0.5 * h)
+}
+/// How far out the bolts strike at `t`: anywhere out to SC_REACH, drawn in from SC_CONV, the last ones hugging the
+/// target (out to 12).
+pub(super) fn sc_reach(t: f64) -> f64 {
+    let c = smooth(f64::from(SC_CONV), f64::from(SC_STORM1), t);
+    12.0 + (SC_REACH - 12.0) * (1.0 - c).powf(1.4)
+}
+
+/// The bolts of strike `seed` (the player at `me`, off the middle), in the order they strike: the flurry's lone bolts
+/// from SC_STORM0 coming faster and faster, then from SC_WAVES waves of more and more at once (`sc_at_once`, the bolts
+/// of a wave within 0.15 s of each other), their gaps closing; from SC_CONV their feet drawn in towards the target
+/// (`sc_reach`) until the last wave just before SC_FINALE strikes round it. Never within 10 blocks of the player.
 pub(super) fn sc_bolts(seed: u32, me: [f64; 2]) -> Vec<Bolt> {
-    (0..SC_NB)
-        .map(|i| {
-            let u = (i as f64 + 0.5 * mh(i as u32, seed, 0xb0)) / SC_NB as f64;
-            let t = f64::from(SC_STORM0) + f64::from(SC_STORM1 - SC_STORM0) * u.powf(0.62);
-            let a = 2.0 * PI * mh(i as u32, seed, 0xb1);
-            let r = 14.0 + (SC_REACH - 14.0) * mh(i as u32, seed, 0xb2).powf(0.75);
+    let mut out: Vec<Bolt> = Vec::with_capacity(SC_NB);
+    let mut t = f64::from(SC_STORM0) + 0.4 * mh(0, seed, 0xb0);
+    let mut w = 0u32;
+    while t <= f64::from(SC_STORM1) - 0.15 && out.len() < SC_NB {
+        let k = sc_at_once(t, mh(w, seed, 0xb4));
+        // (a wave's bolts spread round the land, not bunched: each a share of the circle, jittered)
+        let a0 = 2.0 * PI * mh(w, seed, 0xb5);
+        for j in 0..k {
+            if out.len() == SC_NB {
+                break;
+            }
+            let i = out.len() as u32;
+            // (striking closer together as they draw in)
+            let tj = t + if j == 0 { 0.0 } else { 0.02 + (0.12 - 0.08 * smooth(f64::from(SC_CONV), f64::from(SC_STORM1), t)) * mh(i, seed, 0xb3) };
+            let a = a0 + 2.0 * PI * (j as f64 + 0.7 * mh(i, seed, 0xb1)) / k as f64;
+            let reach = sc_reach(tj);
+            let r = (14.0f64).min(0.4 * reach) + (reach - (14.0f64).min(0.4 * reach)) * mh(i, seed, 0xb2).powf(0.75);
             let (mut x, mut z) = (a.cos() * r, a.sin() * r);
             let d = (x - me[0]).hypot(z - me[1]);
             if d < 10.0 {
@@ -76,17 +128,25 @@ pub(super) fn sc_bolts(seed: u32, me: [f64; 2]) -> Vec<Bolt> {
                 x = me[0] + (x - me[0]) * k;
                 z = me[1] + (z - me[1]) * k;
             }
-            Bolt { t: t as f32, x, z }
-        })
-        .collect()
+            out.push(Bolt { t: tj as f32, x, z });
+        }
+        // (and the last wave right on the finale's heels: no pause before it)
+        let next = t + sc_gap(t, mh(w, seed, 0xb6));
+        let end = f64::from(SC_STORM1) - 0.15;
+        t = if next > end && t < end - 0.24 { end } else { next };
+        w += 1;
+    }
+    out.sort_by(|a, b| a.t.total_cmp(&b.t));
+    out
 }
 
-/// The flickers in the cloud: throughout the storm, a few in the build-up, high in the cloud anywhere over the land.
+/// The flickers in the cloud: throughout the storm, a few in the build-up and more and more with the bolts, high in the
+/// cloud anywhere over the land.
 pub(super) fn sc_flickers(seed: u32) -> Vec<[f32; 3]> {
     (0..SC_NK)
         .map(|i| {
             let u = (i as f64 + mh(i as u32, seed, 0xc0)) / SC_NK as f64;
-            let t = 5.0 + f64::from(SC_FINALE - 5.5) * u.powf(0.8);
+            let t = 2.5 + f64::from(SC_FINALE - 3.0) * u.powf(0.7);
             let a = 2.0 * PI * mh(i as u32, seed, 0xc1);
             let r = 200.0 * mh(i as u32, seed, 0xc2).sqrt();
             [t as f32, (a.cos() * r) as f32, (a.sin() * r) as f32]
@@ -95,14 +155,14 @@ pub(super) fn sc_flickers(seed: u32) -> Vec<[f32; 3]> {
 }
 
 /// The funnels: SC_NF thin landspouts let down out of the wall cloud through the storm, overlapping, each wandering
-/// for 12 to 16 seconds.
+/// for 10 to 12.5 seconds, the last lifting back up as the bolts draw in.
 pub(super) fn sc_funnels(seed: u32) -> Vec<Funnel> {
-    let starts = [13.0, 21.0, 29.5];
+    let starts = [6.5, 10.5, 14.5];
     (0..SC_NF as u32)
         .map(|k| {
             let r = |j: u32| mh(k * 7 + j, seed, 0xf0);
-            let t0 = starts[k as usize] + 1.5 * r(0);
-            let len = 13.0 + 3.0 * r(1);
+            let t0 = starts[k as usize] + 1.2 * r(0);
+            let len = 10.0 + 2.5 * r(1);
             let a = 2.0 * PI * r(2);
             let d = 25.0 + 35.0 * r(3);
             // (heading round the middle the way the storm turns, a little outward)
@@ -118,7 +178,7 @@ pub(super) fn sc_table(seed: u32, me: [f64; 2], dy: &dyn Fn(f64, f64) -> Option<
     let bolts = sc_bolts(seed, me);
     let funnels = sc_funnels(seed);
     let flick = sc_flickers(seed);
-    let mut w = vec![0u32; SC_K + 3 * SC_NK];
+    let mut w = vec![0u32; SC_I + SC_NI];
     let f = |v: f64| (v as f32).to_bits();
     w[0] = f(bolts.len() as f64);
     w[1] = SC_FINALE.to_bits();
@@ -141,6 +201,10 @@ pub(super) fn sc_table(seed: u32, me: [f64; 2], dy: &dyn Fn(f64, f64) -> Option<
         w[SC_K + 3 * i] = k[0].to_bits();
         w[SC_K + 3 * i + 1] = k[1].to_bits();
         w[SC_K + 3 * i + 2] = k[2].to_bits();
+    }
+    // (for each whole second s, the first bolt struck after s - 1.1: none before it is still seen at s or later)
+    for (s, word) in w[SC_I..SC_I + SC_NI].iter_mut().enumerate() {
+        *word = bolts.iter().position(|b| b.t > s as f32 - 1.1).unwrap_or(bolts.len()) as u32;
     }
     w
 }
@@ -433,12 +497,22 @@ fn sweep(q: &mut Plan, k: usize, t: f32) {
     q.ev.push((t, Act::Blocks(Box::new(b))));
 }
 
+/// How far into the finale's sound its crack is (tools/sounds_storm.py's FIN_PRE): before it, the run-in, the last waves'
+/// cracks stacking up faster and faster into it.
+const FIN_PRE: f32 = 1.2;
 /// How loud a bolt's thunder is `d` blocks off, as a file's loudest 400 ms in dB (tools/sounds_storm.py's LEVEL): a
-/// -12 at 60 blocks (a close crack's own -14 is its most: its volume can't pass 1), then 4 dB down each time the
+/// -15 at 60 blocks (a close crack's own -14 is its most: its volume can't pass 1; the finale's -8.6 stands well over
+/// it), then 4 dB down each time the
 /// distance doubles (a channel kilometres long, not a point: thunder fades slower than a bang, and a bolt seen must be
 /// heard well over the wind and the rain).
 fn thunder_db(d: f64) -> f64 {
-    -12.0 - 4.0 * (d.max(60.0) / 60.0).log2()
+    -15.0 - 4.0 * (d.max(60.0) / 60.0).log2()
+}
+/// How much quieter a bolt struck at `t` is for its size: the flurry's small ones 5.5 dB under the waves' (the pass's
+/// `sc_size`, as dB).
+fn size_db(t: f32) -> f64 {
+    let size = 0.45 + 0.55 * smooth(f64::from(SC_STORM0), f64::from(SC_WAVES), f64::from(t));
+    16.0 * size.log10()
 }
 /// The rumble's level (sounds_storm.py's LEVEL).
 const RUMBLE_DB: f64 = -25.5;
@@ -473,13 +547,19 @@ pub(super) struct Heard {
     pub volume: f32,
     pub pitch: f32,
     pub d: f64,
+    /// How many bolts' thunder it is (a wave's heard together), and the nearest's size (`size_db`).
+    pub bolts: u32,
+    pub size_db: f64,
 }
 /// The bolts' thunder at the player `me` (the target's middle at `c`), in the order it reaches them: late by the
-/// distance, a crack, a clap or a rumble by it (`thunder_of`), its level by it (`thunder_db`). Two never start within
-/// 0.15 s of each other (the later heard 0.18 s after the earlier, in its roll, rather than flamming with it), and one
-/// heard while louder thunder still rolls is let down a little, never more than 3 dB, so a fast run stays a run of
-/// claps and never piles up past full scale.
-pub(super) fn sc_thunder(seed: u32, bolts: &[Bolt], me: [f64; 3], c: [f64; 3]) -> Vec<Heard> {
+/// distance, a crack, a clap or a rumble by it (`thunder_of`), its level by it (`thunder_db`) and by the bolt's size
+/// (`size_db`: the flurry's quieter, so the storm's thunder grows with its bolts). None heard in `quiet`
+/// (the finale's own run-in and crack: its file holds the last waves' cracks, stacked). Two never start within 0.15 s of
+/// each other: one due sooner after the last is heard in it, the two as one louder clap (their power added, the nearer's
+/// crack), as a wave of bolts striking together is, so as the waves grow the claps come thick and loud rather than
+/// flamming or falling behind. One heard while louder thunder still rolls is let down a little, never more than 4.4 dB
+/// (the waves' close cracks come thick enough to pile up past full scale otherwise), so a fast run stays a run of claps.
+pub(super) fn sc_thunder(seed: u32, bolts: &[Bolt], me: [f64; 3], c: [f64; 3], quiet: (f32, f32)) -> Vec<Heard> {
     let mut order: Vec<(f32, f64, usize)> = bolts
         .iter()
         .enumerate()
@@ -487,28 +567,47 @@ pub(super) fn sc_thunder(seed: u32, bolts: &[Bolt], me: [f64; 3], c: [f64; 3]) -
             let (late, d) = sound_from([c[0] + b.x, c[1], c[2] + b.z], me);
             (b.t + late, d, i)
         })
+        .filter(|(at, _, _)| *at < quiet.0 || *at > quiet.1)
         .collect();
     order.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // (the claps: when, the nearest bolt's distance and which it is, their power together, how many)
+    let mut claps: Vec<(f32, f64, usize, f64, u32)> = Vec::new();
+    for (at, d, i) in order {
+        let p = 10f64.powf((thunder_db(d) + size_db(bolts[i].t)) / 10.0);
+        match claps.last_mut() {
+            Some(last) if at - last.0 < 0.15 => {
+                if d < last.1 {
+                    (last.1, last.2) = (d, i);
+                }
+                last.3 += p;
+                last.4 += 1;
+            }
+            _ => claps.push((at, d, i, p, 1)),
+        }
+    }
     let mut takes = Takes::default();
     let mut rolling: Vec<(f32, f32)> = Vec::new();
     let mut out = Vec::new();
-    for (at0, d, i) in order {
-        let (kind, n, level) = thunder_of(d);
-        let loud = 10f64.powf(thunder_db(d) / 20.0) as f32;
-        let at = match rolling.last() {
-            Some(&(t, _)) if at0 - t < 0.15 => t + 0.18,
-            _ => at0,
-        };
+    for (at, d, i, power, n) in claps {
+        let (kind, k, level) = thunder_of(d);
+        // (a clap of several as loud as their power together, the nearest's crack heard)
+        let db = 10.0 * power.log10();
+        let loud = 10f64.powf(db / 20.0) as f32;
         let busy: f32 = rolling.iter().map(|(t, l)| l * (-(at - t).max(0.0) / 1.2).exp()).sum();
-        let duck = (1.0 / (1.0 + 0.5 * busy / loud)).max(0.7);
+        // (and, however loud it is itself, a little while the thunder before it still rolls loud: the close cracks of the
+        // waves would pile up past full scale)
+        let full = 10f64.powf(thunder_db(0.0) / 20.0) as f32;
+        let duck = (1.0 / (1.0 + 0.6 * busy / loud)).min(1.0 / (1.0 + 0.2 * busy / full)).max(0.6);
         rolling.push((at, loud * duck));
-        let take = takes.pick(kind, n, mh(i as u32, seed, 0xd2));
+        let take = takes.pick(kind, k, mh(i as u32, seed, 0xd2));
         out.push(Heard {
             at,
             event: format!("{kind}{take}"),
-            volume: (10f64.powf((thunder_db(d) - level) / 20.0) as f32 * duck).min(1.0),
+            volume: (10f64.powf((db - level) / 20.0) as f32).min(1.0) * duck,
             pitch: 0.9 + 0.16 * mh(i as u32, seed, 0xd1) as f32,
             d,
+            bolts: n,
+            size_db: size_db(bolts[i].t),
         });
     }
     out
@@ -528,7 +627,7 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the pass's table, and the ground under the bolts and the funnels asked of the world, put in when answered
     // (and again a little later, for land that loads as it goes) -------------------------------------------------------
     p.later(0.05, move |q| q.ev.push((0.05, Act::Table(sc_table(s, mer, &|_, _| None)))));
-    for (ask, put) in [(0.1f32, 1.0f32), (6.0, 7.5), (16.0, 17.5)] {
+    for (ask, put) in [(0.1f32, 1.0f32), (5.0, 6.5), (12.0, 13.5)] {
         let tag = crate::ground::new_tag();
         p.later(ask, move |q| {
             let columns = sc_columns(s, mer, q.bx, q.bz);
@@ -545,11 +644,11 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     p.at(0.5, bar("ORBITAL WEATHER CONTROL: STORM FORMING", "dark_aqua"));
     p.csound(0.0, "buildup", 10.0, 1.0);
     // (the wind and the rain a bed under the thunder: each clap stands out of them)
-    for (i, t) in [10.0f32, 23.0, 36.0].iter().enumerate() {
+    for (i, t) in [4.5f32, 15.0, 25.0].iter().enumerate() {
         p.csound(*t, "gusts", [5.0, 5.5, 5.0][i], 1.0);
     }
-    for (i, t) in [6.0f32, 16.0, 26.0, 36.0, 44.0].iter().enumerate() {
-        p.csound(*t, "rain", [4.5, 6.0, 6.0, 6.0, 5.5][i], 1.0);
+    for (i, t) in [4.0f32, 13.0, 22.0].iter().enumerate() {
+        p.csound(*t, "rain", [4.5, 6.0, 6.0][i], 1.0);
     }
     p.at(SC_STORM0, bar("SUPERCELL", "dark_aqua"));
 
@@ -584,8 +683,11 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
             });
         }
     }
-    // (their thunder, in the order it reaches the player)
-    let heard = sc_thunder(s, &bolts, me, [cx, gy, cz]);
+    // (their thunder, in the order it reaches the player; the last waves' in the finale's own run-in, stacked, its first
+    // cracks laid over the waves' before them)
+    let (late, dist) = sound_from([cx, gy, cz], me);
+    let arrive = SC_FINALE + 0.05 + late;
+    let heard = sc_thunder(s, &bolts, me, [cx, gy, cz], (arrive - 0.6, arrive + 3.0));
     for h in &heard {
         p.csound(h.at, &h.event, 10.0 * h.volume, h.pitch);
         if h.d < 120.0 {
@@ -600,7 +702,7 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         if i % 2 == 0 {
             let (late, d) = sound_from([cx + f64::from(k[1]), gy + 100.0, cz + f64::from(k[2])], me);
             let at = k[0] + late;
-            if (at > SC_FINALE - 6.0 && at < SC_FINALE + 3.0) || heard.iter().any(|h| (h.at - at).abs() < 0.4) {
+            if (at > arrive - FIN_PRE - 4.0 && at < arrive + 3.0) || heard.iter().any(|h| (h.at - at).abs() < 0.4) {
                 continue;
             }
             let v = 10f64.powf((thunder_db(d) - 6.0 - RUMBLE_DB) / 20.0).min(0.9) as f32;
@@ -635,14 +737,19 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         }
     }
 
-    // ---- the finale: one colossal strike on the target, a shockwave and a jolt ---------------------------------------------
+    // ---- the finale: the bolts collapsing into one colossal strike on the target, a shockwave and a jolt ------------------
     let tf = SC_FINALE;
-    p.at(tf - 3.0, bar("ORBITAL WEATHER CONTROL: DISCHARGE", "aqua"));
-    // (heard and felt late by the distance: the crack, the jolt at the Rod's strength, its push)
-    let (late, dist) = sound_from([cx, gy, cz], me);
-    p.csound(tf + 0.05 + late, "finale", 10.0, 1.0);
+    p.at(SC_CONV, bar("ORBITAL WEATHER CONTROL: DISCHARGE", "aqua"));
+    // (heard and felt late by the distance: its run-in of the last waves' cracks stacking up, the crack, the jolt at the
+    // Rod's strength, its push; the ground trembling more and more as the bolts draw in)
+    p.csound(arrive - FIN_PRE, "finale", 10.0, 1.0);
     let fo = (2.0 / (1.0 + dist / 400.0)).clamp(0.3, 1.0) as f32;
-    let arrive = tf + 0.05 + late;
+    let mut tq = SC_CONV + late;
+    while tq < arrive - 0.1 {
+        let u = (tq - SC_CONV - late) / (arrive - SC_CONV - late);
+        p.shake(tq, (0.05 + 0.25 * u * u) * fo, 0.3);
+        tq += 0.25;
+    }
     p.shake(arrive, fo, 1.8);
     for n in 0..12 {
         let u = n as f32 / 12.0;
@@ -768,6 +875,22 @@ fn sc_write_sounds() {
     std::fs::write(std::env::var("SC_OUT").unwrap(), out).unwrap();
 }
 
+/// `cargo test --release sc_print_bolts -- --ignored --nocapture`: the bolts of seed 37 a second at a time (how many, the
+/// most at once, how far out the farthest), for tuning the build-up.
+#[cfg(test)]
+#[test]
+#[ignore]
+fn sc_print_bolts() {
+    let b = sc_bolts(37, [0.0, 300.0]);
+    println!("{} bolts, the first {:.2}, the last {:.2}", b.len(), b[0].t, b[b.len() - 1].t);
+    for s in 0..30 {
+        let sec: Vec<&Bolt> = b.iter().filter(|x| x.t >= s as f32 && x.t < s as f32 + 1.0).collect();
+        let once = sec.iter().map(|x| b.iter().filter(|y| y.t >= x.t && y.t < x.t + 0.12).count()).max().unwrap_or(0);
+        let far = sec.iter().map(|x| x.x.hypot(x.z)).fold(0.0, f64::max);
+        println!("{s:2} s: {:2} bolts, {once} at once, out to {far:5.1}", sec.len());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -808,7 +931,9 @@ mod tests {
         // (no vanilla bolt, whose own thunder can't be silenced in time: each bolt hurts what is at its foot instead)
         assert!(!cmds.iter().any(|(_, c)| c.contains("lightning_bolt ~") || c.starts_with("stopsound")));
         let bolts: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.contains("run damage @s 5 minecraft:lightning_bolt")).collect();
-        assert_eq!(bolts.len(), SC_NB);
+        let planned = sc_bolts(37, [0.0, 300.0]);
+        assert_eq!(bolts.len(), planned.len());
+        assert!(planned.len() > 80 && planned.len() <= SC_NB, "{}", planned.len());
         for (t, c) in &bolts {
             assert!(*t >= SC_STORM0 && *t <= SC_STORM1 + 0.1, "{t}");
             let w: Vec<f64> = c.split_whitespace().map(|v| v.parse().unwrap_or(0.0)).collect();
@@ -819,10 +944,12 @@ mod tests {
         assert!(bolts.iter().filter(|(t, _)| *t > mid).count() > bolts.iter().filter(|(t, _)| *t < mid).count() + 10);
         // (each heard, a take of its own; the world's weather left alone; the pass's table given)
         let sounds: Vec<&str> = other.iter().filter_map(|(_, a)| if let Act::Sound { event, .. } = a { Some(event.as_str()) } else { None }).collect();
-        assert_eq!(sounds.iter().filter(|e| e.contains("supercell.crack")).count(), SC_NB);
+        // (a wave's heard together as one clap, the last waves' in the finale's run-in: fewer claps than bolts, but most)
+        let claps = sounds.iter().filter(|e| e.contains("supercell.crack")).count();
+        assert!(claps <= planned.len() && claps * 5 > planned.len() * 2, "{claps} of {}", planned.len());
         assert!(sounds.iter().any(|e| e.ends_with("supercell.finale")) && sounds.iter().any(|e| e.ends_with("supercell.roar")));
         assert!(!cmds.iter().any(|(_, c)| c.starts_with("weather")));
-        assert!(other.iter().any(|(_, a)| matches!(a, Act::Table(w) if w.len() == SC_K + 3 * SC_NK)));
+        assert!(other.iter().any(|(_, a)| matches!(a, Act::Table(w) if w.len() == SC_I + SC_NI)));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Shove { .. })));
     }
 
@@ -831,8 +958,9 @@ mod tests {
         for z in [20.0, 150.0, 500.0] {
             let me = [0.5, 66.0, 0.5 + z];
             let bolts = sc_bolts(37, [0.0, z]);
-            let heard = sc_thunder(37, &bolts, me, [0.5, 65.0, 0.5]);
-            assert_eq!(heard.len(), SC_NB);
+            let heard = sc_thunder(37, &bolts, me, [0.5, 65.0, 0.5], (1.0e9, 1.0e9));
+            assert!(heard.len() <= bolts.len() && heard.len() * 5 > bolts.len() * 2, "{} of {}", heard.len(), bolts.len());
+            assert_eq!(heard.iter().map(|h| h.bolts as usize).sum::<usize>(), bolts.len());
             for w in heard.windows(2) {
                 // (in the order heard, never two starting together, never the same take twice running)
                 assert!(w[1].at - w[0].at >= 0.149, "{} {}", w[0].at, w[1].at);
@@ -851,13 +979,46 @@ mod tests {
                 assert!(h.event.starts_with(thunder_of(h.d).0) && h.volume > 0.05 && h.volume <= 1.0, "{h:?}");
                 assert!((0.89..1.07).contains(&h.pitch));
             }
-            // (and louder the nearer: the nearest bolt's crack louder than the farthest's)
-            let near = heard.iter().min_by(|a, b| a.d.total_cmp(&b.d)).unwrap();
-            let far = heard.iter().max_by(|a, b| a.d.total_cmp(&b.d)).unwrap();
-            let loud = |h: &Heard| 20.0 * f64::from(h.volume).log10() + thunder_of(h.d).2;
-            // (by the distance's fall-off, less at most the 3 dB a crack is let down while louder thunder rolls)
-            assert!(loud(near) - loud(far) > thunder_db(near.d) - thunder_db(far.d) - 3.1, "{near:?} {far:?}");
+            // (and louder the nearer: the nearest lone bolt's crack louder than the farthest's)
+            let near = heard.iter().filter(|h| h.bolts == 1).min_by(|a, b| a.d.total_cmp(&b.d)).unwrap();
+            let far = heard.iter().filter(|h| h.bolts == 1).max_by(|a, b| a.d.total_cmp(&b.d)).unwrap();
+            let loud = |h: &Heard| 20.0 * f64::from(h.volume).log10() + thunder_of(h.d).2 - h.size_db;
+            // (by the distance's fall-off, less at most the 4.4 dB a crack is let down while louder thunder rolls)
+            assert!(loud(near) - loud(far) > thunder_db(near.d) - thunder_db(far.d) - 4.5, "{near:?} {far:?}");
             assert!(thunder_db(near.d) > thunder_db(far.d) + 1.0);
+        }
+    }
+
+    #[test]
+    fn supercell_bolts_build_from_a_lone_flurry_to_waves_that_draw_in_onto_the_target() {
+        for seed in [37, 5, 911] {
+            let b = sc_bolts(seed, [0.0, 300.0]);
+            // (the most striking within 0.12 s of one: one in the flurry, SC_CAP by the end)
+            let at_once = |t0: f32, t1: f32| {
+                b.iter().filter(|x| x.t >= t0 && x.t < t1).map(|x| b.iter().filter(|y| y.t >= x.t && y.t < x.t + 0.12).count()).max().unwrap_or(0)
+            };
+            assert_eq!(at_once(SC_STORM0, SC_WAVES - 0.5), 1, "{seed}");
+            assert!(at_once(SC_WAVES, SC_WAVES + 3.0) <= 3, "{seed}");
+            assert!((SC_CAP..=SC_CAP + 2).contains(&at_once(SC_CONV, SC_STORM1)), "{seed}: {}", at_once(SC_CONV, SC_STORM1));
+            // (coming faster: each third of the flurry has more than the one before; the first early, near the start)
+            assert!(b[0].t < SC_STORM0 + 0.5);
+            let third = (SC_WAVES - SC_STORM0) / 3.0;
+            let n = |k: f32| b.iter().filter(|x| x.t >= SC_STORM0 + k * third && x.t < SC_STORM0 + (k + 1.0) * third).count();
+            assert!(n(0.0) < n(2.0) && n(0.0) <= n(1.0) && n(1.0) <= n(2.0) + 1, "{seed}: {} {} {}", n(0.0), n(1.0), n(2.0));
+            assert!(b.len() < SC_NB, "{seed}: the table's room all taken");
+            // (no pause before the finale: the last wave within 0.7 s of it, hugging the target, and the waves drawn in
+            // all through the last seconds)
+            let last = b.last().unwrap();
+            assert!(last.t > SC_FINALE - 0.7 && last.t < SC_FINALE, "{seed}: {}", last.t);
+            for x in b.iter().filter(|x| x.t > SC_FINALE - 0.6) {
+                assert!(x.x.hypot(x.z) < 16.0, "{seed}: {x:?}");
+            }
+            let far = |t0: f32, t1: f32| b.iter().filter(|x| x.t >= t0 && x.t < t1).map(|x| x.x.hypot(x.z)).fold(0.0, f64::max);
+            assert!(far(SC_CONV - 3.0, SC_CONV) > 90.0 && far(SC_STORM1 - 2.0, SC_STORM1 - 1.0) < 60.0, "{seed}");
+            for w in b.windows(2) {
+                let most = if w[0].t > SC_CONV { 0.6 } else if w[0].t > SC_WAVES { 0.8 } else { 2.2 };
+                assert!(w[1].t - w[0].t < most, "{seed}: a pause at {}", w[0].t);
+            }
         }
     }
 
@@ -901,7 +1062,7 @@ mod tests {
         assert!(fills.iter().any(|(t, f)| (*t - SC_FINALE).abs() < 1.0 && f.contains("minecraft:fire replace minecraft:air")));
         // (each bolt's fires put out three times after it, from 1.5 s on)
         let dousings = fills.iter().filter(|(t, f)| *t < SC_CLEAR && f.contains("replace #minecraft:fire")).count();
-        assert!(dousings > SC_NB * 3 * 100, "{dousings}");
+        assert!(dousings > sc_bolts(37, [0.0, 300.0]).len() * 2 * 100, "{dousings}");
         // (the fires put out, out to SC_SWEEP, twice as it ends)
         let swept: Vec<&(f32, String)> = fills.iter().filter(|(t, f)| *t > SC_CLEAR && f.contains("replace #minecraft:fire")).collect();
         assert!(swept.len() as f64 > 2.0 * 0.95 * PI * SC_SWEEP * SC_SWEEP, "{}", swept.len());
@@ -945,9 +1106,15 @@ mod tests {
     #[test]
     fn supercell_table_holds_its_bolts_and_funnels_where_the_pass_reads_them() {
         let w = sc_table(37, [0.0, 300.0], &|_, _| Some(2.0));
-        assert_eq!(f32::from_bits(w[0]) as usize, SC_NB);
-        assert!(SC_B + SC_BW * SC_NB <= SC_F && SC_F + VX_W * SC_NF <= SC_K);
         let b = sc_bolts(37, [0.0, 300.0]);
+        assert_eq!(f32::from_bits(w[0]) as usize, b.len());
+        assert!(SC_B + SC_BW * SC_NB <= SC_F && SC_F + VX_W * SC_NF <= SC_K && SC_K + 3 * SC_NK <= SC_I);
+        // (the bolts in the order they strike, and each second's first still seen: none before it seen at that second)
+        assert!(b.windows(2).all(|p| p[0].t <= p[1].t));
+        for s in 0..SC_NI {
+            let first = w[SC_I + s] as usize;
+            assert!(b[..first].iter().all(|x| x.t <= s as f32 - 1.1) && b[first..].iter().all(|x| x.t > s as f32 - 1.1), "{s}");
+        }
         assert_eq!(f32::from_bits(w[SC_B + SC_BW * 5]), b[5].t);
         assert_eq!(f32::from_bits(w[SC_B + SC_BW * 5 + 3]), 2.0);
         let f = sc_funnels(37);
