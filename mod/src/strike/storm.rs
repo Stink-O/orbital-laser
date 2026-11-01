@@ -2,7 +2,9 @@
 //! and an anvil-topped storm cloud boil up over it and spread; the wind gusts, thunder rumbles far off. Then the storm,
 //! building with no pause: lightning all over the land under the cloud out to SC_REACH, small lone bolts coming faster,
 //! then waves of more and more at once (with the terrain on, each bolt hurting what it hits and setting its foot
-//! alight), drawing in onto the target until they collapse into one colossal strike on it, a shockwave and a jolt;
+//! alight), drawing in onto the target; then the finale's run-in, a rapid run of bolts snapping down closer and closer
+//! onto it (`FIN_RUN`, each in time with a crack of the finale's sound), a hush, and one colossal strike on it, the ring
+//! of bolts round the wall cloud snapping into it in the same instant, a shockwave and a jolt;
 //! heavy rain falling out of the cloud, a few thin funnels (vortex.rs) coming down out of the wall cloud and wandering
 //! over the land; then the storm dies away.
 //!
@@ -29,20 +31,22 @@ use std::rc::Rc;
 
 /// The storm's timeline: the cloud formed by SC_FORMED; the bolts from SC_STORM0 to SC_STORM1, building (`sc_bolts`):
 /// the flurry's lone small bolts coming faster, from SC_WAVES more and more of them at once up to SC_CAP, from SC_CONV
-/// their feet drawn in on the target and their roots in to the wall cloud's middle; then with no pause the colossal
-/// strike at SC_FINALE, the bolts collapsing into it; the rain stopping and the cloud dying away from SC_CLEAR (gone by
-/// the strike's end, lasers.rs's length). (SC_FORMED, SC_WAVES and SC_CONV the pass reads too: kept here in step.)
+/// their feet drawn in on the target and their roots in to the wall cloud's middle; then the finale's run-in (`FIN_RUN`:
+/// from SC_STORM1 a rapid run of lone bolts, each instant, closer and closer onto the target, in time with its sound's
+/// cracks), the hush (FIN_SUCK) and the colossal strike at SC_FINALE; the rain stopping and the cloud dying away from
+/// SC_CLEAR (gone by the strike's end, lasers.rs's length). (SC_FORMED, SC_WAVES, SC_CONV and SC_STORM1 the pass reads
+/// too: kept here in step.)
 #[allow(dead_code)]
 pub(super) const SC_FORMED: f32 = 6.5;
 pub(super) const SC_STORM0: f32 = 4.0;
 pub(super) const SC_WAVES: f32 = 15.0;
 pub(super) const SC_CONV: f32 = 24.0;
-pub(super) const SC_STORM1: f32 = 28.7;
+pub(super) const SC_STORM1: f32 = 27.85;
 pub(super) const SC_FINALE: f32 = 29.0;
 pub(super) const SC_CLEAR: f32 = 32.5;
 /// The most bolts over the storm (the table's room), the most striking at once, and how far out from the middle they
 /// strike before they draw in.
-pub(super) const SC_NB: usize = 128;
+pub(super) const SC_NB: usize = 140;
 pub(super) const SC_CAP: usize = 5;
 pub(super) const SC_REACH: f64 = 120.0;
 /// The flickers in the cloud (no bolt to the ground).
@@ -69,6 +73,13 @@ pub(super) struct Bolt {
     pub x: f64,
     pub z: f64,
 }
+
+/// The finale's run-in, off SC_FINALE: when each crack of its sound's run-in is (tools/sounds_storm.py's `run_in`, its
+/// onsets as that sound is made, seeded: keep in step) and how many bolts strike on it. The cracks come faster and
+/// faster into the hush (FIN_SUCK), from 0.22 s apart to 0.025; the pass draws each bolt as it strikes, instantly.
+pub(super) const FIN_RUN: [(f32, u32); 10] =
+    [(-1.072, 1), (-0.854, 1), (-0.698, 2), (-0.561, 1), (-0.463, 2), (-0.38, 2), (-0.316, 2), (-0.255, 3), (-0.215, 3), (-0.19, 3)];
+const FIN_RUN_N: usize = 20;
 
 fn smooth(a: f64, b: f64, x: f64) -> f64 {
     let u = ((x - a) / (b - a)).clamp(0.0, 1.0);
@@ -102,17 +113,28 @@ pub(super) fn sc_reach(t: f64) -> f64 {
 /// The bolts of strike `seed` (the player at `me`, off the middle), in the order they strike: the flurry's lone bolts
 /// from SC_STORM0 coming faster and faster, then from SC_WAVES waves of more and more at once (`sc_at_once`, the bolts
 /// of a wave within 0.15 s of each other), their gaps closing; from SC_CONV their feet drawn in towards the target
-/// (`sc_reach`) until the last wave just before SC_FINALE strikes round it. Never within 10 blocks of the player.
+/// (`sc_reach`) until the last wave just before SC_STORM1 strikes round it; then the finale's run-in (`FIN_RUN`): on each
+/// of its cracks one to three bolts, their feet closer and closer onto the target, from 24 out to 2. Never within 10
+/// blocks of the player.
 pub(super) fn sc_bolts(seed: u32, me: [f64; 2]) -> Vec<Bolt> {
     let mut out: Vec<Bolt> = Vec::with_capacity(SC_NB);
     let mut t = f64::from(SC_STORM0) + 0.4 * mh(0, seed, 0xb0);
     let mut w = 0u32;
-    while t <= f64::from(SC_STORM1) - 0.15 && out.len() < SC_NB {
+    let away = |x: f64, z: f64| {
+        let d = (x - me[0]).hypot(z - me[1]);
+        if d < 10.0 {
+            let k = 10.0 / d.max(0.1);
+            (me[0] + (x - me[0]) * k, me[1] + (z - me[1]) * k)
+        } else {
+            (x, z)
+        }
+    };
+    while t <= f64::from(SC_STORM1) - 0.15 && out.len() < SC_NB - FIN_RUN_N {
         let k = sc_at_once(t, mh(w, seed, 0xb4));
         // (a wave's bolts spread round the land, not bunched: each a share of the circle, jittered)
         let a0 = 2.0 * PI * mh(w, seed, 0xb5);
         for j in 0..k {
-            if out.len() == SC_NB {
+            if out.len() == SC_NB - FIN_RUN_N {
                 break;
             }
             let i = out.len() as u32;
@@ -121,13 +143,7 @@ pub(super) fn sc_bolts(seed: u32, me: [f64; 2]) -> Vec<Bolt> {
             let a = a0 + 2.0 * PI * (j as f64 + 0.7 * mh(i, seed, 0xb1)) / k as f64;
             let reach = sc_reach(tj);
             let r = (14.0f64).min(0.4 * reach) + (reach - (14.0f64).min(0.4 * reach)) * mh(i, seed, 0xb2).powf(0.75);
-            let (mut x, mut z) = (a.cos() * r, a.sin() * r);
-            let d = (x - me[0]).hypot(z - me[1]);
-            if d < 10.0 {
-                let k = 10.0 / d.max(0.1);
-                x = me[0] + (x - me[0]) * k;
-                z = me[1] + (z - me[1]) * k;
-            }
+            let (x, z) = away(a.cos() * r, a.sin() * r);
             out.push(Bolt { t: tj as f32, x, z });
         }
         // (and the last wave right on the finale's heels: no pause before it)
@@ -135,6 +151,19 @@ pub(super) fn sc_bolts(seed: u32, me: [f64; 2]) -> Vec<Bolt> {
         let end = f64::from(SC_STORM1) - 0.15;
         t = if next > end && t < end - 0.24 { end } else { next };
         w += 1;
+    }
+    // (the run-in: on each crack its bolts within a frame of each other, spread round the target, the feet drawn in)
+    for (k, &(at, n)) in FIN_RUN.iter().enumerate() {
+        let u = k as f64 / (FIN_RUN.len() - 1) as f64;
+        let reach = 24.0 - 22.0 * u.powf(0.8);
+        let a0 = 2.0 * PI * mh(k as u32, seed, 0xe0);
+        for j in 0..n {
+            let i = (k * 3) as u32 + j;
+            let a = a0 + 2.0 * PI * (f64::from(j) + 0.6 * mh(i, seed, 0xe1)) / f64::from(n);
+            let r = reach * (0.55 + 0.45 * mh(i, seed, 0xe2));
+            let (x, z) = away(a.cos() * r, a.sin() * r);
+            out.push(Bolt { t: SC_FINALE + at + 0.006 * j as f32, x, z });
+        }
     }
     out.sort_by(|a, b| a.t.total_cmp(&b.t));
     out
@@ -497,8 +526,8 @@ fn sweep(q: &mut Plan, k: usize, t: f32) {
     q.ev.push((t, Act::Blocks(Box::new(b))));
 }
 
-/// How far into the finale's sound its crack is (tools/sounds_storm.py's FIN_PRE): before it, the run-in, the last waves'
-/// cracks stacking up faster and faster into it.
+/// How far into the finale's sound its crack is (tools/sounds_storm.py's FIN_PRE): before it, the run-in, its bolts'
+/// cracks (`FIN_RUN`) stacking up faster and faster into it.
 const FIN_PRE: f32 = 1.2;
 /// The hush before the finale's crack (sounds_storm.py's FIN_SUCK, supercell.wgsl's SC_SUCK): its run-in falls away
 /// FIN_SUCK before the crack, so it lands out of silence; the storm's beds are cut (`FIN_CUT`) a little before that,
@@ -727,11 +756,12 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
             });
         }
     }
-    // (their thunder, in the order it reaches the player; the last waves' in the finale's own run-in, stacked, its first
-    // cracks laid over the waves' before them)
+    // (their thunder, in the order it reaches the player; the run-in's in the finale's own sound, its cracks in time with
+    // them (`FIN_RUN`), none of the waves' heard over them)
     let (late, dist) = sound_from([cx, gy, cz], me);
     let arrive = SC_FINALE + 0.05 + late;
-    let heard = sc_thunder(s, &bolts, me, [cx, gy, cz], (arrive - 0.6, arrive + 3.0));
+    let waves = bolts.iter().take_while(|b| b.t < SC_STORM1).count();
+    let heard = sc_thunder(s, &bolts[..waves], me, [cx, gy, cz], (arrive - FIN_PRE + 0.1, arrive + 3.0));
     for h in &heard {
         p.csound(h.at, &h.event, 10.0 * h.volume, h.pitch);
         if h.d < 120.0 {
@@ -992,7 +1022,7 @@ mod tests {
         assert_eq!(bolts.len(), planned.len());
         assert!(planned.len() > 80 && planned.len() <= SC_NB, "{}", planned.len());
         for (t, c) in &bolts {
-            assert!(*t >= SC_STORM0 && *t <= SC_STORM1 + 0.1, "{t}");
+            assert!(*t >= SC_STORM0 && *t < SC_FINALE - FIN_SUCK, "{t}");
             let w: Vec<f64> = c.split_whitespace().map(|v| v.parse().unwrap_or(0.0)).collect();
             assert!((w[2] - 10.5).hypot(w[4] + 2.5) < SC_REACH + 2.0, "{c}");
         }
@@ -1093,6 +1123,19 @@ mod tests {
                 let most = if w[0].t > SC_CONV { 0.6 } else if w[0].t > SC_WAVES { 0.8 } else { 2.2 };
                 assert!(w[1].t - w[0].t < most, "{seed}: a pause at {}", w[0].t);
             }
+            // (the run-in: after the waves, a bolt or a few on each of its sound's cracks, then nothing in the hush; drawn
+            // in closer and closer, the last right round the target)
+            let run: Vec<&Bolt> = b.iter().filter(|x| x.t > SC_STORM1).collect();
+            assert_eq!(FIN_RUN.iter().map(|r| r.1 as usize).sum::<usize>(), FIN_RUN_N);
+            assert_eq!(run.len(), FIN_RUN_N, "{seed}");
+            for &(at, n) in &FIN_RUN {
+                let on: Vec<&&Bolt> = run.iter().filter(|x| x.t - SC_FINALE - at > -1e-4 && x.t - SC_FINALE - at < 0.02).collect();
+                assert_eq!(on.len(), n as usize, "{seed}: {at}");
+            }
+            assert!(run.iter().all(|x| x.t < SC_FINALE - FIN_SUCK - 0.015), "{seed}");
+            let mean = |v: &[&Bolt]| v.iter().map(|x| x.x.hypot(x.z)).sum::<f64>() / v.len() as f64;
+            assert!(mean(&run[..5]) > 2.5 * mean(&run[run.len() - 5..]), "{seed}");
+            assert!(run[run.len() - 9..].iter().all(|x| x.x.hypot(x.z) < 6.1), "{seed}");
         }
     }
 

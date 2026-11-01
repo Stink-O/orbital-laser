@@ -628,6 +628,8 @@ def run_in(d, lv):
     tc = FIN_PRE
     L = np.zeros(n); R = np.zeros(n)
     # (the cracks: a dozen or so, the gaps closing from 0.2 s to 0.03, each louder: -19 dB to -8 under the blast's)
+    # (storm.rs's FIN_RUN holds their onsets as drawn here, seeded, and the pass strikes a bolt on each: change these
+    # draws and FIN_RUN with them)
     ons, g = [], 0.03
     tt = tc - FIN_SUCK - 0.03
     while tt > 0.05 and len(ons) < 15:

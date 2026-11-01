@@ -189,14 +189,17 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   (the pass draws the rain: the world's weather is left alone). The lightning builds with no pause: from 4 s small,
   thin lone bolts strike the land under it out to 120 blocks, one every second or two and coming faster; from 15 s
   they come in waves, more and more at once, up to five, a wave every half second or less; from 24 s their feet draw
-  in on the target and their roots in under the wall cloud's middle, which glows as they gather, until the last wave
-  strikes round the target just before 29 s (about 120 bolts in all). Each is drawn by the pass as a branching
-  channel from the cloud's base that re-strikes once or twice, the cloud lit from inside round its root and the land
-  round its foot lit bright, with flickers in the cloud between. Three thin funnels come down out of the wall cloud
+  in on the target and their roots in under the wall cloud's middle, until the last wave strikes round the target at
+  about 27.7 s (about 130 bolts in all). Each is drawn by the pass as a branching channel from the cloud's base that
+  re-strikes once or twice, the cloud lit from inside round its root and the land round its foot lit bright, with
+  flickers in the cloud between. Then the finale's run-in: twenty bolts in a rapid run from 27.93 to 28.81 s, each
+  there at once and gone in a few frames, on the cracks of the finale's sound (closing from 0.22 s apart to 0.025),
+  landing closer and closer onto the target, some arcing in out of a ring round the wall cloud. Three thin funnels come down out of the wall cloud
   (6.5 to 28 s), touch, wander over the land for five seconds or so in a swirl of dust and lift back up, their roar
-  heard where they are. In the last three quarters of a second nine leaders creep down out of a ring round the wall
-  cloud onto the target; at 29 s they all light and draw together into one thick channel with six more, held for two
-  seconds and re-struck again and again: a whiteout, a shockwave racing out over the land at 140 blocks a second with a
+  heard where they are. In the hush before the crack (from 28.84 s) the light goes out, the land and the cloud a
+  breath darker, only the one channel's leader racing down; at 29 s a single blinding channel strikes the target, the
+  ring of bolts round the wall cloud snapping into it in the same instant, held for two seconds and re-struck again and
+  again: a whiteout, a shockwave racing out over the land at 140 blocks a second with a
   wall of dust behind it, the crater glowing, a jolt and a shove at the Rod's strength. The ground trembles more and
   more as the bolts draw in. From 32.5 s the rain stops and the storm dies away; it ends at 42 s. It reaches 1000
   blocks.

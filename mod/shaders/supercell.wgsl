@@ -9,21 +9,24 @@
 // faster and faster, each bolt a branching channel from the cloud's base to the ground, re-striking a few times, the
 // cloud lit from inside round its root and the land round its foot lit bright; flickers inside the cloud between. A few
 // thin funnels come down out of the wall cloud, touch, wander over the land in a swirl of dust and lift back up (the
-// vortex section). Then one colossal strike on the target: a thick channel and six joining it, held, a blinding flash, a shockwave over the
-// land and a jolt. Then the storm dies away.
+// vortex section). Then the finale: a rapid run of bolts snapping down closer and closer onto the target, in time with
+// its sound's cracks, some arcing in out of the ring round the wall cloud; a hush, the light gone out but for the
+// leader racing down; then one colossal strike on the target, a single blinding channel, the ring of bolts round the
+// wall cloud snapping into it in the same instant, held, a shockwave over the land and a jolt. Then the storm dies away.
 // strike/storm.rs hands the bolts, the funnels' tracks and the flickers to the pass in its table (sc_table,
 // render.set-data): keep the SC_* and VX_* in step.
 const SC_FORMED: f32 = 6.5;        // the cloud is formed,
 const SC_STORM0: f32 = 4.0;        // the flurry's lone small bolts strike from here,
 const SC_WAVES: f32 = 15.0;        // more and more at once from here,
 const SC_CONV: f32 = 24.0;         // drawn in onto the target from here
-const SC_STORM1: f32 = 28.7;       // to here,
+const SC_STORM1: f32 = 27.85;      // to here, then the finale's run-in (storm.rs's FIN_RUN)
 const SC_FINALE: f32 = 29.0;       // collapsing into the colossal strike,
 const SC_CLEAR: f32 = 32.5;        // the storm dying away from here,
 const SC_LEN: f32 = 42.0;          // and gone by the strike's end (lasers.rs's length)
 const SC_B: u32 = 16u;             // the table: the bolts from SC_B, SC_BW words each (t, x, z off the middle, ground),
 const SC_BW: u32 = 4u;             // in the order they strike
-const SC_F: u32 = 528u;            // the funnels from SC_F, VX_W words each (vortex.rs's vx_words)
+const SC_NB: u32 = 140u;           // (room for this many)
+const SC_F: u32 = 576u;            // the funnels from SC_F, VX_W words each (vortex.rs's vx_words)
 const VX_W: u32 = 148u;
 const VX_DT: f32 = 0.5;
 const VX_DOWN: f32 = 3.5;
@@ -185,8 +188,6 @@ struct ScFlash {
 // afterglow. The channel is tortuous: kinked every few blocks at every scale (piecewise-linear noise, so it bends
 // sharply, never smoothly), forking downward in branches that taper and fade; a thin white-violet core in a wide bloom.
 const SC_LEAD: f32 = 0.09;
-// How long before the finale's strike its converging leaders start down.
-const SC_GATHER: f32 = 0.75;
 // The return stroke and re-strokes of bolt `n` (its hash) `a` seconds after the return stroke: 1 at a stroke's peak.
 fn sc_stroke(a: f32, n: u32) -> f32 {
     if (a < 0.0 || a > 1.0) {
@@ -203,6 +204,43 @@ fn sc_stroke(a: f32, n: u32) -> f32 {
     }
     // (the channel glowing on faintly between the strokes, and after)
     return s + 0.1 * exp(-a / 0.35);
+}
+// The finale's run-in (storm.rs's FIN_RUN): the bolts struck after SC_STORM1, each on a crack of the finale's sound's
+// run-in. Lightning as the eye sees it: no leader to see, the channel there at once at full brightness, gone in a few
+// frames, a brief afterglow (a quarter of them re-striking once); and all of it out in the hush before the crack
+// (`sc_hushcut`).
+fn sc_snap(a: f32, n: u32) -> f32 {
+    if (a < 0.0 || a > 0.5) {
+        return 0.0;
+    }
+    let re = select(0.0, 0.5, (n & 3u) == 0u) * exp(-max(a - 0.055, 0.0) / 0.025) * step(0.055, a);
+    return exp(-a / 0.03) + re + 0.12 * exp(-a / 0.1);
+}
+fn sc_is_run(t: f32) -> bool {
+    return t > SC_STORM1;
+}
+// The hush before the crack (SC_SUCK, storm.rs's FIN_SUCK, in the strike's time): 1 in it, the light held back.
+fn sc_hush(t: f32) -> f32 {
+    let tf = t - SC_FINALE;
+    return select(0.0, smoothstep(-SC_SUCK, -SC_SUCK + 0.03, tf), tf < 0.0);
+}
+// How much of the run-in's bolts is still seen at `t`: none from the hush on.
+fn sc_hushcut(t: f32) -> f32 {
+    return 1.0 - smoothstep(SC_FINALE - SC_SUCK, SC_FINALE - SC_SUCK + 0.03, t);
+}
+// Whether run-in bolt i arcs in out of the ring round the wall cloud (its root out in the ring, its channel running in
+// under the cloud's base before it drops onto its foot), and if so its root and the bend where it turns down.
+fn sc_arc(i: u32, seed: u32) -> bool {
+    return mh(i, seed, 0x7au) < 0.4;
+}
+fn sc_arc_root(f: vec3<f32>, i: u32, seed: u32) -> vec3<f32> {
+    let a = atan2(f.z, f.x) + 0.8 * (mh(i, seed, 0x7bu) - 0.5);
+    let rr = 50.0 + 35.0 * mh(i, seed, 0x7cu);
+    return vec3<f32>(cos(a) * rr, sc_base(rr) + 2.0, sin(a) * rr);
+}
+fn sc_arc_bend(f: vec3<f32>, root: vec3<f32>, i: u32, seed: u32) -> vec3<f32> {
+    let k = 0.3 + 0.2 * mh(i, seed, 0x7du);
+    return vec3<f32>(mix(f.x, root.x, k), mix(f.y, root.y, 0.7 + 0.15 * mh(i, seed, 0x7eu)), mix(f.z, root.z, k));
 }
 // The leader: how far down the cloud's branching tree has crept by `a` seconds after the return stroke (negative a).
 fn sc_leader(a: f32) -> f32 {
@@ -781,7 +819,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     var sky_flash = 0.0;
     let tf = time - SC_FINALE;
     if (have) {
-        let nb = min(u32(sc_w(0u) + 0.5), 128u);
+        let nb = min(u32(sc_w(0u) + 0.5), SC_NB);
         for (var i = sc_first(time); i < nb; i = i + 1u) {
             let b = sc_bolt(i);
             let a = time - b.w;
@@ -791,8 +829,15 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             if (a > 1.0) {
                 continue;
             }
-            let I = sc_stroke(a, pcg(i ^ seed)) * select(1.0, 1.6, sc_positive(i, seed)) * sc_size(b.w);
-            let root = C + sc_root(b.xyz, i, seed, b.w);
+            let run = sc_is_run(b.w);
+            var I = sc_stroke(a, pcg(i ^ seed)) * select(1.0, 1.6, sc_positive(i, seed)) * sc_size(b.w);
+            var root = C + sc_root(b.xyz, i, seed, b.w);
+            if (run) {
+                I = sc_snap(a, pcg(i ^ seed)) * sc_hushcut(time) * sc_size(b.w) * 1.1;
+                if (sc_arc(i, seed)) {
+                    root = C + sc_arc_root(b.xyz, i, seed);
+                }
+            }
             let foot = C + b.xyz;
             let fp = vec4<f32>(root + vec3<f32>(0.0, 20.0, 0.0), I * 2.5);
             // (kept if brighter than the dimmest held)
@@ -814,7 +859,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
                 continue;
             }
             // (a flicker: two or three quick pulses)
-            let I = (exp(-a / 0.06) + 0.7 * exp(-max(a - 0.14, 0.0) / 0.05) * step(0.14, a) + 0.5 * exp(-max(a - 0.33, 0.0) / 0.06) * step(0.33, a)) * 1.6;
+            let I = (exp(-a / 0.06) + 0.7 * exp(-max(a - 0.14, 0.0) / 0.05) * step(0.14, a) + 0.5 * exp(-max(a - 0.33, 0.0) / 0.06) * step(0.33, a)) * 1.6 * (1.0 - sc_hush(time));
             let p = C + vec3<f32>(sc_w(o + 1u), SC_BASE + 40.0 + 60.0 * mh(i, seed, 0x61u), sc_w(o + 2u));
             let fp = vec4<f32>(p, I);
             var lo = 0;
@@ -823,22 +868,6 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             if (fp.w > fl.p[lo].w) { fl.p[lo] = fp; }
             sky_flash = sky_flash + I * 0.12 / (1.0 + length(p) / 300.0);
         }
-    }
-    // (the collapse's run-in: the knot in the wall cloud the last waves come out of glowing brighter and brighter as the
-    // leaders gather, and the target's ground with it)
-    if (tf > -SC_GATHER && tf <= 0.0) {
-        let g = saturate((tf + SC_GATHER) / SC_GATHER);
-        let pc = g * g * (0.8 + 0.2 * sin(tf * 90.0));
-        let fp = vec4<f32>(C + vec3<f32>(0.0, SC_WALL + 14.0, 0.0), pc * 1.6);
-        var lo = 0;
-        if (fl.p[1].w < fl.p[lo].w) { lo = 1; }
-        if (fl.p[2].w < fl.p[lo].w) { lo = 2; }
-        if (fp.w > fl.p[lo].w) { fl.p[lo] = fp; }
-        if (stage != 1u && !sky) {
-            let dl = length(rel - C);
-            gflash = gflash + vec3<f32>(0.8, 0.85, 1.15) * pc * 4.0 / (1.0 + dl * dl / 900.0);
-        }
-        sky_flash = sky_flash + pc * 0.3 / (1.0 + length(C) / 400.0);
     }
     // (the finale's: a knot of bolts on the target, blinding, lighting the cloud over it hard)
     var fin = 0.0;
@@ -912,6 +941,9 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     // ---- the bolts, over it all (hidden by the cloud only for an eye above it) ----------------------------------------
     let cam_above = smoothstep(C.y + SC_TOP - 20.0, C.y + SC_TOP + 20.0, 0.0);
     let behind = mix(1.0, vol_a, cam_above);
+    // (the hush before the crack: the light held back, the land and the cloud a breath darker)
+    let hush = sc_hush(time);
+    col = col * (1.0 - 0.32 * hush * k);
     // (the pieces flung round the funnels' feet: dark specks against the dust and the sky)
     if (have) {
         let nf = u32(sc_w(2u) + 0.5);
@@ -929,7 +961,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     }
     if (have) {
         let px = in.position.xy;
-        let nb = min(u32(sc_w(0u) + 0.5), 128u);
+        let nb = min(u32(sc_w(0u) + 0.5), SC_NB);
         var core = 0.0;
         var glow = 0.0;
         for (var i = sc_first(time); i < nb; i = i + 1u) {
@@ -946,6 +978,27 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             let foot = C + b.xyz;
             let sd = f32(pcg(i * 7u + seed) % 1000u) * 0.13 + 3.0;
             let sz = sc_size(b.w);
+            if (sc_is_run(b.w)) {
+                // (the run-in's: there at once, no leader; an arcing one in two legs, in under the cloud's base from the
+                // ring and then down)
+                let I = sc_snap(a, pcg(i ^ seed)) * sc_hushcut(time) * 1.3;
+                if (I < 0.004) {
+                    continue;
+                }
+                if (sc_arc(i, seed)) {
+                    let ra = C + sc_arc_root(b.xyz, i, seed);
+                    let bend = C + sc_arc_bend(b.xyz, ra - C, i, seed);
+                    let m0 = sc_draw_bolt(px, ra, bend, sd + 1.9, 0.9 * sz, 1.0, scene_len);
+                    let m1 = sc_draw_bolt(px, bend, foot, sd, 1.15 * sz, 1.0, scene_len);
+                    core = core + (m0.x + m1.x) * I;
+                    glow = glow + (m0.y + m1.y) * I;
+                } else {
+                    let m = sc_draw_bolt(px, root, foot, sd, 1.15 * sz, 1.0, scene_len);
+                    core = core + m.x * I;
+                    glow = glow + m.y * I;
+                }
+                continue;
+            }
             if (a < 0.0) {
                 // (the stepped leader: a dim branching tree creeping down)
                 let m = sc_draw_bolt(px, root, foot, sd, 0.6 * sz, sc_leader(a), scene_len);
@@ -975,55 +1028,39 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             let p1 = p0 + vec3<f32>(cos(ang) * len, 0.0, sin(ang) * len);
             let ra = C + vec3<f32>(p0.x, sc_base(length(p0.xz)) - 2.0, p0.z);
             let rb = C + vec3<f32>(p1.x, sc_base(length(p1.xz)) - 2.0, p1.z);
-            let I = (exp(-a / 0.07) + 0.6 * exp(-max(a - 0.15, 0.0) / 0.06) * step(0.15, a)) * 0.6;
+            let I = (exp(-a / 0.07) + 0.6 * exp(-max(a - 0.15, 0.0) / 0.06) * step(0.15, a)) * 0.6 * (1.0 - hush);
             let m = sc_draw_bolt(px, ra, rb, f32(i) * 3.7 + 11.0, 0.7, saturate(a / 0.12), scene_len);
             core = core + m.x * I;
             glow = glow + m.y * I;
         }
-        // (the collapse: from SC_GATHER before the strike, leaders creeping down out of a ring round the wall cloud
-        // onto the target, each from its own moment, faster and brighter as they near; as it strikes they all light
-        // at once and their roots slide in, the channels drawing together into one)
-        let merge = select(1.0, exp(-max(tf, 0.0) / 0.22), tf > 0.0);
-        if (tf > -SC_GATHER && tf < 0.0) {
-            let g = saturate((tf + SC_GATHER) / SC_GATHER);
-            for (var i = 0u; i < 9u; i = i + 1u) {
-                let a = TAU * (f32(i) + 0.4 * mh(i, seed, 0x71u)) / 9.0 + f32(seed % 7u);
-                let rr = 55.0 + 35.0 * mh(i, seed, 0x72u);
-                let root = C + vec3<f32>(cos(a) * rr, SC_WALL + 6.0 + 10.0 * mh(i, seed, 0x73u), sin(a) * rr);
-                let foot = C + vec3<f32>(cos(a) * 3.0, 0.0, sin(a) * 3.0);
-                let st = 0.45 * mh(i, seed, 0x74u);
-                let lead = pow(saturate((tf + SC_GATHER - st) / (SC_GATHER - st)), 1.4);
-                if (lead <= 0.0) {
-                    continue;
-                }
-                let m = sc_draw_bolt(px, root, foot, f32(i) * 23.1 + 5.0 + f32(seed % 11u), 0.9, lead, scene_len);
-                core = core + m.x * (0.15 + 0.6 * g * g);
-                glow = glow + m.y * (0.2 + 0.7 * g * g);
-            }
+        // (in the hush, the one channel's leader racing down out of the wall cloud onto the target, faint, its tearing
+        // what is heard then; the return stroke lights the same path)
+        let main_root = C + vec3<f32>(0.0, SC_WALL + 6.0, 0.0);
+        let main_sd = f32(seed % 13u);
+        if (tf > -SC_SUCK && tf < 0.0) {
+            let lead = pow(saturate((tf + SC_SUCK) / SC_SUCK), 1.5);
+            let m = sc_draw_bolt(px, main_root, C, main_sd, 1.2, lead, scene_len);
+            core = core + m.x * 0.14;
+            glow = glow + m.y * 0.08;
         }
         if (fin > 0.0) {
-            // (once drawn in, gone into the one channel: not drawn)
-            let nj = select(0u, 9u, merge > 0.04);
-            for (var i = 0u; i < nj; i = i + 1u) {
-                let a = TAU * (f32(i) + 0.4 * mh(i, seed, 0x71u)) / 9.0 + f32(seed % 7u);
-                let rr = (55.0 + 35.0 * mh(i, seed, 0x72u)) * merge;
-                let root = C + vec3<f32>(cos(a) * rr, SC_WALL + 6.0 + 10.0 * mh(i, seed, 0x73u) * merge, sin(a) * rr);
-                let foot = C + vec3<f32>(cos(a) * 3.0 * merge, 0.0, sin(a) * 3.0 * merge);
-                let m = sc_draw_bolt(px, root, foot, f32(i) * 23.1 + 5.0 + f32(seed % 11u), 2.0, 1.0, scene_len);
-                core = core + m.x * fin * merge;
-                glow = glow + m.y * fin * merge;
-            }
-            for (var i = 0u; i < 7u; i = i + 1u) {
-                let a = TAU * f32(i) / 7.0 + f32(seed % 7u);
-                let foot = C + vec3<f32>(cos(a) * 2.0 * merge, 0.0, sin(a) * 2.0 * merge);
-                // (one thick channel straight down, thickening as the rest join it; six thinner ones from further round
-                // the wall cloud drawn in onto it)
-                let rr = select((28.0 + 22.0 * f32(i % 3u)) * merge, 0.0, i == 0u);
-                let root = C + vec3<f32>(cos(a) * rr, SC_WALL + 6.0, sin(a) * rr);
-                let wm = select(2.0, 5.0 + 2.5 * (1.0 - merge), i == 0u);
-                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), wm, saturate(tf / 0.05), scene_len);
-                core = core + m.x * fin;
-                glow = glow + m.y * fin;
+            // (the one channel, blinding, held and re-struck)
+            let m = sc_draw_bolt(px, main_root, C, main_sd, 6.5, 1.0, scene_len);
+            core = core + m.x * fin;
+            glow = glow + m.y * fin;
+            // (and in the same instant the ring of bolts round the wall cloud snapping into it, from all round, each
+            // striking its channel part way down; gone in a few frames, into it, as the whiteout clears)
+            let sp = exp(-tf / 0.08) * step(tf, 0.4);
+            if (sp > 0.01) {
+                for (var i = 0u; i < 9u; i = i + 1u) {
+                    let a = TAU * (f32(i) + 0.4 * mh(i, seed, 0x71u)) / 9.0 + f32(seed % 7u);
+                    let rr = 50.0 + 35.0 * mh(i, seed, 0x72u);
+                    let root = C + vec3<f32>(cos(a) * rr, sc_base(rr) + 2.0, sin(a) * rr);
+                    let hit = C + vec3<f32>(0.0, 12.0 + 28.0 * mh(i, seed, 0x73u), 0.0);
+                    let m = sc_draw_bolt(px, root, hit, f32(i) * 23.1 + 5.0 + f32(seed % 11u), 2.2, 1.0, scene_len);
+                    core = core + m.x * sp * 1.6;
+                    glow = glow + m.y * sp * 1.4;
+                }
             }
         }
         col = col + (vec3<f32>(2.4, 2.4, 3.2) * min(core, 3.0) * 2.4 + vec3<f32>(0.42, 0.4, 1.0) * glow * 1.2) * behind * k;
@@ -1031,7 +1068,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     // (the finale: the picture whited out for an instant, fading as the eye recovers, less from far off)
     if (tf > 0.0 && tf < 1.5) {
         let near = 1.0 / (1.0 + length(C) / 350.0);
-        let wo = (0.8 * exp(-tf / 0.08) + 0.2 * exp(-tf / 0.6)) * near * k;
+        let wo = (0.65 * exp(-tf / 0.08) + 0.2 * exp(-tf / 0.6)) * near * k;
         col = mix(col, vec3<f32>(1.3, 1.32, 1.45), saturate(wo));
     }
 
@@ -1083,7 +1120,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
 // ---- the finale's jolt: the picture slammed and shaken as its crack reaches the player, as hard as the Rod's (rod.wgsl's
 // pl_jolt): a slam swinging hard three or four times in half a second, a shudder fading over a couple of seconds ----
 // How long before its crack reaches the player the finale's hush falls (storm.rs's FIN_SUCK: the beds cut, the run-in
-// fallen away, only the leaders' tearing rising into it).
+// fallen away, only the leader's tearing rising into it; the pass holds its light back then, `sc_hush`).
 const SC_SUCK: f32 = 0.16;
 // Seconds since the finale's crack reached the player (negative before), and how much of it reaches them.
 fn sc_heard() -> vec2<f32> {
