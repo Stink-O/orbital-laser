@@ -74,9 +74,12 @@ laser, command, capability and timing). This file is the short, factual version 
   chunks within ~260 force-loaded; its land goes in from 7.1 s, the pit dug by ~7.7, the rod by ~8.05 (rod.wgsl's `RD_LET_GO`, 1.8,
   draws it till then and a margin), the crater lined by ~8.6, all by ~13.5 s. Its
   knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
-  Its pass has impact frames (`rd_impact`, `rd_if_beat`: three stark pulses in 0.16 s, 2, 3 and 1 frames at 60 with
-  the picture between, each a ragged star round the impact point, smaller and fainter each time, timed by the strike
-  clock; params[15] + 2 turns them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
+  Its pass has impact frames (`rd_impact`, `rd_if_cut`, `rd_clock`): the pass's clock holds on the hit for 12–14
+  frames at 60 while hard cuts of 2–3 frames each play (Kanada style, `RD_IF_STYLE` 1: black silhouettes and thick
+  converging lines on white, a 3x close-up in negative with gold lines, gold and umber two-tone), the camera punching
+  in and shaking per cut, then a zoom blur with a colour split and a glow as it lets go and catches up over 0.35 s
+  (styles 0, Black Flash, and 2, cinematic, are kept: `tools/preview.py rod T --set rdif=N`); params[15] + 2 turns
+  them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **The Supercell** (`strike/storm.rs`, its funnels `strike/vortex.rs`, `shaders/supercell.wgsl`; 42 s): ~120 bolts

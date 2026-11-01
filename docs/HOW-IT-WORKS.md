@@ -168,11 +168,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   widening and dimming as it ages, the oldest first), a starburst, a streak and ghosts in the lens, the air shimmering
   round it and its light lying on the land under it; for its last moments its shape: a rod 13 blocks thick and 171
   long, nose down, its nose white-hot, gold and carved bands round it, a bow of glowing air round its nose and in its
-  last second the shock cone. At 7 s it strikes: impact frames (the picture punched in a little, then three short stark
-  pulses at an uneven beat, each smaller and fainter than the one before, the picture between them: black silhouettes
-  on white with jagged impact lines bursting from the point and the rod outlined among them; the negative, its lines
-  pale gold; a faint echo split in colour; each a ragged star round the impact point, not the whole screen, its lines
-  running on over the picture), a blinding white-gold burst with god rays fanning out of it, the land rippling out in rings
+  last second the shock cone. At 7 s it strikes: impact frames (the picture held on the hit for a fifth of a second while hard cuts of two or three frames play over it, Kanada style: black silhouettes with thick lines converging on the point, on white; a close-up three times as near in negative with gold lines; gold and umber two-tone; each cut punching the camera in and shaking it; then a zoom blur and a colour split as it lets go), a blinding white-gold burst with god rays fanning out of it, the land rippling out in rings
   like water for a few seconds, a hemispherical shockwave bending the light, a narrow jet of molten rock shot some 300
   up its path and falling back by 6 s, 256 chunks of rock thrown up in a steep cone (two in five of them molten,
   glowing and cooling as they fly), molten spatter landing round it and cooling, a short plume of dust (about 90
@@ -183,7 +179,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   over it shimmering, the crater's floor white-hot round its foot and cooling over about 20 s, the column of light
   calming into a quiet pillar. The crack-boom arrives late with the distance, the ground's thump first; the camera
   and the picture are jolted hard (sharper and shorter than the Nuke's) and the player knocked back and up (none past
-  450). It reaches 1000 blocks. **Photosensitivity:** the impact frames are three quick flashes round the impact point;
+  450). It reaches 1000 blocks. **Photosensitivity:** the impact frames are a fifth of a second of hard black, white and gold cuts over the whole picture;
   `/orbital impactframes off` or the wheel's IMPACT FX switch leaves them out.
 
 - **Supercell** (page three, `/orbital supercell`). A storm called down on the target, no beam. Over six and a half seconds the sky
@@ -340,7 +336,7 @@ goes in through `world.edit-blocks`.
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
-| `/orbital impactframes on`, `/orbital impactframes off` | the Rod from God's impact frames (three quick stark flashes round the impact point as it strikes) on (the default) or off; kept between sessions; also the wheel's IMPACT FX switch, under QUALITY |
+| `/orbital impactframes on`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) on (the default) or off; kept between sessions; also the wheel's IMPACT FX row, under the ring while the Rod is pointed at or loaded |
 | `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, top left |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point, so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch |
 | `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
@@ -434,7 +430,7 @@ The Nuke's bomb shows at 2 s and bursts at 11; its boom, the dust's front and th
 their distance over 343 (the ground's thump at five times that speed), the knockback with it; the cloud rises fast for 20 s and slowly after, softens from
 59 and is gone by 90, when the strike ends.
 The Rod shows at 1 s and strikes at 7 (its last hard burst of speed over its last half second); its impact frames
-run from 7 to 7.16; its crater is dug out from its middle (7.1) to its edge (7.7) and lined from the rod (about 8.05) to its walls (about 8.6); its crack-boom, the dust ring's front, the jolt and the knockback reach the player at 7 plus their
+hold the picture from 7 to about 7.2 and let go by about 7.55; its crater is dug out from its middle (7.1) to its edge (7.7) and lined from the rod (about 8.05) to its walls (about 8.6); its crack-boom, the dust ring's front, the jolt and the knockback reach the player at 7 plus their
 distance over 343; the jet is up and back down by about 13, the plume rises for about 4 s and spreads into a haze gone
 by 20, the debris is down by about 28, the rod's glow calms over a minute, and the strike ends at 60.
 
@@ -638,10 +634,7 @@ the ripple (`rd_ripple`: the picture drawn from where the heaving land would put
 the jet (`rd_jet`, marched in a vertical cylinder: parcels thrown up at all speeds and falling back, looked up by
 their speed so their streaks fly with them), the plume (the Nuke's raymarched body, `pl_column`, small, thin and
 spreading wide), the molten spatter on the land and the white-hot floor round the rod's foot, and over the standing
-rod's own blocks its glow. The impact frames (`rd_impact`, timed by `rd_if_beat`) threshold the scene's luminance and depth (four looks a
-pixel, smoothed) into silhouettes, set the rod in them with an outline, and draw bold jagged radial lines from the
-impact point's place on the screen, a new set each beat, all within a ragged star round the point that fades into the
-picture (the lines running on past it); `pl_jolt` punches the picture in a little on their first beats. At
+rod's own blocks its glow. The impact frames (`rd_impact`; `rd_clock` holds the pass's clock on the hit, `rd_if_cut` counts the cuts in 60 fps frames) threshold the scene's luminance and depth into silhouettes, set the rod in them, and draw thick converging lines from the impact point; each cut is its own composition (`RD_IF_STYLE`: 1 Kanada, the default; 0 Black Flash; 2 cinematic), and `pl_jolt` punches the camera in and shakes it per cut, then smears the release with a zoom blur and a colour split. At
 1920x1080 FAST costs about 0.5 ms through the fall, 2.6 to 3.2 ms after the impact from 400 blocks and 3.8 to 4.9 from
 150 (inside the plume), FULL 7 to 16 ms.
 
