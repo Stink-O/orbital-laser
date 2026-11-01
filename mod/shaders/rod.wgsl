@@ -1575,7 +1575,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 //      split in colour, tears out across the frame from the point and the camera pushes in; the release smeared.
 // Photosensitivity: at most two dark dips and the white-outs in it, no more than three large swings of brightness in
 // any second, its red kept to lines on black.
-const RD_IF_STYLE: i32 = 0;
+const RD_IF_STYLE: i32 = 1;
 const RD_IF_CATCH: f32 = 0.35;     // the clock catching up after the hold, over this long,
 const RD_IF_JUMP: f32 = 0.08;      // from this far into the burst (its first white-out cut: the release is the frames')
 const RD_IF_END: f32 = 1.6;        // the frames and the glow after them done this long after it strikes
