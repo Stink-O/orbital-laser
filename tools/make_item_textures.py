@@ -328,13 +328,32 @@ NUKE_ICON = [            # the nuke: a mushroom cloud, its cap glowing orange un
     "JJjJJiiiiJJjJJ..",
 ]
 
-GRIDS = {"nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+ROD_ICON = [             # the rod from god: a white-hot streak tearing down, the impact bursting dust and rock out of a crater
+    "...........U....",
+    "...........U....",
+    "..........UB....",
+    "..........UB....",
+    ".........UB.....",
+    ".........UB.....",
+    "........UBW.....",
+    "........BWW.....",
+    ".......BWWW.....",
+    "....l..fWWf..l..",
+    "..j..sfWWfs...j.",
+    ".l..sSfWfSs.l...",
+    "...sSsSfSsSs....",
+    ".jsSSsSSSsSSsj..",
+    "JJjjjLLkLLjjjJJ.",
+    "JJJjLLkkkLLjJJJ.",
+]
+
+GRIDS = {"rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:
