@@ -455,11 +455,11 @@ fn pl_over(h: ptr<function, vec4<f32>>, c: vec3<f32>, x: f32) {
     *h = vec4<f32>((*h).rgb * (1.0 - x) + c * x, (*h).a * (1.0 - x));
 }
 // ---- the rod itself: a round dark metal rod, nose down, RD_L long and RD_R round ----------------------------------
-const RD_R: f32 = 5.3;             // its radius (eleven blocks across, as the one left standing: rod.rs's RD_ROD_R2)
-const RD_L: f32 = 111.0;           // its length (rod.rs's RD_ROD_UP + RD_ROD_DOWN + 1)
-const RD_NOSE: f32 = 14.0;         // its nose, rounded to a blunt point over this much of its length
-const RD_DOWN: f32 = 30.0;         // how much of it ends up under the crater's floor (rod.rs's RD_ROD_DOWN)
-const RD_TOP_END: f32 = 30.0;      // where its top ends up, from the target's ground (rod.rs: 50 deep, 80 over the floor)
+const RD_R: f32 = 6.3;             // its radius (thirteen blocks across, as the one left standing: rod.rs's RD_ROD_R2)
+const RD_L: f32 = 171.0;           // its length (rod.rs's RD_ROD_UP + RD_ROD_DOWN + 1)
+const RD_NOSE: f32 = 16.0;         // its nose, rounded to a blunt point over this much of its length
+const RD_DOWN: f32 = 40.0;         // how much of it ends up under the crater's floor (rod.rs's RD_ROD_DOWN)
+const RD_TOP_END: f32 = 80.0;      // where its top ends up, from the target's ground (rod.rs: 50 deep, 130 over the floor)
 const RD_SINK: f32 = 0.12;         // how fast it drives in as it strikes (its tail gone under the land in a fifth of a second)
 const RD_FLOOR: f32 = -50.0;       // the crater's floor under it (rod.rs's RD_CRATER_D)
 const RD_RIP_V: f32 = 190.0;       // the ripple through the land: its front's speed, blocks a second,
@@ -469,13 +469,18 @@ const RD_JG: f32 = 60.0;           // falling back this hard: up some 300 in thr
 const RD_GOLD: vec3<f32> = vec3<f32>(1.0, 0.8, 0.5);
 const RD_WGOLD: vec3<f32> = vec3<f32>(1.0, 0.88, 0.64);
 
+// Where its top ends up, from the target's ground: RD_TOP_END, or lower on land so high its top would pass the world's
+// highest block (318: its top face 319), the whole rod driven in deeper, as rod.rs's rd_rod_base lays it.
+fn rd_top_end() -> f32 {
+    return min(RD_TOP_END, 319.0 - (block_y() + 1.0));
+}
 // Where its nose is (from the target's ground) at strike time t: coming down the path, then driven in, stopping with its
 // top RD_TOP_END over the land (the crater dug round it).
 fn rd_nose_y(t: f32) -> f32 {
     if (t < PL_HIT) {
         return pl_head(max(t, PL_SEEN)).y;
     }
-    return (RD_TOP_END - RD_L) * (1.0 - exp(-(t - PL_HIT) / RD_SINK));
+    return (rd_top_end() - RD_L) * (1.0 - exp(-(t - PL_HIT) / RD_SINK));
 }
 // What its outside is at h up it (from its nose), as the one left standing is built (rod.rs's rd_rod_col): 0 the
 // forged dark metal (polished blackstone), 1 a band of gold, 2 a carved band (chiseled blackstone).
@@ -760,7 +765,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     let burst = select(0.0, exp(-a / 0.9), a > 0.0);
     let N = Rax + vec3<f32>(0.0, rd_nose_y(time), 0.0);      // its nose
     // (where its light comes from: low on it as it falls; once it stands, its glowing tip)
-    let Ssrc = select(Rax + vec3<f32>(0.0, RD_TOP_END - 1.0, 0.0), N + vec3<f32>(0.0, 1.0, 0.0), time < PL_HIT);
+    let Ssrc = select(Rax + vec3<f32>(0.0, rd_top_end() - 1.0, 0.0), N + vec3<f32>(0.0, 1.0, 0.0), time < PL_HIT);
 
     // ---- the land heaving: the ripple's rings racing out through it, and the hot air shimmering round the rod and over
     // its crater (the picture drawn from a little way off where it is) ---------------------------------------------------
@@ -793,7 +798,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         }
         if (a > 0.0) {
             // (over the crater, calming but never still)
-            let sg = pl_ray_seg(rd, Rax + vec3<f32>(0.0, RD_FLOOR, 0.0), Rax + vec3<f32>(0.0, RD_TOP_END + 25.0, 0.0), 0.0, 1.0);
+            let sg = pl_ray_seg(rd, Rax + vec3<f32>(0.0, RD_FLOOR, 0.0), Rax + vec3<f32>(0.0, rd_top_end() + 25.0, 0.0), 0.0, 1.0);
             if (sg.y < scene_len + 2.0) {
                 hs = hs + (0.3 + 0.7 * exp(-a / 12.0)) * exp(-pow(sg.x / 20.0, 2.0)) * 3.5 * fade;
             }
@@ -905,9 +910,9 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 col = col + scene * vec3<f32>(2.2, 1.3, 0.5) * (Tc * 1.5 + 0.1) / (1.0 + pow(lf / 22.0, 2.0)) * k * fade;
             }
             // (its blocks: a slow tide of light running up it in bands, its tip shining)
-            if (rho < RD_R + 0.8 && p.y > RD_TOP_END - RD_L && p.y < RD_TOP_END + 0.7) {
+            if (rho < RD_R + 0.8 && p.y > rd_top_end() - RD_L && p.y < rd_top_end() + 0.7) {
                 let bands = 0.03 + 0.9 * pow(0.5 + 0.5 * sin(p.y * 0.8 - time * 2.6), 16.0);
-                let tip = smoothstep(RD_TOP_END - 2.0, RD_TOP_END, p.y);
+                let tip = smoothstep(rd_top_end() - 2.0, rd_top_end(), p.y);
                 col = col * (1.0 - 0.4 * (1.0 - tip)) + RD_GOLD * (bands + 1.2 * tip) * I_post * night * k;
             }
             // (molten spatter landing round it in the ejecta's rays, glowing and cooling over a few seconds)
@@ -1236,7 +1241,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             let lvl = select(0.25 + 0.75 * u * u, 0.55 * burst + 0.45 * I_post, a > 0.0);
             let soft = exp(-pow(sg.x / Rc, 2.0)) * 0.35 * sqrt(7.0 * Rc) / sn / (1.0 + y / 2500.0) * lvl * (above + (1.0 - above) * (0.5 + 0.5 * u));
             // (not over the rod where it stands: the column rises from its top)
-            let inrod = select(0.0, (1.0 - smoothstep(RD_R, RD_R + 2.0, sg.x)) * (1.0 - smoothstep(RD_TOP_END, RD_TOP_END + 1.5, y)), a > 0.0);
+            let inrod = select(0.0, (1.0 - smoothstep(RD_R, RD_R + 2.0, sg.x)) * (1.0 - smoothstep(rd_top_end(), rd_top_end() + 1.5, y)), a > 0.0);
             col = col + (RD_WGOLD * 2.2 * (core + path) + RD_GOLD * soft * 0.1) * k * fade * night * appear * (1.0 - inrod);
         }
     }
@@ -1251,8 +1256,8 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             Ih = I_fall;
         } else if (a > 0.0) {
             Ih = I_post;
-            segA = Rax + vec3<f32>(0.0, RD_TOP_END - RD_L * 0.5, 0.0);
-            segB = Rax + vec3<f32>(0.0, RD_TOP_END + 1.0, 0.0);
+            segA = Rax + vec3<f32>(0.0, rd_top_end() - RD_L * 0.5, 0.0);
+            segB = Rax + vec3<f32>(0.0, rd_top_end() + 1.0, 0.0);
         }
         let sg = pl_ray_seg(rd, segA, segB, 0.0, 1.0);
         if (Ih > 0.0 && sg.y < scene_len + 1.0) {

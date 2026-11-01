@@ -8,7 +8,8 @@
 //! still glowing (RD_ROD_UP: real blocks, left after the strike).
 //!
 //! The timeline (strike seconds; the sounds arrive late by the distance, 343 blocks a second, as the Nuke's): 0 fired;
-//! RD_SEEN (1.0) the rod shows, some 3,000 blocks up; `rod.hiss` from RD_HIT - 1.6, cut dead on the impact; RD_HIT
+//! RD_SEEN (1.0) the rod shows, some 3,000 blocks up; `rod.hiss` from RD_HIT - RD_HISS (5.8 s before it), cut dead on
+//! the impact; `rod.hum` round the rod as it cools, 1 s after the blast arrives; RD_HIT
 //! (7.0) the impact (the flash is silent); `rod.ground` as the ground carries the shock (five times the air's speed);
 //! `rod.blast` (or `rod.blast_far` past ~250 blocks, cross-faded to 800) as the air does, with the jolt and the
 //! knockback; `rod.rumble` 1 s after it, `rod.debris` 2.5 s after it within 500 blocks (and again at 7 s within 350);
@@ -16,7 +17,7 @@
 //!
 //! What it leaves is real blocks: a crater about RD_CRATER_R * 2 (120) across and RD_CRATER_D (50) deep, a punch, not a
 //! bowl (its walls steep, its floor fractured stone fused into dark glass in patches), the rod standing in its middle
-//! (11 wide, RD_ROD_UP over the floor, standing 30 over the land round it, and RD_ROD_DOWN under it: forged polished
+//! (13 wide, RD_ROD_UP over the floor, standing 80 over the land round it, and RD_ROD_DOWN under it: forged polished
 //! blackstone banded in gold and chiseled blackstone, a cap of light on its top); its rim a raised ridge of the
 //! ground turned over (the deep rock on top, the dirt under it) out to about RD_CRATER_R * RD_RIM (90); the land flattened
 //! round it out to about RD_FLAT (200; the trees felled and lying pointing away from it), past that out to RD_FLAT +
@@ -79,13 +80,16 @@ const RD_THROWN: usize = 240;
 const RD_RAYS: f64 = 17.0;
 /// The rod left standing in the crater's middle: RD_ROD_UP blocks over its floor (the floor's top at the target's
 /// ground less RD_CRATER_D), RD_ROD_DOWN under it, on the columns within RD_ROD_R2 (squared, in blocks) of the target's:
-/// a round rod eleven wide, its top 30 over the land round the crater. Keep in step with rod.wgsl's RD_TOP_END, RD_L
-/// and RD_R.
-const RD_ROD_UP: i32 = 80;
-const RD_ROD_DOWN: i32 = 30;
-const RD_ROD_R2: i32 = 26;
+/// a round rod thirteen wide (171 long), its top 80 over the land round the crater. Keep in step with rod.wgsl's
+/// RD_TOP_END, RD_L and RD_R. On land so high its top would pass the world's (RD_ROD_MAX) it is driven in deeper, all of
+/// it the same, so its cap and bands stay whole (rod.wgsl's `rd_top_end`).
+const RD_ROD_UP: i32 = 130;
+const RD_ROD_DOWN: i32 = 40;
+const RD_ROD_R2: i32 = 37;
+/// The highest block the world takes (the overworld's build height, less one).
+const RD_ROD_MAX: i32 = 318;
 /// The ring of light round its foot: the columns past the rod out to this (squared).
-const RD_ROD_RING2: i32 = 45;
+const RD_ROD_RING2: i32 = 60;
 
 /// Where the rod is: plumb over the target, coming straight down onto it, faster and faster (RD_V0 to RD_V1 blocks a
 /// second, most of the gain in the last second: RD_VP), then in its last fraction of a second a last hard burst, up
@@ -767,7 +771,7 @@ const RD_ITEM: f64 = 250.0;
 /// What a column at radius r is expected to change (blocks), for the wave's pace.
 fn rd_cost(r: f64) -> f64 {
     let u = r / RD_CRATER_R;
-    if r < 7.0 {
+    if r < 8.0 {
         // (the rod stands there: all of its height)
         bowl(u) + 8.0 + f64::from(RD_ROD_UP + RD_ROD_DOWN)
     } else if u < 1.0 {
@@ -996,7 +1000,7 @@ fn rd_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32
 
 /// The rod, where column (x, z) is one of its own: driven into the crater's middle, standing upright from RD_ROD_DOWN
 /// under its floor to RD_ROD_UP over it (the floor's depth at the target's own column, so it stands straight on any
-/// land; within the world's height): a forged rod of polished blackstone, its outside banded every so often in gold
+/// land; on land so high its top would pass RD_ROD_MAX, driven in deeper by that much): a forged rod of polished blackstone, its outside banded every so often in gold
 /// and in chiseled blackstone, a collar of gold low on it and two bands of gold round its top, capped with light
 /// (froglight in the middle, gold round it); round its foot a ring of glowstone and shroomlight set in the floor.
 fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32) {
@@ -1012,23 +1016,31 @@ fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32) {
         b.run(x, z, floor, floor, if (dx + dz).rem_euclid(2) == 0 { "minecraft:glowstone" } else { "minecraft:shroomlight" });
         return;
     }
-    let lo = (floor - RD_ROD_DOWN).max(-63);
-    let top = (floor + RD_ROD_UP).min(318);
+    // (where it stands from: the floor, or lower on land so high its top would pass the world's)
+    let base = rd_rod_base(g);
+    let lo = (base - RD_ROD_DOWN).max(-63);
+    let top = base + RD_ROD_UP;
     b.run(x, z, lo, top - 1, "minecraft:polished_blackstone");
     // (its bands only on its outside, where they show)
-    if d2 >= 17 {
-        let mut y = floor + 4;
+    if d2 >= 26 {
+        let mut y = base + 4;
         while y < top - 8 {
-            let k = (y - floor) / 9;
+            let k = (y - base) / 9;
             b.run(x, z, y, y, if k % 3 == 1 { "minecraft:gold_block" } else { "minecraft:chiseled_polished_blackstone" });
             y += 9;
         }
-        b.run(x, z, floor + 1, floor + 2, "minecraft:gold_block");
+        b.run(x, z, base + 1, base + 2, "minecraft:gold_block");
         for y in [top - 2, top - 5] {
             b.run(x, z, y, y, "minecraft:gold_block");
         }
     }
-    b.run(x, z, top, top, if d2 <= 10 { "minecraft:ochre_froglight" } else { "minecraft:gold_block" });
+    b.run(x, z, top, top, if d2 <= 14 { "minecraft:ochre_froglight" } else { "minecraft:gold_block" });
+}
+/// The block the rod stands from (its floor's: RD_ROD_UP under its top) on ground `g`: the crater's floor, or as much
+/// lower as keeps its top within RD_ROD_MAX.
+fn rd_rod_base(g: i32) -> i32 {
+    let floor = g - RD_CRATER_D as i32;
+    floor - (floor + RD_ROD_UP - RD_ROD_MAX).max(0)
 }
 
 /// Edits sorted into the ticks they go in at.
@@ -2104,14 +2116,14 @@ mod tests {
             .flat_map(|(_, b)| b.as_fills())
             .filter(|f| {
                 let w: Vec<i32> = f.split_whitespace().skip(1).take(6).filter_map(|v| v.parse().ok()).collect();
-                w.len() == 6 && w[0].min(w[3]) <= bx + 7 && w[0].max(w[3]) >= bx - 7 && w[2].min(w[5]) <= bz + 7 && w[2].max(w[5]) >= bz - 7
+                w.len() == 6 && w[0].min(w[3]) <= bx + 8 && w[0].max(w[3]) >= bx - 8 && w[2].min(w[5]) <= bz + 8 && w[2].max(w[5]) >= bz - 8
             })
             .collect();
         let floor = ground_h(bx, bz) - RD_CRATER_D as i32;
         let top = floor + RD_ROD_UP;
         let mut cols = 0;
-        for x in bx - 7..=bx + 7 {
-            for z in bz - 7..=bz + 7 {
+        for x in bx - 8..=bx + 8 {
+            for z in bz - 8..=bz + 8 {
                 let rod = (x - bx).pow(2) + (z - bz).pow(2) <= RD_ROD_R2;
                 cols += i32::from(rod);
                 for y in floor - RD_ROD_DOWN..=top + 2 {
@@ -2134,8 +2146,9 @@ mod tests {
                 }
             }
         }
-        // (round, eleven wide; its top light; standing 30 over the land round it)
-        assert_eq!(cols, 89);
+        // (round, thirteen wide; its top light; standing 80 over the land round it)
+        assert_eq!(cols, 121);
+        assert_eq!(RD_ROD_UP - RD_CRATER_D as i32, 80);
         assert!(fills.iter().any(|f| f.starts_with(&format!("fill {bx} {top} {bz} ")) && f.contains("minecraft:ochre_froglight")));
         assert_eq!(top - ground_h(bx, bz), RD_ROD_UP - RD_CRATER_D as i32);
         // (nothing thrown out of the crater from round it, to come down on it)
@@ -2143,6 +2156,18 @@ mod tests {
         for (_, c) in cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")) {
             let w: Vec<f64> = c.split_whitespace().skip(2).take(3).map(|v| v.parse().unwrap()).collect();
             assert!((w[0] - 10.5).hypot(w[2] + 2.5) >= 13.9, "{c}");
+        }
+    }
+
+    #[test]
+    fn rod_stays_under_the_world_top() {
+        // (on ordinary land it stands on the crater's floor; on land so high its top would pass the world's, it is
+        // driven in deeper, whole, its cap on the highest block the world takes)
+        assert_eq!(rd_rod_base(64), 64 - RD_CRATER_D as i32);
+        assert_eq!(rd_rod_base(238), 238 - RD_CRATER_D as i32);
+        for g in [239, 250, 300, 319] {
+            assert_eq!(rd_rod_base(g) + RD_ROD_UP, RD_ROD_MAX, "ground {g}");
+            assert!(rd_rod_base(g) <= g - RD_CRATER_D as i32);
         }
     }
 

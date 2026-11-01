@@ -60,7 +60,8 @@ laser, command, capability and timing). This file is the short, factual version 
   same reads, `Wave`, pacing and far-land waiting): plumb over the target, a hard last burst of speed (`RdGeo::left`),
   impact at 7 s (`RD_HIT`, which the sounds key off); a crater ~120 across and 50 deep with steep walls (`bowl`: a
   punch) lined in quartz, calcite and gold (`scorched`), a bleached rim (`ejecta`) out to ~90, the rod left standing in
-  its middle (`rd_rod_col`: 11 wide, 80 over the floor and 30 under it, polished blackstone banded in gold, a ring of
+  its middle (`rd_rod_col`: 13 wide, 130 over the floor, its top 80 over the land, and 40 under it, driven in deeper on land so
+  high its top would pass 318 (`rd_rod_base`; rod.wgsl's `rd_top_end`), polished blackstone banded in gold, a ring of
   light round its foot; keep rod.wgsl's `RD_R`, `RD_L`, `RD_TOP_END` in step), trees felled to ~200 (a band of
   stripped crowns to ~240), the grass blessed (white concrete, calcite, quartz, gold, lights, pale moss: `charred`) and
   rubble strewn in ~17 rays out to ~250, ~120 falling blocks thrown up in a cone, mobs killed within 200, the ~830

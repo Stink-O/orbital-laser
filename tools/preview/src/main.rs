@@ -196,7 +196,7 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         Some(7.0 + (hash(cx + 2, cz + 7) * 6.0).floor() - (dx + dz) as f32 * 0.5)
     };
     // (`rdpit=1`: the rod from god's crater, once it struck (7 s): 120 across and 50 deep, a punch, its rim heaped, the
-    // rod standing in its middle, 11 wide, its top 30 over the land (strike/rod.rs's bowl, heap and rod); `rdrod=0, 1
+    // rod standing in its middle, 13 wide, its top 80 over the land (strike/rod.rs's bowl, heap and rod); `rdrod=0, 1
     // or 2` its blocks: polished blackstone banded in gold and carved blackstone, polished deepslate banded in copper
     // and carved deepslate, iron banded in gold and carved quartz)
     let rdpit = g("rdpit", 0.0) > 0.5 && time > 7.1;
@@ -204,8 +204,8 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         if rdpit {
             let (dx, dz) = (x - tgt[0], z - tgt[2]);
             let (fx, fz) = ((x.floor() - tgt[0].floor()), (z.floor() - tgt[2].floor()));
-            if fx * fx + fz * fz <= 26.0 {
-                return tgt[1] + 30.0;
+            if fx * fx + fz * fz <= 37.0 {
+                return tgt[1] + 80.0;
             }
             let u = dx.hypot(dz) / 60.0;
             if u < 1.0 {
@@ -274,12 +274,16 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             };
             let mut hit_t = -1.0f32;
             // the ground: march
-            if d[1] < 0.2 {
+            // (looking up higher too where the rod stands over the land: 80 high; the march left once over its top)
+            if d[1] < if rdpit { 0.7 } else { 0.2 } {
                 let mut t = 0.5;
                 let crater = g("crater", 0.0) > 0.5;
                 let mut prev = cam[1] - ground(cam[0], cam[2], crater);
                 while t < 3500.0 {
                     let p = [cam[0] + d[0] * t, cam[1] + d[1] * t, cam[2] + d[2] * t];
+                    if d[1] > 0.2 && p[1] > tgt[1] + 82.0 {
+                        break;
+                    }
                     let s = p[1] - ground(p[0], p[2], crater);
                     if s < 0.0 {
                         let tt = t - s / (s - prev) * -1.0 * 0.0;
@@ -302,18 +306,18 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                             c = [(0.07 + 0.03 * n) * lit, (0.17 + 0.06 * n) * lit, (0.06 + 0.02 * n) * lit];
                         }
                         let (fx, fz) = ((p[0].floor() - tgt[0].floor()), (p[2].floor() - tgt[2].floor()));
-                        if rdpit && fx * fx + fz * fz <= 26.0 && p[1] > tgt[1] - 81.0 {
+                        if rdpit && fx * fx + fz * fz <= 37.0 && p[1] > tgt[1] - 81.0 {
                             // (the rod: its body, bands and cap as strike/rod.rs's rd_rod_col lays them, in the look of
                             // the blocks of `rdrod`)
                             let opt = g("rdrod", 0.0) as usize;
                             let y = p[1].floor() - (tgt[1] - 51.0);
-                            let top = 79.0;
-                            let outer = fx * fx + fz * fz >= 17.0;
+                            let top = 129.0;
+                            let outer = fx * fx + fz * fz >= 26.0;
                             let band = if !outer { 0 } else if y == top - 2.0 || y == top - 5.0 || y == 1.0 || y == 2.0 { 1 } else if y >= 4.0 && y < top - 8.0 && (y - 4.0) % 9.0 == 0.0 { if ((y / 9.0) as i32) % 3 == 1 { 1 } else { 2 } } else { 0 };
                             let body = [[0.09, 0.085, 0.1], [0.2, 0.2, 0.22], [0.62, 0.62, 0.62]][opt.min(2)];
                             let metal = [[0.85, 0.65, 0.2], [0.75, 0.42, 0.28], [0.85, 0.65, 0.2]][opt.min(2)];
                             let carved = [[0.16, 0.15, 0.17], [0.3, 0.3, 0.32], [0.88, 0.86, 0.82]][opt.min(2)];
-                            let k = if p[1] > tgt[1] + 29.5 { [1.4, 1.1, 0.6] } else { match band { 1 => metal, 2 => carved, _ => body } };
+                            let k = if p[1] > tgt[1] + 79.5 { [1.4, 1.1, 0.6] } else { match band { 1 => metal, 2 => carved, _ => body } };
                             c = [k[0] * (0.45 + 0.55 * lit), k[1] * (0.45 + 0.55 * lit), k[2] * (0.45 + 0.55 * lit)];
                         } else if rdpit && p[1] < tgt[1] - 1.5 && (p[0] - tgt[0]).hypot(p[2] - tgt[2]) < 66.0 {
                             // (its lining: quartz and calcite, gold in veins, now and then a light)

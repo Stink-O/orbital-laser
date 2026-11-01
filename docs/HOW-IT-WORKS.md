@@ -166,7 +166,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   last burst to over 5,000, so it slams in; god rays stream out of it, broken by whatever stands between, a column of
   light runs down its path from the sky to the target with the ionised line it lays in it (each bit of the line
   widening and dimming as it ages, the oldest first), a starburst, a streak and ghosts in the lens, the air shimmering
-  round it and its light lying on the land under it; for its last moments its shape: a rod 11 blocks thick and 111
+  round it and its light lying on the land under it; for its last moments its shape: a rod 13 blocks thick and 171
   long, nose down, its nose white-hot, gold and carved bands round it, a bow of glowing air round its nose and in its
   last second the shock cone. At 7 s it strikes: impact frames (the picture punched in, then about 0.17 s of stark
   frames: white with the rod black in it over a small black burst at the point; black silhouettes on white with bold
@@ -285,8 +285,8 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   and 50 deep, hallowed: its floor lined in quartz (blocks, pillars, carved), calcite and gold and raw gold, with veins
   of glowstone and shroomlight and now and then white or yellow glazed terracotta or amethyst, dark fused rock
   (obsidian, blackstone, tinted glass) in patches low round the middle; its walls calcite, smooth stone, end stone and
-  quartz bricks with seams of gold; the rod standing in its middle (11 wide, 80 over the floor, its top 30 over the land
-  round it, and 30 under the floor: polished blackstone, banded in gold and chiseled polished blackstone, a collar of
+  quartz bricks with seams of gold; the rod standing in its middle (13 wide, 130 over the floor, its top 80 over the land
+  round it, and 40 under the floor, driven in deeper on land so high its top would pass the world's height: polished blackstone, banded in gold and chiseled polished blackstone, a collar of
   gold at its foot and two bands round its top, capped with ochre froglight and gold; a ring of glowstone and
   shroomlight set in the floor round it); its rim heaped up to about 15 high out to about 90 with the ground overturned
   on it and bleached (dirt at its foot, stone over that, calcite, diorite and end stone on top, flecks of raw gold);
@@ -609,7 +609,7 @@ the view.
 The Rod's pass ([`mod/shaders/rod.wgsl`](../mod/shaders/rod.wgsl)) is the Nuke's made kinetic and holy, on its
 layout (the path from `PL_P`, the heightfield from `PL_HF`, 256 debris chunks from `PL_DB`, `rd_table` in
 [`strike/rod.rs`](../mod/src/strike/rod.rs)). The rod is a real object: an analytic rod (`rd_rod_sdf`, sphere-traced
-near it only, `rd_rod_hit`: 11 thick, 111 long, its bands as rod.rs lays the standing one's blocks, `rd_band`), dark
+near it only, `rd_rod_hit`: 13 thick, 171 long, its bands as rod.rs lays the standing one's blocks, `rd_band`), dark
 metal lit by the sun and the sky, its nose white-hot; its light is a halo round it, a glare (`rd_glare`: bloom, an
 eight-spiked starburst, a streak, three ghosts strung through the middle of the picture, where `rd_seen` finds it in
 sight) and screen-space god rays (`rd_srays`: streaks out from its place on the screen, eight looks at the depth along

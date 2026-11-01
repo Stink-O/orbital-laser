@@ -106,7 +106,7 @@ Thirteen lasers, five to a page of the wheel.
   among them, the negative), a blinding radiant burst with rays fanning out, the land rippling out in rings like
   water, a jet of molten rock up its path, a short plume of dust spreading into a haze and a ring of dust racing out
   over the land, then one colossal crack-boom, late with the distance. It leaves itself standing in a hallowed crater
-  about 120 blocks across and 50 deep: the rod, 11 blocks thick and 80 tall over the crater's floor, its top 30 over
+  about 120 blocks across and 50 deep: the rod, 13 blocks thick and 130 tall over the crater's floor, its top 80 over
   the land, polished blackstone banded in gold and capped with light; the crater lined in quartz, calcite and gold with
   veins of glowstone, rays of white and gold over pale grass round it, rubble out to about 250, the trees felled out to
   about 200, and every mob within 200 killed.
