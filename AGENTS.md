@@ -56,14 +56,21 @@ laser, command, capability and timing). This file is the short, factual version 
   `world.push-player`, 0.8 blocks a tick out and 0.55 up within 200, fading to none at 600, `strike::knock_share`;
   they fly a jump's height or so and some six blocks back, then fall) and jolts the camera
   (`nk_jolt`) and the picture itself (nuke.wgsl's `pl_jolt`, on top of the game's shake, which tops out at a few
-  degrees). Only fire them in a
+  degrees). The Rod from God is the Nuke made kinetic (`strike/rod.rs`, `shaders/rod.wgsl`, the same reads, `Wave`,
+  pacing and far-land waiting): a near-vertical streak, impact at 7 s; a crater ~120 across and 50 deep with steep
+  walls (`bowl`: a punch), a fractured glassy floor and an overturned rim (deep rock on top) out to ~90, trees felled to
+  ~200 (a band of stripped crowns to ~240), the grass dusted and rubble strewn in ~17 rays out to ~250, ~120 falling
+  blocks thrown up in a cone, mobs killed within 200, the ~830 chunks within ~260 force-loaded; its land goes in from
+  7.05 s, the crater by ~9 s, all by ~14 s. Its knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
+  Its pass has impact frames (`rd_impact`: ~0.17 s of stark frames as it strikes, timed by the strike clock; params[15]
+  + 2 turns them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-8` or newer (it adds
   `world.push-player`, the Nuke's knockback; `orbital-mod-api-7` added the half-size stage QUALITY FAST draws the
-  Payload's and the Nuke's smoke with, `orbital-mod-api-6` `world.read-columns`, `orbital-mod-api-5`
+  Payload's, the Nuke's and the Rod's smoke with, `orbital-mod-api-6` `world.read-columns`, `orbital-mod-api-5`
   `world.surface-height` and `render.set-data`; older builds won't start the mod): a Linux x86-64 download on the
   fork's releases, or
   `cargo build --release -p horizon-client --features mods` in the fork elsewhere (ask first: it takes a while).
@@ -79,6 +86,8 @@ python3 tools/build_mod.py          # build the mod from source into dist/orbita
 tools/check-shader.sh               # validate the post passes (a tenth of a second)
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 tools/preview.py payload 18 --quality both --bench   # the Payload at QUALITY FULL and FAST side by side, timed
+tools/preview.py rod 7.05 9 25 --views rdplayer,rdclose  # the Rod's impact frames and its column (views rd*)
+python3 tools/sounds_rod.py --listen DIR             # the Rod's sounds (and listening mixdowns from 200 and 600 blocks)
 ```
 
 **Search with ripgrep (`rg`), not `grep`.** It's installed, much faster on this repo and the fork, and skips
@@ -92,8 +101,8 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload` or `nuke`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke on the third. Its FLY
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke` or `rod`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital messages on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes on|off`, `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke and the Rod from God on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player` or `render.set-data`,
@@ -101,7 +110,7 @@ won't start the mod.
 With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound` or `/orbital nukesound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
 only picks a ready-made one. The QUALITY switch under MESSAGES and PANEL (top right; `/orbital quality full|fast`, kept
-between sessions, default FAST) picks whether the Payload's and the Nuke's smoke is drawn at full size or at half size: FAST gives the
+between sessions, default FAST) picks whether the Payload's, the Nuke's and the Rod's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7` (an older fork would compile the same source and draw its `fs_main` at full size; FAST needs no
 import of its own).
@@ -119,9 +128,9 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 ## Layout
 
 - `mod/`: the mod (Rust for `wasm32-unknown-unknown`): `src/lib.rs` hooks, designator and strike playback,
-  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's, `src/strike/sinkhole.rs` the Sinkhole's, `src/strike/payload.rs` the Payload's, `src/strike/nuke.rs` the Nuke's), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
-  pass, `shaders/downfall.wgsl`, `shaders/planetkiller.wgsl`, `shaders/crystalbloom.wgsl`, `shaders/sinkhole.wgsl`, `shaders/payload.wgsl` and `shaders/nuke.wgsl` the
-  Downfall's, the Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's and the Nuke's own passes (the
+  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's, `src/strike/sinkhole.rs` the Sinkhole's, `src/strike/payload.rs` the Payload's, `src/strike/nuke.rs` the Nuke's, `src/strike/rod.rs` the Rod's), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
+  pass, `shaders/downfall.wgsl`, `shaders/planetkiller.wgsl`, `shaders/crystalbloom.wgsl`, `shaders/sinkhole.wgsl`, `shaders/payload.wgsl`, `shaders/nuke.wgsl` and `shaders/rod.wgsl` the
+  Downfall's, the Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's and the Rod's own passes (the
   mod appends each to `strike.wgsl` up to its `fs_main`; `pass_of` in lib.rs picks a strike's),
   `horizon-mod.toml` the manifest (api 0.2 with `registries` for the content).
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.

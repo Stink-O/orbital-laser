@@ -160,6 +160,22 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   over a jump's height and some six blocks back within 200 blocks, less further off, none past 600), and muck lands on the lens, out of focus. Earth and debris rain
   down for half a minute. From 59 s the cloud loses its billows into a drifting haze, gone by 90 s, when the strike
   ends. It reaches 1000 blocks.
+- **Rod from God** (page three). No beam, no explosive: a tungsten rod dropped from orbit. `KINETIC STRIKE: ROD
+  RELEASED`; from 1 s a blinding white-hot point some 3,000 blocks up comes straight down, 18 to 26 degrees off the
+  vertical from beyond the target and to one side, faster and faster (420 to 700 blocks a second), its plasma sheath
+  drawn out thin behind it, a long thin straight trail of ionised air glowing white-blue and cooling to violet behind
+  it, a pale vapour trail left hanging, and a faint shock cone bending the light round it; silent but for a faint hiss
+  in its last 1.6 s. At 7 s it strikes: impact frames (the picture punched in, then about 0.17 s of stark frames: pure
+  white with a black core at the point; black silhouettes on white with jagged impact lines bursting from it; the
+  negative, its lines red; black on white again, split in colour), a small sharp white flash, the ground round it
+  glowing for a moment, a hemispherical shockwave bending the light (tighter than the Nuke's, gone in 5 s), a fountain
+  of 256 chunks of rock thrown up in a steep cone (some 500 blocks high, falling back over 20 s), a tall column of
+  pulverised earth (about 290 high within 4 s, flaring from the crater's width) that falls back and spreads, its head
+  sinking and the dust rolling out over the ground round its foot, and a low ring of dust racing out at 343 blocks a
+  second. The crack-boom arrives late with the distance, the ground's thump first; the camera and the picture are
+  jolted hard (sharper and shorter than the Nuke's) and the player knocked back and up (none past 450). It reaches
+  1000 blocks. **Photosensitivity:** the impact frames are rapid full-screen flashes; `/orbital impactframes off` or
+  the wheel's IMPACT FX switch leaves them out.
 
 All of them:
 
@@ -245,6 +261,18 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   about 3 s), its rim, the flattened land and its felled trees and charred grass, the stripped crowns (out to 300 by
   about 9 s), then the flash's scorching (out to 480 by about 12 s), each chunk's changes on one tick; it trails the
   shockwave so the game stays smooth.
+- **Rod from God:** a steep-walled crater, a punch rather than a bowl, about 120 across (its edge wandering about 6%)
+  and 50 deep, its floor fractured and fused (deepslate, cobbled deepslate, basalt, blackstone, obsidian specks, patches
+  of tinted, black and grey glass), its walls broken stone (stone, cobblestone, tuff, andesite, gravel); its rim heaped
+  up to about 15 high out to about 90 with the ground overturned on it (dirt at its foot, stone over that, deepslate and
+  tuff on top); everything standing on the land swept off out to about 200, the trees felled pointing away from it,
+  past that out to about 240 crowns stripped and some trees knocked flat; the grass dusted with coarse dirt and gravel
+  all round the rim and in about 17 rays out to about 200; about 1,000 pieces of rubble strewn in the same rays out to
+  250; about 120 real blocks thrown up out of the crater in a steep cone; every mob and item within 200 killed. Water
+  it cuts into is dug like any other block; the lava in the ground it bares is sealed. It keeps about 830 chunks loaded
+  while it works; its land goes in through `world.edit-blocks` as the Nuke's does, one wave from the middle out: the
+  crater from 7.05 s, done by about 9 s, the rest out to 250 by about 14 s (at most ~55 chunks a tick); on land far off
+  it waits for the chunks to load, and what never loads is left out.
 
 ## Commands
 
@@ -252,7 +280,7 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -260,7 +288,8 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's and the Nuke's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital impactframes on`, `/orbital impactframes off` | the Rod from God's impact frames (a split second of stark full-screen flashes as it strikes) on (the default) or off; kept between sessions; also the wheel's IMPACT FX switch, under QUALITY |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -349,6 +378,9 @@ goes soft from 35 to 48 and thins away by about 65, and the strike ends at 70.
 The Nuke's bomb shows at 2 s and bursts at 11; its boom, the dust's front and the jolt reach the player at 11 plus
 their distance over 343 (the ground's thump at five times that speed), the knockback with it; the cloud rises fast for 20 s and slowly after, softens from
 59 and is gone by 90, when the strike ends.
+The Rod shows at 1 s and strikes at 7; its impact frames run from 7 to 7.17; its crack-boom, the dust ring's front, the
+jolt and the knockback reach the player at 7 plus their distance over 343; the column rises for about 4 s, falls back
+from 5 to 30 and softens from 20 to 38, the debris is down by about 28, and the strike ends at 60.
 
 ## The effects
 
@@ -426,6 +458,14 @@ loud past about 1,100 blocks; debris thudding and pattering down within 700 bloc
 the land for half a minute. `/orbital nukesound alt` (or the BLAST SOUND row) swaps the blast for the Payload's ALT scaled up
 (`blast_alt`, `blast_alt_far`): a tonal boom dropping from ~68 Hz to ~40 with its harmonics stacked on it, a sharp,
 heavy crack, two more blows after it, then a long thunder roll and the boom echoing off far land.
+The Rod's ([`tools/sounds_rod.py`](../tools/sounds_rod.py), on the Nuke's tools): silence through the fall but for a
+thin hiss (3-9 kHz grains and a faint whine gliding up, one sound high overhead, cut dead on the impact); the ground's
+thump first (~46 Hz falling to ~22, a shudder); then the blast: a supersonic double crack (the bow shock, then 85 ms on
+the tail shock and the impact, dry), at once a tonal boom (~60 Hz dropping to ~45 and on to ~40, its octave, twelfth and
+driven harmonics stacked on it, a sub push, the ground's rebound 0.24 s on), noise only as texture on it, a short dry
+tail (a few seconds of thunder roll, three echoes off far land); cross-faded from 250 to 800 blocks off into the same
+blast through that much air (`blast_far`); the rumble rolling in for ~20 s; debris landing within 500 blocks. Every
+layering of them peaks under -1 dBTP.
 
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
@@ -499,6 +539,18 @@ fireball's heat, white to orange to a deep red as it cools. The flash, the shock
 the land, the dust and the debris are drawn as the Payload's are. QUALITY FAST marches the cloud, the dust and the trail
 at half size. At 1920x1080 FAST costs about 2 to 3.7 ms and FULL 4 to 10.5 ms, the most close in with the cloud filling
 the view.
+
+The Rod's pass ([`mod/shaders/rod.wgsl`](../mod/shaders/rod.wgsl)) is the Nuke's made kinetic, on its layout (the path
+from `PL_P`, the heightfield from `PL_HF`, 256 debris chunks from `PL_DB`, `rd_table` in
+[`strike/rod.rs`](../mod/src/strike/rod.rs)): the rod a white-hot point with bloom, a lens streak and a thin sheath; its
+trail the Nuke's, thin, glowing as ionised air; its shock cone a thin cone of refraction behind it. The column is the
+Nuke's raymarched body reshaped (`pl_column`, `pl_col_base2`): a column flaring up from the crater's width into a
+ragged head no wider than itself, finer lumps (`PL_S`), carried up as it rises and down as it falls back (`pl_boil`),
+the base surge rolling out round it, earthy grey-brown, its foot glowing for a moment. The impact frames (`rd_impact`)
+threshold the scene's luminance and depth into silhouettes and draw jagged radial lines from the impact point's place
+on the screen, a new set each beat; `pl_jolt` punches the picture in on their first beats. At 1920x1080 FAST costs
+about 0.5 ms through the fall and 2.7 to 4.2 ms with the column large from 300 blocks (5.6 at 150, inside the dust),
+FULL 7 to 21 ms.
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)

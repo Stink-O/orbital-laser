@@ -71,7 +71,7 @@ Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Eleven lasers, five to a page of the wheel.
+Twelve lasers, five to a page of the wheel.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -99,9 +99,18 @@ Eleven lasers, five to a page of the wheel.
   200 blocks across and 40 deep with a glassy floor (flooded where it cuts into water), the land flattened out to about
   230 with the trees felled pointing away, the ground charred in streaks, what faces the flash scorched out to about
   480, and every mob within 300 killed.
+- **Rod from God** (page three). A tungsten rod dropped from orbit, kinetic, no explosive: a thin, blinding white-hot
+  streak tears straight down out of the sky in silence, its ionised trail hanging behind it. It strikes: a few stark
+  impact frames for a split second (white, black-and-white silhouettes with jagged impact lines, the negative), a
+  small sharp flash, a shockwave, a fountain of rock thrown up in a cone round a tall column of dust that falls back
+  and spreads, a ring of dust racing out over the land, then one colossal crack-boom, late with the distance. It
+  leaves a steep-walled crater about 120 blocks across and 50 deep with a fractured, glassy floor and an overturned
+  rim, rubble in rays out to about 250, the trees felled out to about 200, and every mob within 200 killed.
+  **Photosensitivity:** its impact frames are rapid full-screen flashes; `/orbital impactframes off` (or the wheel's
+  IMPACT FX switch) leaves them out.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Crystal Bloom, the Sinkhole, the Payload, the Nuke and the Rod from God reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -229,10 +238,10 @@ Mods), read the reason it gives first.
    what it does and click to load it. The arrows either side of the ring, the tabs over it or a right-click turn the
    page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar shows
-   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload and the Nuke), then the strike lands where your crosshair is.
+   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod), then the strike lands where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60, the Downfall 64, the Payload 70 and the Nuke 90.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Crystal Bloom 60, the Downfall 64, the Rod from God 60, the Payload 70 and the Nuke 90.
 
 The wheel also has:
 
@@ -240,9 +249,11 @@ The wheel also has:
   flight, or type any speed up to 1000x in the box beside it and press Enter.
 - **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the status panel shown
   at the top right while you hold either item.
-- A **QUALITY** switch under them: **FAST** (the default) draws the Payload's and the Nuke's smoke, dust and trail at half the
+- A **QUALITY** switch under them: **FAST** (the default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail at half the
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
   draws every pixel (about two to three times the GPU time).
+- An **IMPACT FX** switch under QUALITY: the Rod from God's impact frames on (the default) or off, as
+  `/orbital impactframes`.
 - **STOP STRIKE** at the top left while a strike is under way: it ends the strike there and then (what it has already
   done to the world stays), the same as `/orbital stop`.
 - For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
@@ -254,7 +265,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator and the Remote |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -262,7 +273,8 @@ The wheel also has:
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
-| `/orbital quality full\|fast` | the Payload's and the Nuke's smoke at full size, or at half size (faster); also the wheel's QUALITY switch |
+| `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke at full size, or at half size (faster); also the wheel's QUALITY switch |
+| `/orbital impactframes on\|off` | the Rod from God's impact frames (rapid full-screen flashes); also the wheel's IMPACT FX switch |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
@@ -279,7 +291,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload and the Nuke can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke and the Rod can aim, and only with **LOD Distance** on in Video Settings.
 - **`STRIKE IN PROGRESS`.** One strike runs at a time. Wait for it to finish.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
