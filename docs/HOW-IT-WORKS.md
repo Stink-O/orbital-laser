@@ -536,12 +536,18 @@ louder as they grow), let down a little (never more than 4.4 dB) while louder th
 one of the last two of its kind, its pitch spread 0.9-1.06. The storm builds out of a hush (the wind rising in gusts, a low
 pressure swell, leaves stirring, far rolls, the first heavy drops); the wind (a buffet, a rush, a howl climbing with
 each gust, leaves thrashing) and the rain (a wide wash of drops, near drops ticking and plipping, heavier ones on the
-ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. The finale (modelled on measurements of a real close strike's
-recording, none of it used) starts 1.2 s before its crack with the last waves' cracks stacking up faster and louder,
-the air fizzing and the near channels' tearing; then eight channels' crack at once, a ragged cluster of fronts over
-~30 ms, heaviest at 80-250 Hz and falling ~6 dB an octave above, its top gone in under a second; a deep tonal boom (64
-Hz falling to 31, its harmonics on it) with its body gently overdriven and held about a second; the roll swelling
-again ~2.3 s in and dying over fifteen seconds; debris raining down. Each funnel's
+ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. The finale is a detonation with lightning in it. It
+starts 1.2 s before its crack with the last waves' cracks stacking up faster and louder and the air fizzing; 0.26 s
+before the crack the plan cuts the storm's beds (`stopsound`: the rain, the wind, the funnels' roar, every bolt's and
+flicker's thunder still rolling) under its last, loudest cracks, and 0.16 s before it all of it falls away into a hush,
+only the near channels' tearing and the air drawn in rising into it; then everything lands at once, as hard as the Rod's
+blast (its loudest instant louder): eight channels' crack-blast re-struck by the return strokes, a driven tonal boom
+(62 Hz falling to 31) on a sub push, a thump you feel, a 40-250 Hz body, a dark boiling roar with rock crushed in it, a
+buzzing arc and the discharge crackling; then the strike's own thunder rolling off round the sky for fifteen seconds,
+the boom's echoes off the land, debris raining down for six seconds, and from 0.9 s after the crack the rain and a
+little wind coming back under it (`after`). Cross-faded from 250 to 800 blocks off into the same strike through that
+much air (`finale_far`), as the Rod's blast. With the crack comes a jolt as hard as the Nuke's, the Rod's push, and the
+picture slammed (as the Rod's) and punched pale (`sc_press`; drawn in, its edges darkening, through the hush). Each funnel's
 roar (mono, a deep rumble, the freight-train roar boiling over it, debris rattling in it) is played where the funnel is
 every second, three-second copies whose constant-power windows overlap into one steady roar that follows it.
 `python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60, 150, 500 and 1500 blocks off, mixed

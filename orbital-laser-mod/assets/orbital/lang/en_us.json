@@ -35,6 +35,8 @@
   "subtitles.orbital.supercell.crack": "Thunder cracks",
   "subtitles.orbital.supercell.crack_mid": "Thunder claps",
   "subtitles.orbital.supercell.crack_far": "Thunder rolls",
-  "subtitles.orbital.supercell.finale": "Colossal thunderclap",
+  "subtitles.orbital.supercell.finale": "Lightning detonates",
+  "subtitles.orbital.supercell.finale_far": "Distant detonation",
+  "subtitles.orbital.supercell.after": "Rain returns",
   "subtitles.orbital.supercell.roar": "Funnel roars"
 }

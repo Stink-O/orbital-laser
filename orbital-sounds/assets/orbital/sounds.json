@@ -1509,5 +1509,23 @@
       }
     ],
     "subtitle": "subtitles.orbital.supercell.crack_far"
+  },
+  "supercell.finale_far": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/finale_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.finale_far"
+  },
+  "supercell.after": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/after",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.after"
   }
 }

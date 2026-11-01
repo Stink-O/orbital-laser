@@ -1080,22 +1080,32 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     return PlOut(vec4<f32>(srgb, 1.0), vec4<f32>(0.0));
 }
 
-// ---- the finale's jolt: the picture slammed and shaken as its crack reaches the player (as nuke.wgsl's pl_jolt) ----
-fn sc_jolt(in: StageIn) -> StageIn {
+// ---- the finale's jolt: the picture slammed and shaken as its crack reaches the player, as hard as the Rod's (rod.wgsl's
+// pl_jolt): a slam swinging hard three or four times in half a second, a shudder fading over a couple of seconds ----
+// How long before its crack reaches the player the finale's hush falls (storm.rs's FIN_SUCK: the beds cut, the run-in
+// fallen away, only the leaders' tearing rising into it).
+const SC_SUCK: f32 = 0.16;
+// Seconds since the finale's crack reached the player (negative before), and how much of it reaches them.
+fn sc_heard() -> vec2<f32> {
     let C = vec3<f32>(anchor_xz().x, block_y() + 1.0, anchor_xz().y);
     let me = vec3<f32>(frame.mod_params[3].x, frame.mod_params[3].y, frame.mod_params[3].z);
     let dist = length(me - C);
-    let s = now() - SC_FINALE - dist / 343.0;
-    if (s <= 0.0 || s > 4.0 || intensity_v() <= 0.0) {
+    return vec2<f32>(now() - SC_FINALE - 0.05 - dist / 343.0, clamp(1.5 / (1.0 + dist / 350.0), 0.2, 1.0));
+}
+fn sc_jolt(in: StageIn) -> StageIn {
+    let h = sc_heard();
+    let s = h.x;
+    if (s <= 0.0 || s > 6.0 || intensity_v() <= 0.0) {
         return in;
     }
-    let g = clamp(1.5 / (1.0 + dist / 200.0), 0.15, 1.0);
-    let hit = 0.022 * g * exp(-s / 0.25) * smoothstep(0.0, 0.02, s);
-    let ring = vec2<f32>(0.65 * sin(s * 47.0 + 0.6) + 0.35 * sin(s * 83.0 + 2.1), 0.65 * cos(s * 41.0 + 1.3) + 0.35 * sin(s * 71.0 + 0.4));
-    let shud = 0.004 * g * exp(-s / 1.2) * smoothstep(0.05, 0.3, s);
-    let sh = vec2<f32>(sin(s * 17.0 + 0.3), cos(s * 15.0 + 2.2));
+    let g = h.y;
+    let hit = 0.034 * g * exp(-s / 0.22) * smoothstep(0.0, 0.015, s);
+    let ring = vec2<f32>(0.65 * sin(s * 53.0 + 0.6) + 0.35 * sin(s * 89.0 + 2.1), 0.65 * cos(s * 47.0 + 1.3) + 0.35 * sin(s * 77.0 + 0.4));
+    let shud = 0.005 * g * exp(-s / 1.8) * smoothstep(0.08, 0.4, s);
+    let sh = vec2<f32>(0.55 * sin(s * 17.0 + 0.3) + 0.3 * sin(s * 29.0 + 1.9) + 0.15 * sin(s * 53.0),
+                       0.55 * cos(s * 15.0 + 2.2) + 0.3 * sin(s * 31.0 + 0.7) + 0.15 * cos(s * 59.0));
     let off = ring * hit + sh * shud;
-    let roll = 0.012 * g * exp(-s / 0.35) * sin(s * 37.0 + 0.9);
+    let roll = 0.018 * g * exp(-s / 0.3) * sin(s * 41.0 + 0.9) + 0.0025 * g * exp(-s / 1.8) * sin(s * 11.0);
     let res = frame.resolution.xy;
     let asp = res.x / res.y;
     let zoom = 1.0 + 2.2 * (hit + shud) + 1.1 * abs(roll) * asp;
@@ -1106,10 +1116,36 @@ fn sc_jolt(in: StageIn) -> StageIn {
     o.position = vec4<f32>(o.uv * res, in.position.zw);
     return o;
 }
+// The pressure of it on the picture, with the sound: in the hush before the crack the picture drawn in (the edges
+// darkening, the colour draining a little), then as it hits a hard punch of light, the air shoved (a pale flash
+// that blows out the picture's middle tones, gone in a third of a second) and a dusty haze settling after.
+fn sc_press(c: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
+    let h = sc_heard();
+    let s = h.x;
+    if (s < -SC_SUCK - 0.05 || s > 3.0 || intensity_v() <= 0.0) {
+        return c;
+    }
+    let g = h.y;
+    let res = frame.resolution.xy;
+    let r = length((uv - 0.5) * vec2<f32>(res.x / res.y, 1.0));
+    var o = c;
+    // (the hush: drawn in)
+    let suck = smoothstep(-SC_SUCK - 0.05, -0.02, s) * (1.0 - smoothstep(0.0, 0.03, s));
+    let lum = dot(o, vec3<f32>(0.2126, 0.7152, 0.0722));
+    o = mix(o, vec3<f32>(lum), 0.35 * suck * g) * (1.0 - 0.55 * suck * g * smoothstep(0.25, 0.85, r));
+    // (the punch: the picture blown out pale, the middle first)
+    let punch = g * smoothstep(0.0, 0.012, s) * exp(-max(s, 0.0) / 0.09);
+    o = o + (vec3<f32>(0.95, 0.97, 1.05) - o * 0.3) * punch * (1.0 - 0.45 * smoothstep(0.1, 0.9, r));
+    // (the dust it shoves along after: a warm grey haze settling over two seconds)
+    let haze = g * smoothstep(0.03, 0.25, s) * exp(-max(s - 0.25, 0.0) / 1.2);
+    o = mix(o, vec3<f32>(0.42, 0.4, 0.37) * (0.6 + 0.4 * lum), 0.22 * haze);
+    return max(o, vec3<f32>(0.0));
+}
 
 @fragment
 fn fs_main(in0: StageIn) -> @location(0) vec4<f32> {
-    return supercell(sc_jolt(in0), 0u, vec4<f32>(0.0)).c;
+    let o = supercell(sc_jolt(in0), 0u, vec4<f32>(0.0)).c;
+    return vec4<f32>(sc_press(o.rgb, in0.uv), o.a);
 }
 
 // [half stage]
@@ -1165,6 +1201,7 @@ fn fs_join(in0: StageIn) -> @location(0) vec4<f32> {
     let in = sc_jolt(in0);
     let d = depth_at(in.uv);
     let len = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
-    return supercell(in, 2u, sc_up(in.position.xy, len)).c;
+    let o = supercell(in, 2u, sc_up(in.position.xy, len)).c;
+    return vec4<f32>(sc_press(o.rgb, in0.uv), o.a);
 }
 // [end half stage]

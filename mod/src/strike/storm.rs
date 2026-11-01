@@ -500,6 +500,42 @@ fn sweep(q: &mut Plan, k: usize, t: f32) {
 /// How far into the finale's sound its crack is (tools/sounds_storm.py's FIN_PRE): before it, the run-in, the last waves'
 /// cracks stacking up faster and faster into it.
 const FIN_PRE: f32 = 1.2;
+/// The hush before the finale's crack (sounds_storm.py's FIN_SUCK, supercell.wgsl's SC_SUCK): its run-in falls away
+/// FIN_SUCK before the crack, so it lands out of silence; the storm's beds are cut (`FIN_CUT`) a little before that,
+/// under the run-in's last, loudest cracks, so the cut is not heard as one.
+const FIN_SUCK: f32 = 0.16;
+const FIN_CUT: f32 = FIN_SUCK + 0.1;
+/// What the finale cuts (`stopsound`): the storm's beds and every bolt's and flicker's thunder still rolling.
+fn sc_beds() -> Vec<String> {
+    let mut v: Vec<String> = ["buildup", "gusts", "rain", "roar"].iter().map(|k| format!("orbital:supercell.{k}")).collect();
+    for (kind, n) in [("crack", 6), ("crack_mid", 5), ("crack_far", 5), ("rumble", 5)] {
+        v.extend((1..=n).map(|k| format!("orbital:supercell.{kind}{k}")));
+    }
+    v
+}
+/// How much of the finale is heard as the far one (`finale_far`), `dist` blocks off: none within 250, all of it past
+/// 800 (as the Rod's blast).
+fn fc_far(dist: f64) -> f32 {
+    let u = ((dist - 250.0) / 550.0).clamp(0.0, 1.0);
+    (u * u * (3.0 - 2.0 * u)) as f32
+}
+/// The finale's crack reaching the player at `t`, `fo` as hard: a violent hit (the camera at the game's hardest for two
+/// seconds, kicked again and again, as the Nuke's), then a heavy shudder dying away over seven. The pass knocks the
+/// picture about on top of it (supercell.wgsl's `sc_jolt`) and punches it pale (`sc_press`).
+fn fc_jolt(p: &mut Plan, t: f32, fo: f32) {
+    p.shake(t, fo, 2.2);
+    for n in 0..16 {
+        let u = n as f32 / 16.0;
+        p.shake(t + 0.05 + 0.085 * n as f32, (1.0 - 0.35 * u) * fo, 0.22);
+    }
+    p.shake(t + 0.35, 0.75 * fo, 7.5);
+    let mut ts = t + 1.5;
+    while ts < t + 7.5 {
+        let u = (ts - t - 1.5) / 6.0;
+        p.shake(ts, (0.7 * (1.0 - u).powf(1.3) + 0.1) * fo, 0.3);
+        ts += 0.12 + 0.1 * u;
+    }
+}
 /// How loud a bolt's thunder is `d` blocks off, as a file's loudest 400 ms in dB (tools/sounds_storm.py's LEVEL): a
 /// -15 at 60 blocks (a close crack's own -14 is its most: its volume can't pass 1; the finale's -8.6 stands well over
 /// it), then 4 dB down each time the
@@ -748,29 +784,30 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the finale: the bolts collapsing into one colossal strike on the target, a shockwave and a jolt ------------------
     let tf = SC_FINALE;
     p.at(SC_CONV, bar("ORBITAL WEATHER CONTROL: DISCHARGE", "aqua"));
-    // (heard and felt late by the distance: its run-in of the last waves' cracks stacking up, the crack, the jolt at the
-    // Rod's strength, its push; the ground trembling more and more as the bolts draw in)
-    p.csound(arrive - FIN_PRE, "finale", 10.0, 1.0);
+    // (heard and felt late by the distance: its run-in of the last waves' cracks stacking up, the ground trembling more
+    // and more as the bolts draw in; the storm's beds cut under its last cracks, a hush, then the crack and the blast
+    // out of silence, the jolt and the push with it; the rain and the wind coming back under its tail)
+    // (the two cross-faded at constant power: half way, 500 blocks off, still nearly as loud as close by)
+    let far = fc_far(dist);
+    if far < 1.0 {
+        p.csound(arrive - FIN_PRE, "finale", 10.0 * (1.0 - far).sqrt(), 1.0);
+    }
+    if far > 0.0 {
+        p.csound(arrive - FIN_PRE, "finale_far", 10.0 * far.sqrt() * ((1.25 / (1.0 + dist / 2000.0)).min(1.0) as f32), 1.0);
+    }
+    for e in sc_beds() {
+        p.at(arrive - FIN_CUT, format!("stopsound @s * {e}"));
+    }
+    p.csound(arrive + 0.9, "after", 5.5, 1.0);
     let fo = (2.0 / (1.0 + dist / 400.0)).clamp(0.3, 1.0) as f32;
     let mut tq = SC_CONV + late;
-    while tq < arrive - 0.1 {
+    while tq < arrive - FIN_SUCK {
         let u = (tq - SC_CONV - late) / (arrive - SC_CONV - late);
-        p.shake(tq, (0.05 + 0.25 * u * u) * fo, 0.3);
+        p.shake(tq, (0.05 + 0.25 * u * u) * fo, 0.3f32.min(arrive - FIN_SUCK + 0.05 - tq));
         tq += 0.25;
     }
-    p.shake(arrive, fo, 1.8);
-    for n in 0..12 {
-        let u = n as f32 / 12.0;
-        p.shake(arrive + 0.05 + 0.08 * n as f32, (1.0 - 0.4 * u) * fo, 0.2);
-    }
-    p.shake(arrive + 0.3, 0.65 * fo, 6.0);
-    let mut ts = arrive + 1.2;
-    while ts < arrive + 6.0 {
-        let u = (ts - arrive - 1.2) / 4.8;
-        p.shake(ts, (0.6 * (1.0 - u).powf(1.4) + 0.08) * fo, 0.28);
-        ts += 0.13 + 0.1 * u;
-    }
-    p.ev.push((tf + 0.05 + (dist / FC_V) as f32, Act::Shove { from: [cx, gy, cz], out: 0.65, up: 0.5, reach: 450.0 }));
+    fc_jolt(&mut p, arrive, fo);
+    p.ev.push((arrive, Act::Shove { from: [cx, gy, cz], out: 0.7, up: 0.5, reach: 450.0 }));
     p.at(tf + 0.1, format!("particle minecraft:explosion_emitter {cx:.1} {:.1} {cz:.1} 12 3 12 0 14 force", gy + 1.0));
     p.at(tf + 0.15, format!("particle minecraft:large_smoke {cx:.1} {:.1} {cz:.1} 20 4 20 0.08 500 force", gy + 2.0));
     p.at(tf + 0.2, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {cx:.1} {:.1} {cz:.1} 18 3 18 1.4 900 force"#, gy + 2.0));
@@ -873,6 +910,10 @@ fn sc_write_sounds() {
                 let v = at.map_or(volume, |p| volume * (1.0 - ((p[0] - me[0]).hypot(p[2] - me[2]) / 320.0).min(1.0)) as f32);
                 out += &format!("{t:.3} {event} {v:.3} {pitch:.3}\n");
             }
+            // (and the sounds the plan stops: `t stop event`)
+            Act::Cmd(c) if c.starts_with("stopsound") => {
+                out += &format!("{t:.3} stop {}\n", c.rsplit(' ').next().unwrap_or(""));
+            }
             Act::Later(job) | Act::Cleanup(job) => {
                 ev.extend(job());
                 ev.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -937,7 +978,15 @@ mod tests {
         let me = [10.5, 66.0, 297.5];
         let (_, cmds, other, _) = played(true, me);
         // (no vanilla bolt, whose own thunder can't be silenced in time: each bolt hurts what is at its foot instead)
-        assert!(!cmds.iter().any(|(_, c)| c.contains("lightning_bolt ~") || c.starts_with("stopsound")));
+        assert!(!cmds.iter().any(|(_, c)| c.contains("lightning_bolt ~")));
+        // (the only sounds stopped the storm's own beds and thunder, all at once, right before the finale's crack reaches
+        // the player: cut under its run-in's last cracks, so it lands out of a hush)
+        let (late, _) = sound_from([10.5, 65.0, -2.5], me);
+        let stops: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.starts_with("stopsound")).collect();
+        assert_eq!(stops.len(), sc_beds().len());
+        for (t, c) in &stops {
+            assert!((*t - (SC_FINALE + 0.05 + late - FIN_CUT)).abs() < 1e-3 && c.starts_with("stopsound @s * orbital:supercell.") && !c.contains("finale"), "{t} {c}");
+        }
         let bolts: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.contains("run damage @s 5 minecraft:lightning_bolt")).collect();
         let planned = sc_bolts(37, [0.0, 300.0]);
         assert_eq!(bolts.len(), planned.len());
@@ -959,6 +1008,23 @@ mod tests {
         assert!(!cmds.iter().any(|(_, c)| c.starts_with("weather")));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Table(w) if w.len() == SC_I + SC_NI)));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Shove { .. })));
+        // (the finale near and the rain and the wind back under its tail after the cut)
+        let at = |name: &str| other.iter().find_map(|(t, a)| matches!(a, Act::Sound { event, .. } if event.ends_with(name)).then_some(*t));
+        assert!(at("supercell.after").unwrap() > stops[0].0 + 0.5);
+        // (300 blocks off: mostly the near one, a little of the far one in it)
+        let vol = |name: &str| other.iter().find_map(|(_, a)| if let Act::Sound { event, volume, .. } = a { event.ends_with(name).then_some(*volume) } else { None });
+        assert!(at("supercell.finale").is_some() && vol("supercell.finale").unwrap() > 0.95 && vol("supercell.finale_far").unwrap() < 0.2);
+    }
+
+    #[test]
+    fn supercell_finale_far_off_is_the_far_one() {
+        // (heard 900 blocks off: all of it the far finale, the beds still cut)
+        let me = [0.5, 66.0, 900.5];
+        let (_, cmds, other, _) = played(false, me);
+        let sounds: Vec<(&str, f32)> = other.iter().filter_map(|(_, a)| if let Act::Sound { event, volume, .. } = a { Some((event.as_str(), *volume)) } else { None }).collect();
+        assert!(!sounds.iter().any(|(e, _)| e.ends_with("supercell.finale")));
+        assert!(sounds.iter().any(|(e, v)| e.ends_with("supercell.finale_far") && *v > 0.6));
+        assert_eq!(cmds.iter().filter(|(_, c)| c.starts_with("stopsound")).count(), sc_beds().len());
     }
 
     #[test]
