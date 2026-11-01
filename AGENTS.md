@@ -76,8 +76,10 @@ laser, command, capability and timing). This file is the short, factual version 
   clock; params[15] + 2 turns them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
-- **The Supercell** (`strike/storm.rs`, its funnels `strike/vortex.rs`, `shaders/supercell.wgsl`): 72 bolts out to
-  120 blocks (terrain on only: each hurts what stands at its foot, `damage ... minecraft:lightning_bolt`, and sets a few
+- **The Supercell** (`strike/storm.rs`, its funnels `strike/vortex.rs`, `shaders/supercell.wgsl`; 42 s): ~120 bolts
+  out to 120 blocks, building (`sc_bolts`: lone small ones from 4 s coming faster, from 15 s waves of more and more at
+  once up to `SC_CAP` 5, from 24 s drawn in onto the target, the last wave right before the finale at 29 s, which the
+  pass collapses them into; the table's per-second index `SC_I` keeps the pass to the bolts due) (terrain on only: each hurts what stands at its foot, `damage ... minecraft:lightning_bolt`, and sets a few
   fires there; never a vanilla `lightning_bolt`, whose own thunder can't be silenced in time), a pit a block or two
   deep at each, the funnels' tracks scoured (plants, leaves, a few falling blocks), and a finale crater ~70 across and
   24 deep with fulgurite glass veins out to ~85, an overturned rim, trees blasted and set alight out to 95, the land
@@ -86,7 +88,9 @@ laser, command, capability and timing). This file is the short, factual version 
   `Act::Cleanup`/`Blocks::cleanup`, which lib.rs still makes after `/orbital stop`. Force-loads the chunks within 154.
   Its thunder (`tools/sounds_storm.py`; `sc_thunder` schedules it) is late by the distance and picked by it: `crack`
   within 90 blocks, `crack_mid` to 260, `crack_far` (mostly rumble) past that, each take its own event
-  (`supercell.crack3`) so none plays twice running. Horizon plays every sound file summed to mono; `--listen` mixes as
+  (`supercell.crack3`) so none plays twice running; bolts heard within 0.15 s of each other are one louder clap, never
+  a flam; the flurry's quieter (`size_db`). The finale's file starts `FIN_PRE` (1.2 s) before its crack, its run-in
+  the last waves' cracks stacking up (keep FIN_PRE in step in both). Horizon plays every sound file summed to mono; `--listen` mixes as
   the game does.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.

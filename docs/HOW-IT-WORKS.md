@@ -186,18 +186,24 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   450). It reaches 1000 blocks. **Photosensitivity:** the impact frames are three quick flashes round the impact point;
   `/orbital impactframes off` or the wheel's IMPACT FX switch leaves them out.
 
-- **Supercell** (page three, `/orbital supercell`). A storm called down on the target, no beam. Over nine seconds the sky
+- **Supercell** (page three, `/orbital supercell`). A storm called down on the target, no beam. Over six and a half seconds the sky
   darkens and a storm cloud boils up over the target and spreads 300 blocks out: a low dark deck, a wall cloud hanging
   under its middle turning slowly with ragged scud round it, a tower climbing into an anvil that spreads downwind; rain
   falls out of its base in streaked grey curtains drifting with the wind, a few streaks falling past the eye under it
-  (the pass draws the rain: the world's weather is left alone). From 9.5 s to 42 s 72 real vanilla lightning bolts
-  strike the land under it out to 120 blocks, faster and faster, each drawn by the pass as a branching channel from
-  the cloud's base that re-strikes once or twice, the cloud lit from inside round its root and the land round its foot
-  lit bright, with flickers in the cloud between. Three thin funnels come down out of the wall cloud (13 to 43 s),
-  touch, wander over the land for ten seconds or so in a swirl of dust and lift back up, their roar heard where they
-  are. At 45 s one colossal strike on the target: one thick channel and six joining it, held for two seconds and
-  re-struck again and again, a whiteout, a shockwave racing out over the land at 140 blocks a second with a wall of
-  dust behind it, the crater glowing, a jolt and a shove at the Rod's strength. From 50 s the rain stops and the storm dies away; it ends at 64 s. It reaches 1000 blocks.
+  (the pass draws the rain: the world's weather is left alone). The lightning builds with no pause: from 4 s small,
+  thin lone bolts strike the land under it out to 120 blocks, one every second or two and coming faster; from 15 s
+  they come in waves, more and more at once, up to five, a wave every half second or less; from 24 s their feet draw
+  in on the target and their roots in under the wall cloud's middle, which glows as they gather, until the last wave
+  strikes round the target just before 29 s (about 120 bolts in all). Each is drawn by the pass as a branching
+  channel from the cloud's base that re-strikes once or twice, the cloud lit from inside round its root and the land
+  round its foot lit bright, with flickers in the cloud between. Three thin funnels come down out of the wall cloud
+  (6.5 to 28 s), touch, wander over the land for five seconds or so in a swirl of dust and lift back up, their roar
+  heard where they are. In the last three quarters of a second nine leaders creep down out of a ring round the wall
+  cloud onto the target; at 29 s they all light and draw together into one thick channel with six more, held for two
+  seconds and re-struck again and again: a whiteout, a shockwave racing out over the land at 140 blocks a second with a
+  wall of dust behind it, the crater glowing, a jolt and a shove at the Rod's strength. The ground trembles more and
+  more as the bolts draw in. From 32.5 s the rain stops and the storm dies away; it ends at 42 s. It reaches 1000
+  blocks.
 
 All of them:
 
@@ -528,13 +534,18 @@ weight, its body gently overdriven) and rolls in off the rest of the channel and
 (`crack_far`, 5 takes) it is mostly rumble, the clap a soft knock under a deep, long roll; a flicker in the cloud
 (`rumble`, 5 takes, none in the seconds round the finale nor within 0.4 s of a bolt's) is a long, soft roll high up,
 narrow and dark, under the bolts. Each is late by the distance (343 blocks a second), 4 dB quieter each time the
-distance doubles, never starting within 0.15 s of another (it would flam), let down a little (never more than 3 dB)
-while louder thunder still rolls, and a take of its own: the plan picks it (each take is its own event too) and never
+distance doubles, the flurry's small bolts 5.5 dB quieter than the waves', never starting within 0.15 s of another
+(it would flam: bolts heard closer together are one clap, their power added, so the waves' thunder comes thicker and
+louder as they grow), let down a little (never more than 4.4 dB) while louder thunder still rolls, and a take of its own: the plan picks it (each take is its own event too) and never
 one of the last two of its kind, its pitch spread 0.9-1.06. The storm builds out of a hush (the wind rising in gusts, a low
 pressure swell, leaves stirring, far rolls, the first heavy drops); the wind (a buffet, a rush, a howl climbing with
 each gust, leaves thrashing) and the rain (a wide wash of drops, near drops ticking and plipping, heavier ones on the
-ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. The finale is a long tearing rip of many strokes, a huge crack, three tonal blows
-overdriven like a blast recorded too close, the discharge fizzing and a roll dying over twelve seconds. Each funnel's
+ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. The finale (modelled on measurements of a real close strike's
+recording, none of it used) starts 1.2 s before its crack with the last waves' cracks stacking up faster and louder,
+the air fizzing and the near channels' tearing; then eight channels' crack at once, a ragged cluster of fronts over
+~30 ms, heaviest at 80-250 Hz and falling ~6 dB an octave above, its top gone in under a second; a deep tonal boom (64
+Hz falling to 31, its harmonics on it) with its body gently overdriven and held about a second; the roll swelling
+again ~2.3 s in and dying over fifteen seconds; debris raining down. Each funnel's
 roar (mono, a deep rumble, the freight-train roar boiling over it, debris rattling in it) is played where the funnel is
 every second, three-second copies whose constant-power windows overlap into one steady roar that follows it.
 `python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60, 150, 500 and 1500 blocks off, mixed
@@ -649,7 +660,8 @@ the lowest ground round each track sample, smoothed along it). The bolts are dra
 projected root and foot: a faint stepped leader creeping down for a few frames, then the return stroke lighting the
 whole channel at once and two to four re-strokes over a few tenths of a second, each several frames long at 60 fps;
 the channel kinked at four scales (piecewise-linear noise, so it bends sharply), a thin white-violet core in a wide
-bloom, five forks branching down and fading; a few positive bolts from the anvil, brighter; spider lightning crawling
+bloom, five forks branching down and fading; the flurry's thinner and dimmer (`sc_size`), the last waves' roots
+drawn in under the wall cloud's middle (`sc_conv`); only the bolts due looked at, from the table's per-second index; a few positive bolts from the anvil, brighter; spider lightning crawling
 along the cloud's base with the flickers; all hidden by what stands in front. QUALITY FAST marches the cloud, the rain and the funnels at half size: at 1920x1080 FAST costs
 about 1.8 to 2.8 ms and FULL 2.3 to 8.3 ms (the most under the cloud near the end of the storm).
 
