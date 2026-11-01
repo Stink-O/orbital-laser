@@ -69,7 +69,15 @@ const LOCK: Rect = Rect { x: LEFT_X, y: HUD.y, w: MSG.w, h: MSG.h };
 /// Characters the seed's field holds (seeds run 1 to 997).
 const SEED_CHARS: usize = 3;
 /// The impact frames' row's buttons, as the blast sound's.
-const IMPACT_FX: [&str; 2] = ["ON", "OFF"];
+const IMPACT_FX: [&str; 4] = ["OFF", "KANADA", "BLACK FLASH", "CINEMATIC"];
+/// The impact frames' row: its label, then a button a look (and OFF), each as wide as its name.
+const IMPACT_LABEL_W: f32 = 58.0;
+const IMPACT_W: [f32; 4] = [30.0, 46.0, 68.0, 60.0];
+fn impact_button(k: usize) -> Rect {
+    let w = IMPACT_LABEL_W + IMPACT_W.iter().sum::<f32>() + BTN_GAP * 3.0;
+    let x = -w / 2.0 + IMPACT_LABEL_W + IMPACT_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
+    Rect { x, y: ROW_Y, w: IMPACT_W[k], h: BTN_H }
+}
 /// The flying speed's row over the title: the bar (a click along it sets the speed) and the field a speed is typed in.
 const FLY_Y: f32 = -R_OUT - 52.0;
 const BAR: Rect = Rect { x: -56.0, y: FLY_Y, w: 106.0, h: 12.0 };
@@ -304,10 +312,17 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
     if inside(&FIELD, x, y) {
         return Some(Spot::FlyField);
     }
-    if rows == Rows::Sound || rows == Rows::Impact {
+    if rows == Rows::Sound {
         for k in 0..SOUNDS.len() {
             if inside(&sound_button(k), x, y) {
-                return Some(if rows == Rows::Sound { Spot::Sound(k) } else { Spot::Impact(k) });
+                return Some(Spot::Sound(k));
+            }
+        }
+    }
+    if rows == Rows::Impact {
+        for k in 0..IMPACT_FX.len() {
+            if inside(&impact_button(k), x, y) {
+                return Some(Spot::Impact(k));
             }
         }
     }
@@ -444,7 +459,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: bool, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: usize, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -565,11 +580,11 @@ impl Wheel {
         // (the Rod's: its impact frames on or off, the one picked lit in its colour)
         if let Some(rl) = row.filter(|&i| LASERS[i].key == "rod") {
             let ms = LASERS[rl];
-            let b0 = sound_button(0);
-            text(&mut out, "IMPACT FX", b0.x - SOUND_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
+            let b0 = impact_button(0);
+            text(&mut out, "IMPACT FX", b0.x - IMPACT_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
             for (k, name) in IMPACT_FX.iter().enumerate() {
-                let b = sound_button(k);
-                let chosen = (k == 0) == impact;
+                let b = impact_button(k);
+                let chosen = k == impact;
                 let hovered = self.hover == Some(Spot::Impact(k));
                 out.push(Draw::Fill((b, if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 })));
                 let rim = if chosen { 2.0 } else { 1.0 };
@@ -616,8 +631,10 @@ impl Wheel {
             Some(Spot::Messages) => ("Strike messages on or off".to_string(), 0x8C93A0),
             Some(Spot::Hud) => ("Status panel on or off".to_string(), 0x8C93A0),
             Some(Spot::Quality) => ("Payload, Nuke and Rod smoke: FAST half size, FULL all".to_string(), 0x8C93A0),
-            Some(Spot::Impact(0)) => ("Impact frames on: brief stark flashes as the Rod strikes".to_string(), 0x8C93A0),
-            Some(Spot::Impact(_)) => ("Impact frames off: no flashes as the Rod strikes".to_string(), 0x8C93A0),
+            Some(Spot::Impact(0)) => ("Impact frames off: no flashes as the Rod strikes".to_string(), 0x8C93A0),
+            Some(Spot::Impact(1)) => ("Kanada: silhouettes, thick lines, a gold negative".to_string(), 0x8C93A0),
+            Some(Spot::Impact(2)) => ("Black Flash: red and black, black lightning".to_string(), 0x8C93A0),
+            Some(Spot::Impact(_)) => ("Cinematic: a white-out and a shockwave ring".to_string(), 0x8C93A0),
             Some(Spot::Knock) => ("The Nuke's and the Rod's push on you on or off".to_string(), 0x8C93A0),
             Some(Spot::Follow) => ("Camera chases the Nuke's or Payload's bomb down".to_string(), 0x8C93A0),
             Some(Spot::SeedField) => (
@@ -940,7 +957,7 @@ mod tests {
             assert_eq!(w.hover, Some(Spot::Sound(1)));
             assert_eq!(w.rows(other), Rows::Sound);
             // (its own hint under the ring)
-            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, true, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
+            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, 1, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
             assert!(hint, "{key}");
             // (and where a ship's buttons would be, nothing of theirs)
             let b = button(1, 0);
@@ -950,7 +967,7 @@ mod tests {
             assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Sound);
             let lit = |alt: [bool; 2]| -> Vec<u32> {
                 Wheel::on_page(0, 1.0)
-                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, true, true, false, false, None)
+                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, 1, true, false, false, None)
                     .into_iter()
                     .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                     .collect()
@@ -1011,7 +1028,7 @@ mod layout_dump {
             let i = idx(laser);
             let mut w = Wheel::on_page(page_of(i), 3.5);
             w.striking = striking;
-            let draws = w.draws(i, true, false, false, 0, 0, &[0; 16], &[false; 2], true, true, false, true, false, Some(288));
+            let draws = w.draws(i, true, false, false, 0, 0, &[0; 16], &[false; 2], true, 1, false, true, false, Some(288));
             let mut out = String::new();
             for d in draws {
                 match d {

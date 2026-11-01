@@ -78,7 +78,8 @@ laser, command, capability and timing). This file is the short, factual version 
   frames at 60 while hard cuts of 2–3 frames each play (Kanada style, `RD_IF_STYLE` 1: black silhouettes and thick
   converging lines on white, a 3x close-up in negative with gold lines, gold and umber two-tone), the camera punching
   in and shaking per cut, then a zoom blur with a colour split and a glow as it lets go and catches up over 0.35 s
-  (styles 0, Black Flash, and 2, cinematic, are kept: `tools/preview.py rod T --set rdif=N`); params[15] + 2 turns
+  (the look is the player's: `/orbital impactframes kanada|blackflash|cinematic|off`, the wheel's IMPACT FX row,
+  sent as params[15] / 4 = 1 + `RD_IF_STYLE`'s number, read by `rd_if_style`; the preview's `--set rdif=N` sets the default); params[15] + 2 turns
   them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.

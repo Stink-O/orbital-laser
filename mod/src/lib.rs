@@ -145,6 +145,10 @@ struct Strike {
     sounds: std::collections::BTreeSet<String>,
 }
 
+/// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
+const IMPACT_STYLES: [&str; 3] = ["blackflash", "kanada", "cinematic"];
+const IMPACT_ORDER: [u8; 3] = [1, 0, 2];
+
 /// How many looks a strike's seed picks from (1 to SEEDS).
 const SEEDS: u32 = 997;
 
@@ -229,6 +233,7 @@ struct Settings {
     follow: bool,
     follow_distance: f64,
     seed_lock: Option<u32>,
+    impact_style: u8,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -281,6 +286,9 @@ struct Orbital {
     /// The Rod from God's impact frames (`/orbital impactframes`, the wheel's IMPACT FX switch): its stark full-screen
     /// flash frames as it strikes, on (the default) or off.
     impact: bool,
+    /// Which look the Rod's impact frames take (rod.wgsl's RD_IF_STYLE numbering: 0 Black Flash, 1 Kanada, 2
+    /// cinematic), `/orbital impactframes kanada|blackflash|cinematic`, the wheel's IMPACT FX row.
+    impact_style: u8,
     /// The Nuke's and the Rod's knockback on the player (`/orbital knockback`, the wheel's KNOCKBACK switch): off leaves
     /// out their `Act::Shove` (the camera's jolt stays).
     knock: bool,
@@ -332,7 +340,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock } = settings;
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
             compiled: None,
@@ -361,6 +369,7 @@ impl Orbital {
             blast_alt,
             fast,
             impact,
+            impact_style,
             knock,
             follow,
             following: None,
@@ -395,7 +404,7 @@ impl Orbital {
             if self.blast_alt[0] { "alt" } else { "main" },
             if self.blast_alt[1] { "alt" } else { "main" },
             if self.fast { "fast" } else { "full" },
-            if self.impact { "on" } else { "off" },
+            if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" },
             if self.knock { "on" } else { "off" },
             if self.follow { "on" } else { "off" },
             self.follow_distance,
@@ -427,6 +436,7 @@ impl Orbital {
         let mut blast_alt = [false; 2];
         let mut fast = true;
         let mut impact = true;
+        let mut impact_style = 1u8;
         let mut knock = true;
         let mut follow = false;
         let mut follow_distance = follow::DISTANCE;
@@ -446,7 +456,12 @@ impl Orbital {
                     blast_alt[wheel::SOUND_LASERS.iter().position(|s| s.1 == k).unwrap_or(0)] = v == "alt";
                 }
                 Some(("quality", v)) => fast = v != "full",
-                Some(("impactframes", v)) => impact = v != "off",
+                Some(("impactframes", v)) => {
+                    impact = v != "off";
+                    if let Some(i) = IMPACT_STYLES.iter().position(|&s| s == v) {
+                        impact_style = i as u8;
+                    }
+                }
                 Some(("knockback", v)) => knock = v != "off",
                 Some(("follow", v)) => follow = v == "on",
                 Some(("followdistance", v)) => {
@@ -461,7 +476,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -537,7 +552,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
         }
     }
     fn open_wheel(&mut self) {
@@ -665,7 +680,10 @@ impl Orbital {
                 self.show_wheel();
             }
             Some(wheel::Spot::Impact(k)) => {
-                self.set_impact(k == 0);
+                if k > 0 {
+                    self.impact_style = IMPACT_ORDER[(k - 1).min(2)];
+                }
+                self.set_impact(k > 0);
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
@@ -761,7 +779,7 @@ impl Orbital {
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
     /// shadow off`), and for the Rod from God 2 more if its impact frames are.
     fn flags_of(&self, index: u32) -> f32 {
-        f32::from(u8::from(self.shadow_off)) + if index == 11 && !self.impact { 2.0 } else { 0.0 }
+        f32::from(u8::from(self.shadow_off)) + if index == 11 { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
     /// ahead of the next, as the passes are).
@@ -1360,6 +1378,11 @@ impl Mod for Orbital {
                 self.set_impact(v == "on");
                 Ok(Some(format!("Impact frames {v} (the Rod from God's stark flash frames as it strikes)")))
             }
+            (Some("impactframes"), Some(v)) if IMPACT_STYLES.contains(&v) => {
+                self.impact_style = IMPACT_STYLES.iter().position(|&s| s == v).unwrap_or(1) as u8;
+                self.set_impact(true);
+                Ok(Some(format!("Impact frames: {v}")))
+            }
             (Some("seed"), Some("random")) => {
                 self.seed_lock = None;
                 self.save();
@@ -1402,7 +1425,7 @@ impl Mod for Orbital {
                 _ => Err(format!("/orbital follow distance N ({} to {} blocks)", follow::DISTANCE_MIN, follow::DISTANCE_MAX)),
             },
             (Some("follow"), None) => Ok(Some(format!("Follow camera: {}, {} blocks out (/orbital follow on|off, /orbital follow distance N)", if self.follow { "on" } else { "off" }, self.follow_distance))),
-            (Some("impactframes"), None) => Ok(Some(format!("Impact frames: {} (/orbital impactframes on or off)", if self.impact { "on" } else { "off" }))),
+            (Some("impactframes"), None) => Ok(Some(format!("Impact frames: {} (/orbital impactframes kanada, blackflash, cinematic or off)", if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" }))),
             (Some("shadow"), Some(v @ ("on" | "off"))) => {
                 self.shadow_off = v == "off";
                 let flags = |o: &Self, i: f32| o.flags_of(i as u32);
@@ -1962,6 +1985,11 @@ mod stress {
         assert!(!kept.knock && kept.follow && kept.follow_distance == 90.0);
         let plain = Orbital::parse("followdistance=nonsense");
         assert_eq!(Orbital::parse("seed=412").seed_lock, Some(412));
+        let o = Orbital::new(Orbital::parse("impactframes=cinematic"));
+        assert!(o.impact && o.impact_style == 2 && o.flags_of(11) == 12.0);
+        let o = Orbital::new(Orbital::parse("impactframes=off"));
+        assert!(!o.impact && o.impact_style == 1 && o.flags_of(11) == 2.0);
+        assert_eq!(Orbital::parse("impactframes=on").impact_style, 1);
         assert_eq!(Orbital::parse("seed=random").seed_lock, None);
         assert_eq!(Orbital::parse("seed=5000").seed_lock, None);
         assert!(plain.knock && !plain.follow && plain.follow_distance == follow::DISTANCE);

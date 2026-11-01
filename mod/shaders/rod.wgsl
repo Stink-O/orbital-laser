@@ -1582,12 +1582,17 @@ const RD_IF_JUMP: f32 = 0.08;      // from this far into the burst (its first wh
 const RD_IF_END: f32 = 1.6;        // the frames and the glow after them done this long after it strikes
 const RD_IF_ROD: vec3<f32> = vec3<f32>(0.05, 0.045, 0.05);
 fn rd_if_on() -> bool {
-    return frame.mod_params[3].w < 1.5;
+    return ((u32(frame.mod_params[3].w + 0.5) >> 1u) & 1u) == 0u;
+}
+// The look picked in the game (params[15] / 4: 1 + RD_IF_STYLE's numbering; 0, none sent, RD_IF_STYLE's own).
+fn rd_if_style() -> i32 {
+    let s = i32((u32(frame.mod_params[3].w + 0.5) >> 2u) & 3u);
+    return select(s - 1, RD_IF_STYLE, s == 0);
 }
 // How long the action holds: thirteen frames at 60 a second, twelve, fourteen (each cut ends half a frame early, so
 // that a frame drawn on the beat falls in the cut that starts there).
 fn rd_if_hold() -> f32 {
-    return (select(select(14.0, 12.0, RD_IF_STYLE == 1), 13.0, RD_IF_STYLE == 0) - 0.5) / 60.0;
+    return (select(select(14.0, 12.0, rd_if_style() == 1), 13.0, rd_if_style() == 0) - 0.5) / 60.0;
 }
 // The pass's clock: now(), but held on the moment of contact through the impact frames, then catching up.
 fn rd_clock() -> f32 {
@@ -1615,14 +1620,14 @@ fn rd_if_cut(a: f32) -> vec4<f32> {
         return vec4<f32>(-1.0, 1.0 + 0.12 * exp(-s / 0.05), 0.014 * exp(-s / 0.09), 9.0);
     }
     let f = a * 60.0 + 0.5;                                    // (frames since it struck, to the nearest)
-    if (RD_IF_STYLE == 0) {
+    if (rd_if_style() == 0) {
         if (f < 3.0) { return vec4<f32>(0.0, 1.0, 0.012, 1.0); }
         if (f < 6.0) { return vec4<f32>(1.0, 3.0, 0.004, 2.0); }
         if (f < 8.0) { return vec4<f32>(0.0, 1.35, 0.016, 3.0); }
         if (f < 11.0) { return vec4<f32>(2.0, 1.12, 0.007, 3.0); }
         return vec4<f32>(1.0, 1.9, 0.01, 4.0);
     }
-    if (RD_IF_STYLE == 1) {
+    if (rd_if_style() == 1) {
         if (f < 2.0) { return vec4<f32>(0.0, 1.06, 0.01, 1.0); }
         if (f < 5.0) { return vec4<f32>(1.0, 3.0, 0.004, 2.0); }
         if (f < 7.0) { return vec4<f32>(2.0, 1.6, 0.012, 3.0); }
@@ -1817,8 +1822,8 @@ fn rd_impact(col: vec3<f32>, uv: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) ->
         if (bl > 0.1) {
             c = rd_if_blur(c, uv, P, 0.35 * bl, 0.06 * bl, rd_clock() - PL_HIT);
         }
-        let tint = select(select(vec3<f32>(1.0, 0.86, 0.68), vec3<f32>(1.0, 0.74, 0.38), RD_IF_STYLE == 1), vec3<f32>(1.0, 0.22, 0.16), RD_IF_STYLE == 0);
-        let tau = select(0.35, 0.6, RD_IF_STYLE == 2);
+        let tint = select(select(vec3<f32>(1.0, 0.86, 0.68), vec3<f32>(1.0, 0.74, 0.38), rd_if_style() == 1), vec3<f32>(1.0, 0.22, 0.16), rd_if_style() == 0);
+        let tau = select(0.35, 0.6, rd_if_style() == 2);
         let g = exp(-s / tau) * smoothstep(RD_IF_END, RD_IF_END - 0.4, a);
         return c + tint * g * (0.03 + 0.7 * exp(-r / 0.18));
     }
@@ -1826,7 +1831,7 @@ fn rd_impact(col: vec3<f32>, uv: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) ->
     let b = u32(cut.w);
     let rod = rd_if_rod(uv, 0.0);
     let rim = rd_if_rim(uv) * (1.0 - rod);
-    if (RD_IF_STYLE == 0) {
+    if (rd_if_style() == 0) {
         // ---- the black flash
         let bo = rd_if_bolts(q, b, seed);
         if (kind == 2) {
@@ -1853,7 +1858,7 @@ fn rd_impact(col: vec3<f32>, uv: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) ->
         c = mix(c, vec3<f32>(1.4, 1.2, 1.1), bo.z);
         return c * (1.0 - core) * (1.0 - rod * (1.0 - bo.x));
     }
-    if (RD_IF_STYLE == 1) {
+    if (rd_if_style() == 1) {
         // ---- Kanada
         let l = rd_if_focus(q, b, seed, 40.0, select(0.8, 0.65, kind == 1)) * (1.0 - rod) * (1.0 - rim);
         let core = rd_if_core(qj, 0.022);
