@@ -286,7 +286,8 @@ The wheel also has:
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital impactframes on\|off` | the Rod from God's impact frames (rapid full-screen flashes); also the wheel's IMPACT FX switch |
 | `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays); also the wheel's KNOCKBACK switch |
-| `/orbital follow on\|off` | the follow camera: a Nuke or a Payload makes you a spectator and the camera chases the bomb down, pulls out to a wide spot before it bursts, holds on the cloud, then puts you back where you stood; also the wheel's FOLLOW switch |
+| `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
+| `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
 | `/orbital supercell` | loads the Supercell |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |

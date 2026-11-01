@@ -1,86 +1,57 @@
-//! The follow camera (`/orbital follow on`, the wheel's FOLLOW switch): as a Nuke or a Payload fires, the player is
-//! made a spectator and moved every frame (`tp`, from the frame hook, so the camera moves at the frame rate, not the
-//! tick's) along a path worked out from the bomb's own (`strike::bomb_path`, the one the pass draws it on):
+//! The follow camera (`/orbital follow on`, the wheel's FOLLOW switch): an orbit camera round the Nuke's or the
+//! Payload's bomb. The player's own mouse sets the angle: the camera sits `distance` blocks from the bomb straight back
+//! along the way the player looks, so turning the view orbits it, the bomb staying in the middle of the picture. The
+//! mod never turns the view; it only moves the player.
 //!
-//! 1. a beat of the player's own view as it fires, then a cut to just behind and over the bomb, high in the sky
-//!    where it shows (still there until it does);
-//! 2. the chase: behind it and a little above, looking past it at the land it comes down on, all the way through its
-//!    arc over into the dive;
-//! 3. pulled back and out, well clear before it bursts, to a wide spot on the side it came down from (so the view
-//!    turns only as far as from the dive to level), the burst low in the frame;
-//! 4. held there, slowly backing off and tilting up as the cloud climbs;
-//! 5. then the player put back where they stood, looking where they looked, in the game mode they were in.
+//! It moves them as the game moves a player itself: a kick to their velocity each tick (`world.push-player`, added on
+//! the client, as an explosion's knockback is), so the game's own movement carries them and its frame interpolation
+//! draws it smoothly. (A `tp` a frame, as this used to be, runs on the integrated server's thread between its ticks and
+//! comes back to the window as a position packet that snaps the player, `previous_position` and all, and turns them:
+//! a step every tick or two out of time with the frames, the bomb jumping about in the picture.) The kick is worked out
+//! from where they are, and how they moved on the tick before, to land them on the orbit's next point: the air's drag
+//! and gravity, or flight's, taken off (which of the two is read from how they moved); a tick their chunk isn't ready
+//! and the game holds them still is seen and allowed for.
 //!
-//! The game mode is kept on the player as a tag (`orbital_gm_*`), set by `execute if entity @s[gamemode=...]` as it
-//! starts; with none found it goes back to creative.
-
+//! The camera keeps to the land already loaded round where the player stood (a player only moves where their chunk is
+//! loaded, and every chunk further out would have to be generated, sent and drawn, and the far terrain sampled anew,
+//! as the old one's trip 2.6 km out and a kilometre up did): until the bomb comes within `REACH` of them the view is
+//! their own, free to watch it streak in; then the camera flies out to the orbit, rides it down, backs off as the burst
+//! nears (never inside the blast), orbits the fireball and the cloud, and at the end the player is put back where they
+//! stood (one `tp` keeping their view: `~ ~`).
 use crate::strike::BombPath;
 
-/// When each part starts and ends (strike seconds), and the distances, for the Nuke's bomb or the Payload's.
-struct Shot {
-    /// The cut from the player's view to the chase.
-    cut: f64,
-    /// The pull out to the wide spot.
-    out: (f64, f64),
-    /// When the player is put back.
-    end: f64,
-    /// The chase: this far behind the bomb (along its path), this far over it, looking at a point this far ahead.
-    behind: f64,
-    over: f64,
-    ahead: f64,
-    /// The wide spot: this far from the target (on the side the bomb came down from), this high over the higher of the
-    /// target's ground and the player's feet, looking at this height over the target's ground; and how much further off,
-    /// higher and higher it looks once the camera has backed off, `back` seconds after the burst.
-    wide: f64,
-    high: f64,
-    look: f64,
-    more: (f64, f64, f64),
-    back: f64,
-}
-
-const NUKE: Shot = Shot {
-    cut: 0.4,
-    out: (8.6, 10.7),
-    end: 40.0,
-    behind: 34.0,
-    over: 9.0,
-    ahead: 25.0,
-    wide: 430.0,
-    high: 80.0,
-    look: 95.0,
-    more: (150.0, 45.0, 115.0),
-    back: 22.0,
-};
-const PAYLOAD: Shot = Shot {
-    cut: 0.4,
-    out: (11.6, 13.4),
-    end: 32.0,
-    behind: 26.0,
-    over: 7.0,
-    ahead: 20.0,
-    wide: 230.0,
-    high: 45.0,
-    look: 40.0,
-    more: (80.0, 25.0, 70.0),
-    back: 18.0,
-};
-
+/// The orbit's distance from the bomb unless `/orbital follow distance` sets another.
+pub const DISTANCE: f64 = 70.0;
+pub const DISTANCE_MIN: f64 = 10.0;
+pub const DISTANCE_MAX: f64 = 400.0;
+/// How near the bomb comes (level, from where the player stood) before the camera leaves them for it.
+const REACH: f64 = 440.0;
+/// How long the flight out to the orbit takes.
+const JOIN: f64 = 1.6;
 /// The player's eyes over their feet.
 const EYE: f64 = 1.62;
+/// The most one kick may give (the game takes 4 a call; a tick takes several).
+const KICK: f64 = 3.9;
+/// The most kicks a tick (so no more than 117 blocks a tick, whatever goes wrong).
+const KICKS: usize = 30;
 
-pub struct Follow {
-    path: BombPath,
-    shot: &'static Shot,
-    /// Where the player stood and looked as it fired.
-    feet0: [f64; 3],
-    yaw0: f32,
-    pitch0: f32,
-    /// Level, from the target towards the wide spot, and the wide spot's height.
-    u: [f64; 3],
-    base: f64,
-    /// The yaw last sent, so the next is sent the same way round (no jump from 180 to -180).
-    last_yaw: f32,
+/// How the orbit backs off for each bomb: from `safe_from` seconds before it bursts to `safe_by` before, out to `safe`
+/// (or the orbit's own distance, if more); then `grow` times that as the cloud climbs, `settle` seconds after the burst.
+/// The cloud's middle (what is orbited after the burst) rises from `low` to `high` over the ground, `settle` seconds
+/// after; the camera stays `floor` over the target's ground at least; the player is put back at `end`.
+struct Shot {
+    safe_from: f64,
+    safe_by: f64,
+    safe: f64,
+    grow: f64,
+    settle: f64,
+    low: f64,
+    high: f64,
+    floor: f64,
+    end: f64,
 }
+const NUKE: Shot = Shot { safe_from: 2.6, safe_by: 0.3, safe: 380.0, grow: 1.3, settle: 22.0, low: 12.0, high: 200.0, floor: 10.0, end: 40.0 };
+const PAYLOAD: Shot = Shot { safe_from: 1.6, safe_by: 0.2, safe: 170.0, grow: 1.25, settle: 18.0, low: 4.0, high: 90.0, floor: 8.0, end: 32.0 };
 
 fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
     [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
@@ -88,12 +59,11 @@ fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     add(a, b, -1.0)
 }
-fn norm(a: [f64; 3]) -> [f64; 3] {
-    let l = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
-    if l < 1e-9 { [0.0, 0.0, 1.0] } else { [a[0] / l, a[1] / l, a[2] / l] }
-}
 fn lerp(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
     add(a, sub(b, a), k)
+}
+fn len(a: [f64; 3]) -> f64 {
+    (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt()
 }
 /// 0 to 1 from `a` to `b`, eased in and out with no jerk at either end.
 fn ease(a: f64, b: f64, t: f64) -> f64 {
@@ -101,109 +71,144 @@ fn ease(a: f64, b: f64, t: f64) -> f64 {
     x * x * x * (x * (6.0 * x - 15.0) + 10.0)
 }
 /// The way yaw and pitch look (the game's: yaw 0 looks along +z, 90 along -x; pitch 90 straight down).
-fn dir_of(yaw: f32, pitch: f32) -> [f64; 3] {
+pub fn look(yaw: f32, pitch: f32) -> [f64; 3] {
     let (y, p) = (f64::from(yaw).to_radians(), f64::from(pitch).to_radians());
     [-y.sin() * p.cos(), -p.sin(), y.cos() * p.cos()]
 }
-fn yaw_pitch(d: [f64; 3]) -> (f32, f32) {
-    let d = norm(d);
-    ((-d[0]).atan2(d[2]).to_degrees() as f32, (-d[1].clamp(-1.0, 1.0).asin().to_degrees()) as f32)
+
+/// The player's motion as the game works it out after it moves them (`Player.travel`): the air's drag (0.91 level),
+/// and up and down gravity and drag, or in creative flight 0.6 of it kept.
+pub fn drag(v: [f64; 3], flying: bool) -> [f64; 3] {
+    [v[0] * 0.91, if flying { v[1] * 0.6 } else { (v[1] - 0.08) * 0.98 }, v[2] * 0.91]
+}
+
+pub struct Follow {
+    path: BombPath,
+    shot: &'static Shot,
+    /// The orbit's distance.
+    distance: f64,
+    /// Where the player stood as it fired, and when the camera leaves them for the bomb.
+    feet0: [f64; 3],
+    join: f64,
+    /// The eye the flight out starts from (where the player is as it starts).
+    from: Option<[f64; 3]>,
+    /// The controller: where the player was a tick ago, how they moved then, the kick given then, what their
+    /// velocity is thought to be now, and whether they fly.
+    last: Option<[f64; 3]>,
+    moved: Option<[f64; 3]>,
+    kick: [f64; 3],
+    velocity: [f64; 3],
+    flying: bool,
 }
 
 impl Follow {
-    /// A follow of `path`'s bomb, the player standing at `feet` looking `yaw`, `pitch` as it fires.
-    pub fn new(path: BombPath, feet: [f64; 3], yaw: f32, pitch: f32) -> Follow {
+    /// A follow of `path`'s bomb at `distance`, the player standing at `feet` as it fires.
+    pub fn new(path: BombPath, feet: [f64; 3], distance: f64) -> Follow {
         let shot = if path.big { &NUKE } else { &PAYLOAD };
-        let g = path.ground;
-        let base = g[1].max(feet[1]) + shot.high;
-        let mut f = Follow { path, shot, feet0: feet, yaw0: yaw, pitch0: pitch, u: [0.0, 0.0, 1.0], base, last_yaw: yaw };
-        // (the wide spot on the side the bomb comes down from, where the chase is as it pulls out; else the player's)
-        let b = f.bomb(shot.out.0);
-        let (dx, dz) = (b[0] - g[0], b[2] - g[2]);
-        f.u = if dx.hypot(dz) > 1.0 { norm([dx, 0.0, dz]) } else { norm([feet[0] - g[0], 0.0, feet[2] - g[2]]) };
-        f
+        // (the camera leaves the player once the bomb is within REACH of them, level; at the latest well before it
+        // bursts)
+        let near = |t: f64| {
+            let b = Self::bomb_of(&path, t);
+            (b[0] - feet[0]).hypot(b[2] - feet[2]) <= REACH
+        };
+        let latest = path.hit - shot.safe_from - JOIN;
+        let mut join = latest;
+        let mut t = path.seen;
+        while t < latest {
+            if near(t) {
+                join = t;
+                break;
+            }
+            t += 0.05;
+        }
+        Follow { path, shot, distance: distance.clamp(DISTANCE_MIN, DISTANCE_MAX), feet0: feet, join, from: None, last: None, moved: None, kick: [0.0; 3], velocity: [0.0; 3], flying: false }
     }
-    /// Where the bomb is at strike time `t` (where it shows before then, where it bursts after).
-    fn bomb(&self, t: f64) -> [f64; 3] {
-        let p = &self.path.pts;
-        let u = ((t - self.path.seen) / self.path.dt).clamp(0.0, (p.len() - 1) as f64);
+    fn bomb_of(path: &BombPath, t: f64) -> [f64; 3] {
+        let p = &path.pts;
+        let u = ((t - path.seen) / path.dt).clamp(0.0, (p.len() - 1) as f64);
         let i = (u.floor() as usize).min(p.len().saturating_sub(2));
         lerp(p[i], p[(i + 1).min(p.len() - 1)], u - i as f64)
     }
-    /// The way it is going at `t`.
-    fn heading(&self, t: f64) -> [f64; 3] {
-        let t = t.clamp(self.path.seen + 0.2, self.path.hit);
-        norm(sub(self.bomb(t), self.bomb(t - 0.2)))
-    }
-    /// The chase's eye and the way it looks at `t`.
-    fn chase(&self, t: f64) -> ([f64; 3], [f64; 3]) {
+    /// What the camera orbits at strike time `t`: the bomb, then the fireball rising into the cloud.
+    pub fn centre(&self, t: f64) -> [f64; 3] {
         let s = self.shot;
-        let (b, h) = (self.bomb(t), self.heading(t));
-        let eye = add(add(b, h, -s.behind), [0.0, 1.0, 0.0], s.over);
-        (eye, norm(sub(add(b, h, s.ahead), eye)))
-    }
-    /// The wide spot's eye and the way it looks at `t`, backing off after the burst.
-    fn wide(&self, t: f64) -> ([f64; 3], [f64; 3]) {
-        let s = self.shot;
-        let k = ease(self.path.hit, self.path.hit + s.back, t);
+        if t < self.path.hit {
+            return Self::bomb_of(&self.path, t);
+        }
         let g = self.path.ground;
-        let r = s.wide + s.more.0 * k;
-        let eye = [g[0] + self.u[0] * r, self.base + s.more.1 * k, g[2] + self.u[2] * r];
-        let at = [g[0], g[1] + s.look + s.more.2 * k, g[2]];
-        (eye, norm(sub(at, eye)))
+        let burst = Self::bomb_of(&self.path, self.path.hit);
+        let k = ease(self.path.hit, self.path.hit + s.settle, t);
+        [burst[0], g[1] + s.low + (s.high - s.low) * k, burst[2]]
     }
-    /// Where the eye is and the way it looks at strike time `t`.
-    pub fn pose(&self, t: f64) -> ([f64; 3], [f64; 3]) {
+    /// The orbit's distance at `t`: backing off as the burst nears, further as the cloud climbs.
+    pub fn reach(&self, t: f64) -> f64 {
         let s = self.shot;
-        if t < s.cut {
-            return (add(self.feet0, [0.0, 1.0, 0.0], EYE), dir_of(self.yaw0, self.pitch0));
-        }
-        if t < s.out.0 {
-            return self.chase(t);
-        }
-        if t < s.out.1 {
-            let k = ease(s.out.0, s.out.1, t);
-            let (ce, cd) = self.chase(t);
-            let (we, wd) = self.wide(t);
-            return (lerp(ce, we, k), norm(lerp(cd, wd, k)));
-        }
-        self.wide(t)
+        let h = self.path.hit;
+        let safe = s.safe.max(self.distance);
+        let d = self.distance + (safe - self.distance) * ease(h - s.safe_from, h - s.safe_by, t);
+        d * (1.0 + (s.grow - 1.0) * ease(h, h + s.settle, t))
+    }
+    /// Where the eye goes at `t`, the player looking along `dir`: back from what it orbits, over the ground.
+    pub fn orbit(&self, t: f64, dir: [f64; 3]) -> [f64; 3] {
+        let mut e = add(self.centre(t), dir, -self.reach(t));
+        e[1] = e[1].max(self.path.ground[1] + self.shot.floor);
+        e
     }
     /// Whether it is over by strike time `t`.
     pub fn over(&self, t: f64) -> bool {
         t >= self.shot.end
     }
-    /// The command that puts the camera where it is at `t`.
-    pub fn tp(&mut self, t: f64) -> String {
-        let (eye, d) = self.pose(t);
-        let (mut yaw, pitch) = yaw_pitch(d);
-        yaw += 360.0 * ((self.last_yaw - yaw) / 360.0).round();
-        self.last_yaw = yaw;
-        format!("tp @s {:.4} {:.4} {:.4} {:.3} {:.3}", eye[0], eye[1] - EYE, eye[2], yaw, pitch.clamp(-90.0, 90.0))
+    /// Whether the camera has left the player yet at `t`.
+    pub fn joined(&self, t: f64) -> bool {
+        t >= self.join
     }
-    /// What starts it: the game mode kept as a tag, the player made a spectator.
-    pub fn start() -> Vec<String> {
-        let mut c = vec!["tag @s remove orbital_gm_survival".to_string(), "tag @s remove orbital_gm_adventure".to_string(), "tag @s remove orbital_gm_creative".to_string(), "tag @s remove orbital_gm_spectator".to_string()];
-        for m in ["survival", "adventure", "creative", "spectator"] {
-            c.push(format!("execute if entity @s[gamemode={m}] run tag @s add orbital_gm_{m}"));
+    /// One tick: the player stands at `feet` looking along `dir`, the strike `t` seconds in. The kicks to give them
+    /// (blocks a tick, each within the game's 4) so they are where the orbit is a tick later.
+    pub fn tick(&mut self, t: f64, feet: [f64; 3], dir: [f64; 3]) -> Vec<[f32; 3]> {
+        if !self.joined(t) {
+            return Vec::new();
         }
-        c.push("gamemode spectator".into());
-        c
+        // what they did since the last tick: moved by what they had (thus their velocity now, the drag taken off),
+        // or held still while their chunk wasn't ready (what they had kept, the kick on top)
+        if let Some(last) = self.last {
+            let m = sub(feet, last);
+            let had = add(self.velocity, self.kick, 1.0);
+            if m == [0.0; 3] && len(had) > 1e-3 {
+                self.velocity = had;
+                self.moved = None;
+            } else {
+                // (flying or falling: whichever of the two would have moved them as they did up and down)
+                if let Some(pm) = self.moved {
+                    let fly = drag(pm, true)[1] + self.kick[1];
+                    let fall = drag(pm, false)[1] + self.kick[1];
+                    if (fly - fall).abs() > 0.03 {
+                        self.flying = (m[1] - fly).abs() < (m[1] - fall).abs();
+                    }
+                }
+                self.velocity = drag(m, self.flying);
+                self.moved = Some(m);
+            }
+        }
+        self.last = Some(feet);
+        let from = *self.from.get_or_insert(add(feet, [0.0, EYE, 0.0], 1.0));
+        let next = t + 0.05;
+        let eye = lerp(from, self.orbit(next, dir), ease(self.join, self.join + JOIN, next));
+        let want = sub(sub(eye, [0.0, EYE, 0.0]), feet);
+        let mut kick = sub(want, self.velocity);
+        // (however far off, no more than KICKS a tick)
+        let most = KICK * KICKS as f64;
+        let big = kick.iter().fold(0.0f64, |a, v| a.max(v.abs()));
+        if big > most {
+            kick = kick.map(|v| v * most / big);
+        }
+        self.kick = kick;
+        let n = (big.min(most) / KICK).ceil().max(1.0) as usize;
+        (0..n).map(|_| kick.map(|v| (v / n as f64) as f32)).collect()
     }
-    /// What ends it: the player back where they stood, looking where they looked, in their game mode.
+    /// What ends it: the player back where they stood, their view left as it is.
     pub fn finish(&self) -> Vec<String> {
         let [x, y, z] = self.feet0;
-        let mut c = vec![
-            format!("tp @s {x:.4} {y:.4} {z:.4} {:.3} {:.3}", self.yaw0, self.pitch0),
-            "execute unless entity @s[tag=orbital_gm_survival] unless entity @s[tag=orbital_gm_adventure] unless entity @s[tag=orbital_gm_spectator] run gamemode creative".into(),
-        ];
-        for m in ["survival", "adventure", "spectator"] {
-            c.push(format!("execute if entity @s[tag=orbital_gm_{m}] run gamemode {m}"));
-        }
-        for m in ["survival", "adventure", "creative", "spectator"] {
-            c.push(format!("tag @s remove orbital_gm_{m}"));
-        }
-        c
+        vec![format!("tp @s {x:.4} {y:.4} {z:.4} ~ ~")]
     }
 }
 
@@ -214,93 +219,100 @@ mod tests {
 
     fn follow(key: &str, me: [f64; 3]) -> Follow {
         let target = Target { block: [100, 70, -40], point: [100.5, 71.0, -39.5] };
-        Follow::new(bomb_path(key, &target, 211.0, me).expect("a bomb"), me, 30.0, 10.0)
+        Follow::new(bomb_path(key, &target, 211.0, me).expect("a bomb"), me, DISTANCE)
+    }
+
+    /// A player as the game moves them each tick (their velocity, the kicks added, then moved and dragged), flying or
+    /// not, held still on the ticks `frozen` says (their chunk not ready); looking round as a mouse would.
+    struct Player {
+        feet: [f64; 3],
+        velocity: [f64; 3],
+        flying: bool,
+    }
+    fn play(key: &str, flying: bool, frozen: impl Fn(u32) -> bool, off: f64) -> (Follow, f64, f64) {
+        let me = [400.0, 72.0, -40.0];
+        let mut f = follow(key, me);
+        let mut p = Player { feet: me, velocity: [0.0; 3], flying };
+        let (mut worst, mut nearest) = (0.0f64, f64::MAX);
+        let mut before = look(90.0, 10.0);
+        let mut k = 0u32;
+        loop {
+            k += 1;
+            let t = f64::from(k) * 0.05;
+            if f.over(t) {
+                break;
+            }
+            // the game moves them (unless their chunk isn't ready)
+            if !frozen(k) {
+                p.feet = add(p.feet, p.velocity, 1.0);
+                // (`off`: the game's drag a little other than the mod thinks)
+                p.velocity = drag(p.velocity, p.flying).map(|v| v * (1.0 - off));
+                // (standing on the ground where they stood)
+                if p.feet[1] < me[1] {
+                    p.feet[1] = me[1];
+                    p.velocity[1] = 0.0;
+                }
+            }
+            // the mouse: the view turning round slowly, up and down a little
+            let (yaw, pitch) = (90.0 + 40.0 * (t * 0.3).sin(), 10.0 + 20.0 * (t * 0.5).sin());
+            let dir = look(yaw as f32, pitch as f32);
+            let kicks = f.tick(t, p.feet, dir);
+            let eye = add(p.feet, [0.0, EYE, 0.0], 1.0);
+            if t > f.join + JOIN + 0.2 && !frozen(k) && !frozen(k.saturating_sub(1)) {
+                worst = worst.max(len(sub(eye, f.orbit(t, before))));
+            }
+            before = dir;
+            for kick in kicks {
+                assert!(kick.iter().all(|v| v.abs() <= 4.0));
+                p.velocity = add(p.velocity, kick.map(f64::from), 1.0);
+            }
+            // how near the blast
+            if t >= f.path.hit - 0.1 && t <= f.path.hit + 15.0 {
+                nearest = nearest.min(len(sub(eye, f.centre(f.path.hit))));
+            }
+            // and never far from where they stood (the land loaded round them)
+            assert!((eye[0] - me[0]).hypot(eye[2] - me[2]) < 900.0, "{key} at {t}: {eye:?}");
+        }
+        (f, worst, nearest)
     }
 
     #[test]
-    fn smooth_and_clear_of_the_blast() {
+    fn the_orbit_follows_the_look_and_keeps_clear_of_the_blast() {
         for key in ["nuke", "payload"] {
-            let f = follow(key, [400.0, 72.0, -40.0]);
-            let g = f.path.ground;
-            // (it starts where the player stands, looking where they look)
-            let (e, d) = f.pose(0.0);
-            assert!((e[0] - 400.0).abs() < 1e-6 && (e[1] - 73.62).abs() < 1e-6);
-            let (yaw, pitch) = yaw_pitch(d);
-            assert!((yaw - 30.0).abs() < 0.01 && (pitch - 10.0).abs() < 0.01, "{yaw} {pitch}");
-            // no jump from one frame to the next (at 60 fps), however fast it goes, and the view turns smoothly
-            let dt = 1.0 / 60.0;
-            let mut t = 0.0;
-            let (mut pe, mut pd) = f.pose(0.0);
-            let mut fastest: f64 = 0.0;
-            while t < f.shot.end {
-                t += dt;
-                let (e, d) = f.pose(t);
-                let step = (sub(e, pe)[0].powi(2) + sub(e, pe)[1].powi(2) + sub(e, pe)[2].powi(2)).sqrt();
-                fastest = fastest.max(step);
-                let turn = (d[0] * pd[0] + d[1] * pd[1] + d[2] * pd[2]).clamp(-1.0, 1.0).acos().to_degrees();
-                // (but at the cut)
-                if t - dt >= f.shot.cut {
-                    assert!(step < 40.0, "{key} at {t}: {step} blocks in a frame");
-                    assert!(turn < 1.5, "{key} at {t}: turned {turn} degrees in a frame");
-                }
-                (pe, pd) = (e, d);
+            for flying in [false, true] {
+                let (f, worst, nearest) = play(key, flying, |_| false, 0.0);
+                eprintln!("{key} flying {flying}: joins at {:.2} s, at most {worst:.2} off the orbit, {nearest:.0} from the burst at the nearest", f.join);
+                // (where the eye is against where the orbit wanted it, with the view as it was a tick before)
+                assert!(worst < 3.0, "{key} flying {flying}: {worst} blocks off the orbit");
+                let safe = if key == "nuke" { 350.0 } else { 150.0 };
+                assert!(nearest > safe, "{key}: {nearest} from the burst");
+                assert!(f.join > f.path.seen && f.join < f.path.hit - 2.0, "{key}: joins at {}", f.join);
             }
-            // well clear of the blast from just before it bursts: past the flattened land
-            let clear = if key == "nuke" { 400.0 } else { 200.0 };
-            let (e, _) = f.pose(f.path.hit - 0.3);
-            assert!((e[0] - g[0]).hypot(e[2] - g[2]) > clear, "{key}: {:?}", e);
-            assert!(f.over(f.shot.end) && !f.over(f.shot.end - 1.0));
-            // and in the chase, close behind the bomb, looking near it
-            let t = (f.shot.cut + f.shot.out.0) / 2.0;
-            let (e, d) = f.pose(t);
-            let b = f.bomb(t);
-            let to = norm(sub(b, e));
-            assert!(((b[0] - e[0]).powi(2) + (b[1] - e[1]).powi(2) + (b[2] - e[2]).powi(2)).sqrt() < 50.0);
-            assert!((to[0] * d[0] + to[1] * d[1] + to[2] * d[2]) > 0.9);
-            let _ = fastest;
+        }
+        // held still a few ticks (their chunk not ready): back on the orbit once moving again
+        let (_, worst, _) = play("nuke", false, |k| (180..184).contains(&k), 0.0);
+        assert!(worst < 3.0, "{worst}");
+        // the game's drag 3% other than the mod's: still on the orbit, near enough (it corrects each tick)
+        for off in [-0.03, 0.03] {
+            let (_, worst, _) = play("nuke", true, |_| false, off);
+            eprintln!("drag {off}: at most {worst:.2} off the orbit");
+            assert!(worst < 3.0, "{off}: {worst}");
         }
     }
 
     #[test]
-    fn puts_the_player_back() {
+    fn the_orbit_is_the_look_reversed() {
         let f = follow("nuke", [400.0, 72.0, -40.0]);
-        let s = Follow::start();
-        assert_eq!(s.last().map(String::as_str), Some("gamemode spectator"));
-        let e = f.finish();
-        assert!(e[0].starts_with("tp @s 400.0000 72.0000 -40.0000 30.000 10.000"));
-        assert!(e.iter().any(|c| c.ends_with("run gamemode creative")));
-    }
-}
-
-#[cfg(test)]
-mod profile {
-    use super::*;
-    use crate::strike::{Target, bomb_path};
-    /// The shot, a line every quarter second: where the eye is from the target, how far from the bomb, which way it
-    /// looks, and its fastest move and turn a frame (60 fps) in that quarter (`cargo test --lib follow_profile -- --ignored --nocapture`).
-    #[test]
-    #[ignore]
-    fn follow_profile() {
-        for key in ["nuke", "payload"] {
-            let target = Target { block: [100, 70, -40], point: [100.5, 71.0, -39.5] };
-            let f = Follow::new(bomb_path(key, &target, 211.0, [400.0, 72.0, -40.0]).expect("a bomb"), [400.0, 72.0, -40.0], 30.0, 10.0);
-            let g = f.path.ground;
-            let dt = 1.0 / 60.0;
-            let (mut pe, mut pd) = f.pose(0.0);
-            let (mut ms, mut mt) = (0.0f64, 0.0f64);
-            for i in 1..(f.shot.end / dt) as usize {
-                let t = i as f64 * dt;
-                let (e, d) = f.pose(t);
-                ms = ms.max((sub(e, pe)[0].powi(2) + sub(e, pe)[1].powi(2) + sub(e, pe)[2].powi(2)).sqrt());
-                mt = mt.max((d[0] * pd[0] + d[1] * pd[1] + d[2] * pd[2]).clamp(-1.0, 1.0).acos().to_degrees());
-                (pe, pd) = (e, d);
-                if i % 15 == 0 && t < 16.0 {
-                    let b = f.bomb(t);
-                    let (y, p) = yaw_pitch(d);
-                    println!("{key} {t:5.2} eye {:6.0} {:5.0} {:6.0}  bomb at {:5.0}  look {y:6.1} {p:5.1}  max {ms:5.1} b/f {mt:4.2} deg/f", e[0] - g[0], e[1] - g[1], e[2] - g[2], (sub(b, e)[0].powi(2) + sub(b, e)[1].powi(2) + sub(b, e)[2].powi(2)).sqrt());
-                    (ms, mt) = (0.0, 0.0);
-                }
-            }
+        let t = f.path.hit - 3.0;
+        for (yaw, pitch) in [(0.0, 0.0), (90.0, 30.0), (-135.0, -20.0)] {
+            let d = look(yaw, pitch);
+            let e = f.orbit(t, d);
+            let back = sub(f.centre(t), e);
+            // (along the look, the bomb straight ahead, at the orbit's distance)
+            assert!((len(back) - DISTANCE).abs() < 1e-6);
+            assert!(len(sub(back, d.map(|v| v * DISTANCE))) < 1e-6);
         }
+        // and it only ever moves the player: the one command it gives keeps their view
+        assert!(f.finish()[0].ends_with(" ~ ~"));
     }
 }

@@ -31,6 +31,8 @@ pub mod fake {
         /// Every command run, while a test asks for them (`keep_commands`).
         pub keep_commands: bool,
         pub ran: Vec<String>,
+        /// The kicks given the player (`push-player`).
+        pub pushes: u64,
         pub logs: Vec<String>,
     }
     thread_local! {
@@ -79,7 +81,9 @@ pub mod fake {
             });
         }
         pub fn play_sound(_event: &str, _at: Option<(f64, f64, f64)>, _volume: f32, _pitch: f32) {}
-        pub fn push_player(_x: f32, _y: f32, _z: f32) {}
+        pub fn push_player(_x: f32, _y: f32, _z: f32) {
+            super::with(|w| w.pushes += 1);
+        }
         pub fn edit_blocks(edit: &BlockEdit) {
             super::with(|w| {
                 w.edits += 1;
