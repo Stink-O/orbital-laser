@@ -2015,7 +2015,7 @@ mod tests {
                     assert_eq!(w.len(), RD_FR);
                     table = true;
                 }
-                Act::Later(job) | Act::Soon(job) => {
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
                     ev.extend(job());
                     ev.sort_by(|a, b| b.0.total_cmp(&a.0));
                 }
@@ -2387,7 +2387,7 @@ mod stage_cost {
                         .collect();
                     Some((top, b))
                 }),
-                Act::Later(job) | Act::Soon(job) => {
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
                     let s = std::time::Instant::now();
                     let more = job();
                     out.push((t, s.elapsed().as_secs_f64() * 1000.0, more.len()));

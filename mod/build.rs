@@ -44,5 +44,9 @@ fn main() {
     let r: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_rod_{f}.wgsl"), passbuild::split_pass(&shader, &rod, f))).collect();
     writeln!(rs, "/// The Rod from God's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_ROD: [&str; 2] = [{}];", r.join(", ")).unwrap();
+    let sc = read("supercell.wgsl");
+    let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_supercell_{f}.wgsl"), passbuild::split_pass(&shader, &sc, f))).collect();
+    writeln!(rs, "/// The Supercell's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_SUPERCELL: [&str; 2] = [{}];", c.join(", ")).unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }

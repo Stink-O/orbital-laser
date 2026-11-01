@@ -27,5 +27,13 @@
   "subtitles.orbital.rod.blast_far": "Distant impact",
   "subtitles.orbital.rod.rumble": "Impact rumbles",
   "subtitles.orbital.rod.debris": "Debris rains down",
-  "subtitles.orbital.rod.hum": "Rod hums as it cools"
+  "subtitles.orbital.rod.hum": "Rod hums as it cools",
+  "subtitles.orbital.supercell.buildup": "Storm gathers",
+  "subtitles.orbital.supercell.gusts": "Wind gusts",
+  "subtitles.orbital.supercell.rain": "Heavy rain",
+  "subtitles.orbital.supercell.rumble": "Distant thunder",
+  "subtitles.orbital.supercell.crack": "Thunder cracks",
+  "subtitles.orbital.supercell.crack_far": "Thunder rolls",
+  "subtitles.orbital.supercell.finale": "Colossal thunderclap",
+  "subtitles.orbital.supercell.roar": "Funnel roars"
 }

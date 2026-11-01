@@ -10,6 +10,8 @@ mod rod;
 mod payload;
 mod sh_land;
 mod sinkhole;
+mod storm;
+mod vortex;
 
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
@@ -55,6 +57,9 @@ pub enum Act {
     /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
     /// much work for the one tick it fires in (a mod's tick has a fuel limit).
     Later(Stage),
+    /// As `Later`, but worked out (a stage a tick, its block edits made) even when the strike is stopped before it is
+    /// due: what must not be left undone (the Supercell's fires put out).
+    Cleanup(Stage),
     /// A world change for when the block budget is to spare (after everything `Cmd` queued): what is still standing
     /// high over a blast, which takes long to clear and nothing waits on.
     Spare(String),
@@ -86,6 +91,8 @@ pub struct Blocks {
     /// A landed piece's blocks, due at this strike time: once they are in, the mod tells the pass (its param 14, the
     /// latest such time in), which only then lets the piece go.
     pub landing: Option<f32>,
+    /// Made even when the strike is stopped before it is due (`Act::Cleanup`'s kind of edit: fires put out).
+    pub cleanup: bool,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -563,6 +570,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "rod" {
         return rod::rod_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "supercell" {
+        return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4343,7 +4353,7 @@ mod tests {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
                 Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
-                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
             }
         }
         out
@@ -4356,7 +4366,8 @@ mod tests {
         for laser in crate::lasers::LASERS {
             // (the payload is a bomb, not a beam: it clears only what stood on the land it read, which nothing answers
             // here; strike/payload.rs's tests check it against a forest)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" {
+            // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
@@ -4401,7 +4412,7 @@ mod tests {
             while let Some((t, act)) = ev.pop() {
                 match act {
                     Act::Shake { strength, seconds } => jolts.push((t, strength, seconds)),
-                    Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                    Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
                     _ => {}
                 }
             }
@@ -4975,7 +4986,7 @@ mod tick_budget {
             let (mut later, mut soon) = (0.0f64, 0.0f64);
             while let Some((_, act)) = ev.pop() {
                 let (job, urgent) = match act {
-                    Act::Later(job) => (job, false),
+                    Act::Later(job) | Act::Cleanup(job) => (job, false),
                     Act::Soon(job) => (job, true),
                     _ => continue,
                 };
@@ -4997,7 +5008,7 @@ mod tick_budget {
                 let t0 = std::time::Instant::now();
                 let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 400.0], 0);
                 while let Some((_, act)) = ev.pop() {
-                    if let Act::Later(job) | Act::Soon(job) = act {
+                    if let Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) = act {
                         ev.extend(job());
                     }
                 }
@@ -5035,7 +5046,7 @@ mod tick_budget {
         while let Some((t, a)) = ev.pop() {
             match a {
                 Act::Blocks(b) => out.push((t, *b)),
-                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -5236,8 +5247,8 @@ mod replay {
                     Act::Cmd(c) => { std::hint::black_box(block_cost(&c)); }
                     Act::Spare(c) => spare += block_cost(&c).unwrap_or(1),
                     Act::Soon(job) if worked => urgent.push_back(job),
-                    Act::Later(job) if worked => waiting.push_back(job),
-                    Act::Later(job) | Act::Soon(job) => { out(job, &mut plan, next); worked = true; }
+                    Act::Later(job) | Act::Cleanup(job) if worked => waiting.push_back(job),
+                    Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => { out(job, &mut plan, next); worked = true; }
                     _ => {}
                 }
             }
@@ -5266,7 +5277,7 @@ mod replay {
             match a {
                 Act::Cmd(c) => all.push((t, c, false)),
                 Act::Spare(c) => all.push((t, c, true)),
-                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -5416,7 +5427,7 @@ mod replay {
             match a {
                 Act::Cmd(c) => all.push((t, c, false)),
                 Act::Spare(c) => all.push((t, c, true)),
-                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
                 _ => {}
             }
         }
@@ -5542,8 +5553,8 @@ pub(super) mod sim {
                     Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| answer(x, z, below, above)),
                     Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
                     Act::Soon(job) if worked_out => urgent.push_back((t, job)),
-                    Act::Later(job) if worked_out => waiting.push_back((t, job)),
-                    Act::Later(job) | Act::Soon(job) => {
+                    Act::Later(job) | Act::Cleanup(job) if worked_out => waiting.push_back((t, job)),
+                    Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
                         run(job, t, &mut plan, next, &mut out);
                         worked_out = true;
                     }

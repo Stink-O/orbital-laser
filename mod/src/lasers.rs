@@ -459,7 +459,35 @@ pub const ROD: Laser = Laser {
     particle_b: "particle minecraft:campfire_signal_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
 };
 
-pub const LASERS: [&Laser; 12] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD];
+/// The supercell, planned in `strike::supercell_plan` (strike/storm.rs, its funnels in strike/vortex.rs): no beam. A storm
+/// is called down on the target: a wall cloud and an anvil-topped storm cloud boil up and spread, lightning strikes all
+/// over the land under it (real bolts), funnels wander over the land, then one colossal strike on the target. The
+/// crater fields below are only what the shared tests read: its pits, its tracks and its crater are planned there.
+pub const SUPERCELL: Laser = Laser {
+    key: "supercell",
+    index: 12,
+    title: "SUPERCELL",
+    color: "dark_aqua",
+    rgb: 0x4FB8C8,
+    blurb: "A storm called down: lightning all round, funnels wandering, then one colossal strike.",
+    icon_model: "orbital:supercell_icon",
+    length: 64.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 5,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:blackstone", 1.0)],
+    bowl_floor: ("minecraft:blackstone", 0.0, "minecraft:coarse_dirt"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:electric_spark {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 13] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

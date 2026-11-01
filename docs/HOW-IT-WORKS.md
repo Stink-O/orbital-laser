@@ -184,6 +184,19 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   450). It reaches 1000 blocks. **Photosensitivity:** the impact frames are rapid full-screen flashes; `/orbital
   impactframes off` or the wheel's IMPACT FX switch leaves them out.
 
+- **Supercell** (page three, `/orbital supercell`). A storm called down on the target, no beam. Over nine seconds the sky
+  darkens and a storm cloud boils up over the target and spreads 300 blocks out: a low dark deck, a wall cloud hanging
+  under its middle turning slowly with ragged scud round it, a tower climbing into an anvil that spreads downwind; rain
+  falls out of its base in streaked grey curtains drifting with the wind, a few streaks falling past the eye under it
+  (the pass draws the rain: the world's weather is left alone). From 9.5 s to 42 s 72 real vanilla lightning bolts
+  strike the land under it out to 120 blocks, faster and faster, each drawn by the pass as a branching channel from
+  the cloud's base that re-strikes once or twice, the cloud lit from inside round its root and the land round its foot
+  lit bright, with flickers in the cloud between. Three thin funnels come down out of the wall cloud (13 to 43 s),
+  touch, wander over the land for ten seconds or so in a swirl of dust and lift back up, their roar heard where they
+  are. At 45 s one colossal strike on the target: one thick channel and six joining it, held for two seconds and
+  re-struck again and again, a whiteout, a shockwave racing out over the land at 140 blocks a second with a wall of
+  dust behind it, the crater glowing, a jolt and a shove at the Rod's strength. From 50 s the rain stops and the storm dies away; it ends at 64 s. It reaches 1000 blocks.
+
 All of them:
 
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
@@ -288,6 +301,22 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   crater from 7.05 s, done by about 9 s, the rest out to 250 by about 14 s (at most ~55 chunks a tick); on land far off
   it waits for the chunks to load, and what never loads is left out.
 
+The **Supercell** leaves the land light: at each bolt a small pit a block or two deep (counted from that column's own
+top) lined with blackstone, basalt, tinted glass and obsidian round a block of magma, the sand round it fused to glass and
+the grass charred to coarse dirt and podzol in a ragged ring 4 to 6 out; along each funnel's track (about 4 wide) the
+plants and flowers gone, the leaves torn off the trees up to 24 high, the grass scoured to dirt in streaks and a few
+blocks thrown as falling blocks. The finale goes in with its shockwave, from the middle out: a crater about 70 across
+and 24 deep, fused (its face blackstone, basalt, tinted glass and obsidian, magma at its heart); fulgurites, nine veins
+of glass and magma wandering and forking out through the ground to 55-85 blocks, showing at the top; an overturned rim
+up to 5 high of stone and raw earth; the trees round it blasted (trunks gone under the rim, charred to basalt out to
+70, crowns torn off to 62) and set alight out to 95; plants burnt off to 95, the grass scorched in thinning patches out
+to 112; 60 blocks of the ground thrown out; every mob within 80 killed. With the terrain on the bolts are real (`summon
+minecraft:lightning_bolt`): they light fires and hurt what they hit. The world's weather is left alone: each bolt's fires
+are put out 1.5 s, 5 s and 12 s after it (within 6, 7 and 11 blocks, from 28 under each column's top to 30 over it, so the crowns hanging round a tall trunk are reached),
+and every fire within 150 blocks twice as it ends (the finale's too); those edits and sweeps are still made if the strike
+is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
+goes in through `world.edit-blocks`.
+
 ## Commands
 
 | Command | What it does |
@@ -303,7 +332,8 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital impactframes on`, `/orbital impactframes off` | the Rod from God's impact frames (a split second of stark full-screen flashes as it strikes) on (the default) or off; kept between sessions; also the wheel's IMPACT FX switch, under QUALITY |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke is drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital supercell` | loads the Supercell |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, top left while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -482,6 +512,27 @@ tail (a few seconds of thunder roll, three echoes off far land); cross-faded fro
 blast through that much air (`blast_far`); the rumble rolling in for ~20 s; debris landing within 500 blocks. Every
 layering of them peaks under -1 dBTP.
 
+The Supercell's ([`tools/sounds_storm.py`](../tools/sounds_storm.py)) model the thunder rather than draw it: each
+bolt's channel is a tortuous path from the ground up into the cloud and on along its base, with branches, and every
+few metres of it sends its own short pressure pulse (an N-wave, longer and duller the further it has come), arriving
+as far behind the flash as that bit of the channel is far away and loudest where the channel crosses the line of sight;
+three to five return strokes 40-90 ms apart re-fire it. So a close bolt (`crack`, 6 takes, within 110 blocks) rips
+and cracks bright, then booms (a falling 45-75 Hz fundamental with its harmonics stacked on it, so a phone hears the
+weight) and rolls in off the rest of the channel and the land's echoes; further off (`crack_far`, 5 takes) it is a
+dull clap and a deeper, longer roll; a flicker in the cloud (`rumble`, 5 takes, none in the seconds round the finale)
+is a long, soft roll high up, narrow and dark. Each is late by the distance and let down while the cracks before it
+still roll, so a run of near bolts never piles up. The storm builds out of a hush (the wind rising in gusts, a low
+pressure swell, leaves stirring, far rolls, the first heavy drops); the wind (a buffet, a rush, a howl climbing with
+each gust, leaves thrashing) and the rain (a wide wash of drops, near drops ticking and plipping, heavier ones on the
+ground, a low drumming; the only rain there is, the pass drawing it) overlap through the storm. Vanilla's own thunder
+is stopped as each bolt plays it (a full-scale boom with nothing over 6 kHz, which buried the crack and clipped with
+it); its impact crackle stays. The finale is a long tearing rip of many strokes, a huge crack, three tonal blows
+overdriven like a blast recorded too close, the discharge fizzing and a roll dying over twelve seconds. Each funnel's
+roar (mono, a deep rumble, the freight-train roar boiling over it, debris rattling in it) is played where the funnel is
+every second, three-second copies whose constant-power windows overlap into one steady roar that follows it.
+`python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60, 200, 600 and 1500 blocks off: every
+file's decoded true peak is under -1.15 dBTP and the mixes under -1.5.
+
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
 slope once the world has said them (`world.surface-height`), the waterfalls, where the rim's columns stand under
@@ -573,6 +624,25 @@ pixel, smoothed) into silhouettes, set the rod in them with an outline, and draw
 impact point's place on the screen, a new set each beat; `pl_jolt` punches the picture in on their first beats. At
 1920x1080 FAST costs about 0.5 ms through the fall, 2.6 to 3.2 ms after the impact from 400 blocks and 3.8 to 4.9 from
 150 (inside the plume), FULL 7 to 16 ms.
+
+The Supercell's pass ([`mod/shaders/supercell.wgsl`](../mod/shaders/supercell.wgsl)) reads the bolts, the funnels'
+tracks and the flickers from `sc_table` ([`strike/storm.rs`](../mod/src/strike/storm.rs), the ground under them filled
+in as `world.surface-height` answers). The cloud is one raymarched slab between its base and the anvil's top: a smooth
+body (the deck, the lowered wall cloud, the tower, the anvil) bulged by turning gradient noise and the Payload's
+cauliflower domes up the tower, lit from above by its depth and a look towards the sun, its base green-black, and from
+inside by the three brightest flashes of the moment; the rain is ten samples of curtains under the base, streaked in long bands falling and drifting with the wind, never hiding more than 45% of what is behind, sparse thin streaks falling past an eye under it (more at the edges of the picture), the land under it darkened wet; the
+funnels (the vortex section, `vx_*`) are tapered, curving vortices wound with spiral bands, a turning dust cloud at the
+foot (a condensation funnel tapering from a cone in the wall cloud's base to a rope at the ground, leaning the way it
+goes and writhing in a slow S, wound with striations spinning fastest near the ground; a debris cloud and flung pieces
+whirling round its foot; it lowers out of the cloud with its tip narrowing, the dust kicking up before it touches, and
+ropes out into a thin twisting rope before it lifts; its foot on the land under the trees, `vortex::ground_track`:
+the lowest ground round each track sample, smoothed along it). The bolts are drawn on the picture between their
+projected root and foot: a faint stepped leader creeping down for a few frames, then the return stroke lighting the
+whole channel at once and two to four re-strokes over a few tenths of a second, each several frames long at 60 fps;
+the channel kinked at four scales (piecewise-linear noise, so it bends sharply), a thin white-violet core in a wide
+bloom, five forks branching down and fading; a few positive bolts from the anvil, brighter; spider lightning crawling
+along the cloud's base with the flickers; all hidden by what stands in front. QUALITY FAST marches the cloud, the rain and the funnels at half size: at 1920x1080 FAST costs
+about 1.8 to 2.8 ms and FULL 2.3 to 8.3 ms (the most under the cloud near the end of the storm).
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)

@@ -24,7 +24,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell"]
+# the shader's laser number where it is not the list's place (lasers.rs's index)
+INDEX = {"supercell": 12}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -131,11 +133,24 @@ VIEWS = {
     # the rod standing in its crater, from 90 off and over the rim
     "rdstand": "cx=0 cy=105 cz=100 lx=0.5 ly=55 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
     "rdhole": "cx=0 cy=118 cz=78 lx=0.5 ly=30 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
+    # the supercell (the player 300 blocks south): from the player's spot, from under the cloud by the wall cloud
+    # looking up at it, from 900 off, from high above, close by a funnel (the first of seed 37's), and at night
+    "scplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "scunder": "cx=0 cy=67 cz=90 lx=0.5 ly=120 lz=0.5 flat=1 trees=1 fov=75 reach=90",
+    "scfar": "cx=150 cy=90 cz=900 lx=0.5 ly=160 lz=0.5 flat=1 fov=60 reach=900",
+    "scaerial": "cx=0 cy=700 cz=600 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
+    "scfunnel": "cx=0 cy=68 cz=160 lx=0.5 ly=85 lz=0.5 flat=1 trees=1 fov=60 reach=160",
+    "scnight": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=300 night=1",
+    # the first funnel of seed 37 (13.9 to 29.4 s, wandering about x 25..48, z -12..41) close (~150 off) and far (~400),
+    # over a wood
+    "vxclose": "cx=35 cy=72 cz=165 lx=35 ly=75 lz=15 flat=1 trees=1 fov=60 reach=300",
+    "vxfar": "cx=35 cy=85 cz=415 lx=35 ly=85 lz=15 flat=1 trees=1 fov=45 reach=300",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
                  "payload": "plplayer,plsky,pltop", "nuke": "nkplayer,nkfar,nkclose",
-                 "rod": "rdplayer,rdmid,rdfar"}
+                 "rod": "rdplayer,rdmid,rdfar",
+                 "supercell": "scplayer,scunder,scfar"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Path:
@@ -144,7 +159,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Pat
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
@@ -162,13 +177,13 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
-    if laser in ("payload", "nuke", "rod"):
+    if laser in ("payload", "nuke", "rod", "supercell"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
         env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills,
                    PL_FLUSH="1" if "flush=1" in sets else "0")
-        test = {"nuke": "nk_write_table", "rod": "rd_write_table"}.get(laser, "pl_write_table")
+        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table"}.get(laser, "pl_write_table")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
@@ -216,8 +231,8 @@ def main() -> int:
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
-    common = [f"laser={LASERS.index(a.laser)}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
-    if a.laser in ("payload", "nuke", "rod"):
+    common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
+    if a.laser in ("payload", "nuke", "rod", "supercell"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     shots = []
@@ -227,7 +242,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell") else None
     env = dict(env or os.environ)
     if a.whole:
         env["PREVIEW_WHOLE"] = "1"
