@@ -230,12 +230,14 @@ fn sc_lin(x: f32, s: f32) -> f32 {
 }
 // The channel's sideways kink at u of its way (0 its root, 1 its end), in its lengths: four scales of kinks, the
 // finest every couple of blocks on a bolt of a hundred.
-fn sc_kink(u: f32, s: f32) -> f32 {
-    return 0.11 * sc_lin(u * 4.0, s) + 0.05 * sc_lin(u * 11.0, s + 1.7) + 0.024 * sc_lin(u * 29.0, s + 3.1) + 0.011 * sc_lin(u * 70.0, s + 5.3);
+// (`fq`: how many times longer than a hundred blocks it is: a long bolt kinks as often along its length)
+fn sc_kink(u: f32, s: f32, fq: f32) -> f32 {
+    let v = u * fq;
+    return (0.11 * sc_lin(v * 4.0, s) + 0.05 * sc_lin(v * 11.0, s + 1.7) + 0.024 * sc_lin(v * 29.0, s + 3.1) + 0.011 * sc_lin(v * 70.0, s + 5.3)) / sqrt(fq);
 }
 // One kinked channel on the picture from sa to sb (pixels), `w` its core's half-width there: x its core, y its bloom,
 // z how far along it the nearest point is. The kink is pinned at the end (`pin`: the foot on the ground).
-fn sc_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: bool) -> vec3<f32> {
+fn sc_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: bool, fq: f32) -> vec3<f32> {
     let ab = sb - sa;
     let L = max(length(ab), 1.0);
     let dir = ab / L;
@@ -243,9 +245,9 @@ fn sc_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: 
     let ap = px - sa;
     let u = clamp(dot(ap, dir) / L, 0.0, 1.0);
     let env = select(1.0, sqrt(max(1.0 - u, 0.0)) * 1.15, pin) * smoothstep(0.0, 0.04, u);
-    let k0 = sc_kink(u, s) * env;
-    let k1 = sc_kink(u + 0.004, s) * env;
-    let slope = (k1 - k0) / 0.004;
+    let k0 = sc_kink(u, s, fq) * env;
+    let k1 = sc_kink(u + 0.002, s, fq) * env;
+    let slope = (k1 - k0) / 0.002;
     let off = (dot(ap, nrm) - k0 * L) / sqrt(1.0 + slope * slope);
     let along = dot(ap, dir) - u * L;
     let d = length(vec2<f32>(off, along));
@@ -277,7 +279,8 @@ fn sc_draw_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, wmul: f32,
     }
     let la = length(a);
     let lb = length(b);
-    let m = sc_channel(px, sa, sb, seed, w, true);
+    let fq = max(length(a - b) / 100.0, 1.0);
+    let m = sc_channel(px, sa, sb, seed, w, true, fq);
     let seen = select(0.0, 1.0, scene_len > mix(la, lb, m.z) - 3.0) * smoothstep(lead + 0.01, lead - 0.01, m.z);
     var core = m.x * seen;
     var glow = m.y * seen;
@@ -290,11 +293,11 @@ fn sc_draw_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, wmul: f32,
         if (u > lead) {
             continue;
         }
-        let root = sa + ab * u + nrm * sc_kink(u, seed) * sqrt(1.0 - u) * 1.15 * L;
+        let root = sa + ab * u + nrm * sc_kink(u, seed, fq) * sqrt(1.0 - u) * 1.15 * L;
         let side = select(-1.0, 1.0, fract(seed * 0.71 + fj * 0.53) > 0.5);
         let bdir = normalize(dir + nrm * side * (0.55 + 0.6 * fract(seed * 1.3 + fj * 0.7)));
         let len = L * (0.12 + 0.22 * fract(seed * 0.9 + fj * 0.77)) * (1.0 - 0.5 * u);
-        let f = sc_channel(px, root, root + bdir * len, seed + 7.0 + fj * 3.3, w * 0.55, false);
+        let f = sc_channel(px, root, root + bdir * len, seed + 7.0 + fj * 3.3, w * 0.55, false, fq);
         // (it creeps out as the leader passes it, and fades and thins along its length)
         let grown = smoothstep(f.z - 0.02, f.z + 0.02, (lead - u) * 3.0);
         let fade = pow(1.0 - f.z, 1.6);
@@ -595,6 +598,8 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
                 let bands = gnoise3(vec3<f32>(sx.x * (1.0 / 7.0), (q.y + 20.0 * time) * (1.0 / 90.0), sx.y * (1.0 / 7.0)));
                 var den = rk * smoothstep(0.46, 0.64, curtain) * smoothstep(0.38, 0.62, bands) * (0.55 + 0.9 * smoothstep(0.45, 0.75, fall)) * (1.0 - smoothstep(rr * 0.6, rr, r)) * smoothstep(18.0, 50.0, length(q.xz - vec2<f32>(-20.0, 0.0)));
                 den = den * smoothstep(-4.0, 6.0, q.y) * (1.0 - smoothstep(sc_base(r) - 10.0, sc_base(r), q.y));
+                // (none close round the eye: the curtains are seen across the land, never a wall in front of the view)
+                den = den * smoothstep(40.0, 140.0, t);
                 if (den > 0.001) {
                     let e = sc_flash_at(fl, p);
                     let c = vec3<f32>(0.36, 0.39, 0.42) * (amb * 0.8 + sunc * 0.15) + fc * e * 0.35;
