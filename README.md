@@ -99,13 +99,17 @@ Twelve lasers, five to a page of the wheel.
   200 blocks across and 40 deep with a glassy floor (flooded where it cuts into water), the land flattened out to about
   230 with the trees felled pointing away, the ground charred in streaks, what faces the flash scorched out to about
   480, and every mob within 300 killed.
-- **Rod from God** (page three). A tungsten rod dropped from orbit, kinetic, no explosive: a thin, blinding white-hot
-  streak tears straight down out of the sky in silence, its ionised trail hanging behind it. It strikes: a few stark
-  impact frames for a split second (white, black-and-white silhouettes with jagged impact lines, the negative), a
-  small sharp flash, a shockwave, a fountain of rock thrown up in a cone round a tall column of dust that falls back
-  and spreads, a ring of dust racing out over the land, then one colossal crack-boom, late with the distance. It
-  leaves a steep-walled crater about 120 blocks across and 50 deep with a fractured, glassy floor and an overturned
-  rim, rubble in rays out to about 250, the trees felled out to about 200, and every mob within 200 killed.
+- **Rod from God** (page three). A colossal rod of dark forged metal dropped from orbit, kinetic, no explosive, and
+  holy: it comes straight down onto the target, a golden-white star high overhead that grows fast, god rays streaming
+  from it and a column of light down its path, and in its last fraction of a second it slams in. It strikes: a few
+  stark impact frames for a split second (white, black-and-white silhouettes with jagged impact lines and the rod
+  among them, the negative), a blinding radiant burst with rays fanning out, the land rippling out in rings like
+  water, a jet of molten rock up its path, a short plume of dust spreading into a haze and a ring of dust racing out
+  over the land, then one colossal crack-boom, late with the distance. It leaves itself standing in a hallowed crater
+  about 120 blocks across and 50 deep: the rod, 11 blocks thick and 80 tall over the crater's floor, its top 30 over
+  the land, polished blackstone banded in gold and capped with light; the crater lined in quartz, calcite and gold with
+  veins of glowstone, rays of white and gold over pale grass round it, rubble out to about 250, the trees felled out to
+  about 200, and every mob within 200 killed.
   **Photosensitivity:** its impact frames are rapid full-screen flashes; `/orbital impactframes off` (or the wheel's
   IMPACT FX switch) leaves them out.
 

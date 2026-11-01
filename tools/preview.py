@@ -128,6 +128,8 @@ VIEWS = {
     "rdup": "cx=0 cy=67 cz=150 lx=0.5 ly=1200 lz=-60 flat=1 trees=1 fov=80 reach=150 rdpit=1",
     # looking down into the crater from its rim (the hot hole at its bottom)
     "rdfall": "cx=0 cy=67 cz=150 lx=0.5 ly=190 lz=0.5 flat=1 trees=1 fov=75 reach=150 rdpit=1",
+    # the rod standing in its crater, from 90 off and over the rim
+    "rdstand": "cx=0 cy=105 cz=100 lx=0.5 ly=55 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
     "rdhole": "cx=0 cy=118 cz=78 lx=0.5 ly=30 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",

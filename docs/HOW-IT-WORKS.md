@@ -160,22 +160,29 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   over a jump's height and some six blocks back within 200 blocks, less further off, none past 600), and muck lands on the lens, out of focus. Earth and debris rain
   down for half a minute. From 59 s the cloud loses its billows into a drifting haze, gone by 90 s, when the strike
   ends. It reaches 1000 blocks.
-- **Rod from God** (page three). No beam, no explosive: a tungsten rod dropped from orbit. `KINETIC STRIKE: ROD
-  RELEASED`; from 1 s a blinding white-hot point some 3,000 blocks up comes straight down, 18 to 26 degrees off the
-  vertical from beyond the target and to one side, faster and faster (420 to 700 blocks a second), its plasma sheath
-  drawn out thin behind it, a long thin straight trail of ionised air glowing white-blue and cooling to violet behind
-  it, a pale vapour trail left hanging, and a faint shock cone bending the light round it; silent but for a faint hiss
-  in its last 1.6 s. At 7 s it strikes: impact frames (the picture punched in, then about 0.17 s of stark frames: pure
-  white with a black core at the point; black silhouettes on white with jagged impact lines bursting from it; the
-  negative, its lines red; black on white again, split in colour), a small sharp white flash, the ground round it
-  glowing for a moment, a hemispherical shockwave bending the light (tighter than the Nuke's, gone in 5 s), a fountain
-  of 256 chunks of rock thrown up in a steep cone (some 500 blocks high, falling back over 20 s), a tall column of
-  pulverised earth (about 290 high within 4 s, flaring from the crater's width) that falls back and spreads, its head
-  sinking and the dust rolling out over the ground round its foot, and a low ring of dust racing out at 343 blocks a
-  second. The crack-boom arrives late with the distance, the ground's thump first; the camera and the picture are
-  jolted hard (sharper and shorter than the Nuke's) and the player knocked back and up (none past 450). It reaches
-  1000 blocks. **Photosensitivity:** the impact frames are rapid full-screen flashes; `/orbital impactframes off` or
-  the wheel's IMPACT FX switch leaves them out.
+- **Rod from God** (page three). No beam, no explosive: a colossal rod of dark forged metal dropped from orbit, and
+  holy. `KINETIC STRIKE: ROD RELEASED`; from 1 s a golden-white star some 4,100 blocks up, plumb over the target,
+  comes straight down, faster and faster (250 to 1,600 blocks a second), then in its last fifth of a second a hard
+  last burst to over 5,000, so it slams in; god rays stream out of it, broken by whatever stands between, a column of
+  light runs down its path from the sky to the target with the ionised line it lays in it (each bit of the line
+  widening and dimming as it ages, the oldest first), a starburst, a streak and ghosts in the lens, the air shimmering
+  round it and its light lying on the land under it; for its last moments its shape: a rod 11 blocks thick and 111
+  long, nose down, its nose white-hot, gold and carved bands round it, a bow of glowing air round its nose and in its
+  last second the shock cone. At 7 s it strikes: impact frames (the picture punched in, then about 0.17 s of stark
+  frames: white with the rod black in it over a small black burst at the point; black silhouettes on white with bold
+  jagged impact lines bursting from it, the rod outlined among them; the negative, its lines red; black on white
+  again, split in colour), a blinding white-gold burst with god rays fanning out of it, the land rippling out in rings
+  like water for a few seconds, a hemispherical shockwave bending the light, a narrow jet of molten rock shot some 300
+  up its path and falling back by 6 s, 256 chunks of rock thrown up in a steep cone (two in five of them molten,
+  glowing and cooling as they fly), molten spatter landing round it and cooling, a short plume of dust (about 90
+  high, spreading wider and wider into a haze as it rises and fades, gone 13 s after) and a low ring of dust racing
+  out at 343 blocks a second. The rod drives in and stays, standing in the crater's middle, its blocks glowing in
+  slow bands of light while the strike runs, its tip shining, its light rising softly out of the crater and the air
+  over it shimmering, the crater's floor white-hot round its foot and cooling over about 20 s, the column of light
+  calming into a quiet pillar. The crack-boom arrives late with the distance, the ground's thump first; the camera
+  and the picture are jolted hard (sharper and shorter than the Nuke's) and the player knocked back and up (none past
+  450). It reaches 1000 blocks. **Photosensitivity:** the impact frames are rapid full-screen flashes; `/orbital
+  impactframes off` or the wheel's IMPACT FX switch leaves them out.
 
 All of them:
 
@@ -262,14 +269,21 @@ Every strike is permanent. Players are spared. The ship lasers and the Planet Ki
   about 9 s), then the flash's scorching (out to 480 by about 12 s), each chunk's changes on one tick; it trails the
   shockwave so the game stays smooth.
 - **Rod from God:** a steep-walled crater, a punch rather than a bowl, about 120 across (its edge wandering about 6%)
-  and 50 deep, its floor fractured and fused (deepslate, cobbled deepslate, basalt, blackstone, obsidian specks, patches
-  of tinted, black and grey glass), its walls broken stone (stone, cobblestone, tuff, andesite, gravel); its rim heaped
-  up to about 15 high out to about 90 with the ground overturned on it (dirt at its foot, stone over that, deepslate and
-  tuff on top); everything standing on the land swept off out to about 200, the trees felled pointing away from it,
-  past that out to about 240 crowns stripped and some trees knocked flat; the grass dusted with coarse dirt and gravel
-  all round the rim and in about 17 rays out to about 200; hundreds of pieces of rubble strewn in the same rays out to
-  250; about 120 real blocks thrown up out of the crater in a steep cone; every mob and item within 200 killed. Water
-  it cuts into is dug like any other block; the lava in the ground it bares is sealed. It keeps about 830 chunks loaded
+  and 50 deep, hallowed: its floor lined in quartz (blocks, pillars, carved), calcite and gold and raw gold, with veins
+  of glowstone and shroomlight and now and then white or yellow glazed terracotta or amethyst, dark fused rock
+  (obsidian, blackstone, tinted glass) in patches low round the middle; its walls calcite, smooth stone, end stone and
+  quartz bricks with seams of gold; the rod standing in its middle (11 wide, 80 over the floor, its top 30 over the land
+  round it, and 30 under the floor: polished blackstone, banded in gold and chiseled polished blackstone, a collar of
+  gold at its foot and two bands round its top, capped with ochre froglight and gold; a ring of glowstone and
+  shroomlight set in the floor round it); its rim heaped up to about 15 high out to about 90 with the ground overturned
+  on it and bleached (dirt at its foot, stone over that, calcite, diorite and end stone on top, flecks of raw gold);
+  everything standing on the land swept off out to about 200, the trees felled pointing away from it, past that out to
+  about 240 crowns stripped and some trees knocked flat; all round the rim and in about 17 rays out to about 200 the
+  grass blessed: white concrete, calcite, quartz and gold in the rays, glowstone and shroomlight set in them to light
+  them at night, pale moss with white flowers round them; hundreds of pieces of rubble (calcite, quartz, white concrete,
+  end stone, gold, now and then a glowstone) strewn in the same rays out to 250; about 120 real blocks thrown up out of
+  the crater in a steep cone, none from round the rod; every mob and item within 200 killed. Water it cuts into is dug
+  like any other block; the lava in the ground it bares is sealed. It keeps about 830 chunks loaded
   while it works; its land goes in through `world.edit-blocks` as the Nuke's does, one wave from the middle out: the
   crater from 7.05 s, done by about 9 s, the rest out to 250 by about 14 s (at most ~55 chunks a tick); on land far off
   it waits for the chunks to load, and what never loads is left out.
@@ -378,9 +392,10 @@ goes soft from 35 to 48 and thins away by about 65, and the strike ends at 70.
 The Nuke's bomb shows at 2 s and bursts at 11; its boom, the dust's front and the jolt reach the player at 11 plus
 their distance over 343 (the ground's thump at five times that speed), the knockback with it; the cloud rises fast for 20 s and slowly after, softens from
 59 and is gone by 90, when the strike ends.
-The Rod shows at 1 s and strikes at 7; its impact frames run from 7 to 7.17; its crack-boom, the dust ring's front, the
-jolt and the knockback reach the player at 7 plus their distance over 343; the column rises for about 4 s, falls back
-from 5 to 30 and softens from 20 to 38, the debris is down by about 28, and the strike ends at 60.
+The Rod shows at 1 s and strikes at 7 (its last hard burst of speed in its last fifth of a second); its impact frames
+run from 7 to 7.17; its crack-boom, the dust ring's front, the jolt and the knockback reach the player at 7 plus their
+distance over 343; the jet is up and back down by about 13, the plume rises for about 4 s and spreads into a haze gone
+by 20, the debris is down by about 28, the rod's glow calms over a minute, and the strike ends at 60.
 
 ## The effects
 
@@ -540,17 +555,24 @@ the land, the dust and the debris are drawn as the Payload's are. QUALITY FAST m
 at half size. At 1920x1080 FAST costs about 2 to 3.7 ms and FULL 4 to 10.5 ms, the most close in with the cloud filling
 the view.
 
-The Rod's pass ([`mod/shaders/rod.wgsl`](../mod/shaders/rod.wgsl)) is the Nuke's made kinetic, on its layout (the path
-from `PL_P`, the heightfield from `PL_HF`, 256 debris chunks from `PL_DB`, `rd_table` in
-[`strike/rod.rs`](../mod/src/strike/rod.rs)): the rod a white-hot point with bloom, a lens streak and a thin sheath; its
-trail the Nuke's, thin, glowing as ionised air; its shock cone a thin cone of refraction behind it. The column is the
-Nuke's raymarched body reshaped (`pl_column`, `pl_col_base2`): a column flaring up from the crater's width into a
-ragged head no wider than itself, finer lumps (`PL_S`), carried up as it rises and down as it falls back (`pl_boil`),
-the base surge rolling out round it, earthy grey-brown, its foot glowing for a moment. The impact frames (`rd_impact`)
-threshold the scene's luminance and depth into silhouettes and draw jagged radial lines from the impact point's place
-on the screen, a new set each beat; `pl_jolt` punches the picture in on their first beats. At 1920x1080 FAST costs
-about 0.5 ms through the fall and 2.7 to 4.2 ms with the column large from 300 blocks (5.6 at 150, inside the dust),
-FULL 7 to 21 ms.
+The Rod's pass ([`mod/shaders/rod.wgsl`](../mod/shaders/rod.wgsl)) is the Nuke's made kinetic and holy, on its
+layout (the path from `PL_P`, the heightfield from `PL_HF`, 256 debris chunks from `PL_DB`, `rd_table` in
+[`strike/rod.rs`](../mod/src/strike/rod.rs)). The rod is a real object: an analytic rod (`rd_rod_sdf`, sphere-traced
+near it only, `rd_rod_hit`: 11 thick, 111 long, its bands as rod.rs lays the standing one's blocks, `rd_band`), dark
+metal lit by the sun and the sky, its nose white-hot; its light is a halo round it, a glare (`rd_glare`: bloom, an
+eight-spiked starburst, a streak, three ghosts strung through the middle of the picture, where `rd_seen` finds it in
+sight) and screen-space god rays (`rd_srays`: streaks out from its place on the screen, eight looks at the depth along
+the way to it, broken by anything nearer than it). The column of light and the line in it go by how long since the rod
+passed each height (`rd_time_at`, searching the path's samples), so they age smoothly with no step. The impact adds
+the ripple (`rd_ripple`: the picture drawn from where the heaving land would put it, its rings lit by their slope),
+the jet (`rd_jet`, marched in a vertical cylinder: parcels thrown up at all speeds and falling back, looked up by
+their speed so their streaks fly with them), the plume (the Nuke's raymarched body, `pl_column`, small, thin and
+spreading wide), the molten spatter on the land and the white-hot floor round the rod's foot, and over the standing
+rod's own blocks its glow. The impact frames (`rd_impact`) threshold the scene's luminance and depth (four looks a
+pixel, smoothed) into silhouettes, set the rod in them with an outline, and draw bold jagged radial lines from the
+impact point's place on the screen, a new set each beat; `pl_jolt` punches the picture in on their first beats. At
+1920x1080 FAST costs about 0.5 ms through the fall, 2.6 to 3.2 ms after the impact from 400 blocks and 3.8 to 4.9 from
+150 (inside the plume), FULL 7 to 16 ms.
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)

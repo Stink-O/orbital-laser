@@ -19,8 +19,8 @@ const PL_HIT: f32 = 7.0;           // and strikes,
 const PL_BURST: f32 = 0.0;         // on the ground under the target (pl_g0)
 const PL_LEN: f32 = 60.0;          // the strike's length (lasers.rs): everything fades out over its last PL_FADE
 const PL_FADE: f32 = 8.0;
-const PL_SOFT0: f32 = 7.0;         // the plume keeps its crisp lumps this long after the impact, then loses them
-const PL_SOFT1: f32 = 12.0;        // by this, a soft, drifting haze thinning away (gone 13 s after the impact)
+const PL_SOFT0: f32 = 5.0;         // the plume keeps its crisp lumps this long after the impact, then loses them
+const PL_SOFT1: f32 = 10.0;        // by this, a soft, drifting haze thinning away (gone 13 s after the impact)
 const PL_CHURN: f32 = 7.0;         // the head's lumps carried this long before they are let go (pl_col_sdf)
 const PL_V: f32 = 343.0;           // the shockwave's front, blocks a second (with the blast's sound: rod.rs)
 const PL_P: u32 = 16u;             // the table: the path's samples from PL_P, three words each,
@@ -273,14 +273,15 @@ fn pl_column(a: f32, C: vec3<f32>) -> PlCol {
     var o: PlCol;
     o.a = a;
     o.C = C;
-    // (thrown up fast, about a hundred high within a few seconds; then falling back, its head sinking and swelling as
-    // the dust spreads and settles)
+    // (thrown up fast, about a hundred high within a few seconds, still drifting up as it thins; its head spreading out
+    // wide as it rises and fades, a broad haze rather than a puff)
     let rise = 1.0 - exp(-a / 1.4);
-    let fall = smoothstep(4.0, 22.0, a);
-    o.st = 88.0 * rise * (1.0 - 0.45 * fall) + 6.0;
-    // (its foot a little narrower than the crater it came out of, flaring into a ragged top; spreading as it falls back)
-    o.sr = vec3<f32>(30.0 + 6.0 * saturate(a / 3.0) + 1.4 * a, 18.0 + 6.0 * saturate(a / 6.0) + 1.6 * a, 24.0 + 10.0 * saturate(a / 5.0) + 1.2 * a);
-    o.rt = (0.85 * o.sr.z) * (0.4 + 0.6 * rise) * (1.0 - 0.5 * fall);
+    let fall = smoothstep(4.0, 13.0, a);
+    o.st = 85.0 * rise + 2.5 * a + 6.0;
+    // (a fan of dust out of the crater, wider and wider up it as it rises and fades: no head on a stem, the whole of it
+    // spreading into a broad haze)
+    o.sr = vec3<f32>(24.0 + 5.0 * saturate(a / 3.0) + 1.5 * a, 20.0 + 6.0 * saturate(a / 4.0) + 4.0 * a, 26.0 + 10.0 * saturate(a / 4.0) + 7.5 * a);
+    o.rt = (0.42 * o.sr.z) * (0.4 + 0.6 * rise) * (1.0 - 0.3 * fall);
     o.hc = max(o.st - 0.5 * o.rt, 0.6 * o.rt);
     o.Rt = 0.0;
     o.ring = vec3<f32>(0.0);
@@ -308,7 +309,8 @@ fn pl_col_base2(col: ptr<function, PlCol>, p: vec3<f32>) -> vec2<f32> {
     let rt = (*col).rt;
     let hc = (*col).hc;
     // (the head: a ragged swelling ball, a little flattened)
-    let eq = vec3<f32>(q.x, (hy - hc) * 1.35, q.z);
+    // (flattening as it spreads)
+    let eq = vec3<f32>(q.x, (hy - hc) * (1.35 + 0.18 * (*col).a), q.z);
     let ek0 = length(eq / rt);
     var d = (ek0 - 1.0) * rt * 0.85;
     // (the column: from under the crater's floor up into the head, flaring)
@@ -453,10 +455,11 @@ fn pl_over(h: ptr<function, vec4<f32>>, c: vec3<f32>, x: f32) {
     *h = vec4<f32>((*h).rgb * (1.0 - x) + c * x, (*h).a * (1.0 - x));
 }
 // ---- the rod itself: a round dark metal rod, nose down, RD_L long and RD_R round ----------------------------------
-const RD_R: f32 = 2.5;             // its radius (five blocks across, as the one left standing: rod.rs's RD_ROD_R2)
-const RD_L: f32 = 53.0;            // its length (rod.rs's RD_ROD_UP + RD_ROD_DOWN + 1)
-const RD_NOSE: f32 = 7.0;          // its nose, rounded to a blunt point over this much of its length
-const RD_TOP_END: f32 = -12.0;     // where its top ends up, from the target's ground (rod.rs: 50 deep, 38 over the floor)
+const RD_R: f32 = 5.3;             // its radius (eleven blocks across, as the one left standing: rod.rs's RD_ROD_R2)
+const RD_L: f32 = 111.0;           // its length (rod.rs's RD_ROD_UP + RD_ROD_DOWN + 1)
+const RD_NOSE: f32 = 14.0;         // its nose, rounded to a blunt point over this much of its length
+const RD_DOWN: f32 = 30.0;         // how much of it ends up under the crater's floor (rod.rs's RD_ROD_DOWN)
+const RD_TOP_END: f32 = 30.0;      // where its top ends up, from the target's ground (rod.rs: 50 deep, 80 over the floor)
 const RD_SINK: f32 = 0.12;         // how fast it drives in as it strikes (its tail gone under the land in a fifth of a second)
 const RD_FLOOR: f32 = -50.0;       // the crater's floor under it (rod.rs's RD_CRATER_D)
 const RD_RIP_V: f32 = 190.0;       // the ripple through the land: its front's speed, blocks a second,
@@ -467,20 +470,33 @@ const RD_GOLD: vec3<f32> = vec3<f32>(1.0, 0.8, 0.5);
 const RD_WGOLD: vec3<f32> = vec3<f32>(1.0, 0.88, 0.64);
 
 // Where its nose is (from the target's ground) at strike time t: coming down the path, then driven in, stopping with its
-// top RD_TOP_END under the land.
+// top RD_TOP_END over the land (the crater dug round it).
 fn rd_nose_y(t: f32) -> f32 {
     if (t < PL_HIT) {
         return pl_head(max(t, PL_SEEN)).y;
     }
     return (RD_TOP_END - RD_L) * (1.0 - exp(-(t - PL_HIT) / RD_SINK));
 }
+// What its outside is at h up it (from its nose), as the one left standing is built (rod.rs's rd_rod_col): 0 the
+// forged dark metal (polished blackstone), 1 a band of gold, 2 a carved band (chiseled blackstone).
+fn rd_band(h: f32) -> i32 {
+    let y = floor(h) - RD_DOWN;                           // (blocks over the crater's floor, once it stands)
+    let top = RD_L - 1.0 - RD_DOWN;
+    if (y == top - 2.0 || y == top - 5.0 || y == 1.0 || y == 2.0) {
+        return 1;
+    }
+    if (y >= 4.0 && y < top - 8.0 && (y - 4.0) % 9.0 == 0.0) {
+        return select(2, 1, i32((y) / 9.0) % 3 == 1);
+    }
+    return 0;
+}
 // The rod's surface at q (from its nose, up its axis): its distance (a little short, safe to step by).
 fn rd_rod_sdf(q: vec3<f32>) -> f32 {
     let rho = length(q.xz);
     let u = saturate(q.y / RD_NOSE);
     let rr = RD_R * (1.0 - (1.0 - u) * (1.0 - u));
-    // (two bands of gold round its tail, a little proud of it)
-    let band = 0.14 * (step(abs(q.y - (RD_L - 2.5)), 0.5) + step(abs(q.y - (RD_L - 5.5)), 0.5));
+    // (its bands a little proud of it)
+    let band = select(0.0, 0.18, rd_band(q.y) != 0 && q.y > RD_NOSE);
     return max((rho - rr - band) * 0.8, max(-q.y, q.y - RD_L));
 }
 struct RdHit {
@@ -777,7 +793,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         }
         if (a > 0.0) {
             // (over the crater, calming but never still)
-            let sg = pl_ray_seg(rd, Rax + vec3<f32>(0.0, RD_FLOOR, 0.0), Rax + vec3<f32>(0.0, 35.0, 0.0), 0.0, 1.0);
+            let sg = pl_ray_seg(rd, Rax + vec3<f32>(0.0, RD_FLOOR, 0.0), Rax + vec3<f32>(0.0, RD_TOP_END + 25.0, 0.0), 0.0, 1.0);
             if (sg.y < scene_len + 2.0) {
                 hs = hs + (0.3 + 0.7 * exp(-a / 12.0)) * exp(-pow(sg.x / 20.0, 2.0)) * 3.5 * fade;
             }
@@ -889,7 +905,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 col = col + scene * vec3<f32>(2.2, 1.3, 0.5) * (Tc * 1.5 + 0.1) / (1.0 + pow(lf / 22.0, 2.0)) * k * fade;
             }
             // (its blocks: a slow tide of light running up it in bands, its tip shining)
-            if (rho < 3.2 && p.y > RD_TOP_END - RD_L && p.y < RD_TOP_END + 0.7) {
+            if (rho < RD_R + 0.8 && p.y > RD_TOP_END - RD_L && p.y < RD_TOP_END + 0.7) {
                 let bands = 0.03 + 0.9 * pow(0.5 + 0.5 * sin(p.y * 0.8 - time * 2.6), 16.0);
                 let tip = smoothstep(RD_TOP_END - 2.0, RD_TOP_END, p.y);
                 col = col * (1.0 - 0.4 * (1.0 - tip)) + RD_GOLD * (bands + 1.2 * tip) * I_post * night * k;
@@ -942,14 +958,14 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                 var acc = vec3<f32>(0.0);
                 let ph = 0.8 + (0.5 + 1.6 * warm) * pow(saturate(dot(rd, L)), 5.0);
                 let soft = smoothstep(PL_SOFT0, PL_SOFT1, a);
-                let thin = exp(-max(a - PL_SOFT0, 0.0) / 5.0) * 0.8 * (1.0 - smoothstep(8.5, 13.0, a));
+                let thin = (0.42 - 0.2 * smoothstep(1.0, 6.0, a)) * exp(-max(a - PL_SOFT0, 0.0) / 5.0) * (1.0 - smoothstep(8.5, 13.0, a));
                 var tmid = 0.0;
                 var wmid = 0.0;
                 var nl = 0;
                 var lc_face = 0.0;
                 var lc_bulk = 1.0;
                 var sky_occ = 0.0;
-                let sootc = mix(vec3<f32>(0.5, 0.47, 0.43), vec3<f32>(0.6, 0.58, 0.55), smoothstep(5.0, 20.0, a));
+                let sootc = mix(vec3<f32>(0.58, 0.55, 0.5), vec3<f32>(0.7, 0.68, 0.65), smoothstep(3.0, 10.0, a));
                 for (var i = 0; i < 52; i = i + 1) {
                     if (t > t1 || tr < 0.04) {
                         break;
@@ -961,7 +977,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                         continue;
                     }
                     // (longer steps as it thins: there is less in it to miss)
-                    let st = max(6.0 + 4.0 * soft, t * 0.012) * (0.75 + 0.5 * j) * (1.0 + 1.5 * (1.0 - thin / 0.8));
+                    let st = max(6.0 + 4.0 * soft, t * 0.012) * (0.75 + 0.5 * j) * (1.0 + 1.5 * (1.0 - thin / 0.42));
                     var den = 0.0;
                     var sd = vec4<f32>(d0, 0.5, 4.0, 0.5);
                     if (d0 < -PL_DM - 6.0) {
@@ -1192,30 +1208,36 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         }
     }
 
-    // ---- the column of light down its path, from the sky to the target, and the ionised line it leaves in it: bright
-    // and white-gold just behind it, fading to a soft glow that hangs; once it stands, a calm pillar over the crater ----
-    if (stage != 1u && have && time > PL_SEEN - 0.5) {
-        let ybot = select(0.0, RD_TOP_END, a > 0.0);
-        let sg = pl_ray_seg(rd, Rax + vec3<f32>(0.0, ybot, 0.0), Rax + vec3<f32>(0.0, 7000.0, 0.0), 0.0, 1.0);
-        if (sg.y < scene_len + 2.0 && sg.x < 80.0 + sg.y * px_a * 4.0) {
-            let y = ybot + (7000.0 - ybot) * sg.z;
+    // ---- the column of light down its path, from the sky to the target, and the ionised line it lays in it: bright and
+    // white-gold just behind it, then each bit of it, as it ages, widening and dimming, its glow fading over seconds and
+    // the last of it over half a minute: the oldest, at the top, first. Nothing in it steps or jumps: all of it goes by
+    // how long since the rod passed there, on and on through the strike, and the soft pillar round it calms into a quiet
+    // column over the crater ---------------------------------------------------------------------------------------------
+    if (stage != 1u && have) {
+        let appear = smoothstep(PL_SEEN - 0.6, PL_SEEN + 0.6, time);
+        let sg = pl_ray_seg(rd, Rax, Rax + vec3<f32>(0.0, 7000.0, 0.0), 0.0, 1.0);
+        if (appear > 0.0 && sg.y < scene_len + 2.0 && sg.x < 120.0 + sg.y * px_a * 4.0) {
+            let y = 7000.0 * sg.z;
             let sn = max(length(cross(rd, vec3<f32>(0.0, 1.0, 0.0))), 0.15);
-            let ny = rd_nose_y(time);
-            // (above it the trail it lays, as old as how long since it passed; below it the path it will take)
-            var age = 0.0;
-            if (y > ny && have) {
-                age = select(time - rd_time_at(y), a + 0.3 * (y - ny) / 600.0, time >= PL_HIT);
-            }
+            // (its nose, down at the ground from the moment it strikes; what is above it was laid as it passed)
+            let ny = rd_nose_y(min(time, PL_HIT));
             let above = smoothstep(ny - 2.0, ny + 6.0, y);
-            let fin = select(1.0, exp(-a / 2.5), a > 0.0);
-            let line = above * (exp(-age / 0.7) * 1.4 + 0.45 * exp(-age / 6.0) + 0.18) * fin + (1.0 - above) * 0.06 * u;
-            let wl = max(0.45, sg.y * px_a * 0.7);
-            let core = exp(-pow(sg.x / wl, 2.0)) * min(0.45 / wl, 1.0) * line;
-            // (the soft pillar round it: widening a little up into the sky, thinning out high up)
-            let Rc = 7.0 + 0.004 * max(y, 0.0) + 3.0 * a * step(0.0, a) / (1.0 + 0.1 * max(a, 0.0));
-            let lvl = select(0.25 + 0.75 * pow(u, 2.0), 0.6 * burst + 0.45 * I_post, a > 0.0);
-            let soft = exp(-pow(sg.x / Rc, 2.0)) * 0.05 * Rc / sn / (1.0 + max(y, 0.0) / 2500.0) * lvl * (above + (1.0 - above) * 0.5);
-            col = col + (RD_WGOLD * 2.2 * core + RD_GOLD * soft) * k * fade * night;
+            let age = max(time - rd_time_at(y), 0.0);
+            let glowL = 1.4 * exp(-age / 0.7) + 0.5 * exp(-age / 5.0) + 0.12 * exp(-age / 20.0);
+            // (widening as it ages, its light spread over the width: dimmer as it widens)
+            let wl0 = 0.45 + 0.12 * age;
+            let wl = max(wl0, sg.y * px_a * 0.7);
+            let core = exp(-pow(sg.x / wl, 2.0)) * (0.45 / wl) * glowL * above;
+            // (the path below it, faint, brightening as it nears)
+            let path = (1.0 - above) * 0.06 * u * exp(-pow(sg.x / max(0.6, sg.y * px_a * 0.7), 2.0)) * min(0.6 / max(0.6, sg.y * px_a * 0.7), 1.0);
+            // (the soft pillar round it: widening a little up into the sky and with the trail's age, thinning out high
+            // up; as bright where it lies ahead of the rod as behind it by the time it strikes)
+            let Rc = 7.0 + 0.004 * y + 1.6 * sqrt(age) * above;
+            let lvl = select(0.25 + 0.75 * u * u, 0.55 * burst + 0.45 * I_post, a > 0.0);
+            let soft = exp(-pow(sg.x / Rc, 2.0)) * 0.35 * sqrt(7.0 * Rc) / sn / (1.0 + y / 2500.0) * lvl * (above + (1.0 - above) * (0.5 + 0.5 * u));
+            // (not over the rod where it stands: the column rises from its top)
+            let inrod = select(0.0, (1.0 - smoothstep(RD_R, RD_R + 2.0, sg.x)) * (1.0 - smoothstep(RD_TOP_END, RD_TOP_END + 1.5, y)), a > 0.0);
+            col = col + (RD_WGOLD * 2.2 * (core + path) + RD_GOLD * soft * 0.1) * k * fade * night * appear * (1.0 - inrod);
         }
     }
 
@@ -1233,9 +1255,11 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             segB = Rax + vec3<f32>(0.0, RD_TOP_END + 1.0, 0.0);
         }
         let sg = pl_ray_seg(rd, segA, segB, 0.0, 1.0);
-        if (Ih > 0.0 && sg.y < scene_len + 4.0) {
-            let w = max(RD_R * 1.6, sg.y * px_a * 2.0);
-            let halo = (exp(-sg.x / w) * 0.5 + 0.12 / (1.0 + pow(sg.x / (5.0 * w), 2.0))) * Ih;
+        if (Ih > 0.0 && sg.y < scene_len + 1.0) {
+            // (round it, not over it: from its surface out)
+            let w = max(RD_R * 1.2, sg.y * px_a * 2.0);
+            let e = max(sg.x - 0.9 * RD_R, 0.0);
+            let halo = (exp(-e / w) * 0.5 + 0.12 / (1.0 + pow(e / (5.0 * w), 2.0))) * Ih * smoothstep(0.6 * RD_R, RD_R, sg.x);
             col = col + RD_WGOLD * halo * (1.0 - 0.6 * sg.z * select(1.0, 0.0, falling)) * k * night;
         }
         // (the bow of glowing air round its nose, opening back up it, in its last second the shock cone too)
@@ -1265,8 +1289,9 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
     // ---- the rod: dark metal, nose down, its nose blazing white-gold and the light running up it, a golden rim of light
     // round it, a glint where the sun catches it; driven into the land as it strikes -----------------------------------
-    if (stage != 1u && have && time > PL_SEEN - 0.1 && a < 0.5) {
-        let h = rd_rod_hit(rd, N, px_a, scene_len);
+    // (once it stands, its blocks are in the world: drawn till they are surely in, then let go over a second)
+    if (stage != 1u && have && time > PL_SEEN - 0.1 && a < 2.5) {
+        let h = rd_rod_hit(rd, N, px_a, scene_len + 1.0);
         if (h.cov > 0.0) {
             let n = rd_rod_normal(h.q);
             let v = -rd;
@@ -1275,16 +1300,21 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             let rf = reflect(rd, n);
             let env = mix(vec3<f32>(0.08, 0.09, 0.07) * (0.3 + 0.7 * day), skyl * 1.15, smoothstep(-0.25, 0.35, rf.y));
             let spec = pow(saturate(dot(rf, L)), 90.0) * 18.0 * sunc;
-            let band = step(RD_L - 6.0, h.q.y) * step(abs(fract((h.q.y - (RD_L - 3.0)) / 3.0) - 0.5), 0.17);
-            let base = mix(vec3<f32>(0.07, 0.07, 0.075), vec3<f32>(0.75, 0.55, 0.22), band);
+            let bk = rd_band(h.q.y);
+            let band = select(0.0, 1.0, bk == 1);
+            let carved = select(0.0, 1.0, bk == 2);
+            // (forged dark metal, a faint grain of hammered plates on it; gold bands; carved bands a little lighter)
+            let grain = 0.85 + 0.3 * vnoise(vec2<f32>(atan2(h.q.z, h.q.x) * 6.0, h.q.y * 0.5));
+            let base = mix(mix(vec3<f32>(0.075, 0.07, 0.08) * grain, vec3<f32>(0.16, 0.15, 0.16), carved), vec3<f32>(0.75, 0.55, 0.22), band);
             var c = base * (amb * 0.6 + sunc * max(dot(n, L), 0.0) * 0.7) + mix(vec3<f32>(0.45, 0.45, 0.48), vec3<f32>(1.0, 0.8, 0.4), band) * (env * (0.25 + 0.75 * fres) + spec);
             // (its light: the nose white-gold, running up it, a rim of gold round its outline)
             let glow = select(I_fall, 3.0 * burst + I_post, a > 0.0);
-            let nose = exp(-h.q.y / 2.5) * 1.6 + exp(-h.q.y / 14.0) * 0.12;
-            c = c + mix(RD_GOLD, vec3<f32>(1.2, 1.15, 1.05), saturate(exp(-h.q.y / 2.0))) * nose * min(glow, 2.0);
+            // (its nose white-hot, the heat running a little way up it, gold to dull red)
+            let nose = exp(-h.q.y / 4.0) * 2.0 + exp(-h.q.y / 18.0) * 0.18;
+            c = c + mix(vec3<f32>(1.2, 0.45, 0.12), vec3<f32>(1.3, 1.25, 1.15), saturate(exp(-h.q.y / 5.0))) * nose * min(glow, 2.0);
             c = c + RD_GOLD * pow(1.0 - ndv, 2.5) * 0.5 * min(glow, 2.0);
             c = mix(c, haze_c, (1.0 - exp(-h.t / 4000.0)) * 0.6);
-            col = mix(col, c, h.cov * k);
+            col = mix(col, c, h.cov * k * (1.0 - smoothstep(1.5, 2.5, a)));
         }
     }
     // ---- the flash: blinding, white-blue going gold, the radiance seen through anything for a moment ----------------
@@ -1530,30 +1560,35 @@ fn rd_if_point(Cb: vec3<f32>) -> vec2<f32> {
 }
 // The scene's silhouette at uv: 1 where it is bright or far (the sky, the distance, what is lit), 0 where it is near
 // and dark (the land and what stands on it close by); the impact's own burst white round the point.
-fn rd_if_mask(uv: vec2<f32>, P: vec2<f32>, asp: f32, a: f32) -> f32 {
+// What the scene is at uv to the silhouette: bright or far 1, near and dark 0.
+fn rd_if_tone(uv: vec2<f32>) -> f32 {
     let d = depth_at(uv);
-    var v = 1.0;
-    if (!is_sky(d)) {
-        let len = length(world_offset(uv, d));
-        let c = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb);
-        let lum = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
-        v = 0.55 * lum / (lum + 0.12) + 0.75 * smoothstep(250.0, 1400.0, len);
+    if (is_sky(d)) {
+        return 1.0;
     }
+    let len = length(world_offset(uv, d));
+    let c = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb);
+    let lum = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+    return 0.55 * lum / (lum + 0.12) + 0.75 * smoothstep(250.0, 1400.0, len);
+}
+fn rd_if_mask(uv: vec2<f32>, P: vec2<f32>, asp: f32, a: f32) -> f32 {
+    // (four looks a couple of pixels apart: the leaves' speckle smoothed into clean shapes)
+    let o = 2.0 * frame.resolution.zw;
+    var v = 0.25 * (rd_if_tone(uv + vec2<f32>(o.x, o.y)) + rd_if_tone(uv + vec2<f32>(-o.x, o.y)) + rd_if_tone(uv + vec2<f32>(o.x, -o.y)) + rd_if_tone(uv - o));
     let q = (uv - P) * vec2<f32>(asp, 1.0);
     let r = length(q);
     // (the burst: a ragged white star round the point, growing beat by beat)
     let th = atan2(q.y, q.x);
     let star = 0.05 + 0.04 * a / RD_IF_END + 0.025 * sin(th * 7.0 + 1.3) * sin(th * 11.0 + 0.4);
     v = v + 1.5 * (1.0 - smoothstep(star * 0.8, star, r));
-    let px = 1.5 / frame.resolution.y;
-    return smoothstep(0.55 - px * 40.0, 0.55 + px * 40.0, v);
+    return smoothstep(0.5, 0.6, v);
 }
 // The impact lines at uv for beat `b`: thin, jagged wedges bursting out from the point, each its own width and start,
 // a new set each beat. 1 on a line.
 fn rd_if_lines(uv: vec2<f32>, P: vec2<f32>, asp: f32, b: u32, seed: u32) -> f32 {
     let q = (uv - P) * vec2<f32>(asp, 1.0);
     let r = max(length(q), 1.0e-4);
-    let n = 84.0;
+    let n = 60.0;
     let th = atan2(q.y, q.x) / TAU + 0.5;
     // (jagged: each line bent back and forth along its length)
     let u0 = th * n;
@@ -1568,12 +1603,12 @@ fn rd_if_lines(uv: vec2<f32>, P: vec2<f32>, asp: f32, b: u32, seed: u32) -> f32 
     let h1 = mh(k, seed, 0x4c2u);
     let h2 = mh(k, seed, 0x4c3u);
     let h3 = mh(k, seed, 0x4c4u);
-    if (h2 < 0.3) {
+    if (h2 < 0.38) {
         return 0.0;
     }
     // (starting a way out from the point, thin there and widening outward, past the screen's edge)
     let r0 = 0.07 + 0.32 * h3 * h3;
-    let w = (0.04 + 0.3 * h1 * h1 * h1) * smoothstep(r0, r0 + 0.3, r);
+    let w = (0.06 + 0.42 * h1 * h1 * h1) * smoothstep(r0, r0 + 0.25, r);
     let f = abs(fract(u) - 0.5);
     // (a pixel's width across the line, for a clean edge)
     let px = (1.0 / frame.resolution.y) / r * n / TAU;
@@ -1587,11 +1622,28 @@ fn rd_if_rod(uv: vec2<f32>, a: f32) -> f32 {
     let rd = normalize(world_offset(uv, 0.5));
     let sg = pl_ray_seg(rd, N, N + vec3<f32>(0.0, RD_L, 0.0), 0.0, 1.0);
     let d = depth_at(uv);
-    if (!is_sky(d) && length(world_offset(uv, d)) < sg.y) {
+    // (none of it under the land: what has gone in is out of sight)
+    let gyr = block_y() + 1.0 - cam.y + pl_g0();
+    if ((!is_sky(d) && length(world_offset(uv, d)) < sg.y - RD_R) || N.y + RD_L * sg.z < gyr) {
         return 0.0;
     }
     let w = sg.y * frame.view_params.w / frame.resolution.y;
     return 1.0 - smoothstep(RD_R - w, RD_R + w, sg.x);
+}
+// The rod's outline in the impact frames: a band a few pixels wide just round it, set against whatever is behind.
+fn rd_if_rim(uv: vec2<f32>, a: f32) -> f32 {
+    let cam = frame.camera_position.xyz;
+    let anc = anchor_xz();
+    let N = vec3<f32>(floor(anc.x) + 0.5, block_y() + 1.0 + rd_nose_y(PL_HIT + max(a, 0.0)), floor(anc.y) + 0.5) - cam;
+    let rd = normalize(world_offset(uv, 0.5));
+    let sg = pl_ray_seg(rd, N, N + vec3<f32>(0.0, RD_L + 6.0, 0.0), 0.0, 1.0);
+    let gyr = block_y() + 1.0 - cam.y + pl_g0();
+    if (N.y + (RD_L + 6.0) * sg.z < gyr + 1.0) {
+        return 0.0;
+    }
+    let w = sg.y * frame.view_params.w / frame.resolution.y;
+    let e = sg.x - RD_R;
+    return smoothstep(-w, 0.0, e) * (1.0 - smoothstep(3.0 * w, 4.0 * w, e));
 }
 fn rd_impact(col: vec3<f32>, uv0: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) -> vec3<f32> {
     let asp = frame.resolution.x / frame.resolution.y;
@@ -1602,19 +1654,24 @@ fn rd_impact(col: vec3<f32>, uv0: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) -
     let r = length(q);
     if (a < RD_IF0) {
         // (pure white, the point a tiny black core)
-        let core = 1.0 - smoothstep(0.008, 0.011, r);
-        return vec3<f32>(1.0 - core);
+        // (the point a small black burst, the rod's nose in it)
+        let th = atan2(q.y, q.x);
+        let cr = 0.018 + 0.008 * sin(th * 7.0 + 1.3) * sin(th * 11.0 + 0.4);
+        let core = 1.0 - smoothstep(cr * 0.85, cr, r);
+        return vec3<f32>((1.0 - core) * (1.0 - rod));
     }
     if (a < RD_IF1) {
-        let m = rd_if_mask(uv, P, asp, a) * (1.0 - rod);
-        let l = rd_if_lines(uv, P, asp, 1u, seed) * (1.0 - rod);
+        let rim = rd_if_rim(uv, a) * (1.0 - rod);
+        let m = max(rd_if_mask(uv, P, asp, a) * (1.0 - rod), rim);
+        let l = rd_if_lines(uv, P, asp, 1u, seed) * (1.0 - rod) * (1.0 - rim);
         let v = abs(m - l);
         return vec3<f32>(v);
     }
     if (a < RD_IF2) {
         // (the negative: what was white black, the land white, the lines a hot red)
-        let m = rd_if_mask(uv, P, asp, a) * (1.0 - rod);
-        let l = rd_if_lines(uv, P, asp, 2u, seed) * (1.0 - rod);
+        let rim = rd_if_rim(uv, a) * (1.0 - rod);
+        let m = max(rd_if_mask(uv, P, asp, a) * (1.0 - rod), rim);
+        let l = rd_if_lines(uv, P, asp, 2u, seed) * (1.0 - rod) * (1.0 - rim);
         let base = vec3<f32>(1.0 - m) * vec3<f32>(1.0, 0.93, 0.9);
         return mix(base, vec3<f32>(1.0, 0.07, 0.04), l);
     }

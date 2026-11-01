@@ -16,7 +16,8 @@
 //!
 //! What it leaves is real blocks: a crater about RD_CRATER_R * 2 (120) across and RD_CRATER_D (50) deep, a punch, not a
 //! bowl (its walls steep, its floor fractured stone fused into dark glass in patches), the rod standing in its middle
-//! (5 wide, RD_ROD_UP over the floor and RD_ROD_DOWN under it: netherite, bands of gold and a glowstone tip); its rim a raised ridge of the
+//! (11 wide, RD_ROD_UP over the floor, standing 30 over the land round it, and RD_ROD_DOWN under it: forged polished
+//! blackstone banded in gold and chiseled blackstone, a cap of light on its top); its rim a raised ridge of the
 //! ground turned over (the deep rock on top, the dirt under it) out to about RD_CRATER_R * RD_RIM (90); the land flattened
 //! round it out to about RD_FLAT (200; the trees felled and lying pointing away from it), past that out to RD_FLAT +
 //! RD_BAND (240) crowns stripped and some trees knocked flat; the ground dusted with what the crater threw out in rays
@@ -76,13 +77,17 @@ const RD_THROWN: usize = 240;
 const RD_RAYS: f64 = 17.0;
 /// The rod left standing in the crater's middle: RD_ROD_UP blocks over its floor (the floor's top at the target's
 /// ground less RD_CRATER_D), RD_ROD_DOWN under it, on the columns within RD_ROD_R2 (squared, in blocks) of the target's:
-/// a round rod five wide. Keep in step with rod.wgsl's RD_TOP_END and RD_L.
-const RD_ROD_UP: i32 = 38;
-const RD_ROD_DOWN: i32 = 14;
-const RD_ROD_R2: i32 = 5;
+/// a round rod eleven wide, its top 30 over the land round the crater. Keep in step with rod.wgsl's RD_TOP_END, RD_L
+/// and RD_R.
+const RD_ROD_UP: i32 = 80;
+const RD_ROD_DOWN: i32 = 30;
+const RD_ROD_R2: i32 = 26;
+/// The ring of light round its foot: the columns past the rod out to this (squared).
+const RD_ROD_RING2: i32 = 45;
 
 /// Where the rod is: plumb over the target, coming straight down onto it, faster and faster (RD_V0 to RD_V1 blocks a
-/// second, most of the gain in the last second: RD_VP).
+/// second, most of the gain in the last second: RD_VP), then in its last fraction of a second a last hard burst, up
+/// by RD_VB more (RD_VBP: how late it comes) so it slams in. It strikes at RD_HIT whatever the profile.
 #[derive(Clone, Debug)]
 pub(super) struct RdGeo {
     pub seed: u32,
@@ -93,6 +98,8 @@ pub(super) struct RdGeo {
 const RD_V0: f64 = 250.0;
 const RD_V1: f64 = 1600.0;
 const RD_VP: f64 = 3.0;
+const RD_VB: f64 = 4000.0;
+const RD_VBP: f64 = 40.0;
 
 fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
     [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
@@ -117,8 +124,9 @@ impl RdGeo {
         let (seen, hit) = (f64::from(RD_SEEN), f64::from(RD_HIT));
         let tl = hit - seen;
         let w = ((t - seen) / tl).clamp(f64::NEG_INFINITY, 1.0);
-        // (its speed RD_V0 + (RD_V1 - RD_V0) w^RD_VP, w the share of the fall gone)
-        tl * (RD_V0 * (1.0 - w) + (RD_V1 - RD_V0) * (1.0 - w.max(0.0).powf(RD_VP + 1.0)) / (RD_VP + 1.0))
+        // (its speed RD_V0 + (RD_V1 - RD_V0) w^RD_VP + RD_VB w^RD_VBP, w the share of the fall gone)
+        let wp = w.max(0.0);
+        tl * (RD_V0 * (1.0 - w) + (RD_V1 - RD_V0) * (1.0 - wp.powf(RD_VP + 1.0)) / (RD_VP + 1.0) + RD_VB * (1.0 - wp.powf(RD_VBP + 1.0)) / (RD_VBP + 1.0))
     }
     /// Where it is at strike time `t` (from the target's ground): at RD_HIT the target's ground.
     pub fn pos(&self, t: f64) -> [f64; 3] {
@@ -596,7 +604,7 @@ fn heap(u: f64, n: f64) -> f64 {
 }
 /// The crater's floor and walls, hallowed by it: its floor lined in white and gold (quartz in blocks, pillars and carved,
 /// calcite, gold and raw gold, veins of glowstone and shroomlight, now and then white or yellow glazed terracotta or
-/// amethyst), dark fused rock (obsidian, polished blackstone, tinted glass) in patches low on the floor round the rod's
+/// amethyst), dark fused rock (obsidian, blackstone, tinted glass) in patches low on the floor round the rod's
 /// foot for contrast; up its walls calcite, smooth stone, end stone and quartz bricks, gold in seams, some plain stone.
 fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
     let n = vnoise(f64::from(x) + f64::from(y) * 0.37, f64::from(z), 4.0, seed ^ 0x51);
@@ -605,7 +613,7 @@ fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
     let f = mh((x.wrapping_mul(73_856_093) ^ y.wrapping_mul(19_349_663) ^ z.wrapping_mul(83_492_791)) as u32, seed, 0x54);
     if u < 0.62 {
         if u < 0.4 && g > 0.68 {
-            if m > 0.55 { "minecraft:tinted_glass" } else if n > 0.5 { "minecraft:obsidian" } else { "minecraft:polished_blackstone" }
+            if m > 0.55 { "minecraft:tinted_glass" } else if n > 0.5 { "minecraft:obsidian" } else { "minecraft:blackstone" }
         } else if f < 0.03 {
             if m > 0.5 { "minecraft:glowstone" } else { "minecraft:shroomlight" }
         } else if n > 0.78 {
@@ -757,7 +765,10 @@ const RD_ITEM: f64 = 250.0;
 /// What a column at radius r is expected to change (blocks), for the wave's pace.
 fn rd_cost(r: f64) -> f64 {
     let u = r / RD_CRATER_R;
-    if u < 1.0 {
+    if r < 7.0 {
+        // (the rod stands there: all of its height)
+        bowl(u) + 8.0 + f64::from(RD_ROD_UP + RD_ROD_DOWN)
+    } else if u < 1.0 {
         bowl(u) + 8.0
     } else if u < RD_RIM {
         heap(u, 0.5) + 8.0
@@ -983,12 +994,13 @@ fn rd_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32
 
 /// The rod, where column (x, z) is one of its own: driven into the crater's middle, standing upright from RD_ROD_DOWN
 /// under its floor to RD_ROD_UP over it (the floor's depth at the target's own column, so it stands straight on any
-/// land): dark netherite, two bands of gold round its top, its tip glowstone; round its foot a ring of glowstone and
-/// shroomlight set in the floor.
+/// land; within the world's height): a forged rod of polished blackstone, its outside banded every so often in gold
+/// and in chiseled blackstone, a collar of gold low on it and two bands of gold round its top, capped with light
+/// (froglight in the middle, gold round it); round its foot a ring of glowstone and shroomlight set in the floor.
 fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32) {
     let (dx, dz) = (x - bx, z - bz);
     let d2 = dx * dx + dz * dz;
-    if d2 > 13 {
+    if d2 > RD_ROD_RING2 {
         return;
     }
     let Some(g) = at(land, bx, bz, bx, bz).map(|c| c.g) else { return };
@@ -998,14 +1010,23 @@ fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32) {
         b.run(x, z, floor, floor, if (dx + dz).rem_euclid(2) == 0 { "minecraft:glowstone" } else { "minecraft:shroomlight" });
         return;
     }
-    let top = floor + RD_ROD_UP;
-    b.run(x, z, floor - RD_ROD_DOWN, top - 1, "minecraft:netherite_block");
-    if d2 >= 4 {
+    let lo = (floor - RD_ROD_DOWN).max(-63);
+    let top = (floor + RD_ROD_UP).min(318);
+    b.run(x, z, lo, top - 1, "minecraft:polished_blackstone");
+    // (its bands only on its outside, where they show)
+    if d2 >= 17 {
+        let mut y = floor + 4;
+        while y < top - 8 {
+            let k = (y - floor) / 9;
+            b.run(x, z, y, y, if k % 3 == 1 { "minecraft:gold_block" } else { "minecraft:chiseled_polished_blackstone" });
+            y += 9;
+        }
+        b.run(x, z, floor + 1, floor + 2, "minecraft:gold_block");
         for y in [top - 2, top - 5] {
             b.run(x, z, y, y, "minecraft:gold_block");
         }
     }
-    b.run(x, z, top, top, if d2 <= 2 { "minecraft:glowstone" } else { "minecraft:gold_block" });
+    b.run(x, z, top, top, if d2 <= 10 { "minecraft:ochre_froglight" } else { "minecraft:gold_block" });
 }
 
 /// Edits sorted into the ticks they go in at.
@@ -1289,7 +1310,7 @@ fn rd_thrown(q: &mut Plan, land: &Land, s: &Shape, wave: &Wave, part: u64) {
         }
         // (from anywhere in the crater, more from its middle)
         // (none from round the rod, to come down on it)
-        let r = 8.0 + (RD_CRATER_R * 0.85 - 8.0) * rng.next().sqrt();
+        let r = 14.0 + (RD_CRATER_R * 0.85 - 14.0) * rng.next().sqrt();
         let a = rng.uniform(0.0, TAU);
         let (x, z) = (s.cx + a.cos() * r, s.cz + a.sin() * r);
         let (ix, iz) = (x.floor() as i32, z.floor() as i32);
@@ -1814,7 +1835,10 @@ mod tests {
             // (the last second very fast: over a third of the fall, ending at over 1,500 blocks a second)
             let h1 = g.pos(f64::from(RD_HIT) - 1.0)[1];
             assert!(h1 > 0.33 * p0[1], "{h1} {p0:?}");
-            assert!(g.pos(f64::from(RD_HIT) - 0.02)[1] / 0.02 > 1500.0);
+            // (and a last hard burst in its last fraction of a second: over 4,000 blocks a second in its last 0.02 s,
+            // twice what it was going a quarter second before)
+            let v = |t: f64| (g.pos(t - 0.01)[1] - g.pos(t + 0.01)[1]) / 0.02;
+            assert!(v(f64::from(RD_HIT) - 0.01) > 4000.0 && v(f64::from(RD_HIT) - 0.01) > 2.0 * v(f64::from(RD_HIT) - 0.25), "{} {}", v(f64::from(RD_HIT) - 0.01), v(f64::from(RD_HIT) - 0.25));
         }
         let w = rd_table(37.0, [0.0, 5.0, 300.0]);
         assert!(w.len() <= RD_HF && RD_P + 3 * RD_N <= RD_FR && RD_HF + 8 + RD_HN * RD_HN <= RD_DB);
@@ -2076,14 +2100,14 @@ mod tests {
             .flat_map(|(_, b)| b.as_fills())
             .filter(|f| {
                 let w: Vec<i32> = f.split_whitespace().skip(1).take(6).filter_map(|v| v.parse().ok()).collect();
-                w.len() == 6 && w[0].min(w[3]) <= bx + 3 && w[0].max(w[3]) >= bx - 3 && w[2].min(w[5]) <= bz + 3 && w[2].max(w[5]) >= bz - 3
+                w.len() == 6 && w[0].min(w[3]) <= bx + 7 && w[0].max(w[3]) >= bx - 7 && w[2].min(w[5]) <= bz + 7 && w[2].max(w[5]) >= bz - 7
             })
             .collect();
         let floor = ground_h(bx, bz) - RD_CRATER_D as i32;
         let top = floor + RD_ROD_UP;
         let mut cols = 0;
-        for x in bx - 3..=bx + 3 {
-            for z in bz - 3..=bz + 3 {
+        for x in bx - 7..=bx + 7 {
+            for z in bz - 7..=bz + 7 {
                 let rod = (x - bx).pow(2) + (z - bz).pow(2) <= RD_ROD_R2;
                 cols += i32::from(rod);
                 for y in floor - RD_ROD_DOWN..=top + 2 {
@@ -2091,9 +2115,9 @@ mod tests {
                         let w: Vec<i32> = f.split_whitespace().skip(1).take(6).filter_map(|v| v.parse().ok()).collect();
                         w.len() == 6 && !f.contains(" replace ") && (w[0].min(w[3])..=w[0].max(w[3])).contains(&x) && (w[1].min(w[4])..=w[1].max(w[4])).contains(&y) && (w[2].min(w[5])..=w[2].max(w[5])).contains(&z)
                     });
-                    let is_rod = last.is_some_and(|f| ["netherite_block", "gold_block", "glowstone"].iter().any(|m| f.contains(&format!("minecraft:{m} "))));
+                    let is_rod = last.is_some_and(|f| ["polished_blackstone", "gold_block", "chiseled_polished_blackstone", "ochre_froglight"].iter().any(|m| f.contains(&format!("minecraft:{m} "))));
                     let d2 = (x - bx).pow(2) + (z - bz).pow(2);
-                    if !rod && d2 <= 13 && y == floor {
+                    if !rod && d2 <= RD_ROD_RING2 && y == floor {
                         // (the ring of light round its foot)
                         assert!(last.is_some_and(|f| f.contains("minecraft:glowstone ") || f.contains("minecraft:shroomlight ")), "{x} {y} {z}: {last:?}");
                         continue;
@@ -2101,19 +2125,20 @@ mod tests {
                     if rod {
                         assert_eq!(is_rod, y <= top, "{x} {y} {z}: {last:?}");
                     } else {
-                        assert!(!last.is_some_and(|f| f.contains("minecraft:netherite_block ")), "{x} {y} {z}: {last:?}");
+                        assert!(!last.is_some_and(|f| f.contains("minecraft:polished_blackstone ")), "{x} {y} {z}: {last:?}");
                     }
                 }
             }
         }
-        // (round, five wide; its tip glowstone)
-        assert_eq!(cols, 21);
-        assert!(fills.iter().any(|f| f.starts_with(&format!("fill {bx} {top} {bz} ")) && f.contains("minecraft:glowstone")));
+        // (round, eleven wide; its top light; standing 30 over the land round it)
+        assert_eq!(cols, 89);
+        assert!(fills.iter().any(|f| f.starts_with(&format!("fill {bx} {top} {bz} ")) && f.contains("minecraft:ochre_froglight")));
+        assert_eq!(top - ground_h(bx, bz), RD_ROD_UP - RD_CRATER_D as i32);
         // (nothing thrown out of the crater from round it, to come down on it)
         let (_, cmds) = played_all(true);
         for (_, c) in cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")) {
             let w: Vec<f64> = c.split_whitespace().skip(2).take(3).map(|v| v.parse().unwrap()).collect();
-            assert!((w[0] - 10.5).hypot(w[2] + 2.5) >= 7.9, "{c}");
+            assert!((w[0] - 10.5).hypot(w[2] + 2.5) >= 13.9, "{c}");
         }
     }
 

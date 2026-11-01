@@ -56,12 +56,16 @@ laser, command, capability and timing). This file is the short, factual version 
   `world.push-player`, 0.8 blocks a tick out and 0.55 up within 200, fading to none at 600, `strike::knock_share`;
   they fly a jump's height or so and some six blocks back, then fall) and jolts the camera
   (`nk_jolt`) and the picture itself (nuke.wgsl's `pl_jolt`, on top of the game's shake, which tops out at a few
-  degrees). The Rod from God is the Nuke made kinetic (`strike/rod.rs`, `shaders/rod.wgsl`, the same reads, `Wave`,
-  pacing and far-land waiting): a near-vertical streak, impact at 7 s; a crater ~120 across and 50 deep with steep
-  walls (`bowl`: a punch), a fractured glassy floor and an overturned rim (deep rock on top) out to ~90, trees felled to
-  ~200 (a band of stripped crowns to ~240), the grass dusted and rubble strewn in ~17 rays out to ~250, ~120 falling
-  blocks thrown up in a cone, mobs killed within 200, the ~830 chunks within ~260 force-loaded; its land goes in from
-  7.05 s, the crater by ~9 s, all by ~14 s. Its knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
+  degrees). The Rod from God is the Nuke made kinetic and holy (`strike/rod.rs`, `shaders/rod.wgsl`, the
+  same reads, `Wave`, pacing and far-land waiting): plumb over the target, a hard last burst of speed (`RdGeo::left`),
+  impact at 7 s (`RD_HIT`, which the sounds key off); a crater ~120 across and 50 deep with steep walls (`bowl`: a
+  punch) lined in quartz, calcite and gold (`scorched`), a bleached rim (`ejecta`) out to ~90, the rod left standing in
+  its middle (`rd_rod_col`: 11 wide, 80 over the floor and 30 under it, polished blackstone banded in gold, a ring of
+  light round its foot; keep rod.wgsl's `RD_R`, `RD_L`, `RD_TOP_END` in step), trees felled to ~200 (a band of
+  stripped crowns to ~240), the grass blessed (white concrete, calcite, quartz, gold, lights, pale moss: `charred`) and
+  rubble strewn in ~17 rays out to ~250, ~120 falling blocks thrown up in a cone, mobs killed within 200, the ~830
+  chunks within ~260 force-loaded; its land goes in from 7.05 s, the crater and the rod by ~9 s, all by ~14 s. Its
+  knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
   Its pass has impact frames (`rd_impact`: ~0.17 s of stark frames as it strikes, timed by the strike clock; params[15]
   + 2 turns them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
@@ -86,7 +90,7 @@ python3 tools/build_mod.py          # build the mod from source into dist/orbita
 tools/check-shader.sh               # validate the post passes (a tenth of a second)
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 tools/preview.py payload 18 --quality both --bench   # the Payload at QUALITY FULL and FAST side by side, timed
-tools/preview.py rod 7.05 9 25 --views rdplayer,rdclose  # the Rod's impact frames and its column (views rd*)
+tools/preview.py rod 7.05 9 25 --views rdnear,rdstand  # the Rod's impact frames, its jet, it standing (views rd*)
 python3 tools/sounds_rod.py --listen DIR             # the Rod's sounds (and listening mixdowns from 200 and 600 blocks)
 ```
 
