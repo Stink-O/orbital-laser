@@ -195,7 +195,24 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         }
         Some(7.0 + (hash(cx + 2, cz + 7) * 6.0).floor() - (dx + dz) as f32 * 0.5)
     };
+    // (`rdpit=1`: the rod from god's crater, once it struck (7 s): 120 across and 50 deep, a punch, its rim heaped, the
+    // rod standing in its middle, 5 wide, its top 12 under the land (strike/rod.rs's bowl, heap and rod))
+    let rdpit = g("rdpit", 0.0) > 0.5 && time > 7.1;
     let ground = |x: f32, z: f32, crater: bool| {
+        if rdpit {
+            let (dx, dz) = (x - tgt[0], z - tgt[2]);
+            let (fx, fz) = ((x.floor() - tgt[0].floor()), (z.floor() - tgt[2].floor()));
+            if fx * fx + fz * fz <= 5.0 {
+                return tgt[1] - 12.0;
+            }
+            let u = dx.hypot(dz) / 60.0;
+            if u < 1.0 {
+                return tgt[1] - (50.0 * (1.0 - u.powi(5)).powf(0.6)).round();
+            }
+            if u < 1.5 {
+                return tgt[1] + (9.0 * (-(u - 1.05).powi(2) / 0.004).exp() + 3.5 * (1.0 - (u - 1.0) / 0.5)).round();
+            }
+        }
         if let Some(h) = pit.then(|| pit_h(x, z, tgt[1], time)).flatten() {
             h
         } else if flat {
@@ -282,7 +299,16 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                         if tree_h(p[0], p[2]).is_some() {
                             c = [(0.07 + 0.03 * n) * lit, (0.17 + 0.06 * n) * lit, (0.06 + 0.02 * n) * lit];
                         }
-                        if p[1] < tgt[1] - 1.5 && hills == 0.0 {
+                        let (fx, fz) = ((p[0].floor() - tgt[0].floor()), (p[2].floor() - tgt[2].floor()));
+                        if rdpit && fx * fx + fz * fz <= 5.0 && p[1] > tgt[1] - 66.0 {
+                            // (the rod: dark metal, its top glowstone)
+                            c = if p[1] > tgt[1] - 12.5 { [0.9, 0.75, 0.45] } else { [0.05 * lit + 0.02, 0.05 * lit + 0.02, 0.055 * lit + 0.02] };
+                        } else if rdpit && p[1] < tgt[1] - 1.5 && (p[0] - tgt[0]).hypot(p[2] - tgt[2]) < 66.0 {
+                            // (its lining: quartz and calcite, gold in veins, now and then a light)
+                            let h2 = hash(p[0].floor() as i32 * 7 + p[1].floor() as i32 * 131, p[2].floor() as i32);
+                            let k = if h2 > 0.93 { [0.85, 0.65, 0.2] } else if h2 > 0.91 { [1.6, 1.3, 0.7] } else if h2 < 0.25 { [0.62, 0.6, 0.56] } else { [0.78, 0.76, 0.72] };
+                            c = [k[0] * (0.6 + 0.4 * lit), k[1] * (0.6 + 0.4 * lit), k[2] * (0.6 + 0.4 * lit)];
+                        } else if p[1] < tgt[1] - 1.5 && hills == 0.0 {
                             // (rock laid open: dirt near the top, stone in bands, deepslate deep down)
                             let band = hash((p[1] / 3.0).floor() as i32, 7);
                             let dep = tgt[1] - p[1];

@@ -122,6 +122,13 @@ VIEWS = {
     "rdclose": "cx=0 cy=67 cz=150 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=80 reach=150",
     "rdaerial": "cx=0 cy=700 cz=700 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
     "rdhill": "cx=0 cy=100 cz=500 lx=0.5 ly=110 lz=0.5 hills=30 flush=1 trees=1 fov=70 reach=500",
+    # close (150 off) and 400 off at the target, and from 150 off looking straight up the rod's path as it comes down
+    "rdnear": "cx=0 cy=67 cz=150 lx=0.5 ly=95 lz=0.5 flat=1 trees=1 fov=75 reach=150 rdpit=1",
+    "rd400": "cx=0 cy=67 cz=400 lx=0.5 ly=140 lz=0.5 flat=1 trees=1 fov=70 reach=400 rdpit=1",
+    "rdup": "cx=0 cy=67 cz=150 lx=0.5 ly=1200 lz=-60 flat=1 trees=1 fov=80 reach=150 rdpit=1",
+    # looking down into the crater from its rim (the hot hole at its bottom)
+    "rdfall": "cx=0 cy=67 cz=150 lx=0.5 ly=190 lz=0.5 flat=1 trees=1 fov=75 reach=150 rdpit=1",
+    "rdhole": "cx=0 cy=118 cz=78 lx=0.5 ly=30 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
