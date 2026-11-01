@@ -52,8 +52,8 @@ const QUALITY: Rect = Rect { x: MSG.x, y: HUD.y + HUD.h + 2.0, w: MSG.w, h: MSG.
 /// The row under the quality switch's: the stop button's while a strike is under way, and LOCK SEED's across (the
 /// Rod's impact frames are a row under the ring, `/orbital impactframes`).
 const IMPACT: Rect = Rect { x: MSG.x, y: QUALITY.y + QUALITY.h + 2.0, w: MSG.w, h: MSG.h };
-/// Stopping the strike under way, under the quality switch; there only while one is.
-const STOP: Rect = Rect { x: MSG.x, y: IMPACT.y, w: MSG.w, h: MSG.h };
+/// Stopping the strike under way: a red button under the quality switch, there only while one is.
+const STOP: Rect = Rect { x: MSG.x, y: IMPACT.y + 2.0, w: MSG.w, h: MSG.h };
 /// The left column's x: the switches' mirror.
 const LEFT_X: f32 = -MSG.x - MSG.w;
 /// The knockback's switch, under the stop button (the Nuke's and the Rod's push on the player, `/orbital knockback`),
@@ -527,9 +527,9 @@ impl Wheel {
         // stopping the strike under way
         if self.striking {
             let hovered = self.hover == Some(Spot::Stop);
-            out.push(Draw::Fill((STOP, if hovered { 0xF04A1A1A } else { 0xD0101318 })));
-            out.push(Draw::Fill((Rect { x: STOP.x, y: STOP.y + STOP.h - 1.5, w: STOP.w, h: 1.5 }, 0xFFE0524E)));
-            text(&mut out, "STOP STRIKE", STOP.x + STOP.w / 2.0, STOP.y + STOP.h / 2.0 - 4.0, if hovered { 0xFFFFFF } else { 0xF06A64 });
+            out.push(Draw::Fill((STOP, if hovered { 0xF0A02828 } else { 0xE0701C1C })));
+            out.push(Draw::Fill((Rect { x: STOP.x, y: STOP.y + STOP.h - 2.0, w: STOP.w, h: 2.0 }, 0xFFFF6A64)));
+            text(&mut out, "STOP STRIKE", STOP.x + STOP.w / 2.0, STOP.y + STOP.h / 2.0 - 4.0, 0xFFFFFF);
         }
         // title, the flying speed, the pages, hint, and what the highlighted laser does
         text(&mut out, "ORBITAL LASER", 0.0, TITLE_Y, 0xFFFFFF);
@@ -993,5 +993,42 @@ mod tests {
         // the rows clear of the ring, the blurb's room and each other; the title clear of the tabs and the fly row
         assert!(button(1, 0).y > button(0, 0).y + BTN_H);
         assert!(TITLE_Y + 9.0 + 4.0 <= TAB_Y && TAB_Y + TAB_H + 4.0 <= -R_OUT - 3.0 && FLY_Y + BAR.h + 3.0 + 4.0 <= TITLE_Y);
+    }
+}
+
+#[cfg(test)]
+mod layout_dump {
+    use super::*;
+    /// Writes the wheel's draws for a few states as text lines (`fill x y w h argb`, `text x y rgb centred s`,
+    /// `quad x y x y x y x y argb`, `item x y`) to $WHEEL_DUMP/<state>.txt, for tools to draw and look at.
+    #[test]
+    #[ignore]
+    fn dump_wheel_layouts() {
+        let dir = std::env::var("WHEEL_DUMP").unwrap_or_else(|_| "/tmp/wheel".into());
+        std::fs::create_dir_all(&dir).unwrap();
+        let idx = |k: &str| LASERS.iter().position(|l| l.key == k).unwrap();
+        for (name, laser, striking) in [("nuke", "nuke", false), ("nuke_striking", "nuke", true), ("rod", "rod", false), ("payload", "payload", false), ("plasma", "plasma", false), ("mothership", "mothership", false)] {
+            let i = idx(laser);
+            let mut w = Wheel::on_page(page_of(i), 3.5);
+            w.striking = striking;
+            let draws = w.draws(i, true, false, false, 0, 0, &[0; 16], &[false; 2], true, true, false, true, false, Some(288));
+            let mut out = String::new();
+            for d in draws {
+                match d {
+                    Draw::Fill((r, c)) => out += &format!("fill {} {} {} {} {}\n", r.x, r.y, r.w, r.h, c),
+                    Draw::Text((t, p, c, centred)) => out += &format!("text {} {} {} {} {}\n", p.x, p.y, c, centred, t),
+                    Draw::Quad((ps, c)) => {
+                        out += "quad";
+                        for p in ps {
+                            out += &format!(" {} {}", p.x, p.y);
+                        }
+                        out += &format!(" {c}\n");
+                    }
+                    Draw::Item((_, _, p, s)) => out += &format!("item {} {} {}\n", p.x, p.y, s),
+                    Draw::Sprite((_, r, c)) => out += &format!("fill {} {} {} {} {}\n", r.x, r.y, r.w, r.h, c),
+                }
+            }
+            std::fs::write(format!("{dir}/{name}.txt"), out).unwrap();
+        }
     }
 }
