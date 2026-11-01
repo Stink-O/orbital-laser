@@ -2,9 +2,9 @@
 //! natively, where the SDK's calls into the game don't exist) a stand-in world that records what is asked of it and
 //! answers the reads when a test says (`fake`), so the tests can play strikes through lib.rs's own playback.
 #[cfg(not(test))]
-pub use horizon_mod_sdk::{game, log, render, world};
+pub use horizon_mod_sdk::{game, log, render, storage, world};
 #[cfg(test)]
-pub use fake::{game, log, render, world};
+pub use fake::{game, log, render, storage, world};
 
 #[cfg(test)]
 pub mod fake {
@@ -34,6 +34,8 @@ pub mod fake {
         /// The kicks given the player (`push-player`).
         pub pushes: u64,
         pub logs: Vec<String>,
+        /// The mod's storage (`storage`), key to value.
+        pub stored: std::collections::HashMap<String, Vec<u8>>,
     }
     thread_local! {
         pub static FAKE: RefCell<Fake> = RefCell::new(Fake::default());
@@ -55,6 +57,18 @@ pub mod fake {
         pub use horizon_mod_sdk::log::*;
         pub fn write(_level: Level, message: &str) {
             super::with(|w| w.logs.push(message.to_string()));
+        }
+    }
+    pub mod storage {
+        pub fn get(key: &str) -> Option<Vec<u8>> {
+            super::with(|w| w.stored.get(key).cloned())
+        }
+        pub fn set(key: &str, value: &[u8]) -> Result<(), String> {
+            super::with(|w| w.stored.insert(key.to_string(), value.to_vec()));
+            Ok(())
+        }
+        pub fn delete(key: &str) {
+            super::with(|w| w.stored.remove(key));
         }
     }
     pub mod render {

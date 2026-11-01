@@ -24,9 +24,9 @@ use horizon_mod_sdk::{
     Mod, Registration,
     hud::{self, Corner, Line},
     input::{self, Event},
-    storage, ui,
+    ui,
 };
-use sdk::{game, log, render, world};
+use sdk::{game, log, render, storage, world};
 use lasers::{LASERS, is_ship};
 use strike::{APPROACHES, ARRIVALS, Act, COLOUR_RGB, COLOURS, FIRE, Target};
 
@@ -75,6 +75,11 @@ fn pass_of(l: &lasers::Laser) -> usize {
     }
 }
 const SETTINGS: &str = "settings";
+/// The storage key that says which pass the game is building while it builds one (`Orbital::hand_post`).
+const BUILDING: &str = "building";
+/// Ticks of play (in a world, not paused) before the loaded laser's pass is given to the game to build ahead of its
+/// first strike (`warm`): not as the game starts, so a pass the game can't build stops nothing but that laser.
+const WARM_AFTER: u64 = 60;
 /// Vanilla's flying speed (creative flight), which the wheel's speeds multiply.
 const VANILLA_FLY: f32 = 0.05;
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
@@ -244,12 +249,15 @@ fn default_colour(i: usize) -> usize {
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
     /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's), the one the
-    /// game last compiled,
-    /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
+    /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
     passes: [&'static str; 9],
     compiled: Option<usize>,
-    warm_queue: Vec<usize>,
     warming: bool,
+    /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
+    building: Option<u8>,
+    /// The laser whose pass the game stopped building last time, to tell the player of once they are in a world
+    /// (`recover`).
+    broke: Option<usize>,
     /// World changes waiting for room in a tick's block budget, in order; they outlive the strike that made them.
     carving: std::collections::VecDeque<(u64, String)>,
     /// World changes that wait for spare block budget (`Act::Spare`): what stands high over a blast.
@@ -344,12 +352,9 @@ impl Orbital {
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
             compiled: None,
-            // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
-            warm_queue: {
-                let mine = pass_of(LASERS[laser]);
-                (0..9).filter(|&i| i != mine).chain([mine]).collect()
-            },
             warming: false,
+            building: None,
+            broke: None,
             carving: std::collections::VecDeque::new(),
             spare: std::collections::VecDeque::new(),
             edits: std::collections::VecDeque::new(),
@@ -423,6 +428,21 @@ impl Orbital {
     fn load() -> Settings {
         let text = storage::get(SETTINGS).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
         Self::parse(&text)
+    }
+    /// The game stopped last time while it built a pass (the storage still says which: `hand_post`): Apple's Metal
+    /// shader compiler has brought it down on the Downfall's and the Nuke's. If that is the loaded laser's, the Plasma
+    /// is loaded instead (and kept), so the game doesn't stop again on every start; which laser it was, to tell the
+    /// player of.
+    fn recover(settings: &mut Settings) -> Option<usize> {
+        let pass = storage::get(BUILDING).and_then(|b| String::from_utf8_lossy(&b).trim().parse::<usize>().ok());
+        storage::delete(BUILDING);
+        let pass = pass?;
+        log::write(log::Level::Warn, &format!("the game stopped last time while it built post pass {pass}"));
+        let broke = settings.laser;
+        (pass != 0 && pass_of(LASERS[broke]) == pass).then(|| {
+            settings.laser = 0;
+            broke
+        })
     }
     fn parse(text: &str) -> Settings {
         let mut laser = 0;
@@ -789,10 +809,48 @@ impl Orbital {
         if self.compiled == Some(pl) {
             self.compiled = None;
             if self.strike.is_some() {
-                render::set_post(&self.passes[pl]);
-                self.compiled = Some(pl);
+                self.hand_post(pl);
             }
         }
+    }
+    /// A frame's part in building the passes (`hand_post`).
+    fn warm(&mut self) {
+        // (a pass handed to the game is built as that frame is drawn: a few frames on, it was, and the game is still up)
+        if let Some(n) = &mut self.building {
+            *n += 1;
+            if *n >= 3 {
+                storage::delete(BUILDING);
+                self.building = None;
+            }
+        }
+        // Compile the loaded laser's pass ahead of its first strike (that costs about a second): set for one frame, all
+        // but invisible (no strike clock, the lowest intensity), then cleared; the game keeps the last one compiled for
+        // the strikes after. Only a few seconds into play, never as the game starts, and only the one that is needed:
+        // loading a laser that needs another compiles that one the same way, there and then rather than as it fires.
+        let want = pass_of(LASERS[self.laser]);
+        if self.strike.is_none() {
+            if self.warming {
+                render::clear_post();
+                self.warming = false;
+            } else if self.compiled != Some(want) && self.ticks >= WARM_AFTER {
+                self.hand_post(want);
+                render::set_params(&[0.0; 16]);
+                self.warming = true;
+            }
+        } else {
+            self.warming = false;
+        }
+    }
+    /// Pass `pass` given to the game. One it doesn't hold yet is built as the frame is drawn (about a second the first
+    /// time; the driver keeps it after), and should that bring the game down, as Apple's Metal compiler has on the
+    /// biggest passes, the storage says which it was (`BUILDING`, until a few frames later: `warm`), so the next start
+    /// doesn't load that laser again (`recover`).
+    fn hand_post(&mut self, pass: usize) {
+        if self.compiled != Some(pass) && storage::set(BUILDING, pass.to_string().as_bytes()).is_ok() {
+            self.building = Some(0);
+        }
+        render::set_post(self.passes[pass]);
+        self.compiled = Some(pass);
     }
 
     // ---- the strike ----
@@ -844,9 +902,7 @@ impl Orbital {
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
         }
-        let pass = pass_of(laser);
-        render::set_post(&self.passes[pass]);
-        self.compiled = Some(pass);
+        self.hand_post(pass_of(laser));
         render::set_params(&params);
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
@@ -1198,7 +1254,13 @@ impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
         input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
-        let state = Orbital::new(Orbital::load());
+        let mut settings = Orbital::load();
+        let broke = Orbital::recover(&mut settings);
+        let mut state = Orbital::new(settings);
+        if broke.is_some() {
+            state.broke = broke;
+            state.save();
+        }
         // the game keeps the flying speed from here on, in every world
         state.apply_fly();
         Ok((state, Registration::new().command("orbital").on_tick().on_frame()))
@@ -1208,6 +1270,15 @@ impl Mod for Orbital {
         meter::reset();
         self.ticks += 1;
         self.since_tick = 0.0;
+        if self.ticks >= 40
+            && let Some(i) = self.broke.take()
+        {
+            let text = format!(
+                "Orbital Laser: the game closed last time while it was building the {0}'s effects, so the Plasma laser is loaded instead. Pick the {0} on the wheel to try it again.",
+                LASERS[i].title
+            );
+            world::run_commands(&[format!(r#"tellraw @s {{"text":"{text}","color":"yellow"}}"#)]);
+        }
         for event in input::poll() {
             match event {
                 Event::UseStart(u) if u.item.id == DESIGNATOR => {
@@ -1264,29 +1335,7 @@ impl Mod for Orbital {
         meter::reset();
         self.since_tick += seconds;
         self.pace.frame(seconds);
-        // Compile the post passes as the world loads, not when the first strike fires (that costs about a second): set
-        // each for one frame, all but invisible (no strike clock, the lowest intensity), then clear it. The game keeps
-        // the last one compiled for the strikes after; loading a laser that needs another one compiles that one the
-        // same way (quickly, the driver has kept it), there and then rather than as it fires.
-        let want = pass_of(LASERS[self.laser]);
-        if self.warm_queue.is_empty() && !self.warming && self.compiled != Some(want) && self.strike.is_none() {
-            self.warm_queue.push(want);
-        }
-        if self.strike.is_none() {
-            if self.warming {
-                render::clear_post();
-                self.warming = false;
-            } else if !self.warm_queue.is_empty() {
-                let pass = self.warm_queue.remove(0);
-                render::set_post(&self.passes[pass]);
-                render::set_params(&[0.0; 16]);
-                self.compiled = Some(pass);
-                self.warming = true;
-            }
-        } else {
-            self.warm_queue.clear();
-            self.warming = false;
-        }
+        self.warm();
         if let Some(s) = &mut self.strike {
             s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
             render::set_params(&s.params);
@@ -2105,5 +2154,44 @@ mod stress {
         assert_eq!(ran, 60 * 400 + 3000, "every command ran");
         assert!(ticks > 60, "a stage a tick at most: {ticks}");
         assert!(worst <= meter::HARD + 2 * meter::SOFT, "a tick of {:.2}M", worst as f64 / 1e6);
+    }
+
+    /// No pass is given to the game as it starts: the loaded laser's only a few seconds into play, and while the game
+    /// builds one the storage says which. Should the game stop there (Apple's Metal compiler has, on the Downfall's and
+    /// the Nuke's), the next start loads the Plasma instead of crashing again, and says so once in a world.
+    #[test]
+    fn a_pass_the_game_cannot_build_never_stops_every_start() {
+        fake::with(|w| *w = fake::Fake::default());
+        let nuke = LASERS.iter().position(|l| l.key == "nuke").expect("the nuke");
+        let mut o = Orbital::new(Orbital::parse("laser=nuke"));
+        for _ in 0..30 {
+            o.warm();
+        }
+        assert_eq!(o.compiled, None, "a pass handed over before any play");
+        o.ticks = WARM_AFTER;
+        o.warm();
+        assert_eq!(o.compiled, Some(pass_of(LASERS[nuke])));
+        let noted = fake::with(|w| w.stored.get(BUILDING).cloned());
+        assert_eq!(noted.as_deref(), Some(b"6".as_slice()), "the pass being built not noted");
+        for _ in 0..4 {
+            o.warm();
+        }
+        assert!(fake::with(|w| !w.stored.contains_key(BUILDING)), "the note outlived the build");
+        // (the next frames: nothing handed over again; a strike of the same laser needs nothing new built)
+        assert!(o.building.is_none() && !o.warming);
+        // the game stopped while it built the Nuke's: the next start loads the Plasma, and says why once
+        fake::with(|w| w.stored.insert(BUILDING.into(), b"6".to_vec()));
+        let mut settings = Orbital::parse("laser=nuke");
+        assert_eq!(Orbital::recover(&mut settings), Some(nuke));
+        assert_eq!(settings.laser, 0);
+        assert!(fake::with(|w| !w.stored.contains_key(BUILDING)));
+        // another laser's pass (one loaded and dropped): the loaded laser stays
+        fake::with(|w| w.stored.insert(BUILDING.into(), b"1".to_vec()));
+        let mut settings = Orbital::parse("laser=payload");
+        assert_eq!(Orbital::recover(&mut settings), None);
+        assert_eq!(LASERS[settings.laser].key, "payload");
+        let mut settings = Orbital::parse("laser=nuke");
+        assert_eq!(Orbital::recover(&mut settings), None, "nothing noted, nothing changed");
+        assert_eq!(settings.laser, nuke);
     }
 }
