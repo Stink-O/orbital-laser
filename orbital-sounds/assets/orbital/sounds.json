@@ -1096,5 +1096,59 @@
       }
     ],
     "subtitle": "subtitles.orbital.nuke.blast_alt_far"
+  },
+  "rod.hiss": {
+    "sounds": [
+      {
+        "name": "orbital:rod/hiss",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.hiss"
+  },
+  "rod.ground": {
+    "sounds": [
+      {
+        "name": "orbital:rod/ground",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.ground"
+  },
+  "rod.blast": {
+    "sounds": [
+      {
+        "name": "orbital:rod/blast",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.blast"
+  },
+  "rod.blast_far": {
+    "sounds": [
+      {
+        "name": "orbital:rod/blast_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.blast_far"
+  },
+  "rod.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:rod/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.rumble"
+  },
+  "rod.debris": {
+    "sounds": [
+      {
+        "name": "orbital:rod/debris",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.rod.debris"
   }
 }
