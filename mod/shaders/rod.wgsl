@@ -718,7 +718,7 @@ fn rd_jet(p: vec3<f32>, a: f32, w: vec3<f32>) -> vec2<f32> {
 fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
     let up_t = up_e.x;
     var uv = in.uv;
-    let time = now();
+    let time = rd_clock();                                    // (held as it strikes: the impact frames' hit-stop)
     let cam = frame.camera_position.xyz;
     let k = intensity_v();
     let seed = u32(seed_v());
@@ -1540,12 +1540,12 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         }
     }
 
-    // ---- the impact frames: for a split second as it strikes, three short stark pulses round the impact point with
-    // the picture between them, smaller and fainter each time (the scene in black and white silhouettes, the rod going
-    // in among them, jagged impact lines bursting from the point; its negative; a faint echo split in colour), then the
-    // picture (rd_impact; `/orbital impactframes off` leaves them out)
-    if (stage != 1u && a > -0.004 && a < RD_IF_END && frame.mod_params[3].w < 1.5) {
-        col = rd_impact(col, uv, a, Cb, seed);
+    // ---- the impact frames: as it strikes the action held for a fifth of a second (rd_clock), stark compositions cut
+    // hard against each other over it, then the release smeared out from the point and a long glow (rd_impact;
+    // `/orbital impactframes off` leaves them out)
+    let a_if = now() - PL_HIT;
+    if (stage != 1u && rd_if_on() && a_if > -0.035 && a_if < RD_IF_END) {
+        col = rd_impact(col, uv, a_if, Cb, seed);
     }
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     if (capture() > 2.5) {
@@ -1561,37 +1561,82 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
 
 
 // ---- the impact frames ----------------------------------------------------------------------------------------------
-// The anime technique, held back: as it strikes, three short stark pulses with the picture between them, each smaller
-// and fainter than the one before, at an uneven rhythm (two frames, one frame of the picture, three, two of the
-// picture, one, at 60 a second; nudged a little each strike), timed by the strike's clock. Each is a burst round the
-// impact point, not the whole screen: a two-tone silhouette inside a ragged bound fading out into the picture, the
-// impact lines running on past it over the picture. 0: black silhouettes on white, black lines; 1: its negative, the
-// silhouettes white on a dark warm ground, the lines pale gold; 2: a faint echo, black on white split in colour.
-const RD_IF_END: f32 = 0.16;
-// The beat at `a` (seconds since it struck): its kind (-1 none: the picture), its bound's radius (in screen heights),
-// how strongly it shows.
-fn rd_if_beat(a: f32, seed: u32) -> vec3<f32> {
-    let j1 = (mh(1u, seed, 0x4d1u) - 0.5) * 0.012;
-    let j2 = (mh(2u, seed, 0x4d1u) - 0.5) * 0.014;
-    if (a < 0.05) {
-        return vec3<f32>(0.0, 1.5, 1.0);
-    }
-    if (a >= 0.066 + j1 && a < 0.116 + j1) {
-        return vec3<f32>(1.0, 0.85, 0.95);
-    }
-    if (a >= 0.136 + j2 && a < 0.153 + j2) {
-        return vec3<f32>(2.0, 0.5, 0.6);
-    }
-    return vec3<f32>(-1.0, 0.0, 0.0);
+// As it strikes the action holds: a hit-stop, the pass's own clock (rd_clock) stopped on the moment of contact for a
+// fifth of a second or so, then let go a little way into the burst and catching up over a third of a second.
+// Over the hold, a few stark compositions cut hard against each other, two or three frames each at 60 a second, the
+// camera kicked on every cut (pl_jolt: a tight punch-in on the point, then a shake a frame); then the release, the
+// picture smeared out from the point and split in colour for a moment, and a long glow fading. Timed by the strike's
+// clock. Three looks (RD_IF_STYLE; tools/preview.py's `--set rdif=N` builds the pass with another):
+//   0, the black flash: red and black, black lightning cracking out of the point in a crimson glow: the scene a pale
+//      negative, a tight red-on-black close-up, the negative cracked anew, the held picture drained, a last red hit;
+//   1, Kanada: black silhouettes and thick, wobbling black lines converging on the point on white; a tight close-up
+//      in negative, its lines gold; a gold and umber frame; the first again, shaken; gold and umber again, closer;
+//   2, cinematic: a white-out with the rod burned black into it; the frozen picture bleached while a shockwave ring,
+//      split in colour, tears out across the frame from the point and the camera pushes in; the release smeared.
+// Photosensitivity: at most two dark dips and the white-outs in it, no more than three large swings of brightness in
+// any second, its red kept to lines on black.
+const RD_IF_STYLE: i32 = 0;
+const RD_IF_CATCH: f32 = 0.35;     // the clock catching up after the hold, over this long,
+const RD_IF_JUMP: f32 = 0.08;      // from this far into the burst (its first white-out cut: the release is the frames')
+const RD_IF_END: f32 = 1.6;        // the frames and the glow after them done this long after it strikes
+const RD_IF_ROD: vec3<f32> = vec3<f32>(0.05, 0.045, 0.05);
+fn rd_if_on() -> bool {
+    return frame.mod_params[3].w < 1.5;
 }
-// The impact point on the screen (uv), and the picture's aspect.
+// How long the action holds: thirteen frames at 60 a second, twelve, fourteen (each cut ends half a frame early, so
+// that a frame drawn on the beat falls in the cut that starts there).
+fn rd_if_hold() -> f32 {
+    return (select(select(14.0, 12.0, RD_IF_STYLE == 1), 13.0, RD_IF_STYLE == 0) - 0.5) / 60.0;
+}
+// The pass's clock: now(), but held on the moment of contact through the impact frames, then catching up.
+fn rd_clock() -> f32 {
+    let t = now();
+    let a = t - PL_HIT;
+    if (!rd_if_on() || a <= 0.0) {
+        return t;
+    }
+    let F = rd_if_hold();
+    if (a < F) {
+        return PL_HIT - 0.0005;
+    }
+    if (a < F + RD_IF_CATCH) {
+        return PL_HIT + RD_IF_JUMP + (a - F) * (F + RD_IF_CATCH - RD_IF_JUMP) / RD_IF_CATCH;
+    }
+    return t;
+}
+// The cut at `a` (seconds since it struck): its composition (-1: the release), the punch-in (how far the picture is
+// zoomed on the point), the shake (screen heights, a new way each frame) and which set of lines and bolts.
+fn rd_if_cut(a: f32) -> vec4<f32> {
+    let F = rd_if_hold();
+    if (a >= F) {
+        // (snapping back out, still shaking, dying fast)
+        let s = a - F;
+        return vec4<f32>(-1.0, 1.0 + 0.12 * exp(-s / 0.05), 0.014 * exp(-s / 0.09), 9.0);
+    }
+    let f = a * 60.0 + 0.5;                                    // (frames since it struck, to the nearest)
+    if (RD_IF_STYLE == 0) {
+        if (f < 3.0) { return vec4<f32>(0.0, 1.0, 0.012, 1.0); }
+        if (f < 6.0) { return vec4<f32>(1.0, 3.0, 0.004, 2.0); }
+        if (f < 8.0) { return vec4<f32>(0.0, 1.35, 0.016, 3.0); }
+        if (f < 11.0) { return vec4<f32>(2.0, 1.12, 0.007, 3.0); }
+        return vec4<f32>(1.0, 1.9, 0.01, 4.0);
+    }
+    if (RD_IF_STYLE == 1) {
+        if (f < 2.0) { return vec4<f32>(0.0, 1.06, 0.01, 1.0); }
+        if (f < 5.0) { return vec4<f32>(1.0, 3.0, 0.004, 2.0); }
+        if (f < 7.0) { return vec4<f32>(2.0, 1.6, 0.012, 3.0); }
+        if (f < 10.0) { return vec4<f32>(0.0, 1.25, 0.02, 4.0); }
+        return vec4<f32>(2.0, 1.9, 0.01, 5.0);
+    }
+    if (f < 3.0) { return vec4<f32>(0.0, 1.03, 0.006, 1.0); }
+    return vec4<f32>(1.0, 1.04 + 0.1 * (a - 0.05) / (F - 0.05), 0.0015, 2.0);
+}
+// The impact point on the screen (uv).
 fn rd_if_point(Cb: vec3<f32>) -> vec2<f32> {
     let p = project_rel(Cb + vec3<f32>(0.0, 2.0, 0.0));
-    // (behind the eye: from the middle of the screen's edge nearest it, as a burst from off the screen)
-    return select(vec2<f32>(0.5, 1.2) + (vec2<f32>(0.5) - p.xy) * 0.0, p.xy, p.z > 0.0);
+    // (behind the eye: from below the middle of the screen, as a burst from off it)
+    return select(vec2<f32>(0.5, 1.2), p.xy, p.z > 0.0);
 }
-// The scene's silhouette at uv: 1 where it is bright or far (the sky, the distance, what is lit), 0 where it is near
-// and dark (the land and what stands on it close by); the impact's own burst white round the point.
 // What the scene is at uv to the silhouette: bright or far 1, near and dark 0.
 fn rd_if_tone(uv: vec2<f32>) -> f32 {
     let d = depth_at(uv);
@@ -1603,55 +1648,108 @@ fn rd_if_tone(uv: vec2<f32>) -> f32 {
     let lum = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
     return 0.55 * lum / (lum + 0.12) + 0.75 * smoothstep(250.0, 1400.0, len);
 }
-fn rd_if_mask(uv: vec2<f32>, P: vec2<f32>, asp: f32, a: f32) -> f32 {
-    // (four looks a couple of pixels apart: the leaves' speckle smoothed into clean shapes)
+// The scene's silhouette: 1 the sky and what is bright, 0 the land and what stands on it close by (four looks a couple
+// of pixels apart: the leaves' speckle smoothed into clean shapes).
+fn rd_if_mask(uv: vec2<f32>) -> f32 {
     let o = 2.0 * frame.resolution.zw;
-    var v = 0.25 * (rd_if_tone(uv + vec2<f32>(o.x, o.y)) + rd_if_tone(uv + vec2<f32>(-o.x, o.y)) + rd_if_tone(uv + vec2<f32>(o.x, -o.y)) + rd_if_tone(uv - o));
-    let q = (uv - P) * vec2<f32>(asp, 1.0);
-    let r = length(q);
-    // (the burst: a small hot core at the point, flattened along the ground, its edge broken finely rather than spiked)
-    let th = atan2(q.y, q.x);
-    let qe = q * vec2<f32>(0.55, 1.6);
-    let core = 0.022 + 0.012 * a / RD_IF_END + 0.004 * sin(th * 23.0 + 1.3) * sin(th * 37.0 + 0.4);
-    v = v + 1.5 * (1.0 - smoothstep(core * 0.7, core, length(qe)));
+    let v = 0.25 * (rd_if_tone(uv + vec2<f32>(o.x, o.y)) + rd_if_tone(uv + vec2<f32>(-o.x, o.y)) + rd_if_tone(uv + vec2<f32>(o.x, -o.y)) + rd_if_tone(uv - o));
     return smoothstep(0.5, 0.6, v);
 }
-// The impact lines at uv for beat `b`: thin, jagged wedges bursting out from the point, each its own width and start,
-// a new set each beat. 1 on a line.
-fn rd_if_lines(uv: vec2<f32>, P: vec2<f32>, asp: f32, b: u32, seed: u32) -> f32 {
-    let q = (uv - P) * vec2<f32>(asp, 1.0);
+// The burst at the point: a small core flattened along the ground, its edge broken finely (qj: off the point in the
+// picture's own screen heights, zoomed with it).
+fn rd_if_core(qj: vec2<f32>, size: f32) -> f32 {
+    let th = atan2(qj.y, qj.x);
+    let c = size * (1.0 + 0.18 * sin(th * 23.0 + 1.3) * sin(th * 37.0 + 0.4));
+    return 1.0 - smoothstep(c * 0.7, c, length(qj * vec2<f32>(0.55, 1.6)));
+}
+// A smooth glow round the point, flattened along the ground as the core is.
+fn rd_if_halo(qj: vec2<f32>, size: f32) -> f32 {
+    let d = length(qj * vec2<f32>(0.55, 1.6));
+    return exp(-pow(d / size, 2.0) * 1.5);
+}
+// Thick impact lines converging on the point (q: off it in screen heights): `n` wedges round it, a third of them left
+// out, each its own weight, thick at the screen's edge and tapering to a point well short of the middle, the whole set
+// bent back and forth along its length (wobbling: anew each set `b`). 1 on a line.
+fn rd_if_focus(q: vec2<f32>, b: u32, seed: u32, n: f32, wmax: f32) -> f32 {
     let r = max(length(q), 1.0e-4);
-    let n = 60.0;
     let th = atan2(q.y, q.x) / TAU + 0.5;
-    // (jagged: each line bent back and forth along its length)
-    let u0 = th * n;
-    let id0 = floor(u0);
-    let hj = mh(u32(id0) + 977u * b, seed, 0x4c1u);
-    let z1 = abs(fract(r * (5.0 + 4.0 * hj) + hj * 7.0) - 0.5) * 2.0 - 0.5;
-    let z2 = abs(fract(r * 17.0 + hj * 3.0) - 0.5) * 2.0 - 0.5;
-    let jag = 0.22 * z1 + 0.07 * z2;
-    let u = u0 + jag * smoothstep(0.0, 0.2, r);
+    let fb = f32(b);
+    let wob = (0.08 * sin(r * 6.0 + fb * 2.3 + th * 9.0) + 0.035 * sin(r * 17.0 - fb * 4.1)) * smoothstep(0.0, 0.25, r);
+    let u = th * n + wob;
     let id = floor(u);
     let k = u32(i32(id) + 1000) + 977u * b;
     let h1 = mh(k, seed, 0x4c2u);
     let h2 = mh(k, seed, 0x4c3u);
     let h3 = mh(k, seed, 0x4c4u);
-    if (h2 < 0.38) {
+    if (h2 < 0.3) {
         return 0.0;
     }
-    // (starting a way out from the point, thin there and widening outward, past the screen's edge)
-    let r0 = 0.07 + 0.32 * h3 * h3;
-    let w = (0.06 + 0.42 * h1 * h1 * h1) * smoothstep(r0, r0 + 0.25, r);
+    let r0 = 0.1 + 0.3 * h3 * h3;
+    let w = wmax * (0.3 + 0.7 * h1) * smoothstep(r0, r0 + 0.45 + 0.4 * h1, r);
     let f = abs(fract(u) - 0.5);
-    // (a pixel's width across the line, for a clean edge)
     let px = (1.0 / frame.resolution.y) / r * n / TAU;
     return (1.0 - smoothstep(w * 0.5 - px, w * 0.5 + px, f)) * step(r0, r);
 }
-// The rod in the impact frames: 1 where it stands in the way of this pixel's ray (going in, above the land).
-fn rd_if_rod(uv: vec2<f32>, a: f32) -> f32 {
+// Piecewise-linear noise, -1 to 1: lightning's sharp kinks.
+fn rd_if_pln(x: f32, seed: u32, k: u32) -> f32 {
+    let i = floor(x);
+    let h0 = mh(u32(i32(i) + 65536), seed, k);
+    let h1 = mh(u32(i32(i) + 65537), seed, k);
+    return mix(h0, h1, x - i) * 2.0 - 1.0;
+}
+// A bolt's path: how far it has wandered off its line `s` along it.
+fn rd_if_bpath(s: f32, seed: u32, k: u32) -> f32 {
+    return (0.075 * rd_if_pln(s * 9.0, seed, k) + 0.028 * rd_if_pln(s * 27.0, seed, k + 1u)) * smoothstep(0.0, 0.08, s);
+}
+// One bolt from `o` at angle `ang`, `len` long, `w0` wide at its root: (how far across from its path, its half width
+// there, how far along it it is, 0 to 1); far off if out of its length.
+fn rd_if_bolt1(q: vec2<f32>, o: vec2<f32>, ang: f32, len: f32, w0: f32, seed: u32, k: u32) -> vec3<f32> {
+    let d = vec2<f32>(cos(ang), sin(ang));
+    let p = q - o;
+    let s = dot(p, d);
+    if (s < -0.01 || s > len) {
+        return vec3<f32>(1.0e3, 0.0, 1.0);
+    }
+    let t = d.x * p.y - d.y * p.x;
+    let along = saturate(s / len);
+    return vec3<f32>(abs(t - rd_if_bpath(s, seed, k)), w0 * pow(1.0 - along, 0.7), along);
+}
+// The black flash's lightning round the point (q in screen heights): eight bolts cracking out of it, each with a branch,
+// a new set each `b`. x: on a bolt (its black core), y: its glow, z: on its thin hot middle.
+fn rd_if_bolts(q: vec2<f32>, b: u32, seed: u32) -> vec3<f32> {
+    let px = 1.0 / frame.resolution.y;
+    var core = 0.0;
+    var glow = 0.0;
+    var hot = 0.0;
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let k = 0x5000u + (b * 16u + i) * 8u;
+        let ang = TAU * (f32(i) + 0.8 * mh(i, seed, k)) / 8.0;
+        let len = 0.4 + 0.95 * mh(i, seed, k + 1u);
+        let w0 = 0.007 + 0.013 * mh(i, seed, k + 2u);
+        let sb = len * (0.2 + 0.4 * mh(i, seed, k + 4u));
+        let d = vec2<f32>(cos(ang), sin(ang));
+        let o2 = d * sb + vec2<f32>(-d.y, d.x) * rd_if_bpath(sb, seed, k + 3u);
+        let ang2 = ang + select(-1.0, 1.0, mh(i, seed, k + 5u) > 0.5) * (0.35 + 0.5 * mh(i, seed, k + 6u));
+        let w2 = w0 * 0.6 * pow(1.0 - sb / len, 0.7);
+        for (var j = 0u; j < 2u; j = j + 1u) {
+            let bt = select(rd_if_bolt1(q, vec2<f32>(0.0), ang, len, w0, seed, k + 3u),
+                            rd_if_bolt1(q, o2, ang2, (len - sb) * 0.6, w2, seed, k + 7u), j == 1u);
+            if (bt.x > 0.2) {
+                continue;
+            }
+            core = max(core, 1.0 - smoothstep(bt.y - px, bt.y + px, bt.x));
+            hot = max(hot, 1.0 - smoothstep(bt.y * 0.3 - px, bt.y * 0.3 + px, bt.x));
+            glow = max(glow, exp(-max(bt.x - bt.y, 0.0) / 0.022) * (1.0 - bt.z * bt.z));
+        }
+    }
+    return vec3<f32>(core, glow, hot);
+}
+// The rod in the impact frames, held on the moment of contact (`ar`: how far into its strike it is drawn, seconds): 1
+// where it stands in the way of this pixel's ray, above the land.
+fn rd_if_rod(uv: vec2<f32>, ar: f32) -> f32 {
     let cam = frame.camera_position.xyz;
     let anc = anchor_xz();
-    let N = vec3<f32>(floor(anc.x) + 0.5, block_y() + 1.0 + rd_nose_y(PL_HIT + max(a, 0.0)), floor(anc.y) + 0.5) - cam;
+    let N = vec3<f32>(floor(anc.x) + 0.5, block_y() + 1.0 + rd_nose_y(PL_HIT + max(ar, 0.0)), floor(anc.y) + 0.5) - cam;
     let rd = normalize(world_offset(uv, 0.5));
     let sg = pl_ray_seg(rd, N, N + vec3<f32>(0.0, RD_L, 0.0), 0.0, 1.0);
     let d = depth_at(uv);
@@ -1663,11 +1761,11 @@ fn rd_if_rod(uv: vec2<f32>, a: f32) -> f32 {
     let w = sg.y * frame.view_params.w / frame.resolution.y;
     return 1.0 - smoothstep(RD_R - w, RD_R + w, sg.x);
 }
-// The rod's outline in the impact frames: a band a few pixels wide just round it, set against whatever is behind.
-fn rd_if_rim(uv: vec2<f32>, a: f32) -> f32 {
+// The rod's outline in the impact frames: a band a few pixels wide just round it.
+fn rd_if_rim(uv: vec2<f32>) -> f32 {
     let cam = frame.camera_position.xyz;
     let anc = anchor_xz();
-    let N = vec3<f32>(floor(anc.x) + 0.5, block_y() + 1.0 + rd_nose_y(PL_HIT + max(a, 0.0)), floor(anc.y) + 0.5) - cam;
+    let N = vec3<f32>(floor(anc.x) + 0.5, block_y() + 1.0 + rd_nose_y(PL_HIT), floor(anc.y) + 0.5) - cam;
     let rd = normalize(world_offset(uv, 0.5));
     let sg = pl_ray_seg(rd, N, N + vec3<f32>(0.0, RD_L + 6.0, 0.0), 0.0, 1.0);
     let gyr = block_y() + 1.0 - cam.y + pl_g0();
@@ -1678,62 +1776,139 @@ fn rd_if_rim(uv: vec2<f32>, a: f32) -> f32 {
     let e = sg.x - RD_R;
     return smoothstep(-w, 0.0, e) * (1.0 - smoothstep(3.0 * w, 4.0 * w, e));
 }
-fn rd_impact(col: vec3<f32>, uv0: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) -> vec3<f32> {
-    let beat = rd_if_beat(a, seed);
-    if (beat.x < 0.0) {
-        return col;
+fn rd_if_scene(uv: vec2<f32>) -> vec3<f32> {
+    return srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb);
+}
+// The picture smeared out from the point P (zoom blur, `amt` of the way in) and split in colour (`ca`), the scene and
+// the rod (drawn `ar` seconds into its strike) blurred and laid over what the pass drew there in place of their sharp
+// selves, so the pass's own light stays.
+fn rd_if_blur(col: vec3<f32>, uv: vec2<f32>, P: vec2<f32>, amt: f32, ca: f32, ar: f32) -> vec3<f32> {
+    let jit = fract(52.9829189 * fract(dot(pl_px, vec2<f32>(0.06711056, 0.00583715))));
+    var acc = vec3<f32>(0.0);
+    for (var k = 0; k < 8; k = k + 1) {
+        let f = 1.0 - amt * (f32(k) + jit) / 8.0;
+        let o = (uv - P) * f;
+        let c = vec3<f32>(rd_if_scene(P + o * (1.0 + ca)).r, rd_if_scene(P + o).g, rd_if_scene(P + o * (1.0 - ca)).b);
+        acc = acc + mix(c, RD_IF_ROD, rd_if_rod(P + o, ar));
     }
-    let kind = i32(beat.x + 0.5);
+    let sharp = mix(rd_if_scene(uv), RD_IF_ROD, rd_if_rod(uv, ar));
+    return max(col + acc / 8.0 - sharp, vec3<f32>(0.0));
+}
+fn rd_impact(col: vec3<f32>, uv: vec2<f32>, a: f32, Cb: vec3<f32>, seed: u32) -> vec3<f32> {
     let asp = frame.resolution.x / frame.resolution.y;
     let P = rd_if_point(Cb);
-    let uv = uv0;
-    let rod = rd_if_rod(uv, a);
-    let q = (uv - P) * vec2<f32>(asp, 1.0);
+    let cut = rd_if_cut(max(a, 0.0));
+    let qj = (uv - P) * vec2<f32>(asp, 1.0);
+    let q = qj * max(cut.y, 1.0 + 4.0 * cut.z);                                          // on the screen, in screen heights
     let r = length(q);
-    // (the burst's bound: a ragged star, its spikes each their own length, a new one each beat, the stark frame
-    // fading out into the picture past it)
-    let th = atan2(q.y, q.x);
-    let ph = 6.0 * mh(u32(kind) + 7u, seed, 0x4d2u);
-    let su = (th / TAU + 0.5) * 19.0 + ph;
-    let sid = u32(i32(floor(su)) + 100) + 41u * u32(kind);
-    let spike = mh(sid, seed, 0x4d3u) * (1.0 - abs(2.0 * fract(su) - 1.0));
-    let R = beat.y * (0.72 + 0.6 * spike + 0.06 * sin(th * 5.0 + ph));
-    let inside = (1.0 - smoothstep(0.6 * R, R, r)) * beat.z;
-    let b = u32(kind) + 1u;
-    let l = rd_if_lines(uv, P, asp, b, seed) * (1.0 - rod);
-    // (past the bound only the lines, darkening the picture, thinning out towards the screen's edge)
-    let lout = l * beat.z * 0.55 * (1.0 - smoothstep(0.5, 1.1, r));
-    if (inside < 0.002) {
-        return mix(col, col * select(0.2, 1.6, kind == 1) + select(vec3<f32>(0.0), vec3<f32>(0.25, 0.2, 0.1), kind == 1), lout);
+    let lw = vec3<f32>(0.2126, 0.7152, 0.0722);
+    if (a < 0.0) {
+        // (the breath in: the last two frames before it the picture drained and darkened from its edges in)
+        let e = smoothstep(-0.035, 0.0, a);
+        return mix(col, vec3<f32>(dot(col, lw)) * 0.5, e * 0.7 * smoothstep(0.05, 0.7, r));
     }
-    var stark: vec3<f32>;
+    let F = rd_if_hold();
+    if (a >= F) {
+        // ---- the release: smeared out from the point and split in colour, fading fast; then the long glow
+        let s = a - F;
+        var c = col;
+        let bl = exp(-s / 0.11);
+        if (bl > 0.1) {
+            c = rd_if_blur(c, uv, P, 0.35 * bl, 0.06 * bl, rd_clock() - PL_HIT);
+        }
+        let tint = select(select(vec3<f32>(1.0, 0.86, 0.68), vec3<f32>(1.0, 0.74, 0.38), RD_IF_STYLE == 1), vec3<f32>(1.0, 0.22, 0.16), RD_IF_STYLE == 0);
+        let tau = select(0.35, 0.6, RD_IF_STYLE == 2);
+        let g = exp(-s / tau) * smoothstep(RD_IF_END, RD_IF_END - 0.4, a);
+        return c + tint * g * (0.03 + 0.7 * exp(-r / 0.18));
+    }
+    let kind = i32(cut.x + 0.5);
+    let b = u32(cut.w);
+    let rod = rd_if_rod(uv, 0.0);
+    let rim = rd_if_rim(uv) * (1.0 - rod);
+    if (RD_IF_STYLE == 0) {
+        // ---- the black flash
+        let bo = rd_if_bolts(q, b, seed);
+        if (kind == 2) {
+            // (the held picture drained to bone and blood, the bolts' last black in it)
+            let l = dot(col, lw);
+            var c = mix(vec3<f32>(0.1, 0.0, 0.015), vec3<f32>(0.95, 0.92, 0.9), smoothstep(0.04, 0.75, l));
+            c = mix(c, vec3<f32>(0.6, 0.02, 0.03), saturate(bo.y) * 0.6);
+            return c * (1.0 - 0.9 * bo.x);
+        }
+        let m = max(rd_if_mask(uv) * (1.0 - rod), 0.0);
+        let core = rd_if_core(qj, 0.02);
+        if (kind == 0) {
+            // (a pale negative: bone where it was bright, black where near; crimson round the bolts, their cores black,
+            // the rod black with a crimson edge, the core at the point black in a red ring)
+            var c = mix(vec3<f32>(0.02, 0.0, 0.006), vec3<f32>(0.88, 0.85, 0.82), m);
+            c = mix(c, vec3<f32>(0.8, 0.02, 0.04), saturate(bo.y + rim + 0.9 * rd_if_halo(qj, 0.045)) * 0.9);
+            return c * (1.0 - bo.x) * (1.0 - core) * (1.0 - rod);
+        }
+        // (close: red on black, the sky only a dark blood, the bolts red-hot round thin white cores, the rod black edged
+        // in red, the point a black hole in a red-hot ring)
+        var c = vec3<f32>(0.012, 0.0, 0.003) + vec3<f32>(0.035, 0.0, 0.005) * m;
+        c = c + vec3<f32>(1.0, 0.05, 0.04) * (bo.y * 0.9 + rim * 1.4 + 1.6 * rd_if_halo(qj, 0.05));
+        c = mix(c, vec3<f32>(1.6, 0.25, 0.15), bo.x);
+        c = mix(c, vec3<f32>(1.4, 1.2, 1.1), bo.z);
+        return c * (1.0 - core) * (1.0 - rod * (1.0 - bo.x));
+    }
+    if (RD_IF_STYLE == 1) {
+        // ---- Kanada
+        let l = rd_if_focus(q, b, seed, 40.0, select(0.8, 0.65, kind == 1)) * (1.0 - rod) * (1.0 - rim);
+        let core = rd_if_core(qj, 0.022);
+        let m = max(max(rd_if_mask(uv) * (1.0 - rod), rim), core);
+        if (kind == 0) {
+            // (black silhouettes on white, the lines black on the white and white over the black)
+            return vec3<f32>(abs(m - l));
+        }
+        if (kind == 1) {
+            // (the negative, close: the sky black, the land and the rod pale, the lines gold over all)
+            let base = mix(vec3<f32>(1.0, 0.96, 0.9), vec3<f32>(0.015, 0.01, 0.008), max(m, rim) * (1.0 - core));
+            return mix(base, vec3<f32>(1.0, 0.7, 0.2) * 1.3, l);
+        }
+        // (gold and umber: the sky gold, the land and the rod dark umber, the lines the other of the two)
+        let gold = vec3<f32>(1.0, 0.64, 0.14);
+        let umb = vec3<f32>(0.07, 0.025, 0.008);
+        return mix(umb, gold, abs(m - l));
+    }
+    // ---- cinematic
     if (kind == 0) {
-        let rim = rd_if_rim(uv, a) * (1.0 - rod);
-        let m = max(rd_if_mask(uv, P, asp, a) * (1.0 - rod), rim);
-        stark = vec3<f32>(abs(m - l * (1.0 - rim)));
-    } else if (kind == 1) {
-        // (the negative: what was white dark and warm, the land pale, the lines pale gold)
-        let rim = rd_if_rim(uv, a) * (1.0 - rod);
-        let m = max(rd_if_mask(uv, P, asp, a) * (1.0 - rod), rim);
-        let base = mix(vec3<f32>(0.1, 0.075, 0.05), vec3<f32>(1.0, 0.95, 0.88), 1.0 - m);
-        stark = mix(base, vec3<f32>(1.0, 0.86, 0.55), l * (1.0 - rim));
-    } else {
-        // (the echo: black on white again, its lines anew, split in colour out from the point)
-        let ca = normalize(q + vec2<f32>(1.0e-5)) * vec2<f32>(1.0 / asp, 1.0) * 0.006;
-        let mr = rd_if_mask(uv + ca, P, asp, a) * (1.0 - rd_if_rod(uv + ca, a));
-        let mg = rd_if_mask(uv, P, asp, a) * (1.0 - rod);
-        let mb = rd_if_mask(uv - ca, P, asp, a) * (1.0 - rd_if_rod(uv - ca, a));
-        stark = vec3<f32>(abs(mr - l), abs(mg - l), abs(mb - l));
+        // (the white-out: the land a pale ghost, the rod burned black into it)
+        let m = rd_if_mask(uv);
+        let ray = rd_if_focus(q, 7u, seed, 56.0, 0.5);
+        var c = mix(vec3<f32>(0.62, 0.55, 0.48), vec3<f32>(1.25, 1.2, 1.1), m) * (1.0 - 0.25 * ray * (1.0 - m * 0.6));
+        c = c + vec3<f32>(1.5, 1.3, 1.0) * (rd_if_core(qj, 0.05) + 0.8 * rd_if_halo(qj, 0.12));
+        return mix(c, vec3<f32>(0.01), rod);
     }
-    let lined = mix(col, col * 0.2, lout);
-    return mix(lined, stark, inside);
+    // (held: the frozen picture bleached and hard, darkened to its edges, a shockwave ring tearing out across it from the
+    // point, pushing the picture out under it, split in colour, the picture it has passed lit)
+    let s = a - 0.05;
+    let rr = 0.03 + s * 7.5;
+    let e = r - rr;
+    let dir = q / max(r, 1.0e-4);
+    let duv = dir * vec2<f32>(1.0 / asp, 1.0) / max(cut.y, 1.0 + 4.0 * cut.z);
+    let bump = exp(-pow(e / 0.05, 2.0));
+    var c = rd_if_blur(col, uv, P, 0.05 + 0.25 * s, 0.006, 0.0);
+    if (bump > 0.01) {
+        let w = 0.035 * bump;
+        let rc = vec3<f32>(rd_if_scene(uv - duv * w * 1.6).r, rd_if_scene(uv - duv * w).g, rd_if_scene(uv - duv * w * 0.4).b);
+        c = max(c + rc - rd_if_scene(uv), vec3<f32>(0.0));
+    }
+    let l = dot(c, lw);
+    c = smoothstep(vec3<f32>(0.04), vec3<f32>(0.8), mix(vec3<f32>(l), c, 0.3));
+    let passed = smoothstep(0.02, -0.04, e);
+    c = c * mix(vec3<f32>(0.74, 0.77, 0.86), vec3<f32>(0.86, 0.85, 0.84), passed) * (1.0 - 0.45 * smoothstep(0.4, 1.1, r));
+    c = c + vec3<f32>(1.0, 0.25, 0.1) * exp(-pow((e + 0.012) / 0.006, 2.0)) * 0.9
+          + vec3<f32>(1.0, 0.95, 0.85) * exp(-pow(e / 0.005, 2.0)) * 1.2
+          + vec3<f32>(0.15, 0.35, 1.0) * exp(-pow((e - 0.012) / 0.006, 2.0)) * 0.9;
+    return c + vec3<f32>(1.5, 1.35, 1.1) * rd_if_core(qj, 0.035);
 }
 
 // ---- the jolt on the picture: the game's camera shake (rod.rs's rd_jolt) tops out at a few degrees, so as the
 // shockwave reaches the player the picture itself is knocked about too: a hard, sharp hit, ringing out fast, then a
 // shudder dying away over five seconds or so; hardest within a couple of hundred blocks. Shifted and turned a little
-// and zoomed in just enough that no edge shows. And on the impact frames' first beats the picture punched in hard on
-// the impact point. The lens's own marks stay put (pl_px). ---------------------------------------------------------
+// and zoomed in just enough that no edge shows. And on the impact frames' cuts the picture punched in hard on the
+// impact point and kicked a new way each frame (rd_if_cut). The lens's own marks stay put (pl_px). ---------------------------------------------------------
 var<private> pl_px: vec2<f32>;
 fn pl_jolt(in: StageIn) -> StageIn {
     pl_px = in.position.xy;
@@ -1741,12 +1916,17 @@ fn pl_jolt(in: StageIn) -> StageIn {
     let asp = res.x / res.y;
     var o = in;
     let ai = now() - PL_HIT;
-    if (ai > 0.0 && ai < RD_IF_END && frame.mod_params[3].w < 1.5 && intensity_v() > 0.0) {
-        // (the punch: in by a ninth at once, easing back over the beats)
-        let C = vec3<f32>(anchor_xz().x, block_y() + 1.0, anchor_xz().y) - frame.camera_position.xyz;
+    if (rd_if_on() && ai > 0.0 && ai < RD_IF_END) {
+        // (the impact frames' camera: punched in on the point on each cut, kicked a new way each frame, snapping back
+        // out on the release)
+        let cut = rd_if_cut(ai);
+        let C = vec3<f32>(anchor_xz().x, block_y() + 1.0 + pl_g0(), anchor_xz().y) - frame.camera_position.xyz;
         let P = clamp(rd_if_point(C), vec2<f32>(0.2), vec2<f32>(0.8));
-        let z = 1.0 + 0.11 * exp(-ai / 0.06);
-        o.uv = P + (in.uv - P) / z;
+        let fi = u32(floor(ai * 60.0)) + 300u;
+        let sd = u32(seed_v());
+        let sh = (vec2<f32>(mh(fi, sd, 0x4f1u), mh(fi, sd, 0x4f2u)) - 0.5) * 2.0 * cut.z;
+        let z = max(cut.y, 1.0 + 4.0 * cut.z);
+        o.uv = clamp(P + (in.uv - P) / z + sh * vec2<f32>(1.0 / asp, 1.0), vec2<f32>(0.0), vec2<f32>(1.0));
         o.position = vec4<f32>(o.uv * res, in.position.zw);
     }
     let tgt = vec3<f32>(anchor_xz().x, block_y() + 1.0 + PL_BURST, anchor_xz().y);

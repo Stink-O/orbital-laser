@@ -9,6 +9,8 @@ sheet. Seconds a sheet, against a rebuild, a restart and a whole strike in the g
     tools/preview.py downfall 30 --set mode=2 colour=1 # any of the preview's keys (see tools/preview/src/main.rs)
     tools/preview.py payload 18 --quality both --bench # QUALITY FULL and FAST side by side (the payload's half-size
                                                        # stage; --whole: FAST as a game without the stages draws it)
+    tools/preview.py rod 7.05 --set rdif=0             # the Rod's other impact frames (rod.wgsl's RD_IF_STYLE: 0 the
+                                                       # black flash, 1 Kanada, 2 cinematic)
 
 The sheet is dist/preview/<laser>.jpg (each frame beside it as NN.png). The scene is not the game's: what the pass
 reads from the world (its depth, the clouds, the time of day) is like it, not the same. The look and the timing are the
@@ -16,6 +18,7 @@ real pass's, built from the shaders exactly as the mod builds it.
 """
 import argparse
 import os
+import re
 import pathlib
 import subprocess
 import sys
@@ -162,7 +165,7 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "supercell": "scplayer,scunder,scfar"}
 
 
-def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Path:
+def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
     """The pass as the mod builds it (mod/src/lib.rs): strike.wgsl, or for the downfall and the planet killer
     strike.wgsl up to its fs_main less the other lasers' own functions, then downfall.wgsl or planetkiller.wgsl. Its
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
@@ -175,6 +178,10 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False) -> pathlib.Pat
         if not fast:
             own = subprocess.run(["sed", "-e", r"/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d"],
                                  input=own, capture_output=True, text=True, check=True).stdout
+        # (the Rod's impact frames in another of their looks: `--set rdif=N`)
+        rdif = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("rdif=")), None)
+        if rdif is not None:
+            own = re.sub(r"const RD_IF_STYLE: i32 = \d+;", f"const RD_IF_STYLE: i32 = {int(rdif)};", own)
         path.write_text(pre + own)
     else:
         path.write_text(strike)
@@ -260,7 +267,7 @@ def main() -> int:
     for q in qualities:
         qout = out / q if len(qualities) > 1 else out
         qout.mkdir(parents=True, exist_ok=True)
-        shader = build_pass(a.laser, out, q == "fast")
+        shader = build_pass(a.laser, out, q == "fast", a.set)
         r = subprocess.run([str(exe), str(shader), str(qout), *common, *shots], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             print(r.stderr, file=sys.stderr)
