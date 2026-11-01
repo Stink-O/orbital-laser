@@ -92,8 +92,10 @@ const RD_ROD_MAX: i32 = 318;
 const RD_ROD_RING2: i32 = 60;
 
 /// Where the rod is: plumb over the target, coming straight down onto it, faster and faster (RD_V0 to RD_V1 blocks a
-/// second, most of the gain in the last second: RD_VP), then in its last fraction of a second a last hard burst, up
-/// by RD_VB more (RD_VBP: how late it comes) so it slams in. It strikes at RD_HIT whatever the profile.
+/// second, most of the gain in the last second: RD_VP), then over its last half second a last hard burst eased in, up
+/// by RD_VB more (RD_VBP: how late it comes) so it slams in at some 2,300 blocks a second: hard, but slow enough that
+/// it reads frame by frame (under 40 blocks a frame at 60) rather than jumping. It strikes at RD_HIT whatever the
+/// profile.
 #[derive(Clone, Debug)]
 pub(super) struct RdGeo {
     pub seed: u32,
@@ -102,10 +104,10 @@ pub(super) struct RdGeo {
     pub wind: (f64, f64),
 }
 const RD_V0: f64 = 250.0;
-const RD_V1: f64 = 1600.0;
+const RD_V1: f64 = 1300.0;
 const RD_VP: f64 = 3.0;
-const RD_VB: f64 = 4000.0;
-const RD_VBP: f64 = 40.0;
+const RD_VB: f64 = 1000.0;
+const RD_VBP: f64 = 10.0;
 
 fn add(a: [f64; 3], b: [f64; 3], k: f64) -> [f64; 3] {
     [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
@@ -759,12 +761,18 @@ fn wet_near(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> bool {
     [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2), (1, 1), (1, -1), (-1, 1), (-1, -1)].iter().any(|(dx, dz)| at(land, bx, bz, x + dx, z + dz).is_some_and(|c| c.fluid))
 }
 
-// ---- the wave: the land's changes from the middle out ------------------------------------------------------------
-/// The blast's changes go into the world as one wave from the middle out, a ring at a time: each ring as the shockwave
-/// reaches it, or as soon after as the world takes the blocks the rings inside it change (RD_RATE a second, of what
-/// each ring is expected to change: `rd_cost`); the crater first, then its rim, the flattened land and its felled
-/// trees, the dusted grass, the stripped crowns, out to the land read.
+// ---- the wave: the crater caving in from its edge to the rod, the land round it from the edge out --------------------
+/// The blast's changes go into the world as two waves from the crater's edge (RD_CAVE), a ring at a time: one inward,
+/// the crater caving in on the rod from its edge to its middle (its outer blocks first, the rod's foot last), and one
+/// outward, the rim, the flattened land and its felled trees, the dusted grass, the stripped crowns, out to the land
+/// read. Each ring goes in as the shockwave reaches it, or as soon after as the world takes the blocks the rings before
+/// it on its wave change (`rd_cost`): the crater's at RD_RATE a second, the land's round it at RD_OUT of that while the
+/// crater is caving in and at the whole of it after.
 const RD_RATE: f64 = 350_000.0;
+const RD_OUT: f64 = 0.35;
+/// Where the two waves part: just past the crater's edge however its edge wanders (RD_CRATER_R times its wobble, at
+/// most some 1.16).
+const RD_CAVE: usize = 72;
 /// The rings (RD_RING wide) are worked out in parts of about RD_ITEM columns, split by angle, never by rows.
 const RD_RING: f64 = 4.0;
 const RD_ITEM: f64 = 250.0;
@@ -774,6 +782,9 @@ fn rd_cost(r: f64) -> f64 {
     if r < 8.0 {
         // (the rod stands there: all of its height)
         bowl(u) + 8.0 + f64::from(RD_ROD_UP + RD_ROD_DOWN)
+    } else if r < RD_HEAVE_R {
+        // (the floor heaved up round its foot)
+        bowl(u) + 12.0
     } else if u < 1.0 {
         bowl(u) + 8.0
     } else if u < RD_RIM {
@@ -785,18 +796,31 @@ fn rd_cost(r: f64) -> f64 {
         6.0
     }
 }
-/// When the wave reaches radius r (a block at a time out to past RD_READ).
+/// When the waves reach radius r (a block at a time out to past RD_READ): falling from the crater's edge in to its
+/// middle, rising from the edge out.
 #[derive(Clone)]
 struct Wave(Rc<Vec<f32>>);
 impl Wave {
     fn new() -> Self {
-        let mut out = Vec::new();
+        let n = RD_READ as usize + 16;
+        let mut out = vec![0.0f32; n + 1];
+        let shock = |r: f64| (r * r + RD_BURST * RD_BURST).sqrt() / 343.0;
+        // (the crater, from its edge in: from the moment the shock reaches its edge)
+        let edge = shock(RD_CAVE as f64);
         let mut work = 0.0;
-        for r in 0..=RD_READ + 16 {
-            let rf = f64::from(r);
-            let shock = (rf * rf + RD_BURST * RD_BURST).sqrt() / 343.0;
-            // (from the moment it strikes)
-            out.push(RD_HIT + 0.05 + shock.max(RD_BURST / 343.0 + work / RD_RATE) as f32);
+        for r in (0..RD_CAVE).rev() {
+            let rf = r as f64;
+            out[r] = RD_HIT + 0.05 + (edge + work / RD_RATE) as f32;
+            work += TAU * (rf + 0.5) * rd_cost(rf + 0.5);
+        }
+        // (how long it takes, and the work the land round it gets done meanwhile at its share of the rate)
+        let cave = work / RD_RATE;
+        let early = cave * RD_RATE * RD_OUT;
+        let mut work = 0.0;
+        for (r, o) in out.iter_mut().enumerate().skip(RD_CAVE) {
+            let rf = r as f64;
+            let tw = if work <= early { work / (RD_RATE * RD_OUT) } else { cave + (work - early) / RD_RATE };
+            *o = RD_HIT + 0.05 + shock(rf).max(tw) as f32;
             work += TAU * (rf + 0.5) * rd_cost(rf + 0.5);
         }
         Wave(Rc::new(out))
@@ -804,12 +828,23 @@ impl Wave {
     fn at(&self, r: f64) -> f32 {
         self.0[(r.max(0.0) as usize).min(self.0.len() - 1)]
     }
-    /// When the wave has swept the whole of the chunk column holding block column (x, z) (`cx`, `cz` the target's
-    /// middle): every edit to a chunk goes in on the one tick, so the game redraws each of its sections once, not
-    /// once a ring.
+    /// The first moment the waves reach any of radii r0..r1 (at either end, or where they part).
+    #[cfg(test)]
+    fn first(&self, r0: f64, r1: f64) -> f32 {
+        let mut t = self.at(r0).min(self.at(r1));
+        if r0 <= RD_CAVE as f64 && r1 >= RD_CAVE as f64 - 1.0 {
+            t = t.min(self.at(RD_CAVE as f64 - 1.0)).min(self.at(RD_CAVE as f64));
+        }
+        t
+    }
+    /// When the waves have swept the whole of the chunk column holding block column (x, z) (`cx`, `cz` the target's
+    /// middle): the latest of its nearest and its farthest point (the crater's wave reaching it from outside in, the
+    /// land's from inside out). Every edit to a chunk goes in on the one tick, so the game redraws each of its sections
+    /// once, not once a ring.
     fn chunk(&self, cx: f64, cz: f64, x: i32, z: i32) -> f32 {
         let (mx, mz) = (f64::from((x >> 4) * 16) + 8.0, f64::from((z >> 4) * 16) + 8.0);
-        self.at((mx - cx).hypot(mz - cz) + 11.4)
+        let d = (mx - cx).hypot(mz - cz);
+        self.at(d - 11.4).max(self.at(d + 11.4))
     }
 }
 /// A part of a ring: radii r0..r1 from the target's middle, its angles a0 to a0 + da.
@@ -938,7 +973,13 @@ fn rd_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32
             for y in top - d..=top {
                 b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
             }
-            rd_rod_col(b, land, bx, bz, x, z);
+            // (round the rod's foot, the floor heaved up in broken slabs)
+            if let Some((h, under)) = rd_heave(x - bx, z - bz, s.seed) {
+                for y in top + 1 + under..=top + h {
+                    b.run(x, z, y, y, scorched(x, y, z, u, s.seed));
+                }
+            }
+            rd_rod_col(b, land, bx, bz, x, z, top);
         }
         Some(top) if top > c.g && !wet && !c.fluid => {
             // the rim: earth heaped on it, what stood there swept off (none heaped in or by the water); right by the
@@ -1003,17 +1044,17 @@ fn rd_blast_col(b: &mut Blocks, land: &Land, s: &Shape, bx: i32, bz: i32, x: i32
 /// land; on land so high its top would pass RD_ROD_MAX, driven in deeper by that much): a forged rod of polished blackstone, its outside banded every so often in gold
 /// and in chiseled blackstone, a collar of gold low on it and two bands of gold round its top, capped with light
 /// (froglight in the middle, gold round it); round its foot a ring of glowstone and shroomlight set in the floor.
-fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32) {
+fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32, top: i32) {
     let (dx, dz) = (x - bx, z - bz);
     let d2 = dx * dx + dz * dz;
     if d2 > RD_ROD_RING2 {
         return;
     }
     let Some(g) = at(land, bx, bz, bx, bz).map(|c| c.g) else { return };
-    let floor = g - RD_CRATER_D as i32;
     if d2 > RD_ROD_R2 {
-        // (a ring of light round its foot, set in the floor)
-        b.run(x, z, floor, floor, if (dx + dz).rem_euclid(2) == 0 { "minecraft:glowstone" } else { "minecraft:shroomlight" });
+        // (a ring of light round its foot, set in the floor: its own column's, `top`, where the land under it was not
+        // quite level, so none of it is buried)
+        b.run(x, z, top, top, if (dx + dz).rem_euclid(2) == 0 { "minecraft:glowstone" } else { "minecraft:shroomlight" });
         return;
     }
     // (where it stands from: the floor, or lower on land so high its top would pass the world's)
@@ -1041,6 +1082,74 @@ fn rd_rod_col(b: &mut Blocks, land: &Land, bx: i32, bz: i32, x: i32, z: i32) {
 fn rd_rod_base(g: i32) -> i32 {
     let floor = g - RD_CRATER_D as i32;
     floor - (floor + RD_ROD_UP - RD_ROD_MAX).max(0)
+}
+
+/// The crater's floor heaved up round the rod's foot as it drove in: past its ring of light (kept clear, a column's
+/// moat round it) out to RD_HEAVE_R from its axis, the floor broken into RD_HEAVE_N slabs round it, cracked apart, each
+/// tilted up against the rod (its inner edge raised) or away from it (its outer edge turned up), some split again
+/// across, a few blocks high, their edges ragged, the lifted edge standing clear of the floor under it.
+const RD_HEAVE_R: f64 = 22.0;
+const RD_HEAVE_N: i64 = 11;
+/// What the heave makes of the column `dx`, `dz` from the rod's axis: how high the top of its slab stands over the
+/// floor, and how high its underside (0: resting on the floor); None in a crack, by the rod's foot or past it.
+fn rd_heave(dx: i32, dz: i32, seed: u32) -> Option<(i32, i32)> {
+    crate::meter::spend(300);
+    let d2 = dx * dx + dz * dz;
+    if d2 <= RD_ROD_RING2 + 4 {
+        return None;
+    }
+    let r = f64::from(d2).sqrt();
+    if r >= RD_HEAVE_R {
+        return None;
+    }
+    let h = |k: i64, salt: u32| mh(k.rem_euclid(RD_HEAVE_N) as u32, seed, salt);
+    let cell = |x: i32, z: i32, salt: u32| mh((x.wrapping_mul(73_856_093) ^ z.wrapping_mul(19_349_663)) as u32, seed, salt);
+    // (which slab: RD_HEAVE_N round it, uneven, their seams wandering a little)
+    let n = RD_HEAVE_N as f64;
+    let a = (f64::from(dz).atan2(f64::from(dx)) - TAU * mh(1, seed, 0xe1)).rem_euclid(TAU);
+    let v = a / TAU * n;
+    let seam = |j: i64| j as f64 + 0.75 * (h(j, 0xe2) - 0.5);
+    let k0 = v.floor() as i64;
+    let k = if v < seam(k0) { k0 - 1 } else if v >= seam(k0 + 1) { k0 + 1 } else { k0 };
+    let (s0, s1) = (seam(k), seam(k + 1));
+    let f = (v - s0) / (s1 - s0);
+    // (the cracks between them, opening a little outward; none where it is a hair's width)
+    let arc = f.min(1.0 - f) * (s1 - s0) * TAU / n * r;
+    if arc < 0.25 + 0.4 * h(k, 0xe3) + 0.02 * r {
+        return None;
+    }
+    // (its reach: from just past the ring of light to some eight to fifteen blocks past the rod's side, ragged)
+    let against = h(k, 0xe6) < 0.55;
+    let ri = if against { 8.9 } else { 8.2 } + 1.1 * h(k, 0xe4);
+    let ro = 14.0 + 7.0 * h(k, 0xe5) + 1.4 * (cell(dx, dz, 0xea) - 0.5);
+    if r < ri || r > ro {
+        return None;
+    }
+    // (split across, now and then, its two pieces tilted their own ways)
+    let mut lift = if against { 3.0 + 2.5 * h(k, 0xe7) } else { 3.0 + 4.0 * h(k, 0xe7) };
+    let (mut lo, mut hi, mut up_in) = (ri, ro, against);
+    if ro - ri > 8.0 && h(k, 0xe8) < 0.65 {
+        let rm = ri + (ro - ri) * (0.4 + 0.2 * h(k, 0xe9));
+        if (r - rm).abs() < 0.6 {
+            return None;
+        }
+        if r > rm {
+            lo = rm;
+            up_in = !against;
+            lift *= 0.7;
+        } else {
+            hi = rm;
+        }
+    }
+    let t = ((r - lo) / (hi - lo)).clamp(0.0, 1.0);
+    let tilt = if up_in { 1.0 - t } else { t };
+    // (tipped to one side as well, and broken on top: its edges crumbled lower)
+    let side = 2.4 * (h(k, 0xeb) - 0.5) * (2.0 * f - 1.0);
+    let edge = t.min(1.0 - t) * (hi - lo) < 1.2 || arc < 1.6;
+    let jag = (cell(dx, dz, 0xec) * 1.6).floor() - if edge { (cell(dx, dz, 0xed) * 2.2).floor() } else { 0.0 };
+    let top = (1.0 + lift * tilt + side + jag).round().max(1.0) as i32;
+    let thick = 2 + i32::from(h(k, 0xee) < 0.5);
+    Some((top, (top - thick).max(0)))
 }
 
 /// Edits sorted into the ticks they go in at.
@@ -1311,7 +1420,7 @@ fn rd_rubble(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, wave: &Wave)
 /// stone and tuff under it, now and then a log of the wood growing round it), flung outward and up over the first second
 /// and a half, at all speeds, so some come down by the rim and some arc far out over the flattened land. Some land as
 /// blocks, the rest break up where they land (CancelDrop); none drops an item.
-fn rd_thrown(q: &mut Plan, land: &Land, s: &Shape, wave: &Wave, part: u64) {
+fn rd_thrown(q: &mut Plan, land: &Land, s: &Shape, part: u64) {
     let (bx, bz) = (q.bx, q.bz);
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x7410 ^ (part << 20));
     let woods = land.woods;
@@ -1352,8 +1461,8 @@ fn rd_thrown(q: &mut Plan, land: &Land, s: &Shape, wave: &Wave, part: u64) {
         let vy = 2.0 + 2.6 * rng.next();
         let (vx, vz) = (ang.cos() * h, ang.sin() * h);
         let y = f64::from(c.g) + 1.2 + 2.5 * rng.next();
-        // (as the wave digs the crater out there, the middle's first, a few at a time over the next second)
-        let t = wave.at(r) + 0.05 + 0.6 * rng.next().powf(1.5) as f32;
+        // (as it strikes, with the shock: not with the crater's caving in, which reaches its middle last)
+        let t = RD_HIT + 0.1 + (r / 343.0) as f32 + 1.25 * rng.next().powf(1.3) as f32;
         let keep = if rng.next() < 0.45 { "" } else { ",CancelDrop:1b" };
         q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b{keep},Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
         n += 1;
@@ -1596,7 +1705,7 @@ fn rd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             let job = wk.jobs.remove(i).unwrap_or(Job::Rubble);
             let job_kind = match &job { Job::Thrown(_) => 0, Job::Rubble => 1, Job::Blast(_) => 2 };
             match job {
-                Job::Thrown(part) => rd_thrown(q, &wk.land, &wk.s, &wk.wave, part),
+                Job::Thrown(part) => rd_thrown(q, &wk.land, &wk.s, part),
                 Job::Rubble => {
                     let wave = wk.wave.clone();
                     rd_rubble(q, &wk.land, &wk.s, &mut wk.used, &wave);
@@ -1851,10 +1960,20 @@ mod tests {
             // (the last second very fast: over a third of the fall, ending at over 1,500 blocks a second)
             let h1 = g.pos(f64::from(RD_HIT) - 1.0)[1];
             assert!(h1 > 0.33 * p0[1], "{h1} {p0:?}");
-            // (and a last hard burst in its last fraction of a second: over 4,000 blocks a second in its last 0.02 s,
-            // twice what it was going a quarter second before)
+            // (and a last hard burst over its last half second, eased in: 2,000 to 2,600 blocks a second at the end,
+            // half as fast again as half a second before, but never so fast it jumps: under 45 blocks a frame at 60,
+            // and gaining speed smoothly all the way)
             let v = |t: f64| (g.pos(t - 0.01)[1] - g.pos(t + 0.01)[1]) / 0.02;
-            assert!(v(f64::from(RD_HIT) - 0.01) > 4000.0 && v(f64::from(RD_HIT) - 0.01) > 2.0 * v(f64::from(RD_HIT) - 0.25), "{} {}", v(f64::from(RD_HIT) - 0.01), v(f64::from(RD_HIT) - 0.25));
+            let hit = f64::from(RD_HIT);
+            let end = v(hit - 0.01);
+            assert!((2000.0..2600.0).contains(&end) && end > 1.45 * v(hit - 0.5), "{end} {}", v(hit - 0.5));
+            assert!(end / 60.0 < 45.0);
+            let mut t = hit - 1.0;
+            while t < hit - 0.06 {
+                let (a, b, c) = (v(t), v(t + 0.02), v(t + 0.04));
+                assert!(b > a && (c - b) >= (b - a) - 1.0, "{t}: {a} {b} {c}");
+                t += 0.02;
+            }
         }
         let w = rd_table(37.0, [0.0, 5.0, 300.0]);
         assert!(w.len() <= RD_HF && RD_P + 3 * RD_N <= RD_FR && RD_HF + 8 + RD_HN * RD_HN <= RD_DB);
@@ -1911,7 +2030,8 @@ mod tests {
     thread_local! {
         /// The land the tests' world answers with: 0 the forest with its pond; 1 the forest over an aquifer (water
         /// in the ground 8 to 14 under it everywhere) with a river 200 off; 2 the forest by the sea (west of x -50,
-        /// its surface at 62); 3 the forest with a river through the crater (12 wide at z 75, its surface at 62).
+        /// its surface at 62); 3 the forest with a river through the crater (12 wide at z 75, its surface at 62);
+        /// 10 flat open land.
         static LAND: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
     }
     /// The water standing over column (x, z), if any: its bed and its surface.
@@ -1978,7 +2098,8 @@ mod tests {
         }
         let wet = water_at(x, z);
         let g = if land == 0 { ground_h(x, z) } else { wet.map_or(64, |w| w.0) };
-        let t = wet.is_none() && tree(x, z);
+        // (10: flat open land, its ground at 64, nothing on it)
+        let t = wet.is_none() && tree(x, z) && land != 10;
         let block = |y: i32| -> &'static str {
             if let Some((bed, top)) = wet {
                 return if y < bed { "minecraft:dirt" } else if y <= top { "minecraft:water" } else { "minecraft:air" };
@@ -2133,9 +2254,13 @@ mod tests {
                     });
                     let is_rod = last.is_some_and(|f| ["polished_blackstone", "gold_block", "chiseled_polished_blackstone", "ochre_froglight"].iter().any(|m| f.contains(&format!("minecraft:{m} "))));
                     let d2 = (x - bx).pow(2) + (z - bz).pow(2);
-                    if !rod && d2 <= RD_ROD_RING2 && y == floor {
-                        // (the ring of light round its foot)
-                        assert!(last.is_some_and(|f| f.contains("minecraft:glowstone ") || f.contains("minecraft:shroomlight ")), "{x} {y} {z}: {last:?}");
+                    if !rod && d2 <= RD_ROD_RING2 && (y - floor).abs() <= 1 {
+                        // (the ring of light round its foot, in its own column's floor: the land a block higher or
+                        // lower there)
+                        let light = |y: i32| fills.iter().rev().find(|f| f.starts_with(&format!("fill {x} {y} {z} {x} {y} {z} "))).is_some_and(|f| f.contains("minecraft:glowstone ") || f.contains("minecraft:shroomlight "));
+                        if y == floor {
+                            assert!((-1..=1).any(|k| light(floor + k)), "{x} {y} {z}: no light");
+                        }
                         continue;
                     }
                     if rod {
@@ -2156,6 +2281,137 @@ mod tests {
         for (_, c) in cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")) {
             let w: Vec<f64> = c.split_whitespace().skip(2).take(3).map(|v| v.parse().unwrap()).collect();
             assert!((w[0] - 10.5).hypot(w[2] + 2.5) >= 13.9, "{c}");
+        }
+    }
+
+    /// What the strike's edits leave in the box round the target (`r` columns round it, y0..=y1), each block the last
+    /// put there (filtered edits left out).
+    fn left_in_box(blocks: &[(f32, Blocks)], (bx, bz): (i32, i32), r: i32, y0: i32, y1: i32) -> std::collections::HashMap<(i32, i32, i32), String> {
+        let mut out = std::collections::HashMap::new();
+        let mut blocks: Vec<&(f32, Blocks)> = blocks.iter().collect();
+        blocks.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for f in blocks.iter().flat_map(|(_, b)| b.as_fills()) {
+            if f.contains(" replace ") {
+                continue;
+            }
+            let w: Vec<i32> = f.split_whitespace().skip(1).take(6).filter_map(|v| v.parse().ok()).collect();
+            if w.len() != 6 || (w[0] - bx).abs() > r || (w[2] - bz).abs() > r {
+                continue;
+            }
+            let m = f.split_whitespace().nth(7).unwrap().trim_start_matches("minecraft:").to_string();
+            for y in w[1].max(y0)..=w[4].min(y1) {
+                out.insert((w[0] - bx, y, w[2] - bz), m.clone());
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn rod_heaves_the_floor_round_its_foot() {
+        // (on flat land: round the rod's foot, past its ring of light, the crater's floor broken into slabs heaved up a
+        // few blocks, tilted, cracked apart, in the crater's own white and gold)
+        LAND.with(|l| l.set(10));
+        let blocks = played(true);
+        LAND.with(|l| l.set(0));
+        let (bx, bz) = (10, -3);
+        let floor = 64 - RD_CRATER_D as i32;
+        let left = left_in_box(&blocks, (bx, bz), 26, floor - 2, floor + 14);
+        let solid = |x: i32, y: i32, z: i32| left.get(&(x, y, z)).is_some_and(|m| m != "air");
+        // (each column's own floor, as dug (the land under it not quite level): under where it was dug out)
+        let mut dug = std::collections::HashMap::new();
+        for f in blocks.iter().flat_map(|(_, b)| b.as_fills()) {
+            let w: Vec<i32> = f.split_whitespace().skip(1).take(6).filter_map(|v| v.parse().ok()).collect();
+            if w.len() == 6 && f.ends_with("minecraft:air strict") && w[4] - w[1] > 20 {
+                dug.insert((w[0] - bx, w[2] - bz), w[1] - 1);
+            }
+        }
+        // (how high each column stands over the floor, and whether something hangs over air in it)
+        let mut lifted = 0;
+        let mut cracks = 0;
+        let mut over_air = 0;
+        let mut highest = 0;
+        let mut kinds = std::collections::HashSet::new();
+        for x in -24..=24 {
+            for z in -24..=24 {
+                let d2 = x * x + z * z;
+                if d2 <= RD_ROD_R2 {
+                    continue;
+                }
+                let fl = dug.get(&(x, z)).copied().unwrap_or(floor);
+                let h = (1..=14).rev().find(|&k| solid(x, fl + k, z)).unwrap_or(0);
+                if d2 <= RD_ROD_RING2 {
+                    // (its ring of light clear: nothing over it)
+                    assert_eq!(h, 0, "{x} {z}: over the ring of light: {:?}", left.get(&(x, fl + h, z)));
+                    assert!(left.get(&(x, fl, z)).is_some_and(|m| m == "glowstone" || m == "shroomlight"), "{x} {z}");
+                    continue;
+                }
+                let r = f64::from(d2).sqrt();
+                if r >= RD_HEAVE_R + 1.0 {
+                    // (past it the floor as dug: level out to some 25 (a block higher here and there), rising after as the walls begin)
+                    assert!(r > 25.0 || h <= 1, "{x} {z}: heaved {h} at {r:.1}");
+                    continue;
+                }
+                highest = highest.max(h);
+                if h >= 2 {
+                    lifted += 1;
+                    for k in 1..=h {
+                        if let Some(m) = left.get(&(x, fl + k, z)).filter(|m| *m != "air") {
+                            kinds.insert(m.clone());
+                        }
+                    }
+                }
+                if r > 10.0 && r < 13.0 && h == 0 {
+                    cracks += 1;
+                }
+                if (1..h).any(|k| !solid(x, fl + k, z)) {
+                    over_air += 1;
+                }
+            }
+        }
+        // (a broad ring of it, some ten blocks wide; a few blocks high, the highest some eight; cracks through it; the
+        // lifted edges of slabs standing clear of the floor)
+        eprintln!("heave: {lifted} columns lifted, {highest} high, {cracks} cracks, {over_air} overhangs");
+        assert!(lifted > 200, "{lifted} columns heaved");
+        assert!((5..=10).contains(&highest), "{highest} high");
+        assert!(cracks > 8, "{cracks} cracks");
+        assert!(over_air > 60, "{over_air} overhangs");
+        // (of the crater's own lining: quartz, calcite and gold, dark patches near the rod)
+        for k in &kinds {
+            assert!(["quartz", "calcite", "gold", "glowstone", "shroomlight", "terracotta", "amethyst", "obsidian", "blackstone", "tinted_glass"].iter().any(|m| k.contains(m)), "{k}");
+        }
+        assert!(kinds.iter().any(|k| k.contains("quartz")) && kinds.iter().any(|k| k.contains("gold")), "{kinds:?}");
+        // (`RD_VOX_OUT=path`: the heave and the ring of light as tools/preview's voxels (`x y z r g b`), each column's
+        // floor put at the preview's crater floor (its top at 15, the target at 0.5 65 0.5))
+        if let Ok(path) = std::env::var("RD_VOX_OUT") {
+            let colour = |m: &str| -> [f32; 3] {
+                match m {
+                    "glowstone" => [1.6, 1.3, 0.7],
+                    "shroomlight" => [1.6, 1.0, 0.5],
+                    "gold_block" => [0.95, 0.75, 0.25],
+                    "raw_gold_block" => [0.8, 0.6, 0.25],
+                    "calcite" => [0.86, 0.86, 0.84],
+                    "obsidian" => [0.08, 0.06, 0.12],
+                    "blackstone" => [0.16, 0.14, 0.17],
+                    "tinted_glass" => [0.2, 0.17, 0.22],
+                    "amethyst_block" => [0.55, 0.4, 0.75],
+                    "white_glazed_terracotta" => [0.9, 0.9, 0.85],
+                    "yellow_glazed_terracotta" => [0.9, 0.75, 0.3],
+                    "chiseled_quartz_block" | "quartz_pillar" => [0.88, 0.85, 0.8],
+                    "smooth_quartz" => [0.92, 0.9, 0.86],
+                    _ => [0.9, 0.88, 0.84],
+                }
+            };
+            let mut text = String::new();
+            for (&(x, y, z), m) in &left {
+                let Some(&fl) = dug.get(&(x, z)) else { continue };
+                let d2 = x * x + z * z;
+                if m == "air" || d2 <= RD_ROD_R2 || y < fl || (y == fl && d2 > RD_ROD_RING2) {
+                    continue;
+                }
+                let c = colour(m);
+                text += &format!("{} {} {} {} {} {}\n", x, 14 + y - fl, z, c[0], c[1], c[2]);
+            }
+            std::fs::write(path, text).unwrap();
         }
     }
 
@@ -2208,22 +2464,9 @@ mod tests {
                 let ev = plan(&crate::lasers::ROD, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
                 let p = crate::strike::sim::play(ev, 30.0, &column);
                 let late = p.edits.iter().map(|e| e.0 - e.1).fold(0.0f32, f32::max);
-                // (each tick's middle further out than the last's, less what lands a moment behind the wave: felled trees, rubble)
-                let mut by: std::collections::BTreeMap<i32, Vec<f64>> = Default::default();
-                for (t, _, b) in &p.edits {
-                    for u in &b.runs {
-                        by.entry((t / 0.05).round() as i32).or_default().push((f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0));
-                    }
-                }
-                let mut last = 0.0f64;
-                for (k, mut rs) in by {
-                    rs.sort_by(f64::total_cmp);
-                    let m = rs[rs.len() / 2];
-                    if (k as f32) * 0.05 < Wave::new().at(f64::from(RD_READ)) {
-                        assert!(m >= last - 80.0, "land {land}: tick {k}: {m:.0} after {last:.0}");
-                    }
-                    last = last.max(m);
-                }
+                // (each tick's middle further out than the last's, less what lands a moment behind the wave: felled
+                // trees, rubble; in the crater, further in)
+                sweeps(&p.edits, 80.0, 30.0, &format!("land {land}"));
                 let ms = p.stages.iter().map(|s| s.2).fold(0.0, f64::max);
                 eprintln!("LAND {land}: {} stages, edits {late:.2} s late at most, heaviest {ms:.2} ms", p.stages.len());
                 late_all = late_all.max(late);
@@ -2242,6 +2485,45 @@ mod tests {
         LAND.with(|l| l.set(0));
     }
 
+    /// The middle of what changes each tick, while the waves run: past the crater's edge further out tick by tick (but
+    /// for `out` blocks), in the crater further in (but for `inw`); the crater caved in to its middle within 2.5 s of
+    /// the strike. The farthest out it got.
+    fn sweeps(edits: &[(f32, f32, Blocks)], out: f64, inw: f64, what: &str) -> f64 {
+        let mut by: std::collections::BTreeMap<i32, (Vec<f64>, Vec<f64>)> = Default::default();
+        for (t, _, b) in edits {
+            for u in &b.runs {
+                let r = (f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0);
+                let e = by.entry((t / 0.05).round() as i32).or_default();
+                if r < RD_CAVE as f64 - 2.0 { e.1.push(r) } else { e.0.push(r) }
+            }
+        }
+        let end = Wave::new().at(f64::from(RD_READ));
+        let (mut last, mut least, mut done) = (0.0f64, f64::MAX, 0.0f32);
+        for (k, (mut ro, mut ri)) in by {
+            let t = k as f32 * 0.05;
+            if !ro.is_empty() {
+                ro.sort_by(f64::total_cmp);
+                let m = ro[ro.len() / 2];
+                if t < end {
+                    assert!(m >= last - out, "{what}: tick {k}: {m:.0} after {last:.0}");
+                }
+                last = last.max(m);
+            }
+            if !ri.is_empty() {
+                ri.sort_by(f64::total_cmp);
+                let m = ri[ri.len() / 2];
+                assert!(m <= least + inw, "{what}: tick {k}: the crater at {m:.0} after {least:.0}");
+                least = least.min(m);
+                if ri[0] < 3.0 {
+                    done = done.max(t);
+                }
+            }
+        }
+        // (none at all where there is no ground to dig, as over the deep sea)
+        assert!(least == f64::MAX || least < 12.0 && done > RD_HIT && done < RD_HIT + 2.5, "{what}: the crater in to {least:.0} by {done:.2}");
+        last
+    }
+
     #[test]
     fn rod_land_changes_sweep_out_from_the_middle_with_the_wave() {
         // played as the mod plays it (one stage a tick): nothing changes before the wave reaches it, the wave keeps up
@@ -2251,26 +2533,20 @@ mod tests {
         let ev = plan(&crate::lasers::ROD, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
         let p = crate::strike::sim::play(ev, 30.0, &column);
         let wave = Wave::new();
-        let mut last = 0.0f64;
-        let mut by_tick: std::collections::BTreeMap<i32, Vec<f64>> = Default::default();
         for (t, due, b) in &p.edits {
             assert!(t - due < 0.2, "an edit {:.2} s late", t - due);
             for u in &b.runs {
                 let r = (f64::from(u.x) + 0.5 - 10.5).hypot(f64::from(u.z) + 0.5 + 2.5);
-                if *t < wave.at(r - 4.0 * RD_RING - 4.0) - 0.06 {
+                let d = 4.0 * RD_RING + 4.0;
+                if *t < wave.first(r - d, r + d) - 0.06 {
                     let f = b.as_fills()[b.runs.iter().position(|v| std::ptr::eq(v, u)).unwrap()].clone();
                     panic!("at {r:.0} at {t:.2}, before the wave ({:.2}): {f}", wave.at(r));
                 }
-                by_tick.entry((t / 0.05).round() as i32).or_default().push(r);
             }
         }
-        // (the middle of what changes each tick, while the wave runs, further out tick by tick)
-        for (k, mut rs) in by_tick.into_iter().filter(|(k, _)| (*k as f32) * 0.05 < wave.at(f64::from(RD_READ))) {
-            rs.sort_by(f64::total_cmp);
-            let m = rs[rs.len() / 2];
-            assert!(m >= last - 30.0, "tick {k}: {m:.0} after {last:.0}");
-            last = last.max(m);
-        }
+        // (the middle of what changes each tick, while the waves run: further out tick by tick past the crater's edge,
+        // further in in the crater)
+        let last = sweeps(&p.edits, 30.0, 20.0, "the forest");
         assert!(last > 220.0, "{last}");
     }
 
@@ -2289,7 +2565,7 @@ mod tests {
         assert!(thrown.len() >= 60 && thrown.len() <= RD_THROWN, "{} thrown", thrown.len());
         let mut per_tick = std::collections::HashMap::new();
         for (t, c) in &thrown {
-            assert!(*t > RD_HIT && *t < Wave::new().at(RD_CRATER_R) + 1.3, "{t}");
+            assert!(*t > RD_HIT && *t < RD_HIT + 1.6, "{t}");
             *per_tick.entry((t * 20.0) as i32).or_insert(0) += 1;
             // never dropping an item; out of the crater (the target at 10 -3), outward and up
             assert!(c.contains("DropItem:0b"), "{c}");
@@ -2308,6 +2584,43 @@ mod tests {
         assert!(breaks > 10 && breaks < thrown.len() - 10, "{breaks}");
         // and they are not killed in the air as the land round it is cleared of what lives there
         assert!(cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block")));
+    }
+    /// `RD_CAVE_OUT=path cargo test --release rd_cave_order -- --ignored --nocapture`: the crater caving in, as the mod
+    /// plays it: a tenth of a second at a time, how far out what goes in lies in the crater (its nearest, middle and
+    /// farthest) and how many chunks; and with RD_CAVE_OUT, a line `x z t` for each column out to 110 from the target,
+    /// when its first edit went in (for a top-down picture of it).
+    #[test]
+    #[ignore]
+    fn rd_cave_order() {
+        LAND.with(|l| l.set(0));
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        let ev = plan(&crate::lasers::ROD, &target, true, "minecraft:overworld", 37.0, [10.5, 66.0, 500.0], 0);
+        let p = crate::strike::sim::play(ev, 30.0, &column);
+        let mut first: std::collections::HashMap<(i32, i32), f32> = Default::default();
+        let mut bins: std::collections::BTreeMap<i32, (Vec<f64>, std::collections::HashSet<(i32, i32)>)> = Default::default();
+        for (t, _, b) in &p.edits {
+            for u in &b.runs {
+                let r = (f64::from(u.x) - 10.0).hypot(f64::from(u.z) + 3.0);
+                if r < 110.0 {
+                    let e = first.entry((u.x - 10, u.z + 3)).or_insert(*t);
+                    *e = e.min(*t);
+                }
+                if r < RD_CAVE as f64 - 2.0 {
+                    let e = bins.entry((t / 0.1) as i32).or_default();
+                    e.0.push(r);
+                    e.1.insert((u.x >> 4, u.z >> 4));
+                }
+            }
+        }
+        for (k, (mut rs, ch)) in bins {
+            rs.sort_by(f64::total_cmp);
+            let pc = |f: f64| rs[((rs.len() - 1) as f64 * f) as usize];
+            println!("{:5.1} s: crater r {:4.0} [{:4.0} {:4.0} {:4.0}] {:4.0}, {:3} chunks, {:6} runs", k as f32 * 0.1, pc(0.0), pc(0.1), pc(0.5), pc(0.9), pc(1.0), ch.len(), rs.len());
+        }
+        if let Ok(path) = std::env::var("RD_CAVE_OUT") {
+            let text: String = first.iter().map(|((x, z), t)| format!("{x} {z} {t:.3}\n")).collect();
+            std::fs::write(path, text).unwrap();
+        }
     }
     /// `cargo test --release rd_wave_profile -- --ignored --nocapture`: the land's edits as the mod plays them out
     /// (one stage a tick): how far out they reach a quarter second at a time, how many blocks, and the latest stage.

@@ -57,18 +57,23 @@ laser, command, capability and timing). This file is the short, factual version 
   they fly a jump's height or so and some six blocks back, then fall) and jolts the camera
   (`nk_jolt`) and the picture itself (nuke.wgsl's `pl_jolt`, on top of the game's shake, which tops out at a few
   degrees). The Rod from God is the Nuke made kinetic and holy (`strike/rod.rs`, `shaders/rod.wgsl`, the
-  same reads, `Wave`, pacing and far-land waiting): plumb over the target, a hard last burst of speed (`RdGeo::left`),
-  impact at 7 s (`RD_HIT`, which the sounds key off); a crater ~120 across and 50 deep with steep walls (`bowl`: a
-  punch) lined in quartz, calcite and gold (`scorched`), a bleached rim (`ejecta`) out to ~90, the rod left standing in
+  same reads, `Wave`, pacing and far-land waiting): plumb over the target, a hard last burst of speed eased in over
+  its last half second to about 2,300 blocks a second (`RdGeo::left`: under 40 blocks a frame, so it reads), impact
+  at 7 s (`RD_HIT`, which the sounds key off); a crater ~120 across and 50 deep with steep walls (`bowl`: a punch)
+  lined in quartz, calcite and gold (`scorched`), a bleached rim (`ejecta`) out to ~90, the crater caving in from its
+  edge to its middle (`Wave`: two waves from `RD_CAVE`, 72, the crater's inward from 7.4 s to the rod's foot by ~9.1, still a chunk's edits on one tick; the land's outward, at `RD_OUT` of
+  the rate while the crater caves in), the floor round the rod's foot heaved up in broken, tilted slabs out to ~22
+  from its axis (`rd_heave`; its ring of light kept clear), the rod left standing in
   its middle (`rd_rod_col`: 13 wide, 130 over the floor, its top 80 over the land, and 40 under it, driven in deeper on land so
   high its top would pass 318 (`rd_rod_base`; rod.wgsl's `rd_top_end`), polished blackstone banded in gold, a ring of
   light round its foot; keep rod.wgsl's `RD_R`, `RD_L`, `RD_TOP_END` in step), trees felled to ~200 (a band of
   stripped crowns to ~240), the grass blessed (white concrete, calcite, quartz, gold, lights, pale moss: `charred`) and
   rubble strewn in ~17 rays out to ~250, ~120 falling blocks thrown up in a cone, mobs killed within 200, the ~830
-  chunks within ~260 force-loaded; its land goes in from 7.05 s, the crater and the rod by ~9 s, all by ~14 s. Its
+  chunks within ~260 force-loaded; its land goes in from ~7.4 s, the crater and the rod by ~9.1 s, all by ~13.5 s. Its
   knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
-  Its pass has impact frames (`rd_impact`: ~0.17 s of stark frames as it strikes, timed by the strike clock; params[15]
-  + 2 turns them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
+  Its pass has impact frames (`rd_impact`, `rd_if_beat`: three stark pulses in 0.16 s, 2, 3 and 1 frames at 60 with
+  the picture between, each a ragged star round the impact point, smaller and fainter each time, timed by the strike
+  clock; params[15] + 2 turns them off: `/orbital impactframes off`, the wheel's IMPACT FX switch, kept). Only fire them in a
   throwaway world, and ask the user before the first strike with terrain damage on. `/orbital terrain off` (or the
   wheel's centre) makes strikes light and sound only.
 - **The Supercell** (`strike/storm.rs`, its funnels `strike/vortex.rs`, `shaders/supercell.wgsl`): 72 real vanilla
@@ -100,6 +105,9 @@ tools/check-shader.sh               # validate the post passes (a tenth of a sec
 tools/preview.py downfall 14 30 45  # render those moments offscreen onto dist/preview/downfall.jpg (seconds; no game)
 tools/preview.py payload 18 --quality both --bench   # the Payload at QUALITY FULL and FAST side by side, timed
 tools/preview.py rod 7.05 9 25 --views rdnear,rdstand  # the Rod's impact frames, its jet, it standing (views rd*)
+RD_VOX_OUT=/tmp/h.vox cargo test --release rod_heaves_the_floor_round_its_foot   # (in mod/) the heave as voxels: then
+PREVIEW_VOXELS=/tmp/h.vox tools/preview.py rod 40 --views rdfoot,rdfootup --set vox=1
+RD_CAVE_OUT=/tmp/c.txt cargo test --release rd_cave_order -- --ignored --nocapture  # the crater caving in, by time
 python3 tools/sounds_rod.py --listen DIR             # the Rod's sounds (and listening mixdowns from 200 and 600 blocks)
 tools/world_snapshot.py save|restore|reset WORLD [NAME]  # snapshot a world and put it back (refuses while it's open; reset leaves, restores, rejoins)
 ```

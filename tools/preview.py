@@ -133,6 +133,15 @@ VIEWS = {
     # the rod standing in its crater, from 90 off and over the rim
     "rdstand": "cx=0 cy=105 cz=100 lx=0.5 ly=55 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
     "rdhole": "cx=0 cy=118 cz=78 lx=0.5 ly=30 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
+    # down in the crater by the rod's foot, the floor heaved round it (with vox=1 and PREVIEW_VOXELS the heave's real
+    # blocks: `RD_VOX_OUT=path cargo test --release rod_heaves_the_floor_round_its_foot`), from the floor and over it
+    "rdfoot": "cx=8 cy=24 cz=42 lx=0.5 ly=22 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
+    "rdfootup": "cx=0 cy=62 cz=40 lx=0.5 ly=15 lz=0.5 flat=1 fov=70 reach=95 rdpit=1",
+    # looking up the plume's column from 300 and 900 off, and from under it close by
+    "rddown": "cx=0.5 cy=60 cz=30 lx=0.5 ly=15 lz=0.4 flat=1 fov=70 reach=95 rdpit=1",
+    "rdplume": "cx=0 cy=67 cz=300 lx=0.5 ly=230 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "rdplumefar": "cx=0 cy=90 cz=900 lx=0.5 ly=200 lz=0.5 flat=1 fov=50 reach=900",
+    "rdplumeup": "cx=0 cy=67 cz=150 lx=0.5 ly=330 lz=0.5 flat=1 trees=1 fov=80 reach=150 rdpit=1",
     # the supercell (the player 300 blocks south): from the player's spot, from under the cloud by the wall cloud
     # looking up at it, from 900 off, from high above, close by a funnel (the first of seed 37's), and at night
     "scplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=300",

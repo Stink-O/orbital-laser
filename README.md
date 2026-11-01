@@ -101,16 +101,17 @@ Thirteen lasers, five to a page of the wheel.
   480, and every mob within 300 killed.
 - **Rod from God** (page three). A colossal rod of dark forged metal dropped from orbit, kinetic, no explosive, and
   holy: it comes straight down onto the target, a golden-white star high overhead that grows fast, god rays streaming
-  from it and a column of light down its path, and in its last fraction of a second it slams in. It strikes: a few
-  stark impact frames for a split second (white, black-and-white silhouettes with jagged impact lines and the rod
-  among them, the negative), a blinding radiant burst with rays fanning out, the land rippling out in rings like
+  from it and a column of light down its path, and in its last fraction of a second it slams in. It strikes: three
+  quick stark impact frames round the impact point (black-and-white silhouettes with jagged impact lines and the rod
+  among them, the negative, a faint echo), a blinding radiant burst with rays fanning out, the land rippling out in rings like
   water, a jet of molten rock up its path, a short plume of dust spreading into a haze and a ring of dust racing out
-  over the land, then one colossal crack-boom, late with the distance. It leaves itself standing in a hallowed crater
-  about 120 blocks across and 50 deep: the rod, 13 blocks thick and 130 tall over the crater's floor, its top 80 over
+  over the land, then one colossal crack-boom, late with the distance. The crater caves in on it from its edge to its middle, and it leaves
+  itself standing in a hallowed crater about 120 blocks across and 50 deep, the floor round its foot heaved up in
+  broken slabs: the rod, 13 blocks thick and 130 tall over the crater's floor, its top 80 over
   the land, polished blackstone banded in gold and capped with light; the crater lined in quartz, calcite and gold with
   veins of glowstone, rays of white and gold over pale grass round it, rubble out to about 250, the trees felled out to
   about 200, and every mob within 200 killed.
-  **Photosensitivity:** its impact frames are rapid full-screen flashes; `/orbital impactframes off` (or the wheel's
+  **Photosensitivity:** its impact frames are three quick flashes round the impact point; `/orbital impactframes off` (or the wheel's
   IMPACT FX switch) leaves them out.
 
 - **Supercell** (page three). A storm called down: the sky darkens and a turning wall cloud and an anvil-topped storm
@@ -284,7 +285,7 @@ The wheel also has:
 | `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
-| `/orbital impactframes on\|off` | the Rod from God's impact frames (rapid full-screen flashes); also the wheel's IMPACT FX switch |
+| `/orbital impactframes on\|off` | the Rod from God's impact frames (three quick flashes round the impact point); also the wheel's IMPACT FX switch |
 | `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays); also the wheel's KNOCKBACK switch |
 | `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
 | `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
