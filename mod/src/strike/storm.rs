@@ -380,22 +380,24 @@ fn fc_thrown(q: &mut Plan, t: f32, seed: u32) {
     }
 }
 
-/// The fires put out round (x, z) at `t` out to `r`, from a few under each column's top to 30 over it (a crown's): the
+/// The fires put out round (x, z) at `t` out to `r`, from 28 under each column's top (its highest trunk: the crowns round
+/// it hang below) to 30 over it: the
 /// bolt's own fires, before they spread. Made even if the strike is stopped (`cleanup`).
 fn douse(x: i32, z: i32, r: i32, t: f32) -> (f32, Act) {
     let mut b = Blocks { cleanup: true, ..Default::default() };
     for dz in -r..=r {
         for dx in -r..=r {
             if dx * dx + dz * dz <= r * r {
-                b.put(x + dx, z + dz, -3, 30, "minecraft:air", Some("#minecraft:fire"), true);
+                b.put(x + dx, z + dz, -28, 30, "minecraft:air", Some("#minecraft:fire"), true);
             }
         }
     }
     (t, Act::Blocks(Box::new(b)))
 }
 
-/// The fires swept out of band `k` of SC_SWEEP_BANDS (equal areas out to SC_SWEEP) at `t`: every fire from two under each
-/// column's top to 42 over it (its trees' crowns) put out. Only fire changes.
+/// The fires swept out of band `k` of SC_SWEEP_BANDS (equal areas out to SC_SWEEP) at `t`: every fire from 30 under each
+/// column's top (a column's top is its highest trunk or stem: the crowns round it hang below it) to 42 over it put out.
+/// Only fire changes.
 fn sweep(q: &mut Plan, k: usize, t: f32) {
     let (bx, bz) = (q.bx, q.bz);
     let r0 = SC_SWEEP * (k as f64 / SC_SWEEP_BANDS as f64).sqrt();
@@ -411,7 +413,7 @@ fn sweep(q: &mut Plan, k: usize, t: f32) {
         let xi = if r0 * r0 > z * z { inner.ceil() as i32 } else { -1 };
         let mut span = |a: i32, c: i32| {
             for dx in a..=c {
-                b.put(bx + dx, bz + dz, -2, 42, "minecraft:air", Some("#minecraft:fire"), true);
+                b.put(bx + dx, bz + dz, -30, 42, "minecraft:air", Some("#minecraft:fire"), true);
             }
         };
         if xi < 0 {

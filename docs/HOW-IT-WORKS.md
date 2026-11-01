@@ -270,7 +270,7 @@ up to 5 high of stone and raw earth; the trees round it blasted (trunks gone und
 70, crowns torn off to 62) and set alight out to 95; plants burnt off to 95, the grass scorched in thinning patches out
 to 112; 60 blocks of the ground thrown out; every mob within 80 killed. With the terrain on the bolts are real (`summon
 minecraft:lightning_bolt`): they light fires and hurt what they hit. The world's weather is left alone: each bolt's fires
-are put out 1.5 s, 5 s and 12 s after it (within 6, 7 and 11 blocks, from a few under each column's top to 30 over it),
+are put out 1.5 s, 5 s and 12 s after it (within 6, 7 and 11 blocks, from 28 under each column's top to 30 over it, so the crowns hanging round a tall trunk are reached),
 and every fire within 150 blocks twice as it ends (the finale's too); those edits and sweeps are still made if the strike
 is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
 goes in through `world.edit-blocks`.
