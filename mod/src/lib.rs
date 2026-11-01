@@ -51,6 +51,10 @@ fn payload_pass(fast: bool) -> &'static str {
 fn nuke_pass(fast: bool) -> &'static str {
     PASS_NUKE[usize::from(fast)]
 }
+/// The Supercell's, the same way (supercell.wgsl's `[half stage]`: its storm cloud, rain and funnels at half size).
+fn supercell_pass(fast: bool) -> &'static str {
+    PASS_SUPERCELL[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -60,6 +64,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "sinkhole" => 4,
         "payload" => 5,
         "nuke" => 6,
+        "supercell" => 7,
         _ => 0,
     }
 }
@@ -222,7 +227,7 @@ struct Orbital {
     /// sinkhole's, 5 the payload's, 6 the nuke's), the one the
     /// game last compiled,
     /// and the ones waiting to be compiled ahead of a strike, and whether one is being now (see `frame`).
-    passes: [&'static str; 7],
+    passes: [&'static str; 8],
     compiled: Option<usize>,
     warm_queue: Vec<usize>,
     warming: bool,
@@ -293,12 +298,12 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), supercell_pass(fast)],
             compiled: None,
             // all compiled as the world loads (the driver keeps them), the loaded laser's last, so the game holds it
             warm_queue: {
                 let mine = pass_of(LASERS[laser]);
-                (0..7).filter(|&i| i != mine).chain([mine]).collect()
+                (0..8).filter(|&i| i != mine).chain([mine]).collect()
             },
             warming: false,
             carving: std::collections::VecDeque::new(),
@@ -591,6 +596,7 @@ impl Orbital {
         self.save();
         self.rebuild("payload", payload_pass(fast));
         self.rebuild("nuke", nuke_pass(fast));
+        self.rebuild("supercell", supercell_pass(fast));
         self.update_panel();
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
@@ -647,7 +653,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "supercell" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = if self.shadow_off { 1.0 } else { 0.0 };
@@ -831,7 +837,7 @@ impl Orbital {
         self.edits_late = 0;
         self.edited = false;
         let queued = self.carving.drain(..).chain(self.spare.drain(..)).map(|(_, c)| c);
-        cmds.extend(rest.chain(queued).filter(|c| c.starts_with("forceload remove")));
+        cmds.extend(rest.chain(queued).filter(|c| c.starts_with("forceload remove") || c.starts_with("weather ")));
         world::run_commands(&cmds);
         self.end_strike();
         Self::actionbar("STRIKE STOPPED", "gray");
@@ -1552,7 +1558,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "nuke", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "nuke", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -1638,6 +1644,37 @@ mod stress {
                 assert!(slow > 4 || !left, "the land came but was left out");
             }
         }
+    }
+
+    /// A Supercell called in on land far off, none of it loaded as it fires (the player 800 blocks away): its bolts'
+    /// pits, its funnels' tracks and its fire sweeps go in as edits whatever has loaded (the game leaves out what has
+    /// not), no tick overworks, and it ends on time; stopped part way, the rain is stopped with it.
+    #[test]
+    fn a_supercell_on_far_unloaded_land_stays_light() {
+        let sc = LASERS.iter().position(|l| l.key == "supercell").expect("the supercell");
+        for slow in [4, 0] {
+            let mut s = Soak::new(5);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(sc, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 1400, "it never ended");
+            }
+            let edits = fake::with(|w| w.edits);
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            assert!(edits > 50, "the pits and the sweeps went in ({edits} edits)");
+        }
+        // (stopped in the storm: the weather set back)
+        let mut s = Soak::new(6);
+        s.fire(sc, (0, 0));
+        for _ in 0..400 {
+            s.step("stop");
+        }
+        s.stop();
+        assert!(fake::with(|w| w.weather.last().is_some_and(|c| c == "weather clear")), "the rain left on");
     }
 
     #[test]

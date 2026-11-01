@@ -9,6 +9,8 @@ mod nuke;
 mod payload;
 mod sh_land;
 mod sinkhole;
+mod storm;
+mod vortex;
 
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
@@ -559,6 +561,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "nuke" {
         return nuke::nuke_plan(laser, target, terrain, dimension, shader_seed, me, approach == 1);
+    }
+    if laser.key == "supercell" {
+        return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4352,7 +4357,8 @@ mod tests {
         for laser in crate::lasers::LASERS {
             // (the payload is a bomb, not a beam: it clears only what stood on the land it read, which nothing answers
             // here; strike/payload.rs's tests check it against a forest)
-            if laser.key == "payload" || laser.key == "nuke" {
+            // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "supercell" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {

@@ -20,5 +20,13 @@
   "subtitles.orbital.nuke.blast_alt_far": "Distant nuclear blast",
   "subtitles.orbital.nuke.shockwave": "Shockwave roars past",
   "subtitles.orbital.nuke.rumble": "Blast rumbles",
-  "subtitles.orbital.nuke.debris": "Debris rains down"
+  "subtitles.orbital.nuke.debris": "Debris rains down",
+  "subtitles.orbital.supercell.buildup": "Storm gathers",
+  "subtitles.orbital.supercell.gusts": "Wind gusts",
+  "subtitles.orbital.supercell.rain": "Heavy rain",
+  "subtitles.orbital.supercell.rumble": "Distant thunder",
+  "subtitles.orbital.supercell.crack": "Thunder cracks",
+  "subtitles.orbital.supercell.crack_far": "Thunder rolls",
+  "subtitles.orbital.supercell.finale": "Colossal thunderclap",
+  "subtitles.orbital.supercell.roar": "Funnel roars"
 }

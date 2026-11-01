@@ -1096,5 +1096,113 @@
       }
     ],
     "subtitle": "subtitles.orbital.nuke.blast_alt_far"
+  },
+  "supercell.buildup": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/buildup",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.buildup"
+  },
+  "supercell.gusts": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/gusts",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.gusts"
+  },
+  "supercell.rain": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/rain",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.rain"
+  },
+  "supercell.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/rumble1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/rumble2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/rumble3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.rumble"
+  },
+  "supercell.crack": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/crack1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.crack"
+  },
+  "supercell.crack_far": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/crack_far1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack_far2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:supercell/crack_far3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.crack_far"
+  },
+  "supercell.finale": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/finale",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.finale"
+  },
+  "supercell.roar": {
+    "sounds": [
+      {
+        "name": "orbital:supercell/roar1",
+        "attenuation_distance": 320
+      },
+      {
+        "name": "orbital:supercell/roar2",
+        "attenuation_distance": 320
+      },
+      {
+        "name": "orbital:supercell/roar3",
+        "attenuation_distance": 320
+      },
+      {
+        "name": "orbital:supercell/roar4",
+        "attenuation_distance": 320
+      }
+    ],
+    "subtitle": "subtitles.orbital.supercell.roar"
   }
 }
