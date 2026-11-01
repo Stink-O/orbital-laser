@@ -163,14 +163,16 @@ finish, every command, and how the mod, its effects and its sounds are made. For
 
 - **Supercell** (page three, `/orbital supercell`). A storm called down on the target, no beam. Over nine seconds the sky
   darkens and a storm cloud boils up over the target and spreads 300 blocks out: a low dark deck, a wall cloud hanging
-  under its middle turning slowly with ragged scud round it, a tower climbing into an anvil that spreads downwind; the
-  world's weather turns to rain and grey veils fall out of its base. From 9.5 s to 42 s 72 real vanilla lightning bolts
+  under its middle turning slowly with ragged scud round it, a tower climbing into an anvil that spreads downwind; rain
+  falls out of its base in streaked grey curtains drifting with the wind, a few streaks falling past the eye under it
+  (the pass draws the rain: the world's weather is left alone). From 9.5 s to 42 s 72 real vanilla lightning bolts
   strike the land under it out to 120 blocks, faster and faster, each drawn by the pass as a branching channel from
   the cloud's base that re-strikes once or twice, the cloud lit from inside round its root and the land round its foot
   lit bright, with flickers in the cloud between. Three thin funnels come down out of the wall cloud (13 to 43 s),
   touch, wander over the land for ten seconds or so in a swirl of dust and lift back up, their roar heard where they
-  are. At 45 s one colossal strike on the target: a knot of five bolts, a whiteout, a shockwave ring over the land, a
-  jolt and a shove. From 50 s the rain stops and the storm dies away; it ends at 64 s. It reaches 1000 blocks.
+  are. At 45 s one colossal strike on the target: one thick channel and six joining it, held for two seconds and
+  re-struck again and again, a whiteout, a shockwave racing out over the land at 140 blocks a second with a wall of
+  dust behind it, the crater glowing, a jolt and a shove at the Rod's strength. From 50 s the rain stops and the storm dies away; it ends at 64 s. It reaches 1000 blocks.
 
 All of them:
 
@@ -261,11 +263,16 @@ The **Supercell** leaves the land light: at each bolt a small pit a block or two
 top) lined with blackstone, basalt, tinted glass and obsidian round a block of magma, the sand round it fused to glass and
 the grass charred to coarse dirt and podzol in a ragged ring 4 to 6 out; along each funnel's track (about 4 wide) the
 plants and flowers gone, the leaves torn off the trees up to 24 high, the grass scoured to dirt in streaks and a few
-blocks thrown as falling blocks; at the finale a bowl 20 across and 5 deep, lined the same, charred out to 22 with the
-leaves stripped out to 14. The bolts are real (`summon minecraft:lightning_bolt`): they light fires and hurt what they
-hit (no other mob is killed). The world's weather is rain from 5 s to 52 s, which puts out fires under the open sky,
-and every fire within 150 blocks (from two under each column's top to 42 over it) is put out twice as it ends; the
-weather is set clear again on `/orbital stop` too. It keeps the chunks within 154 loaded while it works. All of it
+blocks thrown as falling blocks. The finale goes in with its shockwave, from the middle out: a crater about 70 across
+and 24 deep, fused (its face blackstone, basalt, tinted glass and obsidian, magma at its heart); fulgurites, nine veins
+of glass and magma wandering and forking out through the ground to 55-85 blocks, showing at the top; an overturned rim
+up to 5 high of stone and raw earth; the trees round it blasted (trunks gone under the rim, charred to basalt out to
+70, crowns torn off to 62) and set alight out to 95; plants burnt off to 95, the grass scorched in thinning patches out
+to 112; 60 blocks of the ground thrown out; every mob within 80 killed. With the terrain on the bolts are real (`summon
+minecraft:lightning_bolt`): they light fires and hurt what they hit. The world's weather is left alone: each bolt's fires
+are put out 1.5 s, 5 s and 12 s after it (within 6, 7 and 11 blocks, from a few under each column's top to 30 over it),
+and every fire within 150 blocks twice as it ends (the finale's too); those edits and sweeps are still made if the strike
+is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
 goes in through `world.edit-blocks`.
 
 ## Commands
@@ -456,7 +463,7 @@ dark roll for the flickers in the cloud, and for each bolt a crack: close in a r
 falling-sine boom with its harmonics rolling on in swells (`crack`), further off duller and longer (`crack_far`), late
 by the distance and let down while the cracks before it still roll, so a run of near bolts never piles up. Vanilla's
 own thunder is stopped as each bolt plays it (a full-scale boom with nothing over 6 kHz, which buried the crack and
-clipped with it); its impact crackle stays. The finale's crack is a long rip, three blows of sub and a ten-second roll;
+clipped with it); its impact crackle stays. The finale's crack is a long tearing rip, a huge snap, four blows of sub and a twelve-second roll;
 each funnel's roar (mono) is played where the funnel is every second, the copies overlapping into one that follows it.
 `python3 tools/sounds_storm.py --listen DIR` writes the strike's mix as heard 60 and 300 blocks off: it peaks under -1 dBFS.
 
@@ -538,7 +545,7 @@ tracks and the flickers from `sc_table` ([`strike/storm.rs`](../mod/src/strike/s
 in as `world.surface-height` answers). The cloud is one raymarched slab between its base and the anvil's top: a smooth
 body (the deck, the lowered wall cloud, the tower, the anvil) bulged by turning gradient noise and the Payload's
 cauliflower domes up the tower, lit from above by its depth and a look towards the sun, its base green-black, and from
-inside by the three brightest flashes of the moment; the rain is ten samples of streaked veils under the base; the
+inside by the three brightest flashes of the moment; the rain is ten samples of curtains under the base, streaked in long bands falling and drifting with the wind, never hiding more than 45% of what is behind, sparse thin streaks falling past an eye under it (more at the edges of the picture), the land under it darkened wet; the
 funnels (the vortex section, `vx_*`) are tapered, curving vortices wound with spiral bands, a turning dust cloud at the
 foot. The bolts are drawn on the picture between their projected root and foot (`bolt_line`, three forks), hidden by
 what stands in front. QUALITY FAST marches the cloud, the rain and the funnels at half size: at 1920x1080 FAST costs

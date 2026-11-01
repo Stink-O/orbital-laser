@@ -103,7 +103,8 @@ Eleven lasers, five to a page of the wheel.
 - **Supercell** (page three). A storm called down: the sky darkens and a turning wall cloud and an anvil-topped storm
   cloud boil up over the target, rain pouring out of them; real lightning strikes all over the land under it, faster
   and faster, thin funnels come down and wander over the land, then one colossal strike on the target. It leaves small
-  scorched pits, the funnels' scoured tracks and a crater 20 across; the fires it lights are put out as it ends.
+  scorched pits, the funnels' scoured tracks and a crater about 70 across with veins of fused glass branching out
+  through the ground round it; the fires it lights are put out.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole, the Payload and the Nuke reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.

@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 VARIANTS = {"rumble": 3, "crack": 3, "crack_far": 3, "roar": 4}
 NAMES = ["buildup", "gusts", "rain", "rumble", "crack", "crack_far", "finale", "roar"]
 # Each file's peak (of full scale): set so the strike's mix stays under -1 dBFS (`--listen` checks it).
-LEVEL = {"buildup": 0.42, "gusts": 0.18, "rain": 0.13, "rumble": 0.2, "crack": 0.5, "crack_far": 0.36, "finale": 0.72, "roar": 0.22}
+LEVEL = {"buildup": 0.42, "gusts": 0.18, "rain": 0.13, "rumble": 0.2, "crack": 0.5, "crack_far": 0.36, "finale": 0.74, "roar": 0.22}
 LISTEN = None
 rng = np.random.default_rng(20261101)
 
@@ -225,20 +225,24 @@ def build_crack_far(v):
 
 
 def build_finale():
-    d = 12.0
+    """The colossal strike: a long tearing rip (a dense run of snaps), a huge snap, four blows of sub one after another
+    as the strike goes on, a fizzing sizzle, a wide roll dying over twelve seconds; sharper and far bigger than a crack."""
+    d = 15.0
     def one():
         n = n_of(d)
         t = np.arange(n) / SR
-        x = rip(n, 0.0, 0.28, 70, big=1.6) * 1.0
-        x += boom(n, 0.02, 105, 30, 1.8, 4.0) * 1.0
-        x += boom(n, 0.12, 72, 27, 2.2, 3.0, attack=0.01) * 0.7
-        x += boom(n, 0.5, 55, 24, 2.6, 2.0, attack=0.05) * 0.5
-        x += band(white(d), 400, 3500, 2) * np.exp(-t / 0.45) * (t > 0.05) * 0.35
-        x += roll(d, 8, 22, 260, t0=0.5, spread=6.5, width=(0.5, 1.2)) * 1.0
-        x += roll(d, 5, 260, 1500, t0=0.4, spread=3.0, width=(0.2, 0.5)) * 0.15
-        return fades(x, 0.0, 1.5)
+        x = rip(n, 0.0, 0.42, 120, big=2.2) * 1.15
+        x += rip(n, 0.5, 0.18, 30, big=1.2) * 0.6
+        x += boom(n, 0.02, 118, 27, 2.3, 4.5) * 1.0
+        x += boom(n, 0.13, 82, 25, 2.7, 3.0, attack=0.008) * 0.75
+        x += boom(n, 0.48, 60, 23, 3.0, 2.2, attack=0.03) * 0.6
+        x += boom(n, 1.1, 46, 22, 3.2, 1.8, attack=0.08) * 0.45
+        x += band(white(d), 600, 6000, 2) * np.exp(-t / 0.7) * (t > 0.04) * 0.3
+        x += roll(d, 9, 20, 260, t0=0.6, spread=8.0, width=(0.6, 1.4)) * 1.1
+        x += roll(d, 5, 260, 1500, t0=0.4, spread=3.5, width=(0.2, 0.5)) * 0.18
+        return fades(x, 0.0, 2.0)
     l, r = stereo(one)
-    write("finale", soundlib.reverb_st(0.5 * (l + r), wet=0.42, length=4.0, tau_lo=2.2, tau_mid=1.0, tau_hi=0.3), LEVEL["finale"])
+    write("finale", soundlib.reverb_st(0.5 * (l + r), wet=0.45, length=4.5, tau_lo=2.6, tau_mid=1.1, tau_hi=0.3), LEVEL["finale"])
 
 
 def build_roar(v):

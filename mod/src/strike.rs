@@ -56,6 +56,9 @@ pub enum Act {
     /// Part of the plan worked out only when it is due: it returns more of the plan. A big strike's whole plan is too
     /// much work for the one tick it fires in (a mod's tick has a fuel limit).
     Later(Stage),
+    /// As `Later`, but worked out (a stage a tick, its block edits made) even when the strike is stopped before it is
+    /// due: what must not be left undone (the Supercell's fires put out).
+    Cleanup(Stage),
     /// A world change for when the block budget is to spare (after everything `Cmd` queued): what is still standing
     /// high over a blast, which takes long to clear and nothing waits on.
     Spare(String),
@@ -87,6 +90,8 @@ pub struct Blocks {
     /// A landed piece's blocks, due at this strike time: once they are in, the mod tells the pass (its param 14, the
     /// latest such time in), which only then lets the piece go.
     pub landing: Option<f32>,
+    /// Made even when the strike is stopped before it is due (`Act::Cleanup`'s kind of edit: fires put out).
+    pub cleanup: bool,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -4344,7 +4349,7 @@ mod tests {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
                 Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
-                Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
             }
         }
         out

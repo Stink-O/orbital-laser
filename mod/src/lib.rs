@@ -271,6 +271,8 @@ struct Orbital {
     /// The Payload's and the Nuke's cloud shadows on the land left out (`/orbital shadow off`: for looking at them
     /// side by side; not kept).
     shadow_off: bool,
+    /// What a stopped strike still has to do (`Act::Cleanup`), a stage a tick, its edits queued with the rest.
+    cleanup: std::collections::VecDeque<strike::Stage>,
     strike: Option<Strike>,
     wheel: Option<wheel::Wheel>,
     /// Seconds since the last tick, for a smooth strike clock between ticks.
@@ -327,6 +329,7 @@ impl Orbital {
             aiming: None,
             skip: 0.0,
             shadow_off: false,
+            cleanup: Default::default(),
             strike: None,
             wheel: None,
             since_tick: 0.0,
@@ -669,7 +672,7 @@ impl Orbital {
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
         let skipped = ticks as f32 * 0.05;
         let mut plan = plan;
-        plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. }));
+        plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Cleanup(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. }));
         let next = 0;
         self.skip = 0.0;
         // (the crystal bloom's spires and pieces, worked out once for the pass: strike::cb_table)
@@ -686,6 +689,19 @@ impl Orbital {
         trace("polled");
         let carved = self.carve(CARVE_CMDS);
         trace("carved");
+        // (what a stopped strike still has to do: a stage a tick, its edits queued)
+        if !meter::full()
+            && let Some(job) = self.cleanup.pop_front()
+        {
+            let before = meter::spent();
+            for (_, a) in job() {
+                if let Act::Blocks(b) = a {
+                    meter::spend(60 * b.runs.len() as u64);
+                    self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b));
+                }
+            }
+            meter::spend(STAGE_COST.saturating_sub(meter::spent().saturating_sub(before)));
+        }
         let Some(s) = &mut self.strike else {
             self.edit();
             return;
@@ -777,8 +793,8 @@ impl Orbital {
                     s.data_sent = false;
                 }
                 Act::Soon(job) if worked_out || meter::full() => s.urgent.push_back(job),
-                Act::Later(job) if worked_out || meter::full() => s.waiting.push_back(job),
-                Act::Later(job) | Act::Soon(job) => {
+                Act::Later(job) | Act::Cleanup(job) if worked_out || meter::full() => s.waiting.push_back(job),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
                     // more of the plan, worked out now it is due
                     s.work_out(job);
                     worked_out = true;
@@ -829,15 +845,33 @@ impl Orbital {
         let Some(s) = &mut self.strike else { return };
         let mut cmds: Vec<String> = s.sounds.iter().map(|e| format!("stopsound @s * {e}")).collect();
         let more = std::mem::take(&mut s.more).into_vec().into_iter().map(|g| (g.t, g.act));
-        let rest = s.plan.drain(s.next..).chain(more).filter_map(|(_, a)| match a {
-            Act::Cmd(c) | Act::Spare(c) => Some(c),
-            _ => None,
-        });
-        self.edits.clear();
+        // (what must still be done goes on after it: the edits and stages marked so, `Act::Cleanup`)
+        let mut keep = Vec::new();
+        let rest: Vec<String> = s
+            .plan
+            .drain(s.next..)
+            .chain(more)
+            .filter_map(|(_, a)| match a {
+                Act::Cmd(c) | Act::Spare(c) => Some(c),
+                Act::Cleanup(job) => {
+                    self.cleanup.push_back(job);
+                    None
+                }
+                Act::Blocks(b) if b.cleanup => {
+                    keep.push(b);
+                    None
+                }
+                _ => None,
+            })
+            .collect();
+        self.edits.retain(|e| e.2.cleanup);
+        for b in keep {
+            self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b));
+        }
         self.edits_late = 0;
         self.edited = false;
         let queued = self.carving.drain(..).chain(self.spare.drain(..)).map(|(_, c)| c);
-        cmds.extend(rest.chain(queued).filter(|c| c.starts_with("forceload remove") || c.starts_with("weather ")));
+        cmds.extend(rest.into_iter().chain(queued).filter(|c| c.starts_with("forceload remove")));
         world::run_commands(&cmds);
         self.end_strike();
         Self::actionbar("STRIKE STOPPED", "gray");
@@ -1539,7 +1573,8 @@ mod stress {
             meter::reset();
             self.o.stop_strike();
             // nothing left for the next strike to start on
-            assert!(self.o.strike.is_none() && self.o.edits.is_empty() && self.o.carving.is_empty() && self.o.spare.is_empty());
+            // (but what must still be done, the Supercell's fires put out: `Act::Cleanup`)
+            assert!(self.o.strike.is_none() && self.o.edits.iter().all(|e| e.2.cleanup) && self.o.carving.is_empty() && self.o.spare.is_empty());
             assert!(!self.o.edited);
         }
     }
@@ -1648,7 +1683,7 @@ mod stress {
 
     /// A Supercell called in on land far off, none of it loaded as it fires (the player 800 blocks away): its bolts'
     /// pits, its funnels' tracks and its fire sweeps go in as edits whatever has loaded (the game leaves out what has
-    /// not), no tick overworks, and it ends on time; stopped part way, the rain is stopped with it.
+    /// not), no tick overworks, and it ends on time; stopped part way, its fires are still put out.
     #[test]
     fn a_supercell_on_far_unloaded_land_stays_light() {
         let sc = LASERS.iter().position(|l| l.key == "supercell").expect("the supercell");
@@ -1667,14 +1702,21 @@ mod stress {
             assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
             assert!(edits > 50, "the pits and the sweeps went in ({edits} edits)");
         }
-        // (stopped in the storm: the weather set back)
+        // (stopped in the storm: the fires it lit are still put out, its sweeps worked out a stage a tick after it)
         let mut s = Soak::new(6);
         s.fire(sc, (0, 0));
         for _ in 0..400 {
             s.step("stop");
         }
         s.stop();
-        assert!(fake::with(|w| w.weather.last().is_some_and(|c| c == "weather clear")), "the rain left on");
+        let (before, cleanup) = (fake::with(|w| w.edits), s.o.cleanup.len());
+        assert!(cleanup >= 12, "the sweeps left undone ({cleanup} stages)");
+        for _ in 0..200 {
+            s.step("after");
+        }
+        let after = fake::with(|w| w.edits);
+        assert!(s.o.cleanup.is_empty() && s.o.edits.is_empty() && after >= before + 12, "{before} -> {after}");
+        assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
     }
 
     #[test]

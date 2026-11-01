@@ -5,11 +5,11 @@
 // ---- laser 12: the supercell --------------------------------------------------------------------------------------
 // No beam. The sky darkens; a storm cloud boils up over the target and spreads: a broad, low, dark deck, a slowly
 // turning wall cloud hanging under its middle with ragged scud round it, a tower climbing out of it into an anvil that
-// spreads downwind. Rain falls out of it in grey veils. Then the storm: lightning strikes all over the land under it,
+// spreads downwind. Rain falls out of it in streaked grey curtains (the world's weather is left alone). Then the storm: lightning strikes all over the land under it,
 // faster and faster, each bolt a branching channel from the cloud's base to the ground, re-striking a few times, the
 // cloud lit from inside round its root and the land round its foot lit bright; flickers inside the cloud between. A few
 // thin funnels come down out of the wall cloud, touch, wander over the land in a swirl of dust and lift back up (the
-// vortex section). Then one colossal strike on the target: a thick knot of bolts, a blinding flash, a shockwave over the
+// vortex section). Then one colossal strike on the target: a thick channel and six joining it, held, a blinding flash, a shockwave over the
 // land and a jolt. Then the storm dies away.
 // strike/storm.rs hands the bolts, the funnels' tracks and the flickers to the pass in its table (sc_table,
 // render.set-data): keep the SC_* and VX_* in step.
@@ -473,21 +473,28 @@ fn sc_volume(rd: vec3<f32>, scene_len: f32, C: vec3<f32>, time: f32, j: f32, fl:
                 let p = rd * t;
                 let q = p - C;
                 let r = length(q.xz);
-                // (the shafts: streaks hanging from the base, swept by the wind, the wall cloud's middle drier)
-                let sx = q.xz + vec2<f32>(0.25 * q.y, 0.0);
-                let shaft = gnoise3(vec3<f32>(sx * (1.0 / 22.0), time * 0.08)) * 0.7 + gnoise3(vec3<f32>(sx * (1.0 / 6.0), q.y * 0.02 + time * 0.6)) * 0.3;
-                var den = rk * smoothstep(0.42, 0.7, shaft) * (1.0 - smoothstep(rr * 0.6, rr, r)) * smoothstep(18.0, 50.0, length(q.xz - vec2<f32>(-20.0, 0.0)));
+                // (the curtains: broad shafts hanging from the base, leaning and drifting with the wind, streaked by the rain
+                // falling through them: its streaks drawn down fast; the wall cloud's middle drier)
+                let sx = q.xz + vec2<f32>(0.3 * q.y + 3.0 * time, 0.0);
+                let curtain = gnoise3(vec3<f32>(sx * (1.0 / 26.0), time * 0.06));
+                let fall = gnoise3(vec3<f32>(sx.x * (1.0 / 3.0), (q.y + 32.0 * time) * (1.0 / 22.0), sx.y * (1.0 / 3.0)));
+                // (streaked in long vertical bands that read as rain from far off)
+                let bands = gnoise3(vec3<f32>(sx.x * (1.0 / 7.0), (q.y + 20.0 * time) * (1.0 / 90.0), sx.y * (1.0 / 7.0)));
+                var den = rk * smoothstep(0.46, 0.64, curtain) * smoothstep(0.38, 0.62, bands) * (0.55 + 0.9 * smoothstep(0.45, 0.75, fall)) * (1.0 - smoothstep(rr * 0.6, rr, r)) * smoothstep(18.0, 50.0, length(q.xz - vec2<f32>(-20.0, 0.0)));
                 den = den * smoothstep(-4.0, 6.0, q.y) * (1.0 - smoothstep(sc_base(r) - 10.0, sc_base(r), q.y));
                 if (den > 0.001) {
                     let e = sc_flash_at(fl, p);
                     let c = vec3<f32>(0.36, 0.39, 0.42) * (amb * 0.8 + sunc * 0.15) + fc * e * 0.35;
-                    let al = 1.0 - exp(-den * 0.012 * dtr);
+                    let al = 1.0 - exp(-den * 0.05 * dtr);
                     cr = cr + tr * al * c;
                     tr = tr * (1.0 - al);
                 }
             }
-            // (the rain is under the cloud: in front of what the cloud gathered, for an eye under it)
-            acc = vec4<f32>(cr + tr * acc.rgb, tr * acc.a);
+            // (the rain is under the cloud: in front of what the cloud gathered, for an eye under it; never so thick that
+            // the storm behind it, its bolts and its funnels, does not show through: at most 45% of it hidden)
+            let keep = max(tr, 0.55);
+            cr = cr * (1.0 - keep) / max(1.0 - tr, 1.0e-4);
+            acc = vec4<f32>(cr + keep * acc.rgb, keep * acc.a);
             if (tr < 0.98 && wmid < 1.0e-3) {
                 tmid = 0.5 * (r0 + r1);
                 wmid = 1.0;
@@ -659,12 +666,17 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     }
     // (the finale's: a knot of bolts on the target, blinding, lighting the cloud over it hard)
     var fin = 0.0;
-    if (tf > 0.0 && tf < 1.6) {
-        fin = exp(-tf / 0.09) + 0.8 * exp(-max(tf - 0.12, 0.0) / 0.07) * step(0.12, tf) + 0.7 * exp(-max(tf - 0.3, 0.0) / 0.08) * step(0.3, tf) + 0.5 * exp(-max(tf - 0.55, 0.0) / 0.1) * step(0.55, tf) + 0.15 * exp(-tf / 0.6);
+    if (tf > 0.0 && tf < 3.0) {
+        // (held: the channel burning on for two seconds, re-struck again and again)
+        fin = 0.4 * (1.0 - smoothstep(1.6, 2.4, tf)) * (0.75 + 0.25 * sin(tf * 41.0));
+        for (var n = 0; n < 7; n = n + 1) {
+            let ts = array<f32, 7>(0.0, 0.12, 0.3, 0.52, 0.8, 1.12, 1.5)[n];
+            fin = fin + (1.0 - 0.09 * f32(n)) * exp(-max(tf - ts, 0.0) / 0.08) * step(ts, tf);
+        }
         fl.p[0] = vec4<f32>(C + vec3<f32>(0.0, SC_WALL + 14.0, 0.0), fin * 2.2);
         if (stage != 1u && !sky) {
             let dl = length(rel - C);
-            gflash = gflash + vec3<f32>(0.85, 0.88, 1.1) * fin * 14.0 / (1.0 + dl * dl / 900.0);
+            gflash = gflash + vec3<f32>(0.85, 0.88, 1.1) * fin * 18.0 / (1.0 + dl * dl / 2500.0);
         }
         sky_flash = sky_flash + fin * 0.6 / (1.0 + length(C) / 400.0);
     }
@@ -674,12 +686,21 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
         if (!sky) {
             let rr = length((rel - C).xz);
             let cover = form * (1.0 - smoothstep(sc_deck_r(time) * 0.75, sc_deck_r(time) * 1.05, rr));
-            col = col * (1.0 - 0.3 * form - 0.42 * cover) * mix(vec3<f32>(1.0), vec3<f32>(0.9, 1.0, 0.94), cover);
+            // (and wet where the rain falls: darker, a little cooler)
+            let wet = sc_rain(time) * sc_fade(time) * (1.0 - smoothstep(sc_deck_r(time) * 0.55, sc_deck_r(time) * 0.8, rr));
+            col = col * (1.0 - 0.3 * form - 0.42 * cover) * mix(vec3<f32>(1.0), vec3<f32>(0.9, 1.0, 0.94), cover) * mix(vec3<f32>(1.0), vec3<f32>(0.84, 0.86, 0.9), wet);
             col = col + scene * gflash * k;
-            // (the finale's shockwave: a ring of light and dust racing out over the land)
-            if (tf > 0.0 && tf < 2.5) {
-                let ring = exp(-pow((rr - 140.0 * tf) / 4.5, 2.0)) * exp(-tf / 0.9);
-                col = col + (scene * 1.8 + vec3<f32>(0.18, 0.16, 0.13)) * ring * k;
+            // (the finale's shockwave: a bright ring racing out over the land at 140 blocks a second, as its edits go,
+            // a wall of dust and smoke rising behind it, settling into a haze)
+            if (tf > 0.0 && tf < 5.0) {
+                let front = 140.0 * tf;
+                let e = rr - front;
+                let ring = exp(-pow(e / 6.0, 2.0)) * exp(-tf / 1.6);
+                let behind = smoothstep(4.0, -30.0, e) * exp(-tf / 2.2) * smoothstep(0.0, 25.0, rr);
+                col = col + (scene * 2.2 + vec3<f32>(0.25, 0.22, 0.18)) * ring * k;
+                col = mix(col, vec3<f32>(0.2, 0.18, 0.16) * (amb0 * 2.0 + vec3<f32>(0.08)), 0.45 * behind * k);
+                // (the crater glowing where the strike fused it, cooling)
+                col = col + vec3<f32>(2.6, 0.9, 0.25) * exp(-max(rr - 6.0, 0.0) / 9.0) * exp(-tf / 1.8) * k;
             }
         } else {
             let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -731,13 +752,13 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             glow = glow + m.y * I;
         }
         if (fin > 0.0) {
-            for (var i = 0u; i < 5u; i = i + 1u) {
-                let a = TAU * f32(i) / 5.0 + f32(seed % 7u);
+            for (var i = 0u; i < 7u; i = i + 1u) {
+                let a = TAU * f32(i) / 7.0 + f32(seed % 7u);
                 let foot = C + vec3<f32>(cos(a) * 2.0, 0.0, sin(a) * 2.0);
                 // (one thick channel straight down, four thinner ones from further round the wall cloud joining it)
-                let rr = select(34.0, 0.0, i == 0u);
+                let rr = select(28.0 + 22.0 * f32(i % 3u), 0.0, i == 0u);
                 let root = C + vec3<f32>(cos(a) * rr, SC_WALL + 6.0, sin(a) * rr);
-                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), select(1.3, 4.0, i == 0u), saturate(tf / 0.03), scene_len);
+                let m = sc_draw_bolt(px, root, foot, f32(i) * 17.3 + f32(seed % 13u), select(1.8, 6.0, i == 0u), saturate(tf / 0.03), scene_len);
                 core = core + m.x * fin;
                 glow = glow + m.y * fin;
             }
@@ -747,11 +768,42 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     // (the finale: the picture whited out for an instant, fading as the eye recovers, less from far off)
     if (tf > 0.0 && tf < 1.5) {
         let near = 1.0 / (1.0 + length(C) / 350.0);
-        let wo = (0.6 * exp(-tf / 0.07) + 0.12 * exp(-tf / 0.5)) * near * k;
+        let wo = (0.8 * exp(-tf / 0.08) + 0.2 * exp(-tf / 0.6)) * near * k;
         col = mix(col, vec3<f32>(1.3, 1.32, 1.45), saturate(wo));
     }
 
-    // (the rain close by is the game's own: the world's weather rains while the storm lasts, strike/storm.rs)
+    // ---- the rain close by, for an eye under the storm: sparse, thin, faint streaks falling past, slanted by the wind,
+    // more of them out at the edges of the picture than across its middle, hidden by what stands in front -----------
+    let rk = sc_rain(time) * sc_fade(time);
+    if (rk > 0.01 && stage != 1u) {
+        let res = frame.resolution.xy;
+        let sc = res.y / 1080.0;
+        let edge = mix(0.3, 1.0, smoothstep(0.12, 0.48, length((uv - 0.5) * vec2<f32>(res.x / res.y, 1.0))));
+        var streak = 0.0;
+        for (var layer = 0; layer < 3; layer = layer + 1) {
+            let fl2 = f32(layer);
+            let dk = 3.5 + 5.0 * fl2 + 4.0 * fl2 * fl2;
+            if (scene_len < dk) {
+                continue;
+            }
+            // (only where the rain falls: under the cloud's base, inside the storm)
+            let wp = rd * dk - C;
+            let under = (1.0 - smoothstep(sc_deck_r(time) * 0.6, sc_deck_r(time) * 0.8, length(wp.xz))) * (1.0 - smoothstep(sc_base(length(wp.xz)) - 20.0, sc_base(length(wp.xz)), wp.y));
+            if (under < 0.01) {
+                continue;
+            }
+            let w = (11.0 - 3.0 * fl2) * sc;
+            let pp = in.position.xy + vec2<f32>(in.position.y * 0.14, 0.0);
+            let cidx = floor(pp.x / w);
+            let h = fh21(vec2<f32>(cidx, fl2 * 17.0));
+            let h2 = fh21(vec2<f32>(cidx * 1.7, fl2 * 5.0 + 3.0));
+            let len = (260.0 - 60.0 * fl2) * sc;
+            let v = fract((pp.y - time * (2900.0 - 700.0 * fl2) * sc) / len + h);
+            let across = 1.0 - abs(fract(pp.x / w) - 0.5) * 2.0;
+            streak = streak + smoothstep(0.9, 1.0, v) * step(0.72, h2) * pow(across, 10.0) * (0.5 - 0.12 * fl2) * under;
+        }
+        col = col + vec3<f32>(0.62, 0.66, 0.72) * streak * rk * edge * (amb0 * 0.7 + vec3<f32>(0.02) + vec3<f32>(0.7) * min(sky_flash, 2.0)) * k;
+    }
 
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     if (capture() > 2.5) {

@@ -6,9 +6,11 @@
 //! itself, a shockwave and a jolt, and the storm dies away.
 //!
 //! What it leaves is light: a small scorched pit where each bolt struck (blackstone, basalt, tinted glass, a seam of
-//! magma, glassy sand), charred grass round it, the funnels' scoured tracks, the finale's crater about 20 across, and the
-//! fires the bolts lit, kept in check by the rain (the world's weather is rain while it lasts: rain puts out fires
-//! under the open sky) and swept out within SC_SWEEP of the middle as it ends.
+//! magma, glassy sand), charred grass round it, the funnels' scoured tracks; and the finale's: a crater about 70 across
+//! and 24 deep, fulgurite veins of glass branching out from it, an overturned rim, the trees round it blasted and set
+//! alight, the land scorched far out (`fc_band`). The world's weather is left alone (the pass draws the rain): the fires
+//! the bolts light are put out round each soon after it strikes (`douse`) and swept out within SC_SWEEP as it ends, as
+//! `cleanup` work lib.rs still does if the strike is stopped.
 //!
 //! Vanilla's own thunder is stopped as each bolt plays it (`stopsound` on the ticks after): it is a full-scale boom with
 //! no crack, which would bury ours or clip with it; ours (tools/sounds_storm.py) is the crack and the roll, delayed by
@@ -17,7 +19,7 @@
 //! shaders/supercell.wgsl draws the cloud, the rain, the bolts, the funnels and the flashes from the table `sc_table`
 //! hands it (render.set-data). Keep the SC_* here and there in step.
 use super::vortex::{self, Funnel, VX_W};
-use super::{Act, Blocks, Plan, Rng, TIDY_LOOSE, Target, falloff, mh, pk_load_rows, sound_from, vnoise};
+use super::{Act, Blocks, Plan, Rng, TIDY_LOOSE, Target, mh, pk_load_rows, sound_from, vnoise};
 use crate::lasers::Laser;
 use std::f64::consts::PI;
 use std::rc::Rc;
@@ -189,43 +191,192 @@ fn pit(b: &mut Blocks, rng: &mut Rng, x: i32, z: i32, r_pit: f64, r_char: f64, s
     }
 }
 
-/// The finale's crater at the middle (bx, bz), going in from the middle out over `a0` .. as its shockwave goes: a bowl
-/// about 20 across and 5 deep, lined like a pit, its rim ragged, the land round it charred out to 22, its plants burnt
-/// off and the leaves stripped off the trees out to 14.
-fn crater(q: &mut Plan, t: f32, seed: u32) {
+// ---- the finale's land: a crater ~70 across and 24 deep, fulgurite veins branching out from it, an overturned rim,
+// the trees round it blasted and set alight, the land scorched in a wide ring, blocks thrown out --------------------------
+const FC_R: f64 = 35.0;
+const FC_D: f64 = 24.0;
+const FC_RIM: f64 = 13.0;
+const FC_SCORCH: f64 = 112.0;
+const FC_BANDS: usize = 40;
+const FC_VEINS: usize = 9;
+const FC_KILL: i32 = 80;
+const FC_THROWN: usize = 60;
+/// The shockwave's front over the land, blocks a second (the pass's ring goes as fast).
+const FC_V: f64 = 140.0;
+const FC_GLASS: [(&str, f32); 3] = [("minecraft:tinted_glass", 0.45), ("minecraft:glass", 0.25), ("minecraft:obsidian", 0.3)];
+const FC_RIM_TOP: [(&str, f32); 5] = [
+    ("minecraft:coarse_dirt", 0.3),
+    ("minecraft:dirt", 0.2),
+    ("minecraft:stone", 0.2),
+    ("minecraft:gravel", 0.15),
+    ("minecraft:rooted_dirt", 0.15),
+];
+const FC_RIM_BODY: [(&str, f32); 3] = [("minecraft:dirt", 0.5), ("minecraft:stone", 0.3), ("minecraft:cobblestone", 0.2)];
+
+/// When the finale's front reaches r out.
+fn fc_wave(t: f32, r: f64) -> f32 {
+    t + 0.05 + (r / FC_V) as f32
+}
+/// A column's own pick of `items` (as `Rng::weighted`, from its own hash, so a column's blocks never depend on the
+/// stage it falls in).
+fn pick_at(items: &[(&'static str, f32)], x: i32, z: i32, seed: u32, k: u32) -> &'static str {
+    let total: f32 = items.iter().map(|i| i.1).sum();
+    let mut r = mh((x as u32).wrapping_mul(73_856_093) ^ (z as u32).wrapping_mul(19_349_663), seed, k) as f32 * total;
+    for (name, w) in items {
+        if r < *w {
+            return name;
+        }
+        r -= w;
+    }
+    items[items.len() - 1].0
+}
+fn chance(x: i32, z: i32, seed: u32, k: u32) -> f64 {
+    mh((x as u32).wrapping_mul(73_856_093) ^ (z as u32).wrapping_mul(19_349_663), seed, k)
+}
+/// The fulgurites: FC_VEINS veins of fused glass from the crater's middle out through the ground to 55-85 blocks, each
+/// wandering and forking twice, a block or two wide; magma at their hottest, nearest the strike. (x, z) off the middle
+/// -> 0 glass, 1 magma.
+fn fc_veins(seed: u32) -> crate::ground::FxMap<(i32, i32), u8> {
+    let mut out: crate::ground::FxMap<(i32, i32), u8> = Default::default();
+    let trace = |a0: f64, r0: f64, r1: f64, k: u32, out: &mut crate::ground::FxMap<(i32, i32), u8>| {
+        let ph = 2.0 * PI * mh(k, seed, 0xe1);
+        let mut r = r0;
+        while r < r1 {
+            crate::meter::spend(400);
+            let a = a0 + 0.18 * (r * 0.09 + ph).sin() + 0.08 * (r * 0.31 + 2.0 * ph).sin();
+            let (x, z) = ((a.cos() * r).round() as i32, (a.sin() * r).round() as i32);
+            let hot = u8::from(r < FC_R * 0.9 || (r < FC_R + 15.0 && chance(x, z, seed, 0xe2) < 0.3));
+            let w = if r < r0 + 0.7 * (r1 - r0) { 1 } else { 0 };
+            for (dx, dz) in [(0, 0), (w, 0), (0, w)] {
+                let e = out.entry((x + dx, z + dz)).or_insert(hot);
+                *e = (*e).max(hot);
+            }
+            r += 0.7;
+        }
+    };
+    for k in 0..FC_VEINS as u32 {
+        let a0 = 2.0 * PI * (f64::from(k) + 0.6 * mh(k, seed, 0xe3)) / FC_VEINS as f64;
+        let r1 = 55.0 + 30.0 * mh(k, seed, 0xe4);
+        trace(a0, 4.0, r1, k, &mut out);
+        for f in 0..2u32 {
+            let rf = 20.0 + (r1 - 30.0) * mh(k * 3 + f, seed, 0xe5);
+            let side = if f == 0 { 1.0 } else { -1.0 };
+            trace(a0 + side * (0.25 + 0.2 * mh(k * 3 + f, seed, 0xe6)), rf, rf + 12.0 + 18.0 * mh(k * 3 + f, seed, 0xe7), 50 + k * 3 + f, &mut out);
+        }
+    }
+    out
+}
+/// A run counted from a column's top on heightmap `h` (`Blocks::put` counts from the one without leaves).
+fn put_on(b: &mut Blocks, x: i32, z: i32, y0: i32, y1: i32, block: &'static str, only: Option<&'static str>, h: horizon_mod_sdk::world::Heightmap) {
+    crate::meter::spend(60 + 8 * b.palette.len() as u64);
+    let block = Blocks::index(&mut b.palette, block);
+    let only = only.map(|f| Blocks::index(&mut b.filters, f));
+    b.runs.push(horizon_mod_sdk::world::BlockRun { x, z, y: y0, height: (y1 - y0 + 1) as u32, surface: Some(h), block, only });
+}
+/// Band `k` of FC_BANDS (equal areas out to FC_SCORCH) of the finale's land, struck at `t`, going in with its front.
+fn fc_band(q: &mut Plan, k: usize, t: f32, seed: u32, veins: &crate::ground::FxMap<(i32, i32), u8>) {
+    use horizon_mod_sdk::world::Heightmap;
     let (bx, bz) = (q.bx, q.bz);
-    let mut b = Blocks::default();
-    let (r, depth, r_char, r_leaf) = (10.0f64, 5.0f64, 22.0f64, 14.0f64);
-    let ri = r_char.ceil() as i32 + 2;
+    let r0 = FC_SCORCH * (k as f64 / FC_BANDS as f64).sqrt();
+    let r1 = FC_SCORCH * ((k + 1) as f64 / FC_BANDS as f64).sqrt();
+    let mut b = Blocks { cleanup: false, ..Default::default() };
+    let ri = r1.ceil() as i32;
     for dz in -ri..=ri {
         for dx in -ri..=ri {
+            let r = f64::from(dx).hypot(f64::from(dz));
+            if r < r0 || r >= r1 {
+                continue;
+            }
+            crate::meter::spend(120);
             let (x, z) = (bx + dx, bz + dz);
-            let d = f64::from(dx).hypot(f64::from(dz));
-            let wob = 0.85 + 0.3 * vnoise(f64::from(x), f64::from(z), 3.0, seed ^ 0x77);
-            let u = d / (r * wob);
-            if u < 1.0 {
-                let dig = ((depth * (1.0 - u * u)).round() as i32).max(1);
-                b.put(x, z, -dig, 30, "minecraft:air", None, true);
-                let floor = if d < 1.5 { "minecraft:magma_block" } else { q.rng.weighted(&LINING) };
-                b.put(x, z, -dig - 1, -dig - 1, floor, None, true);
-                if u < 0.8 && q.rng.next() < 0.5 {
-                    b.put(x, z, -dig - 2, -dig - 2, q.rng.weighted(&LINING), None, true);
-                }
-            } else if d < r_char * wob {
-                b.put(x, z, -1, -1, "minecraft:glass", Some("#minecraft:sand"), true);
-                if q.rng.next() < 0.85 - 0.5 * (d / r_char) {
-                    b.put(x, z, -1, -1, q.rng.weighted(&CHAR), Some("minecraft:grass_block"), true);
-                }
+            let wob = 0.9 + 0.2 * vnoise(f64::from(x), f64::from(z), 7.0, seed ^ 0x71);
+            let rr = r / wob;
+            let vein = veins.get(&(dx, dz)).copied();
+            if rr < FC_R {
+                // the crater: dug, everything over it gone, its face fused (two deep), the veins in it glass and magma
+                let u = rr / FC_R;
+                let dig = ((FC_D * (1.0 - u * u).powf(0.8)).round() as i32).max(1);
+                b.put(x, z, -dig, 45, "minecraft:air", None, true);
+                let face = match vein {
+                    Some(1) => "minecraft:magma_block",
+                    Some(_) => pick_at(&FC_GLASS, x, z, seed, 0x81),
+                    None => pick_at(&LINING, x, z, seed, 0x82),
+                };
+                b.put(x, z, -dig - 1, -dig - 1, face, None, true);
+                b.put(x, z, -dig - 2, -dig - 2, pick_at(&LINING, x, z, seed, 0x83), None, true);
+                continue;
+            }
+            // round it: the trees blasted (crowns torn off near it; trunks charred out to 70, gone under the rim),
+            // the plants burnt off, the grass scorched in patches thinning out
+            if rr < FC_R + FC_RIM {
+                b.put(x, z, -30, -1, "minecraft:air", Some(super::TIDY_LOGS), true);
+            } else if r < 70.0 && chance(x, z, seed, 0x84) < 0.8 {
+                b.put(x, z, -30, -1, "minecraft:basalt", Some(super::TIDY_LOGS), true);
+            }
+            if r < 62.0 {
+                b.put(x, z, 0, 30, "minecraft:air", Some("#minecraft:leaves"), true);
+            }
+            if r < 95.0 {
                 b.put(x, z, 0, 2, "minecraft:air", Some(TIDY_LOOSE), true);
-                if d < r_leaf {
-                    b.put(x, z, 0, 24, "minecraft:air", Some("#minecraft:leaves"), true);
+            }
+            let p = (1.0 - (rr - FC_R) / (FC_SCORCH - FC_R)).clamp(0.0, 1.0).powf(0.7);
+            if chance(x, z, seed, 0x85) < 0.25 + 0.75 * p {
+                b.put(x, z, -1, -1, pick_at(&CHAR, x, z, seed, 0x86), Some("minecraft:grass_block"), true);
+            }
+            // the fulgurites through the ground, glass showing at the top
+            if let Some(v) = vein {
+                let core = if v == 1 { "minecraft:magma_block" } else { pick_at(&FC_GLASS, x, z, seed, 0x87) };
+                b.put(x, z, -3, -1, core, None, true);
+            }
+            // the rim: the ground thrown up and turned over, stone and raw earth on top
+            let h = (5.0 * (-((rr - FC_R - 3.0) / 4.5).powi(2)).exp() * (0.7 + 0.6 * vnoise(f64::from(x), f64::from(z), 4.0, seed ^ 0x72))).round() as i32;
+            if h > 0 {
+                if h > 1 {
+                    b.put(x, z, 0, h - 2, pick_at(&FC_RIM_BODY, x, z, seed, 0x88), None, true);
                 }
+                b.put(x, z, h - 1, h - 1, pick_at(&FC_RIM_TOP, x, z, seed, 0x89), None, true);
+            }
+            // set alight: fires on the treetops and the land round it, put out by the sweeps as the storm ends
+            if (45.0..95.0).contains(&r) && chance(x, z, seed, 0x8a) < 0.07 * (1.0 - (r - 45.0) / 60.0) {
+                put_on(&mut b, x, z, 0, 0, "minecraft:fire", Some("minecraft:air"), Heightmap::MotionBlocking);
             }
         }
     }
-    for (tk, e) in b.split_by(|x, z| t + (f64::from(x - bx).hypot(f64::from(z - bz)) / 150.0) as f32) {
+    let (cxf, czf) = (f64::from(bx), f64::from(bz));
+    for (tk, e) in b.split_by(|x, z| fc_wave(t, (f64::from(x) - cxf).hypot(f64::from(z) - czf))) {
         q.ev.push((tk, Act::Blocks(Box::new(e))));
     }
+}
+/// Blocks of the ground thrown out of the crater as it is struck, up and out, half breaking up where they land.
+fn fc_thrown(q: &mut Plan, t: f32, seed: u32) {
+    let (bx, bz) = (q.bx, q.bz);
+    for i in 0..FC_THROWN as u32 {
+        let a = 2.0 * PI * mh(i, seed, 0x91);
+        let r = FC_R * 0.8 * mh(i, seed, 0x92).sqrt();
+        let (x, z) = (bx + (a.cos() * r).round() as i32, bz + (a.sin() * r).round() as i32);
+        let out = 0.6 + 0.9 * mh(i, seed, 0x93);
+        let (vx, vz, vy) = (a.cos() * out, a.sin() * out, 0.9 + 0.8 * mh(i, seed, 0x94));
+        let blk = pick_at(&[("minecraft:dirt", 0.3), ("minecraft:stone", 0.25), ("minecraft:blackstone", 0.2), ("minecraft:coarse_dirt", 0.15), ("minecraft:magma_block", 0.1)], x, z, seed, 0x95);
+        let keep = if mh(i, seed, 0x96) < 0.5 { ",CancelDrop:1b" } else { "" };
+        let tk = fc_wave(t, r) + 0.02 * (i % 10) as f32;
+        q.ev.push((tk, Act::Cmd(format!(
+            "execute positioned {x} 0 {z} positioned over motion_blocking_no_leaves run summon minecraft:falling_block ~0.5 ~1 ~0.5 {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b{keep},Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"
+        ))));
+    }
+}
+
+/// The fires put out round (x, z) at `t` out to `r`, from a few under each column's top to 30 over it (a crown's): the
+/// bolt's own fires, before they spread. Made even if the strike is stopped (`cleanup`).
+fn douse(x: i32, z: i32, r: i32, t: f32) -> (f32, Act) {
+    let mut b = Blocks { cleanup: true, ..Default::default() };
+    for dz in -r..=r {
+        for dx in -r..=r {
+            if dx * dx + dz * dz <= r * r {
+                b.put(x + dx, z + dz, -3, 30, "minecraft:air", Some("#minecraft:fire"), true);
+            }
+        }
+    }
+    (t, Act::Blocks(Box::new(b)))
 }
 
 /// The fires swept out of band `k` of SC_SWEEP_BANDS (equal areas out to SC_SWEEP) at `t`: every fire from two under each
@@ -234,7 +385,7 @@ fn sweep(q: &mut Plan, k: usize, t: f32) {
     let (bx, bz) = (q.bx, q.bz);
     let r0 = SC_SWEEP * (k as f64 / SC_SWEEP_BANDS as f64).sqrt();
     let r1 = SC_SWEEP * ((k + 1) as f64 / SC_SWEEP_BANDS as f64).sqrt();
-    let mut b = Blocks::default();
+    let mut b = Blocks { cleanup: true, ..Default::default() };
     let ri = r1.ceil() as i32;
     for dz in -ri..=ri {
         let z = f64::from(dz);
@@ -288,7 +439,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the build-up: the sky darkening, the wind, thunder far off ---------------------------------------------------
     p.at(0.5, bar("ORBITAL WEATHER CONTROL: STORM FORMING", "dark_aqua"));
     p.csound(0.0, "buildup", 10.0, 1.0);
-    p.at(5.0, "weather rain");
     for (i, t) in [10.0f32, 23.0, 36.0].iter().enumerate() {
         p.csound(*t, "gusts", [8.0, 9.0, 8.5][i], 1.0);
     }
@@ -312,11 +462,18 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     let mut load: Vec<(f32, f32)> = Vec::new();
     for (i, b) in bolts.iter().enumerate() {
         let (x, z) = ((cx + b.x).floor() as i32, (cz + b.z).floor() as i32);
-        p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
-        // (vanilla's thunder stopped on the ticks after the bolt plays it: the summon runs on the tick after it is due,
-        // the bolt plays its thunder later that tick, after the mod's commands; a few ticks' worth, in case it is late)
-        for k in 1..6 {
-            p.at(b.t + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
+        // (a real bolt, with the terrain on: its fire, what it strikes; vanilla's thunder stopped on the ticks after the
+        // bolt plays it: the summon runs on the tick after it is due, the bolt plays its thunder later that tick, after
+        // the mod's commands; a few ticks' worth, in case it is late. Its fires put out a second and a half after, again
+        // at 5 s and wider at 12 s, before they spread: those edits made even if the strike is stopped)
+        if terrain {
+            p.at(b.t, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
+            for k in 1..6 {
+                p.at(b.t + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
+            }
+            p.ev.push(douse(x, z, 6, b.t + 1.5));
+            p.ev.push(douse(x, z, 7, b.t + 5.0));
+            p.ev.push(douse(x, z, 11, b.t + 12.0));
         }
         let (late, d) = sound_from([cx + b.x, gy, cz + b.z], me);
         let v0 = (1.5 / (1.0 + d / 110.0)).clamp(0.3, 1.0) as f32;
@@ -371,33 +528,62 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the finale: one colossal strike on the target, a shockwave and a jolt ---------------------------------------------
     let tf = SC_FINALE;
     p.at(tf - 3.0, bar("ORBITAL WEATHER CONTROL: DISCHARGE", "aqua"));
-    for k in 0..5 {
-        let a = 2.0 * PI * f64::from(k) / 5.0;
-        let (x, z) = ((cx + a.cos() * 2.0).floor() as i32, (cz + a.sin() * 2.0).floor() as i32);
-        p.at(tf + 0.05 * (k % 2) as f32, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
+    if terrain {
+        for k in 0..7 {
+            let a = 2.0 * PI * f64::from(k) / 7.0;
+            let rr = if k == 0 { 0.0 } else { 4.0 };
+            let (x, z) = ((cx + a.cos() * rr).floor() as i32, (cz + a.sin() * rr).floor() as i32);
+            p.at(tf + 0.05 * (k % 3) as f32, format!("execute positioned {x} 0 {z} positioned over motion_blocking run summon minecraft:lightning_bolt ~0.5 ~ ~0.5"));
+        }
+        for k in 1..7 {
+            p.at(tf + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
+        }
     }
-    for k in 1..5 {
-        p.at(tf + 0.05 * k as f32 + 0.04, "stopsound @a * minecraft:entity.lightning_bolt.thunder");
-    }
+    // (heard and felt late by the distance: the crack, the jolt at the Rod's strength, its push)
     let (late, dist) = sound_from([cx, gy, cz], me);
     p.csound(tf + 0.05 + late, "finale", 10.0, 1.0);
-    let fo = falloff(dist).max(0.3);
-    p.shake(tf + late, fo, 0.7);
-    p.shake(tf + late + 0.05, 0.5 * fo, 2.5);
-    for n in 0..8 {
-        p.shake(tf + late + 0.1 * (n + 1) as f32, (0.8 - 0.08 * n as f32) * fo, 0.12);
+    let fo = (2.0 / (1.0 + dist / 400.0)).clamp(0.3, 1.0) as f32;
+    let arrive = tf + 0.05 + late;
+    p.shake(arrive, fo, 1.8);
+    for n in 0..12 {
+        let u = n as f32 / 12.0;
+        p.shake(arrive + 0.05 + 0.08 * n as f32, (1.0 - 0.4 * u) * fo, 0.2);
     }
-    p.ev.push((tf + (dist / 150.0) as f32, Act::Shove { from: [cx, gy, cz], out: 0.45, up: 0.3, reach: 70.0 }));
-    p.at(tf + 0.1, format!("particle minecraft:explosion_emitter {cx:.1} {:.1} {cz:.1} 3 1 3 0 4 force", gy + 1.0));
-    p.at(tf + 0.15, format!("particle minecraft:large_smoke {cx:.1} {:.1} {cz:.1} 6 2 6 0.05 160 force", gy + 1.5));
-    p.at(tf + 0.2, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {cx:.1} {:.1} {cz:.1} 5 2 5 1.2 300 force"#, gy + 2.0));
+    p.shake(arrive + 0.3, 0.65 * fo, 6.0);
+    let mut ts = arrive + 1.2;
+    while ts < arrive + 6.0 {
+        let u = (ts - arrive - 1.2) / 4.8;
+        p.shake(ts, (0.6 * (1.0 - u).powf(1.4) + 0.08) * fo, 0.28);
+        ts += 0.13 + 0.1 * u;
+    }
+    p.ev.push((tf + 0.05 + (dist / FC_V) as f32, Act::Shove { from: [cx, gy, cz], out: 0.65, up: 0.5, reach: 450.0 }));
+    p.at(tf + 0.1, format!("particle minecraft:explosion_emitter {cx:.1} {:.1} {cz:.1} 12 3 12 0 14 force", gy + 1.0));
+    p.at(tf + 0.15, format!("particle minecraft:large_smoke {cx:.1} {:.1} {cz:.1} 20 4 20 0.08 500 force", gy + 2.0));
+    p.at(tf + 0.2, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {cx:.1} {:.1} {cz:.1} 18 3 18 1.4 900 force"#, gy + 2.0));
+    p.at(tf + 0.3, format!("particle minecraft:electric_spark {cx:.1} {:.1} {cz:.1} 25 4 25 0.6 600 force", gy + 2.0));
     p.at(tf + 1.0, bar("DIRECT HIT", "white"));
+    for k in [0.15f32, 1.5, 4.0] {
+        p.at(tf + k, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FC_KILL}]"));
+    }
     if terrain {
-        p.later(tf - 0.6, move |q| crater(q, tf + 0.05, s));
+        // (its land worked out well ahead, a band a stage, going in with the front from the middle out)
+        let veins: Rc<std::cell::RefCell<Option<crate::ground::FxMap<(i32, i32), u8>>>> = Default::default();
+        {
+            let v = veins.clone();
+            p.later(tf - 8.0, move |_| *v.borrow_mut() = Some(fc_veins(s)));
+        }
+        for k in 0..FC_BANDS {
+            let v = veins.clone();
+            p.later(tf - 7.8 + 0.1 * k as f32, move |q| {
+                let empty = Default::default();
+                let g = v.borrow();
+                fc_band(q, k, tf, s, g.as_ref().unwrap_or(&empty));
+            });
+        }
+        p.later(tf - 0.5, move |q| fc_thrown(q, tf, s));
     }
 
     // ---- the storm dies away: the rain stops, the fires it left are put out -------------------------------------------------
-    p.at(SC_CLEAR + 2.0, "weather clear");
     p.at(SC_CLEAR + 1.0, bar("STORM DISSIPATING", "gray"));
     if terrain {
         let load = pk_load_rows([cx, gy, cz], 0.0, SC_SWEEP + 4.0);
@@ -407,10 +593,14 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
         for [x0, z0, x1, z1] in &load {
             p.ev.push((len - 0.5, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
         }
+        // (worked out even if the strike is stopped: `Act::Cleanup`)
         for t0 in [SC_CLEAR + 3.0, len - 3.0] {
             for k in 0..SC_SWEEP_BANDS {
                 let t = t0 + 0.1 * k as f32;
                 p.later(t - 0.3, move |q| sweep(q, k, t));
+                if let Some((at, Act::Later(job))) = p.ev.pop() {
+                    p.ev.push((at, Act::Cleanup(job)));
+                }
             }
         }
     }
@@ -453,7 +643,7 @@ fn sc_write_sounds() {
                 let v = at.map_or(volume, |p| volume * (1.0 - ((p[0] - me[0]).hypot(p[2] - me[2]) / 320.0).min(1.0)) as f32);
                 out += &format!("{t:.3} {event} {v:.3}\n");
             }
-            Act::Later(job) => {
+            Act::Later(job) | Act::Cleanup(job) => {
                 ev.extend(job());
                 ev.sort_by(|a, b| b.0.total_cmp(&a.0));
             }
@@ -484,7 +674,7 @@ mod tests {
                 Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
                 Act::Blocks(b) => blocks.push((t, *b)),
                 Act::Cmd(c) | Act::Spare(c) => cmds.push((t, c)),
-                Act::Later(job) | Act::Soon(job) => {
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
                     stages += 1;
                     ev.extend(job());
                     ev.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -499,9 +689,9 @@ mod tests {
     #[test]
     fn supercell_strikes_real_bolts_under_its_cloud_and_stops_vanillas_thunder() {
         let me = [10.5, 66.0, 297.5];
-        let (_, cmds, other, _) = played(false, me);
+        let (_, cmds, other, _) = played(true, me);
         let bolts: Vec<&(f32, String)> = cmds.iter().filter(|(_, c)| c.contains("summon minecraft:lightning_bolt")).collect();
-        assert_eq!(bolts.len(), SC_NB + 5);
+        assert_eq!(bolts.len(), SC_NB + 7);
         for (t, c) in &bolts {
             assert!(*t >= SC_STORM0 && *t <= SC_FINALE + 0.1, "{t}");
             let w: Vec<f64> = c.split_whitespace().map(|v| v.parse().unwrap_or(0.0)).collect();
@@ -512,11 +702,11 @@ mod tests {
         // (faster and faster: more in the storm's second half than its first)
         let mid = 0.5 * (SC_STORM0 + SC_STORM1);
         assert!(bolts.iter().filter(|(t, _)| *t > mid).count() > bolts.iter().filter(|(t, _)| *t < mid).count() + 10);
-        // (each heard, and a crack for each; the weather rains, then clears; the pass's table given)
+        // (each heard, and a crack for each; the world's weather left alone; the pass's table given)
         let sounds: Vec<&str> = other.iter().filter_map(|(_, a)| if let Act::Sound { event, .. } = a { Some(event.as_str()) } else { None }).collect();
         assert_eq!(sounds.iter().filter(|e| e.contains("supercell.crack")).count(), SC_NB);
         assert!(sounds.iter().any(|e| e.ends_with("supercell.finale")) && sounds.iter().any(|e| e.ends_with("supercell.roar")));
-        assert!(cmds.iter().any(|(_, c)| c == "weather rain") && cmds.iter().any(|(_, c)| c == "weather clear"));
+        assert!(!cmds.iter().any(|(_, c)| c.starts_with("weather")));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Table(w) if w.len() == SC_K + 3 * SC_NK)));
         assert!(other.iter().any(|(_, a)| matches!(a, Act::Shove { .. })));
     }
@@ -525,11 +715,13 @@ mod tests {
     fn supercell_leaves_the_land_alone_with_the_terrain_off() {
         let (blocks, cmds, _, _) = played(false, [10.5, 66.0, 297.5]);
         assert!(blocks.is_empty());
-        assert!(!cmds.iter().any(|(_, c)| c.contains("forceload") || c.contains("falling_block")));
+        for (_, c) in &cmds {
+            assert!(!c.contains("forceload") && !c.contains("summon"), "{c}");
+        }
     }
 
     #[test]
-    fn supercell_pits_are_small_its_crater_is_20_across_and_its_fires_are_swept() {
+    fn supercell_pits_are_small_its_finale_crater_is_70_across_and_its_fires_are_put_out() {
         let (blocks, cmds, _, _) = played(true, [10.5, 66.0, 297.5]);
         let fills: Vec<(f32, String)> = blocks.iter().flat_map(|(t, b)| b.as_fills().into_iter().map(move |f| (*t, f))).collect();
         // nothing that flows or burns placed; the digs a couple of blocks deep at a bolt, at most 6 at the finale
@@ -546,11 +738,23 @@ mod tests {
                 (w[2] - 10.0).hypot(w[4] + 3.0)
             })
             .fold(0.0, f64::max);
-        assert!(reach > 8.0 && reach < 13.0, "the crater reaches {reach}");
+        assert!(reach > 32.0 && reach < 40.0, "the crater reaches {reach}");
+        // (and digs about FC_D deep in the middle, its front going out from the middle)
+        let deepest = crater.iter().map(|(_, f)| f.split_whitespace().nth(11).and_then(|v| v.trim_start_matches('~').parse::<i32>().ok()).unwrap_or(0)).min().unwrap();
+        assert!(deepest <= -(FC_D as i32) + 1, "{deepest}");
+        // (the fulgurites: glass veins out through the ground well past the crater, an overturned rim, fires set)
+        let far_glass = fills.iter().filter(|(_, f)| f.contains("glass") && !f.contains("replace")).filter(|(_, f)| {
+            let w: Vec<f64> = f.split_whitespace().map(|v| v.parse().unwrap_or(0.0)).collect();
+            (w[2] - 10.0).hypot(w[4] + 3.0) > 50.0
+        }).count();
+        assert!(far_glass > 40, "{far_glass}");
+        assert!(fills.iter().any(|(t, f)| (*t - SC_FINALE).abs() < 1.0 && f.contains("minecraft:fire replace minecraft:air")));
+        // (each bolt's fires put out three times after it, from 1.5 s on)
+        let dousings = fills.iter().filter(|(t, f)| *t < SC_CLEAR && f.contains("replace #minecraft:fire")).count();
+        assert!(dousings > SC_NB * 3 * 100, "{dousings}");
         // (the fires put out, out to SC_SWEEP, twice as it ends)
-        let swept: Vec<&(f32, String)> = fills.iter().filter(|(_, f)| f.contains("replace #minecraft:fire")).collect();
+        let swept: Vec<&(f32, String)> = fills.iter().filter(|(t, f)| *t > SC_CLEAR && f.contains("replace #minecraft:fire")).collect();
         assert!(swept.len() as f64 > 2.0 * 0.95 * PI * SC_SWEEP * SC_SWEEP, "{}", swept.len());
-        assert!(swept.iter().all(|(t, _)| *t > SC_CLEAR));
         // (the chunks it works in forceloaded and let go)
         assert!(cmds.iter().any(|(_, c)| c.starts_with("forceload add")) && cmds.iter().any(|(_, c)| c.starts_with("forceload remove")));
         // (the funnels' tracks scoured: plants and leaves only, and a few blocks thrown)
@@ -570,7 +774,7 @@ mod tests {
         while let Some((t, a)) = ev.pop() {
             match a {
                 Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
-                Act::Later(job) | Act::Soon(job) => {
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
                     let more = job();
                     let made: u64 = more.iter().map(|(_, a)| if let Act::Blocks(b) = a { 1_000 * b.runs.len() as u64 } else { 1_000 }).sum();
                     let spent = crate::meter::spent() + made;
