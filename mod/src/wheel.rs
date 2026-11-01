@@ -49,21 +49,23 @@ const MSG: Rect = Rect { x: R_OUT, y: -R_OUT - 33.0, w: 84.0, h: 12.0 };
 const HUD: Rect = Rect { x: MSG.x, y: MSG.y + MSG.h + 2.0, w: MSG.w, h: MSG.h };
 /// The quality switch, under the panel's: the Payload's and the Nuke's smoke at full size or half (`/orbital quality`).
 const QUALITY: Rect = Rect { x: MSG.x, y: HUD.y + HUD.h + 2.0, w: MSG.w, h: MSG.h };
-/// The row under the quality switch's: where the left column's FOLLOW and SEED line up (the Rod's impact frames are
-/// a row under the ring, `/orbital impactframes`).
+/// The row under the quality switch's: the stop button's while a strike is under way, and LOCK SEED's across (the
+/// Rod's impact frames are a row under the ring, `/orbital impactframes`).
 const IMPACT: Rect = Rect { x: MSG.x, y: QUALITY.y + QUALITY.h + 2.0, w: MSG.w, h: MSG.h };
-/// Stopping the strike under way, top left, the switches' mirror; there only while one is.
-const STOP: Rect = Rect { x: -MSG.x - MSG.w, y: MSG.y, w: MSG.w, h: MSG.h * 2.0 + 2.0 };
+/// Stopping the strike under way, under the quality switch; there only while one is.
+const STOP: Rect = Rect { x: MSG.x, y: IMPACT.y, w: MSG.w, h: MSG.h };
+/// The left column's x: the switches' mirror.
+const LEFT_X: f32 = -MSG.x - MSG.w;
 /// The knockback's switch, under the stop button (the Nuke's and the Rod's push on the player, `/orbital knockback`),
 /// and the follow camera's under it (the camera chasing the Nuke's or the Payload's bomb down, `/orbital follow`).
-const KNOCK: Rect = Rect { x: STOP.x, y: QUALITY.y, w: MSG.w, h: MSG.h };
-const FOLLOW: Rect = Rect { x: STOP.x, y: IMPACT.y, w: MSG.w, h: MSG.h };
+const KNOCK: Rect = Rect { x: LEFT_X, y: QUALITY.y, w: MSG.w, h: MSG.h };
+const FOLLOW: Rect = Rect { x: LEFT_X, y: IMPACT.y, w: MSG.w, h: MSG.h };
 /// The seed's row under the follow camera's switch: its field (the seed a strike's look comes from: the one held, or
 /// the last strike's; a click types another, Enter sets it), and under it the lock's switch (on, every strike uses the
 /// field's seed: the same trail and cloud every time; off, a fresh one each strike), `/orbital seed`.
-const SEED: Rect = Rect { x: STOP.x, y: IMPACT.y + IMPACT.h + 2.0, w: MSG.w, h: MSG.h };
+const SEED: Rect = Rect { x: LEFT_X, y: MSG.y, w: MSG.w, h: MSG.h };
 const SEED_FIELD: Rect = Rect { x: SEED.x + 40.0, y: SEED.y, w: SEED.w - 40.0, h: SEED.h };
-const LOCK: Rect = Rect { x: STOP.x, y: SEED.y + SEED.h + 2.0, w: MSG.w, h: MSG.h };
+const LOCK: Rect = Rect { x: LEFT_X, y: HUD.y, w: MSG.w, h: MSG.h };
 /// Characters the seed's field holds (seeds run 1 to 997).
 const SEED_CHARS: usize = 3;
 /// The impact frames' row's buttons, as the blast sound's.
@@ -273,6 +275,25 @@ fn segment_angle(k: usize) -> f32 {
     PI + k as f32 * TAU / PAGE as f32
 }
 
+/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's and the Rod's)
+/// and the follow camera (the Nuke's and the Payload's).
+pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
+    let key = LASERS[i].key;
+    let mut at = [KNOCK, FOLLOW].into_iter();
+    let mut out = Vec::new();
+    if key == "nuke" || key == "rod" {
+        out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
+    }
+    if key == "nuke" || key == "payload" {
+        out.push((at.next().unwrap_or(FOLLOW), Spot::Follow));
+    }
+    out
+}
+/// Laser `i`'s left-column switch under the cursor, if any.
+pub fn toggle_spot(x: f32, y: f32, i: usize) -> Option<Spot> {
+    toggles(i).into_iter().find(|(b, _)| inside(b, x, y)).map(|(_, s)| s)
+}
+
 /// What is under the cursor on page `page` (`rows`: the rows showing under the ring; `true` for a ship's).
 pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> {
     let rows = rows.into();
@@ -307,12 +328,6 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
     }
     if inside(&QUALITY, x, y) {
         return Some(Spot::Quality);
-    }
-    if inside(&KNOCK, x, y) {
-        return Some(Spot::Knock);
-    }
-    if inside(&FOLLOW, x, y) {
-        return Some(Spot::Follow);
     }
     if inside(&SEED_FIELD, x, y) {
         return Some(Spot::SeedField);
@@ -412,7 +427,9 @@ impl Wheel {
     }
     /// Takes a new cursor position; true when what is drawn changed.
     pub fn hover_at(&mut self, x: f32, y: f32, selected: usize) -> bool {
-        let now = spot(x, y, self.rows(selected), self.page).filter(|&s| s != Spot::Stop || self.striking);
+        let now = spot(x, y, self.rows(selected), self.page)
+            .or_else(|| toggle_spot(x, y, self.row_for.unwrap_or(selected)))
+            .filter(|&s| s != Spot::Stop || self.striking);
         let was = self.row_for;
         match now {
             Some(Spot::Laser(i)) => self.row_for = has_rows(i).then_some(i),
@@ -479,8 +496,9 @@ impl Wheel {
         out.push(Draw::Fill((Rect { x: QUALITY.x, y: QUALITY.y + QUALITY.h - 1.5, w: QUALITY.w, h: 1.5 }, if fast { 0xFF62D46A } else { 0xFFE8B04A })));
         text(&mut out, "QUALITY", QUALITY.x + 30.0, QUALITY.y + 2.0, 0xB8BEC8);
         text(&mut out, if fast { "FAST" } else { "FULL" }, QUALITY.x + 70.0, QUALITY.y + 2.0, if fast { 0x7CE884 } else { 0xF0C060 });
-        // and on the left, the knockback and the follow camera: on or off
-        for (b, spot, label, on) in [(KNOCK, Spot::Knock, "KNOCKBACK", knock), (FOLLOW, Spot::Follow, "FOLLOW", follow)] {
+        // and on the left, under the seed's rows, the knockback and the follow camera, for the lasers they apply to
+        for (b, spot) in toggles(self.row_for.unwrap_or(selected)) {
+            let (label, on) = if spot == Spot::Knock { ("KNOCKBACK", knock) } else { ("FOLLOW", follow) };
             let hovered = self.hover == Some(spot);
             out.push(Draw::Fill((b, if hovered { 0xF0262A31 } else { 0xD0101318 })));
             out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - 1.5, w: b.w, h: 1.5 }, if on { 0xFF62D46A } else { 0xFFE0524E })));
@@ -735,8 +753,7 @@ mod tests {
             assert_eq!(spot(MSG.x + MSG.w / 2.0, MSG.y + MSG.h / 2.0, true, page), Some(Spot::Messages));
             assert_eq!(spot(HUD.x + HUD.w / 2.0, HUD.y + HUD.h / 2.0, true, page), Some(Spot::Hud));
             assert_eq!(spot(QUALITY.x + QUALITY.w / 2.0, QUALITY.y + QUALITY.h / 2.0, true, page), Some(Spot::Quality));
-            assert_eq!(spot(KNOCK.x + KNOCK.w / 2.0, KNOCK.y + KNOCK.h / 2.0, true, page), Some(Spot::Knock));
-            assert_eq!(spot(FOLLOW.x + FOLLOW.w / 2.0, FOLLOW.y + FOLLOW.h / 2.0, true, page), Some(Spot::Follow));
+            assert_eq!(spot(KNOCK.x + KNOCK.w / 2.0, KNOCK.y + KNOCK.h / 2.0, true, page), None);
             assert_eq!(spot(SEED_FIELD.x + SEED_FIELD.w / 2.0, SEED.y + SEED.h / 2.0, true, page), Some(Spot::SeedField));
             assert_eq!(spot(LOCK.x + LOCK.w / 2.0, LOCK.y + LOCK.h / 2.0, true, page), Some(Spot::SeedLock));
         }
@@ -757,9 +774,24 @@ mod tests {
         w.striking = true;
         w.hover_at(sx, sy, 0);
         assert_eq!(w.hover, Some(Spot::Stop));
-        let corner = ((STOP.x + STOP.w).powi(2) + (STOP.y + STOP.h).powi(2)).sqrt();
-        assert!(corner > R_OUT + 10.0 && STOP.x + STOP.w < tab(0).x - 4.0 && STOP.y + STOP.h < arrow(0).y);
+        let corner = (STOP.x * STOP.x + (STOP.y + STOP.h) * (STOP.y + STOP.h)).sqrt();
+        assert!(corner > R_OUT + 10.0 && STOP.y + STOP.h < arrow(1).y && STOP.y >= QUALITY.y + QUALITY.h);
+        // and the left column, the right's mirror, clear of the ring and the arrow
+        for b in [KNOCK, FOLLOW, SEED, LOCK] {
+            let corner = ((b.x + b.w).powi(2) + (b.y + b.h).powi(2)).sqrt();
+            assert!(corner > R_OUT + 10.0 && b.y + b.h < arrow(0).y && b.x + b.w < tab(0).x - 4.0);
+        }
         assert_eq!(page_of(ship("downfall")), 1);
+    }
+    #[test]
+    fn the_left_switches_show_for_their_lasers() {
+        let at = |i: usize| toggles(i).into_iter().map(|(b, s)| (b.y, s)).collect::<Vec<_>>();
+        assert_eq!(at(ship("nuke")), vec![(KNOCK.y, Spot::Knock), (FOLLOW.y, Spot::Follow)]);
+        assert_eq!(at(ship("rod")), vec![(KNOCK.y, Spot::Knock)]);
+        assert_eq!(at(ship("payload")), vec![(KNOCK.y, Spot::Follow)]);
+        assert!(at(ship("plasma")).is_empty());
+        assert_eq!(toggle_spot(KNOCK.x + 5.0, KNOCK.y + 5.0, ship("payload")), Some(Spot::Follow));
+        assert_eq!(toggle_spot(FOLLOW.x + 5.0, FOLLOW.y + 5.0, ship("plasma")), None);
     }
     #[test]
     fn pages_turn() {

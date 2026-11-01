@@ -560,7 +560,7 @@ impl Orbital {
     }
     fn wheel_click(&mut self, x: f32, y: f32) {
         let (row, page) = self.wheel.as_ref().map_or((None, self.page), |w| (w.row_laser(self.laser), w.page));
-        let spot = wheel::spot(x, y, wheel::Rows::of(row), page);
+        let spot = wheel::spot(x, y, wheel::Rows::of(row), page).or_else(|| wheel::toggle_spot(x, y, row.unwrap_or(self.laser)));
         // a click anywhere but the field takes the keyboard from it, leaving the speed as it was
         if let Some(w) = &mut self.wheel
             && w.typing.is_some()
