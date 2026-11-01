@@ -372,8 +372,12 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
                         }
                         if let Some(col) = vox.get(&(cell[0], cell[1], cell[2])) {
                             hit_t = tc;
-                            // (lit by its face: the top brightest, then the sides)
-                            let k = [0.75, 1.0, 0.6][face] * (0.55 + 0.45 * sun[1].max(0.2));
+                            // (lit by its face: the top brightest, then the sides; its edges a little darker, as the
+                            // game's shading and its blocks' textures set them apart)
+                            let hp = [cam[0] + d[0] * tc, cam[1] + d[1] * tc, cam[2] + d[2] * tc];
+                            let e = (0..3).filter(|&j| j != face).map(|j| { let f = hp[j] - hp[j].floor(); f.min(1.0 - f) }).fold(1.0f32, f32::min);
+                            let nf = -(step[face] as f32);
+                            let k = (0.42 + 0.58 * (nf * sun[face]).max(0.0)) * [0.85, 1.0, 0.8][face] * if e < 0.06 { 0.72 } else { 1.0 };
                             c = [col[0] * k, col[1] * k, col[2] * k];
                             break;
                         }
