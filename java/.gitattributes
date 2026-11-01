@@ -1,0 +1,19 @@
+#
+# https://help.github.com/articles/dealing-with-line-endings/
+#
+# Linux start script should use lf
+/gradlew        text eol=lf
+
+# These are Windows script files and should use crlf
+*.bat           text eol=crlf
+
+# Shaders and sources use lf everywhere (the shaders are generated and checked in as lf)
+*.fsh           text eol=lf
+*.vsh           text eol=lf
+*.java          text eol=lf
+*.json          text eol=lf
+
+# Binary files: never touched
+*.png           binary
+*.ogg           binary
+*.jar           binary

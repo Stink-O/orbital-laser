@@ -1,0 +1,11 @@
+{
+	"required": false,
+	"package": "dev.orbital.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"GameRendererMixin"
+	],
+	"injectors": {
+		"defaultRequire": 0
+	}
+}
