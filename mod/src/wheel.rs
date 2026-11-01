@@ -54,6 +54,10 @@ const QUALITY: Rect = Rect { x: MSG.x, y: HUD.y + HUD.h + 2.0, w: MSG.w, h: MSG.
 const IMPACT: Rect = Rect { x: MSG.x, y: QUALITY.y + QUALITY.h + 2.0, w: MSG.w, h: MSG.h };
 /// Stopping the strike under way, top left, the switches' mirror; there only while one is.
 const STOP: Rect = Rect { x: -MSG.x - MSG.w, y: MSG.y, w: MSG.w, h: MSG.h * 2.0 + 2.0 };
+/// The knockback's switch, under the stop button (the Nuke's and the Rod's push on the player, `/orbital knockback`),
+/// and the follow camera's under it (the camera chasing the Nuke's or the Payload's bomb down, `/orbital follow`).
+const KNOCK: Rect = Rect { x: STOP.x, y: QUALITY.y, w: MSG.w, h: MSG.h };
+const FOLLOW: Rect = Rect { x: STOP.x, y: IMPACT.y, w: MSG.w, h: MSG.h };
 /// The flying speed's row over the title: the bar (a click along it sets the speed) and the field a speed is typed in.
 const FLY_Y: f32 = -R_OUT - 52.0;
 const BAR: Rect = Rect { x: -56.0, y: FLY_Y, w: 106.0, h: 12.0 };
@@ -76,6 +80,9 @@ pub enum Spot {
     Quality,
     /// The impact frames' switch.
     Impact,
+    /// The knockback's switch, and the follow camera's.
+    Knock,
+    Follow,
     /// Stopping the strike under way.
     Stop,
     /// One of the ship's approaches (strike::APPROACHES), or ways of arriving (strike::ARRIVALS).
@@ -278,6 +285,12 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
     if inside(&IMPACT, x, y) {
         return Some(Spot::Impact);
     }
+    if inside(&KNOCK, x, y) {
+        return Some(Spot::Knock);
+    }
+    if inside(&FOLLOW, x, y) {
+        return Some(Spot::Follow);
+    }
     if inside(&STOP, x, y) {
         return Some(Spot::Stop);
     }
@@ -385,7 +398,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: bool) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: bool, knock: bool, follow: bool) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -443,6 +456,14 @@ impl Wheel {
         out.push(Draw::Fill((Rect { x: IMPACT.x, y: IMPACT.y + IMPACT.h - 1.5, w: IMPACT.w, h: 1.5 }, if impact { 0xFF62D46A } else { 0xFFE0524E })));
         text(&mut out, "IMPACT FX", IMPACT.x + 31.0, IMPACT.y + 2.0, 0xB8BEC8);
         text(&mut out, if impact { "ON" } else { "OFF" }, IMPACT.x + 71.0, IMPACT.y + 2.0, if impact { 0x7CE884 } else { 0xF06A64 });
+        // and on the left, the knockback and the follow camera: on or off
+        for (b, spot, label, on) in [(KNOCK, Spot::Knock, "KNOCKBACK", knock), (FOLLOW, Spot::Follow, "FOLLOW", follow)] {
+            let hovered = self.hover == Some(spot);
+            out.push(Draw::Fill((b, if hovered { 0xF0262A31 } else { 0xD0101318 })));
+            out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - 1.5, w: b.w, h: 1.5 }, if on { 0xFF62D46A } else { 0xFFE0524E })));
+            text(&mut out, label, b.x + 31.0, b.y + 2.0, 0xB8BEC8);
+            text(&mut out, if on { "ON" } else { "OFF" }, b.x + 71.0, b.y + 2.0, if on { 0x7CE884 } else { 0xF06A64 });
+        }
         // stopping the strike under way
         if self.striking {
             let hovered = self.hover == Some(Spot::Stop);
@@ -519,6 +540,8 @@ impl Wheel {
             Some(Spot::Hud) => ("Status panel on or off".to_string(), 0x8C93A0),
             Some(Spot::Quality) => ("Payload, Nuke and Rod smoke: FAST half size, FULL all".to_string(), 0x8C93A0),
             Some(Spot::Impact) => ("The Rod's impact frames (stark flashes) on or off".to_string(), 0x8C93A0),
+            Some(Spot::Knock) => ("The Nuke's and the Rod's push on you on or off".to_string(), 0x8C93A0),
+            Some(Spot::Follow) => ("Camera chases the Nuke's or Payload's bomb down".to_string(), 0x8C93A0),
             Some(Spot::Stop) => ("End the strike now: its effects, sounds and world changes".to_string(), 0x8C93A0),
             Some(Spot::Approach(k)) => (format!("Comes in {}", APPROACHES[k].label), 0x8C93A0),
             Some(Spot::Arrival(k)) => (format!("It {}", ARRIVALS[k].label), 0x8C93A0),
@@ -647,6 +670,8 @@ mod tests {
             assert_eq!(spot(HUD.x + HUD.w / 2.0, HUD.y + HUD.h / 2.0, true, page), Some(Spot::Hud));
             assert_eq!(spot(QUALITY.x + QUALITY.w / 2.0, QUALITY.y + QUALITY.h / 2.0, true, page), Some(Spot::Quality));
             assert_eq!(spot(IMPACT.x + IMPACT.w / 2.0, IMPACT.y + IMPACT.h / 2.0, true, page), Some(Spot::Impact));
+            assert_eq!(spot(KNOCK.x + KNOCK.w / 2.0, KNOCK.y + KNOCK.h / 2.0, true, page), Some(Spot::Knock));
+            assert_eq!(spot(FOLLOW.x + FOLLOW.w / 2.0, FOLLOW.y + FOLLOW.h / 2.0, true, page), Some(Spot::Follow));
         }
         let corner = (MSG.x * MSG.x + (MSG.y + MSG.h) * (MSG.y + MSG.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
@@ -816,7 +841,7 @@ mod tests {
             assert_eq!(w.hover, Some(Spot::Sound(1)));
             assert_eq!(w.rows(other), Rows::Sound);
             // (its own hint under the ring)
-            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, true).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
+            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, true, true, false).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
             assert!(hint, "{key}");
             // (and where a ship's buttons would be, nothing of theirs)
             let b = button(1, 0);
@@ -826,7 +851,7 @@ mod tests {
             assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Sound);
             let lit = |alt: [bool; 2]| -> Vec<u32> {
                 Wheel::on_page(0, 1.0)
-                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, true)
+                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, true, true, false)
                     .into_iter()
                     .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                     .collect()
@@ -842,7 +867,7 @@ mod tests {
     fn fits_the_smallest_gui() {
         // the game's GUI is at least 320 x 240 at any window size and GUI scale: everything stays inside it
         let (hw, hh) = (160.0, 120.0);
-        let mut boxes = vec![BAR, FIELD, MSG, HUD, QUALITY, IMPACT, STOP, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
+        let mut boxes = vec![BAR, FIELD, MSG, HUD, QUALITY, IMPACT, STOP, KNOCK, FOLLOW, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
         boxes.extend((0..pages()).map(tab));
         for (r, items) in ROWS.iter().enumerate() {
             boxes.extend((0..items.len()).map(|k| button(r, k)));

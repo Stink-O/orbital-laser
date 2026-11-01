@@ -11,6 +11,7 @@
 //! (the chosen laser and the settings) and
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
 mod columns;
+mod follow;
 mod ground;
 mod lasers;
 mod meter;
@@ -221,6 +222,8 @@ struct Settings {
     blast_alt: [bool; 2],
     fast: bool,
     impact: bool,
+    knock: bool,
+    follow: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -273,6 +276,13 @@ struct Orbital {
     /// The Rod from God's impact frames (`/orbital impactframes`, the wheel's IMPACT FX switch): its stark full-screen
     /// flash frames as it strikes, on (the default) or off.
     impact: bool,
+    /// The Nuke's and the Rod's knockback on the player (`/orbital knockback`, the wheel's KNOCKBACK switch): off leaves
+    /// out their `Act::Shove` (the camera's jolt stays).
+    knock: bool,
+    /// The follow camera (`/orbital follow`, the wheel's FOLLOW switch): the Nuke's and the Payload's bomb chased down
+    /// (`follow.rs`), and the one under way.
+    follow: bool,
+    following: Option<follow::Follow>,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
@@ -307,7 +317,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact } = settings;
+        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
             compiled: None,
@@ -336,6 +346,9 @@ impl Orbital {
             blast_alt,
             fast,
             impact,
+            knock,
+            follow,
+            following: None,
             aiming: None,
             skip: 0.0,
             shadow_off: false,
@@ -350,7 +363,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\n",
+            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.messages),
@@ -362,7 +375,9 @@ impl Orbital {
             if self.blast_alt[0] { "alt" } else { "main" },
             if self.blast_alt[1] { "alt" } else { "main" },
             if self.fast { "fast" } else { "full" },
-            if self.impact { "on" } else { "off" }
+            if self.impact { "on" } else { "off" },
+            if self.knock { "on" } else { "off" },
+            if self.follow { "on" } else { "off" }
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -390,6 +405,8 @@ impl Orbital {
         let mut blast_alt = [false; 2];
         let mut fast = true;
         let mut impact = true;
+        let mut knock = true;
+        let mut follow = false;
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
@@ -406,6 +423,8 @@ impl Orbital {
                 }
                 Some(("quality", v)) => fast = v != "full",
                 Some(("impactframes", v)) => impact = v != "off",
+                Some(("knockback", v)) => knock = v != "off",
+                Some(("follow", v)) => follow = v == "on",
                 Some((k, v)) if k.starts_with("colour_") => {
                     if let (Some(i), Some(c)) = (LASERS.iter().position(|l| l.key == &k[7..]), COLOURS.iter().position(|c| c.key == v)) {
                         colours[i] = c;
@@ -414,7 +433,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact }
+        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow }
     }
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
@@ -469,7 +488,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow));
         }
     }
     fn open_wheel(&mut self) {
@@ -596,6 +615,17 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
+            Some(wheel::Spot::Knock) => {
+                self.knock = !self.knock;
+                self.save();
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.knock { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
+            Some(wheel::Spot::Follow) => {
+                self.set_follow(!self.follow);
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.follow { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
             Some(wheel::Spot::Hud) => {
                 self.hud = !self.hud;
                 self.save();
@@ -630,6 +660,31 @@ impl Orbital {
             && s.params[7] == 11.0
         {
             s.params[15] = flags;
+        }
+    }
+    /// The follow camera on or off, kept; off ends the one under way at once (the player put back).
+    fn set_follow(&mut self, on: bool) {
+        self.follow = on;
+        self.save();
+        if !on {
+            self.unfollow();
+        }
+    }
+    /// The follow camera under way ended: the player back where they stood, in their game mode.
+    fn unfollow(&mut self) {
+        if let Some(f) = self.following.take() {
+            world::run_commands(&f.finish());
+        }
+    }
+    /// The follow camera's move this frame, on the same clock as the bomb the pass draws (params[3]).
+    fn follow_frame(&mut self) {
+        let Some(t) = self.strike.as_ref().map(|s| f64::from(s.params[3])) else { return };
+        if let Some(f) = &mut self.following {
+            if f.over(t) {
+                self.unfollow();
+            } else {
+                world::run_commands(&[f.tp(t)]);
+            }
         }
     }
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
@@ -715,6 +770,15 @@ impl Orbital {
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
         self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
+        // (the follow camera: the bomb's path the pass draws, the player made a spectator and moved along it each frame)
+        self.unfollow();
+        if self.follow
+            && let Some(p) = &player
+            && let Some(path) = strike::bomb_path(laser.key, &target, seed, me)
+        {
+            world::run_commands(&follow::Follow::start());
+            self.following = Some(follow::Follow::new(path, me, p.yaw, p.pitch));
+        }
     }
     /// One tick of the strike: everything due by now, in one batch.
     fn tick_strike(&mut self) {
@@ -782,7 +846,8 @@ impl Orbital {
                 }
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Shove { from, out, up, reach } => {
-                    if let Some(p) = game::get_player()
+                    if self.knock
+                        && let Some(p) = game::get_player()
                         && let Some([x, y, z]) = knockback(from, [p.x, p.y, p.z], out, up, reach)
                     {
                         world::push_player(x, y, z);
@@ -865,6 +930,7 @@ impl Orbital {
     }
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
+        self.unfollow();
         render::clear_post();
         self.strike = None;
         ground::clear();
@@ -1001,6 +1067,12 @@ impl Orbital {
             if l.key == "payload" || l.key == "nuke" || l.key == "rod" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
+            if l.key == "nuke" || l.key == "rod" {
+                lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
+            }
+            if (l.key == "nuke" || l.key == "payload") && self.follow {
+                lines.push(("Follow camera: on".to_string(), 0x6FC8FF));
+            }
             if (self.fly - 1.0).abs() > 1e-4 {
                 lines.push((format!("Flying speed: {}", wheel::speed_label(self.fly)), 0x6FC8FF));
             }
@@ -1121,6 +1193,7 @@ impl Mod for Orbital {
             s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
             render::set_params(&s.params);
         }
+        self.follow_frame();
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
             && w.hover_at(c.x, c.y, self.laser)
         {
@@ -1208,6 +1281,17 @@ impl Mod for Orbital {
                 self.set_impact(v == "on");
                 Ok(Some(format!("Impact frames {v} (the Rod from God's stark flash frames as it strikes)")))
             }
+            (Some("knockback"), Some(v @ ("on" | "off"))) => {
+                self.knock = v == "on";
+                self.save();
+                Ok(Some(format!("Knockback {v} (the Nuke's and the Rod's push on you)")))
+            }
+            (Some("knockback"), None) => Ok(Some(format!("Knockback: {} (/orbital knockback on or off)", if self.knock { "on" } else { "off" }))),
+            (Some("follow"), Some(v @ ("on" | "off"))) => {
+                self.set_follow(v == "on");
+                Ok(Some(format!("Follow camera {v} (the camera chases the Nuke's or the Payload's bomb down, then pulls out for the blast)")))
+            }
+            (Some("follow"), None) => Ok(Some(format!("Follow camera: {} (/orbital follow on or off)", if self.follow { "on" } else { "off" }))),
             (Some("impactframes"), None) => Ok(Some(format!("Impact frames: {} (/orbital impactframes on or off)", if self.impact { "on" } else { "off" }))),
             (Some("shadow"), Some(v @ ("on" | "off"))) => {
                 self.shadow_off = v == "off";
@@ -1253,7 +1337,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | impactframes on|off | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | impactframes on|off | knockback on|off | follow on|off | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -1755,6 +1839,53 @@ mod stress {
                 // slowest some of it given up on and said so)
                 assert!(edits > 1000, "the crater never went in ({edits} edits)");
                 assert!(slow > 4 || !left, "the land came but was left out");
+            }
+        }
+    }
+
+    /// The follow camera: a Nuke fired with it on makes the player a spectator, moves them every frame (one `tp` a
+    /// frame, never two the same way round a jump), and puts them back where they stood once it is over; with the
+    /// knockback off, no push. Off, nothing of it.
+    #[test]
+    fn the_follow_camera_chases_and_puts_the_player_back() {
+        let kept = Orbital::parse("knockback=off\nfollow=on\n");
+        assert!(!kept.knock && kept.follow);
+        let plain = Orbital::parse("");
+        assert!(plain.knock && !plain.follow);
+        let nuke = LASERS.iter().position(|l| l.key == "nuke").expect("the nuke");
+        for on in [true, false] {
+            let mut s = Soak::new(3);
+            s.o.follow = on;
+            s.o.knock = false;
+            fake::with(|w| w.keep_commands = true);
+            s.fire(nuke, (1000, -2000));
+            let mut tps = 0;
+            let mut ticks = 0;
+            while s.o.strike.is_some() && ticks < 1000 {
+                s.step("follow");
+                for k in 0..3 {
+                    if let Some(st) = &mut s.o.strike {
+                        st.params[3] = st.ticks as f32 * 0.05 + 0.0167 * k as f32;
+                    }
+                    s.o.follow_frame();
+                }
+                ticks += 1;
+                tps += fake::with(|w| {
+                    let n = w.ran.iter().filter(|c| c.starts_with("tp @s")).count();
+                    w.ran.retain(|c| !c.starts_with("tp @s"));
+                    n
+                });
+            }
+            let ran = fake::with(|w| std::mem::take(&mut w.ran));
+            if on {
+                assert!(ran.iter().any(|c| c == "gamemode spectator"));
+                // (frames from the cut to 40 s, three a tick)
+                assert!(tps > 3 * 20 * 35, "{tps} moves");
+                assert!(ran.iter().any(|c| c.ends_with("run gamemode creative")));
+                assert!(s.o.following.is_none());
+            } else {
+                assert_eq!(tps, 0);
+                assert!(!ran.iter().any(|c| c.contains("gamemode")));
             }
         }
     }

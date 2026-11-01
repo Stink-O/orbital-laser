@@ -285,6 +285,8 @@ The wheel also has:
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital impactframes on\|off` | the Rod from God's impact frames (rapid full-screen flashes); also the wheel's IMPACT FX switch |
+| `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays); also the wheel's KNOCKBACK switch |
+| `/orbital follow on\|off` | the follow camera: a Nuke or a Payload makes you a spectator and the camera chases the bomb down, pulls out to a wide spot before it bursts, holds on the cloud, then puts you back where you stood; also the wheel's FOLLOW switch |
 | `/orbital supercell` | loads the Supercell |
 | `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |

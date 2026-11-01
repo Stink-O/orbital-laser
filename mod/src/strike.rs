@@ -542,6 +542,44 @@ impl Plan {
     }
 }
 
+/// The Nuke's or the Payload's bomb as it comes down, for the follow camera (`follow.rs`): where it is every `dt`
+/// seconds of strike time from `seen` (it shows) to `hit` (it bursts, or strikes the ground), in the world, the same
+/// path the pass draws it on (the same seed and player); `ground` the target's ground point under it.
+pub struct BombPath {
+    pub pts: Vec<[f64; 3]>,
+    pub dt: f64,
+    pub seen: f64,
+    pub hit: f64,
+    pub ground: [f64; 3],
+    /// The Nuke's (a far bigger blast) rather than the Payload's.
+    pub big: bool,
+}
+pub fn bomb_path(key: &str, target: &Target, shader_seed: f32, me: [f64; 3]) -> Option<BombPath> {
+    let [bx, by, bz] = target.block;
+    let ground = [f64::from(bx) + 0.5, f64::from(by) + 1.0, f64::from(bz) + 0.5];
+    let rel = [me[0] - ground[0], me[1] - ground[1], me[2] - ground[2]];
+    let dt = 0.01;
+    let (seen, hit, pos): (f64, f64, Box<dyn Fn(f64) -> [f64; 3]>) = match key {
+        "nuke" => {
+            let g = nuke::NkGeo::new(shader_seed, rel);
+            (f64::from(nuke::NK_SEEN), f64::from(nuke::NK_HIT), Box::new(move |t| g.pos(t)))
+        }
+        "payload" => {
+            let g = payload::PlGeo::new(shader_seed, rel);
+            (f64::from(payload::PL_SEEN), f64::from(payload::PL_HIT), Box::new(move |t| g.pos(t)))
+        }
+        _ => return None,
+    };
+    let n = ((hit - seen) / dt).round() as usize;
+    let pts = (0..=n)
+        .map(|i| {
+            let p = pos(seen + dt * i as f64);
+            [p[0] + ground[0], p[1] + ground[1], p[2] + ground[2]]
+        })
+        .collect();
+    Some(BombPath { pts, dt, seen, hit, ground, big: key == "nuke" })
+}
+
 /// Everything a strike of `laser` at `target` does. `dimension` picks the
 /// bedrock floor; `shader_seed` is the shader's, for what the two must agree on;
 /// `me` is where the player stands (the meteor storm's sounds reach them late);
