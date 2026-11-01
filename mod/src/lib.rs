@@ -293,8 +293,9 @@ struct Orbital {
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
     /// crater every time from the same spot, for repeat takes. None, a fresh seed every strike (the default).
     seed_lock: Option<u32>,
-    /// The last strike's seed (`/orbital seed lock` keeps it).
+    /// The last strike's seed (`/orbital seed lock` keeps it), once one has been fired this session.
     last_seed: u32,
+    fired: bool,
     /// Ticks the designator has been held, while it is.
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
@@ -310,6 +311,8 @@ struct Orbital {
     since_tick: f32,
     /// The HUD panel last sent.
     panel: Vec<(String, u32)>,
+    /// Whether the panel shows in the top left (the seed alone, the status panel being off) rather than the top right.
+    panel_left: bool,
     /// `/orbital meter N`: each tick whose work (`meter`) comes to N instructions or more is logged.
     meter_log: Option<u64>,
     ticks: u64,
@@ -364,6 +367,7 @@ impl Orbital {
             follow_distance,
             seed_lock,
             last_seed: 1,
+            fired: false,
             aiming: None,
             skip: 0.0,
             shadow_off: false,
@@ -372,6 +376,7 @@ impl Orbital {
             wheel: None,
             since_tick: 0.0,
             panel: Vec::new(),
+            panel_left: false,
             meter_log: None,
             ticks: 0,
         }
@@ -511,7 +516,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow, self.seed_lock));
+            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, self.impact, self.knock, self.follow, self.seed_lock, self.fired.then_some(self.last_seed)));
         }
     }
     fn open_wheel(&mut self) {
@@ -633,8 +638,8 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.fast { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
-            Some(wheel::Spot::Impact) => {
-                self.set_impact(!self.impact);
+            Some(wheel::Spot::Impact(k)) => {
+                self.set_impact(k == 0);
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
@@ -753,6 +758,7 @@ impl Orbital {
         // a fresh look every strike, unless one is held (`/orbital seed`)
         let seed = self.seed_lock.unwrap_or((clock % u64::from(SEEDS)) as u32 + 1);
         self.last_seed = seed;
+        self.fired = true;
         let seed = seed as f32;
         ground::clear();
         columns::clear();
@@ -1086,8 +1092,9 @@ impl Orbital {
 
     /// While the player holds one of the items: which laser is loaded.
     fn update_panel(&mut self) {
-        let holding = self.hud && input::held().is_some_and(|h| h.id == DESIGNATOR || h.id == REMOTE);
-        let lines: Vec<(String, u32)> = if holding {
+        let held = input::held().is_some_and(|h| h.id == DESIGNATOR || h.id == REMOTE);
+        let holding = self.hud && held;
+        let mut lines: Vec<(String, u32)> = if holding {
             let l = LASERS[self.laser];
             let mut lines = vec![
                 ("Orbital Laser".to_string(), 0xFFFFFF),
@@ -1121,14 +1128,25 @@ impl Orbital {
         } else {
             Vec::new()
         };
-        if lines != self.panel {
+        // the last strike's seed, to hold it if its look was good: in the status panel, or alone in the top left
+        let mut left = false;
+        if self.fired && (held || self.strike.is_some()) {
+            let seed = match self.seed_lock {
+                Some(n) => (format!("Seed {n} (held)"), 0xF0C060),
+                None => (format!("Seed {} (random: /orbital seed lock to hold it)", self.last_seed), 0xA8B0BC),
+            };
+            left = lines.is_empty();
+            lines.push(seed);
+        }
+        if lines != self.panel || left != self.panel_left {
             if lines.is_empty() {
                 hud::clear();
             } else {
                 let panel: Vec<Line> = lines.iter().map(|(t, c)| Line { text: t.clone(), color: *c }).collect();
-                hud::set_panel(Corner::TopRight, &panel);
+                hud::set_panel(if left { Corner::TopLeft } else { Corner::TopRight }, &panel);
             }
             self.panel = lines;
+            self.panel_left = left;
         }
     }
 }
