@@ -236,10 +236,11 @@ fn pl_dust(p: vec3<f32>, C: vec3<f32>, a: f32, me: vec3<f32>, dme: f32, side: f3
     // (tallest a little behind the front, settling lower behind it)
     // (low, as in the clips: a person's height to a tree's, not a cliff of it, so the picture over it stays clear)
     let rise = 1.0 + 0.8 * smoothstep(0.0, 25.0, s) - 0.7 * smoothstep(30.0, 140.0, s);
-    let hw = (9.0 + 0.012 * r) * rise * (0.35 + 1.2 * n1) * (0.6 + 0.8 * n3) + 1.5 * min(since, 6.0);
+    // (the rod's: lower and thinner than the Nuke's, a ring of dust hugging the ground)
+    let hw = (6.5 + 0.01 * r) * rise * (0.35 + 1.2 * n1) * (0.6 + 0.8 * n3) + 1.2 * min(since, 6.0);
     let up = smoothstep(hw, hw * 0.35, h) * smoothstep(-4.0, 0.0, h);
     let lead = smoothstep(-3.0, 1.5, s);
-    let wall = 1.6 * exp(-s / (18.0 + 0.02 * r)) * (0.75 + 0.25 * side) * (1.0 - 0.6 * sh);
+    let wall = 1.1 * exp(-s / (16.0 + 0.02 * r)) * (0.75 + 0.25 * side) * (1.0 - 0.6 * sh);
     let haze = (0.009 * exp(-since / 2.5) + 0.0025 * exp(-since / 6.0)) * (0.5 + n2);
     // (none round the column's foot: the blast cleared it, and it would tint the smoke)
     let mid = smoothstep(40.0, 120.0, r);
@@ -1063,7 +1064,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
             var em_k = 0.0;
             // (pulverised earth and rock: grey-brown, paler and greyer up the column where the fine dust is, paler as it
             // spreads)
-            let sootc = mix(vec3<f32>(0.5, 0.46, 0.4), vec3<f32>(0.6, 0.57, 0.52), smoothstep(10.0, 40.0, a));
+            let sootc = mix(vec3<f32>(0.48, 0.45, 0.41), vec3<f32>(0.58, 0.56, 0.52), smoothstep(10.0, 40.0, a));
             for (var i = 0; i < 96; i = i + 1) {
                 if (t > t1 || tr < 0.04) {
                     break;
@@ -1137,7 +1138,7 @@ fn rod(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
                     let kb = em_k * saturate(1.5 - 1.6 * em_y);
                     let mv = (0.9 + 0.2 * (sd.w - 0.5) + 0.25 * (sd.y - 0.5)) * (1.0 - 0.35 * kb);
                     // (earthy brown low down, its pulverised rock grey-brown up the column)
-                    var alb = mix(vec3<f32>(0.4, 0.33, 0.26), sootc, smoothstep(0.05, 0.5, hy)) * mv;
+                    var alb = mix(vec3<f32>(0.37, 0.33, 0.28), sootc, smoothstep(0.05, 0.5, hy)) * mv;
                     alb = mix(alb, vec3<f32>(0.85, 0.86, 0.88), ringw);
                     // (the surge's dust darker and browner than the cloud: earth, not smoke)
                     alb = alb * (1.0 - 0.3 * sw);

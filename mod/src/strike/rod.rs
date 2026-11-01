@@ -560,7 +560,8 @@ impl Shape {
         let (dx, dz) = (f64::from(x) + 0.5 - self.cx, f64::from(z) + 0.5 - self.cz);
         let r = dx.hypot(dz);
         let a = dz.atan2(dx);
-        let rc = RD_CRATER_R * self.wob(a) * (0.95 + 0.1 * vnoise(f64::from(x), f64::from(z), 6.0, self.seed ^ 0x31));
+        // (its wall rough but not fluted: steep as it is, finer noise on its edge would stand it up in spikes)
+        let rc = RD_CRATER_R * self.wob(a) * (0.97 + 0.06 * vnoise(f64::from(x), f64::from(z), 14.0, self.seed ^ 0x31));
         (r, a, r / rc)
     }
     fn flat(&self, a: f64) -> f64 {
@@ -683,7 +684,7 @@ fn new_ground_at(c: &Column, s: &Shape, x: i32, z: i32, (r, a, u): (f64, f64, f6
     if u < 1.0 {
         Some(c.g - bowl(u).round() as i32)
     } else if u < RD_RIM {
-        let n = vnoise(f64::from(x), f64::from(z), 4.0, s.seed ^ 0x35);
+        let n = vnoise(f64::from(x), f64::from(z), 8.0, s.seed ^ 0x35);
         Some(c.g + heap(u, n).round() as i32)
     } else if r < s.flat(a) || knocked_ra(c, s, x, z, (r, a)) {
         Some(c.g)
