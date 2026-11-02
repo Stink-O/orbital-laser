@@ -577,6 +577,9 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, fine: bool) -> vec3<f32> {
     let win = hu_wall_in(q.y);
     let eye = hu_eye(t);
     deck = deck - 5.0 * eye * (1.0 - smoothstep(win - 4.0, win + 14.0, r));
+    // (and a moat round the eyewall, the deck thin there once the eye has cleared: the wall towers up out of it, seen
+    // from kilometres off, its streaks turning)
+    deck = deck - 1.6 * eye * smoothstep(win + 30.0, win + 70.0, r) * (1.0 - smoothstep(170.0, 300.0, r));
     // (the eyewall: a towering ring of cloud from low over the land up past the deck's top, sloping out as it rises,
     // in tall convective towers)
     let wtop = HU_TOP + 25.0;
@@ -778,7 +781,7 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
                     let dd = hu_dust(q, t, St, g) * smoothstep(8.0, 50.0, tt);
                     if (dd.x + dd.y > 0.002) {
                         let c = (vec3<f32>(0.3, 0.26, 0.21) * dd.x + vec3<f32>(0.12, 0.1, 0.085) * dd.y) / (dd.x + dd.y) * (amb * 1.2 + sunc * 0.25);
-                        let al = 1.0 - exp(-(dd.x * 0.07 + dd.y * 0.035) * ddt);
+                        let al = 1.0 - exp(-(dd.x * 0.05 + dd.y * 0.014) * ddt);
                         dtm = dtm + tt * al * da.a;
                         hu_over(&da, c, al);
                         if (da.a < 0.05) {

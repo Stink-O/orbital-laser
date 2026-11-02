@@ -99,6 +99,23 @@ laser, command, capability and timing). This file is the short, factual version 
   a flam; the flurry's quieter (`size_db`). The finale's file starts `FIN_PRE` (1.2 s) before its crack, its run-in
   the last waves' cracks stacking up (keep FIN_PRE in step in both). Horizon plays every sound file summed to mono; `--listen` mixes as
   the game does.
+- **The Hurricane** (`strike/hurricane.rs`, `carry.rs`, `shaders/hurricane.wgsl`; 64 s): a spiral cloud deck gathers
+  and turns (0-10 s), the eye clears by 14 s, the wind spins up to full by 26 s (`SPIN_K`); from 15 s its front
+  (`front_t`) tears the land up from the eyewall (62) in to 32 and out to 150 by 35 s (plants and leaves stripped to 175):
+  every column out to 180 is read (`world.read-columns`, 24 ring parts, re-asked till loaded, given up at 40 s), and as
+  the front reaches each chunk its trees (logs, leaves), plants and the top one to three blocks of ground (34-105) go
+  (`world.edit-blocks`, a chunk's on one tick). The pass draws them in their own colours: up to `HU_NT` (128) trees whole
+  as rigid voxel groups (`TreeRec`: trunk, 7x7 canopy spans; path `tree_at`, mirrored by the pass's `hu_tree_at`), and a
+  field of blocks round the eyewall in 13 rings of 3-block cells (`ring_*`, the pass's `hu_debris`: some 30,000 in the
+  air at its height, about 18,000 under the cloud), each ring coloured from a weighted sample of what was torn up under it
+  (`Pal`, table `HU_PAL`). Mobs (terrain on) are carried round by `tp ^ ^ ^` along the way they face the middle, their
+  `Motion` zeroed each tick, flung out at 46 s and killed at the end. The player, with KNOCKBACK on, is picked up when the
+  front reaches them (none in the eye, none past 175), carried at 108 out and 50 up by `world.push-player` kicks
+  (follow.rs's `Drive`, now shared; a block or two a tick, never near `VMAX`) and let down over 7 s from 46 s, with slow
+  falling. At 46 s everything is flung out; some 220 blocks and each tree's log and leaves land as falling blocks. The
+  pass's FAST stage finds each 2x2's block or tree at half size (`hu_pack`, in `half_extra.zw`) and the join tries them
+  again sharp. Sounds `tools/sounds_hurricane.py` (a first pass on sounds_storm.py's wind and rain). Force-loads the
+  chunks within 184.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-8` or newer (it adds
@@ -140,14 +157,14 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod` or `supercell`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push; kept, the wheel's KNOCKBACK switch), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God and the Supercell on the third. Its FLY
+In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell` or `hurricane`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell and the Hurricane on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player` or `render.set-data`,
 won't start the mod.
 The wheel's left column has the strike options: SEED (a field: the last strike's seed, or one typed) and LOCK SEED
-at the top, then KNOCKBACK (the Nuke, the Rod) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
+at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's `NO TARGET IN RANGE` (`actionbar` in lib.rs;
@@ -181,6 +198,10 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - The Supercell: `src/strike/storm.rs` its plan (bolts, pits, finale crater, fire sweeps, `sc_table`),
   `src/strike/vortex.rs` its funnels as reusable pieces for a tornado (`Funnel`, `wander`, `vx_words`, `scour`, `roar`),
   `shaders/supercell.wgsl` its pass (the vortex section `vx_*`; FAST's `[half stage]` as the Payload's).
+- The Hurricane: `src/strike/hurricane.rs` its plan (the land's read and edits, the trees, the rings' colours, the mobs,
+  `hu_thrown`), `src/carry.rs` the player's carry, `shaders/hurricane.wgsl` its pass (`hu_debris`, `hu_trees`,
+  `hu_volume`; FAST's `[half stage]`). Preview views `hu*` (`hustrip=1` takes the preview's trees away as the front
+  reaches them); `hu_write_table` (ignored) writes its table over the preview's wooded land.
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.
 - `orbital-laser-shader/`, `strike.py`, `themes.py`: 0.1's setup for stock Horizon (`install.py --legacy`).
 
