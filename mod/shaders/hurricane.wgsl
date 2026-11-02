@@ -317,7 +317,7 @@ fn hu_unpack(id: vec2<f32>) -> vec3<i32> {
 // Each column of a ring's cells (ring k, round it iu) its own: how fast it climbs (a share of the ring's rise) and how
 // far its cells sit up it (in cells), so no row of blocks lines up with the next column's, nor stays in step with it.
 fn hu_column(k: i32, iu: i32, seed: u32) -> vec2<f32> {
-    let hc = pcg(u32(k) * 0x27D4EB2Fu ^ pcg(bitcast<u32>(iu) * 0x165667B1u ^ seed));
+    let hc = pcg((u32(k) * 0x27D4EB2Fu) ^ (bitcast<u32>(iu) * 0x165667B1u) ^ seed);
     return vec2<f32>(0.65 + 0.7 * f32(hc & 0xFFFFu) / 65535.0, f32(hc >> 16u) / 65535.0);
 }
 // The block (or two) in cell (k, iu, iv): a cell holds one as its ring's density says, thinned and thickened in
@@ -326,8 +326,12 @@ fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f
     let rk = hu_ring_r(k);
     let h = pcg(u32(k) * 0x9E3779B1u ^ pcg(bitcast<u32>(iu) ^ pcg(bitcast<u32>(iv) * 0x85EBCA6Bu ^ seed)));
     let tfr = hu_front(rk);
-    let clump = 0.3 + 1.4 * vnoise(vec2<f32>(f32(iu) * 0.11 + f32(k) * 3.7, f32(iv) * 0.15 + f32(k) * 1.3));
-    if (t < tfr || t > HU_FLING + 8.0 || f32(h & 0xFFFFu) * (1.0 / 65535.0) >= hu_ring_dens(rk) * clump) {
+    let u = f32(h & 0xFFFFu) * (1.0 / 65535.0);
+    let dens = hu_ring_dens(rk);
+    if (t < tfr || t > HU_FLING + 8.0 || u >= dens * 1.7) {
+        return;
+    }
+    if (u >= dens * (0.3 + 1.4 * vnoise(vec2<f32>(f32(iu) * 0.11 + f32(k) * 3.7, f32(iv) * 0.15 + f32(k) * 1.3)))) {
         return;
     }
     hu_block_one(rd, C, k, iu, iv, t, St, Sf, seed, h, best);
@@ -643,6 +647,90 @@ fn hu_tree_cell(base: u32, i: i32, y: i32, j: i32, trunk: i32) -> u32 {
     }
     return 0u;
 }
+// The ray (`o`, `d`: in tree i's own frame, its trunk's foot at 0, x and z its columns less 3.5, y up its trunk)
+// through its cells from `blo` to `bhi` (exclusive; a box of them: the whole tree or one piece of it), the nearest
+// block hit kept in `best` (`mt` its frame back to the world's; `ground`: none under the land, `C` the middle, for a
+// piece flying free).
+fn hu_vox(base: u32, i: u32, trunk: i32, o: vec3<f32>, d: vec3<f32>, blo: vec3<i32>, bhi: vec3<i32>, mt: mat3x3<f32>, rd: vec3<f32>, C: vec3<f32>, ground: bool, best: ptr<function, HuHit>) {
+    let inv = 1.0 / select(d, vec3<f32>(1.0e-6), abs(d) < vec3<f32>(1.0e-6));
+    let off = vec3<f32>(3.5, 0.0, 3.5);
+    let ta = (vec3<f32>(blo) - off - o) * inv;
+    let tb = (vec3<f32>(bhi) - off - o) * inv;
+    let near = max(max(min(ta.x, tb.x), min(ta.y, tb.y)), min(ta.z, tb.z));
+    let far = min(min(max(ta.x, tb.x), max(ta.y, tb.y)), max(ta.z, tb.z));
+    if (near > far || far < 0.0 || near > (*best).t) {
+        return;
+    }
+    let ts = max(near, 0.0) + 1.0e-3;
+    let p0 = o + d * ts + off;
+    var cell = clamp(vec3<i32>(floor(p0)), blo, bhi - vec3<i32>(1));
+    let stp = vec3<i32>(sign(d));
+    let tdel = abs(inv);
+    var tmx = (vec3<f32>(cell) + max(sign(d), vec3<f32>(0.0)) - p0) * inv + vec3<f32>(ts);
+    var axis = select(select(2, 1, near == min(ta.y, tb.y)), 0, near == min(ta.x, tb.x));
+    for (var s = 0; s < 40; s = s + 1) {
+        let what = hu_tree_cell(base, cell.x, cell.y, cell.z, trunk);
+        if (what > 0u) {
+            let th = select(ts, select(select(tmx.z - tdel.z, tmx.y - tdel.y, axis == 1), tmx.x - tdel.x, axis == 0), s > 0);
+            let wq = rd * th - C;
+            if (th < (*best).t && (!ground || wq.y > hu_ground(wq.xz) - 0.5)) {
+                var nl = vec3<f32>(0.0);
+                if (axis == 0) {
+                    nl.x = -sign(d.x);
+                } else if (axis == 1) {
+                    nl.y = -sign(d.y);
+                } else {
+                    nl.z = -sign(d.z);
+                }
+                (*best).t = th;
+                (*best).n = mt * nl;
+                let kinds = hu_u(base + 5u);
+                (*best).face = hu_face_of(nl);
+                let pl = fract(o + d * th + off);
+                (*best).uv = select(select(pl.xy, pl.xz, axis == 1), pl.zy, axis == 0);
+                if (what == 1u) {
+                    (*best).bk = kinds & 0xFFFFu;
+                    (*best).shade = 1.0;
+                } else {
+                    (*best).bk = kinds >> 16u;
+                    let hh = pcg(u32(cell.x + 7 * cell.z) ^ pcg(u32(cell.y) ^ i));
+                    (*best).shade = 0.7 + 0.5 * f32(hh & 255u) / 255.0;
+                }
+                (*best).id = vec2<f32>(-1.0 - f32(i), 0.0);
+            }
+            return;
+        }
+        if (tmx.x < tmx.y && tmx.x < tmx.z) {
+            cell.x = cell.x + stp.x;
+            tmx.x = tmx.x + tdel.x;
+            axis = 0;
+        } else if (tmx.y < tmx.z) {
+            cell.y = cell.y + stp.y;
+            tmx.y = tmx.y + tdel.y;
+            axis = 1;
+        } else {
+            cell.z = cell.z + stp.z;
+            tmx.z = tmx.z + tdel.z;
+            axis = 2;
+        }
+        if (any(cell < blo) || any(cell >= bhi)) {
+            return;
+        }
+    }
+}
+// A tree breaking apart in the air comes apart into HU_PCS pieces: its 7 by 7 columns split in two each way, its
+// height in three (the canopy's top third its leaves, shredding into the smaller, faster-flying bits).
+const HU_PCS: i32 = 12;
+fn hu_piece_box(c: i32, hm: i32) -> array<vec3<i32>, 2> {
+    let px = c & 1;
+    let pz = (c >> 1u) & 1;
+    let py = c >> 2u;
+    let h3 = max((hm + 2) / 3, 1);
+    // (uneven: a 4 and a 3 across, the cut wandering a column from tree to tree)
+    let lo = vec3<i32>(select(0, 4, px == 1), py * h3, select(0, 3, pz == 1));
+    let hi = vec3<i32>(select(4, 7, px == 1), select((py + 1) * h3, hm + 1, py == 2), select(3, 7, pz == 1));
+    return array<vec3<i32>, 2>(lo, hi);
+}
 fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, only: i32, best: ptr<function, HuHit>) {
     if (!hu_have()) {
         return;
@@ -668,121 +756,47 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
         let hm = f32((shape >> 5u) & 31u) + 1.0;
         // (a tree's heights are over the target block's top, as the real blocks' are: the middle's ground is gdy0 over it)
         let P = C + tp.p - vec3<f32>(0.0, hu_w(1u), 0.0);
-        // (breaking apart in the air: its blocks flying apart from its middle, each its own debris, the canopy and the
-        // trunk spreading as they tumble on together)
         let tbrk = hu_w(base + 6u);
-        let ex = select(1.0, min(1.0 + 0.55 * (t - tbrk), 8.0), t > tbrk);
-        let rad = (0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tp.cm - 0.5 * hm)) * ex;
+        let broken = t > tbrk;
+        // (flying apart: its pieces spread at up to 7 blocks a second from where they were)
+        let rad = 0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tp.cm - 0.5 * hm) + select(0.0, 7.0 * (t - tbrk) + 2.0, broken);
         let b = dot(P, rd);
         let c = dot(P, P) - rad * rad;
-        if (b * b < c || b - rad > (*best).t) {
+        if (b * b < c || b - rad > (*best).t || length(P) < 6.0) {
             continue;
         }
-        let tr = hu_tree_at(i, t, St, Sf, seed, true);
-        // (the ray in the tree's own frame: its trunk's foot at 0, its middle at cm; spread apart, in the frame of its
-        // cells as they stood, each block then a cube 1 / ex across in the middle of its cell)
-        let cmv = vec3<f32>(0.0, tr.cm, 0.0);
-        let o = (tr.m * (-P)) / ex + cmv;
-        let d = (tr.m * rd) / ex;
-        let inv = 1.0 / select(d, vec3<f32>(1.0e-6), abs(d) < vec3<f32>(1.0e-6));
-        let lo = vec3<f32>(-3.5, 0.0, -3.5);
-        let hi = vec3<f32>(3.5, hm, 3.5);
-        let ta = (lo - o) * inv;
-        let tb = (hi - o) * inv;
-        let near = max(max(min(ta.x, tb.x), min(ta.y, tb.y)), min(ta.z, tb.z));
-        let far = min(min(max(ta.x, tb.x), max(ta.y, tb.y)), max(ta.z, tb.z));
-        if (near > far || far < 0.0 || near > (*best).t || length(P) < 6.0) {
+        let cmv = vec3<f32>(0.0, tp.cm, 0.0);
+        if (!broken) {
+            let tr = hu_tree_at(i, t, St, Sf, seed, true);
+            // (the ray in the tree's own frame: its trunk's foot at 0, its middle at cm)
+            hu_vox(base, i, trunk, tr.m * (-P) + cmv, tr.m * rd, vec3<i32>(0), vec3<i32>(7, i32(hm) + 1, 7), transpose(tr.m), rd, C, false, best);
             continue;
         }
-        // (through its blocks, a cell at a time)
-        let ts = max(near, 0.0) + 1.0e-3;
-        let p0 = o + d * ts + vec3<f32>(3.5, 0.0, 3.5);
-        var cell = vec3<i32>(floor(p0));
-        let stp = vec3<i32>(sign(d));
-        let tdel = abs(inv);
-        var tmx = (vec3<f32>(cell) + max(sign(d), vec3<f32>(0.0)) - p0) * inv + vec3<f32>(ts);
-        var axis = select(select(2, 1, near == min(ta.y, tb.y)), 0, near == min(ta.x, tb.x));
-        for (var s = 0; s < 44; s = s + 1) {
-            let what = hu_tree_cell(base, cell.x, cell.y, cell.z, trunk);
-            var hit_here = what > 0u;
-            var th = select(ts, select(select(tmx.z - tdel.z, tmx.y - tdel.y, axis == 1), tmx.x - tdel.x, axis == 0), s > 0);
-            var hax = axis;
-            var cpl = vec3<f32>(0.0);
-            var mc = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
-            if (hit_here && ex > 1.001) {
-                // (its block, a small cube somewhere in its cell (each its own spot, never a lattice), tumbling its own
-                // way: hit, or on through the cell)
-                let half = 0.5 / ex;
-                let hcel = pcg(u32(cell.x + 9 * cell.z + 81 * cell.y) ^ pcg(i * 0x2545F491u ^ seed));
-                let jit = (vec3<f32>(f32(hcel & 1023u), f32((hcel >> 10u) & 1023u), f32((hcel >> 20u) & 1023u)) / 1023.0 - 0.5) * (1.0 - 2.0 * half) * 0.95;
-                let cc = vec3<f32>(cell) + 0.5 - vec3<f32>(3.5, 0.0, 3.5) + jit;
-                mc = hu_rot(hu_unit(pcg(hcel)), (1.0 + 2.5 * f32(hcel >> 28u) / 15.0) * (t - tbrk));
-                let oc = mc * (o - cc);
-                let dc = mc * d;
-                let ic = 1.0 / select(dc, vec3<f32>(1.0e-6), abs(dc) < vec3<f32>(1.0e-6));
-                let ka = (vec3<f32>(-half) - oc) * ic;
-                let kb = (vec3<f32>(half) - oc) * ic;
-                let kn = min(ka, kb);
-                let kf = max(ka, kb);
-                let n0 = max(max(kn.x, kn.y), kn.z);
-                let f0 = min(min(kf.x, kf.y), kf.z);
-                hit_here = n0 <= f0 && n0 > 0.0;
-                th = n0;
-                hax = select(select(2, 1, n0 == kn.y), 0, n0 == kn.x);
-                cpl = (oc + dc * n0 + half) * ex;
-                // (each gone into the land where it comes down)
-                let wq = rd * n0 - C;
-                hit_here = hit_here && wq.y > hu_ground(wq.xz) - 0.5;
+        // ---- broken apart: each piece its own body from the moment it breaks, starting where it was in the tree and
+        // turned as the tree was then, then flung off on its own: the tree's way on with the wind, out from its middle
+        // and some way of its own, tumbling about its own axis at its own rate; each block gone into the land where it
+        // comes down
+        let mb = hu_tree_at(i, tbrk, hu_spin_int(tbrk), Sf, seed, true).m;
+        let dt = t - tbrk;
+        for (var pc = 0; pc < HU_PCS; pc = pc + 1) {
+            let bx = hu_piece_box(pc, i32(hm));
+            if (bx[1].y <= bx[0].y) {
+                continue;
             }
-            if (hit_here) {
-                if (th < (*best).t) {
-                    // (the ray's way in the block's own frame: the tree's, or, flying apart, its own)
-                    let dd = select(d, mc * d, ex > 1.001);
-                    var nl = vec3<f32>(0.0);
-                    if (hax == 0) {
-                        nl.x = -sign(dd.x);
-                    } else if (hax == 1) {
-                        nl.y = -sign(dd.y);
-                    } else {
-                        nl.z = -sign(dd.z);
-                    }
-                    (*best).t = th;
-                    (*best).n = transpose(tr.m) * (transpose(mc) * nl);
-                    let kinds = hu_u(base + 5u);
-                    (*best).face = hu_face_of(nl);
-                    let pl = select(fract(o + d * th + vec3<f32>(3.5, 0.0, 3.5)), fract(cpl), ex > 1.001);
-                    (*best).uv = select(select(pl.xy, pl.xz, hax == 1), pl.zy, hax == 0);
-                    if (what == 1u) {
-                        (*best).bk = kinds & 0xFFFFu;
-                        (*best).shade = 1.0;
-                    } else {
-                        (*best).bk = kinds >> 16u;
-                        let hh = pcg(u32(cell.x + 7 * cell.z) ^ pcg(u32(cell.y) ^ i));
-                        (*best).shade = 0.7 + 0.5 * f32(hh & 255u) / 255.0;
-                    }
-                    (*best).id = vec2<f32>(-1.0 - f32(i), 0.0);
-                }
-                break;
+            let lc = 0.5 * vec3<f32>(bx[0] + bx[1]) - vec3<f32>(3.5, 0.0, 3.5);
+            let hp = pcg(i * 0x2545F491u ^ pcg(u32(pc) * 0x9E3779B1u ^ seed));
+            let out = transpose(mb) * (lc - cmv);
+            let leaves = pc >= 8;
+            let kick = normalize(out + 0.6 * vec3<f32>(1.0e-3) + 1.6 * hu_unit(hp)) * (select(2.0, 4.0, leaves) + 3.0 * f32(hp & 255u) / 255.0);
+            let Pc = P + out + kick * dt + vec3<f32>(0.0, -1.2 * dt * dt * select(0.3, 0.1, leaves), 0.0);
+            let rr = 0.5 * length(vec3<f32>(bx[1] - bx[0])) + 0.6;
+            let bb = dot(Pc, rd);
+            let cc = dot(Pc, Pc) - rr * rr;
+            if (bb * bb < cc || bb - rr > (*best).t) {
+                continue;
             }
-            if (what > 0u && ex <= 1.001) {
-                break;
-            }
-            if (tmx.x < tmx.y && tmx.x < tmx.z) {
-                cell.x = cell.x + stp.x;
-                tmx.x = tmx.x + tdel.x;
-                axis = 0;
-            } else if (tmx.y < tmx.z) {
-                cell.y = cell.y + stp.y;
-                tmx.y = tmx.y + tdel.y;
-                axis = 1;
-            } else {
-                cell.z = cell.z + stp.z;
-                tmx.z = tmx.z + tdel.z;
-                axis = 2;
-            }
-            if (cell.x < -1 || cell.x > 7 || cell.z < -1 || cell.z > 7 || cell.y < -1 || f32(cell.y) > hm + 1.0) {
-                break;
-            }
+            let mc = hu_rot(hu_unit(pcg(hp)), (select(1.2, 3.0, leaves) + 2.0 * f32((hp >> 8u) & 255u) / 255.0) * dt) * mb;
+            hu_vox(base, i, trunk, mc * (-Pc) + lc, mc * rd, bx[0], bx[1], transpose(mc), rd, C, true, best);
         }
     }
 }
