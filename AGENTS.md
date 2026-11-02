@@ -106,8 +106,8 @@ laser, command, capability and timing). This file is the short, factual version 
   the front reaches each chunk its trees (logs, leaves), plants and the top one to three blocks of ground (34-105) go
   (`world.edit-blocks`, a chunk's on one tick). The pass draws them in their own colours: up to `HU_NT` (128) trees whole
   as rigid voxel groups (`TreeRec`: trunk, 7x7 canopy spans; path `tree_at`, mirrored by the pass's `hu_tree_at`), and a
-  field of blocks round the eyewall in 13 rings of 3-block cells (`ring_*`, the pass's `hu_debris`: some 30,000 in the
-  air at its height, about 18,000 under the cloud), each ring coloured from a weighted sample of what was torn up under it
+  field of blocks round the eyewall in 13 rings of 3-block cells (`ring_*`, the pass's `hu_debris`: some 23,000 in the
+  air at its height, about 13,600 under the cloud), each ring coloured from a weighted sample of what was torn up under it
   (`Pal`, table `HU_PAL`). Mobs (terrain on) are carried round by `tp ^ ^ ^` along the way they face the middle, their
   `Motion` zeroed each tick, flung out at 46 s and killed at the end. The player, with KNOCKBACK on, is picked up when the
   front reaches them (none in the eye, none past 175), carried at 108 out and 50 up by `world.push-player` kicks
