@@ -1328,6 +1328,7 @@ impl Mod for Orbital {
                     let what = match l.key {
                         "sinkhole" => "SEISMIC SCAN",
                         "payload" | "nuke" | "rod" => "DESIGNATING",
+                        "hurricane" => "TRACKING STORM",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
