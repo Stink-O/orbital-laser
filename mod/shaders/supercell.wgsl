@@ -512,6 +512,70 @@ fn vx_pieces(px: vec2<f32>, f: VxFunnel, t: f32, scene_len: f32) -> f32 {
 }
 
 // What the volumetric part has gathered: colour (premultiplied), transmittance, and its distance.
+// Rain in the world: drops falling along lines in the way they fall (`vel`, blocks a second: down, and blown), the
+// lines' feet on a grid across that way, a jittered line a cell, the drops strung along each its own (length, speed,
+// spacing, brightness, whether it is there: a hash a cell). Five layers out from the camera (`cq`, off the middle),
+// each a coarser grid than the last: near drops big, fast and few, far ones fine and many. Only the cells the ray
+// crosses in each layer are tried, so no direction is special: looking along the rain (straight up or down) the drops
+// come end on, as dots, never converging on a point; nothing repeats on the picture. Hidden past `near`.
+fn sc_rain_lines(rd: vec3<f32>, cq: vec3<f32>, vel: vec3<f32>, near: f32, time: f32) -> f32 {
+    let spd = length(vel);
+    let w = vel / max(spd, 1.0e-3);
+    let e1 = normalize(cross(w, select(vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(1.0, 0.0, 0.0), abs(w.x) < 0.9)));
+    let e2 = cross(w, e1);
+    let c2 = vec2<f32>(dot(cq, e1), dot(cq, e2));
+    let r2 = vec2<f32>(dot(rd, e1), dot(rd, e2));
+    let rr = dot(r2, r2);
+    let rw = dot(rd, w);
+    let aw0 = dot(cq, w);
+    let focal = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
+    var sum = 0.0;
+    for (var k = 0; k < 5; k = k + 1) {
+        let fk = f32(k);
+        let cell = 0.45 * pow(1.9, fk);
+        let ta = 1.3 * pow(1.9, fk);
+        let tb = min(ta * 1.9, near);
+        if (ta >= tb) {
+            break;
+        }
+        let pa = c2 + r2 * ta;
+        let pb = c2 + r2 * tb;
+        var last = vec2<f32>(1.0e9);
+        for (var n = 0; n < 6; n = n + 1) {
+            let g = floor(mix(pa, pb, (f32(n) + 0.5) / 6.0) / cell);
+            if (all(g == last)) {
+                continue;
+            }
+            last = g;
+            let hb = pcg(bitcast<u32>(i32(g.x)) * 0x9E3779B1u ^ pcg(bitcast<u32>(i32(g.y)) * 0x85EBCA6Bu ^ u32(k) * 0x27D4EB2Fu));
+            if (f32(hb & 0xFFFFu) / 65535.0 > 0.4 + 0.12 * fk) {
+                continue;
+            }
+            let hc = pcg(hb);
+            let p = (g + vec2<f32>(0.15, 0.15) + 0.7 * vec2<f32>(f32(hc & 0xFFFFu), f32(hc >> 16u)) / 65535.0) * cell;
+            // (where the ray passes nearest the line, and how near)
+            let ts = clamp(select(0.5 * (ta + tb), dot(p - c2, r2) / rr, rr > 1.0e-6), ta, tb);
+            let d = length(c2 + r2 * ts - p);
+            let px = d * focal / ts;
+            let wpx = 0.7 + 1.6 / (1.0 + fk);
+            if (px > 3.0 * wpx) {
+                continue;
+            }
+            // (the drops along it: is there one where the ray passes, over the stretch of the line the ray is that near)
+            let hd = pcg(hc ^ 0x51u);
+            let period = cell * (1.6 + 2.4 * f32(hd & 255u) / 255.0);
+            let len = cell * (0.25 + 0.35 * f32((hd >> 8u) & 255u) / 255.0) + spd * 0.006;
+            let half_t = min(wpx * ts / focal / max(sqrt(rr), 1.0e-3), 0.5 * (tb - ta));
+            let x0 = (aw0 + rw * (ts - half_t) - spd * (0.9 + 0.2 * f32((hd >> 16u) & 255u) / 255.0) * time) / period + f32(hd >> 24u) / 255.0;
+            let x1 = x0 + 2.0 * abs(rw) * half_t / period;
+            let lf = len / period;
+            let on = select(step(fract(x0), lf), 1.0, floor(x1) != floor(x0) || x1 - x0 >= 1.0);
+            sum = sum + on * exp(-px * px / (wpx * wpx)) * (0.55 - 0.06 * fk) * (0.6 + 0.8 * f32(hc & 255u) / 255.0);
+        }
+    }
+    return sum;
+}
+
 struct ScVol {
     c: vec4<f32>,
     t: f32,
@@ -1072,49 +1136,16 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
         col = mix(col, vec3<f32>(1.3, 1.32, 1.45), saturate(wo));
     }
 
-    // ---- the rain close by, for an eye under the storm: sparse, thin, faint streaks falling past, slanted by the wind,
-    // more of them out at the edges of the picture than across its middle, hidden by what stands in front. In the
-    // world round the camera (as the Hurricane's): streaks on shells at five distances, a whole number of cells round
-    // each, each streak its own length, speed and brightness: nothing repeats on the picture or stays put on it as the
-    // camera turns -----------
+    // ---- the rain close by, for an eye under the storm: drops in the world round the camera (`sc_rain_lines`, as the
+    // Hurricane's: the same at any pitch, looking straight up or down), slanted a little by the wind, more of them
+    // out at the edges of the picture than across its middle, hidden by what stands in front, only under the base
     let rk = sc_rain(time) * sc_fade(time);
     if (rk > 0.01 && stage != 1u) {
         let res = frame.resolution.xy;
         let edge = mix(0.3, 1.0, smoothstep(0.12, 0.48, length((uv - 0.5) * vec2<f32>(res.x / res.y, 1.0))));
-        let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
-        let th = atan2(rd.z, rd.x);
-        let hl = max(length(rd.xz), 1.0e-3);
-        var streak = 0.0;
-        for (var layer = 0; layer < 5; layer = layer + 1) {
-            let fl2 = f32(layer);
-            let rad = 2.0 * pow(1.8, fl2);
-            let dk = rad / hl;
-            if (scene_len < dk || dk > 150.0) {
-                continue;
-            }
-            // (only where the rain falls: under the cloud's base, inside the storm)
-            let wp = rd * dk - C;
-            let under = (1.0 - smoothstep(sc_deck_r(time) * 0.6, sc_deck_r(time) * 0.8, length(wp.xz))) * (1.0 - smoothstep(sc_base(length(wp.xz)) - 20.0, sc_base(length(wp.xz)), wp.y));
-            if (under < 0.01) {
-                continue;
-            }
-            let cw = 0.26 * pow(1.3, fl2);
-            let nc = floor(TAU * rad / cw);
-            let slope = 0.14;
-            let arc = th / TAU * nc + slope * (rd.y * dk) / cw;
-            let ci = floor(arc);
-            let cell = (ci % nc + nc) % nc;
-            let h = fh21(vec2<f32>(cell, fl2 * 17.31 + 3.0));
-            let h2 = fh21(vec2<f32>(cell * 1.37 + 5.0, fl2 * 7.7));
-            let h3 = fh21(vec2<f32>(cell * 0.71 + 9.0, fl2 * 3.1));
-            let lenw = (0.35 + 0.5 * h2) * pow(1.35, fl2);
-            let period = lenw * (3.0 + 4.0 * h3);
-            let u = fract((rd.y * dk + 16.0 * (0.85 + 0.3 * h) * time) / period + h * 7.0);
-            let px = abs(arc - ci - (0.3 + 0.4 * h2)) * cw * focal / dk;
-            let core = exp(-px * px / (1.0 + 0.5 / (1.0 + fl2)));
-            let along = smoothstep(0.0, 0.12, u * period / lenw) * (1.0 - smoothstep(0.75, 1.0, u * period / lenw)) * step(u * period, lenw);
-            streak = streak + core * along * step(0.7 - 0.06 * fl2, h3) * (0.6 - 0.07 * fl2) * (0.7 + 0.6 * h) * under;
-        }
+        let cq = -C;
+        let under = (1.0 - smoothstep(sc_deck_r(time) * 0.6, sc_deck_r(time) * 0.8, length(cq.xz))) * (1.0 - smoothstep(sc_base(length(cq.xz)) - 20.0, sc_base(length(cq.xz)), cq.y));
+        let streak = sc_rain_lines(rd, cq, vec3<f32>(2.2, -16.0, 0.8), scene_len, time) * under * 0.8;
         col = col + vec3<f32>(0.62, 0.66, 0.72) * streak * rk * edge * (amb0 * 0.7 + vec3<f32>(0.02) + vec3<f32>(0.7) * min(sky_flash, 2.0)) * k;
     }
 
