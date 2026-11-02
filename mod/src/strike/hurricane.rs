@@ -127,7 +127,7 @@ pub(super) fn ring_rise(r: f64) -> f64 {
     2.0 + 7.0 * (1.0 - smooth(60.0, 140.0, r))
 }
 pub(super) fn ring_dens(r: f64) -> f64 {
-    0.06 + 0.17 * (1.0 - smooth(105.0, 160.0, r))
+    0.045 + 0.115 * (1.0 - smooth(105.0, 160.0, r))
 }
 /// How far a ring's blocks are in the air at `t`: none before the front reaches it, all of it 2.5 s after; and how
 /// many are still up as they are flung out and come down.

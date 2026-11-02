@@ -45,6 +45,7 @@ const HU_G_STEP: f32 = 11.0;
 const HU_BASE: f32 = 92.0;
 const HU_TOP: f32 = 250.0;
 const HU_DECK: f32 = 950.0;
+const HU_WALL_TOP: f32 = 330.0;    // the eyewall's top over the middle's ground
 
 fn hu_u(i: u32) -> u32 {
     if (i >= arrayLength(&mod_data)) {
@@ -161,7 +162,7 @@ fn hu_ring_rise(r: f32) -> f32 {
     return 2.0 + 7.0 * (1.0 - smoothstep(60.0, 140.0, r));
 }
 fn hu_ring_dens(r: f32) -> f32 {
-    return 0.06 + 0.17 * (1.0 - smoothstep(105.0, 160.0, r));
+    return 0.045 + 0.115 * (1.0 - smoothstep(105.0, 160.0, r));
 }
 fn hu_ring_on(r: f32, t: f32) -> f32 {
     let f = hu_front(r);
@@ -283,7 +284,8 @@ fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f
     let tf = max(t0, t1);
     let near = max(max(tn.x, tn.y), tn.z);
     let far = min(min(tf.x, tf.y), tf.z);
-    if (near > far || far < 0.0 || near >= (*best).t) {
+    // (none closer than a block or two to the eye: one going past it would fill the picture)
+    if (near > far || far < 0.0 || near >= (*best).t || near < 1.5) {
         return;
     }
     var nl = vec3<f32>(0.0);
@@ -509,7 +511,7 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, seed: u32, only: i32, 
         let tb = (hi - o) * inv;
         let near = max(max(min(ta.x, tb.x), min(ta.y, tb.y)), min(ta.z, tb.z));
         let far = min(min(max(ta.x, tb.x), max(ta.y, tb.y)), max(ta.z, tb.z));
-        if (near > far || far < 0.0 || near > (*best).t) {
+        if (near > far || far < 0.0 || near > (*best).t || length(P) < 6.0) {
             continue;
         }
         // (through its blocks, a cell at a time)
@@ -575,52 +577,62 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, seed: u32, only: i32, 
 fn hu_over(h: ptr<function, vec4<f32>>, c: vec3<f32>, x: f32) {
     *h = vec4<f32>((*h).rgb * (1.0 - x) + c * x, (*h).a * (1.0 - x));
 }
-// The eyewall's inner face at height y over the land (the stadium: wider as it rises).
+// The eyewall's inner face at height y over the land (the stadium: wider as it rises), and its outer edge.
 fn hu_wall_in(y: f32) -> f32 {
-    return HU_R_EYE + 6.0 + 0.24 * max(y, 0.0);
+    return HU_R_EYE + 6.0 + 0.22 * max(y, 0.0);
 }
-// The cloud's density at q (off the middle's ground): x the deck and the eyewall, y how much of it is the eyewall, z
-// the spiral arms' strength there (0 between the bands).
+fn hu_wall_out(y: f32) -> f32 {
+    return hu_wall_in(y) + 50.0 + 0.12 * max(y, 0.0);
+}
+// The cloud's turn by `t` at r: the rain bands go round all of a piece (a sweep you can see), the cloud close round
+// the eye faster with the wind, drawn out into streaks.
+fn hu_cloud_turn(r: f32, St: f32) -> f32 {
+    return HU_SPIN * (0.11 + 0.45 * hu_omega(max(r, 25.0)) * (1.0 - smoothstep(110.0, 260.0, r))) * St;
+}
+// The spiral arms' strength at (r, a) in the cloud's turning frame: four bands wound in towards the eye.
+fn hu_arms(r: f32, a: f32) -> f32 {
+    return 0.5 + 0.5 * cos(4.0 * a + 4.6 * log(max(r, 40.0) / 70.0));
+}
+// The cloud's density at q (off the middle's ground): x its density, y how much of it is the eyewall (its foot dark,
+// its top sunlit), z the arms' strength there (dark rain cores in them).
 fn hu_den(q: vec3<f32>, t: f32, St: f32, fine: bool) -> vec3<f32> {
     let r = length(q.xz);
     let form = hu_form(t);
     let fade = hu_fade(t);
-    // (turning with the wind, more slowly than what it carries; the shear draws it out into streaks round the eye)
-    let ph = HU_SPIN * 0.5 * hu_omega(max(r, 20.0)) * St;
-    let p2 = rot2(q.xz, -ph);
-    // (three spiral arms, wound in towards the eye; between them, further out, open sky)
-    let arm = 0.5 + 0.5 * cos(4.0 * atan2(p2.y, p2.x) + 3.4 * log(max(r, 40.0) / 70.0));
-    let banded = smoothstep(150.0, 450.0, r);
-    let band = mix(1.0, smoothstep(mix(0.3, 0.55, smoothstep(450.0, 800.0, r)), 0.9, arm), banded);
-    // (its base sagging low round the eyewall, a dark skirt of cloud hanging over the debris: seen from kilometres off)
-    let sag = 26.0 * (1.0 - smoothstep(95.0, 230.0, r)) * smoothstep(4.0, 14.0, t);
-    let base = HU_BASE + 30.0 * smoothstep(90.0, 900.0, r) + 18.0 * (1.0 - form) + 22.0 * banded * (1.0 - arm) - sag;
-    let top = mix(HU_TOP - 30.0, 165.0, smoothstep(140.0, 900.0, r)) - 40.0 * (1.0 - smoothstep(0.0, 8.0, t)) - 40.0 * banded * (1.0 - arm);
-    var deck = min(min(q.y - base, top - q.y) / 16.0, (hu_deck_r(t) - r) / 160.0);
-    // (the eye cleared out of it)
-    let win = hu_wall_in(q.y);
     let eye = hu_eye(t);
-    deck = deck - 5.0 * eye * (1.0 - smoothstep(win - 4.0, win + 14.0, r));
-    // (and a moat round the eyewall, the deck thin there once the eye has cleared: the wall towers up out of it, seen
-    // from kilometres off, its streaks turning)
-    deck = deck - 1.6 * eye * smoothstep(win + 30.0, win + 70.0, r) * (1.0 - smoothstep(170.0, 300.0, r));
-    // (the eyewall: a towering ring of cloud from low over the land up past the deck's top, sloping out as it rises,
-    // in tall convective towers)
-    let wtop = HU_TOP + 25.0;
-    let wall = min(min((r - win) / 6.0, (win + 52.0 + 0.12 * q.y - r) / 16.0), min((q.y - 12.0) / 6.0, (wtop - q.y) / 14.0));
-    let wk = eye * smoothstep(4.0, 12.0, t);
-    let tow = gnoise3(vec3<f32>(p2.x * (1.0 / 22.0), q.y * (1.0 / 70.0), p2.y * (1.0 / 22.0)));
-    let wv = (wall + 1.6 * (tow - 0.5)) * wk;
-    let body = max(deck * band, wv);
-    // (its lumps and streaks: noise in the turning frame)
-    let s = select(1.0 / 46.0, 1.0 / 36.0, fine);
-    var nz = gnoise3(vec3<f32>(p2.x * s, q.y * s * 1.7 + t * 0.02, p2.y * s));
+    let p2 = rot2(q.xz, -hu_cloud_turn(r, St));
+    let a = atan2(p2.y, p2.x);
+    // ---- the eyewall: a towering ring of cloud from low over the land up to HU_WALL_TOP, sloping out as it rises, in
+    // tall towers, wound with striations that spiral up it the way it turns
+    let win = hu_wall_in(q.y);
+    let wout = hu_wall_out(q.y);
+    let wk = eye * smoothstep(5.0, 13.0, t);
+    let wtop = HU_WALL_TOP - 50.0 * (1.0 - smoothstep(6.0, 18.0, t));
+    var wall = min(min((r - win) / 6.0, (wout - r) / 14.0), min((q.y - 10.0) / 6.0, (wtop - q.y) / 18.0));
+    let stri = 0.5 + 0.5 * sin(a * 9.0 + q.y * 0.045 * HU_SPIN + 2.0 * gnoise3(vec3<f32>(p2.x * 0.03, q.y * 0.01, p2.y * 0.03)));
+    let tow = gnoise3(vec3<f32>(p2.x * (1.0 / 24.0), q.y * (1.0 / 80.0), p2.y * (1.0 / 24.0)));
+    wall = (wall + 1.5 * (tow - 0.5) + 0.9 * (stri - 0.5)) * wk;
+    // ---- the rain bands: spiral arms from the eyewall out, broken by clear gaps, their bases low
+    let arm = hu_arms(r, a);
+    let reach = hu_deck_r(t);
+    let ab = HU_BASE - 15.0 + 25.0 * smoothstep(150.0, 900.0, r) + 18.0 * (1.0 - form);
+    let at = 190.0 - 40.0 * smoothstep(300.0, 900.0, r);
+    let inner = smoothstep(wout - 10.0, wout + 50.0, r);
+    // (the arms a mask: open sky between them, so the eyewall shows through from the land round it)
+    let am = (arm - 0.5 + 0.3 * (1.0 - smoothstep(140.0, 320.0, r))) * 4.5;
+    let bands = min(min(min(q.y - ab, at - q.y) / 14.0, (reach - r) / 120.0), am) - 2.5 * (1.0 - inner);
+    // ---- over it all, high, the outflow: a thin shield spreading from the eyewall's top, its edge feathered by the arms
+    let shield = min(min(q.y - (HU_WALL_TOP - 30.0), HU_WALL_TOP + 15.0 - q.y) / 8.0, (190.0 + 90.0 * arm - r) / 60.0) - 1.4 - 1.0 * (1.0 - smoothstep(win, wout, r)) * eye;
+    let body = max(max(wall, bands * form), shield * smoothstep(8.0, 20.0, t));
+    let s = select(1.0 / 46.0, 1.0 / 34.0, fine);
+    var nz = gnoise3(vec3<f32>(p2.x * s, q.y * s * 1.6 + t * 0.03, p2.y * s));
     if (fine) {
-        nz = 0.65 * nz + 0.35 * gnoise3(vec3<f32>(p2.x, q.y * 1.5, p2.y) * (1.0 / 13.0) + vec3<f32>(3.1, 0.0, 7.7));
+        nz = 0.65 * nz + 0.35 * gnoise3(vec3<f32>(p2.x, q.y * 1.5, p2.y) * (1.0 / 12.0) + vec3<f32>(3.1, 0.0, 7.7));
     }
-    let d = body + (nz - 0.55) * mix(2.6, 1.3, smoothstep(top - 40.0, top, q.y)) - 1.8 * (1.0 - form) - 7.0 * pow(1.0 - fade, 1.4);
-    return vec3<f32>(saturate(d), saturate(wv * 0.5 + 0.2) * step(deck * band, wv), arm * banded + (1.0 - banded));
+    let d = body + (nz - 0.52) * 2.2 - 1.8 * (1.0 - form) - 7.0 * pow(1.0 - fade, 1.4);
+    return vec3<f32>(saturate(d), saturate(wall * 0.6 + 0.3) * step(max(bands, shield), wall), smoothstep(0.55, 0.95, arm) * inner);
 }
+
 // The dust, spray and fine debris churned up round the eyewall, at q: x the dust (thick at the eyewall's foot, in
 // streaks), y the haze of debris too small to see one by one, filling the rings as high as their blocks go.
 fn hu_dust(q: vec3<f32>, t: f32, St: f32, g: f32) -> vec2<f32> {
@@ -658,8 +670,8 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
     let reach = hu_deck_r(t) + 30.0;
     var t0 = 0.0;
     var t1 = len;
-    let ylo = 10.0;
-    let yhi = HU_TOP + 34.0;
+    let ylo = 8.0;
+    let yhi = HU_WALL_TOP + 30.0;
     if (abs(rd.y) > 1.0e-5) {
         let ta = (ylo - o.y) / rd.y;
         let tb = (yhi - o.y) / rd.y;
@@ -693,17 +705,20 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
             let dn = hu_den(q, t, St, fine);
             if (dn.x > 0.004) {
                 let r = length(q.xz);
-                let top = mix(HU_TOP, 165.0, smoothstep(140.0, 900.0, r));
-                let h01 = saturate((q.y - 20.0) / max(top - 20.0, 1.0));
-                // (lit from above, its underside and its depths dark; the eyewall's inner face lit down the eye, its
-                // foot near black with the rain wrapped round it)
-                var sun_t = exp(-min(max(top - q.y, 0.0), 120.0) * 0.022);
+                // (lit from above: sunlit on the eyewall's top and the shield, dark in its depths and under the bands;
+                // the eyewall's inner face lit down the clear eye; its foot near black with the rain wrapped round it)
+                let h01 = saturate((q.y - 15.0) / (HU_WALL_TOP - 15.0));
+                var sun_t = exp(-min(max(HU_WALL_TOP - q.y, 0.0), 160.0) * 0.016) * mix(1.0, 0.75, dn.z);
                 let face = (1.0 - smoothstep(hu_wall_in(q.y) - 2.0, hu_wall_in(q.y) + 12.0, r)) * hu_eye(t) * smoothstep(0.0, 0.3, L.y);
-                sun_t = max(sun_t, face * (0.5 + 0.5 * h01));
-                let skirt = 1.0 - smoothstep(110.0, 230.0, r);
-                let low = mix(vec3<f32>(0.24, 0.25, 0.27), vec3<f32>(0.07, 0.08, 0.085), max(dn.y, 0.75 * skirt));
-                let alb = mix(low, vec3<f32>(0.66, 0.67, 0.7), smoothstep(0.1, 0.9, h01)) * (0.75 + 0.35 * dn.z);
-                let c = alb * (amb * (0.5 + 0.7 * h01) * (2.0 - fade) + sunc * mix(0.7, sun_t, fade) * 0.9);
+                sun_t = max(sun_t, face * (0.45 + 0.55 * h01));
+                // (and the side of the eyewall towards the sun lit, the far side in its own shadow: its roundness)
+                let side = 0.6 + 0.4 * dot(normalize(vec3<f32>(q.x, 0.0, q.z) + vec3<f32>(1.0e-3, 0.0, 0.0)), normalize(vec3<f32>(L.x, 0.0, L.z) + vec3<f32>(1.0e-3, 0.0, 0.0)));
+                sun_t = sun_t * mix(1.0, side, dn.y);
+                let foot = mix(vec3<f32>(0.2, 0.21, 0.23), vec3<f32>(0.05, 0.055, 0.06), max(dn.y, dn.z));
+                // (the eyewall pale from a little way up its flanks, a towering sunlit wall over the bands' dark undersides)
+                let pale = mix(smoothstep(0.05, 0.75, h01), smoothstep(-0.05, 0.4, h01), dn.y);
+                let alb = mix(foot, vec3<f32>(0.78, 0.79, 0.82), pale);
+                let c = alb * (amb * (0.45 + 0.6 * h01) * (2.0 - fade) + sunc * mix(0.7, sun_t, fade) * 1.05);
                 let ext = dn.x * 0.06 * dt * (0.4 + 0.6 * fade);
                 let al = 1.0 - exp(-ext);
                 hu_over(&acc, c, al);
@@ -748,12 +763,11 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
                 let q = o + rd * tt;
                 let r = length(q.xz);
                 // (the bands it falls in, the wind driving it round: the curtains lean over and drift with it)
-                let ph = HU_SPIN * 0.5 * hu_omega(max(r, 20.0)) * St + 0.004 * q.y * HU_SPIN;
-                let p2 = rot2(q.xz, -ph);
-                let arm = 0.5 + 0.5 * cos(4.0 * atan2(p2.y, p2.x) + 3.4 * log(max(r, 40.0) / 70.0));
+                let p2 = rot2(q.xz, -hu_cloud_turn(r, St) - 0.004 * q.y * HU_SPIN);
+                let arm = hu_arms(r, atan2(p2.y, p2.x));
                 let curtain = gnoise3(vec3<f32>(p2.x * (1.0 / 30.0), q.y * (1.0 / 120.0), p2.y * (1.0 / 30.0)));
                 let fall = gnoise3(vec3<f32>(p2.x * (1.0 / 4.0), (q.y + 40.0 * t) * (1.0 / 26.0), p2.y * (1.0 / 4.0)));
-                var den = rk * mix(1.0, smoothstep(0.35, 0.75, arm), smoothstep(160.0, 380.0, r)) * smoothstep(0.38, 0.62, curtain) * (0.55 + 0.9 * smoothstep(0.45, 0.75, fall));
+                var den = rk * mix(0.25, 1.0, smoothstep(0.4, 0.8, arm)) * smoothstep(hu_wall_out(q.y) - 20.0, hu_wall_out(q.y) + 30.0, r) * smoothstep(0.38, 0.62, curtain) * (0.55 + 0.9 * smoothstep(0.45, 0.75, fall));
                 den = den * (1.0 - smoothstep(rr * 0.75, rr, r)) * smoothstep(HU_R_EYE, HU_R_EYE + 30.0, r) * smoothstep(20.0, 90.0, tt);
                 den = den * smoothstep(-6.0, 4.0, q.y) * (1.0 - smoothstep(HU_BASE, HU_BASE + 18.0, q.y));
                 if (den > 0.001) {

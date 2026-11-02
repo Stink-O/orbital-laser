@@ -166,6 +166,10 @@ VIEWS = {
     "hueye": "cx=0 cy=67 cz=6 lx=0 ly=150 lz=-70 flat=1 trees=1 hustrip=1 fov=85 reach=6",
     "hucarried": "cx=108 cy=115 cz=0 lx=0 ly=95 lz=-70 flat=1 trees=1 hustrip=1 fov=80 reach=108",
     "hutrees": "cx=70 cy=70 cz=60 lx=-60 ly=85 lz=-10 flat=1 trees=1 hustrip=1 fov=80 reach=92",
+    # the same, looking up at the eyewall's top from the ground (300 off) and from 800, and from the side, 1,500 off
+    "huplayerup": "cx=0 cy=67 cz=300 lx=0.5 ly=190 lz=0.5 flat=1 trees=1 hustrip=1 fov=80 reach=300",
+    "hufarup": "cx=0 cy=80 cz=800 lx=0.5 ly=200 lz=0.5 flat=1 trees=1 hustrip=1 fov=65 reach=800",
+    "huside": "cx=-1300 cy=260 cz=700 lx=0.5 ly=150 lz=0.5 flat=1 fov=55 reach=300",
     "huaerial": "cx=0 cy=900 cz=1100 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
     "huhill": "cx=0 cy=110 cz=320 lx=0.5 ly=100 lz=0.5 hills=30 flush=1 trees=1 hustrip=1 fov=75 reach=320",
 }
