@@ -3,13 +3,17 @@
 // sets it for a hurricane strike only. Validate with tools/check-shader.sh.
 
 // ---- laser 13: the hurricane --------------------------------------------------------------------------------------
-// No beam. A spiral cloud deck gathers over the target and starts to turn, its bands reaching out for the best part of
-// a kilometre; the eye clears and the eyewall towers round it, sloping out as it rises; rain falls in the bands, the
-// light goes grey and the land under it darkens and runs wet. The wind spins up, and from the eyewall out it tears the
-// land up: thousands of blocks in the land's own colours (the mod reads them: strike/hurricane.rs) fly round the
-// eyewall in rings, climbing it into the cloud, skimming the land further out (`hu_debris`), whole trees among them
-// tumbling as they go (`hu_trees`, their trunks and canopies as they stood), a wall of dust and spray churning round
-// its foot. Then the winds drop: everything is flung out and falls, and the cloud breaks up.
+// No beam. A ragged mass of towering storms gathers over the target and is drawn into a spiral, three trailing bands
+// wound tighter round a dense core as it organises, the whole of it some 3,500 blocks across and 450 high: from the
+// space station's height the picture of Florence. The eye opens from a pinhole into a stadium: its billowed wall
+// flaring out as it rises, its far side sunlit from the rim, sky straight overhead; an open moat round the eyewall,
+// cirrus fanned out over it all. Lightning bursts in the eyewall as it intensifies, bolts out of its flank across the
+// moat. The wind spins up and from the eyewall out tears up the land and everything built on it: every block rises out
+// of the land behind the front (`hu_debris`, filling the eyewall's column from the ground up), whole trees and pieces of
+// buildings lifting off where they stood (`hu_trees`), a wall of dust and spray at its foot; rain in the world round
+// the camera. At its height the carry draws the player into the calm of the eye. Then the winds drop: everything is
+// flung out and falls, shattering to dust where it hits (the trees settle into the pose hurricane.rs lays them in as
+// real fallen trees), the eye fills and the cloud breaks up.
 // strike/hurricane.rs keeps the HU_* in step and hands the pass its table (render.set-data): the trees, each ring's
 // colours (what was torn up under it) and the land's height round the middle.
 const HU_LEN: f32 = 64.0;          // the strike's length (lasers.rs)
