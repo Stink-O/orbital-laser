@@ -5,6 +5,13 @@
   </picture>
 </p>
 
+> [!NOTE]
+> **You're on the `java` branch: the Minecraft Java Edition port, a work in progress.** Its goal is one Orbital Laser
+> that runs on every modern Java mod loader (Fabric first, then NeoForge, Forge and Quilt), with full parity with the
+> Horizon version. See [JAVA-BRANCH.md](JAVA-BRANCH.md) for what this branch is, [`java/`](java/) for the port and
+> [`java/PARITY.md`](java/PARITY.md) for what's done. The rest of this README is the Horizon version's, the same as
+> `main`.
+
 # Orbital Laser
 
 **An orbital laser strike, as a mod for [Horizon](https://github.com/ludovic111/horizon), the Rust rewrite of
