@@ -1171,7 +1171,11 @@ impl Orbital {
             let (_, due, b) = &self.edits[m];
             self.edits_late = self.edits_late.max(self.edit_ticks - due);
             meter::spend(edit_cost(b));
-            world::edit_blocks(&b.edit());
+            // (what is laid down never where the player is)
+            match game::get_player().filter(|_| b.clear_of_player) {
+                Some(p) => world::edit_blocks(&b.edit_clear_of([p.x, p.y, p.z])),
+                None => world::edit_blocks(&b.edit()),
+            }
             m += 1;
         }
         self.edits.drain(..m);
