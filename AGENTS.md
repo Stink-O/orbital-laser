@@ -129,7 +129,12 @@ laser, command, capability and timing). This file is the short, factual version 
   (their logs and leaves go up as the field's blocks); of those given a record, a few uprooted whole (`HU_WHOLE`, 36,
   the bigger nearer the eyewall), some snapped at the trunk (the crown and upper trunk carried off whole from the top
   of a stump of 1-4 logs the edits spare), some lifted whole to break apart in the air (`t_break`, word 6: the pass
-  spreads their blocks apart as they tumble on, each gone where it hits the land; no real landing of their own).
+  breaks them into twelve pieces, `hu_piece_box`, each its own body from that instant: where it was and turned as the
+  tree was, then flung off its own way, tumbling about its own axis, `hu_vox` walking its cells; each block gone where
+  it hits the land; no real landing of their own). The field's blocks are never a lattice: each column of a ring's
+  cells climbs at its own speed and sits at its own height (`hu_column`), each block anywhere in its cell and wobbling
+  there, thinned and thickened in patches, now and then two to a cell. The cloud's edges are soft and wispy while it
+  gathers and as it breaks up (`hu_soft`); the mature deck is solid.
   **A block's whole life, each handover seamless:** up to `HU_NT` (128) rigid voxel groups, trees and (up to 48)
   pieces of buildings lifted whole where they stood (`TreeRec`: trunk, 7x7 spans; path `tree_at`, mirrored by the
   pass's `hu_tree_at`); the field of blocks round the eyewall in 13 rings of 3-block cells (`ring_*`, the pass's
@@ -146,15 +151,16 @@ laser, command, capability and timing). This file is the short, factual version 
   (terrain on) are carried round by `tp ^ ^ ^`, their `Motion` zeroed each tick; at the fling given their own
   motion (out, along the wind, up) and left to fall: fall damage does the rest (no kill at the end). The player, with
   KNOCKBACK on, is picked up when the front reaches them (none in the eye, none past 175), carried at 108 out and 50
-  up by `world.push-player` kicks (follow.rs's `Drive`; a few blocks a tick at most, never near `VMAX`), drawn in
+  up by the fork's `world.carry-player` (API 10, fork commit eb72de11a: each tick their move in place of their own,
+  through the game's collision move, no gravity, no drag, no fall distance, drawn smoothly; at most 3.5 blocks a tick
+  here, never near `VMAX`; no slow falling), drawn in
   through the eyewall into the calm of the eye at the peak (38-41.5 s: 14 out, 90 up, hardly turning: blue sky and
   sunlight straight down the stadium), thrown back out through the far wall at the fling and let down over 7 s past
-  it with slow falling. Flying breaks free: the carry lets go at once (no more kicks, a gust's whoosh, the slow falling
-  kept) when follow.rs's `Drive::flight` sees two ticks running whose move up or down only flight explains, after it
-  had seen them fall (a player flying when picked up isn't let go for that alone), or they steer hard against it for
-  a quarter of a second (raised fly speed); ticks held still while chunks load count for neither. Free, they are left
-  alone while they fly; standing on the land again for a second where the wind still blows, they are picked up
-  again. Rain close by is drawn in the world (`hu_rain_lines`, the Supercell's `sc_rain_lines` the same): drops
+  it, carried on down till the land stops them, then let go (never dropped). Flying (a double jump in creative
+  flight) or sneaking breaks free: the game moves them as their own that tick and the next carry answers false; the
+  carry lets go at once with a gust's whoosh (the answer is heard two ticks after the carry it is about:
+  `Carry::asked`). Ticks held still while chunks load keep the carry pending. Free, they are left alone while they
+  fly; standing on the land again for a second where the wind still blows, they are picked up again. Rain close by is drawn in the world (`hu_rain_lines`, the Supercell's `sc_rain_lines` the same): drops
   strung along lines in the way they fall (down, and blown by the wind where the camera is), the lines' feet on a grid
   across that way, four layers out from the camera on coarser grids, only the cells the ray crosses tried, so no
   direction is special (never shells round the camera: they converge on the points overhead and underfoot); none in
@@ -173,8 +179,9 @@ laser, command, capability and timing). This file is the short, factual version 
   thunder yet. Force-loads the chunks within 184.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** On branch `hurricane` it lists the `atlas` capability, so it needs the fork's
-  API 10 (branch `mod-api-atlas`, ~/.cache/horizon-api10, not yet released) and that API's `cargo-horizon-mod` to
+- **Stock Horizon can't run the mod.** On branch `hurricane` it lists the `atlas` capability and calls
+  `world.carry-player`, so it needs the fork's API 10 (branch `mod-api-atlas`, ~/.cache/horizon-api10, from commit
+  eb72de11a, not yet released) and that API's `cargo-horizon-mod` to
   package it (`tools/build_mod.py --cargo-horizon-mod`), its SDK through an uncommitted `mod/.cargo/config.toml`
   `[patch]` (never commit `mod/Cargo.lock` with that path in it). Otherwise it needs the fork's build, release `orbital-mod-api-8` or newer (it adds
   `world.push-player`, the Nuke's knockback; `orbital-mod-api-7` added the half-size stage QUALITY FAST draws the
