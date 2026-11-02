@@ -1647,6 +1647,143 @@ fn mob_second(q: &mut Plan, t0: f64, cx: f64, y0: f64, cz: f64) {
     }
 }
 
+// ---- the eyewall's lightning and its thunder -------------------------------------------------------------------------
+/// The pass's flashes (hurricane.wgsl's hu_flashes, hu_flash_rate, hu_inten, hu_widen, hu_flare: keep in step), worked
+/// out from the same hashes: when each begins, where it is off the middle's ground, and the foot of its bolt if one
+/// strikes the land. A fifth of a second a slot, a flash at most in each.
+struct HuFlash {
+    t: f64,
+    p: [f64; 3],
+    foot: Option<[f64; 2]>,
+    band: bool,
+}
+const HU_SLOT: f64 = 0.2;
+fn hu_flash_rate(t: f64) -> f64 {
+    const K: [(f64, f64); 10] = [(11.0, 0.0), (15.0, 1.0), (18.0, 4.0), (27.0, 3.2), (32.0, 1.3), (41.0, 1.5), (44.5, 3.6), (47.0, 1.2), (52.0, 0.4), (55.0, 0.0)];
+    if t <= K[0].0 {
+        return 0.0;
+    }
+    for w in K.windows(2) {
+        if t <= w[1].0 {
+            return w[0].1 + (w[1].1 - w[0].1) * (t - w[0].0) / (w[1].0 - w[0].0);
+        }
+    }
+    0.0
+}
+fn hu_wall_in(y: f64, t: f64) -> f64 {
+    let inten = smooth(9.0, 30.0, t) * (1.0 - 0.45 * smooth(HU_FLING, HU_CLEAR + 4.0, t));
+    let widen = (0.55 + 0.45 * inten) * (1.0 + 0.2 * smooth(36.0, 43.0, t) * (1.0 - smooth(HU_FLING, HU_FLING + 6.0, t)));
+    let yy = y.max(0.0);
+    HU_R_EYE + 3.0 + (0.08 * yy + 0.00045 * yy * yy) * widen
+}
+fn hu_wall_out(y: f64, t: f64) -> f64 {
+    hu_wall_in(y, t) + 46.0 + 0.1 * y.max(0.0)
+}
+fn hu_flash_list(seed: u32) -> Vec<HuFlash> {
+    let pcg = super::pcg;
+    let sh = pcg(seed ^ 0x7a11);
+    let mut out = Vec::new();
+    for s in 0..(f64::from(HU_LEN) / HU_SLOT) as u32 {
+        let ts = f64::from(s) * HU_SLOT;
+        let rate = hu_flash_rate(ts);
+        if rate <= 0.0 {
+            continue;
+        }
+        let h = pcg(s.wrapping_mul(0x9E37_79B1) ^ sh);
+        if f64::from(h & 0xFFFF) / 65535.0 >= rate * HU_SLOT {
+            continue;
+        }
+        let (ha, hb) = (pcg(h), pcg(pcg(h)));
+        let hc = pcg(hb);
+        let f = |v: u32| f64::from(v) / 65535.0;
+        let u = [f(ha & 0xFFFF), f(ha >> 16), f(hb & 0xFFFF), f(hb >> 16)];
+        let w = [f(hc & 0xFFFF), f(hc >> 16)];
+        let t = ts + HU_SLOT * f(h >> 16);
+        let ang = TAU * u[0];
+        let dir = [ang.cos(), ang.sin()];
+        if u[1] < 0.2 {
+            let r = 280.0 + 900.0 * u[2];
+            out.push(HuFlash { t, p: [dir[0] * r, 110.0 + 80.0 * u[3], dir[1] * r], foot: None, band: true });
+        } else if w[0] < 0.36 {
+            let y = 70.0 + 90.0 * u[2];
+            let r = hu_wall_out(y, t) - 6.0;
+            let fa = ang + HU_SPIN * 0.15 * (w[1] - 0.3);
+            let fr = hu_wall_out(0.0, t) + 6.0 + 55.0 * (w[0] * 2.77 + w[1]).fract();
+            out.push(HuFlash { t, p: [dir[0] * r, y, dir[1] * r], foot: Some([fa.cos() * fr, fa.sin() * fr]), band: false });
+        } else {
+            let y = 90.0 + 250.0 * u[2];
+            let r = hu_wall_in(y, t) + 12.0 + 26.0 * u[3];
+            out.push(HuFlash { t, p: [dir[0] * r, y, dir[1] * r], foot: None, band: false });
+        }
+    }
+    out
+}
+/// A bolt's thunder `d` blocks off as a file's loudest 400 ms in dB (strike/storm.rs's thunder_db, the Supercell's): 4 dB
+/// down each time the distance doubles past 60.
+fn hu_thunder_db(d: f64) -> f64 {
+    -15.0 - 4.0 * (d.max(60.0) / 60.0).log2()
+}
+/// The thunder of the flashes at the player `me` (the middle at `c`), as tools/sounds_hurricane.py's LEVEL has each kind:
+/// a bolt's by its distance (a crack within 110 blocks, a duller clap to 320, mostly roll past it), a flash deep in the
+/// eyewall or out in a band a roll up in the cloud (most of them: some unheard under the wind). Late by the distance;
+/// two within 0.2 s of each other heard as one clap (their power added, the nearer's take); one while louder still
+/// rolls let down a little; a kind's take never one of its last two.
+fn hu_thunder(s: u32, c: [f64; 3], me: [f64; 3]) -> Vec<(f32, String, f32, f32)> {
+    let mut order: Vec<(f64, f64, bool, u32)> = Vec::new();
+    for (i, f) in hu_flash_list(s).iter().enumerate() {
+        let i = i as u32;
+        let (src, bolt) = match f.foot {
+            Some(ft) => ([c[0] + ft[0], c[1], c[2] + ft[1]], true),
+            None => ([c[0] + f.p[0], c[1] + f.p[1], c[2] + f.p[2]], false),
+        };
+        // (a third of the eyewall's flashes and half the bands' unheard under the storm)
+        if !bolt && mh(i, s, 0xe1) < if f.band { 0.5 } else { 0.33 } {
+            continue;
+        }
+        let (late, d) = sound_from(src, me);
+        order.push((f.t + f64::from(late), d, bolt, i));
+    }
+    order.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let power = |d: f64, bolt: bool| 10f64.powf((hu_thunder_db(d) - if bolt { 0.0 } else { 6.0 }) / 10.0);
+    // (the claps: when, the nearest's distance, a bolt's or not, which, their power together)
+    let mut claps: Vec<(f64, f64, bool, u32, f64)> = Vec::new();
+    for (at, d, bolt, i) in order {
+        let pw = power(d, bolt);
+        match claps.last_mut() {
+            Some(l) if at - l.0 < 0.2 => {
+                if pw > power(l.1, l.2) {
+                    (l.1, l.2, l.3) = (d, bolt, i);
+                }
+                l.4 += pw;
+            }
+            _ => claps.push((at, d, bolt, i, pw)),
+        }
+    }
+    let mut recent: Vec<(&'static str, u32)> = Vec::new();
+    let mut rolling: Vec<(f64, f64)> = Vec::new();
+    let mut out = Vec::new();
+    for (at, d, bolt, i, pw) in claps {
+        let (kind, level) = match (bolt, d) {
+            (true, d) if d < 110.0 => ("thunder", -14.0),
+            (true, d) if d < 320.0 => ("thunder_mid", -17.5),
+            (true, _) => ("thunder_far", -21.0),
+            (false, _) => ("rumble", -25.5),
+        };
+        let db = 10.0 * pw.log10();
+        let loud = 10f64.powf(db / 20.0);
+        let busy: f64 = rolling.iter().map(|(t, l)| l * (-(at - t).max(0.0) / 1.2).exp()).sum();
+        let duck = (1.0 / (1.0 + 0.6 * busy / loud)).max(0.6);
+        rolling.push((at, loud * duck));
+        let last2: Vec<u32> = recent.iter().rev().filter(|(k, _)| *k == kind).take(2).map(|(_, v)| *v).collect();
+        let free: Vec<u32> = (1..=4).filter(|v| !last2.contains(v)).collect();
+        let take = free[((mh(i, s, 0xe2) * free.len() as f64) as usize).min(free.len() - 1)];
+        recent.push((kind, take));
+        let volume = (10f64.powf((db - level) / 20.0).min(1.0) * duck) as f32;
+        out.push((at as f32, format!("{kind}{take}"), volume, 0.9 + 0.16 * mh(i, s, 0xe3) as f32));
+    }
+    out
+}
+
 // ---- the plan ------------------------------------------------------------------------------------------------------------
 pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
@@ -1716,6 +1853,10 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         p.ev.push((t as f32, Act::Sound { event: format!("orbital:hurricane.debris{k}"), at: None, volume: (0.25 + 0.45 * spin(t)) as f32 * near, pitch: 0.92 + 0.16 * mh(n, s, 0x72) as f32 }));
         t += 2.6 + 2.2 * mh(n, s, 0x73);
         n += 1;
+    }
+    // (the eyewall's lightning heard: its thunder, in the order it reaches the player)
+    for (at, event, volume, pitch) in hu_thunder(s, [cx, gy, cz], me) {
+        p.csound(at, &event, 10.0 * volume, pitch);
     }
     // (the ground trembling under it, the more as it strengthens and the nearer)
     let fo = (1.5 / (1.0 + (dist - HU_R_W).max(0.0) / 120.0)).min(1.0) as f32;
