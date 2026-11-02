@@ -1889,7 +1889,7 @@ fn hu_write_sounds() {
         let mut feet = me;
         for n in 1..(64 * 20) {
             let t = f64::from(n) * 0.05;
-            let o = c.tick(t, feet);
+            let o = c.tick(t, feet, true);
             if let Some(next) = c.target {
                 feet = next;
             }

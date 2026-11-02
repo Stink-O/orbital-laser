@@ -156,6 +156,10 @@ pub mod fake {
         pub fn push_player(_x: f32, _y: f32, _z: f32) {
             super::with(|w| w.pushes += 1);
         }
+        pub fn carry_player(_x: f32, _y: f32, _z: f32) -> bool {
+            super::with(|w| w.pushes += 1);
+            true
+        }
         pub fn edit_blocks(edit: &BlockEdit) {
             super::with(|w| {
                 w.edits += 1;

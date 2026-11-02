@@ -314,6 +314,8 @@ struct Orbital {
     following: Option<follow::Follow>,
     /// The Hurricane's carry of the player (`carry.rs`), while its strike is under way and the knockback is on.
     carrying: Option<carry::Carry>,
+    /// The game's last answer to a carry (`world.carry-player`): whether the one before held the player.
+    carry_held: bool,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
@@ -388,6 +390,7 @@ impl Orbital {
             follow,
             following: None,
             carrying: None,
+            carry_held: true,
             follow_distance,
             seed_lock,
             last_seed: 1,
@@ -804,10 +807,12 @@ impl Orbital {
             return;
         }
         let Some(p) = game::get_player() else { return };
-        let o = c.tick(t, [p.x, p.y, p.z]);
-        for [x, y, z] in o.kicks {
-            world::push_player(x, y, z);
-        }
+        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held);
+        // (the game's answer: whether the carry it was asked for before held them)
+        self.carry_held = match o.carry {
+            Some([x, y, z]) => world::carry_player(x, y, z),
+            None => true,
+        };
         if !o.cmds.is_empty() {
             world::run_commands(&o.cmds);
         }
