@@ -910,7 +910,8 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     // (the moat: open sky between the eyewall and the overcast, narrowing as the eyewall flares up into it; from the
     // land round it the eyewall stands sunlit across it, from over it a dark ring round the eye)
     let mo = smoothstep(wout + 4.0, wout + 26.0, r) * (1.0 - smoothstep(205.0 + 0.16 * q.y, 245.0 + 0.16 * q.y, r + 60.0 * (warp - 0.5)));
-    body = body - 7.0 * mo * hu_inten(t) * fade;
+    // (filling in as the eyewall collapses after the fling)
+    body = body - 7.0 * mo * hu_inten(t) * (1.0 - smoothstep(HU_FLING, HU_CLEAR, t));
     let wtop = hu_wall_top(t) + 18.0 * (vnoise(p2 * (1.0 / 70.0) + vec2<f32>(31.0, 5.0)) - 0.4);
     let a2 = atan2(p2.y, p2.x);
     // (its base a little over the land, ragged: under it the land it tears up, the debris and the dust in plain sight)
@@ -924,8 +925,8 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     let er = win * smoothstep(0.0, 0.5, eye);
     let clear = eye * (1.0 - smoothstep(er - 2.0, er + 1.5, r + 5.0 * (nz - 0.5)));
     // (the eyewall collapsing once the winds drop, shredding as it goes)
-    let wero = smoothstep(HU_FLING, HU_CLEAR + 4.0, t);
-    let rawn = max(wall + 1.2 * (nz - 0.5) - wero * (7.0 + 9.0 * (0.5 - nz)), body) - 6.0 * (1.0 - smoothstep(0.0, 1.5, t));
+    let wero = smoothstep(HU_FLING, HU_CLEAR, t);
+    let rawn = max(wall + (1.2 + 2.5 * wero) * (nz - 0.5) - wero * 9.0, body) - 6.0 * (1.0 - smoothstep(0.0, 1.5, t));
     let raw = rawn - 9.0 * clear;
     // (in the clear eye, how far off its face is: the march strides over it, never through the face)
     // (the clear eye's own edge left out of it: near the face the march steps as finely as in the cloud)
