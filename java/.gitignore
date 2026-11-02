@@ -1,0 +1,51 @@
+# Build output and caches: never commit these
+.gradle/
+build/
+out/
+classes/
+*.class
+/dist/
+
+# Running the game from the build (Loom's dev client)
+run/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+*.launch
+.settings/
+.vscode/
+bin/
+.classpath
+.project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Java crash and profiling output
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr
+*.log
+
+# Local settings and anything secret: keep these out of the repository
+local.properties
+gradle-local.properties
+*.local
+.env
+.env.*
+*.pem
+*.key
+*.keystore
+*.jks
+
+# The shader tools' build output and scratch files
+tools/wgsl2glsl/target/
+tools/work/
+
+# (the Gradle wrapper's jar is needed to build, so it stays in)
+!gradle/wrapper/gradle-wrapper.jar

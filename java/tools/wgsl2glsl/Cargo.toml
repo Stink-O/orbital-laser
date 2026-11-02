@@ -1,0 +1,7 @@
+[package]
+name = "wgsl2glsl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }

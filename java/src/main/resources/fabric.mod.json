@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "orbital",
+	"version": "${version}",
+	"name": "Orbital Laser",
+	"description": "Orbital laser strikes: a Fabric port of Stink-O's Orbital Laser (MIT).",
+	"authors": [
+		"Ramingen"
+	],
+	"contributors": [
+		"Stink-O (author of the original Orbital Laser mod)"
+	],
+	"contact": {
+		"sources": "https://github.com/Stink-O/orbital-laser"
+	},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"dev.orbital.OrbitalMod"
+		],
+		"client": [
+			"dev.orbital.client.OrbitalClient"
+		]
+	},
+	"mixins": [
+		{
+			"config": "orbital.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
