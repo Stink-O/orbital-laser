@@ -1285,6 +1285,18 @@ impl Mod for Orbital {
                 self.aiming = None;
                 self.fire();
             } else {
+                // the designator's countdown over the hotbar while it is held: what it is doing, a dot more every
+                // fifth of a second, and the laser loaded
+                if n % 4 == 0 {
+                    let l = LASERS[self.laser];
+                    // (the sinkhole comes from nothing overhead: it reads the ground under the crosshair instead)
+                    let what = match l.key {
+                        "sinkhole" => "SEISMIC SCAN",
+                        "payload" | "nuke" | "rod" => "DESIGNATING",
+                        _ => "ACQUIRING TARGET",
+                    };
+                    Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
+                }
                 self.aiming = Some(n + 1);
             }
         }
