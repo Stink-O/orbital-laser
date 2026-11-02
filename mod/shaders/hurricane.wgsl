@@ -33,11 +33,11 @@ const HU_CELL: f32 = 3.0;          // their cells, a block at most in each
 const HU_PAL: u32 = 64u;           // the table: each ring's blocks from HU_PAL (HU_PN a ring, each a block type),
 const HU_PN: u32 = 32u;
 const HU_BK: u32 = 512u;           // the block types from HU_BK (HU_BKW words each: hurricane.rs's bk_words),
-const HU_BKW: u32 = 2u;
-const HU_T: u32 = 1536u;           // the trees from HU_T (HU_TW words each: hurricane.rs's TreeRec::words),
+const HU_BKW: u32 = 12u;
+const HU_T: u32 = 6656u;           // the trees from HU_T (HU_TW words each: hurricane.rs's TreeRec::words),
 const HU_TW: u32 = 28u;
 const HU_NT: u32 = 128u;
-const HU_G: u32 = 5120u;           // the land's height round the middle from HU_G (HU_GR rings of HU_GA)
+const HU_G: u32 = 10240u;           // the land's height round the middle from HU_G (HU_GR rings of HU_GA)
 const HU_GR: u32 = 16u;
 const HU_GA: u32 = 64u;
 const HU_G_STEP: f32 = 11.0;
@@ -46,6 +46,11 @@ const HU_BASE: f32 = 92.0;
 const HU_TOP: f32 = 250.0;
 const HU_DECK: f32 = 950.0;
 const HU_WALL_TOP: f32 = 330.0;    // the eyewall's top over the middle's ground
+
+// The game's block textures (the atlas capability, the fork's API 10): every vanilla texture a layer of the first array,
+// gamma-encoded, sampled nearest as the terrain is (docs/mods.md, "Block textures in a post pass").
+@group(0) @binding(8) var block_sprites: texture_2d_array<f32>;
+@group(0) @binding(9) var block_sampler: sampler;
 
 fn hu_u(i: u32) -> u32 {
     if (i >= arrayLength(&mod_data)) {
@@ -214,13 +219,44 @@ fn hu_none() -> HuHit {
     h.id = vec2<f32>(-2048.0, 0.0);
     return h;
 }
-// The colour of block type `bk`'s face `face` (0 top, 1 bottom, 2 a side) at `uv` on it, linear: the one place a block
-// is coloured, so the game's own textures can take the place of their averages here alone.
-fn hu_face(bk: u32, face: u32, uv: vec2<f32>) -> vec3<f32> {
-    let a = hu_u(HU_BK + bk * HU_BKW);
-    let b = hu_u(HU_BK + bk * HU_BKW + 1u);
-    let c = select(select(a >> 16u, b & 0xFFFFu, face == 1u), a & 0xFFFFu, face == 0u);
-    return hu_565(c);
+// The colour of block type `bk`'s face `face` (0 top, 1 bottom, 2 a side) at `uv` on it (0 to 1 along the side's two
+// axes, as the game's block sprites name them), linear, `lod` the mip level its texels are seen at: the game's own
+// texture where the mod packed one for it (hurricane.rs's bk_words: the face, the overlay laid over it (a grass block's
+// tinted side), each tinted as the game tints it; a cut-out texture's clear pixels dark, as fast leaves are), else
+// (and far off, where a block is a few pixels) its texture's average colour.
+fn hu_face(bk: u32, face: u32, uv: vec2<f32>, lod: f32) -> vec3<f32> {
+    let o = HU_BK + bk * HU_BKW;
+    let a = hu_u(o);
+    let b = hu_u(o + 1u);
+    let avg = hu_565(select(select(a >> 16u, b & 0xFFFFu, face == 1u), a & 0xFFFFu, face == 0u));
+    let f0 = hu_u(o + 2u + 3u * face);
+    if ((f0 & 1u) == 0u || lod > 3.5) {
+        return avg;
+    }
+    let m = hu_u(o + 4u + 3u * face);
+    let q = vec3<f32>(vec3<u32>(m, m >> 2u, m >> 4u) & vec3<u32>(3u)) - 1.0;
+    let r = vec3<f32>(vec3<u32>(m >> 6u, m >> 8u, m >> 10u) & vec3<u32>(3u)) - 1.0;
+    // (u0, v0, du-u | du-v, dv-u, dv-v)
+    let st = fract(vec2<f32>(q.x + uv.x * q.z + uv.y * r.y, q.y + uv.x * r.x + uv.y * r.z) * 0.99999 + 0.000005);
+    let lv = clamp(lod, 0.0, f32(textureNumLevels(block_sprites) - 1));
+    let c0 = textureSampleLevel(block_sprites, block_sampler, st, i32((f0 >> 2u) & 0x3FFFu), lv);
+    var rgb = srgb_to_linear(c0.rgb * hu_tint(f0 >> 16u));
+    if ((f0 & 2u) != 0u && c0.a < 0.5) {
+        rgb = avg * 0.3;
+    }
+    let f1 = hu_u(o + 3u + 3u * face);
+    if ((f1 & 1u) != 0u) {
+        let c1 = textureSampleLevel(block_sprites, block_sampler, st, i32((f1 >> 2u) & 0x3FFFu), lv);
+        rgb = mix(rgb, srgb_to_linear(c1.rgb * hu_tint(f1 >> 16u)), c1.a);
+    }
+    return rgb;
+}
+// A face's tint (5-6-5; 0xFFFF none), gamma-encoded as the game multiplies the texture by it.
+fn hu_tint(c: u32) -> vec3<f32> {
+    if (c == 0xFFFFu) {
+        return vec3<f32>(1.0);
+    }
+    return vec3<f32>(f32((c >> 11u) & 31u) / 31.0, f32((c >> 5u) & 63u) / 63.0, f32(c & 31u) / 31.0);
 }
 // Which face of a block a local normal `nl` (its own axes) is.
 fn hu_face_of(nl: vec3<f32>) -> u32 {
@@ -854,7 +890,10 @@ struct PlOut {
 
 // A block or tree hit, lit: the storm's grey daylight on it, its own colour.
 fn hu_lit(h: HuHit, L: vec3<f32>, amb: vec3<f32>, sunc: vec3<f32>, under: f32) -> vec3<f32> {
-    let alb = hu_face(h.bk, h.face, h.uv) * h.shade;
+    // (the mip level a block's sixteen texels are seen at, this far off)
+    let px = 2.0 * tan(0.5 * frame.view_params.w) * frame.resolution.w;
+    let lod = log2(max(h.t * px * 16.0, 1.0e-4));
+    let alb = hu_face(h.bk, h.face, h.uv, lod) * h.shade;
     let n = h.n;
     let dif = max(dot(n, L), 0.0) * mix(1.0, 0.25, under);
     return alb * (amb * (1.5 + 0.6 * n.y) + sunc * dif * 0.9 + vec3<f32>(0.012));

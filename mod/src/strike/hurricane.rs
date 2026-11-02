@@ -24,7 +24,8 @@
 #![cfg_attr(not(test), allow(dead_code))]
 use super::hu_blocks::{HU_BLOCKS, HuBlock};
 use super::sh_land::{self, Class};
-use super::{Act, Blocks, Plan, Rng, TIDY_FLOWERS, TIDY_LOOSE, Target, mh, pk_load_rows, sound_from, vnoise};
+use super::{Act, Blocks, Plan, Rng, Target, mh, pk_load_rows, sound_from, vnoise};
+use crate::sdk::atlas;
 use crate::lasers::Laser;
 use std::cell::RefCell;
 use std::f64::consts::PI;
@@ -170,7 +171,7 @@ pub(super) fn hu_in_sight(t: f64) -> f64 {
 pub(super) const HU_PAL: usize = 64;
 pub(super) const HU_PN: usize = 32;
 pub(super) const HU_BK: usize = 512;
-pub(super) const HU_BKW: usize = 2;
+pub(super) const HU_BKW: usize = 12;
 pub(super) const HU_NBK: usize = 512;
 pub(super) const HU_T: usize = HU_BK + HU_BKW * HU_NBK;
 pub(super) const HU_TW: usize = 28;
@@ -212,10 +213,99 @@ pub(super) fn bk_rgb(b: u16, grass: u32, foliage: u32) -> [[u8; 3]; 3] {
 fn grass_block() -> usize {
     hu_block("minecraft:grass_block").map_or(usize::MAX, usize::from)
 }
-/// A block type's words for the pass: its top's colour and its sides', then its bottom's and which block it is.
-fn bk_words(b: u16, grass: u32, foliage: u32) -> [u32; 2] {
+/// A block type's words for the pass (HU_BKW): its top's average colour and its sides', its bottom's and which block
+/// it is; then for its top, its bottom and its sides (the game's up, down and north) the faces the game draws there
+/// (`face_words`), the textures in the game's block sprite arrays (atlas.block-sprites), where it has them.
+fn bk_words(b: u16, grass: u32, foliage: u32) -> [u32; HU_BKW] {
     let [t, s, d] = bk_rgb(b, grass, foliage);
-    [c565(t) | c565(s) << 16, c565(d) | u32::from(b) << 16]
+    let mut w = [0u32; HU_BKW];
+    w[0] = c565(t) | c565(s) << 16;
+    w[1] = c565(d) | u32::from(b) << 16;
+    // (its tints, to pack it again from the table alone: `hu_repack`)
+    let q = |c: u32| if c == 0 { 0 } else { c565([(c >> 16) as u8, (c >> 8) as u8, c as u8]).max(1) };
+    w[HU_BKW - 1] = q(grass) | q(foliage) << 16;
+    if let Some(f) = sprites_of(b) {
+        for (k, side) in [1usize, 0, 2].into_iter().enumerate() {
+            w[2 + 3 * k..5 + 3 * k].copy_from_slice(&face_words(f.sides.get(side).map_or(&[][..], |v| &v[..]), grass, foliage));
+        }
+    }
+    w
+}
+/// A side's faces as the pass reads them, three words: its first face (whole, on the side's plane), the face laid over
+/// it if any (a grass block's tinted overlay), each `1 | cutout << 1 | layer << 2` and its tint (5-6-5, 0xFFFF none)
+/// over it; then how the texture runs across the side (u0, v0, du-u, du-v, dv-u, dv-v, each -1, 0 or 1, two bits
+/// apiece). A face in a sprite array past the first (a content mod's) is left to its colour.
+fn face_words(faces: &[atlas::Face], grass: u32, foliage: u32) -> [u32; 3] {
+    let tint = |t: &atlas::Tint| -> u32 {
+        let c = match t {
+            atlas::Tint::None => return 0xFFFF,
+            atlas::Tint::Grass => if grass == 0 { 0x91BD59 } else { grass },
+            atlas::Tint::Foliage | atlas::Tint::DryFoliage => if foliage == 0 { 0x77AB2F } else { foliage },
+            atlas::Tint::Water => 0x3F76E4,
+            atlas::Tint::Fixed(c) => *c,
+        };
+        c565([(c >> 16) as u8, (c >> 8) as u8, c as u8])
+    };
+    let word = |f: &atlas::Face| -> u32 {
+        if f.sprite.array != 0 || f.sprite.layer >= 1 << 14 {
+            return 0;
+        }
+        1 | u32::from(f.sprite.cutout) << 1 | f.sprite.layer << 2 | tint(&f.tint) << 16
+    };
+    let mut w = [0u32; 3];
+    let flat: Vec<&atlas::Face> = faces.iter().filter(|f| f.inset < 0.01).collect();
+    if let Some(f) = flat.first() {
+        w[0] = word(f);
+        if let Some(o) = flat.get(1) {
+            w[1] = word(o);
+        }
+        let q = |v: f32| ((v.round() as i32).clamp(-1, 1) + 1) as u32;
+        let (u0, v0, duu, duv, dvu, dvv) = f.uv;
+        w[2] = q(u0) | q(v0) << 2 | q(duu) << 4 | q(duv) << 6 | q(dvu) << 8 | q(dvv) << 10;
+    }
+    w
+}
+thread_local! {
+    /// Each block's sprites as the game last answered (by its place in HU_BLOCKS), and the resources they were for.
+    static SPRITES: std::cell::RefCell<(u64, crate::ground::FxMap<u16, Option<std::rc::Rc<atlas::BlockFaces>>>)> = Default::default();
+}
+/// Block `b`'s sprites, asked of the game once per resources (`atlas.resources-version`).
+fn sprites_of(b: u16) -> Option<std::rc::Rc<atlas::BlockFaces>> {
+    SPRITES.with(|s| {
+        let mut s = s.borrow_mut();
+        let v = atlas::resources_version();
+        if s.0 != v {
+            *s = (v, Default::default());
+        }
+        s.1.entry(b)
+            .or_insert_with(|| {
+                crate::meter::spend(40_000);
+                atlas::block_sprites(&[HU_BLOCKS[b as usize].name.to_string()]).pop().flatten().map(std::rc::Rc::new)
+            })
+            .clone()
+    })
+}
+/// The resources the textures were last packed for changed (a resource pack turned on or off): the block types in
+/// `data` (a Hurricane's table: how many in its header's word 3) packed again for the new layers, from the table alone.
+pub(crate) fn hu_repack(data: &mut [u32]) {
+    let n = (data.get(3).copied().unwrap_or(0) as usize).min(HU_NBK);
+    if data.len() < HU_BK + HU_BKW * n {
+        return;
+    }
+    let back = |c: u32| -> u32 {
+        if c == 0 {
+            return 0;
+        }
+        let (r, g, b) = ((c >> 11) & 31, (c >> 5) & 63, c & 31);
+        (r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2)
+    };
+    for i in 0..n {
+        let o = HU_BK + HU_BKW * i;
+        let (b, t) = ((data[o + 1] >> 16) as u16, data[o + HU_BKW - 1]);
+        if (b as usize) < HU_BLOCKS.len() {
+            data[o..o + HU_BKW].copy_from_slice(&bk_words(b, back(t & 0xFFFF), back(t >> 16)));
+        }
+    }
 }
 /// The block types every strike's table starts with (its rings' blocks until the land is read): grass, dirt, oak
 /// leaves, an oak log, coarse dirt.
@@ -892,6 +982,7 @@ fn table_words(q: &mut Plan, w: &mut Work, now: f32) {
         let words: Vec<u32> = w.kinds.list[from..].iter().flat_map(|&(b, g, f)| bk_words(b, g, f)).collect();
         q.ev.push((now, Act::Words { index: (HU_BK + HU_BKW * from) as u32, words }));
         w.kinds.told = w.kinds.list.len();
+        q.ev.push((now, Act::Words { index: 3, words: vec![w.kinds.told as u32] }));
     }
     if w.grid_dirty {
         let words: Vec<u32> = w.grid.iter().map(|&(s, n)| (if n == 0 { f32::NAN } else { (s / f64::from(n)) as f32 }).to_bits()).collect();
@@ -1243,6 +1334,7 @@ fn hu_table_empty(terrain: bool) -> Vec<u32> {
     let mut w = vec![0u32; HU_WORDS];
     w[2] = f32::from(u8::from(terrain)).to_bits();
     let k0 = default_kinds();
+    w[3] = k0.list.len() as u32;
     for (i, &(b, g, f)) in k0.list.iter().enumerate() {
         w[HU_BK + HU_BKW * i..HU_BK + HU_BKW * (i + 1)].copy_from_slice(&bk_words(b, g, f));
     }

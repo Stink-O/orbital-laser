@@ -465,7 +465,12 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let adapter = adapters.into_iter().find(|a| a.get_info().name.contains(gpu) && a.get_info().device_type != wgpu::DeviceType::Cpu).expect("no such gpu");
     eprintln!("adapter: {}", adapter.get_info().name);
     let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor { required_features: wgpu::Features::TIMESTAMP_QUERY, ..Default::default() })
+        // (as many texture layers as the GPU takes: the game's block sprite arrays hold every block texture)
+        .request_device(&wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::TIMESTAMP_QUERY,
+            required_limits: wgpu::Limits { max_texture_array_layers: adapter.limits().max_texture_array_layers, ..Default::default() },
+            ..Default::default()
+        })
         .await
         .unwrap();
     let prelude = include_str!("../../wgslcheck/prelude.wgsl");
@@ -549,8 +554,59 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
             tex_entry(6, wgpu::TextureSampleType::Float { filterable: true }),
             tex_entry(7, wgpu::TextureSampleType::Float { filterable: true }),
         ];
-    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &entries[..6] });
-    let bgl_join = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &entries });
+    // (the game's block sprite arrays, as a mod with the atlas capability has them at bindings 8 and 9 (the fork's API
+    // 10): $PREVIEW_ATLAS, tools/hu_atlas.py's stand-in made from the player's own resources, or one white layer)
+    let atlas_entries = [
+        wgpu::BindGroupLayoutEntry {
+            binding: 8,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2Array, multisampled: false },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry { binding: 9, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+    ];
+    let main_entries: Vec<wgpu::BindGroupLayoutEntry> = entries[..6].iter().chain(&atlas_entries).cloned().collect();
+    let join_entries: Vec<wgpu::BindGroupLayoutEntry> = entries.iter().chain(&atlas_entries).cloned().collect();
+    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &main_entries });
+    let bgl_join = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &join_entries });
+    let (atlas_w, atlas_layers, atlas_levels, atlas_bytes) = match std::env::var("PREVIEW_ATLAS") {
+        Ok(path) => {
+            let b = std::fs::read(path).expect("PREVIEW_ATLAS");
+            let u = |i: usize| u32::from_le_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]);
+            (u(0), u(2), u(3), b[16..].to_vec())
+        }
+        Err(_) => (1, 1, 1, vec![255u8; 4]),
+    };
+    let atlas = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d { width: atlas_w, height: atlas_w, depth_or_array_layers: atlas_layers },
+        mip_level_count: atlas_levels,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    {
+        let mut at = 0usize;
+        for lv in 0..atlas_levels {
+            let s = (atlas_w >> lv).max(1);
+            let n = (s * s * 4 * atlas_layers) as usize;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo { texture: &atlas, mip_level: lv, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                &atlas_bytes[at..at + n],
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * s), rows_per_image: Some(s) },
+                wgpu::Extent3d { width: s, height: s, depth_or_array_layers: atlas_layers },
+            );
+            at += n;
+        }
+    }
+    let atlas_view = atlas.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+    let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        ..Default::default()
+    });
     // (the mod's data, as render.set-data gives it: $PREVIEW_DATA, or the one word 0 the game binds without it)
     let mut words: Vec<u32> = vec![0];
     if let Ok(path) = std::env::var("PREVIEW_DATA") {
@@ -598,6 +654,8 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&nea) },
         wgpu::BindGroupEntry { binding: 4, resource: ubuf.as_entire_binding() },
         wgpu::BindGroupEntry { binding: 5, resource: dbuf.as_entire_binding() },
+        wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&atlas_view) },
+        wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::Sampler(&atlas_sampler) },
     ];
     let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl, entries: &bentries });
     bentries.push(wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&halves[0]) });

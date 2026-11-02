@@ -155,6 +155,10 @@ struct Strike {
     skipped: f32,
     /// The sounds it has played, to cut them short if it is stopped.
     sounds: std::collections::BTreeSet<String>,
+    /// Its laser, and the game's textures as they were when its table packed them (`atlas.resources-version`: the
+    /// Hurricane's blocks drawn with them are packed again when it changes).
+    key: &'static str,
+    sprites: u64,
 }
 
 /// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
@@ -933,7 +937,7 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
@@ -1076,6 +1080,15 @@ impl Orbital {
         };
         if !cmds.is_empty() {
             world::run_commands(&cmds);
+        }
+        // (the game's textures loaded anew under a Hurricane: a resource pack turned on or off moves their layers)
+        if s.key == "hurricane" {
+            let v = sdk::atlas::resources_version();
+            if v != s.sprites {
+                s.sprites = v;
+                strike::hu_repack(&mut s.data);
+                s.data_sent = false;
+            }
         }
         if !s.data_sent {
             render::set_data(&s.data);
@@ -2222,7 +2235,7 @@ mod stress {
         };
         let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
         plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
-        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default() });
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default(), key: "", sprites: 0 });
         let mut worst = 0;
         let mut ticks = 0;
         while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {

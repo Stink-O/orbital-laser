@@ -16,7 +16,7 @@ mod storm;
 mod vortex;
 
 /// The Hurricane's wind, for its carry of the player (carry.rs).
-pub(crate) use hurricane::{HU_FLING, HU_R_EYE, front_t as hu_front_t, omega as hu_omega, spin as hu_spin};
+pub(crate) use hurricane::{HU_FLING, HU_R_EYE, front_t as hu_front_t, hu_repack, omega as hu_omega, spin as hu_spin};
 /// A number from 0 to 1 for `k`, the same every time (the carry's choice of sounds).
 pub(crate) fn hash01(k: u32) -> f64 {
     mh(k, 0x51ed, 0x77)

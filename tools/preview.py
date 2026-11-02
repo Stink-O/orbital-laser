@@ -170,6 +170,9 @@ VIEWS = {
     "huplayerup": "cx=0 cy=67 cz=300 lx=0.5 ly=190 lz=0.5 flat=1 trees=1 hustrip=1 fov=80 reach=300",
     "hufarup": "cx=0 cy=80 cz=800 lx=0.5 ly=200 lz=0.5 flat=1 trees=1 hustrip=1 fov=65 reach=800",
     "huside": "cx=-1300 cy=260 cz=700 lx=0.5 ly=150 lz=0.5 flat=1 fov=55 reach=300",
+    # close on the blocks and trees flying round the eyewall (textured, with the atlas), from 25 and 60 off
+    "hutex": "cx=96 cy=76 cz=-6 lx=70 ly=74 lz=-30 flat=1 trees=1 hustrip=1 fov=60 reach=96",
+    "hutex2": "cx=118 cy=78 cz=10 lx=60 ly=68 lz=-35 flat=1 trees=1 hustrip=1 fov=55 reach=118",
     "huaerial": "cx=0 cy=900 cz=1100 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
     "huhill": "cx=0 cy=110 cz=320 lx=0.5 ly=100 lz=0.5 hills=30 flush=1 trees=1 hustrip=1 fov=75 reach=320",
 }
@@ -215,6 +218,9 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
         env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills,
                    PL_FLUSH="1" if "flush=1" in sets else "0")
+        if laser == "hurricane" and ATLAS:
+            # (the blocks' sprites as the fake atlas has them, matching the stand-in arrays the preview binds)
+            env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
         test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table"}.get(laser, "pl_write_table")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
@@ -241,6 +247,22 @@ def crystal_data(out: pathlib.Path, sets: list) -> dict:
     return dict(os.environ, PREVIEW_DATA=str(path))
 
 
+ATLAS = None
+
+
+def atlas(out: pathlib.Path):
+    """The Hurricane's textured blocks: a stand-in for the game's block sprite arrays from the player's own prepared
+    resources (tools/hu_atlas.py; made once into dist/preview/atlas), or none if there are none to make it from."""
+    global ATLAS
+    d = out.parent / "atlas"
+    if not (d / "atlas.raw").exists():
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "hu_atlas.py"), str(d)], capture_output=True, text=True)
+        if r.returncode != 0:
+            print("no textures (tools/hu_atlas.py: " + r.stderr.strip().splitlines()[-1] + ")", file=sys.stderr)
+            return
+    ATLAS = d.resolve()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("laser", choices=LASERS)
@@ -253,6 +275,7 @@ def main() -> int:
                     help="QUALITY FULL, FAST (the half-size stage), or both side by side (a column each a view)")
     ap.add_argument("--whole", action="store_true", help="FAST drawn as a game without half-size stages draws it: fs_main alone")
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "dist" / "preview")
+    ap.add_argument("--notex", action="store_true", help="the Hurricane's blocks in their average colours, not textured")
     a = ap.parse_args()
 
     tool = ROOT / "tools" / "preview"
@@ -261,6 +284,8 @@ def main() -> int:
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
+    if a.laser == "hurricane" and not a.notex:
+        atlas(out)
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
@@ -276,6 +301,8 @@ def main() -> int:
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
     env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane") else None
     env = dict(env or os.environ)
+    if ATLAS:
+        env["PREVIEW_ATLAS"] = str(ATLAS / "atlas.raw")
     if a.whole:
         env["PREVIEW_WHOLE"] = "1"
     # each quality's frames, in their own folder; on the sheet a row a moment, a column a view (and a quality)
