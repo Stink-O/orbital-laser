@@ -1914,6 +1914,195 @@ mod table {
         let text: String = data.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }
+    /// The preview's village: six houses 40 to 160 out from the target at the preview's 0 64 0 (its ground's top at 64),
+    /// each of planks or cobblestone, glass in its walls, a door, a roof of stairs round its edge and slabs over it, a
+    /// chest and torches inside; a wood west of x -60 (the preview's synthetic trees, `synth_column`), open grass
+    /// elsewhere. A column as `test_answer` takes it: its top block's height + 1, and its blocks from `below` under
+    /// that to `above` over it.
+    pub(super) fn village_column(x: i32, z: i32, below: u32, above: u32) -> Option<(i32, Vec<&'static str>)> {
+        // (x0, z0, width, depth, wall)
+        const HOUSES: [(i32, i32, i32, i32, &str); 6] = [
+            (48, 6, 7, 9, "minecraft:oak_planks"),
+            (-30, 62, 9, 7, "minecraft:cobblestone"),
+            (80, -66, 7, 7, "minecraft:spruce_planks"),
+            (-104, -36, 11, 7, "minecraft:oak_planks"),
+            (14, -124, 7, 9, "minecraft:cobblestone"),
+            (118, 56, 9, 9, "minecraft:birch_planks"),
+        ];
+        let mut top: Vec<&'static str> = Vec::new();
+        let mut ground = "minecraft:grass_block";
+        for &(x0, z0, w, d, wall) in &HOUSES {
+            let (i, j) = (x - x0, z - z0);
+            if i < 0 || j < 0 || i >= w || j >= d {
+                continue;
+            }
+            ground = "minecraft:dirt";
+            let edge = i == 0 || j == 0 || i == w - 1 || j == d - 1;
+            let corner = (i == 0 || i == w - 1) && (j == 0 || j == d - 1);
+            let roof = if edge { "minecraft:oak_stairs" } else { "minecraft:oak_slab" };
+            top = if !edge {
+                let mut v = vec!["minecraft:oak_planks", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", roof];
+                if (i, j) == (1, 1) {
+                    v[1] = "minecraft:chest";
+                } else if (i, j) == (w - 2, d - 2) {
+                    v[1] = "minecraft:torch";
+                } else if (i, j) == (1, d / 2) {
+                    v[3] = "minecraft:wall_torch";
+                }
+                v
+            } else if corner {
+                vec!["minecraft:cobblestone", "minecraft:oak_log", "minecraft:oak_log", "minecraft:oak_log", "minecraft:oak_log", roof]
+            } else if j == 0 && i == w / 2 {
+                vec!["minecraft:cobblestone", "minecraft:oak_door", "minecraft:oak_door", wall, wall, roof]
+            } else if (i + j) % 2 == 0 {
+                vec!["minecraft:cobblestone", wall, "minecraft:glass_pane", wall, wall, roof]
+            } else {
+                vec!["minecraft:cobblestone", wall, wall, wall, wall, roof]
+            };
+        }
+        if top.is_empty() {
+            // (a wood to the west, open grass and flowers elsewhere)
+            return super::synth_column(x, z, below, above, 65, 0.0, x < -60);
+        }
+        let surface = 65 + top.len() as i32;
+        let y0 = surface - below as i32;
+        let v = (0..(below + above) as i32)
+            .map(|k| {
+                let y = y0 + k;
+                if y > 64 {
+                    top.get((y - 65) as usize).copied().unwrap_or("minecraft:air")
+                } else if y == 64 {
+                    ground
+                } else if y > 60 {
+                    "minecraft:dirt"
+                } else {
+                    "minecraft:stone"
+                }
+            })
+            .collect();
+        Some((surface, v))
+    }
+
+    /// `CB_SEED=37 CB_OUT=path HU_VOX_TIMES=10,20,30 HU_VOX_DIR=dir cargo test --release hu_write_village -- --ignored`:
+    /// the strike over the preview's village (`village_column`) played through: the pass's table, as `hu_write_table`
+    /// writes it, and for each of the times every block standing over the ground then (the village as built, less
+    /// every edit made by then, with what has landed by then), a line `x y z r g b` a block (its side's colour 0-1,
+    /// leaves and grass tinted as the plains' are) in HU_VOX_DIR/vox_<t>.txt, for tools/preview's `vox=1`.
+    #[test]
+    #[ignore]
+    fn hu_write_village() {
+        use super::*;
+        let seed: f32 = std::env::var("CB_SEED").map_or(37.0, |v| v.parse().unwrap());
+        let times: Vec<f32> = std::env::var("HU_VOX_TIMES").map_or(vec![], |v| v.split(',').filter(|s| !s.is_empty()).map(|s| s.trim().parse().unwrap()).collect());
+        let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+        let laser = crate::lasers::LASERS.iter().find(|l| l.key == "hurricane").unwrap();
+        let mut ev = crate::strike::plan(laser, &target, true, "minecraft:overworld", seed, [0.5, 66.0, 300.5], 0);
+        let mut data: Vec<u32> = Vec::new();
+        let mut edits: Vec<(f32, Blocks)> = Vec::new();
+        crate::columns::clear();
+        ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+        while let Some((t, a)) = ev.pop() {
+            match a {
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| village_column(x, z, below, above)),
+                Act::Table(w) => {
+                    if data.len() < w.len() {
+                        data.resize(w.len(), 0);
+                    }
+                    data[..w.len()].copy_from_slice(&w);
+                }
+                Act::Words { index, words } => {
+                    let i = index as usize;
+                    if data.len() < i + words.len() {
+                        data.resize(i + words.len(), 0);
+                    }
+                    data[i..i + words.len()].copy_from_slice(&words);
+                }
+                Act::Data { index, value } => {
+                    if data.len() <= index as usize {
+                        data.resize(index as usize + 1, 0);
+                    }
+                    data[index as usize] = value.to_bits();
+                }
+                Act::Blocks(b) => edits.push((t, *b)),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
+                    ev.extend(job());
+                    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+                }
+                _ => {}
+            }
+        }
+        if let Ok(out) = std::env::var("CB_OUT") {
+            let text: String = data.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
+            std::fs::write(out, text).unwrap();
+        }
+        if times.is_empty() {
+            return;
+        }
+        // the world over the ground: the village as built, out to where the strike reads it
+        let mut world: std::collections::HashMap<(i32, i32, i32), &'static str> = Default::default();
+        let n = HU_READ + 2;
+        for z in -n..=n {
+            for x in -n..=n {
+                if x * x + z * z > n * n {
+                    continue;
+                }
+                let Some((surface, v)) = village_column(x, z, HU_BELOW, 1) else { continue };
+                let y0 = surface - HU_BELOW as i32;
+                for (k, b) in v.iter().enumerate() {
+                    let y = y0 + k as i32;
+                    if y > 64 && *b != "minecraft:air" {
+                        world.insert((x, y, z), b);
+                    }
+                }
+            }
+        }
+        let bare = |n: &str| -> String { n.split('[').next().unwrap_or(n).to_string() };
+        edits.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut next = 0;
+        let dir = std::path::PathBuf::from(std::env::var("HU_VOX_DIR").unwrap_or(".".into()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut times = times;
+        times.sort_by(|a, b| a.total_cmp(b));
+        for t in times {
+            // (every edit due by then, made as the game makes it: a run's blocks set where they are what it is `only`
+            // for, or all of them)
+            while next < edits.len() && edits[next].0 <= t {
+                let b = &edits[next].1;
+                for r in &b.runs {
+                    let block = b.palette[r.block as usize];
+                    let only = r.only.map(|f| b.filters[f as usize]);
+                    for y in r.y..r.y + r.height as i32 {
+                        let here = world.get(&(r.x, y, r.z)).copied().unwrap_or("minecraft:air");
+                        if only.is_some_and(|f| bare(f) != bare(here)) {
+                            continue;
+                        }
+                        if block == "minecraft:air" {
+                            world.remove(&(r.x, y, r.z));
+                        } else if y > 64 {
+                            world.insert((r.x, y, r.z), block);
+                        }
+                    }
+                }
+                next += 1;
+            }
+            let mut text = String::new();
+            for (&(x, y, z), &n) in &world {
+                let Some(k) = hu_block(&bare(n)).map(|b| &HU_BLOCKS[b as usize]) else { continue };
+                // (grass and leaves tinted as the plains tint them)
+                let tint: [u8; 3] = match k.tint {
+                    1 => [0x91, 0xBD, 0x59],
+                    2 => [0x77, 0xAB, 0x2F],
+                    _ => [255, 255, 255],
+                };
+                let c = |i: usize| f32::from(k.side[i]) / 255.0 * f32::from(tint[i]) / 255.0;
+                text += &format!("{x} {y} {z} {:.3} {:.3} {:.3}\n", c(0), c(1), c(2));
+            }
+            let path = dir.join(format!("vox_{t}.txt"));
+            eprintln!("{}: {} blocks", path.display(), world.len());
+            std::fs::write(path, text).unwrap();
+        }
+    }
+
 }
 
 #[cfg(test)]
