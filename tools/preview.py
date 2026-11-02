@@ -175,6 +175,13 @@ VIEWS = {
     "hutex2": "cx=118 cy=78 cz=10 lx=60 ly=68 lz=-35 flat=1 trees=1 hustrip=1 fov=55 reach=118",
     "huaerial": "cx=0 cy=900 cz=1100 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
     "huhill": "cx=0 cy=110 cz=320 lx=0.5 ly=100 lz=0.5 hills=30 flush=1 trees=1 hustrip=1 fov=75 reach=320",
+    # as the space station saw Florence: from 2,400 up and 1,700 off, looking down across it; and straight down on it
+    "huorbit": "cx=0 cy=2400 cz=1700 lx=0.5 ly=65 lz=-150 flat=1 fov=60 reach=300",
+    "hutop": "cx=0 cy=1900 cz=1 lx=0.5 ly=65 lz=0.5 flat=1 fov=75 reach=300",
+    # in the eye on the ground looking straight up the stadium, and in it 90 up (where the carry takes the player at
+    # its height) looking across at the far wall
+    "hueyeup": "cx=0 cy=67 cz=4 lx=0 ly=300 lz=-45 flat=1 trees=1 hustrip=1 fov=100 reach=4",
+    "hueyemid": "cx=8 cy=155 cz=6 lx=-60 ly=185 lz=-30 flat=1 trees=1 hustrip=1 fov=95 reach=10",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
