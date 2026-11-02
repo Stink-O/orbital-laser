@@ -1025,16 +1025,22 @@ fn hu_flashes(t: f32, seed: u32) -> HuFlash {
             f.p[j] = vec4<f32>(dir.x * r, 110.0 + 80.0 * u.w, dir.y * r, 0.6 * br);
             continue;
         }
+        if (w.x < 0.36) {
+            // (a bolt out of the eyewall's flank, low down, across the open moat to the land, the flash lighting
+            // the flank round its root)
+            let y = 70.0 + 90.0 * u.z;
+            let r = hu_wall_out(y, t) - 6.0;
+            f.p[j] = vec4<f32>(dir.x * r, y, dir.y * r, br * 1.3);
+            let fa = ang + HU_SPIN * 0.15 * (w.y - 0.3);
+            let fr = hu_wall_out(0.0, t) + 6.0 + 55.0 * fract(w.x * 2.77 + w.y);
+            let fp = vec2<f32>(cos(fa), sin(fa)) * fr;
+            f.b[j] = vec4<f32>(fp.x, hu_ground(fp), fp.y, br);
+            continue;
+        }
+        // (deep in the eyewall, lighting it from inside)
         let y = 90.0 + 250.0 * u.z;
         let r = hu_wall_in(y, t) + 12.0 + 26.0 * u.w;
         f.p[j] = vec4<f32>(dir.x * r, y, dir.y * r, br);
-        if (w.x < 0.36) {
-            // (a bolt out of the wall, down its flank to the land: inside it, into the eye's edge, or out under it)
-            let fa = ang + HU_SPIN * 0.12 * (w.y - 0.3);
-            let fr = hu_wall_in(0.0, t) + 4.0 + 70.0 * fract(w.x * 2.77 + w.y);
-            let fp = vec2<f32>(cos(fa), sin(fa)) * fr;
-            f.b[j] = vec4<f32>(fp.x, hu_ground(fp), fp.y, br);
-        }
     }
     return f;
 }
