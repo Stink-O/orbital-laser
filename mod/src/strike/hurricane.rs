@@ -643,8 +643,11 @@ struct Work {
     grid_dirty: bool,
     /// The middle's ground last told the pass.
     gdy_told: Option<i32>,
-    /// The trees torn up near enough to the player to be heard, and the blocks thrown back down.
-    cracks: Vec<f64>,
+    /// The last crack heard, and its take.
+    crack_last: f64,
+    crack_take: u32,
+    /// The trees torn up near enough to the player to be heard (when, and where), and the blocks thrown back down.
+    cracks: Vec<(f64, [f64; 3])>,
     thrown: Vec<(usize, u16)>,
     /// The blocks the edits have taken out of the world, by class (for the tests and the log).
     gone: [u64; 8],
@@ -822,8 +825,8 @@ fn hu_column(w: &mut Work, b: &mut Blocks, bx: i32, bz: i32, x: i32, z: i32, t: 
             let (wood_bk, leaf_bk) = (w.kinds.of(c.wood, c.grass, c.foliage), w.kinds.of(leaf, c.grass, c.foliage));
             w.trees.push(TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood_bk, leaf_bk, wood: c.wood, leaf, spans });
             let d = (f64::from(x) + 0.5 - w.me[0]).hypot(f64::from(z) + 0.5 - w.me[2]);
-            if d < 260.0 {
-                w.cracks.push(t);
+            if d < 230.0 {
+                w.cracks.push((t, [f64::from(x) + 0.5, f64::from(g) + 3.0, f64::from(z) + 0.5]));
             }
         }
     }
@@ -999,16 +1002,20 @@ fn hu_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f64) {
             }
         }
         table_words(q, wk, now as f32);
-        // (the trees' cracks heard as they are torn up near the player, no two within a quarter second)
+        // (the trees' cracks heard where they are torn up near the player, no two within 0.7 s, never the same take
+        // twice running: the game fades each with its distance)
         if !wk.cracks.is_empty() {
             let mut ts = std::mem::take(&mut wk.cracks);
-            ts.sort_by(f64::total_cmp);
-            let mut last = f64::MIN;
-            for t in ts {
-                if t - last > 0.25 {
-                    let k = (mh((t * 100.0) as u32, wk.seed, 0x5a) * 4.0) as u32 % 4 + 1;
-                    q.ev.push((t as f32, Act::Sound { event: format!("orbital:hurricane.crack{k}"), at: None, volume: 0.6, pitch: 0.9 + 0.2 * mh((t * 10.0) as u32, wk.seed, 0x5b) as f32 }));
-                    last = t;
+            ts.sort_by(|a, b| a.0.total_cmp(&b.0));
+            for (t, at) in ts {
+                if t - wk.crack_last > 0.7 {
+                    let mut k = (mh((t * 100.0) as u32, wk.seed, 0x5a) * 4.0) as u32 % 4 + 1;
+                    if k == wk.crack_take {
+                        k = k % 4 + 1;
+                    }
+                    wk.crack_take = k;
+                    q.ev.push((t as f32, Act::Sound { event: format!("orbital:hurricane.crack{k}"), at: Some(at), volume: 0.8, pitch: 0.9 + 0.2 * mh((t * 10.0) as u32, wk.seed, 0x5b) as f32 }));
+                    wk.crack_last = t;
                 }
             }
         }
@@ -1157,6 +1164,8 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         grid: vec![(0.0, 0); HU_GR * HU_GA],
         grid_dirty: false,
         gdy_told: None,
+        crack_last: f64::MIN,
+        crack_take: 0,
         cracks: Vec::new(),
         thrown: Vec::new(),
         gone: [0; 8],
@@ -1171,34 +1180,28 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         p.later(0.1, move |q| hu_work(q, w, 0.1));
     }
 
-    // ---- the sounds: the wind rising out of a hush, the roar building as it spins up, the rain, the debris in it ------
+    // ---- the sounds: three continuous beds (tools/sounds_hurricane.py), the storm's whole life written into each,
+    // played once from the start, each as loud as the distance lets it be; the debris over them now and then -----------
     let (_, dist) = sound_from([cx, gy, cz], me);
-    let near = (1.0 / (1.0 + (dist - HU_R_W).max(0.0) / 350.0)) as f32;
-    p.csound(0.0, "buildup", 10.0 * (0.4 + 0.6 * near), 1.0);
-    for (i, t) in [5.0f32, 17.0, 30.0, 43.0].iter().enumerate() {
-        p.csound(*t, "gusts", [4.5, 6.5, 7.0, 6.0][i] * (0.5 + 0.5 * near), 1.0);
-    }
-    for t in [7.0f32, 17.5, 28.0, 38.5, 49.0] {
-        p.csound(t, "rain", 6.0 * (0.45 + 0.55 * near), 1.0);
-    }
-    // (the roar: overlapping 10 s beds every 8, as loud as the wind is strong; the far one past 300 blocks)
-    let far = dist > 330.0;
-    let mut t = 9.0f64;
-    while t < HU_FLING + 4.0 {
-        let k = spin(t + 5.0);
-        p.csound(t as f32, if far { "roar_far" } else { "roar" }, (10.0 * (0.25 + 0.75 * k) * (0.35 + 0.65 * near as f64)) as f32, 1.0);
-        t += 8.0;
-    }
-    // (debris rattling and thudding in it while the land is torn up)
-    let mut t = HU_F0 + 2.0;
+    // (from the eyewall: all of it within 60 of it, a third at 400 off)
+    let near = (1.0 / (1.0 + (dist - HU_R_W).max(0.0) / 170.0)) as f32;
+    p.csound(0.0, "wind", 10.0 * (0.55 + 0.45 * near), 1.0);
+    p.csound(0.0, if dist > 330.0 { "roar_far" } else { "roar" }, 10.0 * (0.3 + 0.7 * near).min(1.0), 1.0);
+    p.csound(0.0, "rain", 10.0 * (0.5 + 0.5 * near), 1.0);
+    let mut t = HU_F0 + 4.0;
     let mut n = 0u32;
+    let mut last = 0u32;
     while t < HU_FLING + 1.0 {
-        let k = (mh(n, s, 0x71) * 4.0) as u32 % 4 + 1;
-        p.ev.push((t as f32, Act::Sound { event: format!("orbital:hurricane.debris{k}"), at: None, volume: (0.3 + 0.7 * spin(t)) as f32 * (0.25 + 0.75 * near), pitch: 0.9 + 0.2 * mh(n, s, 0x72) as f32 }));
-        t += 1.8 + 1.4 * mh(n, s, 0x73);
+        // (a take never the last one again)
+        let mut k = (mh(n, s, 0x71) * 4.0) as u32 % 4 + 1;
+        if k == last {
+            k = k % 4 + 1;
+        }
+        last = k;
+        p.ev.push((t as f32, Act::Sound { event: format!("orbital:hurricane.debris{k}"), at: None, volume: (0.25 + 0.45 * spin(t)) as f32 * near, pitch: 0.92 + 0.16 * mh(n, s, 0x72) as f32 }));
+        t += 2.6 + 2.2 * mh(n, s, 0x73);
         n += 1;
     }
-    p.csound((HU_FLING - 1.0) as f32, "winddown", 10.0 * (0.4 + 0.6 * near), 1.0);
     // (the ground trembling under it, the more as it strengthens and the nearer)
     let fo = (1.5 / (1.0 + (dist - HU_R_W).max(0.0) / 120.0)).min(1.0) as f32;
     let mut t = HU_F0 - 3.0;
@@ -1316,6 +1319,54 @@ pub(super) fn synth_column(x: i32, z: i32, below: u32, above: u32, ty: i32, hill
         });
     }
     Some((top + 1, v))
+}
+
+/// `HU_OUT=path HU_ME=z cargo test --release hu_write_sounds -- --ignored`: the sounds a player HU_ME blocks south of the
+/// target hears (`t event volume pitch`, a positioned one's volume as the game fades it, linearly to 256 blocks), the
+/// land a wood; with HU_CARRY=1 the player carried off by the wind as the carry would (its whooshes).
+#[cfg(test)]
+#[test]
+#[ignore]
+fn hu_write_sounds() {
+    let z: f64 = std::env::var("HU_ME").map_or(150.0, |v| v.parse().unwrap());
+    let carry = std::env::var("HU_CARRY").is_ok_and(|v| v == "1");
+    let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+    let me = [0.5, 66.0, 0.5 + z];
+    let laser = crate::lasers::LASERS.iter().find(|l| l.key == "hurricane").unwrap();
+    let ev = crate::strike::plan(laser, &target, true, "minecraft:overworld", 37.0, me, 0);
+    let mut out = String::new();
+    let mut ev = ev;
+    crate::columns::clear();
+    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+    while let Some((t, a)) = ev.pop() {
+        match a {
+            Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| synth_column(x, z, below, above, 65, 0.0, true)),
+            Act::Sound { event, at, volume, pitch } => {
+                let v = at.map_or(volume, |p| volume * (1.0 - ((p[0] - me[0]).hypot(p[2] - me[2]) / 256.0).min(1.0)) as f32);
+                out += &format!("{t:.3} {event} {v:.3} {pitch:.3}\n");
+            }
+            Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
+                ev.extend(job());
+                ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+            }
+            _ => {}
+        }
+    }
+    if carry {
+        let mut c = crate::carry::Carry::new([0.5, 65.0, 0.5]);
+        let mut feet = me;
+        for n in 1..(64 * 20) {
+            let t = f64::from(n) * 0.05;
+            let o = c.tick(t, feet);
+            if let Some(next) = c.target {
+                feet = next;
+            }
+            for (event, volume, pitch) in o.sounds {
+                out += &format!("{t:.3} {event} {volume:.3} {pitch:.3}\n");
+            }
+        }
+    }
+    std::fs::write(std::env::var("HU_OUT").unwrap(), out).unwrap();
 }
 
 #[cfg(test)]

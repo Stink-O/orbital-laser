@@ -1528,24 +1528,6 @@
     ],
     "subtitle": "subtitles.orbital.supercell.after"
   },
-  "hurricane.buildup": {
-    "sounds": [
-      {
-        "name": "orbital:hurricane/buildup",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.hurricane.buildup"
-  },
-  "hurricane.gusts": {
-    "sounds": [
-      {
-        "name": "orbital:hurricane/gusts",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.hurricane.gusts"
-  },
   "hurricane.rain": {
     "sounds": [
       {
@@ -1744,13 +1726,13 @@
     ],
     "subtitle": "subtitles.orbital.hurricane.whoosh"
   },
-  "hurricane.winddown": {
+  "hurricane.wind": {
     "sounds": [
       {
-        "name": "orbital:hurricane/winddown",
+        "name": "orbital:hurricane/wind",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.hurricane.winddown"
+    "subtitle": "subtitles.orbital.hurricane.wind"
   }
 }

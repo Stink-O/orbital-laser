@@ -120,7 +120,7 @@ impl Carry {
         if t >= self.next_whoosh && t < HU_FLING + 2.0 {
             self.n += 1;
             let h = |k: u32| crate::strike::hash01(self.n.wrapping_mul(7) ^ k);
-            out.sounds.push((format!("orbital:hurricane.whoosh{}", 1 + (h(1) * 4.0) as u32 % 4), 0.55 + 0.35 * h(2) as f32, 0.85 + 0.3 * h(3) as f32));
+            out.sounds.push((format!("orbital:hurricane.whoosh{}", 1 + (h(1) * 4.0) as u32 % 4), 0.35 + 0.2 * h(2) as f32, 0.88 + 0.24 * h(3) as f32));
             self.next_whoosh = t + 1.1 + 1.2 * h(4);
         }
         out
