@@ -544,7 +544,8 @@ fn hu_tree_at(i: u32, t: f32, St: f32, Sf: f32, seed: u32, rot: bool) -> HuTree 
             o.m = hu_slerp(hu_rot(ax, ang * HU_SPIN), land, smoothstep(0.0, 1.0, (t - HU_FLING) / max(tl - HU_FLING, 0.1)));
             return o;
         }
-        o.up = o.p.y > hu_ground(o.p.xz) + 1.0;
+        // (one broken apart in the air: its blocks, spread far apart, each gone where it hits the land: `hu_trees`)
+        o.up = o.p.y > hu_ground(o.p.xz) + select(1.0, -60.0, hu_w(base + 6u) < 1.0e8);
     }
     if (!rot) {
         return o;
@@ -639,16 +640,22 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
         let hm = f32((shape >> 5u) & 31u) + 1.0;
         // (a tree's heights are over the target block's top, as the real blocks' are: the middle's ground is gdy0 over it)
         let P = C + tp.p - vec3<f32>(0.0, hu_w(1u), 0.0);
-        let rad = 0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tp.cm - 0.5 * hm);
+        // (breaking apart in the air: its blocks flying apart from its middle, each its own debris, the canopy and the
+        // trunk spreading as they tumble on together)
+        let tbrk = hu_w(base + 6u);
+        let ex = select(1.0, min(1.0 + 0.55 * (t - tbrk), 8.0), t > tbrk);
+        let rad = (0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tp.cm - 0.5 * hm)) * ex;
         let b = dot(P, rd);
         let c = dot(P, P) - rad * rad;
         if (b * b < c || b - rad > (*best).t) {
             continue;
         }
         let tr = hu_tree_at(i, t, St, Sf, seed, true);
-        // (the ray in the tree's own frame: its trunk's foot at 0, its middle at cm)
-        let o = tr.m * (-P) + vec3<f32>(0.0, tr.cm, 0.0);
-        let d = tr.m * rd;
+        // (the ray in the tree's own frame: its trunk's foot at 0, its middle at cm; spread apart, in the frame of its
+        // cells as they stood, each block then a cube 1 / ex across in the middle of its cell)
+        let cmv = vec3<f32>(0.0, tr.cm, 0.0);
+        let o = (tr.m * (-P)) / ex + cmv;
+        let d = (tr.m * rd) / ex;
         let inv = 1.0 / select(d, vec3<f32>(1.0e-6), abs(d) < vec3<f32>(1.0e-6));
         let lo = vec3<f32>(-3.5, 0.0, -3.5);
         let hi = vec3<f32>(3.5, hm, 3.5);
@@ -669,13 +676,34 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
         var axis = select(select(2, 1, near == min(ta.y, tb.y)), 0, near == min(ta.x, tb.x));
         for (var s = 0; s < 44; s = s + 1) {
             let what = hu_tree_cell(base, cell.x, cell.y, cell.z, trunk);
-            if (what > 0u) {
-                let th = select(ts, select(select(tmx.z - tdel.z, tmx.y - tdel.y, axis == 1), tmx.x - tdel.x, axis == 0), s > 0);
+            var hit_here = what > 0u;
+            var th = select(ts, select(select(tmx.z - tdel.z, tmx.y - tdel.y, axis == 1), tmx.x - tdel.x, axis == 0), s > 0);
+            var hax = axis;
+            var cpl = vec3<f32>(0.0);
+            if (hit_here && ex > 1.001) {
+                // (its block, a small cube in the middle of the cell: hit, or on through the cell)
+                let half = 0.5 / ex;
+                let cc = vec3<f32>(cell) + 0.5 - vec3<f32>(3.5, 0.0, 3.5);
+                let ka = (cc - half - o) * inv;
+                let kb = (cc + half - o) * inv;
+                let kn = min(ka, kb);
+                let kf = max(ka, kb);
+                let n0 = max(max(kn.x, kn.y), kn.z);
+                let f0 = min(min(kf.x, kf.y), kf.z);
+                hit_here = n0 <= f0 && n0 > 0.0;
+                th = n0;
+                hax = select(select(2, 1, n0 == kn.y), 0, n0 == kn.x);
+                cpl = (o + d * n0 - (cc - half)) * ex;
+                // (each gone into the land where it comes down)
+                let wq = rd * n0 - C;
+                hit_here = hit_here && wq.y > hu_ground(wq.xz) - 0.5;
+            }
+            if (hit_here) {
                 if (th < (*best).t) {
                     var nl = vec3<f32>(0.0);
-                    if (axis == 0) {
+                    if (hax == 0) {
                         nl.x = -sign(d.x);
-                    } else if (axis == 1) {
+                    } else if (hax == 1) {
                         nl.y = -sign(d.y);
                     } else {
                         nl.z = -sign(d.z);
@@ -684,8 +712,8 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
                     (*best).n = transpose(tr.m) * nl;
                     let kinds = hu_u(base + 5u);
                     (*best).face = hu_face_of(nl);
-                    let pl = fract(o + d * th + vec3<f32>(3.5, 0.0, 3.5));
-                    (*best).uv = select(select(pl.xy, pl.xz, axis == 1), pl.zy, axis == 0);
+                    let pl = select(fract(o + d * th + vec3<f32>(3.5, 0.0, 3.5)), fract(cpl), ex > 1.001);
+                    (*best).uv = select(select(pl.xy, pl.xz, hax == 1), pl.zy, hax == 0);
                     if (what == 1u) {
                         (*best).bk = kinds & 0xFFFFu;
                         (*best).shade = 1.0;
@@ -696,6 +724,9 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
                     }
                     (*best).id = vec2<f32>(-1.0 - f32(i), 0.0);
                 }
+                break;
+            }
+            if (what > 0u && ex <= 1.001) {
                 break;
             }
             if (tmx.x < tmx.y && tmx.x < tmx.z) {

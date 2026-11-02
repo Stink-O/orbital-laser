@@ -375,6 +375,9 @@ pub(super) struct TreeRec {
     pub t_land: f64,
     pub yl: f64,
     pub yaw: f64,
+    /// When it breaks apart in the air (its canopy and trunk flying apart as separate blocks, coming down as the
+    /// field's do, shattered where they hit: no real landing of its own); 1e9 if it stays whole.
+    pub t_break: f64,
 }
 impl TreeRec {
     pub fn words(&self) -> [u32; HU_TW] {
@@ -386,6 +389,7 @@ impl TreeRec {
         let hi = self.spans.iter().filter(|s| s.0 <= s.1).map(|s| s.1).max().unwrap_or(0).max(self.trunk);
         w[4] = u32::from(self.trunk.min(31)) | u32::from(hi.min(31)) << 5;
         w[5] = u32::from(self.wood_bk) | u32::from(self.leaf_bk) << 16;
+        w[6] = (self.t_break as f32).to_bits();
         // (how far the wind has turned things by the time it is torn up: its path's angle counts from it)
         w[7] = (spin_int(self.t_up) as f32).to_bits();
         for (c, s) in self.spans.iter().enumerate() {
@@ -436,7 +440,7 @@ pub(super) struct Landing {
     pub d: [f64; 2],
 }
 pub(super) fn tree_landing(tr: &TreeRec, i: u32, seed: u32, ground: &dyn Fn(f64, f64) -> f64) -> Option<Landing> {
-    if tr.t_up >= HU_FLING {
+    if tr.t_up >= HU_FLING || tr.t_break < 1e8 {
         return None;
     }
     let (pf, v) = tree_fling(tr, i, seed);
@@ -850,6 +854,8 @@ struct Work {
     landed: [usize; 2],
     /// The blocks the edits have taken out of the world, by class (for the tests and the log).
     gone: [u64; 8],
+    /// How many trees are uprooted whole (at most HU_WHOLE: the special few).
+    whole: u32,
     /// How many of the rigid groups are pieces of buildings (the rest are trees).
     pieces: usize,
     gy: i32,
@@ -1105,6 +1111,20 @@ fn hu_column(w: &mut Work, b: &mut Blocks, b2: &mut Blocks, bx: i32, bz: i32, x:
     if !w.terrain {
         return;
     }
+    // a tree's fate (its trunk three or more high, now and then, none within 6 of another, while there is room): most
+    // are shredded where they stand (no record: their logs and leaves go up as the field's blocks); of the rest, a few
+    // uprooted whole (the bigger, nearer the eyewall, the likelier), some snapped at the trunk (the crown and the upper
+    // trunk carried off whole, a jagged stump of 1-4 logs left standing as real blocks), some lifted whole to break
+    // apart in the air
+    let fate = if r < HU_R_LIFT && c.trunk >= 3 && c.wood != NONE && w.trees.len() < HU_NT && chance(x, z, seed, 0x51) < if r < 105.0 { 0.16 } else { 0.1 } && !w.trees.iter().any(|t| (t.x - dx).abs() < 6.0 && (t.z - dz).abs() < 6.0) {
+        let size = (f64::from(c.trunk) + f64::from(c.leaf_hi)) / 16.0;
+        let f = chance(x, z, seed, 0x59);
+        let whole = (0.12 + 0.3 * wind_shape(r) * size.min(1.2)) * if w.whole < HU_WHOLE { 1.0 } else { 0.0 };
+        Some(if f < whole { 0 } else if f < whole + 0.45 { 1 } else { 2 })
+    } else {
+        None
+    };
+    let stump = if fate == Some(1) { (1 + (chance(x, z, seed, 0x5a) * 4.0) as i32).min(i32::from(c.trunk) - 2) } else { 0 };
     // what stands on it, block by block, as far out as the wind takes each kind
     let leaves_all = HU_R_LIFT + 8.0;
     let strip = chance(x, z, seed, 0x52) < 0.6 * (1.0 - (r - leaves_all) / (HU_R_PLANTS - leaves_all));
@@ -1122,14 +1142,16 @@ fn hu_column(w: &mut Work, b: &mut Blocks, b2: &mut Blocks, bx: i32, bz: i32, x:
             }
             _ => (false, false),
         };
-        if take {
-            (if late { &mut *b2 } else { &mut *b }).put(x, z, sg.y0, sg.y1, "minecraft:air", Some(HU_BLOCKS[sg.b as usize].name), false);
-            w.gone[sg.class as usize] += (sg.y1 - sg.y0 + 1) as u64;
+        // (a snapped tree's stump left standing)
+        let y0 = if sg.class == 3 && stump > 0 { sg.y0.max(g + 1 + stump) } else { sg.y0 };
+        if take && y0 <= sg.y1 {
+            (if late { &mut *b2 } else { &mut *b }).put(x, z, y0, sg.y1, "minecraft:air", Some(HU_BLOCKS[sg.b as usize].name), false);
+            w.gone[sg.class as usize] += (sg.y1 - y0 + 1) as u64;
         }
     }
     if r < HU_R_LIFT {
-        // a rigid tree: a trunk three or more high, now and then, none within 6 of another, while there is room
-        if c.trunk >= 3 && c.wood != NONE && w.trees.len() < HU_NT && chance(x, z, seed, 0x51) < if r < 105.0 { 0.18 } else { 0.11 } && !w.trees.iter().any(|t| (t.x - dx).abs() < 6.0 && (t.z - dz).abs() < 6.0) {
+        // a rigid tree (whole, its snapped crown, or one to break apart in the air)
+        if let Some(fate) = fate {
             let mut spans = [(31u8, 0u8); 49];
             let mut leaf = c.leaf;
             for j in 0..7 {
@@ -1149,7 +1171,21 @@ fn hu_column(w: &mut Work, b: &mut Blocks, b2: &mut Blocks, bx: i32, bz: i32, x:
             }
             let leaf = if leaf == NONE { hu_block("minecraft:oak_leaves").unwrap_or(0) } else { leaf };
             let (wood_bk, leaf_bk) = (w.kinds.of(c.wood, c.grass, c.foliage), w.kinds.of(leaf, c.grass, c.foliage));
-            let mut tr = TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood_bk, leaf_bk, wood: c.wood, leaf, spans, t_land: 1e9, yl: 0.0, yaw: 0.0 };
+            let mut tr = TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood_bk, leaf_bk, wood: c.wood, leaf, spans, t_land: 1e9, yl: 0.0, yaw: 0.0, t_break: 1e9 };
+            match fate {
+                0 => w.whole += 1,
+                // (snapped: what is over the stump, its foot the stump's top)
+                1 => {
+                    let st = stump as u8;
+                    tr.trunk -= st;
+                    tr.gdy += f64::from(stump);
+                    for sp in &mut tr.spans {
+                        *sp = if sp.0 > sp.1 || sp.1 < st { (31, 0) } else { (sp.0.saturating_sub(st), sp.1 - st) };
+                    }
+                }
+                // (to break apart in the air some seconds after it is lifted, before the fling)
+                _ => tr.t_break = (t + 2.5 + 4.5 * chance(x, z, seed, 0x5b)).min(HU_FLING - 1.0).max(t + 1.5),
+            }
             land_it(w, &mut tr, bx, bz);
             w.trees.push(tr);
             let d = (f64::from(x) + 0.5 - w.me[0]).hypot(f64::from(z) + 0.5 - w.me[2]);
@@ -1181,6 +1217,8 @@ fn hu_column(w: &mut Work, b: &mut Blocks, b2: &mut Blocks, bx: i32, bz: i32, x:
 
 /// How many of the rigid groups can be pieces of buildings (the rest of HU_NT left for the trees).
 const HU_PIECES: usize = 48;
+/// At most this many trees uprooted whole.
+const HU_WHOLE: u32 = 36;
 /// A piece of a building torn off whole where column (x, z) stands (`c`), lifted at `t_up` with its walls: what was
 /// built on the 7 by 7 columns round it, below their roofs (each column's runs of building from its lowest to its
 /// highest under the roof, over this column's ground), all of its commonest whole block, drawn by the pass as a rigid
@@ -1225,7 +1263,7 @@ fn house_piece(w: &mut Work, bx: i32, bz: i32, x: i32, z: i32, c: Col, t_up: f64
     }
     let bk = w.kinds.of(mat, c.grass, c.foliage);
     let (dx, dz) = (f64::from(x - bx), f64::from(z - bz));
-    let mut tr = TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up, trunk: 0, wood_bk: bk, leaf_bk: bk, wood: mat, leaf: mat, spans, t_land: 1e9, yl: 0.0, yaw: 0.0 };
+    let mut tr = TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up, trunk: 0, wood_bk: bk, leaf_bk: bk, wood: mat, leaf: mat, spans, t_land: 1e9, yl: 0.0, yaw: 0.0, t_break: 1e9 };
     land_it(w, &mut tr, bx, bz);
     w.trees.push(tr);
     w.pieces += 1;
@@ -1644,6 +1682,7 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         rubble_at: Default::default(),
         landed: [0; 2],
         gone: [0; 8],
+        whole: 0,
         pieces: 0,
         gy: by + 1,
         terrain,
@@ -2150,7 +2189,7 @@ mod tests {
         assert!(hu_in_air(20.0) < hu_in_air(30.0) && hu_in_air(30.0) <= hu_in_air(40.0) + 1.0);
         // (the table: everything where the pass reads it, under the game's limit)
         assert!(HU_PAL + HU_NR * HU_PN <= HU_T && HU_T + HU_TW * HU_NT == HU_G && HU_WORDS <= 1 << 18);
-        let tr = TreeRec { x: 1.0, z: 2.0, gdy: 0.0, t_up: 20.0, trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49], t_land: 50.5, yl: -2.0, yaw: 1.25 };
+        let tr = TreeRec { x: 1.0, z: 2.0, gdy: 0.0, t_up: 20.0, trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49], t_land: 50.5, yl: -2.0, yaw: 1.25, t_break: 1e9 };
         let w = tr.words();
         assert_eq!((f32::from_bits(w[25]), f32::from_bits(w[26]), f32::from_bits(w[27])), (50.5, -2.0, 1.25));
         assert_eq!(w[4] & 31, 6);
@@ -2234,7 +2273,7 @@ mod tests {
         assert!((f64::from(t_up) - f).abs() < 6.0, "torn up at {t_up}, its front at {f}");
         assert!(first.1[4] & 31 >= 3, "a trunk");
         // (and its path: up off the land, round the eyewall, flung out and back down before the end)
-        let tr = TreeRec { x: f64::from(x), z: f64::from(z), gdy: 0.0, t_up: f64::from(t_up), trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49], t_land: 1e9, yl: 0.0, yaw: 0.0 };
+        let tr = TreeRec { x: f64::from(x), z: f64::from(z), gdy: 0.0, t_up: f64::from(t_up), trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49], t_land: 1e9, yl: 0.0, yaw: 0.0, t_break: 1e9 };
         let g = |_: f64, _: f64| 0.0;
         let mid = tree_at(&tr, 0, 37, 40.0, &g);
         assert!(mid.up && mid.p[1] > 20.0 && mid.p[0].hypot(mid.p[2]) > 50.0, "{:?}", mid.p);
@@ -2520,6 +2559,39 @@ mod tests {
 
     /// A strike over the target (0 64 0) played through, the land answered by `answer`: the pass's table at the end,
     /// and every edit with when it is due.
+    #[test]
+    fn hurricane_gives_trees_a_mix_of_fates_and_leaves_the_snapped_ones_stumps() {
+        // (a dense wood: most trees shredded where they stand (no record), a few uprooted whole, some snapped at the
+        // trunk (their stump of 1-4 logs left as real blocks, their record's foot on its top), some to break apart in
+        // the air (no real landing of their own))
+        let (table, edits) = table_and_edits(&|x, z, b, a| synth_column(x, z, b, a, 65, 0.0, true));
+        let n = f32::from_bits(table[0]) as usize;
+        let (mut whole, mut snapped, mut broken) = (0, 0, 0);
+        let fills: Vec<String> = edits.iter().flat_map(|e| e.1.as_fills()).collect();
+        for i in 0..n {
+            let w = &table[HU_T + HU_TW * i..HU_T + HU_TW * (i + 1)];
+            let f = |k: usize| f32::from_bits(w[k]);
+            if w[4] & 31 == 0 {
+                continue;
+            }
+            if f(6) < 1e8 {
+                broken += 1;
+                assert!(f(6) > f(3) && f(6) < HU_FLING as f32 && f(25) > 1e8, "tree {i}: breaks at {} (up at {})", f(6), f(3));
+            } else if f(2) >= 1.0 {
+                snapped += 1;
+                // (its trunk's logs taken only over the stump)
+                let (x, z, stump) = (f(0).floor() as i32, f(1).floor() as i32, f(2) as i32);
+                let logs: Vec<&String> = fills.iter().filter(|e| e.starts_with(&format!("fill {x} ")) && e.contains(&format!(" {z} {x} ")) && e.contains("minecraft:air replace") && e.contains("_log")).collect();
+                assert!(logs.iter().all(|e| e.split_whitespace().nth(2).unwrap().parse::<i32>().unwrap() >= 65 + stump), "tree {i}: its stump taken: {logs:?}");
+            } else {
+                whole += 1;
+            }
+        }
+        eprintln!("{n} records: {whole} uprooted whole, {snapped} snapped, {broken} to break apart in the air");
+        assert!(whole > 0 && snapped > 0 && broken > 0, "{whole} {snapped} {broken}");
+        assert!(whole <= HU_WHOLE as usize && whole < snapped + broken);
+    }
+
     fn table_and_edits(answer: &dyn Fn(i32, i32, u32, u32) -> Option<(i32, Vec<&'static str>)>) -> (Vec<u32>, Vec<(f32, Blocks)>) {
         crate::columns::clear();
         let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
@@ -2564,8 +2636,8 @@ mod tests {
                 let v = (w[8 + c / 3] >> (10 * (c % 3))) & 1023;
                 *sp = ((v & 31) as u8, (v >> 5) as u8);
             }
-            let tr = TreeRec { x: f(0), z: f(1), gdy: f(2), t_up: f(3), trunk: (w[4] & 31) as u8, wood_bk: 0, leaf_bk: 0, wood: 0, leaf: 0, spans, t_land: f(25), yl: f(26), yaw: f(27) };
-            if tr.t_up >= HU_FLING {
+            let tr = TreeRec { x: f(0), z: f(1), gdy: f(2), t_up: f(3), trunk: (w[4] & 31) as u8, wood_bk: 0, leaf_bk: 0, wood: 0, leaf: 0, spans, t_land: f(25), yl: f(26), yaw: f(27), t_break: f(6) };
+            if tr.t_up >= HU_FLING || tr.t_break < 1e8 {
                 assert!(tr.t_land > 1e8);
                 continue;
             }
@@ -2576,8 +2648,9 @@ mod tests {
             let d = [tr.yaw.cos(), tr.yaw.sin()];
             let h = v[0].hypot(v[2]);
             assert!((d[0] - v[0] / h).abs() < 1e-3 && (d[1] - v[2] / h).abs() < 1e-3, "tree {i}: yaw");
-            // (flat land at 65, the ground the strike leaves: never above it, dug at most three)
-            assert!(tr.yl <= 0.0 && tr.yl >= -3.0 && tr.yl.fract() == 0.0, "tree {i}: yl {}", tr.yl);
+            // (flat land at 65, the ground the strike leaves: dug at most three, or over what it leaves standing (a stump, a
+            // tree past the wind's reach) where it comes down on it)
+            assert!(tr.yl <= 16.0 && tr.yl >= -3.0 && tr.yl.fract() == 0.0, "tree {i}: yl {}", tr.yl);
             // (its trunk's foot: the block at foot + d * 0.5)
             let cm = 0.6 * f64::from(tr.trunk.max(3));
             let m = [pf[0] + v[0] * s, pf[2] + v[2] * s];
