@@ -548,29 +548,39 @@ fn sc_rain_lines(rd: vec3<f32>, cq: vec3<f32>, vel: vec3<f32>, near: f32, time: 
             }
             last = g;
             let hb = pcg(bitcast<u32>(i32(g.x)) * 0x9E3779B1u ^ pcg(bitcast<u32>(i32(g.y)) * 0x85EBCA6Bu ^ u32(k) * 0x27D4EB2Fu));
-            if (f32(hb & 0xFFFFu) / 65535.0 > 0.4 + 0.12 * fk) {
+            // (in gusty sheets: the rain thicker and thinner in broad patches that drift past with the wind)
+            let gust = vnoise(g * cell * (1.0 / 38.0) + vec2<f32>(0.0, time * 0.9 * spd / 38.0));
+            if (f32(hb & 0xFFFFu) / 65535.0 > (0.4 + 0.12 * fk) * (0.25 + 1.5 * gust * gust)) {
                 continue;
             }
             let hc = pcg(hb);
-            let p = (g + vec2<f32>(0.15, 0.15) + 0.7 * vec2<f32>(f32(hc & 0xFFFFu), f32(hc >> 16u)) / 65535.0) * cell;
+            var p = (g + vec2<f32>(0.15, 0.15) + 0.7 * vec2<f32>(f32(hc & 0xFFFFu), f32(hc >> 16u)) / 65535.0) * cell;
             // (where the ray passes nearest the line, and how near)
-            let ts = clamp(select(0.5 * (ta + tb), dot(p - c2, r2) / rr, rr > 1.0e-6), ta, tb);
+            var ts = clamp(select(0.5 * (ta + tb), dot(p - c2, r2) / rr, rr > 1.0e-6), ta, tb);
+            // (each line a little off the wind's way: tilted its own way across it)
+            let tilt = (vec2<f32>(f32((hc >> 3u) & 255u), f32((hc >> 11u) & 255u)) / 255.0 - 0.5) * 0.14;
+            p = p + tilt * (aw0 + rw * ts);
+            ts = clamp(select(0.5 * (ta + tb), dot(p - c2, r2) / rr, rr > 1.0e-6), ta, tb);
             let d = length(c2 + r2 * ts - p);
             let px = d * focal / ts;
-            let wpx = 0.7 + 1.6 / (1.0 + fk);
+            let wpx = 0.55 + 1.1 / (1.0 + fk);
             if (px > 3.0 * wpx) {
                 continue;
             }
             // (the drops along it: is there one where the ray passes, over the stretch of the line the ray is that near)
             let hd = pcg(hc ^ 0x51u);
             let period = cell * (1.6 + 2.4 * f32(hd & 255u) / 255.0);
-            let len = cell * (0.25 + 0.35 * f32((hd >> 8u) & 255u) / 255.0) + spd * 0.006;
+            let hl = f32((hd >> 8u) & 255u) / 255.0;
+            let len = (cell * (0.15 + 0.9 * hl * hl) + spd * 0.008) / (1.0 + 0.3 * fk);
             let half_t = min(wpx * ts / focal / max(sqrt(rr), 1.0e-3), 0.5 * (tb - ta));
             let x0 = (aw0 + rw * (ts - half_t) - spd * (0.9 + 0.2 * f32((hd >> 16u) & 255u) / 255.0) * time) / period + f32(hd >> 24u) / 255.0;
             let x1 = x0 + 2.0 * abs(rw) * half_t / period;
             let lf = len / period;
-            let on = select(step(fract(x0), lf), 1.0, floor(x1) != floor(x0) || x1 - x0 >= 1.0);
-            sum = sum + on * exp(-px * px / (wpx * wpx)) * (0.55 - 0.06 * fk) * (0.6 + 0.8 * f32(hc & 255u) / 255.0);
+            // (its head bright, its tail fading behind it)
+            let fx = fract(x0);
+            let on = select(step(fx, lf) * (0.25 + 0.75 * smoothstep(0.0, lf, fx)), 0.7, floor(x1) != floor(x0) || x1 - x0 >= 1.0);
+            let hb2 = f32(hc & 255u) / 255.0;
+            sum = sum + on * exp(-px * px / (wpx * wpx)) * (0.6 - 0.07 * fk) * (0.3 + 1.2 * hb2 * hb2);
         }
     }
     return sum;
