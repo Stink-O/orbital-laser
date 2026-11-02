@@ -136,6 +136,11 @@ fn hu_fade(t: f32) -> f32 {
 fn hu_eye(t: f32) -> f32 {
     return smoothstep(10.0, HU_EYE_T + 3.0, t) * (1.0 - 0.9 * smoothstep(HU_FLING + 1.0, HU_CLEAR + 3.0, t));
 }
+// How soft the cloud's edges are: wispy while it gathers (to 12 s, crisp by 17) and again as it breaks up (from the
+// fling), the mature storm's solid deck in between.
+fn hu_soft(t: f32) -> f32 {
+    return max(1.0 - smoothstep(10.0, 17.0, t), smoothstep(HU_FLING, HU_FLING + 7.0, t));
+}
 fn hu_inten(t: f32) -> f32 {
     return smoothstep(9.0, 30.0, t) * (1.0 - 0.45 * smoothstep(HU_FLING, HU_CLEAR + 4.0, t));
 }
@@ -309,25 +314,47 @@ fn hu_unpack(id: vec2<f32>) -> vec3<i32> {
 
 // Ray rd (from the eye) against the block in cell (k, iu, iv) at `t`, the middle at C (off the eye): its hit, if
 // nearer than `best`. St: the wind's sum to now, Sf: to the fling (the climb stops there).
+// Each column of a ring's cells (ring k, round it iu) its own: how fast it climbs (a share of the ring's rise) and how
+// far its cells sit up it (in cells), so no row of blocks lines up with the next column's, nor stays in step with it.
+fn hu_column(k: i32, iu: i32, seed: u32) -> vec2<f32> {
+    let hc = pcg(u32(k) * 0x27D4EB2Fu ^ pcg(bitcast<u32>(iu) * 0x165667B1u ^ seed));
+    return vec2<f32>(0.65 + 0.7 * f32(hc & 0xFFFFu) / 65535.0, f32(hc >> 16u) / 65535.0);
+}
+// The block (or two) in cell (k, iu, iv): a cell holds one as its ring's density says, thinned and thickened in
+// patches, and now and then two.
 fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f32, Sf: f32, seed: u32, best: ptr<function, HuHit>) {
     let rk = hu_ring_r(k);
     let h = pcg(u32(k) * 0x9E3779B1u ^ pcg(bitcast<u32>(iu) ^ pcg(bitcast<u32>(iv) * 0x85EBCA6Bu ^ seed)));
     let tfr = hu_front(rk);
-    if (t < tfr || t > HU_FLING + 8.0 || f32(h & 0xFFFFu) * (1.0 / 65535.0) >= hu_ring_dens(rk)) {
+    let clump = 0.3 + 1.4 * vnoise(vec2<f32>(f32(iu) * 0.11 + f32(k) * 3.7, f32(iv) * 0.15 + f32(k) * 1.3));
+    if (t < tfr || t > HU_FLING + 8.0 || f32(h & 0xFFFFu) * (1.0 / 65535.0) >= hu_ring_dens(rk) * clump) {
         return;
     }
+    hu_block_one(rd, C, k, iu, iv, t, St, Sf, seed, h, best);
+    if (((h >> 16u) & 255u) < 45u) {
+        hu_block_one(rd, C, k, iu, iv, t, St, Sf, seed, pcg(h ^ 0xA511E9B3u), best);
+    }
+}
+fn hu_block_one(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f32, Sf: f32, seed: u32, h: u32, best: ptr<function, HuHit>) {
+    let rk = hu_ring_r(k);
+    let tfr = hu_front(rk);
     let h2 = pcg(h);
     let h3 = pcg(h2 ^ 0x51u);
+    let h4 = pcg(h3 ^ 0x77u);
     let nu = floor(TAU * rk / HU_CELL);
-    let ju = (f32(h2 & 255u) / 255.0 - 0.5) * 0.4;
-    let jv = (f32((h2 >> 8u) & 255u) / 255.0 - 0.5) * 0.4;
-    let jr = (f32((h2 >> 16u) & 255u) / 255.0 - 0.5) * 7.0;
+    // (anywhere in its cell, wobbling about there as it goes, its own way out from the ring's middle: never a lattice)
+    let wf = 1.0 + 1.5 * f32(h4 & 255u) / 255.0;
+    let wp = f32((h4 >> 8u) & 255u) * 0.0246;
+    let ju = (f32(h2 & 255u) / 255.0 - 0.5) * 0.56 + 0.12 * sin(wf * t + wp);
+    let jv = (f32((h2 >> 8u) & 255u) / 255.0 - 0.5) * 0.56 + 0.12 * sin(1.3 * wf * t + 2.0 * wp);
+    let jr = (f32((h2 >> 16u) & 255u) / 255.0 - 0.5) * 8.0 + 0.8 * sin(0.7 * wf * t + 3.0 * wp);
     let pick = h2 >> 24u;
-    var size = select(select(1.5, 0.55, pick < 230u), 1.0, pick < 166u);
+    var size = select(select(1.5, 0.55, pick < 230u), 1.0, pick < 166u) * (0.8 + 0.4 * f32((h4 >> 16u) & 255u) / 255.0);
     let fl = hu_flung(t);
+    let cv = hu_column(k, iu, seed);
     let a = HU_SPIN * hu_omega(rk) * St + (f32(iu) + 0.5 + ju) * TAU / nu;
-    let y0 = (f32(iv) + 0.5 + jv) * HU_CELL;
-    let y = hu_ring_rise(rk) * Sf + y0 + fl.y;
+    let y0 = (f32(iv) + 0.5 + jv + cv.y) * HU_CELL;
+    let y = cv.x * hu_ring_rise(rk) * Sf + y0 + fl.y;
     // (out along the eyewall's slope as it climbs: the blocks follow its inner face up, the eye clear of them)
     let r = rk + jr + fl.x + hu_flare(y - fl.y, t);
     let pc = vec2<f32>(cos(a), sin(a)) * r;
@@ -335,7 +362,7 @@ fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f
     // cells over the land as the front came are left empty); thinning out at the top of its ring, in the eyewall's
     // cloud; as it falls after the fling, shattered to dust where it hits)
     let g = hu_ground(pc);
-    if (hu_ring_rise(rk) * hu_spin_int(tfr) + y0 > g - 0.5) {
+    if (cv.x * hu_ring_rise(rk) * hu_spin_int(tfr) + y0 > g - 0.5) {
         return;
     }
     let yr = y - g;
@@ -456,7 +483,8 @@ fn hu_debris(rd: vec3<f32>, C: vec3<f32>, t_max: f32, t: f32, St: f32, Sf: f32, 
         let nu = floor(TAU * rk / HU_CELL);
         let ph = HU_SPIN * hu_omega(rk) * St;
         let iu = i32(floor(fract((atan2(q.z, q.x) - ph) / TAU) * nu));
-        let iv = i32(floor((q.y - hu_ring_rise(rk) * Sf - fl.y) / HU_CELL));
+        let cv = hu_column(k, iu, seed);
+        let iv = i32(floor((q.y - cv.x * hu_ring_rise(rk) * Sf - fl.y) / HU_CELL - cv.y));
         let cell = vec3<i32>(k, iu, iv);
         if (any(cell != last)) {
             last = cell;
@@ -680,12 +708,20 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
             var th = select(ts, select(select(tmx.z - tdel.z, tmx.y - tdel.y, axis == 1), tmx.x - tdel.x, axis == 0), s > 0);
             var hax = axis;
             var cpl = vec3<f32>(0.0);
+            var mc = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
             if (hit_here && ex > 1.001) {
-                // (its block, a small cube in the middle of the cell: hit, or on through the cell)
+                // (its block, a small cube somewhere in its cell (each its own spot, never a lattice), tumbling its own
+                // way: hit, or on through the cell)
                 let half = 0.5 / ex;
-                let cc = vec3<f32>(cell) + 0.5 - vec3<f32>(3.5, 0.0, 3.5);
-                let ka = (cc - half - o) * inv;
-                let kb = (cc + half - o) * inv;
+                let hcel = pcg(u32(cell.x + 9 * cell.z + 81 * cell.y) ^ pcg(i * 0x2545F491u ^ seed));
+                let jit = (vec3<f32>(f32(hcel & 1023u), f32((hcel >> 10u) & 1023u), f32((hcel >> 20u) & 1023u)) / 1023.0 - 0.5) * (1.0 - 2.0 * half) * 0.95;
+                let cc = vec3<f32>(cell) + 0.5 - vec3<f32>(3.5, 0.0, 3.5) + jit;
+                mc = hu_rot(hu_unit(pcg(hcel)), (1.0 + 2.5 * f32(hcel >> 28u) / 15.0) * (t - tbrk));
+                let oc = mc * (o - cc);
+                let dc = mc * d;
+                let ic = 1.0 / select(dc, vec3<f32>(1.0e-6), abs(dc) < vec3<f32>(1.0e-6));
+                let ka = (vec3<f32>(-half) - oc) * ic;
+                let kb = (vec3<f32>(half) - oc) * ic;
                 let kn = min(ka, kb);
                 let kf = max(ka, kb);
                 let n0 = max(max(kn.x, kn.y), kn.z);
@@ -693,23 +729,25 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
                 hit_here = n0 <= f0 && n0 > 0.0;
                 th = n0;
                 hax = select(select(2, 1, n0 == kn.y), 0, n0 == kn.x);
-                cpl = (o + d * n0 - (cc - half)) * ex;
+                cpl = (oc + dc * n0 + half) * ex;
                 // (each gone into the land where it comes down)
                 let wq = rd * n0 - C;
                 hit_here = hit_here && wq.y > hu_ground(wq.xz) - 0.5;
             }
             if (hit_here) {
                 if (th < (*best).t) {
+                    // (the ray's way in the block's own frame: the tree's, or, flying apart, its own)
+                    let dd = select(d, mc * d, ex > 1.001);
                     var nl = vec3<f32>(0.0);
                     if (hax == 0) {
-                        nl.x = -sign(d.x);
+                        nl.x = -sign(dd.x);
                     } else if (hax == 1) {
-                        nl.y = -sign(d.y);
+                        nl.y = -sign(dd.y);
                     } else {
-                        nl.z = -sign(d.z);
+                        nl.z = -sign(dd.z);
                     }
                     (*best).t = th;
-                    (*best).n = transpose(tr.m) * nl;
+                    (*best).n = transpose(tr.m) * (transpose(mc) * nl);
                     let kinds = hu_u(base + 5u);
                     (*best).face = hu_face_of(nl);
                     let pl = select(fract(o + d * th + vec3<f32>(3.5, 0.0, 3.5)), fract(cpl), ex > 1.001);
@@ -901,7 +939,10 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     let Bb = B + 9.0 * (nz - 0.5);
     // (the storms it gathers from towering, narrowing as they rise: cumulus, not prisms)
     let hf = saturate((q.y - B) / max(T - B, 1.0));
-    var body = min(min((q.y - Bb) / 6.0, (Tb - q.y) / 5.0), (cc.cov + (0.3 + 2.6 * ero) * (nz - 0.5) - 0.3 - 0.12 * hf * hf * (1.0 - org) - 0.95 * ero) * (6.0 + 8.0 * ero));
+    // (soft-edged while it gathers and as it breaks up: its edges ramped wide, in wisps)
+    let sft = hu_soft(t);
+    let wide = 1.0 + 3.0 * sft;
+    var body = min(min((q.y - Bb) / (6.0 * wide), (Tb - q.y) / (5.0 * wide)), (cc.cov + (0.3 + 1.6 * ero) * (nz - 0.5) - 0.3 - 0.12 * hf * hf * (1.0 - org) - 0.95 * ero) * 6.0 / wide);
     // ---- the eyewall: a towering ring of cloud from the land to its top, sloping out as it rises, in tall towers,
     // wound with striations that spiral up it the way it turns
     let win = hu_eyeface(q, p2, t);
@@ -927,7 +968,7 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     // (the eyewall collapsing once the winds drop, shredding as it goes)
     let wero = smoothstep(HU_FLING, HU_CLEAR, t);
     let rawn = max(wall + (1.2 + 2.5 * wero) * (nz - 0.5) - wero * 9.0, body) - 6.0 * (1.0 - smoothstep(0.0, 1.5, t));
-    let raw = rawn - 9.0 * clear;
+    let raw = rawn + sft * 1.6 * (nz - 0.5) - 9.0 * clear;
     // (in the clear eye, how far off its face is: the march strides over it, never through the face)
     // (the clear eye's own edge left out of it: near the face the march steps as finely as in the cloud)
     o.raw = select(rawn * 0.4, min(rawn * 0.4, -0.06 * (er - r) - 0.05), r < er - 2.0 && eye > 0.5);
@@ -1274,7 +1315,8 @@ fn hu_volume(rd: vec3<f32>, len: f32, dlen: f32, C: vec3<f32>, t: f32, St: f32, 
                     let fd = q - flv.xyz;
                     c = c + flc * flv.w / (1.0 + dot(fd, fd) * (1.0 / 4500.0)) * mix(1.0, 0.35, exp(-deep / 60.0));
                 }
-                let ext = dn.d * 0.35 * dt;
+                // (thin, translucent wisps while it gathers and breaks up; the mature storm solid)
+                let ext = dn.d * mix(0.35, 0.09, hu_soft(t)) * dt;
                 let al = 1.0 - exp(-ext);
                 hu_over(&acc, c, al);
                 lc = c;

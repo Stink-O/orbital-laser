@@ -185,6 +185,9 @@ VIEWS = {
     # close on the cloud: its gathering storms from 250 off on the ground, the deck from 700 up over its bands
     "hucells": "cx=0 cy=67 cz=250 lx=0.5 ly=200 lz=-150 flat=1 trees=1 fov=70 reach=250",
     "hudeck": "cx=600 cy=700 cz=600 lx=300 ly=200 lz=200 flat=1 fov=60 reach=300",
+    # looking along the debris field at the eyewall's foot from 180 out and from 110, as a player sees it
+    "hufield": "cx=0 cy=68 cz=180 lx=0.5 ly=130 lz=0.5 flat=1 trees=1 hustrip=1 fov=55 reach=180",
+    "hufieldnear": "cx=60 cy=70 cz=95 lx=-20 ly=110 lz=0 flat=1 trees=1 hustrip=1 fov=60 reach=110",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
