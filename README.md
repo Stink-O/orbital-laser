@@ -384,6 +384,10 @@ Orbital Laser is under the MIT License (`LICENSE`). Third-party notes are in `NO
 [Horizon](https://github.com/ludovic111/horizon) by Ludovic and contributors (MIT), and the Orbital Laser build of Horizon
 is a fork of it.
 
+**Java Edition port:** [@Ramingen](https://github.com/Ramingen) is porting Orbital Laser to Minecraft Java Edition,
+starting with Fabric ([#6](https://github.com/Stink-O/orbital-laser/pull/6)), with NeoForge and Forge to follow. The work
+lives on the [`java` branch](https://github.com/Stink-O/orbital-laser/tree/java) until it's done.
+
 Minecraft is a trademark and work of Mojang Studios and Microsoft. Orbital Laser is an independent fan project, not made
 by or affiliated with Mojang, Microsoft or Horizon's author, and it contains none of their code, textures or sounds. You
 need your own copy of Minecraft.
