@@ -844,13 +844,15 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     let cdo = cc.cdo;
     let B = cc.B;
     let T = cc.T;
-    var body = min(min((q.y - B) / 16.0, (T - q.y) / 12.0), (cc.cov - 0.3) * 4.0);
+    // (the storms it gathers from towering, narrowing as they rise: cumulus, not prisms)
+    let hf = saturate((q.y - B) / max(T - B, 1.0));
+    var body = min(min((q.y - B) / 16.0, (T - q.y) / 12.0), (cc.cov - 0.3 - 0.3 * hf * hf * (1.0 - org)) * 4.0);
     // ---- the outflow: a thin veil of cirrus fanned out over it all from the top, streaked in long spiral filaments
     // turning the other way (it flows out anticyclonically), reaching out over the bands
     let ci = vnoise(rot2(pp, -HU_SPIN * 6.0 * lr) * (1.0 / 26.0) + vec2<f32>(4.0, 4.0));
     let to = T + 6.0 + 22.0 * smoothstep(300.0, 1100.0, r);
     let veil = min(min((q.y - (to - 14.0)) / 6.0, (to + 8.0 - q.y) / 6.0), ((900.0 + 200.0 * warp) * org - r) / 160.0) + 2.2 * (ci - 0.62);
-    body = max(body, veil * smoothstep(8.0, 20.0, t));
+    body = max(body, mix(-6.0, veil, smoothstep(8.0, 20.0, t)));
     // ---- the eyewall: a towering ring of cloud from the land to its top, sloping out as it rises, in tall towers,
     // wound with striations that spiral up it the way it turns
     let win = hu_eyeface(q, p2, t);
@@ -865,7 +867,8 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     var wall = min(min((r - win) / 4.0, (wout - r) / 14.0), min((q.y + 4.0) / 6.0, (wtop - q.y) / 14.0));
     let stri = 0.5 + 0.5 * sin(a2 * 14.0 + q.y * 0.05 * HU_SPIN + 2.0 * warp);
     let tow = vnoise(vec2<f32>(p2.x * (1.0 / 26.0) + q.y * (1.0 / 45.0), p2.y * (1.0 / 26.0)));
-    wall = (wall + 0.5 * (stri - 0.5) + 1.3 * (tow - 0.5)) * wk;
+    // (none before it forms: out of the cloud, not at its edge, so no haze of noise round it)
+    wall = mix(-6.0, wall + 0.5 * (stri - 0.5) + 1.3 * (tow - 0.5), wk);
     // ---- the eye: clear, opening from a pinhole as the storm organises, its edge sharp; filling in as it dies
     let s = select(1.0 / 46.0, 1.0 / 32.0, fine);
     // (the low cloud racing round with the wind, the high turning gently: its top streaked, never scratched)
