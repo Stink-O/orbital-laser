@@ -167,7 +167,8 @@ The wheel's left column has the strike options: SEED (a field: the last strike's
 at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
-switch under them). Nothing goes over the hotbar but the designator's `NO TARGET IN RANGE` (`actionbar` in lib.rs;
+switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,
+`DESIGNATING …` with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
 the strikes have no messages; firing during a strike only clicks). With the Rod loaded or pointed at, an IMPACT FX row under the ring (OFF, KANADA, BLACK FLASH,
 CINEMATIC). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound` or `/orbital nukesound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
