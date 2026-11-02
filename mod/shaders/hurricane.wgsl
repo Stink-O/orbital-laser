@@ -185,7 +185,8 @@ fn hu_ground(q: vec2<f32>) -> f32 {
     let i1 = min(i0 + 1u, HU_GR - 1u);
     let a0 = u32(ai + f32(HU_GA)) % HU_GA;
     let a1 = (a0 + 1u) % HU_GA;
-    return mix(mix(hu_g_at(i0, a0), hu_g_at(i0, a1), fa), mix(hu_g_at(i1, a0), hu_g_at(i1, a1), fa), fr);
+    // (the table's heights are over the target block's top; the pass's middle is over the middle's ground: gdy0 over it)
+    return mix(mix(hu_g_at(i0, a0), hu_g_at(i0, a1), fa), mix(hu_g_at(i1, a0), hu_g_at(i1, a1), fa), fr) - hu_w(1u);
 }
 
 // ---- the blocks flying round the eyewall (hurricane.rs's ring_*; keep in step) ---------------------------------------
@@ -636,7 +637,8 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, on
         let shape = hu_u(base + 4u);
         let trunk = i32(shape & 31u);
         let hm = f32((shape >> 5u) & 31u) + 1.0;
-        let P = C + tp.p;
+        // (a tree's heights are over the target block's top, as the real blocks' are: the middle's ground is gdy0 over it)
+        let P = C + tp.p - vec3<f32>(0.0, hu_w(1u), 0.0);
         let rad = 0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tp.cm - 0.5 * hm);
         let b = dot(P, rd);
         let c = dot(P, P) - rad * rad;
