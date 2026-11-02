@@ -125,6 +125,11 @@ laser, command, capability and timing). This file is the short, factual version 
   repacked when `atlas.resources-version` changes; the pass samples bindings 8 and 9), the average colour as the
   fallback and the far LOD. Offscreen, `tools/hu_atlas.py` makes a stand-in for the sprite arrays from the player's
   prepared resources (tools/preview binds it as `PREVIEW_ATLAS`; the tests' fake atlas reads `HU_ATLAS_JSON`).
+  **Trees meet a mix of fates** (by hash, the wind's strength and the tree's size): most are shredded where they stand
+  (their logs and leaves go up as the field's blocks); of those given a record, a few uprooted whole (`HU_WHOLE`, 36,
+  the bigger nearer the eyewall), some snapped at the trunk (the crown and upper trunk carried off whole from the top
+  of a stump of 1-4 logs the edits spare), some lifted whole to break apart in the air (`t_break`, word 6: the pass
+  spreads their blocks apart as they tumble on, each gone where it hits the land; no real landing of their own).
   **A block's whole life, each handover seamless:** up to `HU_NT` (128) rigid voxel groups, trees and (up to 48)
   pieces of buildings lifted whole where they stood (`TreeRec`: trunk, 7x7 spans; path `tree_at`, mirrored by the
   pass's `hu_tree_at`); the field of blocks round the eyewall in 13 rings of 3-block cells (`ring_*`, the pass's
@@ -149,8 +154,15 @@ laser, command, capability and timing). This file is the short, factual version 
   had seen them fall (a player flying when picked up isn't let go for that alone), or they steer hard against it for
   a quarter of a second (raised fly speed); ticks held still while chunks load count for neither. Free, they are left
   alone while they fly; standing on the land again for a second where the wind still blows, they are picked up
-  again. Rain close by is drawn in the world round the camera (six shells, a whole number of cells
-  round each, slanted by the wind there; none in the eye). The pass's FAST stage finds each 2x2's block or tree at
+  again. Rain close by is drawn in the world (`hu_rain_lines`, the Supercell's `sc_rain_lines` the same): drops
+  strung along lines in the way they fall (down, and blown by the wind where the camera is), the lines' feet on a grid
+  across that way, four layers out from the camera on coarser grids, only the cells the ray crosses tried, so no
+  direction is special (never shells round the camera: they converge on the points overhead and underfoot); none in
+  the eye. The cloud is solid: its 3D noise displaces its surfaces (tops, bases, edges) rather than thinning its body,
+  the high cloud's noise turning all of a piece (no brushed stripes), every stride of the march jittered per pixel
+  (white noise: grain, never slices, contours or sheets). The storms it gathers from condense from their strongest
+  cores; as it breaks up the eyewall collapses from the fling, the moat fills, and the cloud is eaten from its edges
+  and top, shredding. The pass's FAST stage finds each 2x2's block or tree at
   half size (`hu_pack`, in `half_extra.zw`) and the join tries them again sharp; keep what the cloud's march holds in
   hand small (the GPU's occupancy): it takes the brightest flash alone. Preview views `huorbit`, `hutop`, `hueyeup`,
   `hueyemid` (and the older `hu*`); `hu_write_village` (ignored) writes a village's table and its standing blocks
