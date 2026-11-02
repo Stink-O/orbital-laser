@@ -870,7 +870,9 @@ fn hu_den(q: vec3<f32>, t: f32, St: f32, mode: i32) -> HuDen {
     body = body - 7.0 * mo * hu_inten(t);
     let wtop = hu_wall_top(t) + 18.0 * (vnoise(p2 * (1.0 / 70.0) + vec2<f32>(31.0, 5.0)) - 0.4);
     let a2 = atan2(p2.y, p2.x);
-    var wall = min(min((r - win) / 4.0, (wout - r) / 14.0), min((q.y + 4.0) / 6.0, (wtop - q.y) / 14.0));
+    // (its base a little over the land, ragged: under it the land it tears up, the debris and the dust in plain sight)
+    let wbase = 26.0 + 10.0 * (vnoise(p2 * (1.0 / 30.0) + vec2<f32>(7.0, 2.0)) - 0.5);
+    var wall = min(min((r - win) / 4.0, (wout - r) / 14.0), min((q.y - wbase) / 7.0, (wtop - q.y) / 14.0));
     let stri = 0.5 + 0.5 * sin(a2 * 14.0 + q.y * 0.05 * HU_SPIN + 2.0 * warp);
     let tow = vnoise(vec2<f32>(p2.x * (1.0 / 26.0) + q.y * (1.0 / 45.0), p2.y * (1.0 / 26.0)));
     // (none before it forms: out of the cloud, not at its edge, so no haze of noise round it)
@@ -1604,7 +1606,7 @@ fn hurricane(in: StageIn, stage: u32, up: vec4<f32>, ct: f32, ids0: array<vec2<f
                 let px = abs(cf - (0.3 + 0.4 * h2)) * cw * focal / dk;
                 let core = exp(-px * px / (1.0 + 0.5 / (1.0 + fl2)));
                 let along = smoothstep(0.0, 0.12, u * period / lenw) * (1.0 - smoothstep(0.75, 1.0, u * period / lenw)) * step(u * period, lenw);
-                streak = streak + core * along * there * (0.75 - 0.06 * fl2) * (0.7 + 0.6 * h);
+                streak = streak + core * along * there * (0.5 - 0.03 * fl2) * (0.7 + 0.6 * h);
             }
             col = col + vec3<f32>(0.6, 0.64, 0.7) * streak * rk * near * (amb0 * 0.8 + vec3<f32>(0.03) + vec3<f32>(0.8, 0.85, 1.0) * flash * 0.6) * k;
         }
