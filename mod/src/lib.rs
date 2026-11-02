@@ -224,7 +224,6 @@ impl Strike {
 struct Settings {
     laser: usize,
     terrain: bool,
-    messages: bool,
     hud: bool,
     approach: usize,
     arrival: usize,
@@ -273,8 +272,6 @@ struct Orbital {
     pace: pace::Pace,
     laser: usize,
     terrain: bool,
-    /// Whether the strikes put their messages over the hotbar (the replies to the player's own clicks always show).
-    messages: bool,
     /// Whether the status panel shows at the top right while the player holds one of the items.
     hud: bool,
     /// Which way the ship lasers' ship comes in (strike::APPROACHES), and how it arrives (strike::ARRIVALS).
@@ -348,7 +345,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
             compiled: None,
@@ -364,7 +361,6 @@ impl Orbital {
             pace: pace::Pace::default(),
             laser,
             terrain,
-            messages,
             hud,
             approach,
             arrival,
@@ -397,10 +393,9 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nmessages={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
-            u8::from(self.messages),
             u8::from(self.hud),
             APPROACHES[self.approach].key,
             ARRIVALS[self.arrival].key,
@@ -447,7 +442,6 @@ impl Orbital {
     fn parse(text: &str) -> Settings {
         let mut laser = 0;
         let mut terrain = true;
-        let mut messages = true;
         let mut hud = true;
         let mut approach = 0;
         let mut arrival = 0;
@@ -466,7 +460,6 @@ impl Orbital {
             match line.split_once('=') {
                 Some(("laser", k)) => laser = LASERS.iter().position(|l| l.key == k).unwrap_or(0),
                 Some(("terrain", v)) => terrain = v != "0",
-                Some(("messages", v)) => messages = v != "0",
                 Some(("hud", v)) => hud = v != "0",
                 Some(("approach", k)) => approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0),
                 Some(("arrival", k)) => arrival = ARRIVALS.iter().position(|a| a.key == k).unwrap_or(0),
@@ -496,10 +489,16 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, messages, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style }
     }
+
+    /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
     fn actionbar(text: &str, color: &str) {
         world::run_commands(&[format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#)]);
+    }
+    /// The designator can't fire while a strike is under way: a dull click at the player.
+    fn refuse() {
+        world::play_sound("minecraft:block.dispenser.fail", None, 0.5, 1.2);
     }
 
     // ---- the flying speed ----
@@ -572,7 +571,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.messages, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
+            ui::show(&w.draws(self.laser, self.terrain, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
         }
     }
     fn open_wheel(&mut self) {
@@ -627,8 +626,6 @@ impl Orbital {
                 self.save();
                 ui::close();
                 self.wheel = None;
-                let l = LASERS[i];
-                Self::actionbar(&format!("{} LOADED", l.title), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Page(k)) => self.turn_page(k),
@@ -639,8 +636,6 @@ impl Orbital {
                 self.save();
                 ui::close();
                 self.wheel = None;
-                let l = LASERS[self.laser];
-                Self::actionbar(&format!("{} LOADED: {}", l.title, APPROACHES[a].label.to_uppercase()), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Arrival(a)) => {
@@ -649,8 +644,6 @@ impl Orbital {
                 self.save();
                 ui::close();
                 self.wheel = None;
-                let l = LASERS[self.laser];
-                Self::actionbar(&format!("{} LOADED: IT {}", l.title, ARRIVALS[a].label.to_uppercase()), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Colour(c)) => {
@@ -660,8 +653,6 @@ impl Orbital {
                 self.save();
                 ui::close();
                 self.wheel = None;
-                let l = LASERS[i];
-                Self::actionbar(&format!("{} LOADED: LIT {}", l.title, COLOURS[c].button), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Sound(k)) => {
@@ -673,20 +664,12 @@ impl Orbital {
                 self.save();
                 ui::close();
                 self.wheel = None;
-                let l = LASERS[self.laser];
-                Self::actionbar(&format!("{} LOADED: {} BLAST", l.title, wheel::SOUNDS[k]), l.color);
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Centre) => {
                 self.terrain = !self.terrain;
                 self.save();
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.terrain { 1.6 } else { 1.0 });
-                self.show_wheel();
-            }
-            Some(wheel::Spot::Messages) => {
-                self.messages = !self.messages;
-                self.save();
-                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.messages { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
             Some(wheel::Spot::Stop) if self.strike.is_some() => {
@@ -982,8 +965,6 @@ impl Orbital {
                 continue;
             }
             match act {
-                // the strike's messages over the hotbar, unless they are switched off
-                Act::Cmd(c) if !self.messages && c.starts_with("title @s actionbar") => {}
                 Act::Cmd(c) => match strike::block_cost(&c) {
                     Some(cost) => self.carving.push_back((cost, c)),
                     None => cmds.push(c),
@@ -1125,7 +1106,6 @@ impl Orbital {
         cmds.extend(rest.into_iter().chain(queued).filter(|c| c.starts_with("forceload remove")));
         world::run_commands(&cmds);
         self.end_strike();
-        Self::actionbar("STRIKE STOPPED", "gray");
         log::write(log::Level::Info, "strike stopped");
     }
     /// Make the waiting block edits, in order, as many as this tick's budget allows (`pace`: all of them while the
@@ -1208,7 +1188,6 @@ impl Orbital {
                 ("Orbital Laser".to_string(), 0xFFFFFF),
                 (format!("Laser: {}", l.title), l.rgb),
                 (format!("Terrain damage: {}", if self.terrain { "on" } else { "off" }), 0xA8B0BC),
-                (format!("Messages: {}", if self.messages { "on" } else { "off" }), 0xA8B0BC),
             ];
             if is_ship(l) {
                 lines.push((format!("Approach: {}", APPROACHES[self.approach].label), 0xA8B0BC));
@@ -1283,7 +1262,8 @@ impl Mod for Orbital {
             match event {
                 Event::UseStart(u) if u.item.id == DESIGNATOR => {
                     if self.strike.is_some() {
-                        Self::actionbar("STRIKE IN PROGRESS", "gray");
+                        // one strike at a time: a dull click
+                        Self::refuse();
                     } else {
                         self.aiming = Some(0);
                     }
@@ -1301,20 +1281,10 @@ impl Mod for Orbital {
             self.typed(t);
         }
         if let Some(n) = self.aiming {
-            let l = LASERS[self.laser];
             if n >= LOCK_TICKS {
                 self.aiming = None;
                 self.fire();
             } else {
-                if n % 4 == 0 {
-                    // (the sinkhole comes from nothing overhead: it reads the ground under the crosshair instead)
-                    let what = match l.key {
-                        "sinkhole" => "SEISMIC SCAN",
-                        "payload" | "nuke" | "rod" => "DESIGNATING",
-                        _ => "ACQUIRING TARGET",
-                    };
-                    Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), l.color);
-                }
                 self.aiming = Some(n + 1);
             }
         }
@@ -1397,7 +1367,7 @@ impl Mod for Orbital {
                     return Err("No strike under way".into());
                 }
                 self.stop_strike();
-                Ok(None)
+                Ok(Some("Strike stopped".into()))
             }
             (Some("skip"), Some(v)) => {
                 let t: f32 = v.parse().map_err(|_| "/orbital skip SECONDS (0 to start at the beginning)".to_string())?;
@@ -1508,18 +1478,13 @@ impl Mod for Orbital {
                 "Quality: {} (/orbital quality full or fast)",
                 if self.fast { "fast" } else { "full" }
             ))),
-            (Some("messages"), Some(v @ ("on" | "off"))) => {
-                self.messages = v == "on";
-                self.save();
-                Ok(Some(format!("Strike messages {v}")))
-            }
             (Some(key), None) if LASERS.iter().any(|l| l.key == key) => {
                 self.laser = LASERS.iter().position(|l| l.key == key).unwrap_or(0);
                 self.save();
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | messages on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -2028,6 +1993,29 @@ mod stress {
     /// The follow camera: a Nuke fired with it on moves the player by kicks to their velocity once the bomb comes
     /// near (never a teleport, never a turn of their view, never their game mode), and puts them back where they stood
     /// once it is over (their view kept); the knockback left out meanwhile. Off, nothing of it.
+    /// Nothing goes over the hotbar but the designator's NO TARGET IN RANGE: no strike plans a message, an old
+    /// settings file's `messages` line is let be (the rest of it kept), and NO TARGET IN RANGE shows whatever it said.
+    #[test]
+    fn only_no_target_goes_over_the_hotbar() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        for l in LASERS {
+            for approach in 0..2 {
+                let plan = strike::plan(l, &target, false, "minecraft:overworld", 7.0, [10.5, 66.0, 97.0], approach);
+                assert!(!plan.iter().any(|(_, a)| matches!(a, Act::Cmd(c) if c.starts_with("title "))), "{}", l.key);
+            }
+        }
+        let old = Orbital::parse("terrain=0\nmessages=0\nhud=0\nquality=full\n");
+        assert!(!old.terrain && !old.hud && !old.fast);
+        let mut o = Orbital::new(old);
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.keep_commands = true;
+        });
+        o.fire();
+        let ran = fake::with(|w| std::mem::take(&mut w.ran));
+        assert_eq!(ran, vec![r#"title @s actionbar {"text":"NO TARGET IN RANGE","color":"gray","bold":true}"#.to_string()]);
+        assert!(o.strike.is_none());
+    }
     #[test]
     fn the_follow_camera_orbits_and_puts_the_player_back() {
         let kept = Orbital::parse("knockback=off\nfollow=on\nfollowdistance=90\n");

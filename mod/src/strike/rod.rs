@@ -1815,7 +1815,6 @@ pub(super) fn rod_plan(laser: &'static Laser, target: &Target, terrain: bool, _d
     let gy = f64::from(by) + 1.0;
     let rel = [me[0] - cx, me[1] - gy, me[2] - cz];
     let geo = RdGeo::new(shader_seed, rel);
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let (late, dist) = sound_from([cx, gy, cz], me);
     let fo = falloff(dist * 0.4).max(0.45);
 
@@ -1838,8 +1837,6 @@ pub(super) fn rod_plan(laser: &'static Laser, target: &Target, terrain: bool, _d
     }
 
     // ---- the fall: silent, but for a faint hiss right at the end, cut dead on the impact ----------------------------
-    p.at(0.4, bar("KINETIC STRIKE: ROD RELEASED", "white"));
-    p.at(RD_HIT - 2.5, bar("IMPACT IMMINENT", "red"));
     p.csound(RD_HIT - RD_HISS, "hiss", 10.0, 1.0);
     // ---- the impact: the flash is silent; the ground's answer first, felt more than heard ---------------------------
     let tg = RD_HIT + (dist / RD_GROUND_V) as f32;
@@ -1885,7 +1882,6 @@ pub(super) fn rod_plan(laser: &'static Laser, target: &Target, terrain: bool, _d
             td += p.rng.uniform(0.25, 0.9) as f32;
         }
     }
-    p.at(RD_HIT + 1.5, bar("KINETIC IMPACT", "gray"));
     for t in [RD_HIT + 0.1, RD_HIT + 1.0, RD_HIT + 3.0, RD_HIT + 6.0] {
         p.at(t, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{RD_KILL}]"));
     }

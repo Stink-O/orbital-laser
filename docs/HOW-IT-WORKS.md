@@ -108,8 +108,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   wandering, sheer and dark down to bedrock, its walls jagged in strata bands, with ledges heaped with rubble and moss,
   roots hanging under the overhangs near the top, the world's own strata, caves and ores laid open, and a heap of
   rubble at its foot. Where it cut a river or a lake, water pours over its rim. It reaches 1000 blocks.
-- **Payload.** No beam. A few seconds of calm and a grey line on the action bar (`ORBITAL TRACKING: OBJECT
-  DESCENDING`); at 3 s a small, fiercely bright point shows very high in the sky (1,100 to 1,300 blocks up and 1,150
+- **Payload.** No beam. A few seconds of calm; at 3 s a small, fiercely bright point shows very high in the sky (1,100 to 1,300 blocks up and 1,150
   to 1,450 out from the target, beyond it and 50 to 65 degrees round to one side, so the player sees it ahead and off to
   one side), with a bloom, a faint lens streak and a short white-hot streak of air behind it. It is shot down from
   orbit: one clean ballistic arc onto the target, a shallow glide crawling slowly over the sky for seconds, then
@@ -121,7 +120,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   is laid, then swelling, paling, breaking into beads and puffs, fraying and thinning away over twenty seconds or so,
   drifting with the wind. From about 7 s it sheds pieces: eight glowing chunks flung off to the side, falling away
   behind it and burning out over a second or three, each trailing its own thin smoke, and in the last seconds a spray
-  of sparks off the fireball. From about 9 s it heats into a fireball, and from 10.6 s (`PAYLOAD INBOUND`) comes its
+  of sparks off the fireball. From about 9 s it heats into a fireball, and from 10.6 s comes its
   fast final descent, steepest at the end (about 60 degrees, some 700 blocks a second), its head an orange-yellow
   fireball with a soft teardrop of flame behind it, the smoke just behind that lit orange; a roar, a tearing whistle
   and the pops coming thicker and bigger. At 13.6 s it strikes: a brief orange flash lighting the land and the air round it and a burst of
@@ -141,8 +140,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   soft fringe, its stem lifting off the ground and thinning first, the whole drifting, widening and evenly lit, and
   it thins to nothing by about 65 s. The strike ends at 70 s.
   It reaches 1000 blocks.
-- **Nuke** (page three). No beam. Warnings on the action bar (`NUCLEAR DEVICE RELEASED`, `INBOUND`, `TAKE COVER`);
-  from 0.8 s the bomb comes in from orbit far beyond the target and off to one side: a white-hot streak across the
+- **Nuke** (page three). No beam. From 0.8 s the bomb comes in from orbit far beyond the target and off to one side: a white-hot streak across the
   sky, its plasma sheath and glowing wake behind it, a thick lumpy trail of ablated smoke and burning pieces torn off
   it. It sheds its heat by about 7 s, its casing (an ogive nose, four fins) showing, the sun glinting off it, and
   arcs over into a steep dive, faster and faster (to about 330 blocks a second), spinning up so the glints come
@@ -161,7 +159,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   down for half a minute. From 59 s the cloud loses its billows into a drifting haze, gone by 90 s, when the strike
   ends. It reaches 1000 blocks.
 - **Rod from God** (page three). No beam, no explosive: a colossal rod of dark forged metal dropped from orbit, and
-  holy. `KINETIC STRIKE: ROD RELEASED`; from 1 s a golden-white star some 4,100 blocks up, plumb over the target,
+  holy. From 1 s a golden-white star some 4,100 blocks up, plumb over the target,
   comes straight down, faster and faster (250 to about 1,000 blocks a second a second before it strikes), then over its
   last half second a hard last burst, eased in, to about 2,300, so it slams in while it still reads frame by frame; god rays stream out of it, broken by whatever stands between, a column of
   light runs down its path from the sky to the target with the ionised line it lays in it (each bit of the line
@@ -336,7 +334,6 @@ goes in through `world.edit-blocks`.
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
-| `/orbital messages on`, `/orbital messages off` | switches the strikes' messages over the hotbar (replies to your own clicks still show); also the wheel's MESSAGES switch |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
@@ -345,7 +342,7 @@ goes in through `world.edit-blocks`.
 | `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke or the Rod is pointed at or loaded |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
 | `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
-| `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, under MESSAGES |
+| `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |

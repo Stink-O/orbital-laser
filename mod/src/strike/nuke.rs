@@ -34,6 +34,8 @@ const TAU: f64 = 2.0 * PI;
 /// ground: low, so the fireball meets the land from its first frames (the pass sets it on the heightfield's ground
 /// round the target, pl_g0 in nuke.wgsl, and spreads its foot over it, pl_foot).
 pub(super) const NK_SEEN: f32 = 0.8;
+/// (NK_TURN the pass reads: kept here in step.)
+#[allow(dead_code)]
 pub(super) const NK_TURN: f32 = 8.0;
 pub(super) const NK_HIT: f32 = 11.0;
 pub(super) const NK_BURST: f64 = 12.0;
@@ -1953,7 +1955,6 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     let gy = f64::from(by) + 1.0;
     let rel = [me[0] - cx, me[1] - gy, me[2] - cz];
     let geo = NkGeo::new(shader_seed, rel);
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     // (heard from the burst point, over the ground)
     let (late, dist) = sound_from([cx, gy + NK_BURST, cz], me);
     let fo = falloff(dist * 0.4).max(0.45);
@@ -1977,9 +1978,6 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     }
 
     // ---- the fall ---------------------------------------------------------------------------------------------------
-    p.at(0.6, bar("WARNING: NUCLEAR DEVICE RELEASED", "red"));
-    p.at(5.0, bar("WARNING: NUCLEAR DEVICE INBOUND", "red"));
-    p.at(NK_TURN, bar("TAKE COVER", "yellow"));
     // (its fall, heard from up there: whistling down onto the burst, cut there)
     p.csound(1.5, "fall", 10.0, 1.0);
     // ---- the burst: the flash is silent; the land's answer through the ground first, felt more than heard ----------
@@ -2031,7 +2029,6 @@ pub(super) fn nuke_plan(laser: &'static Laser, target: &Target, terrain: bool, _
             td += p.rng.uniform(0.25, 0.9) as f32;
         }
     }
-    p.at(NK_HIT + 2.0, bar("NUCLEAR DETONATION", "gold"));
     for t in [NK_HIT + 0.1, NK_HIT + 1.5, NK_HIT + 4.0, NK_HIT + 8.0] {
         p.at(t, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{NK_KILL}]"));
     }

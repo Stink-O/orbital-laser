@@ -72,7 +72,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
   wheel's FOLLOW switch), a KNOCKBACK switch for the Nuke and the Rod, a seed you can type or lock for repeat takes of
   the same strike (`/orbital seed`), and `tools/world_snapshot.py` to put a world back between takes.
 - **The wheel rearranged:** the strike options down the left (SEED and LOCK SEED, then KNOCKBACK and FOLLOW for the
-  lasers they apply to), MESSAGES, PANEL and QUALITY down the right with a red STOP STRIKE under them during a strike,
+  lasers they apply to), PANEL and QUALITY down the right with a red STOP STRIKE under them during a strike,
   and the IMPACT FX and BLAST SOUND rows under the ring.
 - A thirteenth laser, the **Supercell**, is on the third page as well (`/orbital supercell`).
 - Still needs the Orbital Laser build of Horizon `orbital-mod-api-8` or newer, the same as 0.5.6.
@@ -283,8 +283,8 @@ Mods), read the reason it gives first.
 2. **Pick a laser.** Right-click with the remote, or press **R**, and the laser wheel opens. Point at a laser to read
    what it does and click to load it. The arrows either side of the ring, the tabs over it or a right-click turn the
    page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices are remembered.
-3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar shows
-   `ACQUIRING TARGET…` (`SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod), then the strike lands where your crosshair is.
+3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second, and the strike lands
+   where your crosshair is.
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
 Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell 42, the Crystal Bloom and the Rod from God 60, the Downfall 64, the Payload 70 and the Nuke 90.
@@ -293,9 +293,8 @@ The wheel also has:
 
 - **FLY SPEED** over the title, for getting round the craters: click along the bar for 1x to 40x vanilla's creative
   flight, or type any speed up to 1000x in the box beside it and press Enter.
-- Down the right, **MESSAGES** and **PANEL** switches, which turn off the strikes' messages over the hotbar and the
-  status panel shown at the top right while you hold either item, and a **QUALITY** switch under them: **FAST** (the
-  default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail and the Supercell's storm at half the
+- Down the right, a **PANEL** switch, which hides the status panel shown at the top right while you hold either item,
+  and a **QUALITY** switch under it: **FAST** (the default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail and the Supercell's storm at half the
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
   draws every pixel (about two to three times the GPU time).
 - **STOP STRIKE**, a red button under QUALITY while a strike is under way: it ends the strike there and then (what it
@@ -321,7 +320,7 @@ The wheel also has:
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` | the loaded ship's colour |
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
-| `/orbital messages on\|off`, `/orbital hud on\|off` | the strikes' messages, the status panel |
+| `/orbital hud on\|off` | the status panel |
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks (Kanada is the default), or off; kept; also the wheel's IMPACT FX row |
@@ -352,7 +351,8 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
   and rebind it. R only opens the wheel while you play, not over another screen.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
   the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod and the Supercell can aim, and only with **LOD Distance** on in Video Settings.
-- **`STRIKE IN PROGRESS`.** One strike runs at a time. Wait for it to finish.
+- **The designator only clicks.** A strike is already under way, and one runs at a time. Wait for it to finish, or end
+  it with the wheel's STOP STRIKE or `/orbital stop`.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
 - **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
 
