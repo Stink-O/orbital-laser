@@ -1073,17 +1073,23 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
     }
 
     // ---- the rain close by, for an eye under the storm: sparse, thin, faint streaks falling past, slanted by the wind,
-    // more of them out at the edges of the picture than across its middle, hidden by what stands in front -----------
+    // more of them out at the edges of the picture than across its middle, hidden by what stands in front. In the
+    // world round the camera (as the Hurricane's): streaks on shells at five distances, a whole number of cells round
+    // each, each streak its own length, speed and brightness: nothing repeats on the picture or stays put on it as the
+    // camera turns -----------
     let rk = sc_rain(time) * sc_fade(time);
     if (rk > 0.01 && stage != 1u) {
         let res = frame.resolution.xy;
-        let sc = res.y / 1080.0;
         let edge = mix(0.3, 1.0, smoothstep(0.12, 0.48, length((uv - 0.5) * vec2<f32>(res.x / res.y, 1.0))));
+        let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
+        let th = atan2(rd.z, rd.x);
+        let hl = max(length(rd.xz), 1.0e-3);
         var streak = 0.0;
-        for (var layer = 0; layer < 3; layer = layer + 1) {
+        for (var layer = 0; layer < 5; layer = layer + 1) {
             let fl2 = f32(layer);
-            let dk = 3.5 + 5.0 * fl2 + 4.0 * fl2 * fl2;
-            if (scene_len < dk) {
+            let rad = 2.0 * pow(1.8, fl2);
+            let dk = rad / hl;
+            if (scene_len < dk || dk > 150.0) {
                 continue;
             }
             // (only where the rain falls: under the cloud's base, inside the storm)
@@ -1092,15 +1098,22 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             if (under < 0.01) {
                 continue;
             }
-            let w = (11.0 - 3.0 * fl2) * sc;
-            let pp = in.position.xy + vec2<f32>(in.position.y * 0.14, 0.0);
-            let cidx = floor(pp.x / w);
-            let h = fh21(vec2<f32>(cidx, fl2 * 17.0));
-            let h2 = fh21(vec2<f32>(cidx * 1.7, fl2 * 5.0 + 3.0));
-            let len = (260.0 - 60.0 * fl2) * sc;
-            let v = fract((pp.y - time * (2900.0 - 700.0 * fl2) * sc) / len + h);
-            let across = 1.0 - abs(fract(pp.x / w) - 0.5) * 2.0;
-            streak = streak + smoothstep(0.9, 1.0, v) * step(0.72, h2) * pow(across, 10.0) * (0.5 - 0.12 * fl2) * under;
+            let cw = 0.26 * pow(1.3, fl2);
+            let nc = floor(TAU * rad / cw);
+            let slope = 0.14;
+            let arc = th / TAU * nc + slope * (rd.y * dk) / cw;
+            let ci = floor(arc);
+            let cell = (ci % nc + nc) % nc;
+            let h = fh21(vec2<f32>(cell, fl2 * 17.31 + 3.0));
+            let h2 = fh21(vec2<f32>(cell * 1.37 + 5.0, fl2 * 7.7));
+            let h3 = fh21(vec2<f32>(cell * 0.71 + 9.0, fl2 * 3.1));
+            let lenw = (0.35 + 0.5 * h2) * pow(1.35, fl2);
+            let period = lenw * (3.0 + 4.0 * h3);
+            let u = fract((rd.y * dk + 16.0 * (0.85 + 0.3 * h) * time) / period + h * 7.0);
+            let px = abs(arc - ci - (0.3 + 0.4 * h2)) * cw * focal / dk;
+            let core = exp(-px * px / (1.0 + 0.5 / (1.0 + fl2)));
+            let along = smoothstep(0.0, 0.12, u * period / lenw) * (1.0 - smoothstep(0.75, 1.0, u * period / lenw)) * step(u * period, lenw);
+            streak = streak + core * along * step(0.7 - 0.06 * fl2, h3) * (0.6 - 0.07 * fl2) * (0.7 + 0.6 * h) * under;
         }
         col = col + vec3<f32>(0.62, 0.66, 0.72) * streak * rk * edge * (amb0 * 0.7 + vec3<f32>(0.02) + vec3<f32>(0.7) * min(sky_flash, 2.0)) * k;
     }
