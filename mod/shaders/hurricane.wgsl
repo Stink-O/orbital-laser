@@ -1284,7 +1284,7 @@ fn hu_volume(rd: vec3<f32>, len: f32, dlen: f32, C: vec3<f32>, t: f32, St: f32, 
             } else {
                 // (over the clear air in long strides, the further out of the cloud the longer, shortening as it nears
                 // the cloud so its edge is found sharp)
-                dt = clamp(-dn.raw * 10.0, 1.5 + 0.0015 * tt, lod * 3.5) * (0.65 + 0.7 * fract(j * 7.31 + f32(i) * 0.618));
+                dt = clamp(-dn.raw * 10.0, 2.0 + 0.002 * tt, lod * 3.5) * (0.65 + 0.7 * fract(j * 7.31 + f32(i) * 0.618));
             }
             // (the eye's still air, lit where the sun pours down it: a shaft of light seen from over it)
             if (dn.clear > 0.5) {
@@ -1433,7 +1433,7 @@ fn hu_bolts(px: vec2<f32>, fl: HuFlash, C: vec3<f32>, near: f32, ct: f32, ca: f3
 
 // Rain in the world: drops falling along lines in the way they fall (`vel`, blocks a second: down, and blown), the
 // lines' feet on a grid across that way, a jittered line a cell, the drops strung along each its own (length, speed,
-// spacing, brightness, whether it is there: a hash a cell). Five layers out from the camera (`cq`, off the middle),
+// spacing, brightness, whether it is there: a hash a cell). Four layers out from the camera (`cq`, off the middle),
 // each a coarser grid than the last: near drops big, fast and few, far ones fine and many. Only the cells the ray
 // crosses in each layer are tried, so no direction is special: looking along the rain (straight up or down) the drops
 // come end on, as dots, never converging on a point; nothing repeats on the picture. Hidden past `near`.
@@ -1449,19 +1449,19 @@ fn hu_rain_lines(rd: vec3<f32>, cq: vec3<f32>, vel: vec3<f32>, near: f32, time: 
     let aw0 = dot(cq, w);
     let focal = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
     var sum = 0.0;
-    for (var k = 0; k < 5; k = k + 1) {
+    for (var k = 0; k < 4; k = k + 1) {
         let fk = f32(k);
-        let cell = 0.45 * pow(1.9, fk);
-        let ta = 1.3 * pow(1.9, fk);
-        let tb = min(ta * 1.9, near);
+        let cell = 0.45 * pow(2.1, fk);
+        let ta = 1.3 * pow(2.1, fk);
+        let tb = min(ta * 2.1, near);
         if (ta >= tb) {
             break;
         }
         let pa = c2 + r2 * ta;
         let pb = c2 + r2 * tb;
         var last = vec2<f32>(1.0e9);
-        for (var n = 0; n < 6; n = n + 1) {
-            let g = floor(mix(pa, pb, (f32(n) + 0.5) / 6.0) / cell);
+        for (var n = 0; n < 5; n = n + 1) {
+            let g = floor(mix(pa, pb, (f32(n) + 0.5) / 5.0) / cell);
             if (all(g == last)) {
                 continue;
             }
