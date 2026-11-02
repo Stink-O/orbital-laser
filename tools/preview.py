@@ -182,6 +182,9 @@ VIEWS = {
     # its height) looking across at the far wall
     "hueyeup": "cx=0 cy=67 cz=4 lx=0 ly=300 lz=-45 flat=1 trees=1 hustrip=1 fov=100 reach=4",
     "hueyemid": "cx=8 cy=155 cz=6 lx=-60 ly=185 lz=-30 flat=1 trees=1 hustrip=1 fov=95 reach=10",
+    # close on the cloud: its gathering storms from 250 off on the ground, the deck from 700 up over its bands
+    "hucells": "cx=0 cy=67 cz=250 lx=0.5 ly=200 lz=-150 flat=1 trees=1 fov=70 reach=250",
+    "hudeck": "cx=600 cy=700 cz=600 lx=300 ly=200 lz=200 flat=1 fov=60 reach=300",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",

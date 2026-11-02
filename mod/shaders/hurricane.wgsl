@@ -1273,7 +1273,7 @@ fn hu_volume(rd: vec3<f32>, len: f32, dlen: f32, C: vec3<f32>, t: f32, St: f32, 
                     let fd = q - flv.xyz;
                     c = c + flc * flv.w / (1.0 + dot(fd, fd) * (1.0 / 4500.0)) * mix(1.0, 0.35, exp(-deep / 60.0));
                 }
-                let ext = dn.d * 0.2 * dt;
+                let ext = dn.d * 0.35 * dt;
                 let al = 1.0 - exp(-ext);
                 hu_over(&acc, c, al);
                 lc = c;
