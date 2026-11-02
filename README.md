@@ -74,7 +74,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 - **The wheel rearranged:** the strike options down the left (SEED and LOCK SEED, then KNOCKBACK and FOLLOW for the
   lasers they apply to), MESSAGES, PANEL and QUALITY down the right with a red STOP STRIKE under them during a strike,
   and the IMPACT FX and BLAST SOUND rows under the ring.
-- A thirteenth laser, the **Supercell**, is on the third page as well (`/orbital supercell`).
+- **Supercell** (page three): a storm called down onto the target. Lightning strikes faster and faster, more at once,
+  until every bolt draws in and merges into one colossal strike that leaves a crater veined with fused glass. Its
+  fires are left burning. `/orbital supercell`.
 - Still needs the Orbital Laser build of Horizon `orbital-mod-api-8` or newer, the same as 0.5.6.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
