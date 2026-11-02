@@ -1249,7 +1249,9 @@ impl Mod for Orbital {
         meter::reset();
         self.ticks += 1;
         self.since_tick = 0.0;
-        if self.ticks >= 40
+        // (once the player is in the world and settled: a batch sent before the server has placed them is dropped)
+        if self.ticks >= 100
+            && game::get_player().is_some()
             && let Some(i) = self.broke.take()
         {
             let text = format!(
