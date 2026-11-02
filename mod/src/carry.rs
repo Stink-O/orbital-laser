@@ -10,8 +10,17 @@
 //! buffeted; then, as the storm peaks (EYE0 to EYE1), drawn in through the eyewall into the calm of the eye, EYE_R
 //! from the middle and EYE_H up: sudden stillness, blue sky and sunlight straight down the stadium all round them;
 //! from the fling (HU_FLING) thrown back out through the far eyewall with everything else and let down over DOWN
-//! seconds onto the land past it, a few blocks over the middle's ground, then let go. Slow falling is given as they are picked up, for long enough to see them down, so
-//! however they come down (a hill under them, a valley, the strike stopped) they land softly.
+//! seconds onto the land past it, a few blocks over the middle's ground, then let go. Slow falling is given as they
+//! are picked up, for long enough to see them down, so however they come down (a hill under them, a valley, the
+//! strike stopped) they land softly.
+//!
+//! A player can break free by flying: the carry lets go at once (no more kicks, a gust's whoosh; the slow falling
+//! kept, harmless) when the controller sees them take to the air themselves (`Drive::flight`: their moves up and down
+//! turning from a fall's, slow falling's or not, to flight's, after it had seen them fall: a player already flying
+//! when picked up isn't let go for flying alone), or steer hard against it for a quarter of a second (their own
+//! flight at a raised fly speed). Ticks they are held still while their chunk loads count for neither. Once free they
+//! are left alone while they fly; if they come back down and stand on the land while the wind still blows there, it
+//! picks them up again.
 #![cfg_attr(not(test), allow(dead_code))]
 use crate::follow::Drive;
 use crate::strike::{HU_FLING, HU_R_EYE, hu_front_t, hu_omega, hu_spin};
@@ -47,6 +56,11 @@ struct Lift {
     a: f64,
 }
 
+/// How many ticks running a player must steer against the carry, and how hard (blocks a tick off what it expected), to
+/// break free.
+const STEER_TICKS: u32 = 5;
+const STEER: f64 = 0.4;
+
 pub struct Carry {
     /// The storm's middle on its ground.
     c: [f64; 3],
@@ -57,6 +71,14 @@ pub struct Carry {
     n: u32,
     /// Where the last tick sent them (for the tests).
     pub target: Option<[f64; 3]>,
+    /// Broken free (flying), and since when they have stood still on the land (to be picked up again).
+    free: bool,
+    seen_fall: bool,
+    steer: u32,
+    last: Option<[f64; 3]>,
+    stood: u32,
+    /// When they broke free, for the tests.
+    pub freed_at: Option<f64>,
 }
 
 fn ease(a: f64, b: f64, t: f64) -> f64 {
@@ -66,14 +88,14 @@ fn ease(a: f64, b: f64, t: f64) -> f64 {
 
 impl Carry {
     pub fn new(c: [f64; 3]) -> Carry {
-        Carry { c, lift: None, drive: Drive::default(), done: false, next_whoosh: 0.0, n: 0, target: None }
+        Carry { c, lift: None, drive: Drive::default(), done: false, next_whoosh: 0.0, n: 0, target: None, free: false, seen_fall: false, steer: 0, last: None, stood: 0, freed_at: None }
     }
     /// Whether it is over (the player let go, or never picked up and the wind dropping).
     pub fn over(&self, t: f64) -> bool {
         self.done || (self.lift.is_none() && t > HU_FLING - 4.0)
     }
     pub fn lifted(&self) -> bool {
-        self.lift.is_some() && !self.done
+        self.lift.is_some() && !self.done && !self.free
     }
     /// How far into the eye they have been drawn at `t` (0 none, 1 in its middle's calm).
     fn eye(l: &Lift, t: f64) -> f64 {
@@ -109,6 +131,21 @@ impl Carry {
         if self.done {
             return out;
         }
+        // (free: left alone while they fly; standing still on the land again (their feet on a block's top, unmoving
+        // for a second), the wind picks them up again if it still blows there)
+        if self.free {
+            let still = self.last.is_some_and(|l| l == feet) && (feet[1] - feet[1].round()).abs() < 1e-3;
+            self.stood = if still { self.stood + 1 } else { 0 };
+            self.last = Some(feet);
+            if self.stood < 20 {
+                return out;
+            }
+            self.free = false;
+            self.lift = None;
+            self.drive = Drive::default();
+            self.seen_fall = false;
+            self.steer = 0;
+        }
         if self.lift.is_none() {
             let (dx, dz) = (feet[0] - self.c[0], feet[2] - self.c[2]);
             let d = dx.hypot(dz);
@@ -135,7 +172,24 @@ impl Carry {
         let Some(next) = self.at(t + 0.05, a) else { return out };
         self.target = Some(next);
         let want = [next[0] - feet[0], next[1] - feet[1], next[2] - feet[2]];
-        out.kicks = self.drive.kicks(feet, want);
+        let kicks = self.drive.kicks(feet, want);
+        // (breaking free: flying where it had seen them fall, or steering hard against it)
+        let (flight, miss) = self.drive.flight();
+        self.seen_fall |= flight <= -2;
+        let moved = self.last.is_none_or(|l| l != feet);
+        self.last = Some(feet);
+        if moved {
+            self.steer = if miss > STEER { self.steer + 1 } else { 0 };
+        }
+        if (self.seen_fall && flight >= 2) || self.steer >= STEER_TICKS {
+            self.free = true;
+            self.freed_at = Some(t);
+            self.stood = 0;
+            out.sounds.push(("orbital:hurricane.whoosh2".into(), 0.9, 0.75));
+            out.sounds.push(("orbital:hurricane.whoosh4".into(), 0.7, 1.1));
+            return out;
+        }
+        out.kicks = kicks;
         // (the debris rushing past them)
         if t >= self.next_whoosh && t < HU_FLING + 2.0 && r > HU_R_EYE + 12.0 {
             self.n += 1;
@@ -195,6 +249,62 @@ mod tests {
             }
         }
         (lifted_at.unwrap_or(-1.0), fastest, off, high, feet, eye_at)
+    }
+
+    /// A carried player who takes to the air themselves at `fly_at` (none: never), held still (their chunk not
+    /// loaded) over the ticks `hold` says: when the carry let them go, and how high they were then.
+    fn breaks_free(start: [f64; 3], fly_at: f64, hold: impl Fn(f64) -> bool) -> (Option<f64>, f64) {
+        let mut k = Carry::new([0.5, 65.0, 0.5]);
+        let (mut feet, mut v) = (start, [0.0f64; 3]);
+        let mut flying = false;
+        for n in 1..=(64 * 20) {
+            let t = f64::from(n) * 0.05;
+            if t >= fly_at && !flying {
+                flying = true;
+            }
+            if !hold(t) {
+                feet = [feet[0] + v[0], feet[1] + v[1], feet[2] + v[2]];
+                let falling = v[1] <= 0.0;
+                v = drag(v, flying);
+                if !flying && k.lifted() && falling {
+                    v[1] += 0.07 * 0.98;
+                }
+                if feet[1] < 65.0 {
+                    feet[1] = 65.0;
+                    v[1] = 0.0;
+                }
+            }
+            let o = k.tick(t, feet);
+            for kick in &o.kicks {
+                v = [v[0] + f64::from(kick[0]), v[1] + f64::from(kick[1]), v[2] + f64::from(kick[2])];
+            }
+            if let Some(f) = k.freed_at {
+                // (let go: no kick from then on, and the gust heard as it happens)
+                assert!(o.kicks.is_empty());
+                if (t - f).abs() < 1e-9 {
+                    assert!(o.sounds.iter().any(|s| s.0.contains("whoosh")));
+                }
+            }
+            if k.freed_at.is_some() && t > k.freed_at.unwrap() + 1.0 {
+                return (k.freed_at, feet[1] - 65.0);
+            }
+        }
+        (k.freed_at, feet[1] - 65.0)
+    }
+
+    #[test]
+    fn a_carried_player_who_flies_breaks_free_and_one_held_still_does_not() {
+        for fly_at in [24.0, 31.3, 36.0, 43.0] {
+            let (freed, up) = breaks_free([45.0, 65.0, 30.0], fly_at, |_| false);
+            let f = freed.unwrap_or_else(|| panic!("flying at {fly_at}: never let go"));
+            eprintln!("flying at {fly_at}: let go at {f:.2} s ({:.0} ticks), {up:.0} up", (f - fly_at) / 0.05);
+            assert!(f >= fly_at && f - fly_at <= 0.3, "flying at {fly_at}: let go at {f}");
+        }
+        // (held still a tick or several at a time while their chunk loads, never flying: carried on, never let go)
+        let (freed, _) = breaks_free([45.0, 65.0, 30.0], f64::MAX, |t| (t * 20.0) as u32 % 37 < 6 || (25.0..25.6).contains(&t));
+        assert!(freed.is_none(), "let go at {freed:?} while held still");
+        let (freed, _) = breaks_free([120.0, 65.0, 0.5], f64::MAX, |_| false);
+        assert!(freed.is_none(), "let go at {freed:?} without flying");
     }
 
     #[test]

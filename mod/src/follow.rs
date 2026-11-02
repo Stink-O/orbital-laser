@@ -110,6 +110,12 @@ pub struct Drive {
     kick: [f64; 3],
     velocity: [f64; 3],
     flying: bool,
+    /// Whether they fly, for the carry's cue to let go: how many ticks running their move up or down only flight
+    /// explained (or, negative, falling, with slow falling or without); ticks held still while their chunk loads, or
+    /// too gentle to tell, leave it.
+    flight: i32,
+    /// How far their last move missed what the kicks and the drag should have made of it (their own steering).
+    miss: f64,
 }
 impl Drive {
     /// The kicks (blocks a tick, each within the game's 4) that take a player standing at `feet` by `want` over the
@@ -131,7 +137,14 @@ impl Drive {
                     if (fly - fall).abs() > 0.03 {
                         self.flying = (m[1] - fly).abs() < (m[1] - fall).abs();
                     }
+                    // (flight against falling, slow falling's too: an eighth of the air's gravity once falling)
+                    let slow = if pm[1] <= 0.0 { (pm[1] - 0.01) * 0.98 } else { (pm[1] - 0.08) * 0.98 } + self.kick[1];
+                    let (df, dn) = ((m[1] - fly).abs(), (m[1] - fall).abs().min((m[1] - slow).abs()));
+                    if (fly - fall).abs().min((fly - slow).abs()) > 0.006 {
+                        self.flight = if df < dn { self.flight.max(0) + 1 } else { self.flight.min(0) - 1 }.clamp(-60, 60);
+                    }
                 }
+                self.miss = len(sub(m, had));
                 self.velocity = drag(m, self.flying);
                 self.moved = Some(m);
             }
@@ -154,6 +167,11 @@ impl Drive {
         self.kick = kick;
         let n = (big.min(most) / KICK).ceil().max(1.0) as usize;
         (0..n).map(|_| kick.map(|v| (v / n as f64) as f32)).collect()
+    }
+    /// How many ticks running it has seen them fly (or, negative, fall), and how far their last move missed what it
+    /// expected of it.
+    pub fn flight(&self) -> (i32, f64) {
+        (self.flight, self.miss)
     }
 }
 

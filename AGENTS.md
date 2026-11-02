@@ -144,7 +144,12 @@ laser, command, capability and timing). This file is the short, factual version 
   up by `world.push-player` kicks (follow.rs's `Drive`; a few blocks a tick at most, never near `VMAX`), drawn in
   through the eyewall into the calm of the eye at the peak (38-41.5 s: 14 out, 90 up, hardly turning: blue sky and
   sunlight straight down the stadium), thrown back out through the far wall at the fling and let down over 7 s past
-  it with slow falling. Rain close by is drawn in the world round the camera (six shells, a whole number of cells
+  it with slow falling. Flying breaks free: the carry lets go at once (no more kicks, a gust's whoosh, the slow falling
+  kept) when follow.rs's `Drive::flight` sees two ticks running whose move up or down only flight explains, after it
+  had seen them fall (a player flying when picked up isn't let go for that alone), or they steer hard against it for
+  a quarter of a second (raised fly speed); ticks held still while chunks load count for neither. Free, they are left
+  alone while they fly; standing on the land again for a second where the wind still blows, they are picked up
+  again. Rain close by is drawn in the world round the camera (six shells, a whole number of cells
   round each, slanted by the wind there; none in the eye). The pass's FAST stage finds each 2x2's block or tree at
   half size (`hu_pack`, in `half_extra.zw`) and the join tries them again sharp; keep what the cloud's march holds in
   hand small (the GPU's occupancy): it takes the brightest flash alone. Preview views `huorbit`, `hutop`, `hueyeup`,
