@@ -11,7 +11,8 @@
 //! colours (strike/sh_land.rs's MATS, tinted by the biome as the game tints them): the trees whole, as rigid groups
 //! (up to HU_NT, their trunks and their canopies as read, `hu_tree`), the rest as a field of blocks flying round the
 //! eyewall in rings (the pass's `hu_debris`), each ring's blocks coloured from what was torn up under it (`Pal`).
-//! A share of it comes back down as real blocks as the storm flings it out (falling blocks, `hu_thrown`).
+//! As the storm flings it all out, it comes down as real blocks where the pass draws it landing (`hu_landings`): each
+//! tree and piece of a building lying where it lands, rubble from what flew round each ring; the mobs flung with it.
 //!
 //! Timeline (HU_LEN 64 s): the cloud gathers and starts to turn (0-10 s); the wind spins up (to full by 26 s, `SPIN_K`),
 //! the eye clearing by 14 s; the front tears at the land from the eyewall at HU_F0 (15 s) out to HU_R_LIFT by HU_F1
@@ -363,6 +364,11 @@ pub(super) struct TreeRec {
     pub wood: u16,
     pub leaf: u16,
     pub spans: [(u8, u8); 49],
+    /// Where it comes down (`tree_landing`): when, the real ground's top there (over the middle's ground, as `gdy`),
+    /// and the way it lies (its trunk along it, radians round from +x towards +z); 1e9, 0, 0 if it is never flung.
+    pub t_land: f64,
+    pub yl: f64,
+    pub yaw: f64,
 }
 impl TreeRec {
     pub fn words(&self) -> [u32; HU_TW] {
@@ -380,6 +386,9 @@ impl TreeRec {
             let v = if s.0 <= s.1 { u32::from(s.0.min(31)) | u32::from(s.1.min(31)) << 5 } else { 31 };
             w[8 + c / 3] |= v << (10 * (c % 3));
         }
+        w[25] = (self.t_land as f32).to_bits();
+        w[26] = (self.yl as f32).to_bits();
+        w[27] = (self.yaw as f32).to_bits();
         w
     }
 }
@@ -407,22 +416,84 @@ fn tree_lifted(tr: &TreeRec, i: u32, seed: u32, t: f64) -> [f64; 3] {
     let a = a0 + HU_SPIN * omega(r) * (spin_int(t) - spin_int(tr.t_up));
     [r * a.cos(), y, r * a.sin()]
 }
-/// When and where tree `i` comes down after it is flung out (none if it is never flung): its fall solved against the
-/// land under where it falls, twice over (the land where it would come down on the first guess, then there).
-pub(super) fn tree_down(tr: &TreeRec, i: u32, seed: u32, ground: &dyn Fn(f64, f64) -> f64) -> Option<(f64, [f64; 3])> {
+/// Where a flung tree comes down and how it lies there, as the pass draws it and as its real blocks are laid
+/// (`tree_cells`): flung at HU_FLING from `pf` at `v` (`tree_fling`), its middle falls as pf.y + v.y s - 7 s^2 and it
+/// lands when that is `yl` + 0.5, `yl` the real ground's top where it comes down (solved twice over: the ground where
+/// it would come down on the first guess, then there, then the fall solved again for that ground); it lies along its
+/// way over the land, `d`.
+pub(super) struct Landing {
+    pub t: f64,
+    pub yl: f64,
+    pub yaw: f64,
+    /// Its middle where it lands (off the target's middle), and the way it lies (a unit vector over the land).
+    pub m: [f64; 2],
+    pub d: [f64; 2],
+}
+pub(super) fn tree_landing(tr: &TreeRec, i: u32, seed: u32, ground: &dyn Fn(f64, f64) -> f64) -> Option<Landing> {
     if tr.t_up >= HU_FLING {
         return None;
     }
     let (pf, v) = tree_fling(tr, i, seed);
-    let mut g = tr.gdy;
-    let mut s = 0.0;
+    let solve = |yl: f64| (v[1] + (v[1] * v[1] + 28.0 * (pf[1] - yl - 0.5).max(0.0)).sqrt()) / 14.0;
+    let mut yl = tr.gdy;
     for _ in 0..2 {
-        // (pf.y + v.y s - 7 s^2 = g + 1)
-        let c = pf[1] - g - 1.0;
-        s = (v[1] + (v[1] * v[1] + 28.0 * c.max(0.0)).sqrt()) / 14.0;
-        g = ground(pf[0] + v[0] * s, pf[2] + v[2] * s);
+        let s = solve(yl);
+        yl = ground(pf[0] + v[0] * s, pf[2] + v[2] * s);
     }
-    Some((HU_FLING + s, [pf[0] + v[0] * s, g, pf[2] + v[2] * s]))
+    let s = solve(yl);
+    let h = v[0].hypot(v[2]).max(1e-9);
+    let d = [v[0] / h, v[2] / h];
+    Some(Landing { t: HU_FLING + s, yl, yaw: d[1].atan2(d[0]), m: [pf[0] + v[0] * s, pf[2] + v[2] * s], d })
+}
+/// Its landing, set on the record (for the pass's words).
+fn set_landing(tr: &mut TreeRec, i: u32, seed: u32, ground: &dyn Fn(f64, f64) -> f64) {
+    match tree_landing(tr, i, seed, ground) {
+        Some(l) => (tr.t_land, tr.yl, tr.yaw) = (l.t, l.yl, l.yaw),
+        None => (tr.t_land, tr.yl, tr.yaw) = (1e9, 0.0, 0.0),
+    }
+}
+/// The cells of a landed tree (or piece) as blocks of the world (off the target block, over the middle's ground: add
+/// the target block's x and z, and `gy`), each its block: lying along `d`, its local x across it
+/// (a = (-d.z, d.x)), its trunk along d, its local z up; its foot (its trunk's bottom middle) at the landed middle less
+/// `cm` along d, `yl` + 0.5 up. A cell (i, y, j) of its 7 by 7 columns is at foot + a (i - 3) + d (y + 0.5) + up (j - 3),
+/// the block that point is in. Those in the ground (under `yl`) left out, and each block once; the trunk first, then
+/// the canopy (or the piece) from its lowest, at most `cap` of them. (`true`: a trunk block.)
+pub(super) fn tree_cells(tr: &TreeRec, l: &Landing, cap: usize) -> Vec<([i32; 3], bool)> {
+    let cm = 0.6 * f64::from(tr.trunk.max(3));
+    let (d, a) = (l.d, [-l.d[1], l.d[0]]);
+    let foot = [l.m[0] - d[0] * cm, l.yl + 0.5, l.m[1] - d[1] * cm];
+    let at = |i: i32, y: i32, j: i32| -> [i32; 3] {
+        let (u, w, h) = (f64::from(i - 3), f64::from(y) + 0.5, f64::from(j - 3));
+        // (the target's middle half a block into its block)
+        [(0.5 + foot[0] + a[0] * u + d[0] * w).floor() as i32, (foot[1] + h).floor() as i32, (0.5 + foot[2] + a[1] * u + d[1] * w).floor() as i32]
+    };
+    let floor = l.yl.floor() as i32;
+    let mut out: Vec<([i32; 3], bool)> = Vec::new();
+    let put = |p: [i32; 3], trunk: bool, out: &mut Vec<([i32; 3], bool)>| {
+        if p[1] >= floor && out.len() < cap && !out.iter().any(|e| e.0 == p) {
+            out.push((p, trunk));
+        }
+    };
+    for y in 0..i32::from(tr.trunk) {
+        put(at(3, y, 3), true, &mut out);
+    }
+    // (the canopy's cells as the pass's hu_tree_cell has them: column (i, j)'s from its lowest - 1 to its highest - 1)
+    for j in 3..7 {
+        for i in 0..7 {
+            let (lo, hi) = tr.spans[(j * 7 + i) as usize];
+            if lo > hi {
+                continue;
+            }
+            for y in i32::from(lo) - 1..i32::from(hi) {
+                if y < 0 || (i == 3 && j == 3 && y < i32::from(tr.trunk)) {
+                    continue;
+                }
+                put(at(i, y, j), false, &mut out);
+            }
+        }
+    }
+    crate::meter::spend(200 + 80 * out.len() as u64);
+    out
 }
 /// Where tree `i` is as it is flung out, and how fast it goes (blocks a second).
 fn tree_fling(tr: &TreeRec, i: u32, seed: u32) -> ([f64; 3], [f64; 3]) {
@@ -446,7 +517,8 @@ pub(super) fn tree_at(tr: &TreeRec, i: u32, seed: u32, t: f64, ground: &dyn Fn(f
     let (pf, v) = tree_fling(tr, i, seed);
     let s = t - HU_FLING;
     let p = [pf[0] + v[0] * s, pf[1] + v[1] * s - 7.0 * s * s, pf[2] + v[2] * s];
-    TreeAt { p, up: p[1] > ground(p[0], p[2]) + 1.0 }
+    let down = tree_landing(tr, i, seed, ground).map_or(f64::INFINITY, |l| l.t);
+    TreeAt { p, up: t < down }
 }
 
 // ---- the land, read from the world -----------------------------------------------------------------------------------
@@ -693,7 +765,7 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: 
 // ---- what the wind takes ---------------------------------------------------------------------------------------------
 /// Each ring's colours: a sample of what was torn up under it (`keep`: the HU_PN with the highest keys, a block's key
 /// its own hash to the power of one over its weight, so the sample is weighted as the land is), and the names of the
-/// blocks sampled (some are thrown back down as real blocks).
+/// blocks sampled (what comes back down as rubble).
 #[derive(Default, Clone)]
 struct Pal {
     keep: Vec<(f64, u32, u16)>,
@@ -764,9 +836,12 @@ struct Work {
     /// The last crack heard, and its take.
     crack_last: f64,
     crack_take: u32,
-    /// The trees torn up near enough to the player to be heard (when, and where), and the blocks thrown back down.
+    /// The trees torn up near enough to the player to be heard (when, and where).
     cracks: Vec<(f64, [f64; 3])>,
-    thrown: Vec<(usize, u16)>,
+    /// The columns the flung rubble has come down on (one a column), and how many blocks have landed (for the tests and
+    /// the log).
+    rubble_at: crate::ground::FxMap<(i32, i32), ()>,
+    landed: [usize; 2],
     /// The blocks the edits have taken out of the world, by class (for the tests and the log).
     gone: [u64; 8],
     /// How many of the rigid groups are pieces of buildings (the rest are trees).
@@ -876,6 +951,65 @@ fn whole(b: u16) -> bool {
     let Some(k) = HU_BLOCKS.get(b as usize) else { return false };
     let n = k.name;
     k.class == 7 && !["door", "pane", "bars", "bed", "sign", "banner", "button", "lever", "torch", "lantern", "chain", "rail", "carpet", "pot", "ladder", "fence", "wall", "candle", "head", "skull", "plate", "rod", "glass"].iter().any(|s| n.contains(s))
+}
+
+/// The real ground's top at (xo, zo) off the target's middle, as the strike leaves it (over the middle's ground, as
+/// TreeRec::gdy: the height of the first block of air over it), and whether it is water: the land's own ground less
+/// what the wind digs out of it, or what it leaves standing on it (what `hu_column` takes, worked out the same way
+/// from what was read); with the terrain off, what stands there. A column not read: the nearest read on the way in
+/// to the middle, if any within some 60.
+fn left_top(w: &Work, bx: i32, bz: i32, xo: f64, zo: f64) -> Option<(f64, bool)> {
+    let r0 = xo.hypot(zo);
+    for k in 0..30 {
+        let f = if r0 > 1e-9 { (r0 - 2.0 * f64::from(k)).max(0.0) / r0 } else { 0.0 };
+        let (x, z) = ((f64::from(bx) + 0.5 + xo * f).floor() as i32, (f64::from(bz) + 0.5 + zo * f).floor() as i32);
+        if let Some(c) = w.land.at(bx, bz, x, z) {
+            return Some((f64::from(col_top(w, c, bx, bz, x, z) + 1 - w.gy), c.fluid));
+        }
+        if f == 0.0 {
+            break;
+        }
+    }
+    None
+}
+/// Column (x, z)'s highest block once the strike is done with it (`left_top`).
+fn col_top(w: &Work, c: &Col, bx: i32, bz: i32, x: i32, z: i32) -> i32 {
+    crate::meter::spend(300 + 80 * u64::from(c.segs));
+    if !w.terrain {
+        return c.top;
+    }
+    if c.fluid {
+        return c.top.max(c.g);
+    }
+    let r = f64::from(x - bx).hypot(f64::from(z - bz));
+    let seed = w.seed;
+    let g = c.g;
+    let u = chance(x, z, seed, 0x70);
+    let leaves_all = HU_R_LIFT + 8.0;
+    let strip = chance(x, z, seed, 0x52) < 0.6 * (1.0 - (r - leaves_all) / (HU_R_PLANTS - leaves_all));
+    let mut top = i32::MIN;
+    let mut n7 = 0;
+    let mut built_left = false;
+    for i in c.seg..c.seg + u32::from(c.segs) {
+        let sg = w.land.segs[i as usize];
+        let take = match sg.class {
+            3 | 6 => r < HU_R_LIFT,
+            4 => r < leaves_all || strip,
+            5 => r < HU_R_PLANTS,
+            7 => {
+                n7 += 1;
+                let go = torn(r, sg.y1 - g, n7 == 1, u);
+                built_left |= !go;
+                go
+            }
+            _ => false,
+        };
+        if !take {
+            top = top.max(sg.y1);
+        }
+    }
+    let dig = if !c.natural || built_left { 0 } else { dig_at(r, x, z, seed) };
+    top.max(g - dig)
 }
 
 /// One column's share of the wind's work, torn at at `t`: what it takes out of the world (`b` at once, `b2` its walls a
@@ -1009,7 +1143,9 @@ fn hu_column(w: &mut Work, b: &mut Blocks, b2: &mut Blocks, bx: i32, bz: i32, x:
             }
             let leaf = if leaf == NONE { hu_block("minecraft:oak_leaves").unwrap_or(0) } else { leaf };
             let (wood_bk, leaf_bk) = (w.kinds.of(c.wood, c.grass, c.foliage), w.kinds.of(leaf, c.grass, c.foliage));
-            w.trees.push(TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood_bk, leaf_bk, wood: c.wood, leaf, spans });
+            let mut tr = TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood_bk, leaf_bk, wood: c.wood, leaf, spans, t_land: 1e9, yl: 0.0, yaw: 0.0 };
+            land_it(w, &mut tr, bx, bz);
+            w.trees.push(tr);
             let d = (f64::from(x) + 0.5 - w.me[0]).hypot(f64::from(z) + 0.5 - w.me[2]);
             if d < 230.0 {
                 w.cracks.push((t, [f64::from(x) + 0.5, f64::from(g) + 3.0, f64::from(z) + 0.5]));
@@ -1029,12 +1165,6 @@ fn hu_column(w: &mut Work, b: &mut Blocks, b2: &mut Blocks, bx: i32, bz: i32, x:
             b.run_only(x, z, g - dig, g - dig, "minecraft:coarse_dirt", "minecraft:dirt");
         } else if n < 0.38 {
             b.run_only(x, z, g - dig, g - dig, "minecraft:gravel", "minecraft:dirt");
-        }
-        if let Some(k) = ring
-            && w.thrown.len() < 4096
-            && chance(x, z, seed, 0x54) < 0.05
-        {
-            w.thrown.push((k, c.ground));
         }
     } else if !c.fluid && c.natural && built == 0 && r < HU_R_LIFT + 10.0 && chance(x, z, seed, 0x55) < 0.65 * (1.0 - smooth(HU_DIG1, HU_R_LIFT + 10.0, r)) {
         // past the torn band the grass scoured off in streaks
@@ -1064,12 +1194,13 @@ fn house_piece(w: &mut Work, bx: i32, bz: i32, x: i32, z: i32, c: Col, t_up: f64
             if walls.is_empty() {
                 continue;
             }
-            let lo = walls.iter().map(|s| s.y0).min().unwrap_or(0) - g - 1;
-            let hi = walls.iter().map(|s| s.y1).max().unwrap_or(0) - g - 1;
-            if hi < 0 {
+            // (over this column's ground: the first block over it 1, as a tree's leaves are counted)
+            let lo = walls.iter().map(|s| s.y0).min().unwrap_or(0) - g;
+            let hi = walls.iter().map(|s| s.y1).max().unwrap_or(0) - g;
+            if hi < 1 {
                 continue;
             }
-            spans[(j * 7 + i) as usize] = (lo.clamp(0, 31) as u8, hi.clamp(0, 31) as u8);
+            spans[(j * 7 + i) as usize] = (lo.clamp(1, 31) as u8, hi.clamp(1, 31) as u8);
             any += 1;
             for s in walls {
                 if whole(s.b) {
@@ -1088,8 +1219,17 @@ fn house_piece(w: &mut Work, bx: i32, bz: i32, x: i32, z: i32, c: Col, t_up: f64
     }
     let bk = w.kinds.of(mat, c.grass, c.foliage);
     let (dx, dz) = (f64::from(x - bx), f64::from(z - bz));
-    w.trees.push(TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up, trunk: 0, wood_bk: bk, leaf_bk: bk, wood: mat, leaf: mat, spans });
+    let mut tr = TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up, trunk: 0, wood_bk: bk, leaf_bk: bk, wood: mat, leaf: mat, spans, t_land: 1e9, yl: 0.0, yaw: 0.0 };
+    land_it(w, &mut tr, bx, bz);
+    w.trees.push(tr);
     w.pieces += 1;
+}
+/// A new tree's (or piece's) landing, from the land as read so far (`left_top`; where it isn't, its own ground's
+/// height): worked out again as the strike flings them, the pass told again if it has changed (`hu_landings`).
+fn land_it(w: &Work, tr: &mut TreeRec, bx: i32, bz: i32) {
+    let i = w.trees.len() as u32;
+    let g0 = tr.gdy;
+    set_landing(tr, i, w.seed, &|x, z| left_top(w, bx, bz, x, z).map_or(g0, |v| v.0));
 }
 
 impl Blocks {
@@ -1278,75 +1418,151 @@ fn hu_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f64) {
     if more {
         q.later((now + 0.05) as f32, move |q| hu_work(q, w, now + 0.05));
     } else {
-        // the blocks thrown back down as the storm flings everything out, and the trees' pieces where they come down
-        let wk = w.borrow();
-        hu_thrown(q, &wk);
+        // where everything it flings comes down: the trees and the pieces of buildings, and the rubble
+        q.later((now + 0.05) as f32, move |q| hu_landings(q, w, 0, 0, now + 0.05));
     }
 }
 
-/// What the storm flings back down as real blocks: some of what it tore up, thrown out of the rings it flew round in
-/// (falling blocks, landing out to some 200 blocks), and a few logs and leaves from each tree where it comes down.
-const HU_THROWN: usize = 220;
-fn hu_thrown(q: &mut Plan, w: &Work) {
-    if !w.terrain {
-        return;
+/// A block's name with its state, kept for the strike's edits (each name made once).
+fn interned(name: String) -> &'static str {
+    thread_local! {
+        static NAMES: RefCell<std::collections::HashMap<String, &'static str>> = RefCell::new(Default::default());
     }
-    let (cx, cz) = (f64::from(q.bx) + 0.5, f64::from(q.bz) + 0.5);
-    let gy = f64::from(w.gy);
-    let name = |n: u16| -> Option<&'static str> {
-        let s = HU_BLOCKS.get(n as usize)?.name;
-        (!s.contains("bedrock")).then_some(s)
-    };
-    let pick = w.thrown.len().min(HU_THROWN);
-    for i in 0..pick {
-        let j = (i * w.thrown.len()) / pick.max(1);
-        let (k, n) = w.thrown[j];
-        let Some(blk) = name(n) else { continue };
-        let r = ring_r(k) + 8.0 * (mh(i as u32, w.seed, 0x61) - 0.5);
-        let a = TAU * mh(i as u32, w.seed, 0x62);
-        let y = gy + 15.0 + ring_h(r).min(70.0) * mh(i as u32, w.seed, 0x63);
-        let (ox, oz) = (a.cos(), a.sin());
-        let (tx, tz) = (-oz * HU_SPIN, ox * HU_SPIN);
-        let vt = omega(r) * r * spin(HU_FLING) * 0.5 / 20.0;
-        let vo = (0.3 + 0.5 * mh(i as u32, w.seed, 0x64)) * 0.8;
-        let (vx, vz, vy) = (tx * vt + ox * vo, tz * vt + oz * vo, 0.2 + 0.3 * mh(i as u32, w.seed, 0x65));
-        let t = HU_FLING + 0.2 + 2.5 * mh(i as u32, w.seed, 0x66);
-        let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
-        q.ev.push((t as f32, Act::Cmd(format!(
-            "summon minecraft:falling_block {x:.1} {y:.1} {z:.1} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"
-        ))));
-    }
-    // (each tree's pieces: a log and its leaves where it comes down)
-    let ground = |x: f64, z: f64| -> f64 {
-        let r = x.hypot(z);
-        let gi = (r / HU_G_STEP) as usize;
-        if gi >= HU_GR {
-            return 0.0;
+    NAMES.with(|m| *m.borrow_mut().entry(name.clone()).or_insert_with(|| Box::leak(name.into_boxed_str())))
+}
+/// A trunk's block lying along x or z (a log's, wood's, stem's or hyphae's axis; as it is otherwise).
+fn lying(b: u16, along_x: bool) -> &'static str {
+    let n = HU_BLOCKS[b as usize].name;
+    let axis = n.ends_with("_log") || n.ends_with("_wood") || (n.ends_with("_stem") && !n.contains("mushroom")) || n.ends_with("_hyphae") || n.ends_with("bamboo_block");
+    if axis { interned(format!("{n}[axis={}]", if along_x { "x" } else { "z" })) } else { n }
+}
+/// A block as it is laid down: leaves that don't decay.
+fn laid(b: u16) -> &'static str {
+    let n = HU_BLOCKS[b as usize].name;
+    if n.ends_with("_leaves") { interned(format!("{n}[persistent=true]")) } else { n }
+}
+/// Whether a block torn up can come back down as rubble: the land's own ground, wood, leaves, a building's whole
+/// blocks (no panes, doors, glass and the like: `whole`).
+fn rubble_ok(b: u16) -> bool {
+    HU_BLOCKS.get(b as usize).is_some_and(|k| matches!(k.class, 2..=4) || whole(b))
+}
+/// How far out the pass's flung blocks have come down from their ring's middle, those that were `y0` up as they were
+/// flung, `s` seconds after: out along the eyewall's slope as they climbed (the pass's hu_flare at the storm's height),
+/// then 9 a second (the pass's hu_flung).
+fn flung_out(y0: f64, s: f64) -> f64 {
+    (0.08 * y0 + 0.00045 * y0 * y0) * 1.2 + 9.0 * s
+}
+/// How long a flung block `y0` up takes to come down to its ground (y0 + 4 s - 7 s^2 = 0, as the pass's hu_flung).
+fn flung_down(y0: f64) -> f64 {
+    (4.0 + (16.0 + 28.0 * y0.max(0.0)).sqrt()) / 14.0
+}
+/// How many of the flung blocks come down as real rubble.
+pub(super) const HU_RUBBLE: usize = 2400;
+/// At most so many of a tree's (or a piece's) blocks are laid where it lands.
+const HU_TREE_CAP: usize = 160;
+
+/// Where everything the storm flings comes down, a stage at a time (from tree `i`, then rubble `k`): each tree and
+/// piece of a building lands as real blocks lying where the pass lays it (`tree_landing`, `tree_cells`; the pass told
+/// again where its landing has changed since it was torn up), and HU_RUBBLE blocks from the rings' samples (`Pal`)
+/// come down one a column where the pass's flung blocks come down (`flung_out`), on the real ground as the strike
+/// leaves it, never into water. Each only into air, and never where the player stands (`Blocks::clear_of_player`).
+fn hu_landings(q: &mut Plan, w: Rc<RefCell<Work>>, mut i: usize, mut k: usize, now: f64) {
+    let more = {
+        let mut guard = w.borrow_mut();
+        let wk = &mut *guard;
+        let (bx, bz) = (q.bx, q.bz);
+        let gy = wk.gy;
+        let seed = wk.seed;
+        let at = |t: f64| t.max(now + 0.05) as f32;
+        // (what it gives counts as the stage's work too, a thousand a run: `Strike::work_out`)
+        let mut made = 0u64;
+        while i < wk.trees.len() && crate::meter::spent() + made < HU_STAGE {
+            let mut tr = wk.trees[i].clone();
+            let g0 = tr.gdy;
+            let l = {
+                let wr: &Work = wk;
+                tree_landing(&tr, i as u32, seed, &|x, z| left_top(wr, bx, bz, x, z).map_or(g0, |v| v.0))
+            };
+            if let Some(l) = l {
+                if (l.t - tr.t_land).abs() > 1e-6 || (l.yl - tr.yl).abs() > 1e-6 || (l.yaw - tr.yaw).abs() > 1e-6 {
+                    (tr.t_land, tr.yl, tr.yaw) = (l.t, l.yl, l.yaw);
+                    let words = tr.words();
+                    q.ev.push((now as f32, Act::Words { index: (HU_T + HU_TW * i + 25) as u32, words: words[25..28].to_vec() }));
+                    wk.trees[i] = tr.clone();
+                }
+                if wk.terrain && HU_BLOCKS.get(tr.wood as usize).is_some() && HU_BLOCKS.get(tr.leaf as usize).is_some() {
+                    let along_x = l.d[0].abs() >= l.d[1].abs();
+                    let (log, leaf) = (lying(tr.wood, along_x), laid(tr.leaf));
+                    let mut b = Blocks { clear_of_player: true, ..Default::default() };
+                    for (p, trunk) in tree_cells(&tr, &l, HU_TREE_CAP) {
+                        b.put(bx + p[0], bz + p[2], gy + p[1], gy + p[1], if trunk { log } else { leaf }, Some("minecraft:air"), false);
+                    }
+                    wk.landed[0] += b.runs.len();
+                    made += 1_000 * b.runs.len() as u64;
+                    if !b.runs.is_empty() {
+                        q.ev.push((at(l.t), Act::Blocks(Box::new(b))));
+                    }
+                }
+            }
+            i += 1;
         }
-        let ai = ((z.atan2(x) / TAU).rem_euclid(1.0) * HU_GA as f64) as usize % HU_GA;
-        let (s, n) = w.grid[gi * HU_GA + ai];
-        if n == 0 { 0.0 } else { s / f64::from(n) }
-    };
-    for (i, tr) in w.trees.iter().enumerate() {
-        crate::meter::spend(8_000);
-        if let Some((t, at)) = tree_down(tr, i as u32, w.seed, &ground)
-            && let (Some(wood), Some(leaf)) = (HU_BLOCKS.get(tr.wood as usize), HU_BLOCKS.get(tr.leaf as usize))
-        {
-            {
-                let (wood, leaf) = (wood.name, leaf.name);
-                // (as a fallen trunk lies, and leaves that don't decay)
-                let axis = if wood.ends_with("_log") || wood.ends_with("_stem") { ",Properties:{axis:\"x\"}" } else { "" };
-                let keep = if leaf.ends_with("_leaves") { ",Properties:{persistent:\"true\"}" } else { "" };
-                let (x, y, z) = (cx + at[0], gy + at[1] + 3.0, cz + at[2]);
-                q.ev.push((t as f32, Act::Cmd(format!("summon minecraft:falling_block {x:.1} {y:.1} {z:.1} {{BlockState:{{Name:\"{wood}\"{axis}}},Time:1,DropItem:0b,Motion:[0.0d,-0.2d,0.0d]}}"))));
-                q.ev.push((t as f32, Act::Cmd(format!(
-                    "summon minecraft:falling_block {:.1} {:.1} {:.1} {{BlockState:{{Name:\"{leaf}\"{keep}}},Time:1,DropItem:0b,Motion:[0.0d,-0.2d,0.0d]}}",
-                    x + 1.0,
-                    y + 1.0,
-                    z
-                ))));
+        if i >= wk.trees.len() && wk.terrain && k < HU_RUBBLE {
+            // (each ring's share by how many blocks fly round in it)
+            let wt: Vec<f64> = (0..HU_NR)
+                .map(|n| {
+                    let r = ring_r(n);
+                    if wk.pal[n].keep.is_empty() { 0.0 } else { (TAU * r / HU_CELL).floor() * ring_h(r) / HU_CELL * ring_dens(r) }
+                })
+                .collect();
+            let sum: f64 = wt.iter().sum();
+            if sum <= 0.0 {
+                // (nothing was torn up to come down)
+                k = HU_RUBBLE;
+            }
+            let mut b = Blocks { clear_of_player: true, ..Default::default() };
+            let mut when: crate::ground::FxMap<(i32, i32), f64> = Default::default();
+            while k < HU_RUBBLE && sum > 0.0 && crate::meter::spent() + made < HU_STAGE {
+                let n = k as u32;
+                k += 1;
+                crate::meter::spend(1_500);
+                let mut u = mh(n, seed, 0x81) * sum;
+                let ring = wt.iter().position(|&x| {
+                    u -= x;
+                    u < 0.0
+                });
+                let Some(ring) = ring else { continue };
+                let y0 = ring_h(ring_r(ring)) * mh(n, seed, 0x82);
+                let a = TAU * mh(n, seed, 0x83);
+                let s = flung_down(y0);
+                let r = ring_r(ring) + flung_out(y0, s);
+                let (xo, zo) = (r * a.cos(), r * a.sin());
+                let Some((yl, water)) = left_top(wk, bx, bz, xo, zo) else { continue };
+                let (x, z) = ((f64::from(bx) + 0.5 + xo).floor() as i32, (f64::from(bz) + 0.5 + zo).floor() as i32);
+                if water || wk.rubble_at.contains_key(&(x, z)) {
+                    continue;
+                }
+                let keep = &wk.pal[ring].keep;
+                let j0 = (mh(n, seed, 0x84) * keep.len() as f64) as usize;
+                let Some(blk) = (0..keep.len()).map(|j| keep[(j0 + j) % keep.len()].2).find(|&b| rubble_ok(b)) else { continue };
+                wk.rubble_at.insert((x, z), ());
+                let y = gy + yl.round() as i32;
+                b.put(x, z, y, y, laid(blk), Some("minecraft:air"), false);
+                when.insert((x, z), HU_FLING + s);
+                wk.landed[1] += 1;
+                made += 1_000;
+            }
+            for (t, e) in b.split_by(|x, z| at(when.get(&(x, z)).copied().unwrap_or(HU_FLING))) {
+                q.ev.push((t, Act::Blocks(Box::new(e))));
             }
         }
+        let done = (i >= wk.trees.len() && (k >= HU_RUBBLE || !wk.terrain)) || now > f64::from(HU_LEN);
+        if done {
+            crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("hurricane: {} blocks of trees and buildings and {} of rubble land", wk.landed[0], wk.landed[1]));
+        }
+        !done
+    };
+    if more {
+        q.later((now + 0.05) as f32, move |q| hu_landings(q, w, i, k, now + 0.05));
     }
 }
 // ---- the mobs ----------------------------------------------------------------------------------------------------------
@@ -1419,7 +1635,8 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         crack_last: f64::MIN,
         crack_take: 0,
         cracks: Vec::new(),
-        thrown: Vec::new(),
+        rubble_at: Default::default(),
+        landed: [0; 2],
         gone: [0; 8],
         pieces: 0,
         gy: by + 1,
@@ -1463,7 +1680,7 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         t += 0.35;
     }
 
-    // ---- the mobs carried round, flung out as it drops and killed if the fall hasn't ------------------------------------
+    // ---- the mobs carried round, flung out as it drops, coming down where they fall -----------------------------------
     if terrain {
         let y0 = gy + 30.0;
         let mut t = HU_F0 + 2.0;
@@ -1472,12 +1689,28 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
             p.later((t0 - 0.5) as f32, move |q| mob_second(q, t0, cx, y0, cz));
             t += 1.0;
         }
+        // (flung: given their own motion, out and on along the wind and up, by the 40-block square they are over (each
+        // square's way out from the middle); then they fly and fall as the game moves them, and the fall hurts)
         let sel = "type=!minecraft:player,type=!minecraft:falling_block";
-        for k in 0..10 {
-            let t = HU_FLING + 0.05 * f64::from(k);
-            p.at(t as f32, format!("execute positioned {cx:.1} {y0:.1} {cz:.1} as @e[{sel},distance=..200] at @s facing {cx:.1} ~ {cz:.1} run tp @s ^ ^0.5 ^-1.4"));
+        let sq = 40.0;
+        for i in -5..5 {
+            for j in -5..5 {
+                let (mx, mz) = ((f64::from(i) + 0.5) * sq, (f64::from(j) + 0.5) * sq);
+                let r = mx.hypot(mz);
+                if r > 205.0 {
+                    continue;
+                }
+                let (ox, oz) = (mx / r, mz / r);
+                let (tx, tz) = (-oz * HU_SPIN, ox * HU_SPIN);
+                let (out, on) = (0.9, 0.6 * wind_shape(r.max(HU_R_IN)));
+                let (vx, vz) = (ox * out + tx * on, oz * out + tz * on);
+                let (x0, z0) = (cx + f64::from(i) * sq, cz + f64::from(j) * sq);
+                p.at(HU_FLING as f32, format!(
+                    "execute positioned {x0:.1} {:.1} {z0:.1} as @e[{sel},dx={sq:.0},dy=400,dz={sq:.0}] run data merge entity @s {{Motion:[{vx:.3}d,0.9d,{vz:.3}d]}}",
+                    gy - 40.0
+                ));
+            }
         }
-        p.at(len - 1.0, format!("execute positioned {cx:.1} {gy:.1} {cz:.1} run kill @e[{sel},distance=..230]"));
         // (the chunks it works in kept loaded while it does, a target far off too)
         let load = pk_load_rows([cx, gy, cz], 0.0, f64::from(HU_READ) + 4.0);
         for [x0, z0, x1, z1] in &load {
@@ -1722,8 +1955,9 @@ mod tests {
         assert!(hu_in_air(20.0) < hu_in_air(30.0) && hu_in_air(30.0) <= hu_in_air(40.0) + 1.0);
         // (the table: everything where the pass reads it, under the game's limit)
         assert!(HU_PAL + HU_NR * HU_PN <= HU_T && HU_T + HU_TW * HU_NT == HU_G && HU_WORDS <= 1 << 18);
-        let tr = TreeRec { x: 1.0, z: 2.0, gdy: 0.0, t_up: 20.0, trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49] };
+        let tr = TreeRec { x: 1.0, z: 2.0, gdy: 0.0, t_up: 20.0, trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49], t_land: 50.5, yl: -2.0, yaw: 1.25 };
         let w = tr.words();
+        assert_eq!((f32::from_bits(w[25]), f32::from_bits(w[26]), f32::from_bits(w[27])), (50.5, -2.0, 1.25));
         assert_eq!(w[4] & 31, 6);
         assert_eq!((w[8 + 48 / 3] >> (10 * (48 % 3))) & 1023, 4 | 8 << 5);
     }
@@ -1734,7 +1968,8 @@ mod tests {
         let (cx, cz) = (10.5, -2.5);
         let mut logs = 0;
         let mut dug = 0;
-        for (t, due, b) in &p.edits {
+        // (what it tears up: what comes down as it lands is its own test's)
+        for (t, due, b) in p.edits.iter().filter(|e| !e.2.clear_of_player) {
             for f in b.as_fills() {
                 let w: Vec<f64> = f.split_whitespace().skip(1).take(6).map(|v| v.parse().unwrap_or(0.0)).collect();
                 let r = (w[0] + 0.5 - cx).hypot(w[2] + 0.5 - cz);
@@ -1756,8 +1991,12 @@ mod tests {
         let worst = p.stages.iter().map(|s| s.2).fold(0.0, f64::max);
         eprintln!("{} stages, heaviest {worst:.2} ms; {} edits", p.stages.len(), p.edits.len());
         assert!(p.cmds.iter().filter(|(_, c)| c.contains("run tp @s ^")).count() > 2000);
-        assert!(p.cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")).count() > 150);
-        assert!(p.cmds.iter().any(|(_, c)| c.contains("run kill @e[type=!minecraft:player")));
+        // (flung, given their own motion, never killed at the end; the trees and the rubble laid down where they land)
+        assert!(p.cmds.iter().filter(|(t, c)| (*t - HU_FLING as f32).abs() < 0.1 && c.contains("data merge entity @s {Motion:[")).count() > 50);
+        assert!(!p.cmds.iter().any(|(_, c)| c.contains(" kill ") || c.contains("summon minecraft:falling_block")));
+        let laid: usize = p.edits.iter().filter(|e| e.2.clear_of_player).map(|e| e.2.runs.len()).sum();
+        eprintln!("{laid} runs laid down as it all lands");
+        assert!(laid > 3000, "{laid}");
     }
 
     #[test]
@@ -1800,7 +2039,7 @@ mod tests {
         assert!((f64::from(t_up) - f).abs() < 6.0, "torn up at {t_up}, its front at {f}");
         assert!(first.1[4] & 31 >= 3, "a trunk");
         // (and its path: up off the land, round the eyewall, flung out and back down before the end)
-        let tr = TreeRec { x: f64::from(x), z: f64::from(z), gdy: 0.0, t_up: f64::from(t_up), trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49] };
+        let tr = TreeRec { x: f64::from(x), z: f64::from(z), gdy: 0.0, t_up: f64::from(t_up), trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49], t_land: 1e9, yl: 0.0, yaw: 0.0 };
         let g = |_: f64, _: f64| 0.0;
         let mid = tree_at(&tr, 0, 37, 40.0, &g);
         assert!(mid.up && mid.p[1] > 20.0 && mid.p[0].hypot(mid.p[2]) > 50.0, "{:?}", mid.p);
@@ -1873,6 +2112,21 @@ mod tests {
         let fills = p.edits.iter().flat_map(|e| e.2.as_fills()).collect();
         let timed = p.edits.iter().map(|e| (e.0, e.2.as_fills())).collect();
         (fills, timed)
+    }
+    /// A village everywhere: a 7 by 7 house of spruce planks on a cobblestone footing, its roof of stairs and slabs, in
+    /// every 12 by 12, bare flat land between.
+    fn houses_everywhere(x: i32, z: i32) -> Option<(i32, Vec<&'static str>)> {
+        let (i, j) = (x.rem_euclid(12), z.rem_euclid(12));
+        if i > 6 || j > 6 {
+            return synth_column(x, z, HU_BELOW, 1, 65, 0.0, false);
+        }
+        let edge = i == 0 || i == 6 || j == 0 || j == 6;
+        let top: Vec<&'static str> = if edge {
+            vec!["minecraft:cobblestone", "minecraft:spruce_planks", "minecraft:spruce_planks", "minecraft:spruce_planks", "minecraft:spruce_planks", "minecraft:spruce_stairs"]
+        } else {
+            vec!["minecraft:spruce_planks", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:spruce_slab"]
+        };
+        Some((65, stack(&top, "minecraft:dirt")))
     }
     /// A column bottom up: stone, its ground, what stands on it, air over it.
     fn stack(top: &[&'static str], ground: &'static str) -> Vec<&'static str> {
@@ -2021,19 +2275,7 @@ mod tests {
         crate::columns::clear();
         let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
         let mut ev = plan(the_laser(), &target, true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
-        let house = |x: i32, z: i32| -> Option<(i32, Vec<&'static str>)> {
-            let (i, j) = (x.rem_euclid(12), z.rem_euclid(12));
-            if i > 6 || j > 6 {
-                return synth_column(x, z, HU_BELOW, 1, 65, 0.0, false);
-            }
-            let edge = i == 0 || i == 6 || j == 0 || j == 6;
-            let top: Vec<&'static str> = if edge {
-                vec!["minecraft:cobblestone", "minecraft:spruce_planks", "minecraft:spruce_planks", "minecraft:spruce_planks", "minecraft:spruce_planks", "minecraft:spruce_stairs"]
-            } else {
-                vec!["minecraft:spruce_planks", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:spruce_slab"]
-            };
-            Some((65, stack(&top, "minecraft:dirt")))
-        };
+        let house = |x: i32, z: i32| houses_everywhere(x, z);
         let mut words: Vec<(u32, Vec<u32>)> = Vec::new();
         let mut n = 0.0f32;
         ev.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -2070,17 +2312,139 @@ mod tests {
             // (lifted with its walls, after the front reaches it)
             assert!(f64::from(t_up) >= front_t(r.max(HU_R_IN)).unwrap() - 2.0, "{t_up} at {r}");
         }
-        // (and played as the mod plays it, a village everywhere: every stage light, the edits on time)
+        // (and played as the mod plays it, a village everywhere: the edits on time; its stages timed in
+        // hurricane_no_stage_too_heavy_anywhere)
         crate::columns::clear();
         let ev = plan(the_laser(), &target, true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
         let p = crate::strike::sim::play(ev, HU_LEN, &|x, z, _, _| house(x, z));
-        let worst = p.stages.iter().map(|s| s.2).fold(0.0, f64::max);
         let late = p.edits.iter().map(|e| e.0 - e.1).fold(0.0f32, f32::max);
         let runs: usize = p.edits.iter().map(|e| e.2.runs.len()).sum();
-        eprintln!("a village: {} stages, heaviest {worst:.2} ms; {} edits, {runs} runs, the latest {late:.2} s late", p.stages.len(), p.edits.len());
-        if !cfg!(debug_assertions) {
-            assert!(worst < 1.3, "a stage of {worst:.2} ms");
+        eprintln!("a village: {} edits, {runs} runs, the latest {late:.2} s late", p.edits.len());
+        assert!(late < 0.3, "an edit {late:.2} s late");
+    }
+
+    /// A strike over the target (0 64 0) played through, the land answered by `answer`: the pass's table at the end,
+    /// and every edit with when it is due.
+    fn table_and_edits(answer: &dyn Fn(i32, i32, u32, u32) -> Option<(i32, Vec<&'static str>)>) -> (Vec<u32>, Vec<(f32, Blocks)>) {
+        crate::columns::clear();
+        let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+        let mut ev = plan(the_laser(), &target, true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+        let mut table = vec![0u32; HU_WORDS];
+        let mut edits = Vec::new();
+        ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+        while let Some((t, a)) = ev.pop() {
+            match a {
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| answer(x, z, below, above)),
+                Act::Words { index, words } => {
+                    let i = index as usize;
+                    table[i..i + words.len()].copy_from_slice(&words);
+                }
+                Act::Data { index, value } => table[index as usize] = value.to_bits(),
+                Act::Blocks(b) => edits.push((t, *b)),
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
+                    ev.extend(job());
+                    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+                }
+                _ => {}
+            }
         }
+        (table, edits)
+    }
+
+    #[test]
+    fn hurricane_lays_each_tree_down_where_the_pass_lays_it() {
+        // (on wooded flat land: each flung tree's blocks laid as its words say it lands (the contract with the pass's
+        // hu_tree_at): at t_land, on the real ground's top yl, lying along yaw, its foot cm back from where its middle
+        // lands; its trunk logs along x or z)
+        let (table, edits) = table_and_edits(&|x, z, b, a| synth_column(x, z, b, a, 65, 0.0, true));
+        let n = f32::from_bits(table[0]) as usize;
+        assert!(n > 40, "{n} trees");
+        let laid: Vec<&(f32, Blocks)> = edits.iter().filter(|e| e.1.clear_of_player).collect();
+        let mut checked = 0;
+        for i in 0..n {
+            let w = &table[HU_T + HU_TW * i..HU_T + HU_TW * (i + 1)];
+            let f = |k: usize| f64::from(f32::from_bits(w[k]));
+            let mut spans = [(31u8, 0u8); 49];
+            for (c, sp) in spans.iter_mut().enumerate() {
+                let v = (w[8 + c / 3] >> (10 * (c % 3))) & 1023;
+                *sp = ((v & 31) as u8, (v >> 5) as u8);
+            }
+            let tr = TreeRec { x: f(0), z: f(1), gdy: f(2), t_up: f(3), trunk: (w[4] & 31) as u8, wood_bk: 0, leaf_bk: 0, wood: 0, leaf: 0, spans, t_land: f(25), yl: f(26), yaw: f(27) };
+            if tr.t_up >= HU_FLING {
+                assert!(tr.t_land > 1e8);
+                continue;
+            }
+            // (its fall: from where the pass flings it, its middle down to yl + 0.5 at t_land)
+            let (pf, v) = tree_fling(&tr, i as u32, 37);
+            let s = tr.t_land - HU_FLING;
+            assert!((pf[1] + v[1] * s - 7.0 * s * s - (tr.yl + 0.5)).abs() < 2e-3, "tree {i}: lands at {} not {}", pf[1] + v[1] * s - 7.0 * s * s, tr.yl + 0.5);
+            let d = [tr.yaw.cos(), tr.yaw.sin()];
+            let h = v[0].hypot(v[2]);
+            assert!((d[0] - v[0] / h).abs() < 1e-3 && (d[1] - v[2] / h).abs() < 1e-3, "tree {i}: yaw");
+            // (flat land at 65, the ground the strike leaves: never above it, dug at most three)
+            assert!(tr.yl <= 0.0 && tr.yl >= -3.0 && tr.yl.fract() == 0.0, "tree {i}: yl {}", tr.yl);
+            // (its trunk's foot: the block at foot + d * 0.5)
+            let cm = 0.6 * f64::from(tr.trunk.max(3));
+            let m = [pf[0] + v[0] * s, pf[2] + v[2] * s];
+            let foot = [m[0] - d[0] * cm, tr.yl + 0.5, m[1] - d[1] * cm];
+            let b0 = [(0.5 + foot[0] + d[0] * 0.5).floor() as i32, 65 + foot[1].floor() as i32, (0.5 + foot[2] + d[1] * 0.5).floor() as i32];
+            let axis = if d[0].abs() >= d[1].abs() { "[axis=x]" } else { "[axis=z]" };
+            let at_land: Vec<String> = laid.iter().filter(|e| (e.0 - tr.t_land as f32).abs() < 0.06).flat_map(|e| e.1.as_fills()).collect();
+            let want = format!("fill {} {} {} {} {} {} minecraft:oak_log{axis} replace minecraft:air strict", b0[0], b0[1], b0[2], b0[0], b0[1], b0[2]);
+            let near = |f: &String| {
+                let p: Vec<i32> = f.split_whitespace().skip(1).take(3).map(|v| v.parse().unwrap_or(0)).collect();
+                f.contains("oak_log") && (p[0] - b0[0]).abs() <= 1 && (p[2] - b0[2]).abs() <= 1
+            };
+            assert!(at_land.iter().any(|f| *f == want || (f.starts_with(&format!("fill {} {} {} ", b0[0], b0[1], b0[2])) && f.contains(&format!("oak_log{axis}")))), "tree {i}: no {want} at {:.2} s: {:?}", tr.t_land, at_land.iter().filter(|f| near(f)).collect::<Vec<_>>());
+            assert!(at_land.iter().filter(|f| f.contains("oak_leaves[persistent=true]")).count() > 3, "tree {i}: its leaves");
+            checked += 1;
+        }
+        eprintln!("{checked} trees laid down where they land");
+        assert!(checked > 30);
+        // (every block laid only into air)
+        for e in &laid {
+            for f in e.1.as_fills() {
+                assert!(f.ends_with("replace minecraft:air strict"), "{f}");
+            }
+        }
+    }
+
+    #[test]
+    fn hurricane_rubble_comes_down_on_the_ground_never_in_water_or_the_player() {
+        // (flat land, a pond east of the middle: some two thousand blocks come down, one a column, each on the ground's
+        // top as the strike leaves it, from what flew round there, none into the pond)
+        let pond = |x: i32, z: i32| (60..140).contains(&x) && (-40..40).contains(&z);
+        let (_, edits) = table_and_edits(&|x, z, b, a| {
+            if pond(x, z) {
+                let mut v = vec!["minecraft:sand"; b as usize - 3];
+                v.extend_from_slice(&["minecraft:water", "minecraft:water", "minecraft:water", "minecraft:air"]);
+                return Some((65, v));
+            }
+            synth_column(x, z, b, a, 65, 0.0, false)
+        });
+        let rubble: Vec<(f32, String)> = edits.iter().filter(|e| e.1.clear_of_player).flat_map(|e| e.1.as_fills().into_iter().map(move |f| (e.0, f))).collect();
+        eprintln!("{} blocks of rubble", rubble.len());
+        assert!(rubble.len() > 1500 && rubble.len() <= HU_RUBBLE, "{}", rubble.len());
+        let mut cols = std::collections::HashSet::new();
+        for (t, f) in &rubble {
+            let p: Vec<i32> = f.split_whitespace().skip(1).take(6).map(|v| v.parse().unwrap_or(0)).collect();
+            assert!(cols.insert((p[0], p[2])), "two in one column: {f}");
+            assert!(!pond(p[0], p[2]), "into the pond: {f}");
+            // (on bare flat land, its top at 64: dug at most three, laid on what is left)
+            assert!((61..=65).contains(&p[1]), "{f}");
+            assert!(f.ends_with("replace minecraft:air strict"), "{f}");
+            assert!(*t >= HU_FLING as f32 && *t < HU_FLING as f32 + 8.0, "{t}");
+            let r = (f64::from(p[0]) + 0.5).hypot(f64::from(p[2]) + 0.5);
+            assert!(r > HU_RING0 && r < 260.0, "{r}");
+        }
+        // (and none ever where the player is: the runs in their body left out as the edit is made)
+        let b = &edits.iter().find(|e| e.1.clear_of_player && !e.1.runs.is_empty()).unwrap().1;
+        let r = &b.runs[0];
+        let feet = [f64::from(r.x) + 0.5, f64::from(r.y) - 1.0, f64::from(r.z) + 0.5];
+        assert!(crate::strike::in_player(r.x, r.z, r.y, r.y, feet));
+        assert_eq!(b.edit_clear_of(feet).runs.len() + 1, b.runs.len());
+        assert_eq!(b.edit_clear_of([1e6, 0.0, 1e6]).runs.len(), b.runs.len());
+        assert!(!crate::strike::in_player(r.x + 1, r.z, r.y, r.y, feet) && !crate::strike::in_player(r.x, r.z, r.y + 2, r.y + 2, feet));
     }
 
     #[test]
@@ -2131,6 +2495,19 @@ mod tests {
             eprintln!("hills {hills} forest {forest}: {} stages, heaviest {worst:.2} ms", best.len());
             assert!(worst < 1.3, "hills {hills}: a stage took {worst:.2} ms");
         }
+        // (and over a village everywhere: buildings torn apart, pieces of them lifted whole and laid down)
+        let mut best: Vec<f64> = Vec::new();
+        for _ in 0..2 {
+            crate::columns::clear();
+            let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+            let ev = plan(the_laser(), &target, true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+            let p = crate::strike::sim::play(ev, HU_LEN, &|x, z, _, _| houses_everywhere(x, z));
+            let ms: Vec<f64> = p.stages.iter().map(|s| s.2).collect();
+            best = if best.is_empty() || best.len() != ms.len() { ms } else { best.iter().zip(&ms).map(|(a, b)| a.min(*b)).collect() };
+        }
+        let worst = best.iter().copied().fold(0.0, f64::max);
+        eprintln!("a village: {} stages, heaviest {worst:.2} ms", best.len());
+        assert!(worst < 1.3, "a village: a stage took {worst:.2} ms");
     }
 }
 

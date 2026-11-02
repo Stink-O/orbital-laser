@@ -102,6 +102,9 @@ pub struct Blocks {
     pub landing: Option<f32>,
     /// Made even when the strike is stopped before it is due (`Act::Cleanup`'s kind of edit: fires put out).
     pub cleanup: bool,
+    /// Blocks laid down (landing rubble, a landed tree): none goes in where the player is as it is made (lib.rs's
+    /// `edit` leaves out the runs that would fill their body or the block over their head).
+    pub clear_of_player: bool,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -150,12 +153,19 @@ impl Blocks {
             runs: self.runs.clone(),
         }
     }
+    /// The edit less its runs that would fill where a player with their feet at `feet` is (`clear_of_player`): their
+    /// body's two blocks and the one over their head, in the columns their box (0.3 out from their middle) reaches.
+    pub fn edit_clear_of(&self, feet: [f64; 3]) -> horizon_mod_sdk::world::BlockEdit {
+        let mut e = self.edit();
+        e.runs.retain(|r| !in_player(r.x, r.z, r.y, r.y + r.height as i32 - 1, feet));
+        e
+    }
     /// The runs sorted into the ticks they go in at (`when` of each run's column): a wave's edits, in order.
     pub(super) fn split_by(&self, when: impl Fn(i32, i32) -> f32) -> Vec<(f32, Blocks)> {
         let mut out: std::collections::BTreeMap<i32, Blocks> = Default::default();
         crate::meter::spend(200 * self.runs.len() as u64);
         for r in &self.runs {
-            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_default();
+            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_insert_with(|| Blocks { clear_of_player: self.clear_of_player, ..Default::default() });
             let block = Self::index(&mut b.palette, self.palette[r.block as usize]);
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
@@ -179,6 +189,14 @@ impl Blocks {
             })
             .collect()
     }
+}
+
+/// Whether blocks y0..=y1 of column (x, z) are in a player's body (feet at `feet`) or the block over their head.
+pub fn in_player(x: i32, z: i32, y0: i32, y1: i32, feet: [f64; 3]) -> bool {
+    let (fx, fz) = (feet[0], feet[2]);
+    let over = |c: i32, f: f64| f64::from(c) < f + 0.3 && f64::from(c + 1) > f - 0.3;
+    let fy = feet[1].floor() as i32;
+    over(x, fx) && over(z, fz) && y1 >= fy && y0 <= fy + 2
 }
 
 /// What a strike's edit made of a column, for `tidy`: left as it was, cleared up through everything over it (nothing
