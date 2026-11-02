@@ -30,12 +30,14 @@ const HU_NR: i32 = 13;             // the rings the blocks fly round in (hurrica
 const HU_RING0: f32 = 30.0;
 const HU_RING_W: f32 = 10.0;
 const HU_CELL: f32 = 3.0;          // their cells, a block at most in each
-const HU_PAL: u32 = 64u;           // the table: each ring's colours from HU_PAL (HU_PN a ring),
+const HU_PAL: u32 = 64u;           // the table: each ring's blocks from HU_PAL (HU_PN a ring, each a block type),
 const HU_PN: u32 = 32u;
-const HU_T: u32 = 512u;            // the trees from HU_T (HU_TW words each: hurricane.rs's TreeRec::words),
+const HU_BK: u32 = 512u;           // the block types from HU_BK (HU_BKW words each: hurricane.rs's bk_words),
+const HU_BKW: u32 = 2u;
+const HU_T: u32 = 1536u;           // the trees from HU_T (HU_TW words each: hurricane.rs's TreeRec::words),
 const HU_TW: u32 = 28u;
 const HU_NT: u32 = 128u;
-const HU_G: u32 = 4096u;           // the land's height round the middle from HU_G (HU_GR rings of HU_GA)
+const HU_G: u32 = 5120u;           // the land's height round the middle from HU_G (HU_GR rings of HU_GA)
 const HU_GR: u32 = 16u;
 const HU_GA: u32 = 64u;
 const HU_G_STEP: f32 = 11.0;
@@ -191,8 +193,11 @@ fn hu_unit(h: u32) -> vec3<f32> {
 struct HuHit {
     t: f32,
     n: vec3<f32>,
-    // the face's colour (sRGB words, 5-6-5), and how the face is lit apart from the light (a leaf's dapple)
-    col: u32,
+    // the block type it is (the table's HU_BK), which of its faces (0 its top, 1 its bottom, 2 a side) and where on
+    // that face (0 to 1 across it), and how the face is lit apart from the light (a leaf's dapple)
+    bk: u32,
+    face: u32,
+    uv: vec2<f32>,
     shade: f32,
     // what it was: -2048 nothing, -1 - i tree i, else a block (its packed cell, `hu_pack`)
     id: vec2<f32>,
@@ -201,10 +206,24 @@ fn hu_none() -> HuHit {
     var h: HuHit;
     h.t = 1.0e9;
     h.n = vec3<f32>(0.0, 1.0, 0.0);
-    h.col = 0u;
+    h.bk = 0u;
+    h.face = 2u;
+    h.uv = vec2<f32>(0.5);
     h.shade = 1.0;
     h.id = vec2<f32>(-2048.0, 0.0);
     return h;
+}
+// The colour of block type `bk`'s face `face` (0 top, 1 bottom, 2 a side) at `uv` on it, linear: the one place a block
+// is coloured, so the game's own textures can take the place of their averages here alone.
+fn hu_face(bk: u32, face: u32, uv: vec2<f32>) -> vec3<f32> {
+    let a = hu_u(HU_BK + bk * HU_BKW);
+    let b = hu_u(HU_BK + bk * HU_BKW + 1u);
+    let c = select(select(a >> 16u, b & 0xFFFFu, face == 1u), a & 0xFFFFu, face == 0u);
+    return hu_565(c);
+}
+// Which face of a block a local normal `nl` (its own axes) is.
+fn hu_face_of(nl: vec3<f32>) -> u32 {
+    return select(2u, select(1u, 0u, nl.y > 0.0), abs(nl.y) > 0.5);
 }
 // A block's cell (ring k, round it iu, up it iv) packed into two half-floats exactly, and back.
 fn hu_pack(k: i32, iu: i32, iv: i32) -> vec2<f32> {
@@ -275,11 +294,13 @@ fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f
     } else {
         nl.z = -sign(d.z);
     }
-    let pal = hu_u(HU_PAL + u32(k) * HU_PN + ((h3 >> 8u) % HU_PN));
     (*best).t = near;
     (*best).n = transpose(m) * nl;
-    // (its top's colour on its own top and bottom, its sides' on the rest: a grass block green on one face)
-    (*best).col = select(pal >> 16u, pal & 0xFFFFu, abs(nl.y) > 0.5);
+    // (which block it is, which face of it, and where on that face)
+    (*best).bk = hu_u(HU_PAL + u32(k) * HU_PN + ((h3 >> 8u) % HU_PN));
+    (*best).face = hu_face_of(nl);
+    let pl = (o + d * near) / size + 0.5;
+    (*best).uv = select(select(pl.xy, pl.xz, abs(nl.y) > 0.5), pl.zy, abs(nl.x) > 0.5);
     (*best).shade = 0.85 + 0.3 * f32((h3 >> 4u) & 15u) / 15.0;
     (*best).id = hu_pack(k, iu, iv);
 }
@@ -514,12 +535,15 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, seed: u32, only: i32, 
                     }
                     (*best).t = th;
                     (*best).n = transpose(tr.m) * nl;
-                    let cols = hu_u(base + 5u);
+                    let kinds = hu_u(base + 5u);
+                    (*best).face = hu_face_of(nl);
+                    let pl = fract(o + d * th + vec3<f32>(3.5, 0.0, 3.5));
+                    (*best).uv = select(select(pl.xy, pl.xz, axis == 1), pl.zy, axis == 0);
                     if (what == 1u) {
-                        (*best).col = select(cols & 0xFFFFu, hu_u(base + 6u) & 0xFFFFu, axis == 1);
+                        (*best).bk = kinds & 0xFFFFu;
                         (*best).shade = 1.0;
                     } else {
-                        (*best).col = cols >> 16u;
+                        (*best).bk = kinds >> 16u;
                         let hh = pcg(u32(cell.x + 7 * cell.z) ^ pcg(u32(cell.y) ^ i));
                         (*best).shade = 0.7 + 0.5 * f32(hh & 255u) / 255.0;
                     }
@@ -816,7 +840,7 @@ struct PlOut {
 
 // A block or tree hit, lit: the storm's grey daylight on it, its own colour.
 fn hu_lit(h: HuHit, L: vec3<f32>, amb: vec3<f32>, sunc: vec3<f32>, under: f32) -> vec3<f32> {
-    let alb = hu_565(h.col) * h.shade;
+    let alb = hu_face(h.bk, h.face, h.uv) * h.shade;
     let n = h.n;
     let dif = max(dot(n, L), 0.0) * mix(1.0, 0.25, under);
     return alb * (amb * (1.5 + 0.6 * n.y) + sunc * dif * 0.9 + vec3<f32>(0.012));

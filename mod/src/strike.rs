@@ -5,6 +5,7 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 
 mod crystal;
+mod hu_blocks;
 mod hurricane;
 mod nuke;
 mod rod;

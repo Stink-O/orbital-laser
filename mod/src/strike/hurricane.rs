@@ -22,7 +22,8 @@
 //! Keep the HU_* here and in hurricane.wgsl in step (the timeline, the wind, the rings, the table's layout).
 // (the pass's mirrors, which only the tests read here: kept in step with it all the same)
 #![cfg_attr(not(test), allow(dead_code))]
-use super::sh_land::{self, Class, MATS, TINT_FOLIAGE, TINT_GRASS};
+use super::hu_blocks::{HU_BLOCKS, HuBlock};
+use super::sh_land::{self, Class};
 use super::{Act, Blocks, Plan, Rng, TIDY_FLOWERS, TIDY_LOOSE, Target, mh, pk_load_rows, sound_from, vnoise};
 use crate::lasers::Laser;
 use std::cell::RefCell;
@@ -158,12 +159,20 @@ pub(super) fn hu_in_sight(t: f64) -> f64 {
 
 // ---- the table the pass reads (render.set-data) -------------------------------------------------------------------
 /// A header (how many trees, the middle's ground over the target block's top, whether the land is the world's), the
-/// rings' colours from HU_PAL (HU_PN a ring: a word each, the top's colour and the sides', 5-6-5), the trees from HU_T
-/// (HU_TW words each: `TreeRec::words`), the land's height round the middle from HU_G (HU_GR rings of HU_GA, each the
-/// ground over the middle's).
+/// rings' blocks from HU_PAL (HU_PN a ring: each a block type's number), the block types from HU_BK (HU_BKW words
+/// each: `bk_words`; up to HU_NBK of them, each a block as tinted where it was torn up), the trees from HU_T (HU_TW
+/// words each: `TreeRec::words`), the land's height round the middle from HU_G (HU_GR rings of HU_GA, each the ground
+/// over the middle's).
+///
+/// Every block the pass draws is a block type and a face: its colour is looked up for that face (the pass's `hu_face`),
+/// so drawing the game's own textures instead of the colours they average to needs only that lookup changed (and a
+/// block type's second word's high half, its block in HU_BLOCKS now, to name its sprite).
 pub(super) const HU_PAL: usize = 64;
 pub(super) const HU_PN: usize = 32;
-pub(super) const HU_T: usize = 512;
+pub(super) const HU_BK: usize = 512;
+pub(super) const HU_BKW: usize = 2;
+pub(super) const HU_NBK: usize = 512;
+pub(super) const HU_T: usize = HU_BK + HU_BKW * HU_NBK;
 pub(super) const HU_TW: usize = 28;
 pub(super) const HU_NT: usize = 128;
 pub(super) const HU_G: usize = HU_T + HU_TW * HU_NT;
@@ -176,31 +185,80 @@ pub(super) const HU_WORDS: usize = HU_G + HU_GR * HU_GA;
 fn c565(c: [u8; 3]) -> u32 {
     (u32::from(c[0]) >> 3) << 11 | (u32::from(c[1]) >> 2) << 5 | (u32::from(c[2]) >> 3)
 }
-/// Material `m`'s top and side colours, tinted as the game tints it by `grass` and `foliage` (0xRRGGBB; 0 the default's).
-fn mat_rgb(m: u8, grass: u32, foliage: u32) -> ([u8; 3], [u8; 3]) {
-    let (top, side, _, kind) = MATS[(m as usize).min(MATS.len() - 1)];
-    let tint = |c: [u8; 3], t: u32| -> [u8; 3] {
+/// Block `name`'s place in HU_BLOCKS (none for a block the table doesn't know: a mod's, left alone).
+pub(super) fn hu_block(name: &str) -> Option<u16> {
+    let n = name.split('[').next().unwrap_or(name);
+    HU_BLOCKS.binary_search_by(|b| b.name.cmp(n)).ok().map(|i| i as u16)
+}
+/// Block `b`'s faces' colours (top, sides, bottom), tinted as the game tints it with `grass` and `foliage` (0xRRGGBB;
+/// 0 the default's).
+pub(super) fn bk_rgb(b: u16, grass: u32, foliage: u32) -> [[u8; 3]; 3] {
+    let k: &HuBlock = &HU_BLOCKS[b as usize];
+    let t = match k.tint {
+        1 => if grass == 0 { 0x91BD59 } else { grass },
+        2 => if foliage == 0 { 0x77AB2F } else { foliage },
+        _ => 0xFFFFFF,
+    };
+    let tint = |c: [u8; 3]| -> [u8; 3] {
         let t = [(t >> 16) & 255, (t >> 8) & 255, t & 255];
         [0, 1, 2].map(|i| (u32::from(c[i]) * t[i] / 255) as u8)
     };
-    let top = if kind & TINT_GRASS != 0 && kind & TINT_FOLIAGE == 0 {
-        tint(top, if grass == 0 { 0x91BD59 } else { grass })
-    } else if kind & TINT_FOLIAGE != 0 {
-        tint(top, if foliage == 0 { 0x77AB2F } else { foliage })
-    } else {
-        top
-    };
-    // (leaves the same all round)
-    let side = if kind & 7 == 1 { top } else { side };
-    (top, side)
+    // (a grass block's sides and bottom are its dirt: only its top is tinted)
+    if b as usize == grass_block() {
+        return [tint(k.top), k.side, k.bottom];
+    }
+    [tint(k.top), tint(k.side), tint(k.bottom)]
 }
-fn mat_word(m: u8, grass: u32, foliage: u32) -> u32 {
-    let (t, s) = mat_rgb(m, grass, foliage);
-    c565(t) | c565(s) << 16
+fn grass_block() -> usize {
+    hu_block("minecraft:grass_block").map_or(usize::MAX, usize::from)
+}
+/// A block type's words for the pass: its top's colour and its sides', then its bottom's and which block it is.
+fn bk_words(b: u16, grass: u32, foliage: u32) -> [u32; 2] {
+    let [t, s, d] = bk_rgb(b, grass, foliage);
+    [c565(t) | c565(s) << 16, c565(d) | u32::from(b) << 16]
+}
+/// The block types every strike's table starts with (its rings' blocks until the land is read): grass, dirt, oak
+/// leaves, an oak log, coarse dirt.
+fn default_kinds() -> Kinds {
+    let mut k = Kinds::default();
+    for n in ["minecraft:grass_block", "minecraft:dirt", "minecraft:oak_leaves", "minecraft:oak_log", "minecraft:coarse_dirt"] {
+        if let Some(b) = hu_block(n) {
+            k.of(b, 0, 0);
+        }
+    }
+    k.told = k.list.len();
+    k
+}
+/// The block types a strike's table holds (each a block as tinted where it was torn up), by what they are.
+#[derive(Default)]
+struct Kinds {
+    list: Vec<(u16, u32, u32)>,
+    told: usize,
+}
+impl Kinds {
+    /// Block `b`'s type as tinted by `grass` and `foliage` (quantised, so a wood's leaves are a few types, not one a
+    /// column); the last type once the table's room is taken.
+    fn of(&mut self, b: u16, grass: u32, foliage: u32) -> u16 {
+        crate::meter::spend(150);
+        let q = |c: u32| c & 0xF0F0F0;
+        let (g, f) = match HU_BLOCKS[b as usize].tint {
+            1 => (q(grass), 0),
+            2 => (0, q(foliage)),
+            _ => (0, 0),
+        };
+        if let Some(i) = self.list.iter().position(|e| *e == (b, g, f)) {
+            return i as u16;
+        }
+        if self.list.len() >= HU_NBK {
+            return (HU_NBK - 1) as u16;
+        }
+        self.list.push((b, g, f));
+        (self.list.len() - 1) as u16
+    }
 }
 
 /// A rigid tree as the pass draws it: where it stood (off the middle), its ground over the middle's, when it is torn
-/// up, its trunk (height, colours) and its canopy over the 7 by 7 columns round its trunk (each column's lowest and
+/// up, its trunk (its height, its block) and its leaves' block, and its canopy over the 7 by 7 columns round its trunk (each column's lowest and
 /// highest leaf over its ground, 0 to 31; none where the lowest is over the highest).
 #[derive(Clone, Debug)]
 pub(super) struct TreeRec {
@@ -209,10 +267,11 @@ pub(super) struct TreeRec {
     pub gdy: f64,
     pub t_up: f64,
     pub trunk: u8,
-    pub wood: u8,
-    pub leaf: u8,
-    pub grass: u32,
-    pub foliage: u32,
+    /// Its trunk's and its leaves' block types (`Kinds`), and their blocks (HU_BLOCKS).
+    pub wood_bk: u16,
+    pub leaf_bk: u16,
+    pub wood: u16,
+    pub leaf: u16,
     pub spans: [(u8, u8); 49],
 }
 impl TreeRec {
@@ -224,10 +283,7 @@ impl TreeRec {
         w[3] = (self.t_up as f32).to_bits();
         let hi = self.spans.iter().filter(|s| s.0 <= s.1).map(|s| s.1).max().unwrap_or(0).max(self.trunk);
         w[4] = u32::from(self.trunk.min(31)) | u32::from(hi.min(31)) << 5;
-        let (lt, ls) = mat_rgb(self.wood, self.grass, self.foliage);
-        let (lf, _) = mat_rgb(self.leaf.max(33), self.grass, self.foliage);
-        w[5] = c565(ls) | c565(lf) << 16;
-        w[6] = c565(lt);
+        w[5] = u32::from(self.wood_bk) | u32::from(self.leaf_bk) << 16;
         // (how far the wind has turned things by the time it is torn up: its path's angle counts from it)
         w[7] = (spin_int(self.t_up) as f32).to_bits();
         for (c, s) in self.spans.iter().enumerate() {
@@ -314,38 +370,56 @@ const HU_PARTS: i32 = 24;
 /// How long the land's work waits for columns the world has not loaded before it leaves them out.
 const HU_LAND_BY: f64 = 40.0;
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 struct Col {
     known: bool,
-    /// Water (or lava) over its ground: its bed left alone.
+    /// Water (or lava) over its ground: its bed left alone, and what grows in the water.
     fluid: bool,
-    /// Its ground block's height, and its highest block (its ground if nothing stands on it).
+    /// Its ground block's height (the first block down from its top that the wind leaves: the land, or a building),
+    /// and its highest block.
     g: i32,
     top: i32,
-    /// The logs standing straight up off its ground, and their material (sh_land's).
+    /// Its ground block, the one under it (HU_BLOCKS), and whether its ground is the land's own (dug where the ground
+    /// is torn up), not a building's.
+    ground: u16,
+    under: u16,
+    natural: bool,
+    /// The logs standing straight up off its ground and their block; its leaves' block and the lowest and highest leaf
+    /// over its ground (0 none).
     trunk: u8,
-    wood: u8,
-    /// Its leaves' material, and the lowest and highest leaf over its ground (0 none).
-    leaf: u8,
+    wood: u16,
+    leaf: u16,
     leaf_lo: u8,
     leaf_hi: u8,
-    /// Its ground block's material, the one under it, and whether snow lies on it.
-    mat: u8,
-    under: u8,
-    snow: bool,
+    /// What stands on it that the wind takes, as runs of one block up the column (`Land::segs`, from `seg`, `segs` of
+    /// them).
+    seg: u32,
+    segs: u8,
     /// Its biome's grass and foliage tints (0xRRGGBB).
     grass: u32,
     foliage: u32,
-    /// The names of its ground block and the one under it (for the blocks thrown back down).
-    name: u16,
     /// Its edits have been worked out.
     done: bool,
+}
+impl Default for Col {
+    fn default() -> Self {
+        Col { known: false, fluid: false, g: 0, top: 0, ground: NONE, under: NONE, natural: false, trunk: 0, wood: NONE, leaf: NONE, leaf_lo: 0, leaf_hi: 0, seg: 0, segs: 0, grass: 0, foliage: 0, done: false }
+    }
+}
+const NONE: u16 = u16::MAX;
+/// A run of one block up a column: its lowest and highest, the block, and its class (`HuBlock::class`).
+#[derive(Clone, Copy, Debug)]
+struct Seg {
+    y0: i32,
+    y1: i32,
+    b: u16,
+    class: u8,
 }
 
 struct Land {
     cols: Vec<Col>,
-    /// The names of the blocks the reads have seen, as the plan's thrown blocks name them.
-    names: Vec<String>,
+    /// What stands on the columns that the wind takes (`Col::seg`).
+    segs: Vec<Seg>,
     /// The columns of each part the world had not loaded when it answered, asked again till it has.
     missing: Vec<Vec<(i32, i32)>>,
     /// Columns that came in late, whose part's edits were already worked out.
@@ -395,91 +469,93 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
     out
 }
 
-/// An answer taken in: each column's ground, what stands on it, its leaves and its tints (those not loaded kept to be
-/// asked again; with `late`, the ones that come in after their edits were worked out kept for those too).
+/// An answer taken in: each column's ground, what stands on it that the wind takes (by its block), its trunk, its
+/// leaves and its tints (those not loaded kept to be asked again; with `late`, the ones that come in after their edits
+/// were worked out kept for those too). A block the table doesn't know (a mod's) is left alone, as a building is.
 fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: usize, gy: i32, late: bool) {
-    let mats: Vec<(u8, Class)> = a.palette.iter().map(|n| sh_land::material(n)).collect();
-    // (the names as a thrown block names them: no properties)
-    let names: Vec<u16> = a
+    // (each name's block and class: known blocks by the table, the rest by what the sinkhole makes of them)
+    let kinds: Vec<(u16, u8)> = a
         .palette
         .iter()
-        .map(|n| {
-            let n = n.split('[').next().unwrap_or(n);
-            match land.names.iter().position(|m| m == n) {
-                Some(i) => i as u16,
-                None => {
-                    land.names.push(n.to_string());
-                    (land.names.len() - 1) as u16
-                }
-            }
+        .map(|n| match hu_block(n) {
+            Some(b) => (b, HU_BLOCKS[b as usize].class),
+            None => (
+                NONE,
+                match sh_land::material(n).1 {
+                    Class::Air => 0,
+                    Class::Water => 1,
+                    _ => 7,
+                },
+            ),
         })
         .collect();
-    crate::meter::spend(2_000 + 4_000 * a.palette.len() as u64);
+    crate::meter::spend(2_000 + 6_000 * a.palette.len() as u64);
     for (i, &(x, z)) in a.columns.iter().enumerate() {
         let Some((surface, blocks)) = a.column(i) else {
             crate::meter::spend(60);
             land.missing[part].push((x, z));
             continue;
         };
-        crate::meter::spend(200 + 12 * blocks.len() as u64);
+        crate::meter::spend(260 + 16 * blocks.len() as u64);
         let base = surface - a.below;
         let mut c = Col { known: true, ..Default::default() };
         let (mut lo, mut hi) = (i32::MAX, i32::MIN);
-        let mut snow = false;
         let mut ground = None;
         let mut top = None;
+        let seg0 = land.segs.len();
         for j in (0..blocks.len()).rev() {
-            let b = blocks[j] as usize;
-            let (m, class) = mats.get(b).copied().unwrap_or((0, Class::Ground));
+            let (b, class) = kinds.get(blocks[j] as usize).copied().unwrap_or((NONE, 7));
             let y = base + j as i32;
             match class {
-                Class::Air => {}
-                Class::Snow => {
-                    snow = true;
-                    top.get_or_insert(y);
-                }
-                Class::Water => {
-                    c.fluid = true;
-                    top.get_or_insert(y);
-                }
-                Class::Leaves => {
-                    c.leaf = m;
-                    lo = lo.min(y);
-                    hi = hi.max(y);
-                    top.get_or_insert(y);
-                }
-                Class::Log => {
-                    top.get_or_insert(y);
-                }
-                Class::Ground => {
+                0 => continue,
+                1 => c.fluid = true,
+                2 | 7 => {
                     top.get_or_insert(y);
                     ground = Some(j);
-                    c.mat = m;
-                    c.name = names.get(b).copied().unwrap_or(0);
+                    c.ground = b;
+                    c.natural = class == 2;
                     break;
                 }
+                _ => {
+                    if class == 4 {
+                        c.leaf = b;
+                        lo = lo.min(y);
+                        hi = hi.max(y);
+                    }
+                    // (runs of one block down the column: one edit run each)
+                    let more = land.segs.len() > seg0;
+                    match land.segs.last_mut() {
+                        Some(s) if more && s.b == b && s.y0 == y + 1 => s.y0 = y,
+                        _ => land.segs.push(Seg { y0: y, y1: y, b, class }),
+                    }
+                }
             }
+            top.get_or_insert(y);
         }
-        let Some(gj) = ground else { continue };
+        let Some(gj) = ground else {
+            land.segs.truncate(seg0);
+            continue;
+        };
         c.g = base + gj as i32;
         c.top = top.unwrap_or(c.g);
-        c.under = if gj >= 1 { mats.get(blocks[gj - 1] as usize).filter(|m| m.1 == Class::Ground).map_or(c.mat, |m| m.0) } else { c.mat };
+        c.under = if gj >= 1 { kinds.get(blocks[gj - 1] as usize).map_or(c.ground, |k| if k.1 == 2 { k.0 } else { c.ground }) } else { c.ground };
         let mut n = 0;
         while gj + 1 + n < blocks.len() {
-            match mats.get(blocks[gj + 1 + n] as usize) {
-                Some(&(m, Class::Log)) => {
-                    c.wood = m;
+            match kinds.get(blocks[gj + 1 + n] as usize) {
+                Some(&(b, 3)) => {
+                    c.wood = b;
                     n += 1;
                 }
                 _ => break,
             }
         }
         c.trunk = n.min(31) as u8;
-        if c.leaf > 0 {
+        if c.leaf != NONE {
             c.leaf_lo = (lo - c.g).clamp(1, 31) as u8;
             c.leaf_hi = (hi - c.g).clamp(1, 31) as u8;
         }
-        c.snow = snow && blocks.get(gj + 1).is_some_and(|&b| mats.get(b as usize).is_some_and(|m| m.1 == Class::Snow));
+        c.seg = seg0 as u32;
+        c.segs = (land.segs.len() - seg0).min(255) as u8;
         let (gt, ft) = a.tints(i);
         (c.grass, c.foliage) = (gt, ft);
         if let Some(k) = Land::idx(bx, bz, x, z) {
@@ -560,6 +636,8 @@ struct Work {
     told: usize,
     pal: Vec<Pal>,
     pal_dirty: bool,
+    /// The block types the pass is told of (`Kinds`).
+    kinds: Kinds,
     /// The land's height round the middle, summed with how many, for the pass.
     grid: Vec<(f64, u32)>,
     grid_dirty: bool,
@@ -568,6 +646,8 @@ struct Work {
     /// The trees torn up near enough to the player to be heard, and the blocks thrown back down.
     cracks: Vec<f64>,
     thrown: Vec<(usize, u16)>,
+    /// The blocks the edits have taken out of the world, by class (for the tests and the log).
+    gone: [u64; 8],
     gy: i32,
     terrain: bool,
     seed: u32,
@@ -648,7 +728,15 @@ impl Work {
 }
 
 /// One column's share of the wind's work, torn at at `t`: what it takes out of the world (`b`), whether a rigid tree
-/// stands on it, what it adds to its ring's colours, the land's height under it.
+/// stands on it, what it adds to its ring's blocks, the land's height under it.
+///
+/// What it takes is what was read standing on the column, block by block (each an edit run over just that block, so
+/// whatever else is there now is left): out to HU_R_LIFT the trees (logs, wood, stems, leaves, mushroom caps) and the
+/// light things people put up (fences, carpets, signs, torches, pots); out to HU_R_PLANTS the plants and what lies on
+/// the land (grass, flowers, saplings, crops, cane, cactus, bamboo, vines, moss, mushrooms, snow, berries, pumpkins,
+/// bee nests), the leaves all the way out to HU_R_LIFT + 8 (nothing left hanging off a tree that went) and in patches
+/// past it. Water and what grows in it, and buildings, are left alone; the ground is torn up (its top one to three
+/// blocks) only where it is the land's own (`Col::natural`).
 fn hu_column(w: &mut Work, b: &mut Blocks, bx: i32, bz: i32, x: i32, z: i32, t: f64) {
     let Some(c) = w.land.at(bx, bz, x, z).copied() else { return };
     crate::meter::spend(900);
@@ -666,45 +754,51 @@ fn hu_column(w: &mut Work, b: &mut Blocks, bx: i32, bz: i32, x: i32, z: i32, t: 
         w.grid_dirty = true;
     }
     let ring = ring_of(r);
-    let dig = if c.fluid { 0 } else { dig_at(r, x, z, seed) };
-    // (what it adds to its ring's colours: the ground torn up, the trunk, the leaves, the snow)
+    let dig = if c.fluid || !c.natural { 0 } else { dig_at(r, x, z, seed) };
+    // (what it adds to its ring's blocks: the ground torn up, the trunk, the leaves)
     if let Some(k) = ring {
         let key = |w8: f64, j: u32| chance(x, z, seed, 0x100 + j).max(1e-9).powf(1.0 / w8.max(1e-3));
-        let p = &mut w.pal[k];
+        let mut add = |w: &mut Work, wt: f64, j: u32, blk: u16| {
+            if blk != NONE {
+                let kind = w.kinds.of(blk, c.grass, c.foliage);
+                w.pal[k].add(key(wt, j), u32::from(kind), blk);
+                w.pal_dirty = true;
+            }
+        };
         if dig > 0 {
-            p.add(key(1.0 + f64::from(dig), 0), mat_word(c.mat, c.grass, c.foliage), c.name);
+            add(w, 1.0 + f64::from(dig), 0, c.ground);
             if dig > 1 {
-                p.add(key(0.6 * f64::from(dig), 1), mat_word(c.under, c.grass, c.foliage), c.name);
+                add(w, 0.6 * f64::from(dig), 1, c.under);
             }
         }
         if r < HU_R_LIFT && c.trunk > 0 {
-            p.add(key(f64::from(c.trunk) * 0.4, 2), mat_word(c.wood, c.grass, c.foliage), u16::MAX);
+            add(w, f64::from(c.trunk) * 0.4, 2, c.wood);
         }
-        if c.leaf > 0 && r < HU_R_LIFT + 10.0 {
-            p.add(key(f64::from(c.leaf_hi.saturating_sub(c.leaf_lo) + 1) * 0.5, 3), mat_word(c.leaf, c.grass, c.foliage), u16::MAX - 1);
+        if c.leaf != NONE && r < HU_R_LIFT + 10.0 {
+            add(w, f64::from(c.leaf_hi.saturating_sub(c.leaf_lo) + 1) * 0.5, 3, c.leaf);
         }
-        if c.snow {
-            p.add(key(0.4, 4), mat_word(10, 0, 0), u16::MAX - 2);
-        }
-        w.pal_dirty = true;
     }
     if !w.terrain {
         return;
     }
-    let (g, top) = (c.g, c.top.max(c.g));
-    // the plants and the snow lying on the ground, out to HU_R_PLANTS
-    b.run_only(x, z, g + 1, g + 2, "minecraft:air", TIDY_LOOSE);
-    b.run_only(x, z, g + 1, g + 2, "minecraft:air", TIDY_FLOWERS);
-    if c.snow {
-        b.run_only(x, z, g + 1, g + 1, "minecraft:air", "minecraft:snow");
+    let g = c.g;
+    // what stands on it, block by block, as far out as the wind takes each kind
+    let leaves_all = HU_R_LIFT + 8.0;
+    let strip = chance(x, z, seed, 0x52) < 0.6 * (1.0 - (r - leaves_all) / (HU_R_PLANTS - leaves_all));
+    for i in c.seg..c.seg + u32::from(c.segs) {
+        let sg = w.land.segs[i as usize];
+        let take = match sg.class {
+            3 | 6 => r < HU_R_LIFT,
+            4 => r < leaves_all || strip,
+            5 => r < HU_R_PLANTS,
+            _ => false,
+        };
+        if take {
+            b.put(x, z, sg.y0, sg.y1, "minecraft:air", Some(HU_BLOCKS[sg.b as usize].name), false);
+            w.gone[sg.class as usize] += (sg.y1 - sg.y0 + 1) as u64;
+        }
     }
     if r < HU_R_LIFT {
-        // the trees, whole: their logs and leaves (and what hangs off them) up to the column's top
-        if top > g {
-            b.run_only(x, z, g + 1, top, "minecraft:air", "#minecraft:logs");
-            b.run_only(x, z, g + 1, top, "minecraft:air", "#minecraft:leaves");
-            b.run_only(x, z, g + 1, top, "minecraft:air", "#minecraft:replaceable_by_trees");
-        }
         // a rigid tree: a trunk three or more high, now and then, none within 6 of another, while there is room
         if c.trunk >= 3 && w.trees.len() < HU_NT && chance(x, z, seed, 0x51) < if r < 105.0 { 0.18 } else { 0.11 } && !w.trees.iter().any(|t| (t.x - dx).abs() < 6.0 && (t.z - dz).abs() < 6.0) {
             let mut spans = [(31u8, 0u8); 49];
@@ -712,31 +806,31 @@ fn hu_column(w: &mut Work, b: &mut Blocks, bx: i32, bz: i32, x: i32, z: i32, t: 
             for j in 0..7 {
                 for i in 0..7 {
                     if let Some(n) = w.land.at(bx, bz, x + i - 3, z + j - 3)
-                        && n.leaf > 0
+                        && n.leaf != NONE
                     {
                         // (its leaves over this tree's ground)
                         let lo = (i32::from(n.leaf_lo) + n.g - g).clamp(0, 31) as u8;
                         let hi = (i32::from(n.leaf_hi) + n.g - g).clamp(0, 31) as u8;
                         spans[(j * 7 + i) as usize] = (lo, hi);
-                        if leaf == 0 {
+                        if leaf == NONE {
                             leaf = n.leaf;
                         }
                     }
                 }
             }
-            w.trees.push(TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood: c.wood, leaf, grass: c.grass, foliage: c.foliage, spans });
+            let leaf = if leaf == NONE { hu_block("minecraft:oak_leaves").unwrap_or(0) } else { leaf };
+            let (wood_bk, leaf_bk) = (w.kinds.of(c.wood, c.grass, c.foliage), w.kinds.of(leaf, c.grass, c.foliage));
+            w.trees.push(TreeRec { x: dx, z: dz, gdy: f64::from(g + 1 - w.gy), t_up: t, trunk: c.trunk, wood_bk, leaf_bk, wood: c.wood, leaf, spans });
             let d = (f64::from(x) + 0.5 - w.me[0]).hypot(f64::from(z) + 0.5 - w.me[2]);
             if d < 260.0 {
                 w.cracks.push(t);
             }
         }
-    } else if c.leaf > 0 && chance(x, z, seed, 0x52) < 0.6 * (1.0 - (r - HU_R_LIFT) / (HU_R_PLANTS - HU_R_LIFT)) {
-        // past it the crowns stripped in patches
-        b.run_only(x, z, g + 1, top, "minecraft:air", "#minecraft:leaves");
     }
     if dig > 0 {
         // the ground torn up, the dirt under it laid bare, scoured to coarse dirt and gravel here and there
         b.run(x, z, g - dig + 1, g, "minecraft:air");
+        w.gone[2] += dig as u64;
         let n = chance(x, z, seed, 0x53);
         if n < 0.3 {
             b.run_only(x, z, g - dig, g - dig, "minecraft:coarse_dirt", "minecraft:dirt");
@@ -747,9 +841,9 @@ fn hu_column(w: &mut Work, b: &mut Blocks, bx: i32, bz: i32, x: i32, z: i32, t: 
             && w.thrown.len() < 4096
             && chance(x, z, seed, 0x54) < 0.05
         {
-            w.thrown.push((k, c.name));
+            w.thrown.push((k, c.ground));
         }
-    } else if !c.fluid && r < HU_R_LIFT + 10.0 && chance(x, z, seed, 0x55) < 0.65 * (1.0 - smooth(HU_DIG1, HU_R_LIFT + 10.0, r)) {
+    } else if !c.fluid && c.natural && r < HU_R_LIFT + 10.0 && chance(x, z, seed, 0x55) < 0.65 * (1.0 - smooth(HU_DIG1, HU_R_LIFT + 10.0, r)) {
         // past the torn band the grass scoured off in streaks
         let to = if chance(x, z, seed, 0x56) < 0.5 { "minecraft:coarse_dirt" } else { "minecraft:dirt" };
         b.run_only(x, z, g, g, to, "minecraft:grass_block");
@@ -789,6 +883,12 @@ fn table_words(q: &mut Plan, w: &mut Work, now: f32) {
         crate::meter::spend(100 * words.len() as u64);
         q.ev.push((now, Act::Words { index: HU_PAL as u32, words }));
         w.pal_dirty = false;
+    }
+    if w.kinds.list.len() > w.kinds.told {
+        let from = w.kinds.told;
+        let words: Vec<u32> = w.kinds.list[from..].iter().flat_map(|&(b, g, f)| bk_words(b, g, f)).collect();
+        q.ev.push((now, Act::Words { index: (HU_BK + HU_BKW * from) as u32, words }));
+        w.kinds.told = w.kinds.list.len();
     }
     if w.grid_dirty {
         let words: Vec<u32> = w.grid.iter().map(|&(s, n)| (if n == 0 { f32::NAN } else { (s / f64::from(n)) as f32 }).to_bits()).collect();
@@ -935,9 +1035,9 @@ fn hu_thrown(q: &mut Plan, w: &Work) {
     }
     let (cx, cz) = (f64::from(q.bx) + 0.5, f64::from(q.bz) + 0.5);
     let gy = f64::from(w.gy);
-    let name = |n: u16| -> Option<String> {
-        let s = w.land.names.get(n as usize)?;
-        (!s.ends_with("air") && !s.contains("water") && !s.contains("lava") && !s.contains("bedrock")).then(|| s.clone())
+    let name = |n: u16| -> Option<&'static str> {
+        let s = HU_BLOCKS.get(n as usize)?.name;
+        (!s.contains("bedrock")).then_some(s)
     };
     let pick = w.thrown.len().min(HU_THROWN);
     for i in 0..pick {
@@ -973,12 +1073,15 @@ fn hu_thrown(q: &mut Plan, w: &Work) {
         crate::meter::spend(8_000);
         if let Some((t, at)) = tree_down(tr, i as u32, w.seed, &ground) {
             {
-                let wood = name_of_wood(tr.wood);
-                let leaf = name_of_leaves(tr.leaf);
+                let wood = HU_BLOCKS[tr.wood as usize].name;
+                let leaf = HU_BLOCKS[tr.leaf as usize].name;
+                // (as a fallen trunk lies, and leaves that don't decay)
+                let axis = if wood.ends_with("_log") || wood.ends_with("_stem") { ",Properties:{axis:\"x\"}" } else { "" };
+                let keep = if leaf.ends_with("_leaves") { ",Properties:{persistent:\"true\"}" } else { "" };
                 let (x, y, z) = (cx + at[0], gy + at[1] + 3.0, cz + at[2]);
-                q.ev.push((t as f32, Act::Cmd(format!("summon minecraft:falling_block {x:.1} {y:.1} {z:.1} {{BlockState:{{Name:\"{wood}\",Properties:{{axis:\"x\"}}}},Time:1,DropItem:0b,Motion:[0.0d,-0.2d,0.0d]}}"))));
+                q.ev.push((t as f32, Act::Cmd(format!("summon minecraft:falling_block {x:.1} {y:.1} {z:.1} {{BlockState:{{Name:\"{wood}\"{axis}}},Time:1,DropItem:0b,Motion:[0.0d,-0.2d,0.0d]}}"))));
                 q.ev.push((t as f32, Act::Cmd(format!(
-                    "summon minecraft:falling_block {:.1} {:.1} {:.1} {{BlockState:{{Name:\"{leaf}\",Properties:{{persistent:\"true\"}}}},Time:1,DropItem:0b,Motion:[0.0d,-0.2d,0.0d]}}",
+                    "summon minecraft:falling_block {:.1} {:.1} {:.1} {{BlockState:{{Name:\"{leaf}\"{keep}}},Time:1,DropItem:0b,Motion:[0.0d,-0.2d,0.0d]}}",
                     x + 1.0,
                     y + 1.0,
                     z
@@ -987,28 +1090,6 @@ fn hu_thrown(q: &mut Plan, w: &Work) {
         }
     }
 }
-fn name_of_wood(m: u8) -> &'static str {
-    match m {
-        29 => "minecraft:spruce_log",
-        30 => "minecraft:birch_log",
-        31 => "minecraft:dark_oak_log",
-        60 => "minecraft:jungle_log",
-        61 => "minecraft:pale_oak_log",
-        62 => "minecraft:cherry_log",
-        _ => "minecraft:oak_log",
-    }
-}
-fn name_of_leaves(m: u8) -> &'static str {
-    match m {
-        34 => "minecraft:spruce_leaves",
-        35 => "minecraft:birch_leaves",
-        37 => "minecraft:cherry_leaves",
-        55 => "minecraft:azalea_leaves",
-        59 => "minecraft:pale_oak_leaves",
-        _ => "minecraft:oak_leaves",
-    }
-}
-
 // ---- the mobs ----------------------------------------------------------------------------------------------------------
 /// The bands of land the mobs are carried round in (each its own speeds), out to the last.
 const MOB_BANDS: [(f64, f64); 6] = [(30.0, 50.0), (50.0, 70.0), (70.0, 92.0), (92.0, 118.0), (118.0, 145.0), (145.0, 176.0)];
@@ -1060,7 +1141,7 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
     // ---- the pass's table (empty of trees and colours until the land is read), and the land's work ---------------------
     p.ev.push((0.05, Act::Table(hu_table_empty(terrain))));
     let work = Rc::new(RefCell::new(Work {
-        land: Land { cols: vec![Col::default(); (HU_GW * HU_GW) as usize], names: Vec::new(), missing: vec![Vec::new(); HU_PARTS as usize], late: Vec::new(), gdy0: 0 },
+        land: Land { cols: vec![Col::default(); (HU_GW * HU_GW) as usize], segs: Vec::new(), missing: vec![Vec::new(); HU_PARTS as usize], late: Vec::new(), gdy0: 0 },
         tags: (0..HU_PARTS).map(|_| crate::columns::new_tag()).collect(),
         asked: 0,
         taken: 0,
@@ -1072,11 +1153,13 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
         told: 0,
         pal: vec![Pal::default(); HU_NR],
         pal_dirty: false,
+        kinds: default_kinds(),
         grid: vec![(0.0, 0); HU_GR * HU_GA],
         grid_dirty: false,
         gdy_told: None,
         cracks: Vec::new(),
         thrown: Vec::new(),
+        gone: [0; 8],
         gy: by + 1,
         terrain,
         seed: s,
@@ -1156,10 +1239,13 @@ pub(super) fn hurricane_plan(laser: &'static Laser, target: &Target, terrain: bo
 fn hu_table_empty(terrain: bool) -> Vec<u32> {
     let mut w = vec![0u32; HU_WORDS];
     w[2] = f32::from(u8::from(terrain)).to_bits();
-    let defaults = [mat_word(1, 0, 0), mat_word(2, 0, 0), mat_word(33, 0, 0), mat_word(28, 0, 0), mat_word(3, 0, 0)];
+    let k0 = default_kinds();
+    for (i, &(b, g, f)) in k0.list.iter().enumerate() {
+        w[HU_BK + HU_BKW * i..HU_BK + HU_BKW * (i + 1)].copy_from_slice(&bk_words(b, g, f));
+    }
     for k in 0..HU_NR {
         for j in 0..HU_PN {
-            w[HU_PAL + k * HU_PN + j] = defaults[(j * 7 + k) % defaults.len()];
+            w[HU_PAL + k * HU_PN + j] = ((j * 7 + k) % k0.list.len()) as u32;
         }
     }
     for v in &mut w[HU_G..HU_G + HU_GR * HU_GA] {
@@ -1331,7 +1417,7 @@ mod tests {
         assert!(hu_in_air(20.0) < hu_in_air(30.0) && hu_in_air(30.0) <= hu_in_air(40.0) + 1.0);
         // (the table: everything where the pass reads it, under the game's limit)
         assert!(HU_PAL + HU_NR * HU_PN <= HU_T && HU_T + HU_TW * HU_NT == HU_G && HU_WORDS <= 1 << 18);
-        let tr = TreeRec { x: 1.0, z: 2.0, gdy: 0.0, t_up: 20.0, trunk: 6, wood: 28, leaf: 33, grass: 0, foliage: 0, spans: [(4, 8); 49] };
+        let tr = TreeRec { x: 1.0, z: 2.0, gdy: 0.0, t_up: 20.0, trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49] };
         let w = tr.words();
         assert_eq!(w[4] & 31, 6);
         assert_eq!((w[8 + 48 / 3] >> (10 * (48 % 3))) & 1023, 4 | 8 << 5);
@@ -1351,7 +1437,7 @@ mod tests {
                 assert!(r > HU_R_IN - 12.0 && r < HU_R_PLANTS + 12.0, "{f}");
                 assert!(*due >= HU_F0 as f32 - 4.0, "{due} {f}");
                 assert!(*t - *due < 0.3, "an edit {:.2} s late (due {due:.2}): {f}", t - due);
-                if f.contains("replace #minecraft:logs") {
+                if f.contains("replace minecraft:oak_log") {
                     assert!(r < HU_R_LIFT + 1.0, "{f}");
                     logs += 1;
                 }
@@ -1360,7 +1446,7 @@ mod tests {
                 }
             }
         }
-        assert!(logs > 2000 && dug > 10_000, "{logs} logs, {dug} dug");
+        assert!(logs > 300 && dug > 10_000, "{logs} trunks, {dug} dug");
         // (the stages light, the mobs carried and the blocks thrown back down)
         let worst = p.stages.iter().map(|s| s.2).fold(0.0, f64::max);
         eprintln!("{} stages, heaviest {worst:.2} ms; {} edits", p.stages.len(), p.edits.len());
@@ -1409,11 +1495,131 @@ mod tests {
         assert!((f64::from(t_up) - f).abs() < 6.0, "torn up at {t_up}, its front at {f}");
         assert!(first.1[4] & 31 >= 3, "a trunk");
         // (and its path: up off the land, round the eyewall, flung out and back down before the end)
-        let tr = TreeRec { x: f64::from(x), z: f64::from(z), gdy: 0.0, t_up: f64::from(t_up), trunk: 6, wood: 28, leaf: 33, grass: 0, foliage: 0, spans: [(4, 8); 49] };
+        let tr = TreeRec { x: f64::from(x), z: f64::from(z), gdy: 0.0, t_up: f64::from(t_up), trunk: 6, wood_bk: 0, leaf_bk: 2, wood: 0, leaf: 0, spans: [(4, 8); 49] };
         let g = |_: f64, _: f64| 0.0;
         let mid = tree_at(&tr, 0, 37, 40.0, &g);
         assert!(mid.up && mid.p[1] > 20.0 && mid.p[0].hypot(mid.p[2]) > 50.0, "{:?}", mid.p);
         assert!(!tree_at(&tr, 0, 37, f64::from(HU_LEN) - 1.0, &g).up);
+    }
+
+    #[test]
+    fn every_block_the_test_worlds_read_has_its_own_colours() {
+        // (the table sorted, so its binary search finds every name; every block of every test world's columns, the
+        // trees' woods and leaves of every kind among them, known by name: none falls back to a guess)
+        assert!(HU_BLOCKS.windows(2).all(|w| w[0].name < w[1].name));
+        for (i, b) in HU_BLOCKS.iter().enumerate() {
+            assert_eq!(hu_block(b.name), Some(i as u16), "{}", b.name);
+        }
+        let mut names: Vec<&str> = vec![
+            "minecraft:grass_block", "minecraft:dirt", "minecraft:stone", "minecraft:oak_log", "minecraft:oak_leaves", "minecraft:short_grass",
+            "minecraft:water", "minecraft:lava", "minecraft:sand", "minecraft:red_sand", "minecraft:gravel", "minecraft:coarse_dirt",
+            "minecraft:snow", "minecraft:spruce_log", "minecraft:spruce_leaves", "minecraft:vine", "minecraft:hanging_roots", "minecraft:moss_block",
+            "minecraft:tuff", "minecraft:deepslate", "minecraft:cobblestone", "minecraft:mossy_cobblestone", "minecraft:blackstone", "minecraft:magma_block",
+        ];
+        for w in ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak"] {
+            for suffix in ["_log", "_wood", "_leaves"] {
+                names.push(Box::leak(format!("minecraft:{w}{suffix}").into_boxed_str()));
+                names.push(Box::leak(format!("minecraft:stripped_{w}{suffix}").into_boxed_str()));
+            }
+        }
+        names.retain(|n| !n.contains("stripped") || !n.ends_with("_leaves"));
+        names.extend(["minecraft:crimson_stem", "minecraft:warped_stem", "minecraft:mushroom_stem", "minecraft:bamboo_block", "minecraft:azalea_leaves", "minecraft:flowering_azalea_leaves"]);
+        for n in &names {
+            let b = hu_block(n).unwrap_or_else(|| panic!("{n} not known"));
+            let k = &HU_BLOCKS[b as usize];
+            assert!(k.class != 0 && k.side != [0, 0, 0], "{n}");
+            if n.ends_with("_log") || n.ends_with("_wood") || n.ends_with("_stem") {
+                assert_eq!(k.class, 3, "{n}");
+            }
+            if n.ends_with("_leaves") {
+                assert_eq!(k.class, 4, "{n}");
+            }
+        }
+        // (what the old lookup, the sinkhole's 63 materials, made of the trees' blocks, where it was far off their own)
+        let far = |a: [u8; 3], b: [u8; 3]| (0..3).map(|i| (i32::from(a[i]) - i32::from(b[i])).abs()).sum::<i32>() > 60;
+        let mut off = Vec::new();
+        for k in HU_BLOCKS.iter().filter(|k| k.class == 3 || k.class == 4) {
+            let (m, _) = sh_land::material(k.name);
+            let (top, side, _, kind) = sh_land::MATS[m as usize];
+            let side = if kind & 7 == 1 { top } else { side };
+            if k.tint == 0 && far(side, k.side) {
+                off.push(format!("{} (was {:?}, is {:?})", k.name.trim_start_matches("minecraft:"), side, k.side));
+            }
+        }
+        eprintln!("the trees' blocks the old lookup coloured wrong ({}): {}", off.len(), off.join(", "));
+    }
+
+    #[test]
+    fn hurricane_takes_everything_that_should_go_and_leaves_the_water_and_the_buildings() {
+        // a column of everything the wind should take standing on the land (in the eyewall's band), one under a pond's
+        // water, and a house's
+        let below = 36;
+        let mut stacks: Vec<((i32, i32), Vec<&'static str>)> = Vec::new();
+        let mut col = |x: i32, z: i32, top: &[&'static str], ground: &'static str| {
+            let mut v = vec!["minecraft:stone"; below as usize - 1 - top.len()];
+            v.push(ground);
+            v.extend_from_slice(top);
+            v.push("minecraft:air");
+            stacks.push(((x, z), v));
+        };
+        let things = [
+            &["minecraft:sugar_cane", "minecraft:sugar_cane", "minecraft:sugar_cane"][..],
+            &["minecraft:oak_fence"],
+            &["minecraft:oak_sapling"],
+            &["minecraft:poppy"],
+            &["minecraft:red_mushroom"],
+            &["minecraft:snow"],
+            &["minecraft:sweet_berry_bush"],
+            &["minecraft:bamboo", "minecraft:bamboo", "minecraft:bamboo", "minecraft:bamboo"],
+            &["minecraft:cactus", "minecraft:cactus"],
+            &["minecraft:moss_carpet"],
+            &["minecraft:tall_grass", "minecraft:tall_grass"],
+            &["minecraft:wheat"],
+            &["minecraft:pumpkin"],
+            &["minecraft:torch"],
+            &["minecraft:white_carpet"],
+            &["minecraft:pink_petals"],
+            &["minecraft:oak_log", "minecraft:oak_log", "minecraft:oak_log", "minecraft:bee_nest", "minecraft:oak_leaves", "minecraft:snow"],
+            &["minecraft:mangrove_roots", "minecraft:mangrove_log", "minecraft:mangrove_leaves", "minecraft:vine"],
+            &["minecraft:cherry_log", "minecraft:cherry_log", "minecraft:cherry_leaves", "minecraft:cherry_leaves"],
+            &["minecraft:pale_oak_log", "minecraft:pale_oak_leaves", "minecraft:pale_hanging_moss"],
+        ];
+        for (i, t) in things.iter().enumerate() {
+            col(60 + i as i32, 0, t, "minecraft:grass_block");
+        }
+        col(60, 5, &["minecraft:water", "minecraft:seagrass", "minecraft:water", "minecraft:lily_pad"], "minecraft:sand");
+        col(61, 5, &["minecraft:oak_planks", "minecraft:oak_planks", "minecraft:glass", "minecraft:oak_stairs"], "minecraft:cobblestone");
+        let kept: std::collections::HashMap<(i32, i32), Vec<&'static str>> = stacks.into_iter().collect();
+        crate::columns::clear();
+        let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+        let ev = plan(the_laser(), &target, true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+        let answer = move |x: i32, z: i32, b: u32, _a: u32| -> Option<(i32, Vec<&'static str>)> {
+            assert_eq!(b, below);
+            match kept.get(&(x, z)) {
+                Some(v) => Some((64 + (v.len() as i32 - below as i32), v.clone())),
+                None => synth_column(x, z, b, 1, 65, 0.0, false),
+            }
+        };
+        let p = crate::strike::sim::play(ev, HU_LEN, &answer);
+        let fills: Vec<String> = p.edits.iter().flat_map(|e| e.2.as_fills()).filter(|f| {
+            let w: Vec<i32> = f.split_whitespace().skip(1).take(6).map(|v| v.parse().unwrap_or(0)).collect();
+            w.len() == 6 && w[2] >= 0 && w[2] <= 5 && w[0] >= 60 && w[0] < 60 + things.len() as i32
+        }).collect();
+        // (every one of them taken, block by block: nothing left standing)
+        for (i, t) in things.iter().enumerate() {
+            let x = 60 + i as i32;
+            for name in t.iter().filter(|n| !n.ends_with("mangrove_roots")) {
+                assert!(fills.iter().any(|f| f.starts_with(&format!("fill {x} ")) && f.contains(&format!("replace {name} strict"))), "{name} at {x} left: {fills:?}");
+            }
+        }
+        // (the water, the seagrass in it and the house left, the lily pad on the pond taken)
+        for f in &fills {
+            for kept in ["water", "seagrass", "planks", "glass", "stairs", "cobblestone", "replaceable_by"] {
+                assert!(!f.contains(&format!("replace minecraft:{kept}")) && !f.contains(&format!("replace #minecraft:{kept}")), "{f}");
+            }
+        }
+        assert!(fills.iter().any(|f| f.contains("replace minecraft:lily_pad")));
+        assert!(!fills.iter().any(|f| f.starts_with("fill 61 ") && f.contains(" 5 ") && f.ends_with("minecraft:air strict")), "the house's ground dug");
     }
 
     #[test]
