@@ -10,6 +10,7 @@
 //! changes, the sounds and the flying speed), `hud` (the status panel), `storage`
 //! (the chosen laser and the settings) and
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
+mod carry;
 mod columns;
 mod follow;
 mod ground;
@@ -60,6 +61,11 @@ fn rod_pass(fast: bool) -> &'static str {
 fn supercell_pass(fast: bool) -> &'static str {
     PASS_SUPERCELL[usize::from(fast)]
 }
+/// The Hurricane's, the same way (hurricane.wgsl's `[half stage]`: its cloud, rain and dust at half size, the blocks and
+/// trees it carries found there and drawn sharp at full size).
+fn hurricane_pass(fast: bool) -> &'static str {
+    PASS_HURRICANE[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -71,6 +77,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "nuke" => 6,
         "rod" => 7,
         "supercell" => 8,
+        "hurricane" => 9,
         _ => 0,
     }
 }
@@ -247,9 +254,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 9],
+    passes: [&'static str; 10],
     compiled: Option<usize>,
     warming: bool,
     /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
@@ -301,6 +308,8 @@ struct Orbital {
     /// (`follow.rs`), and the one under way.
     follow: bool,
     following: Option<follow::Follow>,
+    /// The Hurricane's carry of the player (`carry.rs`), while its strike is under way and the knockback is on.
+    carrying: Option<carry::Carry>,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
@@ -347,7 +356,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast)],
             compiled: None,
             warming: false,
             building: None,
@@ -374,6 +383,7 @@ impl Orbital {
             knock,
             follow,
             following: None,
+            carrying: None,
             follow_distance,
             seed_lock,
             last_seed: 1,
@@ -738,6 +748,7 @@ impl Orbital {
         self.rebuild("nuke", nuke_pass(fast));
         self.rebuild("rod", rod_pass(fast));
         self.rebuild("supercell", supercell_pass(fast));
+        self.rebuild("hurricane", hurricane_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -777,6 +788,27 @@ impl Orbital {
         let Some(p) = game::get_player() else { return };
         for [x, y, z] in f.tick(t, [p.x, p.y, p.z], follow::look(p.yaw, p.pitch)) {
             world::push_player(x, y, z);
+        }
+    }
+    /// The Hurricane's carry this tick (`carry.rs`): the player kicked along their path round the storm once its wind
+    /// has them, never turned.
+    fn carry_tick(&mut self) {
+        let Some(t) = self.strike.as_ref().map(|s| f64::from(s.ticks) * 0.05) else { return };
+        let Some(c) = &mut self.carrying else { return };
+        if c.over(t) {
+            self.carrying = None;
+            return;
+        }
+        let Some(p) = game::get_player() else { return };
+        let o = c.tick(t, [p.x, p.y, p.z]);
+        for [x, y, z] in o.kicks {
+            world::push_player(x, y, z);
+        }
+        if !o.cmds.is_empty() {
+            world::run_commands(&o.cmds);
+        }
+        for (event, volume, pitch) in o.sounds {
+            world::play_sound(&event, None, volume, pitch);
         }
     }
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
@@ -880,7 +912,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -902,6 +934,8 @@ impl Orbital {
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
         self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
+        // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
+        self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
         self.unfollow();
         if self.follow
@@ -1062,6 +1096,7 @@ impl Orbital {
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
         self.unfollow();
+        self.carrying = None;
         render::clear_post();
         self.strike = None;
         ground::clear();
@@ -1194,10 +1229,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1290,6 +1325,7 @@ impl Mod for Orbital {
         }
         self.tick_strike();
         self.follow_tick();
+        self.carry_tick();
         self.update_panel();
         meter::end(self.ticks);
         if let Some(n) = self.meter_log
@@ -1545,6 +1581,10 @@ mod tests {
             let r = super::rod_pass(fast);
             assert_eq!(r.matches("@fragment").count(), if fast { 3 } else { 1 });
             assert!(r.len() <= 256 << 10 && r.contains("fn rod(") && !r.contains("fn nuke("));
+            let h = super::hurricane_pass(fast);
+            assert_eq!(h.matches("@fragment").count(), if fast { 3 } else { 1 });
+            assert!(h.len() <= 256 << 10 && h.contains("fn hurricane(") && h.contains("fn hu_debris(") && !h.contains("fn rod("));
+            assert_eq!(h.contains("half_picture"), fast);
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
@@ -1872,7 +1912,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -2090,6 +2130,50 @@ mod stress {
         }
         assert!(s.o.cleanup.is_empty() && s.o.edits.is_empty());
         assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+    }
+
+    /// A Hurricane called in on land far off, none of it loaded as it fires (the player 800 blocks away): it waits for
+    /// the land cheaply, its edits go in as it loads (or are left out where it never does), no tick overworks, and it
+    /// ends on time; and one close by carries the player off (pushes) with the knockback on, never with it off.
+    #[test]
+    fn a_hurricane_on_far_unloaded_land_stays_light() {
+        let hu = LASERS.iter().position(|l| l.key == "hurricane").expect("the hurricane");
+        for slow in [4, 0] {
+            let mut s = Soak::new(5);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(hu, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 1400, "it never ended");
+            }
+            let edits = fake::with(|w| w.edits);
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow > 0 {
+                assert!(edits > 50, "the land torn up as it loaded ({edits} edits)");
+            }
+        }
+        for knock in [true, false] {
+            let mut s = Soak::new(7);
+            s.o.knock = knock;
+            fake::with(|w| w.pushes = 0);
+            s.fire(hu, (0, 0));
+            // (the player 110 blocks off the eye, where the wind reaches by 27 s)
+            fake::with(|w| {
+                if let Some(p) = w.player.as_mut() {
+                    p.x = 110.5;
+                    p.z = 0.5;
+                }
+            });
+            for _ in 0..(40 * 20) {
+                s.step("carry");
+                s.o.carry_tick();
+            }
+            let pushes = fake::with(|w| w.pushes);
+            assert_eq!(pushes > 100, knock, "{pushes} pushes with the knockback {knock}");
+        }
     }
 
     #[test]

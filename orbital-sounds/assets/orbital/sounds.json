@@ -1527,5 +1527,230 @@
       }
     ],
     "subtitle": "subtitles.orbital.supercell.after"
+  },
+  "hurricane.buildup": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/buildup",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.buildup"
+  },
+  "hurricane.gusts": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/gusts",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.gusts"
+  },
+  "hurricane.rain": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/rain",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.rain"
+  },
+  "hurricane.roar": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/roar",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.roar"
+  },
+  "hurricane.roar_far": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/roar_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.roar_far"
+  },
+  "hurricane.debris": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/debris1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/debris2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/debris3",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/debris4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.debris"
+  },
+  "hurricane.debris1": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/debris1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.debris"
+  },
+  "hurricane.debris2": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/debris2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.debris"
+  },
+  "hurricane.debris3": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/debris3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.debris"
+  },
+  "hurricane.debris4": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/debris4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.debris"
+  },
+  "hurricane.crack": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/crack1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/crack2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/crack3",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/crack4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.crack"
+  },
+  "hurricane.crack1": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/crack1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.crack"
+  },
+  "hurricane.crack2": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/crack2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.crack"
+  },
+  "hurricane.crack3": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/crack3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.crack"
+  },
+  "hurricane.crack4": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/crack4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.crack"
+  },
+  "hurricane.whoosh": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/whoosh1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/whoosh2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/whoosh3",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:hurricane/whoosh4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.whoosh"
+  },
+  "hurricane.whoosh1": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/whoosh1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.whoosh"
+  },
+  "hurricane.whoosh2": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/whoosh2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.whoosh"
+  },
+  "hurricane.whoosh3": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/whoosh3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.whoosh"
+  },
+  "hurricane.whoosh4": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/whoosh4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.whoosh"
+  },
+  "hurricane.winddown": {
+    "sounds": [
+      {
+        "name": "orbital:hurricane/winddown",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.hurricane.winddown"
   }
 }

@@ -177,8 +177,19 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     let pit = g("pit", 0.0) > 0.5;
     // (`trees=1`: a wood of blocky trees, as a heightfield (their crowns reach the ground), none within 45 of the eye)
     let trees = g("trees", 0.0) > 0.5;
+    // (`hustrip=1`: the trees the hurricane's front has reached by `t` torn up: strike/hurricane.rs's front_t)
+    let hustrip = g("hustrip", 0.0) > 0.5;
+    let hu_front = |r: f32| -> f32 {
+        if !(32.0..=150.0).contains(&r) {
+            return 1.0e9;
+        }
+        if r < 62.0 { 15.0 + 3.0 * (62.0 - r) / 30.0 } else { 15.0 + 20.0 * ((r - 62.0) / 88.0).powf(1.25) }
+    };
     let tree_h = |x: f32, z: f32| -> Option<f32> {
         if !trees || (x - cam[0]).hypot(z - cam[2]) < 45.0 {
+            return None;
+        }
+        if hustrip && hu_front((x.floor() + 0.5 - tgt[0]).hypot(z.floor() + 0.5 - tgt[2])) <= time {
             return None;
         }
         let (bx, bz) = (x.floor() as i32, z.floor() as i32);

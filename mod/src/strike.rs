@@ -5,6 +5,7 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 
 mod crystal;
+mod hurricane;
 mod nuke;
 mod rod;
 mod payload;
@@ -12,6 +13,13 @@ mod sh_land;
 mod sinkhole;
 mod storm;
 mod vortex;
+
+/// The Hurricane's wind, for its carry of the player (carry.rs).
+pub(crate) use hurricane::{HU_FLING, HU_R_EYE, front_t as hu_front_t, omega as hu_omega, spin as hu_spin};
+/// A number from 0 to 1 for `k`, the same every time (the carry's choice of sounds).
+pub(crate) fn hash01(k: u32) -> f64 {
+    mh(k, 0x51ed, 0x77)
+}
 
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
@@ -611,6 +619,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "supercell" {
         return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "hurricane" {
+        return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4378,7 +4389,8 @@ mod tests {
             // (the payload is a bomb, not a beam: it clears only what stood on the land it read, which nothing answers
             // here; strike/payload.rs's tests check it against a forest)
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" {
+            // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
