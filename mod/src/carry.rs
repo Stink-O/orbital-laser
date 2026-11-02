@@ -7,8 +7,10 @@
 //! move crashed the game's collision sweep), and in practice a block or two a tick. Their path: as the wind's front
 //! reaches where they stand (none in the calm eye, none past CARRY_R), drawn in towards ORBIT_R round the middle and
 //! lifted ORBIT_H over its ground, turning with the wind (most of its speed there: the debris overtakes them),
-//! buffeted; from the fling (HU_FLING) let down over DOWN seconds onto the land a few blocks over the middle's ground,
-//! drifting out, then let go. Slow falling is given as they are picked up, for long enough to see them down, so
+//! buffeted; then, as the storm peaks (EYE0 to EYE1), drawn in through the eyewall into the calm of the eye, EYE_R
+//! from the middle and EYE_H up: sudden stillness, blue sky and sunlight straight down the stadium all round them;
+//! from the fling (HU_FLING) thrown back out through the far eyewall with everything else and let down over DOWN
+//! seconds onto the land past it, a few blocks over the middle's ground, then let go. Slow falling is given as they are picked up, for long enough to see them down, so
 //! however they come down (a hill under them, a valley, the strike stopped) they land softly.
 #![cfg_attr(not(test), allow(dead_code))]
 use crate::follow::Drive;
@@ -20,6 +22,13 @@ pub const CARRY_R: f64 = 175.0;
 pub const ORBIT_R: f64 = 108.0;
 pub const ORBIT_H: f64 = 50.0;
 pub const DOWN: f64 = 7.0;
+/// Drawn into the eye from EYE0 to EYE1 (or over 3.5 s from a second after they were picked up, if later), to EYE_R
+/// out and EYE_H over the middle's ground; flung back out to FLUNG_R as they are let down.
+pub const EYE0: f64 = 38.0;
+pub const EYE1: f64 = 41.5;
+pub const EYE_R: f64 = 14.0;
+pub const EYE_H: f64 = 90.0;
+pub const FLUNG_R: f64 = 132.0;
 
 /// What a tick of the carry does: the kicks to give the player, the commands to run on them, the sounds to play
 /// (event, volume, pitch).
@@ -66,11 +75,19 @@ impl Carry {
     pub fn lifted(&self) -> bool {
         self.lift.is_some() && !self.done
     }
+    /// How far into the eye they have been drawn at `t` (0 none, 1 in its middle's calm).
+    fn eye(l: &Lift, t: f64) -> f64 {
+        let e0 = EYE0.max(l.t0 + 1.0);
+        ease(e0, EYE1.max(e0 + 3.5), t)
+    }
     /// How far out from the middle they are carried at `t`.
     fn radius(l: &Lift, t: f64) -> f64 {
         let tau = (t - l.t0).max(0.0);
-        let buffet = 1.6 * (2.3 * tau + 0.7).sin() + 0.8 * (4.1 * tau + 2.0).sin();
-        ORBIT_R + (l.r0 - ORBIT_R) * (-tau / 6.0).exp() + buffet * (1.0 - (-tau).exp()) + 12.0 * ease(HU_FLING, HU_FLING + DOWN, t)
+        let e = Self::eye(l, t);
+        let buffet = (1.6 * (2.3 * tau + 0.7).sin() + 0.8 * (4.1 * tau + 2.0).sin()) * (1.0 - e);
+        let round = ORBIT_R + (l.r0 - ORBIT_R) * (-tau / 6.0).exp() + buffet * (1.0 - (-tau).exp());
+        let r = round + (EYE_R - round) * e;
+        r + (FLUNG_R - r) * ease(HU_FLING, HU_FLING + DOWN * 0.6, t)
     }
     /// Where their feet should be at `t` (once they are picked up), at angle `a` round the middle.
     fn at(&self, t: f64, a: f64) -> Option<[f64; 3]> {
@@ -78,7 +95,8 @@ impl Carry {
         let tau = (t - l.t0).max(0.0);
         let r = Self::radius(l, t);
         let rise = (1.0 - (-tau / 4.0).exp()) * ease(0.0, 1.2, tau);
-        let peak = self.c[1] + ORBIT_H + 5.0 * (0.7 * tau).sin() + 1.5 * (1.9 * tau).sin();
+        let e = Self::eye(l, t);
+        let peak = self.c[1] + ORBIT_H + (5.0 * (0.7 * tau).sin() + 1.5 * (1.9 * tau).sin()) * (1.0 - e) + (EYE_H - ORBIT_H) * e;
         let mut y = l.y0 + (peak - l.y0) * rise;
         // (let down from the fling, drifting out, onto the land a few blocks over the middle's ground or where they stood)
         let u = ease(HU_FLING, HU_FLING + DOWN, t);
@@ -110,14 +128,16 @@ impl Carry {
         // (turned on round the middle with the wind where they are, a little behind it)
         let Some(l) = &mut self.lift else { return out };
         let r = Self::radius(l, t);
-        l.a += 0.8 * -1.0 * hu_omega(r) * hu_spin(t) * 0.05;
+        // (the eye calm: hardly turning in it)
+        let calm = 0.15 + 0.85 * ((r - HU_R_EYE) / 30.0).clamp(0.0, 1.0);
+        l.a += 0.8 * -1.0 * hu_omega(r) * hu_spin(t) * 0.05 * calm;
         let a = l.a;
         let Some(next) = self.at(t + 0.05, a) else { return out };
         self.target = Some(next);
         let want = [next[0] - feet[0], next[1] - feet[1], next[2] - feet[2]];
         out.kicks = self.drive.kicks(feet, want);
         // (the debris rushing past them)
-        if t >= self.next_whoosh && t < HU_FLING + 2.0 {
+        if t >= self.next_whoosh && t < HU_FLING + 2.0 && r > HU_R_EYE + 12.0 {
             self.n += 1;
             let h = |k: u32| crate::strike::hash01(self.n.wrapping_mul(7) ^ k);
             out.sounds.push((format!("orbital:hurricane.whoosh{}", 1 + (h(1) * 4.0) as u32 % 4), 0.35 + 0.2 * h(2) as f32, 0.88 + 0.24 * h(3) as f32));
@@ -134,12 +154,13 @@ mod tests {
 
     /// A player as the game moves them (their velocity, the kicks added, moved, then the air's drag and gravity, or
     /// slow falling's), standing on flat land at `ground` unless carried off it.
-    fn carry(start: [f64; 3], flying: bool) -> (f64, f64, f64, f64, [f64; 3]) {
+    fn carry(start: [f64; 3], flying: bool) -> (f64, f64, f64, f64, [f64; 3], f64) {
         let c = [0.5, 65.0, 0.5];
         let mut k = Carry::new(c);
         let (mut feet, mut v) = (start, [0.0f64; 3]);
         let (mut fastest, mut off, mut high) = (0.0f64, 0.0f64, 0.0f64);
         let mut lifted_at = None;
+        let mut eye_at = f64::MAX;
         for n in 1..=(64 * 20) {
             let t = f64::from(n) * 0.05;
             feet = [feet[0] + v[0], feet[1] + v[1], feet[2] + v[2]];
@@ -169,14 +190,17 @@ mod tests {
                 off = off.max(((feet[0] + v[0] - w[0]).powi(2) + (feet[1] + v[1] - w[1]).powi(2) + (feet[2] + v[2] - w[2]).powi(2)).sqrt());
             }
             high = high.max(feet[1] - 65.0);
+            if (t - 44.0).abs() < 0.03 {
+                eye_at = (feet[0] - c[0]).hypot(feet[2] - c[2]);
+            }
         }
-        (lifted_at.unwrap_or(-1.0), fastest, off, high, feet)
+        (lifted_at.unwrap_or(-1.0), fastest, off, high, feet, eye_at)
     }
 
     #[test]
     fn the_wind_carries_the_player_round_and_puts_them_down() {
         for (start, flying) in [([120.0, 65.0, 0.5], false), ([0.5, 65.0, -160.0], true), ([45.0, 65.0, 30.0], false)] {
-            let (at, fastest, off, high, end) = carry(start, flying);
+            let (at, fastest, off, high, end, eye_at) = carry(start, flying);
             eprintln!("from {start:?} flying {flying}: picked up at {at:.2} s, at most {fastest:.2} blocks a tick, {off:.2} off its path, {high:.0} up, down at {end:?}");
             let d = (start[0] - 0.5).hypot(start[2] - 0.5);
             assert!((at - hu_front_t(d).unwrap()).abs() < 0.11, "picked up at {at}");
@@ -184,13 +208,15 @@ mod tests {
             assert!(fastest < VMAX * 0.25, "{fastest} blocks a tick");
             assert!(off < 2.0, "{off} off its path");
             assert!(high > 35.0, "only {high} up");
+            // (in the eye's calm at the storm's height)
+            assert!(eye_at < HU_R_EYE, "only {eye_at:.1} from the middle at 44 s");
             // (put down near the ground, a long way round from where they stood but within the land loaded round them)
             assert!(end[1] < 65.0 + 4.5, "left {} up", end[1] - 65.0);
             assert!((end[0] - start[0]).hypot(end[2] - start[2]) < 400.0);
         }
         // (in the calm of the eye, or far out, never picked up)
         for start in [[10.0, 65.0, 10.0], [0.5, 65.0, 300.0]] {
-            let (at, fastest, _, high, _) = carry(start, false);
+            let (at, fastest, _, high, _, _) = carry(start, false);
             assert!(at < 0.0 && fastest < 0.1 && high < 1e-9, "{start:?}");
         }
     }

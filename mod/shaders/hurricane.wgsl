@@ -189,17 +189,19 @@ fn hu_ring_r(k: i32) -> f32 {
     return HU_RING0 + HU_RING_W * (f32(k) + 0.5);
 }
 fn hu_ring_h(r: f32) -> f32 {
-    return 16.0 + 232.0 * (1.0 - smoothstep(70.0, 150.0, r));
+    return 30.0 + 218.0 * (1.0 - smoothstep(70.0, 150.0, r));
 }
 fn hu_ring_rise(r: f32) -> f32 {
-    return 2.0 + 7.0 * (1.0 - smoothstep(60.0, 140.0, r));
+    return 2.0 + 13.0 * (1.0 - smoothstep(60.0, 140.0, r));
 }
 fn hu_ring_dens(r: f32) -> f32 {
     return 0.045 + 0.115 * (1.0 - smoothstep(105.0, 160.0, r));
 }
+// Whether a ring's blocks are about: from its front (they rise out of the land from then, `hu_block`) until they have
+// all come back down after the fling (each shattering to dust where it hits the land), never faded in or out.
 fn hu_ring_on(r: f32, t: f32) -> f32 {
     let f = hu_front(r);
-    return smoothstep(f, f + 2.5, t) * (1.0 - smoothstep(HU_FLING + 1.0, HU_FLING + 6.5, t));
+    return smoothstep(f, f + 1.0, t) * (1.0 - smoothstep(HU_FLING + 7.0, HU_FLING + 8.0, t));
 }
 // The fling: how far out everything has been thrown since HU_FLING, and how far it has risen and fallen.
 fn hu_flung(t: f32) -> vec2<f32> {
@@ -305,8 +307,8 @@ fn hu_unpack(id: vec2<f32>) -> vec3<i32> {
 fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f32, Sf: f32, seed: u32, best: ptr<function, HuHit>) {
     let rk = hu_ring_r(k);
     let h = pcg(u32(k) * 0x9E3779B1u ^ pcg(bitcast<u32>(iu) ^ pcg(bitcast<u32>(iv) * 0x85EBCA6Bu ^ seed)));
-    let dens = hu_ring_dens(rk) * hu_ring_on(rk, t);
-    if (f32(h & 0xFFFFu) * (1.0 / 65535.0) >= dens) {
+    let tfr = hu_front(rk);
+    if (t < tfr || t > HU_FLING + 8.0 || f32(h & 0xFFFFu) * (1.0 / 65535.0) >= hu_ring_dens(rk)) {
         return;
     }
     let h2 = pcg(h);
@@ -319,15 +321,21 @@ fn hu_block(rd: vec3<f32>, C: vec3<f32>, k: i32, iu: i32, iv: i32, t: f32, St: f
     var size = select(select(1.5, 0.55, pick < 230u), 1.0, pick < 166u);
     let fl = hu_flung(t);
     let a = HU_SPIN * hu_omega(rk) * St + (f32(iu) + 0.5 + ju) * TAU / nu;
-    let y = hu_ring_rise(rk) * Sf + (f32(iv) + 0.5 + jv) * HU_CELL + fl.y;
+    let y0 = (f32(iv) + 0.5 + jv) * HU_CELL;
+    let y = hu_ring_rise(rk) * Sf + y0 + fl.y;
     // (out along the eyewall's slope as it climbs: the blocks follow its inner face up, the eye clear of them)
     let r = rk + jr + fl.x + hu_flare(y - fl.y, t);
     let pc = vec2<f32>(cos(a), sin(a)) * r;
-    // (rising out of the land, thinning out towards the top of its ring; gone into the land as it falls)
+    // (every block torn out of the land: it rises out of it once the front has passed, never appearing in the air (the
+    // cells over the land as the front came are left empty); thinning out at the top of its ring, in the eyewall's
+    // cloud; as it falls after the fling, shattered to dust where it hits)
     let g = hu_ground(pc);
+    if (hu_ring_rise(rk) * hu_spin_int(tfr) + y0 > g - 0.5) {
+        return;
+    }
     let yr = y - g;
     let hk = hu_ring_h(rk);
-    size = size * smoothstep(-1.0, 3.0, yr) * (1.0 - smoothstep(0.72 * hk, hk, yr));
+    size = size * smoothstep(-1.0, 2.0, yr) * (1.0 - smoothstep(0.72 * hk, hk, yr - fl.y));
     if (size < 0.12) {
         return;
     }
@@ -380,7 +388,7 @@ fn hu_debris(rd: vec3<f32>, C: vec3<f32>, t_max: f32, t: f32, St: f32, Sf: f32, 
         return;
     }
     let o = -C;
-    let ro = HU_RING0 + f32(HU_NR) * HU_RING_W + fl.x + 1.5 + 24.0;
+    let ro = HU_RING0 + f32(HU_NR) * HU_RING_W + fl.x + 1.5;
     let ri = HU_RING0 + fl.x - 1.5;
     // (the rings' cylinder, and the heights its blocks reach)
     let qa = dot(rd.xz, rd.xz);
@@ -484,8 +492,11 @@ fn hu_tree_lifted(base: u32, i: u32, t: f32, St: f32, seed: u32) -> vec3<f32> {
     let a = a0 + HU_SPIN * hu_omega(r) * (St - s_up);
     return vec3<f32>(r * cos(a), y, r * sin(a));
 }
-fn hu_tree_at(i: u32, t: f32, St: f32, seed: u32) -> HuTree {
+// (`rot`: its turn too; without it only where it is, for a first test against its bounding sphere. `Sf`: the wind's
+// sum to the fling)
+fn hu_tree_at(i: u32, t: f32, St: f32, Sf: f32, seed: u32, rot: bool) -> HuTree {
     var o: HuTree;
+    o.m = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
     let base = HU_T + i * HU_TW;
     let t_up = hu_w(base + 3u);
     o.cm = 0.6 * max(f32(hu_u(base + 4u) & 31u), 3.0);
@@ -496,7 +507,7 @@ fn hu_tree_at(i: u32, t: f32, St: f32, seed: u32) -> HuTree {
     if (t <= HU_FLING || t_up >= HU_FLING) {
         o.p = hu_tree_lifted(base, i, t, St, seed);
     } else {
-        let pf = hu_tree_lifted(base, i, HU_FLING, hu_spin_int(HU_FLING), seed);
+        let pf = hu_tree_lifted(base, i, HU_FLING, Sf, seed);
         let rf = max(length(pf.xz), 1.0);
         let ov = pf.xz / rf;
         let tv = vec2<f32>(-ov.y, ov.x) * HU_SPIN;
@@ -506,7 +517,32 @@ fn hu_tree_at(i: u32, t: f32, St: f32, seed: u32) -> HuTree {
         let s = t - HU_FLING;
         let v = tv * vt + ov * vo;
         o.p = vec3<f32>(pf.x + v.x * s, pf.y + vu * s - 7.0 * s * s, pf.z + v.y * s);
+        // (it comes down where hurricane.rs lays it as a real fallen tree, at the moment it does: t_land, lying along
+        // the way it was thrown (yaw) on the land there (yl): the drawn tree hands over to the real one where it lies)
+        let tl = hu_w(base + 25u);
+        if (tl > HU_FLING) {
+            o.up = t < tl;
+            if (!rot) {
+                return o;
+            }
+            let yaw = hu_w(base + 27u);
+            let dd = vec3<f32>(cos(yaw), 0.0, sin(yaw));
+            let land = transpose(mat3x3<f32>(vec3<f32>(-dd.z, 0.0, dd.x), dd, vec3<f32>(0.0, 1.0, 0.0)));
+            let tau = max(t - t_up, 0.0);
+            let h = pcg(i * 0x2545F491u ^ seed);
+            let x0 = hu_w(base);
+            let z0 = hu_w(base + 1u);
+            let a0 = atan2(z0, x0);
+            let ax = normalize(vec3<f32>(cos(a0), 0.0, sin(a0)) + 0.7 * hu_unit(h));
+            let rate = 0.6 + 1.4 * f32(h >> 22u) / 1023.0;
+            let ang = 1.1 * smoothstep(0.0, 1.0, tau) + rate * (tau - 1.2 * (1.0 - exp(-tau / 1.2)));
+            o.m = hu_slerp(hu_rot(ax, ang * HU_SPIN), land, smoothstep(0.0, 1.0, (t - HU_FLING) / max(tl - HU_FLING, 0.1)));
+            return o;
+        }
         o.up = o.p.y > hu_ground(o.p.xz) + 1.0;
+    }
+    if (!rot) {
+        return o;
     }
     // (it rocks over on its roots the way the wind blows, then tumbles end over end as it goes)
     let tau = max(t - t_up, 0.0);
@@ -519,6 +555,42 @@ fn hu_tree_at(i: u32, t: f32, St: f32, seed: u32) -> HuTree {
     let ang = 1.1 * smoothstep(0.0, 1.0, tau) + rate * (tau - 1.2 * (1.0 - exp(-tau / 1.2)));
     o.m = hu_rot(ax, ang * HU_SPIN);
     return o;
+}
+// Rotations as quaternions (x, y, z, w), to turn one smoothly into another: a tumbling tree settling as it lands.
+fn hu_q_of(m: mat3x3<f32>) -> vec4<f32> {
+    let tr = m[0][0] + m[1][1] + m[2][2];
+    if (tr > 0.0) {
+        let s = sqrt(tr + 1.0) * 2.0;
+        return vec4<f32>((m[1][2] - m[2][1]) / s, (m[2][0] - m[0][2]) / s, (m[0][1] - m[1][0]) / s, 0.25 * s);
+    }
+    if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+        let s = sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]) * 2.0;
+        return vec4<f32>(0.25 * s, (m[1][0] + m[0][1]) / s, (m[2][0] + m[0][2]) / s, (m[1][2] - m[2][1]) / s);
+    }
+    if (m[1][1] > m[2][2]) {
+        let s = sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]) * 2.0;
+        return vec4<f32>((m[1][0] + m[0][1]) / s, 0.25 * s, (m[2][1] + m[1][2]) / s, (m[2][0] - m[0][2]) / s);
+    }
+    let s = sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]) * 2.0;
+    return vec4<f32>((m[2][0] + m[0][2]) / s, (m[2][1] + m[1][2]) / s, 0.25 * s, (m[0][1] - m[1][0]) / s);
+}
+fn hu_m_of(q: vec4<f32>) -> mat3x3<f32> {
+    let x = q.x;
+    let y = q.y;
+    let z = q.z;
+    let w = q.w;
+    return mat3x3<f32>(
+        vec3<f32>(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y + z * w), 2.0 * (x * z - y * w)),
+        vec3<f32>(2.0 * (x * y - z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z + x * w)),
+        vec3<f32>(2.0 * (x * z + y * w), 2.0 * (y * z - x * w), 1.0 - 2.0 * (x * x + y * y)));
+}
+fn hu_slerp(a: mat3x3<f32>, b: mat3x3<f32>, u: f32) -> mat3x3<f32> {
+    let qa = hu_q_of(a);
+    var qb = hu_q_of(b);
+    if (dot(qa, qb) < 0.0) {
+        qb = -qb;
+    }
+    return hu_m_of(normalize(mix(qa, qb, u)));
 }
 // What tree `base`'s cell (i, y, j) of its 7 by 7 columns holds: 0 nothing, 1 its trunk, 2 leaves.
 fn hu_tree_cell(base: u32, i: i32, y: i32, j: i32, trunk: i32) -> u32 {
@@ -537,7 +609,7 @@ fn hu_tree_cell(base: u32, i: i32, y: i32, j: i32, trunk: i32) -> u32 {
     }
     return 0u;
 }
-fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, seed: u32, only: i32, best: ptr<function, HuHit>) {
+fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, Sf: f32, seed: u32, only: i32, best: ptr<function, HuHit>) {
     if (!hu_have()) {
         return;
     }
@@ -553,20 +625,21 @@ fn hu_trees(rd: vec3<f32>, C: vec3<f32>, t: f32, St: f32, seed: u32, only: i32, 
         if (t < hu_w(base + 3u)) {
             continue;
         }
-        let tr = hu_tree_at(i, t, St, seed);
-        if (!tr.up) {
+        let tp = hu_tree_at(i, t, St, Sf, seed, false);
+        if (!tp.up) {
             continue;
         }
         let shape = hu_u(base + 4u);
         let trunk = i32(shape & 31u);
         let hm = f32((shape >> 5u) & 31u) + 1.0;
-        let P = C + tr.p;
-        let rad = 0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tr.cm - 0.5 * hm);
+        let P = C + tp.p;
+        let rad = 0.5 * sqrt(98.0 + hm * hm) + 0.8 + abs(tp.cm - 0.5 * hm);
         let b = dot(P, rd);
         let c = dot(P, P) - rad * rad;
         if (b * b < c || b - rad > (*best).t) {
             continue;
         }
+        let tr = hu_tree_at(i, t, St, Sf, seed, true);
         // (the ray in the tree's own frame: its trunk's foot at 0, its middle at cm)
         let o = tr.m * (-P) + vec3<f32>(0.0, tr.cm, 0.0);
         let d = tr.m * rd;
@@ -856,7 +929,10 @@ fn hu_eyelit(q: vec3<f32>, r: f32, win: f32, wtop: f32, L: vec3<f32>, t: f32) ->
 fn hu_dust(q: vec3<f32>, t: f32, St: f32, g: f32) -> vec2<f32> {
     let r = length(q.xz);
     let on = hu_ring_on(clamp(r, HU_R_IN, 160.0), t);
-    if (on < 0.01) {
+    // (after the fling, the dust of everything coming down, shattering where it hits, spreading out with it)
+    let sf = t - HU_FLING;
+    let land = smoothstep(0.8, 2.2, sf) * (1.0 - smoothstep(7.0, 12.0, sf)) * smoothstep(HU_RING0, HU_RING0 + 15.0, r) * (1.0 - smoothstep(60.0 + 22.0 * sf, 100.0 + 24.0 * sf, r));
+    if (on + land < 0.01) {
         return vec2<f32>(0.0);
     }
     let yr = q.y - g;
@@ -864,10 +940,12 @@ fn hu_dust(q: vec3<f32>, t: f32, St: f32, g: f32) -> vec2<f32> {
     let n = gnoise3(vec3<f32>(p2.x * (1.0 / 16.0), yr * (1.0 / 11.0) - t * 0.5, p2.y * (1.0 / 16.0)));
     let hgt = 8.0 + 34.0 * (1.0 - smoothstep(70.0, 190.0, r));
     let foot = smoothstep(HU_R_IN - 2.0, HU_R_IN + 12.0, r) * (1.0 - smoothstep(110.0, 200.0, r)) * (1.0 - smoothstep(0.25 * hgt, hgt, yr)) * smoothstep(-3.0, 1.0, yr);
-    let dust = on * hu_spin(t) * foot * smoothstep(0.45, 0.8, n) * (0.4 + 1.4 * hu_shape(r));
+    var dust = on * hu_spin(t) * foot * smoothstep(0.45, 0.8, n) * (0.4 + 1.4 * hu_shape(r));
+    dust = dust + land * (1.0 - smoothstep(2.0, 6.0 + 2.0 * sf, yr)) * smoothstep(-3.0, 0.5, yr) * smoothstep(0.4, 0.75, n) * 0.9;
     // (the haze follows the blocks out along the stadium's slope as they climb: the eye stays clear)
     let rf = r - hu_flare(yr, t);
-    let rh = hu_ring_h(rf);
+    let fill = hu_ring_rise(rf) * (hu_spin_int(min(t, HU_FLING)) - hu_spin_int(hu_front(clamp(rf, HU_R_IN, 160.0))));
+    let rh = min(hu_ring_h(rf), max(fill, 0.0) + 6.0);
     let haze = on * smoothstep(HU_RING0, HU_RING0 + 8.0, rf) * (1.0 - smoothstep(150.0, 165.0, rf)) * smoothstep(-2.0, 2.0, yr) * (1.0 - smoothstep(0.6 * rh, rh, yr)) * hu_ring_dens(rf) * (0.6 + 0.8 * n);
     return vec2<f32>(dust, haze);
 }
@@ -915,39 +993,45 @@ struct HuFlash {
 fn hu_flashes(t: f32, seed: u32) -> HuFlash {
     var f: HuFlash;
     let s0 = i32(floor(t / HU_SLOT));
+    let sh = pcg(seed ^ 0x7a11u);
     for (var j = 0; j < 3; j = j + 1) {
         f.p[j] = vec4<f32>(0.0);
         f.b[j] = vec4<f32>(0.0);
         let s = s0 - j;
-        if (s < 0) {
-            continue;
-        }
         let ts = f32(s) * HU_SLOT;
-        let h = pcg(u32(s) * 0x9E3779B1u ^ pcg(seed ^ 0x7a11u));
-        if (f32(h & 0xFFFFu) / 65535.0 >= hu_flash_rate(ts) * HU_SLOT) {
+        let rate = hu_flash_rate(ts);
+        if (s < 0 || rate <= 0.0) {
             continue;
         }
-        let i = u32(s);
-        let t0 = ts + HU_SLOT * mh(i, seed, 0xf1u);
-        let br = hu_stroke(t - t0, h >> 3u);
+        // (a slot's flash, if any, from one hash chain: sixteen bits a number)
+        let h = pcg(u32(s) * 0x9E3779B1u ^ sh);
+        if (f32(h & 0xFFFFu) / 65535.0 >= rate * HU_SLOT) {
+            continue;
+        }
+        let ha = pcg(h);
+        let hb = pcg(ha);
+        let hc = pcg(hb);
+        let u = vec4<f32>(f32(ha & 0xFFFFu), f32(ha >> 16u), f32(hb & 0xFFFFu), f32(hb >> 16u)) / 65535.0;
+        let w = vec2<f32>(f32(hc & 0xFFFFu), f32(hc >> 16u)) / 65535.0;
+        let br = hu_stroke(t - (ts + HU_SLOT * f32(h >> 16u) / 65535.0), h >> 3u);
         if (br <= 0.0) {
             continue;
         }
-        let ang = TAU * mh(i, seed, 0xf2u);
+        let ang = TAU * u.x;
         let dir = vec2<f32>(cos(ang), sin(ang));
-        if (mh(i, seed, 0xf3u) < 0.2) {
+        if (u.y < 0.2) {
             // (out in a band)
-            let r = 280.0 + 900.0 * mh(i, seed, 0xf4u);
-            f.p[j] = vec4<f32>(dir.x * r, 110.0 + 80.0 * mh(i, seed, 0xf5u), dir.y * r, 0.6 * br);
+            let r = 280.0 + 900.0 * u.z;
+            f.p[j] = vec4<f32>(dir.x * r, 110.0 + 80.0 * u.w, dir.y * r, 0.6 * br);
             continue;
         }
-        let y = 90.0 + 250.0 * mh(i, seed, 0xf4u);
-        let r = hu_wall_in(y, t) + 12.0 + 26.0 * mh(i, seed, 0xf5u);
+        let y = 90.0 + 250.0 * u.z;
+        let r = hu_wall_in(y, t) + 12.0 + 26.0 * u.w;
         f.p[j] = vec4<f32>(dir.x * r, y, dir.y * r, br);
-        if (mh(i, seed, 0xf6u) < 0.36) {
+        if (w.x < 0.36) {
             // (a bolt out of the wall, down its flank to the land: inside it, into the eye's edge, or out under it)
-            let fa = ang + HU_SPIN * 0.12 * (mh(i, seed, 0xf7u) - 0.3);
-            let fr = hu_wall_in(0.0, t) + 4.0 + 70.0 * mh(i, seed, 0xf8u);
+            let fa = ang + HU_SPIN * 0.12 * (w.y - 0.3);
+            let fr = hu_wall_in(0.0, t) + 4.0 + 70.0 * fract(w.x * 2.77 + w.y);
             let fp = vec2<f32>(cos(fa), sin(fa)) * fr;
             f.b[j] = vec4<f32>(fp.x, hu_ground(fp), fp.y, br);
         }
@@ -1043,7 +1127,9 @@ struct HuVol {
 }
 // The cloud, the rain and the dust along rd (camera-relative), as far as `len` (the land, or a block in front of it).
 // `amb` and `sunc` the light over the storm (the cloud's top in full sun), dimmed under it for the rain and the dust.
-fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: vec3<f32>, amb0: vec3<f32>, sunc0: vec3<f32>, fl: HuFlash, fine: bool) -> HuVol {
+// (`dlen`: how far the way goes past a block on it, to the land: the cloud's strides are set by it, the same as
+// round the block, so a block hidden in the cloud is never a hole in it)
+fn hu_volume(rd: vec3<f32>, len: f32, dlen: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: vec3<f32>, amb0: vec3<f32>, sunc0: vec3<f32>, flv: vec4<f32>, fine: bool) -> HuVol {
     var acc = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     var tmid = 0.0;
     var wmid = 0.0;
@@ -1060,7 +1146,7 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
     // ---- the cloud: from the eyewall's foot to the outflow's top, inside its reach --------------------------------
     let reach = hu_deck_r(t) + 60.0;
     var t0 = 0.0;
-    var t1 = len;
+    var t1 = dlen;
     let ylo = -6.0;
     let yhi = HU_YHI;
     if (abs(rd.y) > 1.0e-5) {
@@ -1085,19 +1171,21 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
     // (the low sun's way through the cloud: how far a point's depth under the top reaches along it)
     let ly = max(L.y, 0.12);
     let flc = vec3<f32>(0.78, 0.83, 1.0) * 2.6;
+    let span = t1 - t0;
+    t1 = min(t1, len);
     if (t1 > t0 && form * fade > 0.001) {
         let n = select(40, 56, fine);
-        let span = t1 - t0;
         // (strides: a fixed share of the way through, no finer than a few blocks, longer far off)
         let dt0 = clamp(span / f32(n), 3.0, 30.0);
         var dt = dt0;
         var tt = t0 + min(dt, 3.0) * j;
         for (var i = 0; i < 96; i = i + 1) {
-            if (tt > t1 || acc.a < 0.03) {
+            if (tt > t1 || acc.a < 0.05) {
                 break;
             }
             let q = o + rd * tt;
-            let dn = hu_den(q, t, St, select(1, 2, fine));
+            // (the fine noise only while the cloud in front is thin)
+            let dn = hu_den(q, t, St, select(1, 2, fine && acc.a > 0.25));
             let r = length(q.xz);
             let win = dn.face;
             let lod = max(dt0, 0.006 * tt);
@@ -1117,9 +1205,11 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
                 let fs = dot(q.xz, L.xz) / max(r * length(L.xz), 1.0e-3);
                 let moat = max(240.0 + 0.16 * q.y - r, 0.0);
                 let ml = hu_inten(t) * smoothstep(0.0, 0.5, fs) * exp(-0.06 * max(wo - r, 0.0)) * smoothstep(wo - 60.0, wo - 10.0, r) * smoothstep(wtop - 120.0, wtop - 30.0, q.y + moat * L.y / max(length(L.xz), 0.05));
-                sun_t = max(sun_t, 0.85 * ml);
+                // (its foot in the rain and the spray it throws up: dark under the sunlit flank)
+                sun_t = max(sun_t, 0.85 * ml * smoothstep(30.0, 170.0, q.y));
                 // (each billow shading the next: the cloud a few blocks towards the sun, if any, in the way)
-                if (sun_t > 0.12) {
+                // (only while the cloud in front still lets most of it through: deeper, it hardly shows)
+                if (sun_t > 0.12 && acc.a > 0.3) {
                     sun_t = sun_t * (0.35 + 0.65 * exp(-1.6 * hu_den(q + L * 7.0, t, St, 0).d));
                 }
                 let deep = max(dn.top - q.y, 0.0);
@@ -1127,14 +1217,18 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
                 let ak = mix(0.3, 1.0, exp(-deep / 90.0)) + 0.45 * face;
                 let alb = mix(vec3<f32>(0.92, 0.93, 0.95), vec3<f32>(0.4, 0.42, 0.45), max(dn.arm * 0.7, dn.wall * (1.0 - smoothstep(0.0, 140.0, q.y)) * 0.8 * (1.0 - face)));
                 var c = alb * (amb0 * ak * 1.25 + sunc0 * (sun_t * 1.4 + 0.12 * face * smoothstep(0.0, 0.4, L.y)));
-                c = c + flc * hu_flash_at(fl, q) * mix(1.0, 0.35, exp(-deep / 60.0));
+                if (flv.w > 0.001) {
+                    let fd = q - flv.xyz;
+                    c = c + flc * flv.w / (1.0 + dot(fd, fd) * (1.0 / 4500.0)) * mix(1.0, 0.35, exp(-deep / 60.0));
+                }
                 let ext = dn.d * 0.2 * dt;
                 let al = 1.0 - exp(-ext);
                 hu_over(&acc, c, al);
                 lc = c;
                 tmid = tmid + acc.a * al * tt;
                 wmid = wmid + acc.a * al;
-                dt = min(lod, 4.0 + 0.004 * tt) * (0.8 + 0.4 * fract(j + f32(i) * 0.618));
+                // (finely while the cloud in front is thin, in longer strides once it hides most of what is behind)
+                dt = min(lod, 4.0 + 0.004 * tt) * (0.8 + 0.4 * fract(j + f32(i) * 0.618)) * select(1.0, 2.0, acc.a < 0.3);
             } else {
                 // (over the clear air in long strides, the further out of the cloud the longer, shortening as it nears
                 // the cloud so its edge is found sharp)
@@ -1170,9 +1264,10 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
         } else if (qc2 > 0.0) {
             r1 = -1.0;
         }
-        r1 = min(r1, r0 + 900.0);
+        // (only as far as the cloud it is in front of: never laid over the cloud from beyond it)
+        r1 = min(min(r1, r0 + 900.0), select(1.0e9, tmid / max(wmid, 1.0e-4), wmid > 0.05));
         if (r1 > r0) {
-            let nr = select(8, 12, fine);
+            let nr = select(5, 10, fine);
             let dtr = (r1 - r0) / f32(nr);
             var tr = 1.0;
             var cr = vec3<f32>(0.0);
@@ -1184,7 +1279,10 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
                 let p2 = rot2(q.xz, -hu_arm_turn(St) - 0.004 * q.y * HU_SPIN);
                 let arm = hu_arm(p2, r, t).x;
                 let curtain = gnoise3(vec3<f32>(p2.x * (1.0 / 30.0), q.y * (1.0 / 120.0), p2.y * (1.0 / 30.0)));
-                let fall = gnoise3(vec3<f32>(p2.x * (1.0 / 4.0), (q.y + 40.0 * t) * (1.0 / 26.0), p2.y * (1.0 / 4.0)));
+                var fall = 0.6;
+                if (fine) {
+                    fall = vnoise(vec2<f32>(p2.x * (1.0 / 4.0) + p2.y * (1.0 / 5.0), (q.y + 40.0 * t) * (1.0 / 26.0)));
+                }
                 var den = rk * mix(0.25, 1.0, smoothstep(0.4, 0.8, arm)) * smoothstep(hu_wall_out(q.y, t) - 20.0, hu_wall_out(q.y, t) + 30.0, r) * smoothstep(0.38, 0.62, curtain) * (0.55 + 0.9 * smoothstep(0.45, 0.75, fall));
                 den = den * (1.0 - smoothstep(rr * 0.75, rr, r)) * smoothstep(HU_R_EYE, HU_R_EYE + 30.0, r) * smoothstep(20.0, 90.0, tt);
                 den = den * smoothstep(-6.0, 4.0, q.y) * (1.0 - smoothstep(HU_BASE, HU_BASE + 18.0, q.y));
@@ -1211,8 +1309,8 @@ fn hu_volume(rd: vec3<f32>, len: f32, C: vec3<f32>, t: f32, St: f32, j: f32, L: 
         }
     }
     // ---- the dust and the spray round the eyewall's foot, churning round with the debris -------------------------------
-    if (hu_ring_on(HU_R_W, t) > 0.01) {
-        let rd0 = 230.0;
+    if (hu_ring_on(HU_R_W, t) > 0.01 || (t > HU_FLING && t < HU_FLING + 12.0)) {
+        let rd0 = select(230.0, 330.0, t > HU_FLING);
         let qc3 = dot(o.xz, o.xz) - rd0 * rd0;
         let disc3 = qb * qb - qa * qc3;
         if (disc3 > 0.0 && qa > 1.0e-8) {
@@ -1348,7 +1446,6 @@ fn hurricane(in: StageIn, stage: u32, up: vec4<f32>, ct: f32, ids0: array<vec2<f
     let amb = amb0 * mix(1.0, 0.6, form);
     let sunc0 = mix(vec3<f32>(1.25, 1.18, 1.05), vec3<f32>(1.4, 0.62, 0.3), warm) * sun_up + vec3<f32>(0.05, 0.07, 0.11) * moon;
     let sunc = sunc0 * mix(1.0, 0.55, form);
-    let fl = hu_flashes(time, seed);
     // (where the eye is: the camera in it sees the sky clear over it; over the cloud's top, the sky's own)
     let cq = -C;
     let in_eye = hu_eye(time) * (1.0 - smoothstep(hu_wall_in(cq.y, time) - 8.0, hu_wall_in(cq.y, time) + 2.0, length(cq.xz)));
@@ -1366,7 +1463,7 @@ fn hurricane(in: StageIn, stage: u32, up: vec4<f32>, ct: f32, ids0: array<vec2<f
                     continue;
                 }
                 if (id.x < 0.0) {
-                    hu_trees(rd, C, time, St, seed, i32(-id.x - 0.5), &hit);
+                    hu_trees(rd, C, time, St, Sf, seed, i32(-id.x - 0.5), &hit);
                 } else {
                     let c = hu_unpack(id);
                     hu_block(rd, C, c.x, c.y, c.z, time, St, Sf, seed, &hit);
@@ -1374,10 +1471,12 @@ fn hurricane(in: StageIn, stage: u32, up: vec4<f32>, ct: f32, ids0: array<vec2<f
             }
         } else {
             hu_debris(rd, C, min(scene_len, 2500.0), time, St, Sf, seed, select(240, 170, stage == 1u), &hit);
-            hu_trees(rd, C, time, St, seed, -1, &hit);
+            hu_trees(rd, C, time, St, Sf, seed, -1, &hit);
         }
     }
     let hit_len = min(scene_len, hit.t);
+    // (the flashes worked out once what flies is found: little to keep in hand through that)
+    let fl = hu_flashes(time, seed);
 
     // ---- the land under the storm: darker, greyer, wet ------------------------------------------------------------------
     if (stage != 1u) {
@@ -1414,15 +1513,24 @@ fn hurricane(in: StageIn, stage: u32, up: vec4<f32>, ct: f32, ids0: array<vec2<f
     // (a block or a tree deep in the cloud, mostly hidden, goes as the cloud round it does: no pale ghosts of them)
     let hidden = select(0.0, 1.0 - smoothstep(0.06, 0.4, select(up.a, 1.0, stage != 2u)), hit.t < scene_len);
     if (stage == 2u) {
-        col = mix(col, 0.55 * up.rgb / max(1.0 - up.a, 1.0e-3), hidden);
+        col = mix(col, 0.55 * up.rgb / max(1.0 - up.a, 1.0e-3), hidden) * select(1.0, mix(0.35, 1.0, smoothstep(0.35, 0.85, up.a)), hit.t < scene_len);
         col = col * up.a + up.rgb;
         col = col + hu_bolts(in.position.xy, fl, C, hit_len, ct, up.a, seed, time) * k;
     } else if (time < HU_LEN) {
         let j = ign(in.position.xy + vec2<f32>(fract(time * 7.0) * 37.0, 0.0));
-        let v = hu_volume(rd, hit_len, C, time, St, j, L, amb0, sunc0, fl, stage == 0u);
+        // (the brightest flash lights the cloud: one, so the march keeps little in hand)
+        var flv = fl.p[0];
+        if (fl.p[1].w > flv.w) {
+            flv = fl.p[1];
+        }
+        if (fl.p[2].w > flv.w) {
+            flv = fl.p[2];
+        }
+        let v = hu_volume(rd, hit_len, scene_len, C, time, St, j, L, amb0, sunc0, flv, stage == 0u);
         if (stage == 0u) {
             if (hit.t < scene_len) {
-                col = mix(col, 0.55 * v.lc, 1.0 - smoothstep(0.06, 0.4, v.c.a));
+                // (and one seen through the murk a dark shape in it, as debris in a storm is, never paler than it)
+                col = mix(col, 0.55 * v.lc, 1.0 - smoothstep(0.06, 0.4, v.c.a)) * mix(0.35, 1.0, smoothstep(0.35, 0.85, v.c.a));
             }
             col = col * mix(1.0, v.c.a, k) + v.c.rgb * k;
             col = col + hu_bolts(in.position.xy, fl, C, hit_len, v.t, v.c.a, seed, time) * k;
@@ -1431,36 +1539,60 @@ fn hurricane(in: StageIn, stage: u32, up: vec4<f32>, ct: f32, ids0: array<vec2<f
         }
     }
 
-    // ---- the rain close by, driven slanting by the wind, thicker the stronger it blows --------------------------------
+    // ---- the rain close by: streaks in the world round the camera, on shells at six distances (near ones big, fast
+    // and few, far ones fine and many, fading into the murk), each streak its own (a hash a cell: its length, speed,
+    // brightness, whether it is there), the cells counted whole round each shell so nothing repeats on the picture or
+    // seams; driven by the wind where the camera is (round the storm, nearly sideways near the eyewall), hidden by the
+    // land and what flies in front, lit by the flashes. None in the calm eye, none over the cloud's base.
     let rk = hu_rain(time) * hu_fade(time);
     if (rk > 0.01) {
-        let res = frame.resolution.xy;
-        let sc = res.y / 1080.0;
-        let near = (1.0 - smoothstep(hu_deck_r(time) * 0.6, hu_deck_r(time) * 0.8, length((-C).xz))) * (1.0 - in_eye) * (1.0 - smoothstep(HU_BASE, HU_BASE + 60.0, cq.y));
-        let wind = hu_spin(time);
-        var streak = 0.0;
-        for (var layer = 0; layer < 3; layer = layer + 1) {
-            let fl2 = f32(layer);
-            let dk = 3.5 + 5.0 * fl2 + 4.0 * fl2 * fl2;
-            if (scene_len < dk || hit.t < dk) {
-                continue;
+        let rc = length(cq.xz);
+        let near = (1.0 - smoothstep(hu_deck_r(time) * 0.6, hu_deck_r(time) * 0.8, rc)) * (1.0 - in_eye) * (1.0 - smoothstep(HU_BASE, HU_BASE + 60.0, cq.y)) * smoothstep(HU_R_EYE, HU_R_EYE + 20.0, rc);
+        if (near > 0.01) {
+            let focal = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
+            // (the wind where the camera is: round the middle the way it turns, blocks a second)
+            let tang = normalize(vec2<f32>(-cq.z, cq.x) * HU_SPIN + vec2<f32>(1.0e-4, 0.0));
+            let wv = HU_V * hu_shape(max(rc, 1.0)) * hu_spin(time) * 1.4;
+            let fall = 14.0;
+            let th = atan2(rd.z, rd.x);
+            let hl = max(length(rd.xz), 1.0e-3);
+            let flash = hu_flash_at(fl, cq);
+            var streak = 0.0;
+            for (var layer = 0; layer < 6; layer = layer + 1) {
+                let fl2 = f32(layer);
+                // (the shell's radius round the camera, along the picture's ray)
+                let rad = 1.6 * pow(1.8, fl2);
+                let dk = rad / hl;
+                if (scene_len < dk || hit.t < dk || dk > 200.0) {
+                    continue;
+                }
+                let wp = rd * dk;
+                // (round the shell: the cells a whole number of them, so its seam never shows)
+                let cw = 0.22 * pow(1.3, fl2);
+                let nc = floor(TAU * rad / cw);
+                let side = dot(tang, vec2<f32>(-sin(th), cos(th))) * wv;
+                // (along a streak: falling and blown; the slant the wind across the line of sight over the fall)
+                let slope = side / fall;
+                let arc = th / TAU * nc + slope * wp.y / cw;
+                let ci = floor(arc);
+                let cf = arc - ci;
+                let cell = (ci % nc + nc) % nc;
+                let h = fh21(vec2<f32>(cell, fl2 * 17.31 + 3.0));
+                let h2 = fh21(vec2<f32>(cell * 1.37 + 5.0, fl2 * 7.7));
+                let h3 = fh21(vec2<f32>(cell * 0.71 + 9.0, fl2 * 3.1));
+                let lenw = (0.3 + 0.5 * h2) * pow(1.35, fl2);
+                let period = lenw * (3.0 + 4.0 * h3);
+                let spd = sqrt(fall * fall + side * side) * (0.85 + 0.3 * h);
+                let u = fract((wp.y * sqrt(1.0 + slope * slope) + spd * time) / period + h * 7.0);
+                let there = step(0.62 - 0.07 * fl2, h3);
+                // (its core a pixel or two wide on the picture whatever its distance; soft at its ends)
+                let px = abs(cf - (0.3 + 0.4 * h2)) * cw * focal / dk;
+                let core = exp(-px * px / (1.0 + 0.5 / (1.0 + fl2)));
+                let along = smoothstep(0.0, 0.12, u * period / lenw) * (1.0 - smoothstep(0.75, 1.0, u * period / lenw)) * step(u * period, lenw);
+                streak = streak + core * along * there * (0.75 - 0.06 * fl2) * (0.7 + 0.6 * h);
             }
-            let wp = rd * dk - C;
-            if (wp.y > HU_BASE) {
-                continue;
-            }
-            let w = (10.0 - 3.0 * fl2) * sc;
-            let slant = 0.2 + 1.1 * wind;
-            let pp = in.position.xy + vec2<f32>(in.position.y * slant, 0.0);
-            let cidx = floor(pp.x / w);
-            let h = fh21(vec2<f32>(cidx, fl2 * 17.0));
-            let h2 = fh21(vec2<f32>(cidx * 1.7, fl2 * 5.0 + 3.0));
-            let ln = (240.0 - 50.0 * fl2) * sc;
-            let vv = fract((pp.y - time * (2600.0 + 1800.0 * wind - 600.0 * fl2) * sc) / ln + h);
-            let across = 1.0 - abs(fract(pp.x / w) - 0.5) * 2.0;
-            streak = streak + smoothstep(0.88, 1.0, vv) * step(0.66 - 0.2 * wind, h2) * pow(across, 9.0) * (0.5 - 0.12 * fl2);
+            col = col + vec3<f32>(0.6, 0.64, 0.7) * streak * rk * near * (amb0 * 0.8 + vec3<f32>(0.03) + vec3<f32>(0.8, 0.85, 1.0) * flash * 0.6) * k;
         }
-        col = col + vec3<f32>(0.6, 0.64, 0.7) * streak * rk * near * (amb0 * 0.8 + vec3<f32>(0.03)) * k;
     }
 
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));

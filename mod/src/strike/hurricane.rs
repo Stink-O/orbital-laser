@@ -122,19 +122,25 @@ pub(super) fn ring_r(k: usize) -> f64 {
 /// How high a ring's blocks go (they climb it and are lost in the eyewall's cloud, or skim the land further out), how
 /// fast they climb at full strength, and how many of its cells hold a block at its height.
 pub(super) fn ring_h(r: f64) -> f64 {
-    16.0 + 232.0 * (1.0 - smooth(70.0, 150.0, r))
+    30.0 + 218.0 * (1.0 - smooth(70.0, 150.0, r))
 }
 pub(super) fn ring_rise(r: f64) -> f64 {
-    2.0 + 7.0 * (1.0 - smooth(60.0, 140.0, r))
+    2.0 + 13.0 * (1.0 - smooth(60.0, 140.0, r))
 }
 pub(super) fn ring_dens(r: f64) -> f64 {
     0.045 + 0.115 * (1.0 - smooth(105.0, 160.0, r))
 }
-/// How far a ring's blocks are in the air at `t`: none before the front reaches it, all of it 2.5 s after; and how
-/// many are still up as they are flung out and come down.
+/// Whether a ring's blocks are about: from its front, when they start to rise out of the land (none appears in the
+/// air: the pass's `hu_block` leaves empty the cells that were over the land as the front came), until the last has
+/// come back down after the fling, shattering where it hits.
 pub(super) fn ring_on(r: f64, t: f64) -> f64 {
     let Some(f) = front_t(r) else { return 0.0 };
-    smooth(f, f + 2.5, t) * (1.0 - smooth(HU_FLING + 1.0, HU_FLING + 6.5, t))
+    smooth(f, f + 1.0, t) * (1.0 - smooth(HU_FLING + 7.0, HU_FLING + 8.0, t))
+}
+/// How high a ring's blocks have climbed out of the land by `t` (they fill it from the ground up).
+pub(super) fn ring_fill(r: f64, t: f64) -> f64 {
+    let Some(f) = front_t(r) else { return 0.0 };
+    (ring_rise(r) * (spin_int(t.min(HU_FLING)) - spin_int(f))).clamp(0.0, ring_h(r))
 }
 /// About how many blocks are in the air at `t` (the pass's field: its rings' cells times how many hold one).
 pub(super) fn hu_in_air(t: f64) -> f64 {
@@ -142,7 +148,7 @@ pub(super) fn hu_in_air(t: f64) -> f64 {
         .map(|k| {
             let r = ring_r(k);
             let around = (TAU * r / HU_CELL).floor();
-            around * (ring_h(r) / HU_CELL) * ring_dens(r) * ring_on(r, t)
+            around * (ring_fill(r, t) / HU_CELL) * ring_dens(r) * ring_on(r, t)
         })
         .sum()
 }
@@ -153,7 +159,7 @@ pub(super) fn hu_in_sight(t: f64) -> f64 {
         .map(|k| {
             let r = ring_r(k);
             let around = (TAU * r / HU_CELL).floor();
-            around * (ring_h(r).min(HU_SEEN) / HU_CELL) * ring_dens(r) * ring_on(r, t)
+            around * (ring_fill(r, t).min(HU_SEEN) / HU_CELL) * ring_dens(r) * ring_on(r, t)
         })
         .sum()
 }
@@ -1718,7 +1724,7 @@ mod tests {
         let seen = hu_in_sight(42.0);
         eprintln!("in the air at 42 s: {peak:.0} ({seen:.0} under the cloud); at 20 s {:.0}; at 30 s {:.0}", hu_in_air(20.0), hu_in_air(30.0));
         assert!(seen > 3000.0 && peak > seen && peak < 60_000.0, "{peak} {seen}");
-        assert!(hu_in_air(HU_F0 - 1.0) < 1.0 && hu_in_air(HU_FLING + 7.0) < 1.0);
+        assert!(hu_in_air(HU_F0 - 1.0) < 1.0 && hu_in_air(HU_FLING + 8.5) < 1.0 && hu_in_air(HU_F0 + 0.5) < 400.0);
         assert!(hu_in_air(20.0) < hu_in_air(30.0) && hu_in_air(30.0) <= hu_in_air(40.0) + 1.0);
         // (the table: everything where the pass reads it, under the game's limit)
         assert!(HU_PAL + HU_NR * HU_PN <= HU_T && HU_T + HU_TW * HU_NT == HU_G && HU_WORDS <= 1 << 18);
