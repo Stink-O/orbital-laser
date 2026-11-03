@@ -18,6 +18,8 @@ use std::rc::Rc;
 const TAU: f64 = 2.0 * PI;
 /// The object shows (fading in) high in the sky, starts its fast final descent (a fireball by then), and strikes.
 pub(super) const PL_SEEN: f32 = 3.0;
+/// (PL_TURN the pass reads, and tools/sounds_payload.py: kept here in step.)
+#[allow(dead_code)]
 pub(super) const PL_TURN: f32 = 10.6;
 pub(super) const PL_HIT: f32 = 13.6;
 /// How long the dive's sound runs before its cut-off (tools/sounds_payload.py reads it: the dive starts at PL_TURN).
@@ -1072,7 +1074,6 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     let gy = f64::from(by) + 1.0;
     let rel = [me[0] - cx, me[1] - gy, me[2] - cz];
     let geo = PlGeo::new(shader_seed, rel);
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let (late, dist) = sound_from([cx, gy, cz], me);
     let fo = falloff(dist).max(0.3);
 
@@ -1095,13 +1096,10 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
     }
 
     // ---- calm, then something up there ------------------------------------------------------------------------------
-    p.at(1.2, bar("ORBITAL TRACKING: OBJECT DESCENDING", "gray"));
     // (its whine and rumble, heard faintly from up there: late by how far it is)
     let (dl, _) = sound_from(add([cx, gy, cz], geo.pos(f64::from(PL_SEEN)), 1.0), me);
     p.csound(PL_SEEN - 0.3 + dl.min(1.6), "drift", 10.0, 1.0);
-    p.at(7.5, bar("ORBITAL TRACKING: OBJECT DESCENDING", "gray"));
     // ---- the dive: its roar and whistle as it comes down, cut off as it strikes ----------------------------------
-    p.at(PL_TURN + 0.2, bar("PAYLOAD INBOUND", "red"));
     // (its roar and whistle are cut off dead PL_DIVE_SND in: started that long before it strikes, as its fast final
     // descent starts, so the cut falls on the strike)
     p.csound(PL_HIT - PL_DIVE_SND, "dive", 10.0, 1.0);
@@ -1156,7 +1154,6 @@ pub(super) fn payload_plan(laser: &'static Laser, target: &Target, terrain: bool
             td += p.rng.uniform(0.25, 0.9) as f32;
         }
     }
-    p.at(PL_HIT + 1.5, bar("PAYLOAD DETONATED", "gold"));
     for t in [PL_HIT + 0.1, PL_HIT + 1.5, PL_HIT + 4.0] {
         p.at(t, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{PL_KILL}]"));
     }

@@ -381,13 +381,11 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
     }
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let gy = f64::from(by) + 1.0;
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
     let (lt, dist) = sound_from([cx, gy, cz], me);
     let fo = falloff(dist).max(0.35);
 
     // ---- unease: a rumble felt more than heard, tremors that come and go, ground groaning and cracking round it ----
-    p.at(0.2, bar("SEISMIC WARNING: TREMORS UNDER THE TARGET", laser.color));
     p.csound(lt, "rumble", 10.0, 1.0);
     let mut tk = 0.3f32;
     while tk < SH_C0 {
@@ -421,7 +419,6 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
         let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
         p.at(t + late(x, gy, z), format!("playsound orbital:sinkhole.{name} block @a {x:.1} {gy} {z:.1} 4 {pitch:.2} 0.9"));
     }
-    p.at(3.6, bar("SEISMIC WARNING: THE GROUND IS GIVING WAY", "red"));
     // (each spurt of the cracks puffing dust up out of them where it ran, and loose bits crumbling in)
     for (i, &(t, r)) in spurts.iter().enumerate() {
         let r0 = if i == 0 { 0.0 } else { spurts[i - 1].1 };
@@ -441,7 +438,6 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
 
     // ---- the collapse: a deep boom as the middle goes, the grinding roar of the rest going, the rim's slabs heard
     // cracking off one by one; the land shaking under it ---------------------------------------------------------
-    p.at(SH_C0, bar("COLLAPSE", "white"));
     // (the boom 0.6 s into its sound: the strain before it)
     p.csound(SH_C0 - 0.6 + lt, "collapse", 10.0, 1.0);
     p.csound(SH_C0 + 1.2 + lt, "rockfall", 10.0, 1.0);
@@ -477,7 +473,6 @@ pub(super) fn sinkhole_plan(laser: &'static Laser, target: &Target, terrain: boo
             }
         });
     }
-    p.at(16.5, bar("SINKHOLE", laser.color));
     // ---- the roar dying into an echoing near-silence: pebbles trickling down the walls ------------------------------
     p.csound(17.5 + lt, "trickle", 10.0, 1.0);
     let mut ta = 16.5f32;

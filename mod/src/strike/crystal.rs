@@ -626,14 +626,12 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
     let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
     let _ = wing_angle(target.point, me);
     let (lt, dist) = sound_from(target.point, me);
     let fo = falloff(dist).max(0.4);
 
     // the land waking: its hum and groan from the start, heard from the middle, the ground trembling more and more
-    p.at(0.2, bar("CRYSTAL BLOOM: THE LAND WAKES", laser.color));
     p.csound(lt, "wake", 10.0, 1.0);
     for k in 0..6 {
         p.shake(0.4 + k as f32 * 0.5 + lt, (0.04 + 0.02 * k as f32) * fo, 0.8);
@@ -661,13 +659,11 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
         p.at(t + CB_STRUGGLE, format!("particle minecraft:end_rod {x:.1} {} {z:.1} 6 10 6 0.08 40 force", ty + 6.0));
     }
     // the bloom: its chimes and grinding, heard from the middle as it runs out; the land shuddering under it
-    p.at(CB_BLOOM0, bar("BLOOM", laser.color));
     p.csound(CB_BLOOM0 - 0.3 + lt, "bloom", 10.0, 1.0);
     for k in 0..10 {
         p.shake(CB_BLOOM0 + k as f32 * 0.55 + lt, 0.12 * fo, 0.6);
     }
     // the resonance, building to the detonation; a breath; the burst, and the shards tinkling down after it
-    p.at(CB_RES, bar("RESONANCE", "aqua"));
     p.csound(CB_RES + lt, "resonance", 10.0, 1.0);
     let mut tk = CB_RES + 0.5;
     while tk < CB_DET - 0.4 {
@@ -675,7 +671,6 @@ pub(super) fn crystalbloom_plan(laser: &'static Laser, target: &Target, terrain:
         p.shake(tk + lt, (0.05 + 0.2 * u * u) * fo, 0.6);
         tk += 0.6 - 0.35 * u;
     }
-    p.at(CB_DET, bar("DETONATION", "white"));
     // (the burst is 1.0 s into its sound: the breath in before it)
     p.csound(CB_DET - 1.0 + lt, "shatter", 10.0, 1.0);
     p.shake(CB_DET + lt, fo, 4.0);

@@ -33,8 +33,8 @@ use std::rc::Rc;
 /// their feet drawn in on the target and their roots in to the wall cloud's middle; then the finale's run-in (`FIN_RUN`:
 /// from SC_STORM1 a rapid run of lone bolts, each instant, closer and closer onto the target, in time with its sound's
 /// cracks), the hush (FIN_SUCK) and the colossal strike at SC_FINALE; the rain stopping and the cloud dying away from
-/// SC_CLEAR (gone by the strike's end, lasers.rs's length). (SC_FORMED, SC_WAVES, SC_CONV and SC_STORM1 the pass reads
-/// too: kept here in step.)
+/// SC_CLEAR (gone by the strike's end, lasers.rs's length). (SC_FORMED, SC_WAVES, SC_CONV, SC_STORM1 and SC_CLEAR the
+/// pass reads too: kept here in step.)
 #[allow(dead_code)]
 pub(super) const SC_FORMED: f32 = 6.5;
 pub(super) const SC_STORM0: f32 = 4.0;
@@ -42,6 +42,7 @@ pub(super) const SC_WAVES: f32 = 15.0;
 pub(super) const SC_CONV: f32 = 24.0;
 pub(super) const SC_STORM1: f32 = 27.85;
 pub(super) const SC_FINALE: f32 = 29.0;
+#[allow(dead_code)]
 pub(super) const SC_CLEAR: f32 = 32.5;
 /// The most bolts over the storm (the table's room), the most striking at once, and how far out from the middle they
 /// strike before they draw in.
@@ -639,7 +640,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let gy = f64::from(by) + 1.0;
     let mer = [me[0] - cx, me[2] - cz];
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let len = laser.length;
 
     // ---- the pass's table, and the ground under the bolts and the funnels asked of the world, put in when answered
@@ -659,7 +659,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     }
 
     // ---- the build-up: the sky darkening, the wind, thunder far off ---------------------------------------------------
-    p.at(0.5, bar("ORBITAL WEATHER CONTROL: STORM FORMING", "dark_aqua"));
     p.csound(0.0, "buildup", 10.0, 1.0);
     // (the wind and the rain a bed under the thunder: each clap stands out of them)
     for (i, t) in [4.5f32, 15.0, 25.0].iter().enumerate() {
@@ -668,7 +667,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     for (i, t) in [4.0f32, 13.0, 22.0].iter().enumerate() {
         p.csound(*t, "rain", [4.5, 6.0, 6.0][i], 1.0);
     }
-    p.at(SC_STORM0, bar("SUPERCELL", "dark_aqua"));
 
     // ---- the bolts ------------------------------------------------------------------------------------------------------
     let bolts = sc_bolts(s, mer);
@@ -735,9 +733,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
             let track = vortex::ground_track(&fr.path, |x, z| ground_dy(bx, by, bz, x, z));
             vortex::roar(q, &fr, "orbital:supercell.roar", [cx, gy, cz], &track);
         });
-        if k == 0 {
-            p.at(f.t0 as f32 + 1.0, bar("FUNNEL CLOUD", "gray"));
-        }
         if terrain {
             let seen: Rc<std::cell::RefCell<crate::ground::FxSet<(i32, i32)>>> = Default::default();
             let per = 8;
@@ -754,7 +749,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
 
     // ---- the finale: the bolts collapsing into one colossal strike on the target, a shockwave and a jolt ------------------
     let tf = SC_FINALE;
-    p.at(SC_CONV, bar("ORBITAL WEATHER CONTROL: DISCHARGE", "aqua"));
     // (heard and felt late by the distance: its run-in of the last waves' cracks stacking up, the ground trembling more
     // and more as the bolts draw in; the storm's beds cut under its last cracks, a hush, then the crack and the blast
     // out of silence, the jolt and the push with it; the rain and the wind coming back under its tail)
@@ -783,7 +777,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     p.at(tf + 0.15, format!("particle minecraft:large_smoke {cx:.1} {:.1} {cz:.1} 20 4 20 0.08 500 force", gy + 2.0));
     p.at(tf + 0.2, format!(r#"particle minecraft:block{{block_state:"minecraft:blackstone"}} {cx:.1} {:.1} {cz:.1} 18 3 18 1.4 900 force"#, gy + 2.0));
     p.at(tf + 0.3, format!("particle minecraft:electric_spark {cx:.1} {:.1} {cz:.1} 25 4 25 0.6 600 force", gy + 2.0));
-    p.at(tf + 1.0, bar("DIRECT HIT", "white"));
     for k in [0.15f32, 1.5, 4.0] {
         p.at(tf + k, format!("execute positioned {cx:.1} {gy} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FC_KILL}]"));
     }
@@ -806,7 +799,6 @@ pub(super) fn supercell_plan(laser: &'static Laser, target: &Target, terrain: bo
     }
 
     // ---- the storm dies away: the rain stops, the fires it left burning ------------------------------------------------------
-    p.at(SC_CLEAR + 1.0, bar("STORM DISSIPATING", "gray"));
     if terrain {
         let load = pk_load_rows([cx, gy, cz], 0.0, SC_SWEEP + 4.0);
         for [x0, z0, x1, z1] in &load {
