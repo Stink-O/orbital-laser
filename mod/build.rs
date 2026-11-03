@@ -48,5 +48,9 @@ fn main() {
     let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_supercell_{f}.wgsl"), passbuild::split_pass(&shader, &sc, f))).collect();
     writeln!(rs, "/// The Supercell's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_SUPERCELL: [&str; 2] = [{}];", c.join(", ")).unwrap();
+    let hu = read("hurricane.wgsl");
+    let h: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_hurricane_{f}.wgsl"), passbuild::split_pass(&shader, &hu, f))).collect();
+    writeln!(rs, "/// The Hurricane's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_HURRICANE: [&str; 2] = [{}];", h.join(", ")).unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }

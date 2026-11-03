@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12}
+INDEX = {"supercell": 12, "hurricane": 13}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -157,12 +157,44 @@ VIEWS = {
     # over a wood
     "vxclose": "cx=35 cy=72 cz=165 lx=35 ly=75 lz=15 flat=1 trees=1 fov=60 reach=300",
     "vxfar": "cx=35 cy=85 cz=415 lx=35 ly=85 lz=15 flat=1 trees=1 fov=45 reach=300",
+    # the hurricane (over a wood, its trees torn up as the front reaches them: hustrip=1): from 300 blocks off on the
+    # ground (the player's), from 800, close under the eyewall, in the eye looking up at it, carried round it (where
+    # the carry takes the player: 108 out, 50 up), from high above, and on wooded hills
+    "huplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=95 lz=0.5 flat=1 trees=1 hustrip=1 fov=75 reach=300",
+    "hufar": "cx=0 cy=80 cz=800 lx=0.5 ly=130 lz=0.5 flat=1 trees=1 hustrip=1 fov=65 reach=800",
+    "huunder": "cx=10 cy=68 cz=100 lx=-30 ly=105 lz=20 flat=1 trees=1 hustrip=1 fov=80 reach=100",
+    "hueye": "cx=0 cy=67 cz=6 lx=0 ly=150 lz=-70 flat=1 trees=1 hustrip=1 fov=85 reach=6",
+    "hucarried": "cx=108 cy=115 cz=0 lx=0 ly=95 lz=-70 flat=1 trees=1 hustrip=1 fov=80 reach=108",
+    "hutrees": "cx=70 cy=70 cz=60 lx=-60 ly=85 lz=-10 flat=1 trees=1 hustrip=1 fov=80 reach=92",
+    # the same, looking up at the eyewall's top from the ground (300 off) and from 800, and from the side, 1,500 off
+    "huplayerup": "cx=0 cy=67 cz=300 lx=0.5 ly=190 lz=0.5 flat=1 trees=1 hustrip=1 fov=80 reach=300",
+    "hufarup": "cx=0 cy=80 cz=800 lx=0.5 ly=200 lz=0.5 flat=1 trees=1 hustrip=1 fov=65 reach=800",
+    "huside": "cx=-1300 cy=260 cz=700 lx=0.5 ly=150 lz=0.5 flat=1 fov=55 reach=300",
+    # close on the blocks and trees flying round the eyewall (textured, with the atlas), from 25 and 60 off
+    "hutex": "cx=96 cy=76 cz=-6 lx=70 ly=74 lz=-30 flat=1 trees=1 hustrip=1 fov=60 reach=96",
+    "hutex2": "cx=118 cy=78 cz=10 lx=60 ly=68 lz=-35 flat=1 trees=1 hustrip=1 fov=55 reach=118",
+    "huaerial": "cx=0 cy=900 cz=1100 lx=0.5 ly=65 lz=0.5 flat=1 fov=60 reach=300",
+    "huhill": "cx=0 cy=110 cz=320 lx=0.5 ly=100 lz=0.5 hills=30 flush=1 trees=1 hustrip=1 fov=75 reach=320",
+    # as the space station saw Florence: from 2,400 up and 1,700 off, looking down across it; and straight down on it
+    "huorbit": "cx=0 cy=2400 cz=1700 lx=0.5 ly=65 lz=-150 flat=1 fov=60 reach=300",
+    "hutop": "cx=0 cy=1900 cz=1 lx=0.5 ly=65 lz=0.5 flat=1 fov=75 reach=300",
+    # in the eye on the ground looking straight up the stadium, and in it 90 up (where the carry takes the player at
+    # its height) looking across at the far wall
+    "hueyeup": "cx=0 cy=67 cz=4 lx=0 ly=300 lz=-45 flat=1 trees=1 hustrip=1 fov=100 reach=4",
+    "hueyemid": "cx=8 cy=155 cz=6 lx=-60 ly=185 lz=-30 flat=1 trees=1 hustrip=1 fov=95 reach=10",
+    # close on the cloud: its gathering storms from 250 off on the ground, the deck from 700 up over its bands
+    "hucells": "cx=0 cy=67 cz=250 lx=0.5 ly=200 lz=-150 flat=1 trees=1 fov=70 reach=250",
+    "hudeck": "cx=600 cy=700 cz=600 lx=300 ly=200 lz=200 flat=1 fov=60 reach=300",
+    # looking along the debris field at the eyewall's foot from 180 out and from 110, as a player sees it
+    "hufield": "cx=0 cy=68 cz=180 lx=0.5 ly=130 lz=0.5 flat=1 trees=1 hustrip=1 fov=55 reach=180",
+    "hufieldnear": "cx=60 cy=70 cz=95 lx=-20 ly=110 lz=0 flat=1 trees=1 hustrip=1 fov=60 reach=110",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
                  "payload": "plplayer,plsky,pltop", "nuke": "nkplayer,nkfar,nkclose",
                  "rod": "rdplayer,rdmid,rdfar",
-                 "supercell": "scplayer,scunder,scfar"}
+                 "supercell": "scplayer,scunder,scfar",
+                 "hurricane": "huplayer,hufar,huunder,huaerial"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -171,7 +203,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
@@ -193,13 +225,16 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
-    if laser in ("payload", "nuke", "rod", "supercell"):
+    if laser in ("payload", "nuke", "rod", "supercell", "hurricane"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
         env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills,
                    PL_FLUSH="1" if "flush=1" in sets else "0")
-        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table"}.get(laser, "pl_write_table")
+        if laser == "hurricane" and ATLAS:
+            # (the blocks' sprites as the fake atlas has them, matching the stand-in arrays the preview binds)
+            env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
+        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table"}.get(laser, "pl_write_table")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
@@ -225,6 +260,22 @@ def crystal_data(out: pathlib.Path, sets: list) -> dict:
     return dict(os.environ, PREVIEW_DATA=str(path))
 
 
+ATLAS = None
+
+
+def atlas(out: pathlib.Path):
+    """The Hurricane's textured blocks: a stand-in for the game's block sprite arrays from the player's own prepared
+    resources (tools/hu_atlas.py; made once into dist/preview/atlas), or none if there are none to make it from."""
+    global ATLAS
+    d = out.parent / "atlas"
+    if not (d / "atlas.raw").exists():
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "hu_atlas.py"), str(d)], capture_output=True, text=True)
+        if r.returncode != 0:
+            print("no textures (tools/hu_atlas.py: " + r.stderr.strip().splitlines()[-1] + ")", file=sys.stderr)
+            return
+    ATLAS = d.resolve()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("laser", choices=LASERS)
@@ -237,6 +288,7 @@ def main() -> int:
                     help="QUALITY FULL, FAST (the half-size stage), or both side by side (a column each a view)")
     ap.add_argument("--whole", action="store_true", help="FAST drawn as a game without half-size stages draws it: fs_main alone")
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "dist" / "preview")
+    ap.add_argument("--notex", action="store_true", help="the Hurricane's blocks in their average colours, not textured")
     a = ap.parse_args()
 
     tool = ROOT / "tools" / "preview"
@@ -245,10 +297,12 @@ def main() -> int:
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
+    if a.laser == "hurricane" and not a.notex:
+        atlas(out)
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
-    if a.laser in ("payload", "nuke", "rod", "supercell"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     shots = []
@@ -258,8 +312,10 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane") else None
     env = dict(env or os.environ)
+    if ATLAS:
+        env["PREVIEW_ATLAS"] = str(ATLAS / "atlas.raw")
     if a.whole:
         env["PREVIEW_WHOLE"] = "1"
     # each quality's frames, in their own folder; on the sheet a row a moment, a column a view (and a quality)

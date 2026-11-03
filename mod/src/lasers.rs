@@ -9,8 +9,6 @@ pub struct Laser {
     /// The shader's laser number (`frame.mod_params[1].w`).
     pub index: u32,
     pub title: &'static str,
-    /// Minecraft text colour for the action bar.
-    pub color: &'static str,
     /// The wheel's accent, 0xRRGGBB.
     pub rgb: u32,
     pub blurb: &'static str,
@@ -56,7 +54,6 @@ pub const PLASMA: Laser = Laser {
     key: "plasma",
     index: 0,
     title: "PLASMA",
-    color: "aqua",
     rgb: 0x55D8FF,
     blurb: "A raging plasma beam and forked lightning. Leaves a crater of glass and obsidian ringed in fire.",
     icon_model: "orbital:plasma_icon",
@@ -90,7 +87,6 @@ pub const GODLY: Laser = Laser {
     key: "godly",
     index: 1,
     title: "GODLY",
-    color: "yellow",
     rgb: 0xFFD55A,
     blurb: "A pillar of light through parted clouds. Leaves a crater of quartz and gold, with flowers.",
     icon_model: "orbital:godly_icon",
@@ -127,7 +123,6 @@ pub const BLACK_HOLE: Laser = Laser {
     key: "blackhole",
     index: 2,
     title: "BLACK HOLE",
-    color: "light_purple",
     rgb: 0xB070FF,
     blurb: "A singularity tears open, bores to bedrock and drags the land into spiral arms.",
     icon_model: "orbital:blackhole_icon",
@@ -167,7 +162,6 @@ pub const METEOR: Laser = Laser {
     key: "meteor",
     index: 3,
     title: "METEOR STORM",
-    color: "red",
     rgb: 0xFF7A3A,
     blurb: "A storm of meteors, then one the size of a hill: a crater 125 blocks across.",
     icon_model: "orbital:meteor_icon",
@@ -205,7 +199,6 @@ pub const MOTHERSHIP: Laser = Laser {
     key: "mothership",
     index: 4,
     title: "MOTHERSHIP",
-    color: "green",
     rgb: 0x3FE05A,
     blurb: "A kilometre-long ship drops in over the target and cuts a molten trench with its beam.",
     icon_model: "orbital:mothership_icon",
@@ -243,7 +236,6 @@ pub const DOWNFALL: Laser = Laser {
     key: "downfall",
     index: 5,
     title: "DOWNFALL",
-    color: "dark_red",
     rgb: 0xE8424F,
     blurb: "A meteor brings the mothership down into the land, and a black hole swallows the wreck.",
     icon_model: "orbital:downfall_icon",
@@ -281,7 +273,6 @@ pub const PLANET_KILLER: Laser = Laser {
     key: "planetkiller",
     index: 6,
     title: "PLANET KILLER",
-    color: "blue",
     rgb: 0x4D7CFF,
     blurb: "Seven towers strike a ring in the sky with lightning. Its beam leaves a crater 480 across.",
     icon_model: "orbital:planetkiller_icon",
@@ -322,7 +313,6 @@ pub const CRYSTAL_BLOOM: Laser = Laser {
     key: "crystalbloom",
     index: 7,
     title: "CRYSTAL BLOOM",
-    color: "light_purple",
     rgb: 0xE07BFF,
     blurb: "A forest of crystal spires bursts from the land, hums as one and shatters in a flash of colour.",
     icon_model: "orbital:crystalbloom_icon",
@@ -354,7 +344,6 @@ pub const SINKHOLE: Laser = Laser {
     key: "sinkhole",
     index: 8,
     title: "SINKHOLE",
-    color: "gold",
     rgb: 0xD2A257,
     blurb: "The land trembles, cracks and caves in: a pit hundreds of blocks across, down to bedrock.",
     icon_model: "orbital:sinkhole_icon",
@@ -382,7 +371,6 @@ pub const PAYLOAD: Laser = Laser {
     key: "payload",
     index: 9,
     title: "PAYLOAD",
-    color: "gold",
     rgb: 0xFF8A2E,
     blurb: "A light in the sky drifts, loops and dives. Then a column of smoke and a wall of dust.",
     icon_model: "orbital:payload_icon",
@@ -411,7 +399,6 @@ pub const NUKE: Laser = Laser {
     key: "nuke",
     index: 10,
     title: "NUKE",
-    color: "yellow",
     rgb: 0xFFE14D,
     blurb: "A bomb falls and bursts over the land: a blinding flash, a mushroom cloud and a shockwave.",
     icon_model: "orbital:nuke_icon",
@@ -439,7 +426,6 @@ pub const ROD: Laser = Laser {
     key: "rod",
     index: 11,
     title: "ROD FROM GOD",
-    color: "white",
     rgb: 0xDDE6F0,
     blurb: "A golden star falls from the sky and strikes in stark flashes. The rod is left standing.",
     icon_model: "orbital:rod_icon",
@@ -467,7 +453,6 @@ pub const SUPERCELL: Laser = Laser {
     key: "supercell",
     index: 12,
     title: "SUPERCELL",
-    color: "dark_aqua",
     rgb: 0x4FB8C8,
     blurb: "A storm called down: lightning all round, funnels wandering, then one colossal strike.",
     icon_model: "orbital:supercell_icon",
@@ -487,7 +472,34 @@ pub const SUPERCELL: Laser = Laser {
     particle_b: "particle minecraft:electric_spark {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 13] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL];
+/// The hurricane, planned in `strike::hurricane_plan` (strike/hurricane.rs; the pass shaders/hurricane.wgsl): no beam. A
+/// hurricane spun up over the target tears the land up round its eyewall, whole trees and thousands of blocks flying
+/// round it, carries the mobs and the player off, then flings it all back down. The crater fields below are only what
+/// the shared tests read: what it tears up is planned there.
+pub const HURRICANE: Laser = Laser {
+    key: "hurricane",
+    index: 13,
+    title: "HURRICANE",
+    rgb: 0x8FB4D8,
+    blurb: "A hurricane spins up: trees and thousands of blocks torn up and whirled round its eye.",
+    icon_model: "orbital:hurricane_icon",
+    length: 64.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:dirt", 1.0)],
+    bowl_floor: ("minecraft:coarse_dirt", 0.0, "minecraft:dirt"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 14] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

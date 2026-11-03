@@ -2,9 +2,9 @@
 //! natively, where the SDK's calls into the game don't exist) a stand-in world that records what is asked of it and
 //! answers the reads when a test says (`fake`), so the tests can play strikes through lib.rs's own playback.
 #[cfg(not(test))]
-pub use horizon_mod_sdk::{game, log, render, storage, world};
+pub use horizon_mod_sdk::{atlas, game, log, render, storage, world};
 #[cfg(test)]
-pub use fake::{game, log, render, storage, world};
+pub use fake::{atlas, game, log, render, storage, world};
 
 #[cfg(test)]
 pub mod fake {
@@ -52,6 +52,9 @@ pub mod fake {
         pub fn get_clock() -> Option<Clock> {
             super::with(|w| Some(Clock { game_time: w.clock, day_time: 6000 }))
         }
+        pub fn player_flying() -> bool {
+            false
+        }
     }
     pub mod log {
         pub use horizon_mod_sdk::log::*;
@@ -80,6 +83,65 @@ pub mod fake {
         pub fn set_data(_words: &[u32]) {}
         pub fn shake(_strength: f32, _seconds: f32) {}
     }
+    /// The block sprites, as tools/hu_atlas.py describes them from the player's prepared resources (`HU_ATLAS_JSON`:
+    /// for each block its sides' faces), so the tests and the preview's table use real layers; none without it.
+    pub mod atlas {
+        pub use horizon_mod_sdk::atlas::*;
+        use std::collections::HashMap;
+        thread_local! {
+            static TABLE: std::cell::RefCell<Option<HashMap<String, BlockFaces>>> = const { std::cell::RefCell::new(None) };
+        }
+        fn load() -> HashMap<String, BlockFaces> {
+            let Ok(path) = std::env::var("HU_ATLAS_JSON") else { return HashMap::new() };
+            let text = std::fs::read_to_string(path).expect("HU_ATLAS_JSON");
+            // (a line a block: name, then six sides each `|`-separated faces `layer,cutout,tint,u0,v0,duu,duv,dvu,dvv`
+            // joined by `;`)
+            let mut out = HashMap::new();
+            for line in text.lines() {
+                let mut parts = line.split('|');
+                let Some(name) = parts.next() else { continue };
+                let sides: Vec<Vec<Face>> = parts
+                    .map(|side| {
+                        side.split(';')
+                            .filter(|f| !f.is_empty())
+                            .map(|f| {
+                                let v: Vec<&str> = f.split(',').collect();
+                                let n = |i: usize| v[i].parse::<f32>().unwrap_or(0.0);
+                                let tint = match v[2] {
+                                    "grass" => Tint::Grass,
+                                    "foliage" => Tint::Foliage,
+                                    "water" => Tint::Water,
+                                    t if t.starts_with('#') => Tint::Fixed(u32::from_str_radix(&t[1..], 16).unwrap_or(0xFFFFFF)),
+                                    _ => Tint::None,
+                                };
+                                Face {
+                                    // (`1` cut out, `2` translucent)
+                                    sprite: Sprite { array: 0, layer: v[0].parse().unwrap_or(0), animated: false, cutout: v[1] == "1" },
+                                    rect: (0.0, 0.0, 1.0, 1.0),
+                                    inset: 0.0,
+                                    uv: (n(3), n(4), n(5), n(6), n(7), n(8)),
+                                    tint,
+                                    translucent: v[1] == "2",
+                                }
+                            })
+                            .collect()
+                    })
+                    .collect();
+                out.insert(name.to_string(), BlockFaces { sides, particle: None, cube: true });
+            }
+            out
+        }
+        pub fn block_sprites(names: &[String]) -> Vec<Option<BlockFaces>> {
+            TABLE.with(|t| {
+                let mut t = t.borrow_mut();
+                let t = t.get_or_insert_with(load);
+                names.iter().map(|n| t.get(n).cloned()).collect()
+            })
+        }
+        pub fn resources_version() -> u64 {
+            1
+        }
+    }
     pub mod world {
         pub use horizon_mod_sdk::world::*;
         pub fn raycast(_distance: f32) -> Option<Hit> {
@@ -97,6 +159,10 @@ pub mod fake {
         pub fn play_sound(_event: &str, _at: Option<(f64, f64, f64)>, _volume: f32, _pitch: f32) {}
         pub fn push_player(_x: f32, _y: f32, _z: f32) {
             super::with(|w| w.pushes += 1);
+        }
+        pub fn carry_player(_x: f32, _y: f32, _z: f32, _turn: f32) -> bool {
+            super::with(|w| w.pushes += 1);
+            true
         }
         pub fn edit_blocks(edit: &BlockEdit) {
             super::with(|w| {

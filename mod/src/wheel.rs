@@ -1,7 +1,7 @@
 //! The laser wheel (capability `ui`): a ring of segments, one per laser, round
 //! a centre button that switches terrain damage, and switches over the ring's
-//! top right for the strikes' messages over the hotbar, the status panel and
-//! the heavy smoke's quality. The lasers are laid out in
+//! top right for the status panel and the heavy smoke's quality (and, while a
+//! strike is under way, a button stopping it). The lasers are laid out in
 //! pages of five (arrows either side of the ring and numbered tabs over it
 //! turn the page; so does a right-click). Under the ring, two rows of buttons
 //! for which way a ship laser's ship comes in and how it arrives, and a row of
@@ -43,29 +43,25 @@ const INFO_Y: f32 = R_OUT + 8.0;
 /// Characters a line of a blurb holds (6 GUI pixels each), and the lines it may take.
 const BLURB_CHARS: usize = 50;
 const BLURB_LINES: usize = 2;
-/// The strike messages' switch, over the ring's top right.
-const MSG: Rect = Rect { x: R_OUT, y: -R_OUT - 33.0, w: 84.0, h: 12.0 };
-/// The status panel's switch, under the messages'.
-const HUD: Rect = Rect { x: MSG.x, y: MSG.y + MSG.h + 2.0, w: MSG.w, h: MSG.h };
-/// The quality switch, under the panel's: the Payload's and the Nuke's smoke at full size or half (`/orbital quality`).
-const QUALITY: Rect = Rect { x: MSG.x, y: HUD.y + HUD.h + 2.0, w: MSG.w, h: MSG.h };
-/// The row under the quality switch's: the stop button's while a strike is under way, and LOCK SEED's across (the
-/// Rod's impact frames are a row under the ring, `/orbital impactframes`).
-const IMPACT: Rect = Rect { x: MSG.x, y: QUALITY.y + QUALITY.h + 2.0, w: MSG.w, h: MSG.h };
+/// The right column over the ring's top right, a row each, 2 apart: the status panel's switch first.
+const HUD: Rect = Rect { x: R_OUT, y: -R_OUT - 33.0, w: 84.0, h: 12.0 };
+/// The quality switch, under the panel's: the Payload's, the Nuke's and the Rod's smoke at full size or half
+/// (`/orbital quality`).
+const QUALITY: Rect = Rect { x: HUD.x, y: HUD.y + HUD.h + 2.0, w: HUD.w, h: HUD.h };
 /// Stopping the strike under way: a red button under the quality switch, there only while one is.
-const STOP: Rect = Rect { x: MSG.x, y: IMPACT.y + 2.0, w: MSG.w, h: MSG.h };
-/// The left column's x: the switches' mirror.
-const LEFT_X: f32 = -MSG.x - MSG.w;
-/// The knockback's switch, under the stop button (the Nuke's and the Rod's push on the player, `/orbital knockback`),
-/// and the follow camera's under it (the camera chasing the Nuke's or the Payload's bomb down, `/orbital follow`).
-const KNOCK: Rect = Rect { x: LEFT_X, y: QUALITY.y, w: MSG.w, h: MSG.h };
-const FOLLOW: Rect = Rect { x: LEFT_X, y: IMPACT.y, w: MSG.w, h: MSG.h };
-/// The seed's row under the follow camera's switch: its field (the seed a strike's look comes from: the one held, or
+const STOP: Rect = Rect { x: HUD.x, y: QUALITY.y + QUALITY.h + 2.0, w: HUD.w, h: HUD.h };
+/// The left column's x: the right's mirror, its rows lined up with the right's.
+const LEFT_X: f32 = -HUD.x - HUD.w;
+/// The seed's rows at the top of the left column: its field (the seed a strike's look comes from: the one held, or
 /// the last strike's; a click types another, Enter sets it), and under it the lock's switch (on, every strike uses the
 /// field's seed: the same trail and cloud every time; off, a fresh one each strike), `/orbital seed`.
-const SEED: Rect = Rect { x: LEFT_X, y: MSG.y, w: MSG.w, h: MSG.h };
+const SEED: Rect = Rect { x: LEFT_X, y: HUD.y, w: HUD.w, h: HUD.h };
 const SEED_FIELD: Rect = Rect { x: SEED.x + 40.0, y: SEED.y, w: SEED.w - 40.0, h: SEED.h };
-const LOCK: Rect = Rect { x: LEFT_X, y: HUD.y, w: MSG.w, h: MSG.h };
+const LOCK: Rect = Rect { x: LEFT_X, y: QUALITY.y, w: HUD.w, h: HUD.h };
+/// The knockback's switch, under the lock's (the Nuke's and the Rod's push on the player, `/orbital knockback`), and
+/// the follow camera's under it (the camera chasing the Nuke's or the Payload's bomb down, `/orbital follow`).
+const KNOCK: Rect = Rect { x: LEFT_X, y: STOP.y, w: HUD.w, h: HUD.h };
+const FOLLOW: Rect = Rect { x: LEFT_X, y: STOP.y + STOP.h + 2.0, w: HUD.w, h: HUD.h };
 /// Characters the seed's field holds (seeds run 1 to 997).
 const SEED_CHARS: usize = 3;
 /// The impact frames' row's buttons, as the blast sound's.
@@ -92,8 +88,6 @@ const FIELD_CHARS: usize = 6;
 pub enum Spot {
     Laser(usize),
     Centre,
-    /// The strike messages' switch.
-    Messages,
     /// The status panel's switch.
     Hud,
     /// The quality switch.
@@ -283,13 +277,13 @@ fn segment_angle(k: usize) -> f32 {
     PI + k as f32 * TAU / PAGE as f32
 }
 
-/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's and the Rod's)
-/// and the follow camera (the Nuke's and the Payload's).
+/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's, the Rod's and the
+/// Hurricane's carry) and the follow camera (the Nuke's and the Payload's).
 pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" {
+    if key == "nuke" || key == "rod" || key == "hurricane" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -334,9 +328,6 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
                 }
             }
         }
-    }
-    if inside(&MSG, x, y) {
-        return Some(Spot::Messages);
     }
     if inside(&HUD, x, y) {
         return Some(Spot::Hud);
@@ -459,7 +450,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, messages: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: usize, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: usize, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -493,13 +484,7 @@ impl Wheel {
         sector(&mut out, 0.0, TAU, R_IN - 1.5, R_IN, if terrain { 0xFF62D46A } else { 0xFFE0524E });
         text(&mut out, "TERRAIN", 0.0, -9.0, 0xB8BEC8);
         text(&mut out, if terrain { "ON" } else { "OFF" }, 0.0, 2.0, if terrain { 0x7CE884 } else { 0xF06A64 });
-        // the strike messages: on or off, the way the centre shows terrain damage
-        let hovered = self.hover == Some(Spot::Messages);
-        out.push(Draw::Fill((MSG, if hovered { 0xF0262A31 } else { 0xD0101318 })));
-        out.push(Draw::Fill((Rect { x: MSG.x, y: MSG.y + MSG.h - 1.5, w: MSG.w, h: 1.5 }, if messages { 0xFF62D46A } else { 0xFFE0524E })));
-        text(&mut out, "MESSAGES", MSG.x + 30.0, MSG.y + 2.0, 0xB8BEC8);
-        text(&mut out, if messages { "ON" } else { "OFF" }, MSG.x + 70.0, MSG.y + 2.0, if messages { 0x7CE884 } else { 0xF06A64 });
-        // and the status panel, the same way
+        // the status panel: on or off, the way the centre shows terrain damage
         let hovered = self.hover == Some(Spot::Hud);
         out.push(Draw::Fill((HUD, if hovered { 0xF0262A31 } else { 0xD0101318 })));
         out.push(Draw::Fill((Rect { x: HUD.x, y: HUD.y + HUD.h - 1.5, w: HUD.w, h: 1.5 }, if hud { 0xFF62D46A } else { 0xFFE0524E })));
@@ -628,7 +613,6 @@ impl Wheel {
             Some(Spot::FlyBar) => (format!("Fly at {}", speed_label(self.bar_hover.unwrap_or(self.fly))), 0x8C93A0),
             Some(Spot::FlyField) => ("Click to type a speed, up to 1000x".to_string(), 0x8C93A0),
             Some(Spot::Centre) => ("Terrain damage on or off".to_string(), 0x8C93A0),
-            Some(Spot::Messages) => ("Strike messages on or off".to_string(), 0x8C93A0),
             Some(Spot::Hud) => ("Status panel on or off".to_string(), 0x8C93A0),
             Some(Spot::Quality) => ("Payload, Nuke and Rod smoke: FAST half size, FULL all".to_string(), 0x8C93A0),
             Some(Spot::Impact(0)) => ("Impact frames off: no flashes as the Rod strikes".to_string(), 0x8C93A0),
@@ -765,23 +749,18 @@ mod tests {
             assert_eq!(spot(c.x, c.y, false, last), None);
         }
         assert_eq!(spot(0.0, 300.0, false, 0), None);
-        // the messages' switch, on every page, clear of the ring, the title, the tabs and the arrows
+        // the right column's switches, on every page, clear of the ring, the title, the tabs and the arrows
         for page in 0..pages() {
-            assert_eq!(spot(MSG.x + MSG.w / 2.0, MSG.y + MSG.h / 2.0, true, page), Some(Spot::Messages));
             assert_eq!(spot(HUD.x + HUD.w / 2.0, HUD.y + HUD.h / 2.0, true, page), Some(Spot::Hud));
             assert_eq!(spot(QUALITY.x + QUALITY.w / 2.0, QUALITY.y + QUALITY.h / 2.0, true, page), Some(Spot::Quality));
             assert_eq!(spot(KNOCK.x + KNOCK.w / 2.0, KNOCK.y + KNOCK.h / 2.0, true, page), None);
             assert_eq!(spot(SEED_FIELD.x + SEED_FIELD.w / 2.0, SEED.y + SEED.h / 2.0, true, page), Some(Spot::SeedField));
             assert_eq!(spot(LOCK.x + LOCK.w / 2.0, LOCK.y + LOCK.h / 2.0, true, page), Some(Spot::SeedLock));
         }
-        let corner = (MSG.x * MSG.x + (MSG.y + MSG.h) * (MSG.y + MSG.h)).sqrt();
-        assert!(corner > R_OUT + 10.0 && MSG.x > tab(pages() - 1).x + TAB_W + 4.0 && MSG.y + MSG.h < arrow(1).y);
         let corner = (HUD.x * HUD.x + (HUD.y + HUD.h) * (HUD.y + HUD.h)).sqrt();
-        assert!(corner > R_OUT + 10.0 && HUD.y + HUD.h < arrow(1).y);
+        assert!(corner > R_OUT + 10.0 && HUD.x > tab(pages() - 1).x + TAB_W + 4.0 && HUD.y + HUD.h < arrow(1).y);
         let corner = (QUALITY.x * QUALITY.x + (QUALITY.y + QUALITY.h) * (QUALITY.y + QUALITY.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && QUALITY.y + QUALITY.h < arrow(1).y && QUALITY.y >= HUD.y + HUD.h);
-        let corner = (IMPACT.x * IMPACT.x + (IMPACT.y + IMPACT.h) * (IMPACT.y + IMPACT.h)).sqrt();
-        assert!(corner > R_OUT + 10.0 && IMPACT.y + IMPACT.h < arrow(1).y && IMPACT.y >= QUALITY.y + QUALITY.h);
         // the stop button: clickable only while a strike is under way, clear of the ring, the tabs and the arrows
         let (sx, sy) = (STOP.x + STOP.w / 2.0, STOP.y + STOP.h / 2.0);
         assert_eq!(spot(sx, sy, false, 0), Some(Spot::Stop));
@@ -793,6 +772,9 @@ mod tests {
         assert_eq!(w.hover, Some(Spot::Stop));
         let corner = (STOP.x * STOP.x + (STOP.y + STOP.h) * (STOP.y + STOP.h)).sqrt();
         assert!(corner > R_OUT + 10.0 && STOP.y + STOP.h < arrow(1).y && STOP.y >= QUALITY.y + QUALITY.h);
+        // the columns' rows lined up: the seed's with the panel's, the lock's with the quality's, the knockback's with
+        // the stop button's, the follow camera's a row under it
+        assert!(SEED.y == HUD.y && LOCK.y == QUALITY.y && KNOCK.y == STOP.y && FOLLOW.y == STOP.y + STOP.h + 2.0);
         // and the left column, the right's mirror, clear of the ring and the arrow
         for b in [KNOCK, FOLLOW, SEED, LOCK] {
             let corner = ((b.x + b.w).powi(2) + (b.y + b.h).powi(2)).sqrt();
@@ -805,6 +787,7 @@ mod tests {
         let at = |i: usize| toggles(i).into_iter().map(|(b, s)| (b.y, s)).collect::<Vec<_>>();
         assert_eq!(at(ship("nuke")), vec![(KNOCK.y, Spot::Knock), (FOLLOW.y, Spot::Follow)]);
         assert_eq!(at(ship("rod")), vec![(KNOCK.y, Spot::Knock)]);
+        assert_eq!(at(ship("hurricane")), vec![(KNOCK.y, Spot::Knock)]);
         assert_eq!(at(ship("payload")), vec![(KNOCK.y, Spot::Follow)]);
         assert!(at(ship("plasma")).is_empty());
         assert_eq!(toggle_spot(KNOCK.x + 5.0, KNOCK.y + 5.0, ship("payload")), Some(Spot::Follow));
@@ -833,7 +816,7 @@ mod tests {
     }
     #[test]
     fn flying_speed_row() {
-        // the bar and the field are clickable on every page, the ship's rows showing or not, clear of the messages'
+        // the bar and the field are clickable on every page, the ship's rows showing or not, clear of the panel's
         // switch and the title, and on the smallest GUI (240 high)
         for page in 0..pages() {
             for row in [false, true] {
@@ -842,7 +825,7 @@ mod tests {
                 assert_eq!(spot(FIELD.x + FIELD.w / 2.0, FIELD.y + 7.0, row, page), Some(Spot::FlyField));
             }
         }
-        assert!(FIELD.y + FIELD.h < MSG.y - 2.0 && FLY_Y + BAR.h < TITLE_Y - 2.0 && FLY_Y - 3.0 >= -120.0);
+        assert!(FIELD.y + FIELD.h < HUD.y - 2.0 && FLY_Y + BAR.h < TITLE_Y - 2.0 && FLY_Y - 3.0 >= -120.0);
         assert!(BAR.x + BAR.w + 4.0 < FIELD.x);
         // 1x at the left end, 40x at the right, rising all the way, with room at the low end
         assert_eq!(bar_speed_at(BAR.x - 3.0), 1.0);
@@ -957,7 +940,7 @@ mod tests {
             assert_eq!(w.hover, Some(Spot::Sound(1)));
             assert_eq!(w.rows(other), Rows::Sound);
             // (its own hint under the ring)
-            let hint = w.draws(other, true, true, true, 0, 0, &[0; 16], &[false; 2], true, 1, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
+            let hint = w.draws(other, true, true, 0, 0, &[0; 16], &[false; 2], true, 1, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
             assert!(hint, "{key}");
             // (and where a ship's buttons would be, nothing of theirs)
             let b = button(1, 0);
@@ -967,7 +950,7 @@ mod tests {
             assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Sound);
             let lit = |alt: [bool; 2]| -> Vec<u32> {
                 Wheel::on_page(0, 1.0)
-                    .draws(pl, true, true, true, 0, 0, &[0; 16], &alt, true, 1, true, false, false, None)
+                    .draws(pl, true, true, 0, 0, &[0; 16], &alt, true, 1, true, false, false, None)
                     .into_iter()
                     .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                     .collect()
@@ -983,7 +966,7 @@ mod tests {
     fn fits_the_smallest_gui() {
         // the game's GUI is at least 320 x 240 at any window size and GUI scale: everything stays inside it
         let (hw, hh) = (160.0, 120.0);
-        let mut boxes = vec![BAR, FIELD, MSG, HUD, QUALITY, STOP, KNOCK, FOLLOW, SEED, LOCK, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
+        let mut boxes = vec![BAR, FIELD, HUD, QUALITY, STOP, KNOCK, FOLLOW, SEED, LOCK, arrow(0), arrow(1), Rect { x: -120.0, y: FLY_Y - 3.0, w: 220.0, h: BAR.h + 6.0 }];
         boxes.extend((0..pages()).map(tab));
         for (r, items) in ROWS.iter().enumerate() {
             boxes.extend((0..items.len()).map(|k| button(r, k)));
@@ -1028,7 +1011,7 @@ mod layout_dump {
             let i = idx(laser);
             let mut w = Wheel::on_page(page_of(i), 3.5);
             w.striking = striking;
-            let draws = w.draws(i, true, false, false, 0, 0, &[0; 16], &[false; 2], true, 1, false, true, false, Some(288));
+            let draws = w.draws(i, true, false, 0, 0, &[0; 16], &[false; 2], true, 1, false, true, false, Some(288));
             let mut out = String::new();
             for d in draws {
                 match d {

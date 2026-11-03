@@ -5,6 +5,8 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 
 mod crystal;
+mod hu_blocks;
+mod hurricane;
 mod nuke;
 mod rod;
 mod payload;
@@ -12,6 +14,13 @@ mod sh_land;
 mod sinkhole;
 mod storm;
 mod vortex;
+
+/// The Hurricane's wind, for its carry of the player (carry.rs).
+pub(crate) use hurricane::{HU_FLING, HU_R_EYE, front_t as hu_front_t, hu_repack, omega as hu_omega, spin as hu_spin};
+/// A number from 0 to 1 for `k`, the same every time (the carry's choice of sounds).
+pub(crate) fn hash01(k: u32) -> f64 {
+    mh(k, 0x51ed, 0x77)
+}
 
 /// Strike clock of the impact (the shader's T_FIRE).
 pub const FIRE: f32 = 4.0;
@@ -93,6 +102,9 @@ pub struct Blocks {
     pub landing: Option<f32>,
     /// Made even when the strike is stopped before it is due (`Act::Cleanup`'s kind of edit: fires put out).
     pub cleanup: bool,
+    /// Blocks laid down (landing rubble, a landed tree): none goes in where the player is as it is made (lib.rs's
+    /// `edit` leaves out the runs that would fill their body or the block over their head).
+    pub clear_of_player: bool,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -141,12 +153,19 @@ impl Blocks {
             runs: self.runs.clone(),
         }
     }
+    /// The edit less its runs that would fill where a player with their feet at `feet` is (`clear_of_player`): their
+    /// body's two blocks and the one over their head, in the columns their box (0.3 out from their middle) reaches.
+    pub fn edit_clear_of(&self, feet: [f64; 3]) -> horizon_mod_sdk::world::BlockEdit {
+        let mut e = self.edit();
+        e.runs.retain(|r| !in_player(r.x, r.z, r.y, r.y + r.height as i32 - 1, feet));
+        e
+    }
     /// The runs sorted into the ticks they go in at (`when` of each run's column): a wave's edits, in order.
     pub(super) fn split_by(&self, when: impl Fn(i32, i32) -> f32) -> Vec<(f32, Blocks)> {
         let mut out: std::collections::BTreeMap<i32, Blocks> = Default::default();
         crate::meter::spend(200 * self.runs.len() as u64);
         for r in &self.runs {
-            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_default();
+            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_insert_with(|| Blocks { clear_of_player: self.clear_of_player, ..Default::default() });
             let block = Self::index(&mut b.palette, self.palette[r.block as usize]);
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
@@ -170,6 +189,14 @@ impl Blocks {
             })
             .collect()
     }
+}
+
+/// Whether blocks y0..=y1 of column (x, z) are in a player's body (feet at `feet`) or the block over their head.
+pub fn in_player(x: i32, z: i32, y0: i32, y1: i32, feet: [f64; 3]) -> bool {
+    let (fx, fz) = (feet[0], feet[2]);
+    let over = |c: i32, f: f64| f64::from(c) < f + 0.3 && f64::from(c + 1) > f - 0.3;
+    let fy = feet[1].floor() as i32;
+    over(x, fx) && over(z, fz) && y1 >= fy && y0 <= fy + 2
 }
 
 /// What a strike's edit made of a column, for `tidy`: left as it was, cleared up through everything over it (nothing
@@ -589,7 +616,7 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
         return meteor_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "mothership" {
-        return mothership_plan(laser, target, terrain, dimension, wing_angle(target.point, me), me, approach);
+        return mothership_plan(laser, target, terrain, dimension, wing_angle(target.point, me), me);
     }
     if laser.key == "downfall" {
         return downfall_plan(laser, target, terrain, dimension, shader_seed, me, approach);
@@ -612,6 +639,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     if laser.key == "supercell" {
         return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
     }
+    if laser.key == "hurricane" {
+        return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
     }
@@ -628,7 +658,6 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     // charge, lock-on, impact
     p.csound(0.0, "charge", 10.0, 1.0);
     p.csound(3.4, "lockon", 8.0, 1.0);
-    p.at(3.5, format!(r#"title @s actionbar {{"text":"ORBITAL LASER: LOCKED  [{}]","color":"{}","bold":true}}"#, laser.title, laser.color));
     p.csound(t, "fire", 10.0, 1.0);
     // the camera: a hard jolt when the blast reaches the player, then the beam (or the jet) shaking the ground while
     // it burns
@@ -652,7 +681,6 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     p.sound(t + 0.05, "entity.lightning_bolt.thunder", 9.0, 0.55);
     p.sound(t + 0.9, "entity.lightning_bolt.thunder", 6.0, 0.75);
     p.at(t, format!("particle minecraft:explosion_emitter {tx} {} {tz} 0 0 0 0 1 force", ty + 1.0));
-    p.at(t + 0.1, r#"title @s actionbar {"text":"DIRECT HIT","color":"white","bold":true}"#);
     // while it burns
     for i in 0..3 {
         p.csound(t + 0.2 + i as f32 * 3.4, "beam", 9.0, 1.0);
@@ -1233,14 +1261,12 @@ fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension:
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
     let t = FIRE;
     let tb = t + BIG_T;
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     // sound takes its time to reach the player: about 343 blocks a second
     let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
 
     // the warning, then the sky starts falling
     p.csound(0.0, "charge", 10.0, 1.0);
     p.csound(3.4, "lockon", 8.0, 1.0);
-    p.at(3.5, bar("METEOR STORM INBOUND", laser.color));
     p.csound(t, "fire", 10.0, 1.0);
     p.csound(t + 0.3, "storm", 8.0, 1.0);
     p.csound(t + 3.0, "rumble", 6.0, 1.0);
@@ -1248,7 +1274,6 @@ fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension:
     // the big one coming in, and its blast reaching the player after its flash
     let heard = tb + late(tx, ty, tz);
     p.csound(tb - 6.5, "approach", 10.0, 1.0);
-    p.at(tb - 6.0, bar("IMPACT IMMINENT", "dark_red"));
     p.csound(heard, "impact", 10.0, 1.0);
     // the camera: the air shaking more and more as it comes in, then the hardest jolt of all, and the land shaking on
     for (k, s) in [0.25, 0.35, 0.45].iter().enumerate() {
@@ -1260,7 +1285,6 @@ fn meteor_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension:
     for i in 0..5 {
         p.shake(t + 1.0 + i as f32 * 2.0, 0.15, 2.0);
     }
-    p.at(tb + 0.2, bar("EXTINCTION EVENT", "dark_red"));
     p.csound(heard + 6.0, "rumble", 9.0, 0.75);
     p.csound(heard + 12.0, "shutdown", 9.0, 1.0);
 
@@ -1642,15 +1666,14 @@ pub const COLOURS: [Choice; 6] = [
 ];
 pub const COLOUR_RGB: [u32; 6] = [0x4CE06A, 0xE0402C, 0xF2A42A, 0x48A0F5, 0xB060F0, 0xE6EAF0];
 
-/// The mothership: it drops in out of hyperspace (from `approach`, one of APPROACHES), its shadow over the land, charges, drills a shaft at the target, sweeps its beam away from
+/// The mothership: it drops in out of hyperspace (from the approach the pass is given, one of APPROACHES), its shadow over the land, charges, drills a shaft at the target, sweeps its beam away from
 /// the player cutting a trench, and leaves. `wing` is the shader's facing angle (towards the player).
-fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, wing: f32, me: [f64; 3], approach: usize) -> Vec<(f32, Act)> {
+fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, wing: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
     let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
     let axis = ms_axis(wing);
     let point = target.point;
@@ -1662,17 +1685,14 @@ fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimens
     let ship = late(tx, ty + MS_H, tz);
 
     // it drops in: a deep shove of displaced air the instant it stops; its boom comes down after the light
-    p.at(MS_ARRIVE - 1.0, bar(&format!("MOTHERSHIP INBOUND {}", APPROACHES[approach.min(4)].label.to_uppercase()), laser.color));
     p.csound(MS_ARRIVE - 0.02, "arrival", 10.0, 1.0);
     p.csound(MS_ARRIVE + ship, "boom", 10.0, 1.0);
     // the camera: the shove of air as it stops, then its boom coming down from overhead
     p.shake(MS_ARRIVE + 0.2, 0.35, 1.0);
     p.shake(MS_ARRIVE + ship, 0.85, 3.5);
-    p.at(MS_ARRIVE + 0.6, bar("MOTHERSHIP OVERHEAD", laser.color));
     p.csound(MS_ARRIVE + ship + 0.3, "hum", 8.0, 1.0);
     // it charges, and fires: the blast reaches the player after the flash
     p.csound(FIRE, "charge", 10.0, 1.0);
-    p.at(MS_HIT - 0.9, bar("BEAM LOCKED", laser.color));
     let heard = MS_HIT + late(tx, ty, tz);
     let heard_dist = sound_from(target.point, me).1;
     p.csound(heard, "fire", 10.0, 1.0);
@@ -1692,7 +1712,6 @@ fn mothership_plan(laser: &'static Laser, target: &Target, terrain: bool, dimens
     p.csound(MS_HIT + 5.9, "beam2", 10.0, 1.0);
     p.csound(heard + 1.2, "rumble", 9.0, 1.0);
     p.csound(heard + 7.4, "rumble", 8.0, 1.0);
-    p.at(MS_HIT + 0.1, bar("DIRECT HIT", "white"));
     for k in 0..7 {
         // the beam searing across the land, heard from where it is: in full within 96 blocks, and from further off (out
         // to the 1000 the mothership reaches) still clearly, at the volume floor, quieter the further
@@ -2331,7 +2350,6 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
     let point = target.point;
     let mode = approach.min(4);
     let g = DfGeo::new(point, by, wing_angle(point, me), mode, df_reach(point, me), shader_seed);
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let dist = |q: [f64; 3]| ((q[0] - me[0]).powi(2) + (q[1] - me[1]).powi(2) + (q[2] - me[2]).powi(2)).sqrt();
     let late = |q: [f64; 3]| (dist(q) / 343.0) as f32;
     let fby = f64::from(by);
@@ -2347,19 +2365,15 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
     // 1. it drops in exactly as the mothership does, and charges
     let mid = g.pose(5.0).world([0.0, 0.0, 0.0]);
     let ship = late(mid);
-    p.at(MS_ARRIVE - 1.0, bar(&format!("MOTHERSHIP INBOUND {}", APPROACHES[mode].label.to_uppercase()), laser.color));
     ms(&mut p, MS_ARRIVE - 0.02, "arrival", 10.0);
     ms(&mut p, MS_ARRIVE + ship, "boom", 10.0);
     p.shake(MS_ARRIVE + 0.2, 0.35, 1.0);
     p.shake(MS_ARRIVE + ship, 0.85, 3.5);
-    p.at(MS_ARRIVE + 0.6, bar("MOTHERSHIP OVERHEAD", "green"));
     p.csound(MS_ARRIVE + ship + 0.3, "hum", 8.0, 1.0);
     // 2. the charge, cut short: its power slammed over to the roof batteries as the meteor is seen
     p.csound(FIRE, "divert", 10.0, 1.0);
     p.shake(FIRE + 2.0, 0.15, 1.5);
     p.shake(DF_CUT + 0.05, 0.3, 1.4);
-    p.at(DF_CUT + 0.1, bar("CHARGE ABORTED: POWER TO ROOF BATTERIES", "gold"));
-    p.at(DF_CUT + 1.6, bar("METEOR INBOUND", "red"));
     // 3. the meteor coming in (its roar ends as it breaks up), the batteries firing on it, heard from up on the roof
     let (_, split_at, _) = g.meteor();
     p.csound(DF_SPLIT - 7.6, "approach", 10.0, 1.0);
@@ -2378,16 +2392,13 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
     let heard = DF_SPLIT + late(split_at);
     p.csound(heard, "split", 10.0, 1.0);
     p.shake(heard, 0.45 * falloff(dist(split_at)).max(0.5), 3.0);
-    p.at(DF_SPLIT + 0.2, bar("METEOR BROKEN UP: FRAGMENTS INBOUND", "red"));
     for j in 0..DF_HITS.len() {
         let (q, th) = g.hit(j);
         let tl = th + late(q);
         here(&mut p, tl, &format!("hit{}", 1 + j % 3), q, 10.0, 0.75);
         p.shake(tl, 0.55 * falloff(dist(q)).max(0.55), 2.2);
     }
-    p.at(15.9, bar("HULL BREACHED", "dark_red"));
     // 4. it falls: the roar of it coming down all round, the ground shaking more and more as it nears
-    p.at(DF_FALL0 + 0.4, bar("LIFT FAILING", "dark_red"));
     // (timed so its roar is cut just as the crash reaches the player)
     let c0 = [g.c0.0, fby, g.c0.1];
     p.csound(DF_FALL0 + late(c0), "fall", 10.0, 1.0);
@@ -2414,7 +2425,6 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
         // the ground rolling as it sinks on in, burying itself
         p.shake(crash + DF_SLIDE + 0.6 + k as f32 * 0.9, (0.32 - 0.04 * k as f32) * fo, 1.4);
     }
-    p.at(DF_FALL1 + 0.2, bar("IMPACT", "white"));
     // 5. the engine groaning, rupturing into a black hole, the land pulled into it, and its collapse
     let hole = [g.ps.0, fby + DF_HOLE_H, g.ps.1];
     let lh = late(hole);
@@ -2423,10 +2433,8 @@ fn downfall_plan(laser: &'static Laser, target: &Target, terrain: bool, dimensio
     here(&mut p, 37.3 + lh, "groan2", hole, 8.0, 0.85);
     p.shake(34.6 + lh, 0.15 * fh, 2.5);
     p.shake(37.8 + lh, 0.22 * fh, 2.5);
-    p.at(36.0, bar("ENGINE CONTAINMENT FAILING", "light_purple"));
     p.csound(DF_OPEN + lh, "rupture", 10.0, 1.0);
     p.shake(DF_OPEN + lh, 0.75 * fh, 4.0);
-    p.at(DF_OPEN + 0.2, bar("SINGULARITY", "light_purple"));
     // (it is drawn to nothing the instant it collapses)
     p.csound(DF_OPEN + 0.4 + lh, "vortex", 9.0, 1.0);
     p.csound(DF_OPEN + 6.0 + lh, "vortex", 8.0, 0.9);
@@ -3490,7 +3498,6 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     let (tx, ty, tz) = (r2(target.point[0]), r2(target.point[1]), r2(target.point[2]));
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
-    let bar = |text: &str, color: &str| format!(r#"title @s actionbar {{"text":"{text}","color":"{color}","bold":true}}"#);
     let late = |x: f64, y: f64, z: f64| (((x - me[0]).powi(2) + (y - me[1]).powi(2) + (z - me[2]).powi(2)).sqrt() / 343.0) as f32;
     let wing = wing_angle(target.point, me);
     let (lt, dist) = sound_from(target.point, me);
@@ -3500,7 +3507,6 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
 
     // the ground groaning under it all from the start, the array's power gathering, swelling to the moment they fuse
     // and cut dead just before it (the charge)
-    p.at(0.2, bar("PLANET KILLER: ARRAY RISING", laser.color));
     p.csound(0.0, "charge", 10.0, 1.0);
     for (k, s) in [0.04, 0.06, 0.08].iter().enumerate() {
         p.shake(0.1 + k as f32 * 0.25, *s, 0.7);
@@ -3543,14 +3549,12 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     }
     // the bolts' crackle, held while they stay connected, swelling as each strikes the ring
     p.csound(PK_IGN0 + PK_SHOOT, "arcs", 10.0, 1.0);
-    p.at(PK_IGN0 + 0.2, bar("ARRAY CHARGING", laser.color));
     for (k, s) in [0.12, 0.18, 0.3].iter().enumerate() {
         p.shake(PK_MERGE - 1.2 + k as f32 * 0.4, *s, 1.0);
     }
     // they fuse: a blow of light and pressure from overhead, the sky torn, a bolt crackling down out of it
     p.csound(PK_MERGE, "merge", 10.0, 1.0);
     p.shake(PK_MERGE + nexus, 0.55, 2.0);
-    p.at(PK_MERGE, bar("CONVERGENCE", "aqua"));
     // the beam pours down onto the target: a thunderclap, the land heaving up under it, a breath of near silence, and it
     // bursts: the hardest blow of the strike (all one sound, heard from the target), then the beam's roar and the ground
     // shaking under it while it burns
@@ -3558,7 +3562,6 @@ fn planetkiller_plan(laser: &'static Laser, target: &Target, terrain: bool, dime
     p.shake(PK_DROP + lt, 0.4 * fo, 0.5);
     p.shake(PK_HIT + lt, 0.2 * fo, 0.5);
     p.shake(heard, fo, 5.0);
-    p.at(PK_BURST + 0.1, bar("DIRECT HIT", "white"));
     p.csound(heard + 0.7, "beam1", 10.0, 1.0);
     p.csound(heard + 5.4, "beam2", 10.0, 1.0);
     p.csound(heard + 1.5, "rumble", 9.0, 1.0);
@@ -4405,7 +4408,8 @@ mod tests {
             // (the payload is a bomb, not a beam: it clears only what stood on the land it read, which nothing answers
             // here; strike/payload.rs's tests check it against a forest)
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" {
+            // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {

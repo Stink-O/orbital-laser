@@ -1,6 +1,33 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-057); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-058); each release's notes are in [docs/releases](releases).
+
+## 0.5.7
+
+<p align="center">
+  <img alt="The Rod from God standing in its crater, banded in gold, the land round it bleached white and gold" width="720" src="40-rod-crater.jpg">
+</p>
+
+- **Rod from God**, the twelfth laser, on the wheel's third page and `/orbital rod`. A colossal rod of dark forged metal
+  dropped from orbit, with no explosive. It comes straight down onto the target as a golden-white star with god rays
+  streaming from it, puts on a last hard burst of speed and slams in. The picture holds on the hit for about a fifth of
+  a second of impact frames, then lets go into a blinding burst, a jet of molten rock and a ring of dust racing out
+  over the land. The crater is blasted out first and then lined in quartz, calcite and gold, and the rod stays
+  standing in it, 171 blocks long with 130 of them over the crater floor, the floor round its foot heaved up in broken
+  slabs. It has its own sounds and lasts 60 seconds.
+- **Impact frames in three looks:** KANADA (the default), BLACK FLASH and CINEMATIC, or OFF, on the wheel's
+  **IMPACT FX** row or with `/orbital impactframes`. **Photosensitivity:** they are a fifth of a second of hard
+  full-screen cuts. `/orbital impactframes off` leaves them out.
+- **For filming:** a follow camera that orbits the Nuke's or the Payload's bomb as it comes in (`/orbital follow`, the
+  wheel's FOLLOW switch), a KNOCKBACK switch for the Nuke and the Rod, a seed you can type or lock for repeat takes of
+  the same strike (`/orbital seed`), and `tools/world_snapshot.py` to put a world back between takes.
+- **The wheel rearranged:** the strike options down the left (SEED and LOCK SEED, then KNOCKBACK and FOLLOW for the
+  lasers they apply to), MESSAGES, PANEL and QUALITY down the right with a red STOP STRIKE under them during a strike,
+  and the IMPACT FX and BLAST SOUND rows under the ring.
+- **Supercell** (page three): a storm called down onto the target. Lightning strikes faster and faster, more at once,
+  until every bolt draws in and merges into one colossal strike that leaves a crater veined with fused glass. Its
+  fires are left burning. `/orbital supercell`.
+- Still needs the Orbital Laser build of Horizon `orbital-mod-api-8` or newer, the same as 0.5.6.
 
 ## 0.5.6
 
