@@ -177,8 +177,19 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     let pit = g("pit", 0.0) > 0.5;
     // (`trees=1`: a wood of blocky trees, as a heightfield (their crowns reach the ground), none within 45 of the eye)
     let trees = g("trees", 0.0) > 0.5;
+    // (`hustrip=1`: the trees the hurricane's front has reached by `t` torn up: strike/hurricane.rs's front_t)
+    let hustrip = g("hustrip", 0.0) > 0.5;
+    let hu_front = |r: f32| -> f32 {
+        if !(32.0..=150.0).contains(&r) {
+            return 1.0e9;
+        }
+        if r < 62.0 { 15.0 + 3.0 * (62.0 - r) / 30.0 } else { 15.0 + 20.0 * ((r - 62.0) / 88.0).powf(1.25) }
+    };
     let tree_h = |x: f32, z: f32| -> Option<f32> {
         if !trees || (x - cam[0]).hypot(z - cam[2]) < 45.0 {
+            return None;
+        }
+        if hustrip && hu_front((x.floor() + 0.5 - tgt[0]).hypot(z.floor() + 0.5 - tgt[2])) <= time {
             return None;
         }
         let (bx, bz) = (x.floor() as i32, z.floor() as i32);
@@ -442,6 +453,8 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     // (strike.rs's df_reach)
     let reach = (360.0 - ((me[0] - tgt[0]).powi(2) + (me[1] - tgt[2]).powi(2)).sqrt()).max(40.0);
     u.extend_from_slice(&[g("mode", 0.0), g("style", 0.0), g("reach", reach), g("colour", 0.0)]);
+    // (camera_rest: none, the camera near the origin)
+    u.extend_from_slice(&[0.0; 4]);
 
     let _ = nk;
     Shot { w, h, color, depth, u, frames }
@@ -454,7 +467,12 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let adapter = adapters.into_iter().find(|a| a.get_info().name.contains(gpu) && a.get_info().device_type != wgpu::DeviceType::Cpu).expect("no such gpu");
     eprintln!("adapter: {}", adapter.get_info().name);
     let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor { required_features: wgpu::Features::TIMESTAMP_QUERY, ..Default::default() })
+        // (as many texture layers as the GPU takes: the game's block sprite arrays hold every block texture)
+        .request_device(&wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::TIMESTAMP_QUERY,
+            required_limits: wgpu::Limits { max_texture_array_layers: adapter.limits().max_texture_array_layers, ..Default::default() },
+            ..Default::default()
+        })
         .await
         .unwrap();
     let prelude = include_str!("../../wgslcheck/prelude.wgsl");
@@ -538,8 +556,59 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
             tex_entry(6, wgpu::TextureSampleType::Float { filterable: true }),
             tex_entry(7, wgpu::TextureSampleType::Float { filterable: true }),
         ];
-    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &entries[..6] });
-    let bgl_join = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &entries });
+    // (the game's block sprite arrays, as a mod with the atlas capability has them at bindings 8 and 9 (the fork's API
+    // 10): $PREVIEW_ATLAS, tools/hu_atlas.py's stand-in made from the player's own resources, or one white layer)
+    let atlas_entries = [
+        wgpu::BindGroupLayoutEntry {
+            binding: 8,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2Array, multisampled: false },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry { binding: 9, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+    ];
+    let main_entries: Vec<wgpu::BindGroupLayoutEntry> = entries[..6].iter().chain(&atlas_entries).cloned().collect();
+    let join_entries: Vec<wgpu::BindGroupLayoutEntry> = entries.iter().chain(&atlas_entries).cloned().collect();
+    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &main_entries });
+    let bgl_join = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &join_entries });
+    let (atlas_w, atlas_layers, atlas_levels, atlas_bytes) = match std::env::var("PREVIEW_ATLAS") {
+        Ok(path) => {
+            let b = std::fs::read(path).expect("PREVIEW_ATLAS");
+            let u = |i: usize| u32::from_le_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]);
+            (u(0), u(2), u(3), b[16..].to_vec())
+        }
+        Err(_) => (1, 1, 1, vec![255u8; 4]),
+    };
+    let atlas = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d { width: atlas_w, height: atlas_w, depth_or_array_layers: atlas_layers },
+        mip_level_count: atlas_levels,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    {
+        let mut at = 0usize;
+        for lv in 0..atlas_levels {
+            let s = (atlas_w >> lv).max(1);
+            let n = (s * s * 4 * atlas_layers) as usize;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo { texture: &atlas, mip_level: lv, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                &atlas_bytes[at..at + n],
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * s), rows_per_image: Some(s) },
+                wgpu::Extent3d { width: s, height: s, depth_or_array_layers: atlas_layers },
+            );
+            at += n;
+        }
+    }
+    let atlas_view = atlas.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+    let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        ..Default::default()
+    });
     // (the mod's data, as render.set-data gives it: $PREVIEW_DATA, or the one word 0 the game binds without it)
     let mut words: Vec<u32> = vec![0];
     if let Ok(path) = std::env::var("PREVIEW_DATA") {
@@ -587,6 +656,8 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&nea) },
         wgpu::BindGroupEntry { binding: 4, resource: ubuf.as_entire_binding() },
         wgpu::BindGroupEntry { binding: 5, resource: dbuf.as_entire_binding() },
+        wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&atlas_view) },
+        wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::Sampler(&atlas_sampler) },
     ];
     let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl, entries: &bentries });
     bentries.push(wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&halves[0]) });

@@ -38,5 +38,16 @@
   "subtitles.orbital.supercell.finale": "Lightning detonates",
   "subtitles.orbital.supercell.finale_far": "Distant detonation",
   "subtitles.orbital.supercell.after": "Rain returns",
-  "subtitles.orbital.supercell.roar": "Funnel roars"
+  "subtitles.orbital.supercell.roar": "Funnel roars",
+  "subtitles.orbital.hurricane.rain": "Driving rain",
+  "subtitles.orbital.hurricane.roar": "Hurricane roars",
+  "subtitles.orbital.hurricane.roar_far": "Hurricane roars in the distance",
+  "subtitles.orbital.hurricane.debris": "Debris clatters past",
+  "subtitles.orbital.hurricane.crack": "Tree torn out",
+  "subtitles.orbital.hurricane.whoosh": "Debris rushes past",
+  "subtitles.orbital.hurricane.wind": "Hurricane winds howl",
+  "subtitles.orbital.hurricane.thunder": "Thunder cracks",
+  "subtitles.orbital.hurricane.thunder_mid": "Thunder claps",
+  "subtitles.orbital.hurricane.thunder_far": "Thunder rolls",
+  "subtitles.orbital.hurricane.rumble": "Distant thunder"
 }

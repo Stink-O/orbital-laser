@@ -10,6 +10,7 @@
 //! changes, the sounds and the flying speed), `hud` (the status panel), `storage`
 //! (the chosen laser and the settings) and
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
+mod carry;
 mod columns;
 mod follow;
 mod ground;
@@ -60,6 +61,11 @@ fn rod_pass(fast: bool) -> &'static str {
 fn supercell_pass(fast: bool) -> &'static str {
     PASS_SUPERCELL[usize::from(fast)]
 }
+/// The Hurricane's, the same way (hurricane.wgsl's `[half stage]`: its cloud, rain and dust at half size, the blocks and
+/// trees it carries found there and drawn sharp at full size).
+fn hurricane_pass(fast: bool) -> &'static str {
+    PASS_HURRICANE[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -71,6 +77,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "nuke" => 6,
         "rod" => 7,
         "supercell" => 8,
+        "hurricane" => 9,
         _ => 0,
     }
 }
@@ -148,6 +155,10 @@ struct Strike {
     skipped: f32,
     /// The sounds it has played, to cut them short if it is stopped.
     sounds: std::collections::BTreeSet<String>,
+    /// Its laser, and the game's textures as they were when its table packed them (`atlas.resources-version`: the
+    /// Hurricane's blocks drawn with them are packed again when it changes).
+    key: &'static str,
+    sprites: u64,
 }
 
 /// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
@@ -238,6 +249,7 @@ struct Settings {
     follow_distance: f64,
     seed_lock: Option<u32>,
     impact_style: u8,
+    carry_turn: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -247,9 +259,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 9],
+    passes: [&'static str; 10],
     compiled: Option<usize>,
     warming: bool,
     /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
@@ -301,6 +313,13 @@ struct Orbital {
     /// (`follow.rs`), and the one under way.
     follow: bool,
     following: Option<follow::Follow>,
+    /// The Hurricane's carry of the player (`carry.rs`), while its strike is under way and the knockback is on.
+    carrying: Option<carry::Carry>,
+    /// The game's last answer to a carry (`world.carry-player`): whether the one before held the player.
+    carry_held: bool,
+    /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
+    /// (`/orbital carryview turn|still`; turn, the default).
+    carry_turn: bool,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
@@ -320,8 +339,6 @@ struct Orbital {
     cleanup: std::collections::VecDeque<strike::Stage>,
     strike: Option<Strike>,
     wheel: Option<wheel::Wheel>,
-    /// Seconds since the last tick, for a smooth strike clock between ticks.
-    since_tick: f32,
     /// The HUD panel last sent.
     panel: Vec<(String, u32)>,
     /// Whether the panel shows in the top left (the seed alone, the status panel being off) rather than the top right.
@@ -345,9 +362,9 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast)],
             compiled: None,
             warming: false,
             building: None,
@@ -374,6 +391,9 @@ impl Orbital {
             knock,
             follow,
             following: None,
+            carrying: None,
+            carry_held: true,
+            carry_turn,
             follow_distance,
             seed_lock,
             last_seed: 1,
@@ -384,7 +404,6 @@ impl Orbital {
             cleanup: Default::default(),
             strike: None,
             wheel: None,
-            since_tick: 0.0,
             panel: Vec::new(),
             panel_left: false,
             meter_log: None,
@@ -393,7 +412,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.hud),
@@ -406,6 +425,7 @@ impl Orbital {
             if self.fast { "fast" } else { "full" },
             if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" },
             if self.knock { "on" } else { "off" },
+            if self.carry_turn { "turn" } else { "still" },
             if self.follow { "on" } else { "off" },
             self.follow_distance,
             self.seed_lock.map_or("random".to_string(), |s| s.to_string())
@@ -452,6 +472,7 @@ impl Orbital {
         let mut impact = true;
         let mut impact_style = 1u8;
         let mut knock = true;
+        let mut carry_turn = true;
         let mut follow = false;
         let mut follow_distance = follow::DISTANCE;
         let mut seed_lock = None;
@@ -476,6 +497,7 @@ impl Orbital {
                     }
                 }
                 Some(("knockback", v)) => knock = v != "off",
+                Some(("carryview", v)) => carry_turn = v != "still",
                 Some(("follow", v)) => follow = v == "on",
                 Some(("followdistance", v)) => {
                     follow_distance = v.parse::<f64>().ok().filter(|d| d.is_finite()).map_or(follow::DISTANCE, |d| d.clamp(follow::DISTANCE_MIN, follow::DISTANCE_MAX));
@@ -489,7 +511,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn }
     }
 
     /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
@@ -738,6 +760,7 @@ impl Orbital {
         self.rebuild("nuke", nuke_pass(fast));
         self.rebuild("rod", rod_pass(fast));
         self.rebuild("supercell", supercell_pass(fast));
+        self.rebuild("hurricane", hurricane_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -777,6 +800,34 @@ impl Orbital {
         let Some(p) = game::get_player() else { return };
         for [x, y, z] in f.tick(t, [p.x, p.y, p.z], follow::look(p.yaw, p.pitch)) {
             world::push_player(x, y, z);
+        }
+    }
+    /// The Hurricane's carry this tick (`carry.rs`): the player carried along their path round the storm once its wind
+    /// has them, their view turning a little with them unless `/orbital carryview still`.
+    fn carry_tick(&mut self) {
+        let Some(t) = self.strike.as_ref().map(|s| f64::from(s.ticks) * 0.05) else { return };
+        let Some(c) = &mut self.carrying else { return };
+        if c.over(t) {
+            self.carrying = None;
+            return;
+        }
+        let Some(p) = game::get_player() else { return };
+        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held, game::player_flying(), self.carry_turn);
+        // (thrown: a push while carried is the throw the game lets them go with as the carry stops)
+        if let Some([x, y, z]) = o.throw {
+            world::push_player(x, y, z);
+        }
+        if !o.cmds.is_empty() {
+            world::run_commands(&o.cmds);
+        }
+        // (the game's answer: whether the carry it was asked for before held them)
+        let held = match o.carry {
+            Some([x, y, z]) => world::carry_player(x, y, z, o.turn),
+            None => true,
+        };
+        self.carry_held = held;
+        for (event, volume, pitch) in o.sounds {
+            world::play_sound(&event, None, volume, pitch);
         }
     }
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
@@ -880,7 +931,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -901,7 +952,9 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default() });
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
+        // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
+        self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
         self.unfollow();
         if self.follow
@@ -1043,6 +1096,15 @@ impl Orbital {
         if !cmds.is_empty() {
             world::run_commands(&cmds);
         }
+        // (the game's textures loaded anew under a Hurricane: a resource pack turned on or off moves their layers)
+        if s.key == "hurricane" {
+            let v = sdk::atlas::resources_version();
+            if v != s.sprites {
+                s.sprites = v;
+                strike::hu_repack(&mut s.data);
+                s.data_sent = false;
+            }
+        }
         if !s.data_sent {
             render::set_data(&s.data);
             s.data_sent = true;
@@ -1062,6 +1124,7 @@ impl Orbital {
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
         self.unfollow();
+        self.carrying = None;
         render::clear_post();
         self.strike = None;
         ground::clear();
@@ -1123,7 +1186,11 @@ impl Orbital {
             let (_, due, b) = &self.edits[m];
             self.edits_late = self.edits_late.max(self.edit_ticks - due);
             meter::spend(edit_cost(b));
-            world::edit_blocks(&b.edit());
+            // (what is laid down never where the player is)
+            match game::get_player().filter(|_| b.clear_of_player) {
+                Some(p) => world::edit_blocks(&b.edit_clear_of([p.x, p.y, p.z])),
+                None => world::edit_blocks(&b.edit()),
+            }
             m += 1;
         }
         self.edits.drain(..m);
@@ -1194,10 +1261,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1248,7 +1315,6 @@ impl Mod for Orbital {
     fn tick(&mut self, _tick: u64) {
         meter::reset();
         self.ticks += 1;
-        self.since_tick = 0.0;
         // (once the player is in the world and settled: a batch sent before the server has placed them is dropped)
         if self.ticks >= 100
             && game::get_player().is_some()
@@ -1295,6 +1361,7 @@ impl Mod for Orbital {
                     let what = match l.key {
                         "sinkhole" => "SEISMIC SCAN",
                         "payload" | "nuke" | "rod" => "DESIGNATING",
+                        "hurricane" => "TRACKING STORM",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -1304,6 +1371,7 @@ impl Mod for Orbital {
         }
         self.tick_strike();
         self.follow_tick();
+        self.carry_tick();
         self.update_panel();
         meter::end(self.ticks);
         if let Some(n) = self.meter_log
@@ -1317,11 +1385,11 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         meter::reset();
-        self.since_tick += seconds;
         self.pace.frame(seconds);
         self.warm();
         if let Some(s) = &mut self.strike {
-            s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
+            // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
+            s.params[3] = s.ticks as f32 * 0.05;
             render::set_params(&s.params);
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
@@ -1444,6 +1512,12 @@ impl Mod for Orbital {
                 Ok(Some(format!("Knockback {v} (the Nuke's and the Rod's push on you)")))
             }
             (Some("knockback"), None) => Ok(Some(format!("Knockback: {} (/orbital knockback on or off)", if self.knock { "on" } else { "off" }))),
+            (Some("carryview"), Some(v @ ("turn" | "still"))) => {
+                self.carry_turn = v == "turn";
+                self.save();
+                Ok(Some(format!("Carry view: {v} (the Hurricane's carry {} your view)", if self.carry_turn { "turns and sways" } else { "leaves alone" })))
+            }
+            (Some("carryview"), None) => Ok(Some(format!("Carry view: {} (/orbital carryview turn or still)", if self.carry_turn { "turn" } else { "still" }))),
             (Some("follow"), Some(v @ ("on" | "off"))) => {
                 self.set_follow(v == "on");
                 Ok(Some(format!("Follow camera {v} (an orbit round the Nuke's or the Payload's bomb as it comes in, the mouse turning it; then the fireball and the cloud)")))
@@ -1498,7 +1572,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -1559,6 +1633,10 @@ mod tests {
             let r = super::rod_pass(fast);
             assert_eq!(r.matches("@fragment").count(), if fast { 3 } else { 1 });
             assert!(r.len() <= 256 << 10 && r.contains("fn rod(") && !r.contains("fn nuke("));
+            let h = super::hurricane_pass(fast);
+            assert_eq!(h.matches("@fragment").count(), if fast { 3 } else { 1 });
+            assert!(h.len() <= 256 << 10 && h.contains("fn hurricane(") && h.contains("fn hu_debris(") && !h.contains("fn rod("));
+            assert_eq!(h.contains("half_picture"), fast);
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
@@ -1886,7 +1964,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -2106,6 +2184,50 @@ mod stress {
         assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
     }
 
+    /// A Hurricane called in on land far off, none of it loaded as it fires (the player 800 blocks away): it waits for
+    /// the land cheaply, its edits go in as it loads (or are left out where it never does), no tick overworks, and it
+    /// ends on time; and one close by carries the player off (pushes) with the knockback on, never with it off.
+    #[test]
+    fn a_hurricane_on_far_unloaded_land_stays_light() {
+        let hu = LASERS.iter().position(|l| l.key == "hurricane").expect("the hurricane");
+        for slow in [4, 0] {
+            let mut s = Soak::new(5);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(hu, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 1400, "it never ended");
+            }
+            let edits = fake::with(|w| w.edits);
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow > 0 {
+                assert!(edits > 50, "the land torn up as it loaded ({edits} edits)");
+            }
+        }
+        for knock in [true, false] {
+            let mut s = Soak::new(7);
+            s.o.knock = knock;
+            fake::with(|w| w.pushes = 0);
+            s.fire(hu, (0, 0));
+            // (the player 110 blocks off the eye, where the wind reaches by 27 s)
+            fake::with(|w| {
+                if let Some(p) = w.player.as_mut() {
+                    p.x = 110.5;
+                    p.z = 0.5;
+                }
+            });
+            for _ in 0..(40 * 20) {
+                s.step("carry");
+                s.o.carry_tick();
+            }
+            let pushes = fake::with(|w| w.pushes);
+            assert_eq!(pushes > 100, knock, "{pushes} pushes with the knockback {knock}");
+        }
+    }
+
     #[test]
     fn no_tick_overworks_through_fire_stop_and_refire() {
         let (worst, at) = soak(40, 1, 0.02);
@@ -2139,7 +2261,7 @@ mod stress {
         };
         let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
         plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
-        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default() });
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default(), key: "", sprites: 0 });
         let mut worst = 0;
         let mut ticks = 0;
         while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {

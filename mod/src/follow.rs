@@ -36,7 +36,7 @@ const KICK: f64 = 3.9;
 const KICKS: usize = 30;
 /// The fastest the camera moves the player, blocks a tick on any axis: the game's collision sweep of a move this
 /// long stays a few percent of its million-block budget (a 230-block jump in one tick crashed the game).
-const VMAX: f64 = 24.0;
+pub(crate) const VMAX: f64 = 24.0;
 
 /// How the orbit backs off for each bomb: from `safe_from` seconds before it bursts to `safe_by` before, out to `safe`
 /// (or the orbit's own distance, if more); then `grow` times that as the cloud climbs, `settle` seconds after the burst.
@@ -95,13 +95,84 @@ pub struct Follow {
     join: f64,
     /// The eye the flight out starts from (where the player is as it starts).
     from: Option<[f64; 3]>,
-    /// The controller: where the player was a tick ago, how they moved then, the kick given then, what their
-    /// velocity is thought to be now, and whether they fly.
+    /// The controller that moves them.
+    drive: Drive,
+}
+
+/// The controller the follow camera and the Hurricane's carry (`carry.rs`) move the player with: a kick to their
+/// velocity each tick, worked out from where they are and how they moved on the tick before so they are where they
+/// should be a tick later (the game's drag and gravity, or flight's, taken off). It remembers where the player was a
+/// tick ago, how they moved then, the kick given then, what their velocity is thought to be now, and whether they fly.
+#[derive(Default)]
+pub struct Drive {
     last: Option<[f64; 3]>,
     moved: Option<[f64; 3]>,
     kick: [f64; 3],
     velocity: [f64; 3],
     flying: bool,
+    /// Whether they fly, for the carry's cue to let go: how many ticks running their move up or down only flight
+    /// explained (or, negative, falling, with slow falling or without); ticks held still while their chunk loads, or
+    /// too gentle to tell, leave it.
+    flight: i32,
+    /// How far their last move missed what the kicks and the drag should have made of it (their own steering).
+    miss: f64,
+}
+impl Drive {
+    /// The kicks (blocks a tick, each within the game's 4) that take a player standing at `feet` by `want` over the
+    /// next tick: never faster than VMAX a tick on any axis.
+    pub fn kicks(&mut self, feet: [f64; 3], want: [f64; 3]) -> Vec<[f32; 3]> {
+        // what they did since the last tick: moved by what they had (thus their velocity now, the drag taken off),
+        // or held still while their chunk wasn't ready (what they had kept, the kick on top)
+        if let Some(last) = self.last {
+            let m = sub(feet, last);
+            let had = add(self.velocity, self.kick, 1.0);
+            if m == [0.0; 3] && len(had) > 1e-3 {
+                self.velocity = had;
+                self.moved = None;
+            } else {
+                // (flying or falling: whichever of the two would have moved them as they did up and down)
+                if let Some(pm) = self.moved {
+                    let fly = drag(pm, true)[1] + self.kick[1];
+                    let fall = drag(pm, false)[1] + self.kick[1];
+                    if (fly - fall).abs() > 0.03 {
+                        self.flying = (m[1] - fly).abs() < (m[1] - fall).abs();
+                    }
+                    // (flight against falling, slow falling's too: an eighth of the air's gravity once falling)
+                    let slow = if pm[1] <= 0.0 { (pm[1] - 0.01) * 0.98 } else { (pm[1] - 0.08) * 0.98 } + self.kick[1];
+                    let (df, dn) = ((m[1] - fly).abs(), (m[1] - fall).abs().min((m[1] - slow).abs()));
+                    if (fly - fall).abs().min((fly - slow).abs()) > 0.006 {
+                        self.flight = if df < dn { self.flight.max(0) + 1 } else { self.flight.min(0) - 1 }.clamp(-60, 60);
+                    }
+                }
+                self.miss = len(sub(m, had));
+                self.velocity = drag(m, self.flying);
+                self.moved = Some(m);
+            }
+        }
+        self.last = Some(feet);
+        // (never faster than VMAX a tick on any axis, the kicks taking it back down if it is: the game sweeps the
+        // player's box along its whole move for collisions, and gives up, crashing, past a million blocks)
+        let mut total = want;
+        let fast = total.iter().fold(0.0f64, |a, v| a.max(v.abs()));
+        if fast > VMAX {
+            total = total.map(|v| v * VMAX / fast);
+        }
+        let mut kick = sub(total, self.velocity);
+        // (however far off, no more than KICKS a tick)
+        let most = KICK * KICKS as f64;
+        let big = kick.iter().fold(0.0f64, |a, v| a.max(v.abs()));
+        if big > most {
+            kick = kick.map(|v| v * most / big);
+        }
+        self.kick = kick;
+        let n = (big.min(most) / KICK).ceil().max(1.0) as usize;
+        (0..n).map(|_| kick.map(|v| (v / n as f64) as f32)).collect()
+    }
+    /// How many ticks running it has seen them fly (or, negative, fall), and how far their last move missed what it
+    /// expected of it.
+    pub fn flight(&self) -> (i32, f64) {
+        (self.flight, self.miss)
+    }
 }
 
 impl Follow {
@@ -124,7 +195,7 @@ impl Follow {
             }
             t += 0.05;
         }
-        Follow { path, shot, distance: distance.clamp(DISTANCE_MIN, DISTANCE_MAX), feet0: feet, join, from: None, last: None, moved: None, kick: [0.0; 3], velocity: [0.0; 3], flying: false }
+        Follow { path, shot, distance: distance.clamp(DISTANCE_MIN, DISTANCE_MAX), feet0: feet, join, from: None, drive: Drive::default() }
     }
     fn bomb_of(path: &BombPath, t: f64) -> [f64; 3] {
         let p = &path.pts;
@@ -171,49 +242,11 @@ impl Follow {
         if !self.joined(t) {
             return Vec::new();
         }
-        // what they did since the last tick: moved by what they had (thus their velocity now, the drag taken off),
-        // or held still while their chunk wasn't ready (what they had kept, the kick on top)
-        if let Some(last) = self.last {
-            let m = sub(feet, last);
-            let had = add(self.velocity, self.kick, 1.0);
-            if m == [0.0; 3] && len(had) > 1e-3 {
-                self.velocity = had;
-                self.moved = None;
-            } else {
-                // (flying or falling: whichever of the two would have moved them as they did up and down)
-                if let Some(pm) = self.moved {
-                    let fly = drag(pm, true)[1] + self.kick[1];
-                    let fall = drag(pm, false)[1] + self.kick[1];
-                    if (fly - fall).abs() > 0.03 {
-                        self.flying = (m[1] - fly).abs() < (m[1] - fall).abs();
-                    }
-                }
-                self.velocity = drag(m, self.flying);
-                self.moved = Some(m);
-            }
-        }
-        self.last = Some(feet);
         let from = *self.from.get_or_insert(add(feet, [0.0, EYE, 0.0], 1.0));
         let next = t + 0.05;
         let eye = lerp(from, self.orbit(next, dir), ease(self.join, self.join + JOIN, next));
         let want = sub(sub(eye, [0.0, EYE, 0.0]), feet);
-        // (never faster than VMAX a tick on any axis, the kicks taking it back down if it is: the game sweeps the
-        // player's box along its whole move for collisions, and gives up, crashing, past a million blocks)
-        let mut total = want;
-        let fast = total.iter().fold(0.0f64, |a, v| a.max(v.abs()));
-        if fast > VMAX {
-            total = total.map(|v| v * VMAX / fast);
-        }
-        let mut kick = sub(total, self.velocity);
-        // (however far off, no more than KICKS a tick)
-        let most = KICK * KICKS as f64;
-        let big = kick.iter().fold(0.0f64, |a, v| a.max(v.abs()));
-        if big > most {
-            kick = kick.map(|v| v * most / big);
-        }
-        self.kick = kick;
-        let n = (big.min(most) / KICK).ceil().max(1.0) as usize;
-        (0..n).map(|_| kick.map(|v| (v / n as f64) as f32)).collect()
+        self.drive.kicks(feet, want)
     }
     /// What ends it: the player back where they stood, their view left as it is.
     pub fn finish(&self) -> Vec<String> {

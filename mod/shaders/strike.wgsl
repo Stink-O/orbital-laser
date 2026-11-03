@@ -210,9 +210,18 @@ fn wing_dirs() -> vec4<f32> {
     return vec4<f32>(c, s, -s, c);
 }
 
-// The strike's clock, kept by the mod (it starts at 0 when the designator fires).
+// The strike's clock (it starts at 0 when the designator fires): the mod gives its whole ticks, and the frame's partial
+// tick (frame.time.w, the one the camera is drawn at) carries it on between them, so what it moves stays in step with a
+// moving camera (the mod's own count of the time since its tick ran ahead of or behind the camera's by up to a frame:
+// what flies jittered against the camera as it moved).
 fn now() -> f32 {
-    return frame.mod_params[0].w;
+    return frame.mod_params[0].w + frame.time.w * 0.05;
+}
+
+// What frame.camera_position's f32 rounding leaves out of where the camera is (the fork's api-10 prelude): for a
+// difference from it taken first, then less this, exact far from the world's origin.
+fn camera_rest() -> vec3<f32> {
+    return frame.camera_rest.xyz;
 }
 
 fn phase_time() -> f32 {
