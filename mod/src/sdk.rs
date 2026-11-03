@@ -52,6 +52,9 @@ pub mod fake {
         pub fn get_clock() -> Option<Clock> {
             super::with(|w| Some(Clock { game_time: w.clock, day_time: 6000 }))
         }
+        pub fn player_flying() -> bool {
+            false
+        }
     }
     pub mod log {
         pub use horizon_mod_sdk::log::*;
@@ -157,7 +160,7 @@ pub mod fake {
         pub fn push_player(_x: f32, _y: f32, _z: f32) {
             super::with(|w| w.pushes += 1);
         }
-        pub fn carry_player(_x: f32, _y: f32, _z: f32) -> bool {
+        pub fn carry_player(_x: f32, _y: f32, _z: f32, _turn: f32) -> bool {
             super::with(|w| w.pushes += 1);
             true
         }

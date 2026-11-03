@@ -249,6 +249,7 @@ struct Settings {
     follow_distance: f64,
     seed_lock: Option<u32>,
     impact_style: u8,
+    carry_turn: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -316,6 +317,9 @@ struct Orbital {
     carrying: Option<carry::Carry>,
     /// The game's last answer to a carry (`world.carry-player`): whether the one before held the player.
     carry_held: bool,
+    /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
+    /// (`/orbital carryview turn|still`; turn, the default).
+    carry_turn: bool,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
@@ -335,8 +339,6 @@ struct Orbital {
     cleanup: std::collections::VecDeque<strike::Stage>,
     strike: Option<Strike>,
     wheel: Option<wheel::Wheel>,
-    /// Seconds since the last tick, for a smooth strike clock between ticks.
-    since_tick: f32,
     /// The HUD panel last sent.
     panel: Vec<(String, u32)>,
     /// Whether the panel shows in the top left (the seed alone, the status panel being off) rather than the top right.
@@ -360,7 +362,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast)],
             compiled: None,
@@ -391,6 +393,7 @@ impl Orbital {
             following: None,
             carrying: None,
             carry_held: true,
+            carry_turn,
             follow_distance,
             seed_lock,
             last_seed: 1,
@@ -401,7 +404,6 @@ impl Orbital {
             cleanup: Default::default(),
             strike: None,
             wheel: None,
-            since_tick: 0.0,
             panel: Vec::new(),
             panel_left: false,
             meter_log: None,
@@ -410,7 +412,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.hud),
@@ -423,6 +425,7 @@ impl Orbital {
             if self.fast { "fast" } else { "full" },
             if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" },
             if self.knock { "on" } else { "off" },
+            if self.carry_turn { "turn" } else { "still" },
             if self.follow { "on" } else { "off" },
             self.follow_distance,
             self.seed_lock.map_or("random".to_string(), |s| s.to_string())
@@ -469,6 +472,7 @@ impl Orbital {
         let mut impact = true;
         let mut impact_style = 1u8;
         let mut knock = true;
+        let mut carry_turn = true;
         let mut follow = false;
         let mut follow_distance = follow::DISTANCE;
         let mut seed_lock = None;
@@ -493,6 +497,7 @@ impl Orbital {
                     }
                 }
                 Some(("knockback", v)) => knock = v != "off",
+                Some(("carryview", v)) => carry_turn = v != "still",
                 Some(("follow", v)) => follow = v == "on",
                 Some(("followdistance", v)) => {
                     follow_distance = v.parse::<f64>().ok().filter(|d| d.is_finite()).map_or(follow::DISTANCE, |d| d.clamp(follow::DISTANCE_MIN, follow::DISTANCE_MAX));
@@ -506,7 +511,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn }
     }
 
     /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
@@ -797,8 +802,8 @@ impl Orbital {
             world::push_player(x, y, z);
         }
     }
-    /// The Hurricane's carry this tick (`carry.rs`): the player kicked along their path round the storm once its wind
-    /// has them, never turned.
+    /// The Hurricane's carry this tick (`carry.rs`): the player carried along their path round the storm once its wind
+    /// has them, their view turning a little with them unless `/orbital carryview still`.
     fn carry_tick(&mut self) {
         let Some(t) = self.strike.as_ref().map(|s| f64::from(s.ticks) * 0.05) else { return };
         let Some(c) = &mut self.carrying else { return };
@@ -807,15 +812,20 @@ impl Orbital {
             return;
         }
         let Some(p) = game::get_player() else { return };
-        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held);
-        // (the game's answer: whether the carry it was asked for before held them)
-        self.carry_held = match o.carry {
-            Some([x, y, z]) => world::carry_player(x, y, z),
-            None => true,
-        };
+        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held, game::player_flying(), self.carry_turn);
+        // (thrown: a push while carried is the throw the game lets them go with as the carry stops)
+        if let Some([x, y, z]) = o.throw {
+            world::push_player(x, y, z);
+        }
         if !o.cmds.is_empty() {
             world::run_commands(&o.cmds);
         }
+        // (the game's answer: whether the carry it was asked for before held them)
+        let held = match o.carry {
+            Some([x, y, z]) => world::carry_player(x, y, z, o.turn),
+            None => true,
+        };
+        self.carry_held = held;
         for (event, volume, pitch) in o.sounds {
             world::play_sound(&event, None, volume, pitch);
         }
@@ -1305,7 +1315,6 @@ impl Mod for Orbital {
     fn tick(&mut self, _tick: u64) {
         meter::reset();
         self.ticks += 1;
-        self.since_tick = 0.0;
         if self.ticks >= 40
             && let Some(i) = self.broke.take()
         {
@@ -1374,11 +1383,11 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         meter::reset();
-        self.since_tick += seconds;
         self.pace.frame(seconds);
         self.warm();
         if let Some(s) = &mut self.strike {
-            s.params[3] = s.ticks as f32 * 0.05 + self.since_tick.min(0.05);
+            // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
+            s.params[3] = s.ticks as f32 * 0.05;
             render::set_params(&s.params);
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
@@ -1501,6 +1510,12 @@ impl Mod for Orbital {
                 Ok(Some(format!("Knockback {v} (the Nuke's and the Rod's push on you)")))
             }
             (Some("knockback"), None) => Ok(Some(format!("Knockback: {} (/orbital knockback on or off)", if self.knock { "on" } else { "off" }))),
+            (Some("carryview"), Some(v @ ("turn" | "still"))) => {
+                self.carry_turn = v == "turn";
+                self.save();
+                Ok(Some(format!("Carry view: {v} (the Hurricane's carry {} your view)", if self.carry_turn { "turns and sways" } else { "leaves alone" })))
+            }
+            (Some("carryview"), None) => Ok(Some(format!("Carry view: {} (/orbital carryview turn or still)", if self.carry_turn { "turn" } else { "still" }))),
             (Some("follow"), Some(v @ ("on" | "off"))) => {
                 self.set_follow(v == "on");
                 Ok(Some(format!("Follow camera {v} (an orbit round the Nuke's or the Payload's bomb as it comes in, the mouse turning it; then the fireball and the cloud)")))
@@ -1555,7 +1570,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),

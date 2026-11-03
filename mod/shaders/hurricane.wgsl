@@ -398,14 +398,20 @@ fn hu_tint(c: u32) -> vec3<f32> {
 fn hu_face_of(nl: vec3<f32>) -> u32 {
     return select(2u, select(1u, 0u, nl.y > 0.0), abs(nl.y) > 0.5);
 }
-// A block's cell (ring k, round it iu, up it iv) packed into two half-floats exactly, and back.
+// A block's cell (ring k, round it iu, up it iv) packed into two half-floats exactly (whole numbers to 2048 each,
+// and y's sign), and back: x round it and k's low two bits; y up it (-512 to 511: the blocks low down late in the
+// storm, their columns climbed hundreds of blocks, sit well under -128, which overflowed into k before and was found
+// again as another cell in the half-size stage's join: nothing hit, the cloud behind showing white in its shape),
+// k's third bit in it and its fourth as y's sign.
 fn hu_pack(k: i32, iu: i32, iv: i32) -> vec2<f32> {
-    return vec2<f32>(f32(iu + 512 * (k & 3)), f32(iv + 128 + 512 * (k >> 2u)));
+    let m = f32(clamp(iv + 512, 0, 1023) + 1 + 1024 * ((k >> 2u) & 1));
+    return vec2<f32>(f32(iu + 512 * (k & 3)), select(m, -m, ((k >> 3u) & 1) == 1));
 }
 fn hu_unpack(id: vec2<f32>) -> vec3<i32> {
     let a = i32(id.x + 0.5);
-    let b = i32(id.y + 0.5);
-    return vec3<i32>((a >> 9u) | ((b >> 9u) << 2u), a & 511, (b & 511) - 128);
+    let b = i32(abs(id.y) + 0.5) - 1;
+    let k = (a >> 9u) | ((b >> 10u) << 2u) | (select(0, 1, id.y < 0.0) << 3u);
+    return vec3<i32>(k, a & 511, (b & 1023) - 512);
 }
 
 // Ray rd (from the eye) against the block in cell (k, iu, iv) at `t`, the middle at C (off the eye): its hit, if
@@ -1875,7 +1881,9 @@ fn hurricane(in: StageIn, stage: u32, hj: HuJoin) -> PlOut {
     let anc = anchor_xz();
     let cam = frame.camera_position.xyz;
     let gy = block_y() + 1.0 + select(0.0, hu_w(1u), hu_have());
-    let C = vec3<f32>(anc.x, gy, anc.y) - cam;
+    // (off the camera without its f32 rounding: 92,000 out, camera_position moves in 1/128 block steps, and what flies
+    // close by jumped with them; `camera_rest` is what the rounding left out, on a fork that gives it, else nothing)
+    let C = (vec3<f32>(anc.x, gy, anc.y) - cam) - camera_rest();
     let sun = frame.sun.xyz;
     let day = saturate(sun.y * 2.5 + 0.35);
     let sun_up = smoothstep(-0.12, 0.06, sun.y);

@@ -166,17 +166,21 @@ laser, command, capability and timing). This file is the short, factual version 
   only into air and never into the player's body (`Blocks::clear_of_player`, lib.rs's `edit_clear_of`). Mobs
   (terrain on) are carried round by `tp ^ ^ ^`, their `Motion` zeroed each tick; at the fling given their own
   motion (out, along the wind, up) and left to fall: fall damage does the rest (no kill at the end). The player, with
-  KNOCKBACK on, is picked up when the front reaches them (none in the eye, none past 175), carried at 108 out and 50
-  up by the fork's `world.carry-player` (API 10, fork commit eb72de11a: each tick their move in place of their own,
-  through the game's collision move, no gravity, no drag, no fall distance, drawn smoothly; at most 3.5 blocks a tick
-  here, never near `VMAX`; no slow falling), drawn in
-  through the eyewall into the calm of the eye at the peak (38-41.5 s: 14 out, 90 up, hardly turning: blue sky and
-  sunlight straight down the stadium), thrown back out through the far wall at the fling and let down over 7 s past
-  it, carried on down till the land stops them, then let go (never dropped). Flying (a double jump in creative
-  flight) or sneaking breaks free: the game moves them as their own that tick and the next carry answers false; the
-  carry lets go at once with a gust's whoosh (the answer is heard two ticks after the carry it is about:
-  `Carry::asked`). Ticks held still while chunks load keep the carry pending. Free, they are left alone while they
-  fly; standing on the land again for a second where the wind still blows, they are picked up again. Rain close by is drawn in the world (`hu_rain_lines`, the Supercell's `sc_rain_lines` the same): drops
+  KNOCKBACK on, is picked up when the front reaches them (none in the eye, none past 175; flying, standing, falling,
+  gliding or swimming), eased into the spin (no snap), carried at 108 out and 50 up by the fork's
+  `world.carry-player` (API 10: each tick their move in place of their own, through the game's collision move, no
+  gravity, no drag, no fall distance, out of flight, drawn smoothly, and a turn of their view spread over the frames:
+  `CARRY_TURN` of their turn round the storm plus a gentle gust sway, `/orbital carryview turn|still`, kept; at most
+  3.5 blocks a tick here, never near `VMAX`), round the eyewall with the debris, buffeted, never drawn into the eye;
+  at the fling swept out over 1.4 s into a throw (`THROW_V`: out, round with the wind, up) and let go with it: a
+  `world.push-player` made while carried is the throw the game lets them go with; the game's physics from there (a
+  player who may not fly gets 12 s of Resistance V so the landing does not kill them). Only sneak held half a second
+  breaks free (the game decides: a tap of sneak, a jump, a double jump or an abilities packet does nothing while
+  carried): the next carry answers false (heard two ticks after the carry it is about: `Carry::asked`), the carry
+  lets go with a gust's whoosh, and the game keeps only a little of the carry's motion and puts a creative player
+  back into flight. Ticks held still while chunks load keep the carry pending. Free, they are left alone while they
+  fly (`game.player-flying`); out of flight a second running (landed, or stopped flying in mid-air) while the wind
+  still blows where they are, they are picked up again, as often as they break free. Rain close by is drawn in the world (`hu_rain_lines`, the Supercell's `sc_rain_lines` the same): drops
   strung along lines in the way they fall (down, and blown by the wind where the camera is), the lines' feet on a grid
   across that way, four layers out from the camera on coarser grids, only the cells the ray crosses tried, so no
   direction is special (never shells round the camera: they converge on the points overhead and underfoot); none in

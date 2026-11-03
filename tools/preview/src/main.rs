@@ -453,6 +453,8 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     // (strike.rs's df_reach)
     let reach = (360.0 - ((me[0] - tgt[0]).powi(2) + (me[1] - tgt[2]).powi(2)).sqrt()).max(40.0);
     u.extend_from_slice(&[g("mode", 0.0), g("style", 0.0), g("reach", reach), g("colour", 0.0)]);
+    // (camera_rest: none, the camera near the origin)
+    u.extend_from_slice(&[0.0; 4]);
 
     let _ = nk;
     Shot { w, h, color, depth, u, frames }
