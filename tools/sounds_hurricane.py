@@ -24,10 +24,10 @@ uneven, out in the open):
   whoosh     (4 takes, mono) a body shoved through the gusting air past a player the wind carries: a leafy branch;
              something big and heavy; a cloud of grit; a board close and fast
 And the eyewall's lightning (the pass's flashes, mirrored in strike/hurricane.rs's hu_flash_list), its thunder late by
-the distance, the Supercell's model drawn afresh:
-  thunder      (4 takes) a bolt to the land within ~110 blocks: the strokes' rip, the clap, the boom, a short roll
-  thunder_mid  (4 takes) 110-320 blocks: a duller clap, the boom, a longer roll
-  thunder_far  (4 takes) further: mostly roll
+the distance, shaped on the user's reference (`ref_thunder`: the clap at once, no swell, no booms, a roll holding):
+  thunder      (4 takes) a bolt to the land within ~110 blocks: a bright ragged crack, the roll holding two seconds
+  thunder_mid  (4 takes) 110-320 blocks: the same clap with less top, a longer roll
+  thunder_far  (4 takes) further: a dull knock, mostly roll
   rumble       (4 takes) a flash deep in the eyewall or out in a band: thunder up in the cloud, no crack
 
     python3 tools/sounds_hurricane.py               # writes orbital-sounds/assets/orbital/sounds/hurricane/*.ogg and
@@ -422,79 +422,113 @@ def build_whoosh(v):
 
 
 # ========================================================================================================  thunder
-# The Supercell's model (sounds_storm.py's thunder: the channel's pulses arriving over seconds, the strokes' rip, the
-# boom, the land's echoes), its parameters for each distance, drawn afresh for the Hurricane's own takes.
+# Matched to the user's reference (a game's lightning filmed close, measured only: its band levels over time, nothing
+# of it used): the clap all at once, no swell before it and no tonal booms after it: in the first 5 ms every band but
+# the lowest is up, the crack's top (2.5-15 kHz) only 6-10 dB under the mids and dying over half a second, a ragged
+# crackle in it; the lowest band (25-80 Hz) coming up under it over a quarter of a second and the whole roll holding,
+# lumpy (a few dB, irregular, a little faster in the mids than the lows), for about two seconds, then dying away.
+# Each band its own noise, its level drawn through those points in dB, the lumps on top; a stroke or two more in the
+# first quarter second (a few dB in the mids and the top); a light outdoor tail. Further off the same shape, the top
+# taken down (the air) and the roll drawn out; in the cloud no crack at all.
+TH_BANDS = [(25, 80), (80, 250), (250, 800), (800, 2500), (2500, 7000), (7000, 15000)]
+# (time after the clap s, dB) for each band, a close bolt's
+TH_NEAR = [
+    [(0.0, -45), (0.015, -14), (0.1, -7), (0.3, -3), (0.6, -2), (1.2, -3), (1.7, -5), (2.4, -12), (3.4, -26)],
+    [(0.0, -45), (0.006, -2), (0.05, -3), (0.2, -6), (0.6, -8), (1.2, -8), (1.8, -10), (2.6, -18), (3.6, -32)],
+    [(0.0, -45), (0.005, -1), (0.08, -4), (0.3, -6), (0.6, -6), (1.2, -6.5), (1.8, -8.5), (2.6, -16), (3.6, -30)],
+    [(0.0, -45), (0.004, 0), (0.04, 0), (0.15, -5), (0.4, -7.5), (1.0, -9), (1.6, -10.5), (2.4, -18), (3.2, -32)],
+    [(0.0, -45), (0.004, -4), (0.04, -6), (0.2, -9), (0.6, -13), (1.1, -17), (1.6, -20), (2.4, -30), (3.0, -45)],
+    [(0.0, -45), (0.004, -8), (0.05, -10), (0.2, -15), (0.6, -26), (1.1, -34), (2.0, -44), (2.6, -60)],
+]
+# (how much each band's lumps move, dB, and how fast)
+TH_LUMPS = [(3.0, 3.0), (3.0, 4.5), (3.0, 7.0), (2.6, 9.0), (2.0, 13.0), (1.5, 16.0)]
+TH_CORR = [0.9, 0.75, 0.55, 0.4, 0.3, 0.25]
+
+
+def ref_thunder(seed, d, top=0.0, air=0.0, stretch=1.0, attack=0.0, low=0.0, crackle=1.0, strokes=(1, 3),
+                verb=(2.6, 0.16, (2500, 240), 0.9, 0.7), t0=0.008):
+    """One bolt's thunder, `d` s long, its clap `t0` in. `top`: dB off the crack's top (2.5-15 kHz), `air` off the
+    mids over 800 Hz; `stretch` draws the roll out; `attack` s for the clap to come up (a few ms close, never a swell);
+    `low` dB on the two lowest bands; `crackle` how much of the crack's ragged snapping; `strokes`: how many more
+    strokes in the first quarter second (at least, at most)."""
+    n = n_of(d)
+    u = np.arange(n) / SR - t0
+    L = np.zeros(n); R = np.zeros(n)
+    with PB.seeded(seed):
+        # (the strokes after the first: a few dB in the mids and the top, gone in ~40 ms)
+        k = int(rng().integers(strokes[0], strokes[1] + 1))
+        st = np.sort(rng().uniform(0.06, 0.26, k))
+        sa = rng().uniform(2.0, 4.0, k)
+        for b, ((lo, hi), pts, (lump_db, lump_hz), corr) in enumerate(zip(TH_BANDS, TH_NEAR, TH_LUMPS, TH_CORR)):
+            ts = np.array([p[0] for p in pts]); db = np.array([float(p[1]) for p in pts])
+            ts = np.where(ts > 0.3, 0.3 + (ts - 0.3) * stretch, ts)
+            ts[1] = max(ts[1], attack)
+            db = db + (top if b >= 4 else 0.0) + (air if b >= 3 else 0.0) + (low if b <= 1 else 0.0)
+            e = np.interp(u, ts, db, left=-120.0, right=-120.0)
+            e = e + lump_db * PB.slow_random(n, 0.3 * lump_hz, lump_hz) * np.clip(u / 0.05, 0, 1)
+            if b >= 2:
+                for t_, a_ in zip(st, sa):
+                    w_ = a_ * (b - 1) / 4.0
+                    e = e + w_ * np.exp(-np.maximum(u - t_, 0) / 0.04) * (u >= t_)
+            g = 10 ** (e / 20) * (u >= 0)
+            a = T.unit(band(rng().standard_normal(n), lo, hi, 4))
+            c = T.unit(band(rng().standard_normal(n), lo, hi, 4))
+            bL = a / (np.sqrt(np.mean(a ** 2)) + 1e-12)
+            bR = corr * bL + np.sqrt(1 - corr ** 2) * c / (np.sqrt(np.mean(c ** 2)) + 1e-12)
+            L += bL * g; R += bR * g
+        # (the crack's ragged snapping: short bursts, thick at the clap and thinning over half a second)
+        if crackle > 0:
+            x = np.zeros(n)
+            m = n_of(0.006); um = np.arange(m) / SR
+            t = 0.0
+            while t < 0.5 * stretch:
+                dens = 900.0 * np.exp(-t / (0.09 * stretch)) + 30.0
+                t += rng().exponential(1.0 / dens)
+                seg = band(rng().standard_normal(m), rng().uniform(1500, 3500), 12000, 2) * np.exp(-um / rng().uniform(0.0006, 0.0025))
+                P.put(x, seg * rng().uniform(0.2, 1.0) * np.exp(-t / (0.2 * stretch)), t0 + t)
+            ref_hi = np.sqrt(np.mean(band(L[:n_of(0.1)], 2500, None, 2) ** 2)) + 1e-12
+            x = x / (np.sqrt(np.mean(x[:n_of(0.1)] ** 2)) + 1e-12) * ref_hi * 0.8 * crackle * 10 ** (top / 20)
+            l, r = PB.pan2(x, rng().uniform(-0.35, 0.35))
+            L += l; R += r
+        L, R = S.sky_verb(L, R, *verb)
+        L, R = PB.causal_lowcut(L, 22.0), PB.causal_lowcut(R, 22.0)
+    return L, R
+
+
 def build_thunder(v):
-    """A bolt from the eyewall to the land close by (within ~110 blocks)."""
-    d = 6.0
-    with PB.seeded(98000 + 31 * v):
-        gd = rng().uniform(30, 90)
-        h = rng().uniform(700, 1300)
-        st = S.strokes_of(int(rng().integers(3, 6)))
-        f = rng().uniform(45, 56)
-        boom = [(0.004, f * 1.45, f, f * 0.7, 0.05, 0.003, ((0.55, 0.22), (0.35, 0.7), (0.1, 1.6)), 1.0),
-                (st[1][0] + 0.004, f * 1.2, f * 0.92, f * 0.68, 0.06, 0.006, ((0.6, 0.3), (0.4, 0.9)), 0.5),
-                (rng().uniform(0.45, 0.9), f * 0.95, f * 0.8, f * 0.64, 0.2, 0.06, ((0.5, 0.5), (0.5, 1.4)), 0.3),
-                (rng().uniform(1.3, 2.2), f * 0.85, f * 0.72, f * 0.6, 0.3, 0.12, ((1.0, 1.2),), 0.15)]
-        rip = (1200, 12000, st[-1][0] + rng().uniform(0.05, 0.1), int(rng().integers(40, 80)), -2.5)
-        run, br = rng().uniform(400, 1300), int(rng().integers(4, 8))
-    L, R = S.thunder(98500 + 31 * v, d, gd, h, run, br, st, boom,
-                     0.0, -25.0, -12.0, (2.8, 0.2, (2200, 220), 0.9, 0.72),
-                     [(0.3, 0.16, 2200), (0.75, 0.11, 1400), (1.3, 0.08, 900), (2.1, 0.05, 600)], 0.7, rip=rip,
-                     clap=(250, 8000, 2.0))
-    L, R = S.body_drive(L, R, 0.03, 3.0)
-    L, R = N.glue(L, R)
-    L, R = S.fades(L, 0.0, 1.0), S.fades(R, 0.0, 1.0)
+    """A bolt from the eyewall to the land close by (within ~110 blocks): the clap at once, its crack bright and
+    ragged, the roll holding two seconds."""
+    d = 5.5
+    L, R = ref_thunder(98000 + 31 * v, d, stretch=[1.0, 1.1, 0.92, 1.05][v - 1], strokes=(1, 2))
+    L, R = S.fades(L, 0.0, 0.8), S.fades(R, 0.0, 0.8)
     S.write(f"thunder{v}", (L, R), LEVEL["thunder"], knee=0.6)
 
 
 def build_thunder_mid(v):
-    """A bolt 110-320 blocks off: a duller clap with a little tearing in it, the boom, a longer roll."""
+    """A bolt 110-320 blocks off: the same clap with less top (the air takes it), the roll longer."""
     d = 6.5
-    with PB.seeded(98700 + 31 * v):
-        gd = rng().uniform(140, 320)
-        h = rng().uniform(800, 1600)
-        st = S.strokes_of(int(rng().integers(2, 5)))
-        f = rng().uniform(43, 53)
-        boom = [(0.01, f * 1.35, f, f * 0.72, 0.08, 0.01, ((0.5, 0.3), (0.5, 1.1)), 1.0),
-                (rng().uniform(0.5, 1.1), f * 1.0, f * 0.84, f * 0.68, 0.22, 0.08, ((0.5, 0.6), (0.5, 1.6)), 0.3),
-                (rng().uniform(1.6, 2.8), f * 0.88, f * 0.74, f * 0.64, 0.3, 0.15, ((1.0, 1.5),), 0.18)]
-        rip = (900, 5500, st[-1][0] + rng().uniform(0.04, 0.08), int(rng().integers(12, 24)), -9.0)
-        run, br = rng().uniform(700, 2000), int(rng().integers(4, 8))
-    L, R = S.thunder(98900 + 31 * v, d, gd, h, run, br, st, boom,
-                     -3.0, -26.0, -12.0, (3.4, 0.24, (1500, 200), 1.2, 0.8),
-                     [(0.5, 0.16, 1300), (1.1, 0.11, 850), (1.9, 0.08, 560), (3.0, 0.05, 380)], 0.5, t0=0.04, fc_ref=50.0,
-                     rip=rip, roll_corr=0.85, echo_pan=0.45, clap=(150, 3500, 4.0))
-    L, R = S.body_drive(L, R, 0.04, 2.0)
-    L, R = S.fades(L, 0.0, 1.6), S.fades(R, 0.0, 1.6)
+    L, R = ref_thunder(98700 + 31 * v, d, top=-9.0, air=-3.0, stretch=1.3, attack=0.008, low=1.5, crackle=0.5,
+                       strokes=(1, 2), verb=(3.2, 0.22, (1700, 210), 1.1, 0.75), t0=0.01)
+    L, R = S.fades(L, 0.0, 1.2), S.fades(R, 0.0, 1.2)
     S.write(f"thunder_mid{v}", (L, R), LEVEL["thunder_mid"], knee=0.6)
 
 
 def build_thunder_far(v):
-    """A bolt further off: mostly roll, its clap a soft knock under it."""
-    d = 9.0
-    with PB.seeded(99000 + 31 * v):
-        gd = rng().uniform(350, 900)
-        h = rng().uniform(900, 1900)
-        st = S.strokes_of(int(rng().integers(2, 5)))
-        f = rng().uniform(40, 50)
-        boom = [(0.02, f * 1.25, f, f * 0.8, 0.12, 0.03, ((0.5, 0.4), (0.5, 1.4)), 0.8),
-                (rng().uniform(0.6, 1.4), f * 1.05, f * 0.85, f * 0.72, 0.25, 0.1, ((0.5, 0.8), (0.5, 2.2)), 0.6),
-                (rng().uniform(2.0, 3.5), f * 0.9, f * 0.75, f * 0.66, 0.3, 0.2, ((1.0, 1.8),), 0.4)]
-        run, br = rng().uniform(900, 2600), int(rng().integers(4, 8))
-    L, R = S.thunder(99500 + 31 * v, d, gd, h, run, br, st, boom,
-                     -6.0, -15.0, -11.0, (4.5, 0.45, (1200, 180), 1.6, 0.82),
-                     [(0.6, 0.32, 850), (1.4, 0.24, 560), (2.4, 0.16, 380), (3.6, 0.1, 280)], 0.3, t0=0.06, fc_ref=45.0,
-                     roll_corr=0.9, echo_pan=0.35, clap=(70, 700, 0.0))
+    """A bolt further off: the clap a dull knock, little top left, the roll drawn out."""
+    d = 8.0
+    L, R = ref_thunder(99000 + 31 * v, d, top=-24.0, air=-9.0, stretch=1.7, attack=0.02, low=2.5, crackle=0.0,
+                       strokes=(0, 2), verb=(4.2, 0.32, (1100, 180), 1.5, 0.8), t0=0.02)
     L, R = S.fades(L, 0.0, 1.5), S.fades(R, 0.0, 1.5)
     S.write(f"thunder_far{v}", (L, R), LEVEL["thunder_far"], knee=0.6)
 
 
 def build_rumble(v):
-    """A flash deep in the eyewall or out in a band: thunder in the cloud, no crack, a long soft roll, high up."""
-    d = 9.0
-    L, R = S.rumble_one(99700 + 17 * v, d)
-    L, R = S.fades(L, 0.2, 1.5), S.fades(R, 0.2, 1.5)
+    """A flash deep in the eyewall or out in a band: thunder up in the cloud, no crack, the roll dark and long; it
+    comes in quickly as the rest do (no swell)."""
+    d = 8.0
+    L, R = ref_thunder(99700 + 17 * v, d, top=-32.0, air=-14.0, stretch=1.8, attack=0.04, low=3.0, crackle=0.0,
+                       strokes=(0, 1), verb=(5.0, 0.45, (800, 140), 2.0, 0.85), t0=0.03)
+    L, R = S.fades(L, 0.0, 1.5), S.fades(R, 0.0, 1.5)
     S.write(f"rumble{v}", (L, R), LEVEL["rumble"])
 
 

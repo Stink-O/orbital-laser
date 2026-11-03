@@ -12,8 +12,10 @@
 //! fling (HU_FLING) thrown back out through the far eyewall with everything else and let down over DOWN seconds onto
 //! the land past it, carried on down till they stand on it (the move stops them there), then let go: never dropped.
 //!
-//! A player breaks free by flying (a double jump in creative flight) or sneaking: the game moves them as their own
-//! that tick and the next carry answers false; the carry lets go at once (a gust's whoosh). Free, they are left alone
+//! A player breaks free by starting to fly while carried (a double jump in creative flight) or sneaking: the game moves
+//! them as their own that tick and the next carry answers false; the carry lets go at once (a gust's whoosh). One
+//! already in creative flight when the wind reaches them is picked up all the same: the game takes them out of flight
+//! on a carry's first tick (one asked after a tick with none), so flying only breaks free once they are held. Free, they are left alone
 //! while they fly; if they come back down and stand on the land while the wind still blows there, it picks them up
 //! again. Ticks they are held still while their chunk loads keep the carry where it was.
 #![cfg_attr(not(test), allow(dead_code))]
@@ -210,7 +212,8 @@ mod tests {
     use crate::follow::drag;
 
     /// A player as the game moves them: carried (`world.carry-player`: moved by the carry, colliding with flat land
-    /// at 65, no gravity, their fall distance nothing) unless they fly (from `fly_at`) or none is asked; else their own
+    /// at 65, no gravity, their fall distance nothing; a carry after a tick with none takes them out of flight, as
+    /// `flying0` may have them) unless they fly (from `fly_at`) or none is asked; else their own
     /// motion (the air's drag and gravity, or flight's); held still (their chunk not loaded) over the ticks `hold` says.
     /// Returns when they were picked up and let go (or broke free), how fast they were carried, how far off its path,
     /// how high, where they ended, how far from the middle at 44 s, and the worst fall they took (blocks).
@@ -234,11 +237,17 @@ mod tests {
         let mut heard = true;
         let mut run = Run { lifted_at: -1.0, freed_at: None, fastest: 0.0, off: 0.0, high: 0.0, end: start, eye_at: f64::MAX, worst_fall: 0.0 };
         let mut fall = 0.0f64;
+        let mut asked_before = false;
         for n in 1..=(70 * 20) {
             let t = f64::from(n) * 0.05;
             if t >= fly_at {
                 flying = true;
             }
+            // (the game: a carry's first tick takes them out of creative flight)
+            if pending.is_some() && !asked_before {
+                flying = false;
+            }
+            asked_before = pending.is_some();
             if !hold(t) {
                 match pending.take() {
                     Some(d) if !flying => {
@@ -356,5 +365,22 @@ mod tests {
         assert!(r.freed_at.is_none(), "let go at {:?} while held still", r.freed_at);
         let r = carry([120.0, 65.0, 0.5], false, f64::MAX, |_| false);
         assert!(r.freed_at.is_none(), "let go at {:?} without flying", r.freed_at);
+    }
+
+    #[test]
+    fn a_player_already_flying_in_creative_is_picked_up_and_carried() {
+        // (hovering in creative flight, on the land or over it, when the wind reaches them: carried all the same,
+        // into the eye and set down, never let go as if they had flown off)
+        for start in [[120.0, 65.0, 0.5], [120.0, 93.0, 0.5], [0.5, 80.0, -160.0]] {
+            let r = carry(start, true, f64::MAX, |_| false);
+            let d = (start[0] - 0.5).hypot(start[2] - 0.5);
+            assert!((r.lifted_at - hu_front_t(d).unwrap()).abs() < 0.11, "{start:?}: picked up at {}", r.lifted_at);
+            assert!(r.freed_at.is_none(), "{start:?}: let go at {:?}", r.freed_at);
+            assert!(r.eye_at < HU_R_EYE, "{start:?}: only {:.1} from the middle at 44 s", r.eye_at);
+            assert!(r.end[1] < 65.0 + 0.01, "{start:?}: left {} up", r.end[1] - 65.0);
+        }
+        // (and one who starts flying once held breaks free as ever)
+        let r = carry([45.0, 75.0, 30.0], true, 31.3, |_| false);
+        assert!(r.freed_at.is_some_and(|f| f >= 31.3 && f < 31.5), "freed at {:?}", r.freed_at);
     }
 }

@@ -1256,13 +1256,48 @@ fn hu_stroke(a: f32, n: u32) -> f32 {
     }
     return (s + 0.08 * exp(-a / 0.25)) * (1.0 - smoothstep(0.45, 0.6, a));
 }
+// A bolt's own timing (the user's reference: a game's lightning strike filmed at 60 fps): a thin jagged leader
+// flickering for the first ~75 ms, its shape new every two frames; then the return stroke, a thick glowing column of
+// light from the cloud to the land, straight but for a gentle wave, the land at its foot lit; from 0.17 s it draws up
+// off the land into the cloud, its foot a point, gone by 0.27 s; then a thin jagged re-stroke or two, a frame or two
+// each, out to 0.42 s. `a` seconds after the flash began.
+const HU_LEAD: f32 = 0.075;
+const HU_BOLT_END: f32 = 0.42;
+fn hu_flick(a: f32, n: u32, k: u32) -> f32 {
+    return f32(pcg(n * 31u + k * 7u + u32(max(a, 0.0) * 30.0)) & 1023u) / 1023.0;
+}
+// (the column's strength: 0 to 1)
+fn hu_beam_k(a: f32, n: u32) -> f32 {
+    return smoothstep(0.05, HU_LEAD, a) * (1.0 - smoothstep(0.19, 0.27, a)) * (0.88 + 0.12 * hu_flick(a, n, 1u));
+}
+// (the leader's and the re-strokes' strength, and which shape: a new one each two frames)
+fn hu_lead_k(a: f32, n: u32) -> f32 {
+    if (a < HU_LEAD) {
+        return 0.55 + 0.45 * hu_flick(a, n, 2u);
+    }
+    let r0 = 0.28 + 0.05 * f32(n & 7u) / 7.0;
+    let r1 = 0.35 + 0.05 * f32((n >> 3u) & 7u) / 7.0;
+    return 0.8 * (step(r0, a) * step(a, r0 + 0.034) + 0.7 * step(r1, a) * step(a, r1 + 0.018));
+}
+// (how brightly it lights the cloud round its root)
+fn hu_bolt_stroke(a: f32, n: u32) -> f32 {
+    if (a < 0.0 || a > HU_BOLT_END) {
+        return 0.0;
+    }
+    return (max(hu_beam_k(a, n), 0.6 * hu_lead_k(a, n)) + 0.12 * exp(-a / 0.15)) * (1.0 - smoothstep(0.36, HU_BOLT_END, a));
+}
 struct HuFlash {
-    // where each flash is (off the middle's ground) and how bright it is now; its bolt's foot and how bright (0 none)
+    // where each flash is (off the middle's ground) and how bright it is now; its bolt's foot (w 1: one under way) and
+    // how long since its flash began
     p: array<vec4<f32>, 3>,
     b: array<vec4<f32>, 3>,
+    a: vec3<f32>,
+    n: vec3<u32>,
 }
 fn hu_flashes(t: f32, seed: u32) -> HuFlash {
     var f: HuFlash;
+    f.a = vec3<f32>(0.0);
+    f.n = vec3<u32>(0u);
     let s0 = i32(floor(t / HU_SLOT));
     let sh = pcg(seed ^ 0x7a11u);
     for (var j = 0; j < 3; j = j + 1) {
@@ -1284,10 +1319,14 @@ fn hu_flashes(t: f32, seed: u32) -> HuFlash {
         let hc = pcg(hb);
         let u = vec4<f32>(f32(ha & 0xFFFFu), f32(ha >> 16u), f32(hb & 0xFFFFu), f32(hb >> 16u)) / 65535.0;
         let w = vec2<f32>(f32(hc & 0xFFFFu), f32(hc >> 16u)) / 65535.0;
-        let br = hu_stroke(t - (ts + HU_SLOT * f32(h >> 16u) / 65535.0), h >> 3u);
+        let age = t - (ts + HU_SLOT * f32(h >> 16u) / 65535.0);
+        let bolt = u.y >= 0.2 && w.x < 0.36;
+        let br = select(hu_stroke(age, h >> 3u), hu_bolt_stroke(age, h >> 3u), bolt);
         if (br <= 0.0) {
             continue;
         }
+        f.a[j] = age;
+        f.n[j] = h >> 3u;
         let ang = TAU * u.x;
         let dir = vec2<f32>(cos(ang), sin(ang));
         if (u.y < 0.2) {
@@ -1301,11 +1340,11 @@ fn hu_flashes(t: f32, seed: u32) -> HuFlash {
             // the flank round its root)
             let y = 70.0 + 90.0 * u.z;
             let r = hu_wall_out(y, t) - 6.0;
-            f.p[j] = vec4<f32>(dir.x * r, y, dir.y * r, br * 1.3);
+            f.p[j] = vec4<f32>(dir.x * r, y, dir.y * r, br * 0.6);
             let fa = ang + HU_SPIN * 0.15 * (w.y - 0.3);
             let fr = hu_wall_out(0.0, t) + 6.0 + 55.0 * fract(w.x * 2.77 + w.y);
             let fp = vec2<f32>(cos(fa), sin(fa)) * fr;
-            f.b[j] = vec4<f32>(fp.x, hu_ground(fp), fp.y, br);
+            f.b[j] = vec4<f32>(fp.x, hu_ground(fp), fp.y, 1.0);
             continue;
         }
         // (deep in the eyewall, lighting it from inside)
@@ -1324,6 +1363,13 @@ fn hu_flash_at(fl: HuFlash, q: vec3<f32>) -> f32 {
             let d = q - f.xyz;
             e = e + f.w / (1.0 + dot(d, d) * (1.0 / 4500.0));
         }
+        // (a bolt's column lighting the land round its foot)
+        let b = fl.b[j];
+        if (b.w > 0.5) {
+            let k = hu_beam_k(fl.a[j], fl.n[j]) + 0.4 * hu_lead_k(fl.a[j], fl.n[j]);
+            let d = q - b.xyz;
+            e = e + 2.4 * k / (1.0 + dot(d, d) * (1.0 / 700.0));
+        }
     }
     return e;
 }
@@ -1336,7 +1382,7 @@ fn hu_kink(u: f32, s: f32, fq: f32) -> f32 {
     let v = u * fq;
     return (0.11 * hu_lin(v * 4.0, s) + 0.05 * hu_lin(v * 11.0, s + 1.7) + 0.024 * hu_lin(v * 29.0, s + 3.1) + 0.011 * hu_lin(v * 70.0, s + 5.3)) / sqrt(fq);
 }
-fn hu_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: bool, fq: f32) -> vec3<f32> {
+fn hu_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: bool, fq: f32, jag: f32) -> vec3<f32> {
     let ab = sb - sa;
     let L = max(length(ab), 1.0);
     let dir = ab / L;
@@ -1344,8 +1390,8 @@ fn hu_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: 
     let ap = px - sa;
     let u = clamp(dot(ap, dir) / L, 0.0, 1.0);
     let env = select(1.0, sqrt(max(1.0 - u, 0.0)) * 1.15, pin) * smoothstep(0.0, 0.04, u);
-    let k0 = hu_kink(u, s, fq) * env;
-    let k1 = hu_kink(u + 0.002, s, fq) * env;
+    let k0 = hu_kink(u, s, fq) * env * jag;
+    let k1 = hu_kink(u + 0.002, s, fq) * env * jag;
     let slope = (k1 - k0) / 0.002;
     let off = (dot(ap, nrm) - k0 * L) / sqrt(1.0 + slope * slope);
     let d = length(vec2<f32>(off, dot(ap, dir) - u * L));
@@ -1375,7 +1421,7 @@ fn hu_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, near: f32, ct: 
         return vec2<f32>(0.0);
     }
     let fq = max(length(a - b) / 100.0, 1.0);
-    let m = hu_channel(px, sa, sb, seed, w, true, fq);
+    let m = hu_channel(px, sa, sb, seed, w, true, fq, 1.35);
     let dm = mix(la, lb, m.z);
     let seen = select(0.0, 1.0, near > dm - 3.0) * select(1.0, ca, dm > ct);
     var core = m.x * seen;
@@ -1385,15 +1431,56 @@ fn hu_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, near: f32, ct: 
     for (var k = 0; k < 3; k = k + 1) {
         let fk = f32(k);
         let u = 0.15 + 0.55 * fract(seed * 0.618 + fk * 0.377);
-        let root = sa + ab * u + nrm * hu_kink(u, seed, fq) * sqrt(1.0 - u) * 1.15 * L;
+        let root = sa + ab * u + nrm * hu_kink(u, seed, fq) * sqrt(1.0 - u) * 1.15 * 1.35 * L;
         let side = select(-1.0, 1.0, fract(seed * 0.71 + fk * 0.53) > 0.5);
         let bdir = normalize(dir + nrm * side * (0.55 + 0.6 * fract(seed * 1.3 + fk * 0.7)));
-        let f = hu_channel(px, root, root + bdir * L * (0.12 + 0.2 * fract(seed * 0.9 + fk * 0.77)), seed + 7.0 + fk * 3.3, w * 0.55, false, fq);
+        let f = hu_channel(px, root, root + bdir * L * (0.16 + 0.26 * fract(seed * 0.9 + fk * 0.77)), seed + 7.0 + fk * 3.3, w * 0.6, false, fq, 1.6);
         let fs = select(0.0, 1.0, near > mix(la, lb, u) - 3.0) * select(1.0, ca, mix(la, lb, u) > ct) * pow(1.0 - f.z, 1.6);
         core = core + f.x * fs;
         glow = glow + f.y * fs * 0.7;
     }
     return vec2<f32>(core, glow);
+}
+
+// The return stroke's column from a to b (camera-relative) on the picture: a thick soft rod of light, straight but for
+// a gentle wave, HU_BEAM_R blocks round, drawn up off the land from `ue` (1: down to b, 0: none), its foot a point:
+// x its core, y its halo, as far as it is seen (as hu_bolt).
+const HU_BEAM_R: f32 = 2.6;
+fn hu_beam(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, ue: f32, near: f32, ct: f32, ca: f32) -> vec2<f32> {
+    let pa = project_rel(a);
+    let pb = project_rel(b);
+    if (pa.z < 0.0 || pb.z < 0.0 || ue <= 0.01) {
+        return vec2<f32>(0.0);
+    }
+    let res = frame.resolution.xy;
+    let sa = pa.xy * res;
+    let sb = pb.xy * res;
+    let ab = sb - sa;
+    let L = max(length(ab), 1.0);
+    let dir = ab / L;
+    let nrm = vec2<f32>(-dir.y, dir.x);
+    let la = length(a);
+    let lb = length(b);
+    let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
+    let ap = px - sa;
+    let u = clamp(dot(ap, dir) / L, 0.0, 1.0);
+    let dm = mix(la, lb, u);
+    let wc = max(HU_BEAM_R * focal / max(dm, 1.0), 1.2);
+    let off0 = dot(ap, nrm);
+    if (abs(off0) > 0.12 * L + 14.0 * wc) {
+        return vec2<f32>(0.0);
+    }
+    // (a gentle wave, the large scales of the leader's kinks only)
+    let wave = (0.03 * hu_lin(u * 3.0, seed) + 0.015 * hu_lin(u * 8.0, seed + 1.7)) * L * smoothstep(0.0, 0.05, u);
+    let along = dot(ap, dir) - u * L;
+    let d = length(vec2<f32>(off0 - wave, along));
+    // (drawn up: thinning to a point at its foot)
+    let taper = sqrt(saturate((ue - u) / 0.18)) * smoothstep(0.0, 0.03, u);
+    let r = wc * taper;
+    let seen = select(0.0, 1.0, near > dm - 3.0) * select(1.0, ca, dm > ct) * step(u, ue);
+    let core = exp(-pow(d / max(r * 0.7, 0.6), 2.0)) * step(0.001, taper);
+    let halo = 1.0 / (1.0 + pow(d / max(r * 2.2, 1.0), 2.0)) * taper;
+    return vec2<f32>(core, halo * halo) * seen;
 }
 
 struct HuVol {
@@ -1651,8 +1738,29 @@ fn hu_bolts(px: vec2<f32>, fl: HuFlash, C: vec3<f32>, near: f32, ct: f32, ca: f3
             continue;
         }
         let root = fl.p[j].xyz;
-        let m = hu_bolt(px, C + root, C + b.xyz, f32(pcg(bitcast<u32>(b.x) ^ seed) & 1023u) * 0.37, near, ct, ca);
-        c = c + (vec3<f32>(1.0, 0.98, 1.0) * m.x * 2.4 + vec3<f32>(0.5, 0.55, 0.95) * m.y * 0.55) * b.w;
+        let a = fl.a[j];
+        let n = fl.n[j];
+        let s0 = f32(pcg(bitcast<u32>(b.x) ^ seed) & 1023u) * 0.37;
+        // (the leader, and the re-strokes after: thin and jagged, a new shape each two frames; a re-stroke now and
+        // then across the cloud instead, out of the root sideways)
+        let lk = hu_lead_k(a, n);
+        if (lk > 0.0) {
+            let shape = f32(u32(a * 30.0));
+            var tip = C + b.xyz;
+            if (a > HU_LEAD && (n & 16u) != 0u) {
+                let side = normalize(vec3<f32>(-root.z, 0.0, root.x)) * select(-1.0, 1.0, (n & 32u) != 0u);
+                tip = C + root + side * (70.0 + 50.0 * f32((n >> 6u) & 7u) / 7.0) - vec3<f32>(0.0, 25.0, 0.0);
+            }
+            let m = hu_bolt(px, C + root, tip, s0 + shape * 5.3, near, ct, ca);
+            c = c + (vec3<f32>(1.0, 0.98, 1.0) * m.x * 2.4 + vec3<f32>(0.62, 0.6, 1.0) * m.y * 0.6) * lk;
+        }
+        // (the return stroke's column)
+        let bk = hu_beam_k(a, n);
+        if (bk > 0.0) {
+            let ue = 1.0 - smoothstep(0.17, 0.27, a);
+            let m = hu_beam(px, C + root, C + b.xyz, s0, ue, near, ct, ca);
+            c = c + (vec3<f32>(1.0, 0.98, 1.0) * m.x * 3.0 + vec3<f32>(0.66, 0.64, 1.0) * m.y * 1.1) * bk;
+        }
     }
     return c;
 }
