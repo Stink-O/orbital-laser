@@ -45,5 +45,9 @@
   "subtitles.orbital.hurricane.debris": "Debris clatters past",
   "subtitles.orbital.hurricane.crack": "Tree torn out",
   "subtitles.orbital.hurricane.whoosh": "Debris rushes past",
-  "subtitles.orbital.hurricane.wind": "Hurricane winds howl"
+  "subtitles.orbital.hurricane.wind": "Hurricane winds howl",
+  "subtitles.orbital.hurricane.thunder": "Thunder cracks",
+  "subtitles.orbital.hurricane.thunder_mid": "Thunder claps",
+  "subtitles.orbital.hurricane.thunder_far": "Thunder rolls",
+  "subtitles.orbital.hurricane.rumble": "Distant thunder"
 }
