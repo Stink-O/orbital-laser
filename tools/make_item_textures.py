@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Draw the 16x16 item textures (and a preview sheet): the designator, the remote, and one icon per laser for the
-remote's menu.
+"""Draw the 16x16 item textures (and a preview sheet): the designator, and one icon per laser (the legacy setup's
+menu, strike.py).
 
     python3 tools/make_item_textures.py
 """
@@ -99,25 +99,6 @@ def designator():
     d.point((int(cx), int(cy)), fill=K["W"])
     return im
 
-
-REMOTE = [
-    "................",
-    "......ddd.......",
-    ".....dyyd.......",
-    "...ddddyddddd...",
-    "..dGGGGGGGGGGd..",
-    "..dGcccccccGGd..",
-    "..dGcccWcccGGd..",
-    "..dGGGGGGGGGGd..",
-    "..dGbbbGGyyyGd..",
-    "..dGbBbGGyOyGd..",
-    "..dGbbbGGyyyGd..",
-    "..dGGGGGGGGGGd..",
-    "..dGGGrrrGGGGd..",
-    "..dGGGGGGGGGGd..",
-    "...ddddddddddd..",
-    "................",
-]
 
 PLASMA_ICON = [            # a beam coming down through forked lightning, splashing on the ground
     "......bBWBb.....",
@@ -393,12 +374,12 @@ HURRICANE_ICON = [       # the hurricane from above: spiral bands wound round a 
     "................",
 ]
 
-GRIDS = {"hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "remote": REMOTE, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+GRIDS = {"hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
-names = ("laser_designator", "remote", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
+names = ("laser_designator", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
          "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):

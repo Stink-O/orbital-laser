@@ -1,9 +1,9 @@
 //! Orbital Laser, a Horizon mod. Hold the Orbital Laser Designator on a target
 //! and the strike lands there: a beam from orbit, a crater to bedrock, and what
-//! each laser leaves behind. Right-click the Orbital Remote (or press R) for the
-//! laser wheel (rebind R in Options > Controls). `/orbital give` hands you both items.
+//! each laser leaves behind. Press R with the designator in hand for the laser
+//! wheel (rebind R in Options > Controls). `/orbital give` hands you the designator.
 //!
-//! It uses the game's mod capabilities: `input` (the two items' right-clicks,
+//! It uses the game's mod capabilities: `input` (the designator's right-click,
 //! the wheel's key and what is typed on it), `ui` (the wheel), `render` (the
 //! strike's post pass, shaders/strike.wgsl, and the downfall's and the planet
 //! killer's own), `world` (aiming, the crater's block
@@ -32,7 +32,6 @@ use lasers::{LASERS, is_ship};
 use strike::{APPROACHES, ARRIVALS, Act, COLOUR_RGB, COLOURS, FIRE, Target};
 
 const DESIGNATOR: &str = "orbital:laser_designator";
-const REMOTE: &str = "orbital:remote";
 /// Ticks of holding the designator on a target before it fires.
 const LOCK_TICKS: u32 = 14;
 // Every post pass, built ahead of time from the shader files by build.rs (src/passbuild.rs): PASS_OWN (the other
@@ -84,6 +83,14 @@ fn pass_of(l: &lasers::Laser) -> usize {
 const SETTINGS: &str = "settings";
 /// The storage key that says which pass the game is building while it builds one (`Orbital::hand_post`).
 const BUILDING: &str = "building";
+/// The storage key holding the forceload removes the strike under way owes the world, with its dimension and the
+/// world clock it fired at (`hold_forceloads`): if the game closes or the player leaves the world mid-strike, they are
+/// run the next time that world is played (`release_held`), so a save is never left with the strike's chunks
+/// forceloaded.
+const FORCELOADS: &str = "forceloads";
+/// Game ticks (of the world's clock) a reopened world may be off from where it was left and still be taken for the
+/// same play (`tick`): a pause, or a save and quit, keeps the clock where it was; another world's is elsewhere.
+const SAME_PLAY: u64 = 40;
 /// Ticks of play (in a world, not paused) before the loaded laser's pass is given to the game to build ahead of its
 /// first strike (`warm`): not as the game starts, so a pass the game can't build stops nothing but that laser.
 const WARM_AFTER: u64 = 60;
@@ -346,6 +353,14 @@ struct Orbital {
     /// `/orbital meter N`: each tick whose work (`meter`) comes to N instructions or more is logged.
     meter_log: Option<u64>,
     ticks: u64,
+    /// The world's clock (game time) at the last tick in a world, none while out of one (`tick`).
+    clock: Option<u64>,
+    /// The forceload removes in storage are the strike under way's (`FORCELOADS`): deleted once it and the world
+    /// changes it left waiting are done.
+    owes: bool,
+    /// Ticks in a world since the mod started or the player came back to one: the stored forceload removes of a
+    /// strike broken off are looked at once they have settled (`release_held`).
+    settled: Option<u32>,
 }
 
 thread_local! {
@@ -408,6 +423,9 @@ impl Orbital {
             panel_left: false,
             meter_log: None,
             ticks: 0,
+            clock: None,
+            owes: false,
+            settled: Some(0),
         }
     }
     fn save(&self) {
@@ -953,6 +971,7 @@ impl Orbital {
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
         self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
+        self.hold_forceloads(&dimension, clock, laser.length);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
@@ -1169,7 +1188,109 @@ impl Orbital {
         cmds.extend(rest.into_iter().chain(queued).filter(|c| c.starts_with("forceload remove")));
         world::run_commands(&cmds);
         self.end_strike();
+        self.owes = false;
+        storage::delete(FORCELOADS);
         log::write(log::Level::Info, "strike stopped");
+    }
+    /// Keep the strike's forceload removes in storage as it fires (`FORCELOADS`): each run in its dimension, with the
+    /// world clock it fired at and its length, so the next play of this world can tell it is the same one.
+    fn hold_forceloads(&mut self, dimension: &str, clock: u64, length: f32) {
+        let Some(s) = &self.strike else { return };
+        let removes: Vec<String> = s
+            .plan
+            .iter()
+            .filter_map(|(_, a)| match a {
+                Act::Cmd(c) | Act::Spare(c) if c.starts_with("forceload remove") => Some(format!("execute in {dimension} run {c}")),
+                _ => None,
+            })
+            .collect();
+        self.owes = !removes.is_empty();
+        if !self.owes {
+            storage::delete(FORCELOADS);
+            return;
+        }
+        let end = clock + (length * 20.0) as u64;
+        let text = format!("{clock}\n{end}\n{}\n", removes.join("\n"));
+        if let Err(e) = storage::set(FORCELOADS, text.as_bytes()) {
+            log::write(log::Level::Warn, &format!("the strike's forceloads not kept: {e}"));
+        }
+    }
+    /// The player has left the world the strike is in (back to the title screen, or into another world): end it there
+    /// and then, nothing of it carried into the next world. Its sounds are cut (the game stops every sound as a world
+    /// closes; `stopsound` too, in case), its plan and every world change still waiting are dropped (what must be done
+    /// whatever happens, `Act::Cleanup`, too: that world is gone), the wheel is closed and the pass cleared. The chunks it
+    /// forceloaded are let go the next time that world is played (`release_held`).
+    fn left_world(&mut self) {
+        let sounds: Vec<String> = self.strike.as_ref().map_or(Vec::new(), |s| s.sounds.iter().map(|e| format!("stopsound @s * {e}")).collect());
+        let live = self.strike.is_some() || !self.edits.is_empty() || !self.carving.is_empty() || !self.spare.is_empty() || !self.cleanup.is_empty();
+        if self.strike.is_some() {
+            log::write(log::Level::Info, "left the world mid-strike: strike ended");
+        }
+        self.end_strike();
+        self.edits.clear();
+        self.carving.clear();
+        self.spare.clear();
+        self.cleanup.clear();
+        self.edits_late = 0;
+        self.edited = false;
+        self.aiming = None;
+        if self.wheel.take().is_some() {
+            ui::close();
+        }
+        if live && !sounds.is_empty() {
+            world::run_commands(&sounds);
+        }
+        self.owes = false;
+        self.settled = Some(0);
+    }
+    /// Once the strike and the world changes it left waiting are done (its forceload removes among them), the kept
+    /// removes are dropped.
+    fn paid(&mut self) {
+        if self.owes && self.strike.is_none() && self.spare.is_empty() && self.carving.is_empty() {
+            self.owes = false;
+            storage::delete(FORCELOADS);
+        }
+    }
+    /// Whether this tick is in a world, and the same one as the last. The API has no hook for leaving a world, so: a
+    /// tick with no player (and so no world clock) is the game between worlds, and a world clock somewhere else than it
+    /// was is another world (a pause, or this world saved and opened again, keeps it where it was). Either way a strike
+    /// under way ends there (`left_world`).
+    fn in_world(&mut self) -> bool {
+        let clock = game::get_player().and(game::get_clock()).map(|c| c.game_time);
+        let elsewhere = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
+        if clock.is_none() || elsewhere {
+            self.left_world();
+        }
+        self.clock = clock;
+        clock.is_some()
+    }
+    /// A strike broken off by the game closing or the player leaving left its forceload removes in storage
+    /// (`hold_forceloads`): once settled in a world, run them if this is that world, played on from where it was left
+    /// (its clock within the strike's span, a little either side); another world's leaves them for when it comes back.
+    fn release_held(&mut self) {
+        let Some(n) = self.settled else { return };
+        if n < 40 {
+            self.settled = Some(n + 1);
+            return;
+        }
+        self.settled = None;
+        if self.owes || self.strike.is_some() {
+            return;
+        }
+        let Some(text) = storage::get(FORCELOADS).map(|b| String::from_utf8_lossy(&b).into_owned()) else { return };
+        let mut lines = text.lines();
+        let (Some(from), Some(to)) = (lines.next().and_then(|l| l.parse::<u64>().ok()), lines.next().and_then(|l| l.parse::<u64>().ok())) else {
+            storage::delete(FORCELOADS);
+            return;
+        };
+        let Some(now) = self.clock else { return };
+        if now + SAME_PLAY < from || now > to + SAME_PLAY {
+            return;
+        }
+        let cmds: Vec<String> = lines.filter(|l| l.starts_with("execute in ") && l.contains(" run forceload remove ")).map(str::to_string).collect();
+        log::write(log::Level::Info, &format!("let go of the {} forceloads a strike broken off left", cmds.len()));
+        world::run_commands(&cmds);
+        storage::delete(FORCELOADS);
     }
     /// Make the waiting block edits, in order, as many as this tick's budget allows (`pace`: all of them while the
     /// frames are quick, at least one).
@@ -1247,7 +1368,7 @@ impl Orbital {
 
     /// While the player holds one of the items: which laser is loaded.
     fn update_panel(&mut self) {
-        let held = input::held().is_some_and(|h| h.id == DESIGNATOR || h.id == REMOTE);
+        let held = input::held().is_some_and(|h| h.id == DESIGNATOR);
         let holding = self.hud && held;
         let lines: Vec<(String, u32)> = if holding {
             let l = LASERS[self.laser];
@@ -1276,7 +1397,7 @@ impl Orbital {
             if self.strike.is_some() {
                 lines.push(("Strike in progress".to_string(), 0xFF8A65));
             } else {
-                lines.push(("R or the remote: laser wheel".to_string(), 0x7C8594));
+                lines.push(("R: laser wheel".to_string(), 0x7C8594));
             }
             lines
         } else {
@@ -1298,7 +1419,7 @@ impl Orbital {
 
 impl Mod for Orbital {
     fn init() -> Result<(Self, Registration), String> {
-        input::claim_items(&[DESIGNATOR.to_string(), REMOTE.to_string()]);
+        input::claim_items(&[DESIGNATOR.to_string()]);
         input::register_key("wheel", "Open the laser wheel", "key.keyboard.r");
         let mut settings = Orbital::load();
         let broke = Orbital::recover(&mut settings);
@@ -1315,6 +1436,9 @@ impl Mod for Orbital {
     fn tick(&mut self, _tick: u64) {
         meter::reset();
         self.ticks += 1;
+        if !self.in_world() {
+            return;
+        }
         // (once the player is in the world and settled: a batch sent before the server has placed them is dropped)
         if self.ticks >= 100
             && game::get_player().is_some()
@@ -1336,9 +1460,9 @@ impl Mod for Orbital {
                         self.aiming = Some(0);
                     }
                 }
-                Event::UseStart(u) if u.item.id == REMOTE => self.open_wheel(),
                 Event::UseStop(u) if u.item.id == DESIGNATOR => self.aiming = None,
-                Event::KeyDown(k) if k == "wheel" => self.open_wheel(),
+                // (the wheel's key only with the designator in hand: with anything else it is left to the game)
+                Event::KeyDown(k) if k == "wheel" && input::held().is_some_and(|h| h.id == DESIGNATOR) => self.open_wheel(),
                 Event::ScreenClick(c) if c.button == 0 => self.wheel_click(c.x, c.y),
                 Event::ScreenClick(c) if c.button == 1 => self.turn_page(self.page + 1),
                 Event::ScreenClosed => self.wheel = None,
@@ -1373,6 +1497,8 @@ impl Mod for Orbital {
         self.follow_tick();
         self.carry_tick();
         self.update_panel();
+        self.paid();
+        self.release_held();
         meter::end(self.ticks);
         if let Some(n) = self.meter_log
             && meter::spent() >= n
@@ -1404,11 +1530,18 @@ impl Mod for Orbital {
         let mut words = args.split_whitespace();
         match (words.next(), words.next()) {
             (Some("give"), _) => {
-                world::run_commands(&[format!("give @s {DESIGNATOR}"), format!("give @s {REMOTE}")]);
-                Ok(Some("Orbital Laser Designator and Orbital Remote added to your inventory".into()))
+                world::run_commands(&[format!("give @s {DESIGNATOR}")]);
+                Ok(Some("Orbital Laser Designator added to your inventory (R with it in hand: the laser wheel)".into()))
             }
             (Some("wheel"), _) => {
                 self.open_wheel();
+                Ok(None)
+            }
+            // (for a host that knows when the player leaves the world: the native build's glue, on the client level
+            // unloading; the fork has no such hook, and the mod finds out on the next tick in a world, `in_world`)
+            (Some("left-world"), _) => {
+                self.left_world();
+                self.clock = None;
                 Ok(None)
             }
             (Some("approach"), Some(k)) if APPROACHES.iter().any(|a| a.key == k) => {
@@ -2107,6 +2240,65 @@ mod stress {
         let ran = fake::with(|w| std::mem::take(&mut w.ran));
         assert_eq!(ran, vec![r#"title @s actionbar {"text":"NO TARGET IN RANGE","color":"gray","bold":true}"#.to_string()]);
         assert!(o.strike.is_none());
+    }
+    /// Leaving the world mid-strike ends it there (nothing of it goes on into the next world), and its forceloads are
+    /// let go the next time that world is played, not in another one; a strike that runs its course leaves none kept.
+    #[test]
+    fn leaving_mid_strike_ends_it_and_lets_its_forceloads_go_later() {
+        let mut o = Orbital::new(Orbital::parse("terrain=1\nlaser=nuke\n"));
+        let player = Player { x: 0.5, y: 100.0, z: 400.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        let into = |o: &mut Orbital, clock: Option<u64>| {
+            fake::with(|w| {
+                w.player = clock.map(|_| player.clone());
+                w.clock = clock.unwrap_or(0);
+            });
+            o.in_world()
+        };
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.hit = Some(Hit { block_x: 0, block_y: 64, block_z: 0, x: 0.5, y: 65.0, z: 0.5, block: "minecraft:grass_block".into() });
+            w.keep_commands = true;
+        });
+        assert!(into(&mut o, Some(5000)));
+        o.fire();
+        assert!(o.strike.is_some() && o.owes);
+        for t in 1..100 {
+            assert!(into(&mut o, Some(5000 + t)));
+            o.tick_strike();
+        }
+        assert!(o.strike.is_some() && fake::with(|w| w.stored.contains_key(FORCELOADS)));
+        // (out to the title screen: the strike and all it had waiting are gone, its forceloads kept to let go)
+        assert!(!into(&mut o, None));
+        assert!(o.strike.is_none() && o.edits.is_empty() && o.carving.is_empty() && o.spare.is_empty() && o.cleanup.is_empty());
+        assert!(fake::with(|w| w.stored.contains_key(FORCELOADS)));
+        // (another world: they stay kept)
+        fake::with(|w| w.ran.clear());
+        for t in 0..60 {
+            assert!(into(&mut o, Some(90_000 + t)));
+            o.release_held();
+        }
+        assert!(fake::with(|w| w.stored.contains_key(FORCELOADS) && !w.ran.iter().any(|c| c.contains("forceload"))));
+        // (that world again, where it was left: let go, in its dimension)
+        assert!(!into(&mut o, None));
+        for t in 0..60 {
+            assert!(into(&mut o, Some(5099 + t)));
+            o.release_held();
+        }
+        let ran = fake::with(|w| std::mem::take(&mut w.ran));
+        assert!(!ran.is_empty() && ran.iter().all(|c| c.starts_with("execute in minecraft:overworld run forceload remove ")), "{ran:?}");
+        assert!(!fake::with(|w| w.stored.contains_key(FORCELOADS)));
+        // (a strike played through: nothing kept once it is done)
+        o.laser = LASERS.iter().position(|l| l.key == "plasma").unwrap_or(0);
+        o.terrain = false;
+        o.fire();
+        let mut t = 6000;
+        while o.strike.is_some() || !o.spare.is_empty() || !o.carving.is_empty() {
+            t += 1;
+            assert!(into(&mut o, Some(t)) && t < 20_000);
+            o.tick_strike();
+            o.paid();
+        }
+        assert!(!o.owes && !fake::with(|w| w.stored.contains_key(FORCELOADS)));
     }
     #[test]
     fn the_follow_camera_orbits_and_puts_the_player_back() {

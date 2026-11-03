@@ -618,7 +618,8 @@ def tool_item(model, real):
 def set_remote_name(slot, theme, real):
     """Rename the remote in its slot to show the current laser (the slot is 0 to 8, left to right)."""
     name = f"{REMOTE_NAME} - {theme.title}"
-    cmd(f'execute as @s run item replace entity @s hotbar.{slot} with {tool_item(ITEM_REMOTE, real)}'
+    # (the mod no longer has a remote item of its own, 0.5.9: the legacy remote is always the glinting spyglass)
+    cmd(f'execute as @s run item replace entity @s hotbar.{slot} with {tool_item(ITEM_REMOTE, False)}'
         f'custom_name={{text:"{name}",color:"{theme.color}",bold:true}}]')
 
 

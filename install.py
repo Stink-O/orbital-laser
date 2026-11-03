@@ -157,7 +157,7 @@ set_line(home / "horizon-mods.txt", "mod.orbital", "true")
 print("switched on in horizon-mods.txt")
 print("\nNext: ./play.sh            (in a terminal, from this folder: starts the Orbital Laser build of Horizon on a\n"
       "                           creative test world)\n"
-      "      /orbital give       in the game: the Orbital Laser Designator and the Orbital Remote\n"
+      "      /orbital give       in the game: the Orbital Laser Designator (R with it in hand: the wheel)\n"
       "\nAlways start the game with ./play.sh. Stock Horizon (its launcher, or its own horizon-client) can't run the mod:\n"
       "its Mods screen would say \"Can't be read: horizon-mod.toml: capability world is for server mods\".\n"
       f"play.sh looks for the build in {Path.home() / 'horizon-orbital'} (or $HORIZON_ORBITAL): "

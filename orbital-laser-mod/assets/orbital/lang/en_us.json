@@ -1,6 +1,5 @@
 {
   "item.orbital.laser_designator": "Orbital Laser Designator",
-  "item.orbital.remote": "Orbital Remote",
   "subtitles.orbital.payload.drift": "Payload drifts overhead",
   "subtitles.orbital.payload.dive": "Payload dives",
   "subtitles.orbital.payload.rush": "Blast wave rushes past",
