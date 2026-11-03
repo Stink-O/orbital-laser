@@ -57,7 +57,7 @@ if [ -z "$bin" ] || [ ! -x "$bin/horizon-client" ]; then
     "Orbital Laser needs that build: stock Horizon can't run the mod (its Mods screen says" \
     "\"Can't be read: horizon-mod.toml: capability world is for server mods\")." \
     "" \
-    "Download it from $RELEASES (release orbital-mod-api-8 or newer)," \
+    "Download it from $RELEASES (release orbital-mod-api-10 or newer)," \
     "unpack it to ~/horizon-orbital (or set HORIZON_ORBITAL to its folder), then run ./play.sh again from a terminal."
 fi
 if [ ! -x "$bin/horizon-ctl" ]; then
@@ -65,7 +65,7 @@ if [ ! -x "$bin/horizon-ctl" ]; then
     "Unpack the whole Orbital Laser build of Horizon there ($RELEASES), or set HORIZON_ORBITAL to the folder that has both."
 fi
 # A cheap look inside the program (skipped without grep): a build made without --features mods says it has no mod
-# runtime, and the fork's build knows the mod interfaces Orbital Laser uses (world.push-player is the newest it needs),
+# runtime, and the fork's build knows the mod interfaces Orbital Laser uses (world.carry-player is the newest it needs),
 # which stock Horizon doesn't.
 if [ "${ORBITAL_NO_CHECK:-}" != 1 ] && command -v grep >/dev/null 2>&1; then
   if LC_ALL=C grep -q -a -F 'has no mod runtime' "$bin/horizon-client"; then
@@ -73,9 +73,9 @@ if [ "${ORBITAL_NO_CHECK:-}" != 1 ] && command -v grep >/dev/null 2>&1; then
       "Build it again with:  cargo build --release -p horizon-client --features mods" \
       "or download the ready-made build from $RELEASES."
   fi
-  if ! LC_ALL=C grep -q -a -F 'push-player' "$bin/horizon-client"; then
+  if ! LC_ALL=C grep -q -a -F 'carry-player' "$bin/horizon-client"; then
     fail "$bin/horizon-client isn't the Orbital Laser build of Horizon (stock Horizon, or a fork build older than" \
-      "release orbital-mod-api-8), so it can't run the mod." \
+      "release orbital-mod-api-10), so it can't run the mod." \
       "Download the build from $RELEASES and unpack it to ~/horizon-orbital (or set HORIZON_ORBITAL to its folder)." \
       "(ORBITAL_NO_CHECK=1 ./play.sh starts it anyway.)"
   fi
