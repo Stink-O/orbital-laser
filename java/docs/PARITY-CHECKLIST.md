@@ -1,6 +1,6 @@
 # Parity checklist
 
-Every feature of the Horizon version (the Rust mod on `main`, v0.5.7), and where the Java port stands. This is the
+Every feature of the Horizon version (the Rust mod on `main`, v0.5.8), and where the Java port stands. This is the
 detailed version of [../PARITY.md](../PARITY.md). Update both with every change.
 
 **Status:** **done** (looks, sounds and plays the same) · **partial** (there, but simplified or incomplete) · **not
@@ -31,10 +31,11 @@ equivalent of here; the port uses commands only).
 | Nuke | done | done | partial (simplified) | knockback not started; main and alt blast sounds work |
 | Rod from God | not started | not started | not started | new in 0.5.7; no plan, pass or command |
 | Supercell | not started | not started | not started | new in 0.5.7; no plan, pass or command |
+| Hurricane | not started | not started | not started | new in 0.5.8; no plan, pass or command; it carries the player round its eye (the fork's `world.carry-player`), which needs a Java equivalent |
 
 Shader status: the pass for `strike.wgsl` (Plasma, Godly, Black Hole, Meteor Storm, Mothership), `payload.wgsl` and
 `nuke.wgsl` is translated and works. Not translated: `downfall.wgsl`, `planetkiller.wgsl`, `crystalbloom.wgsl`,
-`sinkhole.wgsl`, `rod.wgsl`, `supercell.wgsl`. The translator (`tools/build_shader.py`) is generic, but each new pass
+`sinkhole.wgsl`, `rod.wgsl`, `supercell.wgsl`, `hurricane.wgsl`. The translator (`tools/build_shader.py`) is generic, but each new pass
 needs its own patches and an in-game check on OpenGL 3.3 (see [MINECRAFT-26.3-NOTES.md](MINECRAFT-26.3-NOTES.md)).
 
 ## Items and input
@@ -78,7 +79,7 @@ list of buttons.
 | `/orbital wheel` | yes | done |
 | `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership` | yes | done |
 | `/orbital downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke` | yes | done (their looks vary as above) |
-| `/orbital rod`, `/orbital supercell` | yes | not started |
+| `/orbital rod`, `/orbital supercell`, `/orbital hurricane` | yes | not started |
 | `/orbital terrain on\|off` | yes | done |
 | `/orbital stop` | yes | done: clears every strike's blocks, sounds, particles, picture, force-loaded chunks |
 | `/orbital skip SECONDS` | yes | done (terrain off only, up to 120 s) |
@@ -102,6 +103,7 @@ list of buttons.
 | Feature | Status | Notes |
 |---|---|---|
 | Terrain damage off at start | done | |
+| No pop-up messages; "NO TARGET IN RANGE" and the designator's countdown (0.5.8) | not started | the port still shows its action-bar messages (on by default) |
 | Settings kept between sessions | **not started** | Java keeps them per player in memory; the Rust mod saves them to a file |
 | Several strikes at once | done | each has its own clock, parameters and table; they share the per-tick budgets |
 | Per-tick budgets (20,000 blocks, 400 commands) | done | shared across strikes |

@@ -1,6 +1,6 @@
 # Parity with the Horizon version
 
-What the Java port has against the Horizon version (the Rust mod on `main`, v0.5.7). Update this table with every
+What the Java port has against the Horizon version (the Rust mod on `main`, v0.5.8). Update this table with every
 change. "Done" means it looks, sounds and plays the same.
 
 The detailed, feature-by-feature version is [docs/PARITY-CHECKLIST.md](docs/PARITY-CHECKLIST.md).
@@ -33,6 +33,7 @@ The detailed, feature-by-feature version is [docs/PARITY-CHECKLIST.md](docs/PARI
 | Nuke | done | done | partial (simplified) | knockback missing |
 | Rod from God | missing | missing | missing | new in 0.5.7 |
 | Supercell | missing | missing | missing | new in 0.5.7 |
+| Hurricane | missing | missing | missing | new in 0.5.8; carries the player (the fork's `world.carry-player`) |
 
 The Sound and World changes columns for the four lasers marked "partial (simplified)" come from the port's own notes.
 Check each against the Horizon version before marking it done.
