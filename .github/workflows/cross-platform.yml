@@ -1,0 +1,107 @@
+# Orbital Laser on every platform: the native mod built as Horizon's launcher builds it (on Linux, Windows and macOS on
+# Apple Silicon), the fork's WebAssembly mod, and every post pass through naga to SPIR-V, MSL and HLSL.
+# A draft for a test branch of Stink-O/orbital-laser; the branch also carries native/ (the bundle: assemble.sh,
+# package.py, engine-shim/, mixins/orbital_laser/ without its generated engine/) and tools/xshader/.
+name: cross-platform
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci-cross-platform]
+
+env:
+  HORIZON_REV: c06a83b1caa17ba7c9a7868f02645148436b2a6e   # the bundle's pin (horizon-mixin.toml)
+  MIXINS_REV: a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab    # the launcher's horizon-mixins (horizon-native.json)
+  RUST: 1.99.1                                            # the launcher's own toolchain
+
+jobs:
+  package:
+    name: package (the two files players install)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "${{ env.RUST }}" }
+      - name: Assemble the bundle and the content, and package them
+        run: |
+          REPO=$PWD REF=HEAD native/assemble.sh
+          mkdir -p content && git archive HEAD orbital-laser-mod orbital-sounds | tar -x -C content
+          cp -r content/orbital-laser-mod content/orbital && cp -r content/orbital-sounds/assets/orbital/. content/orbital/assets/orbital/
+          python3 native/package.py content/orbital dist
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with: { name: packages, path: dist/ }
+      - name: Every post pass through naga (SPIR-V, MSL, HLSL)
+        run: |
+          cargo build --release --manifest-path tools/xshader/Cargo.toml
+          E=native/mixins/orbital_laser/engine/data
+          tools/xshader/target/release/xshader native/engine-shim/mod_post.wgsl $E/shaders/strike.wgsl $E/gen/*.wgsl | tee shaders.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: shaders, path: shaders.txt }
+
+  native:
+    name: native build (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu      # the launcher's Windows host: MinGW, no Visual Studio
+          - os: macos-14
+            target: aarch64-apple-darwin       # Apple Silicon; the launcher has no toolchain for Intel Macs
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run: { shell: bash }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: packages, path: dist }
+      - name: Rust ${{ env.RUST }} on the launcher's host
+        run: |
+          rustup toolchain install "$RUST-${{ matrix.target }}" --profile minimal
+          rustup default "$RUST-${{ matrix.target }}"
+          rustc -vV
+      - name: MinGW-w64 as the launcher brings it (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -fsSL -o mingw.zip https://github.com/brechtsanders/winlibs_mingw/releases/download/16.2.0posix-23.1.3-14.0.0-msvcrt-r3/winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64msvcrt-14.0.0-r3.zip
+          echo "62af32ea58acdea1318ea5dd8eb7017eaee694dd40b269d52a59c769dcfefb82  mingw.zip" | sha256sum -c
+          7z x -y mingw.zip > /dev/null
+          echo "$PWD/mingw64/bin" >> "$GITHUB_PATH"
+      - name: The system's libraries (Linux), as the launcher asks for them
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libasound2-dev libudev-dev
+      - name: horizon-mixins at the bundle's commit
+        run: cargo install --locked --git https://github.com/horizon-rust/horizon-mixins --rev "$MIXINS_REV" horizon-mixins-cli --root tools
+      - name: Horizon's source at the pin, the bundle applied (the launcher's native build)
+        run: |
+          curl -fsSL "https://github.com/horizon-rust/horizon/archive/$HORIZON_REV.tar.gz" | tar -xz
+          mv "horizon-$HORIZON_REV" source && echo -n "$HORIZON_REV" > source/.horizon-revision
+          find source -type l -delete
+          mkdir -p mods && (cd mods && unzip -q ../dist/orbital_laser.hnmod && mv mixins/orbital_laser orbital_laser)
+          tools/bin/horizon-mixins apply --workspace source --mods mods --out stage
+      - name: cargo build --release
+        run: |
+          cd stage
+          cargo build --locked --release -p horizon-client --bin horizon-client 2>&1 | tee ../build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "build-${{ matrix.os }}", path: build.log }
+
+  fork-mod:
+    name: the fork's WebAssembly mod
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - name: cargo-horizon-mod from the fork
+        run: cargo install --locked --git https://github.com/Stink-O/horizon --branch mod-api-atlas cargo-horizon-mod
+      - name: Build the mod and check the post passes
+        run: |
+          python3 tools/build_mod.py
+          tools/check-shader.sh

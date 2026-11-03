@@ -1,0 +1,8 @@
+[package]
+name = "xshader"
+version = "0.1.0"
+edition = "2024"
+publish = false
+[dependencies]
+naga = { version = "=30.0.1", features = ["wgsl-in", "spv-out", "msl-out", "hlsl-out"] }
+[workspace]
