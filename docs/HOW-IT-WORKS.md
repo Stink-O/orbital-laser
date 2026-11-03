@@ -202,6 +202,36 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   more as the bolts draw in. From 32.5 s the rain stops and the storm dies away; it ends at 42 s. It reaches 1000
   blocks.
 
+- **Hurricane** (page three, `/orbital hurricane`). A hurricane spun up over the target, no beam, some 3,500 blocks
+  across and 450 high. While the designator is held its countdown reads `TRACKING STORM`. Over the first six seconds
+  a ragged mass of towering storms gathers over the target; to about 16 s it is drawn into three trailing rain bands
+  wound tighter and tighter round a dense core, each part coming together at its own time, the core first. The eye
+  opens from a pinhole into a stadium by about 17 s: a billowed wall flaring out as it rises, its far side sunlit from
+  the rim, clear sky straight overhead, an open moat round its foot, and from above one shield of cloud running out
+  from the eyewall's top with the bands feathering out of it and cirrus streaming over it all. Rain falls in the world
+  round you (the world's weather is left alone), none in the eye. Lightning bursts in the eyewall at 16-28 s and again
+  at 43-46 s, about a third of it bolts out of the eyewall's flank across the moat, the brightest flashes lighting the
+  cloud; the thunder arrives late with the distance. The wind spins up to full strength by 26 s (40 blocks a second at
+  the eyewall). From 15 s its front tears the land up, out from the eyewall (62 blocks out) in to 32 and out to 150 by
+  35 s: the plants and leaves stripped first, then the trees, the ground's top blocks and the buildings, roofs first.
+  Nothing appears in the air: every block rises out of the land behind the front and climbs round the eyewall in
+  thirteen rings, in the game's own textures, coloured by what was torn up under each ring; leaves and glass are seen
+  through as the game draws them. Most trees are shredded where they stand; others go up whole, snap at the trunk
+  (leaving a stump of one to four logs) or are lifted whole and break apart in the air into twelve tumbling pieces;
+  pieces of buildings are lifted off whole too. Mobs and dropped items are carried round with it (terrain on). With
+  KNOCKBACK on the wind picks you up when its front reaches you (anywhere from the eye's edge out to 175 blocks,
+  flying, standing, falling, gliding or swimming), eases you into the spin and carries you round the eyewall with the
+  debris, about 108 blocks out and 50 up, buffeted by gusts, your view turning a little with you (`/orbital carryview
+  still` keeps it your own). **To break free, hold sneak for half a second**; a creative player is put back into
+  flight. While you fly you are left alone; stop flying (land, or drop out of flight in mid-air) for a second while
+  the wind still blows where you are and it grabs you again. At 46 s the winds drop and everything is flung out: the
+  field's blocks fall and shatter to dust where they hit, the trees and the pieces settle into the poses they land in
+  as real blocks, and you are swept out and thrown at about 47 s, out, round with the wind and up, then left to the
+  game's physics (a player who can't fly gets 12 s of Resistance V so the landing doesn't kill them). Everything is
+  down by about 52 s; from 54 s the eyewall collapses, the eye fills and the cloud thins away from its edges, all of it
+  gone by 63.4 s; it ends at 64 s. It reaches 1000 blocks. **Photosensitivity:** the eyewall's lightning is bright
+  flashes over much of the picture, in bursts.
+
 All of them:
 
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
@@ -324,13 +354,32 @@ and every fire within 150 blocks twice as it ends (the finale's too); those edit
 is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
 goes in through `world.edit-blocks`.
 
+The **Hurricane** digs no crater: it strips the land round its eyewall, block by block as it was read
+(`world.read-columns`, out to 180), as its wind's front reaches each chunk, from 15 s in to 32 blocks and out to 150 by
+35 s. It takes the trees (logs, wood, stems, leaves, mushroom caps) and the light things people put up (fences,
+carpets, signs, torches, pots) out to 150; the plants and what lies on the land (grass, flowers, crops, cane, cactus,
+vines, moss, snow and the like) out to 175, the leaves all the way to 158 and in patches past it; the land's own top
+one to three blocks between 34 and 105 (deepest under the eyewall), where nothing built is left standing on it; and
+everything built, whatever it is made of, by how hard the wind blows and how exposed it is: all of it out to about
+100, further out roofs and high blocks first and fewer and fewer, nothing past 150 (a column's roof as the front
+reaches it, its walls, floor and the ground under them one to four seconds later). The calm eye (26 blocks) is left
+alone. What stays: water and what grows in it, blocks that can't be broken (bedrock, barriers, portal frames, command
+and structure blocks, spawners), any block it doesn't know (a mod's), and blocks that hold items (chests, barrels,
+shulker boxes, furnaces, hoppers, lecterns, shelves), left in place with what is in them. At 46 s it flings it all out:
+up to 128 trees and pieces of buildings come down as real blocks lying where they land (logs along their fall, leaves
+that don't decay, at most 160 blocks a piece), and 2,400 blocks of rubble from what flew round each ring land one to a
+column on the ground out to about 170 (never into water, never into you). Mobs and items out to about 176 are carried
+round and, at the fling, thrown out to fall: the fall hurts them, but nothing is killed outright. You are carried and
+thrown with KNOCKBACK on, terrain damage on or off. It keeps the chunks within 184 loaded while it works. All of it
+goes in through `world.edit-blocks`.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator and the Remote in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -339,7 +388,8 @@ goes in through `world.edit-blocks`.
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke or the Rod is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) and the Hurricane's carry on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
+| `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
 | `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
@@ -360,7 +410,8 @@ The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's m
 | `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
 | `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (the Crystal Bloom's spires and pieces, and where each piece comes to rest), and the camera shake |
-| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the big lasers' land goes straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs and the Payload and the Nuke sweep and scorch (`world.read-columns`: the names of the blocks round each column's top), sets your flying speed, and throws you back as the Nuke's shockwave passes (`world.push-player`) |
+| `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the big lasers' land goes straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs and the Payload and the Nuke sweep and scorch (`world.read-columns`: the names of the blocks round each column's top), sets your flying speed, throws you back as the Nuke's shockwave passes (`world.push-player`), carries you round the Hurricane (`world.carry-player`), and asks whether you are flying (`game.player-flying`) |
+| `atlas` | the game's own block textures in the post pass (`atlas.block-sprites`, bindings 8 and 9), so the Hurricane's flying blocks and trees look like the blocks they were |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -371,9 +422,11 @@ Horizon's API 0.1 still load unchanged. The mod reads its events with `input.pol
 which is what keeps that true. The fork's later additions (`world.set-flying-speed`, `input.poll-typed`,
 `world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`,
 `world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
-`orbital-mod-api-8`) are needed too: a fork build without them won't start the mod. `orbital-mod-api-7` added a
-half-size stage to a mod's post pass (no new import: the pass's source says whether it has one), which QUALITY FAST
-uses.
+`orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
+`orbital-mod-api-10`) are needed too: a fork build without them won't start the mod, so 0.5.8 needs
+`orbital-mod-api-10` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
+driver can't build instead of crashing.
 
 A strike's world changes go through a budget of 20,000 blocks and 400 commands a tick, and the rest wait for the next
 tick. The Planet Killer's crater is too big for commands, so it is written straight into the chunks with
@@ -559,6 +612,17 @@ every second, three-second copies whose constant-power windows overlap into one 
 as Horizon plays it (every file summed to mono, as the game decodes it, 0.596 in each ear, on its tick, then the game's
 output limiter): every file's decoded true peak is under -1.15 dBTP.
 
+The Hurricane's ([`tools/sounds_hurricane.py`](../tools/sounds_hurricane.py)) are three continuous beds a minute long,
+each played once from the strike's start with the storm's whole life written into it, so nothing restarts or steps:
+the wind round you (a hush, then gusts rising out of it, buffeting, a howl climbing with each gust, as hard as the
+storm blows at that moment), the eyewall's roar (a deep turbulent rumble with a freight-train roar boiling over it;
+`roar_far`, darker, past 330 blocks) and wind-driven rain; the plan only sets their levels by the distance. Over them,
+now and then and quieter, debris in the gusts, trees cracking and tearing out where they are torn up, and whooshes
+going past while you are carried (none in the eye), built from field-recording pieces (`tools/hu_foley.py`). The
+eyewall's lightning has its thunder, timed to the pass's flashes and late by the distance: a bright ragged crack
+within about 110 blocks, a duller clap with a longer roll to 320, mostly roll further off, and a roll up in the cloud
+for a flash that strikes nothing. `--listen DIR` mixes it as the game plays it at 60, 150 and 500 blocks and carried.
+
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
 slope once the world has said them (`world.surface-height`), the waterfalls, where the rim's columns stand under
@@ -668,6 +732,21 @@ bloom, five forks branching down and fading; the flurry's thinner and dimmer (`s
 drawn in under the wall cloud's middle (`sc_conv`); only the bolts due looked at, from the table's per-second index; a few positive bolts from the anvil, brighter; spider lightning crawling
 along the cloud's base with the flickers; all hidden by what stands in front. QUALITY FAST marches the cloud, the rain and the funnels at half size: at 1920x1080 FAST costs
 about 1.8 to 2.8 ms and FULL 2.3 to 8.3 ms (the most under the cloud near the end of the storm).
+
+The Hurricane's pass ([`mod/shaders/hurricane.wgsl`](../mod/shaders/hurricane.wgsl)) reads its table from
+[`strike/hurricane.rs`](../mod/src/strike/hurricane.rs) (`render.set-data`): the trees and pieces of buildings it
+lifts whole (up to 128, each a rigid group of voxels with its path and, once worked out, where and how it lands), each
+ring's colours (a weighted sample of what was torn up under it) and the land's height round the middle. The cloud is
+one raymarched volume: its plan (the bands, the dense overcast, the eye and its moat, the cirrus) from gradient noise,
+its surfaces displaced by 3D noise rather than its body thinned, lit from its top down with one self-shadow sample, the
+march jittered per pixel; it gathers and breaks up soft-edged and is solid at its height. The flying blocks sit in
+thirteen rings of 3-block cells round the eyewall, each column of a ring's cells climbing at its own speed so they
+never line up into a lattice; blocks, trees and pieces are drawn with the game's own textures (the `atlas` capability:
+`atlas.block-sprites`, repacked when the game's resources change), cut-out and translucent faces seen through as the
+game draws them, with each block type's average colour as the fallback and for the far land. The rain is lines of
+drops in the world round the camera, strung the way they fall and blown with the wind, on grids in four layers out. The
+lightning is a fifth-of-a-second slot each in bursts, the brightest flash lighting the cloud. QUALITY FAST marches the
+cloud at half size and finds each two by two's nearest block or tree there, the join drawing it sharp.
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)
