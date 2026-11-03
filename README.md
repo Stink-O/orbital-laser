@@ -50,28 +50,21 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > a user (the fork built from source); on macOS the Downfall's effects may not draw (see [Known gaps](#known-gaps)). The
 > ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.8](#new-in-058) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [New in 0.5.9](#new-in-059) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
-## New in 0.5.8
+## New in 0.5.9
 
-<!-- HURRICANE STILL GOES HERE: one still of the Hurricane, 720 wide, centred like the 0.5.7 one was:
-<p align="center"><img alt="..." width="720" src="docs/45-hurricane-....jpg"></p>
--->
-
-- **Hurricane**, the fourteenth laser, on the wheel's third page and `/orbital hurricane`. A hurricane some 3,500
-  blocks across spins up over the target: storms gather into spiral rain bands round a dense core, the eye opens into
-  a stadium of cloud and lightning bursts in the eyewall. The wind tears the land up round the eyewall, trees,
-  buildings and the ground's top blocks, and whirls thousands of blocks round the eye in the game's own textures,
-  whole trees tumbling among them. Mobs are carried round, and so are you (hold **sneak** for half a second to break
-  free). At 46 seconds it flings everything out and it comes down as real blocks, then the cloud breaks up. It has its
-  own sounds, rain and thunder, and lasts 64 seconds. **Photosensitivity:** its lightning is bright flashes in bursts.
-- **No more pop-up messages.** The strikes' messages over the hotbar are gone, and so is the MESSAGES switch. Only two
-  things still show there: the designator's countdown while you hold it on a target, and NO TARGET IN RANGE. Firing
-  during a strike just clicks.
-- **Needs the next Orbital Laser build of Horizon, `orbital-mod-api-10`** (it adds the game's block textures for the
-  mod's effects and the Hurricane's carry). Older builds won't start the mod.
+- **The Orbital Remote is gone.** The Designator is the one item: `/orbital give` gives you it, and **R** with it in
+  hand opens the laser wheel. A Remote already in a world's inventory turns into an empty slot.
+- **R opens the wheel only while you hold the Designator.** With anything else in hand R is left alone for whatever
+  else you use it for. `/orbital wheel` still opens the wheel from anywhere.
+- **Leaving the world ends the strike.** Before, a strike carried on into the next world you opened. Now it ends
+  as you leave, and the chunks it forceloaded are let go the next time you play that world. The pause menu holds the
+  strike where it is, sounds included, until you go back to the game.
+- **A known gap in Horizon:** the game doesn't stop the sounds playing when you Save and Quit to Title, so a strike's
+  sounds can run on over the title screen until they end. It needs a fix in Horizon itself.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -244,7 +237,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
    `play.sh` can't find the build it says what's missing (started without a terminal, it also writes that to
    `play-error.txt` beside it).
 
-4. **In the game,** type `/orbital give` for the Designator and the Remote.
+4. **In the game,** type `/orbital give` for the Designator.
 
 ## Set it up with an AI agent
 
@@ -292,10 +285,11 @@ Mods), read the reason it gives first.
 
 ## How to play
 
-1. Type **`/orbital give`** for the **Orbital Laser Designator** and the **Orbital Remote**.
-2. **Pick a laser.** Right-click with the remote, or press **R**, and the laser wheel opens. Point at a laser to read
-   what it does and click to load it. The arrows either side of the ring, the tabs over it or a right-click turn the
-   page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices are remembered.
+1. Type **`/orbital give`** for the **Orbital Laser Designator**.
+2. **Pick a laser.** Press **R** with the designator in hand (or type `/orbital wheel`) and the laser wheel opens. Point
+   at a laser to read what it does and click to load it. The arrows either side of the ring, the tabs over it or a
+   right-click turn the page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices
+   are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar counts
    down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
    `TRACKING STORM…` for the Hurricane), then the strike lands where your crosshair is. Nothing else pops up over the
@@ -331,7 +325,7 @@ The wheel also has:
 
 | Command | What it does |
 |---|---|
-| `/orbital give` | gives you the Designator and the Remote |
+| `/orbital give` | gives you the Designator |
 | `/orbital wheel` | opens the laser wheel |
 | `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
@@ -368,7 +362,8 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
   prepared resources. Double-clicking `play.sh` in a file manager may show nothing: run it from a terminal to see its
   messages (or read `play-error.txt` beside it).
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
-  and rebind it. R only opens the wheel while you play, not over another screen.
+  and rebind it. R only opens the wheel while you play with the designator in hand, not over another screen. With
+  anything else in hand it does nothing (`/orbital wheel` opens the wheel either way).
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
   the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell and the Hurricane can aim, and only with **LOD Distance** on in Video Settings.
 - **The designator only clicks.** A strike is already under way, and one runs at a time. Wait for it to finish, or end

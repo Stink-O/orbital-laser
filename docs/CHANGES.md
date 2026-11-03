@@ -1,6 +1,34 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-058); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-059); each release's notes are in [docs/releases](releases).
+
+## 0.5.9
+
+- **The Orbital Remote is removed.** The Designator is the mod's one item now. `/orbital give` gives only the
+  Designator, and the wheel opens with **R** while you hold it, or with `/orbital wheel`. A Remote left in an old
+  world's inventory loads as an empty slot: it does nothing and breaks nothing.
+- **R opens the wheel only with the Designator in hand.** With anything else in hand the mod ignores R.
+- **Leaving the world mid-strike ends the strike.** Nothing of it carries into the next world: its plan, the land
+  changes still waiting and its sounds still to come are dropped. The chunks it forceloaded are let go the next time
+  that world is played (also after the game was closed mid-strike). The pause menu already held a strike still,
+  sounds included; that is unchanged.
+- Known gap: Horizon doesn't stop sounds that are playing when you Save and Quit to Title (its own too), so a
+  strike's sounds can run on over the title screen. That needs an engine fix.
+
+## 0.5.8
+
+- **Hurricane**, the fourteenth laser, on the wheel's third page and `/orbital hurricane`. A hurricane some 3,500
+  blocks across spins up over the target: storms gather into spiral rain bands round a dense core, the eye opens into
+  a stadium of cloud and lightning bursts in the eyewall. The wind tears the land up round the eyewall, trees,
+  buildings and the ground's top blocks, and whirls thousands of blocks round the eye in the game's own textures,
+  whole trees tumbling among them. Mobs are carried round, and so are you (hold **sneak** for half a second to break
+  free). At 46 seconds it flings everything out and it comes down as real blocks, then the cloud breaks up. It has its
+  own sounds, rain and thunder, and lasts 64 seconds. **Photosensitivity:** its lightning is bright flashes in bursts.
+- **No more pop-up messages.** The strikes' messages over the hotbar are gone, and so is the MESSAGES switch. Only two
+  things still show there: the designator's countdown while you hold it on a target, and NO TARGET IN RANGE. Firing
+  during a strike just clicks.
+- **Needs the next Orbital Laser build of Horizon, `orbital-mod-api-10`** (it adds the game's block textures for the
+  mod's effects and the Hurricane's carry). Older builds won't start the mod.
 
 ## 0.5.7
 

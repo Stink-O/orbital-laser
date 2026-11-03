@@ -254,7 +254,7 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the two items), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell` or `hurricane`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell` or `hurricane`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell and the Hurricane on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
@@ -274,15 +274,28 @@ between sessions, default FAST) picks whether the Payload's, the Nuke's and the 
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7` (an older fork would compile the same source and draw its `fs_main` at full size; FAST needs no
 import of its own).
-R (or right-clicking the Orbital Remote) opens the laser wheel; holding right-click with the Orbital Laser Designator for
-under a second fires. Rebind R in Options > Controls > Key Binds.
+R with the Orbital Laser Designator in hand opens the laser wheel (with anything else in hand R is left to the game;
+`/orbital wheel` opens it from anywhere); holding right-click with the designator for under a second fires. Rebind R in
+Options > Controls > Key Binds. There is no Orbital Remote any more (0.5.9): a Remote left in an old world's inventory
+loads as an empty slot, does nothing and breaks nothing.
+
+**Leaving the world mid-strike ends the strike** (`left_world` in lib.rs): the API has no leave hook, so the mod takes a
+tick with no player, or a world clock more than `SAME_PLAY` ticks off from the last one, as having left. The strike,
+every world change waiting and its cleanups are dropped there (nothing carries into the next world), and the strike's
+forceload removes, kept in storage as it fires (`FORCELOADS`, `hold_forceloads`: each with its dimension, and the clock
+span it ran in), are run the next time that world is played (`release_held`, ~2 s in, when the clock falls in that
+span). `/orbital left-world` is the same for a host that knows when the player leaves (the native glue, on
+`client_level_unload`). **Pausing** needs nothing of the mod: the game doesn't tick while paused, so the strike's clock,
+its edits and its pass stand still, and the game pauses and resumes every sound. **The game's own sounds keep playing
+after Save and Quit to Title** (the fork's and upstream's `leave_server`, which single player leaves through, doesn't
+stop them; `finish_close_world`, which does, is skipped): an engine bug the mod can't reach.
 
 `play.sh` finds things through `HORIZON_ORBITAL` (the folder with the fork's `horizon-client` and `horizon-ctl`; default
 `~/horizon-orbital`), `HORIZON_RESOURCES` (prepared resources; default `.local/horizon-client/26.3` beside the build)
 and `HORIZON_HOME` (the game folder; default `~/.local/share/horizon`).
 
 The game's control tool works on this build too: `horizon-ctl state`, `horizon-ctl command "orbital give"`,
-`horizon-ctl key r tap` (opens the wheel), `horizon-ctl screenshot out.png` (without the mod's post pass), and
+`horizon-ctl key r tap` (opens the wheel with the designator in hand), `horizon-ctl screenshot out.png` (without the mod's post pass), and
 `horizon-ctl record out.mp4 60` / `horizon-ctl record stop` (the finished frames, effects included; F1 hides the HUD).
 
 ## Layout

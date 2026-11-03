@@ -377,7 +377,7 @@ goes in through `world.edit-blocks`.
 
 | Command | What it does |
 |---|---|
-| `/orbital give` | puts the Designator and the Remote in your inventory |
+| `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
 | `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
@@ -403,11 +403,11 @@ search box).
 ## The mod
 
 The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's mod sandbox. It is one folder: the code
-(`mod.wasm`), the two items with their models and textures, and the sounds. It uses these capabilities:
+(`mod.wasm`), the designator with its model and texture, the laser icons, and the sounds. It uses these capabilities:
 
 | Capability | What the mod does with it |
 |---|---|
-| `input` | claims the two items' right-clicks (use-start, use-stop, ticks held), registers the **R** keybind, and reads what you type in the wheel's speed box |
+| `input` | claims the designator's right-clicks (use-start, use-stop, ticks held), registers the **R** keybind (it opens the wheel only with the designator in hand), and reads what you type in the wheel's speed box |
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
 | `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (the Crystal Bloom's spires and pieces, and where each piece comes to rest), and the camera shake |
 | `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the big lasers' land goes straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs and the Payload and the Nuke sweep and scorch (`world.read-columns`: the names of the blocks round each column's top), sets your flying speed, throws you back as the Nuke's shockwave passes (`world.push-player`), carries you round the Hurricane (`world.carry-player`), and asks whether you are flying (`game.player-flying`) |
@@ -764,6 +764,18 @@ smaller quick jolts fading over the next 1.7 s, over a long faint rumble.
 `tools/preview.py payload ... --views plref` looks at it as the clip it follows was filmed (450 blocks off in a wood,
 a 59 degree field of view); `plhill`, `plhilllow` and `plhillside` over hills; `pl3far`, `pl3close` and `pl3col` as the
 third clip has it (1,600 blocks off looking up at the trail, and 230 off at the object and the column).
+## Pausing and leaving the world
+
+A strike plays on the game's ticks, and the game doesn't tick while it is paused, so the pause menu holds the strike
+where it is: its clock, the land it is changing and its effects stand still, and the game pauses its sounds and
+resumes them where they were. Leaving the world mid-strike ends the strike there: nothing of it goes on into the next
+world you open. The chunks it forceloaded are let go the next time you play that world (about two seconds in), so a
+save isn't left holding them, even if the game was closed mid-strike. The mod has no hook for leaving a world, so it
+finds out on the first tick it is out of one (no player) or in another (the world clock somewhere else).
+
+Horizon itself doesn't stop sounds that are playing when you Save and Quit to Title, so the strike's sounds (and any of
+the game's own, a music disc say) can go on over the title screen until they end. That needs a fix in the game.
+
 ## Stock Horizon
 
 0.1's setup ran on stock Horizon builds from before 24 October 2026, when Horizon removed shader packs (it won't work on newer ones), with Plasma and Godly (the other lasers are mod-only): a shader pack, a sound pack and the item mod, run by
