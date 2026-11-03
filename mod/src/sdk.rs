@@ -112,12 +112,13 @@ pub mod fake {
                                     _ => Tint::None,
                                 };
                                 Face {
+                                    // (`1` cut out, `2` translucent)
                                     sprite: Sprite { array: 0, layer: v[0].parse().unwrap_or(0), animated: false, cutout: v[1] == "1" },
                                     rect: (0.0, 0.0, 1.0, 1.0),
                                     inset: 0.0,
                                     uv: (n(3), n(4), n(5), n(6), n(7), n(8)),
                                     tint,
-                                    translucent: false,
+                                    translucent: v[1] == "2",
                                 }
                             })
                             .collect()

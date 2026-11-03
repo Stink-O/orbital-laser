@@ -239,8 +239,9 @@ fn bk_words(b: u16, grass: u32, foliage: u32) -> [u32; HU_BKW] {
     w
 }
 /// A side's faces as the pass reads them, three words: its first face (whole, on the side's plane), the face laid over
-/// it if any (a grass block's tinted overlay), each `1 | cutout << 1 | layer << 2` and its tint (5-6-5, 0xFFFF none)
-/// over it; then how the texture runs across the side (u0, v0, du-u, du-v, dv-u, dv-v, each -1, 0 or 1, two bits
+/// it if any (a grass block's tinted overlay), each `1 | cutout << 1 | layer << 2 | translucent << 15` (the pass sees
+/// through a cut-out face's clear pixels and partly through a translucent one) and its tint (5-6-5, 0xFFFF none) over
+/// it; then how the texture runs across the side (u0, v0, du-u, du-v, dv-u, dv-v, each -1, 0 or 1, two bits
 /// apiece). A face in a sprite array past the first (a content mod's) is left to its colour.
 fn face_words(faces: &[atlas::Face], grass: u32, foliage: u32) -> [u32; 3] {
     let tint = |t: &atlas::Tint| -> u32 {
@@ -254,10 +255,10 @@ fn face_words(faces: &[atlas::Face], grass: u32, foliage: u32) -> [u32; 3] {
         c565([(c >> 16) as u8, (c >> 8) as u8, c as u8])
     };
     let word = |f: &atlas::Face| -> u32 {
-        if f.sprite.array != 0 || f.sprite.layer >= 1 << 14 {
+        if f.sprite.array != 0 || f.sprite.layer >= 1 << 13 {
             return 0;
         }
-        1 | u32::from(f.sprite.cutout) << 1 | f.sprite.layer << 2 | tint(&f.tint) << 16
+        1 | u32::from(f.sprite.cutout) << 1 | f.sprite.layer << 2 | u32::from(f.translucent) << 15 | tint(&f.tint) << 16
     };
     let mut w = [0u32; 3];
     let flat: Vec<&atlas::Face> = faces.iter().filter(|f| f.inset < 0.01).collect();
@@ -1917,7 +1918,21 @@ mod table {
         let laser = crate::lasers::LASERS.iter().find(|l| l.key == "hurricane").unwrap();
         let ev = crate::strike::plan(laser, &target, true, "minecraft:overworld", seed, [0.5, 66.0, 300.5], 0);
         let mut data: Vec<u32> = Vec::new();
-        let answer = move |x: i32, z: i32, b: u32, a: u32| synth_column(x, z, b, a, 65, hills, forest);
+        // (HU_GLASS=1: some of the land's top blocks glass, stained glass and ice, to see the pass draw them through)
+        let glass = std::env::var("HU_GLASS").is_ok_and(|v| v == "1");
+        let answer = move |x: i32, z: i32, b: u32, a: u32| {
+            let mut c = synth_column(x, z, b, a, 65, hills, forest);
+            let h = (x as u32).wrapping_mul(2_654_435_761) ^ (z as u32).wrapping_mul(40_503);
+            if glass && (h >> 7) % 5 < 2 {
+                const GLASS: [&str; 4] = ["minecraft:glass", "minecraft:red_stained_glass", "minecraft:light_blue_stained_glass", "minecraft:ice"];
+                if let Some((_, v)) = c.as_mut() {
+                    for s in v.iter_mut().filter(|s| **s == "minecraft:grass_block") {
+                        *s = GLASS[((h >> 13) % 4) as usize];
+                    }
+                }
+            }
+            c
+        };
         crate::columns::clear();
         let mut ev = ev;
         ev.sort_by(|a, b| b.0.total_cmp(&a.0));

@@ -8,7 +8,8 @@ the fork's atlas.block-sprites would describe them, near enough, for the tests' 
 
 atlas.raw: `w h layers levels` as four little-endian u32, then each mip level's layers in turn, RGBA8 (the textures'
 first frames, gamma-encoded as the game's). atlas.txt: a line a block, `name|down|up|north|south|west|east`, each side
-its faces `layer,cutout,tint,u0,v0,duu,duv,dvu,dvv` joined by `;` (tint `-`, `grass`, `foliage`, or `#RRGGBB`).
+its faces `layer,cutout,tint,u0,v0,duu,duv,dvu,dvv` joined by `;` (cutout `0` solid, `1` cut out, `2` translucent; tint
+`-`, `grass`, `foliage`, or `#RRGGBB`).
 """
 import struct, sys
 from pathlib import Path
@@ -17,7 +18,7 @@ import hu_blocks as H
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
-layers, index = [], {}
+layers, index, kinds = [], {}, []
 
 
 def layer(texture):
@@ -33,6 +34,11 @@ def layer(texture):
         im = im.crop((0, 0, w, w))
     index[t] = len(layers)
     layers.append(im.resize((16, 16), Image.NEAREST))
+    # (what the game's atlas says of it, near enough, from its alpha: partly clear pixels translucent (stained glass,
+    # ice), clear ones cut out (leaves, glass, flowers), else solid)
+    a = list(im.getchannel("A").tobytes())
+    mid = sum(1 for v in a if 16 < v < 240) / len(a)
+    kinds.append("2" if mid > 0.2 else "1" if min(a) < 128 else "0")
     return index[t]
 
 
@@ -63,7 +69,7 @@ for n in sorted({s[0] for s in H.facts["states"]}):
             tint = "-"
             if "tintindex" in d:
                 tint = "grass" if b in H.GRASS else "#619961" if b == "spruce_leaves" else "#80a755" if b == "birch_leaves" else "foliage"
-            cut = "1" if b.endswith("_leaves") or "glass" in b else "0"
+            cut = kinds[ly]
             faces.append(f"{ly},{cut},{tint}," + ",".join(str(v) for v in UVS[side]))
         sides.append(";".join(faces))
     lines.append(n + "|" + "|".join(sides))

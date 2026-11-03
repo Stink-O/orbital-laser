@@ -102,9 +102,14 @@ laser, command, capability and timing). This file is the short, factual version 
 - **The Hurricane** (`strike/hurricane.rs`, `carry.rs`, `shaders/hurricane.wgsl`; 64 s): a storm some 3,500 across
   and 450 high (the picture of Florence from the space station is the reference). A ragged mass of towering storms
   gathers (0-6 s) and is drawn into three trailing bands wound tighter round a dense core as it organises (`hu_org`,
-  to 16 s), the eye opening from a pinhole by 17 s into a stadium (`hu_flare`: its billowed face, `hu_eyeface`, flaring
+  to 16 s; each place comes together at its own time, `hu_mature`: the core first, then out along the bands, by a broad
+  noise, eased, so no step or ramp shows over the whole of it, the cells' tops, softness and the bands' spread all by
+  it), the eye opening from a pinhole by 17 s into a stadium (`hu_flare`: its billowed face, `hu_eyeface`, flaring
   out as it rises, widest at the peak 36-46 s; its far wall sunlit from the rim, `hu_eyelit`), an open moat round the
-  eyewall, anticyclonic cirrus streaks over it all (`hu_col` the cloud's plan, `hu_den` its density; lit from its top
+  eyewall under the overcast's top (from above one shield runs unbroken from the eyewall's top out over the central
+  dense overcast, the bands feathering out of it, merging into it close in; each band and the overcast's edge thin at
+  its edge and domed to its middle, `HuCol.h`, never a sheer cliff; the plan's noise all gradient noise, `hu_gn2`: a
+  value noise's lattice showed through its sharp thresholds as straight cuts and chevrons), anticyclonic cirrus streaks over it all (`hu_col` the cloud's plan, `hu_den` its density; lit from its top
   down with one self-shadow sample a lit point). The eyewall's base is a little over the land so the tear-up shows
   under it. Lightning (`hu_flashes`: a fifth-of-a-second slot each, bursts at 16-28 s and 43-46 s, about a third of
   them bolts out of the eyewall's flank across the moat; the brightest lights the cloud). The wind spins up to full
@@ -123,8 +128,17 @@ laser, command, capability and timing). This file is the short, factual version 
   game version. The pass draws block types (`HU_BK`) and faces, coloured in one place (`hu_face`): with the game's own
   textures (the `atlas` capability, fork API 10: `atlas.block-sprites` packed a block type at a time by `bk_words`,
   repacked when `atlas.resources-version` changes; the pass samples bindings 8 and 9), the average colour as the
-  fallback and the far LOD. Offscreen, `tools/hu_atlas.py` makes a stand-in for the sprite arrays from the player's
-  prepared resources (tools/preview binds it as `PREVIEW_ATLAS`; the tests' fake atlas reads `HU_ATLAS_JSON`).
+  fallback and the far LOD. Seen through as the game draws them (`hu_see`, from the atlas's flags: `face_words`' cutout
+  bit and translucent bit 15, the layer in 13 bits): a cut-out face's clear pixels (leaves, glass, flowers, rails,
+  bars) show what is behind, a lone block's faces towards the eye only, a tree's leaves cell after cell (up to six, then
+  solid); a translucent block (stained glass, ice, slime) is blended over what is behind by its alpha, the nearest one
+  only, found again for its colour once the search is done (`HuHit` kept small: the searches' loops hold it all the
+  way; a translucent block in a tree or a building's piece is drawn solid). FAST hands on the nearest block or tree
+  seen through for its 2x2 (`HuHit.cid`), and the join takes the cloud of the half-size pixel that marched shortest when
+  that is the block it finds sharp (`HuJoin`), so no cloud from behind a leaf is laid over it. Offscreen, `HU_GLASS=1`
+  in the environment of tools/preview.py puts glass, stained glass and ice in the land (`hu_write_table`). Offscreen, `tools/hu_atlas.py` makes a stand-in for the sprite arrays from the player's
+  prepared resources (tools/preview binds it as `PREVIEW_ATLAS`; the tests' fake atlas reads `HU_ATLAS_JSON`, each
+  texture cut out or translucent by its own alpha).
   **Trees meet a mix of fates** (by hash, the wind's strength and the tree's size): most are shredded where they stand
   (their logs and leaves go up as the field's blocks); of those given a record, a few uprooted whole (`HU_WHOLE`, 36,
   the bigger nearer the eyewall), some snapped at the trunk (the crown and upper trunk carried off whole from the top
@@ -134,7 +148,9 @@ laser, command, capability and timing). This file is the short, factual version 
   it hits the land; no real landing of their own). The field's blocks are never a lattice: each column of a ring's
   cells climbs at its own speed and sits at its own height (`hu_column`), each block anywhere in its cell and wobbling
   there, thinned and thickened in patches, now and then two to a cell. The cloud's edges are soft and wispy while it
-  gathers and as it breaks up (`hu_soft`); the mature deck is solid.
+  gathers and as it breaks up (`hu_soft`); the mature deck is solid. At the end each place thins away to nothing at its
+  own time, the edges first, all of it gone by 63.4 s (`hu_gone`; lit from the top it has left, `HuDen.top`, so what is
+  left is never darker than the cloud was), and the land's shade under it goes with it: nothing pops out at 64 s.
   **A block's whole life, each handover seamless:** up to `HU_NT` (128) rigid voxel groups, trees and (up to 48)
   pieces of buildings lifted whole where they stood (`TreeRec`: trunk, 7x7 spans; path `tree_at`, mirrored by the
   pass's `hu_tree_at`); the field of blocks round the eyewall in 13 rings of 3-block cells (`ring_*`, the pass's
