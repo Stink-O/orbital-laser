@@ -3,6 +3,8 @@
 What the Java port has against the Horizon version (the Rust mod on `main`, v0.5.7). Update this table with every
 change. "Done" means it looks, sounds and plays the same.
 
+The detailed, feature-by-feature version is [docs/PARITY-CHECKLIST.md](docs/PARITY-CHECKLIST.md).
+
 **Status:** done · partial · missing
 
 ## Loaders

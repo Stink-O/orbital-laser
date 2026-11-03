@@ -76,7 +76,7 @@ Windows with an NVIDIA graphics card. The effects are drawn after the shader pac
 | Payload, Nuke | the original's shaders, working | simplified |
 | Downfall, Planet Killer, Crystal Bloom, Sinkhole | **not done yet** (simple stand-in effects) | simplified |
 
-The menu lists only the lasers whose looks are finished. The other four still answer to their commands
+The full list, feature by feature, is in [docs/PARITY-CHECKLIST.md](docs/PARITY-CHECKLIST.md). The menu lists only the lasers whose looks are finished. The other four still answer to their commands
 (`/orbital downfall`, `planetkiller`, `crystalbloom`, `sinkhole`). Not done yet: the Nuke's knockback, `/orbital shadow`,
 and the original's lower-quality "fast" mode for the Payload and Nuke.
 
@@ -102,6 +102,13 @@ files, Fabric Loader and Fabric API by itself; none of them is in this repositor
 
 The strike plans are in `src/main/java/dev/orbital`, and the client (menu, screen effects) in `src/client/java/dev/orbital/client`.
 The `.fsh` shaders are **generated** from the original's WGSL shaders; see [tools/README.md](tools/README.md) to regenerate them.
+
+## For contributors and AI agents
+
+- [AGENTS.md](AGENTS.md): a short, factual briefing (layout, commands, how it maps to the Rust mod, gotchas, how to verify).
+- [docs/](docs/README.md): the design, a parity checklist of every feature of the Horizon version, build and test notes,
+  notes on Minecraft 26.3, and a roadmap. [PARITY.md](PARITY.md) is the short status table.
+- Pull requests go against the `java` branch, and Java work stays inside `java/`.
 
 ## Licence and credit
 
