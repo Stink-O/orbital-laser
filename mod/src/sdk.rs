@@ -34,6 +34,8 @@ pub mod fake {
         /// The kicks given the player (`push-player`).
         pub pushes: u64,
         pub logs: Vec<String>,
+        /// Whether the player holds the Designator (`holding_designator` in lib.rs).
+        pub holding: bool,
         /// The mod's storage (`storage`), key to value.
         pub stored: std::collections::HashMap<String, Vec<u8>>,
     }

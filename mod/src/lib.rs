@@ -88,6 +88,20 @@ const BUILDING: &str = "building";
 /// run the next time that world is played (`release_held`), so a save is never left with the strike's chunks
 /// forceloaded.
 const FORCELOADS: &str = "forceloads";
+/// The storage key that says the player knows how to get the Designator (they ran `/orbital give`, or held one): the
+/// join hint (`HINT`) is no longer shown.
+const KNOWS: &str = "knows-give";
+/// The first line on joining a world, until the player knows how to get the Designator (`KNOWS`).
+const HINT: &str = "Orbital Laser: type /orbital give for the Designator. Hold it and press R to pick a laser.";
+/// Ticks after joining before the hint goes out: a line sent before the server has placed the player is dropped.
+const HINT_AFTER: u32 = 20;
+/// Whether the player holds the Designator (in the tests, as the stand-in world says: `sdk::fake`).
+fn holding_designator() -> bool {
+    #[cfg(not(test))]
+    return input::held().is_some_and(|h| h.id == DESIGNATOR);
+    #[cfg(test)]
+    return sdk::fake::with(|w| w.holding);
+}
 /// Game ticks (of the world's clock) a reopened world may be off from where it was left and still be taken for the
 /// same play (`tick`): a pause, or a save and quit, keeps the clock where it was; another world's is elsewhere.
 const SAME_PLAY: u64 = 40;
@@ -358,6 +372,10 @@ struct Orbital {
     /// The forceload removes in storage are the strike under way's (`FORCELOADS`): deleted once it and the world
     /// changes it left waiting are done.
     owes: bool,
+    /// Ticks since joining a world while the join hint is still to go out (`HINT`), and whether the player knows how to
+    /// get the Designator (`KNOWS`; read from storage the first time it's asked).
+    hint: Option<u32>,
+    knows: Option<bool>,
     /// Ticks in a world since the mod started or the player came back to one: the stored forceload removes of a
     /// strike broken off are looked at once they have settled (`release_held`).
     settled: Option<u32>,
@@ -425,6 +443,8 @@ impl Orbital {
             ticks: 0,
             clock: None,
             owes: false,
+            hint: None,
+            knows: None,
             settled: Some(0),
         }
     }
@@ -1261,8 +1281,41 @@ impl Orbital {
         if clock.is_none() || elsewhere {
             self.left_world();
         }
+        // (joined: this world's first tick, or another's after a tick out of one)
+        if clock.is_some() && (self.clock.is_none() || elsewhere) {
+            self.hint = Some(0);
+        }
         self.clock = clock;
         clock.is_some()
+    }
+    /// The first line on joining a world (`HINT`), a second in, until the player knows how to get the Designator: they
+    /// ran `/orbital give` or hold one (`KNOWS`).
+    fn join_hint(&mut self) {
+        if holding_designator() {
+            self.learned();
+        }
+        let Some(n) = self.hint else { return };
+        if n < HINT_AFTER {
+            self.hint = Some(n + 1);
+            return;
+        }
+        self.hint = None;
+        if !self.knows() {
+            world::run_commands(&[format!(r#"tellraw @s {{"text":"{HINT}","color":"yellow"}}"#)]);
+        }
+    }
+    /// Whether the player knows how to get the Designator (`KNOWS`).
+    fn knows(&mut self) -> bool {
+        *self.knows.get_or_insert_with(|| storage::get(KNOWS).is_some())
+    }
+    /// The player knows how to get the Designator: the join hint stops (`KNOWS`).
+    fn learned(&mut self) {
+        if !self.knows() {
+            self.knows = Some(true);
+            if let Err(e) = storage::set(KNOWS, b"1") {
+                log::write(log::Level::Warn, &format!("could not keep that the hint was learned: {e}"));
+            }
+        }
     }
     /// A strike broken off by the game closing or the player leaving left its forceload removes in storage
     /// (`hold_forceloads`): once settled in a world, run them if this is that world, played on from where it was left
@@ -1439,6 +1492,7 @@ impl Mod for Orbital {
         if !self.in_world() {
             return;
         }
+        self.join_hint();
         // (once the player is in the world and settled: a batch sent before the server has placed them is dropped)
         if self.ticks >= 100
             && game::get_player().is_some()
@@ -1530,6 +1584,7 @@ impl Mod for Orbital {
         let mut words = args.split_whitespace();
         match (words.next(), words.next()) {
             (Some("give"), _) => {
+                self.learned();
                 world::run_commands(&[format!("give @s {DESIGNATOR}")]);
                 Ok(Some("Orbital Laser Designator added to your inventory (R with it in hand: the laser wheel)".into()))
             }
@@ -2240,6 +2295,47 @@ mod stress {
         let ran = fake::with(|w| std::mem::take(&mut w.ran));
         assert_eq!(ran, vec![r#"title @s actionbar {"text":"NO TARGET IN RANGE","color":"gray","bold":true}"#.to_string()]);
         assert!(o.strike.is_none());
+    }
+    /// The join hint is the first line in each world joined, once a join, until the player runs `/orbital give` (or
+    /// holds a Designator): then never again, the game restarted or not (`KNOWS` in storage).
+    #[test]
+    fn the_join_hint_shows_each_join_until_the_player_knows() {
+        let mut o = Orbital::new(Orbital::parse(""));
+        let player = Player { x: 0.5, y: 100.0, z: 0.5, yaw: 0.0, pitch: 0.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.keep_commands = true;
+        });
+        let hints = |o: &mut Orbital, clock: Option<u64>, ticks: u32| {
+            for t in 0..ticks {
+                fake::with(|w| {
+                    w.player = clock.map(|_| player.clone());
+                    w.clock = clock.map_or(0, |c| c + u64::from(t));
+                });
+                if o.in_world() {
+                    o.join_hint();
+                }
+            }
+            fake::with(|w| std::mem::take(&mut w.ran)).iter().filter(|c| c.contains(HINT)).count()
+        };
+        assert_eq!(hints(&mut o, Some(1000), 60), 1, "a second into the world");
+        assert_eq!(hints(&mut o, Some(1060), 60), 0, "once a join");
+        assert_eq!(hints(&mut o, None, 5), 0);
+        assert_eq!(hints(&mut o, Some(5000), 60), 1, "the next world joined");
+        o.command("orbital", "give").unwrap();
+        assert_eq!(hints(&mut o, None, 5) + hints(&mut o, Some(9000), 60), 0, "known: never again");
+        // (a new start of the game reads it back from storage)
+        let mut again = Orbital::new(Orbital::parse(""));
+        assert_eq!(hints(&mut again, None, 5) + hints(&mut again, Some(20000), 60), 0);
+        // (holding a Designator says they know as well)
+        fake::with(|w| {
+            w.stored.clear();
+            w.holding = true;
+        });
+        let mut held = Orbital::new(Orbital::parse(""));
+        assert_eq!(hints(&mut held, Some(30000), 60), 0, "holding one");
+        fake::with(|w| w.holding = false);
+        assert_eq!(hints(&mut held, None, 5) + hints(&mut held, Some(40000), 60), 0, "and after");
     }
     /// Leaving the world mid-strike ends it there (nothing of it goes on into the next world), and its forceloads are
     /// let go the next time that world is played, not in another one; a strike that runs its course leaves none kept.
