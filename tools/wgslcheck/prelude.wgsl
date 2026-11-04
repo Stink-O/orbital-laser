@@ -20,6 +20,17 @@
 // level); the arrays have the mip levels the Mipmap Levels option leaves (textureNumLevels). The texels are as the
 // world uses them (gamma-encoded, as scene_color is). Sample with textureSampleLevel or textureSampleGrad (a ray
 // marcher's hits are not in uniform control flow). Both stages may sample them.
+//
+// A mod that called `render.set-history(true)` is given the pass's own previous picture, what it returned the frame
+// before, which the pass declares itself too:
+//     @group(0) @binding(17) var history_picture: texture_2d<f32>;
+// and `frame.previous_view`, `previous_projection` and `previous_camera_position` (xyz: the camera's position then;
+// w: 1 when the history is valid, 0 for the first frame, after the pass did not run for a quarter second or more,
+// and after a resize: ignore it then). The views turn, they do not move (the camera is the origin), so to find where
+// a pixel's point was in the previous picture: `d = world_offset(uv, depth) + (camera_position.xyz -
+// previous_camera_position.xyz)` is its offset from the previous camera, `previous_projection * previous_view *
+// vec4(d, 1)` its previous clip position `c`, and its uv `(c.x / c.w * 0.5 + 0.5, 0.5 - c.y / c.w * 0.5)`. Both
+// stages may sample the history (a picture of the world's size, in the game's own colours).
 
 struct Frame {
     view: mat4x4<f32>,
@@ -45,6 +56,12 @@ struct Frame {
     // out): for something far from the world's origin, (its position - camera_position) - camera_rest is where it is
     // from the camera to well under a millimetre, the difference taken first so it is exact
     camera_rest: vec4<f32>,
+    // the previous frame's camera, for reprojecting `history_picture` (with `render.set-history`; else the current's);
+    // see the header
+    previous_view: mat4x4<f32>,
+    previous_projection: mat4x4<f32>,
+    // xyz: where the camera was; w: 1 when history_picture holds the pass's previous frame, 0 when it does not
+    previous_camera_position: vec4<f32>,
 }
 @group(0) @binding(0) var scene_color: texture_2d<f32>;
 @group(0) @binding(1) var scene_depth: texture_depth_2d;

@@ -499,7 +499,34 @@ pub const HURRICANE: Laser = Laser {
     particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 14] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE];
+/// The fold, planned in `strike::fold_plan` (strike/fold.rs; the pass shaders/fold.wgsl): no beam, no blast. A strike that
+/// attacks how the world looks: colours breathe, the sky splits into turning mirrored wedges, giant mushrooms grow round
+/// the target, the horizon curls up and the land rolls in on itself, then everything spirals into one point, a beat of
+/// near silence, and it snaps back with a shockwave of colour: a mandala dug into the land, terraced and glazed.
+pub const FOLD: Laser = Laser {
+    key: "fold",
+    index: 14,
+    title: "THE FOLD",
+    rgb: 0xC060E8,
+    blurb: "A slow psychedelic strike: the world breathes, folds in on itself, and leaves a mandala.",
+    icon_model: "orbital:fold_icon",
+    length: 50.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:magenta_concrete", 1.0)],
+    bowl_floor: ("minecraft:magenta_glazed_terracotta", 0.0, "minecraft:purple_concrete"),
+    bottom: &[],
+    particle_a: "particle minecraft:end_rod {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:glow {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 15] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &FOLD];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

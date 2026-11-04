@@ -1962,5 +1962,32 @@
       }
     ],
     "subtitle": "subtitles.orbital.hurricane.rumble"
+  },
+  "fold.drone": {
+    "sounds": [
+      {
+        "name": "orbital:fold/drone",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.drone"
+  },
+  "fold.bloom": {
+    "sounds": [
+      {
+        "name": "orbital:fold/bloom",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.bloom"
+  },
+  "fold.comedown": {
+    "sounds": [
+      {
+        "name": "orbital:fold/comedown",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.comedown"
   }
 }

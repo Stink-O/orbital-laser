@@ -52,5 +52,8 @@ fn main() {
     let h: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_hurricane_{f}.wgsl"), passbuild::split_pass(&shader, &hu, f))).collect();
     writeln!(rs, "/// The Hurricane's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_HURRICANE: [&str; 2] = [{}];", h.join(", ")).unwrap();
+    let fold = write("pass_fold.wgsl".into(), passbuild::own_pass(&shader, &read("fold.wgsl")));
+    writeln!(rs, "/// The Fold's (no half-size stage: its cost is the warp, drawn whole).").unwrap();
+    writeln!(rs, "const PASS_FOLD: &str = {fold};").unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }

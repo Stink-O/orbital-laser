@@ -92,6 +92,7 @@ pub mod fake {
         pub fn set_post(_wgsl: &str) {}
         pub fn set_params(_params: &[f32]) {}
         pub fn clear_post() {}
+        pub fn set_history(_on: bool) {}
         pub fn set_data(_words: &[u32]) {}
         pub fn shake(_strength: f32, _seconds: f32) {}
     }

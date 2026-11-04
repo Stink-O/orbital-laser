@@ -788,3 +788,20 @@ horizon-ctl launch --world MyWorld --creative --wait
 python3 strike.py --doctor              # says what's missing and how to fix it
 python3 strike.py --daemon              # hold the designator (slot 9) to fire; the remote (slot 8) picks the laser
 ```
+
+## The Fold (laser 15, proof of concept)
+
+A slow, psychedelic strike that attacks how the world looks (`strike/fold.rs`, `shaders/fold.wgsl`, `tools/sounds_fold.py`), 50 s:
+onset 0-8 s (colours breathe, block edges shimmer and crawl), come-up 8-20 s (the sky splits into slowly turning mirrored
+wedges, fractals ripple over the land by its depth, giant glowing mushrooms grow in a ring), the fold 20-32 s (the world
+bent about a cylinder and every pixel marched through the bent space against the scene's depth, so the horizon curls up and
+the land rolls in on itself, mirrored copies of it round the target), convergence 32-37 s (everything spirals into one point,
+a beat of near silence), release at 37 s (it snaps back outwards from the point in one wave of colour) and a comedown to 50 s.
+What stays is a real twelve-fold mandala crater, 64 blocks across in six terraced rings (an eye, petals, diamonds, scallops,
+rainbow spokes, a sunburst) of glazed terracotta and concrete, a mycelium rim and giant mushrooms; it goes in through
+`world.edit-blocks` as a wave from the middle out, a 16 by 16 tile per stage (heaviest 0.2 ms natively). The echoes (every
+moving thing leaves a colour trail) need the fork's `render.set-history` (the pass's own previous picture at binding 17).
+
+**Photosensitivity:** the Fold changes colour and warps the view slowly; nothing in it flashes, and the one fast event is a
+single wave of colour sweeping out at the release. It is still a strongly distorting, kaleidoscopic effect: skip it if you
+are sensitive to those.

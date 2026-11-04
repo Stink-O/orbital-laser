@@ -6,6 +6,7 @@ use std::f64::consts::PI;
 
 mod crystal;
 mod hu_blocks;
+mod fold;
 mod hurricane;
 mod nuke;
 mod rod;
@@ -638,6 +639,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "supercell" {
         return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "fold" {
+        return fold::fold_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "hurricane" {
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4409,7 +4413,7 @@ mod tests {
             // here; strike/payload.rs's tests check it against a forest)
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "fold" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
