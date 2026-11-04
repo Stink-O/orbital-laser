@@ -82,7 +82,7 @@ jobs:
           curl -fsSL "https://github.com/horizon-rust/horizon/archive/$HORIZON_REV.tar.gz" | tar -xz
           mv "horizon-$HORIZON_REV" source && echo -n "$HORIZON_REV" > source/.horizon-revision
           find source -type l -delete
-          mkdir -p mods && (cd mods && unzip -q ../dist/orbital.hnmod 'mixins/*' && mv mixins/orbital orbital && rmdir mixins)
+          mkdir -p mods && python3 -c "import zipfile; z=zipfile.ZipFile('dist/orbital.hnmod'); [z.extract(n,'unz') for n in z.namelist() if n.startswith('mixins/')]" && mv unz/mixins/orbital mods/orbital
           tools/bin/horizon-mixins apply --workspace source --mods mods --out stage
       - name: cargo build --release
         run: |
