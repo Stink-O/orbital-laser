@@ -4,8 +4,8 @@
 set -euo pipefail
 B=$(dirname "$(readlink -f "$0")")
 REPO=${REPO:-$HOME/Downloads/orbital-laser}
-REF=${REF:-76b94ac}
-E=$B/mixins/orbital_laser/engine
+REF=${REF:-f74091d}
+E=$B/mixins/orbital/engine
 rm -rf "$E"; mkdir -p "$E/src"
 tmp=$(mktemp -d)
 if [ -n "${MODDIR:-}" ]; then
@@ -74,5 +74,5 @@ src = src.replace("#[allow(clippy::too_many_arguments)]\n    pub fn run(", "#[al
 hooks = open(f"{b}/engine-shim/post_hooks.rs").read()
 # (inner doc comments of the module become plain comments: it is wrapped as a module's items)
 src = re.sub(r"(?m)^//!", "//", src)
-open(f"{b}/mixins/orbital_laser/post.rs", "w").write(src + "\n" + hooks)
+open(f"{b}/mixins/orbital/post.rs", "w").write(src + "\n" + hooks)
 PY

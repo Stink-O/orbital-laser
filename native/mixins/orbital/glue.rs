@@ -316,6 +316,8 @@ fn show_output(game: &mut Game<'_>) {
             }
             host::Output::Edit { .. } | host::Output::Surface { .. } | host::Output::Columns { .. } if leaving => {}
             host::Output::Commands { commands } => send_commands(&commands),
+            // (without the content the join hint (`/orbital give`) has nothing to give: the notice takes its place)
+            host::Output::Chat { text: t, .. } if t.starts_with("Type /orbital give") && no_content(game) => {}
             host::Output::Chat { name, text: t } => {
                 let mut line = Text::literal(format!("[{name}] ")).with_color(text::GRAY);
                 line.push(Text::literal(t));
@@ -953,7 +955,11 @@ pub(super) fn mods(game: &mut Game<'_>, mods: &mut Vec<super::native_hooks::Nati
     mods.push(super::native_hooks::NativeMod {
         id: ID.to_owned(),
         title: format!("{NAME} {VERSION}"),
-        description: "Call down an orbital strike that drills a crater to bedrock.".to_owned(),
+        description: if no_content(game) {
+            NO_CONTENT.to_owned()
+        } else {
+            "Call down an orbital strike that drills a crater to bedrock.".to_owned()
+        },
         keys: CLIENT.with(|c| c.borrow().keys.clone()),
     });
 }
@@ -974,6 +980,7 @@ pub(super) fn tick(game: &mut Game<'_>) {
     if !running(game) {
         return;
     }
+    warn_no_content(game);
     let heard: Vec<String> = SERVER_COMMANDS.lock().map(|mut c| std::mem::take(&mut *c)).unwrap_or_default();
     for c in heard {
         run_command(game, &c);
@@ -1021,6 +1028,11 @@ pub(super) fn command(game: &mut Game<'_>, command: &str) -> bool {
     }
     if !running(game) {
         return false;
+    }
+    // (without the content there is no Designator to give: say why, rather than a give that fails)
+    if line.strip_prefix(ID).unwrap_or("").trim_start().starts_with("give") && no_content(game) {
+        chat(game, Text::literal(NO_CONTENT).with_color(text::RED));
+        return true;
     }
     run_command(game, line);
     true
@@ -1078,6 +1090,13 @@ pub(super) fn screen_render_post(
     batch: &mut horizon_client::hud::HudBatch,
     screen: &NativeScreenView<'_>,
 ) {
+    if screen.id == "title" && game.native_window() && game.native_on(ID) && no_content(game) {
+        // (on the title screen, before a world: the two lines of the notice at the top, centred)
+        for (i, line) in NO_CONTENT_LINES.iter().enumerate() {
+            let x = ((batch.width - game.native_text_width(line)) / 2.0).floor();
+            game.native_text(batch, line, [x, 4.0 + 11.0 * i as f32], 0xFF5555, true);
+        }
+    }
     if !mine(game, screen) {
         return;
     }
@@ -1274,4 +1293,31 @@ pub(super) fn perform_command(game: &mut Game<'_>, command: &str, ran: &mut bool
         c.push(line.to_owned());
     }
     *ran = true;
+}
+
+// ---- the content ---------------------------------------------------------------------------------------------------
+
+/// On the native build the content (`orbital`: the Designator, its models, textures and sounds) is a mod of its own,
+/// which a player may leave out.
+const NO_CONTENT: &str =
+    "Orbital Laser: its content isn't installed. Install \"Orbital Laser (content)\" from the launcher's Mods page.";
+const NO_CONTENT_LINES: [&str; 2] =
+    ["Orbital Laser: its content isn't installed.", "Install \"Orbital Laser (content)\" from the launcher's Mods page."];
+
+/// The content isn't loaded: no content mod `orbital` among the ones the game loaded (a world that had the Designator
+/// before still knows its id, so the item's id says nothing).
+fn no_content(_game: &Game<'_>) -> bool {
+    !horizon_protocol::mod_list::local().iter().any(|m| m.id == ID)
+}
+
+/// In a world without the content: the notice in chat, once a session.
+fn warn_no_content(game: &mut Game<'_>) {
+    thread_local! {
+        static WARNED: Cell<bool> = const { Cell::new(false) };
+    }
+    if WARNED.with(Cell::get) || game.native_player().is_none() || !no_content(game) {
+        return;
+    }
+    WARNED.with(|w| w.set(true));
+    chat(game, Text::literal(NO_CONTENT).with_color(text::RED));
 }

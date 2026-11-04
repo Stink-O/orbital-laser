@@ -1,5 +1,5 @@
 [mod]
-id = "orbital_laser"
+id = "orbital"
 version = "0.5.9"
 priority = 100
 
@@ -282,4 +282,19 @@ bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "command", ty = "&str", value = "command" },
   { name = "ran", ty = "&mut bool", value = "&mut *ran" },
+]
+
+# One file for code and content: the game reads content mods only from horizon-mods/, and the launcher installs this
+# mod as horizon-native-mods/orbital.hnmod, which carries its content too (horizon-mod.toml, assets/, data/:
+# docs/api/mod-files.md, "Both, in one .hmod"). So what the game finds in horizon-mods/ also names that file, as if it
+# were horizon-mods/orbital.hmod. Nothing is written or copied. Until the game reads content from native files
+# (horizon-rust/horizon#5865).
+[[injection]]
+id = "content_find"
+target = "horizon_mods::manifest::find"
+kind = "RETURN"
+helper = "content_find.rs"
+bindings = [
+  { name = "dir", ty = "&Path", value = "dir" },
+  { name = "found", ty = "Vec<PathBuf>", value = "$value" },
 ]

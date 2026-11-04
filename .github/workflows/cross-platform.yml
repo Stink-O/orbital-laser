@@ -1,7 +1,7 @@
 # Orbital Laser on every platform: the native mod built as Horizon's launcher builds it (on Linux, Windows and macOS on
 # Apple Silicon), the fork's WebAssembly mod, and every post pass through naga to SPIR-V, MSL and HLSL.
 # A draft for a test branch of Stink-O/orbital-laser; the branch also carries native/ (the bundle: assemble.sh,
-# package.py, engine-shim/, mixins/orbital_laser/ without its generated engine/) and tools/xshader/.
+# package.py, engine-shim/, mixins/orbital/ without its generated engine/) and tools/xshader/.
 name: cross-platform
 
 on:
@@ -16,7 +16,7 @@ env:
 
 jobs:
   package:
-    name: package (the two files players install)
+    name: package (the one file players install)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
       - name: Every post pass through naga (SPIR-V, MSL, HLSL)
         run: |
           cargo build --release --manifest-path tools/xshader/Cargo.toml
-          E=native/mixins/orbital_laser/engine/data
+          E=native/mixins/orbital/engine/data
           tools/xshader/target/release/xshader native/engine-shim/mod_post.wgsl $E/shaders/strike.wgsl $E/gen/*.wgsl | tee shaders.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -82,7 +82,7 @@ jobs:
           curl -fsSL "https://github.com/horizon-rust/horizon/archive/$HORIZON_REV.tar.gz" | tar -xz
           mv "horizon-$HORIZON_REV" source && echo -n "$HORIZON_REV" > source/.horizon-revision
           find source -type l -delete
-          mkdir -p mods && (cd mods && unzip -q ../dist/orbital_laser.hnmod && mv mixins/orbital_laser orbital_laser)
+          mkdir -p mods && (cd mods && unzip -q ../dist/orbital.hnmod && mv mixins/orbital orbital)
           tools/bin/horizon-mixins apply --workspace source --mods mods --out stage
       - name: cargo build --release
         run: |
