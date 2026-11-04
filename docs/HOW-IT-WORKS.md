@@ -789,19 +789,26 @@ python3 strike.py --doctor              # says what's missing and how to fix it
 python3 strike.py --daemon              # hold the designator (slot 9) to fire; the remote (slot 8) picks the laser
 ```
 
-## The Fold (laser 15, proof of concept)
+## The Fold (laser 15)
 
-A slow, psychedelic strike that attacks how the world looks (`strike/fold.rs`, `shaders/fold.wgsl`, `tools/sounds_fold.py`), 50 s:
-onset 0-8 s (colours breathe, block edges shimmer and crawl), come-up 8-20 s (the sky splits into slowly turning mirrored
-wedges, fractals ripple over the land by its depth, giant glowing mushrooms grow in a ring), the fold 20-32 s (the world
-bent about a cylinder and every pixel marched through the bent space against the scene's depth, so the horizon curls up and
-the land rolls in on itself, mirrored copies of it round the target), convergence 32-37 s (everything spirals into one point,
-a beat of near silence), release at 37 s (it snaps back outwards from the point in one wave of colour) and a comedown to 50 s.
+A strike that folds the world itself, 50 s (`strike/fold.rs`, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`,
+`tools/sounds_fold.py`). Nothing here is a picture of the world: every terrain vertex, the far terrain's tiles included, and
+every entity goes through the fork's world warp (`render.set-warp`, `shaders/fold_warp.wgsl`), a function of the vertex's place
+about the target and of the strike clock. So it is real blocks, light and depth, from every side, out to the end of the far
+terrain, and it costs the mod nothing (no reads, no data: only the crater's stages).
+
+The hook, 0-2 s: the ground bucks at the target and a wave comes out over the land, under the player at about 2 s whatever
+the range. The bend, 2-29 s: the wave races on past all in view, dying away; behind it the land rolls into curling rings
+towards the target, twisting, towers into corkscrews; the horizon curls up all round and over the sky, the whole far terrain on
+the inside of a tube (a world map overhead); the land near the target comes up out of it again as six islands round it. A
+bubble round the eye keeps what has moved from passing through the player. The convergence, 29-36 s: all of it drawn in to one
+globe of land at the target, spinning up, which falls in to a point; the sky goes out, a beat of near silence. The release, 37 s:
+the blast, the world flung back straight from the middle out within a second and a quarter, ringing a few seconds; a comedown to
+50 s. The pass only adds what lies over the picture: the jolts, the sky going out, the stars and the point, the flash and ring.
+
 What stays is a real twelve-fold mandala crater, 64 blocks across in six terraced rings (an eye, petals, diamonds, scallops,
 rainbow spokes, a sunburst) of glazed terracotta and concrete, a mycelium rim and giant mushrooms; it goes in through
-`world.edit-blocks` as a wave from the middle out, a 16 by 16 tile per stage (heaviest 0.2 ms natively). The echoes (every
-moving thing leaves a colour trail) need the fork's `render.set-history` (the pass's own previous picture at binding 17).
+`world.edit-blocks` as a wave from the middle out, a 16 by 16 tile per stage (heaviest 0.25 ms natively).
 
-**Photosensitivity:** the Fold changes colour and warps the view slowly; nothing in it flashes, and the one fast event is a
-single wave of colour sweeping out at the release. It is still a strongly distorting, kaleidoscopic effect: skip it if you
-are sensitive to those.
+**Photosensitivity:** the Fold bends the whole world round the player for half a minute and has one bright flash, at the
+release. It is a strongly distorting effect: skip it if you are sensitive to those.

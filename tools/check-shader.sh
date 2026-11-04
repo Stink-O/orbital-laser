@@ -37,4 +37,7 @@ for own in payload nuke rod supercell hurricane; do
     { cat "$here/wgslcheck/prelude.wgsl"; pre; sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d' "$shaders/$own.wgsl"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done
+# the Fold's world warp, as it goes into the game's terrain and entity shaders (their Globals' warp, and Warped)
+{ printf 'struct G { warp: array<vec4<f32>, 6> }\n@group(0) @binding(0) var<uniform> globals: G;\nstruct Warped { pos: vec3<f32>, tint: vec3<f32> }\n'; cat "$shaders/fold_warp.wgsl"; } > "$tmp"
+out=$("$bin" "$tmp" 2>&1) || { echo "the Fold's world warp:"; echo "$out"; exit 1; }
 echo OK

@@ -1,13 +1,14 @@
-//! The Fold's plan: a strike that attacks how the world looks. There is no beam and no blast. Everything that moves is
-//! the pass (shaders/fold.wgsl, reading its own previous picture: the fork's `render.set-history`), timed by the strike
-//! clock; the plan makes the sounds and, as the world snaps back, the land.
+//! The Fold's plan: a strike that attacks the shape of the world. There is no beam. Everything that moves is the world's
+//! own geometry, far terrain included, through the fork's world warp (`render.set-warp`, shaders/fold_warp.wgsl), timed by
+//! the strike clock; shaders/fold.wgsl only adds what is over the picture (the jolts, the sky going out, the point, the
+//! blast's flash); the plan makes the sounds and, as the world snaps back, the land.
 //!
-//! Timeline (FD_LEN 50 s): the onset (0-8 s: colours breathe, block edges shimmer and crawl); the come-up (8-20 s: the sky
-//! splits into slowly turning mirrored wedges centred on the target, fractals ripple over the land, giant glowing
-//! mushrooms grow in a ring round it); the fold (20-32 s: the horizon curls up, the land rolls in on itself, mirrored
-//! copies of the world repeat round the target); the convergence (32-37 s: everything spirals into one point, the sound
-//! drawn in, a beat of near silence from FD_BEAT); the release (FD_RELEASE, 37 s: it snaps back with one colour
-//! shockwave) and the comedown (39-50 s: colours drain, the patterns fizzle out).
+//! Timeline (FD_LEN 50 s): the hook (0-2 s: the ground bucks at the target and a wave comes out over the land, reaching the
+//! player at about 2 s whatever the range); the bend (2-29 s: the wave covers all in view, the land behind it rolls into
+//! rings, the horizon curls up and over, the land near the target comes up out of it again as islands round it); the
+//! convergence (29-36 s: all of it drawn in to one globe of land at the target, which falls in to a point; a beat of near
+//! silence from FD_BEAT); the release (FD_RELEASE, 37 s: the blast, the world flung back straight, the crater in it) and the
+//! comedown (39-50 s: colours drain).
 //!
 //! What is left is the real mandala: a twelve-fold crater (FD_R across 64 blocks) dug into the land in six terraced
 //! rings, each its own motif (an eye, twelve petals, twenty-four diamonds, scallops, rainbow spokes, a sunburst), lined
@@ -25,6 +26,11 @@ use std::f64::consts::PI;
 const TAU: f64 = 2.0 * PI;
 
 pub(super) const FD_LEN: f32 = 50.0;
+/// The world warp (shaders/fold_warp.wgsl): how many times it draws the land near the target again, how far from it, and
+/// when it is off, the world straight again.
+pub const FD_COPIES: u32 = 6;
+pub const FD_COPY_R: f32 = 130.0;
+pub const FD_WARP_END: f32 = 46.5;
 /// The strike's beats: the pass's timeline (fold.wgsl's FD_*).
 pub(super) const FD_RELEASE: f32 = 37.0;
 #[allow(dead_code)]
@@ -287,8 +293,12 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     p.csound(FD_RELEASE + 2.0, "comedown", 8.0, 1.0);
     // (one jolt as it snaps back, felt more the nearer they are; nothing shakes the rest of the time)
     p.shake(FD_RELEASE, 0.3 * super::falloff(dist), 2.5);
+    // (and the hook: the ground bucking, then the wave going under them)
+    p.shake(0.1, 0.12 * super::falloff(dist), 1.2);
+    p.shake(2.0, 0.16, 1.4);
 
     if !terrain {
+        p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
         return p.ev;
     }
     // ---- the land: the chunks it goes into loaded, the mandala a tile a stage, the mushrooms after it -----------------
@@ -323,6 +333,8 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         });
     }
     p.later(at_mushrooms(k), move |q| mushrooms(q, cx, cz, s));
+    // (playback goes through the plan in order, and stops at the first not due: one out of order holds up all after it)
+    p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
 }
 /// A tile's stage: ask for its columns' ground (those not known yet), and when all are in, cut it; else look again.
@@ -368,6 +380,18 @@ fn at_mushrooms(tiles: usize) -> f32 {
 mod tests {
     use super::*;
     use crate::strike::{Target, plan, sim};
+
+    /// The warp's beats are the plan's and the pass's, and its copies' radius what lib.rs asks the game for.
+    #[test]
+    fn the_warp_keeps_the_beats() {
+        let warp = include_str!("../../shaders/fold_warp.wgsl");
+        let pass = include_str!("../../shaders/fold.wgsl");
+        assert!(warp.contains(&format!("const FW_REL: f32 = {FD_RELEASE:.1};")));
+        assert!(warp.contains(&format!("const FW_BEAT: f32 = {FD_BEAT:.1};")));
+        assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
+        assert!(warp.contains(&format!("const FW_COPIES: f32 = {:.1};", f64::from(FD_COPIES))));
+        assert!(pass.contains(&format!("const FD_REL: f32 = {FD_RELEASE:.1};")));
+    }
 
     fn the_laser() -> &'static Laser {
         crate::lasers::LASERS.iter().find(|l| l.key == "fold").expect("the fold")
@@ -477,7 +501,17 @@ mod tests {
         crate::ground::set_test(None);
     }
 
-    /// With the terrain left alone there is only sound, and the jolt.
+    /// Playback takes the plan in order and stops at the first entry not due: the plan must be in time order, or what
+    /// follows a later entry waits for it (the crater's tiles waited for the forceload's end, and only one went in).
+    #[test]
+    fn the_plan_is_in_time_order() {
+        for terrain in [false, true] {
+            let ev = plan(the_laser(), &target(), terrain, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+            assert!(ev.windows(2).all(|w| w[0].0 <= w[1].0), "terrain {terrain}");
+        }
+    }
+
+    /// With the terrain left alone there is only sound, and the jolts.
     #[test]
     fn without_terrain_the_fold_is_light_and_sound() {
         let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);

@@ -66,6 +66,9 @@ fn hurricane_pass(fast: bool) -> &'static str {
     PASS_HURRICANE[usize::from(fast)]
 }
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
+/// The Fold's world warp: the world's own vertices bent (the fork's `render.set-warp`).
+const FOLD_WARP: &str = include_str!("../shaders/fold_warp.wgsl");
+
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
         "downfall" => 1,
@@ -905,10 +908,16 @@ impl Orbital {
         if self.strike.is_none() {
             if self.warming {
                 render::clear_post();
+                render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
                 self.warming = false;
             } else if self.compiled != Some(want) && self.ticks >= WARM_AFTER {
                 self.hand_post(want);
                 render::set_params(&[0.0; 16]);
+                // (the Fold's world warp is built the same way, with its pass)
+                if LASERS[self.laser].key == "fold" {
+                    render::set_warp(FOLD_WARP);
+                    render::warp_on(true, 0.0, 0.0, 0.0, 0, 0.0);
+                }
                 self.warming = true;
             }
         } else {
@@ -979,6 +988,9 @@ impl Orbital {
         self.hand_post(pass_of(laser));
         render::set_params(&params);
         if laser.key == "fold" {
+            // (the world's own vertices go through the warp: shaders/fold_warp.wgsl)
+            render::set_warp(FOLD_WARP);
+            render::warp_on(true, hit.x, hit.y, hit.z, strike::FD_COPIES, strike::FD_COPY_R);
             // (the pass is built by the game as the first frame draws it; "a mod's post pass did not compile" in its log
             // means it was skipped: this line says the mod handed it over)
             log::write(log::Level::Info, &format!("fold: pass {} handed over, intensity {}", pass_of(laser), params[9]));
@@ -1172,6 +1184,7 @@ impl Orbital {
         self.unfollow();
         self.carrying = None;
         render::clear_post();
+        render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
         self.strike = None;
         ground::clear();
         columns::clear();
@@ -1579,6 +1592,10 @@ impl Mod for Orbital {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
             s.params[3] = s.ticks as f32 * 0.05;
             render::set_params(&s.params);
+            // (the world straight again: the warp off, the frame's culling back)
+            if s.key == "fold" && s.params[3] > strike::FD_WARP_END {
+                render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
+            }
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
             && w.hover_at(c.x, c.y, self.laser)

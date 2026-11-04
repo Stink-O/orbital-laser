@@ -363,6 +363,14 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   loaded, jobs, rings) each time a stage asks what's ready: keep it O(what's due). The Nuke's land waits for columns
   not loaded, asking again a ring at a time, and goes in late as they come; it leaves out what never loads (logged
   `nuke: N columns of the land never loaded`).
+- **The Fold's look is not in its pass.** It bends the game's own vertices through the fork's `render.set-warp`
+  (`shaders/fold_warp.wgsl`, API 11, built into terrain.wgsl and entity.wgsl by the fork's `gfx/warp.rs`), so `tools/preview.py`
+  can't show it (only `fold.wgsl`'s overlay): look at it in the game. While the warp is on nothing is culled by where it was (a
+  frame about 10 ms at 1440p on an RTX 4070 SUPER). A vertex moved away drags its faces after it as long spikes: to cut land
+  leave it in place with a tint under 0. Everything under y 40 is pressed up and cut (the far terrain's columns reach the
+  bottom of the world, and thrown about by a fold the bedrock shows), and faces no light reaches are dropped.
+- **A plan must be in time order**: playback stops at the first entry not due. `strike::plan` sorts nothing for the lasers with
+  plans of their own, so each sorts its `ev` (the Fold's didn't, and its crater waited for its 49 s forceload remove).
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many
