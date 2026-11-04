@@ -14,7 +14,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
   &nbsp;·&nbsp;
-  <a href="#getting-started"><b>Getting started</b></a>
+  <a href="#quick-install-regular-horizon"><b>Quick install</b></a>
+  &nbsp;·&nbsp;
+  <a href="#getting-started"><b>Fork version</b></a>
   &nbsp;·&nbsp;
   <a href="docs/HOW-IT-WORKS.md"><b>How it works</b></a>
 </p>
@@ -37,25 +39,48 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-10` or newer.** Horizon's mod API doesn't
-> yet let a mod catch an item's use, open its own screen, draw effects or change the world, so the mod runs on a
-> fork that adds those:
-> [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world),
-> with a ready-built Linux download on its [releases](https://github.com/Stink-O/horizon/releases). Older fork builds
-> won't start the mod. You also need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
-> repository or the downloads.
+> **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: the launcher
+> compiles it into the game. The [fork version](#getting-started) is a WebAssembly mod for the Orbital Laser build of
+> Horizon ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), release
+> `orbital-mod-api-10` or newer), with a ready-built Linux download on its
+> [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
+> Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
 > a user (the fork built from source); on macOS the Downfall's effects may not draw (see [Known gaps](#known-gaps)). The
 > ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.9](#new-in-059) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.9](#new-in-059) · [The lasers](#the-lasers) · [Fork version](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
+## Quick install (regular Horizon)
+
+1. Install the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) and set up an instance from your own
+   Minecraft Java Edition 26.3.
+2. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
+3. Close the game. On the launcher's Instances page press **Open folder**, and put `orbital.hnmod` in the
+   **`horizon-native-mods`** folder (make it if it isn't there).
+4. On the launcher's **Mods** page, check Orbital Laser is on.
+5. On the **Native build** row pick **Release build**, press **Build**, and choose **I trust these mods: build**. The
+   first build takes 20 to 30 minutes.
+6. Press Play, open a creative world and type **`/orbital give`**. Hold the Designator and press **R** to pick a
+   laser, then hold right-click on a target to fire.
+
+**What each system needs first.** Linux: a C compiler, `pkg-config` and the ALSA and libudev development files (the
+launcher gives you the command). Windows: nothing. macOS on Apple Silicon: `xcode-select --install`. Intel Macs can't
+build native mods. It's played and tested on Linux; on Windows and Apple Silicon it builds but hasn't been played yet.
+
+A native mod isn't sandboxed: its code runs with full access to your computer, so only build it if you trust it. A
+listing in the launcher's Mods browser is in review. The
+[install guide](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) has the known issues
+and how to remove it.
+
 ## New in 0.5.9
 
+- **It runs on regular Horizon.** The new native version needs no fork build and no `play.sh`: see
+  [Quick install](#quick-install-regular-horizon).
 - **The Orbital Remote is gone.** The Designator is the one item: `/orbital give` gives you it, and **R** with it in
   hand opens the laser wheel. A Remote already in a world's inventory turns into an empty slot.
 - **R opens the wheel only while you hold the Designator.** With anything else in hand R is left alone for whatever
@@ -63,8 +88,8 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 - **Leaving the world ends the strike.** Before, a strike carried on into the next world you opened. Now it ends
   as you leave, and the chunks it forceloaded are let go the next time you play that world. The pause menu holds the
   strike where it is, sounds included, until you go back to the game.
-- **A known gap in Horizon:** the game doesn't stop the sounds playing when you Save and Quit to Title, so a strike's
-  sounds can run on over the title screen until they end. It needs a fix in Horizon itself.
+- **A known gap on the fork version:** the game doesn't stop the sounds playing when you Save and Quit to Title, so a
+  strike's sounds can run on over the title screen until they end. It needs a fix in Horizon itself.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
