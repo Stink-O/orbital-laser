@@ -197,6 +197,8 @@ VIEWS = {
     "flfar": "cx=0 cy=75 cz=300 lx=0.5 ly=80 lz=0.5 flat=1 trees=1 fov=70 reach=300",
     "flaerial": "cx=0 cy=260 cz=150 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
     "fltop": "cx=0.5 cy=330 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
+    "flhill": "cx=0 cy=75 cz=130 lx=0.5 ly=70 lz=0.5 hills=22 trees=1 fov=75 reach=130",
+    "flhigh": "cx=60 cy=140 cz=220 lx=0.5 ly=60 lz=0.5 hills=18 trees=1 fov=70 reach=220",
     "flrim": "cx=0 cy=75 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=75 reach=110",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
@@ -205,7 +207,7 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "rod": "rdplayer,rdmid,rdfar",
                  "supercell": "scplayer,scunder,scfar",
                  "hurricane": "huplayer,hufar,huunder,huaerial",
-                 "fold": "flplayer,flsky,fllow"}
+                 "fold": "flhill,flhigh"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:

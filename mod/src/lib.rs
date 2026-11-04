@@ -923,8 +923,6 @@ impl Orbital {
         if self.compiled != Some(pass) && storage::set(BUILDING, pass.to_string().as_bytes()).is_ok() {
             self.building = Some(0);
         }
-        // (the Fold's pass reads its own previous picture: trails)
-        render::set_history(pass == pass_of(&lasers::FOLD));
         render::set_post(self.passes[pass]);
         self.compiled = Some(pass);
     }
@@ -982,8 +980,8 @@ impl Orbital {
         render::set_params(&params);
         if laser.key == "fold" {
             // (the pass is built by the game as the first frame draws it; "a mod's post pass did not compile" in its log
-            // means it was skipped: this line says the mod handed it over with its history asked for)
-            log::write(log::Level::Info, &format!("fold: pass {} handed over (history on), intensity {}", pass_of(laser), params[9]));
+            // means it was skipped: this line says the mod handed it over)
+            log::write(log::Level::Info, &format!("fold: pass {} handed over, intensity {}", pass_of(laser), params[9]));
         }
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
