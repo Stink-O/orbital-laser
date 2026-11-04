@@ -313,11 +313,14 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, _
         let at = 20.0 + 0.09 * k as f32;
         k += 1;
         let (tx, tz) = (bx + i * FD_TILE, bz + j * FD_TILE);
-        let cols: Vec<(i32, i32)> = (tx..tx + FD_TILE).flat_map(|x| (tz..tz + FD_TILE).map(move |z| (x, z))).filter(|&(x, z)| mandala(f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz, s).is_some()).collect();
-        if cols.is_empty() {
-            continue;
-        }
-        p.later(at, move |q| fl_tile(q, at, None, cols, cx, cz, s, level));
+        // (worked out in the tile's own stage: every column of the crater at once is far over a tick's fuel at the fire)
+        p.later(at, move |q| {
+            crate::meter::spend(4_000 * (FD_TILE * FD_TILE) as u64);
+            let cols: Vec<(i32, i32)> = (tx..tx + FD_TILE).flat_map(|x| (tz..tz + FD_TILE).map(move |z| (x, z))).filter(|&(x, z)| mandala(f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz, s).is_some()).collect();
+            if !cols.is_empty() {
+                fl_tile(q, at, None, cols, cx, cz, s, level);
+            }
+        });
     }
     p.later(at_mushrooms(k), move |q| mushrooms(q, cx, cz, s));
     p.ev
