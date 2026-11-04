@@ -980,6 +980,11 @@ impl Orbital {
         }
         self.hand_post(pass_of(laser));
         render::set_params(&params);
+        if laser.key == "fold" {
+            // (the pass is built by the game as the first frame draws it; "a mod's post pass did not compile" in its log
+            // means it was skipped: this line says the mod handed it over with its history asked for)
+            log::write(log::Level::Info, &format!("fold: pass {} handed over (history on), intensity {}", pass_of(laser), params[9]));
+        }
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
         // the pass's tables due before then are worked out on the first ticks, as the pass needs them, what they give

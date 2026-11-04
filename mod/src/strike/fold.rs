@@ -188,30 +188,38 @@ pub(super) fn due(r: f64) -> f32 {
     FD_RELEASE + (FD_WAVE * (r / FD_RIM).clamp(0.0, 1.0).powf(0.8)) as f32
 }
 
-/// One column of the mandala into `b`.
-fn column(b: &mut Blocks, x: i32, z: i32, cx: f64, cz: f64, seed: u32) {
+/// How far from the middle the crater is cut to the one level; past it that eases into the land's own heights, to
+/// the rim.
+const FD_LEVEL_R: f64 = 70.0;
+/// The most a hollow is filled up under the crater's floor.
+const FD_FILL: i32 = 40;
+/// Strike seconds past which a column still not loaded is left out (logged): the forceload is given back at FD_LEN.
+const FD_LAND_BY: f32 = FD_LEN - 4.0;
+
+/// One column of the mandala into `b`: `g` its ground (the first air over it, as the world answered), `level` the one
+/// height the whole crater is cut to, so hills are cut away (or hollows filled) to a clean floor, not followed.
+fn column(b: &mut Blocks, x: i32, z: i32, cx: f64, cz: f64, seed: u32, level: i32, g: i32) {
     let (dx, dz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
-    match mandala(dx, dz, seed) {
-        None => {}
-        Some(Kind::Surface(block)) => b.put(x, z, -1, -1, block, Some("#minecraft:dirt"), true),
-        Some(Kind::Dug { dig, top, under, clear }) => {
-            if dig > 0 {
-                // (dug: the air from the new ground up, its top block and the one under it laid on the old stone)
-                b.put(x, z, -dig, clear, "minecraft:air", None, true);
-                b.put(x, z, -dig - 1, -dig - 1, top, None, true);
-                b.put(x, z, -dig - 2, -dig - 2, under, None, true);
-            } else {
-                // (flush with the ground or built up over it: `h` blocks of it, then the air)
-                let h = -dig;
-                if h > 1 {
-                    b.put(x, z, 0, h - 2, under, None, true);
-                }
-                b.put(x, z, h - 1, h - 1, top, None, true);
-                if h == 0 {
-                    b.put(x, z, -2, -2, under, None, true);
-                }
-                b.put(x, z, h, clear, "minecraft:air", None, true);
+    let Some(kind) = mandala(dx, dz, seed) else { return };
+    // (the level eased into the land's own height over the rim: a round blend, not a cliff)
+    let t = ((FD_RIM - dx.hypot(dz)) / (FD_RIM - FD_LEVEL_R)).clamp(0.0, 1.0);
+    let lv = g + (f64::from(level - g) * t * t * (3.0 - 2.0 * t)).round() as i32;
+    match kind {
+        Kind::Surface(block) => b.put(x, z, g - 1, g - 1, block, Some("#minecraft:dirt"), false),
+        Kind::Dug { dig, top, under, clear } => {
+            // (the top block's height; a hollow under it filled in with the stone, then the top, then the air to well over
+            // the highest of the old ground and the new, trees and all)
+            let (yt, air_from) = if dig > 0 { (lv - dig - 1, lv - dig) } else { (lv - dig.max(-64) - 1, lv - dig) };
+            let h = (-dig).max(0);
+            if g - 1 < yt || h > 1 {
+                let lo = if g - 1 < yt { (g - 2).max(yt - FD_FILL) } else { lv };
+                b.put(x, z, lo, yt - 1, under, None, false);
             }
+            if dig > 0 || h == 0 {
+                b.put(x, z, yt - 1, yt - 1, under, None, false);
+            }
+            b.put(x, z, yt, yt, top, None, false);
+            b.put(x, z, air_from, g.max(air_from) + clear, "minecraft:air", None, false);
         }
     }
 }
@@ -298,24 +306,55 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, _
     };
     tiles.retain(|&t| reach(t) < FD_RIM);
     tiles.sort_by(|a, b| reach(*a).total_cmp(&reach(*b)));
+    // (each tile asks the world for its columns' ground first, then is cut once every one of them has answered: a column
+    // the world has not loaded yet is asked for again, so none is left standing or edited into the void)
+    let level = by + 1;
     for (i, j) in tiles {
         let at = 20.0 + 0.09 * k as f32;
         k += 1;
-        p.later(at, move |q| {
-            let mut b = Blocks { clear_of_player: true, ..Default::default() };
-            let (tx, tz) = (bx + i * FD_TILE, bz + j * FD_TILE);
-            for x in tx..tx + FD_TILE {
-                for z in tz..tz + FD_TILE {
-                    column(&mut b, x, z, cx, cz, s);
-                }
-            }
-            for (t, part) in b.split_by(|x, z| due((f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz))) {
-                q.ev.push((t, Act::Blocks(Box::new(part))));
-            }
-        });
+        let (tx, tz) = (bx + i * FD_TILE, bz + j * FD_TILE);
+        let cols: Vec<(i32, i32)> = (tx..tx + FD_TILE).flat_map(|x| (tz..tz + FD_TILE).map(move |z| (x, z))).filter(|&(x, z)| mandala(f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz, s).is_some()).collect();
+        if cols.is_empty() {
+            continue;
+        }
+        p.later(at, move |q| fl_tile(q, at, None, cols, cx, cz, s, level));
     }
     p.later(at_mushrooms(k), move |q| mushrooms(q, cx, cz, s));
     p.ev
+}
+/// A tile's stage: ask for its columns' ground (those not known yet), and when all are in, cut it; else look again.
+fn fl_tile(q: &mut Plan, now: f32, asked: Option<u32>, cols: Vec<(i32, i32)>, cx: f64, cz: f64, seed: u32, level: i32) {
+    // (the answer to the last ask still to come: wait for it rather than ask again)
+    if let Some(t) = asked
+        && !crate::ground::ready(t)
+        && now < FD_LAND_BY
+    {
+        let next = now + 0.2;
+        q.later(next, move |q| fl_tile(q, next, asked, cols, cx, cz, seed, level));
+        return;
+    }
+    let missing: Vec<(i32, i32)> = cols.iter().copied().filter(|&(x, z)| crate::ground::at(x, z).is_none()).collect();
+    crate::meter::spend(40 * cols.len() as u64);
+    if !missing.is_empty() && now < FD_LAND_BY {
+        let tag = crate::ground::new_tag();
+        let next = now + 0.3;
+        q.ev.push((now, Act::Survey { tag, columns: missing }));
+        q.later(next, move |q| fl_tile(q, next, Some(tag), cols, cx, cz, seed, level));
+        return;
+    }
+    if !missing.is_empty() {
+        crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("fold: {} columns of the land never loaded; left out", missing.len()));
+    }
+    let mut b = Blocks { clear_of_player: true, ..Default::default() };
+    for &(x, z) in &cols {
+        if let Some(g) = crate::ground::at(x, z) {
+            column(&mut b, x, z, cx, cz, seed, level, g);
+        }
+    }
+    // (late ones go in at once: no wave left to time them to)
+    for (t, part) in b.split_by(|x, z| due((f64::from(x) + 0.5 - cx).hypot(f64::from(z) + 0.5 - cz)).max(now)) {
+        q.ev.push((t, Act::Blocks(Box::new(part))));
+    }
 }
 /// When the mushrooms are worked out: after the last tile's stage.
 fn at_mushrooms(tiles: usize) -> f32 {
@@ -381,6 +420,7 @@ mod tests {
     #[test]
     fn the_land_goes_in_as_a_wave_from_the_middle_out() {
         crate::columns::clear();
+        crate::ground::set_test(Some(|_, _| Some(65)));
         let ev = plan(the_laser(), &target(), true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
         let p = sim::play(ev, FD_LEN, &|_, _, _, _| None);
         let runs: usize = p.edits.iter().map(|e| e.2.runs.len()).sum();
@@ -391,7 +431,6 @@ mod tests {
             last = last.max(*t);
             for r in &b.runs {
                 assert!(f64::from(r.x).hypot(f64::from(r.z)) < FD_RIM + 8.0, "a run at {} {}", r.x, r.z);
-                assert!(r.surface.is_some());
             }
         }
         assert!(last > FD_RELEASE + 1.2, "the wave ended at {last}");
@@ -400,6 +439,39 @@ mod tests {
         assert!(first(0.0, 8.0) < first(50.0, 64.0));
         // (forceloaded as it begins, and given back at the end)
         assert!(p.cmds.iter().any(|c| c.1.starts_with("forceload add")));
+    }
+
+    fn hills(x: i32, z: i32) -> Option<i32> {
+        // (hilly: up to 14 over and 9 under the target's, rolling; the strip x >= 70 not loaded)
+        let h = 65.0 + 9.0 * (f64::from(x) * 0.07).sin() + 5.0 * (f64::from(z) * 0.11).cos();
+        (x < 70).then_some(h as i32)
+    }
+
+    /// Every column inside the crater's radius is edited, on hilly land, and the crater is one level cut (its floor
+    /// tops at the one height, whatever the ground) with the air cleared over the old ground; land loaded late is
+    /// waited for (the strip of it not loaded for the first seconds comes in late, nothing left standing).
+    #[test]
+    fn every_column_of_the_crater_is_cut_on_hills() {
+        crate::ground::set_test(Some(|x, z| hills(x, z)));
+        let ev = plan(the_laser(), &target(), true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+        let p = sim::play(ev, FD_LEN, &|_, _, _, _| None);
+        let mut cut: std::collections::HashSet<(i32, i32)> = Default::default();
+        for (_, _, b) in &p.edits {
+            for r in &b.runs {
+                cut.insert((r.x, r.z));
+            }
+        }
+        let mut miss = 0;
+        for x in -80..80 {
+            for z in -80..80 {
+                let (dx, dz) = (f64::from(x) + 0.5 - 0.5, f64::from(z) + 0.5 - 0.5);
+                if mandala(dx, dz, 37).is_some() && hills(x, z).is_some() && !cut.contains(&(x, z)) {
+                    miss += 1;
+                }
+            }
+        }
+        assert_eq!(miss, 0, "{miss} columns of the crater left standing");
+        crate::ground::set_test(None);
     }
 
     /// With the terrain left alone there is only sound, and the jolt.
@@ -433,6 +505,7 @@ mod tests {
         let mut best: Vec<f64> = Vec::new();
         for _ in 0..3 {
             crate::columns::clear();
+            crate::ground::set_test(Some(|_, _| Some(65)));
             let ev = plan(the_laser(), &target(), true, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
             let p = sim::play(ev, FD_LEN, &|_, _, _, _| None);
             let ms: Vec<f64> = p.stages.iter().map(|s| s.2).collect();
