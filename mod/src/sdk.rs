@@ -2,9 +2,9 @@
 //! natively, where the SDK's calls into the game don't exist) a stand-in world that records what is asked of it and
 //! answers the reads when a test says (`fake`), so the tests can play strikes through lib.rs's own playback.
 #[cfg(not(test))]
-pub use horizon_mod_sdk::{atlas, game, log, render, storage, world};
+pub use horizon_mod_sdk::{atlas, chat, game, log, render, storage, world};
 #[cfg(test)]
-pub use fake::{atlas, game, log, render, storage, world};
+pub use fake::{atlas, chat, game, log, render, storage, world};
 
 #[cfg(test)]
 pub mod fake {
@@ -56,6 +56,16 @@ pub mod fake {
         }
         pub fn player_flying() -> bool {
             false
+        }
+    }
+    pub mod chat {
+        /// A line only the player sees: kept as `chat <text>` among the commands run (`ran`), while a test asks.
+        pub fn show(text: &str) {
+            super::with(|w| {
+                if w.keep_commands {
+                    w.ran.push(format!("chat {text}"));
+                }
+            });
         }
     }
     pub mod log {

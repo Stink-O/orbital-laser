@@ -27,7 +27,7 @@ use horizon_mod_sdk::{
     input::{self, Event},
     ui,
 };
-use sdk::{game, log, render, storage, world};
+use sdk::{chat, game, log, render, storage, world};
 use lasers::{LASERS, is_ship};
 use strike::{APPROACHES, ARRIVALS, Act, COLOUR_RGB, COLOURS, FIRE, Target};
 
@@ -91,9 +91,10 @@ const FORCELOADS: &str = "forceloads";
 /// The storage key that says the player knows how to get the Designator (they ran `/orbital give`, or held one): the
 /// join hint (`HINT`) is no longer shown.
 const KNOWS: &str = "knows-give";
-/// The first line on joining a world, until the player knows how to get the Designator (`KNOWS`).
-const HINT: &str = "Orbital Laser: type /orbital give for the Designator. Hold it and press R to pick a laser.";
-/// Ticks after joining before the hint goes out: a line sent before the server has placed the player is dropped.
+/// The first line on joining a world, until the player knows how to get the Designator (`KNOWS`): shown in chat as
+/// `[Orbital Laser] Type /orbital give ...` (`chat::show`, only the player sees it).
+const HINT: &str = "Type /orbital give for the Designator. Hold it and press R to pick a laser.";
+/// Ticks after joining before the hint goes out, so it comes after the world's own lines.
 const HINT_AFTER: u32 = 20;
 /// Whether the player holds the Designator (in the tests, as the stand-in world says: `sdk::fake`).
 fn holding_designator() -> bool {
@@ -1301,7 +1302,7 @@ impl Orbital {
         }
         self.hint = None;
         if !self.knows() {
-            world::run_commands(&[format!(r#"tellraw @s {{"text":"{HINT}","color":"yellow"}}"#)]);
+            chat::show(HINT);
         }
     }
     /// Whether the player knows how to get the Designator (`KNOWS`).
@@ -2312,13 +2313,15 @@ mod stress {
                     w.player = clock.map(|_| player.clone());
                     w.clock = clock.map_or(0, |c| c + u64::from(t));
                 });
+                o.ticks += 1;
                 if o.in_world() {
                     o.join_hint();
                 }
             }
             fake::with(|w| std::mem::take(&mut w.ran)).iter().filter(|c| c.contains(HINT)).count()
         };
-        assert_eq!(hints(&mut o, Some(1000), 60), 1, "a second into the world");
+        assert_eq!(hints(&mut o, Some(1000), 10), 0, "not at once");
+        assert_eq!(hints(&mut o, Some(1010), 50), 1, "a second into the world");
         assert_eq!(hints(&mut o, Some(1060), 60), 0, "once a join");
         assert_eq!(hints(&mut o, None, 5), 0);
         assert_eq!(hints(&mut o, Some(5000), 60), 1, "the next world joined");
@@ -2333,7 +2336,7 @@ mod stress {
             w.holding = true;
         });
         let mut held = Orbital::new(Orbital::parse(""));
-        assert_eq!(hints(&mut held, Some(30000), 60), 0, "holding one");
+        assert_eq!(hints(&mut held, Some(30000), 120), 0, "holding one");
         fake::with(|w| w.holding = false);
         assert_eq!(hints(&mut held, None, 5) + hints(&mut held, Some(40000), 60), 0, "and after");
     }
