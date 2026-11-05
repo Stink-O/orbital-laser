@@ -320,14 +320,14 @@ fn vm_shade(C: vec3<f32>, rd: vec3<f32>, t: f32, l: VcLight, cam_uv: vec2<f32>) 
     // ---- its light ---------------------------------------------------------------------------------------------
     var shadow = 1.0;
     if (l.sun_up > 0.0) {
-        var s = 9.0;
-        for (var i = 0; i < 6; i = i + 1) {
+        var s = 12.0;
+        for (var i = 0; i < 5; i = i + 1) {
             let q = p + l.L * s;
             if (q.y > vm.yhi) {
                 break;
             }
             shadow = min(shadow, saturate(0.5 + (q.y - vm_height(q.xz)) / (0.22 * s + 1.0)));
-            s = s * 1.75;
+            s = s * 2.0;
         }
     }
     // (a point in a crevice sees less of the sky)
@@ -1166,8 +1166,8 @@ fn vm_rocks(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, col: vec3<f32>) 
             let g = vm_seg(rd, a0, a1);
             if (g.z > 0.0 && g.z < tmax + 20.0) {
                 let v = (f32(q) + g.y) * 0.5;      // 0 its tail, 1 at the rock
-                let wd = size * mix(3.2, 0.9, v) + 9.0 * (1.0 - v);
-                let dn = exp(-g.x / (wd * wd)) * smoothstep(0.0, 0.3, v) * 0.72 * min(a * 1.2, 1.0);
+                let wd = size * mix(2.2, 0.8, v) + 6.0 * (1.0 - v);
+                let dn = exp(-g.x / (wd * wd)) * smoothstep(0.0, 0.3, v) * 0.6 * min(a * 1.2, 1.0);
                 dust = dust + dn * (1.0 - dust);
             }
         }
