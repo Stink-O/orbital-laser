@@ -622,10 +622,18 @@ fn vm_shade_plate(C: vec3<f32>, rd: vec3<f32>, h: VmPl, l: VcLight) -> vec3<f32>
     if (h.kind == 0u) {
         // (its land as it stood, the steep of it bare rock: lit by the sun, the fire on what faces down)
         let slope = sqrt(max(1.0 - h.n.y * h.n.y, 0.0)) / max(h.n.y, 0.15);
-        let s2 = smoothstep(1.1, 1.8, slope + 0.6 * (nz - 0.5));
-        let by = h.y + 6.0 * nz;
+        // (as vm_shade made it: what stands on it torn away where it steepens, the water run off, the dust on it)
+        let nf = gnoise2(h.rest * 0.11 + vec2<f32>(3.1, 1.7));
+        let nf2 = gnoise2(h.rest * 0.37);
+        let tear = slope + 0.7 * (nf - 0.5) + 0.35 * (nf2 - 0.5);
+        let by = h.y + 6.0 * nf;
         let rock = mix(vec3<f32>(0.05, 0.047, 0.046), vec3<f32>(0.135, 0.122, 0.108), 0.5 + 0.3 * sin(by * 0.41));
-        let alb = mix(vm_lin(cl.top) * (0.75 + 0.5 * nz), rock, s2);
+        var alb = mix(vm_lin(cl.top), vm_lin(cl.under) * 0.8, smoothstep(0.95, 1.25, tear));
+        if (((cl.w2 >> 24u) & 7u) == 2u) {
+            alb = vec3<f32>(0.05, 0.045, 0.04) * (0.7 + 0.8 * nf2);
+        }
+        alb = mix(alb, rock, smoothstep(1.25, 1.75, tear));
+        alb = mix(alb, vec3<f32>(0.17, 0.145, 0.12), 0.45 * (0.6 + 0.8 * nf2));
         let d2 = f32((cl.w2 >> 8u) & 255u) / 8.0;
         return mix(alb * dl * (0.4 + 0.9 * nl) + min(alb, vec3<f32>(0.2)) * vec3<f32>(1.6, 0.5, 0.12) * saturate(-h.n.y + 0.1), vec3<f32>(0.012), 0.8 * (1.0 - smoothstep(0.3, 1.4, d2)));
     }
