@@ -13,6 +13,7 @@ mod payload;
 mod sh_land;
 mod sinkhole;
 mod storm;
+mod vc_sound;
 mod vortex;
 
 /// The Hurricane's wind, for its carry of the player (carry.rs).
