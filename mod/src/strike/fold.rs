@@ -7,7 +7,7 @@
 //! The timeline (strike seconds; FD_* here, FW_* in fold_warp.wgsl and fold.wgsl's in step, `the_warp_keeps_the_beats`):
 //!   0 - FD_STOP       the droplet's fall out of the top of the sky: a glint, a plasma sheath, fire, a smoke trail
 //!   FD_STOP           it stops dead in one frame, the fire rushes past it, the sound cuts to near silence
-//!   FD_HANG           it has hung perfectly still; it lowers very slowly
+//!   FD_HANG           it has hung perfectly still; it is let go and falls to the land under gravity
 //!   FD_TOUCH-FD_MELD  it touches the land and melds in like mercury; no splash
 //!   FD_RIPPLE         the warp begins (off before it): rings running out, each bigger than the last
 //!   FD_SCORE          the rings sharpen into hairline creases racing over the land, the mandala's pattern
@@ -28,11 +28,11 @@ pub const FD_COPIES: u32 = 5;
 pub const FD_COPY_R: f32 = 130.0;
 /// When the copies are drawn: the cones of the fold down, out and back.
 pub const FD_COPY_ON: std::ops::Range<f32> = 35.4..41.0;
-pub const FD_WARP_START: f32 = 6.5;
+pub const FD_WARP_START: f32 = 5.5;
 pub const FD_WARP_END: f32 = 53.0;
 /// The strike's beats (see the top of this file).
 pub(super) const FD_STOP: f32 = 3.4;
-pub(super) const FD_HANG: f32 = 3.9;
+pub(super) const FD_HANG: f32 = 4.9;
 pub(super) const FD_TOUCH: f32 = 6.0;
 pub(super) const FD_MELD: f32 = 7.2;
 pub(super) const FD_RIPPLE: f32 = 6.6;

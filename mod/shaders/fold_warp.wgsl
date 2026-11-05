@@ -163,21 +163,78 @@ fn fw_top(t: f32, kappa: f32) -> f32 {
     }
     return total;
 }
-// The ripples: five rings out of the target, each bigger than the last.
-fn fw_ripple(r: f32, t: f32) -> f32 {
-    var y = 0.0;
-    for (var k = 0; k < 5; k += 1) {
-        let f = f32(k);
-        let t0 = FW_RIPPLE + 1.05 * f;
-        if (t < t0) {
-            break;
-        }
-        let front = (58.0 + 14.0 * f) * (t - t0) * (1.0 + 0.09 * (t - t0));
-        let w = 13.0 + 7.0 * f + 0.05 * front;
-        let x = (r - front) / w;
-        y += (1.3 + 2.2 * f) * exp(-x * x) * cos(x * 2.4) / (1.0 + r / 340.0);
+// ---- the water: the land takes the droplet the way still water takes a drop -------------------------------------------
+// Each pulse of the centre (the droplet going in, then the land's own rebounds) lets go one group of rings, worked out as
+// deep water's ring waves (the Cauchy-Poisson problem; refs in the team's notes): at distance r, time s after the pulse, the
+// wave here is the one whose group has come this far, k = g s^2 / (4 r^2), so the first rings out are long and fast, the
+// ones behind them short and slow, the crests run forward through their group at twice its speed, and a calm grows in the
+// middle as the short waves leave. r is softened by FW_CORE so the middle itself falls and rebounds, one formula all the way
+// in. Physically a group thins out as r^-3; FW_RB and FW_RP put back enough of that to carry it to the player.
+const FW_TOUCH: f32 = 6.0;         // the droplet touches: fold.wgsl's FD_TOUCH
+const FW_G: f32 = 400.0;           // the land's gravity, blocks/s^2: higher, every ring faster; a wave's period is 2 pi / sqrt(g k)
+const FW_SRC: f32 = 17.0;          // how wide a pulse is, blocks: the shortest ring it makes is about 2.2 of these
+const FW_CORE: f32 = 20.0;         // the softened middle
+const FW_RB: f32 = 60.0;
+const FW_RP: f32 = 1.5;
+fn fw_group(r2: f32, s: f32) -> f32 {
+    if (s <= 0.0) {
+        return 0.0;
     }
+    let q2 = r2 + FW_CORE * FW_CORE;
+    let q = sqrt(q2);
+    let u = FW_G * s * s * 0.25;
+    let x = u / q2 * FW_SRC * 0.5;
+    if (x > 3.0) {
+        return 0.0;
+    }
+    let b = 1.0 + q / FW_RB;
+    return 0.706 * FW_SRC * FW_SRC * u / (q2 * q) * exp(-x * x) * b * sqrt(b) * cos(u / q);
+}
+// The land's height here at t, blocks: five groups, each stronger than the last and of the other sign.
+fn fw_ripple(r: f32, t: f32) -> f32 {
+    if (t < FW_TOUCH || t > FW_TEAR) {
+        return 0.0;
+    }
+    let r2 = r * r;
+    let y = -1.2 * fw_group(r2, t - 7.5) + 2.6 * fw_group(r2, t - 8.6) - 4.6 * fw_group(r2, t - 9.6)
+        + 7.2 * fw_group(r2, t - 10.6) - 9.5 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
+}
+// The land at the droplet's foot: drawn to it. A finger of land reaches up for the drop as it falls, meets it a tenth of a second
+// before it would have reached the ground, climbs its side in a tight skirt with a hollow flank, not a hill's round one, and
+// closes over its top as the last of it goes under at 7.5, then falls back. fold.wgsl's fd_land and fd_meld in step.
+fn fw_land(a: f32, R: f32) -> f32 {
+    return 1.35 * R * fw_ss(-0.5, 0.55, a) * (1.0 - 0.69 * fw_ss(0.95, 1.5, a) - 0.31 * fw_ss(1.5, 2.4, a));
+}
+fn fw_neck(r: f32, t: f32, R: f32) -> f32 {
+    let a = t - FW_TOUCH;
+    if (a <= -0.5 || a >= 2.4 || r > R * 9.0) {
+        return 0.0;
+    }
+    let H = fw_land(a, R);
+    // (how wide the drop is at the top of the land: fold.wgsl's fd_prof and fd_meld)
+    let vc = 2.0 * (1.6 * R + 6.0) / 1.1;
+    var h = R + 1.6 * R + 6.0;
+    if (a > 0.0) {
+        h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * (2.22 * R + 1.0 - vc * 0.25) / 2.25;
+    }
+    let y = clamp((H - h) / R, -1.0, 1.72);
+    let b = 1.72 - y;
+    let q = 0.25773 + y * (0.09111 + y * (-0.07338 + y * (-0.05797 + y * 0.03297)));
+    let rho = R * sqrt(max((y + 1.0) * b * b * sqrt(b) * q, 0.0));
+    let d = max(r - rho, 0.0);
+    let x = sqrt(d * d + 1.0) - 1.0;
+    return H * (0.65 * exp(-x / (0.42 * R)) + 0.35 * exp(-x / (3.0 * R))) * (1.0 - fw_ss(6.0 * R, 9.0 * R, r));
+}
+// How far the land here is drawn in towards the drop, blocks: what stands higher goes further, so trees and walls lean to it.
+fn fw_pull(r: f32, y: f32, t: f32, R: f32) -> f32 {
+    let a = t - FW_TOUCH;
+    if (a <= -0.3 || a >= 2.3 || r > R * 14.0) {
+        return 0.0;
+    }
+    let P = 1.0 * R * fw_ss(-0.3, 0.6, a) * (1.0 - fw_ss(1.35, 2.3, a));
+    let lean = 1.0 + clamp(y, 0.0, 26.0) / (1.2 * R);
+    return min(P * lean * (1.0 - exp(-r / (1.2 * R))) * exp(-r / (2.6 * R)), 0.85 * r);
 }
 // ---- the sphere ------------------------------------------------------------------------------------------------------
 // How big it ends: the player well inside, whatever their distance.
@@ -322,7 +379,7 @@ fn fw_clock() -> FwClock {
     return FwClock(w[0].w + w[4].w * 0.05, tgt, me, w[2].x, min(50.0 - w[0].y, -20.0));
 }
 fn fw_live(t: f32) -> bool {
-    return globals.warp[2].y > 0.5 && t > FW_RIPPLE - 0.2 && t < FW_END;
+    return globals.warp[2].y > 0.5 && t > FW_TOUCH - 0.5 && t < FW_END;
 }
 
 // Cone k (1 to 5): a copy of the land round the target, its middle at the point, its edge the rim.
@@ -376,11 +433,17 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     if (copy > 0u) {
         return fw_cone(i32(copy), pos, Q, r, a, c);
     }
-    let rip = fw_ripple(r, t);
+    // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
+    let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
+    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, t, dropR);
+    if (t < FW_TOUCH + 2.3) {
+        let pull = fw_pull(r, Q.y, t, dropR) / max(r, 0.01);
+        Q = vec3<f32>(Q.x * (1.0 - pull), Q.y, Q.z * (1.0 - pull));
+    }
     // ---- the island: left where it is ------------------------------------------------------------------------------------
     let mq = c.me - c.tgt;
     if (length(Q.xz - mq.xz) < FW_ISLE) {
-        out.pos = pos + vec3<f32>(0.0, rip, 0.0);
+        out.pos = c.tgt + Q + vec3<f32>(0.0, rip, 0.0);
         return out;
     }
     // ---- how far on: the sheet's own heights keep to its surface as it goes up ---------------------------------------------
@@ -507,6 +570,45 @@ fn fw_iridesce(col: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, w: f32) -> vec3<f32
     let ang = 0.63 * FW_IRID * w * bands / 1.6;
     return fw_hue(col, ang, 1.0 + 0.26 * FW_IRID * w);
 }
+// ---- the water's look: small waves are seen by their slope, what they reflect, long before their height shows ------------
+const FW_SHEEN: f32 = 1.0;
+fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32, up: f32) -> vec3<f32> {
+    let a = t - FW_TOUCH;
+    let e = 1.5;
+    let r0 = max(r - e, 0.0);
+    var slope = (fw_ripple(r + e, t) - fw_ripple(r0, t)) / (r + e - r0);
+    // (the first fine ripples, too small for the land's vertices: only their light, running out ahead of the metal)
+    let lead = R + 58.0 * (1.0 - exp(-a / 1.5));
+    let fine = fw_ss(lead, lead - 12.0, r) * fw_ss(0.0, 0.4, a) * (1.0 - fw_ss(7.4, 9.6, t));
+    slope += 0.11 * fine * up * sin(r * 0.8 - a * 9.0) * exp(-r / 80.0);
+    let D = Q.xz / max(r, 0.5);
+    let N = normalize(vec3<f32>(-slope * D.x, 1.0, -slope * D.y));
+    let V = at / max(length(at), 0.01);
+    let L = globals.sun.xyz;
+    let day = fw_ss(-0.1, 0.2, L.y);
+    // (the sun's light across the rings and the swell at its foot; the sky's only in the rings: the swell is too steep, it would wash the blocks out)
+    let s2 = slope + (fw_neck(r + e, t, R) - fw_neck(r0, t, R)) / (r + e - r0);
+    let Ns = normalize(vec3<f32>(-s2 * D.x, 1.0, -s2 * D.y));
+    let nv = max(dot(N, -V), 0.0);
+    let turned = nv - max(-V.y, 0.0);
+    var col = colIn * (1.0 + FW_SHEEN * 0.9 * day * (dot(Ns, L) - L.y));
+    // (a face turned from the eye shows the bright sky low down, one turned to it the deep sky overhead)
+    col = mix(col, globals.sky_color.rgb * 1.15, clamp(-turned * 1.3, 0.0, 0.34) * FW_SHEEN * up);
+    col = col * (1.0 - clamp(turned * 1.2, 0.0, 0.3) * FW_SHEEN);
+    // ---- the droplet's metal spreading from the contact, thin as a film, then taken into the land ----------------------------
+    let ang = atan2(Q.z, Q.x);
+    let rf = 1.3 * R + 30.0 * (1.0 - exp(-a / 1.1)) + 2.5 * sin(ang * 5.0 + 1.0) + 1.5 * sin(ang * 11.0 - 2.0);
+    // (thick at the foot, thin on past it, gone by the first rebound)
+    let foot = exp(-max(r - R * 0.9, 0.0) / (R * 0.9));
+    let film = fw_ss(rf, rf - 6.0, r) * fw_ss(0.0, 0.2, a) * (1.0 - fw_ss(7.0, 9.0, t)) * (0.06 + 0.32 * foot) * up;
+    if (film > 0.002) {
+        let m = reflect(V, N);
+        let env = mix(vec3<f32>(0.42, 0.44, 0.48), globals.sky_color.rgb * 1.1, fw_ss(-0.02, 0.5, m.y));
+        let glint = pow(max(dot(m, L), 0.0), 120.0) * 3.0 * day;
+        col = mix(col, env * (1.0 + 0.3 * pow(1.0 - nv, 3.0)) + vec3<f32>(glint), film);
+    }
+    return col;
+}
 // ---- the sponge: is a point of a unit block a hole? (a Menger sponge, three levels) --------------------------------------
 fn fw_hole(p: vec3<f32>) -> bool {
     var q = fract(p);
@@ -611,6 +713,12 @@ fn world_fragment(f: Fragment) -> Painted {
         let n = fw_hash(floor(Q.xz * 0.5) + floor(Q.y * 0.5));
         let rock = mix(vec3<f32>(0.1, 0.085, 0.08), vec3<f32>(0.24, 0.19, 0.16), n) * (0.6 + 0.4 * fw_ss(40.0, 0.0, Q.y + 30.0));
         col = mix(col, rock, 0.92 * shown);
+    }
+    // ---- the water's look ------------------------------------------------------------------------------------------------
+    if (t > FW_TOUCH && t < FW_TEAR) {
+        // (top faces: the water's skin; a wall or a trunk takes none of the metal)
+        let up = fw_ss(0.5, 0.9, abs(real_n.y) / max(length(real_n), 1.0e-5));
+        col = fw_wet(col, Q, r, t, f.at, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0), up);
     }
     // ---- the iridescence: anchored to the land, spread with the wave, strongest on the creases and the petals -------------
     if (FW_IRID > 0.0) {
