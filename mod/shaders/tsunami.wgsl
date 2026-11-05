@@ -130,6 +130,9 @@ fn ts_toe(s: f32, u: f32, gy: f32, g: TsG) -> f32 {
     return clamp(gy * 0.012, -0.55, 0.42) * e * smoothstep(45.0, 150.0, length(vec2<f32>(s - g.dp, u)));
 }
 
+// Where the camera is, for what it must not be shaken by.
+var<private> ts_cam: vec3<f32>;
+
 // The water's surface function at a point (relative to the target's ground): negative inside the water, positive in the
 // air above it, and a big number where there is none. The crest leans out over the face, more where it is breaking.
 fn ts_f(pa: vec3<f32>, t: f32, g: TsG) -> f32 {
@@ -161,7 +164,16 @@ fn ts_f(pa: vec3<f32>, t: f32, g: TsG) -> f32 {
     }
     // (the crest torn along its length)
     let tear = (fvnoise(vec2<f32>(u * 0.052 + g.sd, t * 0.9 + s * 0.01)) - 0.5) * (5.0 + 11.0 * inb) * smoothstep(0.8, 1.0, yb);
-    return pa.y - ts_fall(a * p - TS_SEA + tear, x);
+    var lv = ts_fall(a * p - TS_SEA + tear, x);
+    // (the torrent is lumps of water, not a level sheet: out of the way of the camera, which rides it)
+    if (x > 0.03 && x < 0.97) {
+        let k = smoothstep(0.03, 0.2, x) * (1.0 - smoothstep(0.7, 0.95, x)) * smoothstep(10.0, 55.0, length(pa.xz - ts_cam.xz));
+        if (k > 0.0) {
+            let r = s + t * 30.0;
+            lv = lv + k * (0.85 * sin(r * 0.17 + u * 0.06) * sin(u * 0.11 - r * 0.04 + 1.3) + 0.45 * sin(r * 0.37 - u * 0.21 + 2.1) * sin(u * 0.29 + r * 0.13));
+        }
+    }
+    return pa.y - lv;
 }
 
 struct TsHit {
@@ -476,9 +488,16 @@ fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat
     let nw = m * nl;
     let alb = ts_face(kind, face, uv, ts_lod(tnear));
     let dif = saturate(dot(nw, li.L));
-    var rgb = alb * (li.amb * (1.3 + 0.6 * nw.y) + li.sunc * dif * 0.85 + vec3<f32>(0.025));
-    // (wet through, dirtied by the water)
-    rgb = mix(rgb, rgb * vec3<f32>(0.8, 0.74, 0.62) + vec3<f32>(0.01, 0.008, 0.004), wet);
+    // (wet through and coated in what it came through: wet wood and wool go dark, and however pale a thing was it is the
+    // colour of the water it is in, in patches along it)
+    let mud = smoothstep(0.32, 0.62, ts_vn3((p + vec3<f32>(f32(kind) * 3.1, 0.0, 0.0)) * vec3<f32>(0.9, 0.9, 0.45)));
+    let wetc = mix(alb, pow(alb, vec3<f32>(1.35)) * vec3<f32>(0.62, 0.56, 0.47) * 0.9, wet);
+    let albw = mix(wetc, vec3<f32>(0.085, 0.062, 0.042), wet * 0.62 * mud);
+    let ambw = mix(li.amb, vec3<f32>(luminance(li.amb)), 0.7);
+    var rgb = albw * (ambw * (1.15 + 0.5 * nw.y) + li.sunc * dif * 0.6 + vec3<f32>(0.02));
+    // (a wet shine across it, the sky's)
+    let fr = pow(1.0 - saturate(dot(nw, -rd)), 4.0);
+    rgb = rgb + mix(ts_skyr(reflect(rd, nw), li), vec3<f32>(luminance(li.skyl)), 0.7) * fr * 0.14 * wet;
     out.t = tnear;
     out.rgb = rgb;
     out.hit = true;
@@ -488,7 +507,7 @@ fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat
 }
 // A piece from the hash `hh` at `ctr`, spinning with `time`, grown from nothing by `grow` (0 to 1); the nearest hit of the ray
 // with it. `tr`, `bd` the land's trees and buildings there.
-fn ts_piece(ro: vec3<f32>, rd: vec3<f32>, hh: u32, ctr: vec3<f32>, time: f32, grow: f32, scale: f32, tr: f32, bd: f32, li: TsLight, wet: f32) -> TsPieceHit {
+fn ts_piece(ro: vec3<f32>, rd: vec3<f32>, hh: u32, ctr: vec3<f32>, time: f32, grow: f32, scale: f32, tr: f32, bd: f32, li: TsLight, wet: f32, flat: f32, longest: f32) -> TsPieceHit {
     let h2 = pcg(hh ^ 0x68E31DA4u);
     let h3 = pcg(h2 + 0x1B873593u);
     let r = vec4<f32>(vec4<u32>(hh & 0xFFFFu, hh >> 16u, h2 & 0xFFFFu, h2 >> 16u)) / 65536.0;
@@ -509,9 +528,16 @@ fn ts_piece(ro: vec3<f32>, rd: vec3<f32>, hh: u32, ctr: vec3<f32>, time: f32, gr
         half = vec3<f32>(1.3 + 0.4 * r2.y, 0.6, 1.3 + 0.4 * r2.z);
     }
     half = half * grow * scale;
+    // (never longer than the cells it is looked for in can show whole)
+    half.z = min(half.z, longest);
     let ax = normalize(vec3<f32>(r.y - 0.5, r.z - 0.5, r.w - 0.5) + vec3<f32>(0.001, 0.002, 0.003));
     let ang = r2.z * 6.283 + time * (0.35 + 1.2 * r2.x) * select(1.0, 0.4, log);
-    let m = ts_rodrigues(ax, ang);
+    var m = ts_rodrigues(ax, ang * (1.0 - flat));
+    // (afloat: lying on the water, turning slowly, rocked by it)
+    if (flat > 0.0) {
+        let rock = ts_rodrigues(vec3<f32>(0.8, 0.0, 0.6), flat * 0.14 * sin(time * (1.1 + r.w) + r.x * 6.283));
+        m = ts_rodrigues(vec3<f32>(0.0, 1.0, 0.0), flat * (r.w * 6.283 + time * (0.1 + 0.25 * r2.y))) * rock * m;
+    }
     return ts_piece_hit(ro, rd, ctr, half, m, kind, li, wet);
 }
 // The drift of the water's own parcels from where the front found them: about four fifths of the front's speed while it
@@ -544,8 +570,12 @@ fn ts_deb_ext(ro: vec3<f32>, rd: vec3<f32>, hp: vec3<f32>, t_hit: f32, time: f32
         return best;
     }
     let sfm = ts_front(time);
+    // (the cells ride with the front till the water starts back, then with the water, going back the way it came)
+    let t0 = TS_T + ts_tau(g.dp) + TS_FACE / ts_vel(g.dp) + TS_HOLD;
+    let dt_d = max(time - t0, 0.0);
+    let fr = ts_front(min(time, t0)) - 26.0 * (dt_d - (1.0 - exp(-dt_d)));
     let cs = 7.0;
-    let a_h = dot(hp.xz, g.m) - sfm;
+    let a_h = dot(hp.xz, g.m) - fr;
     let u_h = dot(hp.xz, g.n);
     let ia0 = i32(floor(a_h / cs));
     let iu0 = i32(floor(u_h / cs));
@@ -566,9 +596,10 @@ fn ts_deb_ext(ro: vec3<f32>, rd: vec3<f32>, hp: vec3<f32>, t_hit: f32, time: f32
                 let grow = smoothstep(0.0, 0.16, f) * smoothstep(1.0, 0.84, f);
                 let a_c = (f32(ia) + f) * cs;
                 let u_c = (f32(iu) + r2) * cs;
-                let s_c = sfm + a_c;
+                let s_c = fr + a_c;
                 let tau_c = time - ts_arr(s_c, u_c, g.sd);
-                let dens = 0.5 * smoothstep(0.0, 0.4, tau_c) * (1.0 - smoothstep(35.0, 130.0, -a_c)) * (1.0 - smoothstep(10.0, 42.0, a_h_y(s_c, u_c, time, g))) + 0.012 + 0.06 * ts_x(time, s_c, g);
+                let x_c = ts_x(time, s_c, g);
+                let dens = 0.5 * smoothstep(0.0, 0.4, tau_c) * (1.0 - smoothstep(35.0, 130.0, sfm - s_c)) * (1.0 - smoothstep(10.0, 42.0, a_h_y(s_c, u_c, time, g))) + 0.012 + 0.07 * smoothstep(0.02, 0.2, x_c);
                 if (r0 > dens || grow < 0.05) {
                     continue;
                 }
@@ -576,10 +607,12 @@ fn ts_deb_ext(ro: vec3<f32>, rd: vec3<f32>, hp: vec3<f32>, t_hit: f32, time: f32
                 if (lvl < -1000.0) {
                     continue;
                 }
-                let y_c = lvl - 0.8 + (r3 - 0.4) * 3.0;
+                // (afloat low in the water, most of it under; in the wave anywhere in the churn)
+                let flat = smoothstep(0.02, 0.14, x_c);
+                let y_c = lvl + mix(-0.8 + (r3 - 0.4) * 3.0, -0.3 - 0.4 * r3, flat);
                 let ctr = vec3<f32>(g.m.x * s_c + g.n.x * u_c, y_c, g.m.y * s_c + g.n.y * u_c);
                 let mp = ts_map(s_c, u_c);
-                let ph = ts_piece(ro, rd, pcg(hh ^ h2), ctr, time, grow, 1.2 + clamp(t_hit / 200.0, 0.0, 2.0), mp.x, mp.y, li, 0.55);
+                let ph = ts_piece(ro, rd, pcg(hh ^ h2), ctr, time, grow, mix(1.2 + clamp(t_hit / 200.0, 0.0, 2.0), 1.0 + clamp(t_hit / 500.0, 0.0, 1.0), flat), mp.x, mp.y, li, 0.55 + 0.4 * flat, flat, 6.8);
                 if (ph.hit && ph.t < best.t && ph.t < t_hit + 5.0) {
                     best = ph;
                 }
@@ -596,30 +629,53 @@ fn ts_deb_under(ro: vec3<f32>, rd: vec3<f32>, lw: f32, time: f32, cs: f32, cu: f
     best.t = 1.0e9;
     let dr = ts_drift(cs, cu, time, g);
     let rop = ro - vec3<f32>(g.m.x * dr, 0.0, g.m.y * dr);
-    let cell = 7.0;
+    // (cell by cell along the ray, nearest first: each cell's pieces stay inside it, so nothing is cut at a cell's wall and
+    // the first hit is the nearest)
+    let cell = 14.0;
     let mp = ts_map(cs, cu);
-    var last = vec3<i32>(1 << 20);
-    let n = 14;
     let reach = min(lw, 46.0);
-    for (var i = 0; i < n; i = i + 1) {
-        let t = (f32(i) + j) * reach / f32(n);
-        let p = rop + rd * t;
-        let ic = vec3<i32>(floor(p / cell));
-        if (all(ic == last)) {
-            continue;
+    var ic = vec3<i32>(floor(rop / cell));
+    let st = vec3<i32>(sign(rd));
+    let inv = 1.0 / (abs(rd) + vec3<f32>(1.0e-5));
+    var tm = ((vec3<f32>(ic) + 0.5 + 0.5 * vec3<f32>(st) - rop / cell) * sign(rd)) * cell * inv;
+    let td = cell * inv;
+    var tc = 0.0;
+    for (var i = 0; i < 9; i = i + 1) {
+        if (tc > reach) {
+            break;
         }
-        last = ic;
-        let hh = pcg(u32(ic.x * 73856 + 5) ^ pcg(u32(ic.y * 19349 + 11) ^ pcg(u32(ic.z * 83492 + 3))));
-        let r0 = f32(hh & 0xFFFFu) / 65536.0;
-        if (r0 > 0.13 || ic.y < -90) {
-            continue;
+        if (ic.y >= -7) {
+            let hh = pcg(u32(ic.x * 73856 + 5) ^ pcg(u32(ic.y * 19349 + 11) ^ pcg(u32(ic.z * 83492 + 3))));
+            for (var k = 0u; k < 2u; k = k + 1u) {
+                let hk = pcg(hh + k * 0x7F4A7C15u);
+                if (f32(hk & 0xFFFFu) / 65536.0 > 0.72) {
+                    continue;
+                }
+                let h2 = pcg(hk + 0x85EBCA6Bu);
+                let jit = vec3<f32>(f32(h2 & 255u), f32((h2 >> 8u) & 255u), f32((h2 >> 16u) & 255u)) / 255.0 - 0.5;
+                // (the first any size, the other small and free to sit anywhere)
+                let ctr = (vec3<f32>(ic) + vec3<f32>(0.5)) * cell + jit * select(1.6, 7.0, k == 1u);
+                let ph = ts_piece(rop, rd, pcg(hk ^ h2), ctr, time, 1.0, select(1.0, 0.5, k == 1u), mp.x, mp.y, li, 0.3, 0.0, 6.0);
+                if (ph.hit && ph.t < best.t) {
+                    best = ph;
+                }
+            }
+            if (best.hit && best.t < tc + td.x + td.y + td.z) {
+                return best;
+            }
         }
-        let h2 = pcg(hh + 0x85EBCA6Bu);
-        let jit = vec3<f32>(f32(h2 & 255u), f32((h2 >> 8u) & 255u), f32((h2 >> 16u) & 255u)) / 255.0;
-        let ctr = (vec3<f32>(ic) + 0.15 + 0.7 * jit) * cell;
-        let ph = ts_piece(rop, rd, pcg(hh ^ h2), ctr, time, 1.0, 1.0, mp.x, mp.y, li, 0.3);
-        if (ph.hit && ph.t < best.t) {
-            best = ph;
+        if (tm.x < tm.y && tm.x < tm.z) {
+            tc = tm.x;
+            tm.x = tm.x + td.x;
+            ic.x = ic.x + st.x;
+        } else if (tm.y < tm.z) {
+            tc = tm.y;
+            tm.y = tm.y + td.y;
+            ic.y = ic.y + st.y;
+        } else {
+            tc = tm.z;
+            tm.z = tm.z + td.z;
+            ic.z = ic.z + st.z;
         }
     }
     return best;
@@ -954,52 +1010,74 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     return c;
 }
 
-// The water as it drains: a brown torrent going back the way it came, streaming, torn into streaks of dirty foam, its
-// edge a line of scum round whatever stands out of it. `hg`: how deep it is here.
+// The water as it drains: a brown torrent going back the way it came, broken all over, cream foam in clumps and rafts riding
+// it, lines of it where it breaks, wreck in it, and a line of scum round whatever stands out of it. `hg`: how deep it is here.
+// (Everything here runs at one speed, with the shape of the flow fixed in the land: a speed that changes from place to place
+// shears a pattern further each second, into marbled bands.)
 fn ts_torrent(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLight, hg: f32) -> vec3<f32> {
     let s = dot(p.xz, g.m);
     let u = dot(p.xz, g.n);
     let px = ht * 2.0 * tan(0.5 * frame.view_params.w) * frame.resolution.w;
-    let near = 1.0 - smoothstep(0.3, 1.8, px);
-    let mid = 1.0 - smoothstep(1.5, 9.0, px);
-    // (it runs back along m, faster in its channels; the meander of those)
-    let w0 = ts_fbm3(vec3<f32>(s * 0.008, u * 0.014, time * 0.1), 2);
-    let run = s + time * (26.0 + 26.0 * w0) + 22.0 * sin(u * 0.03 + 4.0 * w0);
-    let cross_ = u + 40.0 * (w0 - 0.5);
-    let sl = ts_ripple(vec2<f32>(cross_ * 2.0, run * 1.5), time * 1.4, near + 0.5 * mid);
     let tn = vec3<f32>(g.n.x, 0.0, g.n.y);
     let tm = vec3<f32>(g.m.x, 0.0, g.m.y);
-    var nrm = normalize(vec3<f32>(0.0, 1.0, 0.0) + (tn * sl.x + tm * sl.y) * (0.06 + 0.3 * mid));
+    let w0 = ts_fbm3(vec3<f32>(s * 0.009, u * 0.012, 2.0), 2) - 0.5;
+    let run = s + time * 30.0 + 24.0 * w0;
+    let cross_ = u + 34.0 * w0;
+    let ch = ts_chop(vec2<f32>(cross_, run * 0.85), 11.0, time, px);
+    // (the big heave of it: lumps of water, not bands)
+    let sl = ts_ripple(vec2<f32>(cross_, run), time * 1.2, 1.0 - smoothstep(1.0, 6.0, px));
+    var nrm = normalize(ts_normal(p, time, g) + (tn * sl.x + tm * sl.y) * 0.1 + (tn * ch.g.x + tm * ch.g.y) * 0.5);
+    if (dot(nrm, rd) > -0.02) {
+        nrm = normalize(nrm - rd * (dot(nrm, rd) + 0.02));
+    }
     let cosv = saturate(dot(nrm, -rd));
-    let fresnel = 0.03 + 0.97 * pow(1.0 - cosv, 5.0);
+    let fresnel = 0.03 + 0.5 * pow(1.0 - cosv, 5.0);
     let refl = reflect(rd, nrm);
-    // (thick with mud: a body you can't see into)
-    let n1 = ts_fbm3(vec3<f32>(cross_ * 0.03, run * 0.008, 1.0), 2 + i32(mid * 2.0));
     let dif = saturate(dot(nrm, li.L));
-    let lw = mix(li.amb, vec3<f32>(luminance(li.amb)), 0.8) * 1.25 + li.sunc * (0.25 + 0.5 * dif) + li.nightw;
-    var body = mix(vec3<f32>(0.045, 0.03, 0.016), vec3<f32>(0.09, 0.06, 0.03), n1) * lw;
+    let ambg = mix(li.amb, vec3<f32>(luminance(li.amb)), 0.8);
+    let lw = ambg * 1.25 + li.sunc * (0.22 + 0.55 * dif) + li.nightw;
+    // (thick with mud: a body you can't see into, lighter in the lumps that catch the light)
+    let shade = ts_fbm3(vec3<f32>(cross_ * 0.05, run * 0.04, time * 0.2), 2);
+    var c = mix(vec3<f32>(0.04, 0.027, 0.016), vec3<f32>(0.1, 0.068, 0.04), saturate(shade + 1.3 * ch.h + 0.25 * sl.y)) * lw;
+    c = mix(c, ts_skyr(refl, li) * vec3<f32>(0.5, 0.45, 0.36), fresnel);
     let rl = saturate(dot(refl, li.L));
-    var c = mix(body, ts_skyr(refl, li) * vec3<f32>(0.5, 0.44, 0.34), fresnel) + pow(rl, 300.0) * li.sunc * 1.8 + pow(rl, 30.0) * li.sunc * 0.05;
-    // the streaks of dirty foam, long along the way it runs, torn
-    let wq = vec2<f32>(cross_ * 0.3 + 2.4 * w0, run * 0.2 - 1.7 * w0);
-    let wa = ts_fbm3(vec3<f32>(wq * 1.1, time * 0.25), 2);
-    let web = ts_fbm3(vec3<f32>(wq.x + 2.2 * wa, wq.y + 2.2 * wa, time * 0.2), 2 + i32(mid * 2.0));
-    let vein = 1.0 - abs(2.0 * web - 1.0);
-    let st = web;
-    let tear = ts_fbm3(vec3<f32>(cross_ * 0.022, run * 0.012, 7.0), 2);
-    var foam = smoothstep(0.86, 0.97, vein) * smoothstep(0.42, 0.6, tear);
-    // (close by, the small tearing of the water itself)
-    if (near > 0.01) {
-        let fine = ts_fbm3(vec3<f32>(cross_ * 0.8, run * 0.55, time * 0.9), 3);
-        foam = max(foam, near * smoothstep(0.62, 0.72, fine) * smoothstep(0.3, 0.52, tear));
-        body = body * (0.55 + 0.9 * fine);
-    }
+    c = c + min(pow(rl, 240.0) * 1.2, 0.8) * li.sunc + pow(rl, 26.0) * li.sunc * 0.04;
+    // what is white on it: rafts of foam and clumps, drawn out a little along the flow, with lines where it breaks over itself
+    let raft = ts_fbm3(vec3<f32>(cross_ * 0.05, run * 0.017, time * 0.1), 3);
+    let clump = ts_fbm3(vec3<f32>(cross_ * 0.17, run * 0.06, time * 0.2 + 4.0), 3);
+    let broke = ts_fbm3(vec3<f32>(cross_ * 0.012, (run - time * 8.0) * 0.07, 9.0), 2);
+    // (a thin web of it everywhere, thickening into clumps, closing up only in the middles of the rafts)
+    var cov = 0.07 + 0.26 * smoothstep(0.48, 0.64, raft) + 0.32 * smoothstep(0.56, 0.68, clump + 0.3 * (raft - 0.5));
+    cov = max(cov, 0.5 * smoothstep(0.6, 0.65, broke + 0.3 * (clump - 0.5)));
     // (scum and white water where it breaks round what stands out of it)
-    if (hg < 8.0) {
-        foam = max(foam, (1.0 - smoothstep(0.2, 1.4 + 2.0 * n1, hg)) * smoothstep(0.3, 0.55, st + 0.1));
+    cov = max(cov, 0.9 * (1.0 - smoothstep(0.3, 2.2 + 2.6 * shade, hg)));
+    let q = vec2<f32>(cross_ + 6.0 * ch.g.x, run * 0.42 + 4.0 * ch.g.y);
+    // (its edge gnawed at by the chop at every size, close to and far off)
+    let foam = ts_lace(q, saturate(cov + cov * ch.h * 1.6), px);
+    // (the foam stands proud, lit on the side to the sun, its creases brown)
+    let cn = normalize(vec3<f32>(0.0, 1.0, 0.0) + (tn * ch.g.x + tm * ch.g.y) * 1.1);
+    let fd = saturate(dot(cn, li.L));
+    let foamc = mix(vec3<f32>(0.3, 0.24, 0.17), vec3<f32>(0.6, 0.52, 0.39), saturate(0.7 + 2.0 * ch.h)) * (ambg * 1.55 + li.sunc * (0.3 + 0.5 * fd) + li.nightw * 2.4);
+    c = mix(c, foamc, saturate(foam));
+    // wreck carried in it: splinters, sticks and bits of plank, thick where the foam is, too small to be anything else
+    if (px < 0.5) {
+        let sp = 3.4;
+        let cq = vec2<f32>(cross_, run) / sp;
+        let ci = floor(cq);
+        let hh = pcg(u32(i32(ci.x) + 40000) * 0x9E3779B1u ^ u32(i32(ci.y) + 40000) * 0x85EBCA6Bu);
+        let r = vec4<f32>(f32(hh & 255u), f32((hh >> 8u) & 255u), f32((hh >> 16u) & 255u), f32(hh >> 24u)) / 255.0;
+        if (r.x < 0.08 + 0.34 * saturate(cov)) {
+            let a = r.y * 6.283;
+            let d = (cq - ci - vec2<f32>(0.5)) * sp + (r.zw - 0.5) * 1.1;
+            let l = vec2<f32>(cos(a) * d.x + sin(a) * d.y, -sin(a) * d.x + cos(a) * d.y);
+            let b = abs(l) - vec2<f32>(0.3 + 0.85 * r.z, 0.08 + 0.13 * r.w);
+            let e = max(b.x, b.y);
+            let m = 1.0 - smoothstep(-px, px, e);
+            let wood = mix(vec3<f32>(0.055, 0.04, 0.028), vec3<f32>(0.16, 0.115, 0.07), r.w);
+            c = mix(c, wood * lw, m);
+        }
     }
-    let foamc = vec3<f32>(0.5, 0.42, 0.32) * (mix(li.amb, vec3<f32>(luminance(li.amb)), 0.8) * 1.6 + li.sunc * (0.3 + 0.55 * dif) + li.nightw * 2.4);
-    return mix(c, foamc, saturate(foam) * 0.6);
+    return c;
 }
 
 // The flow's velocity at (s, u) at `t` (blocks a second, on the ground, along the wave's way positive): fast as the
@@ -1220,7 +1298,9 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
         // (it has no light of its own: what comes down through the water, from above, the sun's a little near the surface;
         // on its underside only the murk's own glow. The water's colour has it)
         let wup = 0.5 + 0.5 * deb.nw.y;
-        let down = mix(vec3<f32>(0.1, 0.13, 0.08), vec3<f32>(0.62, 0.78, 0.54), wup * wup) * lit;
+        // (each face its own: what makes a dark shape a thing with a top and sides)
+        let wside = 0.72 + 0.28 * abs(deb.nw.x * g.m.x + deb.nw.z * g.m.y);
+        let down = mix(vec3<f32>(0.13, 0.16, 0.1), vec3<f32>(0.72, 0.88, 0.62), wup * wup) * lit * wside;
         let sunk = li.sunc * vec3<f32>(0.5, 0.62, 0.42) * saturate(dot(deb.nw, li.L)) * exp(-dep_c / 45.0) * 0.4 * day;
         far_col = deb.alb * (down * (0.5 + 0.5 * day) + sunk + li.nightw * 0.9);
     } else if (t_exit < scene_len) {
@@ -1233,7 +1313,7 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
         far_col = mix(ins * 1.5, skyc * (0.6 + 0.5 * day), window) + vec3<f32>(0.75, 0.78, 0.7) * foamb * (0.2 + 0.8 * day) * (0.3 + 0.7 * window);
     }
     // (what floats in it goes into the water sooner than the land does: silt between it and the eye)
-    let trp = select(tr, tr * exp(-vec3<f32>(0.03, 0.026, 0.024) * lw), piece);
+    let trp = select(tr, tr * exp(-vec3<f32>(0.013, 0.011, 0.01) * lw), piece);
     var out = far_col * trp + ins * (1.0 - trp);
     out = out * trf + acc;
     // the blow itself: a white flash, the picture blown out for a moment
@@ -1470,6 +1550,7 @@ fn tsunami(in: StageIn) -> vec4<f32> {
     let C = (vec3<f32>(anc.x, gy, anc.y) - cam) - camera_rest();
     let g = ts_geo();
     let ro = -C;
+    ts_cam = ro;
     let cs0 = dot(ro.xz, g.m);
     let cu0 = dot(ro.xz, g.n);
     let inw = ts_f(ro, time, g) < 0.0;
@@ -1589,10 +1670,14 @@ fn tsunami(in: StageIn) -> vec4<f32> {
         }
         col = mix(under, sf_c, a);
         // (what the wave has swept up, riding its face and its foam)
-        let deb = ts_deb_ext(ro, rd, ro + rd * h.t, h.t, time, g, li);
+        // (looked for a little back along the ray: at a low angle what stands on the water is a long way short of the point
+        // the ray meets it)
+        let deb = ts_deb_ext(ro, rd, ro + rd * (h.t - min(0.7 / max(-rd.y, 0.01), 7.0)), h.t, time, g, li);
         var t_see = h.t;
         if (deb.hit) {
-            col = deb.rgb;
+            // (the part under the surface seen through it, and gone a little way down)
+            let sunk = saturate(1.0 - exp(-max(deb.t - h.t, 0.0) * -rd.y * 2.4));
+            col = mix(deb.rgb, col, sunk);
             t_see = deb.t;
         }
         // (the haze of the distance, thin: the wave is a dark mass, not a pale one)
