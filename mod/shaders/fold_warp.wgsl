@@ -149,9 +149,9 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32) -> vec3<f32> {
 // middle as the short waves leave. r is softened by FW_CORE so the middle itself falls and rebounds, one formula all the way
 // in. Physically a group thins out as r^-3; FW_RB and FW_RP put back enough of that to carry it to the player.
 const FW_TOUCH: f32 = 6.0;         // the droplet touches: fold.wgsl's FD_TOUCH
-const FW_G: f32 = 480.0;           // the land's gravity, blocks/s^2: higher, every ring faster; a wave's period is 2 pi / sqrt(g k)
-const FW_SRC: f32 = 22.0;          // how wide a pulse is, blocks: the shortest ring it makes is about 2.2 of these
-const FW_CORE: f32 = 22.0;         // the softened middle
+const FW_G: f32 = 400.0;           // the land's gravity, blocks/s^2: higher, every ring faster; a wave's period is 2 pi / sqrt(g k)
+const FW_SRC: f32 = 17.0;          // how wide a pulse is, blocks: the shortest ring it makes is about 2.2 of these
+const FW_CORE: f32 = 20.0;         // the softened middle
 const FW_RB: f32 = 60.0;
 const FW_RP: f32 = 1.5;
 fn fw_group(r2: f32, s: f32) -> f32 {
@@ -174,8 +174,8 @@ fn fw_ripple(r: f32, t: f32) -> f32 {
         return 0.0;
     }
     let r2 = r * r;
-    let y = -1.2 * fw_group(r2, t - 6.3) + 2.4 * fw_group(r2, t - 7.6) - 4.2 * fw_group(r2, t - 8.9)
-        + 6.4 * fw_group(r2, t - 10.2) - 8.4 * fw_group(r2, t - 11.5);
+    let y = -1.1 * fw_group(r2, t - 6.3) + 2.4 * fw_group(r2, t - 7.6) - 4.8 * fw_group(r2, t - 8.9)
+        + 7.7 * fw_group(r2, t - 10.2) - 10.0 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
 }
 // The droplet's height a little after it touches (fold.wgsl's fd_meld, in step) and the land at its foot: as water does, the
@@ -418,32 +418,37 @@ fn fw_iridesce(col: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, w: f32) -> vec3<f32
 }
 // ---- the water's look: small waves are seen by their slope, what they reflect, long before their height shows ------------
 const FW_SHEEN: f32 = 1.0;
-fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32) -> vec3<f32> {
+fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32, up: f32) -> vec3<f32> {
     let a = t - FW_TOUCH;
     let e = 1.5;
-    let slope = (fw_ripple(r + e, t) - fw_ripple(max(r - e, 0.0), t)) / (2.0 * e);
+    var slope = (fw_ripple(r + e, t) - fw_ripple(max(r - e, 0.0), t)) / (2.0 * e);
+    // (the first fine ripples, too small for the land's vertices: only their light, running out ahead of the metal)
+    let lead = R + 58.0 * (1.0 - exp(-a / 1.5));
+    let fine = fw_ss(lead, lead - 12.0, r) * fw_ss(0.0, 0.4, a) * (1.0 - fw_ss(7.4, 9.6, t));
+    slope += 0.11 * fine * up * sin(r * 0.8 - a * 9.0) * exp(-r / 80.0);
     let D = Q.xz / max(r, 0.5);
     let N = normalize(vec3<f32>(-slope * D.x, 1.0, -slope * D.y));
     let V = at / max(length(at), 0.01);
     let L = globals.sun.xyz;
     let day = fw_ss(-0.1, 0.2, L.y);
-    let sky = mix(globals.fog_color.rgb, globals.sky_color.rgb, 0.5);
-    // (the sun's light across the slope, then the sky's in it, more the flatter it is seen: both only what the wave changes)
+    // (the sun's light across the slope, then the sky's in it, more the flatter it is seen: only what the wave changes)
     let nv = max(dot(N, -V), 0.0);
-    let nv0 = max(-V.y, 0.0);
-    let fres = pow(1.0 - nv, 5.0) - pow(1.0 - nv0, 5.0);
-    var col = colIn * (1.0 + FW_SHEEN * 1.6 * day * (dot(N, L) - L.y));
-    col = col + sky * clamp(fres, -0.25, 0.5) * 0.9 * FW_SHEEN;
+    let turned = nv - max(-V.y, 0.0);
+    var col = colIn * (1.0 + FW_SHEEN * 0.9 * day * (dot(N, L) - L.y));
+    // (a face turned from the eye shows the bright sky low down, one turned to it the deep sky overhead)
+    col = mix(col, globals.sky_color.rgb * 1.15, clamp(-turned * 1.3, 0.0, 0.34) * FW_SHEEN * up);
+    col = col * (1.0 - clamp(turned * 1.2, 0.0, 0.3) * FW_SHEEN);
     // ---- the droplet's metal spreading from the contact, thin as a film, then taken into the land ----------------------------
     let ang = atan2(Q.z, Q.x);
-    let rf = R + 40.0 * (1.0 - exp(-a / 1.5)) + 2.5 * sin(ang * 5.0 + 1.0) + 1.5 * sin(ang * 11.0 - 2.0);
-    let film = fw_ss(rf, rf - 9.0, r) * fw_ss(0.0, 0.25, a) * (1.0 - fw_ss(8.4, 11.0, t));
+    let rf = 1.3 * R + 30.0 * (1.0 - exp(-a / 1.1)) + 2.5 * sin(ang * 5.0 + 1.0) + 1.5 * sin(ang * 11.0 - 2.0);
+    // (thick at the foot, thin on past it, gone by the first rebound)
+    let foot = exp(-max(r - R * 0.9, 0.0) / (R * 0.9));
+    let film = fw_ss(rf, rf - 6.0, r) * fw_ss(0.0, 0.2, a) * (1.0 - fw_ss(7.0, 9.0, t)) * (0.16 + 0.6 * foot) * up;
     if (film > 0.002) {
         let m = reflect(V, N);
-        let env = mix(globals.fog_color.rgb, globals.sky_color.rgb, fw_ss(0.0, 0.55, m.y));
-        let glint = pow(max(dot(m, L), 0.0), 90.0) * 2.0 * day;
-        let metal = env * vec3<f32>(0.92, 0.95, 1.0) + vec3<f32>(glint);
-        col = mix(col, metal, film * (0.5 + 0.45 * pow(1.0 - nv, 3.0)));
+        let env = mix(vec3<f32>(0.42, 0.44, 0.48), globals.sky_color.rgb * 1.1, fw_ss(-0.02, 0.5, m.y));
+        let glint = pow(max(dot(m, L), 0.0), 120.0) * 3.0 * day;
+        col = mix(col, env * (1.0 + 0.3 * pow(1.0 - nv, 3.0)) + vec3<f32>(glint), film);
     }
     return col;
 }
@@ -551,7 +556,9 @@ fn world_fragment(f: Fragment) -> Painted {
     }
     // ---- the water's look ------------------------------------------------------------------------------------------------
     if (t > FW_TOUCH && t < FW_TEAR) {
-        col = fw_wet(col, Q, r, t, f.at, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0));
+        // (top faces: the water's skin; a wall or a trunk takes none of the metal)
+        let up = fw_ss(0.5, 0.9, abs(real_n.y) / max(length(real_n), 1.0e-5));
+        col = fw_wet(col, Q, r, t, f.at, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0), up);
     }
     // ---- the iridescence: anchored to the land, spread with the wave, strongest on the creases and the petals -------------
     if (FW_IRID > 0.0) {
