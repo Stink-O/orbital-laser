@@ -1283,6 +1283,8 @@ fn fd_embers(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut 
 /// as they are answered), the crater's level from it, then the parts of the wave ring by ring, each worked out FD_AHEAD
 /// before it is due. Each stage does about FD_BUDGET columns' worth (well under a tick's fuel).
 const FD_BUDGET: f64 = 600.0;
+/// What an answer of the land's read is reckoned to cost past what `take_in_grid` counts.
+const FD_ANSWER: u64 = 5_000_000;
 /// About what a unit of that work costs in instructions.
 const FD_UNIT: f64 = 15_000.0;
 /// Columns of the land's square made ready a stage.
@@ -1484,11 +1486,13 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
         }
         // their answers taken in as they come (up to four a stage)
         for _ in 0..4 {
+            // (real land's answers cost a good deal more than the meter's two million: as many a stage as fit)
             if wk.taken < wk.asked
-                && !crate::meter::full()
+                && crate::meter::room(FD_ANSWER)
                 && let Some(a) = crate::columns::take(wk.tags[wk.taken])
             {
                 take_in_grid(&mut wk.land, &a, bx, bz, wk.taken, FD_READ, true);
+                crate::meter::spend(FD_ANSWER);
                 wk.taken += 1;
                 spent += 300.0;
             }
@@ -1536,6 +1540,10 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             }
         }
         crate::trace("fd land taken");
+        // (no job on a stage that took answers in: the two together went over half a tick's fuel)
+        if wk.taken < wk.tags.len() && spent >= 300.0 {
+            break 'stage true;
+        }
         // the jobs: the first that can be done (never past one of the wave's parts that cannot yet: they go in order)
         loop {
             let mut pick = None;
