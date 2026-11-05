@@ -558,9 +558,9 @@ impl Pack {
         vec![(VM_BASE, head), (VM_TILE, tw), (VM_W0, self.w0), (VM_W1, self.w1), (VM_W2, self.w2)]
     }
 }
-/// The pass's tables that stand on the land: the shards, the fountains, the boulders, the plates.
-pub(super) fn vm_tables(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, Vec<u32>)> {
-    crate::meter::spend(60 * VM_COLS as u64 + 500_000);
+/// The pass's tables that stand on the land: the shards, the fountains, the boulders, the plates (`p`, worked out).
+fn vm_tables(w: &Work, p: &PlateSums, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, Vec<u32>)> {
+    crate::meter::spend(500_000);
     // (each shard stands on the land and the lift at its foot)
     let mut shards = Vec::with_capacity(VM_SHARDS * VM_SW);
     let foot = |x: f64, z: f64| {
@@ -576,7 +576,7 @@ pub(super) fn vm_tables(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize,
         }
         shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
-    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, vm_plates(w, land))]
+    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, vm_plates(w, p))]
 }
 
 /// The bursts of lava: on the cracks, few and high up at first, more and all over as it goes on, none past the hush.
@@ -633,44 +633,62 @@ fn vm_boulders(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
     }
     out
 }
+/// What the plates' words need of every column, in stages (two rounds of all of them, some 28 million instructions at
+/// once: the tick that was over half its fuel, each time the land's read came in): each plate's columns summed, then how
+/// far they reach and how far their land stands off its plane.
+struct PlateSums {
+    sum: Vec<(f64, f64, f64, f64)>,
+    rad: Vec<f64>,
+    off: Vec<f64>,
+    done: usize,
+}
+impl PlateSums {
+    fn new(w: &Work) -> Self {
+        let n = w.geo.plates.len();
+        PlateSums { sum: vec![(0.0, 0.0, 0.0, 0.0); n], rad: vec![0.0; n], off: vec![0.0; n], done: 0 }
+    }
+    /// The next `n` columns of the two rounds; whether that was the last of them.
+    fn rows(&mut self, w: &Work, n: usize, land: &dyn Fn(f64, f64) -> f64) -> bool {
+        let end = (self.done + n).min(2 * VM_COLS);
+        crate::meter::spend(500 * (end - self.done) as u64);
+        let centre = |t: (f64, f64, f64, f64)| if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
+        for i in self.done..end {
+            let j = i % VM_COLS;
+            let cell = &w.cells[j];
+            let c = cell.plate as usize;
+            let (x, z) = col_xz(j);
+            if i < VM_COLS {
+                let t = &mut self.sum[c];
+                t.0 += x;
+                t.1 += z;
+                t.2 += w.cols[j].map_or_else(|| land(x, z), |c| f64::from(c.top - i32::from(c.canopy)));
+                t.3 += 1.0;
+                continue;
+            }
+            let t = self.sum[c];
+            if t.3 > 0.0 {
+                let (cx, cz, l) = centre(t);
+                self.rad[c] = self.rad[c].max((x - cx).powi(2) + (z - cz).powi(2));
+                let g = &w.geo.plates[c];
+                let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
+                let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * VM_H;
+                let plane = l + VM_H * (pc + g.gx * (x - cx) + g.gz * (z - cz));
+                self.off[c] = self.off[c].max((top - plane).abs());
+            }
+        }
+        self.done = end;
+        end == 2 * VM_COLS
+    }
+}
 /// The plates as thrown at the burst: from the top first, up and out, each turning its own way.
-fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
-    crate::meter::spend(160 * VM_COLS as u64);
+fn vm_plates(w: &Work, p: &PlateSums) -> Vec<u32> {
     let s = w.geo.seed;
     let n = w.geo.plates.len();
-    let mut sum = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64); n];
-    for j in 0..VM_COLS {
-        let c = &w.cells[j];
-        let (x, z) = col_xz(j);
-        let t = &mut sum[c.plate as usize];
-        t.0 += x;
-        t.1 += z;
-        t.2 += w.cols[j].map_or_else(|| land(x, z), |c| f64::from(c.top - i32::from(c.canopy)));
-        t.3 += 1.0;
-    }
-    let mut rad = vec![0.0f64; n];
-    // (how far its land stands off the plate's plane, at the dome's full height, either way)
-    let mut off = vec![0.0f64; n];
     let centre = |t: (f64, f64, f64, f64)| if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
-    for j in 0..VM_COLS {
-        let cell = &w.cells[j];
-        let c = cell.plate as usize;
-        let (x, z) = col_xz(j);
-        let t = sum[c];
-        if t.3 > 0.0 {
-            let (cx, cz, l) = centre(t);
-            rad[c] = rad[c].max((x - cx).powi(2) + (z - cz).powi(2));
-            let g = &w.geo.plates[c];
-            let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
-            let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * VM_H;
-            let plane = l + VM_H * (pc + g.gx * (x - cx) + g.gz * (z - cz));
-            off[c] = off[c].max((top - plane).abs());
-        }
-    }
     let mut out = Vec::with_capacity(VM_PW * n);
     for k in 0..n {
-        rad[k] = rad[k].sqrt();
-        let t = sum[k];
+        let rad = p.rad[k].sqrt();
+        let t = p.sum[k];
         let m = k as u32;
         let (cx, cz, l) = centre(t);
         let g = &w.geo.plates[k];
@@ -682,7 +700,7 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let up = (170.0 + 330.0 * (1.0 - r / 430.0).clamp(0.0, 1.0)) * (0.7 + 0.6 * mh(m, s, 0x761));
         let out_v = (80.0 + 200.0 * (PI * (r / 440.0).min(1.0)).sin()) * (0.75 + 0.5 * mh(m, s, 0x762));
         let aa = TAU * mh(m, s, 0x763);
-        let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 14.0 + 22.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, off[k] + 4.0];
+        let f = [cx, cz, l, pc, g.gx, g.gz, rad, 14.0 + 22.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, p.off[k] + 4.0];
         out.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
     out
@@ -828,12 +846,25 @@ fn vm_send_rows(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, p: Rc<RefCell<Pack
         for (index, words) in p.into_inner().finish() {
             q.ev.push((at, Act::Words { index: index as u32, words }));
         }
-        q.later(at + 0.05, move |q| {
+        let sums = PlateSums::new(&w.borrow());
+        vm_send_tables(q, w, hf, sums, at + 0.05);
+    });
+}
+/// The tables that stand on the land, once the plates are summed.
+fn vm_send_tables(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, mut sums: PlateSums, at: f32) {
+    q.later(at, move |q| {
+        let last = {
             let (wb, h) = (w.borrow(), hf.borrow());
-            for (index, words) in vm_tables(&wb, &|x, z| h.at(x, z)) {
-                q.ev.push((at + 0.05, Act::Words { index: index as u32, words }));
-            }
-        });
+            sums.rows(&wb, PACK_COLS, &|x, z| h.at(x, z))
+        };
+        if !last {
+            vm_send_tables(q, w, hf, sums, at + 0.05);
+            return;
+        }
+        let (wb, h) = (w.borrow(), hf.borrow());
+        for (index, words) in vm_tables(&wb, &sums, &|x, z| h.at(x, z)) {
+            q.ev.push((at, Act::Words { index: index as u32, words }));
+        }
     });
 }
 
@@ -887,7 +918,9 @@ pub(super) mod table {
         p.soften(&w);
         while !p.rows(&w, PACK_COLS, &|_, _| 0.0) {}
         let mut o = p.finish();
-        o.extend(vm_tables(&w, &|_, _| 0.0));
+        let mut sums = PlateSums::new(&w);
+        while !sums.rows(&w, PACK_COLS, &|_, _| 0.0) {}
+        o.extend(vm_tables(&w, &sums, &|_, _| 0.0));
         o
     }
 }

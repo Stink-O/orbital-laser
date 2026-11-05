@@ -32,6 +32,7 @@ const TAU: f64 = 2.0 * PI;
 const VC_READ0: f64 = 236.0;
 const VC_READ: i32 = 612;
 const VC_GW: i32 = 2 * VC_READ + 1;
+const VC_CHUNKS: i32 = 2 * (VC_READ / 16 + 3);
 const VC_BELOW: u32 = 34;
 const VC_ABOVE: u32 = 1;
 const VC_PARTS: i32 = 248;
@@ -47,12 +48,23 @@ const VC_DEEP: f64 = 90.0;
 /// Past this the chunks go in with the wall; inside it from the edge in, VC_RATE blocks a second (PK_RATE's class).
 const VC_IN: f64 = 262.0;
 const VC_RATE: f64 = 1_200_000.0;
-/// The most a stage's chunks may take the tick's count to.
-const VC_TICK: u64 = 6_000_000;
+/// The most a stage's chunks may take the tick's count to. The chunks' count reads 2 to 3 times low by the game's
+/// (`mod_soak` traced, by distance out, on every land): this keeps a stage's real work under some 15M, its last chunk
+/// (at most 3M) and what else the tick does under 20M, 40% of a tick's fuel.
+const VC_TICK: u64 = 4_500_000;
 /// How long ahead of its time a chunk's edits are worked out.
 const VC_LEAD: f32 = 4.0;
 /// The most runs worked out and waiting to go in: a mod has 64 MB, a run takes 32 bytes.
 const VC_QUEUE: usize = 200_000;
+/// No more chunks are worked out while the mod holds this much (`mem`): the edits waiting behind a slow frame (`pace`) are
+/// past `VC_QUEUE`'s count once they fall due, and they can pile up for as long as the frames stay slow.
+const VC_HOLD: usize = 24 << 20;
+/// How many parts of the read may be out at once (one is asked a tick, two taken in). Everything hangs on this. An answer
+/// is 400 KB, and those asked ahead of the ones taken in add up in the mod's 64 MB (a late world hands over everything it
+/// has at once); and each is a stretch of the server thread's time, so reads asked faster than they are answered fall
+/// behind the server's tick, and the client's clock with it (`in_world`). Enough, though, that a slow world still gets
+/// through the 248 parts before the land is wanted, with answers as late as a second or two.
+const VC_FLIGHT: usize = 10;
 /// When the chunks past the read are asked after.
 const VC_FAR_ASK: f32 = 44.0;
 /// A chunk's blocks inside the ring, for the pace.
@@ -60,15 +72,15 @@ const VC_COL: f64 = 118.0;
 /// What the work of a column is reckoned at, in instructions, besides what `Blocks` counts of its runs.
 const VC_UNIT: u64 = 300;
 
-/// A column as read, packed into a word (0: not read), 8 MB of them.
+/// A column as read, packed into a 32-bit word (0: not read), 6 MB of them.
 #[derive(Clone, Copy, Debug, Default)]
 struct Col {
     g: i32,
+    /// At most 35 over `g`: the read goes no further.
     top: i32,
+    /// At most 40.
     trunk: u8,
-    wood: u8,
-    /// Its leaves' wood, 15 none.
-    leaves: u8,
+    leaves: bool,
     /// 1 grass, 2 dirt.
     ground: u8,
     fluid: bool,
@@ -80,30 +92,81 @@ impl Col {
     fn base(&self) -> i32 {
         if self.fluid { self.top } else { self.g }
     }
-    fn pack(&self) -> u64 {
-        1 | u64::from(self.fluid) << 1
-            | u64::from(self.ground) << 2
-            | u64::from(self.leaves) << 4
-            | u64::from(self.wood) << 8
-            | u64::from(self.trunk) << 12
-            | ((self.g + 2048) as u64 & 0xffff) << 20
-            | ((self.top + 2048) as u64 & 0xffff) << 36
-            | u64::from(self.deep) << 52
+    fn pack(&self) -> u32 {
+        1 | u32::from(self.fluid) << 1
+            | u32::from(self.ground) << 2
+            | u32::from(self.leaves) << 4
+            | u32::from(self.deep) << 5
+            | u32::from(self.trunk & 63) << 6
+            | ((self.top - self.g).clamp(0, 63) as u32) << 12
+            | ((self.g + 2048).clamp(0, 4095) as u32) << 18
     }
-    fn unpack(w: u64) -> Option<Col> {
+    fn unpack(w: u32) -> Option<Col> {
         if w & 1 == 0 {
             return None;
         }
+        let g = (w >> 18 & 4095) as i32 - 2048;
         Some(Col {
             fluid: w >> 1 & 1 != 0,
             ground: (w >> 2 & 3) as u8,
-            leaves: (w >> 4 & 15) as u8,
-            wood: (w >> 8 & 15) as u8,
-            trunk: (w >> 12 & 255) as u8,
-            g: (w >> 20 & 0xffff) as i32 - 2048,
-            top: (w >> 36 & 0xffff) as i32 - 2048,
-            deep: w >> 52 & 1 != 0,
+            leaves: w >> 4 & 1 != 0,
+            deep: w >> 5 & 1 != 0,
+            trunk: (w >> 6 & 63) as u8,
+            g,
+            top: g + (w >> 12 & 63) as i32,
         })
+    }
+}
+
+/// The chunks of the read the world had not loaded yet, in the order found: a chunk is loaded or not as a whole, so one
+/// that wasn't is one entry here, not a place for each of its columns (there can be a million of those).
+struct Missing {
+    /// Whether each chunk (from the read's corner) is in the list.
+    listed: Vec<bool>,
+    list: std::collections::VecDeque<(i32, i32)>,
+}
+impl Default for Missing {
+    fn default() -> Self {
+        Missing { listed: vec![false; (VC_CHUNKS * VC_CHUNKS) as usize], list: Default::default() }
+    }
+}
+impl Missing {
+    /// The chunks a side the read reaches over, whatever the vent's place in its own chunk.
+    fn index(cx: i32, cz: i32, bx: i32, bz: i32) -> Option<usize> {
+        let (i, k) = (cx - (bx >> 4) + VC_CHUNKS / 2, cz - (bz >> 4) + VC_CHUNKS / 2);
+        ((0..VC_CHUNKS).contains(&i) && (0..VC_CHUNKS).contains(&k)).then_some((k * VC_CHUNKS + i) as usize)
+    }
+    /// Column (x, z) answered as not loaded.
+    fn add(&mut self, x: i32, z: i32, bx: i32, bz: i32) {
+        let (cx, cz) = (x >> 4, z >> 4);
+        if let Some(j) = Self::index(cx, cz, bx, bz)
+            && !self.listed[j]
+        {
+            self.listed[j] = true;
+            self.list.push_back((cx, cz));
+        }
+    }
+    /// The next chunks' columns still to be read, about `n` of them.
+    fn take(&mut self, cols: &[u32], bx: i32, bz: i32, n: usize) -> Vec<(i32, i32)> {
+        let mut out = Vec::with_capacity(n + 256);
+        let (q0, q1) = (VC_READ0 * VC_READ0, f64::from(VC_READ * VC_READ));
+        while out.len() < n {
+            let Some((cx, cz)) = self.list.pop_front() else { break };
+            if let Some(j) = Self::index(cx, cz, bx, bz) {
+                self.listed[j] = false;
+            }
+            crate::meter::spend(40 * 256);
+            for z in cz * 16..cz * 16 + 16 {
+                for x in cx * 16..cx * 16 + 16 {
+                    let (dx, dz) = (x - bx, z - bz);
+                    let e = f64::from(dx * dx + dz * dz);
+                    if e > q0 && e <= q1 && cols.get(((dz + VC_READ) * VC_GW + dx + VC_READ) as usize) == Some(&0) {
+                        out.push((x, z));
+                    }
+                }
+            }
+        }
+        out
     }
 }
 
@@ -139,18 +202,18 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
     out
 }
 /// One answer taken in: each column's ground and what stands on it; those not loaded kept to be asked again.
-fn take_in(cols: &mut [u64], missing: &mut Vec<(i32, i32)>, a: &crate::columns::Answer, bx: i32, bz: i32) {
+fn take_in(cols: &mut [u32], missing: &mut Missing, a: &crate::columns::Answer, bx: i32, bz: i32) {
     let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
     crate::meter::spend(2_000 + 4_000 * a.palette.len() as u64);
     for (i, &(x, z)) in a.columns.iter().enumerate() {
         let Some((surface, blocks)) = a.column(i) else {
             crate::meter::spend(60);
-            missing.push((x, z));
+            missing.add(x, z, bx, bz);
             continue;
         };
         let base = surface - a.below;
         crate::meter::spend(200 + 12 * blocks.len() as u64);
-        let mut c = Col { leaves: 15, ..Default::default() };
+        let mut c = Col::default();
         let mut top = None;
         let mut g = None;
         for j in (0..blocks.len()).rev() {
@@ -168,9 +231,7 @@ fn take_in(cols: &mut [u64], missing: &mut Vec<(i32, i32)>, a: &crate::columns::
                     top.get_or_insert(base + j as i32);
                 }
                 Kind::Leaves => {
-                    if c.leaves == 15 {
-                        c.leaves = w;
-                    }
+                    c.leaves = true;
                     top.get_or_insert(base + j as i32);
                 }
                 _ => {
@@ -194,10 +255,7 @@ fn take_in(cols: &mut [u64], missing: &mut Vec<(i32, i32)>, a: &crate::columns::
         let mut n = 0;
         while gj + 1 + n < blocks.len() {
             match kinds.get(blocks[gj + 1 + n] as usize) {
-                Some(&(Kind::Log, w)) => {
-                    c.wood = w;
-                    n += 1;
-                }
+                Some(&(Kind::Log, _)) => n += 1,
                 _ => break,
             }
         }
@@ -636,7 +694,7 @@ const W_OUT: u8 = 4;
 struct Ctx<'a> {
     s: &'a Shape,
     hf: &'a Hf,
-    cols: &'a [u64],
+    cols: &'a [u32],
     bx: i32,
     bz: i32,
     g: Grid,
@@ -979,7 +1037,7 @@ fn out_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, r: f64, rel: Rel)
         let m = if q < 0.3 { ash_block(x, c.g, z, s.seed, wet * (1.0 - 2.0 * q)) } else { dust_block(x, z, s.seed) };
         b.run(x, z, c.g, c.g, m);
         // (what grew on it, buried)
-        if c.top > c.g && c.trunk == 0 && c.leaves == 15 {
+        if c.top > c.g && c.trunk == 0 && !c.leaves {
             b.run(x, z, c.g + 1, c.top, "minecraft:air");
         }
     } else if c.ground == 1 && rho < 540.0 && pick(x * 29 + z * 3, s.seed ^ 0xa6) < 1.0 - (rho - 430.0) / 110.0 {
@@ -1079,7 +1137,7 @@ fn stand_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, rt: f64) {
             Fate::Standing => {}
         }
     }
-    if c.trunk == 0 && c.top > c.g && (c.leaves != 15 || c.top > c.g + 1) {
+    if c.trunk == 0 && c.top > c.g && (c.leaves || c.top > c.g + 1) {
         // the crowns
         if rt < VC_BARE + 15.0 {
             b.run(x, z, c.g + 1, c.top, "minecraft:air");
@@ -1212,11 +1270,11 @@ pub(super) fn vc_due(r: f64) -> f32 {
 struct Work {
     s: Shape,
     hf: Rc<RefCell<Hf>>,
-    cols: Vec<u64>,
+    cols: Vec<u32>,
     tags: Vec<u32>,
     asked: usize,
     taken: usize,
-    missing: Vec<(i32, i32)>,
+    missing: Missing,
     retry: Option<(u32, f32)>,
     /// The chunks' corners, by when they are due.
     chunks: Vec<(f32, i32, i32)>,
@@ -1234,6 +1292,7 @@ struct Work {
 impl Work {
     fn new(s: Shape, bx: i32, bz: i32) -> Self {
         let mut chunks = Vec::new();
+        let due = DueTable::new();
         let n = (f64::from(VC_READ) + 24.0) as i32 / 16 + 1;
         let (c0x, c0z) = (bx >> 4, bz >> 4);
         for dz in -n..=n {
@@ -1241,16 +1300,16 @@ impl Work {
                 let (x, z) = ((c0x + dx) * 16, (c0z + dz) * 16);
                 // (its middle, and the far corner: the wall has passed all of it)
                 let (mx, mz) = (f64::from(x) + 8.0 - s.cx, f64::from(z) + 8.0 - s.cz);
-                let rm = mx.hypot(mz);
+                let rm = (mx * mx + mz * mz).sqrt();
                 if rm - 12.0 > f64::from(VC_READ) {
                     continue;
                 }
-                chunks.push((vc_due(if rm + 11.4 >= VC_IN { rm + 11.4 } else { rm }), x, z));
+                chunks.push((due.at(if rm + 11.4 >= VC_IN { rm + 11.4 } else { rm }), x, z));
             }
         }
         chunks.sort_by(|a, b| a.0.total_cmp(&b.0));
-        crate::meter::spend(800 * chunks.len() as u64);
-        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false }
+        crate::meter::spend(300 * chunks.len() as u64);
+        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false }
     }
 }
 
@@ -1343,6 +1402,40 @@ fn vc_col_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, inner: bool) {
     out_edit(b, ctx, c, x, z, r, rel);
 }
 
+/// `vc_due` for a chunk of many: it's six rounds of an exponential a time, thousands of chunks to the tick the list is
+/// made otherwise. From a table over the land past the ring, a column's time out, every 8 blocks.
+struct DueTable(Vec<f32>);
+impl DueTable {
+    const STEP: f64 = 8.0;
+    fn new() -> Self {
+        DueTable((0..=((VC_FAR + 40.0 - VC_IN) / Self::STEP) as usize + 1).map(|i| vc_due(VC_IN + i as f64 * Self::STEP)).collect())
+    }
+    fn at(&self, r: f64) -> f32 {
+        if r < VC_IN {
+            return vc_due(r);
+        }
+        let f = (r - VC_IN) / Self::STEP;
+        let i = (f as usize).min(self.0.len() - 2);
+        self.0[i] + (self.0[i + 1] - self.0[i]) * (f - i as f64) as f32
+    }
+}
+/// The chunks past the read and within VC_FAR: `each(x, z, how far their middle is, squared)`, a row at a time.
+fn far_chunks(bx: i32, bz: i32, s: &Shape, mut each: impl FnMut(i32, i32, f64)) {
+    let n = VC_FAR as i32 / 16 + 1;
+    let (near, far) = ((f64::from(VC_READ) - 12.0).powi(2), VC_FAR * VC_FAR);
+    crate::meter::spend(20 * u64::from((2 * n + 1).unsigned_abs()).pow(2));
+    for dz in -n..=n {
+        for dx in -n..=n {
+            let (x, z) = (((bx >> 4) + dx) * 16, ((bz >> 4) + dz) * 16);
+            let (ex, ez) = (f64::from(x) + 8.0 - s.cx, f64::from(z) + 8.0 - s.cz);
+            let r = ex * ex + ez * ez;
+            if r > near && r < far {
+                each(x, z, r);
+            }
+        }
+    }
+}
+
 /// One stage of the land's work: the reads, then the chunks coming due.
 fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
     let more = {
@@ -1351,16 +1444,14 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
         let (bx, bz) = (q.bx, q.bz);
         if wk.cols.is_empty() {
             // (zeroed by the allocator: the land's square costs no fuel to make, the pages only when written)
-            wk.cols = vec![0u64; (VC_GW * VC_GW) as usize];
+            wk.cols = vec![0u32; (VC_GW * VC_GW) as usize];
         }
-        if wk.asked < wk.tags.len() {
-            for _ in 0..2.min(wk.tags.len() - wk.asked) {
-                let part = wk.asked;
-                q.ev.push((now, Act::Read { tag: wk.tags[part], columns: read_columns(bx, bz, part as i32), below: VC_BELOW, above: VC_ABOVE }));
-                wk.asked += 1;
-            }
+        if wk.asked < wk.tags.len() && wk.asked - wk.taken < VC_FLIGHT {
+            let part = wk.asked;
+            q.ev.push((now, Act::Read { tag: wk.tags[part], columns: read_columns(bx, bz, part as i32), below: VC_BELOW, above: VC_ABOVE }));
+            wk.asked += 1;
         }
-        for _ in 0..4 {
+        for _ in 0..2 {
             if wk.taken < wk.asked
                 && !crate::meter::full()
                 && let Some(a) = crate::columns::take(wk.tags[wk.taken])
@@ -1378,10 +1469,8 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 } else if now > since + 3.0 {
                     wk.retry = None;
                 }
-            } else if !wk.missing.is_empty() {
-                let n = wk.missing.len().min(6000);
-                let cols: Vec<(i32, i32)> = wk.missing.drain(..n).collect();
-                crate::meter::spend(40 * cols.len() as u64);
+            } else if !wk.missing.list.is_empty() {
+                let cols = wk.missing.take(&wk.cols, bx, bz, 6000);
                 let tag = crate::columns::new_tag();
                 q.ev.push((now, Act::Read { tag, columns: cols, below: VC_BELOW, above: VC_ABOVE }));
                 wk.retry = Some((tag, now));
@@ -1389,50 +1478,38 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
         }
         if now >= VC_COLLAPSE + 2.0 && !wk.said {
             wk.said = true;
-            if !wk.missing.is_empty() {
+            if !wk.missing.list.is_empty() {
                 #[cfg(not(test))]
-                crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("supervolcano: {} columns of the land never loaded", wk.missing.len()));
+                crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("supervolcano: {} chunks of the land never loaded", wk.missing.list.len()));
             }
         }
         // (which chunks past the read are loaded, once the land's near done)
         if now >= VC_FAR_ASK && wk.far_tag == 0 {
             wk.far_tag = crate::ground::new_tag();
-            let n = VC_FAR as i32 / 16 + 1;
             let mut cols = Vec::new();
-            for dz in -n..=n {
-                for dx in -n..=n {
-                    let (x, z) = (((bx >> 4) + dx) * 16, ((bz >> 4) + dz) * 16);
-                    let r = (f64::from(x) + 8.0 - wk.s.cx).hypot(f64::from(z) + 8.0 - wk.s.cz);
-                    if r + 12.0 > f64::from(VC_READ) && r < VC_FAR {
-                        cols.push((x + 8, z + 8));
-                    }
-                }
-            }
+            far_chunks(bx, bz, &wk.s, |x, z, _| cols.push((x + 8, z + 8)));
             crate::meter::spend(200 * cols.len() as u64);
             q.ev.push((now, Act::Survey { tag: wk.far_tag, columns: cols }));
         } else if wk.far_tag != 0 && wk.far.is_empty() && crate::ground::ready(wk.far_tag) {
-            let n = VC_FAR as i32 / 16 + 1;
-            for dz in -n..=n {
-                for dx in -n..=n {
-                    let (x, z) = (((bx >> 4) + dx) * 16, ((bz >> 4) + dz) * 16);
-                    let r = (f64::from(x) + 8.0 - wk.s.cx).hypot(f64::from(z) + 8.0 - wk.s.cz);
-                    if r + 12.0 > f64::from(VC_READ) && r < VC_FAR && crate::ground::at(x + 8, z + 8).is_some() {
-                        wk.far.push((vc_due(r + 12.0), x, z));
-                    }
+            let due = DueTable::new();
+            let mut far = Vec::new();
+            far_chunks(bx, bz, &wk.s, |x, z, r| {
+                if crate::ground::at(x + 8, z + 8).is_some() {
+                    far.push((due.at(r.sqrt() + 12.0), x, z));
                 }
-            }
-            wk.far.sort_by(|a, b| a.0.total_cmp(&b.0));
+            });
+            far.sort_by(|a, b| a.0.total_cmp(&b.0));
             // (none loaded: nothing to wait for)
-            if wk.far.is_empty() {
-                wk.far.push((0.0, i32::MIN, 0));
+            if far.is_empty() {
+                far.push((0.0, i32::MIN, 0));
             }
-            crate::meter::spend(300 * (2 * n as u64 + 1).pow(2) + 400 * wk.far.len() as u64);
+            crate::meter::spend(400 * far.len() as u64);
+            wk.far = far;
         }
-        // (the meter reads some 3 times low on this work, by the game's count: `mod_soak` has it at 15-20M a tick)
         while wk.queue.front().is_some_and(|e| e.0 <= now) {
             wk.queued -= wk.queue.pop_front().map_or(0, |e| e.1);
         }
-        while wk.next < wk.chunks.len() && wk.chunks[wk.next].0 <= now + VC_LEAD && crate::meter::spent() < VC_TICK && wk.queued < VC_QUEUE {
+        while wk.next < wk.chunks.len() && wk.chunks[wk.next].0 <= now + VC_LEAD && crate::meter::spent() < VC_TICK && wk.queued < VC_QUEUE && crate::mem::live() < VC_HOLD {
             let (t, x, z) = wk.chunks[wk.next];
             let n0 = q.ev.len();
             vc_chunk(q, wk, t, x, z);
@@ -1462,13 +1539,36 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
     }
 }
 
+/// The forceloads that keep the chunks within `r` of `point` loaded, a row of chunks each: `pk_load_rows`'s, which by way
+/// of its lists and sets costs this many chunks 18 million instructions on the tick the strike fires.
+fn vc_load_rows(point: [f64; 3], r: f64) -> Vec<[i32; 4]> {
+    let (c0x, c1x) = (((point[0] - r).floor() as i32) >> 4, ((point[0] + r).floor() as i32) >> 4);
+    let (c0z, c1z) = (((point[2] - r).floor() as i32) >> 4, ((point[2] + r).floor() as i32) >> 4);
+    let reach = |cx: i32, cz: i32| {
+        let (x0, z0) = (f64::from(cx * 16), f64::from(cz * 16));
+        let nx = (point[0] - x0).clamp(0.0, 16.0) + x0 - point[0];
+        let nz = (point[2] - z0).clamp(0.0, 16.0) + z0 - point[2];
+        nx * nx + nz * nz <= r * r
+    };
+    let mut out = Vec::new();
+    for cz in c0z..=c1z {
+        // (a circle crosses a row of chunks in one span)
+        let first = (c0x..=c1x).find(|&cx| reach(cx, cz));
+        let last = (c0x..=c1x).rev().find(|&cx| reach(cx, cz));
+        if let (Some(a), Some(b)) = (first, last) {
+            out.push([a * 16, cz * 16, b * 16 + 15, cz * 16 + 15]);
+        }
+    }
+    out
+}
+
 /// The land's work in the plan: the chunks round it force-loaded, its stages from a little after it fires; the land's
 /// height handed over as it comes (`hf`).
 pub(super) fn vc_land_plan(p: &mut Plan, laser: &'static Laser, seed: u32, hf: Rc<RefCell<Hf>>) {
     let (bx, by, bz) = (p.bx, p.by, p.bz);
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let point = [cx, f64::from(by) + 1.0, cz];
-    let load = pk_load_rows(point, 0.0, VC_LOAD);
+    let load = vc_load_rows(point, VC_LOAD);
     for [x0, z0, x1, z1] in &load {
         p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
     }
@@ -1522,7 +1622,7 @@ mod tests {
     /// Column (x, z)'s runs on land at 64: the lowest block and the highest, and where the air over it starts.
     fn column(x: i32, z: i32) -> (i32, i32, i32) {
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, leaves: 15, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
+        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
         w.hf.borrow_mut().set(&vec![Some(0.0); crate::strike::volcano::VC_HN * crate::strike::volcano::VC_HN], 1500.0);
         let mut p = Plan { laser: &crate::lasers::SUPERVOLCANO, ev: Vec::new(), rng: Rng::new(7), bx: 0, by: 64, bz: 0 };
         vc_chunk(&mut p, &w, 50.0, x.div_euclid(16) * 16, z.div_euclid(16) * 16);
@@ -1563,10 +1663,15 @@ mod tests {
     }
     #[test]
     fn a_column_packs_and_unpacks() {
-        let c = Col { g: -40, top: 200, trunk: 17, wood: 8, leaves: 15, ground: 2, fluid: true, deep: true };
+        let c = Col { g: -40, top: -5, trunk: 40, leaves: true, ground: 2, fluid: true, deep: true };
         let u = Col::unpack(c.pack()).unwrap();
-        assert_eq!((u.g, u.top, u.trunk, u.wood, u.leaves, u.ground, u.fluid, u.deep), (-40, 200, 17, 8, 15, 2, true, true));
+        assert_eq!((u.g, u.top, u.trunk, u.leaves, u.ground, u.fluid, u.deep), (-40, -5, 40, true, 2, true, true));
         assert!(Col::unpack(0).is_none());
+        // (the highest and lowest the world goes, and a top that is the ground)
+        for g in [-64, 0, 319] {
+            let u = Col::unpack(Col { g, top: g, ..Default::default() }.pack()).unwrap();
+            assert_eq!((u.g, u.top, u.trunk, u.leaves), (g, g, 0, false));
+        }
     }
     #[test]
     fn the_land_goes_in_behind_the_wall_and_by_the_end() {
@@ -1579,10 +1684,52 @@ mod tests {
         assert!(vc_due(0.0) < 78.0, "the middle at {}", vc_due(0.0));
     }
     #[test]
+    fn the_table_of_when_keeps_to_vc_due() {
+        let t = DueTable::new();
+        for k in 0..400 {
+            let r = 200.0 + f64::from(k) * 2.2;
+            assert!((t.at(r) - vc_due(r)).abs() < 0.02, "{r}: {} {}", t.at(r), vc_due(r));
+        }
+    }
+    #[test]
+    fn the_forceloads_are_the_same_rows() {
+        for point in [[0.5, 65.0, 0.5], [905_000.5, 59.0, 181_000.5], [-1234.5, 70.0, 777.5]] {
+            let a = vc_load_rows(point, VC_LOAD);
+            let b = pk_load_rows(point, 0.0, VC_LOAD);
+            assert_eq!(a, b, "at {point:?}");
+        }
+    }
+    #[test]
+    fn the_chunks_not_loaded_are_asked_for_whole_and_once() {
+        let mut m = Missing::default();
+        let mut cols = vec![0u32; (VC_GW * VC_GW) as usize];
+        let (bx, bz) = (1000, -2000);
+        // (a chunk's columns, one column of another; the ones past the read and inside its hole aren't asked)
+        for x in 1296..1312 {
+            for z in -2000..-1984 {
+                m.add(x, z, bx, bz);
+            }
+        }
+        m.add(1000, -2400, bx, bz);
+        m.add(1000, -2000, bx, bz);
+        assert_eq!(m.list.len(), 3);
+        // (one of them read since)
+        cols[((-1995 - bz + VC_READ) * VC_GW + 1305 - bx + VC_READ) as usize] = Col::default().pack();
+        let first = m.take(&cols, bx, bz, 1);
+        assert_eq!(first.len(), 255);
+        assert!(first.iter().all(|&(x, z)| x >> 4 == 1300 >> 4 && z >> 4 == -2000 >> 4 && (x, z) != (1305, -1995)));
+        let rest = m.take(&cols, bx, bz, 6000);
+        assert!(rest.iter().all(|&(x, z)| f64::from((x - bx) * (x - bx) + (z - bz) * (z - bz)).sqrt() > VC_READ0));
+        assert!(m.list.is_empty());
+        // (asked again it can be listed again)
+        m.add(1300, -2000, bx, bz);
+        assert_eq!(m.list.len(), 1);
+    }
+    #[test]
     fn a_chunk_stays_light() {
         crate::meter::reset();
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: 2, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
+        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: true, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
         let mut worst = 0;
         for (x, z) in [(0, 0), (0, 268), (288, 0), (0, 350), (-420, 0), (0, 490)] {
             crate::meter::reset();

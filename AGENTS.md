@@ -244,10 +244,15 @@ laser, command, capability and timing). This file is the short, factual version 
   `VC_LOAD` (576) force-loaded: it has to be that wide or the fade stops at a straight chunk edge on the side away from
   the player. It goes a chunk at a time in order of when each is due (`vc_due`: past the ring with the wall, inside it
   from the edge in at `VC_RATE`, done by about 72 s), each chunk's edits on one tick; the caldera needs no read, the rest
-  reads rings of columns from `VC_READ0` to `VC_READ`, packed a word each. **Its limits:** a mod has 64 MB, and a run
-  costs some 1,000 fuel on its way to the game: `VC_QUEUE` caps the runs waiting (a queue of 600,000 took a tick to 50M
-  fuel), and a column is as few runs as it can be. The meter reads about 3 times low on this work (`VC_TICK` allows for it;
-  `mod_soak` with `SOAK_FULL=1 SOAK_LASERS=supervolcano SOAK_REPORT=8` plays it whole). `VC_VIEW_OUT=DIR [VC_VIEWS=map,air570,...]
+  reads rings of columns from `VC_READ0` to `VC_READ`, packed a 32-bit word each. **Its limits:** a mod has 64 MB
+  (below). `VC_FLIGHT` bounds the parts of the read out at once: one asked a tick and never more than that many unanswered, or
+  the answers pile up in the mod and the reads fall behind the server thread. Chunks not loaded are listed as chunks
+  (`Missing`), never as columns. `VC_QUEUE` caps the runs waiting and `VC_HOLD` stops new chunks while the mod holds
+  that much (the edits behind slow frames); a column is as few runs as it can be. A chunk's real fuel is 2 to 3 times its
+  count (runs are cheap going out, some 90 fuel; it's the noise and the runs' making): `VC_TICK` allows for it. Anything a
+  stage does thousands of times that isn't a chunk wants counting too: `hypot` and `vc_due` are dear (`DueTable`, `far_chunks`),
+  and the mount's tables go in stages (`PlateSums`). `mod_soak` with `SOAK_FULL=1 SOAK_LASERS=supervolcano SOAK_REPORT=8` plays
+  it whole. `VC_VIEW_OUT=DIR [VC_VIEWS=map,air570,...]
   [VC_LAND_SEED=N] cargo test --release vc_land_picture -- --ignored --nocapture` (strike/vc_land_view.rs) makes the real
   edits on a synthetic land in a voxel grid and writes a top-down map and ray-traced views as PPMs, in seconds: look there
   before the game. **The far terrain doesn't see these edits:** see `docs/HOW-IT-WORKS.md`.
@@ -406,6 +411,14 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   loaded, jobs, rings) each time a stage asks what's ready: keep it O(what's due). The Nuke's land waits for columns
   not loaded, asking again a ring at a time, and goes in late as they come; it leaves out what never loads (logged
   `nuke: N columns of the land never loaded`).
+- **A mod has 64 MB of linear memory, and it never shrinks**: past it an allocation fails and the game stops the mod
+  ("it crashed (a panic)", in `cabi_realloc` as often as not). `mod/src/mem.rs` counts what's held; the log says
+  `memory: strike's peak ...` as a strike ends and `memory: heap ...` as the heap grows, a warning past 48 MB (which
+  `tools/game_check.py` fails). What the world answers lands in the mod's memory all at once, so bound what's asked
+  before it's taken in; `a_supervolcano_stays_in_its_memory` holds the Supervolcano to it.
+- **Single player's clock is the server thread's**: the client counts on by itself between the server's `SetTime`, so
+  a server running behind puts the client's clock back when its word comes (and a client that hung sees it jump on).
+  `in_world` allows for that (`SAME_WORLD`, a minute); it isn't a sign of having left. The log says the clock moved.
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many
