@@ -33,16 +33,16 @@ use std::rc::Rc;
 pub(crate) const TS_LEN: f32 = 42.0;
 /// When the front crosses the target, its speed there (blocks a second; it slows past it by TS_C), the sea level it rises
 /// from under the target's ground, its amplitude over that at full strength, the face's width, the seconds the water
-/// holds, then drains over, and the seconds the crest leans out over the face.
+/// holds, then drains over, and how far the water behind the crest sits under it (a share).
 pub(crate) const TS_T: f64 = 9.0;
 pub(crate) const TS_V0: f64 = 100.0;
 pub(crate) const TS_C: f64 = 1.07e-5;
 pub(crate) const TS_SEA: f64 = 100.0;
-pub(crate) const TS_A: f64 = 230.0;
-pub(crate) const TS_FACE: f64 = 70.0;
-pub(crate) const TS_HOLD: f64 = 7.5;
-pub(crate) const TS_DRAIN: f64 = 10.0;
-pub(crate) const TS_LEAN: f64 = 0.34;
+pub(crate) const TS_A: f64 = 420.0;
+pub(crate) const TS_FACE: f64 = 105.0;
+pub(crate) const TS_HOLD: f64 = 6.5;
+pub(crate) const TS_DRAIN: f64 = 14.0;
+pub(crate) const TS_LOW: f64 = 0.15;
 
 pub(crate) fn smooth(a: f64, b: f64, x: f64) -> f64 {
     let u = ((x - a) / (b - a)).clamp(0.0, 1.0);
@@ -100,11 +100,9 @@ impl TsGeo {
         1.0 / (1.0 / TS_V0 + 2.0 * TS_C * s.max(0.0))
     }
     pub fn lag(&self, s: f64, u: f64) -> f64 {
-        let (s, u) = (s as f32, u as f32);
-        let c = 9.0e-7 * u * u;
-        let l1 = (fvnoise(u * 0.0042 + self.sd, s * 0.0014) - 0.5) * 1.0;
-        let l2 = (fvnoise(u * 0.017 + 3.1 + self.sd, s * 0.004 + 9.0) - 0.5) * 0.22;
-        f64::from(c + l1 + l2)
+        crate::meter::spend(60);
+        let sd = f64::from(self.sd);
+        3.0e-7 * u * u + 0.34 * (u * 0.0043 + sd + s * 0.0011).sin() + 0.13 * (u * 0.0127 + sd * 1.7 - s * 0.0023).sin() + 0.05 * (u * 0.0331 + sd * 0.6 + s * 0.0041).sin()
     }
     /// When the front reaches (s, u).
     pub fn arr(&self, s: f64, u: f64) -> f64 {
@@ -112,16 +110,30 @@ impl TsGeo {
     }
     /// How strong the wave is at (s, u), 0 to about 1.
     pub fn env(&self, s: f64, u: f64) -> f64 {
-        let shoal = 0.57 + 0.43 * smooth(-1000.0, -400.0, s);
-        let dec = 1.0 - 0.45 * smooth(0.0, self.send, s);
+        crate::meter::spend(60);
+        let up = 0.2 + 0.8 * smooth(-905.0, -770.0, s);
+        let dec = 1.0 - 0.345 * smooth(-640.0, -40.0, s);
+        let run = 1.0 - 0.13 * smooth(0.0, self.send, s);
         let end = 1.0 - smooth(self.send - 80.0, self.send + 30.0, s);
-        let lat = 1.0 - smooth(650.0, 1400.0, u.abs());
-        let (sf, uf) = (s as f32, u as f32);
-        let lump = 1.0
-            + 0.03 * f64::from(fvnoise(uf * 0.012 + self.sd, sf * 0.003) - 0.5) * 2.0
-            + 0.035 * f64::from(fvnoise(uf * 0.045, sf * 0.01 + 4.0) - 0.5) * 2.0
-            + 0.02 * f64::from(fvnoise(uf * 0.2, sf * 0.02 + 7.0) - 0.5) * 2.0;
-        shoal * dec * end * lat * lump
+        let lat = 1.0 - smooth(1500.0, 2700.0, u.abs());
+        let sd = f64::from(self.sd);
+        let lump = 1.0 + 0.028 * (u * 0.0063 + sd * 1.7 + s * 0.0016).sin() + 0.024 * (u * 0.0171 + sd * 0.9 - s * 0.0031).sin() + 0.016 * (u * 0.0419 + sd * 2.3 + s * 0.0047).sin();
+        up * dec * run * end * lat * lump
+    }
+    /// How far it has drained at `s` at `t`, 0 to 1 (the pass's ts_x): all the land's water goes together, the seaward side
+    /// a little first.
+    pub fn drained(&self, t: f64, s: f64) -> f64 {
+        let t0 = TS_T + Self::tau(self.dp) + Self::rise_t(self.dp) + TS_HOLD + 0.0016 * (s - self.dp);
+        ((t - t0) / TS_DRAIN).clamp(0.0, 1.0)
+    }
+    /// The level `lv` (over the target's ground) as it drains, `x`: down hard at first, slowing as it nears the land (the
+    /// pass's ts_fall).
+    pub fn fall(lv: f64, x: f64) -> f64 {
+        if x <= 0.0 {
+            return lv;
+        }
+        let e = smooth(0.0, 0.42, x);
+        lv + (12.0 - 118.0 * x * x - lv) * e
     }
     /// The water's height over its sea (0 to 1) `tau` seconds after the front reached a point `s` out.
     pub fn prof(tau: f64, s: f64) -> f64 {
@@ -130,9 +142,7 @@ impl TsGeo {
         }
         let tr = TS_FACE / Self::vel(s);
         let rr = (tau / tr).clamp(0.0, 1.0);
-        let rise = 1.0 - (1.0 - rr).powf(2.3);
-        let x = ((tau - tr - TS_HOLD) / TS_DRAIN).clamp(0.0, 1.0);
-        rise * (1.0 - x * x * (3.0 - 2.0 * x))
+        rr.powf(1.7) * (1.0 - TS_LOW * smooth(tr, tr * 3.0, tau))
     }
     /// The level the water holds at (s, u), over the target's ground (a column's ground is `g - t[1]` over it).
     pub fn peak(&self, s: f64, u: f64) -> f64 {
@@ -145,7 +155,8 @@ impl TsGeo {
             return None;
         }
         let p = Self::prof(t - self.arr(s, u), s);
-        (p > 0.0).then(|| TS_A * env * p - TS_SEA)
+        let x = self.drained(t, s);
+        (p > 0.0 && x < 1.0).then(|| Self::fall(TS_A * env * p - TS_SEA, x))
     }
     /// Where the middle of the front is at `t` (the inverse of tau).
     pub fn front(t: f64) -> f64 {
@@ -182,7 +193,7 @@ impl TsGeo {
 /// The block types the wave's debris is made of, each its HU_BKW words at TSB + TSBW * its place (the Hurricane's bk_words:
 /// the game's own textures through the atlas); the pass picks among them by the land the wave is over (`TSM`: for each
 /// 16 by 16 cell of the land in the wave's own axes, the share of its columns with trees on them and with buildings, a
-/// byte each, from TSM_S0 along it and TSM_U0 across it).
+/// byte each, and over them the land's height over the target's ground + 2048, from TSM_S0 along it and TSM_U0 across it).
 pub(crate) const TS_KINDS: [&str; 24] = [
     "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log", "minecraft:dark_oak_log", "minecraft:oak_planks",
     "minecraft:spruce_planks", "minecraft:cobblestone", "minecraft:stone_bricks", "minecraft:bricks", "minecraft:glass",
@@ -194,9 +205,9 @@ pub(crate) const TSB: usize = 64;
 pub(crate) const TSBW: usize = 12;
 pub(crate) const TSM: usize = 384;
 pub(crate) const TSM_S: usize = 64;
-pub(crate) const TSM_U: usize = 32;
+pub(crate) const TSM_U: usize = 44;
 const TSM_S0: f64 = -320.0;
-const TSM_U0: f64 = -256.0;
+const TSM_U0: f64 = -352.0;
 pub(crate) const TS_WORDS: usize = TSM + TSM_S * TSM_U;
 
 /// The pass's table before the land is read: the block types' words, the map empty (the pass then takes a wood's share).
@@ -399,7 +410,7 @@ struct Work {
     seed: u32,
     gy: i32,
     /// The map's counts of columns with trees and with buildings, a cell each, and whether it changed since the pass was told.
-    map: Vec<(u16, u16)>,
+    map: Vec<(u16, u16, i32, u16)>,
     map_dirty: bool,
     map_told: f64,
     /// The chunks changed, the columns swept and what was taken, for the tests and the log.
@@ -507,12 +518,17 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         let Some(c) = cols[i] else { continue };
         gs[i] = c.g;
         crate::meter::spend(120);
-        if c.tree || c.bld {
+        // (the pass's map: trees, buildings, the land's height, a column in four for the height)
+        if c.tree || c.bld || (lx % 2 == 0 && lz % 2 == 0) {
             let (s, u) = geo.su(f64::from(x) + 0.5, f64::from(z) + 0.5);
             if let Some(mc) = map_cell(s, u) {
                 let e = &mut w.map[mc];
                 e.0 += u16::from(c.tree);
                 e.1 += u16::from(c.bld);
+                if lx % 2 == 0 && lz % 2 == 0 {
+                    e.2 += c.g - ty as i32;
+                    e.3 += 1;
+                }
                 w.map_dirty = true;
             }
         }
@@ -654,7 +670,14 @@ fn ts_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f64) {
         if wk.map_dirty && now >= wk.map_told + 1.0 {
             wk.map_told = now;
             wk.map_dirty = false;
-            let words: Vec<u32> = wk.map.iter().map(|&(t, b)| (((t * 255 / 160).min(255)) as u32) | (((b * 255 / 90).min(255)) as u32) << 8).collect();
+            let words: Vec<u32> = wk
+                .map
+                .iter()
+                .map(|&(t, b, h, n)| {
+                    let g = if n > 0 { (h / i32::from(n) + 2048).clamp(1, 0xFFFF) as u32 } else { 0 };
+                    ((t * 255 / 160).min(255)) as u32 | (((b * 255 / 90).min(255)) as u32) << 8 | g << 16
+                })
+                .collect();
             crate::meter::spend(30 * words.len() as u64);
             q.ev.push((now as f32, Act::Words { index: TSM as u32, words }));
         }
@@ -753,7 +776,7 @@ pub(super) fn tsunami_plan(laser: &'static Laser, target: &Target, terrain: bool
             next_retry: 0.0,
             seed: s,
             gy: by + 1,
-            map: vec![(0, 0); TSM_S * TSM_U],
+            map: vec![(0, 0, 0, 0); TSM_S * TSM_U],
             map_dirty: false,
             map_told: -1.0,
             changed: 0,
@@ -797,11 +820,11 @@ mod tests {
             assert!(g.level(s, u, a - 0.5).is_none());
             let rise = TsGeo::rise_t(s);
             let (l1, l2) = (g.level(s, u, a + 0.5 * rise).unwrap(), g.level(s, u, a + rise + 1.0).unwrap());
-            assert!(l2 > l1 && l2 > 60.0 && l2 < 150.0, "{l1} {l2}");
-            assert!(g.level(s, u, a + rise + TS_HOLD + TS_DRAIN + 1.0).is_none());
+            assert!(l2 > l1 && l2 > 60.0 && l2 < 190.0, "{l1} {l2}");
+            assert!(g.level(s, u, a + rise + TS_HOLD + TS_DRAIN + 4.0).is_none());
             // (spent at its end, and not at all out on its flanks)
             assert!(g.peak(g.send + 60.0, 0.0) < -50.0);
-            assert!(g.peak(100.0, 1500.0) < -50.0);
+            assert!(g.peak(100.0, 2800.0) < -50.0);
             // (it runs 130 over the target's ground at full strength)
             assert!(g.peak(-300.0, 0.0) > 100.0, "{}", g.peak(-300.0, 0.0));
         }

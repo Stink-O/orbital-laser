@@ -889,7 +889,7 @@ impl Orbital {
             return;
         }
         let Some(p) = game::get_player() else { return };
-        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held, game::player_flying(), self.carry_turn);
+        let o = c.tick(t, [p.x, p.y, p.z], f64::from(p.yaw), self.carry_held, game::player_flying(), self.carry_turn);
         if !o.cmds.is_empty() {
             world::run_commands(&o.cmds);
         }
