@@ -83,7 +83,7 @@ GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
 LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
-         "seism": -33.0, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -12.0, "column_far": -12.0,
+         "seism": -33.0, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -13.0, "column_far": -12.0,
          "whistle": -15.0, "thud": -12.0, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
@@ -189,6 +189,11 @@ def write(name, x, knee=None, kind=None):
 #    crinkling is. A rock's blow has its body under it; what's fine enough to be a hiss is a hiss, dense, never countable.
 #  - zero-phase filters on anything struck: `band` rings ahead of the hit, and nothing in nature does (`F.cband` looks back).
 #  - one envelope on one band of noise. A real roar's level moves differently at every pitch (`eddies`).
+def boiled(n, lo, hi, db, cap=1.6):
+    """`boil`, its rare freak swell rounded off at `cap` times `db`: a roar has no one moment that stands out of it."""
+    return np.exp(db * cap * np.tanh(PB.slow_random(n, lo, hi) / cap) / 8.686)
+
+
 def eddies(d, f0, f1, per_oct=2.5, slope=-4.0, turns=14.0, depth=4.0, drive=None, lift=0.0, pivot=None):
     """Turbulence, unit RMS: bands of noise (`per_oct` an octave) from `f0` to `f1`, each boiling on its own at a rate that
     goes with its pitch, as eddies do (an eddy that makes a pitch lives about `turns` cycles of it): a slow heave at the
@@ -203,7 +208,7 @@ def eddies(d, f0, f1, per_oct=2.5, slope=-4.0, turns=14.0, depth=4.0, drive=None
         u = i / (k - 1)
         fc = f0 * (f1 / f0) ** u
         r = min(fc / turns, 420.0)
-        g = np.exp(depth * (1 - 0.66 * u) * PB.slow_random(n, r * 0.22, r) / 8.686)
+        g = boiled(n, r * 0.22, r, depth * (1 - 0.66 * u))
         b = T.unit(band(white(d), fc / wide, fc * wide, 2)) * g * 10 ** (slope * np.log2(fc / f0) / 20)
         if drive is not None and lift:
             b = b * 10 ** (lift * np.log2(fc / (pivot or np.sqrt(f0 * f1))) * (drive - 1) / 20)
@@ -659,15 +664,16 @@ def plinian():
     F0 = FALTER
     with PB.seeded(61611):
         f = column_flow()
-        big = heaves(d, 3.2, 0.75, 0.45, 1.5, 0.75, 0.8)
+        big = heaves(d, 3.2, 0.75, 0.45, 1.5, 0.6, 0.8)
         quick = heaves(d, 0.75, 0.5, 0.05, 0.3, 0.6, 0.4)
-        surge = np.clip(0.55 * big + 0.45 * quick, 0.25, 3.5)
+        # (its surges rounded over the top: it's a density, and the report and the collapse have to stay over it)
+        surge = 0.2 + 2.6 * np.tanh(np.maximum(0.55 * big + 0.45 * quick - 0.2, 0) / 2.6)
         # (the rips: the same few moments right across the sound, as a shock is, in flurries with the surges)
         burst = np.clip(N.grains(d, 15.0, (0.025, 0.07, 0.18)), 0, 6) ** 0.7
-        gust = boil(n, 1.0, 9.0, 5.0)
+        gust = boiled(n, 1.0, 9.0, 5.0)
         sub = T.unit(band(white(d), 15, 46, 3)) * boil(n, 0.1, 0.8, 3.0) * (0.8 + 0.3 * big) * f ** 0.6
         rum = eddies(d, 30, 170, 2.5, -1.0, 9.0, 6.0, surge, 1.0) * (0.75 + 0.35 * surge) * f ** 0.8
-        roar = eddies(d, 120, 3400, 3.0, -2.6, 14.0, 5.0, surge, 3.2, 300.0) * (0.55 + 0.5 * surge) * f * gust ** 0.6 * burst ** 0.35
+        roar = eddies(d, 120, 3400, 3.0, -2.3, 12.0, 6.5, surge, 3.2, 300.0) * (0.5 + 0.55 * surge) * f * gust ** 0.8 * burst ** 0.45
         # (the tear: the wave's own fronts stand up where it's strongest, so the rips come with the surges)
         src = eddies(d, 90, 1800, 3.0, -2.0, 12.0, 5.0, surge, 2.0, 300.0) * gust * burst ** 0.5
         tear = steepen(T.unit(src), 3.2e-4 * np.clip(f * surge, 0, 2.2) ** 0.9 * burst ** 0.5)
@@ -685,10 +691,11 @@ def plinian():
         falls = rocks(d, np.full(n, 13.0), 26, 420, (0.8, 1.6, 2.6), (0.6, 0.3, 0.1), 1.9)
         fire_env = db_curve(t, [(0, -70), (0.7, -34), (1.8, -11), (3.0, -3), (4.0, 0), (9.0, 0), (12.0, -5), (18, -13), (26, -22), (F0, -26), (F0 + 2, -60), (d, -90)])
         lo_on = db_curve(t, [(0, -60), (1.2, -26), (2.6, -5), (3.6, 0), (d, 0)])
-        x = (sub * 0.9 + rum * 0.85 + roar * 1.05 + tear * 0.62 + rattle * 0.3 + top * 0.07
+        x = (sub * 0.9 + rum * 0.85 + roar * 1.1 + tear * 0.85 + rattle * 0.34 + top * 0.08
              + (fl * 1.0 + fm * 0.95 + ft * 0.3) * fire_env + falls * fire_env * lo_on * 0.7)
         x = land(x, 3.5, 0.3, (1500, 190), 1.6, 40.0, seed=22)
-        return lows_heard(x, 70, 300, -9.0)
+        x = lows_heard(x, 70, 300, -9.0)
+        return (lambda g: (g[0] + g[1]) / 2)(N.glue(x, x, 1.5, 0.03, 0.5, 8.0))
 
 
 def build_column():
@@ -935,7 +942,7 @@ def falling(d, Td, ref):
         wave = np.zeros(n)
         for k, w0 in enumerate(WAVES):
             u = s_ - w0
-            wave += (1 - np.exp(-np.maximum(u, 0) / 0.5)) * np.exp(-np.maximum(u, 0) / (1.9 + 0.3 * k)) * (u > 0) * 0.86 ** k
+            wave += (1 - np.exp(-np.maximum(u, 0) / 0.4)) * np.exp(-np.maximum(u, 0) / (1.25 + 0.25 * k)) * (u > 0) * 0.88 ** k
         wave = ease(wave, 0.15) + 0.04
         wave *= boil(n, 0.4, 2.0, 2.0)
         fade = db_curve(t, [(0, -80), (Td + 0.6, -60), (Td + 1.3, -3), (Td + 3, 0), (Td + 9, -4), (Td + 14, -12), (Td + 18, -26), (d, -80)])

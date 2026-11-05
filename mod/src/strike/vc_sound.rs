@@ -189,9 +189,9 @@ fn flashes(s: u32, from: f32, to: f32) -> Vec<(f32, [f64; 3], f64, bool)> {
 }
 
 /// A bolt's thunder `d` blocks off as a file's loudest 400 ms in dB: strike/hurricane.rs's hu_thunder_db, 4 dB down each
-/// time the distance doubles, 9 dB over it. This lightning is far bigger than an eyewall's, and is heard from a kilometre.
+/// time the distance doubles, 11 dB over it. This lightning is far bigger than an eyewall's, and is heard from a kilometre.
 fn thunder_db(d: f64) -> f64 {
-    -6.0 - 4.0 * (d.max(60.0) / 60.0).log2()
+    -4.0 - 4.0 * (d.max(60.0) / 60.0).log2()
 }
 
 /// The lightning from `from` s up to `to` as heard at `me`, with the Hurricane's own thunder (its events, its files, and
