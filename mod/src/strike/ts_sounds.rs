@@ -33,8 +33,8 @@ pub(super) fn ts_sounds(p: &mut Plan, geo: &TsGeo, me: [f64; 3], s: u32, t_t: f6
     let reach = 1.0 - smooth(geo.send, geo.send + 400.0, dp);
     // (a player the front reaches sooner hears the crash on top of the immersion: less of it there. The volumes keep the mix
     // of every distance under -1 dBTP, `--listen`)
-    let share = (0.26 + 0.0019 * (dp - 100.0)).clamp(0.26, 0.8);
-    let near_v = (0.72 + 0.0022 * (dp - 250.0)).clamp(0.72, 1.0);
+    let share = (0.2 + 0.001 * (dp - 100.0)).clamp(0.2, 0.62);
+    let near_v = (0.66 + 0.0018 * (dp - 250.0)).clamp(0.66, 0.82);
     let far_v = (0.7 + 0.001 * dp).clamp(0.8, 1.0);
     sound(p, 0.0, "rupture", 1.0);
     sound(p, 1.5, "rumble", 1.0);
@@ -42,7 +42,7 @@ pub(super) fn ts_sounds(p: &mut Plan, geo: &TsGeo, me: [f64; 3], s: u32, t_t: f6
     sound(p, (tp - MID_LEN).max(1.0), "roar_mid", reach);
     // (the far roar is over well before the immersion of a near player, whose mix has no room for it; a far one gets it again)
     if tp - MID_LEN > FAR_IF {
-        p.ev.push((FAR_AGAIN as f32, Act::Sound { event: "orbital:tsunami.roar_far".into(), at: None, volume: (0.75 * far_v) as f32, pitch: 0.94 }));
+        p.ev.push((FAR_AGAIN as f32, Act::Sound { event: "orbital:tsunami.roar_far".into(), at: None, volume: (0.6 * far_v) as f32, pitch: 0.94 }));
     }
     sound(p, t_t + late - 0.06, "crash", share * (1.0 - far));
     sound(p, t_t + late - 0.06, "crash_far", share * far * (1.25 / (1.0 + dp / 2000.0)).min(1.0));

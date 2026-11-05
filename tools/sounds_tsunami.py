@@ -3,9 +3,9 @@ far, that stands up on the horizon in the first second and a half, crosses the l
 Its drama is scale: dread from the first seconds, a roar that takes the whole sky, the immersion, what goes by under the
 water, the head coming out and the land's water pouring away beneath the player, the quiet it leaves.
 
-Water must sound like water, not wind. Measured against real recordings (the texture statistics of McDermott & Simoncelli
-2011: envelope sparsity per ear's filter, how fast it falls when channels are summed, onsets sharper than decays), plain or
-octave-gated noise reads as wind or rain, so the water here (`water`) is thousands of ringing Minnaert bubbles, see below.
+Big water has no pitch at all, and it is not a lot of small water. It was once built here from ringing Minnaert bubbles and came
+out as a stream into a can: every band's envelope three times too sparse, a hump at 1 kHz over no sub. `water` below is what
+replaced it; nothing in this file rings.
 
 Horizon decodes every sound to mono ((L+R)/2) and plays one played to the listener dead centre, 0.596 in each ear (a
 positional one is panned by its direction), so every file here is mono: nothing is lost, the folder is half the size
@@ -17,19 +17,21 @@ reaching the target; `dp` = the player's distance from the target in blocks; `tp
 
   rupture      at 0: the seabed far off letting go; felt more than heard: a thump 1.1 s in, a long falling rumble
   rumble       at 1.5: the ground under the wave; low only; up by 8 s, out of the immersion's way by 14 s; 18 s
-  roar_far     at 0.9: the wall on the horizon, huge at once, its first big seas 0.75 s in, as it stands up; 9.5 s, gone
-               before the immersion of a near player; again at 7.4, at pitch 0.94, for one the wave is far from yet
+  roar_far     at 0.9: the wall on the horizon, its first big seas 0.75 s in, as it stands up, building; 9.5 s, gone before the
+               immersion of a near player; again at 7.4, at pitch 0.94, for one the wave is far from yet
   roar_mid     at tp - 9: closer, bigger, 9 s, crossfading into roar_near over its last 3.6 s
-  roar_near    at tp - 4: enormous; the immersion is exactly 4.0 s into it (NEAR_PRE): a breath of 120 ms, then it is cut off
+  roar_near    at tp - 4: enormous, what it carries coming into the ear; the immersion is exactly 4.0 s into it (NEAR_PRE): a
+               breath of 120 ms, then it is cut off
   roar_pass    at tp - 4 instead, for a player on a hill it never closes over: the same wall going by below; 12 s
   crash        at 9 + dp / 343 - CRASH_LEAD: the wave coming down on the target's land: water and weight, nothing single
   crash_far    the same moment, cross-faded in by distance (`far_mix`: 250 to 800 blocks, smoothstep)
   engulf       at tp: the loudest, heaviest thing there is, its slam on the first sample; 0.15 s blown white, 1.5 s of
-               violent foam closing in round the head, then the drop
-  under        at tp + 0.2: inside the water, under the foam until it drops; ends just after the head is out
+               violent water closing down round the head, then the drop
+  under        at tp + 0.2: inside the water; quiet under the engulf for a second, then a dark surging roar with what hits coming
+               through it; a tree at tp + 2.5, a piece of a house at tp + 3.75, a tree at tp + 5.3; ends just after the head is out
   surface      at tp + 6.5: the head out: the burst is on its first sample, everything above 1 kHz back at once
   torrent      at tp + 6.5: the whole land's water pouring away round the player as they ride it down; 13 s, thinning
-  drain        at tp + 9: separate runs of water now, glugs from every hollow; 12 s
+  drain        at tp + 9: running water, near and far at once; 12 s
   roar_back    at tp + 9.5: the wave going off over the far land
   rumble_after at tp + 9: the ground, low, settling
   trickle      at tp + 17, at 31 at the latest (it has dried up by the strike's end, 42 s, at any distance)
@@ -39,52 +41,38 @@ reaching the target; `dp` = the player's distance from the target in blocks; `tp
 If the water never closes over the player, engulf, under and surface do not play. Past the wave's end (`reach`) the roars die
 out and nothing pours off the land round them.
 
-Volumes: share = clamp(0.26 + 0.0019 (dp - 100), 0.26, 0.8) (the crash lies on top of the immersion for a near player)
+Volumes: share = clamp(0.2 + 0.001 (dp - 100), 0.2, 0.62) (the crash lies on top of the immersion for a near player)
 
   crash        (1 - far_mix(dp)) * share
   crash_far    far_mix(dp) * share * min(1.25 / (1 + dp / 2000), 1)
-  roar_far     clamp(0.7 + 0.001 dp, 0.8, 1), 0.75 of that the second time
-  roar_near    clamp(0.72 + 0.0022 (dp - 250), 0.72, 1)
+  roar_far     clamp(0.7 + 0.001 dp, 0.8, 1), 0.6 of that the second time
+  roar_near    clamp(0.66 + 0.0018 (dp - 250), 0.66, 0.82)
   everything else 1 (times `reach` for what needs the wave)
 
-How each is made:
+How each is made (`water`, `impact`, `grit`, `groan`, `bury`: the comment at `water` says what they are):
 
-  water        The engine: 112 resonators from 36 Hz to 9 kHz, each firing damped sines that climb a little as they ring (a
-               bubble of radius r rings at 3.26 / r Hz, Minnaert; van den Doel's 2005 climb; Q ~18 in the mids, but the low
-               ones are clouds ringing together, Q ~3, never a tone), Poisson, at a rate given as how many overlap per ear's filter.
-               48 independent patches a filter or so wide hold them: heavy-tailed clusters, the bubbles in a busy patch louder as
-               well as commoner, which is what the ear hears as water. Under 900 Hz each bubble is written on its own at a pitch
-               of its own, above it three pitches a resonator through one FFT. A thin bed of turbulence so the gaps are not empty.
-               This wave is a much bigger bubble field than a beach's, so it runs low and slow: surf peaks near 1 kHz for small
-               waves and at 250-400 Hz over a metre, level (+-3 dB) from 100 to 1600 Hz, falling over 2 kHz; a waterfall's broad
-               peak is near 100 Hz.
-  plunge       A mass of water coming down: the jet's slam near 100 Hz, the air cavity under it knocking at 40-70 Hz with its pitch
-               still climbing as it dies (50-80 Hz in surf), a crunch of broken water; every patch bursts with it, the top a
-               moment later (spray comes down after the slam). `breakers` says when, heavy-tailed sizes.
   rupture      a small thud first (what arrives ahead through the rock), the push 1.1 s in (a ~42 Hz heave), a long rumble
                sinking from ~150 Hz to ~30 over six seconds with a shudder in it, rolls of low thunder, rock grinding.
   rumble       low swells rolling in under a sub bed, a grinding in the low mids; nothing above ~350 Hz.
-  roar_*       `water` whose spectrum and bubbles follow the wave's nearness (`FAR_SH`, air having taken the top off, to `NEAR_SH`),
-               surging (`swell`: up quickly, away slowly, each a sea breaking), plunges in it. Nothing sweeps, nothing is a tone.
-  crash        a heavy whump (a heave, its attack 40-90 ms), seas coming down one on another, the roar letting go; the land under
-               them only as a dark crushing under 1.1 kHz: from hundreds of blocks off no board or pane of glass is heard. The
-               land's rolls and dark echoes.
+  roar_far     `water` through miles of air (`FAR_SH`), surging, far seas coming down with no front to them.
+  roar_mid     `water` with the air's share of the top gone (`MID_SH`), seas, the mass of what it carries (under 500 Hz, nothing small
+               carries this far), steel dragging, deep.
+  roar_near    `water` closing to `NEAR_SH`, seas, timber and concrete and steel coming into the ear buried in it.
+  crash        a heavy blow (its attack 40 ms) and another on it, seas coming down one on another, the roar letting go; the land under
+               them a dark crushing under 1.1 kHz: from hundreds of blocks off no board or pane of glass is heard.
   crash_far    the same through ~a kilometre of air (the Nuke's `far_of`): highs let down, the front smeared, a long dark tail.
-  engulf       a sub heave on the first sample and a smack of everything over the head, then `water` at its densest, bright, shut
-               in over 1.5 s (a lowpass from 14 kHz to 1.9 kHz) with seas slamming in it, then shut off to 700 Hz in a quarter of a
-               second.
-  under        the churn: `water` under the water (nothing above ~700 Hz), a pressure in the ears, plunges without their top; solid
-               things through water, knocks of wood (hollow) and stone (harder), a whole tree going by (the push of the water
-               before it, a long creak, limbs knocking as it rolls: 1.3 s into the file), a piece of a house (a heavy blow, stone
-               clattering off it, a beam, the air in it getting out in big slow gulps: 3.2 s in). Over 1 kHz only bubbles close to
-               the ear, in clouds, rushing up with the player in the last second and a half.
-  surface      a burst of everything on the first sample, `water` open and bright, drops, the size of the air round the player.
-  torrent      `water` close (`TORRENT_SH`), dense, ledges of it coming down; the low weight going first, falling apart into
-               separate running water (`RILL_SH`, ever fewer bubbles).
-  drain        six runs of water (`rill`), each its own pitch and its own life, glugs from every hollow, a few slaps and knocks.
-  roar_back    `water` far and going, through the air's dark tail.
+  engulf       `WHITE_SH` on the first sample with a blow of everything and a cycle of pressure; seas slamming and things hitting;
+               the shape closing to `UNDER_SH` by 1.8 s.
+  under        `water` at `UNDER_SH`, surging hard; hits and pieces through it, sharp and short, so it stays dark between them; the two
+               trees (`tree_past`: the water shoved ahead, a groan, the trunk knocking) and the house (`chunk_past`: a blow and
+               everything in it going, rubble, a beam); the last second and a half the air coming.
+  surface      a burst of everything on the first sample, `water` open and bright, drops.
+  torrent      `water` close (`TORRENT_SH`, level to 2 kHz), ledges of it coming down, things knocking; the weight going first (`RUN_SH`,
+               `RILL_SH`), its splashes coming apart.
+  drain        `water` at `RILL_SH`, thin and wide, nothing in it a stream of its own, hollows letting go (`gulp`).
+  roar_back    `water` far and going.
   rumble_after the ground settling: a low bed sinking away, a few far thuds.
-  trickle      drips, a few trickling streams, mud sagging and glugging, a last timber settling twice; very quiet.
+  trickle      what is left of the water, drops (more tick than note), mud, a last timber settling twice; very quiet.
   crack1-4     a trunk snapping, a young tree's quick double snap, a house beam and planks going, a trunk wrenched out roots and all.
   slap1-3      water slamming a wall: one big, a double surge, a cascade of small ones.
 
@@ -101,7 +89,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np
 from scipy.interpolate import PchipInterpolator
-from scipy.fft import irfft, next_fast_len, rfft
+from scipy.fft import irfft, next_fast_len
+from scipy.ndimage import gaussian_filter1d
 from scipy.signal import fftconvolve, resample_poly
 import soundlib
 from soundlib import SR, band
@@ -110,7 +99,6 @@ import sounds_pk_blast as PB
 import sounds_payload as P
 import sounds_nuke as N
 import hu_foley as F
-import sounds_hurricane as H
 
 TH = "tsunami"
 N.TH = TH                      # (the Nuke's helpers, `decoded`, `far_of`, write to tsunami/ now)
@@ -120,7 +108,7 @@ NAMES = ["rupture", "rumble", "roar_far", "roar_mid", "roar_near", "roar_pass", 
          "torrent", "drain", "roar_back", "rumble_after", "trickle", "crack1", "crack2", "crack3", "crack4", "slap1", "slap2", "slap3"]
 TP_MAX = 10 ** (-1.15 / 20)     # every file's decoded true peak (4x oversampled) at most this
 # The mix balance, dB added to a file's nominal level
-TRIM = {"rumble": -6.0}
+TRIM = {"rumble": -8.0}
 
 # ---- the timeline (seconds; 0 = fired)
 T_T = 9.0                       # the front crosses the target
@@ -130,11 +118,11 @@ FAR_AT = 0.9                    # roar_far: its first big seas come down as the 
 FAR_AGAIN, FAR_IF = 7.4, 9.0    # played again (lower) only if roar_mid starts after FAR_IF: it must be gone before the immersion
 MID_LEN = 9.0                   # roar_mid ends as the front arrives
 NEAR_PRE = 4.0                  # roar_near: the immersion is this far into it
-ROAR_NEAR_LEN, PASS_LEN = 7.0, 12.0
+ROAR_NEAR_LEN, PASS_LEN = 4.45, 12.0
 SURF_AT = 6.5                   # the head breaks the surface at tp + this (strike/tsunami.rs's carry)
 DRAIN_AT, BACK_AT, SETTLE_AT = 9.0, 9.5, 9.0       # tp + these
 TRICKLE_AT, TRICKLE_LAST = 17.0, 31.0              # tp + this, or this at the latest (dried up by the strike's end, 42)
-NEAR_DB, ENGULF_DB = -12.0, -7.3
+NEAR_DB, ENGULF_DB = -13.0, -8.0
 # what plays with what at each distance (see `schedule`)
 CEIL = 10 ** (-1.0 / 20)        # the whole strike's mix, true peak, at most this (file domain, as the Rod's)
 
@@ -169,15 +157,15 @@ def schedule(dp, immersed=True):
     reach = 1.0 - u * u * (3 - 2 * u)                                         # past it the wave only roars, and dies
     # (a player the front reaches sooner hears the crash and the wave's own roar on top of each other: less of each there;
     # the volumes are what keeps the mix of every distance under CEIL, `--listen`)
-    share = float(np.clip(0.26 + 0.0019 * (dp - 100.0), 0.26, 0.8))
-    near_v = float(np.clip(0.72 + 0.0022 * (dp - 250.0), 0.72, 1.0))
+    share = float(np.clip(0.2 + 0.001 * (dp - 100.0), 0.2, 0.62))
+    near_v = float(np.clip(0.66 + 0.0018 * (dp - 250.0), 0.66, 0.82))
     far_v = float(np.clip(0.7 + 0.001 * dp, 0.8, 1.0))
     crash_v = {"crash": share * (1.0 - far), "crash_far": share * far * min(1.25 / (1.0 + dp / 2000.0), 1.0)}
     rows = [("rupture", "rupture", 0.0, 1.0, 1.0),
             ("rumble", "rumble", 1.5, 1.0, 1.0),
             ("roar_far", "roar_far", FAR_AT, 1.0, far_v),
             ("roar_mid", "roar_mid", max(tp - MID_LEN, 1.0), 1.0, reach),
-            ("roar_far2", "roar_far", FAR_AGAIN, 0.94, 0.75 * far_v if tp - MID_LEN > FAR_IF else 0.0),
+            ("roar_far2", "roar_far", FAR_AGAIN, 0.94, 0.6 * far_v if tp - MID_LEN > FAR_IF else 0.0),
             ("crash", "crash", T_T + late - CRASH_LEAD, 1.0, crash_v["crash"]),
             ("crash_far", "crash_far", T_T + late - CRASH_LEAD, 1.0, crash_v["crash_far"]),
             ("torrent", "torrent", tp + SURF_AT, 1.0, reach),
@@ -205,12 +193,6 @@ def curve_db(t, pts):
     xs, ys = zip(*pts)
     f = PchipInterpolator(xs, ys)
     return 10 ** (f(np.clip(t, xs[0], xs[-1])) / 20)
-
-
-def curve(t, pts):
-    """The same for a plain value."""
-    xs, ys = zip(*pts)
-    return PchipInterpolator(xs, ys)(np.clip(t, xs[0], xs[-1]))
 
 
 def noise(n, lo, hi, order=3):
@@ -270,290 +252,285 @@ def glide_fc(n, pts):
     return np.exp(np.interp(t, xs, np.log(ys)))
 
 
-def slap_event(size, wet=1.0):
-    """Water slamming something solid, dry: a wet low thump, the burst of the splash, the sheet of it falling back.
-    Unit peak, about 0.7 s (a big one is longer)."""
-    m = nsm(0.5 + 0.5 * size)
-    s = np.arange(m) / SR
-    body = noise(m, 55, 220 + 260 / (1 + size), 2) * (1 - np.exp(-s / 0.004)) * np.exp(-s / (0.05 + 0.07 * size))
-    punch = sine_thump(m, 0.0, 95.0 / (0.6 + 0.5 * size), 48.0 / (0.6 + 0.5 * size), 18.0, 0.003, 0.05 + 0.05 * size, 0.8)
-    splash = noise(m, 500, 6500 + 2000 * wet, 2) * (1 - np.exp(-s / 0.002)) * np.exp(-s / (0.035 + 0.025 * size))
-    sheet = noise(m, 1000, 7000, 2) * np.clip(grains(m, 700.0, (0.01, 0.025, 0.06)), 0, 5) ** 0.9 \
-        * np.exp(-s / (0.18 + 0.2 * size)) * (1 - np.exp(-s / 0.03))
-    x = body * 0.9 + punch * 0.7 + splash * 0.55 + sheet * 0.22
-    return x / (np.abs(x).max() + 1e-12)
-
-
 # =========================================================================================================  water
-# What makes water water and not wind (McDermott & Simoncelli 2011): water's sound is "sparsely distributed, independent,
-# bandpass acoustic events" about as wide as the ear's own filters; imposing only a spectrum on noise gives wind. So the
-# roars are not gated noise: they are thousands of damped, slightly climbing sines (Minnaert: f = 3.26 m/s / radius; van
-# den Doel 2005 for the climb) gathered in patches narrow enough for the ear to tell apart, the events of a patch louder
-# when the patch is busy, over a thin bed of turbulence, with the air cavities of plunging water slamming in low. A wave
-# this size is a much bigger bubble field than a beach's, so its grains run lower and slower (airborne surf peaks near 1 kHz
-# for small waves and at 250-400 Hz over a metre; a waterfall's broad peak is near 100 Hz, plunging jets near 100 Hz and their air
-# cylinders at 50-80 Hz in surf).
-OCT = np.array([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000])
-FAR_SH = np.array([-13.0, -7.0, -2.0, 0.0, -1.5, -6.5, -17.0, -34.0, -70.0])      # through a kilometre of air
-NEAR_SH = np.array([-12.0, -6.0, -1.0, 0.0, -0.5, -1.0, -5.0, -12.0, -22.0])       # surf's level 100-1600 Hz, falling over 2 kHz
-UNDER_SH = np.array([-4.0, 0.0, -1.0, -4.0, -11.0, -24.0, -42.0, -62.0, -90.0])    # under the water
-TORRENT_SH = np.array([-14.0, -7.0, -2.0, 0.0, 0.0, -1.0, -4.0, -9.0, -16.0])      # the land pouring away, close
-RILL_SH = np.array([-44.0, -34.0, -22.0, -13.0, -6.0, 0.0, -2.0, -9.0, -20.0])     # what is left of it: rills
-F_BIN = np.geomspace(36.0, 9000.0, 112)      # the resonators
-ERB = 24.7 * (4.37 * F_BIN / 1000 + 1)       # the ear's filter there, Hz
-BIN_W = F_BIN * (2 ** (1 / 13.4) - 1)        # a resonator's share of the spectrum, Hz
-SOLO_F = 900.0                               # under this each bubble is written on its own, at a pitch of its own
-FR = 1000                                    # frames a second of the rates
-PATCHES = 48
+# Big water has no pitch at all. Measured against the sequences in private reference (long-term spectra, modulation, envelope
+# fine structure; numbers only, nothing of them is used here): the roar of a wall of water is close to Gaussian in every band,
+# a band's envelope varying by 0.25-0.5 of its mean at 20 ms and 4-32 Hz modulation near -17 dB, under big slow surges of 3-5 dB
+# that take the top with them; a body under 300 Hz as loud as anything; level from 100 Hz to 1 kHz within 6 dB. A bank of ringing
+# bubbles cannot do that: thin it out and it is a stream, every event heard on its own (a stream into a can); so nothing here
+# rings. `water` is 30 third-octave bands of independent noise, each under a gain that is chaos in dB:
+#   eddies   a 1/f curve, slow for the big eddies down low, quicker up high, part of it shared, part smooth across the bands
+#   spatter  quick and narrow, a thin heavy-tailed grain over 300 Hz
+#   surges   heavy-tailed swells of a second or more (up fast, away slowly, arrivals bunched: never an LFO), one set for the low,
+#            mid and high regions and one over them all, the top moving most
+#   blobs    splashes in the time-frequency plane: an octave or so wide, up in 10-50 ms, gone in a few hundred, heavy-tailed sizes
+#   foam     a sparse shot process carrying part of the top bands
+# `impact` is the same thing as an event: a broad burst, every band up at once, each dying at its own rate, the spray late.
+# Solid things in the water are `grit` (clicks of heavy-tailed size, each a wisp of noise) and `groan` (stick-slip pulses with a
+# third of a period's jitter through wide bands: a body with no note), buried by `bury` (lowpassed, smeared by a short noise tail).
+# (dB, third-octave band levels at SH_F)
+SH_F = np.array([20, 31.5, 50, 79, 125, 198, 315, 500, 794, 1260, 2000, 3175, 5040, 8000, 12700, 16000.0])
+NEAR_SH = np.array([-8.0, -1, 2, -2, -1, -1, -2, -2, -3, -4, -4, -6, -8, -10, -14, -24])          # the wall, close
+MID_SH = np.array([-6.0, 0, 2, 0, 0, -1, -2, -4, -6, -8, -11, -15, -20, -26, -34, -44])            # coming, the air has some of the top
+FAR_SH = np.array([-5.0, 1, 3, 2, 1, 0, -2, -5, -10, -17, -26, -37, -50, -64, -80, -90])           # miles off
+UNDER_SH = np.array([-4.0, -1, 2, 1, -4, -9, -13, -17, -22, -28, -35, -43, -52, -62, -72, -80])     # under it: the hits carry the top
+TORRENT_SH = np.array([-12.0, -2, 2, 0, -1, -3, -4, -5, -5, -5, -6, -8, -10, -12, -15, -26])        # in the flow: flat to 2 kHz
+RUN_SH = np.array([-30.0, -22, -16, -12, -8, -6, -4, -2, -1, -1, -2, -3, -5, -8, -13, -24])        # the weight gone, wide still
+RILL_SH = np.array([-50.0, -40, -30, -22, -15, -11, -8, -5, -3, -2, -2, -3, -5, -8, -13, -24])     # running water: never a hump
+WHITE_SH = np.array([-2.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -2, -3, -6, -14])                    # the blow: everything at once
+IMP_DARK = np.array([-6.0, 0, 1, 0, -3, -6, -9, -13, -18, -24, -31, -39, -48, -58, -70, -80])      # a blow, the top gone
+IMP_WHITE = np.array([-6.0, 0, 1, 1, 0, 0, -1, -1, -2, -3, -3, -4, -6, -8, -12, -20])              # a blow, all of it
+CR = 400                                                   # frames a second of the gains
+FC = 20.0 * 2 ** (np.arange(30) / 3.0)                     # the bands' centres, 20 Hz to 16 kHz
+NB = len(FC)
+LF = np.log2(FC)
+LSH = np.log2(SH_F)
 
 
-def erb_num(f):
-    return 21.4 * np.log10(1 + 0.00437 * f)
+def in_bands(sh):
+    return np.interp(LF, LSH, sh)
 
 
-def bubble_q(f, q=1.0):
-    """How long a bubble rings: Q ~18 in the mids; low ones are clouds ringing together, heavily damped, never a tone."""
-    u = np.clip(np.log(f / 120.0) / np.log(900.0 / 120.0), 0, 1)
-    return q * (3.0 + 15.0 * u * u * (3 - 2 * u))
+def over_f(xs, ys):
+    """Per band, through (Hz, value) pairs."""
+    return np.interp(LF, np.log2(xs), ys)
 
 
-def patch_gain(m, fc, rate, beta):
-    """Where a patch of water is busy: `m` frames of a gain with mean 1: heavy-tailed clusters at Poisson `rate` a second,
-    sharp to start, dying over tens of ms (slower the lower). `beta`: the share of the rate that comes in clusters."""
-    tau = 0.11 * (fc / 200.0) ** -0.5
-    k = rng().poisson(rate * m / FR)
-    x = np.zeros(m)
-    np.add.at(x, rng().integers(0, m, k), np.minimum(rng().pareto(1.5, k) + 0.15, 14.0))
-    s = np.arange(int(tau * FR * 7) + 2) / FR
-    y = np.convolve(x, (1 - np.exp(-s / (0.3 * tau))) * np.exp(-s / tau))[:m]
-    return (1 - beta) + beta * y / (y.mean() + 1e-9)
+def band_noise(n, b):
+    """Unit-RMS noise in band `b`: bands overlap power-complementary, a cosine in log frequency, a third of an octave either side."""
+    m = next_fast_len(n + nsm(0.25), real=True)
+    f = np.fft.rfftfreq(m, 1 / SR)
+    u = (np.log2(np.maximum(f, 1.0)) - LF[b]) * 3
+    H = np.where(np.abs(u) < 1, np.cos(np.pi / 2 * u), 0.0)
+    if b == 0:
+        H = np.where(u < 0, (f > 8.0) * 1.0, H)
+    k = np.nonzero(H)[0]
+    Z = np.zeros(len(f), complex)
+    Z[k] = (rng().standard_normal(len(k)) + 1j * rng().standard_normal(len(k))) * H[k]
+    y = irfft(Z, m)[:n]
+    return y / (y.std() + 1e-15)
 
 
-def water(d, x_pts, far=FAR_SH, near=NEAR_SH, level=None, den=(0.5, 0.9), hits=(), q=1.0, bed=-14.0, chirp=0.12, couple=0.7,
-          crate=0.7, beta=0.9, hit_gain=2.5):
-    """`d` s of broken water, its nearness x following `x_pts` ((time, 0..1) pairs): the spectrum goes from `far` to `near`
-    (dB at `OCT`, the mean of each resonator's level) and the bubbles overlapping per ear's filter at 1 kHz from `den`[0] to
-    `den`[1]. `level(t)`: dB over time. `hits`: (time, size) of plunging masses: every patch bursts, the top a moment
-    after the low (the spray comes down after the slam). Mono."""
-    n = nsm(d)
-    m = int(d * FR) + 2
-    tf = np.arange(m) / FR
-    xs, ys = zip(*x_pts)
-    xv = np.interp(tf, xs, ys)
-    lf, ln = np.interp(np.log(F_BIN), np.log(OCT), far), np.interp(np.log(F_BIN), np.log(OCT), near)
-    tau = bubble_q(F_BIN, q) / (np.pi * F_BIN)
-    pc = (10 ** (np.linspace(erb_num(60.0), erb_num(8500.0), PATCHES) / 21.4) - 1) / 0.00437
-    G = np.array([patch_gain(m, fc, crate * (fc / 200.0) ** 0.35, beta) for fc in pc])
-    if len(hits):
-        for k, fc in enumerate(pc):
-            lag = 0.14 * np.clip(np.log(fc / 500.0) / np.log(6000.0 / 500.0), 0, 1)
-            imp = np.zeros(m)
-            for th, sz in hits:
-                i = int((th + lag) * FR)
-                if i < m:
-                    imp[i] += sz
-            s = np.arange(int(1.6 * FR)) / FR
-            G[k] += fftconvolve(imp, np.exp(-s / (0.3 * (fc / 200.0) ** -0.22)) * (1 - np.exp(-s / 0.006)))[:m] * hit_gain
-    w = np.exp(-0.5 * ((erb_num(F_BIN)[:, None] - erb_num(pc)[None, :]) / 0.45) ** 2)
-    w /= w.sum(axis=1, keepdims=True)
-    y = np.zeros(n)
-    size = next_fast_len(n + nsm(0.3), real=True)
-    spec = np.zeros(size // 2 + 1, complex)
-    for i, fc in enumerate(F_BIN):
-        g = w[i] @ G
-        dens = (den[0] + (den[1] - den[0]) * xv) * (fc / 1000.0) ** 0.25
-        lam = dens * (BIN_W[i] / ERB[i]) / tau[i]
-        cum = np.cumsum(lam * g) / FR
-        k = rng().poisson(cum[-1])
-        if k == 0:
+def one_over_f(nt, beta, fcut, fmin=0.05):
+    """A unit-variance curve with a power spectrum f^-beta between `fmin` and `fcut` Hz, at CR."""
+    m = next_fast_len(nt + CR // 2, real=True)
+    f = np.fft.rfftfreq(m, 1 / CR)
+    a = np.where(f > 0, np.maximum(f, fmin) ** (-beta / 2), 0.0) / (1 + (f / fcut) ** 6)
+    y = irfft(a * (rng().standard_normal(len(f)) + 1j * rng().standard_normal(len(f))), m)[:nt]
+    return y / (y.std() + 1e-12)
+
+
+def surges(d, rate, up=(0.2, 0.9), down=(0.7, 2.8), bunch=0.55, top=4.5):
+    """Swells over seconds, dB, mean 0: arrivals with a wandering rate, heavy-tailed sizes, up quickly, away slowly; no period."""
+    nt = int(d * CR) + 2
+    r = np.maximum(rate * np.exp(bunch * one_over_f(nt, 1.5, 1.0)), 1e-3)
+    p = np.cumsum(r) / CR
+    s = np.zeros(nt)
+    for a in np.searchsorted(p, rng().uniform(0, p[-1], rng().poisson(p[-1]))):
+        u = np.arange(nt - a) / CR
+        s[a:] += min(rng().pareto(1.9) + 0.3, top) * (1 - np.exp(-u * 2.5 / rng().uniform(*up))) * np.exp(-u / rng().uniform(*down))
+    L = 10 * np.log10(1 + s)
+    return L - L.mean()
+
+
+def blob_field(d, rate, level, flo, fhi, width=(0.5, 1.4), rise=(0.012, 0.05), fall=(0.08, 0.55), rate_of=None):
+    """The splashes, as a power gain over 1, bands by frames. `rate_of`: a curve (0-1 at CR) thinning them over time."""
+    nt = int(d * CR) + 2
+    H = np.zeros((NB, nt))
+    for _ in range(rng().poisson(rate * d)):
+        i = int(rng().uniform(0, nt - 2))
+        if rate_of is not None and rng().uniform() > rate_of[i]:
             continue
-        at = np.interp(rng().random(k) * cum[-1], cum, tf)
-        ai = np.minimum((at * FR).astype(int), m - 1)
-        lev = lf[i] + (ln[i] - lf[i]) * xv[ai]
-        if level is not None:
-            lev = lev + level(at)
-        h = np.minimum(rng().lognormal(0.0, 0.8, k), 8.0) * g[ai] ** couple
-        h = h / np.sqrt(np.mean(h ** 2) + 1e-12)
-        qs = rng().uniform(0.8, 1.25, k)
-        a = 10 ** (lev / 20) * h * np.sqrt(4.0 / (lam[ai] * tau[i] * qs))
-        if fc < SOLO_F:
-            fs = fc * 2 ** (rng().uniform(-0.5, 0.5, k) / 13.4)
-            cs = chirp * rng().uniform(0.4, 1.6, k)
-            ts = tau[i] * qs
-            st = (at * SR).astype(int)
-            mlen = (ts * 5 * SR).astype(int) + 8
-            for j in range(k):
-                ml = min(mlen[j], n - st[j])
-                if ml < 8:
-                    continue
-                s = np.arange(ml) / SR
-                y[st[j]:st[j] + ml] += a[j] * np.sin(2 * np.pi * fs[j] * (s + 0.5 * cs[j] * s * s / ts[j])) * np.exp(-s / ts[j]) * (1 - np.exp(-s * fs[j] * 6))
-        else:
-            # (three pitches a resonator, so the bins are never heard as the semitones they are)
-            which = rng().integers(0, 3, k)
-            for v, (qm, cm, det) in enumerate(((0.8, 0.6, 0.983), (1.0, 1.0, 1.0), (1.25, 1.4, 1.017))):
-                sel = which == v
-                if not sel.any():
-                    continue
-                imp = np.zeros(size)
-                np.add.at(imp, (at[sel] * SR).astype(int), a[sel])
-                ts = tau[i] * qm
-                s = np.arange(int(ts * 6 * SR) + 8) / SR
-                spec += rfft(imp) * rfft(np.sin(2 * np.pi * fc * det * (s + 0.5 * chirp * cm * s * s / ts)) * np.exp(-s / ts), size)
-    y += irfft(spec, size)[:n]
-    if bed is not None:
-        # (the thin bed of plain turbulence, so the gaps between events are never empty)
-        t = np.arange(n) / SR
-        bx = np.interp(t, xs, ys)
-        b = np.zeros(n)
-        for j, fc in enumerate(OCT):
-            b += noise(n, fc / 2 ** 0.5, min(fc * 2 ** 0.5, 15000.0), 3) * 10 ** (np.interp(bx, [0, 1], [far[j], near[j]]) / 20)
-        if level is not None:
-            b = b * 10 ** (level(t) / 20)
-        y += b * 10 ** (bed / 20)
-    return y
+        fc, w = rng().uniform(np.log2(flo), np.log2(fhi)), rng().uniform(*width)
+        a = level * min(rng().pareto(1.9) + 0.25, 3.5) ** 2
+        ru, fa = rng().uniform(*rise), rng().uniform(*fall) * np.clip(1.5 / 2 ** (fc - 9), 0.35, 1.6)
+        u = np.arange(min(int(fa * 7 * CR), nt - i)) / CR
+        H[:, i:i + len(u)] += a * np.exp(-0.5 * ((LF - fc) / w) ** 2)[:, None] * ((1 - np.exp(-u / ru)) ** 2 * np.exp(-u / fa))[None, :]
+    return H
 
 
-def plunge(size, bright=1.0):
-    """A plunging mass of water coming down: the jet's slam (~100 Hz, Bolin's surf) and the air cavity under it ringing and
-    closing (its pitch climbing, 40-70 Hz at this size), a crunch of broken water on it. Unit peak."""
-    m = nsm(0.7 + 0.8 * size)
-    s = np.arange(m) / SR
-    f0 = rng().uniform(46.0, 72.0) / size ** 0.35
-    f = f0 * (1 + 0.7 * s / (0.09 + 0.07 * size))
-    cav = np.sin(2 * np.pi * np.cumsum(f) / SR) * (1 - np.exp(-s / 0.010)) * np.exp(-s / (0.07 + 0.05 * size))
-    jet = noise(m, 70, 210, 2) * (1 - np.exp(-s / 0.005)) * np.exp(-s / (0.045 + 0.03 * size))
-    crunch = noise(m, 200, 1500, 2) * (1 - np.exp(-s / 0.004)) * np.exp(-s / (0.05 + 0.05 * size)) * np.clip(grains(m, 60.0, (0.01, 0.03)), 0, 4)
-    x = cav + jet * 0.8 + crunch * 0.35 * bright
-    return x / (np.abs(x).max() + 1e-12)
+def foam_gain(n, rate=1400.0, taus=(0.0012, 0.003, 0.007)):
+    """A heavy-tailed shot process, mean 1, one value a sample."""
+    x = np.zeros(n)
+    for tau in taus:
+        y = np.zeros(n)
+        k = rng().poisson(rate * n / SR / len(taus))
+        np.add.at(y, rng().integers(0, n, k), np.minimum(rng().pareto(1.4, k) + 0.1, 30.0))
+        s = np.arange(int(tau * SR * 7))
+        x += fftconvolve(y, np.exp(-s / (tau * SR)) * (1 - np.exp(-s / 12.0)))[:n] / tau
+    return np.maximum(x, 0) / (x.mean() + 1e-12)
 
 
-def breakers(d, rate, lo=0.6, hi=2.2):
-    """When the masses come down: (time, size) pairs, Poisson, `rate(t)` a second, sizes heavy-tailed."""
-    return [(tt_, min(lo + rng().pareto(2.2) * 0.45, hi)) for tt_ in P.poisson_times(0.05, d - 0.2, rate)]
-
-
-def plunges(n, hits, gain=1.0, bright=1.0, fall=0.8):
-    """The low layer of `hits`. The bigger ones much the louder."""
-    y = np.zeros(n)
-    for th, sz in hits:
-        put(y, plunge(sz, bright) * gain * sz ** 1.3 * rng().uniform(0.6, 1.0) * fall, th)
-    return y
-
-
-def swell(d, rate, depth_db, rise=0.35, tau=1.8):
-    """A level (dB, a function of time) surging: swells that come up quickly and go away slowly, each a sea breaking."""
-    m = int(d * FR) + 2
-    k = rng().poisson(rate * d)
-    x = np.zeros(m)
-    np.add.at(x, rng().integers(0, m, k), rng().uniform(0.4, 1.0, k))
-    s = np.arange(int(tau * FR * 5)) / FR
-    y = fftconvolve(x, (1 - np.exp(-s / rise)) * np.exp(-s / tau))[:m]
-    y = y / (y.max() + 1e-9)
-    db = depth_db * (y - y.mean())
-    tf = np.arange(m) / FR
-    return lambda t: np.interp(t, tf, db)
-
-
-def db_curve(pts):
-    """A level in dB through (time, dB) pairs, a function of time."""
-    xs, ys = zip(*pts)
-    f = PchipInterpolator(xs, ys)
-    return lambda t: f(np.clip(t, xs[0], xs[-1]))
-
-
-def added(*levels):
-    return lambda t: sum(f(t) for f in levels)
-
-
-def bubbles(n, rate, f_lo, f_hi, q=14.0, chirp=0.4, nbins=48, skew=1.3, big=0.4):
-    """Bubbles forming and bursting in broken water: Poisson events (`rate`: events a second, one value a sample), each a
-    damped, slightly climbing sine at a frequency of its own between `f_lo` and `f_hi` (the lower ones commoner and
-    louder), its Q and climb a little different each time, so a stream is never a handful of notes. Sparse ones are
-    written event by event; dense ones summed by frequency bin (48 of them, one convolution each). Unit-ish RMS."""
-    r = np.asarray(rate, float)
-    if r.ndim == 0:
-        r = np.full(n, float(r))
-    cum = np.cumsum(r) / SR
-    k = rng().poisson(cum[-1])
-    if k == 0:
-        return np.zeros(n)
-    at = np.minimum(np.searchsorted(cum, rng().random(k) * cum[-1]), n - 1)
-    u = rng().random(k) ** skew
-    f = f_lo * (f_hi / f_lo) ** u
-    a = rng().lognormal(0.0, 0.7, k) * (f / 1000.0) ** -big
+def water(d, keys, lvl=None, surge=(0.42, 1.0), eddy=1.0, spat=1.2, blobs=(12.0, 0.6, 120.0, 5000.0), fizz=0.2, sea=None, thin=None):
+    """`d` s of water. `keys`: (seconds, shape) pairs, the band levels in dB (0 dB a band of unit RMS), linear in dB between them.
+    `lvl`: (seconds, dB) pairs over it all. `surge`: (a second, depth), `eddy`, `spat`, `fizz`: see above; `blobs`: (a second, level,
+    from Hz, to Hz), `thin` thinning them over time; `sea`: a surge curve to share (the same `d`)."""
+    n, nt = nsm(d), int(d * CR) + 2
+    t = np.arange(nt) / CR
+    S = np.stack([in_bands(k[1]) for k in keys])
+    s = np.stack([np.interp(t, [k[0] for k in keys], S[:, b]) for b in range(NB)]) if len(keys) > 1 else np.repeat(S, nt, 0).T
+    if lvl is not None:
+        s = s + 20 * np.log10(curve_db(t, lvl) + 1e-9)[None, :]
+    # the eddies
+    fcut = over_f([20, 200, 1000, 8000], [3, 8, 14, 22])
+    sd = over_f([20, 200, 1000, 8000], [3.5, 2.6, 2.4, 3.2]) * eddy
+    Z = gaussian_filter1d(np.stack([one_over_f(nt, 1.2, fcut[b]) for b in range(NB)]), 2.0, axis=0, mode="nearest")
+    Z /= Z.std(axis=1, keepdims=True) + 1e-12
+    F = (np.sqrt(0.75) * Z + np.sqrt(0.25) * one_over_f(nt, 1.2, 8.0)) * sd[:, None]
+    # the spatter
+    if spat > 0:
+        Z = gaussian_filter1d(np.stack([one_over_f(nt, 0.6, 45.0) for b in range(NB)]), 0.7, axis=0, mode="nearest")
+        Z /= Z.std(axis=1, keepdims=True) + 1e-12
+        F = F + np.sign(Z) * np.abs(Z) ** 1.25 * (spat * over_f([20, 300, 1000, 8000], [0.0, 0.4, 1.0, 1.3]))[:, None]
+    # the surges
+    sea = surges(d, surge[0]) if sea is None else sea
+    regs = [surges(d, surge[0] * r, down=(0.7 * q, 2.8 * q)) for r, q in ((0.7, 1.3), (1.0, 1.0), (1.5, 0.7))]
+    wl, wh = over_f([200, 700], [1, 0]), over_f([1000, 3000], [0, 1])
+    wm = np.clip(1 - wl - wh, 0, 1)
+    L = (0.6 * sea[None, :]) + 0.7 * (wl[:, None] * regs[0][None, :] + wm[:, None] * regs[1][None, :] + wh[:, None] * regs[2][None, :])
+    L = np.where(L > 0, 9.0 * np.tanh(L / 9.0), L)
+    s = s + F + L * (surge[1] * over_f([20, 200, 1000, 8000], [0.9, 1.0, 1.2, 1.9]))[:, None]
+    G2 = 10 ** (s / 10)
+    if blobs is not None and blobs[0] > 0:
+        G2 = G2 * (1 + blob_field(d, blobs[0], blobs[1], blobs[2], blobs[3], rate_of=thin))
+    G = np.sqrt(G2)
+    sh = foam_gain(n) if fizz > 0 else None
+    ts = np.arange(n) * CR / SR
     out = np.zeros(n)
-    if k <= 6000:
-        qs = q * rng().uniform(0.7, 1.3, k)
-        cs = chirp * rng().uniform(0.5, 1.5, k)
-        for i in range(k):
-            tau = qs[i] / (np.pi * f[i])
-            m = min(int(tau * SR * 6) + 8, n - at[i])
-            if m < 4:
-                continue
-            s = np.arange(m) / SR
-            out[at[i]:at[i] + m] += a[i] * np.sin(2 * np.pi * f[i] * (s + 0.5 * cs[i] * s * s / tau)) * np.exp(-s / tau) * (1 - np.exp(-s / 0.0003))
-    else:
-        bi = np.minimum((u * nbins).astype(int), nbins - 1)
-        for b in range(nbins):
-            sel = bi == b
-            if not sel.any():
-                continue
-            imp = np.zeros(n)
-            np.add.at(imp, at[sel], a[sel])
-            fc = f_lo * (f_hi / f_lo) ** ((b + 0.5) / nbins)
-            tau = q / (np.pi * fc)
-            s = np.arange(int(tau * SR * 6) + 8) / SR
-            kern = np.sin(2 * np.pi * fc * (s + 0.5 * chirp * s * s / tau)) * np.exp(-s / tau) * (1 - np.exp(-s / 0.0003))
-            out += fftconvolve(imp, kern)[:n]
-    return T.unit(out) if np.any(out) else out
-
-
-def timber_groan(d, lvl, lo=70.0, hi=900.0, wild=0.4):
-    """Wood straining under a huge weight, `d` s: stick-slip creaking through the trunk's body and a low grinding under it,
-    no pitch, dry; unit-ish RMS times `lvl`."""
-    n = int(SR * d)
-    t = np.arange(n) / SR
-    env = np.sin(np.pi * np.clip(t / d, 0, 1)) ** 1.5
-    x = H.creak(d, rng().uniform(14, 36), env, wild=wild)
-    x = band(x, lo, hi, 2)
-    g = H.groan(d, env)
-    y = T.unit(x) * 0.8 + T.unit(g) * 0.7
-    return y * env * lvl
-
-
-def debris_thud(size):
-    """A trunk or a beam knocking something, dull and low, no ring. Unit peak."""
-    m = nsm(0.25 + 0.3 * size)
-    x = T.thud(m, size)
-    put(x, F.knock(0.6 + size, 0.15) * 0.6, 0.0)
-    return x / (np.abs(x).max() + 1e-12)
-
-
-def accents(n, d, items, fc_track=None):
-    """Timber groaning, debris knocking and water slapping scattered through a bed `d` s long. `items`: (kind, count,
-    level (linear, against unit), t_lo, t_hi, size lo, size hi). Returns the sum (dry); `fc_track` softens it."""
-    out = np.zeros(n)
-    for kind, count, lvl, t0, t1, s0, s1 in items:
-        for _ in range(count):
-            at = rng().uniform(t0, t1)
-            size = rng().uniform(s0, s1)
-            a = lvl * rng().lognormal(0.0, 0.35)
-            if kind == "groan":
-                put(out, timber_groan(rng().uniform(0.7, 1.6) * (0.6 + 0.5 * size), a * 0.6), at)
-            elif kind == "thud":
-                put(out, debris_thud(size) * a, at)
-            elif kind == "slap":
-                put(out, slap_event(size, 0.0) * a, at)
-            elif kind == "snap":
-                put(out, F.fracture(size, 0.6, dull=0.6) * a * 0.5, at)
-                put(out, debris_thud(size * 0.7) * a * 0.3, at)
-    if fc_track is not None:
-        out = lowpass_to(out, fc_track)
+    for b in range(NB):
+        if G[b].max() < 2e-4:
+            continue
+        y = band_noise(n, b) * np.interp(ts, np.arange(nt), G[b])
+        m = fizz * np.clip((LF[b] - 11.3) / 1.7, 0, 1)
+        out += y * np.sqrt((1 - m) + m * sh) if m > 0 else y
     return out
 
 
-# ============================================================================================================  output
+def impact(size=1.0, bright=0.5, rise=0.004, fall=0.5, spray=0.03, kick=0.0):
+    """A blow: every band up at once and dying at its own rate, the lows last, the spray (`spray` s) after the slam. Its first
+    quarter second has an RMS of `size`. `bright` 0-1: its top. `kick`: a cycle of pressure, weight the size of it."""
+    m = nsm(float(np.clip(fall * 6, 0.7, 4.0)))
+    s = np.arange(m) / SR
+    sp = in_bands((1 - bright) * IMP_DARK + bright * IMP_WHITE)
+    fb = np.clip(fall * (FC / 120.0) ** -0.42, 0.05, fall * 2.2)
+    x = np.zeros(m)
+    for b in range(NB):
+        if sp[b] < -60:
+            continue
+        u = np.maximum(s - spray * np.clip((LF[b] - 9.0) / 4.0, 0, 1), 0)
+        x += band_noise(m, b) * (1 - np.exp(-u / rise)) ** 2 * np.exp(-u / fb[b]) * 10 ** (sp[b] / 20)
+    k = nsm(0.25)
+    x = x / (np.sqrt(np.mean(x[:k] ** 2)) + 1e-12) * size
+    if kick > 0:
+        x += sine_thump(m, 0.0, 62.0, 26.0, 9.0, 0.0025, 0.13, kick * size * 3.5)
+    return x
+
+
+def seas(x, d, rate, t0=0.3, lo=0.4, hi=1.6, **kw):
+    """Big irregular hits on `x`, a run of them: bunched, heavy-tailed sizes."""
+    tb = t0
+    while tb < d - 0.4:
+        put(x, impact(min(lo + rng().pareto(2.2) * lo, hi), **kw), tb)
+        tb += rng().gamma(0.9, 1.0 / (rate * 0.9))
+
+
+def grit(m, rate, tau, lo, hi, alpha=1.5):
+    """Clicks at `rate` a second (a number or a curve), heavy-tailed, each a wisp of noise `tau` s long: what breaks sounds like. Unit RMS."""
+    r = np.broadcast_to(rate, (m,)).astype(float)
+    p = np.cumsum(r) / SR
+    k = rng().poisson(max(p[-1], 1e-3))
+    at = np.minimum(np.searchsorted(p, rng().uniform(0, p[-1], k)), m - 1)
+    a = np.minimum(rng().pareto(alpha, k) + 0.1, 20.0) * rng().choice((-1.0, 1.0), k)
+    y = np.zeros(m)
+    np.add.at(y, at, a)
+    return T.unit(band(grit_of(y, tau), lo, hi, 2))
+
+
+def grit_of(y, tau):
+    """The impulses `y` as bursts of noise `tau` s long: an envelope over a running noise, so no two are alike. (Any fixed wisp, even a
+    dozen of them, is a colour the big clicks keep repeating: a resonance held for as long as the rubble falls.)"""
+    h = np.arange(int(tau * SR * 6) + 1)
+    return np.maximum(fftconvolve(np.abs(y), np.exp(-h / (tau * SR)))[:len(y)], 0.0) * rng().standard_normal(len(y))
+
+
+def wood(size=1.0):
+    """A timber breaking: a run of splinters, a split second's body under it."""
+    m = nsm(0.2 + 0.2 * size)
+    s = np.arange(m) / SR
+    g = grit(m, 2400 * np.exp(-s / (0.025 + 0.03 * size)) + 90 * np.exp(-s / 0.14), 0.0025, 260, 6500, 2.4) * np.exp(-s / (0.05 + 0.05 * size))
+    return g + noise(m, 110, 750, 1) * (1 - np.exp(-s / 0.001)) * np.exp(-s / (0.018 + 0.03 * size)) * 0.8
+
+
+def knock(size=1.0):
+    """A hollow beam struck, no note: a thump of body, a few splinters."""
+    m = nsm(0.35)
+    s = np.arange(m) / SR
+    return noise(m, 80, 480, 1) * (1 - np.exp(-s / 0.0015)) * np.exp(-s / (0.035 + 0.02 * size)) + grit(m, 500 * np.exp(-s / 0.03), 0.002, 300, 3000) * np.exp(-s / 0.05) * 0.4
+
+
+def stone(size=1.0):
+    """Concrete going: a heavy thud and its rubble."""
+    m = nsm(0.5 + 0.5 * size)
+    s = np.arange(m) / SR
+    x = grit(m, 420 * np.exp(-s / (0.1 + 0.15 * size)), 0.006, 130, 2800) * (1 - np.exp(-s / 0.002)) * np.exp(-s / (0.16 + 0.16 * size))
+    y = impact(1.0, 0.1, 0.002, 0.14 + 0.08 * size, 0.0)
+    return x * 0.8 + y[:m] * 0.9
+
+
+def crunch(d, rate=380.0):
+    """Things going in the water together: a rattle of pieces, none on its own."""
+    m = nsm(d)
+    return grit(m, rate * wander(m, 0.5, 5.0, 8.0), 0.004, 190, 3400) * np.sin(np.pi * np.arange(m) / m) ** 0.7
+
+
+def groan(d, f0=46.0, regions=((170, 430), (430, 950), (950, 1900)), wild=0.3, lvl=(1.0, 0.7, 0.4)):
+    """Steel or timber dragged under load: stick-slip, each period about a third out from the last and the rate wandering, through wide
+    bands that come and go. A body and a strain, no note."""
+    n = nsm(d)
+    at, tp, f = [], 0.0, f0
+    while tp < d:
+        f = float(np.clip(f * np.exp(rng().normal(0, 0.05)), f0 * 0.55, f0 * 1.7))
+        tp += max(1 / f * (1 + rng().normal(0, wild)), 0.003)
+        at.append(tp)
+    at = np.array(at)[np.array(at) < d]
+    y = np.zeros(n)
+    y[(at * SR).astype(int)] = rng().lognormal(0, 0.8, len(at)) * rng().choice((-1.0, 1.0), len(at))
+    x = np.zeros(n)
+    y = grit_of(y, 0.004)
+    for (lo, hi), a in zip(regions, lvl):
+        x += T.unit(band(y, lo, hi, 1)) * wander(n, 0.5, 4.0, 8.0) * a
+    return x * np.sin(np.pi * np.arange(n) / n) ** 0.9 * wander(n, 0.4, 3.0, 5.0)
+
+
+def bury(x, fc, tail=0.06, wet=0.8):
+    """`x` in the water: its top gone over `fc`, smeared over a short tail of noise, so it is inside the roar."""
+    y = band(x, None, fc, 2)
+    h = np.arange(int(tail * SR * 5))
+    w = fftconvolve(y, rng().standard_normal(len(h)) * np.exp(-h / (tail * SR)))
+    out = w / (np.sqrt(np.sum(np.exp(-2 * h / (tail * SR)))) + 1e-9) * wet
+    out[:len(y)] += y * (1 - 0.5 * wet)
+    return out
+
+
+def debris(d, rate, fc, gain=None, mix=(0.45, 0.35, 0.2), big=2.0):
+    """A run of what the water carries, buried: `rate` things a second, `fc`: (seconds, Hz) pairs, how much of the top reaches the
+    ear; `gain`: (seconds, dB) pairs; `mix`: shares of timber, concrete and things crushed. Unit-ish: a piece's RMS over its own
+    length is about 1."""
+    x = np.zeros(nsm(d + 1.0))
+    k = rng().poisson(rate * d)
+    xs, ys = zip(*fc)
+    for t0 in np.sort(rng().uniform(0, d, k)):
+        size = min(0.45 + rng().pareto(2.0) * 0.5, big)
+        kind = rng().choice(3, p=mix)
+        ev = T.unit(wood(size) if kind == 0 and rng().uniform() < 0.6 else knock(size) if kind == 0 else stone(size) if kind == 1 else crunch(rng().uniform(0.25, 0.7)))
+        put(x, bury(ev, float(np.exp(np.interp(t0, xs, np.log(ys))))) * size ** 0.8 * (float(curve_db(t0, gain)) if gain else 1.0), t0)
+    x = x[:nsm(d)]
+    k = nsm(min(0.25, d / 4))
+    x[-k:] *= 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, k))           # (what is still sounding as it ends, let go)
+    return x
+
+
+
 def decoded_mono(path):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-f", "f32le", "-ac", "1", "-ar", str(SR), "-"],
                          capture_output=True, check=True).stdout
@@ -699,312 +676,246 @@ def rumble():
 
 
 # ======================================================================================================  the roars
-FAR_LEN, FAR_DB = 9.5, -15.5
+FAR_LEN, FAR_DB = 9.5, -16.5
+MID_DB = -15.0
 
 
 def roar_far():
-    # (the wall a kilometre and more off as it stands up on the horizon: at once huge, a deep rolling of water that carries;
-    # the first big seas come down as the horizon rises, 0.75 s in, that is about 1.65 s into the strike)
     d = FAR_LEN
-    n = nsm(d)
-    with PB.seeded(72001):
-        lvl = added(db_curve([(0.0, -34.0), (0.65, -2.0), (2.0, -1.5), (6.0, -0.5), (d, 0.0)]), swell(d, 0.42, 5.0, 0.25, 1.5))
-        hits = [(0.75, 2.2), (1.9, 1.2), (2.6, 1.6), (3.3, 1.1), (4.3, 1.5), (5.0, 1.2)] + [h for h in breakers(d, lambda v: 1.0) if h[0] > 5.4]
-        x = water(d, [(0.0, 0.14), (d, 0.42)], level=lvl, den=(0.9, 1.1), hits=hits, bed=-11.0, hit_gain=0.9)
-        x = x + plunges(n, hits, np.std(x) * 1.0, bright=0.8)
-        ir = T.outdoor_ir(2.2, 70, density=60.0, darken=(1800, 260), decay=0.8)
-        x = x + fftconvolve(x, ir)[:n] * 0.32
-        x = lowpass_to(x, glide_fc(n, [(0.0, 2400.0), (d, 3600.0)]))
-        x = lows_harm(x, -11.0, f_hi=80.0, lo=60.0, hi=260.0)
-    return write("roar_far", x, db=FAR_DB, fade_in=0.45, fade_out=3.0, crest=1.9)
+    with PB.seeded(72101):
+        x = T.unit(water(d, [(0.0, FAR_SH), (d, FAR_SH + np.interp(SH_F, [125, 1000], [0.0, 3.0]))], [(0, -24), (0.7, -7), (1.7, -3.5), (4.0, -1.5), (8.0, 0), (d, -8)],
+                         surge=(0.36, 1.25), blobs=(5.0, 0.8, 60.0, 700.0), spat=0.6, fizz=0.0))
+        # (its first big seas as the horizon stands up, then more, far apart; the air and the distance have the fronts of them)
+        put(x, impact(0.7, 0.05, 0.1, 0.8, 0.0), 0.75)
+        put(x, impact(0.55, 0.05, 0.14, 0.9, 0.0), 2.9)
+        put(x, impact(0.6, 0.05, 0.14, 0.9, 0.0), 4.1)
+        seas(x, d, 0.5, 2.1, 0.35, 0.8, bright=0.05, rise=0.12, fall=0.7, spray=0.0)
+    write("roar_far", x, db=FAR_DB, fade_in=0.2, fade_out=1.0, crest=2.4)
 
 
 def roar_mid():
     d = MID_LEN
-    n = nsm(d)
-    with PB.seeded(72101):
-        lvl = added(db_curve([(0.0, -8.0), (d - 2.0, 0.0), (d, 0.0)]), swell(d, 0.55, 5.0, 0.22, 1.2))
-        hits = breakers(d, lambda v: 1.1 + 0.9 * v / d, 0.6, 2.4)
-        x = water(d, [(0.0, 0.36), (d, 0.85)], level=lvl, den=(0.9, 1.2), hits=hits, bed=-12.0, hit_gain=1.3)
-        x = x + plunges(n, hits, np.std(x) * 0.9, bright=0.9)
-        x = lows_harm(x, -12.0, f_hi=80.0, lo=60.0, hi=260.0)
-    # (its last 4 s always lie under roar_near's first 4: their peaks are kept down there)
-    ceil_k = 1.6 - 0.5 * np.clip((np.arange(n) / SR - (d - 4.0)) / 1.5, 0, 1)
-    return write("roar_mid", x, db=-14.0, fade_in=2.2, fade_out=3.6, crest=ceil_k)
-
-
-def near_signal():
-    """The wall coming the last 4 s and going on past: `roar_near` cuts it at the immersion (NEAR_PRE), `roar_pass` lets
-    it go by for a player it does not reach."""
-    d = PASS_LEN
-    n = nsm(d)
     with PB.seeded(72201):
-        lvl = added(db_curve([(0.0, -5.0), (NEAR_PRE, 0.0), (NEAR_PRE + 1.0, -0.5), (d, -1.5)]), swell(d, 0.7, 6.0, 0.18, 1.0))
-        hits = breakers(d, lambda v: 1.6 + 1.6 * min(v / NEAR_PRE, 1.0), 0.7, 2.6)
-        x = water(d, [(0.0, 0.66), (NEAR_PRE, 1.0), (d, 1.0)], level=lvl, den=(0.9, 1.3), hits=hits, bed=-12.0)
-        x = x + plunges(n, hits, np.std(x) * 0.95, bright=1.2)
-        # (what the front is dragging, only in its last 60 blocks: heavy dull knocks, no single board)
-        acc = accents(n, d, [("thud", 7, 1.4, 2.4, 3.9, 0.8, 2.0), ("snap", 4, 0.9, 2.8, 3.8, 0.8, 1.6)], np.full(n, 1500.0))
-        x = x + acc * np.std(x) * 0.8
-        return lows_harm(x, -13.0, f_hi=80.0, lo=60.0, hi=260.0)
+        x = T.unit(water(d, [(0.0, FAR_SH * 0.6 + MID_SH * 0.4), (5.0, MID_SH), (d, MID_SH * 0.5 + NEAR_SH * 0.5)], [(0, -7), (3, -3), (5.2, 0), (7.0, -5), (d, -16)],
+                         surge=(0.5, 1.9), blobs=(7.0, 0.8, 80.0, 1400.0), spat=0.8, fizz=0.05))
+        seas(x, 6.5, 0.55, 0.8, 0.5, 1.5, bright=0.15, rise=0.05, fall=0.6, spray=0.02)
+        # (what it carries: only the mass of it from here; nothing small carries this far)
+        n = nsm(d)
+        x += debris(d, 1.3, [(0, 260.0), (d, 480.0)], [(0, -22), (6.0, -14), (d, -26)], (0.1, 0.75, 0.15))
+        put(x, T.unit(groan(3.0, 34.0, ((90, 240), (240, 520)), 0.25, (1.0, 0.5))) * 0.10, 2.6)
+        put(x, T.unit(groan(2.6, 40.0, ((90, 240), (240, 560)), 0.25, (1.0, 0.6))) * 0.13, 5.9)
+    write("roar_mid", x, db=MID_DB, fade_in=0.9, fade_out=0.7, crest=2.3)
+
+
+def near_signal(d, keys, lvl, seed, bright_hits=0.45):
+    """The wall arriving: the mass of it from the first moment, what it carries coming into the ear as it comes."""
+    with PB.seeded(seed):
+        x = T.unit(water(d, keys, lvl, surge=(0.6, 1.3), blobs=(13.0, 0.8, 110.0, 5000.0), spat=1.2, fizz=0.16))
+        seas(x, min(d, 4.0), 1.2, 0.35, 0.45, 1.5, bright=bright_hits, rise=0.012, fall=0.5, spray=0.03)
+        x += debris(d, 3.2, [(0, 650.0), (d, 1500.0)], [(0, -15), (d, -9)])
+        put(x, T.unit(groan(2.2, 44.0)) * 0.13, 1.1)
+    return x
 
 
 def roar_near():
-    x = near_signal()[:nsm(ROAR_NEAR_LEN)]
-    n = len(x)
-    t = np.arange(n) / SR
-    # the immersion NEAR_PRE s in: a breath of 120 ms first (the hit lands out of it), then the air's roar is cut by
-    # what the head is now in: the level drops at once, the top closes in a third of a second, the rest dies under the churn
-    k = nsm(NEAR_PRE)
-    u = np.maximum(t - NEAR_PRE, 0)
-    fc = np.where(t < NEAR_PRE, 14000.0, 420.0 + 11000.0 * np.exp(-u / 0.12))
-    y = lowpass_to(x, fc)
-    g = np.where(t < NEAR_PRE, 1.0, 10 ** (-27.0 / 20) * 10 ** (-14.0 * np.minimum(u / 2.0, 1.0) ** 0.8 / 20))
-    g *= 1 - (1 - 10 ** (-4.5 / 20)) * np.clip((t - (NEAR_PRE - 0.13)) / 0.07, 0, 1) * (t < NEAR_PRE)
-    # (Vorbis smears a step over its 46 ms block, into the engulf: so it is a slope, down 12 dB more by the hit)
-    g *= 1 - (1 - 10 ** (-12.0 / 20)) * np.clip((t - (NEAR_PRE - 0.06)) / 0.06, 0, 1) * (t < NEAR_PRE)
-    return write("roar_near", y * g, db=NEAR_DB, fade_in=2.2, fade_out=0.05, crest=1.35 + 0.3 * np.clip((t - 2.4) / 1.2, 0, 1))
+    # (the immersion is NEAR_PRE into it: a breath of 120 ms, and then it stops: the engulf has taken it)
+    d = ROAR_NEAR_LEN
+    x = near_signal(d, [(0.0, MID_SH), (2.0, MID_SH * 0.35 + NEAR_SH * 0.65), (3.6, NEAR_SH + 1.0), (d, NEAR_SH)], [(0, -6), (2.0, -3), (3.6, 0), (d, 0)], 72301)
+    t = np.arange(len(x)) / SR
+    x = x * curve_db(t, [(0, 0), (NEAR_PRE - 0.13, 0), (NEAR_PRE - 0.02, -8), (NEAR_PRE + 0.08, -26), (d, -60)])
+    write("roar_near", x, db=NEAR_DB, fade_in=0.6, fade_out=0.15, crest=2.4)
 
 
 def roar_pass():
-    x = near_signal()
-    n = len(x)
-    t = np.arange(n) / SR
-    x = x * curve_db(t, [(0.0, 0.0), (NEAR_PRE + 1.0, 0.0), (NEAR_PRE + 3.0, -5.0), (PASS_LEN, -16.0)])
-    x = lowpass_to(x, glide_fc(n, [(0.0, 14000.0), (NEAR_PRE + 1.0, 14000.0), (PASS_LEN, 2400.0)]))
-    return write("roar_pass", x, db=NEAR_DB, fade_in=2.2, fade_out=2.5, crest=1.35 + 0.3 * np.clip((t - 2.4) / 1.2, 0, 1))
+    # (on a hill above it: the wall comes on as it would, goes by below, and is off over the land)
+    d = PASS_LEN
+    x = near_signal(d, [(0.0, MID_SH), (2.2, MID_SH * 0.35 + NEAR_SH * 0.65), (4.0, NEAR_SH), (6.0, NEAR_SH * 0.6 + MID_SH * 0.4), (9.0, MID_SH), (d, FAR_SH)],
+                    [(0, -6), (2.2, -3), (4.2, 0), (6.5, -2), (9.0, -7), (d, -26)], 72401, 0.2)
+    write("roar_pass", x, db=NEAR_DB, fade_in=0.6, fade_out=1.5, crest=2.4)
 
 
 def roar_back():
-    # (the wave going off over the far land: the same water, ever further)
     d = 12.0
-    n = nsm(d)
-    with PB.seeded(72301):
-        lvl = added(db_curve([(0.0, 0.0), (3.0, -7.0), (7.0, -15.0), (d, -28.0)]), swell(d, 0.4, 6.0, 0.3, 1.6))
-        hits = breakers(d, lambda v: 0.7 * np.exp(-v / 5.0))
-        x = water(d, [(0.0, 0.3), (d, 0.0)], level=lvl, den=(0.6, 0.8), hits=hits, bed=-13.0)
-        x = x + plunges(n, hits, np.std(x) * 1.5, bright=0.3)
-        ir = T.outdoor_ir(2.2, 70, density=60.0, darken=(1500, 220), decay=0.8)
-        x = x + fftconvolve(x, ir)[:n] * 0.3
-        x = lowpass_to(x, glide_fc(n, [(0.0, 1900.0), (d, 480.0)]))
-        x = lows_harm(x, -14.0, f_hi=80.0, lo=60.0, hi=260.0)
-    write("roar_back", x, db=-28.0, fade_in=1.5, fade_out=3.0, crest=3.2)
+    with PB.seeded(72501):
+        x = T.unit(water(d, [(0.0, MID_SH), (4.0, FAR_SH * 0.6 + MID_SH * 0.4), (d, FAR_SH)], [(0, 0), (2.5, -2), (6.0, -7), (10.0, -18), (d, -40)],
+                         surge=(0.34, 1.3), blobs=(4.0, 0.8, 60.0, 700.0), spat=0.5, fizz=0.0))
+        seas(x, 8.0, 0.35, 1.0, 0.3, 1.0, bright=0.04, rise=0.12, fall=0.7, spray=0.0)
+    write("roar_back", x, db=-28.0, fade_in=1.8, fade_out=3.0, crest=3.0)
 
 
-# ==========================================================================================================  engulf
+# ===========================================================================================  the immersion and what follows
 ENGULF_FOAM = 1.5      # s of violent foam (the pass's) before the drop into the dark
+BRIGHT_SH = NEAR_SH * 0.5 + WHITE_SH * 0.5
 
 
 def engulf():
-    # The loudest, heaviest thing in the strike, on the sample of `tp`: the slam, 0.15 s blown white (everything, up to the
-    # top), 1.5 s of violent foam shut in round the head, then the drop into the dark
     d = 4.0
-    n = nsm(d)
-    t = np.arange(n) / SR
-    F_ = ENGULF_FOAM
     with PB.seeded(73001):
-        low = sine_thump(n, 0.0, 62.0, 26.0, 6.0, 0.003, 0.5, 1.0) + sine_thump(n, 0.03, 34.0, 22.0, 3.0, 0.02, 0.8, 0.8) \
-            + sine_thump(n, 0.34, 46.0, 24.0, 4.0, 0.03, 0.55, 0.7) + sine_thump(n, 0.82, 40.0, 24.0, 4.0, 0.04, 0.5, 0.45)
-        smack = noise(n, 70, 9000, 1) * np.exp(-t / 0.016)
-        hits = [(0.0, 2.8), (0.17, 1.5), (0.40, 2.2), (0.66, 1.3), (0.93, 1.9), (1.21, 1.2)]
-        lvl = db_curve([(0.0, 2.0), (0.15, 2.0), (0.5, 0.0), (F_, -1.0), (F_ + 0.25, -11.0), (d, -26.0)])
-        foam = water(d, [(0.0, 1.0), (d, 1.0)], near=np.array([-12.0, -5.0, -1.0, 0.0, 0.0, 0.0, -2.0, -6.0, -12.0]), level=lvl, den=(1.5, 1.5), hits=hits, bed=-9.0, crate=1.1)
-        foam = lowpass_to(foam, glide_fc(n, [(0.0, 14000.0), (0.15, 11000.0), (0.5, 4200.0), (F_, 1900.0), (F_ + 0.25, 720.0), (d, 380.0)]))
-        foam = T.unit(foam)
-        pl = plunges(n, hits, 1.0, bright=1.0, fall=1.0)
-        x = low * 1.0 + smack * 0.8 + foam * 0.62 + pl * 0.5
-        x = lows_harm(x, -9.0, f_hi=90.0, lo=70.0, hi=300.0)
-    write("engulf", x, db=ENGULF_DB, fade_in=0.002, fade_out=1.2, crest=1.32, lowcut=20.0)
+        # (the white flash, everything at once; then seas slamming in it, closing down over the head; then the drop)
+        x = T.unit(water(d, [(0.0, WHITE_SH), (0.15, WHITE_SH), (0.34, BRIGHT_SH), (ENGULF_FOAM - 0.3, NEAR_SH), (ENGULF_FOAM, NEAR_SH * 0.5 + UNDER_SH * 0.5), (ENGULF_FOAM + 0.28, UNDER_SH), (d, UNDER_SH - 6.0)],
+                         [(0, 5), (0.15, 4), (0.34, 0.5), (ENGULF_FOAM, -2.5), (ENGULF_FOAM + 0.28, -9), (d, -22)],
+                         surge=(1.2, 0.8), eddy=1.2, blobs=(26.0, 1.0, 140.0, 7000.0), spat=1.4, fizz=0.22))
+        put(x, impact(1.5, 1.0, 0.0012, 0.55, 0.0, 0.7), 0.0)
+        for tb, sz in ((0.33, 1.0), (0.58, 1.4), (0.86, 0.9), (1.17, 1.3), (1.42, 0.8)):
+            put(x, impact(sz, 0.62, 0.006, 0.34, 0.025, 0.25), tb)
+        y = debris(1.8, 8.0, [(0, 3400.0), (1.6, 1200.0)], [(0, -7), (1.5, -9)])
+        x[:len(y)] += y
+    write("engulf", x, db=ENGULF_DB, fade_out=0.3, crest=1.45)
 
 
-# ============================================================================================================  under
 UNDER_AT = 0.2         # tp + this
 UNDER_LEN = SURF_AT - UNDER_AT + 0.3     # (it ends 0.3 s after the head is out, under the surface's own burst)
-TREE_AT, CHUNK_AT = 1.3, 3.2
+TREE_AT, CHUNK_AT, TREE2_AT = 2.5 - UNDER_AT, 3.75 - UNDER_AT, 5.3 - UNDER_AT      # (tp + 2.5, 3.75, 5.3, as the pass draws them)
 
 
-def uw_knock(kind, size=1.0):
-    """Something solid knocking under water, heard through it: wood hollow and short, stone a harder clack. Unit peak."""
-    if kind == "wood":
-        f0 = rng().uniform(170.0, 400.0) / size ** 0.5
-        h = P.modal_hit(nsm(0.3), f0, [1.0, rng().uniform(1.9, 2.4), rng().uniform(3.1, 3.9)], [0.05 * size, 0.022, 0.01], [1.0, 0.45, 0.2], 0.5, 1800.0)
-    else:
-        f0 = rng().uniform(320.0, 880.0) / size ** 0.4
-        h = P.modal_hit(nsm(0.22), f0, [1.0, rng().uniform(1.5, 1.9), rng().uniform(2.4, 3.3)], [0.02, 0.012, 0.006], [1.0, 0.6, 0.3], 0.5, 2400.0)
-    th = debris_thud(0.5 + 0.6 * size)
-    y = np.zeros(max(len(h), len(th)))
-    y[:len(h)] += h / (np.abs(h).max() + 1e-12)
-    y[:len(th)] += th * 0.5
-    return y / (np.abs(y).max() + 1e-12)
+def uw(x, fc=3000.0, tail=0.04):
+    """A short piece in the water. (One at a time, each its own tail: a whole group through one tail is a fixed filter, its narrow
+    peaks held for as long as the group lasts.)"""
+    return bury(x, fc, tail, 0.9)
 
 
-def bubble_cloud(d, rate, lo, hi, q=16.0):
-    """A cloud of bubbles close to the ear, `rate` a second at its middle, swelling and gone in `d` s. Clear, each one heard."""
+def tree_past(size=1.0):
+    """A whole tree going by: the water it shoves ahead of it, a long groan, limbs and trunk knocking as it rolls. The trunk is
+    closest 1.2 s in."""
+    d = 2.6
     m = nsm(d)
-    s = np.arange(m) / SR
-    r = rate * np.sin(np.pi * np.clip(s / d, 0, 1)) ** 2
-    return bubbles(m, r, lo, hi, q=q, chirp=0.35, skew=1.0, big=0.5)
+    out = np.zeros(m)
+    y = impact(0.9 * size, 0.1, 0.45, 0.55, 0.0)
+    put(out, y[:m], 0.0)
+    put(out, band(T.unit(groan(1.9, 22.0, ((120, 420), (420, 1000)), 0.4, (1.0, 0.5))), None, 3000.0, 2) * 0.5 * size, 0.3)
+    for tb, a in ((0.8, 0.7), (1.05, 0.9), (1.2, 1.5), (1.36, 0.8), (1.62, 0.7), (1.95, 0.5)):
+        put(out, uw(T.unit(knock(a))) * a * 0.9 * size, tb + rng().uniform(-0.03, 0.03))
+    put(out, uw(T.unit(wood(1.4))) * 1.1 * size, 1.2)
+    return out
 
 
-def tree_past(d=2.6):
-    """A whole tree going by close: the push of the water in front of it, a long creak, its limbs knocking as it rolls, the
-    air it drags streaming off it. Unit-ish. Everything under ~1 kHz."""
+def chunk_past():
+    """A piece of a house: the blow, 0.35 s in, everything in it going, a beam, rubble clattering down it, the air getting out."""
+    d = 2.8
     m = nsm(d)
-    s = np.arange(m) / SR
-    bell = np.exp(-0.5 * ((s - 1.0) / 0.48) ** 2)
-    x = T.unit(noise(m, 24, 110, 3)) * bell * 1.5
-    x += T.unit(noise(m, 110, 420, 2) * np.clip(grains(m, 25.0, (0.03, 0.08)), 0, 4)) * bell * 0.38
-    put(x, timber_groan(1.5, 0.75, 60, 520), 0.5)
-    at = 0.55
-    while at < 1.9:
-        put(x, uw_knock("wood", rng().uniform(0.9, 1.7)) * rng().uniform(0.4, 1.0), at)
-        at += rng().uniform(0.11, 0.42)
-    return x
-
-
-def chunk_past(d=2.8):
-    """A piece of a house going over, close: the heavy blow of it, stone clattering off it, a beam groaning, the air shut in it
-    getting out in big slow gulps."""
-    m = nsm(d)
-    x = sine_thump(m, 0.25, 54.0, 30.0, 5.0, 0.012, 0.42, 1.5)
-    th = debris_thud(2.4)
-    put(x, lowpass_to(th, np.full(len(th), 320.0)) * 1.1, 0.25)
-    at = 0.27
-    while at < 1.8:
-        put(x, uw_knock("stone", rng().uniform(0.7, 1.5)) * rng().uniform(0.25, 0.9) * np.exp(-(at - 0.27) / 1.4), at)
-        at += rng().uniform(0.04, 0.26)
-    put(x, uw_knock("wood", 1.6) * 0.8, 0.34)
-    put(x, timber_groan(1.2, 0.6, 60, 460), 0.8)
-    at = 0.7
-    while at < 2.4:
-        put(x, glug(rng().uniform(110, 260), rng().uniform(1.0, 1.6)) * rng().uniform(0.2, 0.5), at)
-        at += rng().uniform(0.09, 0.3)
-    return x
+    out = np.zeros(m)
+    put(out, impact(0.9, 0.05, 0.25, 0.4, 0.0), 0.0)
+    put(out, impact(2.6, 0.5, 0.002, 0.4, 0.008, 0.8), 0.35)
+    put(out, band(T.unit(crunch(1.5, 520.0)), None, 7000.0, 2) * 0.8, 0.36)
+    put(out, uw(T.unit(stone(1.6)), 7000.0) * 0.9, 0.42)
+    put(out, uw(T.unit(wood(1.6)), 7000.0) * 0.8, 0.6)
+    put(out, band(T.unit(groan(1.7, 40.0)), None, 3000.0, 2) * 0.35, 0.5)
+    for tb in (0.75, 0.92, 1.1, 1.35, 1.7):
+        put(out, uw(T.unit(stone(0.6)), 5000.0) * rng().uniform(0.25, 0.55), tb)
+    return out
 
 
 def under():
     d = UNDER_LEN
     n = nsm(d)
     t = np.arange(n) / SR
-    rise = d - 1.5                       # the pull up to the surface starts here
     with PB.seeded(74001):
-        # the dark churn: the water itself in the bubbles' lowest grains, heavily shut in; a slow heave under it
-        lvl = added(db_curve([(0.0, 0.0), (1.2, 0.5), (rise, -0.5), (d, -7.0)]), swell(d, 0.45, 7.0, 0.3, 1.1))
-        hits = breakers(d, lambda v: 1.0)
-        churn = water(d, [(0.0, 1.0), (d, 1.0)], near=UNDER_SH, level=lvl, den=(1.3, 1.3), hits=hits, bed=-10.0, q=0.8)
-        press = noise(n, 22, 60, 3) * wander(n, 0.15, 0.8, 4.5) * 0.9
-        churn = T.unit(churn)
-        x = churn + press * curve_db(t, [(0.0, 0.0), (rise, 0.0), (d, -8.0)])
-        x += plunges(n, hits, 0.8, bright=0.0, fall=0.7)
-        # solid things going by: the two big ones, and knocks of every size, near and far
-        solid = np.zeros(n)
-        put(solid, tree_past() * 0.8, TREE_AT)
-        put(solid, chunk_past() * 0.85, CHUNK_AT)
-        for at in sorted(rng().uniform(0.2, d - 0.8) for _ in range(16)):
-            put(solid, uw_knock("wood" if rng().random() < 0.55 else "stone", rng().uniform(0.6, 1.6)) * rng().uniform(0.2, 0.75), at)
-        ir_n = nsm(0.5)
-        s_ = np.arange(ir_n) / SR
-        ir = band(rng().standard_normal(ir_n), None, 700.0, 2) * np.exp(-s_ / 0.11)
-        solid = solid + fftconvolve(solid, ir / np.sqrt(np.sum(ir ** 2)))[:n] * 0.45
-        x = lowpass_to(x + solid, glide_fc(n, [(0.0, 700.0), (rise, 760.0), (d - 0.3, 1000.0), (d, 1000.0)]))
-        x = band(x, None, 1050.0, 3)
-        # bubbles close to the ear: the only thing up here. Clouds of them streaming past, the air leaving the head at the
-        # start, and rushing up with the player at the end
-        bub = np.zeros(n)
-        put(bub, bubble_cloud(1.3, 260.0, 500, 2400) * 0.9, 0.0)
-        for at in sorted(rng().uniform(0.9, rise - 0.3) for _ in range(9)):
-            put(bub, bubble_cloud(rng().uniform(0.25, 0.8), rng().uniform(60.0, 180.0), 420, rng().uniform(1300, 2400)) * rng().uniform(0.25, 0.8), at)
-        put(bub, bubble_cloud(1.6, 340.0, 600, 3200) * 1.0, rise - 0.1)
-        x = x + bub * np.std(x) * 0.55
-        x = lows_harm(x, -11.0, f_hi=80.0, lo=60.0, hi=240.0)
-        # (under the engulf's foam until it drops, ENGULF_FOAM s after tp: it comes up out of it)
-        x = x * curve_db(t + UNDER_AT, [(0.0, -11.0), (ENGULF_FOAM - 0.05, -11.0), (ENGULF_FOAM + 0.35, 0.0), (10.0, 0.0)])
-    write("under", x, db=-16.0, fade_in=0.3, fade_out=0.3, crest=2.6)
+        # (a deep dark roar, surging hard; in a real one what hits comes through it at every frequency while the bed stays dark)
+        x = T.unit(water(d, [(0.0, UNDER_SH + np.interp(SH_F, [300, 1500], [0.0, 8.0])), (0.9, UNDER_SH), (d - 1.5, UNDER_SH), (d - 0.3, UNDER_SH * 0.55 + RUN_SH * 0.45), (d, RUN_SH)],
+                         [(0, -13), (1.1, -11), (1.6, -2), (d - 1.5, -2), (d - 0.3, -1), (d, -3)], surge=(0.7, 2.8), eddy=1.25, spat=0.7, blobs=(9.0, 1.5, 60.0, 900.0), fizz=0.0))
+        hits = np.zeros(n + nsm(3.0))
+        # (the water's own blows, low and heavy, and what it carries, in the dark)
+        seas(hits, d, 1.1, 1.6, 0.5, 1.7, bright=0.3, rise=0.006, fall=0.2, spray=0.0, kick=0.35)
+        y = debris(d - 2.0, 2.0, [(0, 2600.0), (d - 1.5, 3000.0)], [(0, -11), (d, -8)], (0.45, 0.4, 0.15), 2.4)
+        hits[nsm(1.6):nsm(1.6) + len(y)] += y
+        put(hits, T.unit(groan(3.2, 30.0, ((110, 320), (320, 800)), 0.35, (1.0, 0.5))) * 0.22, 1.0)
+        # (and over all that a chaos of seconds: a real one swings by 15 dB from one breath to the next)
+        heave_ = np.interp(np.arange(len(hits)) * CR / SR, np.arange(int(d * CR) + 2), surges(d, 0.9, (0.15, 0.6), (0.4, 1.4), 0.7))
+        hits[:] = hits * 10 ** (np.minimum(heave_ * 1.6, 7.0) / 20)
+        x = x * 10 ** (np.minimum(heave_[:n] * 1.1, 6.0) / 20)
+        # (the tree, the piece of the house, the second tree: each peak on its moment)
+        put(hits, tree_past(1.0) * 1.0, TREE_AT - 1.2)
+        put(hits, chunk_past(), CHUNK_AT - 0.35)
+        put(hits, tree_past(0.85) * 0.9, TREE2_AT - 1.2)
+        x = x + hits[:n]
+        # (the last second and a half: hauled up, the air coming)
+        x += noise(n, 600, 5200, 2) * curve_db(t, [(0, -70), (d - 1.5, -36), (d - 0.2, -14), (d, -11)]) * wander(n, 0.8, 5.0, 5.0)
+    write("under", x, db=-14.5, fade_in=0.02, fade_out=0.1, crest=3.1)
 
 
-# ==========================================================================================================  surface
 def surface():
-    # The head out: on the sample of tp + SURF_AT the world opens: all the top that has been missing for six seconds, the
-    # size of the air round the player, the water pouring off the head and shoulders
     d = 3.0
     n = nsm(d)
     t = np.arange(n) / SR
-    with PB.seeded(75001):
-        burst = noise(n, 120, 9000, 1) * (1 - np.exp(-t / 0.0015)) * np.exp(-t / 0.035)
-        lvl = db_curve([(0.0, 0.0), (0.25, 0.0), (1.0, -4.0), (2.0, -11.0), (d, -24.0)])
-        hits = [(0.02, 1.6), (0.3, 0.9), (0.62, 0.7), (1.1, 0.6)]
-        opn = water(d, [(0.0, 1.0), (d, 1.0)], near=np.array([-22.0, -13.0, -6.0, -2.0, 0.0, 0.0, -1.0, -3.0, -8.0]), level=lvl, den=(1.2, 1.2), hits=hits, bed=-9.0)
-        # sheets of water off the head: fast, close and high; then runs of drops
-        drops = bubbles(n, 900.0 * np.exp(-t / 0.8) + 40.0, 900, 6000, q=11.0) * curve_db(t, [(0.0, -80), (0.08, -5), (1.2, -11), (d, -26)])
-        x = T.unit(opn) + burst * 0.7 + drops * 0.4 + plunges(n, hits, 0.5, bright=1.0)
-        # (the air: the first thing the ear gets back is how big the outside is)
-        ir = T.outdoor_ir(1.8, 30, density=120.0, darken=(6500, 900), decay=0.6)
-        x = x + fftconvolve(x, ir)[:n] * 0.35
-        for at, sz in ((0.1, 0.7), (0.34, 1.0), (0.7, 0.5), (1.05, 0.6), (1.5, 0.4), (1.9, 0.3)):
-            put(x, slap_event(sz, 1.0) * 0.2 * (1.2 - 0.5 * at / d), at)
-        x = lows_harm(x, -13.0, f_hi=80.0, lo=60.0, hi=260.0)
-    write("surface", x, db=-13.5, fade_in=0.002, fade_out=0.9, crest=1.8)
+    with PB.seeded(74101):
+        # (the head out: everything at once on its first sample, then the air round the player and water falling off them)
+        x = T.unit(water(d, [(0.0, WHITE_SH), (0.2, BRIGHT_SH), (0.9, TORRENT_SH), (d, TORRENT_SH)], [(0, 3), (0.25, 0), (1.0, -5), (d, -24)],
+                         surge=(1.5, 0.8), blobs=(26.0, 0.9, 200.0, 8000.0), spat=1.3, fizz=0.2))
+        put(x, impact(1.8, 0.95, 0.0015, 0.4, 0.0), 0.0)
+        x += grit(n, 900 * np.exp(-t / 0.7) + 60, 0.0018, 900, 11000) * curve_db(t, [(0, -14), (0.8, -15), (2.0, -26), (d, -44)])
+    write("surface", x, db=-14.6, fade_out=0.8, crest=2.3)
 
 
-# ==========================================================================================================  torrent
 def torrent():
-    # Riding the falling water down: the whole land's water pouring away round the player, loud at first, falls off every
-    # edge; it thins, the low weight going first, the grains falling apart into separate running water
     d = 13.0
     n = nsm(d)
     t = np.arange(n) / SR
-    with PB.seeded(75501):
-        lvl = added(db_curve([(0.0, -0.5), (2.0, 0.0), (4.0, -3.5), (7.0, -10.0), (10.0, -19.0), (d, -40.0)]), swell(d, 0.5, 5.0, 0.2, 1.0))
-        hits = breakers(d, lambda v: 2.2 * np.exp(-v / 3.8), 0.5, 1.5)
-        x = water(d, [(0.0, 1.0), (4.0, 0.95), (8.5, 0.45), (d, 0.0)], far=RILL_SH, near=TORRENT_SH, level=lvl, den=(0.14, 1.7), hits=hits, bed=-13.0, q=1.1)
-        x = T.unit(x) + plunges(n, hits, 0.9, bright=0.8, fall=0.8)
-        x = lows_harm(x, -13.0, f_hi=80.0, lo=60.0, hi=260.0)
-    write("torrent", x, db=-13.5, fade_in=0.45, fade_out=2.5, crest=1.8)
+    with PB.seeded(75001):
+        # (in the flow: the whole land's water pouring away, the weight going first, thinning towards separate running water)
+        x = T.unit(water(d, [(0.0, TORRENT_SH), (3.0, TORRENT_SH), (6.5, RUN_SH), (d, RILL_SH)], [(0, 0), (2.5, -1), (5.0, -4), (8.0, -9), (11.0, -16), (d, -26)],
+                         surge=(0.6, 1.8), blobs=(16.0, 1.0, 170.0, 6500.0), spat=1.0, fizz=0.15))
+        # (ledges of it coming down, less and less)
+        seas(x, 8.0, 0.8, 0.5, 0.4, 1.2, bright=0.5, rise=0.02, fall=0.34, spray=0.03)
+        y = debris(7.0, 1.8, [(0, 3800.0), (7, 2400.0)], [(0, -13), (7, -24)], (0.6, 0.3, 0.1))
+        x[:len(y)] += y
+    write("torrent", x, db=-14.5, fade_in=0.03, fade_out=1.5, crest=2.4)
 
 
-# ============================================================================================================  drain
-def glug(f0, size=1.0):
-    """One glug of water draining from a hollow: a bubble forming and bursting, pitch rising a third, low and round."""
-    m = nsm(0.12 + 0.25 * size)
+def gulp(size=1.0):
+    """A hollow letting go: two soft thumps of water, no note."""
+    m = nsm(0.3)
     s = np.arange(m) / SR
-    f = f0 * (1 + 0.38 * (1 - np.exp(-s / 0.045)))
-    x = np.sin(2 * np.pi * np.cumsum(f) / SR + rng().uniform(0, 6.28)) * (1 - np.exp(-s / 0.006)) * np.exp(-s / (0.045 + 0.06 * size))
-    x += noise(m, f0 * 1.5, f0 * 6, 2) * np.exp(-s / 0.012) * 0.25
-    return x / (np.abs(x).max() + 1e-12)
-
-
-def rill(d, fc, level_db, den=0.25):
-    """One run of water over stones, `d` s, its bubbles around `fc` Hz; swells and thins on its own."""
-    sh = -30.0 * np.abs(np.log2(OCT / fc)) ** 1.4
-    lvl = added(db_curve([(0.0, -30.0), (0.25 * d, -1.0), (0.6 * d, -3.0), (d, -30.0)]), swell(d, 0.9, 7.0, 0.1, 0.5))
-    y = water(d, [(0.0, 1.0), (d, 1.0)], near=np.maximum(sh, -60.0), level=lvl, den=(den, den), bed=None, q=1.3, crate=1.0)
-    return T.unit(y) * 10 ** (level_db / 20)
+    x = noise(m, 130, 620, 1) * (1 - np.exp(-s / 0.006)) * np.exp(-s / (0.03 + 0.02 * size))
+    return x + np.roll(x, nsm(rng().uniform(0.05, 0.12))) * 0.6
 
 
 def drain():
-    # The water running off the land, in streams now: each its own, some near; glugs from every hollow; the first stones
-    # and timber settling. Quiet by the time the strike ends at any distance
     d = 12.0
     n = nsm(d)
     t = np.arange(n) / SR
     with PB.seeded(76001):
-        x = np.zeros(n)
-        for at, ln, fc, db_ in ((0.0, 8.5, 650.0, -2.0), (0.4, 7.0, 1300.0, 0.0), (1.8, 7.5, 2100.0, -3.0), (3.6, 6.5, 950.0, -4.0), (5.5, 5.5, 1700.0, -7.0), (6.8, 4.5, 2600.0, -11.0)):
-            put(x, rill(ln, fc, db_), at)
-        sd = np.std(x[:nsm(5.0)])
-        for tc in sorted(rng().uniform(0.3, 9.0) for _ in range(13)):
-            f0 = rng().uniform(140, 420)
-            for j in range(rng().integers(3, 9)):
-                put(x, glug(f0 * (1 + 0.08 * rng().standard_normal()), rng().uniform(0.5, 1.4)) * sd * 0.8 * np.exp(-tc / 7.0) * rng().uniform(0.5, 1.0), tc + j * rng().uniform(0.06, 0.16))
-        for _ in range(5):
-            at = rng().uniform(0.3, 7.0)
-            put(x, slap_event(rng().uniform(0.3, 0.7), 0.0) * sd * 0.6 * np.exp(-at / 6.0), at)
-        for _ in range(7):
-            at = rng().uniform(0.4, 9.0)
-            put(x, debris_thud(rng().uniform(0.4, 1.2)) * sd * 0.7 * np.exp(-at / 7.0), at)
-        x = x * curve_db(t, [(0.0, -12.0), (2.0, -2.0), (4.0, 0.0), (7.0, -6.0), (9.5, -18.0), (d, -46.0)])
-        x = lows_harm(x, -14.0, f_hi=80.0, lo=60.0, hi=260.0)
-    write("drain", x, db=-20.0, fade_in=0.5, fade_out=2.0, crest=3.4)
+        # (running water, near and far at once: wide, nothing in it a stream of its own)
+        thin = np.interp(np.arange(int(d * CR) + 2) / CR, [0, 5, d], [1.0, 0.7, 0.25])
+        x = T.unit(water(d, [(0.0, RUN_SH), (5.0, RILL_SH), (d, RILL_SH)], [(0, -3), (2.5, 0), (6.0, -5), (9.5, -17), (d, -42)],
+                         surge=(0.9, 1.1), eddy=1.15, blobs=(34.0, 1.6, 240.0, 7000.0), spat=1.5, fizz=0.2, thin=thin))
+        for tc in np.sort(rng().uniform(0.5, 10.0, 16)):
+            put(x, gulp(rng().uniform(0.6, 1.4)) * 0.28 * rng().uniform(0.3, 1.0) * float(np.exp(-tc / 7.0)), tc)
+        for tc, a in ((1.4, 0.32), (3.9, 0.25), (6.8, 0.16)):
+            put(x, bury(T.unit(knock(rng().uniform(0.5, 1.0))), 2600.0, 0.03) * a, tc)
+    write("drain", x, db=-22.0, fade_in=0.8, fade_out=2.0, crest=3.4)
+
+
+# ==============================================================================================================  trickle
+def drip(f0, size=1.0):
+    """One drop falling into shallow water: gone in a few milliseconds, more tick than note."""
+    m = nsm(0.09)
+    s = np.arange(m) / SR
+    f = f0 * (1 + 0.5 * (1 - np.exp(-s / 0.006)))
+    x = np.sin(2 * np.pi * np.cumsum(f) / SR + rng().uniform(0, 6.28)) * (1 - np.exp(-s / 0.0008)) * np.exp(-s / (0.004 + 0.002 * size))
+    x += noise(m, 1500, 9000, 1) * np.exp(-s / 0.0025) * 0.5
+    return x / (np.abs(x).max() + 1e-12)
+
+
+def trickle():
+    d = 14.0
+    n = nsm(d)
+    t = np.arange(n) / SR
+    with PB.seeded(80001):
+        thin = np.interp(np.arange(int(d * CR) + 2) / CR, [0, 6, d], [0.8, 0.3, 0.05])
+        x = T.unit(water(d, [(0.0, RILL_SH), (d, RILL_SH - 3.0)], [(0, 0), (4, -3), (8, -11), (11, -20), (d, -34)],
+                         surge=(1.0, 1.2), eddy=1.2, blobs=(24.0, 3.0, 300.0, 6000.0), spat=1.6, fizz=0.15, thin=thin)) * 0.5
+        # drops into the shallows, fewer as it dries, never in time
+        for tt_ in P.poisson_times(0.5, d - 1.0, lambda v: 1.5 * np.exp(-v / 6.0) + 0.3):
+            put(x, drip(rng().uniform(500, 1700), rng().uniform(0.5, 1.5)) * rng().uniform(0.1, 0.8) ** 1.4 * 0.5, tt_)
+        # mud sagging; a last timber settling twice
+        for tc in np.sort(rng().uniform(0.8, 11.0, 8)):
+            put(x, gulp(rng().uniform(0.8, 1.6)) * 0.3 * rng().uniform(0.3, 1.0), tc)
+        put(x, T.unit(groan(1.1, 20.0, ((140, 420), (420, 900)), 0.4, (1.0, 0.4))) * 0.22, 4.6)
+        put(x, T.unit(groan(0.9, 18.0, ((140, 420), (420, 900)), 0.4, (1.0, 0.4))) * 0.14, 9.9)
+        put(x, T.unit(knock(0.6)) * 0.14, 6.1)
+        x = x * curve_db(t, [(0.0, 0.0), (5.0, -1.0), (9.0, -9.0), (12.0, -20.0), (d, -30.0)])
+    write("trickle", x, db=-33.0, fade_in=1.2, fade_out=3.5)
+
 
 
 # ====================================================================================================  rumble_after
@@ -1034,124 +945,27 @@ def rumble_after():
 
 # ================================================================================================  crash (the target)
 CRASH_D = 16.0
-CRASH_LEVEL = -11.5
-
-
-def wood_snap(size, dull):
-    """One trunk or heavy beam going: a ragged break of fibres with a dull thud in it. Peak-ish unit."""
-    m = nsm(0.5 + 0.4 * size)
-    x = np.zeros(m)
-    count = int(8 + 14 * size)
-    for u in np.sort(rng().beta(0.8, 2.0, count)):
-        big = min(rng().pareto(1.8) * 0.4 + 0.3, 2.5) * size
-        put(x, F.fracture(big, 0.8, dull=dull) * (0.3 + 0.7 * rng().random()) * (1 - 0.5 * u), 0.09 * size * u)
-    put(x, F.knock(1.4 * size, 0.1) * 0.7, rng().uniform(0.004, 0.02))
-    put(x, T.thud(nsm(0.5 + 0.3 * size), 1.5 * size) / 5.0 * (0.6 + 0.4 * size), rng().uniform(0.01, 0.05))
-    return x / (np.abs(x).max() + 1e-12)
-
-
-def planks(size, dull, count):
-    """Planks and boards breaking: a burst of small fractures with knocks."""
-    m = nsm(0.4 + 0.4 * size)
-    x = np.zeros(m)
-    for u in np.sort(rng().beta(0.7, 1.6, count)):
-        put(x, F.fracture(rng().uniform(0.2, 0.8) * size, 0.9, dull=dull) * rng().uniform(0.3, 1.0), 0.3 * u)
-        if rng().random() < 0.25:
-            put(x, F.knock(rng().uniform(0.3, 0.8) * size, 0.5) * rng().uniform(0.2, 0.5), 0.3 * u + rng().uniform(0.005, 0.03))
-    return x / (np.abs(x).max() + 1e-12)
-
-
-def masonry(count, size, dull):
-    """Stone coming down in a run: knocks and clacks, a tumble that thins out, a rumble of it under."""
-    ln = 0.5 + 0.7 * size
-    m = nsm(ln + 0.3)
-    s = np.arange(m) / SR
-    x = np.zeros(m)
-    for u in np.sort(rng().beta(0.8, 1.8, count)):
-        sz = rng().uniform(0.3, 1.0) * size
-        h = P.modal_hit(nsm(0.18), rng().uniform(500, 2200) / (0.6 + sz), [1.0, rng().uniform(1.45, 2.2), rng().uniform(2.4, 3.9)],
-                        [rng().uniform(0.004, 0.014), 0.006, 0.003], [1.0, 0.6, 0.35], 0.5, 9000 * (1 - 0.7 * dull))
-        put(x, h / (np.abs(h).max() + 1e-9) * rng().uniform(0.2, 1.0), ln * u)
-        if rng().random() < 0.4:
-            put(x, F.knock(rng().uniform(0.4, 1.0) * size, 0.3) * rng().uniform(0.2, 0.6), ln * u)
-    x += noise(m, 70, 500, 2) * np.clip(grains(m, 60.0, (0.02, 0.05, 0.12)), 0, 5) * np.sin(np.pi * np.clip(s / ln, 0, 1)) * 0.3
-    return x / (np.abs(x).max() + 1e-12)
-
-
-def crush_cluster(span, count, size, dull):
-    """A stretch of forest or street going under the front: a dense burst of fractures and knocks over `span` s, the
-    heaviest early in it. Peak-ish unit."""
-    m = nsm(span + 0.4)
-    x = np.zeros(m)
-    for u in np.sort(rng().beta(0.7, 1.8, count)):
-        sz = min(rng().pareto(2.0) * 0.5 + 0.35, 2.4) * size
-        put(x, F.fracture(sz, 0.8, dull=dull) * rng().uniform(0.25, 1.0), span * u)
-        if rng().random() < 0.3:
-            put(x, F.knock(sz * 1.2, 0.2) * rng().uniform(0.2, 0.6), span * u + rng().uniform(0.003, 0.02))
-    return x / (np.abs(x).max() + 1e-12)
+CRASH_LEVEL = -13.0
 
 
 def crash():
-    # The wave coming down on the land round the target, heard from hundreds of blocks: water and weight. No board, no pane of
-    # glass carries that far: what the forest and the houses add is a dark crushing under the water, nothing single.
     d = CRASH_D
     n = nsm(d)
-    t = np.arange(n) / SR
-    t0 = CRASH_LEAD
-    u = np.maximum(t - t0, 0)
-    on = t >= t0
     with PB.seeded(78001):
-        # ---- the whump: the mass of water coming down on the land (a heave, 40-90 ms in), then the main body of it
-        boom = sine_thump(n, t0, 62.0, 36.0, 7.0, 0.045, 1.0, 0.8) + sine_thump(n, t0 + 0.05, 40.0, 30.0, 3.5, 0.08, 1.6, 0.7)
-        boom += sine_thump(n, t0 + 0.42, 54.0, 34.0, 5.0, 0.07, 1.3, 1.0) + sine_thump(n, t0 + 0.50, 36.0, 26.0, 3.0, 0.1, 1.8, 0.7)
-        boom += sine_thump(n, t0 + 1.05, 46.0, 30.0, 4.0, 0.08, 1.0, 0.5)
-        benv = band(np.abs(boom), None, 10, 1)
-        low = boom + noise(n, 40, 120, 3) * np.maximum(benv, 0) * 0.5
-        # ---- the water: seas coming down one on another over the first seconds, then the roar of it letting go
-        lvl = added(db_curve([(0.0, -40.0), (t0 + 0.02, -40.0), (t0 + 0.12, -1.0), (1.1, 0.0), (2.0, -5.0), (4.0, -10.0), (8.0, -19.0), (12.0, -28.0), (d, -40.0)]),
-                    swell(d, 0.6, 5.0, 0.2, 1.1))
-        hits = [(t0 + 0.02, 2.4), (t0 + 0.42, 2.2), (t0 + 0.8, 1.6), (t0 + 1.05, 2.0), (t0 + 1.5, 1.4)] + [h for h in breakers(d, lambda v: 2.2 * np.exp(-v / 3.5), 0.6, 1.8) if h[0] > 1.7]
-        wat = water(d, [(0.0, 0.92), (d, 0.8)], level=lvl, den=(1.1, 1.3), hits=hits, bed=-12.0)
-        wat = T.unit(wat)
-        pl = plunges(n, hits, 1.0, bright=0.8, fall=1.0)
-        # ---- the land under it: a dark crushing, the mass of it (nothing single: the wood and stone are the water's grit)
-        crush = np.zeros(n)
-        rate = lambda v: 7.0 * np.clip((v - 0.12) / 0.4, 0, 1) * np.exp(-max(v - 1.0, 0) / 1.3) + 0.4 * np.exp(-v / 6.0)
-        for tt_ in P.poisson_times(t0 + 0.1, 8.0, rate):
-            put(crush, crush_cluster(rng().uniform(0.12, 0.4), int(rng().integers(16, 50)), rng().uniform(0.8, 1.6), rng().uniform(0.6, 0.9)) * rng().uniform(0.3, 0.8), tt_)
-        for tt_ in sorted(rng().uniform(t0 + 0.3, 3.8) for _ in range(14)):
-            put(crush, masonry(int(rng().integers(12, 40)), rng().uniform(0.8, 1.6), rng().uniform(0.6, 0.9)) * rng().uniform(0.2, 0.5), tt_)
-        crush = lowpass_to(crush, np.full(n, 1100.0))
-        # ---- the levels: the lows' own 30-120 Hz RMS over their first second is the reference
-        i0, i1 = nsm(t0), nsm(t0 + 1.0)
-        lref = np.sqrt(np.mean(band(low, 30, 120, 2)[i0:i1] ** 2)) + 1e-12
-
-        def trim(y, db_, a, b):
-            return y * lref * 10 ** (db_ / 20) / (np.sqrt(np.mean(band(y, a, b, 2)[nsm(0.5):nsm(3.0)] ** 2)) + 1e-12)
-        x = low * 0.6 + trim(wat, 5.0, 200, 3000) + trim(pl, -5.0, 30, 400) + trim(crush, -6.0, 100, 1100)
-        # ---- the land's rolls and echoes
-        rl, rr = PB.thunder_rolls(d, t0 + 0.6, count=12, length=11.0)
-        roll = (rl + rr) / 2
-        x += roll * lref * 10 ** (-9.0 / 20) / (T.loudest(roll) + 1e-9) * 0.7
-        src = band(x, None, 700, 2) * 0.12
-        for dt, gn, hi in ((0.5, 0.26, 1500), (1.2, 0.18, 900), (2.3, 0.12, 560), (3.8, 0.08, 340), (5.5, 0.05, 220)):
-            ech = band(src, 25, hi * rng().uniform(0.85, 1.15), 2)
-            ir_n = nsm(0.5)
-            s_ = np.arange(ir_n) / SR
-            ir = rng().standard_normal(ir_n) * np.exp(-s_ / 0.12)
-            ir /= np.sqrt(np.sum(ir ** 2))
-            ech = fftconvolve(ech, ir)[:n]
-            put(x, ech * gn * 4.0, dt)
-        ir = T.outdoor_ir(3.0, 80, density=40.0, darken=(2600, 220), decay=1.2)
-        x += fftconvolve(x, ir)[:n] * 0.18
-        # (what comes from hundreds of blocks off: the top let down over its length, the lows' harmonics for small speakers)
-        x = lowpass_to(x, glide_fc(n, [(0.0, 5000.0), (2.0, 3800.0), (6.0, 2500.0), (d, 1300.0)]))
-        x = lows_harm(x, -9.0, f_hi=90.0, lo=70.0, hi=320.0)
-        x = x * on
-        # (the heavy part is the first second: after it the peaks come down with the level, 2.2 dB a second, so the crash
-        # never stands over what plays with it, the roar of the front and the immersion)
-        ceil_k = 1.75 * 10 ** (-np.clip((t - 1.0) * 4.0, 0, 16) / 20)
-    write("crash", x, db=CRASH_LEVEL, fade_in=0.0, fade_out=2.6, crest=ceil_k)
+        # (a mountain of water coming down on the land: weight first; from hundreds of blocks off what it crushes is only
+        # a dark mass under the roar, no board or pane heard)
+        x = T.unit(water(d, [(0.0, MID_SH), (1.5, MID_SH * 0.6 + NEAR_SH * 0.4), (8.0, MID_SH), (d, FAR_SH)], [(0, -60), (0.06, -30), (0.2, 0), (1.6, -1), (3.2, -6), (6.0, -12), (10.0, -24), (d, -55)],
+                         surge=(0.7, 1.15), eddy=1.1, blobs=(12.0, 1.0, 90.0, 2800.0), spat=1.0, fizz=0.08))
+        put(x, impact(2.4, 0.42, 0.04, 0.95, 0.03, 0.5), CRASH_LEAD)
+        put(x, impact(1.5, 0.3, 0.05, 0.8, 0.03, 0.2), CRASH_LEAD + 0.55)
+        tb = 1.1
+        while tb < 11.0:
+            put(x, impact(min(0.4 + rng().pareto(2.2) * 0.4, 1.5) * float(np.exp(-tb / 3.5)), rng().uniform(0.1, 0.32), 0.03, 0.6, 0.03), tb)
+            tb += rng().gamma(0.9, 0.55 + 0.1 * tb)
+        x[:nsm(d - 1.0)] += debris(d - 1.0, 2.4, [(0, 1100.0), (d, 500.0)], [(0, -13), (8, -18), (d - 1, -40)], (0.2, 0.55, 0.25), 2.4)
+        put(x, T.unit(groan(3.4, 34.0, ((90, 280), (280, 800)), 0.25, (1.0, 0.5))) * 0.14, 2.3)
+        x = lows_harm(x, -14.0, f_hi=80.0, lo=60.0, hi=240.0)
+    write("crash", x, db=CRASH_LEVEL, fade_out=2.0, crest=2.3)
 
 
 def crash_far():
@@ -1161,132 +975,77 @@ def crash_far():
         raise SystemExit("crash is not built yet: build it before crash_far")
     L, R = N.far_of("crash", 78401, CRASH_D + 5.0)
     y = (L + R) / 2
-    write("crash_far", y, db=-12.5, fade_in=0.0, fade_out=3.0, crest=1.9)
+    write("crash_far", y, db=-13.5, fade_in=0.0, fade_out=3.0, crest=1.9)
 
 
 # =======================================================================================  cracks and slaps (positional)
-def white_water(d, lvl, rise, fc_hi=5200.0, lo_cut=250.0):
-    """The bubbling wash of white water round a thing breaking: band noise with foam's grain and a stream of bubbles under
-    it, swelling in over `rise` s, `d` s long, unit-ish times `lvl`."""
-    n = nsm(d)
-    t = np.arange(n) / SR
-    w = noise(n, lo_cut, fc_hi, 2) * np.clip(grains(n, 160.0, (0.01, 0.03, 0.08)), 0, 4) ** 0.8
-    w += noise(n, 90, 400, 2) * wander(n, 1.0, 6.0, 5.0) * 0.7
-    b = bubbles(n, 280.0, 300, 3000, q=10.0) * 0.5
-    env = (1 - np.exp(-t / rise)) * np.exp(-np.maximum(t - 0.2 * d, 0) / (0.45 * d))
-    return (T.unit(w) + b) * env * lvl
+def splash_tail(d, lvl, rise=0.05):
+    """The wash round a thing that broke or a wall that was hit: a little water of its own, no bubbles."""
+    t = np.arange(nsm(d)) / SR
+    return T.unit(water(d, [(0.0, RUN_SH)], [(0, -3), (rise, 0), (0.3, -2), (d, -24)], surge=(2.0, 0.8), blobs=(30.0, 1.2, 250.0, 6000.0), spat=1.4, fizz=0.2)) * lvl
 
 
 def crack_take(v):
     d = (1.8, 1.5, 1.6, 1.9)[v - 1]
     n = nsm(d)
-    t = np.arange(n) / SR
     with PB.seeded(79100 + 17 * v):
         x = np.zeros(n)
         if v == 1:       # a trunk snapping: the strain, the break, the splinter run, the weight going over
-            tb = 0.42
-            for a in (0.06, 0.16, 0.25, 0.32):
-                put(x, timber_groan(rng().uniform(0.12, 0.3), rng().uniform(0.03, 0.06), 120, 1400), a)
-            put(x, wood_snap(2.0, 0.15) * 1.0, tb)
-            put(x, wood_snap(1.1, 0.25) * 0.4, tb + 0.17)
-            for tt_ in F.PB_poisson(tb + 0.12, 1.4, lambda w: 45.0 * np.exp(-(w - tb) / 0.3)):
-                put(x, F.fracture(rng().uniform(0.15, 0.6), 0.8, dull=rng().uniform(0.2, 0.6)) * rng().uniform(0.04, 0.16), tt_)
-            put(x, timber_groan(0.8, 0.10, 70, 600), tb + 0.2)
-            put(x, T.thud(nsm(0.6), 2.0) / 5.0, tb + 0.72)
+            put(x, T.unit(groan(0.42, 24.0, ((180, 700), (700, 1800)), 0.4, (1.0, 0.6))) * 0.3, 0.0)
+            put(x, T.unit(wood(2.0)) * 1.0, 0.42)
+            put(x, T.unit(wood(1.0)) * 0.4, 0.58)
+            put(x, grit(nsm(0.9), 240 * np.exp(-np.arange(nsm(0.9)) / SR / 0.3), 0.003, 280, 5200) * 0.16 * np.exp(-np.arange(nsm(0.9)) / SR / 0.35), 0.54)
+            put(x, impact(0.5, 0.05, 0.004, 0.2, 0.0), 1.1)
         elif v == 2:     # a young tree: a quick double snap, a whip of branches
-            put(x, wood_snap(0.8, 0.05) * 0.7, 0.15)
-            put(x, wood_snap(1.3, 0.1) * 1.0, 0.33)
-            for tt_ in F.PB_poisson(0.4, 1.3, lambda w: 60.0 * np.exp(-(w - 0.33) / 0.25)):
-                put(x, F.fracture(rng().uniform(0.1, 0.4), 1.0, dull=rng().uniform(0.0, 0.3)) * rng().uniform(0.04, 0.18), tt_)
-            put(x, F.knock(1.2, 0.2) * 0.3, 0.62)
-            put(x, T.thud(nsm(0.5), 1.4) / 5.5, 0.7)
+            put(x, T.unit(wood(0.8)) * 0.7, 0.15)
+            put(x, T.unit(wood(1.3)) * 1.0, 0.33)
+            put(x, grit(nsm(0.8), 300 * np.exp(-np.arange(nsm(0.8)) / SR / 0.25), 0.002, 400, 6000) * 0.14 * np.exp(-np.arange(nsm(0.8)) / SR / 0.3), 0.42)
+            put(x, impact(0.35, 0.05, 0.004, 0.16, 0.0), 0.7)
         elif v == 3:     # a house timber and planks going: a beam, then boards in a shower, the clatter
-            put(x, timber_groan(0.3, 0.05, 100, 1200), 0.0)
-            put(x, wood_snap(1.6, 0.2) * 1.0, 0.28)
-            for k, a in enumerate((0.5, 0.62, 0.78, 0.95)):
-                put(x, planks(rng().uniform(0.5, 1.2), 0.2, int(rng().integers(8, 20))) * rng().uniform(0.2, 0.5), a)
-            for a in (0.55, 0.8, 1.0, 1.2):
-                put(x, F.knock(rng().uniform(0.4, 1.0), 0.4) * rng().uniform(0.1, 0.3), a)
-            put(x, T.thud(nsm(0.5), 1.6) / 5.0, 0.58)
+            put(x, T.unit(wood(1.6)) * 1.0, 0.28)
+            for a in (0.5, 0.62, 0.78, 0.95, 1.08):
+                put(x, T.unit(knock(rng().uniform(0.4, 1.0))) * rng().uniform(0.2, 0.5), a)
+            put(x, impact(0.5, 0.08, 0.003, 0.18, 0.0), 0.58)
         else:            # a trunk wrenched out of the ground, roots and all: a long groan, the roots, the break, the thud
-            put(x, timber_groan(0.7, 0.12, 60, 700), 0.05)
-            put(x, F.soil_tear(0.8, np.clip((t[:nsm(0.8)] - 0.1) / 0.2, 0, 1) * np.exp(-np.maximum(t[:nsm(0.8)] - 0.45, 0) / 0.3)) * 0.05, 0.3)
-            put(x, wood_snap(1.6, 0.3) * 0.9, 0.55)
-            put(x, wood_snap(0.9, 0.3) * 0.4, 0.78)
-            put(x, T.thud(nsm(0.8), 2.6) / 4.0, 0.98)
-        x = x + white_water(d, 1.0, 0.3) * np.abs(x).max() * 0.04
+            put(x, T.unit(groan(0.8, 26.0, ((110, 420), (420, 1000)), 0.35, (1.0, 0.5))) * 0.4, 0.05)
+            put(x, grit(nsm(0.6), 300.0, 0.005, 120, 1800) * 0.16 * np.sin(np.pi * np.arange(nsm(0.6)) / nsm(0.6)), 0.3)
+            put(x, T.unit(wood(1.6)) * 0.9, 0.55)
+            put(x, T.unit(wood(0.9)) * 0.4, 0.78)
+            put(x, impact(0.8, 0.06, 0.004, 0.25, 0.0), 0.98)
+        x = x + splash_tail(d, 0.05)
         x = band(x, 60, None, 1)
     write(f"crack{v}", x, peak_db=-7.0, fade_in=0.0, fade_out=0.35)
+
+
+def slap_event(size):
+    """Water slamming something solid: the slam, the burst, the sheet of it falling back."""
+    y = impact(1.0, 0.55, 0.0025, 0.1 + 0.08 * size, 0.012, 0.3)
+    m = nsm(0.5 + 0.5 * size)
+    s = np.arange(m) / SR
+    z = np.zeros(max(m, len(y)))
+    z[:len(y)] += y
+    z[:m] += grit(m, 1500 * np.exp(-s / (0.1 + 0.1 * size)), 0.0015, 700, 8000) * (1 - np.exp(-s / 0.02)) * np.exp(-s / (0.1 + 0.12 * size)) * 0.5
+    return z / (np.abs(z).max() + 1e-12)
 
 
 def slap_take(v):
     d = (1.7, 1.6, 1.6)[v - 1]
     n = nsm(d)
-    t = np.arange(n) / SR
     with PB.seeded(79200 + 19 * v):
         x = np.zeros(n)
         if v == 1:       # a big surge slammed into a wall, and the sheet of water falling back
-            put(x, slap_event(2.0, 1.0), 0.10)
-            put(x, slap_event(0.9, 1.0) * 0.4, 0.42)
+            put(x, slap_event(2.0), 0.10)
+            put(x, slap_event(0.9) * 0.4, 0.42)
         elif v == 2:     # a double surge against stone: a slap, the heavier one on its heels
-            put(x, slap_event(1.1, 1.0) * 0.7, 0.08)
-            put(x, slap_event(2.2, 1.0), 0.40)
+            put(x, slap_event(1.1) * 0.7, 0.08)
+            put(x, slap_event(2.2), 0.40)
         else:            # a cascade of small slaps along a wall
             for a, sz, g in ((0.06, 0.8, 0.8), (0.22, 0.5, 0.6), (0.37, 1.1, 1.0), (0.58, 0.4, 0.5), (0.74, 0.7, 0.55), (0.95, 0.35, 0.35)):
-                put(x, slap_event(sz, 1.0) * g, a)
-        rush = noise(n, 250, 4800, 2) * np.clip(grains(n, 220.0, (0.01, 0.03, 0.08)), 0, 4) ** 0.8 \
-            * (1 - np.exp(-t / 0.08)) * np.exp(-np.maximum(t - 0.12, 0) / 0.5) * 0.3
-        drip = bubbles(n, 120.0 * np.exp(-t / 0.7), 900, 4000, q=10.0) * np.exp(-np.maximum(t - 0.3, 0) / 0.8) * 0.18
-        x = x + rush * np.abs(x).max() * 0.25 + drip * np.abs(x).max() * 0.2
+                put(x, slap_event(sz) * g, a)
+        x = x + splash_tail(d, 0.06, 0.1)
         x = band(x, 55, None, 1)
     write(f"slap{v}", x, peak_db=-7.0, fade_in=0.0, fade_out=0.4)
 
-
-# ==============================================================================================================  trickle
-def drip(f0, size=1.0):
-    """One drop falling into shallow water: a small bubble climbing a fifth, a tick of splash. Peak-ish unit."""
-    m = nsm(0.18)
-    s = np.arange(m) / SR
-    f = f0 * (1 + 0.45 * (1 - np.exp(-s / 0.012)))
-    x = np.sin(2 * np.pi * np.cumsum(f) / SR + rng().uniform(0, 6.28)) * (1 - np.exp(-s / 0.0008)) * np.exp(-s / (0.011 + 0.006 * size))
-    x += noise(m, 1800, 9000, 2) * np.exp(-s / 0.003) * 0.18
-    return x / (np.abs(x).max() + 1e-12)
-
-
-def trickle():
-    d = 14.0
-    n = nsm(d)
-    t = np.arange(n) / SR
-    with PB.seeded(80001):
-        x = np.zeros(n)
-        # drops falling into the shallows, many at first, fewer as it dries
-        for tt_ in P.poisson_times(0.5, d - 1.0, lambda v: 2.6 * np.exp(-v / 7.0) + 0.45):
-            put(x, drip(rng().uniform(650, 2300), rng().uniform(0.5, 1.5)) * rng().uniform(0.15, 1.0) ** 1.4 * 0.5, tt_)
-        # a few small streams trickling over mud and stones, each swelling in and thinning out
-        for a, b, lvl, hi in ((0.0, 7.5, 1.0, 4600.0), (3.0, 10.5, 0.7, 3600.0), (6.5, 13.5, 0.5, 2900.0)):
-            m = nsm(b - a)
-            r = np.clip(55.0 * wander(m, 0.3, 2.0, 5.0), 8, 200)
-            s_ = bubbles(m, r, 800, hi, q=9.0, chirp=0.5)
-            s_ = lowpass_to(s_, np.full(m, hi * 1.2)) * np.sin(np.pi * np.arange(m) / m) ** 1.6 * 0.5 * lvl
-            put(x, s_, a)
-        # mud sagging and letting go of its air: low glugs and a soft settling
-        for tc in sorted(rng().uniform(0.8, 12.0) for _ in range(10)):
-            put(x, glug(rng().uniform(90, 260), rng().uniform(0.8, 1.6)) * 0.5 * rng().uniform(0.3, 1.0), tc)
-        for tc in sorted(rng().uniform(1.0, 11.0) for _ in range(4)):
-            m = nsm(1.1)
-            s_ = np.arange(m) / SR
-            put(x, noise(m, 60, 420, 2) * (1 - np.exp(-s_ / 0.12)) * np.exp(-s_ / 0.4) * 0.22, tc)
-        # a last timber creak or two, wood shifting
-        for tc, a in ((4.6, 0.9), (9.9, 0.6)):
-            put(x, timber_groan(rng().uniform(0.9, 1.3), a * 0.5, 90, 800), tc)
-        for tc in (2.3, 6.8, 8.2):
-            put(x, debris_thud(rng().uniform(0.3, 0.6)) * 0.12, tc)
-        # air: a faint breath of it round everything
-        air = noise(n, 3500, 11000, 2) * wander(n, 0.1, 0.6, 4.0) * 0.012
-        x = F.space(x, wet=0.35, length=1.7, darken=(5500, 500), decay=0.7, seed_shift=9) + air
-        # (drying up: what is left is hardly there by ten seconds, so the strike is quiet by its end)
-        x = x * curve_db(t, [(0.0, 0.0), (5.0, -1.0), (9.0, -9.0), (12.0, -20.0), (d, -30.0)])
-    write("trickle", x, db=-33.0, fade_in=1.2, fade_out=3.5)
 
 
 BUILD = {"rupture": rupture, "rumble": rumble, "roar_far": roar_far, "roar_mid": roar_mid, "roar_near": roar_near, "roar_pass": roar_pass,
@@ -1298,6 +1057,7 @@ BUILD = {"rupture": rupture, "rumble": rumble, "roar_far": roar_far, "roar_mid":
 
 # ===========================================================================================================  listening
 CLIPS = {}
+OCT = np.array([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000])
 
 
 def mixdown(dp, pad=0.5, immersed=True):
