@@ -380,19 +380,35 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         thunder(q, s, vent, me, (VC_LIGHT - 2.0, VC_COLLAPSE), (0.0, VC_COLLAPSE), (0.0, 0.0), 1.0);
     });
     // ---- the collapse, the flow, what's left
-    p.later(VC_COLLAPSE - 0.1, move |q| {
+    // (the collapse's sounds worked out over three stages, ahead of it: the flow's schedule and each stretch of the thunder
+    // walk the pass's flow and flashes, and a stage has to stay well under a tick)
+    let heard: std::rc::Rc<std::cell::Cell<Option<f32>>> = Default::default();
+    let h1 = heard.clone();
+    p.later(VC_COLLAPSE - 0.6, move |q| {
+        crate::meter::spend(8_000_000);
         let me = live(me);
         let (late, d) = sound_from(vent, me);
         near_far(q, VC_COLLAPSE + late, "collapse", d);
         let drop = VC_COLLAPSE + late + VC_DROP - VC_LEAD;
         let hit = flow(q, s, vent, me, drop);
+        h1.set(hit);
         // (the land's drop, unless the flow's hit is on it: the two would be all the game's limiter heard)
         if hit.is_none_or(|h| (h - drop).abs() > 0.8) {
             play(q, drop, "report_sub", 0.75 * air(d), 0.8);
         }
-        // (the lightning goes on in the ash: from inside the flow, under its near-black, nothing of it gets through)
-        let mute = hit.map_or((0.0, 0.0), |h| (h, h + 8.0));
-        thunder(q, s, vent, me, (VC_LIGHT - 2.0, VC_LIFT), (VC_COLLAPSE, VC_LEN), mute, 0.8);
+    });
+    // (the lightning goes on in the ash: from inside the flow, under its near-black, nothing of it gets through
+    let h2 = heard.clone();
+    p.later(VC_COLLAPSE - 0.4, move |q| {
+        crate::meter::spend(8_000_000);
+        let mute = h2.get().map_or((0.0, 0.0), |h| (h, h + 8.0));
+        thunder(q, s, vent, live(me), (VC_LIGHT - 2.0, VC_LIFT), (VC_COLLAPSE, VC_LEN), mute, 0.8);
+    });
+    p.later(VC_COLLAPSE - 0.2, move |q| {
+        crate::meter::spend(8_000_000);
+        let me = live(me);
+        let (_, d) = sound_from(vent, me);
+        let mute = heard.get().map_or((0.0, 0.0), |h| (h, h + 8.0));
         thunder(q, s, vent, me, (VC_LIFT, VC_LEN), (VC_COLLAPSE, VC_LEN), mute, 0.45);
         play(q, VC_AFTER_AT, "after", 0.75 + 0.25 * air(d), 1.0);
         play(q, VC_PATTER_AT, "patter", (1800.0 / d.max(1800.0)).powf(2.0), 1.0);
@@ -425,7 +441,10 @@ mod tests {
         vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]));
         let mut ev = std::mem::take(&mut p.ev);
         let mut out = Vec::new();
-        while let Some((t, a)) = ev.pop() {
+        // (in time order, as the game plays them: a stage may use what an earlier one worked out)
+        while !ev.is_empty() {
+            ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+            let (t, a) = ev.pop().unwrap();
             match a {
                 Act::Later(job) => ev.extend(job()),
                 Act::Sound { event, at, volume, pitch } => {

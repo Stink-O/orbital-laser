@@ -1331,7 +1331,9 @@ fn vc_chunk(q: &mut Plan, w: &Work, t: f32, x0: i32, z0: i32) {
             return;
         }
     }
-    let y1 = (f64::from(s.gy) + hf.max_near(ox, oz) + 48.0).min(318.0) as i32;
+    // (the caldera and the rim cleared to the sky whatever the survey saw: a peak it missed between its samples, or on
+    // land not yet loaded at the time, would be left standing in the crater; past them the read says what stands there)
+    let y1 = if mid < VC_RIM + 110.0 { 318 } else { (f64::from(s.gy) + hf.max_near(ox, oz) + 48.0).min(318.0) as i32 };
     let reach = |d: &&Drop| (d.x - s.cx - ox).abs().max((d.z - s.cz - oz).abs()) < 2.3 * d.ru.max(d.rv) + 12.0;
     let mut ctx = Ctx { s: &s, hf: &hf, cols: &w.cols, bx, bz, g: Grid::new(&s, x0, z0), y1, drops: s.drops.iter().filter(reach).collect(), rel: None, x0, z0 };
     // (every column of the caldera and the rim, and one round the chunk, its shape first: how far its faces show)
