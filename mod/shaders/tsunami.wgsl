@@ -241,7 +241,7 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     // ---- foam: the crest, patches on the face, tongues running down from the crest, and a churning foot ----------------
     let ragged = ts_fbm3(vec3<f32>(uc * 2.0 + 3.0, p.y * 0.1 + time * 2.0, w * 0.1), noct);
     let crestF = smoothstep(0.87 - 0.06 * ragged, 0.97, ybar);
-    let patchf = smoothstep(0.66, 0.84, turb + 0.14 * ybar);
+    let patchf = smoothstep(0.7, 0.88, turb + 0.12 * ybar);
     let tongue = smoothstep(0.66, 0.86, strk) * smoothstep(0.55, 0.93, ybar + 0.25 * (ragged - 0.5)) * (0.5 + 0.5 * turb);
     let foot = (1.0 - smoothstep(4.0, 30.0 + 18.0 * turb, hg)) * smoothstep(0.38, 0.62, turb);
     var foam = clamp(crestF * (0.45 + 0.8 * ragged) + 0.6 * patchf * (0.3 + 0.7 * ybar) + 0.85 * tongue + 0.85 * foot, 0.0, 1.0);
@@ -251,8 +251,8 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let refl = reflect(rd, nrm);
     let skyc = mix(li.fogl, li.skyl, smoothstep(0.0, 0.55, refl.y)) * (0.55 + 0.45 * li.day);
     let dif = saturate(dot(nrm, li.L));
-    let mud = vec3<f32>(0.11, 0.085, 0.052);
-    let green = vec3<f32>(0.05, 0.12, 0.085);
+    let mud = vec3<f32>(0.135, 0.1, 0.058);
+    let green = vec3<f32>(0.06, 0.11, 0.075);
     let thin = smoothstep(0.72, 1.0, ybar) * (0.4 + 0.6 * turb);
     var body = mix(mud, green, 0.35 + 0.4 * thin) * (li.amb * 1.4 + li.sunc * dif * 0.55 + vec3<f32>(0.004));
     let tra = pow(saturate(dot(rd, li.L)), 3.0) * thin;
@@ -266,6 +266,201 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     // the thin water at the foot lets the ground through
     let alpha = 1.0;
     return vec4<f32>(c, alpha);
+}
+
+// The water's surface over (s, u) at `t`, relative to the target's ground (a big negative number where there is none).
+fn ts_surf_y(s: f32, u: f32, t: f32, g: TsG) -> f32 {
+    let env = ts_env(s, u, g);
+    if (env < 0.03) {
+        return -1.0e4;
+    }
+    let tau = t - ts_arr(s, u, g.sd);
+    let p = ts_prof(tau, s);
+    if (p <= 0.0) {
+        return -1.0e4;
+    }
+    return TS_A * env * p - TS_SEA;
+}
+// The flow's velocity at (s, u) at `t` (blocks a second, on the ground, along the wave's way positive): fast as the
+// face goes over, slowing as it holds, back the way it came as it drains (surge.rs's flow, kept in step: the carry holds
+// the player at half of it, so what the water carries goes past them at about the other half).
+fn ts_flow(s: f32, u: f32, t: f32) -> f32 {
+    let tau = t - TS_T - ts_tau(s) - 0.0 * u;
+    let tr = TS_FACE / ts_vel(s);
+    let rise = 0.25 * ts_vel(s) * (1.0 - 0.8 * smoothstep(tr, tr + TS_HOLD, tau));
+    let dr = smoothstep(tr + TS_HOLD, tr + TS_HOLD + TS_DRAIN, tau);
+    return rise * (1.0 - dr) - 16.0 * dr * (1.0 - smoothstep(tr + TS_HOLD + TS_DRAIN, tr + TS_HOLD + TS_DRAIN + 3.0, tau));
+}
+
+// The camera in the water: the land and the sky seen through a murk of mud, suspended silt and bubbles streaming past,
+// a bright, broken surface above (where the ray leaves the water), and for the first seconds the white of the front
+// that went over. `scene` is what the game drew at the pixel (the land, or the sky), `rd` the view ray, the camera at `ro`
+// (relative to the target's ground).
+fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time: f32, g: TsG, li: TsLight, j: f32, sky: bool) -> vec3<f32> {
+    let cs = dot(ro.xz, g.m);
+    let cu = dot(ro.xz, g.n);
+    let surf_c = ts_surf_y(cs, cu, time, g);
+    let dep_c = max(surf_c - ro.y, 0.0);
+    // where the ray leaves the water (up through its surface, or out of the front or the back of it)
+    var t_exit = 1.0e9;
+    var tp = 0.0;
+    for (var i = 0; i < 26; i = i + 1) {
+        let fi = f32(i) + j;
+        let t = 0.5 + fi * fi * 0.19;
+        if (t > scene_len) {
+            break;
+        }
+        if (ts_f(ro + rd * t, time, g) > 0.0) {
+            var a = tp;
+            var b = t;
+            for (var k = 0; k < 6; k = k + 1) {
+                let mid = 0.5 * (a + b);
+                if (ts_f(ro + rd * mid, time, g) > 0.0) {
+                    b = mid;
+                } else {
+                    a = mid;
+                }
+            }
+            t_exit = b;
+            break;
+        }
+        tp = t;
+    }
+    let lw = min(min(scene_len, t_exit), 140.0);
+    // (how the murk thickens, by colour: the red goes last)
+    let sig = vec3<f32>(0.060, 0.075, 0.100);
+    let tr = exp(-sig * lw);
+    // the light down here: brighter nearer the surface
+    let mid = ro + rd * (0.5 * lw);
+    let ms = dot(mid.xz, g.m);
+    let mu = dot(mid.xz, g.n);
+    let dep = max(ts_surf_y(ms, mu, time, g) - mid.y, 0.0);
+    let day = li.day;
+    let lit = (0.22 + 0.78 * exp(-dep / 38.0)) * (0.35 + 0.65 * day);
+    // the flow past the camera (about half of it, the carry has the rest), as 3D motion of what the water holds
+    let fl = ts_flow(cs, cu, time) * 3.0;
+    let vel = vec3<f32>(g.m.x * fl, 0.0, g.m.y * fl);
+    var silt = 0.0;
+    var bub = 0.0;
+    for (var i = 0; i < 12; i = i + 1) {
+        let t = (f32(i) + j) * lw / 12.0;
+        let q = ro + rd * t;
+        let wgt = exp(-t * 0.04);
+        let w = q - vel * time;
+        silt = silt + wgt * smoothstep(0.55, 0.85, ts_fbm3(w * vec3<f32>(0.07, 0.11, 0.07), 2));
+        bub = bub + wgt * smoothstep(0.80, 0.9, ts_vn3(w * 0.55 + vec3<f32>(vel.z * 0.0, 0.0, 0.0)));
+    }
+    silt = silt / 12.0;
+    bub = bub / 12.0;
+    // the light's shafts down through it, off the broken surface
+    var shaft = 0.0;
+    for (var i = 0; i < 8; i = i + 1) {
+        let t = (f32(i) + j) * lw / 8.0;
+        let q = ro + rd * t;
+        let sd = max(ts_surf_y(dot(q.xz, g.m), dot(q.xz, g.n), time, g) - q.y, 0.0);
+        let pat = smoothstep(0.45, 0.8, ts_vn3(vec3<f32>(q.x * 0.045, q.z * 0.045, time * 0.5)));
+        shaft = shaft + pat * exp(-sd / 55.0) * (1.0 / 8.0);
+    }
+    let ambn = vec3<f32>(luminance(li.amb));
+    let mud = vec3<f32>(0.11, 0.082, 0.045);
+    let green = vec3<f32>(0.06, 0.085, 0.045);
+    var ins = mix(mud, green, 0.3 + 0.3 * silt) * (ambn * 2.6 + vec3<f32>(0.008)) * lit * (0.75 + 0.5 * silt);
+    ins = ins + vec3<f32>(0.5, 0.55, 0.4) * li.sunc * shaft * 0.16 * lit;
+    ins = ins + vec3<f32>(0.5, 0.52, 0.46) * bub * 0.18 * lit * (0.5 + 0.5 * day);
+    // what is at the end of it: the land, the sky through the surface, or the surface seen from below
+    var far_col = scene;
+    if (t_exit < scene_len) {
+        let up = saturate(-rd.y);
+        let window = smoothstep(0.45, 0.8, up);
+        let pe = ro + rd * t_exit;
+        let ns = ts_fbm3(vec3<f32>(pe.x * 0.09, pe.z * 0.09, time * 0.7), 3);
+        // (through the window the sky, bright and rippling; past it the murk's own light back)
+        let skyc = mix(li.fogl, li.skyl, 0.6) * (0.5 + 0.7 * ns);
+        let foamb = smoothstep(0.55, 0.8, ns) * 0.7;
+        far_col = mix(ins * 1.6, skyc * (0.55 + 0.45 * day), window) + vec3<f32>(0.6) * foamb * (0.3 + 0.7 * day) * li.amb;
+    }
+    var out = far_col * tr + ins * (1.0 - tr);
+    // the front that went over them: white water, thinning over a second or two
+    let tau = time - ts_arr(cs, cu, g.sd);
+    let aer = exp(-max(tau, 0.0) / 1.0);
+    let wash = ts_fbm3(vec3<f32>(rd.x * 3.0, rd.y * 3.0 + time * 2.0, rd.z * 3.0), 3);
+    out = mix(out, vec3<f32>(0.64, 0.62, 0.56) * (ambn * 1.6 + li.sunc * 0.25) * (0.75 + 0.5 * wash), aer * (0.55 + 0.4 * wash));
+    return out;
+}
+
+// The spray and the mist: a cloud thrown up off the crest and over it, a skirt of mist along the ground ahead of the
+// face, marched in the band the wave's front lies in, over the water's own surface only, up to `t1` (what is in front of
+// the surface or the land). rgb premultiplied, a the light left (1 none).
+fn ts_spray(ro: vec3<f32>, rd: vec3<f32>, t0: f32, t1: f32, time: f32, g: TsG, li: TsLight, j: f32) -> vec4<f32> {
+    let s0 = dot(ro.xz, g.m);
+    let rs = dot(rd.xz, g.m);
+    let sf = ts_front(time);
+    // the band: from 200 behind the front to 260 ahead
+    var ta = t0;
+    var tb = t1;
+    if (abs(rs) > 1.0e-4) {
+        let ca = (sf - 200.0 - s0) / rs;
+        let cb = (sf + 260.0 - s0) / rs;
+        ta = max(ta, min(ca, cb));
+        tb = min(tb, max(ca, cb));
+    } else if (s0 < sf - 200.0 || s0 > sf + 260.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    // (and under the plume's top)
+    let ytop = TS_A - TS_SEA + 90.0;
+    if (rd.y > 1.0e-4) {
+        tb = min(tb, (ytop - ro.y) / rd.y);
+    } else if (rd.y < -1.0e-4 && ro.y > ytop) {
+        ta = max(ta, (ro.y - ytop) / -rd.y);
+    } else if (ro.y > ytop) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    if (tb <= ta) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    let n = 16;
+    let dt = (tb - ta) / f32(n);
+    var tr = 1.0;
+    var acc = vec3<f32>(0.0);
+    let ambn = vec3<f32>(luminance(li.amb));
+    let lightc = ambn * 1.5 + li.sunc * 0.5;
+    for (var i = 0; i < n; i = i + 1) {
+        let t = ta + (f32(i) + j) * dt;
+        let p = ro + rd * t;
+        let s = dot(p.xz, g.m);
+        let u = dot(p.xz, g.n);
+        let env = ts_env(s, u, g);
+        if (env < 0.2) {
+            continue;
+        }
+        let tau = time - ts_arr(s, u, g.sd);
+        let da = -tau * ts_vel(s);
+        let lc = TS_A * env - TS_SEA;
+        let ls = ts_surf_y(s, u, time, g);
+        if (p.y < ls) {
+            continue;
+        }
+        // (thrown up off the crest and over it, streaming ahead of it; and a skirt of mist along the ground ahead)
+        let hc = max(p.y - lc, 0.0);
+        let plume = exp(-pow(hc / 30.0, 2.0)) * smoothstep(-120.0, -8.0, da) * (1.0 - smoothstep(10.0, 120.0, da)) * smoothstep(0.55 * lc, 0.95 * lc, p.y);
+        let skirt = smoothstep(-2.0, 14.0, p.y) * (1.0 - smoothstep(0.4 * lc, 0.95 * lc, p.y)) * exp(-max(da, 0.0) / 85.0) * (1.0 - smoothstep(-2.0, -30.0, da));
+        let w = p * 0.045 + vec3<f32>(-g.m.x, 0.0, -g.m.y) * 0.0 - vec3<f32>(0.0, 0.0, 0.0);
+        let nz = ts_fbm3(vec3<f32>(u * 0.03, p.y * 0.05 - time * 0.6, (s - ts_front(time)) * 0.03 + time * 0.2), 3);
+        let dens = (plume * 1.0 + skirt * 0.45) * smoothstep(0.38, 0.8, nz) * env;
+        if (dens < 0.001) {
+            continue;
+        }
+        let ext = dens * dt * 0.02;
+        let a = 1.0 - exp(-ext);
+        // (brighter at its top and where the sun lights it, darker deep in it)
+        let lit = 0.6 + 0.5 * smoothstep(0.0, lc, p.y);
+        acc = acc + tr * a * lightc * lit * mix(vec3<f32>(0.74, 0.69, 0.6), vec3<f32>(0.84, 0.84, 0.82), smoothstep(0.0, 70.0, p.y));
+        tr = tr * (1.0 - a);
+        if (tr < 0.02) {
+            break;
+        }
+    }
+    return vec4<f32>(acc, tr);
 }
 
 fn tsunami(in: StageIn) -> vec4<f32> {
@@ -301,14 +496,30 @@ fn tsunami(in: StageIn) -> vec4<f32> {
     let pj = vec2<u32>(floor(in.position.xy));
     let j = f32(pcg(pj.x * 0x9E3779B1u ^ pcg(pj.y * 0x85EBCA6Bu ^ u32(time * 60.0))) & 0xFFFFu) / 65536.0;
 
+    if (ts_f(ro, time, g) < 0.0) {
+        col = ts_under(ro, rd, scene_len, scene, time, g, li, j, sky);
+        return vec4<f32>(linear_to_srgb(max(col, vec3<f32>(0.0))), 1.0);
+    }
     let h = ts_march(ro, rd, 0.0, min(scene_len, 6000.0), time, g, j);
+    var t_front = min(scene_len, 6000.0);
     if (h.hit) {
+        t_front = h.t;
         let sf = ts_surface(ro + rd * h.t, rd, h.t, time, g, li);
-        col = mix(col, sf.rgb, sf.a);
+        // (thin water over the land lets it show through, tinted: the film the drain leaves, a shallow edge)
+        var a = sf.a;
+        var under = scene;
+        if (scene_len < 1.0e8) {
+            let path = max(scene_len - h.t, 0.0);
+            a = max(a * 0.0, 1.0 - exp(-path / 5.0));
+            under = scene * exp(-vec3<f32>(0.10, 0.12, 0.16) * path);
+        }
+        col = mix(under, sf.rgb, a);
         // (the haze of the distance)
         let haze = 1.0 - exp(-h.t * 0.00032);
         col = mix(col, li.fogl * 0.95, haze * 0.8);
     }
+    let sp = ts_spray(ro, rd, 0.0, t_front, time, g, li, j);
+    col = col * sp.a + sp.rgb;
     return vec4<f32>(linear_to_srgb(max(col, vec3<f32>(0.0))), 1.0);
 }
 

@@ -76,7 +76,7 @@ impl Surge {
         let tau = t - self.geo.arr(s, u);
         let v = TsGeo::vel(s);
         let tr = TsGeo::rise_t(s);
-        let rise = 0.5 * v * (1.0 - 0.8 * ease(tr, tr + crate::strike::TS_HOLD, tau));
+        let rise = 0.25 * v * (1.0 - 0.8 * ease(tr, tr + crate::strike::TS_HOLD, tau));
         let drain = ease(tr + crate::strike::TS_HOLD, tr + crate::strike::TS_HOLD + crate::strike::TS_DRAIN, tau);
         let along = rise * (1.0 - drain) - 16.0 * drain * (1.0 - ease(tr + crate::strike::TS_HOLD + crate::strike::TS_DRAIN, tr + crate::strike::TS_HOLD + crate::strike::TS_DRAIN + 3.0, tau));
         [self.geo.m[0] * along, self.geo.m[1] * along]

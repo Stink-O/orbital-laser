@@ -197,6 +197,8 @@ VIEWS = {
     "tsside": "cx=1400 cy=140 cz=-200 lx=0.5 ly=90 lz=-200 flat=1 trees=1 fov=60 reach=300",
     "tsaerial": "cx=0 cy=500 cz=900 lx=0.5 ly=65 lz=-100 flat=1 trees=1 fov=60 reach=300",
     "tsnear": "cx=0 cy=67 cz=300 lx=0.5 ly=95 lz=120 flat=1 trees=1 fov=80 reach=300",
+    "tsunder": "cx=0 cy=67 cz=300 lx=0.5 ly=62 lz=-300 flat=1 trees=1 fov=75 reach=300",
+    "tsunderup": "cx=0 cy=67 cz=300 lx=40 ly=200 lz=100 flat=1 trees=1 fov=80 reach=300",
     "tsfar": "cx=0 cy=75 cz=1100 lx=0.5 ly=110 lz=-300 flat=1 trees=1 fov=60 reach=1100",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",

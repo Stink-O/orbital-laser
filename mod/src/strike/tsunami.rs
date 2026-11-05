@@ -53,7 +53,7 @@ fn fh21(i: i32, j: i32) -> f32 {
 }
 /// The pass's fvnoise (value noise on the PCG hash), 0 to 1.
 pub(crate) fn fvnoise(x: f32, z: f32) -> f32 {
-    crate::meter::spend(80);
+    crate::meter::spend(160);
     let (i, j) = (x.floor(), z.floor());
     let (fx, fz) = (x - i, z - j);
     let (ux, uz) = (fx * fx * (3.0 - 2.0 * fx), fz * fz * (3.0 - 2.0 * fz));
@@ -240,7 +240,7 @@ const TS_BELOW: u32 = 40;
 const TS_ABOVE: u32 = 1;
 const TS_PART: usize = 96;
 /// A stage's work (`meter`), and how long the land's work waits for chunks the world has not loaded before it leaves them.
-const TS_STAGE: u64 = 7_000_000;
+const TS_STAGE: u64 = 5_000_000;
 const TS_LAND_BY: f64 = 38.0;
 
 fn chance(x: i32, z: i32, seed: u32, k: u32) -> f64 {
@@ -288,16 +288,29 @@ fn lying(name: &str, along_x: bool) -> &'static str {
     interned(format!("{name}[axis={}]", if along_x { "x" } else { "z" }))
 }
 
-/// A name's class for the wave (as the Hurricane's): 0 air, 1 water, 2 the land's own ground, 3 logs, 4 leaves, 5 plants,
-/// 6 light things, 7 buildings, 8 stays (and whatever the table doesn't know: left as it is, with nothing under it touched).
-fn class_of(name: &str) -> u8 {
+/// A palette name's class for the wave (as the Hurricane's): 0 air, 1 water, 2 the land's own ground, 3 logs, 4 leaves, 5
+/// plants, 6 light things, 7 buildings, 8 stays (and whatever the table doesn't know: left as it is, with nothing under
+/// it touched); and what its ground is if it is the ground: the scouring's kind (`soil_of`).
+#[derive(Clone, Copy, Debug)]
+struct Kind {
+    class: u8,
+    soil: u8,
+}
+fn kind_of(name: &str) -> Kind {
+    crate::meter::spend(6_000);
     match hu_block(name) {
-        Some(_) if stays(name) => 8,
-        Some(b) => HU_BLOCKS[b as usize].class,
-        None => match sh_land::material(name).1 {
-            Class::Air => 0,
-            Class::Water => 1,
-            _ => 8,
+        Some(_) if stays(name) => Kind { class: 8, soil: 0 },
+        Some(b) => {
+            let k = &HU_BLOCKS[b as usize];
+            Kind { class: k.class, soil: if k.class == 2 { soil_of(k.name) } else { 0 } }
+        }
+        None => Kind {
+            class: match sh_land::material(name).1 {
+                Class::Air => 0,
+                Class::Water => 1,
+                _ => 8,
+            },
+            soil: 0,
         },
     }
 }
@@ -309,7 +322,7 @@ struct Col {
     g: i32,
     top: i32,
     fluid: bool,
-    ground: u16,
+    soil: u8,
     /// Standing on it: the logs there and the wreck block to lay (a palette index; u16::MAX none).
     wreck: u16,
     logs: u8,
@@ -318,7 +331,7 @@ struct Col {
 
 struct Cur {
     a: Rc<crate::columns::Answer>,
-    kinds: Vec<u8>,
+    kinds: Vec<Kind>,
     chunks: Vec<(i32, i32, f64)>,
     k: usize,
 }
@@ -342,10 +355,9 @@ struct Work {
     done: bool,
 }
 
-/// The block the soil's top turns to at (s, u) in streaks along the flow: mud, packed mud, coarse dirt, gravel, sand.
-fn scoured(kind: u8, geo: &TsGeo, s: f64, u: f64, x: i32, z: i32, seed: u32) -> &'static str {
-    let n = fvnoise((s * 0.011) as f32 + geo.sd, (u * 0.075) as f32);
-    let h = chance(x, z, seed, 7);
+/// The block the soil's top turns to in streaks along the flow (`n`, a noise stretched along it, 0 to 1; `h` a roll of the
+/// column's own): mud, packed mud, coarse dirt, gravel, sand, clay.
+fn scoured(kind: u8, n: f64, h: f64) -> &'static str {
     match kind {
         2 => {
             if n < 0.5 { "minecraft:sand" } else if n < 0.72 { "minecraft:gravel" } else if h < 0.5 { "minecraft:coarse_dirt" } else { "minecraft:mud" }
@@ -384,39 +396,36 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             missing = true;
             break;
         };
-        crate::meter::spend(150);
+        crate::meter::spend(260);
         let base = surface - a.below;
-        let (mut g, mut top, mut fluid, mut ground, mut wreck) = (None, None, false, u16::MAX, u16::MAX);
+        let (mut g, mut top, mut fluid, mut soil, mut wreck) = (None, None, false, 0u8, u16::MAX);
         let (mut logs, mut stand) = (0u8, 0u8);
         for j in (0..blocks.len()).rev() {
-            crate::meter::spend(14);
+            crate::meter::spend(24);
             let b = blocks[j];
-            let class = cur.kinds.get(b as usize).copied().unwrap_or(8);
+            let kind = cur.kinds.get(b as usize).copied().unwrap_or(Kind { class: 8, soil: 0 });
             let y = base + j as i32;
-            match class {
+            match kind.class {
                 0 => continue,
                 1 => fluid = true,
                 2 | 8 => {
                     g = Some(y);
-                    ground = hu_block(&a.palette[b as usize]).unwrap_or(u16::MAX);
+                    soil = kind.soil;
                     break;
                 }
-                _ => {
+                class => {
                     top.get_or_insert(y);
                     stand = stand.saturating_add(1);
                     if class == 3 {
                         logs = logs.saturating_add(1);
                     }
-                    if class == 7 && wreck == u16::MAX && wreck_ok(&a.palette[b as usize]) {
-                        wreck = b;
-                    }
-                    if class == 3 && wreck == u16::MAX {
+                    if wreck == u16::MAX && ((class == 7 && wreck_ok(&a.palette[b as usize])) || class == 3) {
                         wreck = b;
                     }
                 }
             }
         }
-        cols.push(g.map(|g| Col { g, top: top.unwrap_or(g), fluid, ground, wreck, logs, stand }));
+        cols.push(g.map(|g| Col { g, top: top.unwrap_or(g), fluid, soil, wreck, logs, stand }));
     }
     if missing {
         return false;
@@ -424,25 +433,30 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
     let mut b = Blocks { clear_of_player: true, ..Default::default() };
     let geo = &w.geo;
     let ty = geo.t[1];
+    // (what the wave does is worked out for each 4 by 4 cells' middle: its strength, the water's height, the streak)
+    let mut cell = [(0.0f64, 0.0f64, 0.0f64); 16];
+    for (c, v) in cell.iter_mut().enumerate() {
+        let (mx, mz) = (f64::from(x0 + (c % 4) as i32 * 4) + 2.0, f64::from(z0 + (c / 4) as i32 * 4) + 2.0);
+        let (s, u) = geo.su(mx, mz);
+        let m = mask(geo, s, u);
+        *v = if m > 0.0 { (m, geo.peak(s, u), f64::from(fvnoise((s * 0.011) as f32 + geo.sd, (u * 0.075) as f32))) } else { (0.0, 0.0, 0.0) };
+    }
     // (the wreck to strew: a column's wood or building, laid down in the chunk along the flow)
     let mut wrecks: Vec<(usize, u16, u8)> = Vec::new();
     let mut gs = [i32::MIN; 256];
     let mut reached = [false; 256];
     for i in 0..256 {
-        let (x, z) = (x0 + (i % 16) as i32, z0 + (i / 16) as i32);
+        let (lx, lz) = (i % 16, i / 16);
+        let (x, z) = (x0 + lx as i32, z0 + lz as i32);
         let Some(c) = cols[i] else { continue };
         gs[i] = c.g;
-        if c.fluid {
-            continue;
-        }
-        let (s, u) = geo.su(f64::from(x) + 0.5, f64::from(z) + 0.5);
-        let m = mask(geo, s, u);
-        if m <= 0.0 || chance(x, z, w.seed, 1) >= m {
+        crate::meter::spend(120);
+        let (m, peak, n) = cell[(lz / 4) * 4 + lx / 4];
+        if c.fluid || m <= 0.0 || chance(x, z, w.seed, 1) >= m {
             continue;
         }
         // (only where the water is deep over it, as the pass's wave stands there)
-        let depth = geo.peak(s, u) - (f64::from(c.g) - ty);
-        if depth < 2.0 {
+        if peak - (f64::from(c.g) - ty) < 2.0 {
             continue;
         }
         reached[i] = true;
@@ -454,15 +468,12 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             }
         }
         // (the soil scoured in streaks along the flow)
-        if c.ground != u16::MAX {
-            let kind = soil_of(HU_BLOCKS[c.ground as usize].name);
-            if kind != 0 {
-                let r = scoured(kind, geo, s, u, x, z, w.seed);
-                b.put(x, z, c.g, c.g, r, None, false);
-                // (the strongest scour takes the layer under it too)
-                if kind == 1 && chance(x, z, w.seed, 3) < 0.2 * smooth(0.55, 0.9, f64::from(fvnoise((s * 0.02) as f32 + 3.0, (u * 0.05) as f32))) {
-                    b.put(x, z, c.g - 1, c.g - 1, if r == "minecraft:gravel" { "minecraft:gravel" } else { "minecraft:mud" }, None, false);
-                }
+        if c.soil != 0 {
+            let r = scoured(c.soil, n, chance(x, z, w.seed, 7));
+            b.put(x, z, c.g, c.g, r, None, false);
+            // (the strongest scour takes the layer under it too)
+            if c.soil == 1 && n > 0.78 && chance(x, z, w.seed, 3) < 0.35 {
+                b.put(x, z, c.g - 1, c.g - 1, if r == "minecraft:gravel" { "minecraft:gravel" } else { "minecraft:mud" }, None, false);
             }
         }
     }
@@ -482,7 +493,8 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             if !reached[j] || gs[j] == i32::MIN {
                 continue;
             }
-            let block: &'static str = if log { lying(name.split('[').next().unwrap_or(name), along_x) } else { interned(name.split('[').next().unwrap_or(name).to_string()) };
+            let plain = name.split('[').next().unwrap_or(name);
+            let block: &'static str = if log { lying(plain, along_x) } else { interned(plain.to_string()) };
             let h = if log { 1 } else { 1 + (chance(x, z, w.seed, 8) * 2.0) as i32 };
             b.put(x0 + lx, z0 + lz, gs[j] + 1, gs[j] + h, block, None, false);
         }
@@ -519,8 +531,8 @@ fn next_answer(wk: &mut Work) -> Option<Cur> {
         && let Some(a) = crate::columns::take(*tag)
     {
         let (_, chunks, _) = wk.retry_q.take()?;
-        crate::meter::spend(2_000 + 6_000 * a.palette.len() as u64);
-        let kinds = a.palette.iter().map(|n| class_of(n)).collect();
+        crate::meter::spend(2_000);
+        let kinds: Vec<Kind> = a.palette.iter().map(|n| kind_of(n)).collect();
         return Some(Cur { a, kinds, chunks, k: 0 });
     }
     if wk.taken < wk.asked
@@ -528,8 +540,8 @@ fn next_answer(wk: &mut Work) -> Option<Cur> {
     {
         let part = wk.taken;
         wk.taken += 1;
-        crate::meter::spend(2_000 + 6_000 * a.palette.len() as u64);
-        let kinds = a.palette.iter().map(|n| class_of(n)).collect();
+        crate::meter::spend(2_000);
+        let kinds: Vec<Kind> = a.palette.iter().map(|n| kind_of(n)).collect();
         let (c0, c1) = (part * TS_PART, ((part + 1) * TS_PART).min(wk.chunks.len()));
         return Some(Cur { a, kinds, chunks: wk.chunks[c0..c1].to_vec(), k: 0 });
     }
