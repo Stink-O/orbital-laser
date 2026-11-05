@@ -408,6 +408,7 @@ struct VmSh {
     n: vec3<f32>,
     i: u32,
     face: u32,  // 5 its broken top
+    lp: vec3<f32>,  // the hit in its own frame, up its length
 }
 // The nearest shard the ray meets before `tmax` (`o` the eye from the vent).
 fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
@@ -504,6 +505,7 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
             r.t = tn;
             r.i = i;
             r.face = fb;
+            r.lp = ro + dv * tn;
             r.n = vm_rot(normalize(vec3<f32>(nb.x, nb.y - lean.x * nb.x - lean.y * nb.z, nb.z)), tax, tc0, -ts0);
         }
     }
@@ -516,11 +518,15 @@ fn vm_shade_shard(C: vec3<f32>, rd: vec3<f32>, h: VmSh, l: VcLight) -> vec3<f32>
     let up = select(1.0e3, p.y - vm_height(p.xz), vm.on);
     // (dark basalt, streaked down its length, each face its own; a broken top with the land's turf on it)
     let f = f32(h.face);
-    let st = gnoise2(vec2<f32>(dot(p.xz, vec2<f32>(0.7, -0.7)) * 0.9 + f * 7.0, p.y * 0.05));
+    let ac = dot(h.lp.xz, vec2<f32>(0.7, -0.7));
+    // (its streaks fine up close, broad from afar: the fine ones would only shimmer there)
+    let st = mix(gnoise2(vec2<f32>(ac * 0.9 + f * 7.0, h.lp.y * 0.05)), gnoise2(vec2<f32>(ac * 0.13 + f * 7.0, h.lp.y * 0.014)), smoothstep(0.7, 2.2, h.t * vs.px));
     var alb = mix(vec3<f32>(0.018, 0.017, 0.019), vec3<f32>(0.095, 0.086, 0.08), st * st);
     if (h.face == 5u) {
         alb = mix(vm_lin(vm_cols(vec2<f32>(vm_w(b), vm_w(b + 1u))).top), vec3<f32>(0.07, 0.06, 0.05), 0.4);
     }
+    // (its turf burnt and its faces thick with dust and soot, once it is in the air)
+    alb = mix(alb, vec3<f32>(0.03, 0.026, 0.024) * (0.5 + st), 0.85 * smoothstep(VM_GONE, 21.0, vm.t));
     let dl = 0.14 + 0.86 * l.day;
     let nl = saturate(dot(h.n, l.L));
     var c = alb * dl * (0.42 + 1.5 * nl * l.sun_up) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.35 * l.sun_up);
@@ -665,7 +671,7 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         // (looks down the ray through the slab for this plate's own columns, between their land's top and its thickness
         // under that: it carries the land as it stood, crags and all; its edges are the cracks')
         // (the half-size stage only has to find it, near enough)
-        let looks = 2 + i32(min((tb - ta) / max(2.5 * vs.fine * vs.fine, ta * vs.px * vs.fine), select(30.0, 60.0, vs.fine < 1.5)));
+        let looks = 2 + i32(min((tb - ta) / max(2.5 * vs.fine, ta * vs.px), select(44.0, 60.0, vs.fine < 1.5)));
         let dtl = (tb - ta) / f32(looks);
         for (var k = 0; k < looks; k = k + 1) {
             let t = ta + dtl * (f32(k) + 0.1);
@@ -802,7 +808,7 @@ fn vm_surface(C: vec3<f32>, rd: vec3<f32>, scene_len: f32, col: vec3<f32>, stage
         o.t = sh.t;
         o.id = f32(sh.i + 101u);
         if (stage != 1u) {
-            o.c = mix(vm_shade_shard(C, rd, sh, l), vc_haze(rd, l), ap);
+            o.c = mix(vm_shade_shard(C, rd, sh, l), vc_haze(rd, l), select(0.3, 1.0, vm.on) * ap);
         }
         return o;
     }
