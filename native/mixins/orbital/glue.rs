@@ -1295,10 +1295,14 @@ pub(super) fn perform_command(game: &mut Game<'_>, command: &str, ran: &mut bool
 }
 
 /// `/orbital …` heard on the server: for the window, which runs the mod, when the owner sent it (a guest's own window
-/// runs theirs, and one without the mod has none: it must not change the host's game). True when it was the owner's.
+/// runs theirs, and one without the mod has none: it must not change the host's game). The owner's console runs inside
+/// the owner's own player swap, so `lan_acting` alone doesn't tell them from a guest. True when it was the owner's.
 fn from_owner(game: &Game<'_>, line: &str) -> bool {
-    if game.lan_acting.is_some() {
-        return false;
+    if let Some(conn) = game.lan_acting {
+        let sender = game.lan.as_ref().and_then(|l| l.hub.guest(conn)).map(|g| g.uuid);
+        if sender.is_none() || sender != game.serving.as_ref().map(|s| s.owner) {
+            return false;
+        }
     }
     if let Ok(mut c) = SERVER_COMMANDS.lock() {
         c.push(line.to_owned());
