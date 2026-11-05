@@ -178,6 +178,25 @@ fn fw_ripple(r: f32, t: f32) -> f32 {
         + 6.4 * fw_group(r2, t - 10.2) - 8.4 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
 }
+// The droplet's height a little after it touches (fold.wgsl's fd_meld, in step) and the land at its foot: as water does, the
+// land reaches up to meet the drop in a small lip, which runs out as the neck widens and closes in over the drop's top.
+fn fw_sink(a: f32, R: f32) -> f32 {
+    return R - a * (2.5 + a * ((2.72 * R + 1.0 - 3.75) / 2.25));
+}
+fn fw_neck(r: f32, t: f32, R: f32) -> f32 {
+    let a = t - FW_TOUCH;
+    if (a <= 0.0 || a > 1.8 || r > R * 3.0) {
+        return 0.0;
+    }
+    // (the drop's width where it meets the land: fold.wgsl's fd_prof)
+    let y = clamp(-fw_sink(a, R) / R, -1.0, 1.72);
+    let b = 1.72 - y;
+    let q = 0.25773 + y * (0.09111 + y * (-0.07338 + y * (-0.05797 + y * 0.03297)));
+    let rho = R * sqrt(max((y + 1.0) * b * b * sqrt(b) * q, 0.0));
+    let w = 1.6 + 0.18 * R;
+    let e = max(r - rho, 0.0) / w;
+    return (0.9 + 0.12 * R) * fw_ss(0.0, 0.22, a) * (1.0 - fw_ss(1.15, 1.75, a)) * exp(-e * e);
+}
 // The land past `r0` curling up and in over a tube of radius `rc`.
 fn fw_tube(R: f32, Y: f32, r0: f32, rc: f32, fmax: f32) -> vec2<f32> {
     let u = R - r0;
@@ -267,7 +286,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
-    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t);
+    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, t, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0));
     // ---- the island: left where it is ------------------------------------------------------------------------------------
     let dm = length(Q.xz - c.me.xz);
     if (dm < FW_ISLE && copy == 0u) {
@@ -397,6 +416,37 @@ fn fw_iridesce(col: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, w: f32) -> vec3<f32
     let ang = 0.63 * FW_IRID * w * bands / 1.6;
     return fw_hue(col, ang, 1.0 + 0.26 * FW_IRID * w);
 }
+// ---- the water's look: small waves are seen by their slope, what they reflect, long before their height shows ------------
+const FW_SHEEN: f32 = 1.0;
+fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32) -> vec3<f32> {
+    let a = t - FW_TOUCH;
+    let e = 1.5;
+    let slope = (fw_ripple(r + e, t) - fw_ripple(max(r - e, 0.0), t)) / (2.0 * e);
+    let D = Q.xz / max(r, 0.5);
+    let N = normalize(vec3<f32>(-slope * D.x, 1.0, -slope * D.y));
+    let V = at / max(length(at), 0.01);
+    let L = globals.sun.xyz;
+    let day = fw_ss(-0.1, 0.2, L.y);
+    let sky = mix(globals.fog_color.rgb, globals.sky_color.rgb, 0.5);
+    // (the sun's light across the slope, then the sky's in it, more the flatter it is seen: both only what the wave changes)
+    let nv = max(dot(N, -V), 0.0);
+    let nv0 = max(-V.y, 0.0);
+    let fres = pow(1.0 - nv, 5.0) - pow(1.0 - nv0, 5.0);
+    var col = colIn * (1.0 + FW_SHEEN * 1.6 * day * (dot(N, L) - L.y));
+    col = col + sky * clamp(fres, -0.25, 0.5) * 0.9 * FW_SHEEN;
+    // ---- the droplet's metal spreading from the contact, thin as a film, then taken into the land ----------------------------
+    let ang = atan2(Q.z, Q.x);
+    let rf = R + 40.0 * (1.0 - exp(-a / 1.5)) + 2.5 * sin(ang * 5.0 + 1.0) + 1.5 * sin(ang * 11.0 - 2.0);
+    let film = fw_ss(rf, rf - 9.0, r) * fw_ss(0.0, 0.25, a) * (1.0 - fw_ss(8.4, 11.0, t));
+    if (film > 0.002) {
+        let m = reflect(V, N);
+        let env = mix(globals.fog_color.rgb, globals.sky_color.rgb, fw_ss(0.0, 0.55, m.y));
+        let glint = pow(max(dot(m, L), 0.0), 90.0) * 2.0 * day;
+        let metal = env * vec3<f32>(0.92, 0.95, 1.0) + vec3<f32>(glint);
+        col = mix(col, metal, film * (0.5 + 0.45 * pow(1.0 - nv, 3.0)));
+    }
+    return col;
+}
 // ---- the sponge: is a point of a unit block a hole? (a Menger sponge, three levels) --------------------------------------
 fn fw_hole(p: vec3<f32>) -> bool {
     var q = fract(p);
@@ -498,6 +548,10 @@ fn world_fragment(f: Fragment) -> Painted {
         let n = fw_hash(floor(Q.xz * 0.5) + floor(Q.y * 0.5));
         let rock = mix(vec3<f32>(0.1, 0.085, 0.08), vec3<f32>(0.24, 0.19, 0.16), n) * (0.6 + 0.4 * fw_ss(40.0, 0.0, Q.y + 30.0));
         col = mix(col, rock, 0.92 * shown);
+    }
+    // ---- the water's look ------------------------------------------------------------------------------------------------
+    if (t > FW_TOUCH && t < FW_TEAR) {
+        col = fw_wet(col, Q, r, t, f.at, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0));
     }
     // ---- the iridescence: anchored to the land, spread with the wave, strongest on the creases and the petals -------------
     if (FW_IRID > 0.0) {

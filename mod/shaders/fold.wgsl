@@ -81,7 +81,10 @@ fn fd_erf(x: f32) -> f32 {
 // its side (d.rip, d.ph). It keeps its shape and sinks; the land's depth hides it.
 fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let a = t - FD_TOUCH;
-    return vec3<f32>(R - a * (FD_VT + a * (((FD_TIP + 1.0) * R + 1.0 - FD_VT * 1.5) / 2.25)), 0.0, 0.0);
+    // (it doesn't flatten: it sinks, drawn in faster and faster, top last; fold_warp.wgsl's fw_sink in step. Waves run up it
+    // from the neck, as they do up a drop going into water, and are gone before it is)
+    let h = R - a * (FD_VT + a * (((FD_TIP + 1.0) * R + 1.0 - FD_VT * 1.5) / 2.25));
+    return vec3<f32>(h, 0.05 * (1.0 - exp(-a * 9.0)) * exp(-a * 1.6), a * 16.0);
 }
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
