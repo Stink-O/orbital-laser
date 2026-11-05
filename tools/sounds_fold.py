@@ -13,7 +13,7 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
   wobble    3.49 s: the droplet's wobble heard close, tiny and wet: small bubbles and a heavy skin, 3.5 Hz, dying by 4.4.
   air       ~3.9 s (late by the distance, 0.5 s at 170 blocks): the air that kept going: a soft whump, a rush going past
             and off, then dust hissing over the ground, thinning to nothing by ~6.9 s.
-  meld      6 s: a weighty soft contact, a closed hum, heavy liquid slumping in to about 7.5.
+  meld      5.6 s: the land rising to meet it, faintly; 6 s a weighty soft contact, a closed hum, heavy liquid slumping in to about 7.5.
   ripple    7.5 s: the land moving like water: low heaves, each bigger, slow water and wet soil over them.
   score     12 s: the creases: ice. Lone cracks, stones skipping away, cracks racing, ever thicker, and from 16 s the tears.
   unravel   19 s: long falling glissandi off a thick sheet, tearing, ring after ring letting go.
@@ -63,12 +63,13 @@ CREASES = [35.0, 35.6, 36.3, 37.1, 38.0, 39.0]
 BOUNCES = [(41.1, 1.0), (42.0, 0.6), (42.8, 0.36), (43.7, 0.2)]
 PULSES = [7.5, 8.6, 9.6, 10.6, 11.5]  # the water's pulses of the middle, from when the droplet is absorbed
 SWELLS = [11.25, 12.25, 13.2, 14.2]   # the swell under a player at 170 blocks, a crest about 0.55 s after each; biggest ~12.8
+MELD_LEAD = 0.4                       # meld starts this far before contact, as the land rises to meet the droplet (5.6 s)
 FALL = 1.15                           # the last fall's air, ending just before the slam
 AIR_LATE = 0.5                        # the air's sound after the stop, at 170 blocks (the plan uses the real distance)
 
 # (time, file, volume, pitch), as fold_plan plays them
 EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0),
-          (TOUCH, "meld", 1.0, 1.0), (RIPPLE, "ripple", 1.0, 1.0), (SCORE, "score", 1.0, 1.0),
+          (TOUCH - MELD_LEAD, "meld", 1.0, 1.0), (RIPPLE, "ripple", 1.0, 1.0), (SCORE, "score", 1.0, 1.0),
           (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (SEAL, "foldown", 1.0, 1.0),
           (DING, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
           *[(t, f"bounce{k + 1}", 1.0, 1.0) for k, (t, _) in enumerate(BOUNCES)],
@@ -610,24 +611,30 @@ def air():
 
 
 def meld():
-    d = 2.4
+    lead = MELD_LEAD
+    d = 2.4 + lead
     n = n_of(d)
     t = times(n)
-    t0 = 0.03
+    t0 = lead
     u = np.maximum(t - t0, 0)
     f = 40.0 + 22.0 * np.exp(-u / 0.05)
     ph = 2 * np.pi * np.cumsum(f * (t >= t0)) / SR
     hum = (np.sin(ph) + 0.4 * np.sin(2 * ph + 0.8) + 0.16 * np.sin(3 * ph + 1.9)) * (1 - np.exp(-u / 0.02)) * np.exp(-u / 0.6) * (t >= t0)
     press = bn(n, 70, 340) * np.exp(-u / 0.09) * (1 - np.exp(-u / 0.006)) * (t >= t0) * 1.5     # (weight, braking over 0.25 s: nothing sharp)
-    L = hum + press
+    # (the land rising to meet it from 5.6 s: a slow breath of weight, earth shifting in it, held till the mound goes)
+    rise = ss(0.0, lead + 0.12, t) * (1 - ss(lead + 0.25, lead + 1.1, t))
+    ph2 = 2 * np.pi * np.cumsum(27.0 + 7.0 * ss(0.0, lead, t)) / SR
+    swell = (np.sin(ph2) + 0.3 * np.sin(2 * ph2 + 0.5)) * rise * 0.16
+    swell += bn(n, 45, 170) * np.clip(grn(d, 22.0, (0.03, 0.08)), 0, 4) * rise * 0.022
+    L = hum + press + swell
     R = L.copy()
     # (it slumps in like two lava-lamp blobs joining, to about 7.5: fat slow bubbles, a few small)
-    for at, f0, a in ((0.28, 92, 0.42), (0.62, 74, 0.5), (0.95, 118, 0.3), (1.25, 66, 0.42), (1.5, 58, 0.36)):
+    for at, f0, a in ((lead + 0.28, 92, 0.42), (lead + 0.62, 74, 0.5), (lead + 0.95, 118, 0.3), (lead + 1.25, 66, 0.42), (lead + 1.5, 58, 0.36)):
         y = bubble(f0, a, rng().uniform(-0.2, -0.05), 0.03)                        # (sinking: the pitch falls, not rises)
         l, r = pan(y, rng().uniform(-0.25, 0.25))
         P.put(L, l, at)
         P.put(R, r, at)
-    bubbles(L, R, 0.3, 1.7, lambda s: 8.0 * np.exp(-s / 0.9), 200, 620, 0.05, 0.45)
+    bubbles(L, R, lead + 0.3, lead + 1.7, lambda s: 8.0 * np.exp(-s / 0.9), 200, 620, 0.05, 0.45)
     L, R = low_mono(*verb(L, R, 0.18, length=1.6, darken=(900, 200), decay=0.7), 170.0)
     out("meld", L, R, -22.0, tail=0.3)
 
