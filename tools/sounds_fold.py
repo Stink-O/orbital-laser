@@ -639,7 +639,7 @@ def ripple():
     L, R = np.zeros(n), np.zeros(n)
     # (the five pulses, each stronger, then the swell itself passing under the player, dying under the scoring)
     for t_, f, dur, amp in zip((*PULSES, *SWELLS), (46.0, 42.0, 38.0, 34.0, 30.0, 31.0, 29.0, 31.0, 33.0), (0.9, 1.0, 1.0, 1.0, 1.1, 1.6, 1.7, 1.5, 1.3),
-                               (0.14, 0.3, 0.46, 0.66, 0.6, 0.6, 1.0, 0.66, 0.3)):
+                               (0.14, 0.3, 0.46, 0.6, 0.42, 0.34, 1.0, 0.62, 0.28)):
         at = t_ - RIPPLE
         m = n_of(dur)
         s = times(m)
