@@ -305,7 +305,7 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     let off = v.xz * sc - (C.xz + bend);
     let hx = length(off);
     // (tight off the tip; where the air it has dragged down meets the land it spreads)
-    let flare = 34.0 * fd_ss(32.0, 0.0, gy) * fd_ss(0.0, 0.1, after);
+    let flare = 10.0 * fd_ss(26.0, 0.0, gy) * fd_ss(0.0, 0.1, after);
     let rad = mix(0.3 * d.R, 0.72 * d.R + 1.5, 1.0 - exp(-age / 0.14)) + 4.2 * sqrt(age) + flare;
     if (hx >= rad * 3.4) {
         return m;
@@ -490,12 +490,12 @@ fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, lan
     let ds = (s1 - s0) / f32(N);
     var T = 1.0;
     var C = vec3<f32>(0.0);
-    let alb = mix(vec3<f32>(0.5, 0.43, 0.34), max(land.rgb * 1.2, vec3<f32>(0.03)), 0.0);
+    let alb = vec3<f32>(0.34, 0.29, 0.23);
     for (var i = 0; i < N; i += 1) {
         let p = v * (s0 + (f32(i) + jit) * ds) - G;
         // (its height over the land: the land under this pixel's own end, near it)
         let dl = p.xz - land.zw;
-        let gh = land.x * exp(-dot(dl, dl) / 1600.0);
+        let gh = clamp(land.x, -14.0, 14.0) * exp(-dot(dl, dl) / 900.0);
         let y = p.y - gh;
         if (y < -1.5) {
             continue;
@@ -513,7 +513,7 @@ fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, lan
         let ht = top * (0.5 + 1.0 * n);
         let roll = exp(-x * x * 1.2) * exp(-pow(max(y, 0.0) / ht, 2.0));
         let haze = 0.05 * fd_ss(0.2, -1.2, x) * exp(-max(y, 0.0) / (top * 0.5));
-        let dens = max(fd_ss(0.3, 0.7, n + 0.25 * exp(-x * x)) * roll, haze) * fade;
+        let dens = max(fd_ss(0.36, 0.62, n + 0.2 * exp(-x * x)) * roll, haze) * fade;
         if (dens < 0.003) {
             continue;
         }
