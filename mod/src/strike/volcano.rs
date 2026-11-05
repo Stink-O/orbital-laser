@@ -86,7 +86,7 @@ pub(super) struct Hf {
     h: Vec<f32>,
 }
 impl Hf {
-    fn set(&mut self, heights: &[Option<f64>], reach: f64) {
+    pub(super) fn set(&mut self, heights: &[Option<f64>], reach: f64) {
         let (sum, cnt) = heights.iter().flatten().fold((0.0, 0.0), |(s, c), &h| (s + h, c + 1.0));
         let guess = if cnt > 0.0 { sum / cnt } else { 0.0 };
         self.n = VC_HN;
