@@ -1552,7 +1552,9 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
             }
             let Some(i) = pick else { break };
             let c = Work::cost(&wk.jobs[i]);
-            if spent > 0.0 && (spent + c > FD_BUDGET || crate::meter::full()) {
+            // (a job waits for the next tick unless it fits in this one: what else the tick did and a whole job on top of
+            // it went over half a tick's fuel, now and then, on real land)
+            if (spent > 0.0 && spent + c > FD_BUDGET) || !crate::meter::room(((c * FD_UNIT) as u64).min(10_000_000)) {
                 break;
             }
             spent += c;
