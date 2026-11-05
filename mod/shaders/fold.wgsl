@@ -140,15 +140,15 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     if (t < FD_STOP) {
         h = stop_h + fd_fall(FD_STOP - t);
     } else if (t < FD_TOUCH) {
-        // (its centre stops, its surface doesn't: from no change at all in the first frame, a squash its volume kept, 3.5 Hz,
-        // gone in a second; a ripple running up it to the tip, and the tip left swaying)
+        // (its centre stops, its surface doesn't: from no change at all in the first frame, one heavy settle and a smaller one
+        // back, 2.2 Hz, its volume kept, gone in half a second; a little ripple up it to the tip, and the tip left swaying a little)
         let a = t - FD_STOP;
-        let e = exp(-a * 5.0);
-        sy = 1.0 - 0.16 * e * sin(a * 22.0);
+        let e = exp(-a * 5.5);
+        sy = 1.0 - 0.055 * e * sin(a * 14.0);
         sx = 1.0 / sqrt(sy);
-        rip = 0.04 * e * (1.0 - exp(-a * 30.0));
-        ph = a * 40.0;
-        sway = side * 0.1 * e * sin(a * 15.0);
+        rip = 0.015 * e * (1.0 - exp(-a * 30.0));
+        ph = a * 24.0;
+        sway = side * 0.035 * e * sin(a * 10.0);
         if (t > FD_HANG) {
             // (let go: from rest where it stopped, under gravity, reaching the land on FD_TOUCH whatever its size: fd_vc)
             let u = (t - FD_HANG) / (FD_TOUCH - FD_HANG);
