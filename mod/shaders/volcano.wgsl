@@ -113,8 +113,8 @@ fn vc_set_state(time: f32) {
     s.rf = vc_front(max(s.c, 0.0));
     s.dRf = 25.0 + 35.0 * exp(-max(s.c, 0.0) / 14.0);
     s.rfm = s.rf + 230.0;
-    s.ftop = 340.0 + 1250.0 * smoothstep(VC_LIFT - 4.0, VC_RED - 2.0, time);
-    s.thin = smoothstep(VC_RED, VC_LEN - 0.6, time);
+    s.ftop = 340.0 + 760.0 * smoothstep(VC_LIFT - 4.0, VC_RED - 2.0, time);
+    s.thin = pow(smoothstep(VC_RED, VC_LEN - 0.6, time), 1.3);
     s.cov = smoothstep(2.0, 16.0, u) * (1.0 - s.thin);
     s.px = frame.view_params.w / frame.resolution.y;
     s.fine = 1.0;
@@ -249,7 +249,7 @@ fn vc_flow(q: vec3<f32>, rho: f32, ang: f32, land: f32) -> vec2<f32> {
     let lift = smoothstep(VC_LIFT - 8.0, VC_RED, vs.t);
     if (lift > 0.0) {
         let tw = gnoise2(vec2<f32>(ang * 3.3, rho / 600.0));
-        top = top + 980.0 * lift * smoothstep(120.0, 620.0, ep) * smoothstep(0.34, 0.74, tw + 0.5 * lob);
+        top = top + 560.0 * lift * smoothstep(120.0, 620.0, ep) * smoothstep(0.34, 0.74, tw + 0.5 * lob);
     }
     let d = vc_smax((h - top) * 0.75, -e * 0.85, 70.0);
     return vec2<f32>(d, e);
@@ -362,6 +362,12 @@ fn vc_vel(q: vec3<f32>, rho: f32, wc: f32, wu: f32, wf: f32) -> vec4<f32> {
         let wr = exp(-dot(uv, uv) / (rr * rr));
         ur = mix(ur, 0.13 * uv.y, wr);
         uy = mix(uy, -0.13 * uv.x, wr);
+        if (vs.c > 0.0) {
+            // (once it has lost its buoyancy all of it comes down, faster and faster, spreading at its foot)
+            let fall = smoothstep(0.0, 3.0, vs.c);
+            uy = mix(uy, -30.0 - 16.0 * vs.c, fall * smoothstep(0.0, 200.0, hy));
+            ur = ur + 40.0 * fall * (1.0 - smoothstep(0.0, 300.0, hy));
+        }
         vr = vr + wc * ur;
         vy = vy + wc * uy;
         gr = gr + wc * vs.dRb / vs.Rb * (1.0 - smoothstep(0.8 * vs.Hd, 1.4 * vs.Hd, hy));
@@ -921,12 +927,12 @@ fn vc_fire_c(T: f32) -> vec3<f32> {
 // first, cooling from the top down into dark ash. .y the broad glow round them, what the smoke nearby is lit by.
 fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
     let a = vs.a;
-    if (a <= 0.0 || vs.c > 9.0) {
+    if (a <= 0.0 || vs.c > 14.0) {
         return vec2<f32>(0.0);
     }
     // (how high it burns: nearly all the blast, then the lower half of what stands)
     let hf = mix(0.92 * vs.Hd, 0.5 * min(vs.H, 1500.0), smoothstep(5.0, 15.0, a));
-    let zone = (1.0 - smoothstep(0.45 * hf, 1.2 * hf, hy)) * (1.0 - smoothstep(1.0, 8.0, vs.c));
+    let zone = (1.0 - smoothstep(0.45 * hf, 1.2 * hf, hy)) * (1.0 - smoothstep(4.0, 14.0, vs.c));
     if (zone <= 0.0) {
         return vec2<f32>(0.0);
     }
@@ -950,7 +956,7 @@ fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
 // The air's colour along a ray: the sky's, gone dirty and red low down as the sheet closes over.
 fn vc_band(rd: vec3<f32>) -> vec3<f32> {
     let e = saturate(rd.y * 3.2);
-    return mix(vec3<f32>(0.62, 0.27, 0.11), vec3<f32>(0.2, 0.07, 0.038), smoothstep(0.0, 1.0, e));
+    return mix(vec3<f32>(0.46, 0.195, 0.08), vec3<f32>(0.16, 0.056, 0.03), smoothstep(0.0, 1.0, e));
 }
 fn vc_haze(rd: vec3<f32>, l: VcLight) -> vec3<f32> {
     let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -974,6 +980,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     var below = 0.0;
     var inband = false;
     var face = 1.0;
+    var hs = pcg(u32(vc_px.x) ^ (u32(vc_px.y) << 13u) ^ (u32(fract(time * 7.0) * 1024.0) << 3u));
     var wmid = 0.0;
     var tmid = 0.0;
     let gl0 = vc_flash(0, l.seed);
@@ -1006,23 +1013,16 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             inband = false;
             continue;
         }
-        // (every stride jittered, its own way along a golden-ratio sequence, and the first into the band too: a stride that
-        // lands alike from pixel to pixel slices the smoke into contours)
-        let jt = fract(j + 0.618034 * f32(i));
+        // (every stride jittered by white noise, the first into the band too: a stride that lands alike from pixel to pixel
+        // slices the smoke into contours, and a pattern of jitter shows as a halftone over thin smoke)
+        hs = pcg(hs + u32(i));
+        let jt = f32(hs & 0xffffu) / 65535.0;
         if (!inband) {
             inband = true;
             t = t + jt * max(3.2, t * 0.0042);
             continue;
         }
         let st = max(3.2, t * 0.0034) * (0.7 + 0.6 * jt) * (1.0 + 3.0 * vs.thin);
-        // (going out to the thin end of it)
-        var thin = 1.0;
-        if (vs.thin > 0.0) {
-            // (each place at its own time, a second or two either way)
-            let g = gnoise3((q + vec3<f32>(0.0, 0.0, time * 6.0)) * (1.0 / 900.0));
-            thin = 1.0 - smoothstep(0.0, 1.0, vs.thin * 1.45 + 2.2 * (g - 0.5) - 0.25);
-            thin = thin * (1.0 - smoothstep(VC_LEN - 2.0, VC_LEN - 0.6, time));
-        }
         let steam = (1.0 - smoothstep(-0.6, 0.0, vs.a)) * step(b.dc, min(b.df, b.du));
         var den = 0.0;
         var sd = vec4<f32>(b.d, 0.5, 8.0, 0.5);
@@ -1035,21 +1035,28 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             let ramp = saturate(-sd.x / edge);
             den = ramp * mix(saturate(0.22 + 1.5 * sd.w), 1.0, ramp);
         }
-        // (the wall of ash torn into rolling banks behind its head, gaps opening through it as it passes)
+        // (the wall of ash torn into rolling banks behind its head, rolling past as it comes on, thinning to nothing a few
+        // seconds behind the front, all but the clouds lifting off it)
         var ext = 0.15;
+        var wb = 0.0;
         if (b.df < 40.0) {
             let dir = q.xz / max(b.rho, 1.0);
-            let qb = vec3<f32>(q.x - dir.x * vs.rf * 0.7, q.y * 1.4, q.z - dir.y * vs.rf * 0.7);
-            let bank = 0.65 * gnoise3(qb * (1.0 / 170.0)) + 0.35 * gnoise3(VC_R2 * qb * (1.0 / 66.0));
-            let open = smoothstep(120.0, 520.0, b.e);
-            let th = mix(0.34, 0.6, smoothstep(300.0, 1000.0, b.e));
-            den = den * mix(1.0, smoothstep(th, th + 0.1, bank), open);
-            ext = mix(0.15, 0.03, open);
+            let hb = q.y - b.land;
+            let qb = vec3<f32>(q.x - dir.x * vs.rf * 1.6, hb * 1.25 - 26.0 * time, q.z - dir.y * vs.rf * 1.6);
+            let bank = 0.62 * gnoise3(qb * (1.0 / 150.0) + vec3<f32>(0.0, 0.0, 0.11 * time)) + 0.38 * gnoise3(VC_R2 * qb * (1.0 / 58.0));
+            wb = smoothstep(-5.0, 35.0, b.e);
+            // (the ash lifting clear: the air under it empties, the land shows, a rolling ceiling over it)
+            let lf = smoothstep(VC_LIFT - 8.0, VC_LIFT + 6.0, time) * smoothstep(150.0, 520.0, b.e);
+            let base = lf * (250.0 + 340.0 * (bank - 0.5));
+            den = den * smoothstep(base - 40.0, base + 110.0, hb);
+            let lifted = lf * smoothstep(180.0, 420.0, hb);
+            let th = mix(mix(0.36, 0.56, smoothstep(40.0, 560.0, b.e)), 0.36, lifted);
+            den = den * mix(1.0, smoothstep(th - 0.08, th + 0.2, bank), wb);
+            ext = mix(0.15, 0.05, wb);
         }
         if (steam > 0.0) {
             ext = mix(ext, 0.016, steam);
         }
-        den = den * thin;
         if (den > 1.0e-4) {
             let hy = q.y;
             let hyl = hy - select(0.0, vc_land(q.xz), hy < 600.0);
@@ -1128,8 +1135,10 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             let fb = (1.0 - smoothstep(VC_COLLAPSE, VC_COLLAPSE + 6.0, time)) * on;
             fire = fire + ash * vec3<f32>(3.4, 0.95, 0.15) * below * exp(-max(hyl, 0.0) / 300.0) * fb;
             if (b.e > -60.0) {
-                // (the flows, close behind the front and low down: the hot base of the cloud showing in its creases)
+                // (the flows, close behind the front and low down: the hot base of the cloud showing in its creases; inside the
+                // wall, the banks lit red from under by what they have laid down)
                 let h = hy - b.land;
+                fire = fire + ash * vec3<f32>(1.5, 0.36, 0.09) * wb * (0.03 + exp(-max(h, 0.0) / 70.0)) * (1.0 - smoothstep(VC_LIFT, VC_RED, time));
                 let crease = (1.0 - sd.y) * (1.0 - sd.y);
                 let ember = exp(-max(h, 0.0) / 26.0) * (1.0 - smoothstep(380.0, 1400.0, b.rho)) * exp(-max(b.e, 0.0) / 170.0) * smoothstep(40.0, 200.0, t);
                 fire = fire + vec3<f32>(1.0, 0.2, 0.03) * ember * crease * 1.6 * wf;
@@ -1140,10 +1149,6 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 fire = fire + vec3<f32>(0.2, 0.045, 0.01) * gl * smoothstep(0.0, 6.0, vs.a) * wu;
             }
             c = c + fire;
-            // (as it thins, the light through it red)
-            if (vs.thin > 0.0) {
-                c = mix(c, vec3<f32>(0.3, 0.1, 0.05) * l.sun_up + c * 0.5, vs.thin);
-            }
             // (the lightning in it: along its channel, lighting the cloud a long way round)
             var lg = 0.0;
             if (gl0.k > 0.02) {
@@ -1161,7 +1166,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 let dd = gl2.p + gw2 * g.z - q;
                 lg = lg + gl2.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
             }
-            c = c + (min(alb, vec3<f32>(0.2)) * 5.0 + 0.02) * vec3<f32>(0.72, 0.72, 1.0) * lg * 2.4;
+            c = c + (min(alb, vec3<f32>(0.2)) * 3.4 + 0.012) * vec3<f32>(0.72, 0.72, 1.0) * lg * 2.4;
             let al = 1.0 - exp(-den * ext * st);
             o.c = o.c + o.tr * al * c;
             tmid = tmid + o.tr * al * t;
@@ -1172,13 +1177,21 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     }
     // (what the march left of the land behind it, once it stopped for being nearly opaque, is nothing)
     o.tr = saturate((o.tr - 0.026) / 0.974);
+    // (going out to the thin end of it: at the end all of it lets the light through, more here and there, red as it goes.
+    // Thinned in the density a cloud this deep stays opaque to the last and then clears along a hard edge)
+    if (vs.thin > 0.0 && o.tr < 0.999) {
+        let g = 0.6 * gnoise3(rd * 2.3 + vec3<f32>(0.0, 0.0, time * 0.03)) + 0.4 * gnoise3(VC_R1 * rd * 6.1 + vec3<f32>(time * 0.05));
+        let x = 1.0 - smoothstep(0.0, 1.0, vs.thin * 1.2 + 0.55 * (g - 0.5) - 0.1);
+        o.c = mix(o.c, vec3<f32>(0.1, 0.04, 0.026) * (1.0 - o.tr) * (0.2 + 0.8 * l.sun_up), 0.75 * vs.thin) * x;
+        o.tr = 1.0 - (1.0 - o.tr) * x;
+    }
     if (o.tr < 0.999) {
         let dist = tmid / max(wmid, 1.0e-4);
         if (o.tr < 0.6) {
             o.t = dist;
         }
         // (the air's haze over it)
-        let ap = 1.0 - exp(-max(dist - 900.0, 0.0) / mix(9000.0, 3400.0, vs.cov));
+        let ap = 1.0 - exp(-max(dist - 1600.0, 0.0) / mix(9000.0, 3800.0, vs.cov));
         o.c = mix(o.c, vc_haze(rd, l) * (1.0 - o.tr), ap * mix(0.8, 0.97, vs.cov));
     }
     return o;
@@ -1357,9 +1370,13 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
             col = col + scene * vec3<f32>(1.5, 0.42, 0.1) * (0.9 * exp(-max(rg - vs.Rb, 0.0) / 240.0)) * lit * k;
         }
     }
+    if (stage != 1u && !sky && vs.cov > 0.0) {
+        let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
+        col = mix(col, vec3<f32>(lum) * vc_band(vec3<f32>(0.0)), (1.0 - exp(-max(scene_len - 250.0, 0.0) / 1500.0)) * smoothstep(0.1, 0.7, vs.cov));
+    }
     if (stage != 1u && sky) {
         // (what sky is left, in along the horizon under the sheet: dirty with ash, dimmed)
-        let cv = (vs.cov * 0.3 + 0.7 * smoothstep(0.0, 8.0, time - 23.0)) * smoothstep(VC_DARK - 6.0, VC_DARK + 8.0, time) * (1.0 - smoothstep(77.5, VC_LEN - 0.2, time));
+        let cv = (vs.cov * 0.3 + 0.7 * smoothstep(0.0, 8.0, time - 23.0)) * smoothstep(VC_DARK - 6.0, VC_DARK + 8.0, time) * (1.0 - smoothstep(84.0, VC_LEN - 0.2, time));
         let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
         // (its light dirty and red low down, gone by a few degrees up under the sheet's edge)
         col = mix(col, vec3<f32>(lum) * vc_band(rd), cv);
@@ -1371,7 +1388,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     var cloud_t = up_t;
     var tr_here = select(1.0, up.a, stage == 2u);
     if (stage != 2u) {
-        let j = mix(ign(in.position.xy + vec2<f32>(fract(time * 7.0) * 37.0, 0.0)), 0.5, smoothstep(0.0, 0.1, vs.thin));
+        let j = 0.5;
         let m = vc_march(C, rd, scene_len, j, l);
         cloud_t = m.t;
         // (the bombs' smoke, in front of the cloud or behind it)
@@ -1453,11 +1470,19 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         eye_e = fe.y;
         let over = max(eq.y - vc_land(eq.xz), 0.0);
         if (eye_e > 0.0 && over < 400.0) {
-            let V = 16.0 * exp(eye_e / 165.0) * (1.0 + 30.0 * smoothstep(VC_RED - 5.0, VC_LEN - 2.0, time));
-            let L = min(min(scene_len, cloud_t), 6000.0);
+            // (engulfed: how long since the front went over, by how fast it came. Six or seven seconds of it, then it thins)
+            let tau = eye_e / vs.dRf;
+            let thick = smoothstep(0.0, 0.9, tau) * (1.0 - smoothstep(4.0, 8.5, tau)) * (1.0 - smoothstep(180.0, 400.0, over));
+            // (how far one can see, thinning on after it has gone by, to nothing as the ash goes)
+            let clear = smoothstep(8.0, 16.0, tau);
+            let V = mix(mix(3000.0, 26000.0, clear), 110.0, thick) / max(1.0 - vs.thin, 1.0e-2);
+            let Lh = 1800.0;
+            let L = min(min(select(Lh + (6000.0 - Lh) * smoothstep(0.0, 0.15, rd.y), min(scene_len, Lh), !sky), cloud_t), 6000.0);
             let toV = normalize(C + vec3<f32>(0.0, 40.0, 0.0));
-            let vg = pow(saturate(dot(rd, toV)), 6.0) * (1.0 - smoothstep(VC_LIFT, VC_RED, time));
-            let fogc = (vec3<f32>(0.03, 0.021, 0.016) * (0.3 + day) + vec3<f32>(0.24, 0.05, 0.012) * vg * saturate(eye_e / 500.0));
+            let vg = pow(saturate(dot(rd, toV)), 4.0) * (1.0 - smoothstep(VC_LIFT, VC_RED, time));
+            // (the murk lit from under it, red down low; towards the vent the glow of all that is still burning)
+            let low = 1.0 - smoothstep(-0.05, 0.5, rd.y);
+            let fogc = vec3<f32>(0.032, 0.019, 0.014) * (0.3 + day) + vec3<f32>(0.1, 0.023, 0.006) * low * thick + vec3<f32>(0.2, 0.05, 0.01) * vg * thick;
             col = mix(col, fogc, (1.0 - exp(-L / V)) * smoothstep(0.0, 30.0, eye_e));
         }
     }
@@ -1466,8 +1491,8 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let wall = smoothstep(-40.0, 40.0, eye_e);
         let dirv = normalize(vec3<f32>(eq.x, 0.0, eq.z) + vec3<f32>(1.0e-3));
         if (wall > 0.0) {
-            let eb = vc_specks(rd, cam * 0.0 + vec3<f32>(0.0, -time * 3.0, 0.0), dirv * 22.0 + vec3<f32>(0.0, 6.0, 0.0), min(scene_len, 40.0), time, 0.32, 1.3);
-            let ek = wall * (1.0 - smoothstep(VC_LIFT - 2.0, VC_LIFT + 4.0, time));
+            let eb = vc_specks(rd, cam * 0.0 + vec3<f32>(0.0, -time * 3.0, 0.0), dirv * 34.0 + vec3<f32>(0.0, 7.0, 0.0), min(scene_len, 40.0), time, 0.42, 1.5);
+            let ek = wall * (1.0 - smoothstep(6.0, 11.0, max(eye_e, 0.0) / vs.dRf));
             col = col + vec3<f32>(2.4, 0.7, 0.12) * eb * ek * k;
         }
         let ash = wall * (1.0 - smoothstep(VC_RED + 2.0, VC_LEN - 0.5, time)) * smoothstep(VC_COLLAPSE, VC_COLLAPSE + 8.0, time);
@@ -1492,7 +1517,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let cth = saturate(dot(rd, sun));
         let th = sqrt(max(2.0 * (1.0 - cth), 0.0));
         let show = smoothstep(VC_RED - 7.0, VC_RED, time) * (1.0 - smoothstep(VC_LEN - 3.0, VC_LEN - 0.3, time));
-        let vis = 1.0 - exp(-7.0 * (tr_here + 0.05));
+        let vis = max(1.0 - exp(-7.0 * (tr_here + 0.05)), 0.9);
         let disc = 1.0 - smoothstep(0.052, 0.058, th);
         col = col + (vec3<f32>(1.15, 0.07, 0.02) * disc + vec3<f32>(0.42, 0.05, 0.02) * exp(-th / 0.22) + vec3<f32>(0.12, 0.03, 0.012) * exp(-th / 0.8)) * show * vis * sun_up;
     }
