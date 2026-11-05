@@ -373,6 +373,15 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   far tiles' merged faces can't be cut by a tear. Only the player's island is a real break, its faces cut at the pixel.
   The beats and rings are kept in step by `the_warp_keeps_the_beats`. Falling blocks aren't entities to `@e`: `kill` misses them,
   and a no-gravity one is timed out through its `Time`, as `fd_peel`'s are.
+- **The Fold's crater is made behind `render.hold-world`** (the fork's `gfx/hold.rs`, API 11): from `FD_HIDDEN.start` the terrain on
+  screen stays as it was, the world changes under it, and every changed section swaps in on the one frame at `FD_REVEAL` (some
+  4,600 sections, 220 MiB, under 4 ms). The hold ends by itself after 30 s, past 1 GiB and on clear-post, a stop, another
+  dimension. Every chunk is edited once, on its one tick (`fd_tick`): a second edit of a chunk is a second resend, nine light jobs
+  and its meshes again, and that was the 12-30 fps after the last slam. The rubble and fires gathered in `late` are handed over behind
+  the parts of the chunks they lie on (`flush`), and only once the crater's cuts are cached: an uncached heap went to 91% of a tick's fuel.
+- **Scripted input doesn't reset the game's AFK limit** (60 s without real input: 30 fps; 10 minutes: 10 fps): a strike fired by
+  script is capped part way through, in `horizon-ctl bench` and in recordings. `horizon-ctl options-set inactivityFpsLimit minimized`
+  before a measurement, `afk` after it. Real play fires with a click, and the longest strikes end before 60 s.
 - **A plan must be in time order**: playback stops at the first entry not due. `strike::plan` sorts nothing for the lasers with
   plans of their own, so each sorts its `ev` (the Fold's didn't, and its crater waited for its 49 s forceload remove).
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.

@@ -824,10 +824,11 @@ sheet's underside is painted as rock.
 
 What stays is a scar, some 340 blocks across and up to 100 deep (`strike/fold_land.rs`): the twelve-fold terraced mandala in
 glazed terracotta and concrete, smashed: tilted, dropped and burnt plates, cracks, fissures and arcs along the creases past a
-ragged heaped rim, a shaft to bedrock, blackened land out to about 250, felled trees, ejecta rays, rubble, thrown blocks at each
-slam, fires. It reads every column to its real top and goes in as one wave from the middle out while the world is a globe and a point
-(31.5-43 s), where it can't be seen, with the block edits' pacing relaxed (`FD_HIDDEN`); the island's columns wait for the
-last slam.
+ragged heaped rim, a shaft to bedrock, blackened land out to about 250, felled trees, ejecta rays, rubble, thrown blocks at
+the slam, fires. It reads every column to its real top and goes in as one wave from the middle out behind the game's hold on the
+terrain (`render.hold-world`, `FD_HIDDEN`): the land on screen stays as it was, each chunk is edited once, and the whole crater takes its
+place on one frame as the last slam lands (`FD_REVEAL`). The chunks under the player go in a quarter of a second before it, so the ground
+goes from under them with the slam; a moment's resistance takes the fall.
 
 **Photosensitivity:** the Fold bends the whole world round the player for half a minute and turns it to a dark starfield, with
 one bright flash, at the bloom, and fast jolts as the rings land. It is a strongly distorting effect: skip it if you are sensitive to those.
