@@ -2421,5 +2421,86 @@
       }
     ],
     "subtitle": "subtitles.orbital.supervolcano.report_sub"
+  },
+  "supervolcano.fountain": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/fountain",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.fountain"
+  },
+  "supervolcano.seism": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/seism",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.seism"
+  },
+  "supervolcano.rockfall1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/rockfall1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.rockfall"
+  },
+  "supervolcano.rockfall2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/rockfall2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.rockfall"
+  },
+  "supervolcano.rockfall3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/rockfall3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.rockfall"
+  },
+  "supervolcano.spatter1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/spatter1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.spatter"
+  },
+  "supervolcano.spatter2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/spatter2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.spatter"
+  },
+  "supervolcano.spatter3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/spatter3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.spatter"
+  },
+  "supervolcano.flow_in3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_in3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_in"
   }
 }
