@@ -105,7 +105,7 @@ pub(super) const FD_LAND0: f32 = FD_SEAL + 0.5;
 pub(super) const FD_LAND1: f32 = FD_SLAM[4] - 0.2;
 /// How long before its edits are due a part of the wave is worked out (the plan holds what is waiting: the wave's whole
 /// edits are too much to carry for half a minute).
-const FD_AHEAD: f32 = 17.0;
+const FD_AHEAD: f32 = 28.0;
 /// Strike seconds past which a column still not loaded is left out (logged): the forceload is given back at FD_LEN - 1.
 const FD_LAND_BY: f32 = FD_LEN - 4.0;
 /// How long, once the crater's land is in, it waits for more of the rest to come.
@@ -1282,7 +1282,7 @@ fn fd_embers(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut 
 /// All the land's work is one chain of stages, a tick each: the land read (its rings asked from the middle out and taken in
 /// as they are answered), the crater's level from it, then the parts of the wave ring by ring, each worked out FD_AHEAD
 /// before it is due. Each stage does about FD_BUDGET columns' worth (well under a tick's fuel).
-const FD_BUDGET: f64 = 700.0;
+const FD_BUDGET: f64 = 600.0;
 /// About what a unit of that work costs in instructions.
 const FD_UNIT: f64 = 15_000.0;
 /// Columns of the land's square made ready a stage.

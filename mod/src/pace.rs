@@ -19,6 +19,8 @@ const FAST_OVER_CALM: f32 = 1.15;
 pub const FLOOR: u32 = 8;
 /// The budget at or over which nothing is held back.
 pub const MAX: u32 = 96;
+/// The budget while the edits can't be seen going in (`Pace::hidden`): a wave's busiest tick and a little over.
+const HIDDEN: u32 = 130;
 /// How much of the budget a slow tick keeps, and how much a quick one adds back.
 const CUT: f32 = 0.7;
 const GROW: u32 = MAX / 16;
@@ -42,7 +44,7 @@ pub struct Pace {
     /// Cost units a tick may let through; `None` while nothing is held back.
     budget: Option<u32>,
     busy: bool,
-    /// Nothing held back while this is set: a strike whose land can't be seen going in (the Fold's, while the world is a
+    /// The frames ignored while this is set: a strike whose land can't be seen going in (the Fold's, while the world is a
     /// globe and a point) would rather lose those frames than have the land go in after it is seen.
     pub hidden: bool,
 }
@@ -65,9 +67,14 @@ impl Pace {
     /// A tick's budget, `busy` when edits wait or went in on the tick before: `None` for no limit.
     pub fn tick(&mut self, busy: bool) -> Option<u32> {
         self.busy = busy;
-        if !busy || self.hidden {
+        if !busy {
             self.budget = None;
             return None;
+        }
+        if self.hidden {
+            // (not unlimited: land that loaded late would all go in on one tick, past a tick's fuel)
+            self.budget = None;
+            return Some(HIDDEN);
         }
         let slow = self.frame > SLOW.max(self.calm * SLOW_OVER_CALM);
         let fast = self.frame < FAST.max(self.calm * FAST_OVER_CALM);
