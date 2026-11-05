@@ -51,7 +51,7 @@ const VC_RATE: f64 = 1_200_000.0;
 /// The most a stage's chunks may take the tick's count to. The chunks' count reads 2 to 3 times low by the game's
 /// (`mod_soak` traced, by distance out, on every land): this keeps a stage's real work under some 15M, its last chunk
 /// (at most 3M) and what else the tick does under 20M, 40% of a tick's fuel.
-const VC_TICK: u64 = 4_800_000;
+const VC_TICK: u64 = 4_500_000;
 /// How long ahead of its time a chunk's edits are worked out.
 const VC_LEAD: f32 = 4.0;
 /// The most runs worked out and waiting to go in: a mod has 64 MB, a run takes 32 bytes.

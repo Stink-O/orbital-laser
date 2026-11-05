@@ -113,6 +113,12 @@ fn holding_designator() -> bool {
 /// Game ticks (of the world's clock) a reopened world may be off from where it was left and still be taken for the
 /// same play (`tick`): a pause, or a save and quit, keeps the clock where it was; another world's is elsewhere.
 const SAME_PLAY: u64 = 40;
+/// How far the clock may move from one tick to the next and still be the same world. Single player's world is a server
+/// thread's: between its word of the time the client's clock counts on by itself, so a server running behind (a strike's
+/// chunks loading, a stretch of its own reads and edits) puts the clock back when its word comes by as far as it fell
+/// behind, and a client that hung sees it jump on. Neither has left: leaving comes through ticks with no player (the
+/// next world's load), this is for a change of world with none of those.
+const SAME_WORLD: u64 = 1_200;
 /// Ticks of play (in a world, not paused) before the loaded laser's pass is given to the game to build ahead of its
 /// first strike (`warm`): not as the game starts, so a pass the game can't build stops nothing but that laser.
 const WARM_AFTER: u64 = 60;
@@ -1302,8 +1308,18 @@ impl Orbital {
     /// under way ends there (`left_world`).
     fn in_world(&mut self) -> bool {
         let clock = game::get_player().and(game::get_clock()).map(|c| c.game_time);
-        let elsewhere = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
+        let elsewhere = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_WORLD < was || now > was + SAME_WORLD);
+        // (the clock thrown off by the server or the client running behind: `SAME_WORLD`)
+        if let (Some(was), Some(now)) = (self.clock, clock)
+            && now.abs_diff(was) > 10
+            && self.strike.is_some()
+        {
+            log::write(log::Level::Info, &format!("the clock moved {} ticks in a tick ({was} to {now})", now as i64 - was as i64));
+        }
         if clock.is_none() || elsewhere {
+            if self.strike.is_some() {
+                log::write(log::Level::Info, &if clock.is_none() { "no player this tick".to_string() } else { format!("the clock went from {:?} to {clock:?}", self.clock) });
+            }
             self.left_world();
         }
         // (joined: this world's first tick, or another's after a tick out of one)
@@ -1583,7 +1599,9 @@ impl Mod for Orbital {
         // (the linear memory only grows: each 4 MB of it logged, with what's held then)
         if mem::heap() >= self.heap_logged + (4 << 20) {
             self.heap_logged = mem::heap();
-            log::write(log::Level::Info, &format!("memory: heap {:.1} MB, {:.1} MB held, tick {} of the strike", mem::mb(mem::heap()), mem::mb(mem::live()), self.strike.as_ref().map_or(0, |s| s.ticks)));
+            // (a warning past 48 of the 64 MB: `tools/game_check.py` fails on one)
+            let level = if self.heap_logged >= 48 << 20 { log::Level::Warn } else { log::Level::Info };
+            log::write(level, &format!("memory: heap {:.1} MB, {:.1} MB held, tick {} of the strike", mem::mb(mem::heap()), mem::mb(mem::live()), self.strike.as_ref().map_or(0, |s| s.ticks)));
         }
         if let Some(n) = self.meter_log
             && meter::spent() >= n
@@ -1597,6 +1615,9 @@ impl Mod for Orbital {
     fn frame(&mut self, seconds: f32) {
         meter::reset();
         self.pace.frame(seconds);
+        if seconds > 0.5 && self.strike.is_some() {
+            log::write(log::Level::Info, &format!("a frame of {seconds:.2} s, {:.1} s into the strike", self.strike.as_ref().map_or(0.0, |s| s.ticks as f32 * 0.05)));
+        }
         self.warm();
         if let Some(s) = &mut self.strike {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
@@ -2301,6 +2322,52 @@ mod stress {
         }
     }
 
+    /// What a Supervolcano holds in memory (a mod has 64 MB): its peak well under it however late or bunched the world's
+    /// answers, however slow the frames (the edits piling up behind them), all of it let go when it ends or is stopped,
+    /// and one strike after another the same.
+    #[test]
+    fn a_supervolcano_stays_in_its_memory() {
+        let sv = LASERS.iter().position(|l| l.key == "supervolcano").expect("the supervolcano");
+        for (answers, slow, frame, stop) in [(Answers::Next, 1, 0.016, 0), (Answers::Bunched(40), 1, 0.016, 0), (Answers::Late(60), 4, 0.2, 0), (Answers::Next, 1, 0.2, 0), (Answers::Next, 1, 0.016, 180), (Answers::Bunched(16), 0, 0.016, 60)] {
+            let mut s = Soak::new(9);
+            s.answers = answers;
+            let base = mem::live();
+            for round in 0..3 {
+                s.loaded = Loaded { me: (1000, -3000), view: 12, forced: Default::default(), slow, now: s.tick };
+                mem::reset_peak();
+                s.fire(sv, (1000, -2000));
+                let mut ticks = 0;
+                let mut most = 0;
+                while s.o.strike.is_some() {
+                    // (the frames going slow once the edits begin: before then they are what the machine is like)
+                    s.frame = if ticks < 1060 { 0.016 } else { frame };
+                    s.step("memory");
+                    most = most.max(s.o.edits.len());
+                    ticks += 1;
+                    assert!(ticks < 2000, "it never ended");
+                    if stop > 0 && ticks == stop {
+                        s.stop();
+                    }
+                }
+                // (its edits still waiting go on in after it)
+                s.frame = 0.016;
+                while !s.o.edits.is_empty() {
+                    s.step("memory");
+                }
+                let peak = mem::peak();
+                s.reads.clear();
+                s.surveys.clear();
+                fake::with(|w| {
+                    w.columns.clear();
+                    w.heights.clear();
+                });
+                eprintln!("{answers:?} chunks x{slow} frames {frame}: round {round}, peak {:.1} MB, held after {:.1} MB, {most} edits waiting at most", mem::mb(peak), mem::mb(mem::live().saturating_sub(base)));
+                assert!(peak < 30 << 20, "a peak of {:.1} MB", mem::mb(peak));
+                assert!(mem::live() < base + (2 << 20), "{:.1} MB held after it", mem::mb(mem::live() - base));
+            }
+        }
+    }
+
     /// The follow camera: a Nuke fired with it on moves the player by kicks to their velocity once the bomb comes
     /// near (never a teleport, never a turn of their view, never their game mode), and puts them back where they stood
     /// once it is over (their view kept); the knockback left out meanwhile. Off, nothing of it.
@@ -2400,6 +2467,14 @@ mod stress {
         assert!(!into(&mut o, None));
         assert!(o.strike.is_none() && o.edits.is_empty() && o.carving.is_empty() && o.spare.is_empty() && o.cleanup.is_empty());
         assert!(fake::with(|w| w.stored.contains_key(FORCELOADS)));
+        // (the clock put back or thrown on by the server or the client running behind, a strike still going)
+        o.fire();
+        assert!(o.strike.is_some());
+        for clock in [4900, 4900 - 3 * SAME_PLAY, 4900 + 5 * SAME_PLAY] {
+            assert!(into(&mut o, Some(clock)));
+            assert!(o.strike.is_some(), "ended at clock {clock}");
+        }
+        o.stop_strike();
         // (another world: they stay kept)
         fake::with(|w| w.ran.clear());
         for t in 0..60 {
