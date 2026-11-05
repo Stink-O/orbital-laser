@@ -1,6 +1,16 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-059); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0510); each release's notes are in [docs/releases](releases).
+
+## 0.5.10
+
+- **Native: world changes need operator level 4.** On a server or LAN host, a strike's world changes run at the console's
+  level, so they are now taken only from a level 4 operator. Before, a level 2 operator with a modified client could run
+  any command that way. Single player is unchanged.
+- **Native: a guest's `/orbital` no longer changes the host's game,** and the command is listed for level 4 operators.
+- **Native: built on a newer Horizon.** Land a strike changes out of your view now shows in far terrain, and the first
+  person hand draws during the Hurricane.
+- The `native/` folder holds the exact source of the native build. NOTICE counts the sounds correctly.
 
 ## 0.5.9
 

@@ -10,8 +10,8 @@ Original material
 -----------------
 
 orbital-laser-shader/   Written for this project.
-orbital-sounds/         All eight sounds are synthesized from noise and tones by tools/synth_sounds.py. They contain
-                        no samples from any recording.
+orbital-sounds/         All the sounds are synthesized from noise and tones by the scripts in tools/ (synth_sounds.py,
+                        soundlib.py and the sounds_*.py files). They contain no samples from any recording.
 docs/branding/          The logo, icon and social preview are drawn as vector paths by tools/make_branding.py.
 docs/*.jpg              Screenshots taken in Horizon with this shader pack. They show Minecraft terrain rendered by
                         Horizon; they are included to show the shader's output.

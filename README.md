@@ -51,7 +51,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > a user (the fork built from source); on macOS the Downfall's effects may not draw (see [Known gaps](#known-gaps)). The
 > ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.9](#new-in-059) · [The lasers](#the-lasers) · [Fork version](#getting-started) ·
+**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.10](#new-in-0510) · [The lasers](#the-lasers) · [Fork version](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
@@ -76,6 +76,12 @@ A native mod isn't sandboxed: its code runs with full access to your computer, s
 listing in the launcher's Mods browser is in review. The
 [install guide](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) has the known issues
 and how to remove it.
+
+## New in 0.5.10
+
+A fix release for the native version. On a server or LAN host, a strike's world changes now need operator level 4, and a
+guest's `/orbital` no longer changes the host's game. It's built on a newer Horizon: land a strike changes out of your
+view now shows in far terrain, and your hand draws during the Hurricane. Single player plays as before.
 
 ## New in 0.5.9
 
