@@ -2169,7 +2169,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "supervolcano"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();

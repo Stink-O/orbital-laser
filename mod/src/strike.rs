@@ -13,6 +13,7 @@ mod payload;
 mod sh_land;
 mod sinkhole;
 mod storm;
+mod vc_land;
 mod volcano;
 mod vortex;
 
