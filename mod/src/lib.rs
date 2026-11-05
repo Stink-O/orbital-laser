@@ -990,7 +990,7 @@ impl Orbital {
         if laser.key == "fold" {
             // (the world's own vertices go through the warp: shaders/fold_warp.wgsl)
             render::set_warp(FOLD_WARP);
-            render::warp_on(true, hit.x, hit.y, hit.z, strike::FD_COPIES, strike::FD_COPY_R);
+            // (on only from strike::FD_WARP_START: the droplet's seconds keep the game's own culling: `frame`)
             // (the pass is built by the game as the first frame draws it; "a mod's post pass did not compile" in its log
             // means it was skipped: this line says the mod handed it over)
             log::write(log::Level::Info, &format!("fold: pass {} handed over, intensity {}", pass_of(laser), params[9]));
@@ -1592,9 +1592,12 @@ impl Mod for Orbital {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
             s.params[3] = s.ticks as f32 * 0.05;
             render::set_params(&s.params);
-            // (the world straight again: the warp off, the frame's culling back)
-            if s.key == "fold" && s.params[3] > strike::FD_WARP_END {
-                render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
+            // (the warp on for its span only: before and after it the frame keeps its culling)
+            self.pace.hidden = s.key == "fold" && strike::FD_HIDDEN.contains(&s.params[3]);
+            if s.key == "fold" {
+                let on = (strike::FD_WARP_START..strike::FD_WARP_END).contains(&s.params[3]);
+                let p = &s.params;
+                render::warp_on(on, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]), strike::FD_COPIES, strike::FD_COPY_R);
             }
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
@@ -2177,7 +2180,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "fold"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();

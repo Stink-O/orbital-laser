@@ -21,7 +21,7 @@
 //!   FD_THROWN        the falling blocks thrown as each ring lands (`fd_thrown`)
 //!   FD_EMBERS        the fires left burning (`fd_embers`)
 //!   FD_SMOKE         the smoke rising after it
-use super::fold::{FD_LEN, FD_RELEASE, FD_RINGS, FD_SEAL, FD_SLAM};
+use super::fold::{FD_BEAT, FD_FOLD, FD_LEN, FD_RELEASE, FD_RINGS, FD_SEAL, FD_SLAM, FD_TEAR};
 use super::rod::{Column, Due, LEAF_NAMES, LEAVES, LOG_X, LOG_Y, LOG_Z, Land, Sector, Used, ring_columns, take_in_grid};
 use super::{Act, Blocks, Col, Plan, Rng, TIDY_BORDER, bedrock_top, mh, tidy, vnoise};
 use std::cell::RefCell;
@@ -51,6 +51,11 @@ const FD_RUBBLE_N: usize = 3400;
 const FD_HEAPS: usize = 110;
 const FD_HEAP_JOBS: u32 = 5;
 const FD_THROWN: [usize; 4] = [46, 64, 84, 60];
+/// The blocks that peel off the land along the creases and fall upward into the fold, a batch as each stage of it opens
+/// (`fd_peel`); all 0 takes them out. They are real falling blocks with no gravity, gone at the crush.
+const FD_PEEL: [usize; 4] = [50, 70, 80, 60];
+/// How wide round the player the land is left alone until the last slam: they stand on it through the fold (FW_ISLE + 4).
+const FD_ISLE: f64 = 30.0;
 const FD_EMBERS: usize = 1500;
 /// Plumes of smoke over the crater after it (0: none).
 const FD_SMOKE: usize = 14;
@@ -100,7 +105,7 @@ pub(super) const FD_LAND0: f32 = FD_SEAL + 0.5;
 pub(super) const FD_LAND1: f32 = FD_SLAM[4] - 0.2;
 /// How long before its edits are due a part of the wave is worked out (the plan holds what is waiting: the wave's whole
 /// edits are too much to carry for half a minute).
-const FD_AHEAD: f32 = 13.0;
+const FD_AHEAD: f32 = 17.0;
 /// Strike seconds past which a column still not loaded is left out (logged): the forceload is given back at FD_LEN - 1.
 const FD_LAND_BY: f32 = FD_LEN - 4.0;
 /// How long, once the crater's land is in, it waits for more of the rest to come.
@@ -268,6 +273,8 @@ pub(super) struct Shape {
     /// The height the crater is cut down from (`Job::Level`), and where bedrock begins.
     level: i32,
     bot: i32,
+    /// Where the player stood (x, z): their island.
+    me: [f64; 2],
 }
 impl Shape {
     /// The crater's edge along bearing `a` (smooth; each plate bites its own piece out of it, `fd_cut`).
@@ -876,7 +883,11 @@ fn fd_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cuts: &mut [Cu
         fd_col(&mut b, &mut air, land, cuts, s, bx, bz, x, z, grid.get_mut((z - z0) as usize * gw + (x - x0) as usize));
     }
     // (each chunk's edits on the tick the wave has swept all of it: its sections redrawn once)
-    let when = |x: i32, z: i32| wave.chunk(s.cx, s.cz, x, z).max(t);
+    // (the player's island, left whole through the fold: it goes in once the rings are down)
+    let when = |x: i32, z: i32| {
+        let by = wave.chunk(s.cx, s.cz, x, z).max(t);
+        if (f64::from(x) + 0.5 - s.me[0]).hypot(f64::from(z) + 0.5 - s.me[1]) < FD_ISLE { by.max(FD_SLAM[4] + 0.4) } else { by }
+    };
     for (tc, e) in air.split_by(when) {
         q.ev.push((tc, Act::Blocks(Box::new(e))));
     }
@@ -1185,6 +1196,54 @@ fn fd_thrown(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], k: usize) {
     }
 }
 
+/// When each batch of `fd_peel` starts.
+const PEEL_AT: [f32; 4] = [FD_TEAR + 0.4, FD_FOLD, FD_FOLD + 4.0, FD_FOLD + 8.0];
+/// The land's own blocks peeling off along the creases and falling upward: each from a crease of the pattern, of what the
+/// land is there, drifting up towards the fold.
+fn fd_peel(q: &mut Plan, land: &Land, s: &Shape, k: usize) {
+    let (bx, bz) = (q.bx, q.bz);
+    let mut rng = Rng::new(u64::from(s.seed) ^ 0x9ee1 ^ ((k as u64) << 20));
+    let want = FD_PEEL[k];
+    let reach = [FD_RINGS[1], FD_RINGS[2], FD_RINGS[3], FD_RINGS[3]][k];
+    crate::meter::spend(want as u64 * 2 * 3_000);
+    let mut n = 0;
+    for _ in 0..want * 2 {
+        if n >= want {
+            break;
+        }
+        // (on a radial crease, or a ring's edge)
+        let on_ring = rng.next() < 0.4;
+        let (r, a) = if on_ring {
+            (FD_RINGS[(rng.next() * (k + 2).min(4) as f64) as usize], rng.uniform(0.0, TAU))
+        } else {
+            ((0.15 + 0.85 * rng.next()) * reach, (rng.next() * 12.0).floor() * TAU / 12.0 + rng.uniform(-0.006, 0.006))
+        };
+        let (x, z) = (s.cx + a.cos() * r, s.cz + a.sin() * r);
+        let Some(c) = at(land, bx, bz, x.floor() as i32, z.floor() as i32).copied() else { continue };
+        if c.fluid {
+            continue;
+        }
+        let d = rng.next();
+        let blk = if c.trunk > 0 && d < 0.5 {
+            LOG_Y[usize::from(c.wood)]
+        } else if c.leaves != 255 && d < 0.8 {
+            LEAVES[usize::from(c.leaves)]
+        } else {
+            match c.ground {
+                1 if d < 0.92 => "minecraft:grass_block",
+                1 | 2 => "minecraft:dirt",
+                _ => "minecraft:stone",
+            }
+        };
+        let (vy, h) = (0.12 + 0.3 * rng.next(), 0.04 + 0.1 * rng.next());
+        let (vx, vz) = (-a.cos() * h, -a.sin() * h);
+        let y = f64::from(c.top) + 1.2;
+        let t = PEEL_AT[k] + 3.5 * rng.next() as f32;
+        q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,CancelDrop:1b,NoGravity:1b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
+        n += 1;
+    }
+}
+
 /// Fires left burning in clumps over the wound: on the burnt plates and the blackened land round it, a block of netherrack
 /// under each so it keeps burning, as the last of the rings comes down and after.
 fn fd_embers(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut Used) {
@@ -1221,7 +1280,7 @@ fn fd_embers(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut 
 /// All the land's work is one chain of stages, a tick each: the land read (its rings asked from the middle out and taken in
 /// as they are answered), the crater's level from it, then the parts of the wave ring by ring, each worked out FD_AHEAD
 /// before it is due. Each stage does about FD_BUDGET columns' worth (well under a tick's fuel).
-const FD_BUDGET: f64 = 1000.0;
+const FD_BUDGET: f64 = 700.0;
 /// About what a unit of that work costs in instructions.
 const FD_UNIT: f64 = 15_000.0;
 /// Columns of the land's square made ready a stage.
@@ -1230,6 +1289,7 @@ enum Job {
     /// The level the crater is cut down from.
     Level,
     Thrown(usize),
+    Peel(usize),
     Rubble(u32),
     Heaps(u32),
     Embers,
@@ -1271,6 +1331,11 @@ impl Work {
         for k in 0..4 {
             if FD_THROWN[k] > 0 {
                 jobs.push_back(Job::Thrown(k));
+            }
+        }
+        for k in 0..4 {
+            if FD_PEEL[k] > 0 {
+                jobs.push_back(Job::Peel(k));
             }
         }
         // (the rubble once the crater's cuts are worked out, so it costs only its own work; the fires last)
@@ -1352,6 +1417,7 @@ impl Work {
             // (from what has loaded by then if the crater's land still has not all)
             Job::Level => (self.ready() >= FD_R * 1.2 || now >= FD_LAND0 - 1.0, true),
             Job::Thrown(k) => (self.level && self.land.done && now + FD_AHEAD >= FD_SLAM[4 - k], false),
+            Job::Peel(k) => (self.land.done && now + 2.0 >= PEEL_AT[*k], false),
             Job::Rubble(_) | Job::Heaps(_) => (self.level && self.land.done && now + FD_AHEAD >= FD_SLAM[0], false),
             Job::Embers => (self.level && self.land.done && now + FD_AHEAD >= FD_SLAM[4], false),
             Job::Part(sec) => (self.level && now + FD_AHEAD >= self.wave.when(sec) && self.ready() >= sec.r1 + 12.0, true),
@@ -1360,7 +1426,7 @@ impl Work {
     fn cost(j: &Job) -> f64 {
         match j {
             Job::Level => 150.0,
-            Job::Thrown(_) => 500.0,
+            Job::Thrown(_) | Job::Peel(_) => 500.0,
             Job::Rubble(_) | Job::Heaps(_) => FD_BUDGET * 0.5,
             Job::Embers => FD_BUDGET * 0.5,
             Job::Part(s) => {
@@ -1497,6 +1563,7 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                     wk.find_level(bx, bz);
                 }
                 Job::Thrown(k) => fd_thrown(q, &wk.land, &s, &mut wk.cuts, k),
+                Job::Peel(k) => fd_peel(q, &wk.land, &s, k),
                 Job::Rubble(k) => fd_rubble(q, &wk.land, &s, &mut wk.cuts, &mut wk.used, k),
                 Job::Heaps(k) => fd_heaps(q, &wk.land, &s, &mut wk.cuts, k),
                 Job::Embers => fd_embers(q, &wk.land, &s, &mut wk.cuts, &mut wk.used),
@@ -1534,7 +1601,7 @@ fn load_rows(cx: f64, cz: f64) -> Vec<[i32; 4]> {
 
 /// The land's plan, from fold_plan when the terrain is on: kept loaded from the fire, read, and the chain of stages that
 /// does the rest; mobs and items killed as the bloom goes; smoke after it.
-pub(super) fn land_plan(p: &mut Plan, seed: u32, dimension: &str) {
+pub(super) fn land_plan(p: &mut Plan, seed: u32, dimension: &str, me: [f64; 3]) {
     let (bx, by, bz) = (p.bx, p.by, p.bz);
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let load = load_rows(cx, cz);
@@ -1547,13 +1614,17 @@ pub(super) fn land_plan(p: &mut Plan, seed: u32, dimension: &str) {
     for t in [FD_RELEASE, FD_SLAM[2], FD_SLAM[4] + 2.0] {
         p.at(t, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FD_KILL}]", by + 1));
     }
+    // (what peeled off went in with the land: gone as it is crushed)
+    if FD_PEEL.iter().sum::<usize>() > 0 {
+        p.at(FD_BEAT, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=minecraft:falling_block,distance=..{}]", by + 1, FD_KILL + 200));
+    }
     for i in 0..FD_SMOKE as u32 {
         let (a, r) = (mh(i, seed, 0xe5) * TAU, FD_R * 1.15 * mh(i, seed, 0xe6).sqrt());
         let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
         let t = FD_SLAM[4] + 0.5 + (FD_LEN - FD_SLAM[4] - 2.0) * i as f32 / FD_SMOKE as f32;
         p.at(t, format!("particle minecraft:campfire_signal_smoke {x:.1} {:.1} {z:.1} 14 2 14 0.03 60 force", by - 6));
     }
-    let shape = Shape { cx, cz, ph: [TAU * mh(1, seed, 0xc0), TAU * mh(2, seed, 0xc0), TAU * mh(3, seed, 0xc0), TAU * mh(4, seed, 0xc0)], seed, level: by + 1, bot: bedrock_top(dimension) };
+    let shape = Shape { cx, cz, ph: [TAU * mh(1, seed, 0xc0), TAU * mh(2, seed, 0xc0), TAU * mh(3, seed, 0xc0), TAU * mh(4, seed, 0xc0)], seed, level: by + 1, me: [me[0], me[2]], bot: bedrock_top(dimension) };
     // (its state made on a stage of its own, not as it fires: the land's square of columns is some megabytes)
     p.later(0.15, move |q| {
         crate::meter::spend(9_000_000);
@@ -1568,6 +1639,17 @@ mod tests {
     use crate::strike::sim::{self, Played};
     use crate::strike::{Target, plan};
     use std::collections::{BTreeMap, HashMap, HashSet};
+
+    /// Blocks peel off along the creases and fall upward as the land opens: no gravity, all before the crush, and they are
+    /// cleared as it is crushed.
+    #[test]
+    fn blocks_peel_off_along_the_creases() {
+        let p = played(1);
+        let peel: Vec<&(f32, String)> = p.cmds.iter().filter(|(_, c)| c.contains("NoGravity:1b")).collect();
+        assert!(peel.len() > 150, "{} blocks peeled", peel.len());
+        assert!(peel.iter().all(|(t, _)| *t >= FD_TEAR && *t < FD_SEAL), "peeled out of its time");
+        assert!(p.cmds.iter().any(|(t, c)| *t == FD_BEAT && c.contains("kill @e[type=minecraft:falling_block")));
+    }
 
     fn the_laser() -> &'static crate::lasers::Laser {
         crate::lasers::LASERS.iter().find(|l| l.key == "fold").expect("the fold")
@@ -1940,14 +2022,14 @@ mod tests {
         assert!(most <= 2, "a chunk edited on {most} ticks");
         assert!(p.cmds.first().is_some_and(|c| c.1.starts_with("forceload add")), "{:?}", p.cmds.first());
         assert!(p.cmds.iter().any(|c| c.1.starts_with("forceload remove") && c.0 >= FD_LEN - 1.1));
-        let thrown: Vec<f32> = p.cmds.iter().filter(|c| c.1.contains("falling_block ")).filter(|c| c.1.starts_with("summon")).map(|c| c.0).collect();
+        let thrown: Vec<f32> = p.cmds.iter().filter(|c| c.1.contains("falling_block ") && !c.1.contains("NoGravity")).filter(|c| c.1.starts_with("summon")).map(|c| c.0).collect();
         assert!(thrown.len() > 150, "{} thrown", thrown.len());
         for k in 0..4 {
             assert!(thrown.iter().any(|t| (*t - FD_SLAM[4 - k]).abs() < 0.3), "none at slam {k}");
         }
         assert!(thrown.iter().all(|t| *t >= FD_SLAM[1] - 0.1 && *t <= FD_SLAM[4] + 1.0));
         let kills: Vec<&(f32, String)> = p.cmds.iter().filter(|c| c.1.contains("kill @e")).collect();
-        assert!(!kills.is_empty() && kills[0].0 >= FD_RELEASE - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
+        assert!(!kills.is_empty() && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block") || c.0 == FD_BEAT));
     }
 
     // ---- the fuel -------------------------------------------------------------------------------------------------------

@@ -43,6 +43,9 @@ pub(super) const FD_BEAT: f32 = 37.5;
 pub(super) const FD_RELEASE: f32 = 38.7;
 /// When each ring slams back down, outermost first (ring 4 at FD_SLAM[0], the eye's ring 0 last).
 pub(super) const FD_SLAM: [f32; 5] = [39.8, 40.6, 41.4, 42.2, 43.1];
+/// While the land's edits aren't held back by the frame time: from the sealed globe, where they can't be seen, until the
+/// rings are down and the dust is flying, so the crater is whole as it is seen.
+pub const FD_HIDDEN: std::ops::Range<f32> = 31.5..45.5;
 /// The crease pattern's rings: their outer radii, blocks from the target (fold_warp.wgsl's FW_RING in step). Each is a
 /// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];
@@ -84,7 +87,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         return p.ev;
     }
     // ---- the land: all of it strike/fold_land.rs ---------------------------------------------------------------------
-    fold_land::land_plan(&mut p, s, dimension);
+    fold_land::land_plan(&mut p, s, dimension, me);
     // (playback goes through the plan in order, and stops at the first not due: one out of order holds up all after it)
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -100,11 +103,23 @@ mod tests {
     fn the_warp_keeps_the_beats() {
         let warp = include_str!("../../shaders/fold_warp.wgsl");
         let pass = include_str!("../../shaders/fold.wgsl");
-        assert!(warp.contains(&format!("const FW_REL: f32 = {FD_RELEASE:.1};")));
-        assert!(warp.contains(&format!("const FW_BEAT: f32 = {FD_BEAT:.1};")));
+        for (name, v) in [("RIPPLE", FD_RIPPLE), ("SCORE", FD_SCORE), ("TEAR", FD_TEAR), ("FOLD", FD_FOLD), ("SEAL", FD_SEAL), ("CRUSH", FD_CRUSH), ("BEAT", FD_BEAT), ("REL", FD_RELEASE), ("SLAM4", FD_SLAM[4]), ("END", FD_WARP_END)] {
+            assert!(warp.contains(&format!("const FW_{name}: f32 = {v:.1};")), "FW_{name}");
+        }
+        for (name, v) in [("STOP", FD_STOP), ("HANG", FD_HANG), ("TOUCH", FD_TOUCH), ("MELD", FD_MELD), ("FOLD", FD_FOLD), ("SEAL", FD_SEAL), ("CRUSH", FD_CRUSH), ("BEAT", FD_BEAT), ("REL", FD_RELEASE), ("SLAM0", FD_SLAM[0]), ("SLAM4", FD_SLAM[4])] {
+            assert!(pass.contains(&format!("const FD_{name}: f32 = {v:.1};")), "FD_{name}");
+        }
+        for (i, r) in FD_RINGS.iter().enumerate() {
+            assert!(warp.contains(&format!("case {i}: {{ return {r:.1}; }}")) || (i == 4 && warp.contains(&format!("const FW_LEN: f32 = {r:.1};"))), "ring {i}");
+            assert!(pass.contains(&format!("{r:.1}")), "ring {i} in the pass");
+        }
+        for (k, t) in FD_SLAM.iter().enumerate() {
+            let i = 4 - k;
+            assert!(warp.contains(&format!("case {i}: {{ return {t:.1}; }}")) || i == 0, "slam {k}");
+            assert!(pass.contains(&format!("{t:.1}")), "slam {k} in the pass");
+        }
         assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
         assert!(warp.contains(&format!("const FW_COPIES: f32 = {:.1};", f64::from(FD_COPIES))));
-        assert!(pass.contains(&format!("const FD_REL: f32 = {FD_RELEASE:.1};")));
     }
 
     fn the_laser() -> &'static Laser {

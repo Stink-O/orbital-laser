@@ -42,11 +42,14 @@ pub struct Pace {
     /// Cost units a tick may let through; `None` while nothing is held back.
     budget: Option<u32>,
     busy: bool,
+    /// Nothing held back while this is set: a strike whose land can't be seen going in (the Fold's, while the world is a
+    /// globe and a point) would rather lose those frames than have the land go in after it is seen.
+    pub hidden: bool,
 }
 
 impl Default for Pace {
     fn default() -> Self {
-        Self { frame: 1.0 / 60.0, calm: 1.0 / 60.0, budget: None, busy: false }
+        Self { frame: 1.0 / 60.0, calm: 1.0 / 60.0, budget: None, busy: false, hidden: false }
     }
 }
 
@@ -62,7 +65,7 @@ impl Pace {
     /// A tick's budget, `busy` when edits wait or went in on the tick before: `None` for no limit.
     pub fn tick(&mut self, busy: bool) -> Option<u32> {
         self.busy = busy;
-        if !busy {
+        if !busy || self.hidden {
             self.budget = None;
             return None;
         }

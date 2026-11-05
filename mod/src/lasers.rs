@@ -507,7 +507,7 @@ pub const FOLD: Laser = Laser {
     index: 14,
     title: "THE FOLD",
     rgb: 0xC060E8,
-    blurb: "Reality folded like paper: the land is scored, torn, closed into a globe, crushed, and slammed back open.",
+    blurb: "Reality folded like paper: land torn, closed to a globe, crushed, slammed back open.",
     icon_model: "orbital:fold_icon",
     length: 56.0,
     range: 1000.0,
