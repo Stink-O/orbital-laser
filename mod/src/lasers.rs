@@ -499,18 +499,17 @@ pub const HURRICANE: Laser = Laser {
     particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-/// The fold, planned in `strike::fold_plan` (strike/fold.rs; the pass shaders/fold.wgsl): no beam, no blast. A strike that
-/// attacks how the world looks: colours breathe, the sky splits into turning mirrored wedges, giant mushrooms grow round
-/// the target, the horizon curls up and the land rolls in on itself, then everything spirals into one point, a beat of
-/// near silence, and it snaps back with a shockwave of colour: a mandala dug into the land, terraced and glazed.
+/// The fold, planned in `strike::fold_plan` (strike/fold.rs; shaders/fold_warp.wgsl bends the world, shaders/fold.wgsl draws
+/// what is not the world). No beam: a liquid-metal droplet stops dead over the target and melds into the land, the land
+/// is scored, torn and folded like paper into a globe, crushed to a point, and slams back open round a mandala scar.
 pub const FOLD: Laser = Laser {
     key: "fold",
     index: 14,
     title: "THE FOLD",
     rgb: 0xC060E8,
-    blurb: "A slow psychedelic strike: the world breathes, folds in on itself, and leaves a mandala.",
+    blurb: "Reality folded like paper: the land is scored, torn, closed into a globe, crushed, and slammed back open.",
     icon_model: "orbital:fold_icon",
-    length: 50.0,
+    length: 56.0,
     range: 1000.0,
     scorch: &[],
     bowl_r: 10,

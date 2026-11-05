@@ -7,7 +7,7 @@ use std::f64::consts::PI;
 mod crystal;
 mod hu_blocks;
 mod fold;
-pub use fold::{FD_COPIES, FD_COPY_R, FD_WARP_END};
+pub use fold::{FD_COPIES, FD_COPY_R, FD_WARP_END, FD_WARP_START};
 mod hurricane;
 mod nuke;
 mod rod;
