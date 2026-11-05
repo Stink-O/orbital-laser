@@ -16,22 +16,23 @@
 //!   FD_SEAL           shut: the player is inside a sphere, real land on all its walls
 //!   FD_FOLDS          its top is pushed in, then five cones of the target's own land open down towards the target, slower
 //!                     and slower; FD_BEAT the tip touches it: a tiny light and a ding; stillness to FD_RELEASE
-//!   FD_RELEASE        all of it runs backwards, to flat at FD_SLAM[0], and past it: the sheet flaps, each swing less, and
-//!   FD_SLAM[4]        the last heave falls flat all at once, and the crater shows (FD_REVEAL)
+//!   FD_RELEASE        all of it runs backwards, gathering slowly: the sphere opens, the bud stands again with every ring up
+//!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
+//!   FD_SLAM[4]        the last ring lands, and the crater shows (FD_REVEAL)
 //!   FD_SLAM[4]-FD_LEN the comedown: the creases fade, the void seals
 //!
 use super::{Act, Plan, Rng, Target, fold_land};
 use crate::lasers::Laser;
 
-pub(super) const FD_LEN: f32 = 56.0;
+pub(super) const FD_LEN: f32 = 59.0;
 /// The world warp (shaders/fold_warp.wgsl): how many times it draws the land near the target again, how far from it, and
 /// when it is on, the world's own culling back the rest of the time.
 pub const FD_COPIES: u32 = 5;
 pub const FD_COPY_R: f32 = 130.0;
 /// When the copies are drawn: the cones of the fold down, out and back.
-pub const FD_COPY_ON: std::ops::Range<f32> = 35.4..41.0;
+pub const FD_COPY_ON: std::ops::Range<f32> = 35.4..41.9;
 pub const FD_WARP_START: f32 = 5.5;
-pub const FD_WARP_END: f32 = 53.0;
+pub const FD_WARP_END: f32 = 56.0;
 /// The strike's beats (see the top of this file).
 pub(super) const FD_STOP: f32 = 3.4;
 pub(super) const FD_HANG: f32 = 4.9;
@@ -44,15 +45,24 @@ pub(super) const FD_FOLD: f32 = 19.0;
 pub(super) const FD_SEAL: f32 = 35.0;
 pub(super) const FD_CRUSH: f32 = 35.0;
 pub(super) const FD_BEAT: f32 = 40.0;
-pub(super) const FD_RELEASE: f32 = 40.3;
+pub(super) const FD_RELEASE: f32 = 40.5;
 /// When each of the sphere's top's six folds starts (the last ends on FD_BEAT): shorter and shorter, slower and slower.
 pub(super) const FD_FOLDS: [f32; 6] = [35.0, 35.6, 36.3, 37.1, 38.0, 39.0];
-/// When the sheet comes back through flat: the first as the fold ends, the last the slam that shows the crater.
-pub(super) const FD_SLAM: [f32; 5] = [41.1, 42.0, 42.8, 43.7, 45.0];
+/// When each ring bangs down, outermost first (ring 4 at FD_SLAM[0], with the far land, ring 0 last): the last shows the
+/// crater. Each falls for 0.8 s and stops dead, so there is a stillness before each but the first.
+pub(super) const FD_SLAM: [f32; 5] = [43.4, 44.5, 45.6, 46.7, 48.0];
 /// When the crater takes its place: the one frame the game's hold on the terrain lets go (`render.hold-world`).
 pub const FD_REVEAL: f32 = FD_SLAM[4];
 /// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time.
 pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 0.5..FD_REVEAL;
+/// The world closed round the player, from the walls coming in to their opening again: the sphere goes with them (fold_warp's
+/// fw_stay), so they can't leave it or see its outside, and lib.rs keeps their flight to vanilla's and them from going too far.
+pub const FD_STAY: std::ops::Range<f32> = 27.0..42.6;
+/// The sphere has fully hold of them from here: moving them now doesn't show.
+pub const FD_TETHER_ON: f32 = 30.0;
+/// How far they are let go from where they fired (real blocks): anything past FD_TETHER is brought back (the land round the
+/// target has to stay loaded). Far past where fw_reach's limit has flattened, so it doesn't show.
+pub const FD_TETHER: f64 = 320.0;
 /// The crease pattern's rings: their outer radii, blocks from the target (fold_warp.wgsl's FW_RING in step). Each is a
 /// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];
@@ -90,7 +100,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
             p.csound(*t - 1.15, "fall", 10.0, 1.0);
             p.csound(*t, "slam", 10.0, 1.0);
         }
-        p.shake(*t, (0.22 + 0.3 * f) * super::falloff(dist * 0.5), 1.1 + 0.9 * f);
+        p.shake(*t, (0.5 + 0.4 * f) * super::falloff(dist * 0.5), 0.6 + 0.9 * f);
     }
     p.csound(FD_SLAM[4] + 1.0, "comedown", 10.0, 1.0);
 

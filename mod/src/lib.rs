@@ -322,6 +322,8 @@ struct Orbital {
     /// Whether each of wheel::SOUND_LASERS plays its alternative blast (`/orbital payloadsound`, `/orbital nukesound`;
     /// the Payload's thump through the ground swaps with it).
     blast_alt: [bool; 2],
+    /// While the Fold's sphere is shut round the player (`strike::FD_STAY`): their flight kept to vanilla's at most.
+    fly_held: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
@@ -424,6 +426,7 @@ impl Orbital {
             page,
             colours,
             fly,
+            fly_held: false,
             blast_alt,
             fast,
             impact,
@@ -573,7 +576,8 @@ impl Orbital {
     /// Hands the game the flying speed (vanilla's at 1x). The game keeps it through respawns and worlds until it is
     /// changed, so this is needed only when it changes and as the mod starts.
     fn apply_fly(&self) {
-        let speed = ((self.fly - 1.0).abs() > 1e-4).then_some(VANILLA_FLY * self.fly);
+        let m = if self.fly_held { self.fly.min(1.0) } else { self.fly };
+        let speed = ((m - 1.0).abs() > 1e-4).then_some(VANILLA_FLY * m);
         world::set_flying_speed(speed);
     }
     fn set_fly(&mut self, m: f32) {
@@ -1026,7 +1030,32 @@ impl Orbital {
         }
     }
     /// One tick of the strike: everything due by now, in one batch.
+    /// While the Fold's sphere is shut round the player: flight kept to vanilla's at most, whatever they had set, and if
+    /// they get too far from where they fired, brought back (nothing shows of it: fold_warp's fw_stay has flattened out by
+    /// then) so that the land on its walls stays loaded. All of it let go as it opens, the strike stops or they leave.
+    fn fold_stay(&mut self) {
+        let at = self.strike.as_ref().filter(|s| s.key == "fold").map(|s| (s.ticks as f32 * 0.05, [s.params[12], s.params[13], s.params[14]]));
+        let held = at.is_some_and(|(t, _)| strike::FD_STAY.contains(&t));
+        if held != self.fly_held {
+            self.fly_held = held;
+            self.apply_fly();
+        }
+        let Some((t, me)) = at else { return };
+        if !held || t < strike::FD_TETHER_ON {
+            return;
+        }
+        let Some(p) = game::get_player() else { return };
+        let (dx, dy, dz) = (p.x - f64::from(me[0]), p.y - f64::from(me[1]), p.z - f64::from(me[2]));
+        let far = (dx * dx + dy * dy + dz * dz).sqrt();
+        if far > strike::FD_TETHER {
+            let k = (strike::FD_TETHER - 8.0) / far;
+            let at = [f64::from(me[0]) + dx * k, f64::from(me[1]) + dy * k, f64::from(me[2]) + dz * k];
+            world::run_commands(&[format!("tp @s {:.2} {:.2} {:.2}", at[0], at[1], at[2])]);
+        }
+    }
+
     fn tick_strike(&mut self) {
+        self.fold_stay();
         // (the world's answers to the ground asked for, before the stages that read them)
         ground::poll();
         columns::poll();

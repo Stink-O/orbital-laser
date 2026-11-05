@@ -15,9 +15,9 @@ const FD_FOLD: f32 = 19.0;
 const FD_SEAL: f32 = 35.0;
 const FD_CRUSH: f32 = 35.0;
 const FD_BEAT: f32 = 40.0;         // the tip touches the target
-const FD_REL: f32 = 40.3;          // it all runs backwards
-const FD_SLAM0: f32 = 41.1;        // flat, and past it
-const FD_SLAM4: f32 = 45.0;        // the last slam
+const FD_REL: f32 = 40.5;          // it all runs backwards
+const FD_SLAM0: f32 = 43.4;         // the first ring lands
+const FD_SLAM4: f32 = 48.0;        // the last slam
 const FD_FALL: f32 = 3000.0;       // how high it starts over the target
 
 fn fd_ss(a: f32, b: f32, x: f32) -> f32 { return smoothstep(a, b, x); }
@@ -45,11 +45,11 @@ fn fd_ring(i: i32) -> f32 {
 }
 fn fd_slam(i: i32) -> f32 {
     switch i {
-        case 4: { return 41.1; }
-        case 3: { return 42.0; }
-        case 2: { return 42.8; }
-        case 1: { return 43.7; }
-        default: { return 45.0; }
+        case 4: { return 43.4; }
+        case 3: { return 44.5; }
+        case 2: { return 45.6; }
+        case 1: { return 46.7; }
+        default: { return 48.0; }
     }
 }
 
@@ -703,6 +703,23 @@ fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
     return colIn * seen + light;
 }
 
+// The fold's clock and how the sphere goes with the player: fold_warp.wgsl's fw_tau and fw_stay at their full, while it is shut.
+fn fd_tau(t: f32) -> f32 {
+    if (t < FD_BEAT) { return t; }
+    if (t < FD_REL) { return FD_BEAT; }
+    let u = clamp((t - FD_REL) / (FD_SLAM0 - FD_REL), 0.0, 1.0);
+    return FD_BEAT - (FD_BEAT - 20.0) * u * u * (1.4 - 0.4 * u);
+}
+fn fd_stay(from_: vec3<f32>, S: f32, mh: f32) -> vec3<f32> {
+    let L = 0.55 * S;
+    let down = max(mh - min(mh - 4.0, 0.0) - 2.0, 6.0);
+    let v = vec3<f32>(from_.x, from_.y * select(1.0, L / down, from_.y < 0.0), from_.z);
+    let n = length(v);
+    if (n < 0.001) { return vec3<f32>(0.0); }
+    let q = v * (L * tanh(n / L) / n);
+    return from_ - vec3<f32>(q.x, q.y * select(1.0, down / L, from_.y < 0.0), q.z);
+}
+
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let uv = in.uv;
@@ -721,23 +738,23 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let far = select(length(off), 1.0e7, sky0);
 
     // ---- where the target has gone at the touch: on the far side of the sphere's floor (fw_place) ---------------------------
-    let tk = 1.0 / max(dist * 1.3, 170.0);
+    let mh = me.y - tgt.y;
+    let tk = 1.0 / max(max(dist * 1.3, 170.0), mh * 1.15);
     let tth = 2.0 * atan(dist * tk * 0.5);
-    // (the mound's top: fw_top laid back, less FW_SINK)
-    let trb = clamp(dist * 0.56, 60.0, 150.0);
-    let thy = trb / 153.0 * 0.533 * 260.6 - 20.0;
+    // (what is left of FW_SINK)
+    let thy = -16.0 * 0.3;
     let tup = sin(tth) / tk;
     let typ = 2.0 * pow(sin(tth * 0.5), 2.0) / tk;
     let tu = dist - tup * cos(tth) + (thy - typ) * sin(tth);
     let ty = tup * sin(tth) + (thy - typ) * cos(tth);
     let te = (me.xz - tgt.xz) / max(dist, 0.001);
-    let pt = project_rel(gq + vec3<f32>(te.x * tu, ty, te.y * tu));
+    let pt = project_rel(gq + vec3<f32>(te.x * tu, ty + min(mh - 4.0, 0.0), te.y * tu) + fd_stay(cam + camera_rest() - me, 1.0 / tk, mh));
 
     var col = fd_sample(uv);
 
     // ---- the void: the sky going out as the land closes, and under the land where it has left ------------------------------
     if (sky0 && t > FD_FOLD - 0.5) {
-        let dark = fd_ss(FD_FOLD + 3.0, FD_SEAL - 3.0, t) * (1.0 - fd_ss(FD_REL + 0.3, FD_SLAM0 + 0.6, t));
+        let dark = fd_ss(FD_FOLD + 3.0, 30.0, fd_tau(t));
         let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM0 - 0.2, FD_SLAM4 + 0.2, t));
         col = mix(col, fd_stars(v), max(dark, under));
     }
