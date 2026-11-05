@@ -1051,7 +1051,7 @@ def slam():
         for c, x in zip((L, R), (L.copy(), R.copy())):
             P.put(c, bp(x[:n_of(1.5)], None, dull) * g_, at)
     L, R = low_mono(L, R, 170.0)
-    out("slam", L, R, -6.5, tail=0.8, peak=10 ** (-1.2 / 20))
+    out("slam", L, R, -5.5, tail=0.8, peak=10 ** (-1.2 / 20))
 
 
 def comedown():
