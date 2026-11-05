@@ -1963,15 +1963,6 @@
     ],
     "subtitle": "subtitles.orbital.hurricane.rumble"
   },
-  "fold.drone": {
-    "sounds": [
-      {
-        "name": "orbital:fold/drone",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.drone"
-  },
   "fold.bloom": {
     "sounds": [
       {
@@ -1989,5 +1980,95 @@
       }
     ],
     "subtitle": "subtitles.orbital.fold.comedown"
+  },
+  "fold.descent": {
+    "sounds": [
+      {
+        "name": "orbital:fold/descent",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.descent"
+  },
+  "fold.stop": {
+    "sounds": [
+      {
+        "name": "orbital:fold/stop",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.stop"
+  },
+  "fold.meld": {
+    "sounds": [
+      {
+        "name": "orbital:fold/meld",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.meld"
+  },
+  "fold.ripple": {
+    "sounds": [
+      {
+        "name": "orbital:fold/ripple",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.ripple"
+  },
+  "fold.score": {
+    "sounds": [
+      {
+        "name": "orbital:fold/score",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.score"
+  },
+  "fold.tear": {
+    "sounds": [
+      {
+        "name": "orbital:fold/tear",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.tear"
+  },
+  "fold.groan": {
+    "sounds": [
+      {
+        "name": "orbital:fold/groan",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.groan"
+  },
+  "fold.creak": {
+    "sounds": [
+      {
+        "name": "orbital:fold/creak",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.creak"
+  },
+  "fold.crush": {
+    "sounds": [
+      {
+        "name": "orbital:fold/crush",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.crush"
+  },
+  "fold.thud": {
+    "sounds": [
+      {
+        "name": "orbital:fold/thud",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.thud"
   }
 }

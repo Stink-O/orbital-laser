@@ -49,7 +49,16 @@
   "subtitles.orbital.hurricane.thunder_mid": "Thunder claps",
   "subtitles.orbital.hurricane.thunder_far": "Thunder rolls",
   "subtitles.orbital.hurricane.rumble": "Distant thunder",
-  "subtitles.orbital.fold.drone": "The world hums",
+  "subtitles.orbital.fold.descent": "Something falls from the sky",
+  "subtitles.orbital.fold.stop": "A tiny ring",
+  "subtitles.orbital.fold.meld": "Liquid metal sinks in",
+  "subtitles.orbital.fold.ripple": "The ground breathes",
+  "subtitles.orbital.fold.score": "Hairline cracks race away",
+  "subtitles.orbital.fold.tear": "The land tears open",
+  "subtitles.orbital.fold.groan": "The land groans",
+  "subtitles.orbital.fold.creak": "The land creaks under load",
+  "subtitles.orbital.fold.crush": "Everything is sucked in",
   "subtitles.orbital.fold.bloom": "Everything blooms",
-  "subtitles.orbital.fold.comedown": "The hum fades"
+  "subtitles.orbital.fold.thud": "The land slams down",
+  "subtitles.orbital.fold.comedown": "The land settles"
 }
