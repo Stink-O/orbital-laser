@@ -89,19 +89,25 @@ fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * ((FD_TIP + 0.5) * R + 1.0 - vc * 0.25) / 2.25;
     return vec3<f32>(h, 0.05 * (1.0 - exp(-a * 9.0)) * exp(-a * 1.6), a * 16.0);
 }
-const FD_FOOT: f32 = 0.6;
+const FD_FOOT: f32 = 0.25;
 // The metal at its foot, where it and the land become one: how high over the target, and how wide. It starts thin and widens
 // fast, as a neck does (with the root of the time), keeps just over the land's swell (fold_warp.wgsl's fw_neck), and goes
 // under it as the last of the drop does.
+fn fd_land(a: f32, R: f32) -> f32 {
+    return 1.35 * R * fd_ss(-0.5, 0.55, a) * (1.0 - 0.69 * fd_ss(0.95, 1.5, a) - 0.31 * fd_ss(1.5, 2.4, a));
+}
 fn fd_foot(t: f32, R: f32) -> vec2<f32> {
     let a = t - FD_TOUCH;
     if (a < 0.0 || a > 1.7) {
         return vec2<f32>(0.0, 1.0);
     }
-    let land = 0.55 * R * fd_ss(-0.4, 0.5, a) * (1.0 - fd_ss(1.1, 3.2, a));
-    // (its height from FD_FOOT under the target, so its edge goes into the land rather than lying on it; drawn in and down at the end)
-    let top = land + 0.05 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - 1.5 * R * fd_ss(0.95, 1.6, a);
-    return vec2<f32>(max(top, 0.0), R * (0.2 + 1.25 * sqrt(a / 1.5)) * (1.0 - 0.7 * fd_ss(0.9, 1.6, a)));
+    // (the drop's width at the top of the land's skirt, which is where the neck is)
+    let land = fd_land(a, R);
+    let y = clamp((land - fd_meld(t, R).x) / R, -1.0, FD_TIP);
+    let rho = R * sqrt(max(fd_prof(y).x, 0.0));
+    // (its height from FD_FOOT under the target, so its edge goes into the land rather than lying on it; drawn down at the end)
+    let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - 1.1 * R * fd_ss(0.95, 1.6, a);
+    return vec2<f32>(max(top, 0.0), rho + 0.12 * R);
 }
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
@@ -206,7 +212,7 @@ fn fd_sdf(pIn: vec3<f32>, d: FdDrop) -> f32 {
         return a;
     }
     let b = fd_foot_at(pIn, d).w;
-    let k = 0.45 * d.R;
+    let k = 0.22 * d.R;
     let h = fd_blend(a, b, k);
     return mix(b, a, h) - k * h * (1.0 - h);
 }
@@ -216,14 +222,14 @@ fn fd_normal(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
         return n;
     }
     let f = fd_foot_at(pIn, d);
-    return normalize(mix(f.xyz, n, fd_blend(fd_bead(pIn, d), f.w, 0.45 * d.R)));
+    return normalize(mix(f.xyz, n, fd_blend(fd_bead(pIn, d), f.w, 0.22 * d.R)));
 }
 // ---- the two glows: one soft ring round where they meet, from first touch; then, the drop gone in, one soft glow over the whole
 // landing, and no flash in either ------------------------------------------------------------------------------------------
 const FD_GLOW: vec3<f32> = vec3<f32>(0.86, 0.93, 1.1);
 fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, on_land: bool, far: f32, d: FdDrop) -> vec3<f32> {
     let a = t - FD_TOUCH;
-    if (a < -0.02 || a > 3.6) {
+    if (a < -0.1 || a > 3.6) {
         return colIn;
     }
     var col = colIn;
@@ -234,16 +240,17 @@ fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, o
     let miss = length(H - v * hd);
     let seen = select(0.35, 1.0, far > hd - 3.0 * R);
     let rr = length(P.xz);
-    // ---- the ring ------------------------------------------------------------------------------------------------------------
-    let g1 = fd_ss(-0.02, 0.45, a) * (1.0 - fd_ss(1.1, 1.75, a));
+    // ---- the join: the land itself lit where it meets the drop, its blocks kept, and hot right at the line ---------------------
+    let g1 = fd_ss(-0.1, 0.25, a) * (1.0 - fd_ss(1.2, 1.8, a));
     if (g1 > 0.0) {
-        let neck = R * (0.3 + 1.2 * sqrt(max(a, 0.0) / 1.5));
+        let neck = select(0.15 * R, max(d.pw - 0.12 * R, 0.15 * R), d.pool > 0.0);
         if (on_land) {
-            let x = (rr - neck) / (0.55 * R);
-            let e = exp(-x * x) * exp(-abs(P.y) / (0.9 * R));
-            col = col + (col * 2.2 + FD_GLOW * 0.5) * e * g1;
+            let x = max(rr - neck, 0.0);
+            let e = exp(-x / (0.55 * R)) * exp(-max(P.y - fd_land(a, R), 0.0) / (0.8 * R));
+            let hot = exp(-abs(rr - neck) / (0.14 * R));
+            col = col + (col * 2.0 * e + (col * 2.0 + FD_GLOW * 0.13) * hot * e) * g1;
         }
-        col = col + FD_GLOW * 0.42 * g1 * seen * exp(-miss * miss / (2.0 * R * R));
+        col = col + FD_GLOW * 0.09 * g1 * seen * exp(-miss * miss / (2.0 * R * R));
     }
     // ---- all of it -----------------------------------------------------------------------------------------------------------
     let g2 = fd_ss(1.5, 1.9, a) * (1.0 - fd_ss(1.9, 3.5, a));
@@ -251,9 +258,9 @@ fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, o
         let wide = R * (3.0 + 1.0 * fd_ss(1.5, 3.5, a));
         if (on_land) {
             let x = rr / wide;
-            col = col + (col * 1.5 + FD_GLOW * 0.14) * exp(-x * x) * exp(-max(abs(P.y) - 6.0, 0.0) / (1.2 * R)) * g2;
+            col = col + (col * 1.7 + FD_GLOW * 0.03) * exp(-x * x) * exp(-max(abs(P.y) - 6.0, 0.0) / (1.2 * R)) * g2;
         }
-        col = col + FD_GLOW * 0.2 * g2 * seen * exp(-miss * miss / (wide * wide * 0.9));
+        col = col + FD_GLOW * 0.05 * g2 * seen * exp(-miss * miss / (wide * wide * 0.9));
     }
     return col;
 }
@@ -600,11 +607,14 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
             let n = fd_normal(p, d);
             let r = reflect(v, n);
             var c = fd_env(r, normalize(frame.sun.xyz));
-            // (the real land in it, where the reflection can be read off the picture)
-            let ro = project_rel(v * sb + r * 90.0);
-            if (ro.z > 0.0 && ro.x > 0.0 && ro.x < 1.0 && ro.y > 0.0 && ro.y < 1.0) {
-                let edge = fd_ss(0.0, 0.12, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))) * fd_ss(0.2, 0.05, r.y);
-                c = mix(c, fd_sample(ro.xy) * 1.1, 0.6 * edge);
+            // (the real land in it: where the reflection meets the ground, read off the picture, the picture's edge if it is off it,
+            // so its underside shows the land's own colours and not a grey)
+            if (r.y < 0.15) {
+                let up = max(-r.y, 0.03);
+                let ro = project_rel(v * sb + r * clamp((dot(v * sb, vec3<f32>(0.0, 1.0, 0.0)) - G.y) / up, 8.0, 400.0));
+                // (what lies behind the eye: the land nearest it, the picture's foot)
+                let px_ = select(vec2<f32>(0.5, 0.92), clamp(ro.xy, vec2<f32>(0.02, 0.45), vec2<f32>(0.98, 0.98)), ro.z > 0.0);
+                c = mix(c, fd_sample(px_) * 1.05, 0.85 * fd_ss(0.15, -0.05, r.y));
             }
             let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
             var mc = c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres);
@@ -681,7 +691,9 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             col = col + col * vec3<f32>(2.6, 1.15, 0.4) * fl * (14.0 / (lr + 20.0)) * exp(-max(abs(P.y) - 6.0, 0.0) / 16.0);
         }
         let C = gq + vec3<f32>(0.0, d.h, 0.0);
-        col = fd_droplet(col, t, v, gq, C, d, far, uv, aspect, land, li, jit);
+        // (what the land has reached up inside the drop is taken into it, not seen through it)
+        let swallowed = t >= FD_TOUCH && !sky0 && fd_bead(off - C, d) < 0.0;
+        col = fd_droplet(col, t, v, gq, C, d, select(far, 1.0e7, swallowed), uv, aspect, land, li, jit);
         col = fd_glow(col, t, v, gq, off - gq, !sky0, far, d);
     }
 
