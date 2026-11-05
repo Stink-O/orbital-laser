@@ -14,6 +14,7 @@
 //! lands, solved against the land) and the land's height (from VC_HF, as the Nuke's heightfield: the flows hug it).
 //! What it leaves is real blocks, terrain on only: strike/vc_land.rs. With the terrain off it is light and sound only.
 use super::*;
+use std::f64::consts::PI;
 use std::rc::Rc;
 
 /// The story's times (strike seconds). Keep in step with shaders/volcano.wgsl.
@@ -35,7 +36,7 @@ const VC_V: f64 = 343.0;
 /// when they are thrown; the land from VC_HF.
 pub(super) const VC_BOMB: usize = 16;
 pub(super) const VC_BW: usize = 8;
-pub(super) const VC_BOMBS_N: usize = 96;
+pub(super) const VC_BOMBS_N: usize = 64;
 /// The bombs fall at this, blocks a second squared.
 pub(super) const VC_G: f64 = 28.0;
 pub(super) const VC_HF: usize = 1024;
@@ -82,14 +83,62 @@ fn vc_hf_pack(heights: &[Option<f64>], reach: f64) -> Vec<u32> {
     w
 }
 
-/// What the pass reads (see VC_BOMB): worked out on the tick after it fires.
-pub(super) fn vc_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
-    let mut w = vec![0.0f32; VC_HF];
-    w[0] = 1.0;
-    w[1] = VC_BOMBS_N as f32;
-    w[2] = me[0] as f32;
-    w[3] = me[2] as f32;
-    w.into_iter().map(f32::to_bits).collect()
+/// The lava bombs (from the vent, in order of when they are thrown): when, from where, how fast; and when each meets the
+/// land (`land`: x, z to its height).
+pub(super) struct Bomb {
+    pub t0: f64,
+    pub p0: [f64; 3],
+    pub v: [f64; 3],
+    pub tl: f64,
+}
+pub(super) fn vc_bombs(seed: f32, land: &dyn Fn(f64, f64) -> f64) -> Vec<Bomb> {
+    let s = seed as u32;
+    (0..VC_BOMBS_N)
+        .map(|i| {
+            let k = i as u32;
+            let u = (i as f64 + 0.8 * mh(k, s, 0xb1)) / VC_BOMBS_N as f64;
+            let t0 = f64::from(VC_BOMBS) + f64::from(VC_BOMBS_END - VC_BOMBS) * u.powf(0.8);
+            let th = 2.0 * PI * mh(k, s, 0xb2);
+            let r0 = VC_RING + 50.0 * (mh(k, s, 0xb3) - 0.5);
+            let p0 = [r0 * th.cos(), 40.0 + 80.0 * mh(k, s, 0xb4), r0 * th.sin()];
+            // (up hard, out at most a little: arcs a few hundred blocks out, the big throws a kilometre)
+            let vo = 16.0 + 62.0 * mh(k, s, 0xb5).powf(1.6);
+            let vy = 120.0 + 140.0 * mh(k, s, 0xb6);
+            let sway = th + 0.5 * (mh(k, s, 0xb7) - 0.5);
+            let v = [vo * sway.cos(), vy, vo * sway.sin()];
+            // (down its fall, a step at a time, to where it meets the land)
+            let mut tau = vy / VC_G;
+            let at = |tau: f64| [p0[0] + v[0] * tau, p0[1] + v[1] * tau - 0.5 * VC_G * tau * tau, p0[2] + v[2] * tau];
+            for _ in 0..200 {
+                let p = at(tau);
+                if p[1] <= land(p[0], p[2]) {
+                    break;
+                }
+                tau += 0.1;
+            }
+            Bomb { t0, p0, v, tl: t0 + tau }
+        })
+        .collect()
+}
+/// The bombs' words (from VC_BOMB).
+fn vc_bomb_words(bombs: &[Bomb]) -> Vec<u32> {
+    let mut w = Vec::with_capacity(bombs.len() * VC_BW);
+    for b in bombs {
+        let f = [b.t0, b.p0[0], b.p0[1], b.p0[2], b.v[0], b.v[1], b.v[2], b.tl];
+        w.extend(f.iter().map(|x| (*x as f32).to_bits()));
+    }
+    w
+}
+
+/// What the pass reads (see VC_BOMB): worked out on the tick after it fires, the bombs over flat land until the land's
+/// height is in.
+pub(super) fn vc_table(seed: f32, _me: [f64; 3]) -> Vec<u32> {
+    let mut w = vec![0u32; VC_HF];
+    w[0] = 1f32.to_bits();
+    w[1] = (VC_BOMBS_N as f32).to_bits();
+    let b = vc_bomb_words(&vc_bombs(seed, &|_, _| 0.0));
+    w[VC_BOMB..VC_BOMB + b.len()].copy_from_slice(&b);
+    w
 }
 
 pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
