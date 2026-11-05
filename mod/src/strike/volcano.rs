@@ -268,7 +268,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     // (nothing at the hush: one held breath before it goes)
     while ts < VC_HUSH {
         let u = (ts - VC_HIT) / (VC_HUSH - VC_HIT);
-        p.shake(ts, (0.05 + 0.4 * u * u) * fo, 0.5 + 0.5 * u);
+        p.shake(ts, (0.05 + 0.4 * u * u) * fo, (0.5 + 0.5 * u).min(VC_HUSH - ts));
         ts += 0.9 - 0.6 * u;
     }
     let arrive = VC_ERUPT + late;
@@ -280,9 +280,10 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         ts += p.rng.uniform(0.8, 1.6) as f32;
     }
     p.shake(VC_COLLAPSE + late, 0.8 * fo, 3.5);
-    let wall = vc_wall_at(dist);
+    // (where the wall's lobes bring it to the player: the picture's and the sound's hit; softer the later it comes)
+    let wall = vc_sound::front_at(dist, rel[2].atan2(rel[0])).unwrap_or(vc_wall_at(dist));
     if dist < 1700.0 {
-        p.shake(wall, 1.0, 2.0);
+        p.shake(wall, (1.0 - (wall - 68.0) / 14.0).clamp(0.0, 1.0), 2.0);
         let mut ts = wall + 1.0;
         while ts < wall + 10.0 {
             p.shake(ts, 0.3, 1.0);
