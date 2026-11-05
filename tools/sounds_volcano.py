@@ -71,7 +71,7 @@ LEVEL = {"beam": -33.0, "tick": -30.0, "tremor": -12.5, "creak": -21.0, "crack":
          "report": -4.5, "report_far": -5.0, "report_sub": -8.5, "column": -13.0, "column_far": -14.5,
          "whistle": -23.0, "thud": -13.0, "thud_far": -18.0, "bolt": -15.0, "bolt_far": -23.0,
          "collapse": -5.5, "collapse_far": -6.0, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
-         "splinter": -19.0, "grind": -20.0, "after": -22.0, "patter": -30.0}
+         "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
 ERUPT_IN_TREMOR = 10.0     # (the eruption, into `tremor`, which starts at 2 s)
 FALTER = 32.0              # (the collapse, into `column`, which starts at 12 s: keep vc_sound.rs's beats in step)
@@ -370,23 +370,30 @@ def column_parts():
     base = band(white(d), 110, 2600, 1)
     roar = T.unit(band(white(d), 100, 950, 1.5)) * gust * (0.9 + 0.25 * pulse) * f * breath
     src = T.unit(base) * gust * burst ** 0.5
-    k = 1.1e-4 * (f * breath) ** 1.2 * burst ** 0.5
+    k = 1.5e-4 * (f * breath) ** 1.2 * burst ** 0.5
     jet = steepen(src, k)
     jet = T.unit(band(jet, 450, 13500, 1)) * f ** 1.2 * (0.9 + 0.2 * pulse)
-    return sub, rum, roar, jet, pulse, f
+    # (and the shocks that have run on ahead: single pops, sudden rises easing away, in flurries with the bursts)
+    rate = 36.0 * burst * f ** 2
+    at = np.nonzero(rng().random(n) < rate / SR)[0]
+    train = np.zeros(n)
+    train[at] = np.minimum(np.exp(rng().normal(0, 0.8, len(at))), 6.0)
+    s = np.arange(n_of(0.012)) / SR
+    pops = T.unit(band(conv(train, (1 - np.exp(-s / 0.00012)) * np.exp(-s / 0.0016)), 700, 9500, 1)) * (0.9 + 0.2 * pulse)
+    return sub, rum, roar, jet, pops, pulse, f
 
 
 def build_column():
     """The jet. Near: the whole of it. Far: the sub and the rumble as they were, the roar darker, the crackle a dull
     tearing, in the land's long reverb. The same noises, so the two cross-fade as one sound."""
     with PB.seeded(61601):
-        sub, rum, roar, jet, pulse, f = column_parts()
+        sub, rum, roar, jet, pops, pulse, f = column_parts()
         print(f"column: crackle (skewness of dp/dt) {skew_dt(jet[n_of(14):n_of(30)]):.2f}")
         d = COLUMN_D
         n = n_of(d)
-        near = sub * 0.9 + rum * 0.95 + roar * 0.66 + jet * 0.42
+        near = sub * 0.9 + rum * 0.95 + roar * 0.66 + jet * 0.4 + pops * 0.17
         near = lows_heard(near, 70, 300, -9.0)
-        far = sub * 1.15 + rum * 1.1 + band(roar, None, 640, 2) * 0.62 + band(jet, None, 1700, 2) * 0.22
+        far = sub * 1.15 + rum * 1.1 + band(roar, None, 640, 2) * 0.62 + band(jet + pops * 0.5, None, 1700, 2) * 0.22
         far = land(far, 3.5, 0.35, (1000, 200), 1.8, seed=21)
         far = lows_heard(far, 70, 300, -8.0)
     write("column", PB.causal_lowcut(near * T.fade(n, 0.4, 1.6), 14.0), knee=0.6)
@@ -740,8 +747,9 @@ BUILD = {
 # ===========================================================================================================  listening
 def decoded_ogg(path):
     """A file as the game plays it: decoded and summed to mono."""
-    r = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"], capture_output=True, check=True)
-    return np.frombuffer(r.stdout, "<f4").astype(float)
+    ch = int(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=channels", "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True).stdout.split()[0])
+    r = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(path), "-ar", str(SR), "-f", "f32le", "-"], capture_output=True, check=True)
+    return np.frombuffer(r.stdout, "<f4").astype(float).reshape(-1, ch).mean(axis=1)
 
 
 def game_mix(lines, ogg_of, d):
@@ -785,10 +793,10 @@ def event_ogg(ev):
     return ROOT / "orbital-sounds" / "assets" / "orbital" / "sounds" / laser / f"{name}.ogg"
 
 
-def timeline(tl, me, caught=False):
+def timeline(tl, me):
     """The plan's sounds with the player `me` blocks from the vent (mod/src/strike/vc_sound.rs's ignored vc_write_sounds)."""
     subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "vc_write_sounds", "--", "--ignored"], cwd=ROOT / "mod",
-                   env=dict(os.environ, VC_OUT=str(Path(tl).resolve()), VC_ME=str(me), VC_CAUGHT="1" if caught else "0"), check=True, capture_output=True)
+                   env=dict(os.environ, VC_OUT=str(Path(tl).resolve()), VC_ME=str(me)), check=True, capture_output=True)
     return [l.split() for l in Path(tl).read_text().splitlines() if l.strip()]
 
 
@@ -816,9 +824,9 @@ def report(name, m):
     return db
 
 
-def listen_mix(tag, me, out, caught=False):
+def listen_mix(tag, me, out):
     tl = Path(out) / f"timeline_{tag}.txt"
-    lines = timeline(tl, me, caught)
+    lines = timeline(tl, me)
     mix, pre, held = game_mix(lines, event_ogg, 84.0)
     path = Path(out) / f"volcano_mix_{tag}"
     N.write_wav(str(path) + ".wav", mix)
@@ -862,7 +870,9 @@ def main():
             path.write_text(json.dumps(sounds, indent=2))
     if a.listen:
         os.makedirs(a.listen, exist_ok=True)
-        worst = max(listen_mix(tag, me, a.listen, c)[0] for tag, me, c in (("500", 500, False), ("900", 900, False), ("1500", 1500, False), ("caught", 620, True)))
+        # (the flow reaches a player at 500 at about 48 s, at 900 at about 58, and not at 1,500; "caught" stands at 620,
+        # where it's on them with most of the flow still to come)
+        worst = max(listen_mix(tag, me, a.listen)[0] for tag, me in (("500", 500), ("900", 900), ("1500", 1500), ("caught", 620)))
         print(f"worst true peak over the mixes: {worst:.2f} dBTP")
 
 
