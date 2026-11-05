@@ -285,7 +285,7 @@ fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, l
             let x = max(rr - edge, 0.0);
             let e = exp(-x / ((0.55 + 0.22 * L.y) * R)) * exp(-max(P.y - fd_land(a, R), 0.0) / (0.8 * R));
             let hot = exp(-abs(rr - edge) / (0.14 * R));
-            col = col + (col * 2.0 * e + (col * 2.0 + FD_GLOW * 0.13) * hot * e) * g1 * lit;
+            col = col + (col * 1.2 * e + (col * 1.1 + FD_GLOW * 0.1) * hot * e) * g1 * lit;
         }
         col = col + FD_GLOW * 0.09 * g1 * seen * exp(-miss * miss / (2.0 * R * R));
     }
@@ -841,7 +841,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         if (swallowed) {
             let closing = fd_ss(FD_MELD - 0.16, FD_MELD, t);
             col = mix(fd_droplet(under, t, v, gq, C, d, 1.0e7, uv, aspect, land, li, jit), col, closing);
-            lit = mix(0.12, 1.0, closing);
+            lit = mix(0.12, 1.0, closing * closing * closing);
         }
         col = fd_glow(col, t, v, gq, off - gq, lit, far, d);
     }
