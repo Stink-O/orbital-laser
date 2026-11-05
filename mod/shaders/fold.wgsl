@@ -755,7 +755,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     // ---- the void: the sky going out as the land closes, and under the land where it has left ------------------------------
     if (sky0 && t > FD_FOLD - 0.5) {
         let dark = fd_ss(FD_FOLD + 3.0, 30.0, fd_tau(t));
-        let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM4 - 0.3, FD_SLAM4 + 0.1, t));
+        let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM4, FD_SLAM4 + 0.2, t));
         col = mix(col, fd_stars(v), max(dark, under));
     }
 
