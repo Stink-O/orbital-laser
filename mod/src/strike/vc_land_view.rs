@@ -80,7 +80,7 @@ fn is(name: &str, filter: &str) -> bool {
                 "minecraft:logs" => n.ends_with("_log") || n.ends_with("_wood"),
                 "minecraft:dirt" => matches!(n, "dirt" | "grass_block" | "coarse_dirt" | "podzol" | "mud" | "rooted_dirt"),
                 "minecraft:sand" => n.ends_with("sand"),
-                "minecraft:overworld_carver_replaceables" => matches!(n, "stone" | "dirt" | "grass_block" | "coarse_dirt" | "sand" | "gravel" | "water" | "sandstone" | "terracotta" | "snow"),
+                "minecraft:azalea_root_replaceable" => matches!(n, "stone" | "dirt" | "grass_block" | "coarse_dirt" | "sand" | "gravel" | "sandstone" | "terracotta" | "snow_block"),
                 _ => panic!("the picture knows no tag {tag}"),
             }
         }
@@ -471,13 +471,28 @@ fn vc_land_picture() {
     let mut worst = (0u64, 0, 0);
     let mut total = 0u64;
     let mut runs = 0usize;
+    let mut by = [(0u64, 0u32); 8];
     for &(t, x, z) in &chunks {
         crate::meter::reset();
         vc_chunk(&mut p, &wk, t, x, z);
         let m = crate::meter::spent();
         total += m;
+        let z_ = ((f64::from(x) + 8.0).hypot(f64::from(z) + 8.0) / 100.0) as usize;
+        by[z_.min(7)].0 += m;
+        by[z_.min(7)].1 += 1;
         if m > worst.0 {
             worst = (m, x, z);
+        }
+    }
+    // (the far dust, every chunk as if the world had them all loaded)
+    let n = VC_FAR as i32 / 16 + 1;
+    for dz in -n..=n {
+        for dx in -n..=n {
+            let (x, z) = (dx * 16, dz * 16);
+            let r = (f64::from(x) + 8.0).hypot(f64::from(z) + 8.0);
+            if r + 12.0 > f64::from(VC_READ) && r < VC_FAR && x.abs() < R - 16 && z.abs() < R - 16 {
+                vc_far_chunk(&mut p, &s, 60.0, x, z);
+            }
         }
     }
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -488,6 +503,9 @@ fn vc_land_picture() {
         }
     }
     eprintln!("edits {:?}: {} chunks, {runs} runs, {:.0}M counted, worst chunk {:.2}M at {} {}", t0.elapsed(), chunks.len(), total as f64 / 1e6, worst.0 as f64 / 1e6, worst.1, worst.2);
+    for (i, b) in by.iter().enumerate() {
+        eprintln!("  r {:4}: {:5} chunks, {:6.2}M a chunk", i * 100, b.1, b.0 as f64 / 1e6 / f64::from(b.1.max(1)));
+    }
     tally(&w);
     let m = mats(&w.names);
     let want = std::env::var("VC_VIEWS").unwrap_or("map,air570,edge,rim,lake,wall,trees,crown".into());

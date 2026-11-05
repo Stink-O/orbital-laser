@@ -1,15 +1,26 @@
-//! What the Supervolcano leaves: real blocks, terrain on only, going in behind the wall of ash from VC_COLLAPSE. Inside
-//! the ring a caldera (`Shape`: about 560 across, its edge scalloped and slumped) with cliffs some 90 high, stepped in
-//! slumped benches, on a floor of black crust plates (blackstone, basalt, magma) with lava in the cracks between them;
-//! round it a broken, stepped rim out to about 320, cut by the ring's fractures; ignimbrite (tuff and grey ash) out to
-//! about 440, deeper in the low ground and thin on the ridges; the trees felled pointing away from the vent out to 520.
-//! Water and lava the walls cut into are sealed. The chunks within VC_LOAD (about 2,500) are force-loaded from the
-//! moment it fires; past that only what the world has loaded (round the player) changes.
+//! What the Supervolcano leaves: real blocks, terrain on only, going in behind the wall of ash from VC_COLLAPSE.
+//!
+//! The caldera (`Shape`: about 560 across, its edge scalloped and slumped, 90 deep): a lake of dark crust (`lake_edit`:
+//! big irregular plates, broken further in places, thin veins of lava towards the ring's vents dimming to dark seams away
+//! from them, a few open pools, lava a tenth of it), a few huge blocks of the land dropped whole and standing in it, their
+//! beds still in them (`Drop`). Its walls (`relief`): a scarp, slumped blocks each dropped and turned back on its own, fans
+//! of rubble at the foot, their faces in dark beds (`beds_edit`) carried down with what slumped. The rim (`Ctx::rim`):
+//! slabs of the land broken and tilted up on the ring's own apron of ash, a crown of wedges where it burst hardest.
+//!
+//! Round it (`out_edit`) one deposit (ignimbrite) out to about 440: one tone with a fine grain, wet streaks along the
+//! flows, ponded deep in the low ground, a skin on the ridges so the land's shape shows through. Water under it is filled
+//! to a dark wet plain. Past its wandering edge the land fades through patches of dust (`dust_cover`), pumice floating
+//! on the water, to the odd patch by VC_FAR, as far as the world has chunks loaded (`vc_far_chunk`, no read). The trees
+//! grade (`fate`, `stand_edit`, `vc_fell`): charred trunks lying pointing away and burnt stumps, then bare black trunks,
+//! then scorched trees with their crowns going brown, then the leaves only. Water and lava the walls cut into are
+//! sealed. The chunks within VC_LOAD (about 4,000) are force-loaded from the moment it fires, so nothing stops at a
+//! line: the edge of what's force-loaded has to lie where the land has all but faded out.
 //!
 //! The work goes a chunk at a time (`vc_chunk`), in order of when each is due: past the ring as the wall of ash goes over
 //! it, inside the ring from the edge in as fast as the world takes the blocks (VC_RATE), so every chunk's edits go in on
-//! one tick and the game redraws it once. The caldera needs no read of the land (its runs reach from its floor up past
-//! the land's height, known from the pass's heightfield); what lies round it does (`read_columns`, a ring of parts).
+//! one tick and the game redraws it once. Everything that shows as a face is worked out from a chunk's relief (`Rel`);
+//! what lies round the caldera comes from a read (`read_columns`, a ring of parts). A run costs the game's fuel some 1,000
+//! instructions on its way out, so a column is as few runs as it can be; and the waiting ones are capped (VC_QUEUE).
 use super::nuke::{Kind, LOG_X, LOG_Z, kind};
 use super::volcano::{Hf, VC_COLLAPSE, vc_front};
 use super::*;
@@ -29,6 +40,8 @@ pub(super) const VC_LOAD: f64 = 576.0;
 /// What each reaches to: the rim, the ignimbrite (the sheet's edge; its dust goes on past it, the trees' fates are by VC_FELLED).
 const VC_RIM: f64 = 320.0;
 const VC_IGN: f64 = 440.0;
+/// The dust reaches this far, where the world has the land loaded (past what's force-loaded, round the player).
+const VC_FAR: f64 = 1050.0;
 /// The depth of the caldera.
 const VC_DEEP: f64 = 90.0;
 /// Past this the chunks go in with the wall; inside it from the edge in, VC_RATE blocks a second (PK_RATE's class).
@@ -37,7 +50,11 @@ const VC_RATE: f64 = 1_200_000.0;
 /// The most a stage's chunks may take the tick's count to.
 const VC_TICK: u64 = 6_000_000;
 /// How long ahead of its time a chunk's edits are worked out.
-const VC_LEAD: f32 = 3.2;
+const VC_LEAD: f32 = 4.0;
+/// The most runs worked out and waiting to go in: a mod has 64 MB, a run takes 32 bytes.
+const VC_QUEUE: usize = 200_000;
+/// When the chunks past the read are asked after.
+const VC_FAR_ASK: f32 = 44.0;
 /// A chunk's blocks inside the ring, for the pace.
 const VC_COL: f64 = 118.0;
 /// What the work of a column is reckoned at, in instructions, besides what `Blocks` counts of its runs.
@@ -434,17 +451,26 @@ fn rock(kind: u8, h: f64) -> &'static str {
         }
     }
 }
-/// The bedrock of the walls at y, `shift` blocks down from where it lay (a slumped or tilted block carries its beds down
-/// with it), the beds leaning (`lean`) and their edges never a straight line.
-fn strata(s: &Shape, x: i32, y: i32, z: i32, shift: i32, lean: f64) -> &'static str {
-    let h = pick(x * 13 + y * 101 + z * 7, s.seed ^ 0xc9);
-    let d = (s.gy + 200 - y - shift) as f64 + lean + 1.6 * (h - 0.5);
-    let k = s.beds[((d as i32 - 170).rem_euclid(VC_BANDS as i32)) as usize];
-    // (the odd seam of magma, deep down)
-    if y < s.floor + 14 && k == R_BLACK && h > 0.965 {
-        return "minecraft:magma_block";
+/// A column's face in beds from y0 up to y1: its rock `shift` blocks down from where it lay (a slumped or tilted block
+/// carries its beds down with it), the beds leaning (`lean`), their edges never straight, a bed one block over its height.
+fn beds_edit(b: &mut Blocks, s: &Shape, x: i32, z: i32, y0: i32, y1: i32, shift: i32, lean: f64) {
+    let hc = pick(x * 13 + z * 7, s.seed ^ 0xc9);
+    let d0 = s.gy + 30 - shift + (lean + 2.4 * hc) as i32;
+    let mut y = y1;
+    crate::meter::spend(160);
+    while y >= y0 {
+        let k = (d0 - y).rem_euclid(VC_BANDS as i32) as usize;
+        let bed = s.beds[k];
+        // (down through the bed)
+        let mut n = 1;
+        while y - n >= y0 && n < 12 && s.beds[(k + n as usize) % VC_BANDS] == bed {
+            n += 1;
+        }
+        let h = pick(x * 3 + (y - n / 2) / 3 * 17 + z * 29, s.seed ^ 0xce);
+        let m = if y < s.floor + 14 && bed == R_BLACK && h > 0.965 { "minecraft:magma_block" } else { rock(bed, h) };
+        b.run(x, z, y - n + 1, y, m);
+        y -= n;
     }
-    rock(k, pick(x * 3 + y * 17 + z * 29, s.seed ^ 0xce))
 }
 /// The rubble at the foot of the walls.
 fn rubble(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
@@ -634,15 +660,16 @@ impl Ctx<'_> {
         let h = |k: u32| f64::from(pcg(id ^ k) >> 16) / 65536.0;
         // (the slab's middle, how far past the lip it lies)
         let (ox, oz) = (mx - wx - s.cx, mz - wz - s.cz);
-        let rc = ox.hypot(oz);
-        let pc = p + (rc - (f64::from(x) + 0.5 - s.cx).hypot(f64::from(z) + 0.5 - s.cz));
+        let rc = (ox * ox + oz * oz).sqrt();
+        let (px, pz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
+        let pc = p + (rc - (px * px + pz * pz).sqrt());
         let q = (pc / rw).clamp(0.0, 1.3);
         let a = 26.0 * (1.0 - (q / 1.15).min(1.0)).powi(2) + 7.0 * (1.0 - (q / 1.15).min(1.0));
         let mut up = a * (0.3 + 0.7 * h(0x51));
         // (the slab's top, dipping outwards, a bit round the way too)
         let (nx, nz) = (ox / rc, oz / rc);
         let mut dip = (0.32 + 0.6 * h(0x54)) * (a / 33.0 + 0.25);
-        let (rx, rz) = (f64::from(x) + 0.5 - s.cx - ox, f64::from(z) + 0.5 - s.cz - oz);
+        let (rx, rz) = (px - ox, pz - oz);
         let along = rx * nx + rz * nz;
         let side = -rx * nz + rz * nx;
         // the crown: where the ring burst hardest, slabs thrust up on end, wedges of rock; little between
@@ -671,7 +698,7 @@ impl Ctx<'_> {
         crate::meter::spend(VC_UNIT);
         let s = self.s;
         let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
-        let r = dx.hypot(dz);
+        let r = (dx * dx + dz * dz).sqrt();
         let e = self.g.at(&self.g.e, x, z);
         let u = e - r;
         let w = self.g.at(&self.g.w, x, z);
@@ -737,7 +764,7 @@ impl Ctx<'_> {
             let h = |k: u32| f64::from(pcg(id ^ k) >> 16) / 65536.0;
             let sc = (uc / w).max(0.0);
             // (how far down the cell's middle has gone; the scarp's cells a good way at once)
-            let q = (0.2 + 0.86 * sc.powf(0.9) + 0.14 * (h(0x61) - 0.5)).clamp(0.14, 1.1);
+            let q = (0.2 + 0.86 * sc + 0.14 * (h(0x61) - 0.5)).clamp(0.14, 1.1);
             // (turned back: its far side higher)
             let back = (0.12 + 0.3 * h(0x62)) * (u - uc) / w;
             let rock = lip - depth * (q - back);
@@ -745,7 +772,10 @@ impl Ctx<'_> {
             let fan = ring_noise(a, 29, 0.5, s.seed ^ 0xe5);
             let n = pick(x * 19 + z * 7, s.seed ^ 0xe6);
             let rough = 1.6 * n + 1.6 * pick(x / 3 * 5 + z / 3 * 11, s.seed ^ 0xe7);
-            let talus = f64::from(f) + (10.0 + 30.0 * fan) * ((1.08 - sw) / 0.62).clamp(0.0, 1.0).powf(1.4) + rough;
+            let talus = f64::from(f) + (10.0 + 30.0 * fan) * {
+                let k = ((1.08 - sw) / 0.62).clamp(0.0, 1.0);
+                k * k.sqrt()
+            } + rough;
             let edge = d2.sqrt() - d1.sqrt();
             let crack = if edge < 0.09 { 2.0 + 2.0 * h(0x63) } else { 0.0 };
             if talus >= rock - crack {
@@ -837,8 +867,7 @@ fn lake_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32) {
     } else {
         "minecraft:polished_blackstone"
     };
-    b.run(x, z, top - 2, top - 1, "minecraft:blackstone");
-    b.run(x, z, top, top, m);
+    b.run(x, z, top - 2, top, m);
     b.run(x, z, top + 1, ctx.y1, "minecraft:air");
 }
 
@@ -851,16 +880,13 @@ fn rock_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, r: Rel, ground: i32) {
     for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
         low = low.min(ctx.near(x + dx, z + dz).top - 1);
     }
-    let low = low.max(r.top - 44);
+    let low = low.max(r.top - 30);
     if low > ground + 1 {
         b.run(x, z, ground + 1, low - 1, "minecraft:tuff");
     }
-    crate::meter::spend(70 * (r.top - low + 1) as u64);
     // (ash lying on what's near flat)
     let flat = r.top - low <= 3 && pick(x * 3 + z * 19, s.seed ^ 0xef) < 0.8;
-    for y in low..=r.top - i32::from(flat) {
-        b.run(x, z, y, y, strata(s, x, y, z, r.shift, lean));
-    }
+    beds_edit(b, s, x, z, low, r.top - i32::from(flat), r.shift, lean);
     if flat {
         b.run(x, z, r.top, r.top, ash_block(x, r.top, z, s.seed, 0.25));
     }
@@ -910,17 +936,11 @@ fn out_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, r: f64, rel: Rel)
         if stands > top {
             b.run(x, z, top + 1, stands, "minecraft:air");
         }
-        if c.deep {
-            b.run(x, z, base - 1, base - 1, "minecraft:tuff");
-        } else if top - 2 > c.g {
-            b.run(x, z, c.g + 1, top - 2, "minecraft:tuff");
-        }
         let was_water = c.fluid;
         let dark = if was_water { (wet + 0.62).min(0.92) } else if pond > 7.0 { wet * 0.6 } else { wet };
-        for y in (top - 1).max(c.g + 1).min(top)..=top {
-            let m = if lump > 0 { rubble(x, y, z, s.seed) } else { ash_block(x, y, z, s.seed, dark) };
-            b.run(x, z, y, y, m);
-        }
+        let m = if lump > 0 { rubble(x, top, z, s.seed) } else { ash_block(x, top, z, s.seed, dark) };
+        // (one run, all of it: the ash under the top is no one's to see)
+        b.run(x, z, if c.deep { base - 1 } else { (c.g + 1).min(top) }, top, m);
         // (a tree's charred stump showing through at the sheet's edge)
         if c.trunk > 0 && !c.fluid && lump == 0 && rho > 384.0 {
             b.run(x, z, top + 1, top + 1 + i32::from(pick(x * 3 + z * 5, s.seed) > 0.5), CHAR);
@@ -929,7 +949,7 @@ fn out_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, r: f64, rel: Rel)
     }
     // past the sheet: how much of it is ash here, patches on patches, drawn out along the flows, thinning away
     let q = ((rho - VC_IGN + 20.0) / 180.0).clamp(0.0, 1.0);
-    let cover = (1.0 - q).powf(1.6).max(0.1 * (1.0 - (rho - 600.0) / 400.0)) * 1.04;
+    let cover = dust_cover(rho);
     let fine = qnoise(f64::from(x), f64::from(z), 6.5, s.seed ^ 0xa4);
     let n = (0.6 * g.at(&g.patch, x, z) + 0.24 * fine + 0.16 * pick(x * 17 + z * 23, s.seed ^ 0xa5) - 0.5 - 0.1 * wet) * 2.7 + 0.5;
     let ash = n < cover;
@@ -952,6 +972,45 @@ fn out_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, r: f64, rel: Rel)
     } else if c.ground == 1 && rho < 540.0 && pick(x * 29 + z * 3, s.seed ^ 0xa6) < 1.0 - (rho - 430.0) / 110.0 {
         // (the grass burnt off)
         b.run(x, z, c.g, c.g, if fine < 0.5 { "minecraft:coarse_dirt" } else { "minecraft:dirt" });
+    }
+}
+
+/// How much of the land the dust covers `rho` out: all of it at the sheet's edge, a tenth by 600, none by VC_FAR.
+fn dust_cover(rho: f64) -> f64 {
+    let q = ((rho - VC_IGN + 20.0) / 180.0).clamp(0.0, 1.0);
+    ((1.0 - q) * (1.0 - q).sqrt()).max(0.1 * (1.0 - (rho - 600.0) / (VC_FAR - 600.0))) * 1.04
+}
+/// A chunk past what's read, where the world has it loaded: the odd patch of dust, counted from the ground's height.
+fn vc_far_chunk(q: &mut Plan, s: &Shape, t: f32, x0: i32, z0: i32) {
+    let (ox, oz) = (f64::from(x0) + 8.0 - s.cx, f64::from(z0) + 8.0 - s.cz);
+    let cover = dust_cover(ox.hypot(oz));
+    // (most chunks have none: the broad noise says so at the corners, and they are not sent again for nothing)
+    let at = |x: i32, z: i32| 0.6 * (0.62 * qnoise(f64::from(x), f64::from(z), 52.0, s.seed ^ 0xdb) + 0.38 * qnoise(f64::from(x), f64::from(z), 21.0, s.seed ^ 0xdc));
+    let edge = [at(x0, z0), at(x0 + 16, z0), at(x0, z0 + 16), at(x0 + 16, z0 + 16)];
+    let (lo, hi) = (edge.iter().cloned().fold(9.0, f64::min), edge.iter().cloned().fold(-9.0, f64::max));
+    // (what the patches need of the noise: the column's own part is at most 0.4)
+    let need = (cover - 0.5) / 2.7 + 0.5;
+    if lo - 0.16 > need {
+        return;
+    }
+    let mut b = Blocks::default();
+    for z in z0..z0 + 16 {
+        for x in x0..x0 + 16 {
+            crate::meter::spend(60);
+            let (u, v) = (f64::from(x - x0) / 16.0, f64::from(z - z0) / 16.0);
+            let coarse = (edge[0] * (1.0 - u) + edge[1] * u) * (1.0 - v) + (edge[2] * (1.0 - u) + edge[3] * u) * v;
+            let n = coarse + 0.24 * qnoise(f64::from(x), f64::from(z), 6.5, s.seed ^ 0xa4) + 0.16 * pick(x * 17 + z * 23, s.seed ^ 0xa5);
+            if n < need {
+                let m = dust_block(x, z, s.seed);
+                b.put(x, z, -1, -1, m, Some("#minecraft:azalea_root_replaceable"), true);
+                b.put(x, z, -1, -1, m, Some("minecraft:water"), true);
+                b.put(x, z, 0, 0, "minecraft:air", Some("minecraft:short_grass"), true);
+            }
+        }
+    }
+    let _ = hi;
+    if !b.runs.is_empty() {
+        q.ev.push((t, Act::Blocks(Box::new(b))));
     }
 }
 
@@ -1009,7 +1068,7 @@ fn stand_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, rt: f64) {
     }
     if c.trunk == 0 && c.top > c.g && (c.leaves != 15 || c.top > c.g + 1) {
         // the crowns
-        if rt < VC_BARE {
+        if rt < VC_BARE + 15.0 {
             b.run(x, z, c.g + 1, c.top, "minecraft:air");
             return;
         }
@@ -1086,7 +1145,7 @@ fn vc_fell(due: &mut Vec<(f32, Blocks)>, ctx: &Ctx, x0: i32, z0: i32) {
                 continue;
             }
             let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
-            let r = dx.hypot(dz);
+            let r = (dx * dx + dz * dz).sqrt();
             let lobe = ctx.g.at(&ctx.g.lobe, x, z);
             if r + lobe - 2.2 * (ctx.land(x, z) - f64::from(c.g)).clamp(-4.0, 18.0) < VC_IGN + 2.0 || fate(x, z, r + 0.45 * lobe, s.seed) != Fate::Felled {
                 continue;
@@ -1149,6 +1208,13 @@ struct Work {
     /// The chunks' corners, by when they are due.
     chunks: Vec<(f32, i32, i32)>,
     next: usize,
+    /// The chunks past the read asked after (a column of each), and those loaded, by when they are due.
+    far_tag: u32,
+    far: Vec<(f32, i32, i32)>,
+    far_next: usize,
+    /// What's worked out and not yet due: when, how many runs, and all of them.
+    queue: std::collections::VecDeque<(f32, usize)>,
+    queued: usize,
 }
 impl Work {
     fn new(s: Shape, bx: i32, bz: i32) -> Self {
@@ -1169,7 +1235,7 @@ impl Work {
         }
         chunks.sort_by(|a, b| a.0.total_cmp(&b.0));
         crate::meter::spend(800 * chunks.len() as u64);
-        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks, next: 0 }
+        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0 }
     }
 }
 
@@ -1180,6 +1246,17 @@ fn vc_chunk(q: &mut Plan, w: &Work, t: f32, x0: i32, z0: i32) {
     let hf = w.hf.borrow();
     let (ox, oz) = (f64::from(x0) + 8.0 - s.cx, f64::from(z0) + 8.0 - s.cz);
     let mid = ox.hypot(oz);
+    // (a chunk the world never loaded has nothing to change)
+    if mid > VC_RIM + 120.0 && !w.cols.is_empty() {
+        let known = |x: i32, z: i32| {
+            let (i, k) = (x - bx + VC_READ, z - bz + VC_READ);
+            i >= 0 && k >= 0 && i < VC_GW && k < VC_GW && w.cols[(k * VC_GW + i) as usize] != 0
+        };
+        crate::meter::spend(300);
+        if ![(1, 1), (14, 1), (1, 14), (14, 14), (8, 8)].iter().any(|&(i, k)| known(x0 + i, z0 + k)) {
+            return;
+        }
+    }
     let y1 = (f64::from(s.gy) + hf.max_near(ox, oz) + 48.0).min(318.0) as i32;
     let reach = |d: &&Drop| (d.x - s.cx - ox).abs().max((d.z - s.cz - oz).abs()) < 2.3 * d.ru.max(d.rv) + 12.0;
     let mut ctx = Ctx { s: &s, hf: &hf, cols: &w.cols, bx, bz, g: Grid::new(&s, x0, z0), y1, drops: s.drops.iter().filter(reach).collect(), rel: None, x0, z0 };
@@ -1217,7 +1294,7 @@ fn vc_col_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, inner: bool) {
     crate::meter::spend(VC_UNIT);
     let s = ctx.s;
     let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
-    let r = dx.hypot(dz);
+    let r = (dx * dx + dz * dz).sqrt();
     let u = ctx.g.at(&ctx.g.e, x, z) - r;
     let air = "minecraft:air";
     let rel = if inner { ctx.near(x, z) } else { Rel { top: i32::MIN, shift: 0, what: W_OUT } };
@@ -1230,11 +1307,12 @@ fn vc_col_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, inner: bool) {
                 for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
                     low = low.min(ctx.near(x + dx, z + dz).top - 1);
                 }
-                for y in low.max(top - 12)..=top {
-                    b.run(x, z, y, y, rubble(x, y, z, s.seed));
-                }
+                let low = low.max(top - 9);
+                let m = top - (top - low) / 2;
+                b.run(x, z, low, m - 1, rubble(x, m, z, s.seed ^ 3));
+                b.run(x, z, m, top, rubble(x, top, z, s.seed));
             }
-            _ => rock_edit(b, ctx, x, z, rel, i32::MAX - 2),
+            _ => rock_edit(b, ctx, x, z, rel, ctx.land(x, z) as i32 - 2),
         }
         b.run(x, z, top + 1, ctx.y1, air);
         // (what the wall cuts into sealed)
@@ -1294,13 +1372,68 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 wk.retry = Some((tag, now));
             }
         }
-        // (the meter reads some 1.5 times low on this work, by the game's count: `mod_soak`)
-        while wk.next < wk.chunks.len() && wk.chunks[wk.next].0 <= now + VC_LEAD && crate::meter::spent() < VC_TICK {
+        // (which chunks past the read are loaded, once the land's near done)
+        if now >= VC_FAR_ASK && wk.far_tag == 0 {
+            wk.far_tag = crate::ground::new_tag();
+            let n = VC_FAR as i32 / 16 + 1;
+            let mut cols = Vec::new();
+            for dz in -n..=n {
+                for dx in -n..=n {
+                    let (x, z) = (((bx >> 4) + dx) * 16, ((bz >> 4) + dz) * 16);
+                    let r = (f64::from(x) + 8.0 - wk.s.cx).hypot(f64::from(z) + 8.0 - wk.s.cz);
+                    if r + 12.0 > f64::from(VC_READ) && r < VC_FAR {
+                        cols.push((x + 8, z + 8));
+                    }
+                }
+            }
+            crate::meter::spend(200 * cols.len() as u64);
+            q.ev.push((now, Act::Survey { tag: wk.far_tag, columns: cols }));
+        } else if wk.far_tag != 0 && wk.far.is_empty() && crate::ground::ready(wk.far_tag) {
+            let n = VC_FAR as i32 / 16 + 1;
+            for dz in -n..=n {
+                for dx in -n..=n {
+                    let (x, z) = (((bx >> 4) + dx) * 16, ((bz >> 4) + dz) * 16);
+                    let r = (f64::from(x) + 8.0 - wk.s.cx).hypot(f64::from(z) + 8.0 - wk.s.cz);
+                    if r + 12.0 > f64::from(VC_READ) && r < VC_FAR && crate::ground::at(x + 8, z + 8).is_some() {
+                        wk.far.push((vc_due(r + 12.0), x, z));
+                    }
+                }
+            }
+            wk.far.sort_by(|a, b| a.0.total_cmp(&b.0));
+            // (none loaded: nothing to wait for)
+            if wk.far.is_empty() {
+                wk.far.push((0.0, i32::MIN, 0));
+            }
+            crate::meter::spend(300 * (2 * n as u64 + 1).pow(2) + 400 * wk.far.len() as u64);
+        }
+        // (the meter reads some 3 times low on this work, by the game's count: `mod_soak` has it at 15-20M a tick)
+        while wk.queue.front().is_some_and(|e| e.0 <= now) {
+            wk.queued -= wk.queue.pop_front().map_or(0, |e| e.1);
+        }
+        while wk.next < wk.chunks.len() && wk.chunks[wk.next].0 <= now + VC_LEAD && crate::meter::spent() < VC_TICK && wk.queued < VC_QUEUE {
             let (t, x, z) = wk.chunks[wk.next];
+            let n0 = q.ev.len();
             vc_chunk(q, wk, t, x, z);
+            let mut runs = 0;
+            for e in &mut q.ev[n0..] {
+                if let Act::Blocks(b) = &mut e.1 {
+                    b.runs.shrink_to_fit();
+                    runs += b.runs.len();
+                }
+            }
+            // (it's let go when due: `chunks` is in that order, and a falling tree's edit a moment after is counted with it)
+            wk.queue.push_back((t, runs));
+            wk.queued += runs;
             wk.next += 1;
         }
-        wk.next < wk.chunks.len()
+        while wk.far_next < wk.far.len() && wk.far[wk.far_next].0 <= now + VC_LEAD && crate::meter::spent() < VC_TICK {
+            let (t, x, z) = wk.far[wk.far_next];
+            if x != i32::MIN {
+                vc_far_chunk(q, &wk.s, t, x, z);
+            }
+            wk.far_next += 1;
+        }
+        wk.next < wk.chunks.len() || now < VC_FAR_ASK + 6.0 || wk.far_next < wk.far.len()
     };
     if more {
         q.later(now + 0.05, move |q| vc_work(q, w, now + 0.05));
@@ -1367,7 +1500,7 @@ mod tests {
     /// Column (x, z)'s runs on land at 64: the lowest block and the highest, and where the air over it starts.
     fn column(x: i32, z: i32) -> (i32, i32, i32) {
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, leaves: 15, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0 };
+        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, leaves: 15, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0 };
         w.hf.borrow_mut().set(&vec![Some(0.0); crate::strike::volcano::VC_HN * crate::strike::volcano::VC_HN], 1500.0);
         let mut p = Plan { laser: &crate::lasers::SUPERVOLCANO, ev: Vec::new(), rng: Rng::new(7), bx: 0, by: 64, bz: 0 };
         vc_chunk(&mut p, &w, 50.0, x.div_euclid(16) * 16, z.div_euclid(16) * 16);
@@ -1427,7 +1560,7 @@ mod tests {
     fn a_chunk_stays_light() {
         crate::meter::reset();
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: 2, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0 };
+        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: 2, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0 };
         let mut worst = 0;
         for (x, z) in [(0, 0), (0, 268), (288, 0), (0, 350), (-420, 0), (0, 490)] {
             crate::meter::reset();
