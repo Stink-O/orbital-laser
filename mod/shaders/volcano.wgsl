@@ -373,7 +373,7 @@ fn vc_vel(q: vec3<f32>, rho: f32, wc: f32, wu: f32, wf: f32) -> vec4<f32> {
         gr = gr + wc * vs.dRb / vs.Rb * (1.0 - smoothstep(0.8 * vs.Hd, 1.4 * vs.Hd, hy));
     }
     if (wu > 0.0) {
-        gr = gr + wu * vs.dRu / max(vs.Ru, 300.0);
+        gr = gr + wu * min(vs.dRu / max(vs.Ru, 300.0), 0.075);
     }
     if (wf > 0.0) {
         // (the wall's head rolling forward over itself)
@@ -399,13 +399,15 @@ fn vc_fine(q: vec3<f32>, rest: f32, foot: f32) -> vec3<f32> {
     }
     let gain = vc_lw.w;
     let qf = vec3<f32>(q.x, q.y * vc_lsy.x, q.z) - vec3<f32>(0.0, 16.0 * vs.t * vc_lsy.y, 0.0) + vc_lw.xyz * 0.5;
-    let b3 = vc_dome(VC_R3 * (qf * (1.0 / 46.0) + vec3<f32>(1.7, 0.0, -2.1)));
-    o.x = g3 * (6.0 + 26.0 * gain) * (b3 - 0.56);
-    o.y = 1.0 - g3 * 0.6 * (1.0 - b3);
+    // (smooth noise from here down, not domes: a dome's sharp crease this small reads as cracked mud)
+    let n3 = gnoise3(VC_R3 * (qf * (1.0 / 44.0) + vec3<f32>(1.7, 0.0, -2.1)));
+    let bl3 = sqrt((2.0 * n3 - 1.0) * (2.0 * n3 - 1.0) + 0.012);
+    o.x = g3 * (6.0 + 26.0 * gain) * (0.9 * (n3 - 0.5) + 1.1 * (bl3 - 0.3));
     let g4 = saturate((90.0 - rest) / 30.0) * saturate((11.0 - foot) / 5.0);
     if (g4 > 0.0) {
         let n4 = gnoise3(VC_R1 * (qf * (1.0 / 19.0) + vec3<f32>(-4.7, 2.0, 0.3)));
-        o.x = o.x + g4 * 26.0 * (abs(2.0 * n4 - 1.0) - 0.22);
+        let bl4 = sqrt((2.0 * n4 - 1.0) * (2.0 * n4 - 1.0) + 0.012);
+        o.x = o.x + g4 * 22.0 * (bl4 - 0.3);
         let g5 = saturate((70.0 - rest) / 25.0) * saturate((4.5 - foot) / 2.0);
         if (g5 > 0.0) {
             let n5 = gnoise3(VC_R2 * (qf * (1.0 / 7.0)) + vec3<f32>(0.3, 0.0, 0.25 * vs.t));
@@ -432,7 +434,7 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     let wf = wf0 / sum;
     // (the big lumps looked up again only every few blocks along the ray: they change slowly and cost the most)
     let dq = q - vc_cq.xyz;
-    let hold = 7.0 + foot;
+    let hold = 4.0 + 0.6 * foot;
     var out_ = 0.0;
     var top = 0.0;
     var warp = vc_cw.xyz;
@@ -1020,7 +1022,7 @@ fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
     // (a crown's skin cools first: the fire shows between the lumps; less so while the blast is young)
     let cr = 1.0 - top;
     let skin = mix(0.75 + 0.5 * cr, 0.2 + 1.3 * cr * cr, cool);
-    let hot = (0.74 - 0.22 * cool) * (0.55 + 0.75 * n1);
+    let hot = (0.86 - 0.22 * cool) * (0.55 + 0.75 * n1);
     return vec2<f32>(saturate(T * skin) * hot * tongues, smoothstep(0.46, 0.68, 0.7 * n1 + 0.5 * (gate - 0.2)) * zone);
 }
 // The air's colour along a ray: the sky's, gone dirty and red low down as the sheet closes over.
@@ -1161,7 +1163,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 face = 1.0;
                 if (foot < 24.0) {
                     let rs = sd.x + 40.0;
-                    face = 0.62 + 0.72 * saturate(0.62 - (vc_fine(q + Lf * 11.0, rs, foot).x - vc_fine(q, rs, foot).x) / 10.0);
+                    face = 0.7 + 0.62 * saturate(0.5 - (vc_fine(q + Lf * 11.0, rs, foot).x - vc_fine(q, rs, foot).x) / 40.0);
                 }
                 tsun = lit * st0 * (1.0 - 0.5 * l.warm);
                 rim = lit * (1.0 - smoothstep(0.15, 0.75, st0));
