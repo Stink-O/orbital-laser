@@ -29,7 +29,7 @@ const VM_W0: u32 = 73728u;         // VM_BASE + 8192
 const VM_W1: u32 = 131809u;        // VM_W0 + VM_COLS
 const VM_W2: u32 = 189890u;        // VM_W1 + VM_COLS
 const VM_RAD: f32 = 400.0;         // the dome's radius, on average
-const VM_H: f32 = 340.0;           // and how high it gets
+const VM_H: f32 = 400.0;           // and how high it gets
 const VM_SWELL: f32 = 7.0;         // BEATS.md
 const VM_HUSH: f32 = 17.0;
 const VM_ERUPT: f32 = 18.0;
@@ -65,7 +65,7 @@ fn vm_hgt(t: f32, ph: f32) -> f32 {
     // (it stops dead, settling back a little under its own weight; the last instant it heaves)
     let settle = 1.0 - 0.012 * smoothstep(VM_HUSH, VM_HUSH + 0.6, t);
     let heave = 1.0 + 0.09 * smoothstep(VM_ERUPT - 0.03, VM_ERUPT + 0.07, t);
-    return VM_H * (0.55 * u + 0.1 * u2 + 0.35 * u2 * u2) * smoothstep(0.0, 0.8, s) * settle * heave;
+    return VM_H * (0.62 * u + 0.08 * u2 + 0.3 * u2 * u2) * smoothstep(0.0, 0.8, s) * settle * heave;
 }
 fn vm_set(time: f32) {
     var s: VmS;
@@ -76,7 +76,7 @@ fn vm_set(time: f32) {
         s.hk = vec4<f32>(s.H, vm_hgt(time, 1.7), vm_hgt(time, 3.3), vm_hgt(time, 4.9));
         s.sl = 0.075 * s.H / VM_H;
         s.open = smoothstep(9.5, 17.0, time);
-        s.cw = 1.0 + 15.0 * s.open * s.open;
+        s.cw = 1.0 + 12.0 * s.open * s.open;
         s.cd = 4.0 + 75.0 * s.open;
         s.ylo = vm_w(VM_BASE + 1u) - 12.0;
         s.yhi = vm_w(VM_BASE + 2u) + 1.45 * s.H;
@@ -267,7 +267,7 @@ fn vm_shade(C: vec3<f32>, rd: vec3<f32>, t: f32, l: VcLight, cam_uv: vec2<f32>) 
     let pw = t * vs.px;                                   // a pixel's size, blocks
     if (f.y < -1.0) {
         let hn = gnoise2(rest * 0.045 + vec2<f32>(0.0, vm.t * 3.0)) + 0.5 * gnoise2(rest * 0.17);
-        return vm_fire(0.25 + 0.75 * hn);
+        return vm_fire(0.15 + 0.58 * hn);
     }
     // ---- the shape's slope, smooth and rough --------------------------------------------------------------------
     let e = max(3.0, pw * 1.5);
@@ -356,7 +356,7 @@ fn vm_shade(C: vec3<f32>, rd: vec3<f32>, t: f32, l: VcLight, cam_uv: vec2<f32>) 
         let dd = saturate(depth / (8.0 + 0.5 * vm.cd));
         let flick = 0.82 + 0.18 * sin(vm.t * 7.0 + plate * 2.0 + nz * 9.0);
         let cr = cutv * heat * flick;
-        c = c + vm_ramp((0.2 + 0.85 * dd + 0.25 * (nz2 - 0.5)) * cr);
+        c = c + vm_ramp((0.14 + 0.62 * dd + 0.2 * (nz2 - 0.5) + 0.5 * smoothstep(VM_ERUPT - 0.05, VM_ERUPT + 0.08, vm.t)) * cr);
         c = c + min(alb, vec3<f32>(0.2)) * vec3<f32>(1.6, 0.26, 0.04) * heat * exp(-max(f.z - wc, 0.0) / 2.4) * (1.0 - cutv);
     }
     // ---- the cracks while still thin; the smaller breaks over each plate, opening late -----------------------------
@@ -671,7 +671,7 @@ fn vm_surface(C: vec3<f32>, rd: vec3<f32>, scene_len: f32, col: vec3<f32>, stage
     let sh = vm_shards(-C, rd, lim);
     let pl = vm_plates(-C, rd, select(lim, sh.t, sh.t > 0.0));
     // (the air between: it stands a long way off)
-    let ap = 1.0 - exp(-select(lim, sh.t, sh.t > 0.0) / 4600.0);
+    let ap = 1.0 - exp(-select(lim, sh.t, sh.t > 0.0) / 9000.0);
     if (pl.t > 0.0) {
         o.t = pl.t;
         if (stage != 1u) {
@@ -746,12 +746,12 @@ fn vm_field(q: vec3<f32>, t: f32) -> VmAir {
     // (the great plumes: blobs of a broad noise, wider as they climb, each its own height, standing up off the land)
     let pw = wob * 0.35;
     let pg = gnoise2((q.xz + pw) * 0.0078 + vec2<f32>(11.0, 4.0));
-    let pth = 0.7 - 0.00045 * max(up, 0.0);
+    let pth = 0.68 - 0.00045 * max(up, 0.0);
     let pl = smoothstep(pth, pth + 0.05, pg) * (1.0 - smoothstep(230.0, 420.0, r - 0.5 * max(up, 0.0)));
-    let ph = (120.0 + 300.0 * gnoise2((q.xz + pw) * 0.0031)) * smoothstep(7.0, 15.0, t) + 20.0;
+    let ph = (130.0 + 420.0 * gnoise2((q.xz + pw) * 0.0031)) * smoothstep(6.5, 12.5, t) + 20.0;
     // (a jet where the crack has just got to: a ring of them racing out over the land)
     let jetk = exp(-max(vm.front - r, 0.0) / 300.0);
-    let tall = 12.0 + (12.0 + 46.0 * live) * smoothstep(7.0, 15.0, t) + 120.0 * jetk;
+    let tall = 12.0 + (12.0 + 46.0 * live) * smoothstep(7.0, 15.0, t) * (1.0 - 0.45 * smoothstep(11.0, 14.0, t)) + 120.0 * jetk;
     let wd = 3.0 + 0.22 * max(up, 0.0);
     a.steam = max((1.0 - smoothstep(0.2 * wd, wd, u.y)) * exp(-max(up, 0.0) / tall) * min(0.2 + 0.8 * live + 1.3 * jetk, 1.0) * saturate(1.0 - up / 220.0), pl * saturate(1.0 - up / ph) * saturate(1.0 + up / 8.0)) * reach;
     // ---- the dust: pouring down off what breaks, lying in a ring round its foot, spreading -------------------------
@@ -850,7 +850,7 @@ fn vm_fireball(o: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, a: f32) -> vec4<f
         }
         let al = 1.0 - exp(-saturate(f * 7.0) * dt * 0.08);
         let crease = 1.0 - l1;
-        let hot = saturate(f * 2.4) * (0.72 + 0.5 * crease) + 0.3 * smoothstep(0.5, 0.0, a);
+        let hot = saturate(f * 2.4) * (0.72 + 0.5 * crease) + 0.1 * smoothstep(0.5, 0.0, a);
         c = c + tr * al * vm_fire(hot);
         tr = tr * (1.0 - al);
         if (tr < 0.02) {
@@ -908,7 +908,7 @@ fn vm_air(C: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, l: VcLight) -> vec4<f3
         if (e < 0.5) {
             n = n - 0.14 * (1.0 - gnoise3(q * 0.15 + fl * 0.15));
         }
-        let ds = saturate(a.steam * 2.2 - (1.0 - n) * 1.25) * (1.0 - 0.5 * smoothstep(VM_HUSH, VM_HUSH + 0.8, time));
+        let ds = saturate(a.steam * 2.6 - (1.0 - n) * 1.25) * (1.0 - 0.5 * smoothstep(VM_HUSH, VM_HUSH + 0.8, time));
         let dd = saturate(a.dust * 2.4 - (1.0 - n) * 1.05);
         let den = ds + dd * 1.3;
         if (den < 0.003) {
@@ -1081,7 +1081,7 @@ fn vm_chunks(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight) -> vec4<f32> {
             let cell = floor(vec2<f32>(u, w));
             let id = u32(cell.x) + u32(cell.y) * 257u + k * 9973u;
             let hs = pcg(id);
-            if (f32(hs & 0xffu) / 255.0 > 0.2) {
+            if (f32(hs & 0xffu) / 255.0 > 0.05 + 0.15 * smoothstep(0.15, 0.55, a)) {
                 continue;
             }
             let cu = cell + vec2<f32>(0.2 + 0.6 * f32((hs >> 8u) & 0xffu) / 255.0, 0.2 + 0.6 * f32((hs >> 16u) & 0xffu) / 255.0);

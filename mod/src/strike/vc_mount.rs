@@ -51,7 +51,7 @@ const VM_W2: usize = VM_W1 + VM_COLS;
 /// The dome's radius, on average.
 const VM_RAD: f64 = 400.0;
 /// How high it gets (the pass's vm_hgt, before the last heave).
-const VM_H: f64 = 340.0;
+const VM_H: f64 = 400.0;
 /// The beats (BEATS.md).
 const VC_SWELL: f64 = 7.0;
 const VC_HUSH: f64 = 17.0;
@@ -600,7 +600,7 @@ fn vm_founts(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
                 }
             }
             let (land, p) = foot(best.1, best.2);
-            let dur = 1.4 + 2.4 * mh(k, s, 0x743);
+            let dur = 1.2 + 1.8 * mh(k, s, 0x743);
             Fount { x: best.1, z: best.2, land, p, t0, dur: dur.min((17.15 - t0).max(0.25)), h: 70.0 + 150.0 * mh(k, s, 0x744).powi(2) + 60.0 * u, seed: f64::from(k) * 1.37 }
         })
         .collect();
