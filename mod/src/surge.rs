@@ -1,7 +1,8 @@
 //! The Tsunami's surge: once the water has the player (its surface over their head), it carries them. Not a snap: eased
 //! in, thrown along with the flow, tumbled and buffeted in the deep of it, drawn up as it holds; at SURF seconds they
-//! break the surface, and from there they ride it down as it falls, borne back the way it came with the torrent, their
-//! view turned to look the way the water is going, over what it has left; and put down as it runs out from under them.
+//! break the surface, and from there they ride it down as it falls, the backwash bringing them back to about where it
+//! found them, their view turned to look the way the water is going; and put down there just over where they stood, so
+//! the strike ends where they chose to watch it from (not in a gully it happened to leave them in), looking at the wreck.
 //!
 //! It carries them through the fork's `world.carry-player`, as the Hurricane's wind does (carry.rs): each tick their move
 //! in place of their own (the game's collision move, no gravity, no drag), a turn of their view spread over the tick's
@@ -27,12 +28,16 @@ const LEAVE: f64 = 0.6;
 /// and how far under the surface their feet ride from then on (their eye about half a block over it).
 pub const SURF: f64 = 6.5;
 const RIDE: f64 = 1.1;
+/// How far over where it took them it puts them down.
+const SET: f64 = 2.0;
 /// How fast their view turns to look the way the water goes (degrees a tick at most).
 const FACE: f64 = 2.2;
 
 struct Lift {
     t0: f64,
     y0: f64,
+    /// Where it took them.
+    home: [f64; 2],
     /// Their drift across the flow, and its phase.
     ph: f64,
 }
@@ -113,7 +118,7 @@ impl Surge {
             let (s, u) = self.geo.su(feet[0], feet[2]);
             let tau = t - self.geo.arr(s, u);
             if depth.is_some_and(|d| d >= TAKE) && tau < TsGeo::rise_t(s) + crate::strike::TS_HOLD + 2.0 {
-                self.lift = Some(Lift { t0: t, y0: feet[1], ph: f64::from(self.n) });
+                self.lift = Some(Lift { t0: t, y0: feet[1], home: [feet[0], feet[2]], ph: f64::from(self.n) });
                 // (a soft landing wherever it sets them down; the creative and spectators need none)
                 out.cmds.push("effect give @s[gamemode=!creative,gamemode=!spectator] minecraft:resistance 28 4 true".into());
                 out.cmds.push("effect give @s[gamemode=!creative,gamemode=!spectator] minecraft:slow_falling 26 0 true".into());
@@ -141,7 +146,8 @@ impl Surge {
         } else {
             self.held_up = 0;
         }
-        if ((draining && self.held_up >= 4) || depth.is_none() || late) && tau > SURF + 1.0 {
+        let down = l.y0 + SET;
+        if ((draining && (self.held_up >= 4 || (feet[1] <= down + 0.2 && feet[1] + d - RIDE < down))) || depth.is_none() || late) && tau > SURF + 1.0 {
             self.done = true;
             self.left_at = Some(t);
             return out;
@@ -154,14 +160,20 @@ impl Surge {
         let buffet = [(1.7 * (2.3 * tau + l.ph).sin() + 0.8 * (4.1 * tau + 2.0).sin()) * 0.4, (1.5 * (1.9 * tau + 1.0 + l.ph).sin() + 0.7 * (3.7 * tau).sin()) * 0.4];
         let (nx, nz) = (-self.geo.m[1], self.geo.m[0]);
         let shake = 1.0 - 0.8 * up;
-        let want_h = [v[0] * 0.05 * k + nx * buffet[0] * 0.05 * 6.0 * k * shake, v[1] * 0.05 * k + nz * buffet[0] * 0.05 * 6.0 * k * shake];
+        // (from the surface on, the backwash brings them home)
+        let back = ease(SURF - 0.5, SURF + 3.5, tau);
+        let home = [((l.home[0] - feet[0]) * 0.06).clamp(-1.2, 1.2), ((l.home[1] - feet[2]) * 0.06).clamp(-1.2, 1.2)];
+        let want_h = [
+            (v[0] * 0.05 * k + nx * buffet[0] * 0.05 * 6.0 * k * shake) * (1.0 - back) + home[0] * back,
+            (v[1] * 0.05 * k + nz * buffet[0] * 0.05 * 6.0 * k * shake) * (1.0 - back) + home[1] * back,
+        ];
         // (where the surface will be a tick on: following it, not chasing it)
         let d1 = self.depth(feet[0], feet[1], feet[2], t + 0.05).unwrap_or(d);
         let surf = feet[1] + d1 - RIDE;
         let frac = 0.42 * ease(0.6, SURF - 1.3, tau) + 0.58 * ease(SURF - 1.75, SURF - 0.05, tau);
         let bob = 0.25 * (1.3 * tau).sin() * up;
         let y_t = l.y0 + (surf - l.y0).max(0.0) * frac + bob;
-        let dy = if tau >= SURF { y_t.min(surf + 0.6) - feet[1] } else { (y_t - feet[1]) * 0.5 };
+        let dy = if tau >= SURF { y_t.min(surf + 0.6).max(down) - feet[1] } else { (y_t - feet[1]) * 0.5 };
         let dy = dy.clamp(-2.6, STEP) + buffet[1] * 0.05 * shake;
         let mut want = [want_h[0], dy, want_h[1]];
         let m = want.iter().fold(0.0f64, |m, v| m.max(v.abs()));
@@ -245,8 +257,8 @@ mod tests {
         assert!((surfaced - (imm.unwrap() + SURF)).abs() < 0.5, "surfaced at {surfaced}, the water closed at {}", imm.unwrap());
         let (dx, dz) = (-yaw.to_radians().sin(), yaw.to_radians().cos());
         assert!(dx * g.m[0] + dz * g.m[1] < -0.95, "looking {dx} {dz}");
-        let (s_end, _) = g.su(feet[0], feet[2]);
-        assert!(s_end > -100.0 && s_end < g.send - 40.0, "put down at s = {s_end}");
+        // (put down about where it took them, just over it)
+        assert!((feet[0] - 0.5).hypot(feet[2] - 400.0) < 12.0 && (feet[1] - 67.0).abs() < 1.0, "put down at {feet:?}");
         // (it never carries them when the water is not over them: far past its reach)
         let far = geo(900.0);
         let mut s = Surge::new(far);

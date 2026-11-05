@@ -727,7 +727,8 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let chop = ts_fbm3(vec3<f32>(u * 0.22 + 2.0 * warp2, chopv * 0.07, time * 0.5), 2 + i32(near) + i32(mid));
     let chop2 = ts_vn3(vec3<f32>(u * 0.8, chopv * 0.3, time * 1.2));
     let fine_c = (chop - 0.5) * (0.5 + 0.5 * mid) + (chop2 - 0.5) * 0.55 * near;
-    body = body * (1.0 + 2.3 * fine_c);
+    let fine_far = 1.0 - smoothstep(120.0, 520.0, ht);
+    body = body * (1.0 + 1.5 * fine_c * fine_far);
     body = body + vec3<f32>(0.014, 0.052, 0.04) * thin * thin * (li.amb * 2.0 + sunw * 0.6 + li.nightw * 2.0);
     // (the sun through the thinnest of it: looking towards it, the lip lights up)
     let tra = pow(saturate(dot(rd, li.L) * 0.5 + 0.5), 4.0);
@@ -744,16 +745,15 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let spec = min(pow(rl, 420.0) * 1.5, 1.1) * li.sunc * (0.15 + 1.3 * spk) + pow(rl, 40.0) * li.sunc * 0.05;
     // (the toe of the face looks at the shut-out sky under the wave's own shoulder)
     let shut = (1.0 - 0.8 * lip) * (0.2 + 0.4 * smoothstep(0.1, 0.8, ybar));
-    var wet = mix(body, skyg * shut, saturate(fresnel * (1.0 - 0.4 * face) + 0.4 * saturate(sl.y * 0.5) * stretch + 0.5 * saturate(fine_c) * mid)) + spec;
+    var wet = mix(body, skyg * shut, saturate(fresnel * (1.0 - 0.4 * face) + 0.4 * saturate(sl.y * 0.5) * stretch + 0.35 * saturate(fine_c) * mid * fine_far)) + spec;
     // ---- foam on the dark water: long thin streaks drawn up the face along the way it runs, curving, broken --------------
     let vr = v - 46.0 * time;
     // (they fan and curve slowly across the face; a shear of the coordinate, gentle enough never to fold)
     let ang = 0.5 * sin(u * 0.0071 + g.sd) + 0.26 * sin(u * 0.0173 - p.y * 0.003 + 1.7);
     let su = u + ang * (p.y + 60.0) * 0.55;
     let s1 = ts_vn3(vec3<f32>(su * 0.13, vr * 0.0052, 1.0));
-    let s2 = ts_vn3(vec3<f32>(su * 0.37, vr * 0.0125, 3.0));
-    let s3 = ts_vn3(vec3<f32>(su * 0.95, vr * 0.03, 5.0));
-    var lace = smoothstep(0.68, 0.8, s1) * 0.55 + smoothstep(0.66, 0.78, s2) * 0.5 * mid + smoothstep(0.62, 0.74, s3) * 0.45 * near;
+    let s2 = ts_vn3(vec3<f32>(su * 0.27, vr * 0.0115, 3.0));
+    var lace = smoothstep(0.66, 0.86, s1) * 0.5 + smoothstep(0.64, 0.84, s2) * 0.34 * mid;
     // (patches of it, the dark water between; thicker towards the lip and where it is being dragged out of the foot)
     let back = smoothstep(0.82, 0.96, nrm0.y) * smoothstep(40.0, 130.0, w);
     let lacek = smoothstep(0.5, 0.68, warp + 0.2 * smoothstep(0.6, 1.0, ybar) + 0.12 * mudk + 0.2 * back);
@@ -789,10 +789,10 @@ fn ts_torrent(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let w0 = ts_fbm3(vec3<f32>(s * 0.008, u * 0.014, time * 0.1), 2);
     let run = s + time * (26.0 + 26.0 * w0) + 22.0 * sin(u * 0.03 + 4.0 * w0);
     let cross_ = u + 40.0 * (w0 - 0.5);
-    let sl = ts_ripple(vec2<f32>(cross_ * 3.1, run * 0.95), time * 1.4, near + 0.5 * mid);
+    let sl = ts_ripple(vec2<f32>(cross_ * 2.0, run * 1.5), time * 1.4, near + 0.5 * mid);
     let tn = vec3<f32>(g.n.x, 0.0, g.n.y);
     let tm = vec3<f32>(g.m.x, 0.0, g.m.y);
-    var nrm = normalize(vec3<f32>(0.0, 1.0, 0.0) + (tn * sl.x + tm * sl.y) * (0.05 + 0.2 * mid));
+    var nrm = normalize(vec3<f32>(0.0, 1.0, 0.0) + (tn * sl.x + tm * sl.y) * (0.06 + 0.3 * mid));
     let cosv = saturate(dot(nrm, -rd));
     let fresnel = 0.03 + 0.97 * pow(1.0 - cosv, 5.0);
     let refl = reflect(rd, nrm);
@@ -800,29 +800,29 @@ fn ts_torrent(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let n1 = ts_fbm3(vec3<f32>(cross_ * 0.03, run * 0.008, 1.0), 2 + i32(mid * 2.0));
     let dif = saturate(dot(nrm, li.L));
     let lw = mix(li.amb, vec3<f32>(luminance(li.amb)), 0.8) * 1.25 + li.sunc * (0.25 + 0.5 * dif) + li.nightw;
-    var body = mix(vec3<f32>(0.055, 0.036, 0.018), vec3<f32>(0.115, 0.075, 0.038), n1) * lw;
+    var body = mix(vec3<f32>(0.045, 0.03, 0.016), vec3<f32>(0.09, 0.06, 0.03), n1) * lw;
     let rl = saturate(dot(refl, li.L));
     var c = mix(body, ts_skyr(refl, li) * vec3<f32>(0.5, 0.44, 0.34), fresnel) + pow(rl, 300.0) * li.sunc * 1.8 + pow(rl, 30.0) * li.sunc * 0.05;
     // the streaks of dirty foam, long along the way it runs, torn
-    let wq = vec2<f32>(cross_ * 0.075 + 2.4 * w0, run * 0.03 - 1.7 * w0);
+    let wq = vec2<f32>(cross_ * 0.3 + 2.4 * w0, run * 0.2 - 1.7 * w0);
     let wa = ts_fbm3(vec3<f32>(wq * 1.1, time * 0.25), 2);
     let web = ts_fbm3(vec3<f32>(wq.x + 2.2 * wa, wq.y + 2.2 * wa, time * 0.2), 2 + i32(mid * 2.0));
     let vein = 1.0 - abs(2.0 * web - 1.0);
     let st = web;
     let tear = ts_fbm3(vec3<f32>(cross_ * 0.022, run * 0.012, 7.0), 2);
-    var foam = smoothstep(0.72, 0.92, vein) * smoothstep(0.34, 0.58, tear) + 0.45 * smoothstep(0.46, 0.68, wa + 0.3 * (tear - 0.5)) * smoothstep(0.5, 0.7, ts_fbm3(vec3<f32>(wq * 3.3, 2.0), 2));
+    var foam = smoothstep(0.8, 0.95, vein) * smoothstep(0.32, 0.56, tear);
     // (close by, the small tearing of the water itself)
     if (near > 0.01) {
-        let fine = ts_fbm3(vec3<f32>(cross_ * 1.5, run * 0.16, time * 0.7), 3);
-        foam = max(foam, near * smoothstep(0.6, 0.7, fine) * smoothstep(0.34, 0.56, tear));
-        body = body * (0.8 + 0.4 * fine);
+        let fine = ts_fbm3(vec3<f32>(cross_ * 0.8, run * 0.55, time * 0.9), 3);
+        foam = max(foam, near * smoothstep(0.62, 0.72, fine) * smoothstep(0.3, 0.52, tear));
+        body = body * (0.55 + 0.9 * fine);
     }
     // (scum and white water where it breaks round what stands out of it)
     if (hg < 8.0) {
         foam = max(foam, (1.0 - smoothstep(0.2, 1.4 + 2.0 * n1, hg)) * smoothstep(0.3, 0.55, st + 0.1));
     }
-    let foamc = vec3<f32>(0.66, 0.57, 0.44) * (mix(li.amb, vec3<f32>(luminance(li.amb)), 0.8) * 1.6 + li.sunc * (0.3 + 0.55 * dif) + li.nightw * 2.4);
-    return mix(c, foamc, saturate(foam) * 0.8);
+    let foamc = vec3<f32>(0.5, 0.42, 0.32) * (mix(li.amb, vec3<f32>(luminance(li.amb)), 0.8) * 1.6 + li.sunc * (0.3 + 0.55 * dif) + li.nightw * 2.4);
+    return mix(c, foamc, saturate(foam) * 0.6);
 }
 
 // The flow's velocity at (s, u) at `t` (blocks a second, on the ground, along the wave's way positive): fast as the
@@ -995,7 +995,7 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
     var acc = vec3<f32>(0.0);
     var trf = 1.0;
     var bub = 0.0;
-    let foamlit = mix(vec3<f32>(1.0, 1.02, 1.0), vec3<f32>(0.24, 0.24, 0.15), smoothstep(0.3, 2.6, el)) * (0.42 + 0.58 * day) + li.nightw * 2.0;
+    let foamlit = mix(vec3<f32>(0.92, 0.94, 0.92), vec3<f32>(0.24, 0.24, 0.15), smoothstep(0.12, 1.5, el)) * (0.42 + 0.58 * day) + li.nightw * 2.0;
     for (var i = 0; i < 12; i = i + 1) {
         let t = (f32(i) + 0.5 + (j - 0.5) * 0.3) * reach / 12.0;
         let q = ro + rd * t;
@@ -1015,7 +1015,7 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
         let n = big0 * 0.62 + fine * 0.38;
         let bl = smoothstep(th - 0.03, th + 0.2, n);
         if (bl > 0.0) {
-            let a = 1.0 - exp(-bl * reach / 12.0 * (0.018 + 0.9 * (1.0 - smoothstep(0.2, 2.2, el))));
+            let a = 1.0 - exp(-bl * reach / 12.0 * (0.018 + 0.34 * (1.0 - smoothstep(0.1, 1.5, el))));
             // (the air in it white, dark where the mass is deep)
             let shade = 0.55 + 0.75 * smoothstep(0.3, 0.68, fine) * smoothstep(0.32, 0.6, big0 + 0.1);
             acc = acc + trf * a * foamlit * shade * exp(-t * 0.016);
@@ -1148,36 +1148,37 @@ fn ts_spray(ro: vec3<f32>, rd: vec3<f32>, t0: f32, t1: f32, time: f32, g: TsG, l
 // Spray exploding up where the front hits something (the map's trees and buildings, and now and then anything): rooster
 // tails, drawn on planes across the wave's way at the rows of land the front has just reached, each row split into cells a
 // tail at most. Nearest row first. rgb premultiplied, a the light left. `t1`: what is in front of them.
-fn ts_tails(ro: vec3<f32>, rd: vec3<f32>, t1: f32, time: f32, g: TsG, li: TsLight) -> vec4<f32> {
+fn ts_tails(ro: vec3<f32>, rd: vec3<f32>, t1: f32, tmore: f32, time: f32, g: TsG, li: TsLight) -> vec4<f32> {
     let rs = dot(rd.xz, g.m);
-    if (abs(rs) < 0.12) {
+    let s0 = dot(ro.xz, g.m);
+    // (only from ahead of it, looking back at it: behind it there is nothing left to throw them up)
+    if (rs > -0.12 || s0 < ts_front(time)) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    let s0 = dot(ro.xz, g.m);
     let row = 58.0;
-    let cell = 74.0;
+    let cell = 120.0;
     let k0 = floor(ts_front(time) / row);
     let ambn = mix(li.amb, vec3<f32>(luminance(li.amb)), 0.7);
     let lightc = ambn * 1.7 + li.sunc * 0.75 + li.nightw * 2.4;
     var tr = 1.0;
     var acc = vec3<f32>(0.0);
     // (the camera ahead of it looks back along m: the rows nearest it first; behind it, the other way)
-    let dirn = select(1.0, -1.0, rs > 0.0);
     for (var i = 0; i < 4; i = i + 1) {
-        let k = k0 - select(f32(i), f32(3 - i), rs > 0.0);
+        let k = k0 - f32(i);
         let sr = k * row;
-        let t = (sr - s0) / rs;
-        if (t <= 0.5 || t > t1) {
+        // (the plane leans forward with the flow as it climbs)
+        let t = (sr - s0 - 0.4 * ro.y) / (rs - 0.4 * rd.y);
+        if (t <= 0.5 || t > t1 + tmore || t > 460.0) {
             continue;
         }
         let p = ro + rd * t;
         let u = dot(p.xz, g.n);
         let ci = floor(u / cell);
-        let cu = (ci + 0.3 + 0.4 * fract(ci * 0.61803 + k * 0.4142)) * cell;
+        let cu = (ci + 0.38 + 0.24 * fract(ci * 0.61803 + k * 0.4142)) * cell;
         let hh = pcg(u32(i32(ci) + 8192) * 7919u ^ pcg(u32(i32(k) + 8192) * 104729u));
         let r = vec3<f32>(f32(hh & 1023u), f32((hh >> 10u) & 1023u), f32((hh >> 20u) & 1023u)) / 1024.0;
         let mp = ts_map(sr, cu);
-        if (r.z > 0.3 + 0.7 * saturate(mp.x * 1.4 + mp.y * 2.0)) {
+        if (r.z > 0.3 + 0.6 * saturate(mp.x * 1.4 + mp.y * 2.0) || ts_env(sr, cu, g) < 0.3) {
             continue;
         }
         let age = time - ts_arr(sr, cu, g.sd) - 0.15;
@@ -1189,21 +1190,23 @@ fn ts_tails(ro: vec3<f32>, rd: vec3<f32>, t1: f32, time: f32, g: TsG, li: TsLigh
         let hb = (34.0 + 92.0 * r.x * r.x) * sqrt(min(age / 0.9, 1.0));
         let wb = min((6.0 + 9.0 * r.y) * (0.55 + 0.45 * min(age, 1.6)) * (0.7 + 1.5 * saturate(hg / max(hb, 1.0))), 19.0);
         // (each thrown off to one side as it climbs, fanning out)
-        let du = u - cu - (r.y - 0.5) * 1.1 * max(hg, 0.0) * (0.6 + 0.5 * min(age, 2.0));
+        let du = u - cu - (r.y - 0.5) * 0.5 * max(hg, 0.0) * (0.6 + 0.5 * min(age, 2.0));
+        // (and whatever it does, it dies out before its cell's edge)
+        let edge = smoothstep(0.5, 0.36, abs(u / cell - ci - 0.5));
         let n = ts_fbm3(vec3<f32>(u * 0.06, (p.y - time * 30.0) * 0.045, k * 1.7), 3);
         let fine = ts_fbm3(vec3<f32>(u * 0.21, (p.y - time * 44.0) * 0.14, k * 3.1), 3);
-        let prof = exp(-pow(du / wb, 2.0)) * smoothstep(-3.0, 4.0, hg) * (1.0 - smoothstep(0.5, 1.02, hg / max(hb, 1.0) + (n - 0.5) * 0.7));
+        let prof = exp(-pow(du / wb, 2.0)) * smoothstep(-2.0, 16.0, hg + 10.0 * (n - 0.5)) * (1.0 - smoothstep(0.5, 1.02, hg / max(hb, 1.0) + (n - 0.5) * 0.7));
         let fade = 1.0 - smoothstep(1.3, 4.0, age);
         // (the tail's body, and the feathered veil of it)
-        let hal = exp(-pow(du / (wb * 2.6), 2.0)) * smoothstep(-3.0, 10.0, hg) * (1.0 - smoothstep(0.6, 1.25, hg / max(hb, 1.0) + (n - 0.5) * 0.9));
-        let a = saturate(prof * 1.5 * fade * smoothstep(0.3, 0.6, n * 0.6 + fine * 0.5 + prof * 0.25) + 0.36 * hal * fade * smoothstep(0.34, 0.62, n * 0.7 + fine * 0.4));
+        let hal = exp(-pow(du / (wb * 2.6), 2.0)) * smoothstep(0.0, 20.0, hg) * (1.0 - smoothstep(0.6, 1.25, hg / max(hb, 1.0) + (n - 0.5) * 0.9));
+        // (close by only: a long way off they would be puffs on a line; and melting into what stands behind them)
+        let a = edge * (1.0 - smoothstep(240.0, 450.0, t)) * (1.0 - smoothstep(t1 + 0.2 * tmore, t1 + tmore, t)) * saturate(prof * 1.5 * fade * smoothstep(0.3, 0.6, n * 0.6 + fine * 0.5 + prof * 0.25) + 0.36 * hal * fade * smoothstep(0.34, 0.62, n * 0.7 + fine * 0.4));
         if (a > 0.003) {
             let c = lightc * mix(vec3<f32>(0.5, 0.45, 0.38), vec3<f32>(0.92, 0.92, 0.9), smoothstep(0.34, 0.66, fine) * (0.5 + 0.5 * saturate(hg / 25.0)));
             acc = acc + tr * a * c;
             tr = tr * (1.0 - a);
         }
     }
-    let _d = dirn;
     return vec4<f32>(acc, tr);
 }
 
@@ -1397,7 +1400,7 @@ fn tsunami(in: StageIn) -> vec4<f32> {
         col = mix(col, li.fogl * 0.72 * (1.0 - 0.5 * dim), haze * 0.75);
     }
     // (a tail stands in front of the water it came out of, whichever way the front bows)
-    let tl = ts_tails(ro, rd, select(t_front, t_front + 70.0, h.hit), time, g, li);
+    let tl = ts_tails(ro, rd, t_front, select(0.0, 70.0, h.hit), time, g, li);
     col = col * tl.a + tl.rgb;
     let sp = ts_spray(ro, rd, 0.0, t_front, time, g, li, j);
     col = col * sp.a + sp.rgb;
