@@ -622,10 +622,10 @@ def meld():
     hum = (np.sin(ph) + 0.4 * np.sin(2 * ph + 0.8) + 0.16 * np.sin(3 * ph + 1.9)) * (1 - np.exp(-u / 0.02)) * np.exp(-u / 0.6) * (t >= t0)
     press = bn(n, 70, 340) * np.exp(-u / 0.09) * (1 - np.exp(-u / 0.006)) * (t >= t0) * 1.5     # (weight, braking over 0.25 s: nothing sharp)
     # (the land rising to meet it from 5.6 s: a slow breath of weight, earth shifting in it, held till the mound goes)
-    rise = ss(0.0, lead + 0.12, t) * (1 - ss(lead + 0.25, lead + 1.1, t))
+    rise = ss(0.0, lead, t) * (1 - ss(lead + 0.25, lead + 1.1, t))
     ph2 = 2 * np.pi * np.cumsum(27.0 + 7.0 * ss(0.0, lead, t)) / SR
-    swell = (np.sin(ph2) + 0.3 * np.sin(2 * ph2 + 0.5)) * rise * 0.16
-    swell += bn(n, 45, 170) * np.clip(grn(d, 22.0, (0.03, 0.08)), 0, 4) * rise * 0.022
+    swell = (np.sin(ph2) + 0.3 * np.sin(2 * ph2 + 0.5)) * rise * 0.3
+    swell += bn(n, 45, 170) * np.clip(grn(d, 22.0, (0.03, 0.08)), 0, 4) * rise * 0.075
     L = hum + press + swell
     R = L.copy()
     # (it slumps in like two lava-lamp blobs joining, to about 7.5: fat slow bubbles, a few small)
