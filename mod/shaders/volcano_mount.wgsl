@@ -354,7 +354,7 @@ fn vm_shade(C: vec3<f32>, rd: vec3<f32>, t: f32, l: VcLight, cam_uv: vec2<f32>) 
         let flick = 0.82 + 0.18 * sin(vm.t * 7.0 + plate * 2.0 + nz * 9.0);
         let cr = cutv * heat * flick;
         c = c + vm_ramp((0.2 + 0.85 * dd + 0.25 * (nz2 - 0.5)) * cr);
-        c = c + alb * vec3<f32>(1.6, 0.26, 0.04) * heat * exp(-max(f.z - wc, 0.0) / 2.4) * (1.0 - cutv);
+        c = c + min(alb, vec3<f32>(0.2)) * vec3<f32>(1.6, 0.26, 0.04) * heat * exp(-max(f.z - wc, 0.0) / 2.4) * (1.0 - cutv);
     }
     // ---- the cracks while still thin; the smaller breaks over each plate, opening late -----------------------------
     c = vm_hair(c, f.z, rr, pw);
@@ -400,7 +400,13 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
         let h = vm_w(b + 5u);
         let rad = vm_w(b + 6u);
         let y0 = vm_w(b + 2u) + vm_w(b + 3u) * vm.H - 18.0 + (h + 18.0) * rise - h;
-        let c = vec3<f32>(vm_w(b), y0, vm_w(b + 1u));
+        var c = vec3<f32>(vm_w(b), y0, vm_w(b + 1u));
+        // (the burst takes them with the plates)
+        let fly = max(vm.t - VM_ERUPT - 0.06, 0.0);
+        if (fly > 0.0) {
+            let up = 130.0 + 90.0 * fract(t0 * 7.3);
+            c = c + vec3<f32>(c.x * 0.5 * fly, up * fly - 0.5 * VM_G * fly * fly, c.z * 0.5 * fly);
+        }
         // (first its sphere: it stands h high, a good deal of that under the land yet)
         let mid = c + vec3<f32>(vm_w(b + 7u) * h, 0.5 * h, vm_w(b + 8u) * h) * 0.5;
         let oc = mid - o;
@@ -486,10 +492,40 @@ struct VmPl {
     rest: vec2<f32>,  // where on the land it was
     kind: u32,        // 0 its top, 1 its edge or underside
     dep: f32,         // how far down through it, 0 to 1
+    y: f32,           // how high it was, at rest
 }
 // A vector turned about the unit axis by an angle (cos, sin).
 fn vm_rot(v: vec3<f32>, ax: vec3<f32>, c: f32, s: f32) -> vec3<f32> {
     return v * c + cross(ax, v) * s + ax * dot(ax, v) * (1.0 - c);
+}
+// The land's top at rest position xz, as it stood when it broke (the holes not counted).
+fn vm_top(xz: vec2<f32>) -> f32 {
+    let g = clamp((xz + VM_HALF) / VM_STEP, vec2<f32>(0.0), vec2<f32>(239.999));
+    let c = floor(g);
+    let f = g - c;
+    let b = VM_W0 + u32(c.y) * VM_GW + u32(c.x);
+    let a0 = mod_data[b];
+    let a1 = mod_data[b + 1u];
+    let a2 = mod_data[b + VM_GW];
+    let a3 = mod_data[b + VM_GW + 1u];
+    let land = vec4<f32>(f32(a0 & 0x7ffu), f32(a1 & 0x7ffu), f32(a2 & 0x7ffu), f32(a3 & 0x7ffu)) * 0.5 - 512.0;
+    let p = vec4<f32>(f32((a0 >> 11u) & 0x7ffu), f32((a1 >> 11u) & 0x7ffu), f32((a2 >> 11u) & 0x7ffu), f32((a3 >> 11u) & 0x7ffu)) * (1.6 / 2047.0) - 0.25;
+    let v = land + p * vm.H;
+    return mix(mix(v.x, v.y, f.x), mix(v.z, v.w, f.x), f.y);
+}
+// Whether the point lp of plate i's frame (cxz its middle, y0 its height) is in it.
+fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th: f32) -> bool {
+    let xz = lp.xz + cxz;
+    if (any(abs(xz) > vec2<f32>(VM_HALF - 3.0))) {
+        return false;
+    }
+    let gc = vec2<u32>((xz + VM_HALF) / VM_STEP + 0.5);
+    if ((mod_data[VM_W2 + gc.y * VM_GW + gc.x] & 255u) != i) {
+        return false;
+    }
+    let y = lp.y + y0;
+    let top = vm_top(xz);
+    return y <= top && y >= top - th;
 }
 fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
     var r: VmPl;
@@ -529,47 +565,51 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
             continue;
         }
         let th = vm_w(b + 7u);
-        let t0 = -dot(n, lo) / dn;
-        let t1 = (-th - dot(n, lo)) / dn;
+        let mg = vm_w(b + 15u);
+        let t0 = (mg - dot(n, lo)) / dn;
+        let t1 = (-th - mg - dot(n, lo)) / dn;
         let ta = max(min(t0, t1), 0.0);
         let tb = min(max(t0, t1), best);
         if (ta >= tb) {
             continue;
         }
-        // (a few looks through the slab for this plate's own columns: its edges are the cracks')
-        let looks = 1 + i32(min((tb - ta) / 4.0, 15.0));
+        let cxz = vec2<f32>(vm_w(b), vm_w(b + 1u));
+        // (looks down the ray through the slab for this plate's own columns, between their land's top and its thickness
+        // under that: it carries the land as it stood, crags and all; its edges are the cracks')
+        let looks = 2 + i32(min((tb - ta) / 3.0, 26.0));
+        let dtl = (tb - ta) / f32(looks);
         for (var k = 0; k < looks; k = k + 1) {
-            let t = ta + (tb - ta) * (f32(k) + 0.02) / f32(looks);
-            let lp = lo + ld * t;
-            let xz = lp.xz + vec2<f32>(vm_w(b), vm_w(b + 1u));
-            if (any(abs(xz) > vec2<f32>(VM_HALF - 3.0))) {
+            let t = ta + dtl * (f32(k) + 0.1);
+            if (!vm_in_plate(lo + ld * t, cxz, rest.y, i, th)) {
                 continue;
             }
-            let gc = vec2<u32>((xz + VM_HALF) / VM_STEP + 0.5);
-            if ((mod_data[VM_W2 + gc.y * VM_GW + gc.x] & 255u) == i) {
-                // (closer to where it starts, between this look and the last)
-                var ta2 = t - (tb - ta) / f32(looks);
-                var tb2 = t;
-                if (k > 0) {
-                    for (var q = 0; q < 3; q = q + 1) {
-                        let m = 0.5 * (ta2 + tb2);
-                        let mx = (lo + ld * m).xz + vec2<f32>(vm_w(b), vm_w(b + 1u));
-                        let mc = vec2<u32>((clamp(mx, vec2<f32>(3.0 - VM_HALF), vec2<f32>(VM_HALF - 3.0)) + VM_HALF) / VM_STEP + 0.5);
-                        if ((mod_data[VM_W2 + mc.y * VM_GW + mc.x] & 255u) == i) {
-                            tb2 = m;
-                        } else {
-                            ta2 = m;
-                        }
-                    }
+            var a0 = t - dtl;
+            var b0 = t;
+            for (var q = 0; q < 4; q = q + 1) {
+                let m = 0.5 * (a0 + b0);
+                if (vm_in_plate(lo + ld * m, cxz, rest.y, i, th)) {
+                    b0 = m;
+                } else {
+                    a0 = m;
                 }
-                best = tb2;
-                r.t = tb2;
-                r.rest = (lo + ld * tb2).xz + vec2<f32>(vm_w(b), vm_w(b + 1u));
-                r.dep = saturate(-dot(n, lo + ld * tb2) / th);
-                r.kind = select(1u, 0u, k == 0 && dn < 0.0 && t0 < t1);
-                r.n = vm_rot(select(normalize(cross(ld, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4)), normalize(n), r.kind == 0u), ax, cs, -sn);
-                break;
             }
+            let lp = lo + ld * b0;
+            let xz = lp.xz + cxz;
+            let top = vm_top(xz);
+            let dep = top - (lp.y + rest.y);
+            best = b0;
+            r.t = b0;
+            r.rest = xz;
+            r.kind = select(1u, 0u, dep < 2.6);
+            r.dep = saturate(dep / th);
+            r.y = lp.y + rest.y;
+            var nn = normalize(cross(ld, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4));
+            if (r.kind == 0u) {
+                let e = 3.0;
+                nn = normalize(vec3<f32>((vm_top(xz - vec2<f32>(e, 0.0)) - vm_top(xz + vec2<f32>(e, 0.0))) / (2.0 * e), 1.0, (vm_top(xz - vec2<f32>(0.0, e)) - vm_top(xz + vec2<f32>(0.0, e))) / (2.0 * e)));
+            }
+            r.n = vm_rot(nn, ax, cs, -sn);
+            break;
         }
     }
     return r;
@@ -580,10 +620,14 @@ fn vm_shade_plate(C: vec3<f32>, rd: vec3<f32>, h: VmPl, l: VcLight) -> vec3<f32>
     let dl = 0.14 + 0.86 * l.day;
     let nz = gnoise2(h.rest * 0.2);
     if (h.kind == 0u) {
-        // (its land, as it lay, torn: lit by the sun over it, the fire on what faces down)
-        let alb = mix(vm_lin(cl.top), vec3<f32>(0.06, 0.05, 0.042), 0.2 + 0.5 * nz);
+        // (its land as it stood, the steep of it bare rock: lit by the sun, the fire on what faces down)
+        let slope = sqrt(max(1.0 - h.n.y * h.n.y, 0.0)) / max(h.n.y, 0.15);
+        let s2 = smoothstep(1.1, 1.8, slope + 0.6 * (nz - 0.5));
+        let by = h.y + 6.0 * nz;
+        let rock = mix(vec3<f32>(0.05, 0.047, 0.046), vec3<f32>(0.135, 0.122, 0.108), 0.5 + 0.3 * sin(by * 0.41));
+        let alb = mix(vm_lin(cl.top) * (0.75 + 0.5 * nz), rock, s2);
         let d2 = f32((cl.w2 >> 8u) & 255u) / 8.0;
-        return mix(alb * dl * (0.4 + 0.9 * nl) + alb * vec3<f32>(1.6, 0.5, 0.12) * saturate(-h.n.y + 0.1), vec3<f32>(0.012), 0.8 * (1.0 - smoothstep(0.3, 1.4, d2)));
+        return mix(alb * dl * (0.4 + 0.9 * nl) + min(alb, vec3<f32>(0.2)) * vec3<f32>(1.6, 0.5, 0.12) * saturate(-h.n.y + 0.1), vec3<f32>(0.012), 0.8 * (1.0 - smoothstep(0.3, 1.4, d2)));
     }
     // (its broken edge and underside: raw rock, burning)
     let st = gnoise2(vec2<f32>(dot(h.rest, vec2<f32>(0.6, 0.8)) * 0.09, h.dep * 2.2));
@@ -850,10 +894,10 @@ fn vm_air(C: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, l: VcLight) -> vec4<f3
         if (den < 0.003) {
             continue;
         }
-        let al = 1.0 - exp(-den * dt * 0.022);
+        let al = 1.0 - exp(-(ds + 0.6 * dd * 1.3) * dt * 0.022);
         // ---- lit from above, shaded in its depth; the fire under it ---------------------------------------------------
         let shade = saturate(0.55 + 0.9 * (n - 0.52));
-        let alb = mix(vec3<f32>(0.44, 0.37, 0.3), vec3<f32>(0.92, 0.91, 0.9), ds / max(den, 1.0e-3));
+        let alb = mix(vec3<f32>(0.52, 0.43, 0.33), vec3<f32>(0.92, 0.91, 0.9), ds / max(den, 1.0e-3));
         var col = alb * (l.skyl * (0.62 + 0.3 * shade) * dl + sunk * 0.6 * shade * ph);
         let heat = vm_heat(length(q.xz));
         col = col + vec3<f32>(1.1, 0.24, 0.035) * min(heat, 1.0) * exp(-max(a.up, 0.0) / 10.0) * exp(-a.crack / 9.0);
@@ -944,7 +988,7 @@ fn vm_founts(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
         let wj = max(0.5 + 0.9 * (1.0 - saturate(py / max(top, 1.0))) + 0.012 * h, pw * 0.7);
         let clot = 0.35 + 0.65 * gnoise2(vec2<f32>(px * 0.5, py * 0.32 - vm.t * 14.0 + f32(seed)));
         let jet = exp(-px * px / (wj * wj)) * smoothstep(top, 0.15 * top, py) * step(-2.0, py) * on * clot * min(0.9 / wj + 0.25, 1.0);
-        sum = sum + mix(vec3<f32>(3.6, 0.7, 0.07), vec3<f32>(6.0, 3.0, 0.55), smoothstep(0.7 * top, 0.05 * top, py)) * jet;
+        sum = sum + mix(vec3<f32>(3.0, 0.55, 0.05), vec3<f32>(4.4, 1.5, 0.2), smoothstep(0.7 * top, 0.05 * top, py)) * jet;
         // (the drops, each thrown at its own moment on its own line, cooling as they go)
         for (var k = 0u; k < 26u; k = k + 1u) {
             let ta = dur * mh(k, seed, 0x771u);
@@ -1063,7 +1107,10 @@ fn vm_rocks(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, col: vec3<f32>) 
         let tc = dot(P, rd);
         let e = P - rd * tc;
         let d2 = dot(e, e);
-        let rr = size * 1.3;
+        // (ragged: not a ball)
+        let sd = vec2<f32>(dot(e, normalize(cross(rd, vec3<f32>(0.0, 1.0, 0.0)))), e.y);
+        let ga = atan2(sd.y, sd.x) + a * 3.0 + vm_w(b + 7u);
+        let rr = size * (1.05 + 0.3 * sin(ga * 3.0) * sin(ga * 5.0 + 1.3));
         if (tc < 0.0 || tc > best || d2 > rr * rr) {
             continue;
         }

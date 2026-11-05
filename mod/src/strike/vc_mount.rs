@@ -610,7 +610,7 @@ fn vm_boulders(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
     for k in 0..VM_BOULDS as u32 {
         let a = TAU * mh(k, s, 0x750);
         let r0 = 70.0 + 150.0 * mh(k, s, 0x751);
-        let r1 = r0 + 190.0;
+        let r1 = (r0 + 190.0).min(262.0);
         let t0 = 11.5 + 5.0 * mh(k, s, 0x752);
         let acc = 11.0 + 16.0 * mh(k, s, 0x753);
         let size = 1.6 + 2.2 * mh(k, s, 0x754).powi(2);
@@ -627,7 +627,7 @@ fn vm_boulders(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
 }
 /// The plates as thrown at the burst: from the top first, up and out, each turning its own way.
 fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
-    crate::meter::spend(100 * VM_COLS as u64);
+    crate::meter::spend(160 * VM_COLS as u64);
     let s = w.geo.seed;
     let n = w.geo.plates.len();
     let mut sum = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64); n];
@@ -641,12 +641,22 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         t.3 += 1.0;
     }
     let mut rad = vec![0.0f64; n];
+    // (how far its land stands off the plate's plane, at the dome's full height, either way)
+    let mut off = vec![0.0f64; n];
+    let centre = |t: (f64, f64, f64, f64)| if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
     for j in 0..VM_COLS {
-        let c = w.cells[j].plate as usize;
+        let cell = &w.cells[j];
+        let c = cell.plate as usize;
         let (x, z) = col_xz(j);
         let t = sum[c];
         if t.3 > 0.0 {
-            rad[c] = rad[c].max((x - t.0 / t.3).powi(2) + (z - t.1 / t.3).powi(2));
+            let (cx, cz, l) = centre(t);
+            rad[c] = rad[c].max((x - cx).powi(2) + (z - cz).powi(2));
+            let g = &w.geo.plates[c];
+            let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
+            let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * 150.0;
+            let plane = l + 150.0 * (pc + g.gx * (x - cx) + g.gz * (z - cz));
+            off[c] = off[c].max((top - plane).abs());
         }
     }
     let mut out = Vec::with_capacity(VM_PW * n);
@@ -654,7 +664,7 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         rad[k] = rad[k].sqrt();
         let t = sum[k];
         let m = k as u32;
-        let (cx, cz, l) = if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
+        let (cx, cz, l) = centre(t);
         let g = &w.geo.plates[k];
         let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
         let r = cx.hypot(cz).max(1.0);
@@ -664,7 +674,7 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let up = (105.0 + 230.0 * (1.0 - r / 320.0).clamp(0.0, 1.0)) * (0.7 + 0.6 * mh(m, s, 0x761));
         let out_v = (45.0 + 120.0 * (PI * (r / 330.0).min(1.0)).sin()) * (0.75 + 0.5 * mh(m, s, 0x762));
         let aa = TAU * mh(m, s, 0x763);
-        let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 7.0 + 12.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, 0.0];
+        let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 7.0 + 12.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, off[k] + 4.0];
         out.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
     out
