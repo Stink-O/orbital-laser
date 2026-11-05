@@ -28,7 +28,10 @@ pub(super) const VC_COLLAPSE: f32 = 50.0;
 /// The ring of vents' radius.
 pub(super) const VC_RING: f64 = 280.0;
 /// The vent is at least this far in front of the player, along the way they aimed.
-const VC_NEAR: f64 = 500.0;
+const VC_NEAR: f64 = 1000.0;
+/// The share of the bombs thrown to come down within 150 blocks of the player, as long as they are within this of the vent.
+const VC_BOMBS_NEAR: f64 = 0.34;
+const VC_BOMBS_REACH: f64 = 2400.0;
 /// The wall's knockback as it reaches the player: blocks a tick out and up, none past VC_KNOCK_REACH.
 const VC_KNOCK_OUT: f32 = 0.7;
 const VC_KNOCK_UP: f32 = 0.4;
@@ -141,8 +144,9 @@ pub(super) struct Bomb {
     pub v: [f64; 3],
     pub tl: f64,
 }
-pub(super) fn vc_bombs(seed: f32, land: &dyn Fn(f64, f64) -> f64) -> Vec<Bomb> {
+pub(super) fn vc_bombs(seed: f32, me: [f64; 3], land: &dyn Fn(f64, f64) -> f64) -> Vec<Bomb> {
     let s = seed as u32;
+    let reach = me[0].hypot(me[2]);
     (0..VC_BOMBS_N)
         .map(|i| {
             let k = i as u32;
@@ -155,7 +159,14 @@ pub(super) fn vc_bombs(seed: f32, land: &dyn Fn(f64, f64) -> f64) -> Vec<Bomb> {
             let vo = 16.0 + 62.0 * mh(k, s, 0xb5).powf(1.6);
             let vy = 120.0 + 140.0 * mh(k, s, 0xb6);
             let sway = th + 0.5 * (mh(k, s, 0xb7) - 0.5);
-            let v = [vo * sway.cos(), vy, vo * sway.sin()];
+            let mut v = [vo * sway.cos(), vy, vo * sway.sin()];
+            // (a third of them thrown at the player, wherever they stand within reach of it, coming down round them)
+            if mh(k, s, 0xb8) < VC_BOMBS_NEAR && reach > 1.0 && reach < VC_BOMBS_REACH {
+                let (a, r) = (2.0 * PI * mh(k, s, 0xb9), 12.0 + 138.0 * mh(k, s, 0xba).sqrt());
+                let (x, z) = (me[0] + r * a.cos(), me[2] + r * a.sin());
+                let tau = (vy + (vy * vy + 2.0 * VC_G * (p0[1] - land(x, z))).max(0.0).sqrt()) / VC_G;
+                v = [(x - p0[0]) / tau, vy, (z - p0[2]) / tau];
+            }
             // (down its fall, a step at a time, to where it meets the land)
             let mut tau = vy / VC_G;
             let at = |tau: f64| [p0[0] + v[0] * tau, p0[1] + v[1] * tau - 0.5 * VC_G * tau * tau, p0[2] + v[2] * tau];
@@ -186,11 +197,11 @@ fn vc_bomb_words(bombs: &[Bomb]) -> Vec<u32> {
 
 /// What the pass reads (see VC_BOMB): worked out on the tick after it fires, the bombs over flat land until the land's
 /// height is in.
-pub(super) fn vc_table(seed: f32, _me: [f64; 3]) -> Vec<u32> {
+pub(super) fn vc_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
     let mut w = vec![0u32; VC_HF];
     w[0] = 1f32.to_bits();
     w[1] = (VC_BOMBS_N as f32).to_bits();
-    let b = vc_bomb_words(&vc_bombs(seed, &|_, _| 0.0));
+    let b = vc_bomb_words(&vc_bombs(seed, me, &|_, _| 0.0));
     w[VC_BOMB..VC_BOMB + b.len()].copy_from_slice(&b);
     w
 }
@@ -228,13 +239,13 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
             let tag = crate::ground::new_tag();
             let (cols, c2, h2) = (columns.clone(), columns.clone(), hf.clone());
             p.later(t, move |q| q.ev.push((t, Act::Survey { tag, columns: cols.to_vec() })));
-            p.later(t + 0.3, move |q| vc_hf_step(q, tag, c2, reach, by + 1, t + 0.3, shader_seed, h2));
+            p.later(t + 0.3, move |q| vc_hf_step(q, tag, c2, reach, by + 1, t + 0.3, shader_seed, h2, rel));
         }
     }
 
     // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
     {
-        let bombs: Vec<(f32, f64, f64)> = vc_bombs(shader_seed, &|_, _| 0.0)
+        let bombs: Vec<(f32, f64, f64)> = vc_bombs(shader_seed, rel, &|_, _| 0.0)
             .iter()
             .map(|b| {
                 let c = b.tl - b.t0;
@@ -281,7 +292,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         let s = shader_seed;
         p.later(VC_BOMBS - 0.5, move |q| {
             let hf = h3.borrow();
-            for (i, b) in vc_bombs(s, &|x, z| hf.at(x, z)).iter().enumerate() {
+            for (i, b) in vc_bombs(s, rel, &|x, z| hf.at(x, z)).iter().enumerate() {
                 let x = (cx + b.p0[0] + b.v[0] * (b.tl - b.t0)).floor() as i32;
                 let z = (cz + b.p0[2] + b.v[2] * (b.tl - b.t0)).floor() as i32;
                 let r = 2 + i32::from(mh(i as u32, s as u32, 0xb8) > 0.5) + i32::from(mh(i as u32, s as u32, 0xb9) > 0.8);
@@ -296,10 +307,10 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
 /// The land's height, once the world has answered (asking again a little later until it has, while there is time): sent
 /// to the pass with the bombs' landings worked out on it, kept for the land's work.
 #[allow(clippy::too_many_arguments)]
-fn vc_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, gy: i32, at_t: f32, seed: f32, hf: Rc<RefCell<Hf>>) {
+fn vc_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, gy: i32, at_t: f32, seed: f32, hf: Rc<RefCell<Hf>>, rel: [f64; 3]) {
     if !crate::ground::ready(tag) {
         if at_t < VC_ERUPT {
-            q.later(at_t + 0.2, move |q| vc_hf_step(q, tag, columns, reach, gy, at_t + 0.2, seed, hf));
+            q.later(at_t + 0.2, move |q| vc_hf_step(q, tag, columns, reach, gy, at_t + 0.2, seed, hf, rel));
         }
         return;
     }
@@ -312,7 +323,7 @@ fn vc_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, 
     h.set(&heights, reach);
     q.ev.push((at_t, Act::Words { index: VC_HF as u32, words: vc_hf_pack(&heights, reach) }));
     let hh = &*h;
-    q.ev.push((at_t, Act::Words { index: VC_BOMB as u32, words: vc_bomb_words(&vc_bombs(seed, &|x, z| hh.at(x, z))) }));
+    q.ev.push((at_t, Act::Words { index: VC_BOMB as u32, words: vc_bomb_words(&vc_bombs(seed, rel, &|x, z| hh.at(x, z))) }));
 }
 
 #[cfg(test)]
@@ -362,7 +373,7 @@ mod tests {
     }
     #[test]
     fn the_bombs_come_down_on_the_land_in_order_thrown() {
-        let bombs = vc_bombs(37.0, &|_, _| 3.0);
+        let bombs = vc_bombs(37.0, [0.0, 0.0, 1000.0], &|_, _| 3.0);
         assert_eq!(bombs.len(), VC_BOMBS_N);
         assert!(bombs.windows(2).all(|w| w[0].t0 <= w[1].t0));
         for b in &bombs {

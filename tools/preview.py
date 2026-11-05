@@ -206,12 +206,12 @@ VIEWS = {
     # after it has gone over: from where it left the player, looking back at the vent
     "vcash": "cx=0 cy=67 cz=560 lx=0.5 ly=90 lz=0.5 flat=1 trees=1 fov=75 reach=560",
     "vcsun": "cx=0 cy=67 cz=560 lx=175 ly=1000 lz=685 flat=1 trees=1 fov=75 reach=560",
-    # round 2's distances: from the nearest the vent goes (900), and from 2,000 off where all of it shows, and close in
+    # round 2's distances: from the nearest the vent goes (1,000), and from 2,000 off where all of it shows, and close in
     # on the column from the air (its volume, its fire)
-    "vc900": "cx=0 cy=67 cz=900 lx=0.5 ly=330 lz=0.5 flat=1 trees=1 fov=75 reach=900",
+    "vc1k": "cx=0 cy=67 cz=1000 lx=0.5 ly=330 lz=0.5 flat=1 trees=1 fov=75 reach=1000",
     "vc2k": "cx=0 cy=90 cz=2000 lx=0.5 ly=640 lz=0.5 flat=1 trees=1 fov=62 reach=2000",
     "vcair": "cx=500 cy=520 cz=1050 lx=0.5 ly=330 lz=0.5 flat=1 fov=62 reach=1100",
-    "vcup9": "cx=0 cy=67 cz=900 lx=0.5 ly=1500 lz=0.5 flat=1 trees=1 fov=85 reach=900",
+    "vcup9": "cx=0 cy=67 cz=1000 lx=0.5 ly=1500 lz=0.5 flat=1 trees=1 fov=85 reach=1000",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -219,7 +219,7 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "rod": "rdplayer,rdmid,rdfar",
                  "supercell": "scplayer,scunder,scfar",
                  "hurricane": "huplayer,hufar,huunder,huaerial",
-                 "supervolcano": "vc900,vc2k,vcair"}
+                 "supervolcano": "vc1k,vc2k,vcair"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
