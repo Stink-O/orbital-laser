@@ -787,7 +787,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     o.t = 1.0e9;
     let t_end = min(tmax, 32000.0);
     let time = vs.t;
-    if (time < VC_CRACK - 0.1) {
+    if (time < VC_ERUPT + 0.9) {
         return o;
     }
     var t = 0.0;
@@ -1001,6 +1001,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     var uv = in.uv;
     let time = now();
     vc_set_state(time);
+    vm_set(time);
     let cam = frame.camera_position.xyz;
     let k = intensity_v();
     let seed = u32(seed_v());
@@ -1028,9 +1029,9 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     } else {
         d = depth_at(uv);
     }
-    let sky = is_sky(d);
+    var sky = is_sky(d);
     let rel = world_offset(uv, select(d, 0.5, sky));
-    let scene_len = select(1.0e9, length(rel), !sky);
+    var scene_len = select(1.0e9, length(rel), !sky);
     let rd = normalize(world_offset(uv, 0.5));
     let scene = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb);
     var col = scene;
@@ -1060,6 +1061,13 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     l.warm = warm;
     l.sun_up = sun_up;
     l.seed = seed;
+    // ---- the mount, drawn over the land until the burst (volcano_mount.wgsl) ---------------------------------------
+    let vmh = vm_surface(C, rd, scene_len, col, stage, l, uv, sky);
+    col = vmh.c;
+    if (vmh.t >= 0.0) {
+        scene_len = vmh.t;
+        sky = false;
+    }
 
     // ---- the land and the sky, under it ---------------------------------------------------------------------------
     if (stage != 1u && !sky) {
@@ -1068,7 +1076,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         // (the cracks, the ring's glow on the land)
         let rg = length(qg.xz);
         let vent = smoothstep(VC_CRACK, VC_ERUPT, time);
-        if (vent > 0.0 && abs(qg.y) < 200.0) {
+        if (time > VC_ERUPT + 0.9 && abs(qg.y) < 200.0) {
             let dr = abs(rg - VC_RING);
             let ang = atan2(qg.z, qg.x);
             let wob = 14.0 * sin(ang * 7.0 + 1.0) + 9.0 * sin(ang * 19.0 + 3.0) + 6.0 * sin(ang * 43.0 + 0.5);

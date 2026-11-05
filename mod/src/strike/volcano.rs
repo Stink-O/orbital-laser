@@ -232,6 +232,9 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         }
     }
 
+    // ---- the mount: strike/vc_mount.rs, drawn whatever the terrain setting ----------------------------------------------
+    super::vc_mount::vm_plan(&mut p, shader_seed as u32, hf.clone());
+
     // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
     {
         let bombs: Vec<(f32, f64, f64)> = vc_bombs(shader_seed, &|_, _| 0.0)
@@ -335,6 +338,12 @@ mod table {
         let hf = super::vc_hf_pack(&heights, reach);
         w.resize(super::VC_HF + hf.len(), 0);
         w[super::VC_HF..].copy_from_slice(&hf);
+        for (i, words) in super::super::vc_mount::table::all(seed as u32, &|x, z| Some(super::super::vc_mount::table::preview_col(x, z, hills))) {
+            if w.len() < i + words.len() {
+                w.resize(i + words.len(), 0);
+            }
+            w[i..i + words.len()].copy_from_slice(&words);
+        }
         let text: String = w.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }
