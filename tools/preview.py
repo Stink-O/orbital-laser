@@ -206,6 +206,12 @@ VIEWS = {
     "tsride": "cx=0 cy=104 cz=250 lx=0.5 ly=88 lz=-300 flat=1 trees=1 fov=70 reach=300",
     "tsdeb": "cx=0 cy=67 cz=300 lx=0.5 ly=80 lz=-300 flat=1 fov=70 reach=300",
     "tsridelow": "cx=0 cy=72 cz=220 lx=0.5 ly=66 lz=-300 hills=20 trees=1 fov=70 reach=300",
+    # (the hill shot of the clips: high on a hill, level, the wave coming at the lens; across a valley; down on the drain)
+    "tspeak": "cx=0 cy=160 cz=300 lx=0.5 ly=172 lz=-300 hills=30 trees=1 fov=70 reach=300",
+    "tsvalley": "cx=330 cy=118 cz=120 lx=-120 ly=66 lz=-140 hills=30 trees=1 fov=70 reach=300",
+    "tsfoot": "cx=40 cy=84 cz=40 lx=-40 ly=64 lz=-300 hills=30 trees=1 fov=70 reach=300",
+    "tsdrain": "cx=0 cy=125 cz=300 lx=0.5 ly=62 lz=-100 hills=30 trees=1 fov=70 reach=300",
+    "tsdrainlow": "cx=0 cy=69 cz=300 lx=0.5 ly=60 lz=120 hills=30 trees=1 fov=70 reach=300",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",

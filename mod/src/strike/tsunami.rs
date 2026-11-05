@@ -1138,7 +1138,8 @@ mod tests {
     }
     /// A wooded land with a village's block of houses, flat, the grass at the target's ground.
     fn land(x: i32, z: i32, below: u32, above: u32) -> Option<(i32, Vec<&'static str>)> {
-        crate::strike::hurricane::synth_column(x, z, below, above, 65, 0.0, true)
+        let hills: f32 = std::env::var("PL_HILLS").map_or(0.0, |v| v.parse().unwrap());
+        crate::strike::hurricane::synth_column(x, z, below, above, 65, hills, true)
     }
     /// `CB_SEED=37 CB_OUT=path PL_HILLS=H cargo test --release ts_write_table -- --ignored`: the table the pass reads, for
     /// tools/preview.py (a line `index value` a word): the target at the preview's 0.5 65 0.5, the player 300 south of it, on

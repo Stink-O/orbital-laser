@@ -639,6 +639,116 @@ fn ts_ripple(p: vec2<f32>, t: f32, f: f32) -> vec2<f32> {
     }
     return g;
 }
+// Value noise on a plane and its slope: z the value, xy the slope.
+fn ts_vnd(p: vec2<f32>) -> vec3<f32> {
+    let i = floor(p);
+    let f = p - i;
+    let e = f * f * (3.0 - 2.0 * f);
+    let de = 6.0 * f * (1.0 - f);
+    // (one round of the hash a corner: this runs by the dozen in a pixel)
+    let q = bitcast<vec2<u32>>(vec2<i32>(i)) * vec2<u32>(0x9E3779B1u, 0x85EBCA6Bu);
+    let a = f32(pcg(q.x ^ q.y) >> 16u) / 65535.0;
+    let b = f32(pcg((q.x + 0x9E3779B1u) ^ q.y) >> 16u) / 65535.0;
+    let c = f32(pcg(q.x ^ (q.y + 0x85EBCA6Bu)) >> 16u) / 65535.0;
+    let d = f32(pcg((q.x + 0x9E3779B1u) ^ (q.y + 0x85EBCA6Bu)) >> 16u) / 65535.0;
+    let k = a - b - c + d;
+    return vec3<f32>(de.x * (b - a + k * e.y), de.y * (c - a + k * e.x), a + (b - a) * e.x + (c - a) * e.y + k * e.x * e.y);
+}
+struct TsChop {
+    h: f32,         // the height of it, about nothing
+    g: vec2<f32>,   // its slope
+}
+// Chop all the way down: sharp-crested wavelets from thirty blocks long to a few pixels, however close the eye is, so the
+// nearer it gets the more there is to see. Each size runs at its own speed (`v`, the way the water runs) and is folded by
+// the bigger ones. `px`: how many blocks a pixel covers.
+fn ts_chop(p: vec2<f32>, v: f32, time: f32, px: f32) -> TsChop {
+    var c: TsChop;
+    c.h = 0.0;
+    c.g = vec2<f32>(0.0);
+    let l0 = 17.0;
+    let top = log2(l0 / max(2.8 * px, 0.015));
+    let first = max(i32(ceil(top)) - 6, 0);
+    var q = p;
+    var sum = 0.0;
+    var i = first;
+    loop {
+        let fi = f32(i);
+        if (fi >= top) {
+            break;
+        }
+        let l = l0 / exp2(fi);
+        let ca = cos(fi * 1.37 + 0.4);
+        let sa = sin(fi * 1.37 + 0.4);
+        let m = q + vec2<f32>(fi * 17.3, -time * v * (1.0 - 0.07 * fi));
+        // (squashed along the way it runs: the crests lie across it, a little)
+        let r = vec2<f32>(ca * m.x + sa * m.y, -sa * m.x + ca * m.y) * vec2<f32>(1.0, 1.5) / l;
+        let n = ts_vnd(r);
+        let e = 2.0 * n.z - 1.0;
+        // (a crest broken into short lengths by a second ridge across it: chop, not contour lines)
+        let br = 0.5 + 0.5 * sin(r.y * 2.3 + r.x * 1.1 + 5.0 * n.z + fi);
+        let w = (1.0 - abs(e)) * (0.3 + 0.7 * br);
+        let wg = (2.0 * w) * -2.0 * sign(e) * n.xy * (0.3 + 0.7 * br) * vec2<f32>(1.0, 1.5);
+        // (the finest comes in as there is room for it, and the biggest goes when the seven are all too small for it)
+        let a = saturate(top - fi) * select(1.0, 1.0 - saturate(top - 5.0 - fi), i == first && first > 0);
+        c.h = c.h + a * (w * w - 0.36) * exp2(-0.55 * fi);
+        sum = sum + a * exp2(-0.55 * fi);
+        let gl = vec2<f32>(ca * wg.x - sa * wg.y, sa * wg.x + ca * wg.y) * a * (0.55 + 0.14 * fi);
+        c.g = c.g + gl;
+        q = q + gl * l * 0.022;
+        i = i + 1;
+    }
+    c.h = c.h / max(sum, 0.2);
+    c.g = c.g * 0.3;
+    return c;
+}
+// The walls of cells of froth: how far `p` is from the nearest wall, in cells (a wall at 0). `p` in cells.
+fn ts_web(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    var d1 = 9.0;
+    var d2 = 9.0;
+    for (var y = -1; y <= 1; y = y + 1) {
+        for (var x = -1; x <= 1; x = x + 1) {
+            let c = vec2<i32>(i32(i.x) + x, i32(i.y) + y);
+            let hh = pcg(u32(c.x) * 0x9E3779B1u ^ u32(c.y) * 0x85EBCA6Bu);
+            let r = vec2<f32>(f32(x), f32(y)) + vec2<f32>(f32(hh & 0xFFFFu), f32(hh >> 16u)) / 65536.0 - f;
+            let d = dot(r, r);
+            if (d < d1) {
+                d2 = d1;
+                d1 = d;
+            } else if (d < d2) {
+                d2 = d;
+            }
+        }
+    }
+    return sqrt(d2) - sqrt(d1);
+}
+// Foam over coverage `cov` (0 to 1): a lace of thin walls in a few sizes, its cells closing up as there is more of it,
+// `q` in blocks, `px` blocks a pixel. Far off, where the walls are too fine to see, the coverage itself.
+fn ts_lace(q: vec2<f32>, cov: f32, px: f32) -> f32 {
+    if (cov <= 0.002) {
+        return 0.0;
+    }
+    let far_ = smoothstep(1.2, 3.5, px);
+    if (far_ >= 1.0) {
+        return cov;
+    }
+    let c1 = 13.0;
+    let c2 = 4.3;
+    let w1 = ts_web(q / c1 + vec2<f32>(31.7, 11.1));
+    let w2 = ts_web(q / c2 + vec2<f32>(7.3, 3.9));
+    let aa1 = 1.5 * px / c1;
+    let aa2 = 1.5 * px / c2;
+    var f = max(1.0 - smoothstep(0.0, aa1 + 0.03, w1 - cov * 0.72 + 0.03), 1.0 - smoothstep(0.0, aa2 + 0.05, w2 - cov * 0.95 + 0.28));
+    if (px < 0.1) {
+        let c3 = 1.4;
+        let w3 = ts_web(q / c3 + vec2<f32>(1.3, 8.9));
+        let k3 = 1.0 - smoothstep(0.05, 0.1, px);
+        f = max(f, k3 * (1.0 - smoothstep(0.0, 1.5 * px / c3 + 0.08, w3 - cov * 0.95 + 0.42)));
+    }
+    return mix(saturate(f), cov, far_);
+}
+
 // The sky a reflected ray sees, or the dark land and water under it.
 fn ts_skyr(r: vec3<f32>, li: TsLight) -> vec3<f32> {
     let hor = mix(li.fogl, li.skyl, smoothstep(0.0, 0.5, r.y));
@@ -668,6 +778,15 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let v = p.y - w;
     let warp = ts_fbm3(vec3<f32>(u * 0.016, v * 0.012, time * 0.13 + g.sd), 2 + i32(mid * 2.0));
     let warp2 = ts_fbm3(vec3<f32>(u * 0.06 + 3.0, v * 0.03, time * 0.25), 2);
+    // (how close: what only shows close by, the chop that goes on getting finer. It cuts every edge below too: no edge
+    // here is a soft one, however near the eye is)
+    let ck = 1.0 - smoothstep(90.0, 380.0, ht);
+    var ch: TsChop;
+    ch.h = 0.0;
+    ch.g = vec2<f32>(0.0);
+    if (ck > 0.0) {
+        ch = ts_chop(vec2<f32>(u + 9.0 * warp2, v * 0.8), 36.0, time, px);
+    }
 
     // ---- the white water: only the lip, torn; here and there a short fall of it under a part that is breaking ------------
     let drop = 38.0;
@@ -675,7 +794,7 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     // (the lip frays into threads)
     let fray = ts_fbm3(vec3<f32>(u * 0.21, vd * 0.012, 3.0), 2 + i32(mid));
     let reach = (5.0 + 9.0 * env) + (a - TS_SEA) * 0.17 * bk * bk * bk * smoothstep(-520.0, -180.0, s) * smoothstep(0.3, 0.7, warp);
-    let wc = 1.0 - dtop / reach + (warp2 - 0.5) * 0.7 + (fray - 0.5) * 0.9;
+    let wc = 1.0 - dtop / reach + (warp2 - 0.5) * 0.7 + (fray - 0.5) * 0.9 + ch.h * 1.1 * ck;
     var white = smoothstep(0.0, 0.5, wc) * mix(smoothstep(0.36, 0.6, fray) * 0.7, 1.0, smoothstep(0.25, 0.75, wc)) * smoothstep(-20.0, 90.0, w + 60.0);
     // (the foot: a brown bore where the face meets the land, boiling in lumps)
     let sharp = 1.0 - smoothstep(0.5, 2.4, px);
@@ -683,11 +802,12 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let foot = (1.0 - smoothstep(5.0 + 22.0 * boil, 15.0 + 38.0 * boil, hg + 14.0 * (fray - 0.5))) * smoothstep(-700.0, -420.0, s);
     white = max(white, foot);
     // (the last of it, right in front of the eye: whatever part of the face this is, it is coming apart and thrown at them)
-    let rush = 1.0 - smoothstep(4.0, 58.0, ht);
+    let rush = 1.0 - smoothstep(2.0, 30.0, ht);
     var rushn = 0.0;
     if (rush > 0.0) {
-        rushn = ts_fbm3(vec3<f32>(u * 0.3, (p.y + time * 60.0) * 0.022, time * 1.5), 4);
-        white = max(white, smoothstep(0.66 - 0.56 * rush, 0.82 - 0.42 * rush, rushn + 0.2 * rush));
+        rushn = ts_fbm3(vec3<f32>(u * 0.1, (p.y + time * 60.0) * 0.05, time * 1.5), 3) + ch.h * 0.42;
+        // (not a sheet: pieces of it, more and closer together the nearer, the dark still showing between them)
+        white = max(white, 0.58 * smoothstep(0.0, 0.3, rush) * smoothstep(0.62 - 0.3 * rush, 0.7 - 0.3 * rush, rushn));
     }
     // ---- the relief of what is white: the lip's threads; the foot's lumps ------------------------------------------------
     let oct = clamp(i32(log2(5.0 / max(px, 0.05))) + 1, 1, 5);
@@ -715,14 +835,15 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
         lump = mix(0.5, saturate((f0 - 0.2) / 1.05 + (froth - 0.5) * 0.7), sharp);
         bump = mix(bump, ((f0 - fx) * tn + (f0 - fy) * tu) * 0.8 + (froth - 0.5) * tu * 0.5, foot * sharp);
     }
-    let wn = normalize(nrm0 + bump * (1.2 + (2.2 + 6.0 * foot) * mid));
+    // (close by the small relief is the chop's: the coarse noise's cells would show)
+    let wn = normalize(nrm0 + bump * (1.2 + (2.2 + 6.0 * foot) * mid) * (1.0 - 0.85 * ck * (1.0 - foot)) + (tn * ch.g.x + tu * ch.g.y) * 0.8 * ck);
     let bdif = saturate(dot(wn, li.L));
     let cav = mix(0.62, smoothstep(0.3, 0.66, b0), 0.15 + 0.85 * (1.0 - smoothstep(0.4, 2.2, px)));
     // ---- the dark water's own surface -------------------------------------------------------------------------------
     let rp = vec2<f32>(u, v + 30.0 * time);
     let sl = ts_ripple(rp * vec2<f32>(1.0, 0.5), time, near + 0.35 * mid);
     let stretch = (0.09 + 0.2 * mid) * (0.2 + 0.8 * (1.0 - smoothstep(220.0, 800.0, ht)));
-    var nrm = normalize(nrm0 + (tn * sl.x + tu * sl.y) * stretch);
+    var nrm = normalize(nrm0 + (tn * sl.x + tu * sl.y) * stretch + (tn * ch.g.x + tu * ch.g.y) * 0.62 * ck);
     if (dot(nrm, rd) > -0.02) {
         nrm = normalize(nrm + rd * (dot(nrm, rd) + 0.02) * -1.0);
     }
@@ -745,7 +866,7 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let chopv = v - 30.0 * time;
     let chop = ts_fbm3(vec3<f32>(u * 0.22 + 2.0 * warp2, chopv * 0.07, time * 0.5), 2 + i32(near) + i32(mid));
     let chop2 = ts_vn3(vec3<f32>(u * 0.8, chopv * 0.3, time * 1.2));
-    let fine_c = (chop - 0.5) * (0.5 + 0.5 * mid) + (chop2 - 0.5) * 0.55 * near;
+    let fine_c = mix((chop - 0.5) * (0.5 + 0.5 * mid) + (chop2 - 0.5) * 0.55 * near, ch.h * 1.1, ck);
     let fine_far = 1.0 - smoothstep(120.0, 520.0, ht);
     body = body * (1.0 + 1.5 * fine_c * fine_far);
     body = body + vec3<f32>(0.014, 0.052, 0.04) * thin * thin * (li.amb * 2.0 + sunw * 0.6 + li.nightw * 2.0);
@@ -776,11 +897,16 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     // (patches of it, the dark water between; thicker towards the lip and where it is being dragged out of the foot)
     let back = smoothstep(0.82, 0.96, nrm0.y) * smoothstep(40.0, 130.0, w);
     let lacek = smoothstep(0.5, 0.68, warp + 0.2 * smoothstep(0.6, 1.0, ybar) + 0.12 * mudk + 0.2 * back);
-    let foamthin = saturate(lace * lacek * (0.5 + 0.5 * smoothstep(0.3, 0.9, ybar)));
+    let cov0 = saturate(lace * lacek * (0.5 + 0.5 * smoothstep(0.3, 0.9, ybar)));
+    // (near to, what far off is a streak is a lace of fine foam, flowing up the face with the chop)
+    let lq = vec2<f32>(su + 5.0 * warp2 + 14.0 * ch.g.x * ck, (vr + 12.0 * ch.g.y * ck) * 0.45);
+    // (and the crests of the chop itself going white, flecks all over it, more in the patches)
+    let fleck = smoothstep(0.34, 0.5, ch.h + 0.3 * (warp2 - 0.5) + 0.25 * smoothstep(0.35, 0.8, ybar) - 0.12);
+    let foamthin = mix(cov0, max(ts_lace(lq, saturate(cov0 * 1.15 + 0.4 * ch.h * cov0), px), fleck * 0.9), ck);
     // ---- all together ----------------------------------------------------------------------------------------------
     let ambw = mix(li.amb, vec3<f32>(luminance(li.amb)), 0.6);
     let shade = ambw * (1.5 + 0.5 * wn.y) * (0.45 + 0.75 * cav) + mix(sunw, li.sunc, 0.4) * bdif * (0.6 + 0.4 * cav) + li.nightw * 2.6 * (0.6 + 0.6 * cav);
-    var whitec = vec3<f32>(0.86, 0.88, 0.87) * shade;
+    var whitec = vec3<f32>(0.86, 0.88, 0.87) * shade * (1.0 - 0.28 * ck);
     // (the foot: dirty, nearly black in the creases, cream on its lumps; at a distance one mud-grey)
     let sh2 = ambw * (1.4 + 0.5 * wn.y) + mix(sunw, li.sunc, 0.3) * (0.15 + 0.85 * bdif) + li.nightw * 2.4;
     let crest = smoothstep(0.2, 0.62, lump);
@@ -790,7 +916,9 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     whitec = mix(whitec, footc, foot);
     // (the crevices of the white water go grey-green: light that has come through water)
     whitec = whitec + vec3<f32>(0.0, 0.016, 0.014) * (1.0 - cav) * (li.amb + li.sunc * 0.25) * (1.0 - foot);
-    let cover = saturate(white * (0.8 + 0.45 * b0));
+    // (close by the white is froth too: a mass of cells with the dark coming through, not a smooth sheet)
+    let cover0 = saturate(white * (0.8 + 0.45 * b0));
+    let cover = mix(cover0, mix(ts_lace(lq * 0.8 + vec2<f32>(5.0, 2.0), saturate(cover0 * 1.05 + ch.h * 0.5 * cover0), px), cover0, foot), ck);
     var c = mix(wet, vec3<f32>(0.62, 0.66, 0.64) * shade * 0.9, foamthin * (1.0 - cover) * 0.8);
     c = mix(c, whitec, cover);
     return c;
@@ -1158,7 +1286,14 @@ fn ts_spray(ro: vec3<f32>, rd: vec3<f32>, t0: f32, t1: f32, time: f32, g: TsG, l
         if (dens < 0.001) {
             continue;
         }
-        let ext = dens * dt * 0.024 * smoothstep(0.1, 0.3, env) * smoothstep(1.0, 3.0, time);
+        // (near to, a veil is no good: it is torn right down, and what is left is thin)
+        let pn = smoothstep(240.0, 60.0, t);
+        var cut = 1.0;
+        if (pn > 0.0) {
+            let dt0 = ts_vn3(vec3<f32>(u * 0.19, (p.y - time * 34.0) * 0.14, (s + time * 20.0) * 0.19));
+            cut = mix(1.0, smoothstep(0.48, 0.66, dt0) * 0.75, pn);
+        }
+        let ext = dens * cut * dt * 0.024 * smoothstep(0.1, 0.3, env) * smoothstep(1.0, 3.0, time);
         let a = 1.0 - exp(-ext);
         // (brighter high up where the sun has it, darker low in its own shade)
         let lit = 0.5 + 0.6 * smoothstep(0.3 * lc, lc + 40.0, p.y) ;
