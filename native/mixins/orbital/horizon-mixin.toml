@@ -1,0 +1,300 @@
+[mod]
+id = "orbital"
+version = "0.5.10"
+priority = 100
+
+[compatibility]
+horizon_revision = "e57b1d34bb0dcf6bf081c19fe6d2e7f69b60cdf4"
+
+# The mod's code, unchanged, on a native build of its SDK (engine/src/horizon_sdk.rs).
+[[crate]]
+id = "engine"
+path = "engine"
+
+# The fork's mod host (game/mods.rs) driving it through Horizon's hooks and helpers: the client half and the server
+# half (glue.rs).
+[[module]]
+id = "glue"
+file = "crates/horizon-client/src/game.rs"
+name = "orbital_glue"
+source = "glue.rs"
+
+# The fork's post pass (gfx/mod_post.rs and its prelude), drawn on the renderer's hook points (post.rs).
+[[module]]
+id = "post"
+file = "crates/horizon-client-render/src/lib.rs"
+name = "orbital_post"
+source = "post.rs"
+visibility = "pub"
+
+# The fork's `world.carry-player` (carry.rs), beside the local player's motion in the client library.
+[[module]]
+id = "carry"
+file = "crates/horizon-client/src/client_lib.rs"
+name = "orbital_carry"
+source = "carry.rs"
+visibility = "pub"
+
+[[injection]]
+id = "tick"
+hook = "tick"
+hook_version = 1
+kind = "HEAD"
+helper = "tick.rs"
+bindings = [{ name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" }]
+
+[[injection]]
+id = "frame"
+hook = "frame"
+hook_version = 1
+kind = "HEAD"
+helper = "frame.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "elapsed", ty = "std::time::Duration", value = "elapsed" },
+]
+
+[[injection]]
+id = "command"
+hook = "command"
+hook_version = 1
+kind = "HEAD"
+helper = "command.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "command", ty = "&str", value = "command" },
+  { name = "ran", ty = "&mut bool", value = "&mut *ran" },
+]
+
+[[injection]]
+id = "hud"
+hook = "hud"
+hook_version = 1
+kind = "HEAD"
+helper = "hud.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+  { name = "corners", ty = "&mut horizon_client::extras_hud::Corners", value = "&mut *corners" },
+]
+
+[[injection]]
+id = "mods"
+hook = "mods"
+hook_version = 1
+kind = "HEAD"
+helper = "mods.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "mods", ty = "&mut Vec<crate::game::native_hooks::NativeMod>", value = "&mut *mods" },
+]
+
+[[injection]]
+id = "key"
+hook = "key"
+hook_version = 1
+kind = "HEAD"
+helper = "key.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "pressed", ty = "bool", value = "pressed" },
+]
+
+[[injection]]
+id = "net_from_client"
+hook = "net_from_client"
+hook_version = 1
+kind = "HEAD"
+helper = "net_from_client.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "player", ty = "u128", value = "player" },
+  { name = "channel", ty = "&str", value = "channel" },
+  { name = "data", ty = "&[u8]", value = "data" },
+]
+
+[[injection]]
+id = "net_from_server"
+hook = "net_from_server"
+hook_version = 1
+kind = "HEAD"
+helper = "net_from_server.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "channel", ty = "&str", value = "channel" },
+  { name = "data", ty = "&[u8]", value = "data" },
+]
+
+[[injection]]
+id = "level_tick_post"
+hook = "level_tick_post"
+hook_version = 1
+kind = "HEAD"
+helper = "level_tick_post.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+]
+
+[[injection]]
+id = "camera_shake"
+hook = "camera_shake"
+hook_version = 1
+kind = "HEAD"
+helper = "camera_shake.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "partial", ty = "f32", value = "partial" },
+  { name = "shake", ty = "&mut crate::game::native_hooks::NativeShake", value = "&mut *shake" },
+]
+
+[[injection]]
+id = "world_drawn"
+hook = "world_drawn"
+hook_version = 1
+kind = "HEAD"
+helper = "world_drawn.rs"
+bindings = [{ name = "world", ty = "&mut crate::gfx::native_render::WorldDrawn<'_>", value = "&mut *world" }]
+
+[[injection]]
+id = "render_needs"
+hook = "render_needs"
+hook_version = 1
+kind = "HEAD"
+helper = "render_needs.rs"
+bindings = [{ name = "needs", ty = "&mut crate::gfx::native_render::RenderNeeds", value = "&mut *needs" }]
+
+# What the pass reads of the frame (the fork took it in draw_frame): a HEAD on the renderer's frame.
+[[injection]]
+id = "render_frame"
+target = "horizon_client_render::gfx::Renderer::render"
+kind = "HEAD"
+helper = "render_frame.rs"
+bindings = [{ name = "frame", ty = "&crate::gfx::Frame<'_>", value = "frame" }]
+
+[[injection]]
+id = "screen_render_post"
+hook = "screen_render_post"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_render_post.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+]
+
+[[injection]]
+id = "screen_click"
+hook = "screen_mouse_button_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_click.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "screen_key"
+hook = "screen_key_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_key.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "screen_char"
+hook = "screen_char_typed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_char.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "c", ty = "char", value = "c" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+# The local player's tick: carried by the mod's carry in place of their own motion while it holds (a Break skips their
+# own motion; the fork's ModsState::player_tick).
+[[injection]]
+id = "carry_tick"
+target = "horizon_client_lib::motion::MotionWorld<'_,'_,'_>::controlled_simulation_tick_with_sprint_window"
+kind = "HEAD"
+cancellable = true
+helper = "carry_tick.rs"
+bindings = [
+  { name = "world", ty = "&mut crate::motion::MotionWorld<'_, '_, '_>", value = "&mut *self" },
+  { name = "keys", ty = "crate::sprint::Keys", value = "keys" },
+]
+
+# `/orbital` in the server's command tree, so the chat box colours and completes it (glue.rs `USAGES`).
+[[injection]]
+id = "register_commands"
+hook = "register_commands"
+hook_version = 1
+kind = "HEAD"
+helper = "register_commands.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "commands", ty = "&mut Vec<crate::mod_api::NativeCommand>", value = "&mut *commands" },
+]
+
+[[injection]]
+id = "client_level_load"
+hook = "client_level_load"
+hook_version = 1
+kind = "HEAD"
+helper = "client_level_load.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+]
+
+[[injection]]
+id = "client_level_unload"
+hook = "client_level_unload"
+hook_version = 1
+kind = "HEAD"
+helper = "client_level_unload.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+]
+
+# `/orbital` reaching the server through its command tree (`register_commands`): handed to the window.
+[[injection]]
+id = "perform_command"
+hook = "perform_command"
+hook_version = 1
+kind = "HEAD"
+helper = "perform_command.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "command", ty = "&str", value = "command" },
+  { name = "ran", ty = "&mut bool", value = "&mut *ran" },
+]
+
+# One file for code and content: the game reads content mods only from horizon-mods/, and the launcher installs this
+# mod as horizon-native-mods/orbital.hnmod, which carries its content too (horizon-mod.toml, assets/, data/:
+# docs/api/mod-files.md, "Both, in one .hmod"). So what the game finds in horizon-mods/ also names that file, as if it
+# were horizon-mods/orbital.hmod. Nothing is written or copied. Until the game reads content from native files
+# (horizon-rust/horizon#5865).
+[[injection]]
+id = "content_find"
+target = "horizon_mods::manifest::find"
+kind = "RETURN"
+helper = "content_find.rs"
+bindings = [
+  { name = "dir", ty = "&Path", value = "dir" },
+  { name = "found", ty = "Vec<PathBuf>", value = "$value" },
+]
