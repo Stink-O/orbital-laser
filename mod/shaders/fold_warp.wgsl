@@ -141,20 +141,41 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32) -> vec3<f32> {
     }
     return vec3<f32>(R, Y + total, here);
 }
-// The ripples: five rings out of the target, each bigger than the last.
-fn fw_ripple(r: f32, t: f32) -> f32 {
-    var y = 0.0;
-    for (var k = 0; k < 5; k += 1) {
-        let f = f32(k);
-        let t0 = FW_RIPPLE + 1.05 * f;
-        if (t < t0) {
-            break;
-        }
-        let front = (58.0 + 14.0 * f) * (t - t0) * (1.0 + 0.09 * (t - t0));
-        let w = 13.0 + 7.0 * f + 0.05 * front;
-        let x = (r - front) / w;
-        y += (1.3 + 2.2 * f) * exp(-x * x) * cos(x * 2.4) / (1.0 + r / 340.0);
+// ---- the water: the land takes the droplet the way still water takes a drop -------------------------------------------
+// Each pulse of the centre (the droplet going in, then the land's own rebounds) lets go one group of rings, worked out as
+// deep water's ring waves (the Cauchy-Poisson problem; refs in the team's notes): at distance r, time s after the pulse, the
+// wave here is the one whose group has come this far, k = g s^2 / (4 r^2), so the first rings out are long and fast, the
+// ones behind them short and slow, the crests run forward through their group at twice its speed, and a calm grows in the
+// middle as the short waves leave. r is softened by FW_CORE so the middle itself falls and rebounds, one formula all the way
+// in. Physically a group thins out as r^-3; FW_RB and FW_RP put back enough of that to carry it to the player.
+const FW_TOUCH: f32 = 6.0;         // the droplet touches: fold.wgsl's FD_TOUCH
+const FW_G: f32 = 480.0;           // the land's gravity, blocks/s^2: higher, every ring faster; a wave's period is 2 pi / sqrt(g k)
+const FW_SRC: f32 = 22.0;          // how wide a pulse is, blocks: the shortest ring it makes is about 2.2 of these
+const FW_CORE: f32 = 22.0;         // the softened middle
+const FW_RB: f32 = 60.0;
+const FW_RP: f32 = 1.5;
+fn fw_group(r2: f32, s: f32) -> f32 {
+    if (s <= 0.0) {
+        return 0.0;
     }
+    let q2 = r2 + FW_CORE * FW_CORE;
+    let q = sqrt(q2);
+    let u = FW_G * s * s * 0.25;
+    let x = u / q2 * FW_SRC * 0.5;
+    if (x > 3.0) {
+        return 0.0;
+    }
+    let b = 1.0 + q / FW_RB;
+    return 0.706 * FW_SRC * FW_SRC * u / (q2 * q) * exp(-x * x) * b * sqrt(b) * cos(u / q);
+}
+// The land's height here at t, blocks: five groups, each stronger than the last and of the other sign.
+fn fw_ripple(r: f32, t: f32) -> f32 {
+    if (t < FW_TOUCH || t > FW_TEAR) {
+        return 0.0;
+    }
+    let r2 = r * r;
+    let y = -1.2 * fw_group(r2, t - 6.3) + 2.4 * fw_group(r2, t - 7.6) - 4.2 * fw_group(r2, t - 8.9)
+        + 6.4 * fw_group(r2, t - 10.2) - 8.4 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
 }
 // The land past `r0` curling up and in over a tube of radius `rc`.
@@ -217,7 +238,7 @@ fn fw_clock() -> FwClock {
     return FwClock(w[0].w + w[4].w * 0.05, tgt, me, w[2].x, min(50.0 - w[0].y, -20.0));
 }
 fn fw_live(t: f32) -> bool {
-    return globals.warp[2].y > 0.5 && t > FW_RIPPLE - 0.2 && t < FW_END;
+    return globals.warp[2].y > 0.5 && t > FW_TOUCH - 0.2 && t < FW_END;
 }
 
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
@@ -245,7 +266,8 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
-    let rip = fw_ripple(r, t);
+    // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
+    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t);
     // ---- the island: left where it is ------------------------------------------------------------------------------------
     let dm = length(Q.xz - c.me.xz);
     if (dm < FW_ISLE && copy == 0u) {
