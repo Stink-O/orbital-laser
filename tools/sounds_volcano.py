@@ -1,5 +1,6 @@
-"""The Supervolcano's sounds, all synthesised here from noise, pulses and filters (nothing sampled). Every file is mono:
-Horizon sums each sound file to mono anyway, so a stereo tail would only cost size.
+"""The Supervolcano's sounds, synthesised here from noise, pulses and filters (nothing sampled), the trees' from the
+Hurricane's and the lightning played on the Hurricane's own thunder. Every file is mono: Horizon sums each sound file to
+mono anyway, so a stereo tail would only cost size.
 
 Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the player's distance from the vent / 343,
 2.9 s at the 1,000 blocks that is the least it fires at, 5 s at 1,700):
@@ -10,7 +11,8 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
                        with it, the land's lurches baked in where the picture has them (`mount_height`, late by what the
                        ground takes to carry them), each bigger and sooner than the last; 15 s long and it stops dead on
                        the file's last sample, at 17 s, as the picture does: played on the strike's clock, not late
-  crack1-4    6-15.5   a crack deep in the land, come through the ground: a dull knock, nothing of the air in it
+  crack1-4    6-14.5   a crack deep in the land, come through the ground: it runs, a few dull blows, then the ground
+                       ringing on, long and dark; nothing of the air in it
   creak1-4    3.5-16   stone creaking under the player: only for one who has flown to within ~900 blocks of the vent
   rockfall1-3 8.5-16.9 rock coming off the mount's flanks, a long way off: dark, sliding, no clatter
   fountain    7        the lava fountains, as far as they carry: a low chugging roar; stops dead at 17 s
@@ -20,29 +22,31 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   report      18 + late one enormous concussive report, a physical thump more than a bang, rolling off the land for 20 s
   report_far  the same moment, cross-faded in by distance
   report_sub  the same moment: the push alone, under it (and at pitch 0.8 with the land dropping, in the collapse)
-  column      18 + late behind the report the rolling wall of fire and the land going up (`fire_parts`, wider and rougher
-                       than a jet, for 19-27 s), handing over to the Plinian column: a huge jet's roar with a tearing
-                       crackle on top (supersonic jet noise's: the roar's own peaks steepened into shocks, `steepen`), a
-                       sub rumble, the vents pulsing; it falters and drops at 32 s into the file, the collapse
+  column      18 + late behind the report the rolling wall of fire and the land going up (for 19-27 s), handing over to
+                       the Plinian column (`plinian`): an enormous turbulent roar in uneven surges, each opening upward,
+                       torn by its own waves steepened into shocks (`steepen`), the rock going up rattling in it; it
+                       falters and drops at 32 s into the file, the collapse
   column_far  the same moment, cross-faded in by distance: darker, the crackle a dull tearing
-  whistle1-3  a bomb coming down close: a tumbling tearing rush brightening as it comes, cut on its landing
-  thud1-4     a bomb landing close (positional): a hard bang and the ground's blow
-  spatter1-3  the stones it threw coming down round it, within ~120 blocks of the player (positional)
+  whistle1-3  a bomb coming down close: a tumbling tearing rush, no pitch in it; its distance sets its level, its top, its
+                       Doppler and the comb off the ground; cut on its landing
+  thud1-4     a bomb landing close (positional): a small explosion of earth on the ground's blow
+  spatter1-3  the rock and earth it threw coming down round it, within ~120 blocks of the player (positional)
   thud_far1-3 a bomb landing off on the land: a dull thump, late by the distance
   (lightning)          the Hurricane's own thunder events, played as its plan plays them (vc_sound.rs's `thunder`)
   collapse    50 + late a colossal deep groan of the ground going, the land mass dropping (a slow enormous blow 3 s in),
-                       then the sustained thunder of it falling
+                       then the land going down in four waves, slabs landing in a rolling slide of rock (`falling`)
   collapse_far the same moment, cross-faded in by distance
   flow_rise1-3 ending on the flow's arrival: the ground first, a low roar, the rush, the wind ahead of it and last the
                        hiss, each take the same run to the hit, the longer ones only starting further back
   flow_far    the flow heard from beyond where it stops: a dark rush swelling and ebbing, no hit
-  splinter1-3 trees going, heard only with the front within ~140 blocks (positional)
+  splinter1-3 trees going, the Hurricane's breaks in the flow's air, heard only with the front within ~140 blocks (positional)
   grind1-2    rock grinding along the front, the same
-  flow_hit    the front reaching the player: a heavy soft blow, a sandblast shutting down to nothing above a few hundred Hz
+  flow_hit    the front reaching the player: a wall of wind and rock (an octave table, gusting), low shoves, the top
+                       shutting down to nothing above a few hundred Hz
   flow_in1-3  inside the flow (14, 9 and 5 s): a dense muffled roar for 4 s, opening to the murk by 8.5 s (the pass's
                        near-black), ash hiss and embers; the shorter takes the same squeezed, for a wall that comes late
   after       66.3     a long fading rumble, far thunder in it, the wind thinning to a low empty moan, gone by 87.8 s
-  patter      70.3     ash and small rock falling on blocks, thinning to nothing by 87.8 s
+  patter      70.3     ash and small rock on blocks, a soft dry wash with grains tapping in it, thinning to nothing by 87.8 s
 
     python3 tools/sounds_volcano.py                 # writes orbital-sounds/assets/orbital/sounds/supervolcano/*.ogg and
                                                     # adds the events to sounds.json, every other sound left as it is
@@ -80,7 +84,7 @@ GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # by a long way; the column under them, so the climax has headroom.
 LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "seism": -33.0, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -12.0, "column_far": -12.0,
-         "whistle": -15.0, "thud": -11.0, "spatter": -20.0, "thud_far": -18.0,
+         "whistle": -15.0, "thud": -12.0, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
@@ -90,6 +94,7 @@ GROUND_LAG = 0.6           # (the land's lurches, late by what the ground takes 
 FALTER = 32.0              # (the collapse, into `column`, which starts at 18 s: keep vc_sound.rs's beats in step)
 DROP = 3.0                 # (the land mass dropping, into `collapse`)
 COLUMN_D = 40.0
+VC_CRACK_D = 2.2           # (crack's length: vc_sound.rs's VC_CRACK_LEN)
 RISES = (6.0, 11.0, 17.0)  # (flow_rise's lengths: vc_sound.rs's VC_RISES)
 INS = (14.0, 9.0, 5.0)     # (flow_in's lengths: vc_sound.rs's VC_INS)
 ROCKFALLS = (3.2, 4.0, 4.8)  # (rockfall's lengths: vc_sound.rs's VC_ROCKFALLS)
@@ -115,6 +120,10 @@ def db_curve(t, pts):
 
 def boil(n, lo, hi, db):
     return np.exp(db * PB.slow_random(n, lo, hi) / 8.686)
+
+
+def db_of(x):
+    return 10 ** (x / 20)
 
 
 def ease(x, sec):
@@ -172,6 +181,80 @@ def pulse_train(d, mean, spread, t0=0.0):
 
 def write(name, x, knee=None, kind=None):
     S.write(name, x, LEVEL[kind or name], knee=knee)
+
+
+# ======================================================================================  what the rebuilt sounds are made of
+# Three things kept out of everything here, each of which is what made the first takes sound cheap:
+#  - bare high ticks. Short bursts over 1.5 kHz with nothing under them, at random, heavy-tailed: that is what tin foil
+#    crinkling is. A rock's blow has its body under it; what's fine enough to be a hiss is a hiss, dense, never countable.
+#  - zero-phase filters on anything struck: `band` rings ahead of the hit, and nothing in nature does (`F.cband` looks back).
+#  - one envelope on one band of noise. A real roar's level moves differently at every pitch (`eddies`).
+def eddies(d, f0, f1, per_oct=2.5, slope=-4.0, turns=14.0, depth=4.0, drive=None, lift=0.0, pivot=None):
+    """Turbulence, unit RMS: bands of noise (`per_oct` an octave) from `f0` to `f1`, each boiling on its own at a rate that
+    goes with its pitch, as eddies do (an eddy that makes a pitch lives about `turns` cycles of it): a slow heave at the
+    bottom, a fine tearing at the top, so the sound is alive at every scale and no one envelope runs through it. `slope` dB
+    an octave; `depth` dB of boil at `f0`, a third of it by `f1`, so the top never breaks up into ticks. `drive`, a curve
+    round 1 (a surge), brightens as it swells: `lift` dB an octave round `pivot` for each 1 over."""
+    n = n_of(d)
+    k = max(int(np.log2(f1 / f0) * per_oct) + 1, 2)
+    wide = 2 ** (0.62 / per_oct)
+    y = np.zeros(n)
+    for i in range(k):
+        u = i / (k - 1)
+        fc = f0 * (f1 / f0) ** u
+        r = min(fc / turns, 420.0)
+        g = np.exp(depth * (1 - 0.66 * u) * PB.slow_random(n, r * 0.22, r) / 8.686)
+        b = T.unit(band(white(d), fc / wide, fc * wide, 2)) * g * 10 ** (slope * np.log2(fc / f0) / 20)
+        if drive is not None and lift:
+            b = b * 10 ** (lift * np.log2(fc / (pivot or np.sqrt(f0 * f1))) * (drive - 1) / 20)
+        y += b
+    return T.unit(y)
+
+
+def rocks(d, rate, lo, hi, sizes=(0.25, 0.6, 1.3), share=(0.62, 0.3, 0.08), tail=1.9):
+    """Rocks landing, unit RMS and dry: at `rate` a second (one value a sample, wandering as it likes), each a dull blow of
+    earth and rock in `lo`-`hi` Hz with its body under it (`T.thud`, a handful of takes of each size), their strengths
+    heavy-tailed. However thick they come it's a rattle of blows, nothing fine or bright on top."""
+    n = n_of(d)
+    at = np.nonzero(rng().random(n) < np.asarray(rate) / SR)[0]
+    y = np.zeros(n)
+    which = rng().choice(len(sizes), len(at), p=share)
+    amp = np.minimum(rng().pareto(tail, len(at)) * 0.5 + 0.3, 5.0) * rng().choice([-1.0, 1.0], len(at))
+    from scipy.signal import fftconvolve
+    for c, size in enumerate(sizes):
+        pick = at[which == c]
+        take = rng().integers(0, 5, len(pick))
+        a = amp[which == c]
+        for k in range(5):
+            train = np.zeros(n)
+            np.add.at(train, pick[take == k], a[take == k])
+            y += fftconvolve(train, T.thud(n_of(0.12 + 0.3 * size), size))[:n] * (0.55 + 0.45 * size)
+    return T.unit(F.cband(y, lo, hi, 2))
+
+
+def heaves(d, mean, spread, rise, fall, tail=0.55, t0=0.3):
+    """Uneven surges: `pulse_train`'s times, strengths heavy-tailed, each swelling over `rise` and dying over `fall`, the
+    curve averaging about 1 and never quite nothing."""
+    n = n_of(d)
+    at = pulse_train(d, mean, spread, t0)
+    train = np.zeros(n)
+    np.add.at(train, np.minimum((at * SR).astype(int), n - 1), np.minimum(np.exp(rng().normal(0, tail, len(at))), 4.0))
+    s = np.arange(n_of(fall * 6)) / SR
+    y = conv(train, (1 - np.exp(-s / rise)) * np.exp(-s / fall))
+    return ease(y / (np.mean(y) + 1e-9), 0.03)
+
+
+def earth_ring(x, length=2.0, wet=0.8, darken=(620, 60), decay=0.55, seed=0):
+    """`x` as it comes on through the ground from a blow in rock: the blow, then the ground's own long dark ringing, thick
+    with scattered arrivals, the top going first."""
+    return x + conv(x, T.outdoor_ir(length, seed, density=160.0, darken=darken, decay=decay)) * wet
+
+
+def bare_blow(size, lo=26.0, hi=120.0, rise=0.012, fall=0.11):
+    """A blow with no pitch in it (a sine is a kick drum): low noise rising in `rise`, dying over `fall` times `size`."""
+    m = n_of(fall * size * 7 + 0.05)
+    s = np.arange(m) / SR
+    return T.unit(F.cband(rng().standard_normal(m), lo, hi, 2)) * (1 - np.exp(-s / rise)) * np.exp(-s / (fall * size))
 
 
 # =============================================================================================================  the beam
@@ -301,13 +384,38 @@ def build_creak(v):
     write(f"creak{v}", x * T.fade(n, 0.02, 0.25), kind="creak")
 
 
+# When each sub-event of a crack goes (s) and how big: a crack in rock runs, it's never one blow.
+CRACKS = {1: ((0.02, 1.0), (0.05, 0.45), (0.13, 0.3)),
+          2: ((0.02, 0.7), (0.07, 0.3), (0.36, 1.1), (0.41, 0.5), (0.6, 0.3)),
+          3: ((0.02, 0.5), (0.12, 0.6), (0.21, 0.55), (0.28, 0.8), (0.37, 0.7), (0.44, 1.0), (0.5, 0.6), (0.63, 0.4), (0.8, 0.25)),
+          4: ((0.02, 1.35), (0.15, 0.7), (0.27, 0.4))}
+
+
 def build_crack(v):
-    """A crack deep in the land, reaching the player through the ground: a dull knock, felt more than heard."""
-    d = 1.2
+    """A crack deep in the land, a kilometre of rock away: no snap, no pitch. It runs: a few blows close together (each
+    the ground's dull shove with a crunch of rock at its front, nothing over 700 Hz left), a grating as the faces slide,
+    then the ground itself ringing on after it for a second and more, long and dark, which is what makes it huge and far
+    down. Each take runs differently: a single hard one, two a moment apart, one tearing along, one big and low."""
+    d = VC_CRACK_D
     n = n_of(d)
-    with PB.seeded(61300 + v):
-        x = dull_crack(d, [0.8, 1.2, 0.6, 1.0][v - 1])
-    write(f"crack{v}", x * T.fade(n, 0.002, 0.45), kind="crack")
+    with PB.seeded(61310 + v):
+        x = np.zeros(n)
+        run = CRACKS[v]
+        for tc, size in run:
+            P.put(x, bare_blow(size * rng().uniform(0.85, 1.2), 24, 95 + 40 * rng().random(), 0.007, 0.075) * size, tc)
+            m = n_of(0.16)
+            q = np.arange(m) / SR
+            crunch = T.unit(F.cband(rng().standard_normal(m), rng().uniform(110, 170), rng().uniform(420, 680), 2))
+            crunch *= (1 - np.exp(-q / 0.0012)) * np.exp(-q / rng().uniform(0.014, 0.03)) * np.clip(1 + 0.5 * PB.slow_random(m, 40.0, 140.0), 0.1, None)
+            P.put(x, crunch * size ** 0.8 * 0.55, tc + rng().uniform(0.0, 0.003))
+        # (the faces grating as they slide, through the run)
+        end = run[-1][0] + 0.2
+        t = times(d)
+        slip = np.clip(N.grains(d, 60.0, (0.012, 0.03)), 0, 6) ** 1.2 * np.clip((end - t) / 0.2, 0, 1) * (t > 0.02)
+        x += T.unit(F.cband(white(d), 90, 360, 2)) * slip * 0.1
+        x = earth_ring(x, 2.0, 0.75 + 0.2 * rng().random(), (640, 55), 0.42 + 0.12 * rng().random(), seed=120 + v)
+        x = lows_heard(x, 60, 300, -7.0)
+    write(f"crack{v}", PB.causal_lowcut(x, 17.0) * T.fade(n, 0.0005, 0.7), kind="crack")
 
 
 def build_rockfall(v):
@@ -487,20 +595,26 @@ def fire_parts(d):
     return low, mid, top, falls
 
 
-def column_parts():
-    """The column's pieces: the mass flow through time, then (sub, rumble, roar, jet) each unit level, to be mixed near
-    or far. The jet is the roar steepened into shocks, so its crackle comes with the turbulence's own peaks. It rises out
-    of the fire over the first dozen seconds: the file starts with the report, the fire has the land to itself at first."""
+def column_flow():
+    """The mass flow through time: rising out of the fire, full by 18 s into the file, faltering and dropping in lurches
+    at the collapse."""
     d = COLUMN_D
-    n = n_of(d)
     t = times(d)
     F0 = FALTER
     flow = np.interp(t, [0, 2.5, 6, 11, 18, F0], [0, 0.06, 0.4, 0.82, 1.0, 1.0])
     flow = ease(flow, 0.6)
     lurch = np.interp(t, [F0, F0 + 0.5, F0 + 1.0, F0 + 1.6, F0 + 2.4, F0 + 3.2, F0 + 4.2, F0 + 6.0, d],
                       [1, 0.60, 0.72, 0.34, 0.44, 0.16, 0.09, 0.02, 0.0])
-    lurch = ease(lurch, 0.12)
-    f = flow * lurch
+    return flow * ease(lurch, 0.12)
+
+
+def column_parts():
+    """The column's pieces: the mass flow through time, then (sub, rumble, roar, jet) each unit level, to be mixed near
+    or far. The jet is the roar steepened into shocks, so its crackle comes with the turbulence's own peaks. It rises out
+    of the fire over the first dozen seconds: the file starts with the report, the fire has the land to itself at first."""
+    d = COLUMN_D
+    n = n_of(d)
+    f = column_flow()
     breath = boil(n, 0.05, 0.4, 1.6)
     # (the vents' deep pulsing: uneven heaves, one a second or so, each a push of the sub and a surge of the roar)
     times_ = pulse_train(d, 1.15, 0.35, 1.0)
@@ -532,20 +646,63 @@ def column_parts():
     return sub, rum, roar, jet, pops, pulse, f
 
 
+def plinian():
+    """The Plinian column near: a thing far louder than any engine, heard a kilometre off. Its roar is turbulence at every
+    scale at once (`eddies`), low and broad, and never steady: it comes in surges, big uneven ones the vent's own and quick
+    ones in between, and each surge doesn't only get louder, it opens upward. What tears is the roar's own waves steepened
+    into shocks (`steepen`) on the way out of the jet, kept with the lows that make them, so each rip has its weight
+    under it. In it the rock going up: a rattle of blows thick as the surges (`rocks`), and all of it off the land round
+    about. The fire before it is the same stuff, its own heaves running through it (`fire_parts`' bones)."""
+    d = COLUMN_D
+    n = n_of(d)
+    t = times(d)
+    F0 = FALTER
+    with PB.seeded(61611):
+        f = column_flow()
+        big = heaves(d, 3.2, 0.75, 0.45, 1.5, 0.75, 0.8)
+        quick = heaves(d, 0.75, 0.5, 0.05, 0.3, 0.6, 0.4)
+        surge = np.clip(0.55 * big + 0.45 * quick, 0.25, 3.5)
+        # (the rips: the same few moments right across the sound, as a shock is, in flurries with the surges)
+        burst = np.clip(N.grains(d, 15.0, (0.025, 0.07, 0.18)), 0, 6) ** 0.7
+        gust = boil(n, 1.0, 9.0, 5.0)
+        sub = T.unit(band(white(d), 15, 46, 3)) * boil(n, 0.1, 0.8, 3.0) * (0.8 + 0.3 * big) * f ** 0.6
+        rum = eddies(d, 30, 170, 2.5, -1.0, 9.0, 6.0, surge, 1.0) * (0.75 + 0.35 * surge) * f ** 0.8
+        roar = eddies(d, 120, 3400, 3.0, -2.6, 14.0, 5.0, surge, 3.2, 300.0) * (0.55 + 0.5 * surge) * f * gust ** 0.6 * burst ** 0.35
+        # (the tear: the wave's own fronts stand up where it's strongest, so the rips come with the surges)
+        src = eddies(d, 90, 1800, 3.0, -2.0, 12.0, 5.0, surge, 2.0, 300.0) * gust * burst ** 0.5
+        tear = steepen(T.unit(src), 3.2e-4 * np.clip(f * surge, 0, 2.2) ** 0.9 * burst ** 0.5)
+        print(f"column: crackle (skewness of dp/dt) {skew_dt(tear[n_of(14):n_of(30)]):.2f}")
+        tear = T.unit(F.cband(tear, 200, 7500, 2)) * f ** 1.2 * (0.55 + 0.5 * surge)
+        rate = (35.0 + 240.0 * np.clip(surge - 0.3, 0, 3) ** 1.2) * f ** 1.4 + 1e-3
+        rattle = rocks(d, rate, 170, 1300, (0.2, 0.45, 1.0), (0.6, 0.32, 0.08)) * f ** 0.6
+        top = eddies(d, 3000, 7500, 2.0, -5.0, 16.0, 2.5, surge, 2.5) * f ** 1.4 * (0.45 + 0.55 * surge) * burst ** 0.5
+        # (the fire: the same stuff, wider and rougher, its own slow heaves, the land coming down in it)
+        heave = heaves(d, 0.95, 0.42, 0.24, 1.0, 0.5, 0.0)
+        heave = heave / np.percentile(heave, 99)
+        fl = eddies(d, 30, 160, 2.5, -1.0, 8.0, 6.0, heave + 0.6, 1.0) * (0.55 + 0.8 * heave)
+        fm = eddies(d, 130, 1100, 3.0, -3.5, 11.0, 6.0, heave + 0.6, 1.6) * (0.45 + 0.9 * heave)
+        ft = eddies(d, 900, 3600, 2.5, -4.0, 13.0, 4.0, heave + 0.6, 1.6) * (0.3 + 0.9 * heave)
+        falls = rocks(d, np.full(n, 13.0), 26, 420, (0.8, 1.6, 2.6), (0.6, 0.3, 0.1), 1.9)
+        fire_env = db_curve(t, [(0, -70), (0.7, -34), (1.8, -11), (3.0, -3), (4.0, 0), (9.0, 0), (12.0, -5), (18, -13), (26, -22), (F0, -26), (F0 + 2, -60), (d, -90)])
+        lo_on = db_curve(t, [(0, -60), (1.2, -26), (2.6, -5), (3.6, 0), (d, 0)])
+        x = (sub * 0.9 + rum * 0.85 + roar * 1.05 + tear * 0.62 + rattle * 0.3 + top * 0.07
+             + (fl * 1.0 + fm * 0.95 + ft * 0.3) * fire_env + falls * fire_env * lo_on * 0.7)
+        x = land(x, 3.5, 0.3, (1500, 190), 1.6, 40.0, seed=22)
+        return lows_heard(x, 70, 300, -9.0)
+
+
 def build_column():
-    """The fire, then the jet. Near: the whole of it. Far: the sub and the rumble as they were, the roar darker, the fire's
-    top gone, the crackle a dull tearing, in the land's long reverb. The same noises, so the two cross-fade as one sound."""
+    """Near, the column (`plinian`). Far: the sub and the rumble, the roar darker, the fire's top gone, the crackle a dull
+    tearing, in the land's long reverb."""
+    near = plinian()
     with PB.seeded(61601):
         sub, rum, roar, jet, pops, pulse, f = column_parts()
-        print(f"column: crackle (skewness of dp/dt) {skew_dt(jet[n_of(14):n_of(30)]):.2f}")
         d = COLUMN_D
         n = n_of(d)
         low, mid, top, falls = fire_parts(d)
         F0 = FALTER
         fire_env = db_curve(times(d), [(0, -70), (0.7, -34), (1.8, -11), (3.0, -3), (4.0, 0), (9.0, 0), (12.0, -5), (18, -13), (26, -22), (F0, -26), (F0 + 2, -60), (d, -90)])
         lo_on = db_curve(times(d), [(0, -60), (1.2, -26), (2.6, -5), (3.6, 0), (d, 0)])
-        near = sub * 0.9 + rum * 0.95 + roar * 0.66 + jet * 0.4 + pops * 0.17 + (low * 1.0 + mid * 0.95 + top * 0.42) * fire_env + falls * fire_env * lo_on * 0.7
-        near = lows_heard(near, 70, 300, -9.0)
         far = (sub * 1.15 + rum * 1.1 + band(roar, None, 640, 2) * 0.62 + band(jet + pops * 0.5, None, 1700, 2) * 0.22
                + (low * 1.05 + band(mid, None, 900, 2) * 1.35 + P.air(top, 1500) * 0.3) * fire_env + falls * fire_env * lo_on * 0.75)
         far = land(far, 3.5, 0.35, (1000, 200), 1.8, seed=21)
@@ -562,68 +719,118 @@ def build_column():
 
 # =============================================================================================================  the bombs
 def build_whistle(v):
-    """A lava bomb coming down close by, heard as it nears: a rock a couple of blocks across, tumbling, ripping the air.
-    Noise through a wide moving resonance (never a clean slide: that is a cartoon's bomb), coming in uneven whups as it
-    turns over, torn by a fast roughness, the top opening up as the air between thins; its pitch only drops at the very
-    end, as it stops coming straight at the ear and goes past. Cut on its landing."""
+    """A lava bomb coming down close by: a lump of rock the size of a car, tumbling, not a cartoon's bomb. No pitch at all:
+    a broad tearing rush of air, thrown about by the rock turning over (its bumps swinging past, so the bright part of
+    the rush whups, the mids less and the lows less again, each a little behind the last), rough with the wake it leaves.
+    Where it is sets everything, as it does for a real one: its level is its distance, a falling thing's way, so nothing
+    for a long time and then all at once; the air takes the top till it's close; the Doppler lifts the whole sound while
+    it's coming on and lets it drop in its last moment as it goes past; the sound off the ground, a moment behind, makes
+    a comb that closes as it comes down. Cut on its landing."""
     d = [3.2, 4.2, 2.6][v - 1]
     n = n_of(d)
     t = times(d)
-    with PB.seeded(61700 + v):
-        u = t / d
-        by = np.clip((u - 0.74) / 0.26, 0, 1)
-        fc = np.array([760.0, 640.0, 900.0])[v - 1] * (1 - 0.1 * u) * (1 - 0.34 * by * by * (3 - 2 * by))
-        turn = np.array([7.5, 5.5, 9.5])[v - 1]
-        ph = 2 * np.pi * np.cumsum(turn * (1 + 0.25 * PB.slow_random(n, 0.5, 2.5))) / SR
-        tumble = (0.55 + 0.45 * np.sin(ph)) ** 1.5 * 0.75 + 0.25
-        rough = np.clip(1 + 0.9 * PB.slow_random(n, 35.0, 130.0), 0.05, None)
-        howl = P.glide_band(d, fc, 0.26) * rough
-        howl2 = P.glide_band(d, fc * 1.72, 0.36) * np.clip(1 + 0.9 * PB.slow_random(n, 40.0, 140.0), 0.0, None) * 0.5
-        rush = T.unit(band(white(d), 240, 3600, 1)) * np.clip(1 + 0.75 * PB.slow_random(n, 18.0, 70.0), 0.05, None) * 0.9
-        x = (howl * 0.8 + howl2 + rush) * tumble
-        x = T.lowpass_glide(x, 1300.0, 7500.0, 1.4)
-        x *= db_curve(t, [(0, -40), (d * 0.5, -23), (d * 0.8, -13), (d * 0.95, -4), (d, 0)])
-        # (its last instant rounded over: rougher, and no spike to stand on the column's)
-        x = PB.soft_clip(x[:, None], T.loudest(x) * 10 ** (9.0 / 20), 0.6)[:, 0]
+    with PB.seeded(61710 + v):
+        speed, past = [150.0, 130.0, 175.0][v - 1], [34.0, 46.0, 28.0][v - 1]
+        w = d - t
+        r = np.hypot(speed * w, past)
+        doppler = 1 / (1 - (speed / 343.0) * speed * w / r)
+        # (the tumble: a lopsided lump, its turning rate wandering; each turn its own strength)
+        turn = [6.3, 4.6, 8.2][v - 1] * (1 + 0.2 * PB.slow_random(n, 0.4, 2.0)) * doppler ** 0.5
+        ph = 2 * np.pi * np.cumsum(turn) / SR
+        lob = lambda lag: (np.sin(ph - lag) + 0.55 * np.sin(2 * (ph - lag) + 1.1) + 0.3 * np.sin(3 * (ph - lag) + 2.3)) / 1.3
+        deep = np.clip(0.8 + 0.3 * PB.slow_random(n, 0.8, 3.0), 0.3, None)
+        # (the wake, as eddies do at every scale, its noise laid out faster than it's heard for the Doppler to read back)
+        m = int(np.sum(doppler)) + 16
+        src = T.unit(F.cband(eddies(m / SR, 150, 6500, 3.0, -2.6, 9.0, 7.5), 170, None, 1))
+        rd = lambda y: np.interp(np.cumsum(doppler) - doppler[0], np.arange(len(y)), y)
+        lo_ = F.cband(src, None, 420, 2)
+        mi_ = F.cband(src, 420, 1700, 2)
+        hi_ = src - lo_ - mi_
+        x = (rd(lo_) * db_of(lob(0.0) * 2.6 * deep) * 0.7 + rd(mi_) * db_of(lob(0.5) * 5.0 * deep) * 1.2
+             + rd(hi_) * db_of(lob(1.0) * 8.0 * deep) * 1.5)
+        # (the air's share of its top: 25 blocks in every 1,000 Hz, near enough)
+        fc = np.clip(16000.0 * past / r, 1500.0, 8500.0)
+        x = T.lowpass_glide(x, fc[0], fc[-1], 1.1)
+        x = T.flange(x, 2 * past * past / (speed * d) / 343.0 * 3.0, 0.0006, 0.42, 0.75)
+        # (the weight of it: the air it shoves, felt in the last of its fall)
+        shove = T.unit(F.cband(white(d), 28, 180, 2)) * db_of(lob(0.2) * 4.0) * np.clip(1 + 0.4 * PB.slow_random(n, 3.0, 14.0), 0.2, None)
+        x = T.unit(x) + shove * 0.2 * np.clip((past * 3.2) / r, 0, 1) ** 0.7
+        x = x * (past / r) ** 1.05
+        x = PB.soft_clip(x[:, None], T.loudest(x) * 10 ** (8.0 / 20), 0.6)[:, 0]
         x *= np.clip((d - t) / 0.006, 0, 1)
-    write(f"whistle{v}", x * T.fade(n, 0.1, 0.001), kind="whistle")
+    write(f"whistle{v}", PB.causal_lowcut(x * T.fade(n, 0.15, 0.001), 24.0), kind="whistle")
 
 
 def build_thud(v):
-    """A bomb landing close: tonnes of rock at a couple of hundred blocks a second. A hard bang, the ground's blow under
-    it that is felt more than heard, rock breaking, earth flung out; the stones are `spatter`, which go on from here."""
-    d = 2.4
+    """A bomb landing close: tonnes of rock at a couple of hundred blocks a second, the ground going up round it. It's an
+    explosion, small and of earth, so it's built as the strike's approved blasts are (`PB.explosion_live`, on the table
+    of a real one, quick and with the top taken off by the distance), on a blow of the ground that's felt, with the
+    earth it throws slumping back and the land round about giving it back."""
+    d = 3.4
     n = n_of(d)
     t = times(d)
-    with PB.seeded(61800 + v):
+    with PB.seeded(61810 + v):
         size = [1.1, 0.8, 1.4, 1.0][v - 1]
-        x = soundlib.thump(n, 0.01, 104, 30, 0.2 + 0.1 * size, 9.0) * 1.3
-        x += H.rock_crack(d, size, 1.0) * 0.8
-        u = np.maximum(t - 0.01, 0)
-        x += T.unit(band(white(d), 170, 2600, 1)) * (1 - np.exp(-u / 0.0008)) * np.exp(-u / 0.05) * 0.55
-        x += T.unit(band(white(d), 220, 1500, 1.5)) * (1 - np.exp(-u / 0.02)) * np.exp(-u / 0.3) * boil(n, 8.0, 30.0, 4.0) * 0.16
-        x = land(x, 1.8, 0.3, (2800, 200), 0.8, seed=40 + v)
+        t0 = LEAD
+        u = np.maximum(t - t0, 0)
+        L, R = PB.explosion_live(d, t0, stretch=0.16 + 0.05 * size, debris=0.0, whump=1.6, live=1.0)
+        x = F.cband((L + R) / 2, None, 4800, 2) * np.exp(-u / (0.4 + 0.22 * size))
+        ref = T.loudest(x)
+        # (the ground's blow: noise and a few swings of a falling pitch, as the Payload's land answers)
+        g = soundlib.thump(n, t0, rng().uniform(58, 66), 27.0, 0.13 + 0.05 * size, 6.0) * (1 - np.exp(-u / 0.012))
+        g += T.unit(F.cband(white(d), 22, 130, 2)) * (1 - np.exp(-u / 0.012)) * np.exp(-u / (0.13 + 0.06 * size)) * 0.8
+        # (the earth thrown up, slumping back: a dull heavy rush of blows)
+        fall = (1 - np.exp(-np.maximum(u - 0.1, 0) / 0.12)) * np.exp(-u / 0.55) * (u > 0.1)
+        earth = rocks(d, 90.0 * fall + 1e-3, 80, 900, (0.5, 1.0, 1.8), (0.55, 0.35, 0.1))
+        x = x + g * ref * 1.5 + earth * fall * ref * 0.22
+        x = land(x, 2.4, 0.3, (2000, 170), 0.9, seed=140 + v)
         x = lows_heard(x, 70, 320, -6.0)
-    write(f"thud{v}", PB.causal_lowcut(x, 22.0) * T.fade(n, 0.002, 0.7), kind="thud", knee=0.6)
+        L, R = N.overdrive(x, x, t0)
+    write(f"thud{v}", PB.causal_lowcut((L + R) / 2, 20.0) * T.fade(n, 0.0005, 0.9), kind="thud", knee=0.6)
 
 
 def build_spatter(v):
-    """What a bomb throws up, coming back down round where it hit: a few stones thrown hard, then the bulk of them a
-    second or so on, thinning, grit and earth hissing down with them."""
-    d = [3.4, 4.2, 3.0][v - 1]
+    """What a bomb throws up, coming back down round where it hit, a hundred blocks off and less: the way the Payload's and
+    the Nuke's debris comes down. A few big stones thrown hard, then the bulk of it, thinning: clods thudding, stones
+    knocking on the land, each with its body under it and its top taken off by the distance it's come; the further ones
+    dull and in the land's echo. Under them the dirt raining down is a soft dense wash, nothing that can be counted."""
+    d = [3.8, 4.6, 3.4][v - 1]
     n = n_of(d)
     t = times(d)
-    with PB.seeded(61850 + v):
-        x = np.zeros(n)
-        for _ in range(70):
-            tc = 0.2 + rng().gamma(2.6, 0.42)
-            if tc < d - 0.25:
-                size = min(rng().pareto(2.2) * 0.14 + 0.07, 0.9)
-                P.put(x, F.knock(size, 0.75) * (rng().uniform(0.12, 0.4) + 0.8 * size), tc)
-        grit = T.unit(band(white(d), 1500, 6000, 1.5)) * np.clip(N.grains(d, 90.0, (0.004, 0.01, 0.03)), 0, 8) ** 0.7
-        grit *= db_curve(t, [(0, -60), (0.5, -34), (1.3, -27), (2.2, -32), (d, -60)])
-        x = land(band(x, 110, 7500, 2) + grit, 0.8, 0.16, (3000, 500), 0.3, seed=110 + v)
-    write(f"spatter{v}", x * T.fade(n, 0.02, 0.6), kind="spatter")
+    with PB.seeded(61860 + v):
+        near_bus = np.zeros(n)
+        far_bus = np.zeros(n)
+        rate = lambda s: 15.0 * np.clip((s - 0.25) / 0.7, 0, 1) * np.exp(-max(s - 1.0, 0) / 0.95) + 2.2 * np.exp(-s / 1.2)
+        for tc in P.poisson_times(0.18, d - 0.6, rate):
+            near = rng().random() ** 1.4
+            kind = rng().random()
+            if kind < 0.5:                      # (a clod of earth)
+                size = min(rng().pareto(2.0) * 0.3 + 0.25, 1.6)
+                y = T.thud(n_of(0.2 + 0.3 * size), size) * (0.25 + 0.75 * size)
+            elif kind < 0.9:                    # (a stone: a short dull knock in the mids, on a clod's thud)
+                size = rng().uniform(0.25, 0.9)
+                m = n_of(0.18)
+                q = np.arange(m) / SR
+                lo, hi = rng().uniform(260, 460), rng().uniform(1100, 2600)
+                y = T.unit(F.cband(rng().standard_normal(m), lo, hi, 2)) * (1 - np.exp(-q / 0.0006)) * np.exp(-q / rng().uniform(0.006, 0.02))
+                y = y * 0.8 * size + T.thud(m, 0.3 * size) * 0.12 * size
+                if rng().random() < 0.3:
+                    h = P.modal_hit(m, rng().uniform(420, 1100), [1.0, rng().uniform(1.5, 2.2), rng().uniform(2.6, 3.8)],
+                                    [rng().uniform(0.005, 0.016), 0.005, 0.003], [1.0, 0.6, 0.3], 0.25, 3800)
+                    y = y + h / (np.abs(h).max() + 1e-9) * 0.5 * size
+                if rng().random() < 0.3:
+                    P.put(y, y * rng().uniform(0.25, 0.5), rng().uniform(0.06, 0.16))
+            else:                               # (a slab, landing off)
+                y = T.thud(n_of(0.7), rng().uniform(1.5, 2.4)) * 0.9
+                near *= 0.4
+            y = F.cband(y, None, 1800 + 4200 * near, 2)
+            P.put(near_bus, y * (0.3 + 0.7 * near), tc)
+            P.put(far_bus, y * (1 - near), tc)
+        wet = conv(far_bus, T.outdoor_ir(1.8, 150 + v, density=40.0, darken=(1800, 260), decay=0.6))
+        fall = db_curve(t, [(0, -60), (0.5, -36), (1.3, -27), (2.3, -31), (d, -60)])
+        wash = T.unit(F.cband(white(d), 320, 3000, 1)) * boil(n, 1.0, 7.0, 3.0) * fall * 0.9
+        x = near_bus + far_bus * 0.5 + wet * 0.6 + wash
+    write(f"spatter{v}", F.cband(x, 95, None, 1) * T.fade(n, 0.02, 0.7), kind="spatter")
 
 
 def build_thud_far(v):
@@ -639,10 +846,11 @@ def build_thud_far(v):
 
 
 # ==========================================================================================================  the collapse
-def collapse_body():
+def collapse_body(falling=None):
     """A colossal groan of the ground going (rock sliding on rock, down through the audible floor, cracks going off in
     it); the land mass dropping, a slow enormous blow with no edge; then the sustained thunder of it falling: big
-    impacts overlapping into one long roll, a grinding roar over it, thinning over twelve seconds."""
+    impacts overlapping into one long roll, a grinding roar over it, thinning over twelve seconds. `falling(d, Td, ref)`,
+    if given, is what falls after the drop instead."""
     d = 24.0
     n = n_of(d)
     t = times(d)
@@ -675,6 +883,13 @@ def collapse_body():
         low = boom + boom2 + press * 1.2
         ref = np.sqrt(np.mean(low[n_of(Td + 0.1):n_of(Td + 0.5)] ** 2))
         x = x * ref * 0.45 + low
+        if falling is not None:
+            x = x + falling(d, Td, ref)
+            x = land(x, 3.5, 0.16, (1500, 180), 1.5, seed=7)
+            x = lows_heard(x, 70, 420, -4.0)
+            L, R = N.glue(x, x)
+            L, R = N.overdrive(L, R, Td)
+            return PB.causal_lowcut((L + R) / 2 * T.fade(n, 0.6, 3.5), 15.0)
         # ---- the land falling: impacts on impacts
         rate = lambda s: 3.0 + 13.0 * np.exp(-s / 5.0)
         fall = np.zeros(n)
@@ -701,8 +916,64 @@ def collapse_body():
     return x
 
 
+# When the land's slabs go, after the drop (s), and how big: it doesn't fall all at once, it goes in waves, each a great
+# piece of it coming down and what it brings with it.
+SLABS = ((1.7, 1.0), (2.5, 0.75), (2.9, 0.5), (4.6, 1.15), (5.7, 0.7), (6.5, 0.45), (8.4, 0.95), (9.6, 0.6), (11.6, 0.65), (13.7, 0.45), (15.8, 0.3))
+WAVES = (1.2, 4.5, 8.3, 11.6)
+
+
+def falling(d, Td, ref):
+    """The land going down, after the blow of the drop: not a noise that fades but things happening, in four waves. Great
+    slabs of it landing (a slow heavy blow, no edge, the rock of it breaking, each off the land's far side a moment
+    later), the slide of the rock between them boiling at every scale and opening up with each wave (`eddies`), a rattle of
+    rock through it thick as the wave, the land's rolling answers and the ground heaving under all of it, each wave lower
+    and further off than the last."""
+    n = n_of(d)
+    t = times(d)
+    s_ = t - Td
+    with PB.seeded(62211):
+        wave = np.zeros(n)
+        for k, w0 in enumerate(WAVES):
+            u = s_ - w0
+            wave += (1 - np.exp(-np.maximum(u, 0) / 0.5)) * np.exp(-np.maximum(u, 0) / (1.9 + 0.3 * k)) * (u > 0) * 0.86 ** k
+        wave = ease(wave, 0.15) + 0.04
+        wave *= boil(n, 0.4, 2.0, 2.0)
+        fade = db_curve(t, [(0, -80), (Td + 0.6, -60), (Td + 1.3, -3), (Td + 3, 0), (Td + 9, -4), (Td + 14, -12), (Td + 18, -26), (d, -80)])
+        slide = eddies(d, 55, 1900, 3.0, -5.2, 11.0, 6.0, np.clip(wave * 1.3, 0.2, 2.5), 1.7, 280.0)
+        slide = slide * (0.12 + 1.15 * wave) * fade
+        rate = (40.0 + 300.0 * np.clip(wave, 0, 2) ** 1.2) * db_curve(t, [(0, -60), (Td + 0.8, -30), (Td + 1.4, 0), (Td + 8, -5), (Td + 16, -18), (d, -40)]) + 1e-3
+        rattle = rocks(d, rate, 130, 1100, (0.3, 0.7, 1.4), (0.55, 0.33, 0.12)) * fade ** 0.6 * (0.15 + 0.95 * wave)
+        x = slide * 0.34 + rattle * 0.16
+        for dt, size in SLABS:
+            k = n_of(5.0)
+            y = S.blow(k, 0.0, 44.0 - 6 * size, 29.0, 22.0, 0.22, 0.05, ((0.6, 0.4 + 0.35 * size), (0.4, 1.2 + 0.8 * size)), drive=2.5) * 0.8
+            P.put(y, bare_blow(2.2 + size, 24, 130, 0.03, 0.2) * 1.3, 0.0)
+            q = np.arange(k) / SR
+            # (the rock of it breaking: a burst of blows, no edge of its own)
+            y = y + rocks(5.0, 420.0 * (1 - np.exp(-q / 0.05)) * np.exp(-q / (0.16 + 0.22 * size)) + 1e-3, 90, 620, (0.5, 1.0, 1.8), (0.5, 0.36, 0.14)) * (1 - np.exp(-q / 0.05)) * np.exp(-q / (0.3 + 0.3 * size)) * 0.55
+            P.put(x, y * size * 0.75 * (0.82 ** (dt / 4.0)) * rng().uniform(0.85, 1.1), Td + dt)
+            P.put(x, F.cband(y, None, 420, 2) * size * 0.2, Td + dt + rng().uniform(0.7, 1.5))
+        rl, rr = PB.thunder_rolls(d, Td + 0.8, count=26, length=17.0)
+        rolls = (rl + rr) / 2
+        x = x + rolls / (T.loudest(rolls) + 1e-9) * 0.24
+        bed = T.unit(band(white(d), 17, 62, 3)) * boil(n, 0.1, 0.9, 3.5) * (0.5 + 0.5 * np.clip(wave, 0, 1.5)) * fade
+        return (x + bed * 0.26) * ref * 0.86
+
+
 def build_collapse():
-    x = collapse_body()
+    # (its opening kept exactly as it was: the groan, the cracks and the blow of the drop are the first take, and from a moment
+    # after the blow it hands over to the land falling, on the same groan and the same blow, so nothing joins that shows)
+    first = collapse_body()
+    x = collapse_body(falling)
+    t = times(24.0)
+    a, b = DROP + 0.9, DROP + 1.7
+    m = (t >= a - 0.7) & (t < a)
+    x = x * (np.sqrt(np.mean(first[m] ** 2)) / (np.sqrt(np.mean(x[m] ** 2)) + 1e-12))
+    u = np.clip((t - a) / (b - a), 0, 1)
+    x = first * np.cos(u * np.pi / 2) + x * np.sin(u * np.pi / 2)
+    # (the blow stays the loudest thing in it, so the file's level, and so its opening, stay exactly where they were)
+    for _ in range(3):
+        x = x * (1 - (1 - min(T.loudest(first) / T.loudest(x), 1.0)) * np.clip((t - a + 0.1) / 0.5, 0, 1))
     write("collapse", x, knee=0.5)
     with PB.seeded(62202):
         y = far_of(x, 24.0, lo_gain=0.9, seed=33, soften=0.0001)
@@ -733,6 +1004,10 @@ def build_flow_rise(v):
              + rush * back([(17, -64), (11, -42), (6, -24), (2.5, -10), (0, -1)])
              + gust * back([(17, -90), (6, -46), (2.5, -19), (0.8, -9), (0, -7)])
              + hiss * back([(17, -90), (6, -44), (2.5, -25), (0, -13)]))
+    with PB.seeded(62310 + v):
+        # (a touch of the rock it carries, coming on through the roar, and the land round about taking it up)
+        x = x + rocks(d, 160.0 * back([(17, -60), (6, -24), (2.5, -8), (0, 0)]) + 1e-3, 55, 520, (0.6, 1.2, 2.2), (0.5, 0.36, 0.14)) * back([(17, -74), (6, -38), (2.5, -25), (0, -19)]) * T.unit(x).std() * np.sqrt(np.mean(x[-n_of(1.0):] ** 2))
+        x = land(x, 2.2, 0.1, (1100, 170), 0.8, seed=180 + v)
         x *= np.clip(t / 0.7, 0, 1) ** 2
         x *= np.clip((d - t) / 0.015, 0, 1)
     write(f"flow_rise{v}", x * T.fade(n, 0.05, 0.002), kind="flow_rise")
@@ -751,21 +1026,23 @@ def build_flow_far():
     write("flow_far", PB.causal_lowcut(x * T.fade(n, 2.0, 3.0), 18.0))
 
 
+# (the Hurricane's trees going, as heard: its file, and the stretch of it round the break)
+SPLINTERS = {1: ("crack1", 1.0, 2.6), 2: ("crack3", 0.42, 2.2), 3: ("crack4", 1.25, 2.9)}
+
+
 def build_splinter(v):
-    """Trees going, close to the front: a run of snaps and splinters, trunks knocked down in it, darkened by the flow."""
-    d = [1.3, 1.6, 1.1][v - 1]
-    n = n_of(d)
-    with PB.seeded(62500 + v):
-        x = np.zeros(n)
-        tc = 0.02
-        while tc < d * 0.75:
-            size = rng().uniform(0.5, 1.5)
-            P.put(x, F.fracture(size, 0.7, rng().uniform(0.1, 0.5)) * rng().uniform(0.3, 1.0), tc)
-            tc += rng().gamma(1.3, 0.05)
-        for _ in range(3):
-            P.put(x, F.knock(rng().uniform(0.6, 1.3), 0.6) * rng().uniform(0.4, 0.9), rng().uniform(0.1, d * 0.8))
-        x = land(band(x, 60, 5200, 2), 1.2, 0.25, (2400, 300), 0.45, seed=80 + v)
-    write(f"splinter{v}", x * T.fade(n, 0.001, 0.3), kind="splinter")
+    """Trees going, close to the front: the Hurricane's own trees, each the moment of a break and its splintering, taken
+    as they're built there (a ragged avalanche of fibres with a trunk's weight in it, no two alike), in the flow's air: the
+    top gone, heavier, its echoes closer in."""
+    name, a, b = SPLINTERS[v]
+    y = decoded_ogg(ROOT / "orbital-sounds" / "assets" / "orbital" / "sounds" / "hurricane" / f"{name}.ogg")
+    x = y[n_of(a):n_of(b)]
+    n = len(x)
+    with PB.seeded(62510 + v):
+        x = T.unit(F.cband(x, 70, 3400, 2)) + T.unit(F.cband(x, 3400, None, 1)) * 0.05
+        P.put(x, T.thud(n_of(0.8), rng().uniform(1.5, 2.2)) * 0.5, rng().uniform(0.01, 0.05))
+        x = land(x, 1.0, 0.12, (1800, 260), 0.35, seed=160 + v)
+    write(f"splinter{v}", PB.causal_lowcut(x, 40.0) * T.fade(n, 0.002, 0.45), kind="splinter")
 
 
 def build_grind(v):
@@ -781,25 +1058,51 @@ def build_grind(v):
 
 
 def build_flow_hit():
-    """The front reaching the player: not a crack, a body of hot ash arriving at sixty miles an hour. A heavy soft shove,
-    a sandblast for a moment, and the world shutting down to nothing over a few hundred Hz."""
+    """The front reaching the player: not a crack but a body of hot rock and ash arriving at sixty miles an hour, the way
+    the Nuke's shockwave arrives, only with no way out the other side. Its air comes up in a few tens of ms: the wind
+    across the whole of the spectrum (the octaves' levels as a table, gusting), a low shove and then a few uneven ones, the
+    rock in it hitting the land all round in the first second; then the top shuts down over a second, the sound closing
+    in on the ears, a heavy roar left over nothing above a few hundred Hz, for `flow_in` to take on."""
     d = 5.0
     n = n_of(d)
     t = times(d)
     t0 = LEAD
     u = np.maximum(t - t0, 0)
     on = t >= t0
-    with PB.seeded(62701):
-        push = band(T.friedlander(n, t0, 0.42, 1.2), 14, 130, 2)
-        push = push / (np.abs(push).max() + 1e-9)
-        boom = S.blow(n, t0, 54.0, 32.0, 26.0, 0.14, 0.015, ((0.55, 0.32), (0.45, 1.1)), drive=3.0)
-        blast = T.unit(band(white(d), 60, 7000, 1)) * boil(n, 6.0, 40.0, 4.0)
-        blast = T.lowpass_glide(blast, 6500.0, 240.0, 0.32) * (1 - np.exp(-u / 0.006)) * np.exp(-u / 1.5) * on
-        gr = np.clip(N.grains(d, 500.0, (0.002, 0.005, 0.01)), 0, 9)
-        grit = T.unit(band(white(d), 1200, 5500, 2)) * gr * np.exp(-u / 0.2) * (1 - np.exp(-u / 0.01)) * on
-        x = push * 1.1 + boom + blast * 0.32 + grit * 0.1
+    with PB.seeded(62710):
+        tab_t = np.array([0.0, 0.05, 0.3, 0.8, 1.7, 3.2, 5.0])
+        tab = np.array([[-30, -21, -17, -16, -17, -20, -24, -29, -36, -48],
+                         [-27, -18, -14, -13, -14, -17, -21, -26, -33, -45],
+                         [-26, -17, -14, -14, -17, -22, -28, -36, -46, -60],
+                         [-26, -17, -15, -18, -25, -35, -47, -60, -72, -86],
+                         [-27, -19, -18, -24, -34, -47, -62, -76, -90, -100],
+                         [-33, -25, -25, -31, -42, -56, -72, -86, -100, -110],
+                         [-42, -34, -34, -40, -52, -66, -82, -96, -110, -120]], dtype=float)
+        w = P.snoise(d, tab_t + t0, tab, 1024, 256, corr=np.ones(10))[0]
+        # (the gusts: a shared swell, each gust its own, the top moving most)
+        gt = P.poisson_times(t0 + 0.02, d - 0.8, lambda v: 10.0 * np.exp(-(v - t0) / 0.8) + 1.5)
+        gust = P.bumps(n, gt, rng().uniform(0.02, 0.09, len(gt)), rng().uniform(0.08, 0.3, len(gt)), np.minimum(rng().pareto(2.5, len(gt)) * 0.5 + 0.4, 2.5))
+        gust = 0.55 + 0.45 * gust / (gust.mean() + 1e-9)
+        top = band(w, 700, None, 2)
+        w = (w - top) * gust ** 0.7 + top * gust ** 1.3
+        # (the rock in it: blows all round, thick in the first second, a few heavy ones)
+        rate = 150.0 * np.exp(-u / 0.42) * (1 - np.exp(-u / 0.03)) * on + 1e-3
+        rk = rocks(d, rate, 70, 950, (0.5, 1.1, 2.1), (0.5, 0.36, 0.14)) * np.exp(-u / 0.8)
+        # (the shove: one big and a few uneven, felt)
+        pt = np.concatenate([[t0 + 0.012], P.poisson_times(t0 + 0.14, t0 + 2.4, lambda v: 4.5 * np.exp(-(v - t0) / 0.9))])
+        amps = np.concatenate([[3.0], np.minimum(rng().pareto(2.2, len(pt) - 1) * 0.5 + 0.4, 2.0) * rng().choice([-1.0, 1.0], len(pt) - 1)])
+        push = P.bumps(n, pt, np.r_[0.016, rng().uniform(0.03, 0.08, len(pt) - 1)], np.r_[0.14, rng().uniform(0.06, 0.18, len(pt) - 1)], amps)
+        push = F.cband(push, 12, 80, 2)
+        ref = T.loudest(w)
+        body = bare_blow(1.6, 26, 170, 0.014, 0.16)
+        x = w + push / (np.abs(push).max() + 1e-9) * ref * 3.6 + rk * ref * 0.42
+        P.put(x, body * ref * 1.6, t0)
+        # (nothing before the front; it comes up fast, not at once)
+        x = x * (1 - np.exp(-u / 0.008)) * on
         x = lows_heard(x, 70, 360, -5.0)
-    write("flow_hit", PB.causal_lowcut(x * on, 16.0) * T.fade(n, 0.0005, 1.6), knee=0.5)
+        L, R = N.glue(x, x)
+        L, R = N.overdrive(L, R, t0)
+    write("flow_hit", PB.causal_lowcut((L + R) / 2 * on, 16.0) * T.fade(n, 0.0005, 1.6), knee=0.5)
 
 
 def build_flow_in(v):
@@ -853,29 +1156,33 @@ def build_after():
 
 
 def build_patter():
-    """Ash and small rock falling on blocks: a dry fine ticking, thick then thinner, now and then a stone, the soft hiss of
-    ash settling under it. Each its own; nothing regular."""
+    """Ash and small rock falling on blocks. Ash is soft: so fine and so many that it's a dry rustling wash, its top not much
+    over 3 kHz; in it grains of pumice, a soft dull tap each with its body under it, never a tick; now and then a stone.
+    Thick, then thinner. Nothing regular, nothing bright."""
     d = PATTER_D
     n = n_of(d)
     t = times(d)
-    with PB.seeded(63001):
+    with PB.seeded(63010):
         density = lambda s: np.interp(s, [0, 3, 7, 12, 15.5, d], [12, 70, 85, 48, 10, 0.5])
-        x = np.zeros(n)
+        fall = density(t) / 85.0
+        ash = T.unit(F.cband(white(d), 300, 2300, 2)) * boil(n, 0.3, 2.5, 3.0) * boil(n, 30.0, 160.0, 2.0)
+        tap = np.zeros(n)
         tc = 0.05
         while tc < d - 0.3:
-            m = n_of(0.012)
-            s = np.arange(m) / SR
-            g = F.cband(rng().standard_normal(m), rng().uniform(900, 2200), rng().uniform(3500, 7500), 2) * np.exp(-s / rng().uniform(0.0006, 0.0022))
-            P.put(x, g * min(rng().pareto(2.5) * 0.25 + 0.08, 1.0), tc)
+            m = n_of(0.05)
+            q = np.arange(m) / SR
+            g = F.cband(rng().standard_normal(m), rng().uniform(220, 480), rng().uniform(900, 2200), 2)
+            g = g * (1 - np.exp(-q / 0.0007)) * np.exp(-q / rng().uniform(0.003, 0.01))
+            P.put(tap, g * min(rng().pareto(2.5) * 0.25 + 0.08, 1.0), tc)
             tc += rng().exponential(1.0 / density(tc))
         st = np.zeros(n)
         tc = 2.0
         while tc < d - 3.5:
-            P.put(st, F.knock(rng().uniform(0.08, 0.3), 0.8) * rng().uniform(0.2, 0.7), tc)
+            P.put(st, F.knock(rng().uniform(0.12, 0.34), 0.25) * rng().uniform(0.2, 0.7), tc)
             tc += rng().exponential(0.9) + 0.1
-        hiss = T.unit(band(white(d), 1800, 8000, 1.5)) * boil(n, 0.2, 1.5, 3.0) * db_curve(t, [(0, -60), (3, -35), (8, -33), (13, -40), (d, -75)])
-        x = T.unit(band(x, 500, 9000, 1)) * 0.35 + st * 0.25 + hiss
-    write("patter", x * T.fade(n, 1.6, 2.2))
+        x = T.unit(tap) * 0.3 + st * 0.2 + ash * 0.16 * np.clip(fall * 1.6, 0, 1) ** 0.6
+        x = land(x, 1.0, 0.1, (2600, 500), 0.35, seed=170)
+    write("patter", PB.causal_lowcut(x, 120.0) * T.fade(n, 1.6, 2.2))
 
 
 BUILD = {
