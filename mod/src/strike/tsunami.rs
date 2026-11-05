@@ -81,7 +81,7 @@ impl TsGeo {
         let a = f64::from(wing_angle(target.point, me));
         let m = [a.cos(), a.sin()];
         let dp = (me[0] - tx).hypot(me[2] - tz);
-        TsGeo { t: [tx, f64::from(by) + 1.0, tz], m, n: [-m[1], m[0]], dp, send: (dp + 120.0).min(720.0), sd: (shader_seed * 0.618_034).fract() * 40.0 }
+        TsGeo { t: [tx, f64::from(by) + 1.0, tz], m, n: [-m[1], m[0]], dp, send: (dp + 160.0).min(720.0), sd: (shader_seed * 0.618_034).fract() * 40.0 }
     }
     /// (s, u) of the world point (x, z): out along the wave's way from the target, and across it.
     pub fn su(&self, x: f64, z: f64) -> (f64, f64) {
@@ -178,6 +178,45 @@ impl TsGeo {
     }
 }
 
+// ---- what the pass reads (render.set-data) ----------------------------------------------------------------------------
+/// The block types the wave's debris is made of, each its HU_BKW words at TSB + TSBW * its place (the Hurricane's bk_words:
+/// the game's own textures through the atlas); the pass picks among them by the land the wave is over (`TSM`: for each
+/// 16 by 16 cell of the land in the wave's own axes, the share of its columns with trees on them and with buildings, a
+/// byte each, from TSM_S0 along it and TSM_U0 across it).
+pub(crate) const TS_KINDS: [&str; 24] = [
+    "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log", "minecraft:dark_oak_log", "minecraft:oak_planks",
+    "minecraft:spruce_planks", "minecraft:cobblestone", "minecraft:stone_bricks", "minecraft:bricks", "minecraft:glass",
+    "minecraft:hay_block", "minecraft:white_wool", "minecraft:oak_leaves", "minecraft:spruce_leaves", "minecraft:dirt",
+    "minecraft:grass_block", "minecraft:mud", "minecraft:gravel", "minecraft:mossy_cobblestone", "minecraft:bookshelf",
+    "minecraft:barrel", "minecraft:crafting_table", "minecraft:acacia_planks", "minecraft:sand",
+];
+pub(crate) const TSB: usize = 64;
+pub(crate) const TSBW: usize = 12;
+pub(crate) const TSM: usize = 384;
+pub(crate) const TSM_S: usize = 64;
+pub(crate) const TSM_U: usize = 32;
+const TSM_S0: f64 = -320.0;
+const TSM_U0: f64 = -256.0;
+pub(crate) const TS_WORDS: usize = TSM + TSM_S * TSM_U;
+
+/// The pass's table before the land is read: the block types' words, the map empty (the pass then takes a wood's share).
+fn table_words(terrain: bool) -> Vec<u32> {
+    let mut w = vec![0u32; TS_WORDS];
+    w[2] = f32::from(u8::from(terrain)).to_bits();
+    w[3] = TS_KINDS.len() as u32;
+    for (i, name) in TS_KINDS.iter().enumerate() {
+        if let Some(b) = hu_block(name) {
+            w[TSB + TSBW * i..TSB + TSBW * (i + 1)].copy_from_slice(&super::hurricane::bk_words(b, 0, 0));
+        }
+    }
+    w
+}
+/// A cell of the map for the column at (s, u), if it is on it.
+fn map_cell(s: f64, u: f64) -> Option<usize> {
+    let (i, j) = (((s - TSM_S0) / 16.0).floor(), ((u - TSM_U0) / 16.0).floor());
+    (i >= 0.0 && j >= 0.0 && (i as usize) < TSM_S && (j as usize) < TSM_U).then(|| j as usize * TSM_S + i as usize)
+}
+
 // ---- the land's swath ------------------------------------------------------------------------------------------------
 /// How far across (half) the land's work reaches, how far upstream of the target and how far it is let fade.
 const TS_HALF: f64 = 245.0;
@@ -186,7 +225,7 @@ const TS_UP: f64 = 300.0;
 /// and at both ends.
 fn mask(geo: &TsGeo, s: f64, u: f64) -> f64 {
     let lat = 1.0 - smooth(165.0, TS_HALF, u.abs());
-    let along = smooth(-TS_UP, -TS_UP + 130.0, s) * (1.0 - smooth(geo.send - 130.0, geo.send + 10.0, s));
+    let along = smooth(-TS_UP, -TS_UP + 130.0, s) * (1.0 - smooth(geo.send - 50.0, geo.send + 20.0, s));
     lat * along
 }
 /// The chunks the work covers (every chunk whose middle is within reach with a chunk's margin), with when the front
@@ -245,6 +284,14 @@ const TS_LAND_BY: f64 = 38.0;
 
 fn chance(x: i32, z: i32, seed: u32, k: u32) -> f64 {
     mh((x as u32).wrapping_mul(73_856_093) ^ (z as u32).wrapping_mul(19_349_663), seed, k)
+}
+/// A number for the column that varies over the land in patches a tree or two across (0 to 1, mostly middling), so the
+/// ragged edge of what the wave takes goes round whole trees: a bit of the column's own on top.
+fn coherent(x: i32, z: i32, seed: u32) -> f64 {
+    let (fx, fz) = (x as f32, z as f32);
+    let n = 0.6 * fvnoise(fx * 0.045 + seed as f32, fz * 0.045) + 0.3 * fvnoise(fx * 0.12 + 7.0, fz * 0.12 + seed as f32 * 0.5);
+    // (stretched a little so it reaches both ends of 0 to 1 and the edge is a real edge)
+    ((f64::from(n) - 0.12) * 1.25 + 0.1 * chance(x, z, seed, 1)).clamp(0.0, 1.0)
 }
 /// A block's name with its state, kept for the strike's edits (each name made once).
 fn interned(name: String) -> &'static str {
@@ -327,6 +374,8 @@ struct Col {
     wreck: u16,
     logs: u8,
     stand: u8,
+    tree: bool,
+    bld: bool,
 }
 
 struct Cur {
@@ -349,6 +398,10 @@ struct Work {
     next_retry: f64,
     seed: u32,
     gy: i32,
+    /// The map's counts of columns with trees and with buildings, a cell each, and whether it changed since the pass was told.
+    map: Vec<(u16, u16)>,
+    map_dirty: bool,
+    map_told: f64,
     /// The chunks changed, the columns swept and what was taken, for the tests and the log.
     changed: usize,
     swept: u64,
@@ -400,6 +453,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         let base = surface - a.below;
         let (mut g, mut top, mut fluid, mut soil, mut wreck) = (None, None, false, 0u8, u16::MAX);
         let (mut logs, mut stand) = (0u8, 0u8);
+        let (mut tree, mut bld) = (false, false);
         for j in (0..blocks.len()).rev() {
             crate::meter::spend(24);
             let b = blocks[j];
@@ -419,13 +473,15 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
                     if class == 3 {
                         logs = logs.saturating_add(1);
                     }
+                    tree |= class == 3 || class == 4;
+                    bld |= class == 7;
                     if wreck == u16::MAX && ((class == 7 && wreck_ok(&a.palette[b as usize])) || class == 3) {
                         wreck = b;
                     }
                 }
             }
         }
-        cols.push(g.map(|g| Col { g, top: top.unwrap_or(g), fluid, soil, wreck, logs, stand }));
+        cols.push(g.map(|g| Col { g, top: top.unwrap_or(g), fluid, soil, wreck, logs, stand, tree, bld }));
     }
     if missing {
         return false;
@@ -451,8 +507,17 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         let Some(c) = cols[i] else { continue };
         gs[i] = c.g;
         crate::meter::spend(120);
+        if c.tree || c.bld {
+            let (s, u) = geo.su(f64::from(x) + 0.5, f64::from(z) + 0.5);
+            if let Some(mc) = map_cell(s, u) {
+                let e = &mut w.map[mc];
+                e.0 += u16::from(c.tree);
+                e.1 += u16::from(c.bld);
+                w.map_dirty = true;
+            }
+        }
         let (m, peak, n) = cell[(lz / 4) * 4 + lx / 4];
-        if c.fluid || m <= 0.0 || chance(x, z, w.seed, 1) >= m {
+        if c.fluid || m <= 0.0 || coherent(x, z, w.seed) >= m {
             continue;
         }
         // (only where the water is deep over it, as the pass's wave stands there)
@@ -585,6 +650,14 @@ fn ts_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f64) {
                 wk.cur = Some(cur);
             }
         }
+        // the map told to the pass about once a second
+        if wk.map_dirty && now >= wk.map_told + 1.0 {
+            wk.map_told = now;
+            wk.map_dirty = false;
+            let words: Vec<u32> = wk.map.iter().map(|&(t, b)| (((t * 255 / 160).min(255)) as u32) | (((b * 255 / 90).min(255)) as u32) << 8).collect();
+            crate::meter::spend(30 * words.len() as u64);
+            q.ev.push((now as f32, Act::Words { index: TSM as u32, words }));
+        }
         // the chunks not loaded yet (a target far off, its chunks only forceloaded as it fired): asked again, a few
         // dozen at a time, until they are or until TS_LAND_BY
         if wk.retry_q.is_none() && !wk.retry.is_empty() && now >= wk.next_retry {
@@ -634,9 +707,7 @@ pub(super) fn tsunami_plan(laser: &'static Laser, target: &Target, terrain: bool
     let len = laser.length;
 
     // ---- the pass's table (what it reads: none yet but the terrain flag) --------------------------------------------
-    let mut words = vec![0u32; 16];
-    words[2] = f32::from(u8::from(terrain)).to_bits();
-    p.ev.push((0.05, Act::Table(words)));
+    p.later(0.04, move |q| q.ev.push((0.05, Act::Table(table_words(terrain)))));
 
     // ---- when it reaches the target and the player, the water over their head ----------------------------------------
     let t_t = geo.arr(0.0, 0.0);
@@ -737,6 +808,9 @@ pub(super) fn tsunami_plan(laser: &'static Laser, target: &Target, terrain: bool
             next_retry: 0.0,
             seed: s,
             gy: by + 1,
+            map: vec![(0, 0); TSM_S * TSM_U],
+            map_dirty: false,
+            map_told: -1.0,
             changed: 0,
             swept: 0,
             done: false,
@@ -815,13 +889,53 @@ mod tests {
         let at = |name: &str| plan.iter().find_map(|(t, a)| matches!(a, Act::Sound { event, .. } if event == &format!("orbital:tsunami.{name}")).then_some(*t));
         let (rupture, rumble, crash, engulf, under, drain) = (at("rupture").unwrap(), at("rumble").unwrap(), at("crash").unwrap(), at("engulf").unwrap(), at("under").unwrap(), at("drain").unwrap());
         assert!(rupture == 0.0 && rumble == 1.5 && crash > 9.0 && crash < 11.0 && engulf > 14.0 && under > engulf && drain > under + 8.0);
-        // (nothing with the terrain off but the pass's table, sounds and shakes: no read, no edit, no forceload)
-        assert!(plan.iter().all(|(_, a)| !matches!(a, Act::Later(_) | Act::Read { .. } | Act::Blocks(_))));
+        // (nothing with the terrain off but the pass's table (a stage), sounds and shakes: no read, no edit, no forceload)
+        assert!(plan.iter().all(|(_, a)| !matches!(a, Act::Read { .. } | Act::Blocks(_))));
+        assert_eq!(plan.iter().filter(|(_, a)| matches!(a, Act::Later(_))).count(), 1, "only the table's stage");
         assert!(plan.iter().all(|(_, a)| !matches!(a, Act::Cmd(c) if c.contains("forceload"))));
     }
     /// A wooded land with a village's block of houses, flat, the grass at the target's ground.
     fn land(x: i32, z: i32, below: u32, above: u32) -> Option<(i32, Vec<&'static str>)> {
         crate::strike::hurricane::synth_column(x, z, below, above, 65, 0.0, true)
+    }
+    /// `CB_SEED=37 CB_OUT=path PL_HILLS=H cargo test --release ts_write_table -- --ignored`: the table the pass reads, for
+    /// tools/preview.py (a line `index value` a word): the target at the preview's 0.5 65 0.5, the player 300 south of it, on
+    /// its wooded land with a village of houses round the target (the map's shares as the plan reads them).
+    #[test]
+    #[ignore]
+    fn ts_write_table() {
+        let seed: f32 = std::env::var("CB_SEED").map_or(37.0, |v| v.parse().unwrap());
+        let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
+        let ev = tsunami_plan(the_laser(), &target, true, "minecraft:overworld", seed, [0.5, 66.0, 300.5]);
+        let mut data: Vec<u32> = Vec::new();
+        crate::columns::clear();
+        let mut ev = ev;
+        ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+        while let Some((_, a)) = ev.pop() {
+            match a {
+                Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| land(x, z, below, above)),
+                Act::Table(w) => {
+                    if data.len() < w.len() {
+                        data.resize(w.len(), 0);
+                    }
+                    data[..w.len()].copy_from_slice(&w);
+                }
+                Act::Words { index, words } => {
+                    let i = index as usize;
+                    if data.len() < i + words.len() {
+                        data.resize(i + words.len(), 0);
+                    }
+                    data[i..i + words.len()].copy_from_slice(&words);
+                }
+                Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
+                    ev.extend(job());
+                    ev.sort_by(|a, b| b.0.total_cmp(&a.0));
+                }
+                _ => {}
+            }
+        }
+        let text: String = data.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
+        std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }
     #[test]
     fn the_wave_sweeps_the_land_in_its_order_and_every_stage_is_light() {

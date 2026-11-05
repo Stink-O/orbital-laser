@@ -101,7 +101,7 @@ Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Fourteen lasers, five to a page of the wheel.
+Fifteen lasers, five to a page of the wheel.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -162,8 +162,24 @@ Fourteen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
+- **Tsunami** (page three). A wave of dark, debris-laden water 130 blocks high and nearly three kilometres wide rises on
+  the horizon beyond the target and comes across the land at about 100 blocks a second, slowing as it runs inland: a
+  steep face with a leaning crest, white water streaming down it, a mist thrown up off its top and a skirt of it along the
+  ground ahead, and tumbling in its foot and foam what it has swept up, in the game's own textures (logs, planks, stone,
+  leaves, earth: more of what the land it crosses is made of). It hits the target at 9 seconds, sweeps it away, rolls on
+  to you and washes over you; if you are under its path you are lifted into the water and carried along with it for
+  about ten seconds (a murk of silt and bubbles, light shafts from the surface, blocks of wreckage rushing by; hold
+  **sneak** for half a second to break free; `/orbital knockback off` leaves you standing), then the water falls away,
+  the surface breaks over your head and the backwash drains off a land stripped of everything that stood on it. A swath
+  about 500 blocks across (300 upstream of the target, and on past you) is really changed, under the water: every
+  tree, plant and building goes (chests and the like stay), the soil is scoured to mud, packed mud, coarse dirt, gravel,
+  sand and clay in streaks along the flow, the wreckage is laid back down along it (trunks lying with the flow, planks
+  and stone from what stood there, a few boulders) and every mob in it dies. It ends at 42 seconds. The wave comes
+  from beyond the target towards where you stood as you fired, so the water reaches you if you are along that line
+  (the swath ends 160 blocks past you). It has no flashes: the only white is the foam as the front goes over you.
+
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell and the Hurricane reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -323,15 +339,18 @@ Mods), read the reason it gives first.
    are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar counts
    down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
-   `TRACKING STORM…` for the Hurricane), then the strike lands where your crosshair is. Nothing else pops up over the
+   `TRACKING STORM…` for the Hurricane, `READING THE SEA…` for the Tsunami), then the strike lands where your crosshair is. Nothing else pops up over the
    hotbar but `NO TARGET IN RANGE`.
-4. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
+4. **Caught in the Tsunami?** The water takes you once it is over your head and carries you along with it for a few
+   blocks, lifted, tumbled and buffeted, then puts you down on the scoured land as it drains. Hold **sneak** for half a
+   second to break free. `/orbital knockback off` leaves you standing in it, the picture still drowned.
+5. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
    to break free; while you fly it leaves you alone, but stop flying for a second while it still blows where you are
    and it grabs you again. If it still has you at 46 seconds it throws you clear (a survival player gets a few seconds
    of Resistance V so the landing doesn't kill them).
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell 42, the Crystal Bloom and the Rod from God 60, the Downfall and the Hurricane 64, the Payload 70 and the Nuke 90.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell 42, the Crystal Bloom and the Rod from God 60, the Downfall and the Hurricane 64, the Tsunami 42, the Payload 70 and the Nuke 90.
 
 The wheel also has:
 
@@ -345,7 +364,7 @@ The wheel also has:
   has already done to the world stays), the same as `/orbital stop`.
 - Down the left, the strike options. **SEED** shows the last strike's seed, or takes one you type (1 to 997), and
   **LOCK SEED** keeps it, so a strike plays out the same way take after take (`/orbital seed`). Under them, for the
-  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod and the Hurricane), whether the blast pushes you or the wind
+  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod, the Hurricane and the Tsunami), whether the blast pushes you or the wind
   carries you, and **FOLLOW** (the Nuke and the Payload), the follow camera.
 - An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: **OFF**, **KANADA** (the
   default), **BLACK FLASH** or **CINEMATIC**, as `/orbital impactframes`.
@@ -358,7 +377,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -368,7 +387,7 @@ The wheel also has:
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks (Kanada is the default), or off; kept; also the wheel's IMPACT FX row |
-| `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays), and whether the Hurricane carries you off; also the wheel's KNOCKBACK switch |
+| `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays), and whether the Hurricane's wind or the Tsunami's water carries you off; also the wheel's KNOCKBACK switch |
 | `/orbital carryview turn\|still` | while the Hurricane carries you, your view turns a little with you round the storm and sways with the gusts (`turn`, the default), or stays your own (`still`); kept |
 | `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
 | `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
@@ -396,7 +415,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
   and rebind it. R only opens the wheel while you play with the designator in hand, not over another screen. With
   anything else in hand it does nothing (`/orbital wheel` opens the wheel either way).
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell and the Hurricane can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell, the Hurricane and the Tsunami can aim, and only with **LOD Distance** on in Video Settings.
 - **The designator only clicks.** A strike is already under way, and one runs at a time. Wait for it to finish, or end
   it with the wheel's STOP STRIKE or `/orbital stop`.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.

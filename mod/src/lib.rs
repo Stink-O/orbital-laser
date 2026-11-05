@@ -1473,7 +1473,7 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "tsunami" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
             if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" {
@@ -2192,7 +2192,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -2512,6 +2512,51 @@ mod stress {
         }
         assert!(s.o.cleanup.is_empty() && s.o.edits.is_empty());
         assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+    }
+
+    /// A Tsunami called in on land far off, none of it loaded as it fires (the player 800 blocks away): it waits for the
+    /// land cheaply, its edits go in as it loads (or are left out where it never does), no tick overworks, it ends on time;
+    /// and one close by carries the player along (carry-player and pushes of the surge) with the knockback on, never with
+    /// it off.
+    #[test]
+    fn a_tsunami_on_far_unloaded_land_stays_light() {
+        let ts = LASERS.iter().position(|l| l.key == "tsunami").expect("the tsunami");
+        for slow in [4, 0] {
+            let mut s = Soak::new(5);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(ts, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 1400, "it never ended");
+            }
+            let edits = fake::with(|w| w.edits);
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow > 0 {
+                assert!(edits > 50, "the land swept as it loaded ({edits} edits)");
+            }
+        }
+        for knock in [true, false] {
+            let mut s = Soak::new(7);
+            s.o.knock = knock;
+            fake::with(|w| w.pushes = 0);
+            s.fire(ts, (0, 0));
+            // (the player 100 blocks off the target, where the water reaches them by 12 s)
+            fake::with(|w| {
+                if let Some(p) = w.player.as_mut() {
+                    p.x = 0.5;
+                    p.z = 100.5;
+                }
+            });
+            for _ in 0..(40 * 20) {
+                s.step("surge");
+                s.o.surge_tick();
+            }
+            let carries = fake::with(|w| w.pushes);
+            assert_eq!(carries > 100, knock, "{carries} carries with the knockback {knock}");
+        }
     }
 
     /// A Hurricane called in on land far off, none of it loaded as it fires (the player 800 blocks away): it waits for
