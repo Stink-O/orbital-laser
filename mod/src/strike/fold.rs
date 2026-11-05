@@ -65,7 +65,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     p.csound(FD_STOP + (dist as f32 / 343.0).clamp(0.2, 1.0), "air", 10.0, 1.0);
     // (the touch, the land like water, then ice: the creases as stones skipped over a frozen lake)
     p.csound(FD_TOUCH, "meld", 10.0, 1.0);
-    p.csound(FD_TOUCH + 0.3, "ripple", 10.0, 1.0);
+    p.csound(FD_TOUCH + 1.5, "ripple", 10.0, 1.0);
     p.csound(FD_SCORE, "score", 10.0, 1.0);
     p.csound(FD_FOLD, "unravel", 10.0, 1.0);
     p.csound(FD_FOLD, "groan", 10.0, 1.0);

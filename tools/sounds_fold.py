@@ -14,7 +14,7 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
   air       ~3.9 s (late by the distance, 0.5 s at 170 blocks): the air that kept going: a soft whump, a rush going past
             and off, then dust hissing over the ground, thinning to nothing by ~6.9 s.
   meld      6 s: a weighty soft contact, a closed hum, heavy liquid slumping in to about 7.5.
-  ripple    6.3 s: the land moving like water: low heaves, each bigger, slow water and wet soil over them.
+  ripple    7.5 s: the land moving like water: low heaves, each bigger, slow water and wet soil over them.
   score     12 s: the creases: ice. Lone cracks, stones skipping away, cracks racing, ever thicker, and from 16 s the tears.
   unravel   19 s: long falling glissandi off a thick sheet, tearing, ring after ring letting go.
   groan     19 s: the land bending, a hull's and a tree's stress, closing overhead from 26 s: the sky's air goes, the sound turns
@@ -56,12 +56,13 @@ ROOT = Path(__file__).resolve().parent.parent
 PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 
 # The beats (strike/fold.rs's FD_*): the stems are built on them.
-STOP, TOUCH, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL, DING, REL, FLAT, SLAM = 3.4, 6.0, 6.3, 12.0, 16.0, 19.0, 26.0, 35.0, 40.0, 40.3, 41.1, 45.0
+STOP, TOUCH, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL, DING, REL, FLAT, SLAM = 3.4, 6.0, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0, 40.0, 40.3, 41.1, 45.0
 # when the land lets go in great heaves; the fold's stages (FD_FOLDS); the bounces (time, how big), then the last fall
 RINGS = [19.1, 21.0, 23.3, 25.1, 27.6, 29.9]
 CREASES = [35.0, 35.6, 36.3, 37.1, 38.0, 39.0]
 BOUNCES = [(41.1, 1.0), (42.0, 0.6), (42.8, 0.36), (43.7, 0.2)]
-PULSES = [6.3, 7.6, 8.9, 10.2, 11.5]  # the water's pulses of the middle, each stronger
+PULSES = [7.5, 8.6, 9.6, 10.6, 11.5]  # the water's pulses of the middle, from when the droplet is absorbed
+SWELLS = [11.25, 12.25, 13.2, 14.2]   # the swell under a player at 170 blocks, a crest about 0.55 s after each; biggest ~12.8
 FALL = 1.15                           # the last fall's air, ending just before the slam
 AIR_LATE = 0.5                        # the air's sound after the stop, at 170 blocks (the plan uses the real distance)
 
@@ -72,7 +73,7 @@ EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP +
           (DING, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
           *[(t, f"bounce{k + 1}", 1.0, 1.0) for k, (t, _) in enumerate(BOUNCES)],
           (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM + 1.0, "comedown", 1.0, 1.0)]
-SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 6.0), ("meld", 6.0, 6.6), ("ripple", 6.6, 12.0), ("score", 12.0, 16.0),
+SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 6.0), ("meld", 6.0, 7.5), ("ripple", 7.5, 12.0), ("score", 12.0, 16.0),
             ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 35.0), ("foldown", 35.0, 39.3), ("hush2", 39.65, 40.0),
             ("ding", 40.0, 40.3), ("reverse", 40.3, 41.1), ("bounces", 41.1, 43.8), ("fall", 43.85, 45.0), ("slam", 45.0, 48.0), ("comedown", 48.0, 56.0)]
 
@@ -632,12 +633,13 @@ def meld():
 
 
 def ripple():
-    d = 8.6
+    d = 7.9
     n = n_of(d)
     t = times(n)
     L, R = np.zeros(n), np.zeros(n)
     # (the five pulses, each stronger, then the swell itself passing under the player, dying under the scoring)
-    for t_, f, dur, amp in zip((*PULSES, 12.55, 13.5), (46.0, 42.0, 38.0, 34.0, 30.0, 31.0, 33.0), (1.0, 1.15, 1.3, 1.5, 1.7, 1.2, 1.0), (0.34, 0.48, 0.64, 0.82, 1.0, 0.66, 0.34)):
+    for t_, f, dur, amp in zip((*PULSES, *SWELLS), (46.0, 42.0, 38.0, 34.0, 30.0, 31.0, 29.0, 31.0, 33.0), (0.9, 1.0, 1.0, 1.0, 1.1, 1.6, 1.7, 1.5, 1.3),
+                               (0.14, 0.3, 0.46, 0.66, 0.6, 0.6, 1.0, 0.66, 0.3)):
         at = t_ - RIPPLE
         m = n_of(dur)
         s = times(m)
@@ -658,8 +660,8 @@ def ripple():
     L, R = verb(L, R, 0.2, length=2.6, darken=(900, 200), decay=1.0)
     # (the first hairline, right at the end, a hint)
     a, b = np.zeros(n), np.zeros(n)
-    ice(a, b, 4.9, 300, THICK["thin"], 0.03, -0.5, 0)
-    ice(a, b, 5.45, 220, THICK["thin"], 0.05, 0.4, 0)
+    ice(a, b, 3.7, 300, THICK["thin"], 0.03, -0.5, 0)
+    ice(a, b, 4.25, 220, THICK["thin"], 0.05, 0.4, 0)
     out("ripple", L + a, R + b, -20.0, tail=0.2)
 
 
