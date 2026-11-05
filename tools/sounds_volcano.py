@@ -29,8 +29,7 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   thud1-4     a bomb landing close (positional): a hard bang and the ground's blow
   spatter1-3  the stones it threw coming down round it, within ~120 blocks of the player (positional)
   thud_far1-3 a bomb landing off on the land: a dull thump, late by the distance
-  bolt1-4     plume lightning: dirty, dry, many strokes on top of each other, sharp and crackling, hardly a roll
-  bolt_far1-4 further off: a low dry stuttering rumble
+  (lightning)          the Hurricane's own thunder events, played as its plan plays them (vc_sound.rs's `thunder`)
   collapse    50 + late a colossal deep groan of the ground going, the land mass dropping (a slow enormous blow 3 s in),
                        then the sustained thunder of it falling
   collapse_far the same moment, cross-faded in by distance
@@ -70,16 +69,18 @@ import hu_foley as F
 
 TH = "supervolcano"
 ROOT = Path(__file__).resolve().parent.parent
-VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3, "bolt": 4, "bolt_far": 4,
+VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3,
             "flow_rise": 3, "flow_in": 3, "splinter": 3, "grind": 2}
 SINGLE = ["beam", "tick", "tremor", "fountain", "steam", "seism", "report", "report_far", "report_sub", "column", "column_far",
           "collapse", "collapse_far", "flow_far", "flow_hit", "after", "patter"]
 NAMES = SINGLE + list(VARIANTS)
+# (the plan's old events, taken out of sounds.json and their files deleted when it's rebuilt: the lightning is the Hurricane's)
+GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
 LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "seism": -33.0, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -12.0, "column_far": -12.0,
-         "whistle": -15.0, "thud": -11.0, "spatter": -20.0, "thud_far": -18.0, "bolt": -15.0, "bolt_far": -23.0,
+         "whistle": -15.0, "thud": -11.0, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
@@ -637,60 +638,6 @@ def build_thud_far(v):
     write(f"thud_far{v}", PB.causal_lowcut(x, 20.0) * T.fade(n, 0.005, 0.8), kind="thud_far")
 
 
-# =========================================================================================================  the lightning
-def dirty(seed, d, count, span, top, roll_db, roll_tau, wet, hi=9000.0):
-    """Plume lightning: `count` strokes crowding into `span` s, each a little N-wave, the leaders' tearing laid over them.
-    Its channels are short and full of ash, so where a storm's bolt rolls on, this crackles and stops: dry, a little
-    low grumble, a sputter of small discharges after it."""
-    n = n_of(d)
-    t = times(d)
-    with PB.seeded(seed):
-        train = np.zeros(n)
-        at = 0.02 + span * rng().random(count) ** 1.6
-        for i, tc in enumerate(sorted(at)):
-            w = rng().uniform(0.0012, 0.0045)
-            a = (rng().uniform(0.3, 1.0) * (1.0 if i < 3 else 0.75)) * rng().choice([-1.0, 1.0])
-            P.put(train, S.nwave(w) * a, tc)
-        x = band(train, 160, hi, 2)
-        x = x / (np.abs(x).max() + 1e-9)
-        # (the tearing: a burst of fine snaps through the strokes)
-        g = np.clip(N.grains(d, 700.0, (0.0008, 0.002, 0.005)), 0, 12) ** 1.3
-        tear = T.unit(band(white(d), 900, top, 2)) * g * db_curve(t, [(0, -60), (0.02, -7), (span, -11), (span + 0.25, -32), (span + 0.6, -70), (d, -90)])
-        # (the sputter: small discharges thinning out)
-        sp = np.zeros(n)
-        for _ in range(int(14 + 16 * d / 3)):
-            tc = span + rng().gamma(1.1, 0.34)
-            if tc < d - 0.1:
-                P.put(sp, soundlib.click(n_of(0.03), 0.0, rng().uniform(0.02, 0.16), 1200, min(top * 1.2, 9000), rng().uniform(0.0006, 0.002)), tc)
-        # (the grumble, short and lumpy)
-        clump = np.clip(N.grains(d, 11.0, (0.03, 0.07, 0.16)), 0, 8) ** 0.8
-        gr = T.unit(band(white(d), 42, 240, 2)) * clump * db_curve(t, [(0, -60), (0.03, roll_db), (span + roll_tau, roll_db - 7), (span + roll_tau * 2.5, roll_db - 30), (d, -90)])
-        y = x + tear + sp + gr
-    return y, n
-
-
-def build_bolt(v):
-    with PB.seeded(62000 + v):
-        count = [12, 18, 9, 15][v - 1]
-        span = [0.34, 0.5, 0.22, 0.42][v - 1]
-    x, n = dirty(62010 + v, 3.2, count, span, 7500.0, -9.0, 0.55, 0.2)
-    with PB.seeded(62020 + v):
-        x = land(x, 1.4, 0.18, (2400, 300), 0.45, 30.0, seed=60 + v)
-        x = lows_heard(x, 70, 320, -9.0)
-    write(f"bolt{v}", PB.causal_lowcut(x, 30.0) * T.fade(n, 0.001, 0.5), knee=0.6, kind="bolt")
-
-
-def build_bolt_far(v):
-    """Further off: the strokes run together into a low dry stutter, none of the air's edge left."""
-    with PB.seeded(62100 + v):
-        count = [10, 14, 8, 12][v - 1]
-        span = [0.7, 1.1, 0.5, 0.9][v - 1]
-    x, n = dirty(62110 + v, 5.0, count, span, 1500.0, -3.0, 1.0, 0.35, hi=900.0)
-    with PB.seeded(62120 + v):
-        x = land(band(x, 30, 800, 2), 3.2, 0.5, (700, 120), 1.5, 30.0, seed=70 + v)
-    write(f"bolt_far{v}", PB.causal_lowcut(x, 24.0) * T.fade(n, 0.01, 1.2), kind="bolt_far")
-
-
 # ==========================================================================================================  the collapse
 def collapse_body():
     """A colossal groan of the ground going (rock sliding on rock, down through the audible floor, cracks going off in
@@ -943,8 +890,6 @@ BUILD = {
     "thud": lambda: [build_thud(v + 1) for v in range(VARIANTS["thud"])],
     "spatter": lambda: [build_spatter(v + 1) for v in range(VARIANTS["spatter"])],
     "thud_far": lambda: [build_thud_far(v + 1) for v in range(VARIANTS["thud_far"])],
-    "bolt": lambda: [build_bolt(v + 1) for v in range(VARIANTS["bolt"])],
-    "bolt_far": lambda: [build_bolt_far(v + 1) for v in range(VARIANTS["bolt_far"])],
     "flow_rise": lambda: [build_flow_rise(v + 1) for v in range(VARIANTS["flow_rise"])],
     "flow_in": lambda: [build_flow_in(v + 1) for v in range(VARIANTS["flow_in"])],
     "splinter": lambda: [build_splinter(v + 1) for v in range(VARIANTS["splinter"])],
@@ -1083,6 +1028,11 @@ def main():
             for name, k in VARIANTS.items():
                 for v in range(1, k + 1):
                     sounds[f"{TH}.{name}{v}"] = {"sounds": [{"name": f"orbital:{TH}/{name}{v}", "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{TH}.{name}"}
+            for name in GONE:
+                sounds.pop(f"{TH}.{name}", None)
+                f = Path(a.out) / "assets" / "orbital" / "sounds" / TH / f"{name}.ogg"
+                if f.exists():
+                    f.unlink()
             path.write_text(json.dumps(sounds, indent=2))
     if a.listen:
         os.makedirs(a.listen, exist_ok=True)
