@@ -1163,8 +1163,14 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 let f2 = vc_sdf(f2q, &fb2, 40.0, false).x;
                 let o1 = saturate(0.5 - f1 / 40.0);
                 let o2 = saturate(0.5 - f2 / 74.0);
-                let s3 = saturate((10.0 - vc_dist(q + Lf * 240.0)) / 120.0);
-                let s4 = saturate((10.0 - vc_dist(q + Lf * 560.0)) / 260.0);
+                // (the sheet's underside, in its own shadow, needs no looks at the bulk: most of what fills the sky)
+                let under = b.du < min(b.dc, b.df) && hy < VC_HU && st0 < 0.3;
+                var s3 = 0.0;
+                var s4 = 0.0;
+                if (!under) {
+                    s3 = saturate((10.0 - vc_dist(q + Lf * 240.0)) / 120.0);
+                    s4 = saturate((10.0 - vc_dist(q + Lf * 560.0)) / 260.0);
+                }
                 let tau = 1.35 * o1 + 1.9 * o2 + 2.2 * s3 + 2.6 * s4;
                 let lit = exp(-tau);
                 // (and close to, the small lumps' own faces: which side of each looks at the light)
@@ -1176,7 +1182,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 tsun = lit * st0 * (1.0 - 0.5 * l.warm);
                 rim = lit * (1.0 - smoothstep(0.15, 0.75, st0));
                 // (the sky's light shut out from under what hangs over it and deep in it)
-                let occ = saturate((10.0 - vc_dist(q + vec3<f32>(0.0, 190.0, 0.0))) / 150.0);
+                let occ = select(saturate((10.0 - vc_dist(q + vec3<f32>(0.0, 190.0, 0.0))) / 150.0), 1.0, under);
                 let deep = saturate(-sd.x / 90.0);
                 ao = (0.4 + 0.6 * sd.y * sd.y) * (1.0 - 0.72 * occ) * (1.0 - 0.6 * deep);
                 // (and open below it? the fire over the land lights what looks down on it)
