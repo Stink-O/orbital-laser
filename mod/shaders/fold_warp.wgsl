@@ -5,16 +5,19 @@
 //   FW_RIPPLE  rings running out of the target, each bigger than the last
 //   FW_SCORE   they sharpen into hairline creases racing over the land: the mandala (fw_crease)
 //   FW_TEAR    the creases split on the void, painted on the land itself so nothing under it shows
-//   FW_FOLD    the land is pinched up at the target and closes ring by ring (fw_chain), its top outwards, a hinge at each
-//              ring; radial pleats take up the circumference; the horizon rolls up and over (fw_roll)
-//   FW_WRAP0   the roll's ring comes in to the target and its tube down to the sphere's size, as the bud lies down onto its
-//              floor and the land comes back to its own size: FW_SEAL shut, the player inside, the real land on the walls
-//   FW_CRUSH   the sphere's top folds down to the target in six stages (fw_stage), each smaller and slower
-//   FW_BEAT    the tip touches the target. Stillness
+//   FW_FOLD    the land swells up round the target ring by ring, one smooth sheet, nothing over anything: every point of it
+//              goes to one place (fw_chain), the horizon rolling up and over behind it (fw_roll)
+//   FW_WRAP0   the roll's ring comes in to the target and its tube down to the sphere's size, as the swell lies down onto its
+//              floor and the land comes back to its own size: FW_SEAL all but shut, the player inside, the real land on the
+//              walls, and a hole left in the roof (FW_HOLE): the land stops at a rim that curls away round it
+//   FW_CRUSH   a branch of that same sheet flows down off the rim to the target (fw_spout), in six stages (fw_stage), each
+//              smaller and slower
+//   FW_BEAT    its tip touches the target. Stillness
 //   FW_REL     it all runs backwards (fw_tau), slowly at first: the sphere opens and the bud stands again, every ring up; then
 //              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, letting the crater show
-// The player stands on an island punched out of the sheet (FW_ISLE), left where it is, the sheet sliding by under it, and
-// from the time the world closes they can't leave it: however far they really go the sphere goes with them (fw_stay).
+// The player stands on an island punched out of the sheet (FW_ISLE), left where it is, the sheet sliding by under it, till the
+// land is back at its own size, when the island is simply part of it; and from the time the world closes they can't leave it:
+// however far they really go the sphere goes with them (fw_stay).
 // strike/fold.rs and fold.wgsl share the beats: keep them in step (`the_warp_keeps_the_beats`).
 const FW_RIPPLE: f32 = 6.6;
 const FW_SCORE: f32 = 12.0;
@@ -44,11 +47,9 @@ const FW_UNDER: f32 = 1.0;         // the sheet's underside painted as rock
 const FW_LAY0: f32 = 27.6;         // the bud lies down onto the sphere's floor between these
 const FW_LAY1: f32 = 32.6;
 const FW_WRAP0: f32 = 27.0;        // the roll's ring comes in to the target, its tube to the sphere's size, from here to FW_SEAL
-const FW_SINK_END: f32 = 0.3;      // how much of FW_SINK is left once the sheet lies on the sphere
-const FW_CAP: f32 = 0.95;
-const FW_SPIKE: f32 = 0.2;         // how much of the cap is the spike down the cones
-const FW_DISC: f32 = 130.0;        // how far the cones' land reaches from the target (lib.rs asks for these sections)          // how much of the sphere's top folds down: radians round the point
-
+const FW_SINK_END: f32 = 0.0;      // how much of FW_SINK is left once the sheet lies on the sphere
+const FW_HOLE: f32 = 0.6;          // the hole in the roof: radians, round the point across from the target
+const FW_ROOT: f32 = 0.62;         // the branch's root: how far round the rim either way, radians of the land's bearing
 fn fw_ss(a: f32, b: f32, x: f32) -> f32 {
     let t = clamp((x - a) / (b - a), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
@@ -72,15 +73,24 @@ fn fw_ring(i: i32) -> f32 {
         default: { return FW_LEN; }
     }
 }
-// How far along the sheet's curve ring i ends up lying: the bearing of its plate, radians from the top pole. The last two
-// go past upright, so what has closed is a bud whose foot tucks in under it.
-fn fw_phi(i: i32) -> f32 {
+// Ring i's plate's bearing, radians from the top pole: as it closes, never past upright, so what rises stands over the land
+// and nothing over anything; running back, `rt` past FW_REL, the bud stands right up, its last two past upright.
+fn fw_phi(i: i32, rt: f32) -> f32 {
+    if (rt >= FW_REL) {
+        switch i {
+            case 0: { return 0.14; }
+            case 1: { return 0.48; }
+            case 2: { return 0.92; }
+            case 3: { return 1.52; }
+            default: { return 2.52; }
+        }
+    }
     switch i {
-        case 0: { return 0.14; }
-        case 1: { return 0.48; }
-        case 2: { return 0.92; }
-        case 3: { return 1.52; }
-        default: { return 2.52; }
+        case 0: { return 0.1; }
+        case 1: { return 0.38; }
+        case 2: { return 0.78; }
+        case 3: { return 1.12; }
+        default: { return 0.7; }
     }
 }
 // As the world closes the bud lies down, its outer plate first, so what is left of it never spreads over the player...
@@ -93,15 +103,20 @@ fn fw_lie(i: i32, tau: f32) -> f32 {
 fn fw_lay(tau: f32) -> f32 {
     return fw_ss(28.8, FW_LAY1, tau);
 }
-// The twelve petals: 0 on a petal's middle line, 1 on its edge, each ring's turned half a petal on the last's.
+// Something uneven at bearing a, -1 to 1, its own for each i: round the circle once, so no seam, and no symmetry to it.
+fn fw_wob(a: f32, i: i32) -> f32 {
+    let k = f32(i);
+    return (sin(a * 2.0 + 1.3 * k + 0.4) + 0.7 * sin(a * 5.0 - 2.1 * k + 1.1) + 0.45 * sin(a * 11.0 + 0.7 * k) + 0.3 * sin(a * 17.0 - 1.9 * k)) / 2.45;
+}
+// How far round its uneven wedge bearing a is: 0 on a wedge's middle line, 1 on its edge.
 fn fw_petal(a: f32, i: i32) -> f32 {
-    let x = a * 6.0 / FW_PI + 0.5 * f32(i & 1);
+    let x = a * 6.0 / FW_PI + 0.5 * f32(i & 1) + 1.1 * fw_wob(a, i + 7);
     return abs(fract(x) - 0.5) * 2.0;
 }
-// Ring i's outer edge at bearing a: scalloped into twelve pointed tips.
+// Ring i's outer edge at bearing a: a wandering line, no two alike.
 fn fw_rho(i: i32, a: f32) -> f32 {
     let ring = fw_ring(i);
-    return ring + 0.16 * ring * (0.5 - fw_petal(a, i));
+    return ring * (1.0 + 0.16 * fw_wob(a, i));
 }
 // When ring i lands, outermost first (strike/fold.rs's FD_SLAM).
 fn fw_hit(i: i32) -> f32 {
@@ -114,14 +129,14 @@ fn fw_hit(i: i32) -> f32 {
     }
 }
 const FW_FALL: f32 = 0.8;          // how long each ring takes to fall: slowly away, and all its weight in the last of it
-// How closed ring i is (0 flat, 1 shut) at bearing a, on the fold's clock `tau`: a petal's middle leads its edges. From
+// How closed ring i is (0 flat, 1 shut) at bearing a, on the fold's clock `tau`: some of the way round leads the rest. From
 // FW_REL, `t` the strike's clock, it stays shut till it is its turn to fall, and falling, faster and faster, it stops dead.
 fn fw_p(i: i32, a: f32, tau: f32, t: f32) -> f32 {
     if (t >= FW_REL) {
         let u = clamp((t - fw_hit(i) + FW_FALL) / FW_FALL, 0.0, 1.0);
         return 1.0 - u * u * u;
     }
-    let t0 = FW_FOLD + 2.1 * f32(i) + 0.7 * fw_petal(a, i);
+    let t0 = FW_FOLD + 2.1 * f32(i) + 0.35 * (1.0 + fw_wob(a, i + 3));
     return fw_ss(0.0, 3.6, tau - t0);
 }
 // The shock of ring i's landing: a single heave running out over the land past it, gone in a second.
@@ -160,7 +175,7 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32) -> vec3<f32> {
     var Y = 0.0;
     var total = 0.0;
     var here = 0.0;
-    let soft = fw_soft(t);
+    let soft = fw_soft(t, rt);
     var last = 0.0;
     var ph = fw_ph(0, a, t, rt);
     for (var i = 0; i < 5; i += 1) {
@@ -200,11 +215,11 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32) -> vec3<f32> {
 }
 // Ring i's plate's angle.
 fn fw_ph(i: i32, a: f32, t: f32, rt: f32) -> f32 {
-    return fw_phi(i) * fw_p(i, a, t, rt) * fw_lie(i, t);
+    return fw_phi(i, rt) * fw_p(i, a, t, rt) * fw_lie(i, t);
 }
-// How far the rigid plates have gone to one curved sheet.
-fn fw_soft(t: f32) -> f32 {
-    return fw_ss(25.5, 27.5, t);
+// How far the rigid plates have gone to one curved sheet: all of it going up; rigid only as the rings fall back.
+fn fw_soft(t: f32, rt: f32) -> f32 {
+    return select(1.0, fw_ss(25.5, 27.5, t), rt >= FW_REL);
 }
 // Along an arc of length L, its angle a0 to a1, the first x of it: (across, down).
 fn fw_arc(a0: f32, a1: f32, L: f32, x: f32) -> vec2<f32> {
@@ -219,7 +234,7 @@ fn fw_arc(a0: f32, a1: f32, L: f32, x: f32) -> vec2<f32> {
 fn fw_span(t: f32, kappa: f32, rt: f32) -> vec2<f32> {
     var prev = 0.0;
     var out_ = vec2<f32>(0.0);
-    let soft = fw_soft(t);
+    let soft = fw_soft(t, rt);
     var last = 0.0;
     var ph = fw_ph(0, 0.2618, t, rt);
     for (var i = 0; i < 5; i += 1) {
@@ -311,11 +326,10 @@ fn fw_pull(r: f32, y: f32, t: f32, R: f32) -> f32 {
 fn fw_radius(d: f32, y: f32) -> f32 {
     return max(max(d * 1.3, 170.0), y * 1.15);
 }
-// The fold down from the sphere's top: six stages, each smaller and slower than the last. In the first the very top is drawn
-// down to a point. In each of the others a copy of the real land round the target, the same land each time, smaller and
-// smaller, opens as a cone out of the point of the one before, the first spreading till it covers the top, so that one hangs
-// inside the next and nothing passes through anything, and the last cone's point is on the target. A thin spike of the
-// sheet runs down inside them, so the tip gets there even where the copies' land isn't loaded.
+// The fold down from the roof: a branch of the sheet itself flows off the hole's rim and down to the target, in six stages, each
+// shorter and slower than the last, its thickness dropping at each. The land past the rim on one side (FW_ROOT, across from the
+// player, so it hangs in front of them) leaves the sphere's wall, rolls into a tube, and is drawn out along a curve (fw_path).
+// It is the same sheet all the way: one place for every point, so nothing can pass through anything.
 fn fw_start(k: i32) -> f32 {
     switch k {
         case 0: { return 35.0; }
@@ -327,32 +341,58 @@ fn fw_start(k: i32) -> f32 {
         default: { return FW_BEAT; }
     }
 }
-const FW_TIER_L: f32 = 0.72;       // each cone this much shorter than the last
-const FW_TIER_R: f32 = 0.62;       // and this much narrower
+const FW_TIER_L: f32 = 0.74;       // each stage of the branch this much shorter than the last
 // How far on stage k is: quick out of the fold, slow into its place.
 fn fw_stage(k: i32, tau: f32) -> f32 {
     let e = clamp((tau - fw_start(k)) / (fw_start(k + 1) - fw_start(k)), 0.0, 1.0);
     return 1.0 - pow(1.0 - e, 1.7);
 }
-// How far down from the sphere's top cone k's point is by `tau` (0 is the dent's bottom's depth, z1).
-fn fw_point(k: i32, tau: f32, z1: f32, ax: f32) -> f32 {
-    let unit = (ax - z1) * (1.0 - FW_TIER_L) / (1.0 - pow(FW_TIER_L, 5.0));
-    var z = z1;
-    var len = unit;
-    for (var j = 1; j <= k; j += 1) {
-        z += len * fw_stage(j, tau);
+// How far along its path the branch has reached by `tau`, 0 to 1, and where stage k ends.
+fn fw_knot(k: i32) -> f32 {
+    return (1.0 - pow(FW_TIER_L, f32(k + 1))) / (1.0 - pow(FW_TIER_L, 6.0));
+}
+fn fw_reached(tau: f32) -> f32 {
+    var x = 0.0;
+    var len = (1.0 - FW_TIER_L) / (1.0 - pow(FW_TIER_L, 6.0));
+    for (var k = 0; k < 6; k += 1) {
+        x += len * fw_stage(k, tau);
         len *= FW_TIER_L;
     }
-    return z;
+    return x;
 }
-// The sheet's cap: (out from the axis, down from the top). `v` 1 at the cap's edge, 0 the very top.
-fn fw_dent(v: f32, sphere: vec2<f32>, tau: f32, z0: f32, ax: f32) -> vec2<f32> {
-    let g = fw_stage(0, tau);
-    let z1 = 2.0 * z0;
-    // (the middle of it drawn out to the spike, the tip where the last cone's point is)
-    let vv = min(v / FW_SPIKE, 1.0);
-    let spike = vec2<f32>(4.0 * vv, mix(fw_point(5, tau, z1, ax), z1 * 0.97, vv));
-    return mix(sphere, spike, g * fw_ss(FW_SPIKE * 1.5, FW_SPIKE * 0.7, v));
+// Its thickness x along, blocks: down a step at each stage's end, to nothing at the tip.
+fn fw_girth(x: f32, reach: f32, S: f32) -> f32 {
+    var q = 0.0;
+    for (var k = 0; k < 5; k += 1) {
+        q += fw_ss(fw_knot(k) - 0.012, fw_knot(k) + 0.012, x);
+    }
+    let tip = sqrt(clamp((reach - x) / 0.06, 0.0, 1.0));
+    return 0.16 * S * pow(0.72, q) * (1.0 - 0.25 * (x - fw_knot(i32(q) - 1))) * tip;
+}
+fn fw_spout(da: f32, v: f32, y: f32, root: vec3<f32>, g: FwBend) -> vec3<f32> {
+    let x = v * g.reach;
+    let S = g.S;
+    let th = FW_PI - FW_HOLE;
+    let p0 = vec2<f32>(S * sin(th), S * (1.0 - cos(th)));
+    let p1 = p0 + vec2<f32>(-0.62 * S, 0.06 * S);
+    let p2 = vec2<f32>(0.0, p0.y * 0.72);
+    let p3 = vec2<f32>(0.0, g.top);
+    // (x a cubic's parameter)
+    let m = 1.0 - x;
+    let C = p0 * (m * m * m) + p1 * (3.0 * m * m * x) + p2 * (3.0 * m * x * x) + p3 * (x * x * x);
+    var T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * x) + (p3 - p2) * (x * x);
+    T = T / max(length(T), 0.001);
+    let n = vec2<f32>(-T.y, T.x);
+    // (how far round the tube its width has gone: lying open as it leaves the rim, shut a little way on)
+    let close = fw_ss(0.0, 0.1, x);
+    let phi = da / FW_ROOT * FW_PI * close;
+    let rho = fw_girth(x, g.reach, S) + clamp(y, -10.0, 40.0) * 0.06;
+    let c = C + n * (rho * cos(phi));
+    let side = rho * sin(phi);
+    let ca = cos(g.at);
+    let sa = sin(g.at);
+    let tube = vec3<f32>(c.x * ca - side * sa, c.y, c.x * sa + side * ca);
+    return mix(root, tube, close);
 }
 // ---- the roll -----------------------------------------------------------------------------------------------------------
 // Past `r0` the sheet rolls up and in over a tube of radius `rc`, up to `fm` round it. As the world closes r0 comes in to
@@ -360,7 +400,7 @@ fn fw_dent(v: f32, sphere: vec2<f32>, tau: f32, z0: f32, ax: f32) -> vec2<f32> {
 // sheet and one motion from the horizon's first curl to the sphere shut over the player. `w` eases it from the roll's own
 // spacing to the stereographic map's, conformal, so that on the sphere the land is only scaled, never stretched.
 // The player's feet, and the land under them, are left where they are, level: the whole of it is turned about them.
-struct FwBend { tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32, r0: f32, rc: f32, fm: f32, w: f32, shut: f32, S: f32, drop: f32 }
+struct FwBend { tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32, r0: f32, rc: f32, fm: f32, w: f32, shut: f32, S: f32, pin: f32, rim: f32, at: f32, reach: f32 }
 fn fw_curl(tau: f32) -> f32 {
     return fw_ss(FW_FOLD + 1.0, 29.0, tau);
 }
@@ -370,12 +410,10 @@ fn fw_bend(tau: f32, rt: f32, mq: vec3<f32>, e: vec2<f32>, edge: f32, kappa: f32
     let w = fw_ss(FW_WRAP0, FW_SEAL, tau);
     let S = fw_radius(d, mq.y);
     let r0 = (max(fw_span(tau, kappa, rt).x, d) + 170.0) * (1.0 - fw_ss(FW_WRAP0, FW_SEAL - 0.5, tau));
-    // (a player under the target's height has the sphere's floor let down under them)
-    let drop = min(mq.y - 4.0, 0.0) * w;
-    return FwBend(tau, d, e, edge, top, r0, mix(mix(3000.0, 700.0, curl), S, w), mix(curl * 3.2, FW_PI, w), w, fw_ss(FW_SEAL - 2.0, FW_SEAL - 0.5, tau), S, drop);
+    return FwBend(tau, d, e, edge, top, r0, mix(mix(3000.0, 700.0, curl), S, w), mix(curl * 3.2, FW_PI, w), w, fw_ss(FW_SEAL - 2.0, FW_SEAL - 0.5, tau), S, mq.y, fw_rim(d), atan2(-e.y, -e.x), fw_reached(tau));
 }
 // A point R along the sheet, y over it, on the roll: (out from the axis, up, how far round).
-fn fw_roll(R: f32, y: f32, grow: f32, g: FwBend) -> vec3<f32> {
+fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
     let u = R - g.r0;
     if (u <= 0.0 || g.fm < 0.001) {
         return vec3<f32>(R, y, 0.0);
@@ -384,8 +422,13 @@ fn fw_roll(R: f32, y: f32, grow: f32, g: FwBend) -> vec3<f32> {
     let x = e * 1.5707963;
     let ex = exp(-e);
     var f = g.fm * mix(1.0 - ex, 0.63662 * atan(x), g.w);
-    f += (g.fm - f) * grow;
-    let yy = y * mix(ex, 1.0 / (1.0 + x * x), g.w);
+    // (the land brought on to the rim, however far off the real land's edge would have put it, and no further: round its
+    // rim it curls away, outwards, so that it ends in a lip and not an edge)
+    let th = FW_PI - FW_HOLE;
+    let lim = 2.0 * atan(g.rim / (2.0 * g.S));
+    f = min(f + g.w * g.shut * (th - lim) * fw_ss(0.45 * g.rim, g.rim, R), mix(3.3, th, g.w * g.shut));
+    let lip = 34.0 * g.w * pow(fw_ss(g.rim * 0.8, g.rim, R), 2.0);
+    let yy = y * mix(ex, 1.0 / (1.0 + x * x), g.w) - lip;
     let s = sin(f);
     let c = cos(f);
     return vec3<f32>(g.r0 + (g.rc - yy) * s, g.rc * (1.0 - c) + yy * c, f);
@@ -394,23 +437,28 @@ fn fw_roll(R: f32, y: f32, grow: f32, g: FwBend) -> vec3<f32> {
 fn fw_place(R: f32, r: f32, a: f32, y: f32, g: FwBend) -> vec3<f32> {
     let ca = cos(a);
     let sa = sin(a);
-    let on = fw_roll(R, y, g.shut * fw_ss(0.85 * g.edge, g.edge, r), g);
-    var X = on.x;
-    var Y = on.y;
-    // ---- the top comes down ----------------------------------------------------------------------------------------------
-    let psi = FW_PI - on.z;
-    if (g.tau > FW_CRUSH && psi < FW_CAP) {
-        let S = g.S;
-        let ax = 2.0 * S - g.top;
-        let z0 = S * (1.0 - cos(FW_CAP));
-        let v = psi / FW_CAP;
-        let p = fw_dent(v, vec2<f32>(X, 2.0 * S - Y), g.tau, z0, ax);
-        // (the land's own heights lie down, on the walls of the tiers: only those at the very edge stay)
-        let w = fw_ss(0.86, 1.0, v);
-        X = mix(p.x, X, w);
-        Y = mix(2.0 * S - p.y, Y, w);
+    let on = fw_roll(R, y, g);
+    var p = vec3<f32>(on.x * ca, on.y, on.x * sa);
+    // ---- the branch off the rim --------------------------------------------------------------------------------------------
+    if (g.reach > 0.0) {
+        let edge = fw_edge(a, g.rim);
+        let da = atan2(sin(a - g.at), cos(a - g.at));
+        if (abs(da) < FW_ROOT && r > edge) {
+            let root = fw_roll(edge, 0.0, g);
+            let far_ = max(0.75 * g.edge, edge + 200.0);
+            let v = clamp((r - edge) / (far_ - edge), 0.0, 1.0);
+            p = fw_spout(da, v, y, vec3<f32>(root.x * ca, root.y, root.x * sa), g);
+        }
     }
-    return fw_turn(X * ca, Y, X * sa, fw_roll(g.d, 0.0, 0.0, g), g);
+    return fw_turn(p.x, p.y, p.z, fw_roll(g.d, g.pin, g), g);
+}
+// The land's own end, on the walls, at bearing a: a wandering line round the hole.
+fn fw_edge(a: f32, rim: f32) -> f32 {
+    return rim * (0.93 + 0.06 * fw_wob(a, 11));
+}
+// How far out from the target the walls' land goes: the real land's end, near enough.
+fn fw_rim(d: f32) -> f32 {
+    return max(620.0, d + 480.0);
 }
 // Turned about the feet, `at` on the roll, to bring them to the bottom.
 fn fw_turn(x3: f32, Y: f32, z3: f32, at: vec3<f32>, g: FwBend) -> vec3<f32> {
@@ -420,11 +468,11 @@ fn fw_turn(x3: f32, Y: f32, z3: f32, at: vec3<f32>, g: FwBend) -> vec3<f32> {
     let dv = -x3 * g.e.y + z3 * g.e.x;
     let dy = Y - at.y;
     let u2 = g.d + du * c + dy * s;
-    return vec3<f32>(u2 * g.e.x - dv * g.e.y, -du * s + dy * c + g.drop, u2 * g.e.y + dv * g.e.x);
+    return vec3<f32>(u2 * g.e.x - dv * g.e.y, -du * s + dy * c + g.pin, u2 * g.e.y + dv * g.e.x);
 }
-// When the mandala's middle goes back into the sheet.
+// When the island goes back into the sheet: the sheet is at its own size again by then, so it is the land that was there.
 fn fw_join(tau: f32) -> f32 {
-    return fw_ss(31.0, 33.5, tau);
+    return fw_ss(30.5, 32.6, tau);
 }
 // A bubble round the eye: what the warp has moved stays this far off, sliding round it.
 // (`keep` how far, blocks)
@@ -462,7 +510,7 @@ fn fw_stay(c: FwClock, tau: f32) -> vec3<f32> {
     }
     let mq = c.me - c.tgt;
     let from_ = -c.me;
-    let down = max(mq.y - min(mq.y - 4.0, 0.0) - 2.0, 6.0);
+    let down = 30.0;
     return (from_ - fw_reach(from_, fw_radius(length(mq.xz), mq.y), down)) * g;
 }
 
@@ -477,41 +525,6 @@ fn fw_live(t: f32) -> bool {
     return globals.warp[2].y > 0.5 && t > FW_TOUCH - 0.5 && t < FW_END;
 }
 
-// Cone k (1 to 5): a copy of the land round the target, its middle at the point, its edge the rim.
-fn fw_cone(k: i32, pos: vec3<f32>, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
-    var out = Warped(c.tgt + vec3<f32>(0.0, -4000.0, 0.0), vec3<f32>(-1.0));
-    let tau = fw_tau(c.t);
-    let g = fw_stage(k, tau);
-    if (tau <= fw_start(k) || g < 0.002) {
-        return out;
-    }
-    let mq = c.me - c.tgt;
-    let dist = length(mq.xz);
-    let e = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
-    let S = fw_radius(dist, mq.y);
-    let top = -FW_SINK * FW_SINK_END;
-    let ax = 2.0 * S - top;
-    let z1 = 2.0 * S * (1.0 - cos(FW_CAP));
-    let pz = fw_point(k, tau, z1, ax);
-    let qz = fw_point(k - 1, tau, z1, ax);
-    let scale = S * sin(FW_CAP) * pow(FW_TIER_R, f32(k - 1));
-    let w = r / FW_DISC;
-    // (the first as wide as the top that folded in, its rim that top's edge, so it covers all of it; the rest with their rims
-    // a little over the last one's point)
-    var rim = qz - 0.3 * (pz - qz);
-    if (k == 1) {
-        rim = mix(qz, 0.5 * z1, g);
-    }
-    let bell = pow(min(w, 1.3), 1.5);
-    let height = clamp(Q.y, -6.0, 60.0) * scale / FW_DISC;
-    let b = (scale * w + height * 0.8) * g;
-    let z = mix(pz, rim, bell) - height * 0.6 * g;
-    let turn = a + f32(k) * FW_PI / 12.0;
-    let bend = fw_bend(FW_BEAT, c.t, mq, e, 1.0e6, 1.0, top);
-    out.pos = fw_turn(b * cos(turn), 2.0 * S - z, b * sin(turn), fw_roll(dist, 0.0, 0.0, bend), bend) + c.tgt + fw_stay(c, tau);
-    out.tint = vec3<f32>(1.0);
-    return out;
-}
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var out = Warped(pos, vec3<f32>(1.0));
     let c = fw_clock();
@@ -528,7 +541,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var r = length(Q.xz);
     var a = atan2(Q.z, Q.x);
     if (copy > 0u) {
-        return fw_cone(i32(copy), pos, Q, r, a, c);
+        out.pos = c.tgt + vec3<f32>(0.0, -4000.0, 0.0);
+        out.tint = vec3<f32>(-1.0);
+        return out;
     }
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
     let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
@@ -541,10 +556,13 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let mq = c.me - c.tgt;
     let tau = fw_tau(t);
     let stay = fw_stay(c, tau);
-    if (length(Q.xz - mq.xz) < FW_ISLE) {
+    let isle = length(Q.xz - mq.xz) < FW_ISLE;
+    let join = fw_join(tau);
+    if (isle && join <= 0.0) {
         out.pos = c.tgt + Q + vec3<f32>(0.0, rip, 0.0) + stay;
         return out;
     }
+    let rest = Q + vec3<f32>(0.0, rip, 0.0);
     // ---- how far on: the sheet's own heights keep to its surface as it goes up ---------------------------------------------
     // (down from the sphere, and the sheet comes back up under the island as its own ring lands)
     let dist = length(mq.xz);
@@ -556,15 +574,15 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     let seat = select(fw_ss(FW_FOLD, FW_FOLD + 2.5, tau), 1.0 - fw_ss(fw_hit(own) - FW_FALL, fw_hit(own), t), t >= FW_REL);
     // (the hole the island left, closed while the island still covers it: it would be a window on the void)
-    let fill = seat;
+    let fill = seat * (1.0 - join);
     let dm = length(Q.xz - mq.xz);
-    if (fill > 0.0 && dm < FW_ISLE + 60.0) {
+    if (fill > 0.0 && dm < FW_ISLE + 60.0 && !isle) {
         let to = mix(dm, (dm - FW_ISLE) * (FW_ISLE + 60.0) / 60.0, fill);
         Q = vec3<f32>(mq.x + (Q.x - mq.x) * to / dm, Q.y, mq.z + (Q.z - mq.z) * to / dm);
         r = length(Q.xz);
         a = atan2(Q.z, Q.x);
     }
-    let folded = fw_ss(FW_FOLD - 0.5, FW_FOLD + 6.0, tau) * (1.0 - fw_ss(FW_REL + 1.5, FW_SLAM4 - 0.8, t));
+    let folded = fw_ss(FW_FOLD - 0.5, FW_FOLD + 6.0, tau) * (1.0 - fw_ss(FW_REL + 1.5, FW_SLAM4 - 0.8, t)) * (1.0 - fw_lay(tau));
     // (what is under the sheet doesn't swing out on a lever: pressed up to its cut, then the heights pressed in)
     let cuts = fw_ss(FW_FOLD - 0.5, FW_FOLD, tau) * (1.0 - fw_ss(FW_SLAM4 - 0.3, FW_SLAM4, t));
     var h = Q.y + rip;
@@ -593,7 +611,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         let tri = fw_petal(a, i);
         let squeeze = clamp(R / max(r, 1.0), 0.0, 1.0);
         let w = min(r * FW_PI / 12.0, 34.0);
-        hh += FW_PLEATS * (0.5 - tri) * 1.3 * w * sqrt(max(1.0 - squeeze * squeeze, 0.0)) * fw_ss(FW_LEN * 1.15, FW_LEN * 0.95, r) * (1.0 - fw_soft(tau));
+        hh += FW_PLEATS * (0.5 - tri) * 1.3 * w * sqrt(max(1.0 - squeeze * squeeze, 0.0)) * fw_ss(FW_LEN * 1.15, FW_LEN * 0.95, r) * (1.0 - fw_soft(tau, t));
     }
     R += hh * sn;
     Y += hh * cs;
@@ -605,16 +623,15 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let far_ = length(along);
     let dish = mq.y - 8.0 + max(far_ - FW_ISLE - 8.0, 0.0) * 0.5;
     if (y > dish && tau > FW_FOLD) {
-        y = dish + (y - dish) * fw_ss(FW_ISLE, FW_ISLE + 90.0, far_);
+        y = mix(dish + (y - dish) * fw_ss(FW_ISLE, FW_ISLE + 90.0, far_), y, join);
     }
     // ---- the sheet on the sphere -----------------------------------------------------------------------------------------
     let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 6000.0);
     let edge = max(reach - dist, 300.0);
     let top = fw_span(tau, kappa, t).y - sink;
     var P = fw_place(R, r, a, y, fw_bend(tau, t, mq, e, edge, kappa, top));
-    // (the mandala's middle, cut out and left where it is till the bud has come back down to it)
-    if (r < FW_ISLE) {
-        P = mix(Q + vec3<f32>(0.0, rip, 0.0), P, fw_join(tau));
+    if (isle) {
+        P = mix(rest, P, join);
     }
     let bubble = 46.0 - 16.0 * fw_lay(tau);
     out.pos = fw_clear(P + c.tgt + stay, pos, bubble * (1.0 - fw_ss(FW_SLAM4, FW_SLAM4 + 1.0, t)));
@@ -634,11 +651,54 @@ fn fw_crease(r: f32, a: f32) -> vec2<f32> {
         }
     }
     let past = max(r - fw_rho(4, a), 0.0);
-    let tri = fw_petal(a, inside);
-    let arc = FW_PI / 12.0 * r;
-    let edge = (1.0 - tri) * arc;
-    let mid = select(1000.0, tri * arc, inside > 0);
-    return vec2<f32>(min(ring, edge + past * 4.0), mid + past * 4.0);
+    let s = fw_shard(r, a);
+    return vec2<f32>(min(ring + 1.0, s.y + past * 4.0), s.x + past * 4.0);
+}
+// The cracks: land broken as ice is by a blow, shards long and small near the blow and bigger further off, each to its own
+// size: a Voronoi pattern in (log r, bearing), so it runs radially from the middle and is the same at every scale, its points
+// scattered and its lines bent, and only some of its shards broken again. (x how far to the nearest crack, blocks, y to the nearest
+// of the big ones; those tear open, the small ones stay hairlines)
+const FW_SK: f32 = 2.3;            // shards a unit of log r long
+const FW_SM: f32 = 9.0;           // and this many round
+fn fw_cell(p: vec2<f32>, m: f32) -> vec3<f32> {
+    let c = floor(p);
+    var d1 = 9.0;
+    var d2 = 9.0;
+    var id = 0.0;
+    for (var j = -1; j <= 1; j += 1) {
+        for (var i = -1; i <= 1; i += 1) {
+            let o = c + vec2<f32>(f32(i), f32(j));
+            let w = vec2<f32>(o.x, o.y - m * floor(o.y / m));
+            let h = fw_hash(w * 3.7 + vec2<f32>(11.0, 5.0));
+            let h2 = fw_hash(w.yx * 2.3 + vec2<f32>(3.0, 17.0));
+            let q = o + vec2<f32>(0.5 + 0.8 * (h - 0.5), 0.5 + 0.8 * (h2 - 0.5)) - p;
+            let d = dot(q, q);
+            if (d < d1) {
+                d2 = d1;
+                d1 = d;
+                id = h;
+            } else if (d < d2) {
+                d2 = d;
+            }
+        }
+    }
+    return vec3<f32>(sqrt(d2) - sqrt(d1), id, 0.0);
+}
+fn fw_shard(r: f32, a: f32) -> vec2<f32> {
+    let lr = log(r + 22.0);
+    let bent = a + 0.16 * sin(lr * 3.1 + 2.0 * a) + 0.09 * sin(lr * 7.3 - 3.0 * a) + 0.05 * sin(lr * 13.0 + 5.0 * a);
+    let u = (bent + FW_PI) / FW_TAU;
+    let p = vec2<f32>(lr * FW_SK + 0.13 * sin(a * 3.0 + lr), u * FW_SM);
+    let big = fw_cell(p, FW_SM);
+    let size = (r + 22.0) / FW_SK;
+    let wide = big.x * 0.5 * size;
+    // (some shards broken again, smaller)
+    var fine = wide;
+    if (big.y > 0.42) {
+        let b = fw_cell(p * 2.0 + vec2<f32>(0.37, 0.71), FW_SM * 2.0);
+        fine = min(fine, b.x * 0.25 * size);
+    }
+    return vec2<f32>(fine, wide);
 }
 // How far the scoring has raced by t.
 fn fw_score(t: f32) -> f32 {
@@ -747,17 +807,19 @@ fn world_fragment(f: Fragment) -> Painted {
     let tau = fw_tau(t);
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
-    // ---- the cones: a scalloped disc of the land, its top only ---------------------------------------------------------
     if (f.copy > 0u) {
-        let edge = FW_DISC * (0.86 + 0.14 * (1.0 - fw_petal(a + f32(f.copy) * FW_PI / 12.0, 0)));
-        if (r > edge || Q.y < -8.0 || f.light.x < 6.0 || plain.a < 0.5) {
-            return drop_;
-        }
-        let px = max(0.05, max(length(dpdx(f.home)), length(dpdy(f.home))));
-        let rimline = 1.0 - fw_ss(0.5, 1.0 + px * 1.6, edge - r);
-        // (dark in the throat, where the next cone comes out of it: the steps read)
-        let shade = mix(0.42, 1.0, fw_ss(0.0, 0.62, r / edge));
-        return Painted(vec4<f32>(mix(plain.rgb * shade, vec3<f32>(1.0, 0.72, 0.42), rimline), 1.0), 1.0 - rimline);
+        return drop_;
+    }
+    // ---- the hole in the roof: the walls' land ends in a wandering line, and only the branch goes on ---------------------------
+    let mq = c.me - c.tgt;
+    let dmq = length(mq.xz);
+    let rimr = fw_rim(dmq);
+    let lands = fw_edge(a, rimr);
+    let da = atan2(sin(a - atan2(-mq.z, -mq.x)), cos(a - atan2(-mq.z, -mq.x)));
+    let reach = fw_reached(tau);
+    let branch = r > lands && abs(da) < FW_ROOT && reach > 0.0;
+    if (r > lands + (1.0 - fw_ss(31.0, 34.5, tau)) * 8000.0 && !branch) {
+        return drop_;
     }
     // ---- the sheet: nothing under the land is drawn ------------------------------------------------------------------------
     let opened = t > FW_SEAL - 0.5 && r < FW_LAND_R;
@@ -775,17 +837,17 @@ fn world_fragment(f: Fragment) -> Painted {
     let dm = length(Q.xz - (c.me.xz - c.tgt.xz));
     let isle = abs(dm - FW_ISLE);
     let gone = fw_ss(FW_FOLD - 0.4, FW_FOLD + 0.2, tau) * (1.0 - fw_ss(FW_SLAM4 - 0.1, FW_SLAM4 + 0.2, t));
-    if (gone > 0.5 && isle < 1.7) {
-        return drop_;
-    }
-    // (and the mandala's middle's)
-    let mid = abs(r - FW_ISLE);
-    if (gone * (1.0 - fw_join(tau)) > 0.5 && mid < 1.7) {
+    if (gone * (1.0 - fw_join(tau)) > 0.5 && isle < 1.7) {
         return drop_;
     }
     // ---- the crease pattern, its parts in time ---------------------------------------------------------------------------
-    let dc = fw_crease(r, a);
     let front = fw_score(t);
+    let healed = fw_ss(25.5, 28.0, tau);
+    // (past the land they are healed, and the pattern's dear: not worked out when there is nothing to show)
+    var dc = vec2<f32>(1000.0);
+    if (healed < 1.0 && front > 0.0 && r < FW_LEN * 1.2) {
+        dc = fw_crease(r, a);
+    }
     let scored = fw_ss(0.0, 26.0, front - r);
     let fade = 1.0 - fw_ss(FW_FADE, FW_END - 1.5, t);
     // (the block's own texture, tiled smaller and smaller as the land goes)
@@ -844,7 +906,7 @@ fn world_fragment(f: Fragment) -> Painted {
     }
     // ---- the sponge: as a petal goes, blocks by the creases eaten away to the void ---------------------------------------
     if (FW_SPONGE > 0.0 && dist < 260.0 && lifting > 0.02) {
-        let sp = fw_ss(0.02, 0.45, lifting) * (1.0 - fw_ss(0.88, 1.0, lifting)) * (1.0 - fw_ss(6.0, 26.0, dnear));
+        let sp = fw_ss(0.02, 0.45, lifting) * (1.0 - fw_ss(0.88, 1.0, lifting)) * (1.0 - fw_ss(6.0, 26.0, dnear)) * (1.0 - healed);
         // (block by block, by the blocks' own grid; past a little way off a sponge three blocks wide, or it couldn't be seen)
         let w = globals.warp;
         let size = select(1.0, 3.0, dist > 70.0);
@@ -872,7 +934,6 @@ fn world_fragment(f: Fragment) -> Painted {
         let hair = 1.0 - fw_ss(0.05 + px, 0.1 + px * 2.2, d);
         // (the tear: wider the more it has opened, broken up block by block)
         // (and sealed, smoothly, as the land comes together: no void from inside, no hatching as it goes)
-        let healed = fw_ss(26.0, 29.5, tau);
         let jag = mix(0.45 + 1.1 * fw_hash(floor(Q.xz / 3.0)), 1.0, healed);
         let opens = fw_ss(FW_TEAR, FW_FOLD + 1.0, t) * (1.0 - fw_ss(FW_FADE + 1.0, FW_END - 2.0, t)) * (1.0 - healed);
         let tw = opens * jag * (1.6 + 0.009 * r + 2.2 * (1.0 - fw_ss(0.0, 3.0, dc.x)));
@@ -893,14 +954,27 @@ fn world_fragment(f: Fragment) -> Painted {
         col = mix(col, line, clamp(hairline, 0.0, 1.0));
         fog = 1.0 - clamp(hairline + ember, 0.0, 1.0);
     }
-    // ---- past the real land the sphere goes off into its own dusk: the far land's coarse tiles are no use this close --------
-    let dusk = fw_ss(600.0, 1500.0, r) * fw_ss(30.5, 33.5, tau) * 0.88;
-    col = mix(col, vec3<f32>(0.035, 0.04, 0.1), dusk);
-    // ---- the mandala's middle, a line of light where it was cut --------------------------------------------------------------
-    {
-        let px = max(0.05, dist * 0.00095);
-        let line = (1.0 - fw_ss(1.7, 2.2 + px * 2.0, mid)) * fw_ss(FW_SCORE, FW_TEAR, t) * fade * (1.0 - fw_join(tau));
-        col = mix(col, vec3<f32>(1.0, 0.95, 0.9) * 1.4, line);
+    // ---- past the real land the sphere goes off into its own dusk: the far land's coarse tiles are no use this close, and the
+    // darker it gets towards the hole the less there is to see of how it ends ----------------------------------------------------
+    let awayp = length(Q.xz - mq.xz);
+    let dusk = max(fw_ss(430.0, 640.0, awayp), fw_ss(0.5 * lands, 0.97 * lands, r)) * fw_ss(30.5, 33.5, tau);
+    col = mix(col, vec3<f32>(0.02, 0.024, 0.06), dusk * 0.96);
+    // ---- the branch: the land run down off the rim, rock in the dusk at its root, the land's colours coming through towards the tip
+    if (branch) {
+        let far_ = max(0.75 * max(clamp(min(globals.fog.y, globals.fog.w), 480.0, 6000.0) - dmq, 300.0), lands + 200.0);
+        let v = clamp((r - lands) / (far_ - lands), 0.0, 1.0);
+        let n0 = cross(dpdx(f.at), dpdy(f.at));
+        let n = n0 / max(length(n0), 1.0e-5);
+        let sun = normalize(vec3<f32>(0.3, 0.8, 0.5));
+        let lit = 0.34 + 0.66 * max(abs(dot(n, sun)), 0.0);
+        // (blocks of it, not the far land's big tiles)
+        let cell = floor(vec2<f32>(v * 300.0, da * 34.0));
+        let grain = 0.72 + 0.5 * fw_hash(cell);
+        let rock = mix(vec3<f32>(0.1, 0.085, 0.075), vec3<f32>(0.22, 0.2, 0.15), fw_hash(cell + 41.0));
+        let land = mix(plain.rgb, vec3<f32>(0.17, 0.27, 0.13), 0.5);
+        col = mix(rock, land, fw_ss(0.15, 0.9, v)) * grain * lit;
+        col = mix(col, vec3<f32>(0.02, 0.024, 0.06), 0.82 * (1.0 - fw_ss(0.0, 0.3, v)));
+        return Painted(vec4<f32>(col, 1.0), 0.0);
     }
     return Painted(vec4<f32>(col, alpha), fog);
 }

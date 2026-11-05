@@ -712,7 +712,7 @@ fn fd_tau(t: f32) -> f32 {
 }
 fn fd_stay(from_: vec3<f32>, S: f32, mh: f32) -> vec3<f32> {
     let L = 0.55 * S;
-    let down = max(mh - min(mh - 4.0, 0.0) - 2.0, 6.0);
+    let down = 30.0;
     let v = vec3<f32>(from_.x, from_.y * select(1.0, L / down, from_.y < 0.0), from_.z);
     let n = length(v);
     if (n < 0.001) { return vec3<f32>(0.0); }
@@ -741,14 +741,14 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let mh = me.y - tgt.y;
     let tk = 1.0 / max(max(dist * 1.3, 170.0), mh * 1.15);
     let tth = 2.0 * atan(dist * tk * 0.5);
-    // (what is left of FW_SINK)
-    let thy = -16.0 * 0.3;
-    let tup = sin(tth) / tk;
-    let typ = 2.0 * pow(sin(tth * 0.5), 2.0) / tk;
-    let tu = dist - tup * cos(tth) + (thy - typ) * sin(tth);
-    let ty = tup * sin(tth) + (thy - typ) * cos(tth);
+    // (the player's own place on the roll is what stays: the point under them, at their own height, fw_roll's)
+    let tyy = mh / (1.0 + dist * dist * tk * tk * 0.25);
+    let tup = sin(tth) * (1.0 / tk - tyy);
+    let typ = 2.0 * pow(sin(tth * 0.5), 2.0) / tk + tyy * cos(tth);
+    let tu = dist - tup * cos(tth) - typ * sin(tth);
+    let ty = mh + tup * sin(tth) - typ * cos(tth);
     let te = (me.xz - tgt.xz) / max(dist, 0.001);
-    let pt = project_rel(gq + vec3<f32>(te.x * tu, ty + min(mh - 4.0, 0.0), te.y * tu) + fd_stay(cam + camera_rest() - me, 1.0 / tk, mh));
+    let pt = project_rel(gq + vec3<f32>(te.x * tu, ty, te.y * tu) + fd_stay(cam + camera_rest() - me, 1.0 / tk, mh));
 
     var col = fd_sample(uv);
 

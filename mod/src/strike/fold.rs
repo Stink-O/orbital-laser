@@ -13,9 +13,9 @@
 //!   FD_SCORE          the rings sharpen into hairline creases racing over the land, the mandala's pattern
 //!   FD_TEAR           the creases split open on the void
 //!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land closes round the player, the rings lying back to a mound
-//!   FD_SEAL           shut: the player is inside a sphere, real land on all its walls
-//!   FD_FOLDS          its top is pushed in, then five cones of the target's own land open down towards the target, slower
-//!                     and slower; FD_BEAT the tip touches it: a tiny light and a ding; stillness to FD_RELEASE
+//!   FD_SEAL           the player is inside a sphere, real land on its walls, a hole left in its roof
+//!   FD_FOLDS          a branch of the land flows off the hole's rim and down to the target, slower and slower, thinner at
+//!                     each stage; FD_BEAT its tip touches it: a tiny light and a ding; stillness to FD_RELEASE
 //!   FD_RELEASE        all of it runs backwards, gathering slowly: the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
 //!   FD_SLAM[4]        the last ring lands, and the crater shows (FD_REVEAL)
@@ -27,7 +27,7 @@ use crate::lasers::Laser;
 pub(super) const FD_LEN: f32 = 59.7;
 /// The world warp (shaders/fold_warp.wgsl): how many times it draws the land near the target again, how far from it, and
 /// when it is on, the world's own culling back the rest of the time.
-pub const FD_COPIES: u32 = 5;
+pub const FD_COPIES: u32 = 0;
 pub const FD_COPY_R: f32 = 130.0;
 /// When the copies are drawn: the cones of the fold down, out and back.
 pub const FD_COPY_ON: std::ops::Range<f32> = 35.4..42.1;
@@ -141,7 +141,6 @@ mod tests {
         for (k, t) in FD_FOLDS.iter().enumerate() {
             assert!(warp.contains(&format!("case {k}: {{ return {t:.1}; }}")), "fold {k}");
         }
-        assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
     }
 
     fn the_laser() -> &'static Laser {
