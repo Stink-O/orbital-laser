@@ -200,6 +200,11 @@ VIEWS = {
     "flhill": "cx=0 cy=75 cz=130 lx=0.5 ly=70 lz=0.5 hills=22 trees=1 fov=75 reach=130",
     "flhigh": "cx=60 cy=140 cz=220 lx=0.5 ly=60 lz=0.5 hills=18 trees=1 fov=70 reach=220",
     "flrim": "cx=0 cy=75 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=75 reach=110",
+    # the scar whole (fl_dump_land): from straight over it, from high off to one side, from its rim, and down on its floor
+    "fdtop": "cx=0.5 cy=620 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
+    "fdhigh": "cx=0 cy=300 cz=420 lx=0.5 ly=30 lz=20 flat=1 vox=2 fov=55 reach=70",
+    "fdrim": "cx=40 cy=95 cz=205 lx=0.5 ly=35 lz=0 flat=1 vox=2 fov=75 reach=110",
+    "fdfloor": "cx=70 cy=62 cz=110 lx=-20 ly=10 lz=0 flat=1 vox=2 fov=75 reach=110",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
