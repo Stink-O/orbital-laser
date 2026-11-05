@@ -20,6 +20,7 @@ use std::rc::Rc;
 /// The story's times (strike seconds). Keep in step with shaders/volcano.wgsl.
 pub(super) const VC_HIT: f32 = 2.0;
 pub(super) const VC_CRACK: f32 = 6.0;
+pub(super) const VC_HUSH: f32 = 17.0;
 pub(super) const VC_ERUPT: f32 = 18.0;
 pub(super) const VC_BOMBS: f32 = 19.0;
 pub(super) const VC_BOMBS_END: f32 = 36.0;
@@ -245,6 +246,9 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         }
     }
 
+    // ---- the mount: strike/vc_mount.rs, drawn whatever the terrain setting ----------------------------------------------
+    super::vc_mount::vm_plan(&mut p, shader_seed as u32, hf.clone());
+
     // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
     {
         let bombs: Vec<(f32, f64, f64)> = vc_bombs(shader_seed, rel, &|_, _| 0.0)
@@ -261,8 +265,9 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     // the column's roar in the ground, the collapse, the wall arriving -------------------------------------------------
     let fo = (1.6 / (1.0 + dist / 500.0)).clamp(0.25, 1.0) as f32;
     let mut ts = VC_HIT + 0.5;
-    while ts < VC_ERUPT {
-        let u = (ts - VC_HIT) / (VC_ERUPT - VC_HIT);
+    // (nothing at the hush: one held breath before it goes)
+    while ts < VC_HUSH {
+        let u = (ts - VC_HIT) / (VC_HUSH - VC_HIT);
         p.shake(ts, (0.05 + 0.4 * u * u) * fo, 0.5 + 0.5 * u);
         ts += 0.9 - 0.6 * u;
     }
@@ -348,6 +353,14 @@ mod table {
         let hf = super::vc_hf_pack(&heights, reach);
         w.resize(super::VC_HF + hf.len(), 0);
         w[super::VC_HF..].copy_from_slice(&hf);
+        // (VM_NOLAND=1: the land never read, as far off with the terrain off)
+        let noland = std::env::var("VM_NOLAND").is_ok_and(|v| v == "1");
+        for (i, words) in super::super::vc_mount::table::all(seed as u32, &|x, z| (!noland).then(|| super::super::vc_mount::table::preview_col(x, z, hills))) {
+            if w.len() < i + words.len() {
+                w.resize(i + words.len(), 0);
+            }
+            w[i..i + words.len()].copy_from_slice(&words);
+        }
         let text: String = w.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }

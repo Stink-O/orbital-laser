@@ -25,16 +25,18 @@ shaders="$here/../mod/shaders"
 cat "$here/wgslcheck/prelude.wgsl" "$shaders/strike.wgsl" > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "strike.wgsl:"; echo "$out"; exit 1; }
 pre() { sed -e '/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d' -e '/^@fragment/,$d' "$shaders/strike.wgsl"; }
+# (a laser's own file, with the Supervolcano's mount after its)
+body() { cat "$shaders/$1.wgsl"; [ "$1" != volcano ] || cat "$shaders/volcano_mount.wgsl"; }
 for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane volcano; do
-    { cat "$here/wgslcheck/prelude.wgsl"; pre; cat "$shaders/$own.wgsl"; } > "$tmp"
+    { cat "$here/wgslcheck/prelude.wgsl"; pre; body "$own"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass (strike.wgsl up to its fs_main, then $own.wgsl):"; echo "$out"; exit 1; }
     # the game takes a pass of 256 KiB at most
-    size=$(( $(pre | wc -c) + $(wc -c < "$shaders/$own.wgsl") ))
+    size=$(( $(pre | wc -c) + $(body "$own" | wc -c) ))
     [ "$size" -le 262144 ] || { echo "the $own pass is $size bytes, over the game's 256 KiB"; exit 1; }
 done
 # the payload's and the nuke's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
 for own in payload nuke rod supercell hurricane volcano; do
-    { cat "$here/wgslcheck/prelude.wgsl"; pre; sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d' "$shaders/$own.wgsl"; } > "$tmp"
+    { cat "$here/wgslcheck/prelude.wgsl"; pre; body "$own" | sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d'; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done
 echo OK

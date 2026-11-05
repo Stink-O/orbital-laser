@@ -1050,7 +1050,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     o.t = 1.0e9;
     let t_end = min(tmax, 32000.0);
     let time = vs.t;
-    if (time < VC_CRACK - 0.1) {
+    if (time < VC_ERUPT + 0.9) {
         return o;
     }
     var t = 0.0;
@@ -1348,7 +1348,7 @@ fn vc_jolt(in: StageIn) -> StageIn {
     let dist = length(me - tgt);
     let g = clamp(1.7 / (1.0 + dist / 700.0), 0.2, 1.0);
     // (the tremor, building from the hit, faster and harder up to the eruption)
-    let tr = smoothstep(VC_HIT, VC_ERUPT, t) * (1.0 - smoothstep(VC_ERUPT + 2.0, VC_ERUPT + 7.0, t + dist / VC_V));
+    let tr = smoothstep(VC_HIT, VC_ERUPT - 1.0, t) * (1.0 - smoothstep(VC_ERUPT - 1.05, VC_ERUPT - 0.75, t));
     var amp = 0.0024 * g * tr * tr;
     let s = t - VC_ERUPT - dist / VC_V;
     if (s > 0.0 && s < 8.0) {
@@ -1385,6 +1385,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     let time = now();
     vc_set_state(time);
     vs.fine = select(1.0, 2.0, stage == 1u);
+    vm_set(time);
     let cam = frame.camera_position.xyz;
     let k = intensity_v();
     let seed = u32(seed_v());
@@ -1412,9 +1413,9 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     } else {
         d = depth_at(uv);
     }
-    let sky = is_sky(d);
+    var sky = is_sky(d);
     let rel = world_offset(uv, select(d, 0.5, sky));
-    let scene_len = select(1.0e9, length(rel), !sky);
+    var scene_len = select(1.0e9, length(rel), !sky);
     let rd = normalize(world_offset(uv, 0.5));
     let scene = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb);
     var col = scene;
@@ -1444,6 +1445,13 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     l.warm = warm;
     l.sun_up = sun_up;
     l.seed = seed;
+    // ---- the mount, drawn over the land until the burst (volcano_mount.wgsl) ---------------------------------------
+    let vmh = vm_surface(C, rd, scene_len, col, stage, l, uv, sky);
+    col = vmh.c;
+    if (vmh.t >= 0.0) {
+        scene_len = vmh.t;
+        sky = false;
+    }
 
     // ---- the land and the sky, under it ---------------------------------------------------------------------------
     if (stage != 1u && !sky) {
@@ -1452,7 +1460,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         // (the cracks, the ring's glow on the land)
         let rg = length(qg.xz);
         let vent = smoothstep(VC_CRACK, VC_ERUPT, time);
-        if (vent > 0.0 && abs(qg.y) < 200.0) {
+        if (time > VC_ERUPT + 0.9 && abs(qg.y) < 200.0) {
             let dr = abs(rg - VC_RING);
             let ang = atan2(qg.z, qg.x);
             let wob = 14.0 * sin(ang * 7.0 + 1.0) + 9.0 * sin(ang * 19.0 + 3.0) + 6.0 * sin(ang * 43.0 + 0.5);
@@ -1495,8 +1503,12 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         if (tb < cloud_t) {
             ac = sm.rgb + m.c * sm.a;
         }
-        let at = m.tr * sm.a;
+        let at0 = m.tr * sm.a;
         cloud_t = min(cloud_t, tb);
+        // (the mount's steam and dust, in front of it all)
+        let va = vm_air(C, rd, min(scene_len, 9000.0), j, l);
+        ac = va.rgb + ac * va.a;
+        let at = at0 * va.a;
         tr_here = at;
         if (stage == 0u) {
             col = col * at + ac;
@@ -1624,6 +1636,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let disc = 1.0 - smoothstep(0.052, 0.058, th);
         col = col + (vec3<f32>(1.15, 0.07, 0.02) * disc + vec3<f32>(0.42, 0.05, 0.02) * exp(-th / 0.22) + vec3<f32>(0.12, 0.03, 0.012) * exp(-th / 0.8)) * show * vis * sun_up;
     }
+    col = vm_over(col, C, rd, scene_len, l);
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     let out = mix(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb, srgb, fade);
     if (capture() > 2.5) {
@@ -1713,7 +1726,9 @@ fn vc_up(pos: vec2<f32>, len: f32) -> VcOut {
 fn fs_join(in0: StageIn) -> @location(0) vec4<f32> {
     let in = vc_jolt(in0);
     let d = depth_at(in.uv);
-    let len = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
+    let len0 = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
+    let anc = anchor_xz();
+    let len = vm_join_len(in.position.xy, len0, vec3<f32>(anc.x, block_y() + 1.0, anc.y) - frame.camera_position.xyz, normalize(world_offset(in.uv, 0.5)));
     let u = vc_up(in.position.xy, len);
     return volcano(in, 2u, u.c, u.e.x).c;
 }

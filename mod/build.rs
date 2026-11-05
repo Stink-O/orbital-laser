@@ -52,7 +52,7 @@ fn main() {
     let h: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_hurricane_{f}.wgsl"), passbuild::split_pass(&shader, &hu, f))).collect();
     writeln!(rs, "/// The Hurricane's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_HURRICANE: [&str; 2] = [{}];", h.join(", ")).unwrap();
-    let vc = read("volcano.wgsl");
+    let vc = read("volcano.wgsl") + &read("volcano_mount.wgsl");
     let v: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_volcano_{f}.wgsl"), passbuild::split_pass(&shader, &vc, f))).collect();
     writeln!(rs, "/// The Supervolcano's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_VOLCANO: [&str; 2] = [{}];", v.join(", ")).unwrap();

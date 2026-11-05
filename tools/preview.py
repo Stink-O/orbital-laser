@@ -200,6 +200,14 @@ VIEWS = {
     "vcside": "cx=-3200 cy=1700 cz=900 lx=0.5 ly=1200 lz=0.5 flat=1 fov=60 reach=3000",
     "vctop": "cx=0 cy=5200 cz=1 lx=0.5 ly=65 lz=0.5 flat=1 fov=75 reach=3000",
     "vchill": "cx=0 cy=110 cz=620 lx=0.5 ly=280 lz=0.5 hills=30 flush=1 trees=1 fov=75 reach=620",
+    # the mount: from the player's 500 off, from 900, from above, close under its flank from 340 off, over its top
+    "vm500": "cx=0 cy=72 cz=500 lx=0.5 ly=130 lz=0.5 flat=1 trees=1 fov=70 reach=500",
+    "vm500h": "cx=0 cy=125 cz=500 lx=0.5 ly=115 lz=0.5 flat=1 trees=1 fov=70 reach=500",
+    "vm900": "cx=0 cy=90 cz=900 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=60 reach=900",
+    "vmtop": "cx=0 cy=640 cz=520 lx=0.5 ly=90 lz=0.5 flat=1 trees=1 fov=60 reach=500",
+    "vmnear": "cx=30 cy=74 cz=350 lx=0.5 ly=150 lz=60 flat=1 trees=1 fov=75 reach=350",
+    "vmover": "cx=120 cy=330 cz=260 lx=0 ly=160 lz=0 flat=1 trees=1 fov=70 reach=300",
+    "vmhill": "cx=0 cy=110 cz=620 lx=0.5 ly=150 lz=0.5 hills=30 flush=1 trees=1 fov=70 reach=620",
     # low over the land from a little past the ring at the cracks, and looking along the land at the flow coming on
     "vcring": "cx=60 cy=72 cz=380 lx=0 ly=64 lz=280 flat=1 trees=1 fov=70 reach=560",
     "vcflow": "cx=0 cy=67 cz=720 lx=0.5 ly=120 lz=0.5 flat=1 trees=1 fov=70 reach=720",
@@ -232,6 +240,8 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
+        if laser == "supervolcano":
+            own += (SHADERS / "volcano_mount.wgsl").read_text()
         if not fast:
             own = subprocess.run(["sed", "-e", r"/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d"],
                                  input=own, capture_output=True, text=True, check=True).stdout
