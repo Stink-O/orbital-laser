@@ -965,7 +965,7 @@ fn vc_jolt(in: StageIn) -> StageIn {
     let dist = length(me - tgt);
     let g = clamp(1.7 / (1.0 + dist / 700.0), 0.2, 1.0);
     // (the tremor, building from the hit, faster and harder up to the eruption)
-    let tr = smoothstep(VC_HIT, VC_ERUPT, t) * (1.0 - smoothstep(VC_ERUPT + 2.0, VC_ERUPT + 7.0, t + dist / VC_V));
+    let tr = smoothstep(VC_HIT, VC_ERUPT - 1.0, t) * (1.0 - smoothstep(VC_ERUPT - 1.05, VC_ERUPT - 0.75, t));
     var amp = 0.0024 * g * tr * tr;
     let s = t - VC_ERUPT - dist / VC_V;
     if (s > 0.0 && s < 8.0) {

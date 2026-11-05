@@ -20,6 +20,7 @@ use std::rc::Rc;
 /// The story's times (strike seconds). Keep in step with shaders/volcano.wgsl.
 pub(super) const VC_HIT: f32 = 2.0;
 pub(super) const VC_CRACK: f32 = 6.0;
+pub(super) const VC_HUSH: f32 = 17.0;
 pub(super) const VC_ERUPT: f32 = 18.0;
 pub(super) const VC_BOMBS: f32 = 19.0;
 pub(super) const VC_BOMBS_END: f32 = 36.0;
@@ -251,8 +252,9 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     // the column's roar in the ground, the collapse, the wall arriving -------------------------------------------------
     let fo = (1.6 / (1.0 + dist / 500.0)).clamp(0.25, 1.0) as f32;
     let mut ts = VC_HIT + 0.5;
-    while ts < VC_ERUPT {
-        let u = (ts - VC_HIT) / (VC_ERUPT - VC_HIT);
+    // (nothing at the hush: one held breath before it goes)
+    while ts < VC_HUSH {
+        let u = (ts - VC_HIT) / (VC_HUSH - VC_HIT);
         p.shake(ts, (0.05 + 0.4 * u * u) * fo, 0.5 + 0.5 * u);
         ts += 0.9 - 0.6 * u;
     }

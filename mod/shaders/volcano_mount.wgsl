@@ -685,9 +685,11 @@ fn vm_field(q: vec3<f32>, t: f32) -> VmAir {
     // ---- the steam: thin along the cracks at first, racing out with them, then thick columns off the live ones -------
     let reach = saturate((vm.front - r) / 40.0);
     let live = smoothstep(0.42, 0.68, gnoise2(q.xz * 0.019 + vec2<f32>(t * 0.05, 3.0)));
-    let tall = 7.0 + (6.0 + 34.0 * live) * smoothstep(7.0, 15.0, t);
+    // (a jet where the crack has just got to: a ring of them racing out over the land)
+    let jetk = exp(-max(vm.front - r, 0.0) / 230.0);
+    let tall = 7.0 + (6.0 + 34.0 * live) * smoothstep(7.0, 15.0, t) + 40.0 * jetk;
     let wd = 1.6 + 0.3 * max(up, 0.0);
-    a.steam = (1.0 - smoothstep(0.2 * wd, wd, u.y)) * reach * exp(-max(up, 0.0) / tall) * (0.2 + 0.8 * live);
+    a.steam = (1.0 - smoothstep(0.2 * wd, wd, u.y)) * reach * exp(-max(up, 0.0) / tall) * min(0.2 + 0.8 * live + 1.3 * jetk, 1.0);
     // ---- the dust: pouring down off what breaks, lying in a ring round its foot, spreading -------------------------
     let dt = smoothstep(9.5, 15.0, t);
     if (dt > 0.0) {

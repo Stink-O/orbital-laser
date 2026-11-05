@@ -54,21 +54,18 @@ const VM_RAD: f64 = 300.0;
 const VC_SWELL: f64 = 7.0;
 const VC_HUSH: f64 = 17.0;
 /// How much of each column's stack is read, the columns worked out a tick, rows to a query.
-const READ_BELOW: u32 = 16;
+const READ_BELOW: u32 = 12;
 const READ_ABOVE: u32 = 1;
-const PER_STAGE: usize = 3_600;
-const READ_ROWS: usize = 40;
+const PER_STAGE: usize = 2_400;
+const PACK_COLS: usize = 12_000;
+const READ_COLS: usize = 8_000;
 
-/// A smooth bump of noise, 0 to 1.
-fn vn(x: f64, z: f64, s: u32) -> f64 {
-    let (i, k) = (x.floor(), z.floor());
-    let (u, v) = (x - i, z - k);
-    let (u, v) = (u * u * (3.0 - 2.0 * u), v * v * (3.0 - 2.0 * v));
-    let h = |a: f64, b: f64| mh((a as i32 as u32).wrapping_mul(0x9E37_79B1).wrapping_add(b as i32 as u32), s, 0x6d);
-    let (a, b, c, d) = (h(i, k), h(i + 1.0, k), h(i, k + 1.0), h(i + 1.0, k + 1.0));
-    (a * (1.0 - u) + b * u) * (1.0 - v) + (c * (1.0 - u) + d * u) * v
+/// The random numbers a column of the field draws on: a table made once (the columns are many, and a hash each is too
+/// dear in fuel: 58,000 columns must go in a few ticks).
+const VM_TAB: usize = 1 << 12;
+fn vm_tab(seed: u32) -> Vec<f32> {
+    (0..VM_TAB as u32).map(|i| mh(i, seed, 0x6d) as f32).collect()
 }
-
 #[derive(Clone, Copy, Default)]
 struct Plate {
     x: f64,
@@ -112,7 +109,9 @@ struct Fount {
 /// The dome and how it breaks, for a seed: worked out as the strike starts.
 pub(super) struct Geo {
     seed: u32,
-    ph: [f64; 4],
+    tab: Vec<f32>,
+    /// The dome's radius by bearing.
+    radii: Vec<f64>,
     rings: Vec<Ring>,
     plates: Vec<Plate>,
     pub shards: Vec<Shard>,
@@ -130,7 +129,14 @@ pub(super) struct Cell {
 impl Geo {
     pub fn new(seed: u32) -> Self {
         let ph = [TAU * mh(1, seed, 0x700), TAU * mh(2, seed, 0x700), TAU * mh(3, seed, 0x700), TAU * mh(4, seed, 0x700)];
-        let mut g = Geo { seed, ph, rings: Vec::new(), plates: Vec::new(), shards: Vec::new() };
+        let [p0, p1, p2, _] = ph;
+        let radii = (0..=512)
+            .map(|i| {
+                let a = -PI + TAU * f64::from(i) / 512.0;
+                VM_RAD * (1.0 + 0.1 * (2.0 * a + p0).sin() + 0.075 * (3.0 * a + p1).sin() + 0.04 * (5.0 * a + p2).sin())
+            })
+            .collect();
+        let mut g = Geo { seed, tab: vm_tab(seed), radii, rings: Vec::new(), plates: Vec::new(), shards: Vec::new() };
         // (wedges in rings: long down the slope, a star of them round the top, on out past the dome's foot over the land,
         // where only the cracks show)
         let mut first = 0;
@@ -205,31 +211,42 @@ impl Geo {
         g.shards = shards;
         g
     }
+    /// A smooth bump of noise, 0 to 1 (layer `s` of it).
+    #[inline]
+    fn vn(&self, x: f64, z: f64, s: u32) -> f64 {
+        let (i, k) = (x.floor(), z.floor());
+        let (u, v) = (x - i, z - k);
+        let (u, v) = (u * u * (3.0 - 2.0 * u), v * v * (3.0 - 2.0 * v));
+        let (ci, ck) = (i as i32 as u32, k as i32 as u32);
+        let h = |a: u32, b: u32| f64::from(self.tab[(a.wrapping_mul(61).wrapping_add(b.wrapping_mul(1021)).wrapping_add(s.wrapping_mul(379)) as usize) & (VM_TAB - 1)]);
+        let (a, b, c, d) = (h(ci, ck), h(ci + 1, ck), h(ci, ck + 1), h(ci + 1, ck + 1));
+        (a * (1.0 - u) + b * u) * (1.0 - v) + (c * (1.0 - u) + d * u) * v
+    }
     /// The dome at (x, z) from the vent: its share of the height, 0 past its foot, about 1 at the top. Never a circle,
     /// never a bowl: lobed round its foot, ridged over its back.
     pub fn dome(&self, x: f64, z: f64) -> f64 {
-        let a = z.atan2(x);
-        let [p0, p1, p2, _] = self.ph;
-        let rad = VM_RAD * (1.0 + 0.1 * (2.0 * a + p0).sin() + 0.075 * (3.0 * a + p1).sin() + 0.04 * (5.0 * a + p2).sin());
-        let u = x.hypot(z) / rad;
-        if u >= 1.0 {
+        let r2 = x * x + z * z;
+        if r2 > 427.0 * 427.0 {
             return 0.0;
         }
-        let b = (1.0 - u * u).powi(2);
-        let s = self.seed;
-        let ridges = vn(x / 170.0 + 3.3, z / 170.0, s) - 0.5;
-        let fine = vn(x / 66.0, z / 66.0 + 7.1, s ^ 7) - 0.5;
+        let rad = self.radii[(((z.atan2(x) + PI) / TAU * 512.0) as usize).min(512)];
+        let u2 = r2 / (rad * rad);
+        if u2 >= 1.0 {
+            return 0.0;
+        }
+        let b = (1.0 - u2) * (1.0 - u2);
+        let ridges = self.vn(x / 170.0 + 3.3, z / 170.0, 1) - 0.5;
+        let fine = self.vn(x / 66.0, z / 66.0 + 7.1, 2) - 0.5;
         b * (1.0 + 0.42 * ridges + 0.17 * fine)
     }
     /// The field at column (x, z) from the vent.
     pub fn cell(&self, x: f64, z: f64) -> Cell {
-        let s = self.seed;
         // (the edges wander: long bends, jagged close to)
         let (wx, wz) = (
-            x + 22.0 * (vn(x / 96.0, z / 96.0, s ^ 11) - 0.5) + 5.5 * (vn(x / 25.0, z / 25.0, s ^ 12) - 0.5) + 1.6 * (vn(x / 8.0, z / 8.0, s ^ 15) - 0.5),
-            z + 22.0 * (vn(x / 96.0 + 5.0, z / 96.0, s ^ 13) - 0.5) + 5.5 * (vn(x / 25.0, z / 25.0 + 3.0, s ^ 14) - 0.5) + 1.6 * (vn(x / 8.0, z / 8.0 + 1.0, s ^ 16) - 0.5),
+            x + 22.0 * (self.vn(x / 96.0, z / 96.0, 11) - 0.5) + 5.5 * (self.vn(x / 25.0, z / 25.0, 12) - 0.5) + 1.6 * (self.vn(x / 8.0, z / 8.0, 15) - 0.5),
+            z + 22.0 * (self.vn(x / 96.0 + 5.0, z / 96.0, 13) - 0.5) + 5.5 * (self.vn(x / 25.0, z / 25.0 + 3.0, 14) - 0.5) + 1.6 * (self.vn(x / 8.0, z / 8.0 + 1.0, 16) - 0.5),
         );
-        let r = wx.hypot(wz).max(1.0);
+        let r = (wx * wx + wz * wz).sqrt().max(1.0);
         let (ux, uz) = (wx / r, wz / r);
         let a = wz.atan2(wx);
         let j = self.rings.iter().position(|g| r < g.r1).unwrap_or(self.rings.len() - 1);
@@ -245,7 +262,7 @@ impl Geo {
                 let dr = dx * ux + dz * uz;
                 let dt = dz * ux - dx * uz;
                 // (long down the slope)
-                let d = (0.56 * dr).hypot(dt);
+                let d = (0.3136 * dr * dr + dt * dt).sqrt();
                 if d < d1 {
                     d2 = d1;
                     d1 = d;
@@ -269,13 +286,13 @@ impl Geo {
             for b in -1..=1 {
                 for c in -1..=1 {
                     let (ci, ck) = (cx + f64::from(b), cz + f64::from(c));
-                    let id = (ci as i32 as u32).wrapping_mul(0x9E37_79B1).wrapping_add(ck as i32 as u32);
-                    let (px, pz) = ((ci + mh(id, s, 0x720)) * 34.0, (ck + mh(id, s, 0x721)) * 34.0);
-                    let d = (x - px).hypot(z - pz);
+                    let id = ((ci as i32 as u32).wrapping_mul(53).wrapping_add((ck as i32 as u32).wrapping_mul(907)) as usize) & (VM_TAB - 4);
+                    let (px, pz) = ((ci + f64::from(self.tab[id])) * 34.0, (ck + f64::from(self.tab[id + 1])) * 34.0);
+                    let d = ((x - px) * (x - px) + (z - pz) * (z - pz)).sqrt();
                     if d < dn {
                         dn2 = dn;
                         dn = d;
-                        v = mh(id, s, 0x722) - 0.5;
+                        v = f64::from(self.tab[id + 2]) - 0.5;
                     } else if d < dn2 {
                         dn2 = d;
                     }
@@ -382,7 +399,7 @@ impl Work {
     /// The next `n` columns of the field; whether that was the last of them.
     fn field(&mut self, n: usize) -> bool {
         let end = (self.next_cell + n).min(VM_COLS);
-        crate::meter::spend(2_400 * (end - self.next_cell) as u64);
+        crate::meter::spend(3_000 * (end - self.next_cell) as u64);
         for j in self.next_cell..end {
             let (x, z) = col_xz(j);
             self.cells[j] = self.geo.cell(x, z);
@@ -397,87 +414,145 @@ fn col_xz(j: usize) -> (f64, f64) {
     (f64::from(i * VM_STEP - VM_HALF), f64::from(k * VM_STEP - VM_HALF))
 }
 
-/// The pass's words. `land` gives a column not read (the land's rough height, from the vent's ground, or none).
-pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, Vec<u32>)> {
-    crate::meter::spend(300 * VM_COLS as u64);
-    // (what wasn't read takes the colours of the nearest that was)
-    let mut c0 = vec![0u32; VM_COLS];
-    let mut c1 = vec![0u32; VM_COLS];
-    let mut kk = vec![0u8; VM_COLS];
-    for j in 0..VM_COLS {
-        if let Some(c) = w.cols[j] {
-            c0[j] = c.c0;
-            c1[j] = c.c1;
-            kk[j] = c.kind;
+/// The pass's columns as they are packed: in stages (58,000 columns' worth is some 40 million instructions).
+pub(super) struct Pack {
+    c0: Vec<u32>,
+    c1: Vec<u32>,
+    kk: Vec<u8>,
+    blur: Vec<f32>,
+    w0: Vec<u32>,
+    w1: Vec<u32>,
+    w2: Vec<u32>,
+    tiles: Vec<[f32; 2]>,
+    lo: f32,
+    hi: f32,
+    done: usize,
+}
+impl Pack {
+    /// Begun: what wasn't read takes the colours of the nearest that was.
+    fn new(w: &Work) -> Self {
+        crate::meter::spend(180 * VM_COLS as u64);
+        let mut c0 = vec![0u32; VM_COLS];
+        let mut c1 = vec![0u32; VM_COLS];
+        let mut kk = vec![0u8; VM_COLS];
+        for j in 0..VM_COLS {
+            if let Some(c) = w.cols[j] {
+                c0[j] = c.c0;
+                c1[j] = c.c1;
+                kk[j] = c.kind;
+            }
         }
-    }
-    let spread = |c0: &mut Vec<u32>, c1: &mut Vec<u32>, kk: &mut Vec<u8>, j: usize, from: usize| {
-        if c0[j] == 0 && c0[from] != 0 {
-            c0[j] = c0[from];
-            c1[j] = c1[from];
-            kk[j] = kk[from];
-        }
-    };
-    for j in 0..VM_COLS {
-        if j % VM_GW > 0 {
-            spread(&mut c0, &mut c1, &mut kk, j, j - 1);
-        }
-        if j >= VM_GW {
-            spread(&mut c0, &mut c1, &mut kk, j, j - VM_GW);
-        }
-    }
-    for j in (0..VM_COLS).rev() {
-        if j % VM_GW + 1 < VM_GW {
-            spread(&mut c0, &mut c1, &mut kk, j, j + 1);
-        }
-        if j + VM_GW < VM_COLS {
-            spread(&mut c0, &mut c1, &mut kk, j, j + VM_GW);
-        }
-    }
-    // (trees are no shape at three blocks a column: a wood is a low, soft roof over the ground)
-    let mut can = vec![0f32; VM_COLS];
-    for k in 2..VM_GW - 2 {
-        for i in 2..VM_GW - 2 {
-            let mut sum = 0u32;
-            for b in k - 2..=k + 2 {
-                for a in i - 2..=i + 2 {
-                    sum += w.cols[b * VM_GW + a].map_or(0, |c| u32::from(c.canopy));
+        if w.known < VM_COLS {
+            let spread = |c0: &mut Vec<u32>, c1: &mut Vec<u32>, kk: &mut Vec<u8>, j: usize, from: usize| {
+                if c0[j] == 0 && c0[from] != 0 {
+                    c0[j] = c0[from];
+                    c1[j] = c1[from];
+                    kk[j] = kk[from];
+                }
+            };
+            for j in 0..VM_COLS {
+                if j % VM_GW > 0 {
+                    spread(&mut c0, &mut c1, &mut kk, j, j - 1);
+                }
+                if j >= VM_GW {
+                    spread(&mut c0, &mut c1, &mut kk, j, j - VM_GW);
                 }
             }
-            can[k * VM_GW + i] = sum as f32 / 25.0;
-        }
-    }
-    let mut w0 = Vec::with_capacity(VM_COLS);
-    let mut w2 = Vec::with_capacity(VM_COLS);
-    let mut w1 = Vec::with_capacity(VM_COLS);
-    let mut tiles = vec![[f32::MIN, f32::MIN]; VM_TN * VM_TN];
-    let (mut lo, mut hi) = (f32::MAX, f32::MIN);
-    for j in 0..VM_COLS {
-        let (x, z) = col_xz(j);
-        let cell = w.cells[j];
-        let (top, canopy) = w.cols[j].map_or_else(|| (land(x, z), 0), |c| (f64::from(c.top - i32::from(c.canopy)) + 0.7 * f64::from(can[j]), c.canopy));
-        let h = ((top + 512.0) * 2.0).round().clamp(0.0, 2047.0) as u32;
-        let p = (((cell.p + 0.25) / 1.6) * 2047.0).round().clamp(0.0, 2047.0) as u32;
-        let d = (cell.d * 4.0).round().clamp(0.0, 127.0) as u32;
-        w0.push(h | p << 11 | d << 22 | u32::from(cell.phase & 3) << 29);
-        w1.push(if c0[j] != 0 { c0[j] | c1[j] << 16 } else { c565([95.0, 135.0, 60.0]) | c565([134.0, 96.0, 67.0]) << 16 });
-        let d2 = (cell.d2 * 8.0).round().clamp(0.0, 255.0) as u32;
-        w2.push(u32::from(cell.plate) | d2 << 8 | u32::from(kk[j] & 7) << 24 | u32::from(canopy.min(31)) << 27);
-        // (a tile's words take in the columns of the tiles round it)
-        let (i, k) = (j % VM_GW, j / VM_GW);
-        let (ti, tk) = ((i / VM_TC).min(VM_TN - 1), (k / VM_TC).min(VM_TN - 1));
-        let (tl, pl) = (top as f32, cell.p as f32);
-        lo = lo.min(tl);
-        hi = hi.max(tl);
-        for b in ti.saturating_sub(1)..(ti + 2).min(VM_TN) {
-            for c in tk.saturating_sub(1)..(tk + 2).min(VM_TN) {
-                let t = &mut tiles[c * VM_TN + b];
-                t[0] = t[0].max(tl);
-                t[1] = t[1].max(pl);
+            for j in (0..VM_COLS).rev() {
+                if j % VM_GW + 1 < VM_GW {
+                    spread(&mut c0, &mut c1, &mut kk, j, j + 1);
+                }
+                if j + VM_GW < VM_COLS {
+                    spread(&mut c0, &mut c1, &mut kk, j, j + VM_GW);
+                }
             }
         }
+        Pack {
+            c0,
+            c1,
+            kk,
+            blur: Vec::new(),
+            w0: Vec::with_capacity(VM_COLS),
+            w1: Vec::with_capacity(VM_COLS),
+            w2: Vec::with_capacity(VM_COLS),
+            tiles: vec![[f32::MIN, f32::MIN]; VM_TN * VM_TN],
+            lo: f32::MAX,
+            hi: f32::MIN,
+            done: 0,
+        }
     }
-    let tw: Vec<u32> = tiles.iter().flat_map(|t| t.iter().map(|v| v.to_bits())).collect();
+    /// (trees are no shape at three blocks a column: a wood is a low, soft roof over the ground)
+    fn soften(&mut self, w: &Work) {
+        crate::meter::spend(120 * VM_COLS as u64);
+        let mut can: Vec<u16> = (0..VM_COLS).map(|j| w.cols[j].map_or(0, |c| u16::from(c.canopy))).collect();
+        let mut run: Vec<u16> = vec![0; VM_GW + 1];
+        for k in 0..VM_GW {
+            let row = &mut can[k * VM_GW..(k + 1) * VM_GW];
+            for i in 0..VM_GW {
+                run[i + 1] = run[i] + row[i];
+            }
+            for (i, v) in row.iter_mut().enumerate() {
+                *v = run[(i + 3).min(VM_GW)] - run[i.saturating_sub(2)];
+            }
+        }
+        self.blur = vec![0f32; VM_COLS];
+        for j in 0..VM_COLS {
+            let up = if j >= VM_GW { can[j - VM_GW] } else { can[j] };
+            let down = if j + VM_GW < VM_COLS { can[j + VM_GW] } else { can[j] };
+            self.blur[j] = (f32::from(up) + f32::from(can[j]) + f32::from(down)) / 15.0;
+        }
+    }
+    /// The next `n` columns (`land` gives one not read); whether that was the last of them.
+    fn rows(&mut self, w: &Work, n: usize, land: &dyn Fn(f64, f64) -> f64) -> bool {
+        let end = (self.done + n).min(VM_COLS);
+        crate::meter::spend(600 * (end - self.done) as u64);
+        for j in self.done..end {
+            let (x, z) = col_xz(j);
+            let cell = w.cells[j];
+            let (top, canopy) = w.cols[j].map_or_else(|| (land(x, z), 0), |c| (f64::from(c.top - i32::from(c.canopy)) + 0.7 * f64::from(self.blur[j]), c.canopy));
+            let h = ((top + 512.0) * 2.0).round().clamp(0.0, 2047.0) as u32;
+            let p = (((cell.p + 0.25) / 1.6) * 2047.0).round().clamp(0.0, 2047.0) as u32;
+            let d = (cell.d * 4.0).round().clamp(0.0, 127.0) as u32;
+            self.w0.push(h | p << 11 | d << 22 | u32::from(cell.phase & 3) << 29);
+            self.w1.push(if self.c0[j] != 0 { self.c0[j] | self.c1[j] << 16 } else { c565([95.0, 135.0, 60.0]) | c565([134.0, 96.0, 67.0]) << 16 });
+            let d2 = (cell.d2 * 8.0).round().clamp(0.0, 255.0) as u32;
+            self.w2.push(u32::from(cell.plate) | d2 << 8 | u32::from(self.kk[j] & 7) << 24 | u32::from(canopy.min(31)) << 27);
+            let (i, k) = (j % VM_GW, j / VM_GW);
+            let (ti, tk) = ((i / VM_TC).min(VM_TN - 1), (k / VM_TC).min(VM_TN - 1));
+            let (tl, pl) = (top as f32, cell.p as f32);
+            self.lo = self.lo.min(tl);
+            self.hi = self.hi.max(tl);
+            let t = &mut self.tiles[tk * VM_TN + ti];
+            t[0] = t[0].max(tl);
+            t[1] = t[1].max(pl);
+        }
+        self.done = end;
+        end == VM_COLS
+    }
+    /// The whole of it, for the pass (a tile's words take in the tiles round it).
+    fn finish(self) -> Vec<(usize, Vec<u32>)> {
+        let own = self.tiles.clone();
+        let mut tiles = self.tiles;
+        for tk in 0..VM_TN {
+            for ti in 0..VM_TN {
+                for c in tk.saturating_sub(1)..(tk + 2).min(VM_TN) {
+                    for b in ti.saturating_sub(1)..(ti + 2).min(VM_TN) {
+                        let o = own[c * VM_TN + b];
+                        let t = &mut tiles[tk * VM_TN + ti];
+                        t[0] = t[0].max(o[0]);
+                        t[1] = t[1].max(o[1]);
+                    }
+                }
+            }
+        }
+        let tw: Vec<u32> = tiles.iter().flat_map(|t| t.iter().map(|v| v.to_bits())).collect();
+        let head = vec![1f32.to_bits(), self.lo.to_bits(), self.hi.to_bits()];
+        vec![(VM_BASE, head), (VM_TILE, tw), (VM_W0, self.w0), (VM_W1, self.w1), (VM_W2, self.w2)]
+    }
+}
+/// The pass's tables that stand on the land: the shards, the fountains, the boulders, the plates.
+pub(super) fn vm_tables(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, Vec<u32>)> {
+    crate::meter::spend(60 * VM_COLS as u64 + 500_000);
     // (each shard stands on the land and the lift at its foot)
     let mut shards = Vec::with_capacity(VM_SHARDS * VM_SW);
     let foot = |x: f64, z: f64| {
@@ -493,18 +568,7 @@ pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, 
         }
         shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
-    let head = vec![1f32.to_bits(), lo.to_bits(), hi.to_bits()];
-    vec![
-        (VM_BASE, head),
-        (VM_TILE, tw),
-        (VM_SHARD, shards),
-        (VM_FOUNT, vm_founts(w, &foot)),
-        (VM_BOULD, vm_boulders(w, &foot)),
-        (VM_PLATE, vm_plates(w, land)),
-        (VM_W0, w0),
-        (VM_W1, w1),
-        (VM_W2, w2),
-    ]
+    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, vm_plates(w, land))]
 }
 
 /// The bursts of lava: on the cracks, few and high up at first, more and all over as it goes on, none past the hush.
@@ -582,11 +646,12 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let (x, z) = col_xz(j);
         let t = sum[c];
         if t.3 > 0.0 {
-            rad[c] = rad[c].max((x - t.0 / t.3).hypot(z - t.1 / t.3));
+            rad[c] = rad[c].max((x - t.0 / t.3).powi(2) + (z - t.1 / t.3).powi(2));
         }
     }
     let mut out = Vec::with_capacity(VM_PW * n);
     for k in 0..n {
+        rad[k] = rad[k].sqrt();
         let t = sum[k];
         let m = k as u32;
         let (cx, cz, l) = if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
@@ -610,12 +675,25 @@ fn col_index(x: f64, z: f64) -> usize {
     (k.clamp(0, VM_GW as i32 - 1) as usize) * VM_GW + i.clamp(0, VM_GW as i32 - 1) as usize
 }
 
-/// The columns of rows `a..b` of the square.
-fn read_part(bx: i32, bz: i32, a: usize, b: usize) -> Vec<(i32, i32)> {
-    (a..b.min(VM_GW)).flat_map(|k| (0..VM_GW).map(move |i| (bx + i as i32 * VM_STEP - VM_HALF, bz + k as i32 * VM_STEP - VM_HALF))).collect()
-}
-
 type Shared = Rc<RefCell<Work>>;
+
+/// A round of the land's read: its queries, two in flight at a time, each asked as an earlier one comes in (the answers
+/// of many at once would be too much for a tick to take in).
+struct Round {
+    tags: Vec<u32>,
+    cols: Vec<Vec<(i32, i32)>>,
+}
+impl Round {
+    fn new(cols: Vec<(i32, i32)>) -> Rc<Self> {
+        let cols: Vec<Vec<(i32, i32)>> = cols.chunks(READ_COLS).map(<[_]>::to_vec).collect();
+        Rc::new(Round { tags: cols.iter().map(|_| crate::columns::new_tag()).collect(), cols })
+    }
+    fn ask(&self, q: &mut Plan, part: usize, at: f32) {
+        if let (Some(&tag), Some(c)) = (self.tags.get(part), self.cols.get(part)) {
+            q.ev.push((at, Act::Read { tag, columns: c.clone(), below: READ_BELOW, above: READ_ABOVE }));
+        }
+    }
+}
 
 /// The mount's part of the plan: the field worked out as it starts, the land read, whatever the terrain setting, since
 /// the mount is only drawn.
@@ -625,17 +703,15 @@ pub(super) fn vm_plan(p: &mut Plan, seed: u32, hf: Rc<RefCell<Hf>>) {
         let w = w.clone();
         p.later(0.1, move |q| vm_field_step(q, w, 0.1));
     }
-    let parts = VM_GW.div_ceil(READ_ROWS);
-    let tags: Rc<Vec<u32>> = Rc::new((0..parts).map(|_| crate::columns::new_tag()).collect());
-    for part in 0..parts {
-        let tags = tags.clone();
-        let t = 0.6 + 0.05 * part as f32;
-        p.later(t, move |q| {
-            let columns = read_part(q.bx, q.bz, part * READ_ROWS, (part + 1) * READ_ROWS);
-            q.ev.push((t, Act::Read { tag: tags[part], columns, below: READ_BELOW, above: READ_ABOVE }));
-        });
-    }
-    p.later(1.0, move |q| vm_land_step(q, w, hf, tags, 0, 0, 1.0, 0));
+    p.later(0.6, move |q| {
+        let all: Vec<(i32, i32)> = (0..VM_COLS)
+            .map(|j| (q.bx + ((j % VM_GW) as i32) * VM_STEP - VM_HALF, q.bz + ((j / VM_GW) as i32) * VM_STEP - VM_HALF))
+            .collect();
+        let r = Round::new(all);
+        r.ask(q, 0, 0.6);
+        r.ask(q, 1, 0.6);
+        q.later(0.7, move |q| vm_land_step(q, w, hf, r, 0, 0, 0.7, 0));
+    });
 }
 
 fn vm_field_step(q: &mut Plan, w: Shared, at: f32) {
@@ -644,36 +720,37 @@ fn vm_field_step(q: &mut Plan, w: Shared, at: f32) {
     }
 }
 
-/// The land's answers worked through, a part at a time, waiting for each; columns not loaded yet asked again until 5.4 s;
+/// The land's answers worked through, a part at a time, waiting for each; columns not loaded yet asked again until 5 s;
 /// the pass given what there is after each round and in any case by 5.6 s.
 #[allow(clippy::too_many_arguments)]
-fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, tags: Rc<Vec<u32>>, part: usize, start: usize, at: f32, round: u32) {
-    let next = |q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, tags: Rc<Vec<u32>>, part: usize, start: usize| {
-        q.later(at + 0.05, move |q| vm_land_step(q, w, hf, tags, part, start, at + 0.05, round));
-    };
-    if part >= tags.len() {
+fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, part: usize, start: usize, at: f32, round: u32) {
+    if part >= r.tags.len() {
         vm_send(q, &w, &hf, at);
         let (bx, bz) = (q.bx, q.bz);
-        if round < 6 && at < 5.0 {
+        if round < 3 && at < 4.6 {
             let missing: Vec<(i32, i32)> = {
                 let wb = w.borrow();
                 (0..VM_COLS).filter(|&j| wb.cols[j].is_none()).map(|j| (bx + ((j % VM_GW) as i32) * VM_STEP - VM_HALF, bz + ((j / VM_GW) as i32) * VM_STEP - VM_HALF)).collect()
             };
             crate::meter::spend(30 * VM_COLS as u64);
             if !missing.is_empty() {
-                let tag = crate::columns::new_tag();
-                let t = at + 0.7;
+                let t = at + 0.5;
                 q.later(t, move |q| {
-                    q.ev.push((t, Act::Read { tag, columns: missing, below: READ_BELOW, above: READ_ABOVE }));
-                    vm_land_step(q, w, hf, Rc::new(vec![tag]), 0, 0, t + 0.1, round + 1);
+                    let r = Round::new(missing);
+                    r.ask(q, 0, t);
+                    r.ask(q, 1, t);
+                    vm_land_step(q, w, hf, r, 0, 0, t + 0.1, round + 1);
                 });
             }
         }
         return;
     }
-    let Some(a) = crate::columns::get(tags[part]) else {
-        if at < 5.6 {
-            next(q, w, hf, tags, part, start);
+    let next = |q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, part: usize, start: usize| {
+        q.later(at + 0.05, move |q| vm_land_step(q, w, hf, r, part, start, at + 0.05, round));
+    };
+    let Some(a) = crate::columns::get(r.tags[part]) else {
+        if at < 5.2 {
+            next(q, w, hf, r, part, start);
         } else {
             vm_send(q, &w, &hf, at);
         }
@@ -697,22 +774,47 @@ fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, tags: Rc<Vec<u32>>
         }
     }
     if end >= a.columns.len() {
-        crate::columns::take(tags[part]);
-        next(q, w, hf, tags, part + 1, 0);
+        crate::columns::take(r.tags[part]);
+        r.ask(q, part + 2, at);
+        next(q, w, hf, r, part + 1, 0);
     } else {
-        next(q, w, hf, tags, part, end);
+        next(q, w, hf, r, part, end);
     }
 }
 
+/// The land as it stands given to the pass, over a few ticks.
 fn vm_send(q: &mut Plan, w: &Shared, hf: &Rc<RefCell<Hf>>, at: f32) {
-    let wb = w.borrow();
-    if wb.next_cell < VM_COLS {
+    if w.borrow().next_cell < VM_COLS {
         return;
     }
-    let h = hf.borrow();
-    for (index, words) in vm_words(&wb, &|x, z| h.at(x, z)) {
-        q.ev.push((at, Act::Words { index: index as u32, words }));
-    }
+    let (w, hf) = (w.clone(), hf.clone());
+    let p = Rc::new(RefCell::new(Pack::new(&w.borrow())));
+    q.later(at + 0.05, move |q| {
+        p.borrow_mut().soften(&w.borrow());
+        vm_send_rows(q, w, hf, p, at + 0.1);
+    });
+}
+fn vm_send_rows(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, p: Rc<RefCell<Pack>>, at: f32) {
+    q.later(at, move |q| {
+        let last = {
+            let (wb, h) = (w.borrow(), hf.borrow());
+            p.borrow_mut().rows(&wb, PACK_COLS, &|x, z| h.at(x, z))
+        };
+        if !last {
+            vm_send_rows(q, w, hf, p, at + 0.05);
+            return;
+        }
+        let Ok(p) = Rc::try_unwrap(p) else { return };
+        for (index, words) in p.into_inner().finish() {
+            q.ev.push((at, Act::Words { index: index as u32, words }));
+        }
+        q.later(at + 0.05, move |q| {
+            let (wb, h) = (w.borrow(), hf.borrow());
+            for (index, words) in vm_tables(&wb, &|x, z| h.at(x, z)) {
+                q.ev.push((at + 0.05, Act::Words { index: index as u32, words }));
+            }
+        });
+    });
 }
 
 #[cfg(test)]
@@ -761,7 +863,12 @@ pub(super) mod table {
             let (x, z) = col_xz(j);
             w.cols[j] = col(x, z);
         }
-        vm_words(&w, &|_, _| 0.0)
+        let mut p = Pack::new(&w);
+        p.soften(&w);
+        while !p.rows(&w, PACK_COLS, &|_, _| 0.0) {}
+        let mut o = p.finish();
+        o.extend(vm_tables(&w, &|_, _| 0.0));
+        o
     }
 }
 
