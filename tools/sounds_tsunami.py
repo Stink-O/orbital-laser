@@ -183,8 +183,8 @@ def schedule(dp, immersed=True):
             ("torrent", "torrent", tp + SURF_AT, 1.0, reach),
             ("drain", "drain", tp + DRAIN_AT, 1.0, reach),
             ("roar_back", "roar_back", tp + BACK_AT, 1.0, reach),
-            ("rumble_after", "rumble_after", tp + SETTLE_AT, 1.0, 1.0),
-            ("trickle", "trickle", min(tp + TRICKLE_AT, TRICKLE_LAST), 1.0, 1.0)]
+            ("rumble_after", "rumble_after", tp + SETTLE_AT, 1.0, reach),
+            ("trickle", "trickle", min(tp + TRICKLE_AT, TRICKLE_LAST), 1.0, reach)]
     if immersed:
         rows += [("roar_near", "roar_near", tp - NEAR_PRE, 1.0, near_v),
                  ("engulf", "engulf", tp, 1.0, 1.0),

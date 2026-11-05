@@ -58,8 +58,8 @@ pub(super) fn ts_sounds(p: &mut Plan, geo: &TsGeo, me: [f64; 3], s: u32, t_t: f6
     sound(p, tp + SURF_AT, "torrent", reach);
     sound(p, tp + DRAIN_AT, "drain", reach);
     sound(p, tp + BACK_AT, "roar_back", reach);
-    sound(p, tp + SETTLE_AT, "rumble_after", 1.0);
-    sound(p, (tp + TRICKLE_AT).min(TRICKLE_LAST), "trickle", 1.0);
+    sound(p, tp + SETTLE_AT, "rumble_after", reach);
+    sound(p, (tp + TRICKLE_AT).min(TRICKLE_LAST), "trickle", reach);
     if reach <= 0.0 {
         return;
     }
