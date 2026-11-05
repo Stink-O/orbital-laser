@@ -89,17 +89,19 @@ fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * ((FD_TIP + 0.5) * R + 1.0 - vc * 0.25) / 2.25;
     return vec3<f32>(h, 0.05 * (1.0 - exp(-a * 9.0)) * exp(-a * 1.6), a * 16.0);
 }
+const FD_FOOT: f32 = 0.6;
 // The metal at its foot, where it and the land become one: how high over the target, and how wide. It starts thin and widens
 // fast, as a neck does (with the root of the time), keeps just over the land's swell (fold_warp.wgsl's fw_neck), and goes
 // under it as the last of the drop does.
 fn fd_foot(t: f32, R: f32) -> vec2<f32> {
     let a = t - FD_TOUCH;
-    if (a < 0.0 || a > 1.8) {
+    if (a < 0.0 || a > 1.7) {
         return vec2<f32>(0.0, 1.0);
     }
     let land = 0.55 * R * fd_ss(-0.4, 0.5, a) * (1.0 - fd_ss(1.1, 3.2, a));
-    let over = 0.05 * R * fd_ss(0.0, 0.2, a) - 0.22 * R * fd_ss(1.15, 1.7, a);
-    return vec2<f32>(max(land + over, 0.0), R * (0.2 + 1.25 * sqrt(a / 1.5)));
+    // (its height from FD_FOOT under the target, so its edge goes into the land rather than lying on it; drawn in and down at the end)
+    let top = land + 0.05 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - 1.5 * R * fd_ss(0.95, 1.6, a);
+    return vec2<f32>(max(top, 0.0), R * (0.2 + 1.25 * sqrt(a / 1.5)) * (1.0 - 0.7 * fd_ss(0.9, 1.6, a)));
 }
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
@@ -189,7 +191,7 @@ fn fd_bead_n(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
 }
 // The drop and the foot of metal it melts into, one surface: a smooth union, so the neck flows.
 fn fd_foot_at(pIn: vec3<f32>, d: FdDrop) -> vec4<f32> {
-    let q = pIn + vec3<f32>(0.0, d.h, 0.0);
+    let q = pIn + vec3<f32>(0.0, d.h + FD_FOOT * d.R, 0.0);
     let s = vec3<f32>(q.x / d.pw, q.y / d.pool, q.z / d.pw);
     let l = max(length(s), 0.001);
     let g = vec3<f32>(s.x / d.pw, s.y / d.pool, s.z / d.pw);
@@ -568,7 +570,7 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     let bc = C + vec3<f32>(0.0, 0.36 * d.R, 0.0);
     let bcd = dot(bc, v);
     // (with the foot of metal in it, a sphere taking that in too)
-    let bR = select(1.75 * d.R * max(d.sx, 1.0), max(1.75 * d.R, length(bc - G) + 1.2 * d.pw), d.pool > 0.0);
+    let bR = select(1.75 * d.R * max(d.sx, 1.0), max(1.75 * d.R, length(bc - G) + 1.2 * d.pw + d.R), d.pool > 0.0);
     if (length(bc - v * bcd) < bR && bcd > 0.0) {
         var s = max(bcd - bR, 0.05);
         var best = 1.0e9;
