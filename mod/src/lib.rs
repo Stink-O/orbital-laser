@@ -1031,7 +1031,7 @@ impl Orbital {
     }
     /// One tick of the strike: everything due by now, in one batch.
     /// While the Fold's sphere is shut round the player: flight kept to vanilla's at most, whatever they had set, and if
-    /// they get too far from where they fired, brought back (nothing shows of it: fold_warp's fw_stay has flattened out by
+    /// they get too far from where they fired, brought back (nothing shows of it: fold_warp's fw_stay takes all of it off by
     /// then) so that the land on its walls stays loaded. All of it let go as it opens, the strike stops or they leave.
     fn fold_stay(&mut self) {
         let at = self.strike.as_ref().filter(|s| s.key == "fold").map(|s| (s.ticks as f32 * 0.05, [s.params[12], s.params[13], s.params[14]]));

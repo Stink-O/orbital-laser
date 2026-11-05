@@ -64,7 +64,7 @@ pub const FD_STAY: std::ops::Range<f32> = 27.0..43.5;
 /// The sphere has fully hold of them from here: moving them now doesn't show.
 pub const FD_TETHER_ON: f32 = 30.0;
 /// How far they are let go from where they fired (real blocks): anything past FD_TETHER is brought back (the land round the
-/// target has to stay loaded). Far past where fw_reach's limit has flattened, so it doesn't show.
+/// target has to stay loaded). The sphere goes with them whole (fold_warp's fw_stay), so it doesn't show.
 pub const FD_TETHER: f64 = 320.0;
 /// The crease pattern's rings: their outer radii, blocks from the target (fold_warp.wgsl's FW_RING in step). Each is a
 /// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
