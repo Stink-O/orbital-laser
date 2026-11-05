@@ -258,13 +258,13 @@ fn fw_flap(t: f32) -> f32 {
     if (t <= FW_FLAT || t >= FW_SLAM4) {
         return 0.0;
     }
-    var k = fw_lobe(t, FW_FLAT, 42.0, -0.0012) + fw_lobe(t, 42.0, 42.8, 0.0008) + fw_lobe(t, 42.8, 43.7, -0.00045);
+    var k = fw_lobe(t, FW_FLAT, 42.0, -0.0009) + fw_lobe(t, 42.0, 42.8, 0.0005) + fw_lobe(t, 42.8, 43.7, -0.0003);
     if (t > 43.7) {
         // (up slowly, down all at once)
         let u = (t - 43.7) / (FW_SLAM4 - 43.7);
         let up = fw_ss(0.0, 0.62, u);
         let down = clamp((u - 0.62) / 0.38, 0.0, 1.0);
-        k = 0.00035 * up * (1.0 - down * down * down);
+        k = 0.00028 * up * (1.0 - down * down * down);
     }
     return k;
 }

@@ -2,7 +2,7 @@
 //! liquid-metal droplet comes down, stops dead over the target and melds into the land; everything after that is the
 //! world's own geometry, far terrain included, through the fork's world warp (`render.set-warp`, shaders/fold_warp.wgsl,
 //! its vertices and its fragments), timed by the strike clock; shaders/fold.wgsl draws what is not the world (the droplet,
-//! the void and its stars, the point, the flash, the dust of the slams); the plan makes the sounds and the land.
+//! the void and its stars, the light at the touch, the dust of the slams); the plan makes the sounds and the land.
 //!
 //! The timeline (strike seconds; FD_* here, FW_* in fold_warp.wgsl and fold.wgsl's in step, `the_warp_keeps_the_beats`):
 //!   0 - FD_STOP       the droplet's fall out of the top of the sky: a glint, a plasma sheath, fire, a smoke trail
@@ -12,10 +12,12 @@
 //!   FD_RIPPLE         the warp begins (off before it): rings running out, each bigger than the last
 //!   FD_SCORE          the rings sharpen into hairline creases racing over the land, the mandala's pattern
 //!   FD_TEAR           the creases split open on the void
-//!   FD_FOLD-FD_SEAL   the land lifts ring by ring and closes
-//!   FD_SEAL-FD_CRUSH  the bud: a globe of real land against the stars
-//!   FD_CRUSH-FD_BEAT  it crushes to a point; FD_BEAT-FD_RELEASE silence, the point alone
-//!   FD_RELEASE        the bloom (the one flash), then FD_SLAM: the rings slam back one after another, outermost first
+//!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land closes round the player, the rings lying back to a mound
+//!   FD_SEAL           shut: the player is inside a sphere, real land on all its walls
+//!   FD_FOLDS          its top is pushed in, then five cones of the target's own land open down towards the target, slower
+//!                     and slower; FD_BEAT the tip touches it: a tiny light and a ding; stillness to FD_RELEASE
+//!   FD_RELEASE        all of it runs backwards, to flat at FD_SLAM[0], and past it: the sheet flaps, each swing less, and
+//!   FD_SLAM[4]        the last heave falls flat all at once, and the crater shows (FD_REVEAL)
 //!   FD_SLAM[4]-FD_LEN the comedown: the creases fade, the void seals
 //!
 use super::{Act, Plan, Rng, Target, fold_land};
