@@ -53,7 +53,7 @@ const FD_FELLED: bool = true;
 const FD_RUBBLE_N: usize = 3400;
 const FD_HEAPS: usize = 110;
 const FD_HEAP_JOBS: u32 = 5;
-const FD_THROWN: [usize; 4] = [46, 64, 84, 60];
+const FD_THROWN: [usize; 4] = [120, 180, 240, 160];
 /// The blocks that peel off the land along the creases and fall upward into the fold, a batch as each stage of it opens
 /// (`fd_peel`); all 0 takes them out. They are real falling blocks with no gravity, gone at the crush.
 const FD_PEEL: [usize; 4] = [100, 140, 160, 120];
