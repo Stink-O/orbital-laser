@@ -57,7 +57,7 @@ const VC_HUSH: f64 = 17.0;
 const READ_BELOW: u32 = 12;
 const READ_ABOVE: u32 = 1;
 const PER_STAGE: usize = 2_400;
-const PACK_COLS: usize = 12_000;
+const PACK_COLS: usize = 8_000;
 const READ_COLS: usize = 8_000;
 
 /// The random numbers a column of the field draws on: a table made once (the columns are many, and a hash each is too
@@ -798,10 +798,12 @@ fn vm_send(q: &mut Plan, w: &Shared, hf: &Rc<RefCell<Hf>>, at: f32) {
         return;
     }
     let (w, hf) = (w.clone(), hf.clone());
-    let p = Rc::new(RefCell::new(Pack::new(&w.borrow())));
     q.later(at + 0.05, move |q| {
-        p.borrow_mut().soften(&w.borrow());
-        vm_send_rows(q, w, hf, p, at + 0.1);
+        let p = Rc::new(RefCell::new(Pack::new(&w.borrow())));
+        q.later(at + 0.1, move |q| {
+            p.borrow_mut().soften(&w.borrow());
+            vm_send_rows(q, w, hf, p, at + 0.15);
+        });
     });
 }
 fn vm_send_rows(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, p: Rc<RefCell<Pack>>, at: f32) {
