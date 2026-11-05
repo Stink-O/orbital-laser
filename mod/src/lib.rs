@@ -1304,6 +1304,9 @@ impl Orbital {
         let clock = game::get_player().and(game::get_clock()).map(|c| c.game_time);
         let elsewhere = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
         if clock.is_none() || elsewhere {
+            if self.strike.is_some() {
+                log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?}", self.clock));
+            }
             self.left_world();
         }
         // (joined: this world's first tick, or another's after a tick out of one)
