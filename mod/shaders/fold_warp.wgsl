@@ -665,7 +665,7 @@ fn world_fragment(f: Fragment) -> Painted {
     let dm = length(Q.xz - (c.me.xz - c.tgt.xz));
     let isle = abs(dm - FW_ISLE);
     let gone = fw_ss(FW_FOLD - 0.4, FW_FOLD + 0.2, tau) * (1.0 - fw_ss(FW_FLAT - 0.1, FW_FLAT + 0.2, t));
-    if (gone > 0.5 && isle < 1.7) {
+    if (gone > 0.5 && isle < 1.7 && dm < FW_ISLE) {
         return drop_;
     }
     // ---- the crease pattern, its parts in time ---------------------------------------------------------------------------
@@ -781,7 +781,9 @@ fn world_fragment(f: Fragment) -> Painted {
     // ---- the island's rim, a line of light where it was cut -----------------------------------------------------------
     {
         let px = max(0.05, dist * 0.00095);
-        let line = (1.0 - fw_ss(1.7, 2.2 + px * 2.0, isle)) * fw_ss(FW_SCORE, FW_TEAR, t) * fade;
+        // (the island's side only once the sheet has closed its hole: on the sheet it would be drawn out along the slide)
+        let sheet = select(fw_ss(FW_FOLD + 0.5, FW_FOLD, tau), 1.0, dm < FW_ISLE);
+        let line = (1.0 - fw_ss(1.7, 2.2 + px * 2.0, isle)) * fw_ss(FW_SCORE, FW_TEAR, t) * fade * sheet;
         col = mix(col, vec3<f32>(1.0, 0.95, 0.9) * 1.4, line);
     }
     return Painted(vec4<f32>(col, alpha), fog);
