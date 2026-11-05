@@ -80,7 +80,7 @@ NAMES = SINGLE + list(VARIANTS)
 LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "seism": -33.0, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -12.0, "column_far": -12.0,
          "whistle": -15.0, "thud": -11.0, "spatter": -20.0, "thud_far": -18.0, "bolt": -15.0, "bolt_far": -23.0,
-         "collapse": -5.5, "collapse_far": -6.0, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
+         "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
 SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)

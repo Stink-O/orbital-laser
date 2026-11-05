@@ -122,7 +122,7 @@ fn lobes(ang: f64, rho: f64) -> f64 {
     n - 0.5 - 0.3 * (1.0 - c * c * (3.0 - 2.0 * c))
 }
 /// When the wall reaches a place at `rho` from the vent, bearing `ang`, if it does with time left to play it.
-fn front_at(rho: f64, ang: f64) -> Option<f32> {
+pub(super) fn front_at(rho: f64, ang: f64) -> Option<f32> {
     let lob = lobes(ang, rho);
     let mut t = VC_COLLAPSE + 0.05;
     while t <= VC_LEN - VC_INS[2] - 0.2 {
