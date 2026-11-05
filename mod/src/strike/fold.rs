@@ -95,7 +95,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     p.csound(FD_SEAL, "foldown", 10.0, 1.0);
     p.csound(FD_BEAT, "ding", 10.0, 1.0);
     p.csound(FD_RELEASE, "reverse", 10.0, 1.0);
-    p.shake(FD_RELEASE, 0.3 * super::falloff(dist), 1.6);
+    p.shake(FD_RELEASE + 1.5, 0.3 * super::falloff(dist), 1.6);
     // (each ring its own fall and its own bang, in one file, and a jolt with each; the last's fall and the slam apart)
     for (k, t) in FD_SLAM.iter().enumerate() {
         let f = k as f32 / 4.0;
