@@ -14,6 +14,7 @@ mod sh_land;
 mod sinkhole;
 mod storm;
 mod vc_land;
+mod vc_sound;
 mod volcano;
 mod vortex;
 
