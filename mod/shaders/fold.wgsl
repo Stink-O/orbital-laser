@@ -19,7 +19,6 @@ const FD_REL: f32 = 40.3;          // it all runs backwards
 const FD_SLAM0: f32 = 41.1;        // flat, and past it
 const FD_SLAM4: f32 = 45.0;        // the last slam
 const FD_FALL: f32 = 3000.0;       // how high it starts over the target
-const FD_PEARL_Y: f32 = 19.4;      // the target on the pearl at the touch: fw_top - FW_SINK, with FW_PEARL 0.125
 
 fn fd_ss(a: f32, b: f32, x: f32) -> f32 { return smoothstep(a, b, x); }
 fn fd_sample(uv: vec2<f32>) -> vec3<f32> {
@@ -221,10 +220,13 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     // ---- where the target has gone at the touch: on the far side of the sphere's floor (fw_place) ---------------------------
     let tk = 1.0 / max(dist * 1.3, 170.0);
     let tth = 2.0 * atan(dist * tk * 0.5);
+    // (the mound's top: fw_top laid back, less FW_SINK)
+    let trb = clamp(dist * 0.56, 60.0, 150.0);
+    let thy = trb / 153.0 * 0.533 * 260.6 - 20.0;
     let tup = sin(tth) / tk;
     let typ = 2.0 * pow(sin(tth * 0.5), 2.0) / tk;
-    let tu = dist - tup * cos(tth) + (FD_PEARL_Y - typ) * sin(tth);
-    let ty = tup * sin(tth) + (FD_PEARL_Y - typ) * cos(tth);
+    let tu = dist - tup * cos(tth) + (thy - typ) * sin(tth);
+    let ty = tup * sin(tth) + (thy - typ) * cos(tth);
     let te = (me.xz - tgt.xz) / max(dist, 0.001);
     let pt = project_rel(gq + vec3<f32>(te.x * tu, ty, te.y * tu));
 

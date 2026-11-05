@@ -41,7 +41,9 @@ const FW_FRACTAL: f32 = 1.0;       // block faces showing smaller copies of them
 const FW_SPONGE: f32 = 1.0;        // blocks carved into sponges
 const FW_PLEATS: f32 = 1.0;        // the radial pleats
 const FW_UNDER: f32 = 1.0;         // the sheet's underside painted as rock
-const FW_PEARL: f32 = 0.125;       // what the mandala's land shrinks to on the sphere's floor (the edits go in on it unseen)
+const FW_LAY0: f32 = 27.0;         // the mound lies back, the world drawn in, between these
+const FW_LAY1: f32 = 33.0;
+const FW_PEARL: f32 = 0.533;      // what the rings' scale comes to as they lie back, of what it was
 const FW_CAP: f32 = 0.7;           // how much of the sphere's top folds down: radians round the point
 
 fn fw_ss(a: f32, b: f32, x: f32) -> f32 {
@@ -67,15 +69,19 @@ fn fw_ring(i: i32) -> f32 {
         default: { return FW_LEN; }
     }
 }
-// How far along the sheet's curve ring i ends up lying: the bearing of its plate on the globe, radians from the top pole.
-fn fw_phi(i: i32) -> f32 {
+// How far along the sheet's curve ring i ends up lying: the bearing of its plate, radians, at `tau`: steep as it goes up,
+// laying back to a broad mound with the target on top as the world closes round it.
+fn fw_phi(i: i32, tau: f32) -> f32 {
+    var a = 0.14;
+    var b = 0.08;
     switch i {
-        case 0: { return 0.14; }
-        case 1: { return 0.48; }
-        case 2: { return 0.92; }
-        case 3: { return 1.52; }
-        default: { return 2.52; }
+        case 0: { }
+        case 1: { a = 0.48; b = 0.26; }
+        case 2: { a = 0.92; b = 0.5; }
+        case 3: { a = 1.52; b = 0.84; }
+        default: { a = 1.9; b = 0.7; }
     }
+    return mix(a, b, fw_ss(FW_LAY0, FW_LAY1, tau));
 }
 // The twelve petals: 0 on a petal's middle line, 1 on its edge, each ring's turned half a petal on the last's.
 fn fw_petal(a: f32, i: i32) -> f32 {
@@ -117,7 +123,7 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32) -> vec3<f32> {
     for (var i = 0; i < 5; i += 1) {
         let rho = fw_rho(i, a);
         let p = fw_p(i, a, t);
-        let ph = fw_phi(i) * p;
+        let ph = fw_phi(i, t) * p;
         let c = cos(ph);
         let s = sin(ph);
         let k = mix(1.0, kappa, p);
@@ -132,8 +138,11 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32) -> vec3<f32> {
         prev = rho;
     }
     if (r > prev) {
-        // (the far land: lying flat, slid in by what the rings have taken up)
-        R += r - prev;
+        // (the far land: lying flat, slid in by what the rings have taken up; then, as the world closes, all of it scaled to
+        // the mound's foot: squeezed round the foot by the slide alone it would go to streaks, and only a scale keeps its
+        // shapes. Its heights go with it, world_warp)
+        let foot = max(R, 1.0);
+        R = mix(foot + r - prev, foot * r / prev, fw_ss(FW_LAY0 - 2.0, FW_LAY1 - 2.0, t));
         here = 0.0;
     }
     // (the top a point: the scallops' lengths make its height depend on the bearing)
@@ -147,7 +156,7 @@ fn fw_top(t: f32, kappa: f32) -> f32 {
     for (var i = 0; i < 5; i += 1) {
         let rho = fw_ring(i);
         let p = fw_p(i, 0.2618, t);
-        total += (rho - prev) * mix(1.0, kappa, p) * sin(fw_phi(i) * p);
+        total += (rho - prev) * mix(1.0, kappa, p) * sin(fw_phi(i, t) * p);
         prev = rho;
     }
     return total;
@@ -202,9 +211,9 @@ fn fw_flap(t: f32) -> f32 {
 }
 // How far round from the target a point `rho` along the sheet lies on the sphere of curvature k: the stereographic map,
 // conformal, so the land is only scaled, never stretched. The land's edge is drawn in to the point as the sphere shuts.
-fn fw_theta(rho: f32, k: f32, shut: f32, cap0: f32, cap1: f32) -> f32 {
+fn fw_theta(rho: f32, k: f32, w: f32) -> f32 {
     let th = 2.0 * atan(rho * k * 0.5);
-    return th + (FW_PI - th) * shut * fw_ss(cap0, cap1, rho);
+    return th + (FW_PI - th) * w;
 }
 // The fold down from the sphere's top: six stages, each half the last, each a tier of twelve points opening out of the
 // one before. `v` is how far from the top the land was (1 at the fold's edge, 0 the top itself), `ax` is the sphere's
@@ -300,15 +309,15 @@ fn fw_tiers(v: f32, a: f32, tau: f32, sphere: vec2<f32>, z0: f32, ax: f32, b0: f
 }
 // Where the sheet goes: (R, a, y) along it from the target, y over it, bent to curvature k with the point `d` along it,
 // the player's feet, left where it is, level. The result is from the target, x and z as the world's.
-struct FwBend { k: f32, shut: f32, tau: f32, d: f32, e: vec2<f32>, cap0: f32, cap1: f32, top: f32 }
-fn fw_place(R: f32, a: f32, y: f32, g: FwBend) -> vec3<f32> {
+struct FwBend { k: f32, shut: f32, tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32 }
+fn fw_place(R: f32, r: f32, a: f32, y: f32, g: FwBend) -> vec3<f32> {
     let k = g.k;
     let ca = cos(a);
     let sa = sin(a);
     if (abs(k) < 1.0e-6) {
         return vec3<f32>(R * ca, y, R * sa);
     }
-    let th = fw_theta(R, k, g.shut, g.cap0, g.cap1);
+    let th = fw_theta(R, k, g.shut * fw_ss(0.42 * g.edge, g.edge, r));
     let f = pow(cos(th * 0.5), 2.0);
     var X = sin(th) * (1.0 / k - y * f);
     var Y = 2.0 * pow(sin(th * 0.5), 2.0) / k + y * f * cos(th);
@@ -327,7 +336,7 @@ fn fw_place(R: f32, a: f32, y: f32, g: FwBend) -> vec3<f32> {
         Y = mix(2.0 * S - p.y, Y, w);
     }
     // ---- turned about the sphere's middle to bring the player's feet to the bottom --------------------------------------
-    let thd = fw_theta(g.d, k, g.shut, g.cap0, g.cap1);
+    let thd = fw_theta(g.d, k, 0.0);
     let c = cos(thd);
     let s = sin(thd);
     let up = s / k;
@@ -397,7 +406,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // ---- the chain: the plates, hinged at the rings, shrinking to a pearl as the far land slides in --------------------------
     let dist = length(mq.xz);
     let rb = clamp(dist * 0.56, 60.0, 150.0);
-    let kappa = mix(rb / 153.0, FW_PEARL, fw_ss(27.0, 33.0, tau));
+    let kappa = rb / 153.0 * mix(1.0, FW_PEARL, fw_ss(FW_LAY0, FW_LAY1, tau));
     let ch = fw_chain(r, a, tau, kappa);
     var R = ch.x;
     var Y = ch.y;
@@ -410,11 +419,12 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         let tri = fw_petal(a, i);
         let squeeze = clamp(R / max(r, 1.0), 0.0, 1.0);
         let w = min(r * FW_PI / 12.0, 34.0);
-        hh += FW_PLEATS * (0.5 - tri) * 1.3 * w * sqrt(max(1.0 - squeeze * squeeze, 0.0));
+        hh += FW_PLEATS * (0.5 - tri) * 1.3 * w * sqrt(max(1.0 - squeeze * squeeze, 0.0)) * fw_ss(FW_LEN * 1.15, FW_LEN * 0.95, r);
     }
-    // (the plates' own land scales with them)
-    let inner = fw_ss(FW_LEN * 1.02, FW_LEN * 0.98, r);
-    hh *= mix(1.0, mix(1.0, kappa, fw_ss(27.0, 33.0, tau)), inner);
+    // (the land's heights scale with the land)
+    let small = clamp(abs(R) / max(r, 1.0), 0.0, 1.0);
+    let lay = fw_ss(FW_LAY0, FW_LAY1, tau);
+    hh *= mix(mix(1.0, kappa, lay), mix(1.0, small, lay), fw_ss(FW_LEN, FW_LEN * 1.2, r));
     R += hh * sn;
     Y += hh * cs;
     // (the sheet sunk from under the island, a dish it stands in: nothing comes up through it)
@@ -429,11 +439,11 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // ---- the sheet on the sphere -----------------------------------------------------------------------------------------
     let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 6000.0);
-    let cap1 = max(reach - dist - 500.0, 320.0);
+    let edge = max(reach - dist, 300.0);
     let k = fw_curve(tau, dist) + flap;
     let shut = fw_ss(28.5, FW_SEAL - 0.5, tau);
     let top = fw_top(tau, kappa) - sink;
-    let P = fw_place(R, a, y, FwBend(k, shut, tau, dist, e, 0.32 * cap1, cap1, top));
+    let P = fw_place(R, r, a, y, FwBend(k, shut, tau, dist, e, edge, top));
     out.pos = fw_clear(P + c.tgt, pos, 1.0 - fw_ss(FW_SLAM4, FW_SLAM4 + 1.0, t));
     return out;
 }
