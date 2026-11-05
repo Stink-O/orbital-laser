@@ -3,14 +3,19 @@
 // Validate with tools/check-shader.sh.
 
 // ---- laser 14: the supervolcano -----------------------------------------------------------------------------------
-// A hairline beam, then nothing for ten seconds but the tremor. The land cracks in a ring, steam rising off it; the ring
-// opens, a ring of vents 560 across feeds a dark jet that climbs into rough convective cauliflower, overshooting at its
-// top (`vc_col`); lava bombs arc off it, smoke behind them (`vc_bombs`); its umbrella spreads flat across the whole sky,
-// a ripple running out through it, lightning in rings (`vc_umb`, `vc_flash`); the sky goes dark at noon (`vc_dim`, the
-// land and the sky darkened, what glows left glowing, the game's clock and weather never touched). The column loses its
-// buoyancy and falls back on itself (`VC_COLLAPSE`), feeding a wall of ash that rolls out over the land in lobes and
-// clefts (`vc_flow`), new clouds rising off its top. It engulfs the player: near black, embers. Then a world dimmed
-// under falling ash, ending on a blood-red sun as the ash thins, all of it gone by VC_LEN (`vc_gone`).
+// A hairline beam, then nothing for ten seconds but the tremor. The land cracks in a ring, steam rising off it, and from
+// the eruption on all of it is one soft volume: a density falling off through a real depth (a surface bulged by lumps on
+// lumps, `vc_sdf`, sphere-traced only to skip the empty air), each step jittered by white noise, shaded by looks towards
+// the light. The blast first, far wider than tall (`vc_col`), a head of steam on it and pale shock shells over it
+// (`vc_shells`), a spray of rock (`vc_spray`); the trunk breaking out of its middle, lobed, its lower half full of pockets
+// of fire that flare and die (`vc_heat`); lava bombs arc off it on thick ropes of smoke, a third of them coming down round
+// the player, each landing in a black plume (`vc_bombs_smoke`); the umbrella spreads across the whole sky with real bulk,
+// a ripple running out through it, lightning in the plume and in rings through the sheet (`vc_umb`, `vc_flash`,
+// `vc_bolts`); the sky goes dark at noon (`vc_dim`, the land and the sky darkened, what glows left glowing, the game's
+// clock and weather never touched). The column loses its buoyancy and falls back on itself (`VC_COLLAPSE`), feeding a wall
+// of ash that rolls out over the land in lobes and clefts (`vc_flow`), torn into rolling banks behind its head. It engulfs
+// the player for six or seven seconds, then lifts into a rolling ceiling and the land shows. Then a world dimmed under
+// falling ash, ending on a blood-red sun as the ash thins, all of it gone by VC_LEN.
 // strike/volcano.rs keeps its VC_* in step with these, and gives the table: the bombs, the land's height.
 const VC_LEN: f32 = 88.0;
 const VC_HIT: f32 = 2.0;           // the beam hits and cuts out
@@ -870,9 +875,12 @@ fn vc_bolts(C: vec3<f32>, seed: u32, cloud_t: f32, pxy: vec2<f32>) -> vec2<f32> 
         let ab = pb - pa;
         let span = length(ab);
         let mid = (pa + pb) * 0.5;
-        if (dot(pxy - mid, pxy - mid) > span * span * 1.1) {
+        let dm = length(pxy - mid);
+        if (dm > span * 1.05) {
             continue;
         }
+        // (its glow gone before the edge of what is tried here: no disc round it)
+        let gw = 1.0 - smoothstep(0.45 * span, 1.0 * span, dm);
         // (seen through the cloud it stands in, dimmer, its glow still there)
         let dist = length(f.p + C);
         let seen = select(1.0, 0.3, cloud_t < dist - 160.0);
@@ -887,7 +895,7 @@ fn vc_bolts(C: vec3<f32>, seed: u32, cloud_t: f32, pxy: vec2<f32>) -> vec2<f32> 
             let kink = (mh(sid + j, seed, 0x915u) - 0.5) * 0.3 * span * env + (mh(sid + j, seed, 0x91du) - 0.5) * 0.09 * span;
             let p1 = select(pa + ab * u + nrm * kink, pb, j == J);
             let sg = vc_stroke(pxy, p0, p1, w0 * (1.0 - 0.6 * u));
-            sum = sum + sg * vec2<f32>(seen, 1.0) * f.k * (1.0 - 0.55 * u);
+            sum = sum + sg * vec2<f32>(seen, gw) * f.k * (1.0 - 0.55 * u);
             // (a branch from most joints, kinked in its turn, thinner; some of them forking again)
             if (j < J && mh(sid + j, seed, 0x916u) < 0.62) {
                 let side = select(-1.0, 1.0, mh(sid + j, seed, 0x917u) < 0.5);
@@ -899,11 +907,11 @@ fn vc_bolts(C: vec3<f32>, seed: u32, cloud_t: f32, pxy: vec2<f32>) -> vec2<f32> 
                     let um = f32(m) / 3.0;
                     let q1 = p1 + bd * lb * um + bn * (mh(sid + j * 7u + m, seed, 0x91au) - 0.5) * 0.36 * lb;
                     let sb = vc_stroke(pxy, q0, q1, w0 * 0.55 * (1.0 - 0.5 * um));
-                    sum = sum + sb * vec2<f32>(seen, 0.6) * f.k * 0.7 * (1.0 - 0.5 * um);
+                    sum = sum + sb * vec2<f32>(seen, 0.6 * gw) * f.k * 0.7 * (1.0 - 0.5 * um);
                     if (m == 2u && mh(sid + j, seed, 0x91bu) < 0.5) {
                         let q2 = q1 + (bd - bn * side * 0.9) * lb * 0.34;
                         let sc = vc_stroke(pxy, q1, q2, w0 * 0.4);
-                        sum = sum + sc * vec2<f32>(seen, 0.4) * f.k * 0.5;
+                        sum = sum + sc * vec2<f32>(seen, 0.4 * gw) * f.k * 0.5;
                     }
                     q0 = q1;
                 }
@@ -1556,7 +1564,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
             let thick = smoothstep(0.0, 0.9, tau) * (1.0 - smoothstep(4.0, 8.5, tau)) * (1.0 - smoothstep(180.0, 400.0, over));
             // (how far one can see, thinning on after it has gone by, to nothing as the ash goes)
             let clear = smoothstep(8.0, 16.0, tau);
-            let V = mix(mix(3000.0, 26000.0, clear), 110.0, thick) / max(1.0 - vs.thin, 1.0e-2);
+            let V = mix(mix(3000.0, 26000.0, clear), 170.0, thick) / max(1.0 - vs.thin, 1.0e-2);
             let Lh = 1800.0;
             let Lf = min(select(Lh + (6000.0 - Lh) * smoothstep(0.0, 0.15, rd.y), min(scene_len, Lh), !sky), 6000.0);
             // (only as far as the cloud, as much as it hides what is behind: a hard outline in the fog otherwise)
@@ -1596,7 +1604,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let bl = vc_bolts(C, seed, cloud_t, vc_px);
         if (bl.x + bl.y > 0.0) {
             let kb = k * (1.0 - 0.8 * smoothstep(VC_HU - 200.0, VC_HU + 100.0, -C.y));
-            col = col + (vec3<f32>(0.95, 0.95, 1.0) * bl.x * 5.5 + vec3<f32>(0.42, 0.38, 0.95) * bl.y * 0.85) * kb;
+            col = col + (vec3<f32>(0.95, 0.95, 1.0) * bl.x * 5.5 + vec3<f32>(0.42, 0.38, 0.95) * bl.y * 0.7) * kb;
         }
     }
     // ---- the blood-red sun, as the ash thins ------------------------------------------------------------------------
