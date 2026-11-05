@@ -1,4 +1,4 @@
-//! The Supervolcano's mount: the land swelling into a dome some 600 across and 150 high (VC_SWELL to VC_HUSH), then
+//! The Supervolcano's mount: the land swelling into a dome some 800 across and 300 high (more at its crest) (VC_SWELL to VC_HUSH), then
 //! bursting (VC_ERUPT). Nothing of it is real: the pass draws it (shaders/volcano_mount.wgsl) over the real land, on the
 //! land's own heights and colours, and the white-out at the burst hides it going, so it needs no blocks, leaves none and
 //! shows with the terrain off too.
@@ -21,8 +21,8 @@ use std::rc::Rc;
 const TAU: f64 = 2.0 * PI;
 pub(super) const VM_BASE: usize = 65_536;
 /// The square of columns: VM_GW a side, VM_STEP blocks apart, VM_HALF either side of the vent.
-pub(super) const VM_HALF: i32 = 360;
-pub(super) const VM_STEP: i32 = 3;
+pub(super) const VM_HALF: i32 = 480;
+pub(super) const VM_STEP: i32 = 4;
 pub(super) const VM_GW: usize = 241;
 const VM_COLS: usize = VM_GW * VM_GW;
 /// The tiles the march skips by: VM_TC cells a side, each two words (the land's highest, P's highest), a tile's words
@@ -35,7 +35,7 @@ const VM_SHARD: usize = VM_BASE + 512;
 pub(super) const VM_SHARDS: usize = 56;
 const VM_SW: usize = 22;
 const VM_FOUNT: usize = VM_BASE + 2200;
-pub(super) const VM_FOUNTS: usize = 64;
+pub(super) const VM_FOUNTS: usize = 44;
 const VM_BOULD: usize = VM_BASE + 2800;
 pub(super) const VM_BOULDS: usize = 40;
 const VM_BW: usize = 16;
@@ -49,7 +49,9 @@ const VM_W0: usize = VM_BASE + 8192;
 const VM_W1: usize = VM_W0 + VM_COLS;
 const VM_W2: usize = VM_W1 + VM_COLS;
 /// The dome's radius, on average.
-const VM_RAD: f64 = 300.0;
+const VM_RAD: f64 = 400.0;
+/// How high it gets (the pass's vm_hgt, before the last heave).
+const VM_H: f64 = 340.0;
 /// The beats (BEATS.md).
 const VC_SWELL: f64 = 7.0;
 const VC_HUSH: f64 = 17.0;
@@ -106,9 +108,11 @@ struct Fount {
     h: f64,
     seed: f64,
 }
-/// The dome and how it breaks, for a seed: worked out as the strike starts.
+/// The dome and how it breaks, for a seed: worked out as the strike starts, its long way across the player's look
+/// (`facing`, the player's bearing from the vent), so from where they stand it fills as much of the horizon as it can.
 pub(super) struct Geo {
     seed: u32,
+    facing: f64,
     tab: Vec<f32>,
     /// The dome's radius by bearing.
     radii: Vec<f64>,
@@ -127,20 +131,20 @@ pub(super) struct Cell {
     pub d2: f64,
 }
 impl Geo {
-    pub fn new(seed: u32) -> Self {
+    pub fn new(seed: u32, facing: f64) -> Self {
         let ph = [TAU * mh(1, seed, 0x700), TAU * mh(2, seed, 0x700), TAU * mh(3, seed, 0x700), TAU * mh(4, seed, 0x700)];
-        let [p0, p1, p2, _] = ph;
+        let [_, p1, p2, _] = ph;
         let radii = (0..=512)
             .map(|i| {
                 let a = -PI + TAU * f64::from(i) / 512.0;
-                VM_RAD * (1.0 + 0.1 * (2.0 * a + p0).sin() + 0.075 * (3.0 * a + p1).sin() + 0.04 * (5.0 * a + p2).sin())
+                VM_RAD * (1.0 - 0.16 * (2.0 * (a - facing)).cos() + 0.05 * (3.0 * a + p1).sin() + 0.03 * (5.0 * a + p2).sin())
             })
             .collect();
-        let mut g = Geo { seed, tab: vm_tab(seed), radii, rings: Vec::new(), plates: Vec::new(), shards: Vec::new() };
+        let mut g = Geo { seed, facing, tab: vm_tab(seed), radii, rings: Vec::new(), plates: Vec::new(), shards: Vec::new() };
         // (wedges in rings: long down the slope, a star of them round the top, on out past the dome's foot over the land,
         // where only the cracks show)
         let mut first = 0;
-        for &(r0, r1, n) in &[(0.0, 60.0, 8usize), (60.0, 125.0, 13), (125.0, 195.0, 19), (195.0, 265.0, 25), (265.0, 340.0, 30), (340.0, 430.0, 34), (430.0, 540.0, 35)] {
+        for &(r0, r1, n) in &[(0.0, 80.0, 8usize), (80.0, 167.0, 13), (167.0, 260.0, 19), (260.0, 353.0, 25), (353.0, 453.0, 30), (453.0, 573.0, 34), (573.0, 720.0, 35)] {
             g.rings.push(Ring { r0, r1, n, first });
             first += n;
         }
@@ -152,14 +156,14 @@ impl Geo {
                 let r = r0 + (r1 - r0) * (0.3 + 0.4 * mh(k, seed, 0x702));
                 let (x, z) = (r * a.cos(), r * a.sin());
                 let s = g.dome(x, z);
-                let e = 12.0;
+                let e = 16.0;
                 let gx = (g.dome(x + e, z) - g.dome(x - e, z)) / (2.0 * e);
                 let gz = (g.dome(x, z + e) - g.dome(x, z - e)) / (2.0 * e);
                 // (each plate its own way: a lift, a tilt; near the top more, a few much more: blocks heaved up on edge
                 // and blocks dropped)
                 let big = (mh(k, seed, 0x703) - 0.5) * 2.0;
                 let heave = if mh(k, seed, 0x704) < 0.14 { 0.09 * (0.3 + s) } else { 0.0 };
-                let tilt = 0.0005 + 0.0010 * s;
+                let tilt = 0.0003 + 0.0006 * s;
                 let ta = TAU * mh(k, seed, 0x705);
                 g.plates.push(Plate {
                     x,
@@ -178,10 +182,10 @@ impl Geo {
             let k = c as u32;
             let u = (c as f64 + 0.6 * mh(k, seed, 0x710)) / clumps as f64;
             let a = TAU * (0.618_034 * c as f64 + 0.2 * mh(k, seed, 0x711));
-            let r = 45.0 + 195.0 * (0.2 + 0.8 * mh(k, seed, 0x712)).powf(0.8);
-            let t0 = 12.4 + 4.0 * u.powf(0.8);
-            let tall = (34.0 + 54.0 * mh(k, seed, 0x713).powf(1.3)) * (1.0 - 0.35 * r / 250.0);
-            let rad = 7.0 + 8.0 * mh(k, seed, 0x714);
+            let r = 100.0 + 250.0 * (0.2 + 0.8 * mh(k, seed, 0x712)).powf(0.8);
+            let t0 = 11.4 + 5.0 * u.powf(0.8);
+            let tall = (65.0 + 105.0 * mh(k, seed, 0x713).powf(1.3)) * (1.0 - 0.35 * r / 330.0);
+            let rad = 18.0 + 18.0 * mh(k, seed, 0x714);
             // (they lean out from the middle of the clump, thrust apart)
             for b in 0..4u32 {
                 let m = |q: u32| mh(k * 7 + b, seed, q);
@@ -226,7 +230,7 @@ impl Geo {
     /// never a bowl: lobed round its foot, ridged over its back.
     pub fn dome(&self, x: f64, z: f64) -> f64 {
         let r2 = x * x + z * z;
-        if r2 > 427.0 * 427.0 {
+        if r2 > 570.0 * 570.0 {
             return 0.0;
         }
         let rad = self.radii[(((z.atan2(x) + PI) / TAU * 512.0) as usize).min(512)];
@@ -234,17 +238,19 @@ impl Geo {
         if u2 >= 1.0 {
             return 0.0;
         }
-        let b = (1.0 - u2) * (1.0 - u2);
-        let ridges = self.vn(x / 170.0 + 3.3, z / 170.0, 1) - 0.5;
-        let fine = self.vn(x / 66.0, z / 66.0 + 7.1, 2) - 0.5;
+        // (a wide swell, its shoulders full, with a steeper heart heaved up through it)
+        let v2 = u2 / 0.22;
+        let b = 0.8 * (1.0 - u2) * (1.0 - 0.7 * u2) + if v2 < 1.0 { 0.28 * (1.0 - v2) * (1.0 - v2) } else { 0.0 };
+        let ridges = self.vn(x / 227.0 + 3.3, z / 227.0, 1) - 0.5;
+        let fine = self.vn(x / 88.0, z / 88.0 + 7.1, 2) - 0.5;
         b * (1.0 + 0.42 * ridges + 0.17 * fine)
     }
     /// The field at column (x, z) from the vent.
     pub fn cell(&self, x: f64, z: f64) -> Cell {
         // (the edges wander: long bends, jagged close to)
         let (wx, wz) = (
-            x + 22.0 * (self.vn(x / 96.0, z / 96.0, 11) - 0.5) + 5.5 * (self.vn(x / 25.0, z / 25.0, 12) - 0.5) + 1.6 * (self.vn(x / 8.0, z / 8.0, 15) - 0.5),
-            z + 22.0 * (self.vn(x / 96.0 + 5.0, z / 96.0, 13) - 0.5) + 5.5 * (self.vn(x / 25.0, z / 25.0 + 3.0, 14) - 0.5) + 1.6 * (self.vn(x / 8.0, z / 8.0 + 1.0, 16) - 0.5),
+            x + 29.0 * (self.vn(x / 128.0, z / 128.0, 11) - 0.5) + 7.5 * (self.vn(x / 33.0, z / 33.0, 12) - 0.5) + 2.2 * (self.vn(x / 11.0, z / 11.0, 15) - 0.5),
+            z + 29.0 * (self.vn(x / 128.0 + 5.0, z / 128.0, 13) - 0.5) + 7.5 * (self.vn(x / 33.0, z / 33.0 + 3.0, 14) - 0.5) + 2.2 * (self.vn(x / 11.0, z / 11.0 + 1.0, 16) - 0.5),
         );
         let r = (wx * wx + wz * wz).sqrt().max(1.0);
         let (ux, uz) = (wx / r, wz / r);
@@ -281,13 +287,13 @@ impl Geo {
         // (and each plate is broken again, smaller and less)
         let mut d_in = 31.0;
         if s0 > 0.0 {
-            let (cx, cz) = ((x / 34.0).floor(), (z / 34.0).floor());
+            let (cx, cz) = ((x / 46.0).floor(), (z / 46.0).floor());
             let (mut dn, mut dn2, mut v) = (1.0e18f64, 1.0e18f64, 0.0);
             for b in -1..=1 {
                 for c in -1..=1 {
                     let (ci, ck) = (cx + f64::from(b), cz + f64::from(c));
                     let id = ((ci as i32 as u32).wrapping_mul(53).wrapping_add((ck as i32 as u32).wrapping_mul(907)) as usize) & (VM_TAB - 4);
-                    let (px, pz) = ((ci + f64::from(self.tab[id])) * 34.0, (ck + f64::from(self.tab[id + 1])) * 34.0);
+                    let (px, pz) = ((ci + f64::from(self.tab[id])) * 46.0, (ck + f64::from(self.tab[id + 1])) * 46.0);
                     let d = ((x - px) * (x - px) + (z - pz) * (z - pz)).sqrt();
                     if d < dn {
                         dn2 = dn;
@@ -393,8 +399,8 @@ pub(super) struct Work {
     known: usize,
 }
 impl Work {
-    fn new(seed: u32) -> Self {
-        Work { geo: Rc::new(Geo::new(seed)), cells: vec![Cell::default(); VM_COLS], next_cell: 0, cols: vec![None; VM_COLS], known: 0 }
+    fn new(seed: u32, facing: f64) -> Self {
+        Work { geo: Rc::new(Geo::new(seed, facing)), cells: vec![Cell::default(); VM_COLS], next_cell: 0, cols: vec![None; VM_COLS], known: 0 }
     }
     /// The next `n` columns of the field; whether that was the last of them.
     fn field(&mut self, n: usize) -> bool {
@@ -426,6 +432,7 @@ pub(super) struct Pack {
     tiles: Vec<[f32; 2]>,
     lo: f32,
     hi: f32,
+    facing: f32,
     done: usize,
 }
 impl Pack {
@@ -478,6 +485,7 @@ impl Pack {
             tiles: vec![[f32::MIN, f32::MIN]; VM_TN * VM_TN],
             lo: f32::MAX,
             hi: f32::MIN,
+            facing: w.geo.facing as f32,
             done: 0,
         }
     }
@@ -546,7 +554,7 @@ impl Pack {
             }
         }
         let tw: Vec<u32> = tiles.iter().flat_map(|t| t.iter().map(|v| v.to_bits())).collect();
-        let head = vec![1f32.to_bits(), self.lo.to_bits(), self.hi.to_bits()];
+        let head = vec![1f32.to_bits(), self.lo.to_bits(), self.hi.to_bits(), self.facing.cos().to_bits(), self.facing.sin().to_bits()];
         vec![(VM_BASE, head), (VM_TILE, tw), (VM_W0, self.w0), (VM_W1, self.w1), (VM_W2, self.w2)]
     }
 }
@@ -578,13 +586,13 @@ fn vm_founts(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
     let mut list: Vec<Fount> = (0..VM_FOUNTS as u32)
         .map(|k| {
             let u = (f64::from(k) + 0.7 * mh(k, s, 0x740)) / VM_FOUNTS as f64;
-            let t0 = 11.6 + 5.3 * u.powf(0.7);
+            let t0 = 10.4 + 6.4 * u.powf(0.7);
             let a0 = TAU * mh(k, s, 0x741);
-            let r = 30.0 + 225.0 * mh(k, s, 0x742).powf(0.9) * (0.45 + 0.55 * u);
+            let r = 40.0 + 300.0 * mh(k, s, 0x742).powf(0.9) * (0.45 + 0.55 * u);
             // (along the ring to the crack nearest)
             let mut best = (1.0e9, r * a0.cos(), r * a0.sin());
             for b in -16..=16 {
-                let a = a0 + f64::from(b) * 4.0 / r;
+                let a = a0 + f64::from(b) * 5.0 / r;
                 let (x, z) = (r * a.cos(), r * a.sin());
                 let j = col_index(x, z);
                 if w.cells[j].d < best.0 {
@@ -592,8 +600,8 @@ fn vm_founts(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
                 }
             }
             let (land, p) = foot(best.1, best.2);
-            let dur = 1.0 + 1.5 * mh(k, s, 0x743);
-            Fount { x: best.1, z: best.2, land, p, t0, dur: dur.min((17.15 - t0).max(0.25)), h: 14.0 + 30.0 * mh(k, s, 0x744).powi(2) + 16.0 * u, seed: f64::from(k) * 1.37 }
+            let dur = 1.4 + 2.4 * mh(k, s, 0x743);
+            Fount { x: best.1, z: best.2, land, p, t0, dur: dur.min((17.15 - t0).max(0.25)), h: 70.0 + 150.0 * mh(k, s, 0x744).powi(2) + 60.0 * u, seed: f64::from(k) * 1.37 }
         })
         .collect();
     list.sort_by(|a, b| a.t0.total_cmp(&b.t0));
@@ -609,11 +617,11 @@ fn vm_boulders(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
     let mut out = Vec::with_capacity(VM_BOULDS * VM_BW);
     for k in 0..VM_BOULDS as u32 {
         let a = TAU * mh(k, s, 0x750);
-        let r0 = 70.0 + 150.0 * mh(k, s, 0x751);
-        let r1 = (r0 + 190.0).min(262.0);
-        let t0 = 11.5 + 5.0 * mh(k, s, 0x752);
-        let acc = 11.0 + 16.0 * mh(k, s, 0x753);
-        let size = 1.6 + 2.2 * mh(k, s, 0x754).powi(2);
+        let r0 = 90.0 + 200.0 * mh(k, s, 0x751);
+        let r1 = (r0 + 260.0).min(350.0);
+        let t0 = 10.5 + 6.0 * mh(k, s, 0x752);
+        let acc = 13.0 + 18.0 * mh(k, s, 0x753);
+        let size = 6.0 + 11.0 * mh(k, s, 0x754).powi(2);
         let mut f = vec![a.cos(), a.sin(), r0, r1, t0, acc, size, f64::from(k)];
         for i in 0..4 {
             let r = r0 + (r1 - r0) * f64::from(i) / 3.0;
@@ -654,8 +662,8 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
             rad[c] = rad[c].max((x - cx).powi(2) + (z - cz).powi(2));
             let g = &w.geo.plates[c];
             let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
-            let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * 150.0;
-            let plane = l + 150.0 * (pc + g.gx * (x - cx) + g.gz * (z - cz));
+            let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * VM_H;
+            let plane = l + VM_H * (pc + g.gx * (x - cx) + g.gz * (z - cz));
             off[c] = off[c].max((top - plane).abs());
         }
     }
@@ -671,10 +679,10 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let (ux, uz) = (cx / r, cz / r);
         // (the sheet: thrown out far more than up, those near the top up hardest; it goes in a fifth of a second)
         let tr = 18.03 + r / 1300.0 + 0.03 * mh(m, s, 0x760);
-        let up = (105.0 + 230.0 * (1.0 - r / 320.0).clamp(0.0, 1.0)) * (0.7 + 0.6 * mh(m, s, 0x761));
-        let out_v = (45.0 + 120.0 * (PI * (r / 330.0).min(1.0)).sin()) * (0.75 + 0.5 * mh(m, s, 0x762));
+        let up = (170.0 + 330.0 * (1.0 - r / 430.0).clamp(0.0, 1.0)) * (0.7 + 0.6 * mh(m, s, 0x761));
+        let out_v = (80.0 + 200.0 * (PI * (r / 440.0).min(1.0)).sin()) * (0.75 + 0.5 * mh(m, s, 0x762));
         let aa = TAU * mh(m, s, 0x763);
-        let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 7.0 + 12.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, off[k] + 4.0];
+        let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 14.0 + 22.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, off[k] + 4.0];
         out.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
     out
@@ -707,8 +715,8 @@ impl Round {
 
 /// The mount's part of the plan: the field worked out as it starts, the land read, whatever the terrain setting, since
 /// the mount is only drawn.
-pub(super) fn vm_plan(p: &mut Plan, seed: u32, hf: Rc<RefCell<Hf>>) {
-    let w: Shared = Rc::new(RefCell::new(Work::new(seed)));
+pub(super) fn vm_plan(p: &mut Plan, seed: u32, hf: Rc<RefCell<Hf>>, facing: f64) {
+    let w: Shared = Rc::new(RefCell::new(Work::new(seed, facing)));
     {
         let w = w.clone();
         p.later(0.1, move |q| vm_field_step(q, w, 0.1));
@@ -869,7 +877,7 @@ pub(super) mod table {
     }
     /// The whole table at once (the tests' and the preview's: the game's goes in stages).
     pub(in crate::strike) fn all(seed: u32, col: &dyn Fn(f64, f64) -> Option<Col>) -> Vec<(usize, Vec<u32>)> {
-        let mut w = Work::new(seed);
+        let mut w = Work::new(seed, PI / 2.0);
         while !w.field(PER_STAGE) {}
         for j in 0..VM_COLS {
             let (x, z) = col_xz(j);
@@ -908,14 +916,14 @@ mod tests {
         assert!(read_col(&[0, 0, 0], 66, 2, &mats, (0, 0), 64).is_none());
     }
     #[test]
-    fn the_dome_is_about_600_wide_and_its_plates_cover_it() {
-        let g = Geo::new(37);
-        let top = (0..2000).map(|i| { let a = i as f64 * 0.77; let r = i as f64 * 0.06; g.dome(r * a.cos(), r * a.sin()) }).fold(0.0, f64::max);
+    fn the_dome_is_about_800_wide_and_its_plates_cover_it() {
+        let g = Geo::new(37, 0.0);
+        let top = (0..2000).map(|i| { let a = i as f64 * 0.77; let r = i as f64 * 0.08; g.dome(r * a.cos(), r * a.sin()) }).fold(0.0, f64::max);
         assert!((0.8..1.35).contains(&top), "{top}");
         for k in 0..4 {
             let a = k as f64 * 1.3;
-            assert!(g.dome(180.0 * a.cos(), 180.0 * a.sin()) > 0.1);
-            assert_eq!(g.dome(350.0 * a.cos(), 350.0 * a.sin()), 0.0);
+            assert!(g.dome(240.0 * a.cos(), 240.0 * a.sin()) > 0.1);
+            assert_eq!(g.dome(490.0 * a.cos(), 490.0 * a.sin()), 0.0);
         }
         assert!(g.plates.len() <= VM_PLATES);
         let mut seen = vec![false; g.plates.len()];
@@ -950,7 +958,7 @@ mod tests {
         assert!(VM_SHARD + VM_SHARDS * VM_SW <= VM_FOUNT);
         assert!(VM_FOUNT + VM_FOUNTS * 8 <= VM_BOULD);
         assert!(VM_BOULD + VM_BOULDS * VM_BW <= VM_PLATE);
-        assert_eq!(VM_FLY, Geo::new(37).rings[..5].iter().map(|g| g.n).sum::<usize>());
+        assert_eq!(VM_FLY, Geo::new(37, 0.0).rings[..5].iter().map(|g| g.n).sum::<usize>());
         assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_W0);
     }
 }

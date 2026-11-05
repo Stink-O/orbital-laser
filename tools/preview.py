@@ -220,6 +220,10 @@ VIEWS = {
     "vc2k": "cx=0 cy=90 cz=2000 lx=0.5 ly=640 lz=0.5 flat=1 trees=1 fov=62 reach=2000",
     "vcair": "cx=500 cy=520 cz=1050 lx=0.5 ly=330 lz=0.5 flat=1 fov=62 reach=1100",
     "vcup9": "cx=0 cy=67 cz=1000 lx=0.5 ly=1500 lz=0.5 flat=1 trees=1 fov=85 reach=1000",
+    # the mount from the nearest the vent goes: level, as a player looks, on a 20-block hill, and in rolling land
+    "vc1kl": "cx=0 cy=67 cz=1000 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=1000",
+    "vc1kh": "cx=0 cy=87 cz=1000 lx=0.5 ly=160 lz=0.5 flat=1 trees=1 fov=70 reach=1000",
+    "vc1kr": "cx=0 cy=81 cz=1000 lx=0.5 ly=170 lz=0.5 hills=30 flush=1 trees=1 fov=70 reach=1000",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",

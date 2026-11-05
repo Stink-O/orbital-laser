@@ -247,7 +247,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     }
 
     // ---- the mount: strike/vc_mount.rs, drawn whatever the terrain setting ----------------------------------------------
-    super::vc_mount::vm_plan(&mut p, shader_seed as u32, hf.clone());
+    super::vc_mount::vm_plan(&mut p, shader_seed as u32, hf.clone(), rel[2].atan2(rel[0]));
 
     // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
     {
