@@ -45,8 +45,10 @@ pub struct Surge {
     grounded: u32,
     asked: [bool; 2],
     sway: f64,
-    /// Where their view is being turned to, once they are up; what it was when that began.
     n: u32,
+    /// Where their feet were a tick ago and the rise or fall it asked for then; the ticks the land has held them up.
+    last: (f64, f64),
+    held_up: u32,
     pub freed_at: Option<f64>,
     /// When it let them go, for the tests.
     pub left_at: Option<f64>,
@@ -59,7 +61,7 @@ fn ease(a: f64, b: f64, t: f64) -> f64 {
 
 impl Surge {
     pub fn new(geo: TsGeo) -> Surge {
-        Surge { geo, lift: None, done: false, free: false, grounded: 0, asked: [false; 2], sway: 0.0, n: 0, freed_at: None, left_at: None }
+        Surge { geo, lift: None, done: false, free: false, grounded: 0, asked: [false; 2], sway: 0.0, n: 0, last: (0.0, 0.0), held_up: 0, freed_at: None, left_at: None }
     }
     /// Whether it is over: the water gone from them, or the strike's end near.
     pub fn over(&self, t: f64) -> bool {
@@ -133,7 +135,13 @@ impl Surge {
         let draining = self.geo.drained(t, s) > 0.0;
         let late = self.geo.drained(t, s) > 0.85;
         let _ = u;
-        if ((draining && d < 0.1) || late) && tau > SURF + 1.0 {
+        // (they ride down with the surface until the land stops them going any lower)
+        if self.last.1 < -0.08 && feet[1] - self.last.0 > self.last.1 * 0.4 {
+            self.held_up += 1;
+        } else {
+            self.held_up = 0;
+        }
+        if ((draining && self.held_up >= 4) || depth.is_none() || late) && tau > SURF + 1.0 {
             self.done = true;
             self.left_at = Some(t);
             return out;
@@ -147,11 +155,13 @@ impl Surge {
         let (nx, nz) = (-self.geo.m[1], self.geo.m[0]);
         let shake = 1.0 - 0.8 * up;
         let want_h = [v[0] * 0.05 * k + nx * buffet[0] * 0.05 * 6.0 * k * shake, v[1] * 0.05 * k + nz * buffet[0] * 0.05 * 6.0 * k * shake];
-        let surf = feet[1] + d - RIDE;
+        // (where the surface will be a tick on: following it, not chasing it)
+        let d1 = self.depth(feet[0], feet[1], feet[2], t + 0.05).unwrap_or(d);
+        let surf = feet[1] + d1 - RIDE;
         let frac = 0.42 * ease(0.6, SURF - 1.3, tau) + 0.58 * ease(SURF - 1.75, SURF - 0.05, tau);
         let bob = 0.25 * (1.3 * tau).sin() * up;
         let y_t = l.y0 + (surf - l.y0).max(0.0) * frac + bob;
-        let dy = if tau >= SURF { (y_t.min(surf + 0.6) - feet[1]) * 0.6 } else { (y_t - feet[1]) * 0.5 };
+        let dy = if tau >= SURF { y_t.min(surf + 0.6) - feet[1] } else { (y_t - feet[1]) * 0.5 };
         let dy = dy.clamp(-2.6, STEP) + buffet[1] * 0.05 * shake;
         let mut want = [want_h[0], dy, want_h[1]];
         let m = want.iter().fold(0.0f64, |m, v| m.max(v.abs()));
@@ -163,6 +173,7 @@ impl Surge {
         }
         out.carry = Some([want[0] as f32, want[1] as f32, want[2] as f32]);
         self.asked[0] = true;
+        self.last = (feet[1], want[1]);
         // (their view: tumbled a little by the flow, gusting; up, turned to look the way the water is going)
         if turn {
             let sway = 3.2 * ((0.9 * tau + l.ph).sin() + 0.5 * (2.1 * tau + 1.0).sin()) * k * shake;

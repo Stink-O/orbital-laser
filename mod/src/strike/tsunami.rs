@@ -353,14 +353,16 @@ fn lying(name: &str, along_x: bool) -> &'static str {
 struct Kind {
     class: u8,
     soil: u8,
+    /// Whether it makes wreckage (`wreck_ok`: string searches, so once a name, not once a block).
+    wreck: bool,
 }
 fn kind_of(name: &str) -> Kind {
-    crate::meter::spend(6_000);
+    crate::meter::spend(12_000);
     match hu_block(name) {
-        Some(_) if stays(name) => Kind { class: 8, soil: 0 },
+        Some(_) if stays(name) => Kind { class: 8, soil: 0, wreck: false },
         Some(b) => {
             let k = &HU_BLOCKS[b as usize];
-            Kind { class: k.class, soil: if k.class == 2 { soil_of(k.name) } else { 0 } }
+            Kind { class: k.class, soil: if k.class == 2 { soil_of(k.name) } else { 0 }, wreck: k.class == 7 && wreck_ok(name) }
         }
         None => Kind {
             class: match sh_land::material(name).1 {
@@ -369,6 +371,7 @@ fn kind_of(name: &str) -> Kind {
                 _ => 8,
             },
             soil: 0,
+            wreck: false,
         },
     }
 }
@@ -646,7 +649,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         for j in (0..blocks.len()).rev() {
             crate::meter::spend(24);
             let b = blocks[j];
-            let kind = cur.kinds.get(b as usize).copied().unwrap_or(Kind { class: 8, soil: 0 });
+            let kind = cur.kinds.get(b as usize).copied().unwrap_or(Kind { class: 8, soil: 0, wreck: false });
             let y = base + j as i32;
             match kind.class {
                 0 => continue,
@@ -674,7 +677,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
                     }
                     tree |= class == 3 || class == 4;
                     bld |= class == 7;
-                    if wreck == u16::MAX && ((class == 7 && wreck_ok(&a.palette[b as usize])) || class == 3) {
+                    if wreck == u16::MAX && (kind.wreck || class == 3) {
                         wreck = b;
                     }
                 }
@@ -807,6 +810,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         let (x, z) = (x0 + (i % 16) as i32, z0 + (i / 16) as i32);
         let name = &a.palette[wb as usize];
         let (dx, dz) = ((geo.m[0] * (2.0 + 11.0 * chance(x, z, w.seed, 4))).round() as i32, (geo.m[1] * (2.0 + 11.0 * chance(x, z, w.seed, 5))).round() as i32);
+        crate::meter::spend(1_500);
         let log = logs > 0 && name.contains("log") || name.contains("wood");
         let len = if log { 3 + (chance(x, z, w.seed, 6) * 5.0) as i32 } else { 1 };
         for step in 0..len {
@@ -816,6 +820,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             if !reached[j] || gs[j] == i32::MIN {
                 continue;
             }
+            crate::meter::spend(1_500);
             let plain = name.split('[').next().unwrap_or(name);
             let block: &'static str = if log { lying(plain, along_x) } else { interned(plain.to_string()) };
             let h = if log { 1 } else { 1 + (chance(x, z, w.seed, 8) * 2.0) as i32 };
