@@ -430,7 +430,7 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
             let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) * (1.0 + 0.5 * (fl + vm.eh)) - o.xz;
             let cr = pl0.x * rd.z - pl0.y * rd.x;
             let rm = vm_w(b + 5u) + vm_w(b + 6u);
-            if (cr * cr > rm * rm * dot(rd.xz, rd.xz) + 1.0) {
+            if (cr * cr > rm * rm * dot(rd.xz, rd.xz) + 1.0 && dot(pl0, pl0) > (rm + 90.0) * (rm + 90.0)) {
                 continue;
             }
         }
@@ -444,7 +444,7 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
         let fly = max(vm.t - VM_ERUPT - 0.06, 0.0);
         if (fly > 0.0) {
             let up = 230.0 + 150.0 * fract(t0 * 7.3);
-            c = vm_flown(c, vec3<f32>(c.x * 0.5, up, c.z * 0.5), VM_ERUPT + 0.06, 2.4, 44.0, vm.t, vm.eh);
+            c = vm_clear(vm_flown(c, vec3<f32>(c.x * 0.5, up, c.z * 0.5), VM_ERUPT + 0.06, 2.4, 44.0, vm.t, vm.eh), o, h + rad + 80.0);
             if (c.y + 1.2 * h < vm.ylo) {
                 continue;
             }
@@ -547,6 +547,16 @@ struct VmPl {
     dep: f32,         // how far down through it, 0 to 1
     y: f32,           // how high it was, at rest
 }
+// What is thrown never goes through the eye: a plate there would black out the picture, and with the eye inside it the
+// half stage's march would stop at nothing. It slides round a ball about the eye instead, `keep` from its middle.
+fn vm_clear(c: vec3<f32>, o: vec3<f32>, keep: f32) -> vec3<f32> {
+    let e = c - o;
+    let d = length(e);
+    if (d >= keep || d < 0.01) {
+        return c;
+    }
+    return o + e * keep / d;
+}
 // How far out a piece has gone by time t since VM_BRK, as seconds of its speed then.
 fn vm_eh(t: f32) -> f32 {
     return VM_TH * (1.0 - exp(-max(t - VM_BRK, 0.0) / VM_TH));
@@ -630,11 +640,12 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         let vxz = vec2<f32>(vm_w(b + 9u), vm_w(b + 11u));
         let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) + vxz * (min(a, VM_BRK - tr) + vm.eh) - o.xz;
         let cr = pl0.x * rd.z - pl0.y * rd.x;
-        if (cr * cr > rad * rad * 1.1 * dot(rd.xz, rd.xz) + 1.0) {
+        let keep = rad + 140.0;
+        if (cr * cr > rad * rad * 1.1 * dot(rd.xz, rd.xz) + 1.0 && dot(pl0, pl0) > keep * keep) {
             continue;
         }
         let rest = vec3<f32>(vm_w(b), vm_w(b + 2u) + vm_w(b + 3u) * vm.H, vm_w(b + 1u));
-        let c = vm_flown(rest, vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y), tr, vm_w(fb), vm_w(fb + 1u), vm.t, vm.eh);
+        let c = vm_clear(vm_flown(rest, vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y), tr, vm_w(fb), vm_w(fb + 1u), vm.t, vm.eh), o, keep);
         let oc = c - o;
         let tc = dot(oc, rd);
         let dd = dot(oc, oc) - tc * tc;
