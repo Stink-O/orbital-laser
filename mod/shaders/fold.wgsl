@@ -64,7 +64,7 @@ const FD_B: f32 = 177.16;          // its braking: (FD_FALL - FD_V * FD_STOP) / 
 const FD_SLIP: f32 = 0.3;          // how soon what moved with it loses its speed, seconds
 const FD_TIP: f32 = 1.72;          // the tip, in radii over the centre
 const FD_PIV: f32 = -0.3;          // the point it squashes about, in radii over the centre: low, the tip does the moving
-struct FdDrop { R: f32, stop_h: f32, h: f32, sx: f32, sy: f32, piv: f32, rip: f32, ph: f32, sway: vec2<f32> }
+struct FdDrop { R: f32, stop_h: f32, h: f32, sx: f32, sy: f32, piv: f32, rip: f32, ph: f32, sway: vec2<f32>, pool: f32, pw: f32 }
 struct FdLight { L: vec3<f32>, sunc: vec3<f32>, amb: vec3<f32>, haze: vec3<f32> }
 struct FdMist { c: vec3<f32>, tau: f32, glow: vec3<f32> }
 // How far over where it stops it is, `tau` seconds before it does, and when it was at that height.
@@ -83,11 +83,23 @@ fn fd_vc(R: f32) -> f32 { return 2.0 * (1.6 * R + 6.0) / (FD_TOUCH - FD_HANG); }
 // its side (d.rip, d.ph). It keeps its shape and sinks; the land's depth hides it.
 fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let a = t - FD_TOUCH;
-    // (it doesn't flatten: it sinks, drawn in faster and faster, top last; fold_warp.wgsl's fw_sink in step. Waves run up it
-    // from the neck, as they do up a drop going into water, and are gone before it is)
+    // (it doesn't flatten: it brakes on the land's swell and slumps in, top last, like one blob of a lava lamp into another.
+    // Waves run up it from the neck, as they do up a drop going into water, and are gone before it is)
     let vc = fd_vc(R);
-    let h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * ((FD_TIP + 1.0) * R + 1.0 - vc * 0.25) / 2.25;
+    let h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * ((FD_TIP + 0.5) * R + 1.0 - vc * 0.25) / 2.25;
     return vec3<f32>(h, 0.05 * (1.0 - exp(-a * 9.0)) * exp(-a * 1.6), a * 16.0);
+}
+// The metal at its foot, where it and the land become one: how high over the target, and how wide. It starts thin and widens
+// fast, as a neck does (with the root of the time), keeps just over the land's swell (fold_warp.wgsl's fw_neck), and goes
+// under it as the last of the drop does.
+fn fd_foot(t: f32, R: f32) -> vec2<f32> {
+    let a = t - FD_TOUCH;
+    if (a < 0.0 || a > 1.8) {
+        return vec2<f32>(0.0, 1.0);
+    }
+    let land = 0.55 * R * fd_ss(-0.4, 0.5, a) * (1.0 - fd_ss(1.1, 3.2, a));
+    let over = 0.05 * R * fd_ss(0.0, 0.2, a) - 0.22 * R * fd_ss(1.15, 1.7, a);
+    return vec2<f32>(max(land + over, 0.0), R * (0.2 + 1.25 * sqrt(a / 1.5)));
 }
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
@@ -100,6 +112,7 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     var rip = 0.0;
     var ph = 0.0;
     var sway = vec2<f32>(0.0);
+    var foot = vec2<f32>(0.0, 1.0);
     if (t < FD_STOP) {
         h = stop_h + fd_fall(FD_STOP - t);
     } else if (t < FD_TOUCH) {
@@ -122,8 +135,9 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         h = m.x;
         rip = m.y;
         ph = m.z;
+        foot = fd_foot(t, R);
     }
-    return FdDrop(R, stop_h, h, max(sx, 0.001), sy, piv, rip, ph, sway);
+    return FdDrop(R, stop_h, h, max(sx, 0.001), sy, piv, rip, ph, sway, foot.x, foot.y);
 }
 // The teardrop's side: its radius squared at height y (radii over the centre, -1 its bottom, FD_TIP its tip), and how fast
 // that changes with y. Fitted to the user's picture: within 1.2% of its radius all the way up.
@@ -137,7 +151,7 @@ fn fd_prof(y: f32) -> vec2<f32> {
     return vec2<f32>(a * b2 * q, b2 * q - 2.5 * a * b * rb * q + a * b2 * dq);
 }
 // About the distance to its surface, in blocks, from p (from its centre); never much over, up to twice under far off.
-fn fd_sdf(pIn: vec3<f32>, d: FdDrop) -> f32 {
+fn fd_bead(pIn: vec3<f32>, d: FdDrop) -> f32 {
     var p = pIn / d.R;
     let sc = min(min(d.sx, d.sy), 1.0);
     p.y = (p.y - d.piv) / d.sy + d.piv;
@@ -159,7 +173,7 @@ fn fd_sdf(pIn: vec3<f32>, d: FdDrop) -> f32 {
 }
 // Its normal at p on its surface, worked out, not differenced: the differences depend on how far from the surface the march
 // stopped, and showed as contours in the chrome.
-fn fd_normal(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
+fn fd_bead_n(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
     var p = pIn / d.R;
     p.y = (p.y - d.piv) / d.sy + d.piv;
     p = vec3<f32>(p.x / d.sx, clamp(p.y, -1.0, FD_TIP), p.z / d.sx);
@@ -172,6 +186,74 @@ fn fd_normal(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
     let dm = -5.0 * d.rip * cos(a) * w;
     let gy = -2.0 * dot(o, d.sway) * 2.0 * u / (FD_TIP + 1.0) - (f.y * m * m + 2.0 * f.x * m * dm);
     return normalize(vec3<f32>(2.0 * o.x / d.sx, gy / d.sy, 2.0 * o.y / d.sx) + vec3<f32>(0.0, -1.0e-5, 0.0));
+}
+// The drop and the foot of metal it melts into, one surface: a smooth union, so the neck flows.
+fn fd_foot_at(pIn: vec3<f32>, d: FdDrop) -> vec4<f32> {
+    let q = pIn + vec3<f32>(0.0, d.h, 0.0);
+    let s = vec3<f32>(q.x / d.pw, q.y / d.pool, q.z / d.pw);
+    let l = max(length(s), 0.001);
+    let g = vec3<f32>(s.x / d.pw, s.y / d.pool, s.z / d.pw);
+    return vec4<f32>(g / max(length(g), 0.0001), (l - 1.0) * min(d.pool, d.pw));
+}
+fn fd_blend(a: f32, b: f32, k: f32) -> f32 {
+    return clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+}
+fn fd_sdf(pIn: vec3<f32>, d: FdDrop) -> f32 {
+    let a = fd_bead(pIn, d);
+    if (d.pool <= 0.0) {
+        return a;
+    }
+    let b = fd_foot_at(pIn, d).w;
+    let k = 0.45 * d.R;
+    let h = fd_blend(a, b, k);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+fn fd_normal(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
+    let n = fd_bead_n(pIn, d);
+    if (d.pool <= 0.0) {
+        return n;
+    }
+    let f = fd_foot_at(pIn, d);
+    return normalize(mix(f.xyz, n, fd_blend(fd_bead(pIn, d), f.w, 0.45 * d.R)));
+}
+// ---- the two glows: one soft ring round where they meet, from first touch; then, the drop gone in, one soft glow over the whole
+// landing, and no flash in either ------------------------------------------------------------------------------------------
+const FD_GLOW: vec3<f32> = vec3<f32>(0.86, 0.93, 1.1);
+fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, on_land: bool, far: f32, d: FdDrop) -> vec3<f32> {
+    let a = t - FD_TOUCH;
+    if (a < -0.02 || a > 3.6) {
+        return colIn;
+    }
+    var col = colIn;
+    let R = d.R;
+    // (the ray's nearest to the place, and whether the land is in front of it)
+    let H = G + vec3<f32>(0.0, 0.4 * R, 0.0);
+    let hd = dot(H, v);
+    let miss = length(H - v * hd);
+    let seen = select(0.35, 1.0, far > hd - 3.0 * R);
+    let rr = length(P.xz);
+    // ---- the ring ------------------------------------------------------------------------------------------------------------
+    let g1 = fd_ss(-0.02, 0.45, a) * (1.0 - fd_ss(1.1, 1.75, a));
+    if (g1 > 0.0) {
+        let neck = R * (0.3 + 1.2 * sqrt(max(a, 0.0) / 1.5));
+        if (on_land) {
+            let x = (rr - neck) / (0.55 * R);
+            let e = exp(-x * x) * exp(-abs(P.y) / (0.9 * R));
+            col = col + (col * 2.2 + FD_GLOW * 0.5) * e * g1;
+        }
+        col = col + FD_GLOW * 0.42 * g1 * seen * exp(-miss * miss / (2.0 * R * R));
+    }
+    // ---- all of it -----------------------------------------------------------------------------------------------------------
+    let g2 = fd_ss(1.5, 1.9, a) * (1.0 - fd_ss(1.9, 3.5, a));
+    if (g2 > 0.0) {
+        let wide = R * (3.0 + 1.0 * fd_ss(1.5, 3.5, a));
+        if (on_land) {
+            let x = rr / wide;
+            col = col + (col * 1.5 + FD_GLOW * 0.14) * exp(-x * x) * exp(-max(abs(P.y) - 6.0, 0.0) / (1.2 * R)) * g2;
+        }
+        col = col + FD_GLOW * 0.2 * g2 * seen * exp(-miss * miss / (wide * wide * 0.9));
+    }
+    return col;
 }
 // The light on smoke and dust: the Payload's.
 fn fd_light() -> FdLight {
@@ -485,7 +567,8 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     var s_end = far;
     let bc = C + vec3<f32>(0.0, 0.36 * d.R, 0.0);
     let bcd = dot(bc, v);
-    let bR = 1.75 * d.R * max(d.sx, 1.0);
+    // (with the foot of metal in it, a sphere taking that in too)
+    let bR = select(1.75 * d.R * max(d.sx, 1.0), max(1.75 * d.R, length(bc - G) + 1.2 * d.pw), d.pool > 0.0);
     if (length(bc - v * bcd) < bR && bcd > 0.0) {
         var s = max(bcd - bR, 0.05);
         var best = 1.0e9;
@@ -597,6 +680,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         }
         let C = gq + vec3<f32>(0.0, d.h, 0.0);
         col = fd_droplet(col, t, v, gq, C, d, far, uv, aspect, land, li, jit);
+        col = fd_glow(col, t, v, gq, off - gq, !sky0, far, d);
     }
 
     // ---- the point, in the dark, drawing in and holding -----------------------------------------------------------------
