@@ -46,6 +46,7 @@ const FW_PLEATS: f32 = 1.0;        // the radial pleats
 const FW_UNDER: f32 = 1.0;         // the sheet's underside painted as rock
 const FW_LAY0: f32 = 27.6;         // the bud lies down onto the sphere's floor between these
 const FW_LAY1: f32 = 32.6;
+const FW_FLAT0: f32 = 34.5;        // from here on the sheet lies on the sphere with nothing left standing on it
 const FW_WRAP0: f32 = 27.0;        // the roll's ring comes in to the target, its tube to the sphere's size, from here to FW_SEAL
 const FW_SINK_END: f32 = 0.0;      // how much of FW_SINK is left once the sheet lies on the sphere
 const FW_HOLE: f32 = 0.6;          // the hole in the roof: radians, round the point across from the target
@@ -133,15 +134,17 @@ fn fw_hit(i: i32) -> f32 {
     }
 }
 const FW_FALL: f32 = 0.8;          // how long each ring takes to fall: slowly away, and all its weight in the last of it
-// How closed ring i is (0 flat, 1 shut) at bearing a, on the fold's clock `tau`: some of the way round leads the rest. From
+// How closed ring i is (0 flat, 1 shut) on the fold's clock `tau`, `lead` how long it is behind the rest at this bearing. From
 // FW_REL, `t` the strike's clock, it stays shut till it is its turn to fall, and falling, faster and faster, it stops dead.
-fn fw_p(i: i32, a: f32, tau: f32, t: f32) -> f32 {
+fn fw_p(i: i32, lead: f32, tau: f32, t: f32) -> f32 {
     if (t >= FW_REL) {
         let u = clamp((t - fw_hit(i) + FW_FALL) / FW_FALL, 0.0, 1.0);
         return 1.0 - u * u * u;
     }
-    let t0 = FW_FOLD + 2.1 * f32(i) + 0.35 * (1.0 + fw_wob(a, i + 3));
-    return fw_ss(0.0, 3.6, tau - t0);
+    return fw_ss(0.0, 3.6, tau - FW_FOLD - 2.1 * f32(i) - lead);
+}
+fn fw_lead(a: f32, i: i32) -> f32 {
+    return 0.35 + 0.22 * (sin(a * 2.0 + 1.7 * f32(i)) + 0.6 * sin(a * 5.0 - 2.3 * f32(i)));
 }
 // The shock of ring i's landing: a single heave running out over the land past it, gone in a second.
 fn fw_shock(r: f32, t: f32) -> f32 {
@@ -232,24 +235,29 @@ fn fw_fold(r: f32, a: f32) -> f32 {
     let sign = select(-1.0, 1.0, fract(big.y * 7.3) > 0.45);
     return sign * (0.35 + 0.65 * abs(amount)) * 0.34 * size * (1.0 - exp(-d / (0.22 * size)));
 }
-fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32) -> vec3<f32> {
+fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32, plain: f32) -> vec3<f32> {
     var prev = 0.0;
     var R = 0.0;
     var Y = 0.0;
     var total = 0.0;
     var here = 0.0;
     let soft = fw_soft(t, rt);
+    // (every vertex comes through here: each plate's angle worked out once)
+    var ps: array<f32, 5>;
+    var ph: array<f32, 6>;
+    for (var i = 0; i < 5; i += 1) {
+        ps[i] = fw_p(i, fw_lead(a, i), t, rt);
+        ph[i] = fw_phi(i, rt) * ps[i] * fw_lie(i, t);
+    }
+    ph[5] = 0.0;
     var last = 0.0;
-    var ph = fw_ph(0, a, t, rt);
     for (var i = 0; i < 5; i += 1) {
         let rho = fw_rho(i, a);
-        let p = fw_p(i, a, t, rt);
-        let k = mix(1.0, kappa, p);
-        let next = select(0.0, fw_ph(i + 1, a, t, rt), i < 4);
+        let k = mix(1.0, kappa, ps[i]);
         // (the plate's angle from end to end: all one on a rigid plate, which leaves a hinge at each ring; as the land closes
         // into one sheet each runs into the next, so it bends in arcs: no kink, and no gap across a hinge between what stands on it)
-        let a0 = mix(ph, 0.5 * (last + ph), soft);
-        let a1 = mix(ph, 0.5 * (ph + next), soft);
+        let a0 = mix(ph[i], 0.5 * (last + ph[i]), soft);
+        let a1 = mix(ph[i], 0.5 * (ph[i] + ph[i + 1]), soft);
         let L = (rho - prev) * k;
         total += fw_arc(a0, a1, L, L).y;
         if (r > prev) {
@@ -260,8 +268,7 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32) -> vec3<f32> {
             here = a0 + (a1 - a0) * x / max(L, 0.001);
         }
         prev = rho;
-        last = ph;
-        ph = next;
+        last = ph[i];
     }
     if (r > prev) {
         // (the far land: lying flat, slid in by what the rings have taken up. Squeezed round the foot of what has closed it
@@ -273,12 +280,7 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32) -> vec3<f32> {
         here = 0.0;
     }
     // (the top a point: the scallops' lengths make its height depend on the bearing)
-    let plain = fw_span(t, kappa, rt).y;
     return vec3<f32>(R, Y + mix(plain, total, fw_ss(0.0, fw_ring(0), r)), here);
-}
-// Ring i's plate's angle.
-fn fw_ph(i: i32, a: f32, t: f32, rt: f32) -> f32 {
-    return fw_phi(i, rt) * fw_p(i, a, t, rt) * fw_lie(i, t);
 }
 // How far the rigid plates have gone to one curved sheet: all of it going up; rigid only as the rings fall back.
 fn fw_soft(t: f32, rt: f32) -> f32 {
@@ -298,16 +300,20 @@ fn fw_span(t: f32, kappa: f32, rt: f32) -> vec2<f32> {
     var prev = 0.0;
     var out_ = vec2<f32>(0.0);
     let soft = fw_soft(t, rt);
+    var ps: array<f32, 5>;
+    var ph: array<f32, 6>;
+    for (var i = 0; i < 5; i += 1) {
+        ps[i] = fw_p(i, 0.35, t, rt);
+        ph[i] = fw_phi(i, rt) * ps[i] * fw_lie(i, t);
+    }
+    ph[5] = 0.0;
     var last = 0.0;
-    var ph = fw_ph(0, 0.2618, t, rt);
     for (var i = 0; i < 5; i += 1) {
         let rho = fw_ring(i);
-        let next = select(0.0, fw_ph(i + 1, 0.2618, t, rt), i < 4);
-        let L = (rho - prev) * mix(1.0, kappa, fw_p(i, 0.2618, t, rt));
-        out_ += fw_arc(mix(ph, 0.5 * (last + ph), soft), mix(ph, 0.5 * (ph + next), soft), L, L);
+        let L = (rho - prev) * mix(1.0, kappa, ps[i]);
+        out_ += fw_arc(mix(ph[i], 0.5 * (last + ph[i]), soft), mix(ph[i], 0.5 * (ph[i] + ph[i + 1]), soft), L, L);
         prev = rho;
-        last = ph;
-        ph = next;
+        last = ph[i];
     }
     return out_;
 }
@@ -491,7 +497,7 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
     let sa = sin(at);
     let c2 = P.c + P.n * (rho * cos(phi));
     let side = rho * sin(phi);
-    let bend = fw_bend(FW_BEAT, c.t, mq, e, 1.0e6, 1.0, 0.0);
+    let bend = fw_bend(FW_BEAT, 0.0, mq, e, 1.0e6, 0.0);
     out.pos = fw_turn(c2.x * ca - side * sa, c2.y, c2.x * sa + side * ca, fw_roll(dist, mq.y, bend), bend) + c.tgt + fw_stay(c, tau);
     out.tint = vec3<f32>(1.0);
     return out;
@@ -506,12 +512,12 @@ struct FwBend { tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32, r0: f32, rc
 fn fw_curl(tau: f32) -> f32 {
     return fw_ss(FW_FOLD + 1.0, 29.0, tau);
 }
-fn fw_bend(tau: f32, rt: f32, mq: vec3<f32>, e: vec2<f32>, edge: f32, kappa: f32, top: f32) -> FwBend {
+fn fw_bend(tau: f32, foot: f32, mq: vec3<f32>, e: vec2<f32>, edge: f32, top: f32) -> FwBend {
     let d = length(mq.xz);
     let curl = fw_curl(tau);
     let w = fw_ss(FW_WRAP0, FW_SEAL, tau);
     let S = fw_radius(d, mq.y);
-    let r0 = (max(fw_span(tau, kappa, rt).x, d) + 170.0) * (1.0 - fw_ss(FW_WRAP0, FW_SEAL - 0.5, tau));
+    let r0 = (max(foot, d) + 170.0) * (1.0 - fw_ss(FW_WRAP0, FW_SEAL - 0.5, tau));
     return FwBend(tau, d, e, edge, top, r0, mix(mix(3000.0, 700.0, curl), S, w), mix(curl * 3.2, FW_PI, w), w, fw_ss(FW_SEAL - 2.0, FW_SEAL - 0.5, tau), S, mq.y, fw_rim(d));
 }
 // A point R along the sheet, y over it, on the roll: (out from the axis, up, how far round).
@@ -688,7 +694,14 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // ---- the chain: the plates, hinged at the rings, as the far land slides in ---------------------------------------------
     let rb = clamp(dist * 0.56, 60.0, 150.0);
     let kappa = mix(rb / 153.0, 1.0, fw_lay(tau));
-    let ch = fw_chain(r, a, tau, kappa, t);
+    // (once it lies on the sphere there is no chain to work out: this is most of the vertices' work, every one of them)
+    let lying = tau >= FW_FLAT0;
+    var span = vec2<f32>(0.0);
+    var ch = vec3<f32>(r, 0.0, 0.0);
+    if (!lying) {
+        span = fw_span(tau, kappa, t);
+        ch = fw_chain(r, a, tau, kappa, t, span.y);
+    }
     var R = ch.x;
     var Y = ch.y;
     let sn = sin(ch.z);
@@ -696,7 +709,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // (what the circle has lost is taken up in folds along the cracks: each big shard pushed up or down off the cracks round
     // it, by its own amount, so the land breaks along the lines drawn on it and goes on being one sheet)
     var hh = h;
-    if (FW_PLEATS > 0.0 && r > 30.0 && r < FW_LEN * 1.1) {
+    if (FW_PLEATS > 0.0 && r > 30.0 && r < FW_LEN * 1.1 && !lying) {
         let squeeze = clamp(R / max(r, 1.0), 0.0, 1.0);
         let lost = sqrt(max(1.0 - squeeze * squeeze, 0.0)) * (1.0 - fw_lay(tau)) * fw_ss(FW_LEN * 1.1, FW_LEN * 0.9, r);
         if (lost > 0.0) {
@@ -719,8 +732,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // ---- the sheet on the sphere -----------------------------------------------------------------------------------------
     let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 6000.0);
     let edge = max(reach - dist, 300.0);
-    let top = fw_span(tau, kappa, t).y - sink;
-    var P = fw_place(R, r, a, y, fw_bend(tau, t, mq, e, edge, kappa, top));
+    var P = fw_place(R, r, a, y, fw_bend(tau, span.x, mq, e, edge, span.y - sink));
     if (isle) {
         P = mix(rest, P, join);
     }
@@ -910,7 +922,7 @@ fn world_fragment(f: Fragment) -> Painted {
     let dnear = min(dc.x, dc.y);
     var ring = 4;
     if (r < fw_rho(0, a)) { ring = 0; } else if (r < fw_rho(1, a)) { ring = 1; } else if (r < fw_rho(2, a)) { ring = 2; } else if (r < fw_rho(3, a)) { ring = 3; }
-    let lifting = fw_p(ring, a, tau, t);
+    let lifting = fw_p(ring, fw_lead(a, ring), tau, t);
     let zone = scored * fade * (1.0 - fw_ss(5.0, 24.0, dnear - 6.0 * fw_ss(0.0, 1.0, lifting)));
     if (FW_FRACTAL > 0.0 && zone > 0.01 && dist < 460.0 && r < FW_LEN) {
         let z = 3.0 * zone * (0.4 + 0.6 * fw_ss(FW_TEAR, FW_FOLD + 8.0, t));
