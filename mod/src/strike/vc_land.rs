@@ -19,18 +19,16 @@ use std::rc::Rc;
 const TAU: f64 = 2.0 * PI;
 /// The land read reaches from VC_READ0 to VC_READ, the square of columns round the vent.
 const VC_READ0: f64 = 236.0;
-const VC_READ: i32 = 522;
+const VC_READ: i32 = 612;
 const VC_GW: i32 = 2 * VC_READ + 1;
 const VC_BELOW: u32 = 34;
 const VC_ABOVE: u32 = 1;
-const VC_PARTS: i32 = 168;
+const VC_PARTS: i32 = 248;
 /// The chunks within this are force-loaded.
-pub(super) const VC_LOAD: f64 = 448.0;
-/// What each reaches to: the caldera's cliffs' width, the rim, the ignimbrite, the felled trees.
-const VC_CLIFF: f64 = 36.0;
+pub(super) const VC_LOAD: f64 = 576.0;
+/// What each reaches to: the rim, the ignimbrite (the sheet's edge; its dust goes on past it, the trees' fates are by VC_FELLED).
 const VC_RIM: f64 = 320.0;
 const VC_IGN: f64 = 440.0;
-const VC_FELL: f64 = 516.0;
 /// The depth of the caldera.
 const VC_DEEP: f64 = 90.0;
 /// Past this the chunks go in with the wall; inside it from the edge in, VC_RATE blocks a second (PK_RATE's class).
@@ -43,7 +41,7 @@ const VC_LEAD: f32 = 3.2;
 /// A chunk's blocks inside the ring, for the pace.
 const VC_COL: f64 = 118.0;
 /// What the work of a column is reckoned at, in instructions, besides what `Blocks` counts of its runs.
-const VC_UNIT: u64 = 900;
+const VC_UNIT: u64 = 300;
 
 /// A column as read, packed into a word (0: not read), 8 MB of them.
 #[derive(Clone, Copy, Debug, Default)]
@@ -57,8 +55,14 @@ struct Col {
     /// 1 grass, 2 dirt.
     ground: u8,
     fluid: bool,
+    /// Water deeper than the read reaches: `g` is no more than how far it read.
+    deep: bool,
 }
 impl Col {
+    /// What ash lies on: the ground, or the water's top.
+    fn base(&self) -> i32 {
+        if self.fluid { self.top } else { self.g }
+    }
     fn pack(&self) -> u64 {
         1 | u64::from(self.fluid) << 1
             | u64::from(self.ground) << 2
@@ -67,6 +71,7 @@ impl Col {
             | u64::from(self.trunk) << 12
             | ((self.g + 2048) as u64 & 0xffff) << 20
             | ((self.top + 2048) as u64 & 0xffff) << 36
+            | u64::from(self.deep) << 52
     }
     fn unpack(w: u64) -> Option<Col> {
         if w & 1 == 0 {
@@ -80,6 +85,7 @@ impl Col {
             trunk: (w >> 12 & 255) as u8,
             g: (w >> 20 & 0xffff) as i32 - 2048,
             top: (w >> 36 & 0xffff) as i32 - 2048,
+            deep: w >> 52 & 1 != 0,
         })
     }
 }
@@ -155,7 +161,17 @@ fn take_in(cols: &mut [u64], missing: &mut Vec<(i32, i32)>, a: &crate::columns::
                 }
             }
         }
-        let Some(gj) = g else { continue };
+        let (ii, kk) = (x - bx + VC_READ, z - bz + VC_READ);
+        let Some(gj) = g else {
+            // (the sea, or a lake deeper than it reads)
+            if c.fluid && (0..VC_GW).contains(&ii) && (0..VC_GW).contains(&kk) {
+                c.deep = true;
+                c.g = base;
+                c.top = top.unwrap_or(base);
+                cols[(kk * VC_GW + ii) as usize] = c.pack();
+            }
+            continue;
+        };
         c.g = base + gj as i32;
         c.top = top.unwrap_or(c.g);
         let mut n = 0;
@@ -169,7 +185,6 @@ fn take_in(cols: &mut [u64], missing: &mut Vec<(i32, i32)>, a: &crate::columns::
             }
         }
         c.trunk = n.min(40) as u8;
-        let (ii, kk) = (x - bx + VC_READ, z - bz + VC_READ);
         if (0..VC_GW).contains(&ii) && (0..VC_GW).contains(&kk) {
             cols[(kk * VC_GW + ii) as usize] = c.pack();
         }
@@ -177,6 +192,33 @@ fn take_in(cols: &mut [u64], missing: &mut Vec<(i32, i32)>, a: &crate::columns::
 }
 
 // ---- the shape --------------------------------------------------------------------------------------------------
+/// One of the huge blocks of the land left standing in the lake, dropped whole with the floor: where, its half sizes
+/// along its two axes (its axis turned `ca`, `sa`), how high it stands over the lake and how its top tilts.
+#[derive(Clone, Copy, Default)]
+struct Drop {
+    x: f64,
+    z: f64,
+    ca: f64,
+    sa: f64,
+    ru: f64,
+    rv: f64,
+    h: f64,
+    tilt: f64,
+    ph: f64,
+}
+/// A hot place in the lake (a vent's mouth towards the ring, or an open pool).
+#[derive(Clone, Copy, Default)]
+struct Hot {
+    x: f64,
+    z: f64,
+    r: f64,
+    /// How hot, for a vent; an open pool's is 0.
+    k: f64,
+}
+const VC_DROPS: usize = 7;
+const VC_HOTS: usize = 15;
+const VC_BANDS: usize = 192;
+
 #[derive(Clone, Copy)]
 pub(super) struct Shape {
     cx: f64,
@@ -186,11 +228,83 @@ pub(super) struct Shape {
     gy: i32,
     /// The caldera's floor.
     floor: i32,
+    drops: [Drop; VC_DROPS],
+    hots: [Hot; VC_HOTS],
+    /// The rock by depth under the land: an index into ROCKS for each block's depth, in beds of two to nine.
+    beds: [u8; VC_BANDS],
 }
 impl Shape {
     fn new(cx: f64, cz: f64, seed: u32, gy: i32) -> Self {
         let ph = [1u32, 2, 3, 4, 5].map(|k| TAU * mh(k, seed, 0xc7));
-        Shape { cx, cz, seed, ph, gy, floor: gy - VC_DEEP as i32 }
+        let mut s = Shape { cx, cz, seed, ph, gy, floor: gy - VC_DEEP as i32, drops: [Drop::default(); VC_DROPS], hots: [Hot::default(); VC_HOTS], beds: [0; VC_BANDS] };
+        // the beds, darker with depth, a pale ash bed now and then
+        let mut d = 0usize;
+        let mut k = 0u32;
+        while d < VC_BANDS {
+            let h = mh(k, seed, 0xd1);
+            let n = 2 + (h * h * 8.0) as usize;
+            let deep = d as f64 / 120.0;
+            let p = mh(k, seed, 0xd2);
+            let rock = if p < 0.09 {
+                // (an ash bed, a baked soil)
+                if mh(k, seed, 0xd3) < 0.3 { R_PALE } else { R_BAKED }
+            } else {
+                // (mostly by the depth, some of each everywhere)
+                let q = (deep + 0.42 * mh(k, seed, 0xd4)).min(1.25);
+                if q < 0.34 {
+                    R_TUFF
+                } else if q < 0.6 {
+                    R_SLATE
+                } else if q < 0.85 {
+                    R_BASALT
+                } else {
+                    R_BLACK
+                }
+            };
+            for j in d..(d + n).min(VC_BANDS) {
+                s.beds[j] = rock;
+            }
+            d += n;
+            k += 1;
+        }
+        // the hot places: vents along the wall's foot, a few pools by them, one or two out in the lake
+        let (mut i, a0) = (0, TAU * mh(9, seed, 0xd5));
+        for v in 0..6 {
+            let a = a0 + TAU * (f64::from(v) + 0.55 * mh(v as u32, seed, 0xd6)) / 6.0;
+            let r = s.edge(a) - 84.0 - 26.0 * mh(v as u32, seed, 0xd7);
+            s.hots[i] = Hot { x: cx + r * a.cos(), z: cz + r * a.sin(), r: 56.0 + 44.0 * mh(v as u32, seed, 0xd8), k: 0.65 + 0.35 * mh(v as u32, seed, 0xd9) };
+            i += 1;
+            // (its pool, between the vent and the wall if it can)
+            let (ra, rr) = (a + 0.16 * (mh(v as u32, seed, 0xda) - 0.5), r + 14.0 - 34.0 * mh(v as u32, seed, 0xdb));
+            s.hots[i] = Hot { x: cx + rr * ra.cos(), z: cz + rr * ra.sin(), r: 15.0 + 25.0 * mh(v as u32, seed, 0xdc).powi(2), k: 0.0 };
+            i += 1;
+        }
+        for v in 0..3u32 {
+            let (a, r) = (TAU * mh(v, seed, 0xdd), 40.0 + 110.0 * mh(v, seed, 0xde));
+            s.hots[i] = Hot { x: cx + r * a.cos(), z: cz + r * a.sin(), r: 7.0 + 10.0 * mh(v, seed, 0xdf), k: 0.0 };
+            i += 1;
+        }
+        // the blocks standing in the lake: spread round it, none on another
+        let a0 = TAU * mh(21, seed, 0xe0);
+        for (n, d) in s.drops.iter_mut().enumerate() {
+            let k = n as u32;
+            let a = a0 + TAU * (n as f64 + 0.6 * mh(k, seed, 0xe1)) / VC_DROPS as f64;
+            let edge = VC_RING_F + 9.0 * (3.0 * a + ph[0]).sin();
+            let r = (edge - 96.0) * (0.3 + 0.62 * mh(k, seed, 0xe2).sqrt());
+            let turn = a + 0.9 * (mh(k, seed, 0xe3) - 0.5);
+            *d = Drop {
+                x: cx + r * a.cos(),
+                z: cz + r * a.sin(),
+                ca: turn.cos(),
+                sa: turn.sin(),
+                ru: 14.0 + 20.0 * mh(k, seed, 0xe4),
+                rv: 22.0 + 30.0 * mh(k, seed, 0xe5),
+                h: 15.0 + 32.0 * mh(k, seed, 0xe6),
+                tilt: 0.1 + 0.3 * mh(k, seed, 0xe7),
+                ph: TAU * mh(k, seed, 0xe8),
+            };
+        }
+        s
     }
     /// The caldera's edge at bearing a: wandering, bitten into in scallops where its walls slumped.
     fn edge(&self, a: f64) -> f64 {
@@ -200,227 +314,804 @@ impl Shape {
 }
 const VC_RING_F: f64 = 284.0;
 
-/// The caldera's floor at (x, z): crust plates (a jittered lattice of cells) parted by cracks. How far its top stands
-/// from the floor, whether it is a crack, how near one, and the plate's number.
-fn crust(x: i32, z: i32, seed: u32) -> (i32, bool, f64, u32) {
-    const S: f64 = 15.0;
-    let (fx, fz) = (f64::from(x) / S, f64::from(z) / S);
+/// A number from 0 to 1 for `k`, cheaply (a block's pick, thousands of them a stage).
+fn pick(k: i32, seed: u32) -> f64 {
+    f64::from(pcg(k as u32 ^ seed) >> 16) / 65536.0
+}
+/// Smooth noise from 0 to 1, a cheaper `vnoise` (one hash a corner): thousands of these a chunk.
+fn qnoise(x: f64, z: f64, scale: f64, seed: u32) -> f64 {
+    crate::meter::spend(110);
+    let (fx, fz) = (x / scale, z / scale);
+    let (ix, iz) = (fx.floor(), fz.floor());
+    let (tx, tz) = (fx - ix, fz - iz);
+    let (sx, sz) = (tx * tx * (3.0 - 2.0 * tx), tz * tz * (3.0 - 2.0 * tz));
+    let (i, k) = (ix as i32 as u32, iz as i32 as u32);
+    let h = |i: u32, k: u32| f64::from(pcg(i.wrapping_mul(73_856_093) ^ k.wrapping_mul(19_349_663) ^ seed) >> 16) / 65536.0;
+    let (a, b, c, d) = (h(i, k), h(i + 1, k), h(i, k + 1), h(i + 1, k + 1));
+    a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz
+}
+/// Smooth noise round the vent: `n` cells a turn of bearing `a` (it closes up), and along `v` (its cells a unit long).
+fn ring_noise(a: f64, n: i32, v: f64, seed: u32) -> f64 {
+    crate::meter::spend(110);
+    let fa = a / TAU * f64::from(n);
+    let (ia, iv) = (fa.floor(), v.floor());
+    let (ta, tv) = (fa - ia, v - iv);
+    let (sa, sv) = (ta * ta * (3.0 - 2.0 * ta), tv * tv * (3.0 - 2.0 * tv));
+    let (i0, i1) = ((ia as i32).rem_euclid(n), (ia as i32 + 1).rem_euclid(n));
+    let j = iv as i32;
+    let h = |i: i32, j: i32| f64::from(pcg((i as u32).wrapping_mul(73_856_093) ^ (j as u32).wrapping_mul(19_349_663) ^ seed) >> 16) / 65536.0;
+    let (p, q, r, t) = (h(i0, j), h(i1, j), h(i0, j + 1), h(i1, j + 1));
+    p + (q - p) * sa + (r - p) * sv + (p - q - r + t) * sa * sv
+}
+/// The nearest of a jittered lattice of cells round (x, z), `size` apart: how far from the border with the next, in
+/// blocks, the cell's own number and its middle.
+fn cells(x: f64, z: f64, size: f64, seed: u32) -> (f64, u32, f64, f64) {
+    crate::meter::spend(450);
+    let (fx, fz) = (x / size, z / size);
     let (ix, iz) = (fx.floor() as i32, fz.floor() as i32);
-    let (mut d1, mut d2, mut id) = (9.0f64, 9.0f64, 0u32);
+    let (mut d1, mut d2, mut id, mut mx, mut mz) = (1e9f64, 1e9f64, 0u32, 0.0, 0.0);
     for dz in -1..=1 {
         for dx in -1..=1 {
             let (cx, cz) = (ix + dx, iz + dz);
             let h = pcg((cx as u32).wrapping_mul(0x9E37_79B1) ^ (cz as u32).wrapping_mul(0x85EB_CA6B) ^ seed);
-            let (jx, jz) = (f64::from(h & 1023) / 1023.0, f64::from(h >> 10 & 1023) / 1023.0);
-            let (ex, ez) = (f64::from(cx) + jx - fx, f64::from(cz) + jz - fz);
-            let d = (ex * ex + ez * ez).sqrt();
+            let (px, pz) = (f64::from(cx) + f64::from(h & 1023) / 1023.0, f64::from(cz) + f64::from(h >> 10 & 1023) / 1023.0);
+            let (ex, ez) = (px - fx, pz - fz);
+            let d = ex * ex + ez * ez;
             if d < d1 {
                 d2 = d1;
                 d1 = d;
                 id = h;
+                mx = px;
+                mz = pz;
             } else if d < d2 {
                 d2 = d;
             }
         }
     }
-    let gap = (d2 - d1) * S;
-    (((id >> 20) % 3) as i32 - 1, gap < 1.35, gap, id)
+    ((d2.sqrt() - d1.sqrt()) * size, id, mx * size, mz * size)
 }
-/// A number from 0 to 1 for `k`, cheaply (a block's pick, thousands of them a stage).
-fn pick(k: i32, seed: u32) -> f64 {
-    f64::from(pcg(k as u32 ^ seed) >> 16) / 65536.0
+
+// the rocks of the walls: each its block for a hash, so a bed is never one flat colour
+const R_TUFF: u8 = 0;
+const R_SLATE: u8 = 1;
+const R_BASALT: u8 = 2;
+const R_BLACK: u8 = 3;
+const R_PALE: u8 = 4;
+const R_BAKED: u8 = 5;
+fn rock(kind: u8, h: f64) -> &'static str {
+    match kind {
+        R_TUFF => {
+            if h < 0.62 {
+                "minecraft:tuff"
+            } else if h < 0.85 {
+                "minecraft:cobbled_deepslate"
+            } else {
+                "minecraft:deepslate"
+            }
+        }
+        R_SLATE => {
+            if h < 0.5 {
+                "minecraft:deepslate"
+            } else if h < 0.85 {
+                "minecraft:cobbled_deepslate"
+            } else {
+                "minecraft:smooth_basalt"
+            }
+        }
+        R_BASALT => {
+            if h < 0.6 {
+                "minecraft:smooth_basalt"
+            } else if h < 0.85 {
+                "minecraft:basalt"
+            } else {
+                "minecraft:blackstone"
+            }
+        }
+        R_BLACK => {
+            if h < 0.74 {
+                "minecraft:blackstone"
+            } else if h < 0.95 {
+                "minecraft:smooth_basalt"
+            } else {
+                "minecraft:black_terracotta"
+            }
+        }
+        R_PALE => {
+            if h < 0.5 {
+                "minecraft:tuff"
+            } else {
+                "minecraft:andesite"
+            }
+        }
+        _ => {
+            if h < 0.6 {
+                "minecraft:gray_terracotta"
+            } else if h < 0.8 {
+                "minecraft:black_terracotta"
+            } else {
+                "minecraft:brown_terracotta"
+            }
+        }
+    }
 }
-fn crust_block(x: i32, y: i32, z: i32, near: f64, id: u32) -> &'static str {
-    let h = pick(x * 31 + z * 57 + y * 11, id);
-    if near < 3.2 && h < 0.55 {
-        "minecraft:magma_block"
-    } else if id & 4 != 0 {
-        if h < 0.8 { "minecraft:blackstone" } else { "minecraft:basalt" }
-    } else if h < 0.72 {
+/// The bedrock of the walls at y, `shift` blocks down from where it lay (a slumped or tilted block carries its beds down
+/// with it), the beds leaning (`lean`) and their edges never a straight line.
+fn strata(s: &Shape, x: i32, y: i32, z: i32, shift: i32, lean: f64) -> &'static str {
+    let h = pick(x * 13 + y * 101 + z * 7, s.seed ^ 0xc9);
+    let d = (s.gy + 200 - y - shift) as f64 + lean + 1.6 * (h - 0.5);
+    let k = s.beds[((d as i32 - 170).rem_euclid(VC_BANDS as i32)) as usize];
+    // (the odd seam of magma, deep down)
+    if y < s.floor + 14 && k == R_BLACK && h > 0.965 {
+        return "minecraft:magma_block";
+    }
+    rock(k, pick(x * 3 + y * 17 + z * 29, s.seed ^ 0xce))
+}
+/// The rubble at the foot of the walls.
+fn rubble(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
+    let h = pick(x * 7 + y * 23 + z * 41, seed ^ 0xcb);
+    if h < 0.3 {
+        "minecraft:cobbled_deepslate"
+    } else if h < 0.52 {
+        "minecraft:tuff"
+    } else if h < 0.7 {
+        "minecraft:blackstone"
+    } else if h < 0.86 {
         "minecraft:basalt"
     } else {
-        "minecraft:smooth_basalt"
+        "minecraft:gravel"
     }
 }
-/// The walls' rock, in bands that lean a little: tuff over deepslate over blackstone, the seams of magma low down.
-fn wall_block(x: i32, y: i32, z: i32, depth: f64, seed: u32) -> &'static str {
-    let h = pick(x * 13 + y * 101 + z * 7, seed ^ 0xc9);
-    if depth < 26.0 + 7.0 * h {
-        if h < 0.7 { "minecraft:tuff" } else { "minecraft:smooth_basalt" }
-    } else if depth < 62.0 + 8.0 * h {
-        if h < 0.6 { "minecraft:cobbled_deepslate" } else { "minecraft:deepslate" }
-    } else if h < 0.1 {
-        "minecraft:magma_block"
+/// One tone of ash with a fine grain in it, darker along the wet streaks (`dark`, 0 to 1).
+fn ash_block(x: i32, y: i32, z: i32, seed: u32, dark: f64) -> &'static str {
+    let h = pick(x * 5 + y * 19 + z * 3, seed ^ 0xca);
+    let d = dark + 0.3 * (h - 0.5);
+    if d > 0.8 {
+        if h < 0.6 { "minecraft:mud" } else { "minecraft:gray_concrete_powder" }
+    } else if d > 0.58 {
+        if h < 0.4 { "minecraft:gray_concrete_powder" } else { "minecraft:tuff" }
+    } else if d > 0.3 {
+        if h < 0.7 { "minecraft:tuff" } else { "minecraft:dead_brain_coral_block" }
+    } else if h < 0.42 {
+        "minecraft:dead_brain_coral_block"
+    } else if h < 0.72 {
+        "minecraft:dead_tube_coral_block"
+    } else if h < 0.9 {
+        "minecraft:gravel"
     } else {
-        "minecraft:blackstone"
+        "minecraft:tuff"
     }
 }
-/// The ash laid out over the land, in broad patches (`patch` its noise here).
-fn ash_block(x: i32, y: i32, z: i32, seed: u32, patch: f64) -> &'static str {
-    let h = patch + 0.08 * pick(x * 5 + y * 19 + z * 3, seed ^ 0xca);
-    if h < 0.44 {
-        "minecraft:tuff"
-    } else if h < 0.56 {
-        "minecraft:gray_concrete_powder"
-    } else if h < 0.68 {
+/// The thin pale dust past the sheet, and the pumice floating on the water.
+fn dust_block(x: i32, z: i32, seed: u32) -> &'static str {
+    let h = pick(x * 11 + z * 37, seed ^ 0xcf);
+    if h < 0.34 {
+        "minecraft:dead_horn_coral_block"
+    } else if h < 0.62 {
+        "minecraft:gravel"
+    } else if h < 0.86 {
         "minecraft:andesite"
     } else {
         "minecraft:light_gray_concrete_powder"
     }
 }
-/// What the rim's broken ground is made of.
-fn rim_block(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
-    let h = pick(x * 7 + y * 23 + z * 41, seed ^ 0xcb);
-    if h < 0.45 {
-        "minecraft:tuff"
-    } else if h < 0.8 {
-        "minecraft:basalt"
-    } else {
-        "minecraft:blackstone"
+
+/// What's worked out on a coarse grid over a chunk and read smoothly between (arc tangents, sines and broad noise a column
+/// are most of a chunk's work otherwise): every 4 blocks from a block's width outside it.
+const GN: usize = 6;
+type Gf = [[f64; GN]; GN];
+#[derive(Default)]
+struct Grid {
+    /// Its corner, the bearing (unwrapped over the chunk).
+    x: i32,
+    z: i32,
+    a: Gf,
+    e: Gf,
+    /// How wide the wall is, and the rim.
+    w: Gf,
+    rw: Gf,
+    /// How far out the sheet's edge wanders here, less being further.
+    lobe: Gf,
+    wx: Gf,
+    wz: Gf,
+    lean: Gf,
+    /// Broad patches of the dust.
+    patch: Gf,
+    /// How hard the ring burst here, for the crown.
+    crown: Gf,
+    hot: Gf,
+    pool: Gf,
+}
+impl Grid {
+    fn new(s: &Shape, x0: i32, z0: i32) -> Self {
+        let mut g = Grid { x: x0 - 4, z: z0 - 4, ..Default::default() };
+        let a0 = (f64::from(z0) + 8.0 - s.cz).atan2(f64::from(x0) + 8.0 - s.cx);
+        let mid = (f64::from(x0) + 8.0 - s.cx).hypot(f64::from(z0) + 8.0 - s.cz);
+        let inner = mid < 300.0;
+        for j in 0..GN {
+            for i in 0..GN {
+                let (px, pz) = (f64::from(g.x) + 4.0 * i as f64 + 0.5, f64::from(g.z) + 4.0 * j as f64 + 0.5);
+                let (dx, dz) = (px - s.cx, pz - s.cz);
+                let mut a = dz.atan2(dx);
+                while a - a0 > PI {
+                    a -= TAU;
+                }
+                while a - a0 < -PI {
+                    a += TAU;
+                }
+                g.a[j][i] = a;
+                g.e[j][i] = s.edge(a);
+                g.w[j][i] = 40.0 + 30.0 * ring_noise(a, 13, 0.5, s.seed ^ 0xd2) + 12.0 * ring_noise(a, 47, 0.5, s.seed ^ 0xd3);
+                g.rw[j][i] = 40.0 + 40.0 * ring_noise(a, 9, 0.5, s.seed ^ 0xd4);
+                g.crown[j][i] = ((0.7 * ring_noise(a, 8, 0.5, s.seed ^ 0xde) + 0.3 * ring_noise(a, 31, 0.5, s.seed ^ 0xdf) - 0.3) * 3.0).clamp(0.05, 1.0);
+                g.lobe[j][i] = 56.0 * (ring_noise(a, 17, 0.5, s.seed ^ 0xd5) - 0.5) + 40.0 * (qnoise(px, pz, 61.0, s.seed ^ 0xd6) - 0.5) + 18.0 * (qnoise(px, pz, 23.0, s.seed ^ 0xd7) - 0.5);
+                g.wx[j][i] = 30.0 * (qnoise(px, pz, 57.0, s.seed ^ 0xd8) - 0.5);
+                g.wz[j][i] = 30.0 * (qnoise(px, pz, 57.0, s.seed ^ 0xd9) - 0.5);
+                g.lean[j][i] = 14.0 * qnoise(px, pz, 110.0, s.seed ^ 0xda);
+                g.patch[j][i] = 0.62 * qnoise(px, pz, 52.0, s.seed ^ 0xdb) + 0.38 * qnoise(px, pz, 21.0, s.seed ^ 0xdc);
+                if inner {
+                    let (mut hot, mut pool) = (0.0f64, -1.0f64);
+                    for v in &s.hots {
+                        let (ex, ez) = (px + g.wx[j][i] - v.x, pz + g.wz[j][i] - v.z);
+                        let q = (ex * ex + ez * ez) / (v.r * v.r);
+                        if v.k > 0.0 {
+                            hot = hot.max(v.k * (-q * 1.6).exp());
+                        } else {
+                            pool = pool.max(1.0 - q.sqrt());
+                        }
+                    }
+                    // (the blocks standing in it glow at their feet a little)
+                    for d in &s.drops {
+                        let (ex, ez) = ((px - d.x) / (d.ru + d.rv), (pz - d.z) / (d.ru + d.rv));
+                        hot = hot.max(0.42 * (-(ex * ex + ez * ez) * 2.5).exp());
+                    }
+                    crate::meter::spend(100 * (VC_HOTS + VC_DROPS) as u64);
+                    let round = 0.62 * ((pool + 1.0) / 1.6).clamp(0.0, 1.0).powi(3);
+                    g.hot[j][i] = hot.max(round) + 0.42 * (qnoise(px, pz, 44.0, s.seed ^ 0xdd) - 0.62).max(0.0);
+                    g.pool[j][i] = pool;
+                }
+            }
+        }
+        crate::meter::spend((GN * GN * 900) as u64);
+        g
+    }
+    fn at(&self, f: &Gf, x: i32, z: i32) -> f64 {
+        let (fx, fz) = (f64::from(x - self.x) * 0.25, f64::from(z - self.z) * 0.25);
+        let (i, j) = ((fx as usize).min(GN - 2), (fz as usize).min(GN - 2));
+        let (u, v) = (fx - i as f64, fz - j as f64);
+        (f[j][i] * (1.0 - u) + f[j][i + 1] * u) * (1.0 - v) + (f[j + 1][i] * (1.0 - u) + f[j + 1][i + 1] * u) * v
     }
 }
 
-/// The edits to column (x, z), `y1` over the highest the land reaches round it; the land's height there in `hl`, the
-/// caldera's edge along its bearing `e`.
-fn vc_col_edit(b: &mut Blocks, s: &Shape, c: Option<Col>, x: i32, z: i32, y1: i32, hl: f64, e: f64) {
-    crate::meter::spend(VC_UNIT);
-    let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
-    let r = (dx * dx + dz * dz).sqrt();
-    let u = e - r;
-    let air = "minecraft:air";
-    if u >= VC_CLIFF {
-        // the floor: the land gone, black crust plates, lava in the cracks
-        let (off, crack, near, id) = crust(x, z, s.seed);
+/// A column's rough shape, for its neighbours: how high it stands, how far its rock has dropped or been lifted and what
+/// it is.
+#[derive(Clone, Copy, Default)]
+struct Rel {
+    top: i32,
+    shift: i32,
+    what: u8,
+}
+const W_FLOOR: u8 = 0;
+const W_ROCK: u8 = 1;
+const W_TALUS: u8 = 2;
+const W_CAP: u8 = 3;
+const W_OUT: u8 = 4;
+
+struct Ctx<'a> {
+    s: &'a Shape,
+    hf: &'a Hf,
+    cols: &'a [u64],
+    bx: i32,
+    bz: i32,
+    g: Grid,
+    y1: i32,
+    drops: Vec<&'a Drop>,
+    /// The columns of the chunk and one round it (x0 - 1 ..= x0 + 16), where the caldera or the rim reach.
+    rel: Option<Box<[[Rel; 18]; 18]>>,
+    x0: i32,
+    z0: i32,
+}
+impl Ctx<'_> {
+    fn col(&self, x: i32, z: i32) -> Option<Col> {
+        let (i, k) = (x - self.bx + VC_READ, z - self.bz + VC_READ);
+        if i < 0 || k < 0 || i >= VC_GW || k >= VC_GW {
+            return None;
+        }
+        self.cols.get((k * VC_GW + i) as usize).and_then(|&v| Col::unpack(v))
+    }
+    fn land(&self, x: i32, z: i32) -> f64 {
+        f64::from(self.s.gy) + self.hf.at(f64::from(x) + 0.5 - self.s.cx, f64::from(z) + 0.5 - self.s.cz)
+    }
+    /// How high the rim stands over the land here: slabs of the land broken and tilted up, higher towards the lip, a few
+    /// of them shards standing well over it (the crown), cracks between. `p` how far past the lip, `rw` the rim's width.
+    fn rim(&self, x: i32, z: i32, p: f64, rw: f64) -> (f64, f64) {
+        if p > rw * 1.3 {
+            return (0.0, 0.0);
+        }
+        let s = self.s;
+        let (wx, wz) = (self.g.at(&self.g.wx, x, z), self.g.at(&self.g.wz, x, z));
+        let (fx, fz) = (f64::from(x) + wx, f64::from(z) + wz);
+        let (gap, id, mx, mz) = cells(fx, fz, 21.0, s.seed ^ 0xe1);
+        let h = |k: u32| f64::from(pcg(id ^ k) >> 16) / 65536.0;
+        // (the slab's middle, how far past the lip it lies)
+        let (ox, oz) = (mx - wx - s.cx, mz - wz - s.cz);
+        let rc = ox.hypot(oz);
+        let pc = p + (rc - (f64::from(x) + 0.5 - s.cx).hypot(f64::from(z) + 0.5 - s.cz));
+        let q = (pc / rw).clamp(0.0, 1.3);
+        let a = 26.0 * (1.0 - (q / 1.15).min(1.0)).powi(2) + 7.0 * (1.0 - (q / 1.15).min(1.0));
+        let mut up = a * (0.3 + 0.7 * h(0x51));
+        // (the slab's top, dipping outwards, a bit round the way too)
+        let (nx, nz) = (ox / rc, oz / rc);
+        let mut dip = (0.32 + 0.6 * h(0x54)) * (a / 33.0 + 0.25);
+        let (rx, rz) = (f64::from(x) + 0.5 - s.cx - ox, f64::from(z) + 0.5 - s.cz - oz);
+        let along = rx * nx + rz * nz;
+        let side = -rx * nz + rz * nx;
+        // the crown: where the ring burst hardest, slabs thrust up on end, wedges of rock; little between
+        let gate = self.g.at(&self.g.crown, x, z);
+        if q < 0.4 && h(0x52) < 0.9 * gate {
+            let tall = 6.0 + 30.0 * h(0x53).powi(2) * gate;
+            up += tall * (gap / 5.0).clamp(0.0, 1.0);
+            dip = 0.4 + 1.1 * h(0x57);
+        }
+        up += -dip * along + (h(0x55) - 0.5) * dip * side;
+        let smooth = up;
+        // (the broken top of it)
+        up += 3.0 * (pick(x.div_euclid(2) * 67 + z.div_euclid(2) * 131, s.seed ^ 0xe2) - 0.5) * (1.0 - q.min(1.0));
+        // (the cracks between the slabs)
+        if gap < 2.4 {
+            up -= (2.4 - gap) * (1.0 + 2.0 * h(0x56)) * (1.0 - q.min(1.0));
+        }
+        (up.max(-3.0), smooth)
+    }
+    /// The height of the land before the rim: the ground, and water counts as ground (it's filled).
+    fn base(&self, c: Option<Col>, x: i32, z: i32) -> f64 {
+        c.map_or_else(|| self.land(x, z), |c| f64::from(c.base()))
+    }
+    /// A column of the caldera or the rim, how it will stand.
+    fn relief(&self, x: i32, z: i32) -> Rel {
+        crate::meter::spend(VC_UNIT);
+        let s = self.s;
+        let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
+        let r = dx.hypot(dz);
+        let e = self.g.at(&self.g.e, x, z);
+        let u = e - r;
+        let w = self.g.at(&self.g.w, x, z);
         let f = s.floor;
-        if crack {
+        if u > w * 1.08 {
+            for d in &self.drops {
+                let (ex, ez) = (f64::from(x) + 0.5 - d.x, f64::from(z) + 0.5 - d.z);
+                let (a, b) = (ex * d.ca + ez * d.sa, -ex * d.sa + ez * d.ca);
+                if a.abs() > d.ru * 2.2 || b.abs() > d.rv * 2.2 {
+                    continue;
+                }
+                let th = b.atan2(a);
+                let k = d.ph;
+                let m = (a / d.ru).hypot(b / d.rv) * (1.0 + 0.2 * (2.0 * th + k).sin() + 0.13 * (3.0 * th + 2.0 * k).sin() + 0.09 * (5.0 * th + 3.0 * k).sin() + 0.08 * (9.0 * th + k).sin()) + 0.5 * (self.g.at(&self.g.patch, x, z) - 0.5);
+                if m < 1.0 {
+                    // (broken along faults as it dropped)
+                    let (gap, id, _, _) = cells(f64::from(x), f64::from(z), 13.0, s.seed ^ d.ph.to_bits() as u32);
+                    let step = f64::from(pcg(id) >> 16) / 65536.0;
+                    let edge = 9.0 * (1.0 - ((1.0 - m) / 0.22).clamp(0.0, 1.0)).powi(2);
+                    let top = f64::from(f) + d.h + d.tilt * a + 11.0 * (step - 0.5) - edge - if gap < 1.2 { 3.0 } else { 0.0 };
+                    let drop = (f64::from(s.gy) - f64::from(f) - d.h) as i32;
+                    return Rel { top: top.max(f64::from(f) + 2.0) as i32, shift: drop, what: W_CAP };
+                }
+                if m < 1.5 {
+                    // (the rubble round its foot)
+                    let k = (1.5 - m) / 0.5;
+                    let n = pick(x.div_euclid(2) * 7 + z.div_euclid(2) * 13, s.seed ^ 0xeb);
+                    return Rel { top: f + (d.h * 0.42 * k * k + 2.5 * n) as i32, shift: 0, what: W_TALUS };
+                }
+            }
+            return Rel { top: f, shift: 0, what: W_FLOOR };
+        }
+        if u > 0.0 {
+            // the wall: a scarp, the slumped blocks below it, each dropped and turned back on its own, then the rubble
+            let c = self.col(x, z);
+            let lip = self.base(c, x, z) + apron(0.0) + self.rim(x, z, 0.0, self.g.at(&self.g.rw, x, z)).0;
+            let depth = (lip - f64::from(f)).max(12.0);
+            let sw = u / w;
+            let a = self.g.at(&self.g.a, x, z);
+            // (cells along the wall, each so many blocks along it and across it; they close up round the ring)
+            const ACROSS: f64 = 15.0;
+            const ROUND: i32 = 37;
+            let at = a / TAU * f64::from(ROUND);
+            let (ia, iu) = (at.floor() as i32, (u / ACROSS).floor() as i32);
+            let (mut d1, mut d2, mut id, mut uc) = (1e9f64, 1e9f64, 0u32, 0.0);
+            for dv in -1..=1 {
+                for da in -1..=1 {
+                    let h = pcg(((ia + da).rem_euclid(ROUND) as u32).wrapping_mul(0x9E37_79B1) ^ ((iu + dv) as u32).wrapping_mul(0x85EB_CA6B) ^ s.seed);
+                    let (pa, pv) = (f64::from(ia + da) + f64::from(h & 1023) / 1023.0, f64::from(iu + dv) + f64::from(h >> 10 & 1023) / 1023.0);
+                    let (ea, ev) = ((pa - at) * 0.52, pv - u / ACROSS);
+                    let d = ea * ea + ev * ev;
+                    if d < d1 {
+                        d2 = d1;
+                        d1 = d;
+                        id = h;
+                        uc = pv * ACROSS;
+                    } else if d < d2 {
+                        d2 = d;
+                    }
+                }
+            }
+            crate::meter::spend(450);
+            let h = |k: u32| f64::from(pcg(id ^ k) >> 16) / 65536.0;
+            let sc = (uc / w).max(0.0);
+            // (how far down the cell's middle has gone; the scarp's cells a good way at once)
+            let q = (0.2 + 0.86 * sc.powf(0.9) + 0.14 * (h(0x61) - 0.5)).clamp(0.14, 1.1);
+            // (turned back: its far side higher)
+            let back = (0.12 + 0.3 * h(0x62)) * (u - uc) / w;
+            let rock = lip - depth * (q - back);
+            // the rubble: fans under the scarp, thick here, thin there
+            let fan = ring_noise(a, 29, 0.5, s.seed ^ 0xe5);
+            let n = pick(x * 19 + z * 7, s.seed ^ 0xe6);
+            let rough = 1.6 * n + 1.6 * pick(x / 3 * 5 + z / 3 * 11, s.seed ^ 0xe7);
+            let talus = f64::from(f) + (10.0 + 30.0 * fan) * ((1.08 - sw) / 0.62).clamp(0.0, 1.0).powf(1.4) + rough;
+            let edge = d2.sqrt() - d1.sqrt();
+            let crack = if edge < 0.09 { 2.0 + 2.0 * h(0x63) } else { 0.0 };
+            if talus >= rock - crack {
+                return Rel { top: talus as i32, shift: 0, what: W_TALUS };
+            }
+            let top = (rock - crack).max(f64::from(f) + 1.0);
+            return Rel { top: top as i32, shift: ((lip - top) * 0.82) as i32 + (h(0x64) * 6.0) as i32, what: W_ROCK };
+        }
+        let rw = self.g.at(&self.g.rw, x, z);
+        let p = -u;
+        if p > rw * 1.3 {
+            return Rel { top: i32::MIN, shift: 0, what: W_OUT };
+        }
+        let c = self.col(x, z);
+        let (up, smooth) = self.rim(x, z, p, rw);
+        let base = self.base(c, x, z);
+        Rel { top: (base + apron(-p) + up) as i32, shift: -(smooth * 0.85) as i32, what: W_ROCK }
+    }
+    fn near(&self, x: i32, z: i32) -> Rel {
+        match &self.rel {
+            Some(m) => m[(z - self.z0 + 1) as usize][(x - self.x0 + 1) as usize],
+            None => self.relief(x, z),
+        }
+    }
+}
+
+/// The caldera's lake at (x, z): dark crust in big irregular plates cut into smaller ones where it runs hot, thin veins
+/// of lava in the cracks towards the vents, dim and then dark away from them; open lava in a few pools.
+fn lake_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32) {
+    let s = ctx.s;
+    let g = &ctx.g;
+    let f = s.floor;
+    let (wx, wz) = (g.at(&g.wx, x, z), g.at(&g.wz, x, z));
+    let (fx, fz) = (f64::from(x) + wx, f64::from(z) + wz);
+    let hot = g.at(&g.hot, x, z);
+    let (gap2, id2, _, _) = cells(fx + 311.0, fz - 97.0, 15.0, s.seed ^ 0xe9);
+    let wob = qnoise(f64::from(x), f64::from(z), 7.0, s.seed ^ 0xea) - 0.5;
+    let pool = g.at(&g.pool, x, z) + 0.42 * wob + 0.3 * (g.at(&g.patch, x, z) - 0.5);
+    if pool > 0.0 && !(gap2 > 2.6 && id2 & 7 < 2 && pool < 0.3) {
+        // open lava, crust floating on it near its edge
+        b.run(x, z, f - 3, f - 2, "minecraft:magma_block");
+        b.run(x, z, f - 1, f - 1, "minecraft:lava");
+        b.run(x, z, f, ctx.y1, "minecraft:air");
+        return;
+    }
+    let (gap1, id1, _, _) = cells(fx, fz, 47.0, s.seed);
+    let heat = hot + 0.5 * wob;
+    let w1 = 0.5 + 2.1 * heat.max(0.0).powi(2);
+    let w2 = if heat > 0.34 { 2.1 * (heat - 0.34) } else { 0.0 };
+    // (the plates broken up further in places, by cracks long cooled)
+    let seam = 0.9 * (qnoise(f64::from(x), f64::from(z), 31.0, s.seed ^ 0xec) - 0.36).max(0.0) * 2.4;
+    let (crack, how) = if gap1 < w1 {
+        (true, heat + 0.14)
+    } else if gap2 < w2.max(seam) {
+        (true, heat - 0.08)
+    } else {
+        (false, 0.0)
+    };
+    if crack {
+        if how > 0.44 {
             b.run(x, z, f - 3, f - 2, "minecraft:magma_block");
             b.run(x, z, f - 1, f - 1, "minecraft:lava");
-            b.run(x, z, f, y1, air);
+            b.run(x, z, f, ctx.y1, "minecraft:air");
+        } else if how > 0.2 {
+            b.run(x, z, f - 3, f - 1, "minecraft:magma_block");
+            b.run(x, z, f, ctx.y1, "minecraft:air");
         } else {
-            let top = f + off;
-            for y in top - 2..=top {
-                b.run(x, z, y, y, crust_block(x, y, z, near, id));
+            // (long cooled: a dark seam)
+            b.run(x, z, f - 3, f - 2, "minecraft:blackstone");
+            b.run(x, z, f - 1, ctx.y1, "minecraft:air");
+        }
+        return;
+    }
+    // a plate
+    let big = pcg(id1 ^ 0x11);
+    let small = pcg(id2 ^ 0x12);
+    let off = (big % 5) as i32 / 2 - 1 + if heat > 0.2 { (small % 3) as i32 - 1 } else { i32::from(small % 4 == 0) - i32::from(small % 5 == 0) };
+    let top = f + off;
+    let h = pick(x * 31 + z * 57, id1);
+    let tone = (big >> 8) % 8;
+    let m = if heat > 0.36 && gap1.min(gap2) < 2.4 && h < 0.8 * (heat - 0.3) {
+        "minecraft:magma_block"
+    } else if h < 0.5 + 0.06 * f64::from(tone) {
+        "minecraft:blackstone"
+    } else if h < 0.8 + 0.02 * f64::from(tone) {
+        "minecraft:polished_blackstone"
+    } else if tone > 5 {
+        "minecraft:basalt"
+    } else {
+        "minecraft:polished_blackstone"
+    };
+    b.run(x, z, top - 2, top - 1, "minecraft:blackstone");
+    b.run(x, z, top, top, m);
+    b.run(x, z, top + 1, ctx.y1, "minecraft:air");
+}
+
+/// A column of rock (the walls, the rim, the blocks in the lake): its faces in beds, how far they show worked out from its
+/// neighbours; `ground` how high the land stood if the rock is lifted over it.
+fn rock_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, r: Rel, ground: i32) {
+    let s = ctx.s;
+    let lean = ctx.g.at(&ctx.g.lean, x, z);
+    let mut low = r.top - 2;
+    for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        low = low.min(ctx.near(x + dx, z + dz).top - 1);
+    }
+    let low = low.max(r.top - 44);
+    if low > ground + 1 {
+        b.run(x, z, ground + 1, low - 1, "minecraft:tuff");
+    }
+    crate::meter::spend(70 * (r.top - low + 1) as u64);
+    // (ash lying on what's near flat)
+    let flat = r.top - low <= 3 && pick(x * 3 + z * 19, s.seed ^ 0xef) < 0.8;
+    for y in low..=r.top - i32::from(flat) {
+        b.run(x, z, y, y, strata(s, x, y, z, r.shift, lean));
+    }
+    if flat {
+        b.run(x, z, r.top, r.top, ash_block(x, r.top, z, s.seed, 0.25));
+    }
+}
+
+/// Past the rim: the sheet, the dust and the trees. (ρ how far out by the sheet's own wandering edge)
+fn out_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, r: f64, rel: Rel) {
+    let s = ctx.s;
+    let g = &ctx.g;
+    let lobe = g.at(&g.lobe, x, z);
+    let rho = r + lobe;
+    let base = c.base();
+    let hl = ctx.land(x, z);
+    // the ash in the low ground, how far it sits under the land round it, deeper down the valleys
+    let low = hl - f64::from(base);
+    let rho = rho - 2.2 * low.clamp(-4.0, 18.0);
+    let a = g.at(&g.a, x, z);
+    let bend = 0.00045 * lobe;
+    let n1 = ring_noise(a + bend, 401, r / 170.0, s.seed ^ 0xa1);
+    let n2 = ring_noise(a + bend, 977, r / 96.0, s.seed ^ 0xa2);
+    let gather = g.at(&g.patch, x, z);
+    let wet = ((0.6 * n1 + 0.4 * n2 - 0.57) * (0.3 + 1.2 * gather) * 6.0).clamp(0.0, 0.8);
+    if rho < VC_IGN {
+        // the sheet
+        let fall = 1.0 - ((rho - 330.0) / (VC_IGN - 330.0)).clamp(0.0, 1.0).powi(2);
+        let pond = (hl + 3.0 - f64::from(base)).clamp(0.0, 18.0) * fall;
+        let ridge = (-low / 7.0).clamp(0.0, 1.0);
+        let t = pond + (1.3 - 1.3 * ridge) * (0.45 + fall) + apron(-(r - g.at(&g.e, x, z)));
+        let cut = if wet > 0.62 { 1.0 } else { 0.0 };
+        let top = base + (t - cut * 0.9).round().max(0.0) as i32;
+        let mut top = top;
+        // what stands is swept off
+        let stands = c.top.max(base);
+        // (a block flung out of the crater)
+        let lump = lump(x, z, r, s.seed);
+        if rel.what != W_OUT && rel.top >= top {
+            // (the rim's rock stands clear of the ash)
+            if stands > rel.top {
+                b.run(x, z, rel.top + 1, stands, "minecraft:air");
             }
-            b.run(x, z, top + 1, y1, air);
-        }
-        return;
-    }
-    if u > 0.0 {
-        // the cliffs: down from the land to the floor in slumped benches, each its own width round the wall
-        let land = hl.max(f64::from(s.floor) + 8.0);
-        let k = vnoise(f64::from(x), f64::from(z), 11.0, s.seed ^ 0x77);
-        let w = ((u + 7.0 * (k - 0.5)) / 9.0).floor().clamp(0.0, 4.0);
-        let drop = (w / 4.0).powf(0.8);
-        let top = (land + (f64::from(s.floor) - land) * drop + 3.0 * (k - 0.5)).round() as i32;
-        let top = top.max(s.floor + 1);
-        for y in top - 2..=top {
-            b.run(x, z, y, y, wall_block(x, y, z, land - f64::from(y), s.seed));
-        }
-        b.run(x, z, top + 1, y1, air);
-        // (what the wall cuts into sealed)
-        b.put(x, z, s.floor - 4, top - 3, "minecraft:tuff", Some("minecraft:water"), false);
-        b.put(x, z, s.floor - 4, top - 3, "minecraft:magma_block", Some("minecraft:lava"), false);
-        return;
-    }
-    let Some(c) = c else { return };
-    // past the edge
-    if u > -4.0 {
-        b.put(x, z, s.floor - 4, c.g, "minecraft:tuff", Some("minecraft:water"), false);
-        b.put(x, z, s.floor - 4, c.g, "minecraft:magma_block", Some("minecraft:lava"), false);
-    }
-    let wide = VC_RIM - e;
-    // (the zones' edges wander with the caldera's)
-    let wander = e - 272.0;
-    if r < VC_RIM + 0.5 * wander && !c.fluid {
-        // the rim: broken down in steps towards the edge, cut by the ring's fractures, blackened
-        let n = vnoise(f64::from(x), f64::from(z), 7.0, s.seed ^ 0x19);
-        let k = (-u + 6.0 * (n - 0.5)) / wide;
-        let step = ((1.0 - k.clamp(0.0, 1.0)) * 4.0).floor() * 2.0;
-        let frac = ((-u + 9.0 * (vnoise(f64::from(x), f64::from(z), 31.0, s.seed ^ 0x61) - 0.5)).rem_euclid(13.0) - 6.5).abs() < 0.9;
-        let top = c.g - step as i32 - if frac { 4 } else { 0 } + (n * 2.0) as i32;
-        b.run(x, z, top + 1, c.top.max(c.g), air);
-        let d = if frac { 2 } else { 1 };
-        for y in top - d..=top {
-            b.run(x, z, y, y, rim_block(x, y, z, s.seed));
-        }
-        return;
-    }
-    if r < VC_IGN + 1.3 * wander {
-        // the ignimbrite: filling the low ground up towards one level, thin on the ridges, everything standing swept off
-        if c.fluid {
+            rock_edit(b, ctx, x, z, rel, base);
             return;
         }
-        let fall = 1.0 - ((r - 330.0) / (VC_IGN - 330.0)).clamp(0.0, 1.0).powi(2);
-        let patch = vnoise(f64::from(x), f64::from(z), 9.0, s.seed ^ 0x51);
-        let t = ((hl + 3.0 - f64::from(c.g)).clamp(0.0, 16.0) * fall + 1.0 + 1.6 * patch).round() as i32;
-        let top = c.g + t;
-        if c.top > top {
-            b.run(x, z, top + 1, c.top, air);
+        if lump > 0 {
+            top += lump;
         }
-        let low = (top - 3).max(c.g + 1);
-        if low > c.g + 1 {
-            b.run(x, z, c.g + 1, low - 1, "minecraft:tuff");
+        if stands > top {
+            b.run(x, z, top + 1, stands, "minecraft:air");
         }
-        for y in low..=top {
-            b.run(x, z, y, y, ash_block(x, y, z, s.seed, patch));
+        if c.deep {
+            b.run(x, z, base - 1, base - 1, "minecraft:tuff");
+        } else if top - 2 > c.g {
+            b.run(x, z, c.g + 1, top - 2, "minecraft:tuff");
+        }
+        let was_water = c.fluid;
+        let dark = if was_water { (wet + 0.62).min(0.92) } else if pond > 7.0 { wet * 0.6 } else { wet };
+        for y in (top - 1).max(c.g + 1).min(top)..=top {
+            let m = if lump > 0 { rubble(x, y, z, s.seed) } else { ash_block(x, y, z, s.seed, dark) };
+            b.run(x, z, y, y, m);
+        }
+        // (a tree's charred stump showing through at the sheet's edge)
+        if c.trunk > 0 && !c.fluid && lump == 0 && rho > 384.0 {
+            b.run(x, z, top + 1, top + 1 + i32::from(pick(x * 3 + z * 5, s.seed) > 0.5), CHAR);
         }
         return;
     }
-    if r < VC_FELL + 1.2 * wander {
-        // the trees swept off (their trunks laid down by `vc_fell`), the ground dusted with ash thinning away
-        if c.trunk > 0 || c.leaves != 15 {
-            let stump = if c.trunk > 0 { 1 + (mh((x * 31 + z * 17) as u32, s.seed, 0x81) * 1.6) as i32 } else { 0 };
-            if c.top > c.g + stump {
-                b.run(x, z, c.g + 1 + stump, c.top, air);
-            }
+    // past the sheet: how much of it is ash here, patches on patches, drawn out along the flows, thinning away
+    let q = ((rho - VC_IGN + 20.0) / 180.0).clamp(0.0, 1.0);
+    let cover = (1.0 - q).powf(1.6).max(0.1 * (1.0 - (rho - 600.0) / 400.0)) * 1.04;
+    let fine = qnoise(f64::from(x), f64::from(z), 6.5, s.seed ^ 0xa4);
+    let n = (0.6 * g.at(&g.patch, x, z) + 0.24 * fine + 0.16 * pick(x * 17 + z * 23, s.seed ^ 0xa5) - 0.5 - 0.1 * wet) * 2.7 + 0.5;
+    let ash = n < cover;
+    let rt = r + 0.45 * lobe;
+    if c.fluid {
+        // pumice floating, the shallows choked
+        if ash || (c.top - c.g <= 1 && n < cover * 1.5) {
+            b.run(x, z, c.top, c.top, if q < 0.4 { ash_block(x, c.top, z, s.seed, 0.3) } else { dust_block(x, z, s.seed) });
         }
-        let thin = ((r - VC_IGN) / (VC_FELL - VC_IGN)).clamp(0.0, 1.0);
-        if c.ground == 1 {
-            let patch = vnoise(f64::from(x), f64::from(z), 7.0, s.seed ^ 0x83);
-            if patch > 0.28 + 0.5 * thin {
-                b.put(x, z, c.g, c.g, ash_block(x, c.g, z, s.seed, patch), Some("minecraft:grass_block"), false);
-            }
+        return;
+    }
+    stand_edit(b, ctx, c, x, z, rt);
+    if ash {
+        let m = if q < 0.3 { ash_block(x, c.g, z, s.seed, wet * (1.0 - 2.0 * q)) } else { dust_block(x, z, s.seed) };
+        b.run(x, z, c.g, c.g, m);
+        // (what grew on it, buried)
+        if c.top > c.g && c.trunk == 0 && c.leaves == 15 {
+            b.run(x, z, c.g + 1, c.top, "minecraft:air");
         }
+    } else if c.ground == 1 && rho < 540.0 && pick(x * 29 + z * 3, s.seed ^ 0xa6) < 1.0 - (rho - 430.0) / 110.0 {
+        // (the grass burnt off)
+        b.run(x, z, c.g, c.g, if fine < 0.5 { "minecraft:coarse_dirt" } else { "minecraft:dirt" });
+    }
+}
+
+/// What the ring itself piled up round the rim, `u` inside the caldera's edge: the land rises to the crater.
+fn apron(u: f64) -> f64 {
+    let k = (1.0 + u.min(0.0) / 130.0).clamp(0.0, 1.0);
+    22.0 * k * k * k
+}
+/// A block flung out of the crater lying here: how high it stands (0: none).
+fn lump(x: i32, z: i32, r: f64, seed: u32) -> i32 {
+    const S: i32 = 11;
+    let (ix, iz) = (x.div_euclid(S), z.div_euclid(S));
+    let k = ix * 7919 + iz * 104_729;
+    let chance = 0.3 * (1.0 - (r - 320.0) / 90.0);
+    if pick(k, seed ^ 0xeb) > chance {
+        return 0;
+    }
+    let (px, pz) = (pick(k, seed ^ 0xec) * 7.0 + 2.0, pick(k, seed ^ 0xed) * 7.0 + 2.0);
+    let (ex, ez) = (f64::from(x.rem_euclid(S)) - px, f64::from(z.rem_euclid(S)) - pz);
+    let size = 1.4 + 2.6 * pick(k, seed ^ 0xee);
+    let d = size - ex.hypot(ez);
+    if d <= 0.0 { 0 } else { (d * 1.1).ceil() as i32 }
+}
+
+/// What the heat did to what stands past the sheet, by `rt`, how far out: (the trunks felled by `vc_fell`) burnt stumps,
+/// then trunks left standing bare and black, then scorched trees with what's left of their crowns gone brown, then the
+/// leaves only, browning less and less.
+fn stand_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, rt: f64) {
+    let s = ctx.s;
+    let k = x * 31 + z * 17;
+    let h = pick(k, s.seed ^ 0x81);
+    if c.trunk > 0 {
+        let top = c.g + i32::from(c.trunk);
+        match fate(x, z, rt, s.seed) {
+            Fate::Felled => {
+                let stump = 1 + (h * 1.6) as i32;
+                b.run(x, z, c.g + 1, c.g + stump, CHAR);
+                if c.top > c.g + stump {
+                    b.run(x, z, c.g + 1 + stump, c.top, "minecraft:air");
+                }
+            }
+            Fate::Bare => {
+                let keep = 2 + ((f64::from(c.trunk) - 1.0) * (0.45 + 0.55 * h)) as i32;
+                let keep = keep.min(i32::from(c.trunk));
+                b.run(x, z, c.g + 1, c.g + keep, if h < 0.55 { CHAR } else { "minecraft:dark_oak_log" });
+                if c.top > c.g + keep {
+                    b.run(x, z, c.g + 1 + keep, c.top, "minecraft:air");
+                }
+            }
+            Fate::Scorched => {
+                b.run(x, z, c.g + 1, top, "minecraft:dark_oak_log");
+            }
+            Fate::Standing => {}
+        }
+    }
+    if c.trunk == 0 && c.top > c.g && (c.leaves != 15 || c.top > c.g + 1) {
+        // the crowns
+        if rt < VC_BARE {
+            b.run(x, z, c.g + 1, c.top, "minecraft:air");
+            return;
+        }
+        let p = qnoise(f64::from(x), f64::from(z), 8.0, s.seed ^ 0x84);
+        let burn = 1.0 - (rt - VC_BARE) / (VC_GREEN - VC_BARE);
+        if burn <= 0.0 {
+            return;
+        }
+        // (nearest the bare ones most of it has gone, what's left brown; further the crown stays, browning in places)
+        if h < burn * burn * 0.9 {
+            b.run(x, z, c.g + 1, c.top, "minecraft:air");
+        } else if p + 0.5 * h - 0.25 < burn * 1.1 {
+            let (m, mid) = browned(h, burn);
+            let cut = c.g + 1 + ((c.top - c.g) * 2) / 3;
+            b.put(x, z, c.g + 1, cut, m, Some("#minecraft:leaves"), false);
+            b.put(x, z, cut + 1, c.top, mid, Some("#minecraft:leaves"), false);
+        }
+    }
+}
+/// A browned crown's blocks, lower and upper, the worse burnt the darker.
+fn browned(h: f64, burn: f64) -> (&'static str, &'static str) {
+    let pick = |v: f64| {
+        if v < 0.3 + 0.5 * burn {
+            VC_TWIG
+        } else if v < 0.5 + 0.4 * burn {
+            VC_LEAF_RED
+        } else {
+            VC_LEAF_ORANGE
+        }
+    };
+    (pick(h), pick((h * 7.3).fract()))
+}
+const CHAR: &str = "minecraft:basalt";
+const VC_TWIG: &str = "minecraft:mangrove_roots";
+const VC_LEAF_RED: &str = "minecraft:red_poplar_leaves[persistent=true]";
+const VC_LEAF_ORANGE: &str = "minecraft:orange_poplar_leaves[persistent=true]";
+/// Felled up to about here, bare black trunks to VC_BARE, scorched to VC_SCORCH, the leaves browning to VC_GREEN.
+const VC_FELLED: f64 = 482.0;
+const VC_BARE: f64 = 526.0;
+const VC_SCORCH: f64 = 562.0;
+const VC_GREEN: f64 = 596.0;
+#[derive(PartialEq, Clone, Copy)]
+enum Fate {
+    Felled,
+    Bare,
+    Scorched,
+    Standing,
+}
+fn fate(x: i32, z: i32, rt: f64, seed: u32) -> Fate {
+    let k = x * 41 + z * 67;
+    let j = rt + 30.0 * (pick(k, seed ^ 0x85) - 0.5);
+    if j < VC_FELLED {
+        Fate::Felled
+    } else if j < VC_BARE {
+        if pick(k, seed ^ 0x86) < (VC_BARE - j) / (VC_BARE - VC_FELLED) * 0.7 { Fate::Felled } else { Fate::Bare }
+    } else if j < VC_SCORCH {
+        Fate::Scorched
+    } else {
+        Fate::Standing
     }
 }
 
 /// The trees standing on (x, z)'s chunk felled: lying on the land pointing away from the vent, once the wall has swept
-/// the land they lie on.
-fn vc_fell(due: &mut Vec<(f32, Blocks)>, w: &Work, s: &Shape, x0: i32, z0: i32, bx: i32, bz: i32) {
-    let at = |x: i32, z: i32| -> Option<Col> {
-        let (i, k) = (x - bx + VC_READ, z - bz + VC_READ);
-        if i < 0 || k < 0 || i >= VC_GW || k >= VC_GW {
-            return None;
-        }
-        Col::unpack(w.cols[(k * VC_GW + i) as usize])
-    };
+/// the land they lie on. Charred trunks, some broken in two.
+fn vc_fell(due: &mut Vec<(f32, Blocks)>, ctx: &Ctx, x0: i32, z0: i32) {
+    let s = ctx.s;
     let mut b = Blocks::default();
     let mut far = 0.0f64;
     for z in z0..z0 + 16 {
         for x in x0..x0 + 16 {
             crate::meter::spend(40);
-            let Some(c) = at(x, z) else { continue };
+            let Some(c) = ctx.col(x, z) else { continue };
             if c.trunk < 3 || c.fluid {
                 continue;
             }
             let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
             let r = dx.hypot(dz);
-            if !(VC_RIM + 40.0..VC_FELL - 2.0).contains(&r) {
+            let lobe = ctx.g.at(&ctx.g.lobe, x, z);
+            if r + lobe - 2.2 * (ctx.land(x, z) - f64::from(c.g)).clamp(-4.0, 18.0) < VC_IGN + 2.0 || fate(x, z, r + 0.45 * lobe, s.seed) != Fate::Felled {
                 continue;
             }
-            let (ux, uz) = (dx / r, dz / r);
-            let (sx, sz, log) = if ux.abs() > uz.abs() { (ux.signum() as i32, 0, LOG_X[c.wood as usize]) } else { (0, uz.signum() as i32, LOG_Z[c.wood as usize]) };
-            // (buried under the ash close in, showing further out)
-            let lift = if r < VC_IGN { ((VC_IGN + 10.0 - r) * 0.16) as i32 } else { 0 };
-            let want = (i32::from(c.trunk) - 1).clamp(2, 7);
-            let mut y = c.g + 1 + lift;
-            for n in 1..=want {
-                let (lx, lz) = (x + sx * n, z + sz * n);
-                let Some(l) = at(lx, lz) else { break };
-                if l.fluid || (l.g + 1 + lift - y).abs() > 1 {
+            let k = x * 13 + z * 53;
+            let turn = dz.atan2(dx) + 0.5 * (pick(k, s.seed ^ 0x87) - 0.5);
+            let (ux, uz) = (turn.cos(), turn.sin());
+            let (lx_, lz_) = if ux.abs() > uz.abs() { (LOG_X[5], LOG_Z[5]) } else { (LOG_Z[5], LOG_X[5]) };
+            let _ = lz_;
+            let black = pick(k, s.seed ^ 0x88) < 0.6;
+            let log = if black { if ux.abs() > uz.abs() { "minecraft:basalt[axis=x]" } else { "minecraft:basalt[axis=z]" } } else { lx_ };
+            let want = ((f64::from(c.trunk) - 1.0) * (0.6 + 0.4 * pick(k, s.seed ^ 0x89))) as i32;
+            let want = want.clamp(2, 8);
+            let brk = 2 + (pick(k, s.seed ^ 0x8a) * 6.0) as i32;
+            let mut y = c.g + 1;
+            for n in 2..2 + want {
+                if n == brk {
+                    continue;
+                }
+                let (lx, lz) = ((f64::from(x) + 0.5 + ux * f64::from(n)).floor() as i32, (f64::from(z) + 0.5 + uz * f64::from(n)).floor() as i32);
+                let Some(l) = ctx.col(lx, lz) else { break };
+                if l.fluid || (l.g + 1 - y).abs() > 1 {
                     break;
                 }
-                y = l.g + 1 + lift;
+                y = l.g + 1;
                 b.run(lx, lz, y, y, log);
             }
             far = far.max(r + f64::from(want));
@@ -488,30 +1179,25 @@ fn vc_chunk(q: &mut Plan, w: &Work, t: f32, x0: i32, z0: i32) {
     let s = w.s;
     let hf = w.hf.borrow();
     let (ox, oz) = (f64::from(x0) + 8.0 - s.cx, f64::from(z0) + 8.0 - s.cz);
+    let mid = ox.hypot(oz);
     let y1 = (f64::from(s.gy) + hf.max_near(ox, oz) + 48.0).min(318.0) as i32;
-    let mut b = Blocks::default();
-    // (the caldera's edge worked out on a grid over the chunk, it wanders slowly: an arc tangent and five sines a column
-    // are most of a chunk's work otherwise)
-    let mut eg = [[0.0f64; 5]; 5];
-    for (j, row) in eg.iter_mut().enumerate() {
-        for (i, v) in row.iter_mut().enumerate() {
-            let (dx, dz) = (f64::from(x0) + 4.0 * i as f64 + 0.5 - s.cx, f64::from(z0) + 4.0 * j as f64 + 0.5 - s.cz);
-            *v = s.edge(dz.atan2(dx));
+    let reach = |d: &&Drop| (d.x - s.cx - ox).abs().max((d.z - s.cz - oz).abs()) < 2.3 * d.ru.max(d.rv) + 12.0;
+    let mut ctx = Ctx { s: &s, hf: &hf, cols: &w.cols, bx, bz, g: Grid::new(&s, x0, z0), y1, drops: s.drops.iter().filter(reach).collect(), rel: None, x0, z0 };
+    // (every column of the caldera and the rim, and one round the chunk, its shape first: how far its faces show)
+    let inner = mid < VC_RIM + 110.0;
+    if inner {
+        let mut m = Box::new([[Rel::default(); 18]; 18]);
+        for (j, row) in m.iter_mut().enumerate() {
+            for (i, v) in row.iter_mut().enumerate() {
+                *v = ctx.relief(x0 - 1 + i as i32, z0 - 1 + j as i32);
+            }
         }
+        ctx.rel = Some(m);
     }
-    crate::meter::spend(25 * 900);
+    let mut b = Blocks::default();
     for z in z0..z0 + 16 {
         for x in x0..x0 + 16 {
-            let (fx, fz) = (f64::from(x - x0) * 0.25, f64::from(z - z0) * 0.25);
-            let (i, j) = (fx as usize, fz as usize);
-            let (u, v) = (fx - i as f64, fz - j as f64);
-            let e = (eg[j][i] * (1.0 - u) + eg[j][i + 1] * u) * (1.0 - v) + (eg[j + 1][i] * (1.0 - u) + eg[j + 1][i + 1] * u) * v;
-            let c = {
-                let (i, k) = (x - bx + VC_READ, z - bz + VC_READ);
-                if i < 0 || k < 0 || i >= VC_GW || k >= VC_GW { None } else { w.cols.get((k * VC_GW + i) as usize).and_then(|&v| Col::unpack(v)) }
-            };
-            let hl = f64::from(s.gy) + hf.at(f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
-            vc_col_edit(&mut b, &s, c, x, z, y1, hl, e);
+            vc_col_edit(&mut b, &ctx, x, z, inner);
         }
     }
     if !b.runs.is_empty() {
@@ -519,11 +1205,49 @@ fn vc_chunk(q: &mut Plan, w: &Work, t: f32, x0: i32, z0: i32) {
     }
     if !w.cols.is_empty() {
         let mut due = Vec::new();
-        vc_fell(&mut due, w, &s, x0, z0, bx, bz);
+        vc_fell(&mut due, &ctx, x0, z0);
         for (tf, b) in due {
             q.ev.push((tf, Act::Blocks(Box::new(b))));
         }
     }
+}
+
+/// The edits to column (x, z).
+fn vc_col_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, inner: bool) {
+    crate::meter::spend(VC_UNIT);
+    let s = ctx.s;
+    let (dx, dz) = (f64::from(x) + 0.5 - s.cx, f64::from(z) + 0.5 - s.cz);
+    let r = dx.hypot(dz);
+    let u = ctx.g.at(&ctx.g.e, x, z) - r;
+    let air = "minecraft:air";
+    let rel = if inner { ctx.near(x, z) } else { Rel { top: i32::MIN, shift: 0, what: W_OUT } };
+    if u > 0.0 {
+        let top = rel.top;
+        match rel.what {
+            W_FLOOR => return lake_edit(b, ctx, x, z),
+            W_TALUS => {
+                let mut low = top - 2;
+                for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    low = low.min(ctx.near(x + dx, z + dz).top - 1);
+                }
+                for y in low.max(top - 12)..=top {
+                    b.run(x, z, y, y, rubble(x, y, z, s.seed));
+                }
+            }
+            _ => rock_edit(b, ctx, x, z, rel, i32::MAX - 2),
+        }
+        b.run(x, z, top + 1, ctx.y1, air);
+        // (what the wall cuts into sealed)
+        b.put(x, z, s.floor - 4, top - 3, "minecraft:tuff", Some("minecraft:water"), false);
+        b.put(x, z, s.floor - 4, top - 3, "minecraft:magma_block", Some("minecraft:lava"), false);
+        return;
+    }
+    let Some(c) = ctx.col(x, z) else { return };
+    if u > -4.0 {
+        b.put(x, z, s.floor - 4, c.g, "minecraft:tuff", Some("minecraft:water"), false);
+        b.put(x, z, s.floor - 4, c.g, "minecraft:magma_block", Some("minecraft:lava"), false);
+    }
+    out_edit(b, ctx, c, x, z, r, rel);
 }
 
 /// One stage of the land's work: the reads, then the chunks coming due.
@@ -640,18 +1364,34 @@ mod view;
 mod tests {
     use super::*;
 
-    fn flat(_: i32, _: i32) {}
+    /// Column (x, z)'s runs on land at 64: the lowest block and the highest, and where the air over it starts.
+    fn column(x: i32, z: i32) -> (i32, i32, i32) {
+        let s = Shape::new(0.5, 0.5, 37, 65);
+        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, leaves: 15, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0 };
+        w.hf.borrow_mut().set(&vec![Some(0.0); crate::strike::volcano::VC_HN * crate::strike::volcano::VC_HN], 1500.0);
+        let mut p = Plan { laser: &crate::lasers::SUPERVOLCANO, ev: Vec::new(), rng: Rng::new(7), bx: 0, by: 64, bz: 0 };
+        vc_chunk(&mut p, &w, 50.0, x.div_euclid(16) * 16, z.div_euclid(16) * 16);
+        let (mut lo, mut hi, mut air) = (i32::MAX, i32::MIN, i32::MAX);
+        for e in &p.ev {
+            if let Act::Blocks(b) = &e.1 {
+                for r in b.runs.iter().filter(|r| r.x == x && r.z == z && r.only.is_none()) {
+                    lo = lo.min(r.y);
+                    hi = hi.max(r.y + r.height as i32 - 1);
+                    if b.palette[r.block as usize] == "minecraft:air" {
+                        air = air.min(r.y);
+                    }
+                }
+            }
+        }
+        (lo, hi, air)
+    }
     #[test]
     fn the_caldera_has_its_shape() {
-        let _ = flat;
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let mut b = Blocks::default();
         // (the middle: down to the floor, up past the land)
-        vc_col_edit(&mut b, &s, None, 0, 0, 120, 65.0, s.edge(0.0));
-        let hi = b.runs.iter().map(|r| r.y + r.height as i32 - 1).max().unwrap();
-        let lo = b.runs.iter().map(|r| r.y).min().unwrap();
-        assert_eq!(hi, 120);
-        assert!((-30..=-26).contains(&lo), "floor at {lo}");
+        let (lo, hi, _) = column(3, 3);
+        assert!(hi >= 100, "up to {hi}");
+        assert!((-31..=-26).contains(&lo), "floor at {lo}");
         // (its edge wanders about the ring, and stays inside the reach of the read)
         let mut lo_e = f64::MAX;
         let mut hi_e: f64 = 0.0;
@@ -661,22 +1401,16 @@ mod tests {
             hi_e = hi_e.max(e);
         }
         assert!(lo_e > VC_READ0 + 8.0 && hi_e < VC_RIM - 6.0, "{lo_e}..{hi_e}");
-        // (the wall comes down in steps from the land to the floor)
-        let top = |x: i32| {
-            let mut b = Blocks::default();
-            let g = Col { g: 64, top: 64, leaves: 15, ..Default::default() };
-            vc_col_edit(&mut b, &s, Some(g), x, 0, 120, 65.0, s.edge(0.0));
-            b.runs.iter().filter(|r| b.palette[r.block as usize] == "minecraft:air").map(|r| r.y).min().unwrap_or(65)
-        };
+        // (the wall comes down from the land to the floor)
         let e = s.edge(0.0) as i32;
-        assert!(top(e - 40) < -20, "floor {}", top(e - 40));
-        assert!(top(e - 3) > 40, "lip {}", top(e - 3));
+        assert!(column(e - 110, 3).2 < -20, "floor {:?}", column(e - 110, 3));
+        assert!(column(e - 4, 3).2 > 25, "lip {:?}", column(e - 4, 3));
     }
     #[test]
     fn a_column_packs_and_unpacks() {
-        let c = Col { g: -40, top: 200, trunk: 17, wood: 8, leaves: 15, ground: 2, fluid: true };
+        let c = Col { g: -40, top: 200, trunk: 17, wood: 8, leaves: 15, ground: 2, fluid: true, deep: true };
         let u = Col::unpack(c.pack()).unwrap();
-        assert_eq!((u.g, u.top, u.trunk, u.wood, u.leaves, u.ground, u.fluid), (-40, 200, 17, 8, 15, 2, true));
+        assert_eq!((u.g, u.top, u.trunk, u.wood, u.leaves, u.ground, u.fluid, u.deep), (-40, 200, 17, 8, 15, 2, true, true));
         assert!(Col::unpack(0).is_none());
     }
     #[test]
