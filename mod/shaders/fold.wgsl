@@ -251,7 +251,7 @@ fn fd_side(ang: f32, a: f32) -> vec2<f32> {
         0.52 * sin(ang + s) + 0.34 * sin(2.0 * ang + s * 1.7 - 0.9 * a) + 0.22 * sin(3.0 * ang - s * 2.3 + 1.4 * a),
         0.5 * sin(ang - s * 1.3 + 2.1) + 0.36 * sin(2.0 * ang + s * 0.7 + 1.1 * a) + 0.2 * sin(5.0 * ang + s * 3.1 - 1.3 * a));
 }
-fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, on_land: bool, far: f32, d: FdDrop) -> vec3<f32> {
+fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, lit: f32, far: f32, d: FdDrop) -> vec3<f32> {
     let a = t - FD_TOUCH;
     if (a < FD_MEET - 0.25 || a > 3.0) {
         return colIn;
@@ -270,14 +270,14 @@ fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, o
     let g1 = (0.22 * fd_ss(FD_MEET - 0.25, FD_MEET, a) + snap * (0.78 + 0.5 * exp(-max(a - FD_MEET, 0.0) / 0.16))) * (1.0 - fd_ss(0.35, 0.85, a));
     if (g1 > 0.0) {
         let neck = select(0.15 * R, max(d.pw - 0.12 * R, 0.15 * R), d.pool > 0.0);
-        if (on_land) {
+        if (lit > 0.0) {
             // (uneven round it, the way the land's skirt is)
             let L = fd_side(atan2(P.z, P.x) + rr / (3.2 * R), a);
             let edge = neck * (1.0 + 0.12 * L.x);
             let x = max(rr - edge, 0.0);
             let e = exp(-x / ((0.55 + 0.22 * L.y) * R)) * exp(-max(P.y - fd_land(a, R), 0.0) / (0.8 * R));
             let hot = exp(-abs(rr - edge) / (0.14 * R));
-            col = col + (col * 2.0 * e + (col * 2.0 + FD_GLOW * 0.13) * hot * e) * g1;
+            col = col + (col * 2.0 * e + (col * 2.0 + FD_GLOW * 0.13) * hot * e) * g1 * lit;
         }
         col = col + FD_GLOW * 0.09 * g1 * seen * exp(-miss * miss / (2.0 * R * R));
     }
@@ -286,9 +286,9 @@ fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, o
     let g2 = fd_ss(0.25, 0.75, a) * (1.0 - fd_ss(0.75, 3.0, a));
     if (g2 > 0.0) {
         let wide = R * (3.0 + 1.0 * fd_ss(0.3, 3.0, a));
-        if (on_land) {
+        if (lit > 0.0) {
             let x = rr / wide;
-            col = col + (col * 1.7 + FD_GLOW * 0.03) * exp(-x * x) * exp(-max(abs(P.y) - 6.0, 0.0) / (1.2 * R)) * g2;
+            col = col + (col * 1.0 + FD_GLOW * 0.03) * exp(-x * x) * exp(-max(abs(P.y) - 6.0, 0.0) / (1.2 * R)) * g2 * lit;
         }
         col = col + FD_GLOW * 0.05 * g2 * seen * exp(-miss * miss / (wide * wide * 0.9));
     }
@@ -608,8 +608,7 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     let bcd = dot(bc, v);
     // (with the foot of metal in it, a sphere taking that in too)
     let bR = select(1.75 * d.R * max(d.sx, 1.0), max(1.75 * d.R, length(bc - G) + 1.2 * d.pw + d.R), d.pool > 0.0);
-    // (once all of it is well under the land there is nothing to find)
-    if (length(bc - v * bcd) < bR && bcd > 0.0 && d.h + (FD_TIP + 0.5) * d.R > 0.0) {
+    if (length(bc - v * bcd) < bR && bcd > 0.0) {
         var s = max(bcd - bR, 0.05);
         var best = 1.0e9;
         var sb = s;
@@ -795,9 +794,18 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         }
         let C = gq + vec3<f32>(0.0, d.h, 0.0);
         // (what the land has reached up inside the drop is taken into it, not seen through it)
-        let swallowed = t >= FD_TOUCH + FD_MEET && !sky0 && fd_bead(off - C, d) < 0.0;
-        col = fd_droplet(col, t, v, gq, C, d, select(far, 1.0e7, swallowed), uv, aspect, land, li, jit);
-        col = fd_glow(col, t, v, gq, off - gq, !sky0, far, d);
+        // (until the land has closed over it: a pixel of land in it melts from drop to land as that happens, and has little of the
+        // join's light, or the drop's own pixels burn white)
+        let swallowed = t >= FD_TOUCH + FD_MEET && t < FD_MELD && !sky0 && fd_bead(off - C, d) < 0.0;
+        let under = col;
+        col = fd_droplet(under, t, v, gq, C, d, far, uv, aspect, land, li, jit);
+        var lit = select(0.0, 1.0, !sky0);
+        if (swallowed) {
+            let closing = fd_ss(FD_MELD - 0.16, FD_MELD, t);
+            col = mix(fd_droplet(under, t, v, gq, C, d, 1.0e7, uv, aspect, land, li, jit), col, closing);
+            lit = mix(0.12, 1.0, closing);
+        }
+        col = fd_glow(col, t, v, gq, off - gq, lit, far, d);
     }
 
     // ---- the touch: a tiny light at the point, there for the stillness, gone as it runs back --------------------------------
