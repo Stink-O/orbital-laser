@@ -385,7 +385,7 @@ fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat
     let nw = m * nl;
     let alb = ts_face(kind, face, uv, ts_lod(tnear));
     let dif = saturate(dot(nw, li.L));
-    var rgb = alb * (li.amb * (1.3 + 0.6 * nw.y) + li.sunc * dif * 0.85 + vec3<f32>(0.01));
+    var rgb = alb * (li.amb * (1.3 + 0.6 * nw.y) + li.sunc * dif * 0.85 + vec3<f32>(0.025));
     // (wet through, dirtied by the water)
     rgb = mix(rgb, rgb * vec3<f32>(0.8, 0.74, 0.62) + vec3<f32>(0.01, 0.008, 0.004), wet);
     out.t = tnear;
@@ -676,7 +676,7 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
         let pat = smoothstep(0.45, 0.8, ts_vn3(vec3<f32>(q.x * 0.045, q.z * 0.045, time * 0.5)));
         shaft = shaft + pat * exp(-sd / 55.0) * (1.0 / 8.0);
     }
-    let ambn = vec3<f32>(luminance(li.amb));
+    let ambn = max(vec3<f32>(luminance(li.amb)), vec3<f32>(0.035));
     let mud = vec3<f32>(0.11, 0.082, 0.045);
     let green = vec3<f32>(0.06, 0.085, 0.045);
     var ins = mix(mud, green, 0.3 + 0.3 * silt) * (ambn * 2.6 + vec3<f32>(0.008)) * lit * (0.75 + 0.5 * silt);

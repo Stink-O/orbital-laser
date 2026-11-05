@@ -1865,6 +1865,10 @@ mod tests {
             assert_eq!(h.matches("@fragment").count(), if fast { 3 } else { 1 });
             assert!(h.len() <= 256 << 10 && h.contains("fn hurricane(") && h.contains("fn hu_debris(") && !h.contains("fn rod("));
             assert_eq!(h.contains("half_picture"), fast);
+            // (the Tsunami's has no half-size stage: both qualities are the same pass)
+            let t = super::tsunami_pass(fast);
+            assert_eq!(t.matches("@fragment").count(), 1);
+            assert!(t.len() <= 256 << 10 && t.contains("fn tsunami(") && t.contains("fn ts_under(") && !t.contains("fn hurricane("));
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
