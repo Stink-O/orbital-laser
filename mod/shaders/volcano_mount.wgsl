@@ -36,12 +36,12 @@ const VM_ERUPT: f32 = 18.0;
 const VM_GONE: f32 = 19.0;         // nothing of it is left under the white-out
 const VM_FIREOUT: f32 = 19.5;      // but the fire sheet's outer ring, burning out as the blast comes up through it
 // What was thrown carries on: plain flight till VM_BRK (under the white-out's rise), then with the air's drag, each plate
-// with its own (VM_FLT: its drag's time, the gravity that brings it down when it should, when it hits; vc_mount.rs).
-const VM_FLT: u32 = 71736u;        // VM_BASE + 6200: three words a plate thrown
+// with its own (VM_FLT: its drag's time, the gravity that brings it down when it should, when it hits, the sphere it fits in; vc_mount.rs).
+const VM_FLT: u32 = 71736u;        // VM_BASE + 6200: four words a plate thrown
 const VM_BRK: f32 = 18.7;
 const VM_TH: f32 = 2.5;            // the drag's time on how far out, every piece's
 const VM_FLYEND: f32 = 37.0;       // the last of it is under the land
-const VM_CHUNKEND: f32 = 33.0;     // and the last of the chunks
+const VM_CHUNKEND: f32 = 32.5;     // and the last of the chunks
 
 struct VmS {
     on: bool,
@@ -601,8 +601,8 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         let b = VM_PLATE + i * VM_PW;
         let tr = vm_w(b + 8u);
         let a = vm.t - tr;
-        let fb = VM_FLT + i * 3u;
-        let rad = vm_w(b + 6u);
+        let fb = VM_FLT + i * 4u;
+        let rad = vm_w(fb + 3u);
         // (not yet thrown; or gone into the land, a plate's width after it struck)
         if (a <= 0.0 || vm.t > vm_w(fb + 2u) + rad * 0.012) {
             continue;
@@ -1097,7 +1097,7 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
     let lit = l.skyl * 0.75 * dl + l.sunc * l.sun_up * 0.3;
     for (var i = 0u; i < VM_FLY; i = i + 1u) {
         let b = VM_PLATE + i * VM_PW;
-        let fb = VM_FLT + i * 3u;
+        let fb = VM_FLT + i * 4u;
         let hit = vm_w(fb + 2u);
         let rad = vm_w(b + 6u);
         if (rad < 58.0 || vm.t > hit + 7.0) {
@@ -1268,7 +1268,7 @@ fn vm_shell(fk: f32, a: f32) -> vec2<f32> {
     if (s > 0.0) {
         let tk = 2.2 - 0.14 * fk;
         o.x = o.x + vk * (1.0 + 0.8 * brk) * tk * (1.0 - exp(-s / tk));
-        o.y = 118.0 * (s - 1.6 * (1.0 - exp(-s / 1.6)));
+        o.y = 88.0 * (s - 1.6 * (1.0 - exp(-s / 1.6)));
     }
     return o;
 }

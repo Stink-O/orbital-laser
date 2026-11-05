@@ -44,7 +44,7 @@ const VM_PW: usize = 16;
 pub(super) const VM_PLATES: usize = 164;
 /// The plates thrown at the burst: those of the rings on the dome (the others lie out on the land).
 const VM_FLY: usize = 95;
-/// Their flight past the white-out, three words each (`vm_flights`).
+/// Their flight past the white-out, four words each (`vm_flights`).
 const VM_FLT: usize = VM_BASE + 6200;
 /// The columns' words: the land and the field (what the march reads), the colours, the rest (what the shading reads).
 const VM_W0: usize = VM_BASE + 8192;
@@ -700,7 +700,7 @@ fn vm_flights(t: &[u32], s: u32, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
     const H: f64 = 400.0; // the dome's height at the burst
     let word = |k: usize, i: usize| f64::from(f32::from_bits(t[k * VM_PW + i]));
     let big = (0..VM_FLY).map(|k| word(k, 6)).fold(1.0, f64::max);
-    let mut out = Vec::with_capacity(3 * VM_FLY);
+    let mut out = Vec::with_capacity(4 * VM_FLY);
     for k in 0..VM_FLY {
         let q = (word(k, 6) / big).powi(2);
         let a = VM_BRK - word(k, 8);
@@ -713,7 +713,9 @@ fn vm_flights(t: &[u32], s: u32, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let eh = VM_TH * (1.0 - (-sec / VM_TH).exp());
         let (x, z) = (word(k, 0) + vx * (a + eh), word(k, 1) + vz * (a + eh));
         let g = (y + vy * e - land(x, z)) / (tau * (sec - e));
-        out.extend([tau, g, hit].iter().map(|v| (*v as f32).to_bits()));
+        // (the sphere it fits in, round its middle: tilted it reaches further than across the land it covers)
+        let fit = word(k, 6) * (1.0 + (H * word(k, 4)).powi(2) + (H * word(k, 5)).powi(2)).sqrt() + word(k, 15) + word(k, 7);
+        out.extend([tau, g, hit, fit].iter().map(|v| (*v as f32).to_bits()));
     }
     out
 }
@@ -990,6 +992,6 @@ mod tests {
         assert!(VM_BOULD + VM_BOULDS * VM_BW <= VM_PLATE);
         assert_eq!(VM_FLY, Geo::new(37, 0.0).rings[..5].iter().map(|g| g.n).sum::<usize>());
         assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_FLT);
-        assert!(VM_FLT + 3 * VM_FLY <= VM_W0);
+        assert!(VM_FLT + 4 * VM_FLY <= VM_W0);
     }
 }

@@ -802,7 +802,7 @@ fn vc_spray(C: vec3<f32>, rd: vec3<f32>, tmax: f32, seed: u32) -> vec4<f32> {
     for (var i = 0u; i < 56u; i = i + 1u) {
         let t0 = 0.8 + 6.5 * mh(i, seed, 0x941u);
         let s = vs.a - t0;
-        if (s <= 0.0 || s > 9.0) {
+        if (s <= 0.0 || s > 13.0) {
             continue;
         }
         let th = TAU * mh(i, seed, 0x942u);
@@ -810,11 +810,13 @@ fn vc_spray(C: vec3<f32>, rd: vec3<f32>, tmax: f32, seed: u32) -> vec4<f32> {
         let dir = vec3<f32>(cos(th) * cos(el), sin(el), sin(th) * cos(el));
         let v = dir * (150.0 + 210.0 * mh(i, seed, 0x944u));
         let p0 = dir * vec3<f32>(320.0, 160.0, 320.0);
-        let p = p0 + v * s - vec3<f32>(0.0, 0.5 * VC_G * s * s, 0.0);
+        // (slowing in the air, so it comes down, and not somewhere past the edge of the world)
+        let e = exp(-s / 4.0);
+        let p = p0 + v * 4.0 * (1.0 - e) - vec3<f32>(0.0, 0.5 * VC_G * s * s, 0.0);
         if (p.y < 0.0) {
             continue;
         }
-        let vn = v - vec3<f32>(0.0, VC_G * s, 0.0);
+        let vn = v * e - vec3<f32>(0.0, VC_G * s, 0.0);
         let a = p + C;
         let b = a - vn * 0.05;
         let sg = pl_ray_seg(rd, a, b, 0.0, 1.0);
@@ -1615,7 +1617,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         }
     }
     // ---- the spray of rock, the bombs' heads, the bolts ----------------------------------------------------------------------------------
-    if (vs.a > 0.8 && vs.a < 17.0) {
+    if (vs.a > 0.8 && vs.a < 21.0) {
         let sp = vc_spray(C, rd, min(scene_len, cloud_t + 60.0), seed);
         col = col * sp.a + sp.rgb * k;
     }
