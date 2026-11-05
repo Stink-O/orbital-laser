@@ -74,13 +74,15 @@ laser, command, capability and timing). This file is the short, factual version 
   chunks within ~260 force-loaded; its land goes in from 7.1 s, the pit dug by ~7.7, the rod by ~8.05 (rod.wgsl's `RD_LET_GO`, 1.8,
   draws it till then and a margin), the crater lined by ~8.6, all by ~13.5 s. Its
   knockback is 0.65 out and 0.5 up, none past 450 (`rd_jolt`, sharper).
-  The Tsunami sweeps a swath: a wave of water 130 blocks high comes in from beyond the target (a closed-form model,
-  `TsGeo` in `strike/tsunami.rs`, kept in step with `shaders/tsunami.wgsl`), and under its water, about 500 blocks across
-  from 300 upstream of the target to 160 past the player, every tree, plant and building is removed, the soil scoured to
-  mud, packed mud, coarse dirt, gravel, sand and clay in streaks along the flow, wreckage laid back down, boulders left
-  and every mob and item killed (not players); about 1,600 chunks are force-loaded from the start and each is edited
-  once, 1.3 s after the front reaches it (`ts_chunk`). The player is lifted and carried along in the water for about ten
-  seconds with the knockback on (`surge.rs`, through `world.carry-player`).
+  The Tsunami sweeps a swath: a wave (320 high out at sea, ~145 over the target's ground at the land, a closed-form model,
+  `TsGeo` in `strike/tsunami.rs`, kept in step with `shaders/tsunami.wgsl`) and under its water, about 700 blocks across
+  from 300 upstream of the target to 160 past the player, every tree, plant and building goes (trunks left as stumps,
+  buildings as footings), the soil is scoured in streaks along the flow, channels gouged, wreckage, a wrack line and
+  timber in the trees at its limit laid down, up to 36 boats summoned, every mob and item killed (not players), and
+  real ponds left in the hollows (`ponds`, a priority flood a 64 by 64 tile at a time; the `no_pond_leaks` test holds
+  any land to it); about 2,000 to 2,300 chunks are force-loaded from the start and each is edited once, as the crest has
+  passed it (`ts_chunk`). With the knockback on the player is carried in the water, surfaces at `SURF` (6.5 s after it
+  took them) and is set down 2 over where it took them, facing the wreck (`surge.rs`, through `world.carry-player`).
   Its pass has impact frames (`rd_impact`, `rd_if_cut`, `rd_clock`): the pass's clock holds on the hit for 12–14
   frames at 60 while hard cuts of 2–3 frames each play (Kanada style, `RD_IF_STYLE` 1: black silhouettes and thick
   converging lines on white, a 3x close-up in negative with gold lines, gold and umber two-tone), the camera punching
@@ -358,12 +360,13 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   sixth of what it cost (a block-name lookup for every column's ground, the noise per column) and the game stopped the mod
   mid-strike ("it took too long", 50M fuel in one tick). Now the ground's kind is looked up once per palette name, the
   strength of the wave, its height and the scour streak are worked out per 4 by 4 cells, and the honest costs are
-  charged; `mod_soak` over the tsunami (`SOAK_LASERS=tsunami`) shows the worst tick at about 9M of 50M. Keep any cost you
-  add in `ts_chunk` honest, and the stage under `TS_STAGE`.
+  charged; `mod_soak` over the tsunami (`SOAK_LASERS=tsunami`) shows the worst tick at about 13M of 50M. Keep any cost you
+  add in `ts_chunk` honest, and the stage under `TS_STAGE`. A real village is the case to try: `wreck_ok`'s string
+  searches per building block ran the mod out of fuel there, on nothing the synthetic land had (now once a palette name).
 - **The Tsunami's model is in three places**: `TsGeo` (`strike/tsunami.rs`), `tsunami.wgsl`'s `ts_*` and `surge.rs`'s
-  flow (and `ts_drift`). Change the arrival, the envelope, the profile or the speed in all of them; the tests
+  flow (and `ts_drift`). Change the arrival, the envelope, the profile, the drain (`ts_x`, `ts_fall`) or the speed in all of them; the tests
   (`it_reaches_the_player_when_the_sounds_say`, `the_front_comes_in_order_...`) catch only the plan's side. The
-  pass's debris table (`TS_KINDS`, `TSB`, `TSM`) is mirrored in tsunami.wgsl too (`ts_kind` picks among the 24 by index).
+  pass's debris table (`TS_KINDS`, `TSB`, `TSM`) is mirrored in tsunami.wgsl too (`ts_kind` picks among the 24 by index). Its map's words also carry the land's height over the target's ground (`ts_ground`: the foot follows it). A log's long axis in `ts_piece_hit` is its block up: bark along it, end grain on its ends.
   The preview reads the table from `cargo test ts_write_table -- --ignored` (tools/preview.py does it).
 - **A call into the mod has a fuel limit** (a tick 50 million WebAssembly instructions, a frame 10 million; past it the
   game stops the mod for good: "it took too long"). `mod/src/meter.rs` counts each call's work (the loops that do the

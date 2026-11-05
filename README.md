@@ -162,21 +162,16 @@ Fifteen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
-- **Tsunami** (page three). A wave of dark, debris-laden water 130 blocks high and nearly three kilometres wide rises on
-  the horizon beyond the target and comes across the land at about 100 blocks a second, slowing as it runs inland: a
-  steep face with a leaning crest, white water streaming down it, a mist thrown up off its top and a skirt of it along the
-  ground ahead, and tumbling in its foot and foam what it has swept up, in the game's own textures (logs, planks, stone,
-  leaves, earth: more of what the land it crosses is made of). It hits the target at 9 seconds, sweeps it away, rolls on
-  to you and washes over you; if you are under its path you are lifted into the water and carried along with it for
-  about ten seconds (a murk of silt and bubbles, light shafts from the surface, blocks of wreckage rushing by; hold
-  **sneak** for half a second to break free; `/orbital knockback off` leaves you standing), then the water falls away,
-  the surface breaks over your head and the backwash drains off a land stripped of everything that stood on it. A swath
-  about 500 blocks across (300 upstream of the target, and on past you) is really changed, under the water: every
-  tree, plant and building goes (chests and the like stay), the soil is scoured to mud, packed mud, coarse dirt, gravel,
-  sand and clay in streaks along the flow, the wreckage is laid back down along it (trunks lying with the flow, planks
-  and stone from what stood there, a few boulders) and every mob in it dies. It ends at 42 seconds. The wave comes
-  from beyond the target towards where you stood as you fired, so the water reaches you if you are along that line
-  (the swath ends 160 blocks past you). It has no flashes: the only white is the foam as the front goes over you.
+- **Tsunami** (page three). The horizon stands up: within two seconds a dark wall 320 blocks high and over five kilometres
+  wide lies across the whole of it, spray blowing off its top, and the sky goes grey. It comes in at about 100 blocks a
+  second, losing height over the land, a huge grey-green mass with its lip tearing and long streaks of foam drawn up its
+  face, a brown foot boiling over the ground, mist pushed ahead of it and spray thrown up where it hits things, and in its
+  foot what it has swept up, in the game's own textures. It hits the target at 9 seconds and rolls on over you: the blow
+  is a white flash and seconds of foam, then you are under it, with trees and pieces of houses going by; the water hauls
+  you up, you ride it down as it falls, and it sets you down about where it found you, looking at what it has left. It
+  sweeps a swath 700 across for real: trees snapped to stumps, houses to their footings, the soil scoured to mud and
+  gravel in streaks along the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland,
+  ponds left standing in the hollows.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
@@ -341,9 +336,9 @@ Mods), read the reason it gives first.
    down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
    `TRACKING STORM…` for the Hurricane, `READING THE SEA…` for the Tsunami), then the strike lands where your crosshair is. Nothing else pops up over the
    hotbar but `NO TARGET IN RANGE`.
-4. **Caught in the Tsunami?** The water takes you once it is over your head and carries you along with it for a few
-   blocks, lifted, tumbled and buffeted, then puts you down on the scoured land as it drains. Hold **sneak** for half a
-   second to break free. `/orbital knockback off` leaves you standing in it, the picture still drowned.
+4. **Caught in the Tsunami?** The water takes you once it is over your head, tumbles you along with it, hauls you to the
+   surface after about six seconds, and carries you back as it falls, to be set down near where it took you, facing the
+   way it went. Hold **sneak** for half a second to break free. `/orbital knockback off` leaves you standing in it, the picture still drowned.
 5. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
    to break free; while you fly it leaves you alone, but stop flying for a second while it still blows where you are
    and it grabs you again. If it still has you at 46 seconds it throws you clear (a survival player gets a few seconds
