@@ -15,6 +15,7 @@ mod columns;
 mod follow;
 mod ground;
 mod lasers;
+mod mem;
 mod meter;
 mod pace;
 mod sdk;
@@ -309,6 +310,8 @@ struct Orbital {
     edited: bool,
     edit_ticks: u64,
     edits_late: u64,
+    /// How far the linear memory had grown when that was last logged (`tick`).
+    heap_logged: usize,
     pace: pace::Pace,
     laser: usize,
     terrain: bool,
@@ -415,6 +418,7 @@ impl Orbital {
             edited: false,
             edit_ticks: 0,
             edits_late: 0,
+            heap_logged: 0,
             pace: pace::Pace::default(),
             laser,
             terrain,
@@ -960,6 +964,7 @@ impl Orbital {
         let seed = seed as f32;
         ground::clear();
         columns::clear();
+        mem::reset_peak();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
         let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
@@ -1181,9 +1186,13 @@ impl Orbital {
         self.unfollow();
         self.carrying = None;
         render::clear_post();
+        let had = self.strike.is_some();
         self.strike = None;
         ground::clear();
         columns::clear();
+        if had {
+            log::write(log::Level::Info, &format!("memory: strike's peak {:.1} MB, {:.1} MB held after it, heap {:.1} MB", mem::mb(mem::peak()), mem::mb(mem::live()), mem::mb(mem::heap())));
+        }
         if let Some(w) = &mut self.wheel {
             w.striking = false;
             self.show_wheel();
@@ -1571,6 +1580,11 @@ impl Mod for Orbital {
         self.paid();
         self.release_held();
         meter::end(self.ticks);
+        // (the linear memory only grows: each 4 MB of it logged, with what's held then)
+        if mem::heap() >= self.heap_logged + (4 << 20) {
+            self.heap_logged = mem::heap();
+            log::write(log::Level::Info, &format!("memory: heap {:.1} MB, {:.1} MB held, tick {} of the strike", mem::mb(mem::heap()), mem::mb(mem::live()), self.strike.as_ref().map_or(0, |s| s.ticks)));
+        }
         if let Some(n) = self.meter_log
             && meter::spent() >= n
         {
