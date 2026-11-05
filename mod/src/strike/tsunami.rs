@@ -471,7 +471,7 @@ fn ponds(land: &[Land], n: usize) -> Vec<(usize, i16)> {
         }
     }
     while let Some(Reverse((lv, i))) = heap.pop() {
-        crate::meter::spend(220);
+        crate::meter::spend(700);
         let i = i as usize;
         let (x, z) = (i % n, i / n);
         let mut go = |j: usize| {
@@ -511,7 +511,7 @@ fn ponds(land: &[Land], n: usize) -> Vec<(usize, i16)> {
         members.clear();
         let (mut floor, mut ok) = (i16::MAX, true);
         while let Some(c) = stack.pop() {
-            crate::meter::spend(60);
+            crate::meter::spend(160);
             members.push(c);
             floor = floor.min(land[c].h);
             ok &= land[c].fill;
@@ -589,6 +589,7 @@ fn ts_ponds(wk: &mut Work, now: f64, q: &mut Plan) {
             let e = by_chunk.entry((x >> 4, z >> 4)).or_insert_with(|| (Blocks { clear_of_player: true, ..Default::default() }, lv));
             e.0.put(x, z, i32::from(buf[i].h) + 1, i32::from(lv), "minecraft:water", None, false);
             e.1 = e.1.max(lv);
+            crate::meter::spend(200);
             wk.ponded += 1;
         }
         for ((cx, cz), (b, lv)) in by_chunk {
@@ -713,7 +714,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         let Some(c) = cols[i] else { continue };
         gs[i] = c.g;
         land[i] = Land { h: (if c.fluid { c.wtop.max(c.g) } else { c.g }) as i16, fill: false, drains: c.hole || c.fluid };
-        crate::meter::spend(120);
+        crate::meter::spend(420);
         // (the pass's map: trees, buildings, the land's height, a column in four for the height)
         if c.tree || c.bld || (lx % 2 == 0 && lz % 2 == 0) {
             let (s, u) = geo.su(f64::from(x) + 0.5, f64::from(z) + 0.5);

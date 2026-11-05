@@ -394,6 +394,9 @@ struct TsPieceHit {
     t: f32,
     rgb: vec3<f32>,
     hit: bool,
+    // (its albedo and its face's normal, for the water's own light on what is under it)
+    alb: vec3<f32>,
+    nw: vec3<f32>,
 }
 // The ray against one piece: a box of half-sizes `h` at `c`, turned by `m`, a block type `kind`, lit by the pass's light.
 fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat3x3<f32>, kind: u32, li: TsLight, wet: f32) -> TsPieceHit {
@@ -417,7 +420,21 @@ fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat
     var nl = vec3<f32>(0.0);
     var uv = vec2<f32>(0.0);
     var face = 2u;
-    if (tnear == tn.y) {
+    // (a log's grain runs its length: its long axis, local z, is a log block's up, so the end grain goes on its two ends
+    // and the bark, running along it, on its four long sides, block after block)
+    if (kind < 4u) {
+        if (tnear == tn.z) {
+            nl.z = -sign(d.z);
+            uv = fract(p.xy + h.xy);
+            face = select(1u, 0u, nl.z > 0.0);
+        } else if (tnear == tn.x) {
+            nl.x = -sign(d.x);
+            uv = fract(vec2<f32>(p.y + h.y, 1.0 - (p.z + h.z)));
+        } else {
+            nl.y = -sign(d.y);
+            uv = fract(vec2<f32>(p.x + h.x, 1.0 - (p.z + h.z)));
+        }
+    } else if (tnear == tn.y) {
         nl.y = -sign(d.y);
         uv = fract(p.xz + h.xz);
         face = select(1u, 0u, nl.y > 0.0);
@@ -437,6 +454,8 @@ fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat
     out.t = tnear;
     out.rgb = rgb;
     out.hit = true;
+    out.alb = alb;
+    out.nw = nw;
     return out;
 }
 // A piece from the hash `hh` at `ctr`, spinning with `time`, grown from nothing by `grow` (0 to 1); the nearest hit of the ray
@@ -763,7 +782,7 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let shade = ambw * (1.5 + 0.5 * wn.y) * (0.45 + 0.75 * cav) + mix(sunw, li.sunc, 0.4) * bdif * (0.6 + 0.4 * cav) + li.nightw * 2.6 * (0.6 + 0.6 * cav);
     var whitec = vec3<f32>(0.86, 0.88, 0.87) * shade;
     // (the foot: dirty, nearly black in the creases, cream on its lumps; at a distance one mud-grey)
-    let sh2 = ambw * (1.4 + 0.5 * wn.y) + li.sunc * (0.15 + 0.85 * bdif) + li.nightw * 2.4;
+    let sh2 = ambw * (1.4 + 0.5 * wn.y) + mix(sunw, li.sunc, 0.3) * (0.15 + 0.85 * bdif) + li.nightw * 2.4;
     let crest = smoothstep(0.2, 0.62, lump);
     let cream = vec3<f32>(0.62, 0.57, 0.48);
     let mudd = vec3<f32>(0.05, 0.038, 0.027);
@@ -810,7 +829,7 @@ fn ts_torrent(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     let vein = 1.0 - abs(2.0 * web - 1.0);
     let st = web;
     let tear = ts_fbm3(vec3<f32>(cross_ * 0.022, run * 0.012, 7.0), 2);
-    var foam = smoothstep(0.8, 0.95, vein) * smoothstep(0.32, 0.56, tear);
+    var foam = smoothstep(0.86, 0.97, vein) * smoothstep(0.42, 0.6, tear);
     // (close by, the small tearing of the water itself)
     if (near > 0.01) {
         let fine = ts_fbm3(vec3<f32>(cross_ * 0.8, run * 0.55, time * 0.9), 3);
@@ -873,7 +892,7 @@ fn ts_bighalf(w: i32, i: i32) -> vec3<f32> {
         }
     }
     switch i {
-        case 0: { return vec3<f32>(0.75, 0.75, 13.0); }
+        case 0: { return vec3<f32>(1.0, 1.0, 13.0); }
         case 1: { return vec3<f32>(3.5, 3.5, 3.0); }
         case 2: { return vec3<f32>(2.5, 2.5, 2.5); }
         case 3: { return vec3<f32>(3.0, 2.5, 3.0); }
@@ -1040,7 +1059,12 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
     // what is at the end of it: the land, the sky through the surface, or the surface seen from below
     var far_col = scene * (0.45 + 0.55 * lit);
     if (piece) {
-        far_col = deb.rgb * (0.7 + 0.5 * lit) + waterc * lit * 0.2;
+        // (it has no light of its own: what comes down through the water, from above, the sun's a little near the surface;
+        // on its underside only the murk's own glow. The water's colour has it)
+        let wup = 0.5 + 0.5 * deb.nw.y;
+        let down = mix(vec3<f32>(0.1, 0.13, 0.08), vec3<f32>(0.62, 0.78, 0.54), wup * wup) * lit;
+        let sunk = li.sunc * vec3<f32>(0.5, 0.62, 0.42) * saturate(dot(deb.nw, li.L)) * exp(-dep_c / 45.0) * 0.4 * day;
+        far_col = deb.alb * (down * (0.5 + 0.5 * day) + sunk + li.nightw * 0.9);
     } else if (t_exit < scene_len) {
         let w_up = saturate(-0.0 + rd.y);
         let window = smoothstep(0.35, 0.75, w_up);
@@ -1050,7 +1074,9 @@ fn ts_under(ro: vec3<f32>, rd: vec3<f32>, scene_len: f32, scene: vec3<f32>, time
         let foamb = smoothstep(0.52, 0.72, ns) * 0.8;
         far_col = mix(ins * 1.5, skyc * (0.6 + 0.5 * day), window) + vec3<f32>(0.75, 0.78, 0.7) * foamb * (0.2 + 0.8 * day) * (0.3 + 0.7 * window);
     }
-    var out = far_col * tr + ins * (1.0 - tr);
+    // (what floats in it goes into the water sooner than the land does: silt between it and the eye)
+    let trp = select(tr, tr * exp(-vec3<f32>(0.03, 0.026, 0.024) * lw), piece);
+    var out = far_col * trp + ins * (1.0 - trp);
     out = out * trf + acc;
     // the blow itself: a white flash, the picture blown out for a moment
     let e = max(el, 0.0);
