@@ -10,20 +10,22 @@ last act is the same physics at a thicker sheet, down to a springy low `pew` und
 As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
 
   descent   0 s, exactly 3.4 s: a tearing roar from very high, ending at full force on its last sample, no tail.
-  wobble    3.45 s: the droplet's wobble heard close, tiny and wet: small bubbles and a heavy skin, 3.5 Hz, dying by 4.4.
+  wobble    3.49 s: the droplet's wobble heard close, tiny and wet: small bubbles and a heavy skin, 3.5 Hz, dying by 4.4.
   air       ~3.9 s (late by the distance, 0.5 s at 170 blocks): the air that kept going: a soft whump, a rush going past
             and off, then dust hissing over the ground, thinning to nothing by ~6.9 s.
   meld      6 s: a soft low contact, a closed hum, heavy liquid sinking.
   ripple    6.3 s: the land moving like water: low heaves, each bigger, slow water and wet soil over them.
   score     12 s: the creases: ice. Lone cracks, stones skipping away, cracks racing, ever thicker, and from 16 s the tears.
   unravel   19 s: long falling glissandi off a thick sheet, tearing, ring after ring letting go.
-  groan     19 s: the land bending, a hull's and a tree's stress, closing round the player from 31 s: the sky's air goes, the
-            sound turns inward to a huge dark space, a far vault shutting at the seal.
-  foldown   35 s: the fold coming down: creases getting smaller and further apart, a vast mechanism's ticks running slower
+  groan     19 s: the land bending, a hull's and a tree's stress, closing overhead from 26 s: the sky's air goes, the sound turns
+            inward to a huge dark space.
+  foldown   35 s: the seal, a far vault shutting, and the fold coming down: creases getting smaller and further apart, a vast mechanism's ticks running slower
             and slower, the air draining till there is nothing.
   ding      40 s: the touch: a small glass note in the silence.
-  reverse   40 s, exactly 1.0 s: it all rushes backwards: a vast inhale, the ticks reversing and racing, cut on the first bounce.
-  bounce1-4 the bounces: a thud through the land, a springy low chirp under it, each smaller.
+  reverse   40.3 s, exactly 0.8 s: it all rushes backwards: a vast inhale, the fold's own sound played back, ticks racing,
+            cut on the first bounce.
+  bounce1-4 41.1, 42, 42.8, 43.7 s: a thud through the land, a springy low chirp under it, each smaller.
+  fall      43.85 s: the last fall: the air under the land going, rising, and 90 ms of nothing before the slam.
   slam      45 s: the last bounce comes down: a door the size of the sky, the crater going in, a rumble rolling off.
   comedown  46 s: debris, the land settling, far ice pinging as it relaxes, cold air, quiet.
 
@@ -54,17 +56,17 @@ ROOT = Path(__file__).resolve().parent.parent
 PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 
 # The beats (strike/fold.rs's FD_*): the stems are built on them.
-STOP, TOUCH, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL, DING, REL, FLAT, SLAM = 3.4, 6.0, 6.3, 12.0, 16.0, 19.0, 26.0, 35.0, 40.0, 40.25, 41.05, 45.0
+STOP, TOUCH, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL, DING, REL, FLAT, SLAM = 3.4, 6.0, 6.3, 12.0, 16.0, 19.0, 26.0, 35.0, 40.0, 40.3, 41.1, 45.0
 # when the land lets go in great heaves; the fold's stages (FD_FOLDS); the bounces (time, how big), then the last fall
 RINGS = [19.1, 21.0, 23.3, 25.1, 27.6, 29.9]
 CREASES = [35.0, 35.6, 36.3, 37.1, 38.0, 39.0]
-BOUNCES = [(41.05, 1.0), (41.75, 0.6), (42.45, 0.36), (43.15, 0.2)]
+BOUNCES = [(41.1, 1.0), (42.0, 0.6), (42.8, 0.36), (43.7, 0.2)]
 PULSES = [6.3, 7.6, 8.9, 10.2, 11.5]  # the water's pulses of the middle, each stronger
 FALL = 1.15                           # the last fall's air, ending just before the slam
 AIR_LATE = 0.5                        # the air's sound after the stop, at 170 blocks (the plan uses the real distance)
 
 # (time, file, volume, pitch), as fold_plan plays them
-EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.05, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0),
+EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0),
           (TOUCH, "meld", 1.0, 1.0), (RIPPLE, "ripple", 1.0, 1.0), (SCORE, "score", 1.0, 1.0),
           (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (SEAL, "foldown", 1.0, 1.0),
           (DING, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
@@ -72,7 +74,7 @@ EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.05, "wobble", 1.0, 1.0), (STOP +
           (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM + 1.0, "comedown", 1.0, 1.0)]
 SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 6.0), ("meld", 6.0, 6.6), ("ripple", 6.6, 12.0), ("score", 12.0, 16.0),
             ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 35.0), ("foldown", 35.0, 39.3), ("hush2", 39.65, 40.0),
-            ("ding", 40.0, 40.25), ("reverse", 40.25, 41.05), ("bounces", 41.05, 43.8), ("fall", 43.85, 45.0), ("slam", 45.0, 48.0), ("comedown", 48.0, 56.0)]
+            ("ding", 40.0, 40.3), ("reverse", 40.3, 41.1), ("bounces", 41.1, 43.8), ("fall", 43.85, 45.0), ("slam", 45.0, 48.0), ("comedown", 48.0, 56.0)]
 
 
 def rng():
@@ -574,7 +576,7 @@ def wobble():
             P.put(L, l, at + rng().uniform(0, 0.05))
             P.put(R, r, at + rng().uniform(0, 0.05))
     L, R = low_mono(L, R, 200.0)
-    out("wobble", L, R, -32.0, tail=0.3)
+    out("wobble", L, R, -29.0, tail=0.3)
 
 
 def air():
@@ -582,14 +584,14 @@ def air():
     n = n_of(d)
     t = times(n)
     # (it hits the land: a soft heavy push, no crack)
-    whump = (bn(n, 26, 130) * 1.4 + bn(n, 130, 420) * 0.35) * (1 - np.exp(-t / 0.03)) * np.exp(-t / 0.3)
+    whump = (bn(n, 26, 130) * 1.4 + bn(n, 130, 420) * 0.3) * (1 - np.exp(-t / 0.07)) * np.exp(-t / 0.32)
 
     def rush(s, f):
         fc = 280.0 + 1500.0 * np.exp(-s / 0.5)                 # (going by, and off: its top falling away)
         body = np.minimum((f / fc) ** 1.1, (fc / f) ** 0.9)
         return body * np.exp(-(f / (2000.0 + 7000.0 * np.exp(-s / 0.7))) ** 1.5)
 
-    e = (1 - np.exp(-t / 0.05)) * np.exp(-t / 0.75) * np.clip(1 + 0.4 * PB.slow_random(n, 2.0, 14.0), 0.2, None)
+    e = ss(0.04, 0.38, t) * np.exp(-t / 0.8) * np.clip(1 + 0.4 * PB.slow_random(n, 2.0, 14.0), 0.2, None)
     a, b = wide(morph(n, rush), morph(n, rush), 0.45)
     p = -0.75 + 1.5 * ss(0.05, 1.3, t)                         # (past you, across)
     L = a * e * 0.8 * np.cos((p + 1) * np.pi / 4) * 1.41 + whump
@@ -603,7 +605,7 @@ def air():
     R += (b * 0.2 + e2 * 0.1) * gr * dust
     L, R = verb(L, R, 0.25, length=2.0, darken=(1800, 260), decay=0.8)
     L, R = low_mono(L, R, 170.0)
-    out("air", L, R, -23.0, tail=0.5)
+    out("air", L, R, -27.0, tail=0.5)
 
 
 def meld():
@@ -649,8 +651,8 @@ def ripple():
         # (the land's weight of water going by: a slow wash, wet soil seeping and sucking in its wake)
         a, b = wide(bn(m, 150, 900), bn(m, 150, 900), 0.3)
         g = np.clip(grn(dur, 34.0, (0.02, 0.06)), 0, 5)
-        P.put(L, a * g * e ** 1.5 * amp * 0.04, at + 0.1)
-        P.put(R, b * g * e ** 1.5 * amp * 0.04, at + 0.1)
+        P.put(L, a * g * e ** 1.5 * amp * 0.07, at + 0.1)
+        P.put(R, b * g * e ** 1.5 * amp * 0.07, at + 0.1)
         bubbles(L, R, at + 0.25 * dur, at + dur, lambda _: 7.0 + 26.0 * amp, 55, 300, 0.11 * amp, 0.8)
     L, R = low_mono(L, R, 170.0)
     L, R = verb(L, R, 0.2, length=2.6, darken=(900, 200), decay=1.0)

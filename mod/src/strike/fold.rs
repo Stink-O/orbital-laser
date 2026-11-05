@@ -59,28 +59,33 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     let dist = (me[0] - cx).hypot(me[2] - cz);
 
     // ---- sound (tools/sounds_fold.py) ------------------------------------------------------------------------------
-    // (the fall, a roar cut dead on the stop; a tiny ring in the silence; the touch; then the land itself)
+    // (the fall, a roar cut dead on the stop; a tiny wet wobble in the silence; the air arriving late by the distance)
     p.csound(0.0, "descent", 10.0, 1.0);
-    p.csound(FD_STOP, "stop", 6.0, 1.0);
-    p.csound(FD_TOUCH, "meld", 8.0, 1.0);
-    p.csound(FD_RIPPLE, "ripple", 7.0, 1.0);
-    p.csound(FD_SCORE, "score", 8.0, 1.0);
-    p.csound(FD_TEAR, "tear", 10.0, 1.0);
-    // (the land bending: the groan under all of it, cut with the crush, and a huge creak as each ring goes)
+    p.csound(FD_STOP + 0.09, "wobble", 10.0, 1.0);
+    p.csound(FD_STOP + (dist as f32 / 343.0).clamp(0.2, 1.0), "air", 10.0, 1.0);
+    // (the touch, the land like water, then ice: the creases as stones skipped over a frozen lake)
+    p.csound(FD_TOUCH, "meld", 10.0, 1.0);
+    p.csound(FD_TOUCH + 0.3, "ripple", 10.0, 1.0);
+    p.csound(FD_SCORE, "score", 10.0, 1.0);
+    p.csound(FD_FOLD, "unravel", 10.0, 1.0);
     p.csound(FD_FOLD, "groan", 10.0, 1.0);
-    for k in 0..5u8 {
-        p.csound(FD_FOLD + 2.1 * f32::from(k), "creak", 10.0, [1.0, 0.86, 0.94, 0.78, 0.7][k as usize]);
-    }
-    p.csound(FD_CRUSH, "crush", 10.0, 1.0);
-    p.csound(FD_RELEASE, "bloom", 10.0, 1.0);
+    // (the seal and the fold running down to nothing; the ding alone; everything back)
+    p.csound(FD_SEAL, "foldown", 10.0, 1.0);
+    p.csound(FD_BEAT, "ding", 10.0, 1.0);
+    p.csound(FD_RELEASE, "reverse", 10.0, 1.0);
     p.shake(FD_RELEASE, 0.3 * super::falloff(dist), 1.6);
-    // (a deep thud a ring, heavier as they come in, and a jolt with each)
+    // (a bounce a landing, each smaller, and a jolt with each; the air under the last fall, and the slam)
     for (k, t) in FD_SLAM.iter().enumerate() {
         let f = k as f32 / 4.0;
-        p.csound(*t, "thud", 10.0, 1.1 - 0.35 * f);
+        if k < 4 {
+            p.csound(*t, &format!("bounce{}", k + 1), 10.0, 1.0);
+        } else {
+            p.csound(*t - 1.15, "fall", 10.0, 1.0);
+            p.csound(*t, "slam", 10.0, 1.0);
+        }
         p.shake(*t, (0.22 + 0.3 * f) * super::falloff(dist * 0.5), 1.1 + 0.9 * f);
     }
-    p.csound(FD_SLAM[4] + 1.0, "comedown", 8.0, 1.0);
+    p.csound(FD_SLAM[4] + 1.0, "comedown", 10.0, 1.0);
 
     if !terrain {
         p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -144,7 +149,7 @@ mod tests {
     fn without_terrain_the_fold_is_light_and_sound() {
         let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
         assert!(ev.iter().all(|e| matches!(e.1, Act::Sound { .. } | Act::Shake { .. })), "only sounds and a jolt");
-        assert!(ev.iter().any(|e| matches!(&e.1, Act::Sound { event, .. } if event == "orbital:fold.bloom")));
+        assert!(ev.iter().any(|e| matches!(&e.1, Act::Sound { event, .. } if event == "orbital:fold.slam")));
     }
 
     /// The plan as it is made on the fire tick stays light: the tiles wait for stages of their own.
