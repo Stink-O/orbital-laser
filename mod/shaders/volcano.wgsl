@@ -932,7 +932,7 @@ fn vc_flash_way(f: VcFlash, seed: u32) -> vec3<f32> {
         if (length(f.p.xz - me) < 1500.0) {
             let w = normalize(-me + vec2<f32>(1.0e-3, 0.0));
             let across = vec2<f32>(-w.y, w.x);
-            foot = me + w * (190.0 + 300.0 * h) + across * (0.75 * dot(f.p.xz - me, across) + 420.0 * (mh(sid, seed, 0x914u) - 0.5));
+            foot = me + w * clamp(dot(f.p.xz - me, w) - 60.0 - 140.0 * h, 190.0, 560.0) + across * (0.8 * dot(f.p.xz - me, across) + 300.0 * (mh(sid, seed, 0x914u) - 0.5));
         }
         return vec3<f32>(foot.x, vc_land(foot), foot.y) - f.p;
     }
