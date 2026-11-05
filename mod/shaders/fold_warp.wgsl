@@ -200,41 +200,104 @@ fn fw_ripple(r: f32, t: f32) -> f32 {
         + 7.2 * fw_group(r2, t - 10.6) - 9.5 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
 }
-// The land at the droplet's foot: drawn to it. A finger of land reaches up for the drop as it falls, meets it a tenth of a second
-// before it would have reached the ground, climbs its side in a tight skirt with a hollow flank, not a hill's round one, and
-// closes over its top as the last of it goes under at 7.5, then falls back. fold.wgsl's fd_land and fd_meld in step.
-fn fw_land(a: f32, R: f32) -> f32 {
-    return 1.35 * R * fw_ss(-0.5, 0.55, a) * (1.0 - 0.69 * fw_ss(0.95, 1.5, a) - 0.31 * fw_ss(1.5, 2.4, a));
+// The land at the droplet's foot: drawn to it, as a blob of a lava lamp or ferrofluid is drawn to a magnet. Nothing shows at
+// first; as the gap closes the land gathers under the drop in a low swell, then a finger flicks up the last blocks (the pull
+// grows with how near it is) and catches the drop's foot on FW_MEET. The drop doesn't notice: it falls straight on through, and
+// the land is snatched up its side in a tight skirt with a hollow flank and closes over its tip at about 6.3. What it took in
+// leaves the land heaving, as water goes on after a stone: the finger, a little past where it will rest, thickens to a mound,
+// sags, comes up once more and falls, a shallow dimple after it, as the rings start. The reply starts at the drop and travels
+// out from it, so the land further off moves later, and no two sides keep time: each has its own moment and reach.
+// fold.wgsl's fd_land in step (`the_warp_keeps_the_beats`).
+const FW_MEET: f32 = -0.08;        // when it touches, seconds from FW_TOUCH: fold.wgsl's FD_MEET
+// How the sides differ, each about -1 to 1: long lobes that drift apart, the first of them one whole side leading. `ang` turned
+// with the distance, so they wind out from the drop as they go; fold.wgsl's fd_side the same.
+fn fw_side(ang: f32, a: f32) -> vec2<f32> {
+    let s = globals.warp[2].x * 2.399;
+    return vec2<f32>(
+        0.52 * sin(ang + s) + 0.34 * sin(2.0 * ang + s * 1.7 - 0.9 * a) + 0.22 * sin(3.0 * ang - s * 2.3 + 1.4 * a),
+        0.5 * sin(ang - s * 1.3 + 2.1) + 0.36 * sin(2.0 * ang + s * 0.7 + 1.1 * a) + 0.2 * sin(5.0 * ang + s * 3.1 - 1.3 * a));
 }
-fn fw_neck(r: f32, t: f32, R: f32) -> f32 {
+// How much of the land's height is left as it falls, from about a second after the touch.
+fn fw_sink(a: f32) -> f32 {
+    return 1.0 - fw_ss(0.95, 1.95, a);
+}
+// The wide swell round the finger, blocks: gathering long before the finger does, and slower. Part of fw_land.
+fn fw_wide(a: f32, R: f32) -> f32 {
+    let u = clamp((a + 0.5) / 1.1, 0.0, 1.0);
+    let v = 1.0 - u * u * sqrt(u);
+    return 0.4725 * R * (1.0 - v * v) * fw_sink(a);
+}
+// All of it at the middle, blocks.
+fn fw_land(a: f32, R: f32) -> f32 {
+    let full = 1.35 * R;
+    // (how high the drop's foot is as they meet)
+    let meet = 0.1402 * (1.6 * R + 6.0);
+    if (a < FW_MEET) {
+        let u = clamp((a + 0.5) / (FW_MEET + 0.5), 0.0, 1.0);
+        let u3 = u * u * u;
+        return fw_wide(a, R) + (meet - fw_wide(FW_MEET, R)) * u3 * u3;
+    }
+    let s = a - FW_MEET;
+    let rise = 1.0 - (1.0 - meet / full) * exp(-s / 0.16);
+    return full * ((rise + 0.2 * fw_ss(0.0, 0.45, s) * exp(-1.4 * s) * sin(6.2 * s - 1.35)) * fw_sink(a) - 0.08 * fw_ss(1.7, 2.15, a) * (1.0 - fw_ss(2.15, 2.9, a)));
+}
+fn fw_neck(r: f32, ang: f32, t: f32, R: f32) -> f32 {
     let a = t - FW_TOUCH;
-    if (a <= -0.5 || a >= 2.4 || r > R * 9.0) {
+    if (a <= -0.5 || a >= 4.2 || r > R * 9.0) {
         return 0.0;
     }
-    let H = fw_land(a, R);
-    // (how wide the drop is at the top of the land: fold.wgsl's fd_prof and fd_meld)
-    let vc = 2.0 * (1.6 * R + 6.0) / 1.1;
-    var h = R + 1.6 * R + 6.0;
-    if (a > 0.0) {
-        h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * (2.22 * R + 1.0 - vc * 0.25) / 2.25;
-    }
-    let y = clamp((H - h) / R, -1.0, 1.72);
+    // (none on the axis: the finger stands under the drop)
+    let k = fw_ss(0.0, R, r);
+    let L = fw_side(ang + r / (3.2 * R), a);
+    let as_ = a - 0.07 * L.y * k;
+    let reach = 1.0 + 0.09 * L.x * k;
+    // (how wide the drop is at the top of the land, this side: fold.wgsl's fd_prof and fd_meld: it falls on at the same pace,
+    // from the top of its fall to right through the land; the land hasn't reached it, nothing)
+    let u = (a + 1.1) / 1.1;
+    let h = R + (1.6 * R + 6.0) * (1.0 - u * u);
+    let y = clamp((fw_land(as_, R) * reach - h) / R, -1.0, 1.72);
     let b = 1.72 - y;
     let q = 0.25773 + y * (0.09111 + y * (-0.07338 + y * (-0.05797 + y * 0.03297)));
-    let rho = R * sqrt(max((y + 1.0) * b * b * sqrt(b) * q, 0.0));
+    // (softly from nothing: no side's neck opens with a hard edge beside one not yet touching)
+    let z = y + 1.0;
+    let touch = R * sqrt(max((0.5 * (z + sqrt(z * z + 0.0036))) * b * b * sqrt(b) * q, 0.0));
+    // (past the drop's waist what it leaves is land, not air: the column keeps its width as the taper goes down through it, a lip
+    // round the tip, and slumps in from there)
+    let rho = max(touch, R * mix(1.0, 0.55, fw_ss(0.0, 1.0, y)) * fw_ss(-0.2, 0.0, y) * (1.0 - 0.6 * fw_ss(0.3, 0.9, a)));
     let d = max(r - rho, 0.0);
-    let x = sqrt(d * d + 1.0) - 1.0;
-    return H * (0.65 * exp(-x / (0.42 * R)) + 0.35 * exp(-x / (3.0 * R))) * (1.0 - fw_ss(6.0 * R, 9.0 * R, r));
+    // (its point rounded, and wider, as what is left of the finger slumps into a mound)
+    let round_ = 1.0 + 0.4 * R * fw_ss(0.2, 0.7, a);
+    let x = sqrt(d * d + round_ * round_) - round_;
+    // (news of it reaches further out later, sooner on the leading sides, and only so late: a wave, not a clock)
+    let at = as_ - (0.95 + 0.42 * L.x) * (1.0 - exp(-d / (5.2 * R)));
+    let wide = fw_wide(at, R);
+    let w = R * mix(0.16, 0.42, fw_ss(-0.1, 0.15, at)) * (1.0 + 1.1 * fw_ss(0.25, 0.9, at));
+    return ((fw_land(at, R) - wide) * exp(-x / w) * reach + wide * (1.0 + 0.45 * L.y * k) * exp(-x / (3.0 * R))) * (1.0 - fw_ss(6.0 * R, 9.0 * R, r));
 }
-// How far the land here is drawn in towards the drop, blocks: what stands higher goes further, so trees and walls lean to it.
-fn fw_pull(r: f32, y: f32, t: f32, R: f32) -> f32 {
+// How hard the land is being drawn in, 1 at rest at its strongest, `a` from the touch: hardly at all until they meet, then a
+// sudden tug past its mark, back, and let go with a little recoil.
+fn fw_draw(a: f32) -> f32 {
+    if (a < FW_MEET) {
+        let u = clamp((a + 0.5) / (FW_MEET + 0.5), 0.0, 1.0);
+        return 0.09 * u * u * u * u;
+    }
+    let s = a - FW_MEET;
+    let tug = 1.0 - 0.91 * exp(-s / 0.2) + 0.22 * fw_ss(0.0, 0.5, s) * exp(-1.3 * s) * sin(6.0 * s - 1.5);
+    return tug * (1.0 - fw_ss(1.35, 2.3, a)) - 0.1 * fw_ss(1.9, 2.3, a) * (1.0 - fw_ss(2.3, 3.0, a));
+}
+// How far the land here is drawn in towards the drop, blocks: what stands higher goes further, so trees and walls lean to it,
+// and never right on to it.
+fn fw_pull(r: f32, ang: f32, y: f32, t: f32, R: f32) -> f32 {
     let a = t - FW_TOUCH;
-    if (a <= -0.3 || a >= 2.3 || r > R * 14.0) {
+    if (a <= -0.5 || a >= 4.3 || r > R * 14.0) {
         return 0.0;
     }
-    let P = 1.0 * R * fw_ss(-0.3, 0.6, a) * (1.0 - fw_ss(1.35, 2.3, a));
-    let lean = 1.0 + clamp(y, 0.0, 26.0) / (1.2 * R);
-    return min(P * lean * (1.0 - exp(-r / (1.2 * R))) * exp(-r / (2.6 * R)), 0.85 * r);
+    let L = fw_side(ang + r / (3.2 * R), a);
+    let at = a - (1.05 + 0.4 * L.x) * (1.0 - exp(-r / (6.5 * R))) - 0.06 * L.y;
+    let lean = 1.0 + 2.4 * (1.0 - exp(-max(y, 0.0) / (2.0 * R)));
+    let p = 1.12 * R * fw_draw(at) * (1.0 + 0.3 * L.y) * lean * (1.0 - exp(-r / (1.2 * R))) * exp(-r / (2.6 * R));
+    let s = 0.8 * r + 0.01;
+    return s * (1.0 - exp(-p / s));
 }
 // ---- the sphere ------------------------------------------------------------------------------------------------------
 // How big it ends: the player well inside, whatever their distance.
@@ -435,9 +498,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
     let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
-    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, t, dropR);
-    if (t < FW_TOUCH + 2.3) {
-        let pull = fw_pull(r, Q.y, t, dropR) / max(r, 0.01);
+    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, a, t, dropR);
+    if (t < FW_TOUCH + 4.3) {
+        let pull = fw_pull(r, a, Q.y, t, dropR) / max(r, 0.01);
         Q = vec3<f32>(Q.x * (1.0 - pull), Q.y, Q.z * (1.0 - pull));
     }
     // ---- the island: left where it is ------------------------------------------------------------------------------------
@@ -587,7 +650,8 @@ fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32,
     let L = globals.sun.xyz;
     let day = fw_ss(-0.1, 0.2, L.y);
     // (the sun's light across the rings and the swell at its foot; the sky's only in the rings: the swell is too steep, it would wash the blocks out)
-    let s2 = slope + (fw_neck(r + e, t, R) - fw_neck(r0, t, R)) / (r + e - r0);
+    let ang = atan2(Q.z, Q.x);
+    let s2 = slope + (fw_neck(r + e, ang, t, R) - fw_neck(r0, ang, t, R)) / (r + e - r0);
     let Ns = normalize(vec3<f32>(-s2 * D.x, 1.0, -s2 * D.y));
     let nv = max(dot(N, -V), 0.0);
     let turned = nv - max(-V.y, 0.0);
@@ -596,7 +660,6 @@ fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32,
     col = mix(col, globals.sky_color.rgb * 1.15, clamp(-turned * 1.3, 0.0, 0.34) * FW_SHEEN * up);
     col = col * (1.0 - clamp(turned * 1.2, 0.0, 0.3) * FW_SHEEN);
     // ---- the droplet's metal spreading from the contact, thin as a film, then taken into the land ----------------------------
-    let ang = atan2(Q.z, Q.x);
     let rf = 1.3 * R + 30.0 * (1.0 - exp(-a / 1.1)) + 2.5 * sin(ang * 5.0 + 1.0) + 1.5 * sin(ang * 11.0 - 2.0);
     // (thick at the foot, thin on past it, gone by the first rebound)
     let foot = exp(-max(r - R * 0.9, 0.0) / (R * 0.9));
@@ -715,7 +778,7 @@ fn world_fragment(f: Fragment) -> Painted {
         col = mix(col, rock, 0.92 * shown);
     }
     // ---- the water's look ------------------------------------------------------------------------------------------------
-    if (t > FW_TOUCH && t < FW_TEAR) {
+    if (t > FW_TOUCH + FW_MEET - 0.3 && t < FW_TEAR) {
         // (top faces: the water's skin; a wall or a trunk takes none of the metal)
         let up = fw_ss(0.5, 0.9, abs(real_n.y) / max(length(real_n), 1.0e-5));
         col = fw_wet(col, Q, r, t, f.at, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0), up);

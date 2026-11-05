@@ -10,7 +10,7 @@
 const FD_STOP: f32 = 3.4;          // the droplet stops dead
 const FD_HANG: f32 = 4.9;          // it has hung still; it is let go
 const FD_TOUCH: f32 = 6.0;         // it touches the land
-const FD_MELD: f32 = 7.2;          // it has gone in
+const FD_MELD: f32 = 6.3;          // the land has closed over its tip: it has gone in
 const FD_FOLD: f32 = 19.0;
 const FD_SEAL: f32 = 35.0;
 const FD_CRUSH: f32 = 35.0;
@@ -78,34 +78,51 @@ fn fd_erf(x: f32) -> f32 {
 // How fast it is falling as it touches the land, blocks a second: 35.6 for R 8.5. Its gravity is 2 * H / 1.1^2 (32.4 for R 8.5,
 // the game's own), H = 1.6 * R + 6 how far it falls, so the 1.1 s fall ends on FD_TOUCH at every size.
 fn fd_vc(R: f32) -> f32 { return 2.0 * (1.6 * R + 6.0) / (FD_TOUCH - FD_HANG); }
-// From FD_TOUCH: Water impact's. Height of its centre over the target (R at FD_TOUCH, falling at fd_vc(R) then), and the ripple on
-// its side (d.rip, d.ph). It keeps its shape and sinks; the land's depth hides it.
+// From FD_TOUCH: height of its centre over the target, and the ripple on its side (d.rip, d.ph). Nothing changes for it at
+// the land: the same speed, the same gravity, straight through, like a stone into water. The land's depth hides it.
 fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let a = t - FD_TOUCH;
-    // (it doesn't flatten: it brakes on the land's swell and slumps in, top last, like one blob of a lava lamp into another.
-    // Waves run up it from the neck, as they do up a drop going into water, and are gone before it is)
-    let vc = fd_vc(R);
-    let h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * ((FD_TIP + 0.5) * R + 1.0 - vc * 0.25) / 2.25;
-    return vec3<f32>(h, 0.05 * (1.0 - exp(-a * 9.0)) * exp(-a * 1.6), a * 16.0);
+    let u = (t - FD_HANG) / (FD_TOUCH - FD_HANG);
+    // (waves run up it from the neck, as they do up a drop going into water, and are gone before it is)
+    return vec3<f32>(R + (1.6 * R + 6.0) * (1.0 - u * u), 0.05 * (1.0 - exp(-a * 18.0)) * exp(-a * 3.2), a * 30.0);
 }
 const FD_FOOT: f32 = 0.25;
+const FD_MEET: f32 = -0.08;        // when it and the land's finger meet, seconds from FD_TOUCH: fold_warp.wgsl's FW_MEET
 // The metal at its foot, where it and the land become one: how high over the target, and how wide. It starts thin and widens
 // fast, as a neck does (with the root of the time), keeps just over the land's swell (fold_warp.wgsl's fw_neck), and goes
-// under it as the last of the drop does.
-fn fd_land(a: f32, R: f32) -> f32 {
-    return 1.35 * R * fd_ss(-0.5, 0.55, a) * (1.0 - 0.69 * fd_ss(0.95, 1.5, a) - 0.31 * fd_ss(1.5, 2.4, a));
+// under it as the last of the drop does. fw_land's height of the land at the middle.
+fn fd_sink(a: f32) -> f32 {
+    return 1.0 - fd_ss(0.95, 1.95, a);
 }
-fn fd_foot(t: f32, R: f32) -> vec2<f32> {
-    let a = t - FD_TOUCH;
-    if (a < 0.0 || a > 1.7) {
+fn fd_wide(a: f32, R: f32) -> f32 {
+    let u = clamp((a + 0.5) / 1.1, 0.0, 1.0);
+    let v = 1.0 - u * u * sqrt(u);
+    return 0.4725 * R * (1.0 - v * v) * fd_sink(a);
+}
+fn fd_land(a: f32, R: f32) -> f32 {
+    let full = 1.35 * R;
+    // (how high the drop's foot is as they meet)
+    let meet = 0.1402 * (1.6 * R + 6.0);
+    if (a < FD_MEET) {
+        let u = clamp((a + 0.5) / (FD_MEET + 0.5), 0.0, 1.0);
+        let u3 = u * u * u;
+        return fd_wide(a, R) + (meet - fd_wide(FD_MEET, R)) * u3 * u3;
+    }
+    let s = a - FD_MEET;
+    let rise = 1.0 - (1.0 - meet / full) * exp(-s / 0.16);
+    return full * ((rise + 0.2 * fd_ss(0.0, 0.45, s) * exp(-1.4 * s) * sin(6.2 * s - 1.35)) * fd_sink(a) - 0.08 * fd_ss(1.7, 2.15, a) * (1.0 - fd_ss(2.15, 2.9, a)));
+}
+// (`h`: the drop's centre over the target)
+fn fd_foot(a: f32, h: f32, R: f32) -> vec2<f32> {
+    if (a < FD_MEET || a > 0.65) {
         return vec2<f32>(0.0, 1.0);
     }
     // (the drop's width at the top of the land's skirt, which is where the neck is)
     let land = fd_land(a, R);
-    let y = clamp((land - fd_meld(t, R).x) / R, -1.0, FD_TIP);
+    let y = clamp((land - h) / R, -1.0, FD_TIP);
     let rho = R * sqrt(max(fd_prof(y).x, 0.0));
     // (its height from FD_FOOT under the target, so its edge goes into the land rather than lying on it; drawn down at the end)
-    let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - 1.1 * R * fd_ss(0.95, 1.6, a);
+    let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - (land + 0.4 * R) * fd_ss(0.2, 0.42, a);
     return vec2<f32>(max(top, 0.0), rho + 0.12 * R);
 }
 // `side`: across the view, what its tip sways along.
@@ -136,13 +153,14 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
             // (let go: from rest where it stopped, under gravity, reaching the land on FD_TOUCH whatever its size: fd_vc)
             let u = (t - FD_HANG) / (FD_TOUCH - FD_HANG);
             h = mix(stop_h, R, u * u);
+            foot = fd_foot(t - FD_TOUCH, h, R);
         }
     } else {
         let m = fd_meld(t, R);
         h = m.x;
         rip = m.y;
         ph = m.z;
-        foot = fd_foot(t, R);
+        foot = fd_foot(t - FD_TOUCH, h, R);
     }
     return FdDrop(R, stop_h, h, max(sx, 0.001), sy, piv, rip, ph, sway, foot.x, foot.y);
 }
@@ -226,9 +244,16 @@ fn fd_normal(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
 // ---- the two glows: one soft ring round where they meet, from first touch; then, the drop gone in, one soft glow over the whole
 // landing, and no flash in either ------------------------------------------------------------------------------------------
 const FD_GLOW: vec3<f32> = vec3<f32>(0.86, 0.93, 1.1);
+// How the land's sides differ: fold_warp.wgsl's fw_side, with its seed.
+fn fd_side(ang: f32, a: f32) -> vec2<f32> {
+    let s = seed_v() * 2.399;
+    return vec2<f32>(
+        0.52 * sin(ang + s) + 0.34 * sin(2.0 * ang + s * 1.7 - 0.9 * a) + 0.22 * sin(3.0 * ang - s * 2.3 + 1.4 * a),
+        0.5 * sin(ang - s * 1.3 + 2.1) + 0.36 * sin(2.0 * ang + s * 0.7 + 1.1 * a) + 0.2 * sin(5.0 * ang + s * 3.1 - 1.3 * a));
+}
 fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, on_land: bool, far: f32, d: FdDrop) -> vec3<f32> {
     let a = t - FD_TOUCH;
-    if (a < -0.1 || a > 3.6) {
+    if (a < FD_MEET - 0.25 || a > 3.0) {
         return colIn;
     }
     var col = colIn;
@@ -240,21 +265,27 @@ fn fd_glow(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, P: vec3<f32>, o
     let seen = select(0.35, 1.0, far > hd - 3.0 * R);
     let rr = length(P.xz);
     // ---- the join: the land itself lit where it meets the drop, its blocks kept, and hot right at the line ---------------------
-    let g1 = fd_ss(-0.1, 0.25, a) * (1.0 - fd_ss(1.2, 1.8, a));
+    // (a first warmth as the gap closes, all of it the moment they touch, a little over at first, and going as the drop does)
+    let snap = fd_ss(FD_MEET, FD_MEET + 0.1, a);
+    let g1 = (0.22 * fd_ss(FD_MEET - 0.25, FD_MEET, a) + snap * (0.78 + 0.5 * exp(-max(a - FD_MEET, 0.0) / 0.16))) * (1.0 - fd_ss(0.35, 0.85, a));
     if (g1 > 0.0) {
         let neck = select(0.15 * R, max(d.pw - 0.12 * R, 0.15 * R), d.pool > 0.0);
         if (on_land) {
-            let x = max(rr - neck, 0.0);
-            let e = exp(-x / (0.55 * R)) * exp(-max(P.y - fd_land(a, R), 0.0) / (0.8 * R));
-            let hot = exp(-abs(rr - neck) / (0.14 * R));
+            // (uneven round it, the way the land's skirt is)
+            let L = fd_side(atan2(P.z, P.x) + rr / (3.2 * R), a);
+            let edge = neck * (1.0 + 0.12 * L.x);
+            let x = max(rr - edge, 0.0);
+            let e = exp(-x / ((0.55 + 0.22 * L.y) * R)) * exp(-max(P.y - fd_land(a, R), 0.0) / (0.8 * R));
+            let hot = exp(-abs(rr - edge) / (0.14 * R));
             col = col + (col * 2.0 * e + (col * 2.0 + FD_GLOW * 0.13) * hot * e) * g1;
         }
         col = col + FD_GLOW * 0.09 * g1 * seen * exp(-miss * miss / (2.0 * R * R));
     }
     // ---- all of it -----------------------------------------------------------------------------------------------------------
-    let g2 = fd_ss(1.5, 1.9, a) * (1.0 - fd_ss(1.9, 3.5, a));
+    // (what it took in, coming up through the land as it closes and going out through the land's heaving)
+    let g2 = fd_ss(0.25, 0.75, a) * (1.0 - fd_ss(0.75, 3.0, a));
     if (g2 > 0.0) {
-        let wide = R * (3.0 + 1.0 * fd_ss(1.5, 3.5, a));
+        let wide = R * (3.0 + 1.0 * fd_ss(0.3, 3.0, a));
         if (on_land) {
             let x = rr / wide;
             col = col + (col * 1.7 + FD_GLOW * 0.03) * exp(-x * x) * exp(-max(abs(P.y) - 6.0, 0.0) / (1.2 * R)) * g2;
@@ -567,9 +598,9 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
         col = col + vec3<f32>(1.0, 0.96, 0.9) * star * small * tw;
     }
     // ---- a steady soft halo round it while it hangs, so it can be found on a small screen, and no flicker in it ------------
-    if (q.z > 0.0 && t >= FD_STOP && t < FD_TOUCH + 0.6) {
+    if (q.z > 0.0 && t >= FD_STOP && t < FD_MELD) {
         let dh = length((uv - q.xy) * vec2<f32>(aspect, 1.0));
-        col = col + vec3<f32>(0.9, 0.95, 1.05) * exp(-dh / 0.016) * 0.2 * fd_ss(FD_STOP + 0.1, FD_STOP + 0.8, t) * (1.0 - fd_ss(FD_TOUCH - 0.2, FD_TOUCH + 0.6, t));
+        col = col + vec3<f32>(0.9, 0.95, 1.05) * exp(-dh / 0.016) * 0.2 * fd_ss(FD_STOP + 0.1, FD_STOP + 0.8, t) * (1.0 - fd_ss(FD_TOUCH - 0.2, FD_MELD, t));
     }
     // ---- the metal --------------------------------------------------------------------------------------------------------
     var s_end = far;
@@ -577,7 +608,8 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     let bcd = dot(bc, v);
     // (with the foot of metal in it, a sphere taking that in too)
     let bR = select(1.75 * d.R * max(d.sx, 1.0), max(1.75 * d.R, length(bc - G) + 1.2 * d.pw + d.R), d.pool > 0.0);
-    if (length(bc - v * bcd) < bR && bcd > 0.0) {
+    // (once all of it is well under the land there is nothing to find)
+    if (length(bc - v * bcd) < bR && bcd > 0.0 && d.h + (FD_TIP + 0.5) * d.R > 0.0) {
         var s = max(bcd - bR, 0.05);
         var best = 1.0e9;
         var sb = s;
@@ -743,7 +775,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     }
 
     // ---- the droplet -------------------------------------------------------------------------------------------------------
-    if (t < FD_MELD + 2.8) {
+    if (t < 10.0) {
         let side = normalize(vec2<f32>(-gq.z, gq.x) + vec2<f32>(0.0, 1.0e-4));
         let d = fd_drop(t, dist, side);
         let li = fd_light();
@@ -754,7 +786,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             land = vec4<f32>(clamp(P.y, -40.0, 40.0), 0.0, P.xz);
             // (its shadow on the land, closing up as it comes down)
             let sr = d.R * (1.6 + 0.06 * d.h);
-            let shadow = exp(-dot(P.xz, P.xz) / (sr * sr)) * 0.62 * exp(-abs(P.y) / 12.0) * fd_ss(420.0, 60.0, d.h) * (1.0 - fd_ss(FD_TOUCH + 0.3, FD_MELD, t));
+            let shadow = exp(-dot(P.xz, P.xz) / (sr * sr)) * 0.62 * exp(-abs(P.y) / 12.0) * fd_ss(420.0, 60.0, d.h) * (1.0 - fd_ss(FD_TOUCH, FD_MELD, t));
             col = col * (1.0 - shadow);
             // (the fire's light on the land under it, coming up as it does, and going out with the air that hits the land)
             let lr = d.h * 0.8 + 6.0;
@@ -763,7 +795,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         }
         let C = gq + vec3<f32>(0.0, d.h, 0.0);
         // (what the land has reached up inside the drop is taken into it, not seen through it)
-        let swallowed = t >= FD_TOUCH && !sky0 && fd_bead(off - C, d) < 0.0;
+        let swallowed = t >= FD_TOUCH + FD_MEET && !sky0 && fd_bead(off - C, d) < 0.0;
         col = fd_droplet(col, t, v, gq, C, d, select(far, 1.0e7, swallowed), uv, aspect, land, li, jit);
         col = fd_glow(col, t, v, gq, off - gq, !sky0, far, d);
     }

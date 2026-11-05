@@ -8,7 +8,7 @@
 //!   0 - FD_STOP       the droplet's fall out of the top of the sky: a glint, a plasma sheath, fire, a smoke trail
 //!   FD_STOP           it stops dead in one frame, the fire rushes past it, the sound cuts to near silence
 //!   FD_HANG           it has hung perfectly still; it is let go and falls to the land under gravity
-//!   FD_TOUCH-FD_MELD  it touches the land and melds in like mercury; no splash
+//!   FD_TOUCH-FD_MELD  it falls straight into the land without slowing, the land closing over it; no splash
 //!   FD_RIPPLE         the warp begins (off before it): rings running out, each bigger than the last
 //!   FD_SCORE          the rings sharpen into hairline creases racing over the land, the mandala's pattern
 //!   FD_TEAR           the creases split open on the void
@@ -36,7 +36,7 @@ pub const FD_WARP_END: f32 = 53.0;
 pub(super) const FD_STOP: f32 = 3.4;
 pub(super) const FD_HANG: f32 = 4.9;
 pub(super) const FD_TOUCH: f32 = 6.0;
-pub(super) const FD_MELD: f32 = 7.2;
+pub(super) const FD_MELD: f32 = 6.3;
 pub(super) const FD_RIPPLE: f32 = 6.6;
 pub(super) const FD_SCORE: f32 = 12.0;
 pub(super) const FD_TEAR: f32 = 16.0;
@@ -132,6 +132,16 @@ mod tests {
             assert!(warp.contains(&format!("case {k}: {{ return {t:.1}; }}")), "fold {k}");
         }
         assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
+        // (the land's height as it meets the drop: the warp moves the land, the pass draws the metal and the glow on it)
+        assert!(warp.contains("const FW_MEET: f32 = -0.08;") && pass.contains("const FD_MEET: f32 = -0.08;"));
+        for name in ["sink", "wide", "land", "side"] {
+            let body = |src: &str, p: &str| {
+                let from = src.find(&format!("fn {p}_{name}(")).unwrap_or_else(|| panic!("{p}_{name}"));
+                let to = from + src[from..].find("\n}\n").expect("its end");
+                src[from..to].replace("FW_", "F_").replace("FD_", "F_").replace("fw_", "f_").replace("fd_", "f_").replace("globals.warp[2].x", "seed_v()")
+            };
+            assert_eq!(body(warp, "fw"), body(pass, "fd"), "{name}");
+        }
     }
 
     fn the_laser() -> &'static Laser {
