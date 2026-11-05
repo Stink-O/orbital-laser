@@ -567,12 +567,70 @@ fn vc_dim(c: vec3<f32>, q: vec3<f32>, L: vec3<f32>, sun_up: f32) -> vec3<f32> {
     return mix(c, vec3<f32>(g) * vec3<f32>(1.12, 0.92, 0.74), 0.9 * vs.cov * (1.0 - glow)) * k;
 }
 
-// ---- the lightning: a slot a tenth of a second or so, a few alive at once ---------------------------------------
+// ---- the lightning: the Hurricane's (hurricane.wgsl's hu_flashes), a slot a tenth of a second or so, a few alive at once.
+// When and where each flash is, and how strong, vc_sound.rs's `flashes` copies for its thunder: keep them in step. What
+// a flash is, is by another hash (a third of them a bolt to the land, a fifth a channel out of the cloud across the air,
+// the rest in the cloud alone), and its strokes as the Hurricane's: the cloud's a few flickers over a third of a second,
+// the bolt's its leader, its return stroke and a re-stroke or two (the user's reference, a strike filmed at 60 fps).
+// (a third of those in the cloud hardly show: a flash a slot at most would be five a second, the Hurricane's peak four)
+const VC_BOLTS_AHEAD: f32 = 0.5;
+const VC_BOLTS_ASIDE: f32 = 0.13;
+const VC_CHANNELS: f32 = 0.76;     // (and up to here of the same hash, a channel out of the cloud)
+const VC_LEAD: f32 = 0.075;
+const VC_FL_END: f32 = 0.39;       // (three slots' worth: a flash is gone by the time its slot is dropped)
+// (this cloud's bolts run ten times the Hurricane's: a thicker column and channel, larger kinks, a wider pool on the land)
+const VC_BEAM_R: f32 = 13.0;
+const VC_CHAN_W: f32 = 4.0;
+const VC_KINK_LEN: f32 = 260.0;
+const VC_THRU: f32 = 0.55;         // (how much of a channel shows through the ash under the cloud's face: its core the square of it, a blur of light)
+const VC_FOOT_R2: f32 = 6000.0;
 struct VcFlash {
     p: vec3<f32>,      // where, from the vent
-    k: f32,            // how bright now
+    k: f32,            // how bright now, on the cloud round it
     ring: f32,         // 1 in the umbrella's rings, 0 in the plume
     id: f32,
+    a: f32,            // seconds since it began
+    n: u32,            // its strokes' hash
+    kind: u32,         // 0 in the cloud alone, 1 a bolt to the land, 2 a channel out of the cloud
+}
+struct VcFlashes {
+    f: array<VcFlash, 3>,
+}
+// The strokes of a flash in the cloud (the Supercell's sc_stroke, as hu_stroke): 1 at a stroke's peak.
+fn vc_strokes(a: f32, n: u32) -> f32 {
+    let count = 1u + n % 4u;
+    var s = 0.0;
+    var ts = 0.0;
+    for (var k = 0u; k <= count; k = k + 1u) {
+        let h = f32(pcg(n * 13u + k) & 1023u) / 1023.0;
+        ts = ts + select(0.04 + 0.09 * h, 0.0, k == 0u);
+        s = s + select(0.5 + 0.4 * h, 1.0, k == 0u) * exp(-max(a - ts, 0.0) / 0.04) * step(ts, a);
+    }
+    return (s + 0.08 * exp(-a / 0.25)) * (1.0 - smoothstep(0.3, VC_FL_END, a));
+}
+// A bolt's own timing (hu_beam_k, hu_lead_k): a thin jagged leader flickering for the first ~75 ms, its shape new every two
+// frames; the return stroke, a thick column of light from the cloud to the land; from 0.17 s it draws up off the land
+// into the cloud, gone by 0.27 s; then a thin jagged re-stroke or two, a frame or two each.
+fn vc_flick(a: f32, n: u32, k: u32) -> f32 {
+    return f32(pcg(n * 31u + k * 7u + u32(max(a, 0.0) * 30.0)) & 1023u) / 1023.0;
+}
+fn vc_beam_k(a: f32, n: u32) -> f32 {
+    return smoothstep(0.05, VC_LEAD, a) * (1.0 - smoothstep(0.19, 0.27, a)) * (0.88 + 0.12 * vc_flick(a, n, 1u));
+}
+fn vc_lead_k(a: f32, n: u32) -> f32 {
+    if (a < VC_LEAD) {
+        return 0.55 + 0.45 * vc_flick(a, n, 2u);
+    }
+    let r0 = 0.28 + 0.03 * f32(n & 7u) / 7.0;
+    let r1 = 0.335 + 0.03 * f32((n >> 3u) & 7u) / 7.0;
+    return 0.8 * (step(r0, a) * step(a, r0 + 0.034) + 0.7 * step(r1, a) * step(a, r1 + 0.018));
+}
+fn vc_bolt_stroke(a: f32, n: u32) -> f32 {
+    return (max(vc_beam_k(a, n), 0.6 * vc_lead_k(a, n)) + 0.12 * exp(-a / 0.15)) * (1.0 - smoothstep(0.34, VC_FL_END, a));
+}
+// (where the player is, off the vent)
+fn vc_me() -> vec2<f32> {
+    return vec2<f32>(frame.mod_params[3].x - anchor_xz().x, frame.mod_params[3].z - anchor_xz().y);
 }
 fn vc_flash(i: i32, seed: u32) -> VcFlash {
     var o: VcFlash;
@@ -601,10 +659,28 @@ fn vc_flash(i: i32, seed: u32) -> VcFlash {
         let R = (vc_rr(hy) + vc_ww(hy)) * (0.75 + 0.2 * mh(slot, seed, 0x906u));
         o.p = vec3<f32>(cos(th) * R, min(hy, max(vs.Hb, 60.0)), sin(th) * R);
     }
-    // (a stroke or two, dying fast)
-    let dur = 0.12 + 0.2 * mh(slot, seed, 0x907u);
-    let strk = exp(-age / (0.45 * dur)) + 0.6 * exp(-max(age - 0.08, 0.0) / (0.3 * dur)) * step(0.08, age);
-    o.k = strk * (0.5 + 0.8 * mh(slot, seed, 0x908u)) * step(age, 0.65);
+    // (bolts where the player can see them, ahead and not behind the column: this cloud is too wide for them all to land in
+    // front of one who looks at the vent; the rest of the sky takes fewer, so about the Hurricane's one a second in all)
+    let me = vc_me();
+    let way = normalize(-me + vec2<f32>(1.0e-3, 0.0));
+    let ahead = dot(normalize(o.p.xz - me), way);
+    let hidden = smoothstep(0.35, 0.8, dot(o.p.xz, way) / max(length(o.p.xz), 1.0)) * (1.0 - smoothstep(700.0, 1100.0, abs(o.p.x * way.y - o.p.z * way.x)));
+    let what = mh(slot, seed, 0x921u);
+    let bolt = what < mix(VC_BOLTS_ASIDE, VC_BOLTS_AHEAD, smoothstep(0.45, 0.75, ahead) * (1.0 - hidden));
+    o.kind = select(select(0u, 2u, what < VC_CHANNELS), 1u, bolt);
+    o.a = age;
+    o.n = u32(mh(slot, seed, 0x907u) * 65535.0);
+    let br = select(vc_strokes(age, o.n), vc_bolt_stroke(age, o.n), bolt);
+    let faint = select(1.0, 0.3, !bolt && mh(slot, seed, 0x922u) < 0.34);
+    // (a bolt lights the cloud round its root less than a flash in the cloud does)
+    o.k = br * select(1.0, 0.6, bolt) * faint * (0.5 + 0.8 * mh(slot, seed, 0x908u));
+    return o;
+}
+fn vc_flashes(seed: u32) -> VcFlashes {
+    var o: VcFlashes;
+    o.f[0] = vc_flash(0, seed);
+    o.f[1] = vc_flash(1, seed);
+    o.f[2] = vc_flash(2, seed);
     return o;
 }
 
@@ -837,91 +913,237 @@ fn vc_spray(C: vec3<f32>, rd: vec3<f32>, tmax: f32, seed: u32) -> vec4<f32> {
 }
 
 // ---- the bolts themselves: what of a flash is seen as lightning, sharp, at full size ------------------------------
-// A channel in strokes, kinked hard at each joint, thick and white-hot at its root, with branches forking off it; each
-// stroke a hot core inside a wide lilac glow. .x the core, .y the glow.
-fn vc_stroke(pxy: vec2<f32>, a: vec2<f32>, b: vec2<f32>, w: f32) -> vec2<f32> {
-    let ab = b - a;
-    let u = saturate(dot(pxy - a, ab) / max(dot(ab, ab), 1.0e-3));
-    let d = length(pxy - a - ab * u);
-    let g = 1.0 / (1.0 + pow(d / (w * 5.0), 2.0));
-    return vec2<f32>(exp(-pow(d / w, 2.0)), g * g + 0.12 * g);
-}
-// Where a flash's channel runs: from f.p along this, in blocks.
+// Where a flash's channel runs: from f.p along this, in blocks. A bolt out of the column's flank or down out of the sheet
+// to the land; in the plume out of its side, down and across; in the sheet running along under it, forking.
 fn vc_flash_way(f: VcFlash, seed: u32) -> vec3<f32> {
     let sid = u32(f.id);
     let th = TAU * mh(sid, seed, 0x911u);
-    // (in the plume out of its side, down and across; in the sheet running along it, forking)
+    let h = mh(sid, seed, 0x912u);
+    let out = atan2(f.p.z, f.p.x) + 1.1 * (mh(sid, seed, 0x913u) - 0.5);
+    if (f.kind == 1u) {
+        var foot = f.p.xz + vec2<f32>(cos(th), sin(th)) * (120.0 + 320.0 * h);
+        if (f.ring < 0.5) {
+            // (clear of the blast's foot and of what the flows have covered)
+            foot = vec2<f32>(cos(out), sin(out)) * max(max(vs.Rb, vs.rf), length(f.p.xz)) * (1.45 + 0.6 * h);
+        }
+        // (from a thousand blocks the column fills the picture and what lands past it is never seen: a bolt that starts
+        // near the player comes down in front of them, between them and the cloud)
+        let me = vc_me();
+        if (length(f.p.xz - me) < 1500.0) {
+            let w = normalize(-me + vec2<f32>(1.0e-3, 0.0));
+            let across = vec2<f32>(-w.y, w.x);
+            foot = me + w * (190.0 + 300.0 * h) + across * (0.75 * dot(f.p.xz - me, across) + 420.0 * (mh(sid, seed, 0x914u) - 0.5));
+        }
+        return vec3<f32>(foot.x, vc_land(foot), foot.y) - f.p;
+    }
     if (f.ring > 0.5) {
-        return vec3<f32>(cos(th) * 720.0, -40.0 - 50.0 * mh(sid, seed, 0x912u), sin(th) * 720.0);
+        return vec3<f32>(cos(th) * 720.0, -40.0 - 50.0 * h, sin(th) * 720.0);
     }
-    return vec3<f32>(cos(th) * 320.0, -200.0 - 280.0 * mh(sid, seed, 0x912u), sin(th) * 320.0);
+    return vec3<f32>(cos(out) * 320.0, -200.0 - 280.0 * h, sin(out) * 320.0);
 }
-fn vc_bolts(C: vec3<f32>, seed: u32, cloud_t: f32, pxy: vec2<f32>) -> vec2<f32> {
-    var sum = vec2<f32>(0.0);
+// A channel on the picture (hu_lin, hu_kink, hu_channel: the Supercell's), kinked at every scale, sharp bends, never smooth.
+fn vc_lin(x: f32, s: f32) -> f32 {
+    let i = floor(x);
+    return mix(fh21(vec2<f32>(i, s)), fh21(vec2<f32>(i + 1.0, s)), x - i) * 2.0 - 1.0;
+}
+// (.x all of it, .y its large scales alone)
+fn vc_kink(u: f32, s: f32, fq: f32) -> vec2<f32> {
+    let v = u * fq;
+    let big = 0.11 * vc_lin(v * 4.0, s) + 0.05 * vc_lin(v * 11.0, s + 1.7);
+    return vec2<f32>(big + 0.024 * vc_lin(v * 29.0, s + 3.1) + 0.011 * vc_lin(v * 70.0, s + 5.3), big) / sqrt(fq);
+}
+fn vc_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: bool, fq: f32, jag: f32) -> vec3<f32> {
+    let ab = sb - sa;
+    let L = max(length(ab), 1.0);
+    let dir = ab / L;
+    let nrm = vec2<f32>(-dir.y, dir.x);
+    let ap = px - sa;
+    let u = clamp(dot(ap, dir) / L, 0.0, 1.0);
+    let env = select(1.0, sqrt(max(1.0 - u, 0.0)) * 1.15, pin) * smoothstep(0.0, 0.04, u);
+    let k0 = vc_kink(u, s, fq) * env * jag;
+    let k1 = vc_kink(u + 0.002, s, fq).x * env * jag;
+    let slope = (k1 - k0.x) / 0.002;
+    let along = dot(ap, dir) - u * L;
+    let off = (dot(ap, nrm) - k0.x * L) / sqrt(1.0 + slope * slope);
+    let d = length(vec2<f32>(off, along));
+    // (the bloom round its large scales only: the fine kinks, a row of pixels each, would comb it into stripes)
+    let dg = length(vec2<f32>(dot(ap, nrm) - k0.y * L, along));
+    let g = 1.0 / (1.0 + pow(dg / (w * 9.0), 2.0));
+    return vec3<f32>(exp(-pow(d / w, 2.0)), g * g, u);
+}
+// How much is seen of what is `dm` off along the ray: hidden by the land and what stands in front of it (`near`), and by
+// the cloud in front of it (`ct` how far off the cloud is, `ca` how much of what is behind it shows through), but for a
+// little of it through the ash just under the cloud's face.
+fn vc_seen(dm: f32, near: f32, ct: f32, ca: f32) -> f32 {
+    if (near < dm - 3.0) {
+        return 0.0;
+    }
+    if (dm <= ct) {
+        return 1.0;
+    }
+    return max(ca, VC_THRU * (1.0 - smoothstep(100.0, 900.0, dm - ct)));
+}
+// (a and b, camera-relative, brought in front of the eye: a bolt overhead has its root behind it)
+fn vc_clip_w(p: vec3<f32>) -> f32 {
+    return (frame.projection * (frame.view * vec4<f32>(p, 1.0))).w;
+}
+fn vc_near_end(a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
+    let wa = vc_clip_w(a);
+    let wb = vc_clip_w(b);
+    if (wa >= 1.0 || wb <= wa) {
+        return a;
+    }
+    return mix(a, b, (1.0 - wa) / (wb - wa));
+}
+// A jagged channel from a to b (camera-relative) on the picture, three forks off it (hu_bolt): x its core, y its bloom.
+fn vc_bolt(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, near: f32, ct: f32, ca: f32) -> vec2<f32> {
+    let pa = project_rel(a);
+    let pb = project_rel(b);
+    if (pa.z < 0.0 || pb.z < 0.0) {
+        return vec2<f32>(0.0);
+    }
     let res = frame.resolution.xy;
-    let focal = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
+    let sa = pa.xy * res;
+    let sb = pb.xy * res;
+    let ab = sb - sa;
+    let L = max(length(ab), 1.0);
+    let la = length(a);
+    let lb = length(b);
+    let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
+    let w = clamp(VC_CHAN_W * focal / (0.5 * (la + lb)), 1.2, 4.0);
+    let u0 = saturate(dot(px - sa, ab) / (L * L));
+    if (length(px - (sa + ab * u0)) > 0.5 * L + 40.0 * w) {
+        return vec2<f32>(0.0);
+    }
+    // (kinked for its length in blocks: this cloud's bolts run ten times the Hurricane's, so its scales are larger too)
+    let fq = max(length(a - b) / VC_KINK_LEN, 1.0);
+    var core = 0.0;
+    var glow = 0.0;
+    if (length(px - (sa + ab * u0)) < 0.2 * L + 40.0 * w) {
+        let m = vc_channel(px, sa, sb, seed, w, true, fq, 1.35);
+        let seen = vc_seen(mix(la, lb, m.z), near, ct, ca);
+        core = m.x * seen * seen;
+        glow = m.y * seen;
+    }
+    let dir = ab / L;
+    let nrm = vec2<f32>(-dir.y, dir.x);
+    for (var k = 0; k < 3; k = k + 1) {
+        let fk = f32(k);
+        let u = 0.15 + 0.55 * fract(seed * 0.618 + fk * 0.377);
+        let root = sa + ab * u + nrm * vc_kink(u, seed, fq).x * sqrt(1.0 - u) * 1.15 * 1.35 * L;
+        let side = select(-1.0, 1.0, fract(seed * 0.71 + fk * 0.53) > 0.5);
+        let bdir = normalize(dir + nrm * side * (0.55 + 0.6 * fract(seed * 1.3 + fk * 0.7)));
+        let lf = L * (0.16 + 0.26 * fract(seed * 0.9 + fk * 0.77));
+        let end = root + bdir * lf;
+        // (only near it: no fork's work over the whole of the bolt's box)
+        let uf = saturate(dot(px - root, bdir) / lf);
+        if (length(px - root - bdir * uf) > 0.22 * lf + 40.0 * w * 0.6) {
+            continue;
+        }
+        let f = vc_channel(px, root, end, seed + 7.0 + fk * 3.3, w * 0.6, false, fq, 1.6);
+        let fs = vc_seen(mix(la, lb, u), near, ct, ca) * pow(1.0 - f.z, 1.6);
+        core = core + f.x * fs * fs;
+        glow = glow + f.y * fs * 0.7;
+    }
+    return vec2<f32>(core, glow);
+}
+// The return stroke's column from a to b (camera-relative) on the picture (hu_beam): a thick soft rod of light, straight
+// but for a gentle wave, drawn up off the land from `ue` (1: down to b, 0: none), its foot a point: x its core, y its halo.
+fn vc_beam(px: vec2<f32>, a: vec3<f32>, b: vec3<f32>, seed: f32, ue: f32, near: f32, ct: f32, ca: f32) -> vec2<f32> {
+    let pa = project_rel(a);
+    let pb = project_rel(b);
+    if (pa.z < 0.0 || pb.z < 0.0 || ue <= 0.01) {
+        return vec2<f32>(0.0);
+    }
+    let res = frame.resolution.xy;
+    let sa = pa.xy * res;
+    let sb = pb.xy * res;
+    let ab = sb - sa;
+    let L = max(length(ab), 1.0);
+    let dir = ab / L;
+    let nrm = vec2<f32>(-dir.y, dir.x);
+    let la = length(a);
+    let lb = length(b);
+    let focal = res.y / (2.0 * tan(frame.view_params.w * 0.5));
+    let ap = px - sa;
+    let u = clamp(dot(ap, dir) / L, 0.0, 1.0);
+    let dm = mix(la, lb, u);
+    let wc = max(VC_BEAM_R * focal / max(dm, 1.0), 1.4);
+    let off0 = dot(ap, nrm);
+    if (abs(off0) > 0.12 * L + 14.0 * wc) {
+        return vec2<f32>(0.0);
+    }
+    // (a gentle wave, the large scales of the leader's kinks only)
+    let wave = (0.03 * vc_lin(u * 3.0, seed) + 0.015 * vc_lin(u * 8.0, seed + 1.7)) * L * smoothstep(0.0, 0.05, u);
+    let along = dot(ap, dir) - u * L;
+    let d = length(vec2<f32>(off0 - wave, along));
+    // (drawn up: thinning to a point at its foot)
+    let taper = sqrt(saturate((ue - u) / 0.18)) * smoothstep(0.0, 0.03, u);
+    let r = wc * taper;
+    let seen = vc_seen(dm, near, ct, ca) * step(u, ue);
+    let core = exp(-pow(d / max(r * 0.7, 0.6), 2.0)) * step(0.001, taper);
+    let halo = 1.0 / (1.0 + pow(d / max(r * 2.2, 1.0), 2.0)) * taper;
+    return vec2<f32>(core * seen, halo * halo) * seen;
+}
+// The bolts of the flashes under way, on the picture (hu_bolts): `near` how far the land is.
+fn vc_bolts(fl: VcFlashes, C: vec3<f32>, seed: u32, near: f32, ct: f32, ca: f32, pxy: vec2<f32>) -> vec3<f32> {
+    var c = vec3<f32>(0.0);
     for (var i = 0; i < 3; i = i + 1) {
-        let f = vc_flash(i, seed);
-        if (f.k < 0.03) {
+        let f = fl.f[i];
+        if (f.kind == 0u) {
             continue;
         }
-        let sid = u32(f.id);
         let dv = vc_flash_way(f, seed);
-        let a = project_rel(f.p + C);
-        let b = project_rel(f.p + dv + C);
-        if (a.z < 0.0 || b.z < 0.0) {
-            continue;
+        var root = f.p;
+        if (f.kind == 2u && f.ring > 0.5) {
+            // (along under the sheet, out of the cloud: its underside as vc_umb has it)
+            let r = length(f.p.xz);
+            root.y = VC_HU - 0.9 * (210.0 + 240.0 * exp(-r * r / 1.44e6)) - 230.0 * exp(-r * r / 6.4e5) - 30.0;
         }
-        let pa = a.xy * res;
-        let pb = b.xy * res;
-        let ab = pb - pa;
-        let span = length(ab);
-        let mid = (pa + pb) * 0.5;
-        let dm = length(pxy - mid);
-        if (dm > span * 1.05) {
-            continue;
+        let a = f.a;
+        let n = f.n;
+        let s0 = f32(pcg(u32(f.id) ^ seed) & 1023u) * 0.37;
+        var tip = C + root + dv;
+        var lk = vc_lead_k(a, n);
+        var shape = f32(u32(a * 30.0));
+        if (f.kind == 2u) {
+            // (a channel alone: one shape from the leader's on, it stands while a return stroke would)
+            lk = max(lk, vc_beam_k(a, n));
+            shape = select(0.0, shape, a < VC_LEAD || a > 0.27);
+        } else if (a > VC_LEAD && (n & 16u) != 0u) {
+            // (a re-stroke now and then across the cloud instead, out of the root sideways)
+            let side = normalize(vec3<f32>(-root.z, 0.0, root.x)) * select(-1.0, 1.0, (n & 32u) != 0u);
+            tip = C + root + side * (340.0 + 260.0 * f32((n >> 6u) & 7u) / 7.0) - vec3<f32>(0.0, 120.0, 0.0);
         }
-        // (its glow gone before the edge of what is tried here: no disc round it)
-        let gw = 1.0 - smoothstep(0.45 * span, 1.0 * span, dm);
-        // (seen through the cloud it stands in, dimmer, its glow still there)
-        let dist = length(f.p + C);
-        let seen = select(1.0, 0.3, cloud_t < dist - 160.0);
-        let w0 = clamp(focal * 7.0 / dist, 1.3, 5.0);
-        let nrm = vec2<f32>(-ab.y, ab.x) / max(span, 1.0);
-        let dir = ab / max(span, 1.0);
-        var p0 = pa;
-        let J = 9u;
-        for (var j = 1u; j <= J; j = j + 1u) {
-            let u = f32(j) / f32(J);
-            let env = sin(u * 3.1415927);
-            let kink = (mh(sid + j, seed, 0x915u) - 0.5) * 0.3 * span * env + (mh(sid + j, seed, 0x91du) - 0.5) * 0.09 * span;
-            let p1 = select(pa + ab * u + nrm * kink, pb, j == J);
-            let sg = vc_stroke(pxy, p0, p1, w0 * (1.0 - 0.6 * u));
-            sum = sum + sg * vec2<f32>(seen, gw) * f.k * (1.0 - 0.55 * u);
-            // (a branch from most joints, kinked in its turn, thinner; some of them forking again)
-            if (j < J && mh(sid + j, seed, 0x916u) < 0.62) {
-                let side = select(-1.0, 1.0, mh(sid + j, seed, 0x917u) < 0.5);
-                let lb = span * (0.14 + 0.2 * mh(sid + j, seed, 0x918u)) * (1.0 - 0.5 * u);
-                var q0 = p1;
-                let bd = normalize(dir + nrm * side * (0.55 + 0.7 * mh(sid + j, seed, 0x919u)));
-                let bn = vec2<f32>(-bd.y, bd.x);
-                for (var m = 1u; m <= 3u; m = m + 1u) {
-                    let um = f32(m) / 3.0;
-                    let q1 = p1 + bd * lb * um + bn * (mh(sid + j * 7u + m, seed, 0x91au) - 0.5) * 0.36 * lb;
-                    let sb = vc_stroke(pxy, q0, q1, w0 * 0.55 * (1.0 - 0.5 * um));
-                    sum = sum + sb * vec2<f32>(seen, 0.6 * gw) * f.k * 0.7 * (1.0 - 0.5 * um);
-                    if (m == 2u && mh(sid + j, seed, 0x91bu) < 0.5) {
-                        let q2 = q1 + (bd - bn * side * 0.9) * lb * 0.34;
-                        let sc = vc_stroke(pxy, q1, q2, w0 * 0.4);
-                        sum = sum + sc * vec2<f32>(seen, 0.4 * gw) * f.k * 0.5;
-                    }
-                    q0 = q1;
-                }
+        let top = vc_near_end(C + root, tip);
+        if (lk > 0.0) {
+            let m = vc_bolt(pxy, top, tip, s0 + shape * 5.3, near, ct, ca);
+            c = c + (vec3<f32>(1.0, 0.98, 1.0) * m.x * 2.4 + vec3<f32>(0.62, 0.6, 1.0) * m.y * 0.6) * lk;
+        }
+        if (f.kind == 1u) {
+            // (the return stroke's column)
+            let bk = vc_beam_k(a, n);
+            if (bk > 0.0) {
+                let ue = 1.0 - smoothstep(0.17, 0.27, a);
+                let m = vc_beam(pxy, top, C + root + dv, s0, ue, near, ct, ca);
+                c = c + (vec3<f32>(1.0, 0.98, 1.0) * m.x * 3.0 + vec3<f32>(0.66, 0.64, 1.0) * m.y * 1.1) * bk;
             }
-            p0 = p1;
         }
     }
-    return sum;
+    return c;
+}
+// A bolt's column lighting the land round its foot (`q` off the vent: hu_flash_at).
+fn vc_flash_land(fl: VcFlashes, q: vec3<f32>, seed: u32) -> f32 {
+    var e = 0.0;
+    for (var i = 0; i < 3; i = i + 1) {
+        let f = fl.f[i];
+        if (f.kind == 1u) {
+            let k = vc_beam_k(f.a, f.n) + 0.4 * vc_lead_k(f.a, f.n);
+            let d = q - f.p - vc_flash_way(f, seed);
+            e = e + 2.4 * k / (1.0 + dot(d, d) / VC_FOOT_R2);
+        }
+    }
+    return e;
 }
 
 // ---- what hangs in the air round the eye: flakes of ash coming down, embers driven past (as the Hurricane's rain: strung
@@ -1045,7 +1267,7 @@ fn vc_haze(rd: vec3<f32>, l: VcLight) -> vec3<f32> {
     let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
     return mix(l.haze, vec3<f32>(lum) * vc_band(rd), smoothstep(0.1, 0.7, vs.cov));
 }
-fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMarch {
+fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcFlashes) -> VcMarch {
     var o: VcMarch;
     o.c = vec3<f32>(0.0);
     o.tr = 1.0;
@@ -1067,12 +1289,16 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     var hs = pcg(u32(vc_px.x) ^ (u32(vc_px.y) << 13u) ^ (u32(fract(time * 7.0) * 1024.0) << 3u));
     var wmid = 0.0;
     var tmid = 0.0;
-    let gl0 = vc_flash(0, l.seed);
-    let gl1 = vc_flash(1, l.seed);
-    let gl2 = vc_flash(2, l.seed);
-    let gw0 = vc_flash_way(gl0, l.seed);
-    let gw1 = vc_flash_way(gl1, l.seed);
-    let gw2 = vc_flash_way(gl2, l.seed);
+    // (the brightest flash lights the cloud: one, so the march keeps little in hand)
+    var gl = fls.f[0];
+    if (fls.f[1].k > gl.k) {
+        gl = fls.f[1];
+    }
+    if (fls.f[2].k > gl.k) {
+        gl = fls.f[2];
+    }
+    let gw = vc_flash_way(gl, l.seed);
+    let gw2 = max(dot(gw, gw), 1.0);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
     for (var i = 0; i < 132; i = i + 1) {
         if (t > t_end || o.tr < 0.05) {
@@ -1250,20 +1476,9 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             c = c + fire;
             // (the lightning in it: along its channel, lighting the cloud a long way round)
             var lg = 0.0;
-            if (gl0.k > 0.02) {
-                let g = pl_ray_seg(vec3<f32>(0.0, 1.0, 0.0), gl0.p - q, gl0.p + gw0 - q, 0.0, 1.0);
-                let dd = gl0.p + gw0 * g.z - q;
-                lg = lg + gl0.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
-            }
-            if (gl1.k > 0.02) {
-                let g = pl_ray_seg(vec3<f32>(0.0, 1.0, 0.0), gl1.p - q, gl1.p + gw1 - q, 0.0, 1.0);
-                let dd = gl1.p + gw1 * g.z - q;
-                lg = lg + gl1.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
-            }
-            if (gl2.k > 0.02) {
-                let g = pl_ray_seg(vec3<f32>(0.0, 1.0, 0.0), gl2.p - q, gl2.p + gw2 - q, 0.0, 1.0);
-                let dd = gl2.p + gw2 * g.z - q;
-                lg = lg + gl2.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
+            if (gl.k > 0.02) {
+                let dd = q - gl.p - gw * saturate(dot(q - gl.p, gw) / gw2);
+                lg = gl.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
             }
             c = c + (min(alb, vec3<f32>(0.2)) * 3.4 + 0.012) * vec3<f32>(0.72, 0.72, 1.0) * lg * 2.4;
             let al = 1.0 - exp(-den * ext * st);
@@ -1456,9 +1671,12 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     }
 
     // ---- the land and the sky, under it ---------------------------------------------------------------------------
+    let fl = vc_flashes(seed);
     if (stage != 1u && !sky) {
         let qg = select(rel, rd * scene_len, vmh.t >= 0.0) - C;
         col = vc_dim(col, qg, L, sun_up);
+        // (a bolt's foot lighting the land round it)
+        col = col * (1.0 + 1.6 * vc_flash_land(fl, qg, seed));
         // (the cracks, the ring's glow on the land)
         let rg = length(qg.xz);
         let vent = smoothstep(VC_CRACK, VC_ERUPT, time);
@@ -1496,7 +1714,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     var tr_here = select(1.0, up.a, stage == 2u);
     if (stage != 2u) {
         let j = 0.5;
-        let m = vc_march(C, rd, scene_len, j, l);
+        let m = vc_march(C, rd, scene_len, j, l, fl);
         cloud_t = m.t;
         // (the bombs' smoke, in front of the cloud or behind it)
         var tb = 1.0e9;
@@ -1625,11 +1843,8 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         col = col + vc_bombs_heads(C, rd, min(scene_len, cloud_t + 40.0)) * k;
     }
     if (time > VC_LIGHT - 2.0 && time < VC_RED) {
-        let bl = vc_bolts(C, seed, cloud_t, vc_px);
-        if (bl.x + bl.y > 0.0) {
-            let kb = k * (1.0 - 0.8 * smoothstep(VC_HU - 200.0, VC_HU + 100.0, -C.y));
-            col = col + (vec3<f32>(0.95, 0.95, 1.0) * bl.x * 5.5 + vec3<f32>(0.42, 0.38, 0.95) * bl.y * 0.7) * kb;
-        }
+        let kb = k * (1.0 - 0.8 * smoothstep(VC_HU - 200.0, VC_HU + 100.0, -C.y));
+        col = col + vc_bolts(fl, C, seed, scene_len, cloud_t, tr_here, vc_px) * kb;
     }
     // ---- the blood-red sun, as the ash thins ------------------------------------------------------------------------
     if (sky && time > VC_RED - 8.0 && sun.y > -0.03) {
