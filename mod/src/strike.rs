@@ -13,6 +13,7 @@ mod payload;
 mod sh_land;
 mod sinkhole;
 mod storm;
+mod ts_sounds;
 mod tsunami;
 mod vortex;
 
