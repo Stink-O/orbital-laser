@@ -2439,6 +2439,38 @@ mod stress {
     }
     /// Leaving the world mid-strike ends it there (nothing of it goes on into the next world), and its forceloads are
     /// let go the next time that world is played, not in another one; a strike that runs its course leaves none kept.
+    /// Single player's clock is put back by the server thread running behind, or thrown on by the client hanging: the
+    /// world is the same, and the strike goes on. A clock far off is another world; a tick with no player has left.
+    #[test]
+    fn the_server_running_behind_does_not_end_a_strike() {
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=plasma\n"));
+        let player = Player { x: 0.5, y: 100.0, z: 400.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        let mut into = |clock: Option<u64>| {
+            fake::with(|w| {
+                w.player = clock.map(|_| player.clone());
+                w.clock = clock.unwrap_or(0);
+            });
+            o.in_world();
+            let on = o.strike.is_some();
+            if !on {
+                fake::with(|w| w.player = Some(player.clone()));
+                o.fire();
+            }
+            on
+        };
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.hit = Some(Hit { block_x: 0, block_y: 64, block_z: 0, x: 0.5, y: 65.0, z: 0.5, block: "minecraft:grass_block".into() });
+        });
+        into(Some(50_000));
+        for clock in [50_100, 49_900, 49_970, 50_400, 50_401] {
+            assert!(into(Some(clock)), "ended at clock {clock}");
+        }
+        assert!(!into(Some(60_000)), "another world");
+        assert!(into(Some(60_001)));
+        assert!(!into(None), "out of the world");
+    }
+
     #[test]
     fn leaving_mid_strike_ends_it_and_lets_its_forceloads_go_later() {
         let mut o = Orbital::new(Orbital::parse("terrain=1\nlaser=nuke\n"));
@@ -2467,14 +2499,6 @@ mod stress {
         assert!(!into(&mut o, None));
         assert!(o.strike.is_none() && o.edits.is_empty() && o.carving.is_empty() && o.spare.is_empty() && o.cleanup.is_empty());
         assert!(fake::with(|w| w.stored.contains_key(FORCELOADS)));
-        // (the clock put back or thrown on by the server or the client running behind, a strike still going)
-        o.fire();
-        assert!(o.strike.is_some());
-        for clock in [4900, 4900 - 3 * SAME_PLAY, 4900 + 5 * SAME_PLAY] {
-            assert!(into(&mut o, Some(clock)));
-            assert!(o.strike.is_some(), "ended at clock {clock}");
-        }
-        o.stop_strike();
         // (another world: they stay kept)
         fake::with(|w| w.ran.clear());
         for t in 0..60 {
