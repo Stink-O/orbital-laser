@@ -597,7 +597,7 @@ fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th: f32) -> bool 
         return false;
     }
     // (broken edges: never the columns' own stairs)
-    let jit = vec2<f32>(sin(xz.y * 0.43 + xz.x * 0.11) + sin(xz.y * 1.07), sin(xz.x * 0.47 - xz.y * 0.13) + sin(xz.x * 1.13)) * 0.45;
+    let jit = vec2<f32>(sin(xz.y * 0.43 + xz.x * 0.11), sin(xz.x * 0.47 - xz.y * 0.13)) * 0.8;
     let gc = vec2<u32>(clamp((xz + VM_HALF) / VM_STEP + 0.5 + jit, vec2<f32>(0.0), vec2<f32>(240.0)));
     if ((mod_data[VM_W2 + gc.y * VM_GW + gc.x] & 255u) != i) {
         return false;
@@ -671,7 +671,9 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         // (looks down the ray through the slab for this plate's own columns, between their land's top and its thickness
         // under that: it carries the land as it stood, crags and all; its edges are the cracks')
         // (the half-size stage only has to find it, near enough)
-        let looks = 2 + i32(min((tb - ta) / max(2.5 * vs.fine, ta * vs.px), select(44.0, 60.0, vs.fine < 1.5)));
+        // (`vs` is not yet set when fs_join's first look comes here)
+        let fine = max(vs.fine, 1.0);
+        let looks = 2 + i32(min((tb - ta) / max(2.5 * fine, ta * frame.view_params.w / frame.resolution.y), select(44.0, 60.0, fine < 1.5)));
         let dtl = (tb - ta) / f32(looks);
         for (var k = 0; k < looks; k = k + 1) {
             let t = ta + dtl * (f32(k) + 0.1);
@@ -680,6 +682,13 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
             }
             var a0 = t - dtl;
             var b0 = t;
+            // (the half-size stage only needs to know which, and about how far)
+            if (fine > 1.5) {
+                best = t;
+                r.t = t;
+                r.i = i;
+                break;
+            }
             for (var q = 0; q < 4; q = q + 1) {
                 let m = 0.5 * (a0 + b0);
                 if (vm_in_plate(lo + ld * m, cxz, rest.y, i, th)) {
