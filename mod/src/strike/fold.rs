@@ -35,9 +35,9 @@ pub const FD_WARP_START: f32 = 5.5;
 pub const FD_WARP_END: f32 = 56.7;
 /// The strike's beats (see the top of this file).
 pub(super) const FD_STOP: f32 = 3.4;
-pub(super) const FD_HANG: f32 = 4.9;
+pub(super) const FD_HANG: f32 = 4.5;
 pub(super) const FD_TOUCH: f32 = 6.0;
-pub(super) const FD_MELD: f32 = 6.3;
+pub(super) const FD_MELD: f32 = 6.2;
 pub(super) const FD_RIPPLE: f32 = 6.6;
 pub(super) const FD_SCORE: f32 = 12.0;
 pub(super) const FD_TEAR: f32 = 16.0;
@@ -149,7 +149,10 @@ mod tests {
         assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
         // (the land's height as it meets the drop: the warp moves the land, the pass draws the metal and the glow on it)
         assert!(warp.contains("const FW_MEET: f32 = -0.08;") && pass.contains("const FD_MEET: f32 = -0.08;"));
-        for name in ["sink", "wide", "land", "side"] {
+        // (its fall)
+        assert!(warp.contains(&format!("const FW_DROP: f32 = {:.1};", FD_TOUCH - FD_HANG)) && pass.contains(&format!("const FD_DROP: f32 = {:.1};", FD_TOUCH - FD_HANG)));
+        // (the land the drop falls on, the drop's fall; where the branch's tip ends, which is where the pass's light is)
+        for name in ["sink", "wide", "land", "side", "high", "over", "seat", "turned"] {
             let body = |src: &str, p: &str| {
                 let from = src.find(&format!("fn {p}_{name}(")).unwrap_or_else(|| panic!("{p}_{name}"));
                 let to = from + src[from..].find("\n}\n").expect("its end");

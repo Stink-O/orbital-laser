@@ -8,9 +8,9 @@
 // its stars where the land has left, the point, the one flash, and the dust of the slams.
 // strike/fold.rs plans the sounds and the land: keep the FD_* in step with its and fold_warp.wgsl's.
 const FD_STOP: f32 = 3.4;          // the droplet stops dead
-const FD_HANG: f32 = 4.9;          // it has hung still; it is let go
+const FD_HANG: f32 = 4.5;          // it has hung still; it is let go
 const FD_TOUCH: f32 = 6.0;         // it touches the land
-const FD_MELD: f32 = 6.3;          // the land has closed over its tip: it has gone in
+const FD_MELD: f32 = 6.2;          // the land has closed over its tip: it has gone in
 const FD_FOLD: f32 = 19.0;
 const FD_SEAL: f32 = 35.0;
 const FD_CRUSH: f32 = 35.0;
@@ -75,16 +75,24 @@ fn fd_erf(x: f32) -> f32 {
     let y = clamp(x, -4.0, 4.0);
     return tanh(1.1284 * y + 0.1009 * y * y * y);
 }
-// How fast it is falling as it touches the land, blocks a second: 35.6 for R 8.5. Its gravity is 2 * H / 1.1^2 (32.4 for R 8.5,
-// the game's own), H = 1.6 * R + 6 how far it falls, so the 1.1 s fall ends on FD_TOUCH at every size.
-fn fd_vc(R: f32) -> f32 { return 2.0 * (1.6 * R + 6.0) / (FD_TOUCH - FD_HANG); }
+// How high its foot hangs over the target, and how high it is `a` from the touch: from rest, under gravity, straight on through
+// the land, the FD_DROP s fall ending on FD_TOUCH at every size. It stops 70 blocks up at R 8.5, and goes into the land at
+// fd_vc: 82 blocks a second at R 8.5, its gravity 54.7. fold_warp.wgsl's fw_high and fw_over the same.
+const FD_DROP: f32 = 1.5;          // FD_TOUCH - FD_HANG
+fn fd_high(R: f32) -> f32 {
+    return 5.0 * R + 19.0;
+}
+fn fd_over(a: f32, R: f32) -> f32 {
+    let u = (a + FD_DROP) / FD_DROP;
+    return fd_high(R) * (1.0 - u * u);
+}
+fn fd_vc(R: f32) -> f32 { return 2.0 * fd_high(R) / FD_DROP; }
 // From FD_TOUCH: height of its centre over the target, and the ripple on its side (d.rip, d.ph). Nothing changes for it at
 // the land: the same speed, the same gravity, straight through, like a stone into water. The land's depth hides it.
 fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let a = t - FD_TOUCH;
-    let u = (t - FD_HANG) / (FD_TOUCH - FD_HANG);
     // (waves run up it from the neck, as they do up a drop going into water, and are gone before it is)
-    return vec3<f32>(R + (1.6 * R + 6.0) * (1.0 - u * u), 0.05 * (1.0 - exp(-a * 18.0)) * exp(-a * 3.2), a * 30.0);
+    return vec3<f32>(R + fd_over(a, R), 0.05 * (1.0 - exp(-a * 18.0)) * exp(-a * 3.2), a * 30.0);
 }
 const FD_FOOT: f32 = 0.25;
 const FD_MEET: f32 = -0.08;        // when it and the land's finger meet, seconds from FD_TOUCH: fold_warp.wgsl's FW_MEET
@@ -102,7 +110,7 @@ fn fd_wide(a: f32, R: f32) -> f32 {
 fn fd_land(a: f32, R: f32) -> f32 {
     let full = 1.35 * R;
     // (how high the drop's foot is as they meet)
-    let meet = 0.1402 * (1.6 * R + 6.0);
+    let meet = fd_over(FD_MEET, R);
     if (a < FD_MEET) {
         let u = clamp((a + 0.5) / (FD_MEET + 0.5), 0.0, 1.0);
         let u3 = u * u * u;
@@ -114,7 +122,7 @@ fn fd_land(a: f32, R: f32) -> f32 {
 }
 // (`h`: the drop's centre over the target)
 fn fd_foot(a: f32, h: f32, R: f32) -> vec2<f32> {
-    if (a < FD_MEET || a > 0.65) {
+    if (a < FD_MEET || a > 0.4) {
         return vec2<f32>(0.0, 1.0);
     }
     // (the drop's width at the top of the land's skirt, which is where the neck is)
@@ -122,13 +130,13 @@ fn fd_foot(a: f32, h: f32, R: f32) -> vec2<f32> {
     let y = clamp((land - h) / R, -1.0, FD_TIP);
     let rho = R * sqrt(max(fd_prof(y).x, 0.0));
     // (its height from FD_FOOT under the target, so its edge goes into the land rather than lying on it; drawn down at the end)
-    let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - (land + 0.4 * R) * fd_ss(0.2, 0.42, a);
+    let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - (land + 0.4 * R) * fd_ss(0.12, 0.26, a);
     return vec2<f32>(max(top, 0.0), rho + 0.12 * R);
 }
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     let R = clamp(dist * 0.05, 5.0, 15.0);
-    let stop_h = R * 2.6 + 6.0;
+    let stop_h = R + fd_high(R);
     var h = stop_h;
     var sx = 1.0;
     var sy = 1.0;
@@ -141,9 +149,10 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         h = stop_h + fd_fall(FD_STOP - t);
     } else if (t < FD_TOUCH) {
         // (its centre stops, its surface doesn't: from no change at all in the first frame, one heavy settle and a smaller one
-        // back, 2.2 Hz, its volume kept, gone in half a second; a little ripple up it to the tip, and the tip left swaying a little)
+        // back, 2.2 Hz, its volume kept, all gone in half a second; a little ripple up it to the tip, and the tip left swaying a
+        // little; then perfectly still, a good half second before it is let go)
         let a = t - FD_STOP;
-        let e = exp(-a * 5.5);
+        let e = exp(-a * 5.5) * (1.0 - fd_ss(0.25, 0.5, a));
         sy = 1.0 - 0.055 * e * sin(a * 14.0);
         sx = 1.0 / sqrt(sy);
         rip = 0.015 * e * (1.0 - exp(-a * 30.0));
@@ -151,8 +160,7 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         sway = side * 0.035 * e * sin(a * 10.0);
         if (t > FD_HANG) {
             // (let go: from rest where it stopped, under gravity, reaching the land on FD_TOUCH whatever its size: fd_vc)
-            let u = (t - FD_HANG) / (FD_TOUCH - FD_HANG);
-            h = mix(stop_h, R, u * u);
+            h = R + fd_over(t - FD_TOUCH, R);
             foot = fd_foot(t - FD_TOUCH, h, R);
         }
     } else {
@@ -489,16 +497,16 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
     }
     return colIn * T + E;
 }
-// The dust: the air that came down with it hits the land and spreads, a low rolling ring out from under it, lumps of the
-// land's own colour rising off its front and a thin haze left behind. Marched, up to `s_end`.
+// The dust: the air that came down with it hits the land and goes by, a faint breath of it close round the target, low, and gone
+// in a second or so: enough to see the air arrive, the land clear through it. Marched, up to `s_end`.
 fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, land: vec4<f32>, li: FdLight, jit: f32) -> vec3<f32> {
-    if (a <= 0.0 || a > 3.0) {
+    if (a <= 0.0 || a > 1.6) {
         return colIn;
     }
-    let rf = 8.0 + 88.0 * (1.0 - exp(-a / 0.68));
-    let w = 7.0 + 7.0 * a;
-    let top = 8.0 + 6.0 * (1.0 - exp(-a / 0.45)) + 0.8 * a;
-    let fade = (1.0 - fd_ss(0.8, 3.0, a)) * fd_ss(0.0, 0.05, a);
+    let rf = 6.0 + 44.0 * (1.0 - exp(-a / 0.55));
+    let w = 5.0 + 4.0 * a;
+    let top = 4.0 + 3.0 * (1.0 - exp(-a / 0.45)) + 0.4 * a;
+    let fade = (1.0 - fd_ss(0.3, 1.6, a)) * fd_ss(0.0, 0.08, a);
     let ylo = min(G.y + land.y, G.y) - 2.0;
     let yhi = max(G.y + land.y, G.y) + top * 2.0;
     // (the ray in the slab of air it fills, and in the disc out to the front)
@@ -549,12 +557,12 @@ fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, lan
         let n = fbm3(vec3<f32>(p.x, p.y * 1.5 - a * 9.0, p.z) * 0.075 - vec3<f32>(p.x, 0.0, p.z) / max(r, 1.0) * (rf * 0.075));
         let ht = top * (0.5 + 1.0 * n);
         let roll = exp(-x * x * 1.2) * exp(-pow(max(y, 0.0) / ht, 2.0));
-        let haze = 0.05 * fd_ss(0.2, -1.2, x) * exp(-max(y, 0.0) / (top * 0.5));
+        let haze = 0.025 * fd_ss(0.2, -1.2, x) * exp(-max(y, 0.0) / (top * 0.5));
         let dens = max(fd_ss(0.36, 0.62, n + 0.2 * exp(-x * x)) * roll, haze) * fade;
         if (dens < 0.003) {
             continue;
         }
-        let dt = dens * ds * 0.09;
+        let dt = dens * ds * 0.035;
         let lit = 0.55 + 0.45 * saturate(y / ht) + 0.35 * saturate(dot(normalize(vec3<f32>(p.x / max(r, 1.0), 0.6, p.z / max(r, 1.0))), li.L));
         C = C + alb * (li.sunc * lit * 0.75 + li.amb * 0.9) * T * (1.0 - exp(-dt));
         T = T * exp(-dt);
@@ -734,21 +742,39 @@ fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
     return colIn * seen + light;
 }
 
-// The fold's clock and how the sphere goes with the player: fold_warp.wgsl's fw_tau and fw_stay at their full, while it is shut.
+// The fold's clock: fold_warp.wgsl's fw_tau.
 fn fd_tau(t: f32) -> f32 {
     if (t < FD_BEAT) { return t; }
     if (t < FD_REL) { return FD_BEAT; }
     let u = clamp((t - FD_REL) / (FD_SLAM0 - FD_REL), 0.0, 1.0);
     return FD_BEAT - (FD_BEAT - 20.0) * u * u * (3.11 + u * (-5.05 + u * 2.94));
 }
-fn fd_stay(from_: vec3<f32>, S: f32, mh: f32) -> vec3<f32> {
-    let L = 0.55 * S;
-    let down = 30.0;
-    let v = vec3<f32>(from_.x, from_.y * select(1.0, L / down, from_.y < 0.0), from_.z);
-    let n = length(v);
-    if (n < 0.001) { return vec3<f32>(0.0); }
-    let q = v * (L * tanh(n / L) / n);
-    return from_ - vec3<f32>(q.x, q.y * select(1.0, down / L, from_.y < 0.0), q.z);
+// Where the branch's tip ends: fold_warp.wgsl's fw_seat and fw_turned with the sphere shut, the same (`the_warp_keeps_the_beats`).
+fn fd_radius(d: f32, y: f32) -> f32 {
+    return max(max(d * 1.3, 170.0), y * 1.15);
+}
+fn fd_rim(d: f32) -> f32 {
+    return max(620.0, d + 480.0);
+}
+const FD_PI: f32 = 3.14159265;
+const FD_HOLE: f32 = 0.6;
+fn fd_seat(d: f32, mh: f32) -> vec3<f32> {
+    let S = fd_radius(d, mh);
+    let rim = fd_rim(d);
+    let x = d / (2.0 * S);
+    let th = FD_PI - FD_HOLE;
+    let lim = 2.0 * atan(rim / (2.0 * S));
+    let f = min(2.0 * atan(x) + (th - lim) * fd_ss(0.45 * rim, rim, d), th);
+    let lip = 34.0 * pow(fd_ss(rim * 0.8, rim, d), 2.0);
+    let yy = mh / (1.0 + x * x) - lip;
+    let s = sin(f);
+    let c = cos(f);
+    return vec3<f32>((S - yy) * s, S * (1.0 - c) + yy * c, f);
+}
+fn fd_turned(du: f32, dy: f32, at: vec3<f32>, d: f32, mh: f32) -> vec2<f32> {
+    let c = cos(at.z);
+    let s = sin(at.z);
+    return vec2<f32>(d + du * c + dy * s, -du * s + dy * c + mh);
 }
 
 @fragment
@@ -768,18 +794,13 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let v = normalize(off);
     let far = select(length(off), 1.0e7, sky0);
 
-    // ---- where the target has gone at the touch: on the far side of the sphere's floor (fw_place) ---------------------------
+    // ---- where the branch's tip has gone at the touch: on the far side of the sphere's floor, the frame the sphere is in going
+    // with the player. The eye never moves in that frame: it is where it stood as they fired, whatever they have done since -------
     let mh = me.y - tgt.y;
-    let tk = 1.0 / max(max(dist * 1.3, 170.0), mh * 1.15);
-    let tth = 2.0 * atan(dist * tk * 0.5);
-    // (the player's own place on the roll is what stays: the point under them, at their own height, fw_roll's)
-    let tyy = mh / (1.0 + dist * dist * tk * tk * 0.25);
-    let tup = sin(tth) * (1.0 / tk - tyy);
-    let typ = 2.0 * pow(sin(tth * 0.5), 2.0) / tk + tyy * cos(tth);
-    let tu = dist - tup * cos(tth) - typ * sin(tth);
-    let ty = mh + tup * sin(tth) - typ * cos(tth);
     let te = (me.xz - tgt.xz) / max(dist, 0.001);
-    let pt = project_rel(gq + vec3<f32>(te.x * tu, ty, te.y * tu) + fd_stay(cam + camera_rest() - me, 1.0 / tk, mh));
+    let at = fd_seat(dist, mh);
+    let tip = fd_turned(-at.x, -at.y, at, dist, mh);
+    let pt = project_rel(tgt - me + vec3<f32>(te.x * tip.x, tip.y - 1.62, te.y * tip.x));
 
     var col = fd_sample(uv);
 
@@ -825,10 +846,10 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         col = fd_glow(col, t, v, gq, off - gq, lit, far, d);
     }
 
-    // ---- the touch: a tiny light at the point, there for the stillness, gone as it runs back --------------------------------
+    // ---- the touch: a tiny light at the point the moment the tip reaches it, there for the stillness, gone as it runs back -----
     let dd = length((uv - pt.xy) * vec2<f32>(aspect, 1.0));
-    if (t > FD_BEAT - 0.05 && t < FD_REL + 0.25 && pt.z > 0.0) {
-        let on = fd_ss(FD_BEAT - 0.05, FD_BEAT, t) * (1.0 - fd_ss(FD_REL - 0.02, FD_REL + 0.25, t));
+    if (t >= FD_BEAT && t < FD_REL + 0.25 && pt.z > 0.0) {
+        let on = fd_ss(FD_BEAT, FD_BEAT + 0.04, t) * (1.0 - fd_ss(FD_REL - 0.02, FD_REL + 0.25, t));
         let g = 0.0022;
         col = col + vec3<f32>(1.0, 0.97, 0.92) * (exp(-dd / g) * 2.6 + exp(-dd / (g * 6.0)) * 0.3) * on;
     }
