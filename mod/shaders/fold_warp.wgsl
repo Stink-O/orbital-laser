@@ -31,7 +31,7 @@ const FW_ISLE: f32 = 26.0;         // the player's island's radius
 const FW_LAND_R: f32 = 300.0;      // from FD_LAND on the crater is in the land within this: nothing is cut under it
 
 // ---- what can be taken out: 0 turns each off -----------------------------------------------------------------------
-const FW_IRID: f32 = 1.0;          // the iridescence's strength: 1 is about 30 degrees of hue at its peak
+const FW_IRID: f32 = 1.0;          // the iridescence's strength: 1 is about 36 degrees of hue and a quarter more saturation at its peak
 const FW_FRACTAL: f32 = 1.0;       // block faces showing smaller copies of themselves
 const FW_SPONGE: f32 = 1.0;        // blocks carved into sponges
 const FW_CARDS: f32 = 1.0;         // the land's copies dealt along the creases
@@ -372,8 +372,8 @@ fn fw_iridesce(col: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, w: f32) -> vec3<f32
     // (slow broad bands, bent by their own second bands, as on a film of oil; a tenth of a turn or so every few seconds)
     let q = Q.xz + vec2<f32>(sin(Q.z * 0.013 + t * 0.09), cos(Q.x * 0.011 - t * 0.07)) * 26.0;
     let bands = sin(q.x * 0.019 + q.y * 0.012 + Q.y * 0.03 + t * 0.22) + 0.6 * sin(r * 0.031 - t * 0.31);
-    let ang = 0.52 * FW_IRID * w * bands / 1.6;
-    return fw_hue(col, ang, 1.0 + 0.24 * FW_IRID * w);
+    let ang = 0.63 * FW_IRID * w * bands / 1.6;
+    return fw_hue(col, ang, 1.0 + 0.26 * FW_IRID * w);
 }
 // ---- the sponge: is a point of a unit block a hole? (a Menger sponge, three levels) --------------------------------------
 fn fw_hole(p: vec3<f32>) -> bool {
@@ -472,7 +472,7 @@ fn world_fragment(f: Fragment) -> Painted {
     let shown = gone * (1.0 - fw_ss(FW_SLAM4, FW_SLAM4 + 0.3, t));
     // (the back of the land's top faces only, by the face's real normal: plants and leaves have backs too)
     let real_n = cross(dpdx(f.home), dpdy(f.home));
-    if (FW_UNDER > 0.0 && !f.front && shown > 0.0 && abs(real_n.y) > 0.9 * length(real_n)) {
+    if (FW_UNDER > 0.0 && !f.front && shown > 0.0 && plain.a > 0.99 && abs(real_n.y) > 0.9 * length(real_n)) {
         let n = fw_hash(floor(Q.xz * 0.5) + floor(Q.y * 0.5));
         let rock = mix(vec3<f32>(0.1, 0.085, 0.08), vec3<f32>(0.24, 0.19, 0.16), n) * (0.6 + 0.4 * fw_ss(40.0, 0.0, Q.y + 30.0));
         col = mix(col, rock, 0.92 * shown);
@@ -481,7 +481,7 @@ fn world_fragment(f: Fragment) -> Painted {
     if (FW_IRID > 0.0) {
         let wave = fw_ss(0.0, 120.0, 60.0 * max(t - FW_RIPPLE, 0.0) + front - r);
         let farther = 0.35 + 0.65 * exp(-r / 520.0);
-        let on = 0.5 + 0.5 * (1.0 - fw_ss(4.0, 40.0, dnear)) * scored + 0.4 * lifting;
+        let on = 0.7 + 0.3 * (1.0 - fw_ss(4.0, 40.0, dnear)) * scored + 0.3 * lifting;
         col = fw_iridesce(col, Q, r, t, clamp(on, 0.0, 1.0) * wave * farther * fade);
     }
     // ---- the sponge: as a petal goes, blocks by the creases eaten away to the void ---------------------------------------

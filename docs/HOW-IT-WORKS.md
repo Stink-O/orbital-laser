@@ -791,24 +791,43 @@ python3 strike.py --daemon              # hold the designator (slot 9) to fire; 
 
 ## The Fold (laser 15)
 
-A strike that folds the world itself, 50 s (`strike/fold.rs`, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`,
-`tools/sounds_fold.py`). Nothing here is a picture of the world: every terrain vertex, the far terrain's tiles included, and
-every entity goes through the fork's world warp (`render.set-warp`, `shaders/fold_warp.wgsl`), a function of the vertex's place
-about the target and of the strike clock. So it is real blocks, light and depth, from every side, out to the end of the far
-terrain, and it costs the mod nothing (no reads, no data: only the crater's stages).
+Reality folded like paper, the mandala its crease pattern, the crater the scar. 56 s (`strike/fold.rs` the plan and sounds,
+`strike/fold_land.rs` the land, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`, `tools/sounds_fold.py`). There is no beam. After
+the droplet, nothing is a picture of the world: every terrain vertex, the far terrain's tiles included, and every entity goes
+through the fork's world warp (`render.set-warp`), and every terrain pixel through its `world_fragment`, which knows where the
+pixel really is however far it has been thrown, so everything is anchored to the land.
 
-The hook, 0-2 s: the ground bucks at the target and a wave comes out over the land, under the player at about 2 s whatever
-the range. The bend, 2-29 s: the wave races on past all in view, dying away; behind it the land rolls into curling rings
-towards the target, twisting, towers into corkscrews; the horizon curls up all round and over the sky, the whole far terrain on
-the inside of a tube (a world map overhead); the land near the target comes up out of it again as six islands round it. A
-bubble round the eye keeps what has moved from passing through the player. The convergence, 29-36 s: all of it drawn in to one
-globe of land at the target, spinning up, which falls in to a point; the sky goes out, a beat of near silence. The release, 37 s:
-the blast, the world flung back straight from the middle out within a second and a quarter, ringing a few seconds; a comedown to
-50 s. The pass only adds what lies over the picture: the jolts, the sky going out, the stars and the point, the flash and ring.
+- **The droplet** (0-7.2 s). A bead of liquid metal, twelve fine creases round its lower half, falls from 3,000 blocks up: a
+  star, a plasma sheath, fire, a smoke rope. At 3.4 s it stops dead in one frame, the sound cuts, the fire rushes on past it and
+  is gone in half a second. It hangs still half a second, lowers very slowly, touches at 6 s and melds into the land like mercury.
+- **Ripples** (from 6.6 s; the warp, and its cost, begin at 6.5 s). Five rings run out, each bigger than the last.
+- **Scoring** (12 s). The rings sharpen into hairline creases racing over the land, cutting through houses and trees: twelve
+  petals in five rings (FD_RINGS, 44 to 480 blocks), their edges scalloped.
+- **Tearing** (16 s). The creases split, ember-edged. The void is painted on the land's own pixels, so nothing under it shows.
+- **Folding** (19-31 s). The land is pinched up at the target and closes ring by ring, a petal's middle leading its edges, top
+  outwards: `fw_chain`, one rigid plate a ring, hinged at its edge, the last lying flat and sliding in. What has closed is a dome
+  no wider than the globe, always inside the player's distance. Radial pleats take up the circumference; the far land curls up
+  and in. The player stands on an island punched out of the sheet (26 blocks round where they fired), left where it was.
+- **The bud** (31-35 s). A globe of real land against the stars. **The crush** (35-37.5 s): wound up to a point. 1.2 s of silence.
+- **The bloom** (38.7 s) is the one flash. The rings then slam down outermost first, 39.8-43.1 s, a thud and a jolt each.
+- **The comedown.** The creases fade and the void seals; the warp ends at 53 s, the strike at 56 s.
 
-What stays is a real twelve-fold mandala crater, 64 blocks across in six terraced rings (an eye, petals, diamonds, scallops,
-rainbow spokes, a sunburst) of glazed terracotta and concrete, a mycelium rim and giant mushrooms; it goes in through
-`world.edit-blocks` as a wave from the middle out, a 16 by 16 tile per stage (heaviest 0.25 ms natively).
+Along the way, each a constant in `fold_warp.wgsl` or `fold_land.rs`: block faces near the creases show smaller copies of
+themselves, 2 by 2 to 8 by 8 (`FW_FRACTAL`); blocks by the creases of a lifting petal are carved into sponges (`FW_SPONGE`); cards of
+the land are dealt along the creases (`FW_CARDS`, the warp's `copies`); hundreds of real blocks peel off the creases and fall
+upward (`FD_PEEL`); hue drifts slowly over the land like oil on water, up to about 36 degrees, strongest on the creases and the
+petals (`FW_IRID`, its strength); mobs and items ride the land through the warp.
 
-**Photosensitivity:** the Fold bends the whole world round the player for half a minute and has one bright flash, at the
-release. It is a strongly distorting effect: skip it if you are sensitive to those.
+The land is a thin sheet, or it would look like the fold's caves: what lies under it is cut at the pixel (faces with next to no
+sky light, and anything under the land's cut), and doesn't swing out on a lever (its height from the land is pressed in). The
+sheet's underside is painted as rock.
+
+What stays is a scar, some 340 blocks across and up to 100 deep (`strike/fold_land.rs`): the twelve-fold terraced mandala in
+glazed terracotta and concrete, smashed: tilted, dropped and burnt plates, cracks, fissures and arcs along the creases past a
+ragged heaped rim, a shaft to bedrock, blackened land out to about 250, felled trees, ejecta rays, rubble, thrown blocks at each
+slam, fires. It reads every column to its real top and goes in as one wave from the middle out while the world is a globe and a point
+(31.5-43 s), where it can't be seen, with the block edits' pacing relaxed (`FD_HIDDEN`); the island's columns wait for the
+last slam.
+
+**Photosensitivity:** the Fold bends the whole world round the player for half a minute and turns it to a dark starfield, with
+one bright flash, at the bloom, and fast jolts as the rings land. It is a strongly distorting effect: skip it if you are sensitive to those.

@@ -53,7 +53,7 @@ const FD_HEAP_JOBS: u32 = 5;
 const FD_THROWN: [usize; 4] = [46, 64, 84, 60];
 /// The blocks that peel off the land along the creases and fall upward into the fold, a batch as each stage of it opens
 /// (`fd_peel`); all 0 takes them out. They are real falling blocks with no gravity, gone at the crush.
-const FD_PEEL: [usize; 4] = [50, 70, 80, 60];
+const FD_PEEL: [usize; 4] = [100, 140, 160, 120];
 /// How wide round the player the land is left alone until the last slam: they stand on it through the fold (FW_ISLE + 4).
 const FD_ISLE: f64 = 30.0;
 const FD_EMBERS: usize = 1500;
@@ -1239,7 +1239,9 @@ fn fd_peel(q: &mut Plan, land: &Land, s: &Shape, k: usize) {
         let (vx, vz) = (-a.cos() * h, -a.sin() * h);
         let y = f64::from(c.top) + 1.2;
         let t = PEEL_AT[k] + 3.5 * rng.next() as f32;
-        q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:1,DropItem:0b,CancelDrop:1b,NoGravity:1b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
+        // (a falling block gives up at 600 ticks, and `kill` doesn't reach them: each is old enough to go at the crush's end)
+        let age = 600 - ((FD_BEAT - t) * 20.0) as i32;
+        q.ev.push((t, Act::Cmd(format!("summon minecraft:falling_block {x:.2} {y:.2} {z:.2} {{BlockState:{{Name:\"{blk}\"}},Time:{age},DropItem:0b,CancelDrop:1b,NoGravity:1b,Motion:[{vx:.3}d,{vy:.3}d,{vz:.3}d]}}"))));
         n += 1;
     }
 }
@@ -1614,10 +1616,6 @@ pub(super) fn land_plan(p: &mut Plan, seed: u32, dimension: &str, me: [f64; 3]) 
     for t in [FD_RELEASE, FD_SLAM[2], FD_SLAM[4] + 2.0] {
         p.at(t, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FD_KILL}]", by + 1));
     }
-    // (what peeled off went in with the land: gone as it is crushed)
-    if FD_PEEL.iter().sum::<usize>() > 0 {
-        p.at(FD_BEAT, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=minecraft:falling_block,distance=..{}]", by + 1, FD_KILL + 200));
-    }
     for i in 0..FD_SMOKE as u32 {
         let (a, r) = (mh(i, seed, 0xe5) * TAU, FD_R * 1.15 * mh(i, seed, 0xe6).sqrt());
         let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
@@ -1641,14 +1639,13 @@ mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
     /// Blocks peel off along the creases and fall upward as the land opens: no gravity, all before the crush, and they are
-    /// cleared as it is crushed.
+    /// old enough to be gone as it is crushed.
     #[test]
     fn blocks_peel_off_along_the_creases() {
         let p = played(1);
         let peel: Vec<&(f32, String)> = p.cmds.iter().filter(|(_, c)| c.contains("NoGravity:1b")).collect();
         assert!(peel.len() > 150, "{} blocks peeled", peel.len());
         assert!(peel.iter().all(|(t, _)| *t >= FD_TEAR && *t < FD_SEAL), "peeled out of its time");
-        assert!(p.cmds.iter().any(|(t, c)| *t == FD_BEAT && c.contains("kill @e[type=minecraft:falling_block")));
     }
 
     fn the_laser() -> &'static crate::lasers::Laser {
@@ -2029,7 +2026,7 @@ mod tests {
         }
         assert!(thrown.iter().all(|t| *t >= FD_SLAM[1] - 0.1 && *t <= FD_SLAM[4] + 1.0));
         let kills: Vec<&(f32, String)> = p.cmds.iter().filter(|c| c.1.contains("kill @e")).collect();
-        assert!(!kills.is_empty() && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block") || c.0 == FD_BEAT));
+        assert!(!kills.is_empty() && kills[0].0 >= FD_RELEASE - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
     }
 
     // ---- the fuel -------------------------------------------------------------------------------------------------------

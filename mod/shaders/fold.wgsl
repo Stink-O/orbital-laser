@@ -57,7 +57,7 @@ fn fd_slam(i: i32) -> f32 {
 // ---- the droplet: a bead of liquid metal with twelve fine creases round its lower half, the mandala in small --------------
 struct FdDrop { R: f32, stop_h: f32, h: f32, sx: f32, sy: f32, tail: f32 }
 fn fd_drop(t: f32, dist: f32) -> FdDrop {
-    let R = clamp(dist * 0.03, 3.5, 10.0);
+    let R = clamp(dist * 0.05, 5.0, 15.0);
     let stop_h = R * 1.3 + 7.0;
     var h = stop_h;
     var sx = 1.0;
@@ -162,6 +162,11 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, C: vec3<f32>, d: FdDrop, f
         let stopped = select(0.0, exp(-(t - FD_STOP) * 5.0), t >= FD_STOP);
         col = col + vec3<f32>(1.0, 0.96, 0.9) * star * (small * tw * fall + stopped * 0.8);
     }
+    // ---- a steady soft halo round it while it hangs, so it can be found on a small screen, and no flicker in it ------------
+    if (q.z > 0.0 && t >= FD_STOP && t < FD_TOUCH + 0.6) {
+        let dh = length((uv - q.xy) * vec2<f32>(aspect, 1.0));
+        col = col + vec3<f32>(0.9, 0.95, 1.05) * exp(-dh / 0.016) * 0.28 * (1.0 - fd_ss(FD_TOUCH - 0.2, FD_TOUCH + 0.6, t));
+    }
     // ---- the metal --------------------------------------------------------------------------------------------------------
     if (miss < d.R * 2.6 * max(d.sx, 1.0) && cd > 0.0) {
         var s = max(cd - d.R * 2.8 * max(d.sx, 1.0), 0.05);
@@ -237,6 +242,13 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     // ---- the droplet -------------------------------------------------------------------------------------------------------
     if (t < FD_MELD + 2.8) {
         let d = fd_drop(t, dist);
+        // (its shadow on the land, closing up as it comes down)
+        if (!sky0 && t >= FD_STOP && t < FD_MELD) {
+            let P = off - gq;
+            let sr = d.R * (1.6 + 0.06 * d.h);
+            let shadow = exp(-dot(P.xz, P.xz) / (sr * sr)) * 0.62 * exp(-abs(P.y) / 12.0) * (1.0 - fd_ss(FD_TOUCH + 0.3, FD_MELD, t));
+            col = col * (1.0 - shadow);
+        }
         let C = gq + vec3<f32>(0.0, d.h, 0.0);
         col = fd_droplet(col, t, v, C, d, far, uv, aspect);
     }
