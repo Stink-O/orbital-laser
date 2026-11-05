@@ -24,7 +24,7 @@
 //!   FD_THROWN        the falling blocks thrown as each ring lands (`fd_thrown`)
 //!   FD_EMBERS        the fires left burning (`fd_embers`)
 //!   FD_SMOKE         the smoke rising after it
-use super::fold::{FD_BEAT, FD_FOLD, FD_HIDDEN, FD_LEN, FD_RELEASE, FD_REVEAL, FD_RINGS, FD_SEAL, FD_SLAM, FD_TEAR};
+use super::fold::{FD_BEAT, FD_FOLD, FD_HIDDEN, FD_LEN, FD_RELEASE, FD_REVEAL, FD_RINGS, FD_SEAL, FD_TEAR};
 use super::rod::{Column, Due, LEAF_NAMES, LEAVES, LOG_X, LOG_Y, LOG_Z, Land, Sector, Used, ring_columns, take_in_grid};
 use super::{Act, Blocks, Col, Plan, Rng, TIDY_BORDER, bedrock_top, mh, tidy, vnoise};
 use std::cell::RefCell;
@@ -1625,7 +1625,8 @@ pub(super) fn land_plan(p: &mut Plan, seed: u32, dimension: &str, me: [f64; 3]) 
     }
     // (the ground goes from under them with the slam, up to a crater's depth: the fall takes nothing from them)
     p.at(FD_ISLE_AT - 0.1, format!("execute positioned {cx:.1} {} {cz:.1} run effect give @a[distance=..{FD_KILL}] minecraft:resistance 8 4 true", by + 1));
-    for t in [FD_RELEASE, FD_SLAM[2], FD_REVEAL + 2.0] {
+    // (as the hold starts too: what stands on the land would fall into a crater that can't be seen yet)
+    for t in [FD_HIDDEN.start, FD_RELEASE, FD_REVEAL, FD_REVEAL + 2.0] {
         p.at(t, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FD_KILL}]", by + 1));
     }
     for i in 0..FD_SMOKE as u32 {
@@ -2041,7 +2042,7 @@ mod tests {
         // (thrown out of the crater by the slam that made it)
         assert!(thrown.iter().all(|t| *t >= FD_REVEAL && *t <= FD_REVEAL + 1.2), "{thrown:?}");
         let kills: Vec<&(f32, String)> = p.cmds.iter().filter(|c| c.1.contains("kill @e")).collect();
-        assert!(!kills.is_empty() && kills[0].0 >= FD_RELEASE - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
+        assert!(!kills.is_empty() && kills[0].0 >= FD_HIDDEN.start - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
     }
 
     // ---- the fuel -------------------------------------------------------------------------------------------------------
