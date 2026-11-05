@@ -13,7 +13,7 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
   wobble    3.49 s: the droplet's wobble heard close, tiny and wet: small bubbles and a heavy skin, 3.5 Hz, dying by 4.4.
   air       ~3.9 s (late by the distance, 0.5 s at 170 blocks): the air that kept going: a soft whump, a rush going past
             and off, then dust hissing over the ground, thinning to nothing by ~6.9 s.
-  meld      6 s: a soft low contact, a closed hum, heavy liquid sinking.
+  meld      6 s: a weighty soft contact, a closed hum, heavy liquid slumping in to about 7.5.
   ripple    6.3 s: the land moving like water: low heaves, each bigger, slow water and wet soil over them.
   score     12 s: the creases: ice. Lone cracks, stones skipping away, cracks racing, ever thicker, and from 16 s the tears.
   unravel   19 s: long falling glissandi off a thick sheet, tearing, ring after ring letting go.
@@ -617,16 +617,16 @@ def meld():
     f = 40.0 + 22.0 * np.exp(-u / 0.05)
     ph = 2 * np.pi * np.cumsum(f * (t >= t0)) / SR
     hum = (np.sin(ph) + 0.4 * np.sin(2 * ph + 0.8) + 0.16 * np.sin(3 * ph + 1.9)) * (1 - np.exp(-u / 0.02)) * np.exp(-u / 0.6) * (t >= t0)
-    press = bn(n, 90, 380) * np.exp(-u / 0.03) * (1 - np.exp(-u / 0.004)) * (t >= t0) * 1.2     # (soft: nothing sharp in it)
+    press = bn(n, 70, 340) * np.exp(-u / 0.09) * (1 - np.exp(-u / 0.006)) * (t >= t0) * 1.5     # (weight, braking over 0.25 s: nothing sharp)
     L = hum + press
     R = L.copy()
-    # (heavy liquid going down into the land: a few fat slow bubbles, a few small)
-    for at, f0, a in ((0.1, 92, 0.42), (0.34, 74, 0.5), (0.72, 118, 0.3), (1.05, 66, 0.4), (1.5, 84, 0.2)):
+    # (it slumps in like two lava-lamp blobs joining, to about 7.5: fat slow bubbles, a few small)
+    for at, f0, a in ((0.28, 92, 0.42), (0.62, 74, 0.5), (0.95, 118, 0.3), (1.25, 66, 0.42), (1.5, 58, 0.36)):
         y = bubble(f0, a, rng().uniform(-0.2, -0.05), 0.03)                        # (sinking: the pitch falls, not rises)
         l, r = pan(y, rng().uniform(-0.25, 0.25))
         P.put(L, l, at)
         P.put(R, r, at)
-    bubbles(L, R, 0.2, 1.7, lambda s: 9.0 * np.exp(-s / 0.7), 200, 620, 0.05, 0.45)
+    bubbles(L, R, 0.3, 1.7, lambda s: 8.0 * np.exp(-s / 0.9), 200, 620, 0.05, 0.45)
     L, R = low_mono(*verb(L, R, 0.18, length=1.6, darken=(900, 200), decay=0.7), 170.0)
     out("meld", L, R, -22.0, tail=0.3)
 
