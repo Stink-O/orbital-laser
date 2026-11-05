@@ -494,9 +494,21 @@ fn ash_block(x: i32, y: i32, z: i32, seed: u32, dark: f64) -> &'static str {
     if d > 0.8 {
         if h < 0.6 { "minecraft:mud" } else { "minecraft:gray_concrete_powder" }
     } else if d > 0.58 {
-        if h < 0.4 { "minecraft:gray_concrete_powder" } else { "minecraft:tuff" }
+        if h < 0.4 {
+            "minecraft:gray_concrete_powder"
+        } else if h < 0.7 {
+            "minecraft:cyan_terracotta"
+        } else {
+            "minecraft:tuff"
+        }
     } else if d > 0.3 {
-        if h < 0.7 { "minecraft:tuff" } else { "minecraft:dead_brain_coral_block" }
+        if h < 0.4 {
+            "minecraft:dead_brain_coral_block"
+        } else if h < 0.72 {
+            "minecraft:tuff"
+        } else {
+            "minecraft:cyan_terracotta"
+        }
     } else if h < 0.42 {
         "minecraft:dead_brain_coral_block"
     } else if h < 0.72 {
@@ -674,10 +686,10 @@ impl Ctx<'_> {
         let side = -rx * nz + rz * nx;
         // the crown: where the ring burst hardest, slabs thrust up on end, wedges of rock; little between
         let gate = self.g.at(&self.g.crown, x, z);
-        if q < 0.4 && h(0x52) < 0.9 * gate {
-            let tall = 6.0 + 30.0 * h(0x53).powi(2) * gate;
-            up += tall * (gap / 5.0).clamp(0.0, 1.0);
-            dip = 0.4 + 1.1 * h(0x57);
+        if q < 0.4 && h(0x52) < 0.6 * gate {
+            let tall = 5.0 + 34.0 * h(0x53).powi(3) * gate;
+            up += tall * (gap / 3.0).clamp(0.0, 1.0);
+            dip = 0.5 + 1.2 * h(0x57);
         }
         up += -dip * along + (h(0x55) - 0.5) * dip * side;
         let smooth = up;
@@ -885,7 +897,7 @@ fn rock_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32, r: Rel, ground: i32) {
         b.run(x, z, ground + 1, low - 1, "minecraft:tuff");
     }
     // (ash lying on what's near flat)
-    let flat = r.top - low <= 3 && pick(x * 3 + z * 19, s.seed ^ 0xef) < 0.8;
+    let flat = r.top - low <= 2 && pick(x * 3 + z * 19, s.seed ^ 0xef) < 0.75;
     beds_edit(b, s, x, z, low, r.top - i32::from(flat), r.shift, lean);
     if flat {
         b.run(x, z, r.top, r.top, ash_block(x, r.top, z, s.seed, 0.25));
@@ -1215,6 +1227,8 @@ struct Work {
     /// What's worked out and not yet due: when, how many runs, and all of them.
     queue: std::collections::VecDeque<(f32, usize)>,
     queued: usize,
+    /// The columns never loaded have been said.
+    said: bool,
 }
 impl Work {
     fn new(s: Shape, bx: i32, bz: i32) -> Self {
@@ -1235,7 +1249,7 @@ impl Work {
         }
         chunks.sort_by(|a, b| a.0.total_cmp(&b.0));
         crate::meter::spend(800 * chunks.len() as u64);
-        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0 }
+        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false }
     }
 }
 
@@ -1372,6 +1386,13 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 wk.retry = Some((tag, now));
             }
         }
+        if now >= VC_COLLAPSE + 2.0 && !wk.said {
+            wk.said = true;
+            if !wk.missing.is_empty() {
+                #[cfg(not(test))]
+                crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("supervolcano: {} columns of the land never loaded", wk.missing.len()));
+            }
+        }
         // (which chunks past the read are loaded, once the land's near done)
         if now >= VC_FAR_ASK && wk.far_tag == 0 {
             wk.far_tag = crate::ground::new_tag();
@@ -1500,7 +1521,7 @@ mod tests {
     /// Column (x, z)'s runs on land at 64: the lowest block and the highest, and where the air over it starts.
     fn column(x: i32, z: i32) -> (i32, i32, i32) {
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, leaves: 15, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0 };
+        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, leaves: 15, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
         w.hf.borrow_mut().set(&vec![Some(0.0); crate::strike::volcano::VC_HN * crate::strike::volcano::VC_HN], 1500.0);
         let mut p = Plan { laser: &crate::lasers::SUPERVOLCANO, ev: Vec::new(), rng: Rng::new(7), bx: 0, by: 64, bz: 0 };
         vc_chunk(&mut p, &w, 50.0, x.div_euclid(16) * 16, z.div_euclid(16) * 16);
@@ -1560,7 +1581,7 @@ mod tests {
     fn a_chunk_stays_light() {
         crate::meter::reset();
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: 2, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0 };
+        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: 2, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Vec::new(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
         let mut worst = 0;
         for (x, z) in [(0, 0), (0, 268), (288, 0), (0, 350), (-420, 0), (0, 490)] {
             crate::meter::reset();

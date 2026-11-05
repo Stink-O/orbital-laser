@@ -227,15 +227,30 @@ laser, command, capability and timing). This file is the short, factual version 
   clouds from 60 s), the player engulfed (near black, embers, `vc_specks`), then a dim world under falling ash, the sheet
   thinning from 69 s to a blood-red sun, all gone by 80 (`thin`). FAST's half stage holds the cloud and the bombs' smoke.
   **Thin walls show the land through:** the ring's wall must stay thicker than the lumps cut (`vc_ww`, the gain in
-  `vc_lump_col`). Its land (terrain on only, `vc_land.rs`): a caldera about 560 across and 90 deep, scalloped, stepped in
-  slumped benches, on black crust plates with lava in the cracks (`crust`); a broken rim to 320; ignimbrite (tuff and
-  grey ash) to 440, deeper in low ground; the trees swept off and laid down pointing away to 516; mobs and items killed
-  as the wall passes, never the player; water and lava the walls cut into sealed; the ~2,500 chunks within `VC_LOAD`
-  (448) force-loaded, past that only what the world has loaded changes. It goes a chunk at a time in order of when
-  each is due (`vc_due`: past the ring with the wall, inside it from the edge in at `VC_RATE`, done by about 66 s), each
-  chunk's edits on one tick; the caldera needs no read (its runs reach past the land's height), the rest reads rings of
-  columns from `VC_READ0` to `VC_READ`, packed a word each. The meter reads about 1.5 times low on this work (`VC_TICK`
-  allows for it; `mod_soak` with `SOAK_FULL=1 SOAK_LASERS=supervolcano` plays it whole).
+  `vc_lump_col`). Its land (terrain on only, `vc_land.rs`): a caldera about 560 across and 90 deep, a lake of dark crust
+  (`lake_edit`: big plates warped irregular, broken further in places, veins of lava towards the ring's vents `Hot`,
+  dimming to magma and dark seams away from them, a few open pools, lava some 6-8% of it), seven huge blocks of the land
+  dropped whole into it (`Drop`, their beds in them); its walls (`relief`) a scarp, slumped blocks each dropped and turned
+  back on its own, rubble fans at the foot, faced in dark beds carried down with them (`beds_edit`, a bed's run at a
+  time: per-block rock here was most of its runs); the rim (`Ctx::rim`) tilted slabs on the ring's apron of ash
+  (`apron`, the land rising to the crater), a crown of wedges where it burst hardest; one deposit to about 440
+  (`out_edit`: one tone with a fine grain, wet streaks along the flows, `ring_noise`, ponded in the low ground, a skin on
+  the ridges so the land shows through, lobes down the valleys), water under it filled to a dark wet plain; past it dust
+  thinning through patches (`dust_cover`), pumice on the water, on to the odd patch by `VC_FAR` (1050) wherever the world
+  has chunks loaded (`vc_far_chunk`, no read, counted from each column's ground); the trees graded by `fate`, `stand_edit`
+  and `vc_fell`: charred trunks lying pointing away and burnt stumps to `VC_FELLED`, bare black trunks to `VC_BARE`,
+  scorched to `VC_SCORCH`, leaves browning (mangrove roots and the poplars' red and orange leaves) to `VC_GREEN`; mobs and
+  items killed as the wall passes, never the player; water and lava the walls cut into sealed; the ~4,000 chunks within
+  `VC_LOAD` (576) force-loaded: it has to be that wide or the fade stops at a straight chunk edge on the side away from
+  the player. It goes a chunk at a time in order of when each is due (`vc_due`: past the ring with the wall, inside it
+  from the edge in at `VC_RATE`, done by about 72 s), each chunk's edits on one tick; the caldera needs no read, the rest
+  reads rings of columns from `VC_READ0` to `VC_READ`, packed a word each. **Its limits:** a mod has 64 MB, and a run
+  costs some 1,000 fuel on its way to the game: `VC_QUEUE` caps the runs waiting (a queue of 600,000 took a tick to 50M
+  fuel), and a column is as few runs as it can be. The meter reads about 3 times low on this work (`VC_TICK` allows for it;
+  `mod_soak` with `SOAK_FULL=1 SOAK_LASERS=supervolcano SOAK_REPORT=8` plays it whole). `VC_VIEW_OUT=DIR [VC_VIEWS=map,air570,...]
+  [VC_LAND_SEED=N] cargo test --release vc_land_picture -- --ignored --nocapture` (strike/vc_land_view.rs) makes the real
+  edits on a synthetic land in a voxel grid and writes a top-down map and ray-traced views as PPMs, in seconds: look there
+  before the game. **The far terrain doesn't see these edits:** see `docs/HOW-IT-WORKS.md`.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-10` or newer (it adds
