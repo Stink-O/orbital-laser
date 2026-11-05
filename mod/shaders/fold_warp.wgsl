@@ -448,8 +448,8 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // ---- how far on: the sheet's own heights keep to its surface as it goes up ---------------------------------------------
     let tau = fw_tau(t);
-    // (the hole the island left, closed as the rings lie back: from inside it would be a window on the void)
-    let fill = fw_ss(FW_LAY0 - 1.0, FW_LAY0 + 2.0, tau);
+    // (the hole the island left, closed while the island still covers it: it would be a window on the void)
+    let fill = fw_ss(FW_FOLD, FW_FOLD + 2.5, tau);
     let dm = length(Q.xz - mq.xz);
     if (fill > 0.0 && dm < FW_ISLE + 60.0) {
         let to = mix(dm, (dm - FW_ISLE) * (FW_ISLE + 60.0) / 60.0, fill);
