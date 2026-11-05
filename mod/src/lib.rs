@@ -1602,7 +1602,8 @@ impl Mod for Orbital {
             if s.key == "fold" {
                 let on = (strike::FD_WARP_START..strike::FD_WARP_END).contains(&s.params[3]);
                 let p = &s.params;
-                render::warp_on(on, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]), strike::FD_COPIES, strike::FD_COPY_R);
+                let copies = if strike::FD_COPY_ON.contains(&p[3]) { strike::FD_COPIES } else { 0 };
+                render::warp_on(on, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]), copies, strike::FD_COPY_R);
             }
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())

@@ -24,8 +24,10 @@ use crate::lasers::Laser;
 pub(super) const FD_LEN: f32 = 56.0;
 /// The world warp (shaders/fold_warp.wgsl): how many times it draws the land near the target again, how far from it, and
 /// when it is on, the world's own culling back the rest of the time.
-pub const FD_COPIES: u32 = 0;
+pub const FD_COPIES: u32 = 5;
 pub const FD_COPY_R: f32 = 130.0;
+/// When the copies are drawn: the cones of the fold down, out and back.
+pub const FD_COPY_ON: std::ops::Range<f32> = 35.4..41.0;
 pub const FD_WARP_START: f32 = 6.5;
 pub const FD_WARP_END: f32 = 53.0;
 /// The strike's beats (see the top of this file).
@@ -121,6 +123,7 @@ mod tests {
         for (k, t) in FD_FOLDS.iter().enumerate() {
             assert!(warp.contains(&format!("case {k}: {{ return {t:.1}; }}")), "fold {k}");
         }
+        assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
     }
 
     fn the_laser() -> &'static Laser {
