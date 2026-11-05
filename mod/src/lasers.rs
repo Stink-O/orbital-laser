@@ -499,7 +499,34 @@ pub const HURRICANE: Laser = Laser {
     particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 14] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE];
+/// The tsunami, planned in `strike::tsunami_plan` (strike/tsunami.rs; the pass shaders/tsunami.wgsl): no beam. A wave of
+/// dark, debris-laden water 130 blocks high rises on the horizon beyond the target, crosses the land and sweeps it clean,
+/// washes over the player and drains away, leaving mud and wreckage. The crater fields below are only what the shared
+/// tests read: what it sweeps and scours is planned there.
+pub const TSUNAMI: Laser = Laser {
+    key: "tsunami",
+    index: 16,
+    title: "TSUNAMI",
+    rgb: 0x2E9FB5,
+    blurb: "A wave of dark water 130 blocks high crosses the land and sweeps it clean.",
+    icon_model: "orbital:tsunami_icon",
+    length: 42.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:mud", 1.0)],
+    bowl_floor: ("minecraft:mud", 0.0, "minecraft:dirt"),
+    bottom: &[],
+    particle_a: "particle minecraft:splash {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 15] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

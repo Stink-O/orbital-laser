@@ -19,6 +19,7 @@ mod meter;
 mod pace;
 mod sdk;
 mod strike;
+mod surge;
 mod wheel;
 
 use horizon_mod_sdk::{
@@ -65,6 +66,10 @@ fn supercell_pass(fast: bool) -> &'static str {
 fn hurricane_pass(fast: bool) -> &'static str {
     PASS_HURRICANE[usize::from(fast)]
 }
+/// The Tsunami's, the same way (tsunami.wgsl's `[half stage]`, if it has one).
+fn tsunami_pass(fast: bool) -> &'static str {
+    PASS_TSUNAMI[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -77,6 +82,8 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "rod" => 7,
         "supercell" => 8,
         "hurricane" => 9,
+        // (10 and 11: the Fold's and the Supervolcano's, in their branches)
+        "tsunami" => 12,
         _ => 0,
     }
 }
@@ -281,9 +288,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 12 the tsunami's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 10],
+    passes: [&'static str; 13],
     compiled: Option<usize>,
     warming: bool,
     /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
@@ -339,6 +346,8 @@ struct Orbital {
     carrying: Option<carry::Carry>,
     /// The game's last answer to a carry (`world.carry-player`): whether the one before held the player.
     carry_held: bool,
+    /// The Tsunami's surge carrying the player (`surge.rs`), while its strike is under way and the knockback is on.
+    surging: Option<surge::Surge>,
     /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
     /// (`/orbital carryview turn|still`; turn, the default).
     carry_turn: bool,
@@ -398,7 +407,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_OWN[0], PASS_OWN[0], tsunami_pass(fast)],
             compiled: None,
             warming: false,
             building: None,
@@ -427,6 +436,7 @@ impl Orbital {
             following: None,
             carrying: None,
             carry_held: true,
+            surging: None,
             carry_turn,
             follow_distance,
             seed_lock,
@@ -800,6 +810,7 @@ impl Orbital {
         self.rebuild("rod", rod_pass(fast));
         self.rebuild("supercell", supercell_pass(fast));
         self.rebuild("hurricane", hurricane_pass(fast));
+        self.rebuild("tsunami", tsunami_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -856,6 +867,29 @@ impl Orbital {
         if let Some([x, y, z]) = o.throw {
             world::push_player(x, y, z);
         }
+        if !o.cmds.is_empty() {
+            world::run_commands(&o.cmds);
+        }
+        // (the game's answer: whether the carry it was asked for before held them)
+        let held = match o.carry {
+            Some([x, y, z]) => world::carry_player(x, y, z, o.turn),
+            None => true,
+        };
+        self.carry_held = held;
+        for (event, volume, pitch) in o.sounds {
+            world::play_sound(&event, None, volume, pitch);
+        }
+    }
+    /// The Tsunami's surge this tick (`surge.rs`): the player carried along with the water once it has them.
+    fn surge_tick(&mut self) {
+        let Some(t) = self.strike.as_ref().map(|s| f64::from(s.ticks) * 0.05) else { return };
+        let Some(c) = &mut self.surging else { return };
+        if c.over(t) {
+            self.surging = None;
+            return;
+        }
+        let Some(p) = game::get_player() else { return };
+        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held, game::player_flying(), self.carry_turn);
         if !o.cmds.is_empty() {
             world::run_commands(&o.cmds);
         }
@@ -970,7 +1004,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -995,6 +1029,8 @@ impl Orbital {
         self.hold_forceloads(&dimension, clock, laser.length);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
+        // (the Tsunami's surge carrying the player along once the water has them, with the knockback on)
+        self.surging = (laser.key == "tsunami" && self.knock && player.is_some()).then(|| surge::Surge::new(strike::TsGeo::new(&target, me, seed)));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
         self.unfollow();
         if self.follow
@@ -1165,6 +1201,7 @@ impl Orbital {
     fn end_strike(&mut self) {
         self.unfollow();
         self.carrying = None;
+        self.surging = None;
         render::clear_post();
         self.strike = None;
         ground::clear();
@@ -1436,10 +1473,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "tsunami" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1541,6 +1578,7 @@ impl Mod for Orbital {
                         "sinkhole" => "SEISMIC SCAN",
                         "payload" | "nuke" | "rod" => "DESIGNATING",
                         "hurricane" => "TRACKING STORM",
+                        "tsunami" => "READING THE SEA",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -1551,6 +1589,7 @@ impl Mod for Orbital {
         self.tick_strike();
         self.follow_tick();
         self.carry_tick();
+        self.surge_tick();
         self.update_panel();
         self.paid();
         self.release_held();

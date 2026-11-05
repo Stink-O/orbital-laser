@@ -52,5 +52,9 @@ fn main() {
     let h: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_hurricane_{f}.wgsl"), passbuild::split_pass(&shader, &hu, f))).collect();
     writeln!(rs, "/// The Hurricane's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_HURRICANE: [&str; 2] = [{}];", h.join(", ")).unwrap();
+    let ts = read("tsunami.wgsl");
+    let t: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_tsunami_{f}.wgsl"), passbuild::split_pass(&shader, &ts, f))).collect();
+    writeln!(rs, "/// The Tsunami's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_TSUNAMI: [&str; 2] = [{}];", t.join(", ")).unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }

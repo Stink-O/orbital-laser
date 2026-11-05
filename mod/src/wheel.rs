@@ -283,7 +283,7 @@ pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {

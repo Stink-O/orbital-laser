@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13}
+INDEX = {"supercell": 12, "hurricane": 13, "tsunami": 14}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -188,13 +188,24 @@ VIEWS = {
     # looking along the debris field at the eyewall's foot from 180 out and from 110, as a player sees it
     "hufield": "cx=0 cy=68 cz=180 lx=0.5 ly=130 lz=0.5 flat=1 trees=1 hustrip=1 fov=55 reach=180",
     "hufieldnear": "cx=60 cy=70 cz=95 lx=-20 ly=110 lz=0 flat=1 trees=1 hustrip=1 fov=60 reach=110",
+    # the tsunami (the player 300 blocks south of the target, the wave coming from the north over a wood): from the
+    # player's spot looking at the horizon it rises on, at the target as it hits, up at the face towering overhead,
+    # from the side, from high above, and 120 off as it arrives
+    "tsplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=95 lz=-300 flat=1 trees=1 fov=70 reach=300",
+    "tshorizon": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=-900 flat=1 trees=1 fov=70 reach=300",
+    "tsup": "cx=0 cy=67 cz=300 lx=0.5 ly=190 lz=100 flat=1 trees=1 fov=80 reach=300",
+    "tsside": "cx=1400 cy=140 cz=-200 lx=0.5 ly=90 lz=-200 flat=1 trees=1 fov=60 reach=300",
+    "tsaerial": "cx=0 cy=500 cz=900 lx=0.5 ly=65 lz=-100 flat=1 trees=1 fov=60 reach=300",
+    "tsnear": "cx=0 cy=67 cz=300 lx=0.5 ly=95 lz=120 flat=1 trees=1 fov=80 reach=300",
+    "tsfar": "cx=0 cy=75 cz=1100 lx=0.5 ly=110 lz=-300 flat=1 trees=1 fov=60 reach=1100",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
                  "payload": "plplayer,plsky,pltop", "nuke": "nkplayer,nkfar,nkclose",
                  "rod": "rdplayer,rdmid,rdfar",
                  "supercell": "scplayer,scunder,scfar",
-                 "hurricane": "huplayer,hufar,huunder,huaerial"}
+                 "hurricane": "huplayer,hufar,huunder,huaerial",
+                 "tsunami": "tsplayer,tsside,tsaerial"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -203,7 +214,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
@@ -302,7 +313,7 @@ def main() -> int:
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
-    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     shots = []
