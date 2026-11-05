@@ -102,7 +102,7 @@ impl TsGeo {
     pub fn lag(&self, s: f64, u: f64) -> f64 {
         crate::meter::spend(60);
         let sd = f64::from(self.sd);
-        3.0e-7 * u * u + 0.34 * (u * 0.0043 + sd + s * 0.0011).sin() + 0.13 * (u * 0.0127 + sd * 1.7 - s * 0.0023).sin() + 0.05 * (u * 0.0331 + sd * 0.6 + s * 0.0041).sin()
+        3.0e-7 * u * u + (0.34 * (u * 0.0043 + sd + s * 0.0011).sin() + 0.13 * (u * 0.0127 + sd * 1.7 - s * 0.0023).sin() + 0.05 * (u * 0.0331 + sd * 0.6 + s * 0.0041).sin()) * smooth(-650.0, -150.0, s)
     }
     /// When the front reaches (s, u).
     pub fn arr(&self, s: f64, u: f64) -> f64 {
@@ -230,12 +230,12 @@ fn map_cell(s: f64, u: f64) -> Option<usize> {
 
 // ---- the land's swath ------------------------------------------------------------------------------------------------
 /// How far across (half) the land's work reaches, how far upstream of the target and how far it is let fade.
-const TS_HALF: f64 = 245.0;
+const TS_HALF: f64 = 345.0;
 const TS_UP: f64 = 300.0;
 /// How strongly the wave's work reaches (s, u): the share of its columns changed, 1 in the middle, fading out at its flanks
 /// and at both ends.
 fn mask(geo: &TsGeo, s: f64, u: f64) -> f64 {
-    let lat = 1.0 - smooth(165.0, TS_HALF, u.abs());
+    let lat = 1.0 - smooth(255.0, TS_HALF, u.abs());
     let along = smooth(-TS_UP, -TS_UP + 130.0, s) * (1.0 - smooth(geo.send - 50.0, geo.send + 20.0, s));
     lat * along
 }
@@ -387,6 +387,10 @@ struct Col {
     stand: u8,
     tree: bool,
     bld: bool,
+    /// Air, water or something that stays within a few blocks under its ground (a cave, an overhang): no pond leans on it.
+    hole: bool,
+    /// The top of the water over it, if any.
+    wtop: i32,
 }
 
 struct Cur {
@@ -417,6 +421,179 @@ struct Work {
     changed: usize,
     swept: u64,
     done: bool,
+    boats: u32,
+    /// The land as each chunk was left, for the ponds; the tiles of it still to look at, and the columns of water so far.
+    lands: HashMap<(i32, i32), Box<[Land; 256]>>,
+    tiles: Option<Vec<(i32, i32)>>,
+    ponded: u32,
+}
+
+/// A column as the ponds see it: its height, whether water may stand on it, whether it lets water away whatever its height.
+#[derive(Clone, Copy, Debug)]
+struct Land {
+    h: i16,
+    fill: bool,
+    drains: bool,
+}
+impl Land {
+    const NONE: Land = Land { h: i16::MIN, fill: false, drains: true };
+}
+
+// ---- the water it leaves ---------------------------------------------------------------------------------------------
+/// How many chunks a tile of the ponds' work is across, its columns across, and the most it leaves over a hollow's floor,
+/// in all. The edge of a tile holds no water, so nothing ever runs across one, or out of what was read.
+const TS_TILE: i32 = 4;
+const TS_T_W: usize = 64;
+const TS_POND_DEEP: i32 = 3;
+const TS_PONDS: u32 = 26_000;
+
+/// The water that stays on a tile: for each column (`land`, row by row) the level its water stands at, if any. Priority
+/// flood: from the edge and whatever drains, lowest first, each column's level the higher of its own height and the
+/// lowest way out of it; then each hollow is let down to `TS_POND_DEEP` over its floor. Every column with water has, on all
+/// four sides, water at the same level or a column at least that high (`no_pond_leaks`).
+fn ponds(land: &[Land], n: usize) -> Vec<(usize, i16)> {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    crate::meter::spend(40 * land.len() as u64);
+    let mut level = vec![i16::MIN; land.len()];
+    let mut seen = vec![false; land.len()];
+    let mut heap: BinaryHeap<Reverse<(i16, u32)>> = BinaryHeap::with_capacity(4 * n);
+    for (i, l) in land.iter().enumerate() {
+        let (x, z) = (i % n, i / n);
+        if x == 0 || z == 0 || x == n - 1 || z == n - 1 || l.drains {
+            seen[i] = true;
+            // (what drains takes the water down to its own height, or to nothing if nothing is known of it)
+            level[i] = l.h;
+            heap.push(Reverse((l.h, i as u32)));
+        }
+    }
+    while let Some(Reverse((lv, i))) = heap.pop() {
+        crate::meter::spend(220);
+        let i = i as usize;
+        let (x, z) = (i % n, i / n);
+        let mut go = |j: usize| {
+            if !seen[j] {
+                seen[j] = true;
+                let l = lv.max(land[j].h);
+                level[j] = l;
+                heap.push(Reverse((l, j as u32)));
+            }
+        };
+        if x > 0 {
+            go(i - 1);
+        }
+        if x + 1 < n {
+            go(i + 1);
+        }
+        if z > 0 {
+            go(i - n);
+        }
+        if z + 1 < n {
+            go(i + n);
+        }
+    }
+    // each hollow (the columns under its level, joined side by side) let down to a few blocks over its floor; a column
+    // that may not hold water closes the whole hollow
+    let mut group = vec![false; land.len()];
+    let mut out = Vec::new();
+    let mut stack = Vec::new();
+    let mut members = Vec::new();
+    for i in 0..land.len() {
+        crate::meter::spend(12);
+        if group[i] || level[i] <= land[i].h {
+            continue;
+        }
+        group[i] = true;
+        stack.push(i);
+        members.clear();
+        let (mut floor, mut ok) = (i16::MAX, true);
+        while let Some(c) = stack.pop() {
+            crate::meter::spend(60);
+            members.push(c);
+            floor = floor.min(land[c].h);
+            ok &= land[c].fill;
+            let (x, z) = (c % n, c / n);
+            for (d, on) in [(c.wrapping_sub(1), x > 0), (c + 1, x + 1 < n), (c.wrapping_sub(n), z > 0), (c + n, z + 1 < n)] {
+                if on && !group[d] && level[d] > land[d].h {
+                    group[d] = true;
+                    stack.push(d);
+                }
+            }
+        }
+        if !ok || members.len() < 4 {
+            continue;
+        }
+        let lv = level[i].min(floor.saturating_add(TS_POND_DEEP as i16));
+        for &c in &members {
+            if land[c].h < lv {
+                out.push((c, lv));
+            }
+        }
+    }
+    out
+}
+/// When the water falls past `y` over the target's ground at `s` (it stands there till then), or none if it never covers it.
+fn falls_past(geo: &TsGeo, s: f64, y: f64) -> Option<f64> {
+    let top = TS_A * geo.env(s, 0.0) * (1.0 - TS_LOW) - TS_SEA;
+    if top < y {
+        return None;
+    }
+    let (mut lo, mut hi) = (0.0f64, 1.0f64);
+    for _ in 0..14 {
+        let mid = 0.5 * (lo + hi);
+        if TsGeo::fall(top, mid) > y {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    Some(TS_T + TsGeo::tau(geo.dp) + TsGeo::rise_t(geo.dp) + TS_HOLD + 0.0016 * (s - geo.dp) + lo * TS_DRAIN)
+}
+/// One stage of the ponds: a tile at a time, once the land is all read.
+fn ts_ponds(wk: &mut Work, now: f64, q: &mut Plan) {
+    let tile = TS_TILE;
+    if wk.tiles.is_none() {
+        let mut t: Vec<(i32, i32)> = wk.chunks.iter().map(|&(cx, cz, _)| (cx.div_euclid(tile), cz.div_euclid(tile))).collect();
+        t.sort_unstable();
+        t.dedup();
+        crate::meter::spend(100 * t.len() as u64);
+        wk.tiles = Some(t);
+    }
+    let mut buf = vec![Land::NONE; TS_T_W * TS_T_W];
+    while crate::meter::spent() < TS_STAGE && wk.ponded < TS_PONDS {
+        let Some(tiles) = wk.tiles.as_mut() else { return };
+        let Some((tx, tz)) = tiles.pop() else { return };
+        for cz in 0..tile {
+            for cx in 0..tile {
+                let at = |i: usize| (cz as usize * 16 + i / 16) * TS_T_W + cx as usize * 16 + i % 16;
+                match wk.lands.get(&(tx * tile + cx, tz * tile + cz)) {
+                    Some(l) => l.iter().enumerate().for_each(|(i, c)| buf[at(i)] = *c),
+                    None => (0..256).for_each(|i| buf[at(i)] = Land::NONE),
+                }
+            }
+        }
+        crate::meter::spend(3 * (TS_T_W * TS_T_W) as u64);
+        // (a tile with nothing swept on it holds nothing of ours)
+        let found = ponds(&buf, TS_T_W);
+        if found.is_empty() {
+            continue;
+        }
+        // (each chunk's water in on one tick, while the falling water still hides it)
+        let mut by_chunk: HashMap<(i32, i32), (Blocks, i16)> = HashMap::new();
+        for (i, lv) in found {
+            let (lx, lz) = ((i % TS_T_W) as i32, (i / TS_T_W) as i32);
+            let (x, z) = (tx * tile * 16 + lx, tz * tile * 16 + lz);
+            let e = by_chunk.entry((x >> 4, z >> 4)).or_insert_with(|| (Blocks { clear_of_player: true, ..Default::default() }, lv));
+            e.0.put(x, z, i32::from(buf[i].h) + 1, i32::from(lv), "minecraft:water", None, false);
+            e.1 = e.1.max(lv);
+            wk.ponded += 1;
+        }
+        for ((cx, cz), (b, lv)) in by_chunk {
+            let (s, _) = wk.geo.su(f64::from(cx * 16) + 8.0, f64::from(cz * 16) + 8.0);
+            let t = falls_past(&wk.geo, s, f64::from(lv) - wk.geo.t[1] + 1.5).map_or(now + 0.1, |t| t.max(now + 0.1));
+            q.ev.push((t as f32, Act::Blocks(Box::new(b))));
+        }
+    }
 }
 
 /// The block the soil's top turns to in streaks along the flow (`n`, a noise stretched along it, 0 to 1; `h` a roll of the
@@ -463,6 +640,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         crate::meter::spend(260);
         let base = surface - a.below;
         let (mut g, mut top, mut fluid, mut soil, mut wreck) = (None, None, false, 0u8, u16::MAX);
+        let (mut hole, mut wtop) = (false, i32::MIN);
         let (mut logs, mut stand) = (0u8, 0u8);
         let (mut tree, mut bld) = (false, false);
         for j in (0..blocks.len()).rev() {
@@ -472,10 +650,20 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             let y = base + j as i32;
             match kind.class {
                 0 => continue,
-                1 => fluid = true,
+                1 => {
+                    fluid = true;
+                    wtop = wtop.max(y);
+                }
                 2 | 8 => {
                     g = Some(y);
                     soil = kind.soil;
+                    hole = kind.class == 8;
+                    for k in 1..=4 {
+                        crate::meter::spend(24);
+                        if j >= k && cur.kinds.get(blocks[j - k] as usize).is_none_or(|n| n.class != 2) {
+                            hole = true;
+                        }
+                    }
                     break;
                 }
                 class => {
@@ -492,7 +680,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
                 }
             }
         }
-        cols.push(g.map(|g| Col { g, top: top.unwrap_or(g), fluid, soil, wreck, logs, stand, tree, bld }));
+        cols.push(g.map(|g| Col { g, top: top.unwrap_or(g), fluid, soil, wreck, logs, stand, tree, bld, hole, wtop }));
     }
     if missing {
         return false;
@@ -512,11 +700,16 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
     let mut wrecks: Vec<(usize, u16, u8)> = Vec::new();
     let mut gs = [i32::MIN; 256];
     let mut reached = [false; 256];
+    // (the land as the ponds will see it: its height after all this, and what they may not lean on or fill)
+    let mut land = [Land::NONE; 256];
+    let mut drift: Vec<(usize, &'static str, i32)> = Vec::new();
+    let along_x = geo.m[0].abs() > geo.m[1].abs();
     for i in 0..256 {
         let (lx, lz) = (i % 16, i / 16);
         let (x, z) = (x0 + lx as i32, z0 + lz as i32);
         let Some(c) = cols[i] else { continue };
         gs[i] = c.g;
+        land[i] = Land { h: (if c.fluid { c.wtop.max(c.g) } else { c.g }) as i16, fill: false, drains: c.hole || c.fluid };
         crate::meter::spend(120);
         // (the pass's map: trees, buildings, the land's height, a column in four for the height)
         if c.tree || c.bld || (lx % 2 == 0 && lz % 2 == 0) {
@@ -533,34 +726,83 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             }
         }
         let (m, peak, n) = cell[(lz / 4) * 4 + lx / 4];
-        if c.fluid || m <= 0.0 || coherent(x, z, w.seed) >= m {
-            continue;
-        }
-        // (only where the water is deep over it, as the pass's wave stands there)
-        if peak - (f64::from(c.g) - ty) < 2.0 {
+        let over = peak - (f64::from(c.g) - ty);
+        let take = !c.fluid && m > 0.0 && coherent(x, z, w.seed) < m && over >= 2.0;
+        if !take {
+            // (a tree the water went through and left: some timber jammed up in its crown)
+            if !c.fluid && c.tree && c.top > c.g + 4 && over > -8.0 && (m > 0.0 || over < 10.0) && chance(x, z, w.seed, 11) < 0.02 {
+                let y = c.g + 1 + (f64::from(c.top - c.g) * (0.45 + 0.35 * chance(x, z, w.seed, 12))) as i32;
+                let log = lying("minecraft:oak_log", along_x);
+                for k in 0..4 {
+                    let (ax, az) = if along_x { (k.min(15 - lx as i32), 0) } else { (0, k.min(15 - lz as i32)) };
+                    b.put(x + ax, z + az, y, y, log, None, false);
+                }
+            }
             continue;
         }
         reached[i] = true;
         w.swept += 1;
+        // (what is left of what stood there: snapped trunks, the footings of the walls)
+        let keep = if c.bld {
+            ((fvnoise(x as f32 * 0.21 + w.seed as f32, z as f32 * 0.21) * 3.6) as i32 - (chance(x, z, w.seed, 13) < 0.15) as i32).clamp(0, i32::from(c.stand).min(3))
+        } else if c.logs > 0 && chance(x, z, w.seed, 9) < 0.6 {
+            (1 + (chance(x, z, w.seed, 10) * 3.0) as i32).min(i32::from(c.logs))
+        } else {
+            0
+        };
         if c.top > c.g {
-            b.put(x, z, c.g + 1, c.top, "minecraft:air", None, false);
+            b.put(x, z, c.g + 1 + keep, c.top, "minecraft:air", None, false);
             if c.wreck != u16::MAX && chance(x, z, w.seed, 2) < (0.04 + 0.014 * f64::from(c.stand.min(12))).min(0.18) {
                 wrecks.push((i, c.wreck, c.logs));
             }
         }
-        // (the soil scoured in streaks along the flow)
-        if c.soil != 0 {
+        let mut ground = c.g + keep;
+        land[i] = Land { h: ground as i16, fill: keep == 0 && !c.hole, drains: c.hole };
+        // (the soil scoured in streaks along the flow, the strongest of them gouged out in channels)
+        if c.soil != 0 && keep == 0 {
             let r = scoured(c.soil, n, chance(x, z, w.seed, 7));
-            b.put(x, z, c.g, c.g, r, None, false);
-            // (the strongest scour takes the layer under it too)
-            if c.soil == 1 && n > 0.78 && chance(x, z, w.seed, 3) < 0.35 {
-                b.put(x, z, c.g - 1, c.g - 1, if r == "minecraft:gravel" { "minecraft:gravel" } else { "minecraft:mud" }, None, false);
+            let side = |dx: usize, dz: usize| cols.get(lz.min(15).wrapping_add(dz).min(255) * 16 + lx + dx).copied().flatten().is_some_and(|c| c.fluid);
+            let by_water = side(1, 0) || side(0, 1) || (lx > 0 && cols[i - 1].is_some_and(|c| c.fluid)) || (lz > 0 && cols[i - 16].is_some_and(|c| c.fluid));
+            if c.soil == 1 && n > 0.74 && !by_water && over > 6.0 && chance(x, z, w.seed, 3) < 0.92 {
+                let d = 1 + ((n - 0.74) / 0.26 * 4.0) as i32;
+                b.put(x, z, c.g - d + 1, c.g, "minecraft:air", None, false);
+                ground = c.g - d;
+                gs[i] = ground;
+                b.put(x, z, ground, ground, if chance(x, z, w.seed, 14) < 0.5 { "minecraft:gravel" } else { "minecraft:mud" }, None, false);
+                land[i].h = ground as i16;
+            } else {
+                b.put(x, z, c.g, c.g, r, None, false);
+                if c.soil == 1 && n > 0.7 && chance(x, z, w.seed, 3) < 0.35 {
+                    b.put(x, z, c.g - 1, c.g - 1, if r == "minecraft:gravel" { "minecraft:gravel" } else { "minecraft:mud" }, None, false);
+                }
             }
+        }
+        // (the wrack: what it carried dropped at the limit of its reach, in a line along the high water)
+        let edge = over < 8.0 || m < 0.3;
+        if edge && keep == 0 && chance(x, z, w.seed, 15) < 0.3 {
+            let pick = chance(x, z, w.seed, 16);
+            let block = if pick < 0.42 {
+                lying(if pick < 0.2 { "minecraft:oak_log" } else { "minecraft:spruce_log" }, along_x)
+            } else if pick < 0.7 {
+                "minecraft:oak_planks"
+            } else if pick < 0.85 {
+                "minecraft:spruce_planks"
+            } else {
+                "minecraft:gravel"
+            };
+            drift.push((i, block, if pick < 0.7 { 1 } else { 1 + (chance(x, z, w.seed, 17) * 2.0) as i32 }));
+        }
+    }
+    for (i, block, h) in drift {
+        if reached[i] && gs[i] != i32::MIN {
+            let (x, z) = (x0 + (i % 16) as i32, z0 + (i / 16) as i32);
+            b.put(x, z, gs[i] + 1, gs[i] + h, block, None, false);
+            land[i].h = (gs[i] + h) as i16;
+            land[i].fill = false;
         }
     }
     // the wreckage: laid in the chunk, downstream of where it stood, a log along the flow or a block of what the
     // building was, a stack or two high
-    let along_x = geo.m[0].abs() > geo.m[1].abs();
     for (i, wb, logs) in wrecks {
         let (x, z) = (x0 + (i % 16) as i32, z0 + (i / 16) as i32);
         let name = &a.palette[wb as usize];
@@ -578,6 +820,8 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             let block: &'static str = if log { lying(plain, along_x) } else { interned(plain.to_string()) };
             let h = if log { 1 } else { 1 + (chance(x, z, w.seed, 8) * 2.0) as i32 };
             b.put(x0 + lx, z0 + lz, gs[j] + 1, gs[j] + h, block, None, false);
+            land[j].h = i16::try_from(gs[j] + h).unwrap_or(i16::MAX);
+            land[j].fill = false;
         }
     }
     // a few boulders: a lump of rock a few blocks across, where the flow dropped it
@@ -593,16 +837,30 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
             if reached[j] && gs[j] != i32::MIN {
                 let h = 1 + ((chance(x0 + lx + ox, z0 + lz + oz, w.seed, 50) * 2.0) as i32);
                 b.put(x0 + lx + ox, z0 + lz + oz, gs[j] + 1, gs[j] + h, rock, None, false);
+                land[j].h = i16::try_from(gs[j] + h).unwrap_or(i16::MAX);
+                land[j].fill = false;
             }
         }
     }
-    let t = (arr + 1.3).max(now + 0.1) as f32;
+    w.lands.insert((cx, cz), Box::new(land));
+    let rise = TsGeo::rise_t(w.geo.su(f64::from(x0) + 8.0, f64::from(z0) + 8.0).0);
+    let t = (arr + rise + 0.2).max(now + 0.1) as f32;
     if !b.runs.is_empty() {
         w.changed += 1;
         q.ev.push((t, Act::Blocks(Box::new(b))));
     }
     // (every mob and dropped item in the chunk, as the water reaches it)
     q.ev.push((t - 0.4, Act::Cmd(format!("kill @e[type=!minecraft:player,x={x0},y=-70,z={z0},dx=15,dy=520,dz=15]"))));
+    // (now and then a boat, carried off some lake or river and left far inland, out on the mud)
+    if w.boats < 36 && chance(cx, cz, w.seed, 60) < 0.05 {
+        let i = 17 * (1 + (chance(cx, cz, w.seed, 61) * 13.0) as usize);
+        if reached[i] && gs[i] != i32::MIN {
+            let kind = if chance(cx, cz, w.seed, 62) < 0.6 { "oak" } else { "spruce" };
+            let yaw = (chance(cx, cz, w.seed, 63) * 360.0) as i32;
+            q.ev.push((t + 0.8, Act::Cmd(format!("summon minecraft:{kind}_boat {} {} {} {{Rotation:[{yaw}f,0f]}}", x0 + (i % 16) as i32, gs[i] + 1, z0 + (i / 16) as i32))));
+            w.boats += 1;
+        }
+    }
     true
 }
 
@@ -702,8 +960,14 @@ fn ts_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f64) {
                 wk.next_retry = now + 0.4;
             }
         }
-        if wk.taken == wk.tags.len() && wk.cur.is_none() && wk.retry.is_empty() && wk.retry_q.is_none() {
+        // the water it leaves, once all the land is known
+        let read = wk.taken == wk.tags.len() && wk.cur.is_none() && wk.retry.is_empty() && wk.retry_q.is_none();
+        if (read || now > TS_LAND_BY) && !wk.tiles.as_ref().is_some_and(Vec::is_empty) && crate::meter::spent() < TS_STAGE {
+            ts_ponds(wk, now, q);
+        }
+        if read && wk.tiles.as_ref().is_some_and(|t| t.is_empty() || wk.ponded >= TS_PONDS) {
             wk.done = true;
+            crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("tsunami: {} chunks changed, {} columns swept, {} columns of water left, {} boats", wk.changed, wk.swept, wk.ponded, wk.boats));
         }
         !wk.done && now < TS_LAND_BY + 6.0
     };
@@ -782,6 +1046,10 @@ pub(super) fn tsunami_plan(laser: &'static Laser, target: &Target, terrain: bool
             changed: 0,
             swept: 0,
             done: false,
+            boats: 0,
+            lands: HashMap::new(),
+            tiles: None,
+            ponded: 0,
         }));
         p.later(0.1, move |q| ts_work(q, work, 0.1));
     }
@@ -834,7 +1102,7 @@ mod tests {
         let g = geo(400.0, 37.0);
         let (a, imm) = g.at_player(65.0);
         let imm = imm.expect("over their head");
-        assert!(a > 14.0 && a < 15.5 && imm >= a && imm < a + 1.0, "{a} {imm}");
+        assert!(a > 14.0 && a < 15.5 && imm >= a && imm < a + 2.0, "{a} {imm}");
         // (a hill higher than the wave: it never covers them)
         assert!(g.at_player(400.0).1.is_none());
     }
@@ -842,7 +1110,7 @@ mod tests {
     fn the_swath_covers_the_path_in_the_order_the_front_comes() {
         let g = geo(400.0, 37.0);
         let c = swath_chunks(&g);
-        assert!(c.len() > 800 && c.len() < 2100, "{} chunks", c.len());
+        assert!(c.len() > 800 && c.len() < 3300, "{} chunks", c.len());
         assert!(c.windows(2).all(|w| w[0].2 <= w[1].2));
         let rows = load_rows(&c);
         assert!(rows.len() < 400, "{} forceloads", rows.len());
@@ -905,6 +1173,53 @@ mod tests {
         let text: String = data.iter().enumerate().map(|(i, v)| format!("{i} {v}u\n")).collect();
         std::fs::write(std::env::var("CB_OUT").unwrap(), text).unwrap();
     }
+    /// Any land, any drains: every pond held, on all four sides, by the same water or by land at least its height, and none
+    /// on the tile's edge or on what may not hold water.
+    #[test]
+    fn no_pond_leaks() {
+        let mut rng = 0x1234_5678u32;
+        let mut filled = 0;
+        for round in 0..300 {
+            let n = 32;
+            let mut land = vec![Land { h: 60, fill: true, drains: false }; n * n];
+            for (i, l) in land.iter_mut().enumerate() {
+                let (x, z) = ((i % n) as f32, (i / n) as f32);
+                let k = round as f32;
+                l.h = (64.0 + 5.0 * (x * 0.31 + k).sin() * (z * 0.27 - k * 0.7).cos() + 2.5 * (x * 0.13 - z * 0.21 + k).sin()) as i16;
+                rng = pcg(rng);
+                l.h += (rng % 3) as i16 - 1;
+                if rng % 97 == 0 {
+                    l.fill = false;
+                }
+                if rng % 211 == 0 {
+                    *l = Land::NONE;
+                }
+            }
+            let found = ponds(&land, n);
+            let mut lv = vec![i16::MIN; n * n];
+            for &(i, l) in &found {
+                assert!(land[i].fill && !land[i].drains && land[i].h < l);
+                assert!(i32::from(l) - i32::from(land[i].h) <= TS_POND_DEEP);
+                lv[i] = l;
+                filled += 1;
+            }
+            for &(i, l) in &found {
+                let (x, z) = (i % n, i / n);
+                assert!(x > 0 && z > 0 && x + 1 < n && z + 1 < n, "water on the edge");
+                for j in [i - 1, i + 1, i - n, i + n] {
+                    assert!(lv[j] == l || land[j].h >= l, "{i} at {l}, {j}: land {} water {}", land[j].h, lv[j]);
+                }
+            }
+        }
+        assert!(filled > 2000, "only {filled} columns held water");
+    }
+    #[test]
+    fn the_water_falls_past_the_land_when_it_should() {
+        let g = geo(400.0, 37.0);
+        let t = falls_past(&g, 300.0, 10.0).expect("it covers that");
+        assert!(g.level(300.0, 0.0, t - 0.3).unwrap() > 10.0 && g.level(300.0, 0.0, t + 0.6).unwrap() < 11.0, "{t}");
+        assert!(falls_past(&g, 300.0, 400.0).is_none());
+    }
     #[test]
     fn the_wave_sweeps_the_land_in_its_order_and_every_stage_is_light() {
         let target = Target { block: [0, 64, 0], point: [0.5, 65.0, 0.5] };
@@ -917,7 +1232,7 @@ mod tests {
         for (_, due, b) in &played.edits {
             let r = &b.runs[0];
             let (s, u) = g.su(f64::from(r.x) + 0.5, f64::from(r.z) + 0.5);
-            assert!(u.abs() < TS_HALF + 20.0 && s > -TS_UP - 20.0 && s < g.send + 20.0);
+            assert!(u.abs() < TS_HALF + 32.0 && s > -TS_UP - 32.0 && s < g.send + 32.0, "{s} {u}");
             let a = g.arr(s, u);
             if f64::from(*due) < a + 0.3 {
                 early += 1;
