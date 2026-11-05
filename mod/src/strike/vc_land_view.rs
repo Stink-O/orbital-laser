@@ -197,7 +197,7 @@ fn land(w: &mut Vox) {
 }
 
 /// The land's answers, as the game gives them.
-fn answers(w: &Vox, cols: &mut [u64], bx: i32, bz: i32) {
+fn answers(w: &Vox, cols: &mut [u32], bx: i32, bz: i32) {
     let palette: Vec<String> = w.names.clone();
     let mut parts = Vec::new();
     for part in 0..VC_PARTS {
@@ -213,7 +213,7 @@ fn answers(w: &Vox, cols: &mut [u64], bx: i32, bz: i32) {
                 a.blocks.push(u16::from(w.get(x, y, z)));
             }
         }
-        take_in(cols, &mut Vec::new(), &a, bx, bz);
+        take_in(cols, &mut Missing::default(), &a, bx, bz);
     }
 }
 
@@ -450,7 +450,7 @@ fn vc_land_picture() {
     eprintln!("land {:?}", t0.elapsed());
     let s = Shape::new(0.5, 0.5, 37, GY);
     let mut wk = Work::new(s, bx, bz);
-    wk.cols = vec![0u64; (VC_GW * VC_GW) as usize];
+    wk.cols = vec![0u32; (VC_GW * VC_GW) as usize];
     answers(&w, &mut wk.cols, bx, bz);
     // (the land's height as the Survey gives it: its 128 by 128 cells)
     let reach = 1500.0;
