@@ -7,12 +7,12 @@ use super::{Act, Plan, mh, pcg, sound_from};
 
 // ---- the beats (BEATS.md, volcano.rs's): keep in step ------------------------------------------------------------------
 const VC_HIT: f32 = 2.0;
-const VC_CRACK: f32 = 8.0;
-const VC_ERUPT: f32 = 12.0;
-const VC_LIGHT: f32 = 20.0;
-const VC_COLLAPSE: f32 = 44.0;
-const VC_LIFT: f32 = 60.0;
-const VC_LEN: f32 = 80.0;
+const VC_CRACK: f32 = 6.0;
+const VC_ERUPT: f32 = 18.0;
+const VC_LIGHT: f32 = 26.0;
+const VC_COLLAPSE: f32 = 50.0;
+const VC_LIFT: f32 = 66.0;
+const VC_LEN: f32 = 88.0;
 /// Where the flow sets off from, and how high over the land its wall stands (volcano.wgsl's nose, a little more).
 const VC_RING: f64 = 280.0;
 const VC_WALL: f64 = 300.0;
@@ -26,8 +26,8 @@ const VC_INS: [f32; 2] = [22.0, 12.0];
 const VC_LEAD: f32 = 0.02;
 /// The land mass dropping, into `collapse`.
 const VC_DROP: f32 = 3.0;
-const VC_AFTER_AT: f32 = 57.5;
-const VC_PATTER_AT: f32 = 59.0;
+const VC_AFTER_AT: f32 = 63.5;
+const VC_PATTER_AT: f32 = 65.0;
 /// bolt_far's length, whistle1-3's.
 const VC_BOLT_FAR: f32 = 5.0;
 const VC_WHISTLES: [f32; 3] = [3.2, 4.2, 2.6];
@@ -394,26 +394,26 @@ mod tests {
             let h = heard(z);
             let (late, _) = sound_from([0.5, 65.0, 0.5], [0.5, 66.0, 0.5 + z]);
             let t = h.iter().find(|e| e.1.contains(".report")).expect("the report").0;
-            assert!((t - (12.0 + late - VC_LEAD)).abs() < 0.01, "{z}: {t}");
+            assert!((t - (VC_ERUPT + late - VC_LEAD)).abs() < 0.01, "{z}: {t}");
             let c = h.iter().find(|e| e.1.contains(".collapse")).expect("the collapse").0;
-            assert!((c - (44.0 + late)).abs() < 0.01, "{z}: {c}");
+            assert!((c - (VC_COLLAPSE + late)).abs() < 0.01, "{z}: {c}");
             // (and nothing between the eruption and the report that would spoil the wait)
-            assert!(!h.iter().any(|e| e.0 > 12.0 && e.0 < t - 0.05), "{z}: something plays in the wait");
+            assert!(!h.iter().any(|e| e.0 > VC_ERUPT && e.0 < t - 0.05), "{z}: something plays in the wait");
         }
     }
 
     #[test]
     fn vc_sound_flow_is_heard_by_the_distance() {
-        assert!((front_r(48.0) - 500.0).abs() < 8.0, "{}", front_r(48.0));
+        assert!((front_r(VC_COLLAPSE + 4.0) - 500.0).abs() < 8.0, "{}", front_r(VC_COLLAPSE + 4.0));
         // (the lobes put the wall a little ahead of or behind that)
         assert!((-0.5..0.5).contains(&lobes(1.0, 500.0)));
         let hit = |h: &[(f32, String, f32, f32, bool)]| h.iter().find(|e| e.1.contains(".flow_hit")).map(|e| e.0);
         let (near, far) = (heard(500.0), heard(1500.0));
         let t = hit(&near).expect("the hit");
-        assert!((45.0..54.0).contains(&t), "{t}");
+        assert!((51.0..60.0).contains(&t), "{t}");
         assert!(near.iter().any(|e| e.1.contains("flow_in")), "inside it");
         assert!(near.iter().any(|e| e.1.starts_with("stop") && e.1.contains("column")), "the jet's top goes in the hit");
-        assert!(!near.iter().any(|e| e.0 > t + 0.2 && e.0 < 62.0 && e.1.contains(".bolt")), "no lightning heard from inside");
+        assert!(!near.iter().any(|e| e.0 > t + 0.2 && e.0 < 68.0 && e.1.contains(".bolt")), "no lightning heard from inside");
         assert!(hit(&far).is_none(), "not this far out");
         assert!(far.iter().any(|e| e.1.contains("flow_far")), "the rush");
         // (nothing small carries: a splinter or a bomb's landing from afar is never heard)

@@ -511,7 +511,7 @@ pub const SUPERVOLCANO: Laser = Laser {
     rgb: 0xFF6A1F,
     blurb: "The crust breached: a ring of fire, a column that blots out the sun, then the wall of ash.",
     icon_model: "orbital:supervolcano_icon",
-    length: 80.0,
+    length: 88.0,
     range: 1000.0,
     scorch: &[],
     bowl_r: 10,

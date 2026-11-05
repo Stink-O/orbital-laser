@@ -19,12 +19,12 @@ use std::rc::Rc;
 
 /// The story's times (strike seconds). Keep in step with shaders/volcano.wgsl.
 pub(super) const VC_HIT: f32 = 2.0;
-pub(super) const VC_CRACK: f32 = 8.0;
-pub(super) const VC_ERUPT: f32 = 12.0;
-pub(super) const VC_BOMBS: f32 = 13.0;
-pub(super) const VC_BOMBS_END: f32 = 30.0;
-pub(super) const VC_LIGHT: f32 = 20.0;
-pub(super) const VC_COLLAPSE: f32 = 44.0;
+pub(super) const VC_CRACK: f32 = 6.0;
+pub(super) const VC_ERUPT: f32 = 18.0;
+pub(super) const VC_BOMBS: f32 = 19.0;
+pub(super) const VC_BOMBS_END: f32 = 36.0;
+pub(super) const VC_LIGHT: f32 = 26.0;
+pub(super) const VC_COLLAPSE: f32 = 50.0;
 /// The ring of vents' radius.
 pub(super) const VC_RING: f64 = 280.0;
 /// The vent is at least this far in front of the player, along the way they aimed.

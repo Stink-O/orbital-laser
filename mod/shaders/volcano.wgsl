@@ -12,15 +12,15 @@
 // clefts (`vc_flow`), new clouds rising off its top. It engulfs the player: near black, embers. Then a world dimmed
 // under falling ash, ending on a blood-red sun as the ash thins, all of it gone by VC_LEN (`vc_gone`).
 // strike/volcano.rs keeps its VC_* in step with these, and gives the table: the bombs, the land's height.
-const VC_LEN: f32 = 80.0;
+const VC_LEN: f32 = 88.0;
 const VC_HIT: f32 = 2.0;           // the beam hits and cuts out
-const VC_CRACK: f32 = 8.0;         // the ring cracks through
-const VC_ERUPT: f32 = 12.0;        // the eruption
-const VC_LIGHT: f32 = 20.0;        // the plume's lightning
-const VC_DARK: f32 = 30.0;         // the umbrella out over the land
-const VC_COLLAPSE: f32 = 44.0;     // the column falls back, the flows set off from the ring
-const VC_LIFT: f32 = 60.0;         // the flows lift into new clouds
-const VC_RED: f32 = 72.0;          // the ash thinning round a red sun
+const VC_CRACK: f32 = 6.0;         // the ring cracks through
+const VC_ERUPT: f32 = 18.0;        // the eruption
+const VC_LIGHT: f32 = 26.0;        // the plume's lightning
+const VC_DARK: f32 = 36.0;         // the umbrella out over the land
+const VC_COLLAPSE: f32 = 50.0;     // the column falls back, the flows set off from the ring
+const VC_LIFT: f32 = 66.0;         // the flows lift into new clouds
+const VC_RED: f32 = 80.0;          // the ash thinning round a red sun
 const VC_RING: f32 = 280.0;        // the ring of vents' radius
 const VC_HU: f32 = 1500.0;         // the umbrella's middle over the land
 const VC_V: f32 = 343.0;           // the pressure ring's speed (the sound's)
@@ -555,7 +555,7 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, amb: vec3<f32>, tm: pt
     let time = vs.t;
     var c = vec3<f32>(0.0);
     var tr = 1.0;
-    if (time < 13.0 || time > 56.0) {
+    if (time < VC_ERUPT + 1.0 || time > VC_COLLAPSE + 12.0) {
         return vec4<f32>(c, tr);
     }
     for (var i = 0u; i < n; i = i + 1u) {
@@ -620,7 +620,7 @@ fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
     let n = u32(vc_w(1u));
     let time = vs.t;
     var c = vec3<f32>(0.0);
-    if (time < 13.0 || time > 46.0) {
+    if (time < VC_ERUPT + 1.0 || time > VC_COLLAPSE + 2.0) {
         return c;
     }
     let focal = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
@@ -1199,7 +1199,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         }
     }
     // ---- the bombs' heads, the bolts ----------------------------------------------------------------------------------
-    if (time > 13.0 && time < 46.0) {
+    if (time > VC_ERUPT + 1.0 && time < VC_COLLAPSE + 2.0) {
         col = col + vc_bombs_heads(C, rd, min(scene_len, cloud_t + 40.0)) * k;
     }
     if (time > VC_LIGHT - 2.0 && time < VC_RED) {

@@ -683,7 +683,7 @@ mod tests {
             assert!(f >= r, "{r} due at {t} with the front at {f}");
             assert!(f < r + 40.0, "{r} due at {t} with the front at {f}");
         }
-        assert!(vc_due(0.0) < 72.0, "the middle at {}", vc_due(0.0));
+        assert!(vc_due(0.0) < 78.0, "the middle at {}", vc_due(0.0));
     }
     #[test]
     fn a_chunk_stays_light() {
