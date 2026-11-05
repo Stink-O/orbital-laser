@@ -700,9 +700,10 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3
                 if (tc > 2.0 && tc < tmax + wv && length(P - rd * tc) < 1.9 * wv) {
                     let q = rd * tc - C;
                     let f = vc_tube(q, P - C, rd, l.L, wv, age, 26.0 * size);
-                    let al = saturate((tmax - tc + wv) / wv) * f.x * saturate(0.95 * exp(-age / 6.5) * (w / wv)) * (1.0 - smoothstep(te - ts - 0.5, te - ts, age) * smoothstep(9.0, 10.0, age)) * smoothstep(0.0, 0.5, age + 0.2);
+                    // (a rope passing close to the eye thinned away: it would only be a smear across the picture)
+                    let al = smoothstep(30.0, 240.0, tc) * saturate((tmax - tc + wv) / wv) * f.x * saturate(0.9 * exp(-age / 5.5) * (w / wv)) * (1.0 - smoothstep(te - ts - 0.5, te - ts, age) * smoothstep(9.0, 10.0, age)) * smoothstep(0.0, 0.5, age + 0.2);
                     if (al > 0.003) {
-                        let hot = exp(-age / 0.5);
+                        let hot = exp(-age / 0.22) * f.x;
                         let sun = l.sunc * vc_sun_t(q, l.L) * f.y * f.y * 1.1;
                         let sc = brown * (amb * (0.5 + 0.6 * f.y) + sun) + vec3<f32>(1.3, 0.34, 0.05) * hot * hot * hot;
                         c = c + tr * al * sc;
@@ -763,7 +764,7 @@ fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
         let sg = pl_ray_seg(rd, s, p, 0.0, 1.0);
         let ppx = sg.x * focal / max(t, 1.0);
         let sz = (1.0 + 1.6 * mh(i, 3u, 0x31u)) * focal / max(t, 1.0);
-        let rpx = clamp(sz, 0.9, 7.0);
+        let rpx = clamp(sz, 0.9, 3.2);
         if (ppx > 14.0 * rpx + 4.0) {
             continue;
         }

@@ -30,7 +30,9 @@ pub(super) const VC_RING: f64 = 280.0;
 /// The vent is at least this far in front of the player, along the way they aimed.
 const VC_NEAR: f64 = 1000.0;
 /// The share of the bombs thrown to come down within 150 blocks of the player, as long as they are within this of the vent.
-const VC_BOMBS_NEAR: f64 = 0.34;
+const VC_BOMBS_NEAR: f64 = 0.46;
+/// (those thrown before this: the player is not left under a veil of old trails as the sky goes dark)
+const VC_BOMBS_NEAR_END: f64 = 31.0;
 const VC_BOMBS_REACH: f64 = 2400.0;
 /// The wall's knockback as it reaches the player: blocks a tick out and up, none past VC_KNOCK_REACH.
 const VC_KNOCK_OUT: f32 = 0.7;
@@ -161,8 +163,8 @@ pub(super) fn vc_bombs(seed: f32, me: [f64; 3], land: &dyn Fn(f64, f64) -> f64) 
             let sway = th + 0.5 * (mh(k, s, 0xb7) - 0.5);
             let mut v = [vo * sway.cos(), vy, vo * sway.sin()];
             // (a third of them thrown at the player, wherever they stand within reach of it, coming down round them)
-            if mh(k, s, 0xb8) < VC_BOMBS_NEAR && reach > 1.0 && reach < VC_BOMBS_REACH {
-                let (a, r) = (2.0 * PI * mh(k, s, 0xb9), 12.0 + 138.0 * mh(k, s, 0xba).sqrt());
+            if mh(k, s, 0xb8) < VC_BOMBS_NEAR && t0 < VC_BOMBS_NEAR_END && reach > 1.0 && reach < VC_BOMBS_REACH {
+                let (a, r) = (2.0 * PI * mh(k, s, 0xb9), 35.0 + 115.0 * mh(k, s, 0xba).sqrt());
                 let (x, z) = (me[0] + r * a.cos(), me[2] + r * a.sin());
                 let tau = (vy + (vy * vy + 2.0 * VC_G * (p0[1] - land(x, z))).max(0.0).sqrt()) / VC_G;
                 v = [(x - p0[0]) / tau, vy, (z - p0[2]) / tau];
