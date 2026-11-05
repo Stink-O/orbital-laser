@@ -194,11 +194,14 @@ fn thunder(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], (from, to): (f32,
     }
 }
 
-/// The dread: the tremor out of the ground, stone creaking and cracking under the player (they fade with no distance:
-/// it is the ground they stand on, though it carries less the further they are).
+/// The dread: the tremor out of the ground, stone creaking and cracking under the player: the ground they stand on, so
+/// not late, though past about 1,000 blocks it's only the tremor that reaches them.
 fn underfoot(p: &mut Plan, s: u32, d: f64) {
     play(p, VC_HIT + (d / GROUND_V) as f32, "tremor", 1.0, 1.0);
-    let g = 1.0 / (1.0 + d / 2500.0);
+    let g = 1.0 - smooth(800.0, 1500.0, d);
+    if g <= 0.0 {
+        return;
+    }
     let (mut t, mut n, mut c, mut k) = (4.1f32, 0u32, 0u32, 0u32);
     while t < VC_ERUPT - 0.2 {
         let u = f64::from((t - 4.0) / (VC_ERUPT - 4.0));
@@ -297,7 +300,7 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
     p.later(VC_HIT - 0.1, move |q| {
         let me = live(me);
         let (late, d) = sound_from(vent, me);
-        play(q, VC_HIT + late, "tick", (800.0 / d.max(800.0)).powf(1.4), 1.0);
+        play(q, VC_HIT + late, "tick", (700.0 / d.max(700.0)).powf(2.5), 1.0);
         underfoot(q, s, d);
     });
     // ---- the ring cracks: steam, only near
