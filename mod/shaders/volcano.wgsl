@@ -81,10 +81,10 @@ fn vc_front(c: f32) -> f32 {
     return VC_RING + 25.0 * c + 490.0 * (1.0 - exp(-c / 14.0));
 }
 fn vc_rr(hy: f32) -> f32 {
-    return VC_RING - 155.0 * smoothstep(0.0, 520.0, hy);
+    return VC_RING - 155.0 * smoothstep(0.0, 190.0, hy);
 }
 fn vc_ww(hy: f32) -> f32 {
-    return 52.0 + 0.35 * min(hy, 520.0) + 0.24 * max(hy - 520.0, 0.0);
+    return 52.0 + 0.64 * min(hy, 190.0) + 0.13 * clamp(hy - 190.0, 0.0, 330.0) + 0.24 * max(hy - 520.0, 0.0);
 }
 fn vc_set_state(time: f32) {
     var s: VcS;
@@ -118,7 +118,11 @@ fn vc_col(q: vec3<f32>, rho: f32, ang: f32) -> f32 {
     if (t < VC_CRACK) {
         return 1.0e5;
     }
-    let hy = q.y;
+    // (its foot on the land round the ring, not at the vent's height: the ring may lie over hills and valleys)
+    var hy = q.y;
+    if (hy < 700.0) {
+        hy = hy - vc_land(q.xz) * (1.0 - smoothstep(120.0, 700.0, hy));
+    }
     // (steam first, thin jets along the crack)
     let st = saturate((t - VC_CRACK) / (VC_ERUPT - VC_CRACK));
     let on = smoothstep(0.0, 0.7, vs.a);
@@ -127,10 +131,10 @@ fn vc_col(q: vec3<f32>, rho: f32, ang: f32) -> f32 {
     let Rr = vc_rr(hy);
     var W = mix(2.0 + 7.0 * st, vc_ww(hy), on);
     // (the jets, each its own, closing up as they rise: at the land the ring's a row of them)
-    let jets = 1.0 - smoothstep(70.0, 430.0, hy);
+    let jets = smoothstep(0.0, 34.0, hy) * (1.0 - smoothstep(60.0, 240.0, hy));
     if (jets > 0.0) {
         let sc = 0.5 + 0.5 * cos(13.0 * ang + 2.0 * sin(3.0 * ang + 0.7) + hy * 0.004);
-        W = W * mix(1.0, 0.22 + 0.86 * sc * sc, jets * mix(1.0, 0.85, on));
+        W = W * mix(1.0, 0.3 + 0.9 * sc * sc, jets);
     }
     // (the head bulging out of it while it climbs)
     let Rt = vs.Rt;
