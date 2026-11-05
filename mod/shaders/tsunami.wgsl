@@ -68,15 +68,23 @@ fn ts_lag(s: f32, u: f32, sd: f32) -> f32 {
 fn ts_arr(s: f32, u: f32, sd: f32) -> f32 {
     return TS_T + ts_tau(s) + ts_lag(s, u, sd);
 }
+// How far the wave has stood up out of the sea at (s, u), 0 to 1: over its first four seconds, a swell first, the wall
+// building on it, not all at once along its length (stretches of it get up ahead of the rest).
+fn ts_rise(s: f32, u: f32, sd: f32) -> f32 {
+    if (s > -380.0) {
+        return 1.0;
+    }
+    return smoothstep(-950.0, -600.0, s + 20.0 * sin(u * 0.0031 + sd * 2.1) + 12.0 * sin(u * 0.0083 + sd * 0.7));
+}
 // How strong the wave is where (s, u): stood up out of the sea in the first second and a bit (the horizon rising), at its
 // tallest far out, losing height as it breaks and runs in over the land, spent at its end, weaker towards its flanks, its
 // crest uneven along the front. 1 at full strength.
 fn ts_env(s: f32, u: f32, g: TsG) -> f32 {
-    let up = 0.2 + 0.8 * smoothstep(-905.0, -770.0, s);
+    let up = 0.22 + 0.78 * ts_rise(s, u, g.sd);
     let dec = 1.0 - 0.345 * smoothstep(-640.0, -40.0, s);
     let run = 1.0 - 0.13 * smoothstep(0.0, g.send, s);
     let end = 1.0 - smoothstep(g.send - 80.0, g.send + 30.0, s);
-    let lat = 1.0 - smoothstep(1500.0, 2700.0, abs(u));
+    let lat = 1.0 - smoothstep(1900.0, 3300.0, abs(u));
     let lump = 1.0 + 0.028 * sin(u * 0.0063 + g.sd * 1.7 + s * 0.0016) + 0.024 * sin(u * 0.0171 + g.sd * 0.9 - s * 0.0031) + 0.016 * sin(u * 0.0419 + g.sd * 2.3 + s * 0.0047);
     return up * dec * run * end * lat * lump;
 }
@@ -110,6 +118,18 @@ fn ts_fall(lv: f32, x: f32) -> f32 {
     let e = smoothstep(0.0, 0.42, x);
     return mix(lv, 12.0 - 118.0 * x * x, e);
 }
+// How long the land holds back the foot of the wave at (s, u), seconds, `gy` the land's height there: it climbs slowly on high
+// ground and runs on up the low ground, so its foot wraps the hills and tongues up the valleys. Only its foot: the wave over
+// it comes on regardless. Little enough that the land's edits, which go by the front's plain arrival, stay under water, and
+// none round the player, whose engulfing the sounds and the carry have to the moment.
+fn ts_toe(s: f32, u: f32, gy: f32, g: TsG) -> f32 {
+    let e = smoothstep(-320.0, -230.0, s) * (1.0 - smoothstep(610.0, 700.0, s)) * (1.0 - smoothstep(270.0, 345.0, abs(u)));
+    if (e <= 0.0) {
+        return 0.0;
+    }
+    return clamp(gy * 0.012, -0.55, 0.42) * e * smoothstep(45.0, 150.0, length(vec2<f32>(s - g.dp, u)));
+}
+
 // The water's surface function at a point (relative to the target's ground): negative inside the water, positive in the
 // air above it, and a big number where there is none. The crest leans out over the face, more where it is breaking.
 fn ts_f(pa: vec3<f32>, t: f32, g: TsG) -> f32 {
@@ -125,7 +145,15 @@ fn ts_f(pa: vec3<f32>, t: f32, g: TsG) -> f32 {
     // (a straight line out at sea; it starts to tear and pitch forward as it comes in)
     let inb = smoothstep(-560.0, -160.0, s);
     let lean = (0.1 + 0.34 * ts_break(s, u, g.sd) * inb) * y2 * y2 * yb;
-    let tau = t - ts_arr(s, u, g.sd) + lean;
+    var tau = t - ts_arr(s, u, g.sd) + lean;
+    // (its foot held back by the high ground, let run by the low)
+    if (tau > -0.7 && tau < 3.5 && pa.y < 190.0) {
+        let gy = ts_ground(s, u);
+        let k = 1.0 - smoothstep(gy + 6.0, gy + 90.0, pa.y);
+        if (k > 0.0) {
+            tau = tau - ts_toe(s, u, gy, g) * k;
+        }
+    }
     let p = ts_prof(tau, s);
     let x = ts_x(t, s, g);
     if (p <= 0.0 || x >= 1.0) {
@@ -245,7 +273,7 @@ fn ts_surf_y(s: f32, u: f32, t: f32, g: TsG) -> f32 {
     if (env < 0.03) {
         return -1.0e4;
     }
-    let tau = t - ts_arr(s, u, g.sd);
+    let tau = t - ts_arr(s, u, g.sd) - ts_toe(s, u, ts_ground(s, u), g);
     let p = ts_prof(tau, s);
     let x = ts_x(t, s, g);
     if (p <= 0.0 || x >= 1.0) {
@@ -799,7 +827,9 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     // (the foot: a brown bore where the face meets the land, boiling in lumps)
     let sharp = 1.0 - smoothstep(0.5, 2.4, px);
     let boil = ts_fbm3(vec3<f32>(u * 0.024, (p.y + time * 15.0) * 0.03, s * 0.017 - time * 0.5), 2 + i32(mid * 2.0));
-    let foot = (1.0 - smoothstep(5.0 + 22.0 * boil, 15.0 + 38.0 * boil, hg + 14.0 * (fray - 0.5))) * smoothstep(-700.0, -420.0, s);
+    // (and it climbs what it runs into: the white rides up rising ground)
+    let climbk = saturate((ts_ground(s + 18.0, u) - ts_ground(s - 18.0, u)) / 36.0 * 2.2);
+    let foot = (1.0 - smoothstep(5.0 + (22.0 + 50.0 * climbk) * boil, 15.0 + (38.0 + 60.0 * climbk) * boil, hg + 14.0 * (fray - 0.5))) * smoothstep(-700.0, -420.0, s);
     white = max(white, foot);
     // (the last of it, right in front of the eye: whatever part of the face this is, it is coming apart and thrown at them)
     let rush = 1.0 - smoothstep(2.0, 30.0, ht);
@@ -1262,14 +1292,16 @@ fn ts_spray(ro: vec3<f32>, rd: vec3<f32>, t0: f32, t1: f32, time: f32, g: TsG, l
         let tau = time - ts_arr(s, u, g.sd);
         // (how far ahead of the crest this is)
         let dc = (TS_FACE / ts_vel(s) - tau) * ts_vel(s);
-        let lc = TS_A * env - TS_SEA;
+        // (it comes off the crest as it stands now: ahead of the front the wave hasn't stood up yet)
+        let rise = ts_rise(min(s, sf), u, g.sd);
+        let lc = TS_A * ts_env(min(s, sf), u, g) - TS_SEA;
         let ls = ts_surf_y(s, u, time, g);
         if (p.y < ls) {
             continue;
         }
         let bk = ts_break(s, u, g.sd);
         // (out at sea it throws a great curtain up; over the land less)
-        let tall = (26.0 + 44.0 * (1.0 - smoothstep(-650.0, -120.0, s))) * (0.55 + 0.45 * bk);
+        let tall = (26.0 + 44.0 * (1.0 - smoothstep(-650.0, -120.0, s))) * (0.55 + 0.45 * bk) * (0.2 + 0.8 * smoothstep(0.45, 1.0, rise));
         let hc = max(p.y - lc, 0.0);
         let plume = exp(-pow(hc / tall, 1.6)) * smoothstep(-300.0, -60.0, dc - hc * 0.9) * (1.0 - smoothstep(0.0, 70.0 + hc * 0.12, dc - hc * 0.5)) * smoothstep(0.6 * lc, 0.97 * lc, p.y);
         // (the skirt: mist rolling ahead of the face, near the ground)
@@ -1282,7 +1314,7 @@ fn ts_spray(ro: vec3<f32>, rd: vec3<f32>, t0: f32, t1: f32, time: f32, g: TsG, l
         // (torn into wisps blown back and up)
         let nz = ts_fbm3(vec3<f32>(u * 0.012, (p.y - time * 16.0) * 0.016, (s - sf + time * 12.0) * 0.012), 3);
         let wisp = ts_fbm3(vec3<f32>(u * 0.024, (p.y - time * 30.0) * 0.011, (s - sf + time * 34.0) * 0.024), 2);
-        let dens = plume * 1.1 * smoothstep(0.4, 0.74, nz * 0.75 + wisp * 0.45) + skirt * 0.26 * smoothstep(0.3, 0.68, nz);
+        let dens = plume * 1.1 * smoothstep(0.4, 0.74, nz * 0.75 + wisp * 0.45) * smoothstep(0.3, 0.85, rise) + skirt * (0.26 + 0.5 * (1.0 - rise)) * smoothstep(0.3, 0.68, nz);
         if (dens < 0.001) {
             continue;
         }
@@ -1293,7 +1325,7 @@ fn ts_spray(ro: vec3<f32>, rd: vec3<f32>, t0: f32, t1: f32, time: f32, g: TsG, l
             let dt0 = ts_vn3(vec3<f32>(u * 0.19, (p.y - time * 34.0) * 0.14, (s + time * 20.0) * 0.19));
             cut = mix(1.0, smoothstep(0.48, 0.66, dt0) * 0.75, pn);
         }
-        let ext = dens * cut * dt * 0.024 * smoothstep(0.1, 0.3, env) * smoothstep(1.0, 3.0, time);
+        let ext = dens * cut * dt * 0.024 * smoothstep(0.1, 0.3, env) * smoothstep(0.0, 1.5, time);
         let a = 1.0 - exp(-ext);
         // (brighter high up where the sun has it, darker low in its own shade)
         let lit = 0.5 + 0.6 * smoothstep(0.3 * lc, lc + 40.0, p.y) ;
@@ -1339,31 +1371,38 @@ fn ts_tails(ro: vec3<f32>, rd: vec3<f32>, t1: f32, tmore: f32, time: f32, g: TsG
         let hh = pcg(u32(i32(ci) + 8192) * 7919u ^ pcg(u32(i32(k) + 8192) * 104729u));
         let r = vec3<f32>(f32(hh & 1023u), f32((hh >> 10u) & 1023u), f32((hh >> 20u) & 1023u)) / 1024.0;
         let mp = ts_map(sr, cu);
-        if (r.z > 0.3 + 0.6 * saturate(mp.x * 1.4 + mp.y * 2.0) || ts_env(sr, cu, g) < 0.3) {
+        if (r.z > 0.3 + 0.6 * saturate(mp.x * 1.4 + mp.y * 2.0 + (ts_ground(sr + 20.0, cu) - ts_ground(sr - 20.0, cu)) * 0.06) || ts_env(sr, cu, g) < 0.3) {
             continue;
         }
-        let age = time - ts_arr(sr, cu, g.sd) - 0.15;
+        let age = time - ts_arr(sr, cu, g.sd) - 0.15 - ts_toe(sr, cu, ts_ground(sr, cu), g);
         if (age <= 0.0 || age > 4.2) {
             continue;
         }
         let gb = ts_ground(sr, cu);
         let hg = p.y - gb;
-        let hb = (34.0 + 92.0 * r.x * r.x) * sqrt(min(age / 0.9, 1.0));
-        let wb = min((6.0 + 9.0 * r.y) * (0.55 + 0.45 * min(age, 1.6)) * (0.7 + 1.5 * saturate(hg / max(hb, 1.0))), 19.0);
-        // (each thrown off to one side as it climbs, fanning out)
-        let du = u - cu - (r.y - 0.5) * 0.5 * max(hg, 0.0) * (0.6 + 0.5 * min(age, 2.0));
-        // (and whatever it does, it dies out before its cell's edge)
-        let edge = smoothstep(0.5, 0.36, abs(u / cell - ci - 0.5));
-        let n = ts_fbm3(vec3<f32>(u * 0.06, (p.y - time * 30.0) * 0.045, k * 1.7), 3);
-        let fine = ts_fbm3(vec3<f32>(u * 0.21, (p.y - time * 44.0) * 0.14, k * 3.1), 3);
-        let prof = exp(-pow(du / wb, 2.0)) * smoothstep(-2.0, 16.0, hg + 10.0 * (n - 0.5)) * (1.0 - smoothstep(0.5, 1.02, hg / max(hb, 1.0) + (n - 0.5) * 0.7));
+        // (where the ground rises against it, it is thrown up much harder)
+        let hit = saturate((ts_ground(sr + 20.0, cu) - ts_ground(sr - 20.0, cu)) / 40.0 * 2.6);
+        let hb = (38.0 + 96.0 * r.x * r.x + 70.0 * hit) * sqrt(min(age / 0.8, 1.0));
+        let climb = max(hg, 0.0);
+        // (a fan of jets out of the one place it struck, each thrown off to one side, tearing up as it goes)
+        let lean = (r.y - 0.5) * 0.7;
+        let fan = (u - cu) / (climb + 5.0) - lean;
+        let n = ts_fbm3(vec3<f32>(fan * 7.0 + r.z * 9.0, (climb - time * 46.0) * 0.022, k * 1.7), 3);
+        let fine = ts_fbm3(vec3<f32>(fan * 26.0, (climb - time * 70.0) * 0.07, k * 3.1), 3);
+        let fray = hg / max(hb, 1.0) + (n - 0.5) * 0.8;
+        // (the fan: wide, its edges all jets; gone to droplets by the top)
+        let width = 0.62 * (0.55 + 0.45 * min(age, 1.4));
+        let body = (1.0 - smoothstep(0.35, 1.0, abs(fan) / width)) * smoothstep(-3.0, 8.0, hg + 8.0 * (n - 0.5));
+        let top = 1.0 - smoothstep(0.55, 1.02, fray);
+        let jets = smoothstep(0.42, 0.56, n * 0.62 + fine * 0.5 - 0.5 * (abs(fan) / width) * (abs(fan) / width) + 0.16);
+        // (the drops it comes apart into, sharp and small, thinning out above it)
+        let drops = smoothstep(0.66, 0.72, ts_vn3(vec3<f32>(u * 1.1, (p.y - time * 60.0) * 0.5, k * 5.0))) * (1.0 - smoothstep(0.75, 1.5, fray)) * smoothstep(0.3, 0.8, fray);
         let fade = 1.0 - smoothstep(1.3, 4.0, age);
-        // (the tail's body, and the feathered veil of it)
-        let hal = exp(-pow(du / (wb * 2.6), 2.0)) * smoothstep(0.0, 20.0, hg) * (1.0 - smoothstep(0.6, 1.25, hg / max(hb, 1.0) + (n - 0.5) * 0.9));
+        let edge = smoothstep(0.5, 0.36, abs(u / cell - ci - 0.5));
         // (close by only: a long way off they would be puffs on a line; and melting into what stands behind them)
-        let a = edge * (1.0 - smoothstep(240.0, 450.0, t)) * (1.0 - smoothstep(t1 + 0.2 * tmore, t1 + tmore, t)) * saturate(prof * 1.5 * fade * smoothstep(0.3, 0.6, n * 0.6 + fine * 0.5 + prof * 0.25) + 0.36 * hal * fade * smoothstep(0.34, 0.62, n * 0.7 + fine * 0.4));
+        let a = edge * (1.0 - smoothstep(240.0, 450.0, t)) * (1.0 - smoothstep(t1 + 0.2 * tmore, t1 + tmore, t)) * saturate(fade * body * (top * jets * 0.95 + drops * 0.7));
         if (a > 0.003) {
-            let c = lightc * mix(vec3<f32>(0.5, 0.45, 0.38), vec3<f32>(0.92, 0.92, 0.9), smoothstep(0.34, 0.66, fine) * (0.5 + 0.5 * saturate(hg / 25.0)));
+            let c = lightc * mix(vec3<f32>(0.46, 0.41, 0.34), vec3<f32>(0.93, 0.93, 0.91), smoothstep(0.32, 0.62, fine) * (0.45 + 0.55 * saturate(hg / 30.0)));
             acc = acc + tr * a * c;
             tr = tr * (1.0 - a);
         }

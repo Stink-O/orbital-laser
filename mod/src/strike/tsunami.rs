@@ -111,12 +111,12 @@ impl TsGeo {
     /// How strong the wave is at (s, u), 0 to about 1.
     pub fn env(&self, s: f64, u: f64) -> f64 {
         crate::meter::spend(60);
-        let up = 0.2 + 0.8 * smooth(-905.0, -770.0, s);
+        let sd = f64::from(self.sd);
+        let up = 0.22 + 0.78 * if s > -380.0 { 1.0 } else { smooth(-950.0, -600.0, s + 20.0 * (u * 0.0031 + sd * 2.1).sin() + 12.0 * (u * 0.0083 + sd * 0.7).sin()) };
         let dec = 1.0 - 0.345 * smooth(-640.0, -40.0, s);
         let run = 1.0 - 0.13 * smooth(0.0, self.send, s);
         let end = 1.0 - smooth(self.send - 80.0, self.send + 30.0, s);
-        let lat = 1.0 - smooth(1500.0, 2700.0, u.abs());
-        let sd = f64::from(self.sd);
+        let lat = 1.0 - smooth(1900.0, 3300.0, u.abs());
         let lump = 1.0 + 0.028 * (u * 0.0063 + sd * 1.7 + s * 0.0016).sin() + 0.024 * (u * 0.0171 + sd * 0.9 - s * 0.0031).sin() + 0.016 * (u * 0.0419 + sd * 2.3 + s * 0.0047).sin();
         up * dec * run * end * lat * lump
     }
