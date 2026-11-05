@@ -760,7 +760,7 @@ fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
         if (t < 0.0 || t > tmax + 8.0) {
             continue;
         }
-        let s = vc_bomb_at(b, te - 0.05) + C;
+        let s = vc_bomb_at(b, te - 0.02) + C;
         let sg = pl_ray_seg(rd, s, p, 0.0, 1.0);
         let ppx = sg.x * focal / max(t, 1.0);
         let sz = (1.0 + 1.6 * mh(i, 3u, 0x31u)) * focal / max(t, 1.0);
@@ -1169,7 +1169,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 if (hyl < 700.0) {
                     let dq = q - vec3<f32>(0.0, 46.0, 0.0);
                     var db = vc_base(dq);
-                    below = saturate((vc_sdf(dq, &db, 40.0, false).x - sd.x) / 34.0);
+                    below = saturate((vc_sdf(dq, &db, 40.0, false).x - vc_sdf(q, &b, 40.0, false).x + 6.0) / 64.0);
                 }
             }
             nl = nl + 1;
@@ -1207,7 +1207,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             fire = fire + ash * vec3<f32>(2.6, 0.7, 0.11) * ht.y * (0.06 + 0.94 * cr * cr) * on;
             // (from under: the land burning below what hangs over it)
             let fb = (1.0 - smoothstep(VC_COLLAPSE, VC_COLLAPSE + 6.0, time)) * on;
-            fire = fire + ash * vec3<f32>(3.4, 0.95, 0.15) * below * exp(-max(hyl, 0.0) / 300.0) * fb;
+            fire = fire + ash * vec3<f32>(2.6, 0.72, 0.11) * below * below * exp(-max(hyl, 0.0) / 300.0) * fb;
             if (b.e > -60.0) {
                 // (the flows, close behind the front and low down: the hot base of the cloud showing in its creases; inside the
                 // wall, the banks lit red from under by what they have laid down)
