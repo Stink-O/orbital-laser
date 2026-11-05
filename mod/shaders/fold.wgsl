@@ -12,14 +12,14 @@ const FD_HANG: f32 = 3.9;          // it has hung still; it lowers
 const FD_TOUCH: f32 = 6.0;         // it touches the land
 const FD_MELD: f32 = 7.2;          // it has gone in
 const FD_FOLD: f32 = 19.0;
-const FD_SEAL: f32 = 31.0;
+const FD_SEAL: f32 = 35.0;
 const FD_CRUSH: f32 = 35.0;
-const FD_BEAT: f32 = 37.5;
-const FD_REL: f32 = 38.7;          // the bloom
-const FD_SLAM0: f32 = 39.8;
-const FD_SLAM4: f32 = 43.1;
+const FD_BEAT: f32 = 40.0;         // the tip touches the target
+const FD_REL: f32 = 40.3;          // it all runs backwards
+const FD_SLAM0: f32 = 41.1;        // flat, and past it
+const FD_SLAM4: f32 = 45.0;        // the last slam
 const FD_FALL: f32 = 3000.0;       // how high it starts over the target
-const FD_LIFT: f32 = 46.0;         // FW_LIFT
+const FD_PEARL_Y: f32 = 19.4;      // the target on the pearl at the touch: fw_top - FW_SINK, with FW_PEARL 0.125
 
 fn fd_ss(a: f32, b: f32, x: f32) -> f32 { return smoothstep(a, b, x); }
 fn fd_sample(uv: vec2<f32>) -> vec3<f32> {
@@ -46,11 +46,11 @@ fn fd_ring(i: i32) -> f32 {
 }
 fn fd_slam(i: i32) -> f32 {
     switch i {
-        case 4: { return 39.8; }
-        case 3: { return 40.6; }
-        case 2: { return 41.4; }
-        case 1: { return 42.2; }
-        default: { return 43.1; }
+        case 4: { return 41.1; }
+        case 3: { return 42.0; }
+        case 2: { return 42.8; }
+        case 1: { return 43.7; }
+        default: { return 45.0; }
     }
 }
 
@@ -211,7 +211,6 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let aspect = res.x / res.y;
     let me = frame.mod_params[3].xyz;
     let dist = length(me.xz - tgt.xz);
-    let rb = clamp(dist * 0.56, 60.0, 150.0);
     let gq = (tgt - cam) - camera_rest();
     let d0 = depth_at(uv);
     let sky0 = is_sky(d0);
@@ -219,22 +218,21 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let v = normalize(off);
     let far = select(length(off), 1.0e7, sky0);
 
-    // ---- the bloom's jolt: the picture pulled about the point, its colours pulled apart -------------------------------------
-    let pt = project_rel(gq + vec3<f32>(0.0, rb + FD_LIFT, 0.0));
-    let centre = select(vec2<f32>(0.5), pt.xy, pt.z > 0.0);
-    let blast = fd_ss(FD_REL - 0.02, FD_REL + 0.03, t) * (1.0 - fd_ss(FD_REL + 0.1, FD_REL + 0.9, t));
-    var col: vec3<f32>;
-    if (blast > 0.002) {
-        let d = uv - centre;
-        let j = blast * 0.07;
-        col = vec3<f32>(fd_sample(centre + d * (1.0 - j * 1.3)).r, fd_sample(centre + d * (1.0 - j)).g, fd_sample(centre + d * (1.0 - j * 0.7)).b);
-    } else {
-        col = fd_sample(uv);
-    }
+    // ---- where the target has gone at the touch: on the far side of the sphere's floor (fw_place) ---------------------------
+    let tk = 1.0 / max(dist * 1.3, 170.0);
+    let tth = 2.0 * atan(dist * tk * 0.5);
+    let tup = sin(tth) / tk;
+    let typ = 2.0 * pow(sin(tth * 0.5), 2.0) / tk;
+    let tu = dist - tup * cos(tth) + (FD_PEARL_Y - typ) * sin(tth);
+    let ty = tup * sin(tth) + (FD_PEARL_Y - typ) * cos(tth);
+    let te = (me.xz - tgt.xz) / max(dist, 0.001);
+    let pt = project_rel(gq + vec3<f32>(te.x * tu, ty, te.y * tu));
+
+    var col = fd_sample(uv);
 
     // ---- the void: the sky going out as the land closes, and under the land where it has left ------------------------------
     if (sky0 && t > FD_FOLD - 0.5) {
-        let dark = fd_ss(FD_FOLD + 3.0, FD_SEAL - 1.0, t) * (1.0 - fd_ss(FD_REL + 0.6, FD_SLAM4 + 0.4, t));
+        let dark = fd_ss(FD_FOLD + 3.0, FD_SEAL - 3.0, t) * (1.0 - fd_ss(FD_REL + 0.3, FD_SLAM0 + 0.6, t));
         let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM0 - 0.2, FD_SLAM4 + 0.2, t));
         col = mix(col, fd_stars(v), max(dark, under));
     }
@@ -253,19 +251,12 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         col = fd_droplet(col, t, v, C, d, far, uv, aspect);
     }
 
-    // ---- the point, in the dark, drawing in and holding -----------------------------------------------------------------
+    // ---- the touch: a tiny light at the point, there for the stillness, gone as it runs back --------------------------------
     let dd = length((uv - pt.xy) * vec2<f32>(aspect, 1.0));
-    if (t > FD_BEAT - 0.5 && t < FD_REL + 0.15 && pt.z > 0.0) {
-        let on = fd_ss(FD_BEAT - 0.5, FD_BEAT, t);
-        let g = 0.0028;
-        col = col + vec3<f32>(0.94, 0.9, 1.0) * (exp(-dd / g) * 2.6 + exp(-dd / (g * 7.0)) * 0.35) * on;
-    }
-
-    // ---- the bloom: the one flash, out of the point, gone in half a second --------------------------------------------------
-    let since = t - FD_REL;
-    if (since > -0.02 && since < 1.2) {
-        let flash = exp(-max(since, 0.0) * 6.0);
-        col = mix(col, vec3<f32>(1.0, 0.97, 1.02) * 1.4, flash * exp(-dd * 1.5 / (0.3 + 3.2 * max(since, 0.0))));
+    if (t > FD_BEAT - 0.05 && t < FD_REL + 0.25 && pt.z > 0.0) {
+        let on = fd_ss(FD_BEAT - 0.05, FD_BEAT, t) * (1.0 - fd_ss(FD_REL - 0.02, FD_REL + 0.25, t));
+        let g = 0.0022;
+        col = col + vec3<f32>(1.0, 0.97, 0.92) * (exp(-dd / g) * 2.6 + exp(-dd / (g * 6.0)) * 0.3) * on;
     }
 
     // ---- the slams: a ring of dust running out from each ring as it lands ---------------------------------------------------

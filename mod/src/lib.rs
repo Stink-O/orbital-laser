@@ -358,6 +358,8 @@ struct Orbital {
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
     skip: f32,
+    /// A strike's clock held at this second (`/orbital hold SECONDS`, 0 lets it go): for looking at one moment from anywhere.
+    hold: f32,
     /// The Payload's and the Nuke's cloud shadows on the land left out (`/orbital shadow off`: for looking at them
     /// side by side; not kept).
     shadow_off: bool,
@@ -438,6 +440,7 @@ impl Orbital {
             fired: false,
             aiming: None,
             skip: 0.0,
+            hold: 0.0,
             shadow_off: false,
             cleanup: Default::default(),
             strike: None,
@@ -1047,7 +1050,9 @@ impl Orbital {
             self.edit();
             return;
         };
-        s.ticks += 1;
+        if self.hold <= 0.0 || (s.ticks as f32) * 0.05 < self.hold {
+            s.ticks += 1;
+        }
         let now = s.ticks as f32 * 0.05;
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
@@ -1674,6 +1679,10 @@ impl Mod for Orbital {
                 }
                 self.skip = t.max(0.0);
                 Ok(Some(format!("The next strike starts {t} s in")))
+            }
+            (Some("hold"), Some(v)) => {
+                self.hold = v.parse().map_err(|_| "/orbital hold SECONDS (0 lets it go)".to_string())?;
+                Ok(Some(format!("Strikes held at {} s", self.hold)))
             }
             (Some("flyspeed"), Some("reset")) => {
                 self.set_fly(1.0);

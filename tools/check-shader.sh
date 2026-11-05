@@ -38,6 +38,6 @@ for own in payload nuke rod supercell hurricane; do
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done
 # the Fold's world warp, as it goes into the game's terrain and entity shaders (their Globals' warp, and Warped)
-{ printf 'struct G { warp: array<vec4<f32>, 6> }\n@group(0) @binding(0) var<uniform> globals: G;\nstruct Warped { pos: vec3<f32>, tint: vec3<f32> }\nstruct Fragment { home: vec3<f32>, at: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f32>, light: vec2<f32>, cut: f32, copy: u32, front: bool }\nstruct Painted { color: vec4<f32>, fog: f32 }\nfn sprite(uv: vec2<f32>, layer: u32) -> vec4<f32> { return vec4<f32>(uv, f32(layer), 1.0); }\n'; cat "$shaders/fold_warp.wgsl"; } > "$tmp"
+{ printf 'struct G { fog: vec4<f32>, warp: array<vec4<f32>, 6> }\n@group(0) @binding(0) var<uniform> globals: G;\nstruct Warped { pos: vec3<f32>, tint: vec3<f32> }\nstruct Fragment { home: vec3<f32>, at: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f32>, light: vec2<f32>, cut: f32, copy: u32, front: bool }\nstruct Painted { color: vec4<f32>, fog: f32 }\nfn sprite(uv: vec2<f32>, layer: u32) -> vec4<f32> { return vec4<f32>(uv, f32(layer), 1.0); }\n'; cat "$shaders/fold_warp.wgsl"; } > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "the Fold's world warp:"; echo "$out"; exit 1; }
 echo OK
