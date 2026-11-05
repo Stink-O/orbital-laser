@@ -178,16 +178,41 @@ fn fw_ripple(r: f32, t: f32) -> f32 {
         + 7.2 * fw_group(r2, t - 10.6) - 9.5 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
 }
-// The land at the droplet's foot: like two blobs in a lava lamp, it swells up to meet the drop just before the touch, a soft
-// mound that takes it in and runs out as what was the drop goes down into the land.
+// The land at the droplet's foot: drawn to it. A finger of land reaches up for the drop as it falls, meets it a tenth of a second
+// before it would have reached the ground, climbs its side in a tight skirt with a hollow flank, not a hill's round one, and
+// closes over its top as the last of it goes under at 7.5, then falls back. fold.wgsl's fd_land and fd_meld in step.
+fn fw_land(a: f32, R: f32) -> f32 {
+    return 1.35 * R * fw_ss(-0.5, 0.55, a) * (1.0 - 0.69 * fw_ss(0.95, 1.5, a) - 0.31 * fw_ss(1.5, 2.4, a));
+}
 fn fw_neck(r: f32, t: f32, R: f32) -> f32 {
     let a = t - FW_TOUCH;
-    if (a <= -0.4 || a > 3.3 || r > R * 5.0) {
+    if (a <= -0.5 || a >= 2.4 || r > R * 9.0) {
         return 0.0;
     }
-    let w = R * (0.9 + 0.75 * fw_ss(0.0, 2.2, a));
-    let e = r / w;
-    return 0.55 * R * fw_ss(-0.4, 0.5, a) * (1.0 - fw_ss(1.1, 3.2, a)) * exp(-e * e);
+    let H = fw_land(a, R);
+    // (how wide the drop is at the top of the land: fold.wgsl's fd_prof and fd_meld)
+    let vc = 2.0 * (1.6 * R + 6.0) / 1.1;
+    var h = R + 1.6 * R + 6.0;
+    if (a > 0.0) {
+        h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * (2.22 * R + 1.0 - vc * 0.25) / 2.25;
+    }
+    let y = clamp((H - h) / R, -1.0, 1.72);
+    let b = 1.72 - y;
+    let q = 0.25773 + y * (0.09111 + y * (-0.07338 + y * (-0.05797 + y * 0.03297)));
+    let rho = R * sqrt(max((y + 1.0) * b * b * sqrt(b) * q, 0.0));
+    let d = max(r - rho, 0.0);
+    let x = sqrt(d * d + 1.0) - 1.0;
+    return H * (0.65 * exp(-x / (0.42 * R)) + 0.35 * exp(-x / (3.0 * R))) * (1.0 - fw_ss(6.0 * R, 9.0 * R, r));
+}
+// How far the land here is drawn in towards the drop, blocks: what stands higher goes further, so trees and walls lean to it.
+fn fw_pull(r: f32, y: f32, t: f32, R: f32) -> f32 {
+    let a = t - FW_TOUCH;
+    if (a <= -0.3 || a >= 2.3 || r > R * 14.0) {
+        return 0.0;
+    }
+    let P = 1.0 * R * fw_ss(-0.3, 0.6, a) * (1.0 - fw_ss(1.35, 2.3, a));
+    let lean = 1.0 + clamp(y, 0.0, 26.0) / (1.2 * R);
+    return min(P * lean * (1.0 - exp(-r / (1.2 * R))) * exp(-r / (2.6 * R)), 0.85 * r);
 }
 // The land past `r0` curling up and in over a tube of radius `rc`.
 fn fw_tube(R: f32, Y: f32, r0: f32, rc: f32, fmax: f32) -> vec2<f32> {
@@ -278,11 +303,15 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
-    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, t, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0));
+    let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
+    let rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, t, dropR);
+    if (t < FW_TOUCH + 2.3) {
+        Q = vec3<f32>(Q.x * (1.0 - fw_pull(r, Q.y, t, dropR) / max(r, 0.01)), Q.y, Q.z * (1.0 - fw_pull(r, Q.y, t, dropR) / max(r, 0.01)));
+    }
     // ---- the island: left where it is ------------------------------------------------------------------------------------
     let dm = length(Q.xz - c.me.xz);
     if (dm < FW_ISLE && copy == 0u) {
-        out.pos = pos + vec3<f32>(0.0, rip, 0.0);
+        out.pos = c.tgt + Q + vec3<f32>(0.0, rip, 0.0);
         return out;
     }
     // ---- how far on: the sheet's own heights keep to its surface as it goes up ---------------------------------------------
@@ -414,7 +443,7 @@ fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32,
     let a = t - FW_TOUCH;
     let e = 1.5;
     let r0 = max(r - e, 0.0);
-    var slope = (fw_ripple(r + e, t) + fw_neck(r + e, t, R) - fw_ripple(r0, t) - fw_neck(r0, t, R)) / (r + e - r0);
+    var slope = (fw_ripple(r + e, t) - fw_ripple(r0, t)) / (r + e - r0);
     // (the first fine ripples, too small for the land's vertices: only their light, running out ahead of the metal)
     let lead = R + 58.0 * (1.0 - exp(-a / 1.5));
     let fine = fw_ss(lead, lead - 12.0, r) * fw_ss(0.0, 0.4, a) * (1.0 - fw_ss(7.4, 9.6, t));
@@ -424,10 +453,12 @@ fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32,
     let V = at / max(length(at), 0.01);
     let L = globals.sun.xyz;
     let day = fw_ss(-0.1, 0.2, L.y);
-    // (the sun's light across the slope, then the sky's in it, more the flatter it is seen: only what the wave changes)
+    // (the sun's light across the rings and the swell at its foot; the sky's only in the rings: the swell is too steep, it would wash the blocks out)
+    let s2 = slope + (fw_neck(r + e, t, R) - fw_neck(r0, t, R)) / (r + e - r0);
+    let Ns = normalize(vec3<f32>(-s2 * D.x, 1.0, -s2 * D.y));
     let nv = max(dot(N, -V), 0.0);
     let turned = nv - max(-V.y, 0.0);
-    var col = colIn * (1.0 + FW_SHEEN * 0.9 * day * (dot(N, L) - L.y));
+    var col = colIn * (1.0 + FW_SHEEN * 0.9 * day * (dot(Ns, L) - L.y));
     // (a face turned from the eye shows the bright sky low down, one turned to it the deep sky overhead)
     col = mix(col, globals.sky_color.rgb * 1.15, clamp(-turned * 1.3, 0.0, 0.34) * FW_SHEEN * up);
     col = col * (1.0 - clamp(turned * 1.2, 0.0, 0.3) * FW_SHEEN);
@@ -436,7 +467,7 @@ fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32,
     let rf = 1.3 * R + 30.0 * (1.0 - exp(-a / 1.1)) + 2.5 * sin(ang * 5.0 + 1.0) + 1.5 * sin(ang * 11.0 - 2.0);
     // (thick at the foot, thin on past it, gone by the first rebound)
     let foot = exp(-max(r - R * 0.9, 0.0) / (R * 0.9));
-    let film = fw_ss(rf, rf - 6.0, r) * fw_ss(0.0, 0.2, a) * (1.0 - fw_ss(7.0, 9.0, t)) * (0.16 + 0.6 * foot) * up;
+    let film = fw_ss(rf, rf - 6.0, r) * fw_ss(0.0, 0.2, a) * (1.0 - fw_ss(7.0, 9.0, t)) * (0.06 + 0.32 * foot) * up;
     if (film > 0.002) {
         let m = reflect(V, N);
         let env = mix(vec3<f32>(0.42, 0.44, 0.48), globals.sky_color.rgb * 1.1, fw_ss(-0.02, 0.5, m.y));
