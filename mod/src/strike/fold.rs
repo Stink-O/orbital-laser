@@ -26,7 +26,7 @@ pub(super) const FD_LEN: f32 = 56.0;
 /// when it is on, the world's own culling back the rest of the time.
 pub const FD_COPIES: u32 = 6;
 pub const FD_COPY_R: f32 = 130.0;
-pub const FD_WARP_START: f32 = 5.9;
+pub const FD_WARP_START: f32 = 5.5;
 pub const FD_WARP_END: f32 = 53.0;
 /// The strike's beats (see the top of this file).
 pub(super) const FD_STOP: f32 = 3.4;

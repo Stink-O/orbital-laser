@@ -174,28 +174,20 @@ fn fw_ripple(r: f32, t: f32) -> f32 {
         return 0.0;
     }
     let r2 = r * r;
-    let y = -1.1 * fw_group(r2, t - 6.3) + 2.4 * fw_group(r2, t - 7.6) - 4.8 * fw_group(r2, t - 8.9)
-        + 7.7 * fw_group(r2, t - 10.2) - 10.0 * fw_group(r2, t - 11.5);
+    let y = -1.2 * fw_group(r2, t - 7.5) + 2.6 * fw_group(r2, t - 8.6) - 4.6 * fw_group(r2, t - 9.6)
+        + 7.2 * fw_group(r2, t - 10.6) - 9.5 * fw_group(r2, t - 11.5);
     return y * (1.0 - fw_ss(FW_SCORE - 0.4, FW_TEAR, t));
 }
-// The droplet's height a little after it touches (fold.wgsl's fd_meld, in step) and the land at its foot: as water does, the
-// land reaches up to meet the drop in a small lip, which runs out as the neck widens and closes in over the drop's top.
-fn fw_sink(a: f32, R: f32) -> f32 {
-    return R - a * (2.5 + a * ((2.72 * R + 1.0 - 3.75) / 2.25));
-}
+// The land at the droplet's foot: like two blobs in a lava lamp, it swells up to meet the drop just before the touch, a soft
+// mound that takes it in and runs out as what was the drop goes down into the land.
 fn fw_neck(r: f32, t: f32, R: f32) -> f32 {
     let a = t - FW_TOUCH;
-    if (a <= 0.0 || a > 1.8 || r > R * 3.0) {
+    if (a <= -0.4 || a > 3.3 || r > R * 5.0) {
         return 0.0;
     }
-    // (the drop's width where it meets the land: fold.wgsl's fd_prof)
-    let y = clamp(-fw_sink(a, R) / R, -1.0, 1.72);
-    let b = 1.72 - y;
-    let q = 0.25773 + y * (0.09111 + y * (-0.07338 + y * (-0.05797 + y * 0.03297)));
-    let rho = R * sqrt(max((y + 1.0) * b * b * sqrt(b) * q, 0.0));
-    let w = 1.6 + 0.18 * R;
-    let e = max(r - rho, 0.0) / w;
-    return (0.9 + 0.12 * R) * fw_ss(0.0, 0.22, a) * (1.0 - fw_ss(1.15, 1.75, a)) * exp(-e * e);
+    let w = R * (0.9 + 0.75 * fw_ss(0.0, 2.2, a));
+    let e = r / w;
+    return 0.55 * R * fw_ss(-0.4, 0.5, a) * (1.0 - fw_ss(1.1, 3.2, a)) * exp(-e * e);
 }
 // The land past `r0` curling up and in over a tube of radius `rc`.
 fn fw_tube(R: f32, Y: f32, r0: f32, rc: f32, fmax: f32) -> vec2<f32> {
@@ -257,7 +249,7 @@ fn fw_clock() -> FwClock {
     return FwClock(w[0].w + w[4].w * 0.05, tgt, me, w[2].x, min(50.0 - w[0].y, -20.0));
 }
 fn fw_live(t: f32) -> bool {
-    return globals.warp[2].y > 0.5 && t > FW_TOUCH - 0.2 && t < FW_END;
+    return globals.warp[2].y > 0.5 && t > FW_TOUCH - 0.5 && t < FW_END;
 }
 
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
@@ -421,7 +413,8 @@ const FW_SHEEN: f32 = 1.0;
 fn fw_wet(colIn: vec3<f32>, Q: vec3<f32>, r: f32, t: f32, at: vec3<f32>, R: f32, up: f32) -> vec3<f32> {
     let a = t - FW_TOUCH;
     let e = 1.5;
-    var slope = (fw_ripple(r + e, t) - fw_ripple(max(r - e, 0.0), t)) / (2.0 * e);
+    let r0 = max(r - e, 0.0);
+    var slope = (fw_ripple(r + e, t) + fw_neck(r + e, t, R) - fw_ripple(r0, t) - fw_neck(r0, t, R)) / (r + e - r0);
     // (the first fine ripples, too small for the land's vertices: only their light, running out ahead of the metal)
     let lead = R + 58.0 * (1.0 - exp(-a / 1.5));
     let fine = fw_ss(lead, lead - 12.0, r) * fw_ss(0.0, 0.4, a) * (1.0 - fw_ss(7.4, 9.6, t));
