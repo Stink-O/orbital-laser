@@ -51,7 +51,7 @@ const VM_W2: usize = VM_W1 + VM_COLS;
 /// The dome's radius, on average.
 const VM_RAD: f64 = 400.0;
 /// How high it gets (the pass's vm_hgt, before the last heave).
-const VM_H: f64 = 400.0;
+const VM_H: f64 = 380.0;
 /// The beats (BEATS.md).
 const VC_SWELL: f64 = 7.0;
 const VC_HUSH: f64 = 17.0;
@@ -239,8 +239,8 @@ impl Geo {
             return 0.0;
         }
         // (a wide swell, its shoulders full, with a steeper heart heaved up through it)
-        let v2 = u2 / 0.22;
-        let b = 0.8 * (1.0 - u2) * (1.0 - 0.7 * u2) + if v2 < 1.0 { 0.28 * (1.0 - v2) * (1.0 - v2) } else { 0.0 };
+        let v2 = u2 / 0.16;
+        let b = 0.94 * (1.0 - u2) * (1.0 - 0.55 * u2) + if v2 < 1.0 { 0.16 * (1.0 - v2) * (1.0 - v2) } else { 0.0 };
         let ridges = self.vn(x / 227.0 + 3.3, z / 227.0, 1) - 0.5;
         let fine = self.vn(x / 88.0, z / 88.0 + 7.1, 2) - 0.5;
         b * (1.0 + 0.42 * ridges + 0.17 * fine)

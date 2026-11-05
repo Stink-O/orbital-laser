@@ -29,7 +29,7 @@ const VM_W0: u32 = 73728u;         // VM_BASE + 8192
 const VM_W1: u32 = 131809u;        // VM_W0 + VM_COLS
 const VM_W2: u32 = 189890u;        // VM_W1 + VM_COLS
 const VM_RAD: f32 = 400.0;         // the dome's radius, on average
-const VM_H: f32 = 400.0;           // and how high it gets
+const VM_H: f32 = 380.0;           // and how high it gets
 const VM_SWELL: f32 = 7.0;         // BEATS.md
 const VM_HUSH: f32 = 17.0;
 const VM_ERUPT: f32 = 18.0;
@@ -316,7 +316,7 @@ fn vm_shade(C: vec3<f32>, rd: vec3<f32>, t: f32, l: VcLight, cam_uv: vec2<f32>) 
         alb = mix(alb, vec3<f32>(0.05, 0.045, 0.04) * (0.7 + 0.8 * nz2), smoothstep(0.1, 0.45, slope) * smoothstep(3.0, 16.0, f.y));
     }
     // (dust settling on it all, thicker up its back)
-    alb = mix(alb, vec3<f32>(0.17, 0.145, 0.12), 0.5 * smoothstep(70.0, VM_H, vm.H) * smoothstep(0.1, 0.6, f.y / max(vm.H, 1.0)) * (0.6 + 0.8 * nz2));
+    alb = mix(alb, vec3<f32>(0.105, 0.09, 0.08), 0.55 * smoothstep(70.0, VM_H, vm.H) * smoothstep(0.1, 0.6, f.y / max(vm.H, 1.0)) * (0.6 + 0.8 * nz2));
     // ---- its light ---------------------------------------------------------------------------------------------
     var shadow = 1.0;
     if (l.sun_up > 0.0) {
@@ -474,9 +474,8 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
 fn vm_shade_shard(C: vec3<f32>, rd: vec3<f32>, h: VmSh, l: VcLight) -> vec3<f32> {
     let p = rd * h.t - C;
     let b = VM_SHARD + h.i * VM_SW;
-    let g = vm_w(b + 2u) + vm_w(b + 3u) * vm.H;
-    let up = p.y - g;
-    let hh = vm_w(b + 5u);
+    // (how far over the land it is torn out of: a shard's foot runs down the slope)
+    let up = p.y - vm_height(p.xz);
     // (dark basalt, streaked down its length, each face its own; a broken top with the land's turf on it)
     let f = f32(h.face);
     let st = gnoise2(vec2<f32>(dot(p.xz, vec2<f32>(0.7, -0.7)) * 0.9 + f * 7.0, p.y * 0.05));
@@ -642,7 +641,7 @@ fn vm_shade_plate(C: vec3<f32>, rd: vec3<f32>, h: VmPl, l: VcLight) -> vec3<f32>
             alb = vec3<f32>(0.05, 0.045, 0.04) * (0.7 + 0.8 * nf2);
         }
         alb = mix(alb, rock, smoothstep(1.25, 1.75, tear));
-        alb = mix(alb, vec3<f32>(0.17, 0.145, 0.12), 0.45 * (0.6 + 0.8 * nf2));
+        alb = mix(alb, vec3<f32>(0.105, 0.09, 0.08), 0.5 * (0.6 + 0.8 * nf2));
         let d2 = f32((cl.w2 >> 8u) & 255u) / 8.0;
         return mix(alb * dl * (0.4 + 0.9 * nl) + min(alb, vec3<f32>(0.2)) * vec3<f32>(1.6, 0.5, 0.12) * saturate(-h.n.y + 0.1), vec3<f32>(0.012), 0.8 * (1.0 - smoothstep(0.3, 1.4, d2)));
     }
@@ -677,7 +676,7 @@ fn vm_surface(C: vec3<f32>, rd: vec3<f32>, scene_len: f32, col: vec3<f32>, stage
     let sh = vm_shards(-C, rd, lim);
     let pl = vm_plates(-C, rd, select(lim, sh.t, sh.t > 0.0));
     // (the air between: it stands a long way off)
-    let ap = 1.0 - exp(-select(lim, sh.t, sh.t > 0.0) / 9000.0);
+    let ap = 1.0 - exp(-select(lim, sh.t, sh.t > 0.0) / 14000.0);
     if (pl.t > 0.0) {
         o.t = pl.t;
         if (stage != 1u) {
@@ -852,7 +851,7 @@ fn vm_fireball(o: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, a: f32) -> vec4<f
             l = l + 0.1 * (l2 - 0.55);
         }
         // (from the white-out on it burns out from the inside, the blast coming up through it)
-        let f = 1.0 - rho + l - 1.2 * burn * smoothstep(1.15, 0.6, rho + 0.35 * burn);
+        let f = 1.0 - rho + l - 1.2 * burn * smoothstep(1.15, 0.6, rho + 0.35 * burn) - 1.3 * burn * (1.0 - l1);
         if (f <= 0.0) {
             continue;
         }
