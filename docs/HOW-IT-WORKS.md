@@ -202,6 +202,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   more as the bolts draw in. From 32.5 s the rain stops and the storm dies away; it ends at 42 s. It reaches 1000
   blocks.
 
+- **Supervolcano** (page three, `/orbital supervolcano`, 80 s, reaches 1000, the vent at least 500 blocks in front of you). A hairline beam, ten seconds of tremor, the ring cracking through with steam at 8 s, the eruption at 12 s, the column up to some 1,800 by 30 s, lava bombs from 13 s, lightning from 20 s, the umbrella out across the sky from 23 s and the sky dark by 40 s, the collapse at 44 s, the wall of ash at 500 blocks by about 48 s (60 blocks a second at the ring, slowing to 25), new clouds rising off it from 60 s, a blood-red sun from about 72 s, all gone by 80. The pass is [`mod/shaders/volcano.wgsl`](../mod/shaders/volcano.wgsl); it never touches the game's time or weather.
 - **Hurricane** (page three, `/orbital hurricane`). A hurricane spun up over the target, no beam, some 3,500 blocks
   across and 450 high. While the designator is held its countdown reads `TRACKING STORM`. Over the first six seconds
   a ragged mass of towering storms gathers over the target; to about 16 s it is drawn into three trailing rain bands
@@ -353,6 +354,8 @@ are put out 1.5 s, 5 s and 12 s after it (within 6, 7 and 11 blocks, from 28 und
 and every fire within 150 blocks twice as it ends (the finale's too); those edits and sweeps are still made if the strike
 is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
 goes in through `world.edit-blocks`.
+
+The **Supervolcano** ([`strike/vc_land.rs`](../mod/src/strike/vc_land.rs)) leaves a caldera about 560 across and 90 deep with stepped, slumped cliffs on a floor of black crust plates with lava in the cracks, a broken rim to 320, ignimbrite to 440 (deeper in the low ground), the trees laid down pointing away from it to 516, and a small crater where each lava bomb landed. It goes in a chunk at a time behind the wall of ash from 44 s, the caldera from its edge in by about 66 s. It force-loads the ~2,500 chunks within 448 blocks; past that only what the world already has loaded changes.
 
 The **Hurricane** digs no crater: it strips the land round its eyewall, block by block as it was read
 (`world.read-columns`, out to 180), as its wind's front reaches each chunk, from 15 s in to 32 blocks and out to 150 by

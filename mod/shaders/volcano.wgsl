@@ -84,7 +84,7 @@ fn vc_rr(hy: f32) -> f32 {
     return VC_RING - 155.0 * smoothstep(0.0, 190.0, hy);
 }
 fn vc_ww(hy: f32) -> f32 {
-    return 52.0 + 0.64 * min(hy, 190.0) + 0.13 * clamp(hy - 190.0, 0.0, 330.0) + 0.24 * max(hy - 520.0, 0.0);
+    return 76.0 + 0.52 * min(hy, 190.0) + 0.13 * clamp(hy - 190.0, 0.0, 330.0) + 0.24 * max(hy - 520.0, 0.0);
 }
 fn vc_set_state(time: f32) {
     var s: VcS;
@@ -336,7 +336,9 @@ fn vc_lump_col(q: vec3<f32>, d1: f32, foot: f32, fine: bool) -> vec4<f32> {
     let qc = vec3<f32>(q.x, f - vs.up, q.z);
     let w = gnoise3(VC_R2 * qc * (1.0 / 330.0));
     let wq = qc + 80.0 * vec3<f32>(w - 0.5);
-    let gain = 1.0 + 0.4 * smoothstep(500.0, 1400.0, hy);
+    // (held down low over the land, where the ring's wall is thinner than the lumps are deep: lumps cut as deep as that
+    // leave it a thin skin the land shows through)
+    let gain = (0.42 + 0.58 * smoothstep(60.0, 420.0, hy)) * (1.0 + 0.4 * smoothstep(500.0, 1400.0, hy));
     let b1 = vc_dome(VC_R1 * (wq * (1.0 / 240.0) + vec3<f32>(3.1, 0.0, 7.7)), 0);
     var v = (120.0 * (b1 - 0.52) + 50.0 * (w - 0.5)) * gain;
     var top = b1;
@@ -586,7 +588,7 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, amb: vec3<f32>, tm: pt
             let w = max(w0, sg.y * vs.px);
             if (sg.x < 2.0 * w && sg.y < tmax) {
                 let lump = 0.55 + 0.9 * gnoise3(vec3<f32>(sg.z + f32(k), f32(i) * 1.7, age * 0.2) * vec3<f32>(3.0, 1.0, 1.0));
-                let al = saturate(exp(-sg.x * sg.x / (w * w)) * (w0 / w) * exp(-age / 3.2) * 0.85 * lump) * smoothstep(20.0, 120.0, sg.y);
+                let al = saturate(exp(-sg.x * sg.x / (w * w)) * (w0 / w) * exp(-age / 3.2) * 0.85 * lump) * smoothstep(40.0, 320.0, sg.y);
                 let hot = exp(-age / 0.35);
                 let sc = vec3<f32>(0.1, 0.09, 0.082) * (dot(amb, vec3<f32>(0.33)) + 0.2) + vec3<f32>(1.4, 0.4, 0.06) * hot;
                 c = c + tr * al * sc;
@@ -799,7 +801,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     let gl1 = vc_flash(1, l.seed);
     let gl2 = vc_flash(2, l.seed);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
-    for (var i = 0; i < 110; i = i + 1) {
+    for (var i = 0; i < 96; i = i + 1) {
         if (t > t_end || o.tr < 0.03) {
             break;
         }
@@ -826,7 +828,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
         if (vs.thin > 0.0) {
             // (each place at its own time, a second or two either way)
             let g = gnoise3((q + vec3<f32>(0.0, 0.0, time * 6.0)) * (1.0 / 900.0));
-            thin = exp(-0.75 * max(time - (VC_RED - 4.0) + 4.0 * (g - 0.5), 0.0));
+            thin = exp(-0.75 * max(time - (VC_RED - 2.8) + 4.0 * (g - 0.5), 0.0));
             thin = thin * (1.0 - smoothstep(VC_LEN - 2.0, VC_LEN - 0.6, time));
         }
         var den = 0.0;
@@ -850,7 +852,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
         }
         den = den * thin;
         if (den > 1.0e-4) {
-            if (nl < 2 && (o.tr > 0.3 || nl == 0)) {
+            if (nl == 0) {
                 // (the light: its lump's face, then the bulk of the cloud on the way to the sun; and the sky's, shut out
                 // from under it)
                 // (in the sheet's shadow what light there is comes in low from the open sky round its edge: that side of
@@ -1213,7 +1215,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let show = smoothstep(VC_RED - 7.0, VC_RED, time) * (1.0 - smoothstep(VC_LEN - 3.0, VC_LEN - 0.3, time));
         let vis = 1.0 - exp(-7.0 * (tr_here + 0.05));
         let disc = 1.0 - smoothstep(0.052, 0.058, th);
-        col = col + (vec3<f32>(2.3, 0.2, 0.05) * disc + vec3<f32>(0.5, 0.075, 0.03) * exp(-th / 0.22) + vec3<f32>(0.12, 0.03, 0.012) * exp(-th / 0.8)) * show * vis * sun_up;
+        col = col + (vec3<f32>(1.15, 0.07, 0.02) * disc + vec3<f32>(0.42, 0.05, 0.02) * exp(-th / 0.22) + vec3<f32>(0.12, 0.03, 0.012) * exp(-th / 0.8)) * show * vis * sun_up;
     }
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     let out = mix(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb, srgb, fade);

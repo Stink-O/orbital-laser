@@ -144,6 +144,7 @@ Fourteen lasers, five to a page of the wheel.
   lands on it, a moment's hush, then one colossal strike at 29 seconds. It leaves small
   scorched pits, the funnels' scoured tracks and a crater about 70 across with veins of fused glass branching out
   through the ground round it; the fires it lights are left burning, and can spread.
+- **Supervolcano** (page three). A hairline beam touches the land and cuts out. For ten seconds almost nothing happens but a tremor building. Then the land opens in a ring 560 across, a column climbs to some 1,800 blocks and blots out the sun, lava bombs arc off it, its umbrella spreads across the whole sky with lightning running through it, and the column falls back on itself: the ground inside the ring drops and a wall of ash rolls out over the land and over you, near black, embers going past. It ends on a blood-red sun as the ash thins, a caldera with a floor of cracked black crust and lava where the land was. Its vent is at least 500 blocks in front of you. KNOCKBACK decides whether the wall shoves you.
 - **Hurricane** (page three). A hurricane spun up over the target, some 3,500 blocks across: towering storms gather
   and wind into spiral rain bands round a dense core, the eye opens into a stadium of cloud with clear sky overhead,
   rain sweeps past you and lightning bursts in the eyewall. The wind tears the land up from the eyewall out to about
@@ -157,7 +158,7 @@ Fourteen lasers, five to a page of the wheel.
   43-46 seconds.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell and the Hurricane reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane and the Supervolcano reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -317,7 +318,7 @@ Mods), read the reason it gives first.
    are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar counts
    down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
-   `TRACKING STORM…` for the Hurricane), then the strike lands where your crosshair is. Nothing else pops up over the
+   `TRACKING STORM…` for the Hurricane, `BREACHING CRUST…` for the Supervolcano), then the strike lands where your crosshair is. Nothing else pops up over the
    hotbar but `NO TARGET IN RANGE`.
 4. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
    to break free; while you fly it leaves you alone, but stop flying for a second while it still blows where you are
@@ -339,7 +340,7 @@ The wheel also has:
   has already done to the world stays), the same as `/orbital stop`.
 - Down the left, the strike options. **SEED** shows the last strike's seed, or takes one you type (1 to 997), and
   **LOCK SEED** keeps it, so a strike plays out the same way take after take (`/orbital seed`). Under them, for the
-  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod and the Hurricane), whether the blast pushes you or the wind
+  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod, the Hurricane and the Supervolcano), whether the blast pushes you or the wind
   carries you, and **FOLLOW** (the Nuke and the Payload), the follow camera.
 - An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: **OFF**, **KANADA** (the
   default), **BLACK FLASH** or **CINEMATIC**, as `/orbital impactframes`.

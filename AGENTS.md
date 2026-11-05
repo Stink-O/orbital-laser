@@ -210,6 +210,32 @@ laser, command, capability and timing). This file is the short, factual version 
   `thunder_mid` to 320, `thunder_far` past it, `rumble` for a flash in the cloud, late by the distance); `--listen DIR`
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
+- **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 80 s, reaches 1000, the vent moved
+  to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): a hairline beam (hits at 2 s), the
+  tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a
+  pressure ring at the speed of sound), a ring of vents 560 across feeding a column to about 1,800 (`vc_col`: the
+  ring's foot follows the land, `vc_land`, a heightfield of 128 x 128 cells; lumps on lumps, `vc_lump_col`, drawn out and
+  rushing low down by the height they are looked up at), 64 lava bombs from 13 s (`vc_bombs`, solved against the land,
+  their smoke at half size, their heads sharp; each landing leaves a small real crater, counted from each column's
+  ground so it needs no read), lightning from 20 s (`vc_flash`, a slot of 0.13 s, in the plume, then in rings through
+  the sheet; `vc_bolts`), the umbrella spreading from 23 s (`vc_umb`, out past the horizon, Hunga Tonga's ripple
+  `vc_ripple`), the sky dark by 40 s (`vc_dim`: land and sky darkened by what the sheet shuts out, `vc_sun_t`,
+  `vc_sky_t`, what glows left glowing; the game's clock and weather never touched), the collapse at 44 s (the lumps slow,
+  stop and fall back, `up`, the top of what stands falling, `Hb`), the wall of ash from the ring (`vc_flow`, `vc_front`:
+  60 blocks a second slowing to 25, at 500 by about 48 s, looked up round the vent so its lumps travel with it without
+  smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting off the land behind it into new
+  clouds from 60 s), the player engulfed (near black, embers, `vc_specks`), then a dim world under falling ash, the sheet
+  thinning from 69 s to a blood-red sun, all gone by 80 (`thin`). FAST's half stage holds the cloud and the bombs' smoke.
+  **Thin walls show the land through:** the ring's wall must stay thicker than the lumps cut (`vc_ww`, the gain in
+  `vc_lump_col`). Its land (terrain on only, `vc_land.rs`): a caldera about 560 across and 90 deep, scalloped, stepped in
+  slumped benches, on black crust plates with lava in the cracks (`crust`); a broken rim to 320; ignimbrite (tuff and
+  grey ash) to 440, deeper in low ground; the trees swept off and laid down pointing away to 516; mobs and items killed
+  as the wall passes, never the player; water and lava the walls cut into sealed; the ~2,500 chunks within `VC_LOAD`
+  (448) force-loaded, past that only what the world has loaded changes. It goes a chunk at a time in order of when
+  each is due (`vc_due`: past the ring with the wall, inside it from the edge in at `VC_RATE`, done by about 66 s), each
+  chunk's edits on one tick; the caldera needs no read (its runs reach past the land's height), the rest reads rings of
+  columns from `VC_READ0` to `VC_READ`, packed a word each. The meter reads about 1.5 times low on this work (`VC_TICK`
+  allows for it; `mod_soak` with `SOAK_FULL=1 SOAK_LASERS=supervolcano` plays it whole).
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-10` or newer (it adds
@@ -254,7 +280,7 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell` or `hurricane`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` or `supervolcano`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's and the Supervolcano's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell and the Hurricane on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
@@ -265,7 +291,7 @@ at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane) and FOLLOW (the Nu
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,
-`DESIGNATING …`, the Hurricane's `TRACKING STORM …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
+`DESIGNATING …`, the Hurricane's `TRACKING STORM …`, the Supervolcano's `BREACHING CRUST …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
 the strikes have no messages; firing during a strike only clicks). With the Rod loaded or pointed at, an IMPACT FX row under the ring (OFF, KANADA, BLACK FLASH,
 CINEMATIC). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound` or `/orbital nukesound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
@@ -309,6 +335,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - The Supercell: `src/strike/storm.rs` its plan (bolts, pits, finale crater, fire sweeps, `sc_table`),
   `src/strike/vortex.rs` its funnels as reusable pieces for a tornado (`Funnel`, `wander`, `vx_words`, `scour`, `roar`),
   `shaders/supercell.wgsl` its pass (the vortex section `vx_*`; FAST's `[half stage]` as the Payload's).
+- The Supervolcano: `src/strike/volcano.rs` its plan (the bombs, the land's height), `src/strike/vc_land.rs` its land,
+  `shaders/volcano.wgsl` its pass (preview views `vc*`).
 - The Hurricane: `src/strike/hurricane.rs` its plan (the land's read and edits, the trees, the rings' colours, the mobs,
   the landings: `tree_landing`, `hu_landings`), `src/carry.rs` the player's carry, `shaders/hurricane.wgsl` its pass (`hu_debris`, `hu_trees`,
   `hu_volume`; FAST's `[half stage]`). Preview views `hu*` (`hustrip=1` takes the preview's trees away as the front

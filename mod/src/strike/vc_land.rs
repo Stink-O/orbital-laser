@@ -37,9 +37,9 @@ const VC_DEEP: f64 = 90.0;
 const VC_IN: f64 = 262.0;
 const VC_RATE: f64 = 1_200_000.0;
 /// The most a stage's chunks may take the tick's count to.
-const VC_TICK: u64 = 10_000_000;
+const VC_TICK: u64 = 6_000_000;
 /// How long ahead of its time a chunk's edits are worked out.
-const VC_LEAD: f32 = 1.6;
+const VC_LEAD: f32 = 3.2;
 /// A chunk's blocks inside the ring, for the pace.
 const VC_COL: f64 = 118.0;
 /// What the work of a column is reckoned at, in instructions, besides what `Blocks` counts of its runs.
