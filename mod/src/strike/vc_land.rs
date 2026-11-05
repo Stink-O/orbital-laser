@@ -259,12 +259,13 @@ impl Shape {
         let mut k = 0u32;
         while d < VC_BANDS {
             let h = mh(k, seed, 0xd1);
-            let n = 2 + (h * h * 8.0) as usize;
+            let mut n = 2 + (h * h * 8.0) as usize;
             let deep = d as f64 / 120.0;
             let p = mh(k, seed, 0xd2);
-            let rock = if p < 0.09 {
-                // (an ash bed, a baked soil)
-                if mh(k, seed, 0xd3) < 0.3 { R_PALE } else { R_BAKED }
+            let rock = if p < 0.08 {
+                // (a thin ash bed, a thin baked soil)
+                n = 1 + n / 4;
+                if mh(k, seed, 0xd3) < 0.4 { R_PALE } else { R_BAKED }
             } else {
                 // (mostly by the depth, some of each everywhere)
                 let q = (deep + 0.42 * mh(k, seed, 0xd4)).min(1.25);
@@ -441,12 +442,10 @@ fn rock(kind: u8, h: f64) -> &'static str {
             }
         }
         _ => {
-            if h < 0.6 {
-                "minecraft:gray_terracotta"
-            } else if h < 0.8 {
+            if h < 0.7 {
                 "minecraft:black_terracotta"
             } else {
-                "minecraft:brown_terracotta"
+                "minecraft:gray_terracotta"
             }
         }
     }
@@ -475,16 +474,16 @@ fn beds_edit(b: &mut Blocks, s: &Shape, x: i32, z: i32, y0: i32, y1: i32, shift:
 /// The rubble at the foot of the walls.
 fn rubble(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
     let h = pick(x * 7 + y * 23 + z * 41, seed ^ 0xcb);
-    if h < 0.3 {
+    if h < 0.36 {
         "minecraft:cobbled_deepslate"
-    } else if h < 0.52 {
+    } else if h < 0.5 {
         "minecraft:tuff"
-    } else if h < 0.7 {
+    } else if h < 0.72 {
         "minecraft:blackstone"
-    } else if h < 0.86 {
+    } else if h < 0.9 {
         "minecraft:basalt"
     } else {
-        "minecraft:gravel"
+        "minecraft:deepslate"
     }
 }
 /// One tone of ash with a fine grain in it, darker along the wet streaks (`dark`, 0 to 1).
