@@ -388,7 +388,7 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         let hit = flow(q, s, vent, me, drop);
         // (the land's drop, unless the flow's hit is on it: the two would be all the game's limiter heard)
         if hit.is_none_or(|h| (h - drop).abs() > 0.8) {
-            play(q, drop, "report_sub", 0.85 * air(d), 0.8);
+            play(q, drop, "report_sub", 0.75 * air(d), 0.8);
         }
         // (the lightning goes on in the ash: from inside the flow, under its near-black, nothing of it gets through)
         let mute = hit.map_or((0.0, 0.0), |h| (h, h + 8.0));

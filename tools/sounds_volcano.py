@@ -582,6 +582,8 @@ def build_whistle(v):
         x = (howl * 0.8 + howl2 + rush) * tumble
         x = T.lowpass_glide(x, 1300.0, 7500.0, 1.4)
         x *= db_curve(t, [(0, -40), (d * 0.5, -23), (d * 0.8, -13), (d * 0.95, -4), (d, 0)])
+        # (its last instant rounded over: rougher, and no spike to stand on the column's)
+        x = PB.soft_clip(x[:, None], T.loudest(x) * 10 ** (9.0 / 20), 0.6)[:, 0]
         x *= np.clip((d - t) / 0.006, 0, 1)
     write(f"whistle{v}", x * T.fade(n, 0.1, 0.001), kind="whistle")
 
