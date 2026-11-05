@@ -2071,42 +2071,6 @@
     ],
     "subtitle": "subtitles.orbital.fold.reverse"
   },
-  "fold.bounce1": {
-    "sounds": [
-      {
-        "name": "orbital:fold/bounce1",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.bounce1"
-  },
-  "fold.bounce2": {
-    "sounds": [
-      {
-        "name": "orbital:fold/bounce2",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.bounce2"
-  },
-  "fold.bounce3": {
-    "sounds": [
-      {
-        "name": "orbital:fold/bounce3",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.bounce3"
-  },
-  "fold.bounce4": {
-    "sounds": [
-      {
-        "name": "orbital:fold/bounce4",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.bounce4"
-  },
   "fold.slam": {
     "sounds": [
       {
@@ -2124,5 +2088,50 @@
       }
     ],
     "subtitle": "subtitles.orbital.fold.fall"
+  },
+  "fold.bang1": {
+    "sounds": [
+      {
+        "name": "orbital:fold/bang1",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.bang1"
+  },
+  "fold.bang2": {
+    "sounds": [
+      {
+        "name": "orbital:fold/bang2",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.bang2"
+  },
+  "fold.bang3": {
+    "sounds": [
+      {
+        "name": "orbital:fold/bang3",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.bang3"
+  },
+  "fold.bang4": {
+    "sounds": [
+      {
+        "name": "orbital:fold/bang4",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.bang4"
+  },
+  "fold.letgo": {
+    "sounds": [
+      {
+        "name": "orbital:fold/letgo",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.letgo"
   }
 }

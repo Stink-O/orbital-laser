@@ -52,6 +52,8 @@ pub(super) const FD_FOLDS: [f32; 6] = [35.0, 35.5, 36.1, 36.8, 37.5, 38.2];
 /// When each ring bangs down, outermost first (ring 4 at FD_SLAM[0], with the far land, ring 0 last): the last shows the
 /// crater. Each falls for 0.8 s and stops dead, so there is a stillness before each but the first.
 pub(super) const FD_SLAM: [f32; 5] = [44.1, 45.2, 46.3, 47.4, 48.7];
+/// How long each ring falls (fold_warp.wgsl's FW_FALL): a ring's sound starts this far before its bang, its fall in the same file.
+pub(super) const FD_FALL: f32 = 0.8;
 /// When the crater takes its place: the one frame the game's hold on the terrain lets go (`render.hold-world`).
 pub const FD_REVEAL: f32 = FD_SLAM[4];
 /// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time.
@@ -77,28 +79,30 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     let dist = (me[0] - cx).hypot(me[2] - cz);
 
     // ---- sound (tools/sounds_fold.py) ------------------------------------------------------------------------------
-    // (the fall, a roar cut dead on the stop; a tiny wet wobble in the silence; the air arriving late by the distance)
+    // (the fall, a roar cut dead on the stop; a heavy settle in the silence; the air arriving late by the distance)
     p.csound(0.0, "descent", 10.0, 1.0);
     p.csound(FD_STOP + 0.09, "wobble", 10.0, 1.0);
     p.csound(FD_STOP + (dist as f32 / 343.0).clamp(0.2, 1.0), "air", 10.0, 1.0);
-    // (the touch, the land like water, then ice: the creases as stones skipped over a frozen lake)
+    // (let go, the air over it as it falls; it lands at full speed, the land shutting over it; then the land like water, then ice:
+    // the creases as stones skipped over a frozen lake)
+    p.csound(FD_HANG, "letgo", 10.0, 1.0);
     p.csound(FD_TOUCH - 0.4, "meld", 10.0, 1.0);
     p.csound(FD_TOUCH + 1.5, "ripple", 10.0, 1.0);
     p.csound(FD_SCORE, "score", 10.0, 1.0);
     p.csound(FD_FOLD, "unravel", 10.0, 1.0);
     p.csound(FD_FOLD, "groan", 10.0, 1.0);
-    // (the seal and the fold running down to nothing; the ding alone; everything back)
+    // (the seal and the fold running down to nothing; the ding alone; everything going back, gathering, till the first ring lands)
     p.csound(FD_SEAL, "foldown", 10.0, 1.0);
     p.csound(FD_BEAT, "ding", 10.0, 1.0);
     p.csound(FD_RELEASE, "reverse", 10.0, 1.0);
     p.shake(FD_RELEASE, 0.3 * super::falloff(dist), 1.6);
-    // (a bounce a landing, each smaller, and a jolt with each; the air under the last fall, and the slam)
+    // (each ring its own fall and its own bang, in one file, and a jolt with each; the last's fall and the slam apart)
     for (k, t) in FD_SLAM.iter().enumerate() {
         let f = k as f32 / 4.0;
         if k < 4 {
-            p.csound(*t, &format!("bounce{}", k + 1), 10.0, 1.0);
+            p.csound(*t - FD_FALL, &format!("bang{}", k + 1), 10.0, 1.0);
         } else {
-            p.csound(*t - 1.15, "fall", 10.0, 1.0);
+            p.csound(*t - FD_FALL, "fall", 10.0, 1.0);
             p.csound(*t, "slam", 10.0, 1.0);
         }
         p.shake(*t, (0.5 + 0.4 * f) * super::falloff(dist * 0.5), 0.6 + 0.9 * f);
@@ -126,7 +130,7 @@ mod tests {
     fn the_warp_keeps_the_beats() {
         let warp = include_str!("../../shaders/fold_warp.wgsl");
         let pass = include_str!("../../shaders/fold.wgsl");
-        for (name, v) in [("RIPPLE", FD_RIPPLE), ("SCORE", FD_SCORE), ("TEAR", FD_TEAR), ("FOLD", FD_FOLD), ("SEAL", FD_SEAL), ("CRUSH", FD_CRUSH), ("BEAT", FD_BEAT), ("REL", FD_RELEASE), ("FLAT", FD_SLAM[0]), ("SLAM4", FD_SLAM[4]), ("END", FD_WARP_END)] {
+        for (name, v) in [("RIPPLE", FD_RIPPLE), ("SCORE", FD_SCORE), ("TEAR", FD_TEAR), ("FOLD", FD_FOLD), ("SEAL", FD_SEAL), ("CRUSH", FD_CRUSH), ("BEAT", FD_BEAT), ("REL", FD_RELEASE), ("FLAT", FD_SLAM[0]), ("SLAM4", FD_SLAM[4]), ("FALL", FD_FALL), ("END", FD_WARP_END)] {
             assert!(warp.contains(&format!("const FW_{name}: f32 = {v:.1};")), "FW_{name}");
         }
         for (name, v) in [("STOP", FD_STOP), ("HANG", FD_HANG), ("TOUCH", FD_TOUCH), ("MELD", FD_MELD), ("FOLD", FD_FOLD), ("SEAL", FD_SEAL), ("CRUSH", FD_CRUSH), ("BEAT", FD_BEAT), ("REL", FD_RELEASE), ("SLAM0", FD_SLAM[0]), ("SLAM4", FD_SLAM[4])] {
@@ -178,6 +182,26 @@ mod tests {
         let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
         assert!(ev.iter().all(|e| matches!(e.1, Act::Sound { .. } | Act::Shake { .. })), "only sounds and a jolt");
         assert!(ev.iter().any(|e| matches!(&e.1, Act::Sound { event, .. } if event == "orbital:fold.slam")));
+    }
+
+    /// Every sound the plan plays is an event with a file (tools/sounds_fold.py), each ring's starting its fall before its bang.
+    #[test]
+    fn the_sounds_are_there_and_on_their_beats() {
+        let events = include_str!("../../../orbital-sounds/assets/orbital/sounds.json");
+        let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
+        let when = |name: &str| ev.iter().find(|e| matches!(&e.1, Act::Sound { event, .. } if event == &format!("orbital:fold.{name}"))).map(|e| e.0);
+        for e in &ev {
+            if let Act::Sound { event, .. } = &e.1 {
+                let name = event.strip_prefix("orbital:").expect("the mod's");
+                assert!(events.contains(&format!("\"{name}\"")), "{name} isn't in sounds.json");
+            }
+        }
+        assert_eq!(when("letgo"), Some(FD_HANG));
+        for k in 0..4 {
+            assert_eq!(when(&format!("bang{}", k + 1)), Some(FD_SLAM[k] - FD_FALL), "bang {k}");
+        }
+        assert_eq!(when("fall"), Some(FD_SLAM[4] - FD_FALL));
+        assert_eq!(when("slam"), Some(FD_SLAM[4]));
     }
 
     /// The plan as it is made on the fire tick stays light: the tiles wait for stages of their own.
