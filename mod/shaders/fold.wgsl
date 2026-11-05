@@ -268,8 +268,10 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     // (a soft max(mm, 0): past 30 its exp would run out, and it is mm)
     let mz = mm / sl;
     let dens = saturate(select(sl * log(1.0 + exp(max(mz, -30.0))), mm, mz > 30.0));
-    let sig = (0.26 * exp(-age / 6.0) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk);
-    let life = (1.0 - fd_ss(9.0, 14.0, t)) * fd_ss(0.1, 0.9, t);
+    let sig = (0.26 * exp(-age / 2.6) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk);
+    // (its foot lifting off the land as it thins, the droplet left in the clear)
+    let foot = 42.0 * pow(max(after - 0.7, 0.0), 2.0);
+    let life = (1.0 - fd_ss(9.0, 14.0, t)) * fd_ss(0.1, 0.9, t) * fd_ss(foot - 1.0, foot + 50.0, gy + 40.0 * step(after, 0.7));
     let dtau = sig * prof * dens * 1.6 * rad * gin * on * life;
     let nrm = normalize(vec3<f32>(off.x, 0.0, off.y) - v * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
     let ln = 0.5 + w1 * (n1 - 0.5);
@@ -364,13 +366,13 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
 // The dust: the air that came down with it hits the land and spreads, a low rolling ring out from under it, lumps of the
 // land's own colour rising off its front and a thin haze left behind. Marched, up to `s_end`.
 fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, land: vec4<f32>, li: FdLight, jit: f32) -> vec3<f32> {
-    if (a <= 0.0 || a > 3.6) {
+    if (a <= 0.0 || a > 3.0) {
         return colIn;
     }
     let rf = 8.0 + 88.0 * (1.0 - exp(-a / 0.68));
     let w = 7.0 + 7.0 * a;
-    let top = 9.0 + 7.0 * (1.0 - exp(-a / 0.45)) + 1.6 * a;
-    let fade = (1.0 - fd_ss(1.1, 3.6, a)) * fd_ss(0.0, 0.05, a);
+    let top = 8.0 + 6.0 * (1.0 - exp(-a / 0.45)) + 0.8 * a;
+    let fade = (1.0 - fd_ss(0.8, 3.0, a)) * fd_ss(0.0, 0.05, a);
     let ylo = min(G.y + land.y, G.y) - 2.0;
     let yhi = max(G.y + land.y, G.y) + top * 2.0;
     // (the ray in the slab of air it fills, and in the disc out to the front)
@@ -526,8 +528,9 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     }
     // ---- the fire round it, and the dust the air raises -----------------------------------------------------------------
     col = fd_sheath(col, v, C, d, t, s_end, jit);
-    col = fd_dust(col, v, G, after - (d.stop_h - d.R) / FD_V, s_end, land, li, jit);
-    return col;
+    // (the dust over it thinned: it stays the thing to look at)
+    let dusty = fd_dust(col, v, G, after - (d.stop_h - d.R) / FD_V, s_end, land, li, jit);
+    return mix(dusty, col, select(0.0, 0.7, s_end < far));
 }
 
 @fragment
