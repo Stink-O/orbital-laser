@@ -38,9 +38,12 @@ const VM_FOUNT: usize = VM_BASE + 2200;
 pub(super) const VM_FOUNTS: usize = 64;
 const VM_BOULD: usize = VM_BASE + 2800;
 pub(super) const VM_BOULDS: usize = 40;
-const VM_PLATE: usize = VM_BASE + 3300;
-const VM_PW: usize = 12;
+const VM_BW: usize = 16;
+const VM_PLATE: usize = VM_BASE + 3500;
+const VM_PW: usize = 16;
 pub(super) const VM_PLATES: usize = 164;
+/// The plates thrown at the burst: those of the rings on the dome (the others lie out on the land).
+const VM_FLY: usize = 95;
 /// The columns' words: the land and the field (what the march reads), the colours, the rest (what the shading reads).
 const VM_W0: usize = VM_BASE + 8192;
 const VM_W1: usize = VM_W0 + VM_COLS;
@@ -93,6 +96,18 @@ pub(super) struct Shard {
     pub lean: (f64, f64),
     pub tilt: (f64, f64),
     pub face: [(f64, f64); 5],
+}
+/// A burst of lava from a crack: where (on what land, at what share of the dome), when, for how long, how high.
+#[derive(Clone, Copy, Default)]
+struct Fount {
+    x: f64,
+    z: f64,
+    land: f64,
+    p: f64,
+    t0: f64,
+    dur: f64,
+    h: f64,
+    seed: f64,
 }
 /// The dome and how it breaks, for a seed: worked out as the strike starts.
 pub(super) struct Geo {
@@ -158,7 +173,7 @@ impl Geo {
             let u = (c as f64 + 0.6 * mh(k, seed, 0x710)) / clumps as f64;
             let a = TAU * (0.618_034 * c as f64 + 0.2 * mh(k, seed, 0x711));
             let r = 45.0 + 195.0 * (0.2 + 0.8 * mh(k, seed, 0x712)).powf(0.8);
-            let t0 = 10.2 + 6.2 * u.powf(0.8);
+            let t0 = 12.4 + 4.0 * u.powf(0.8);
             let tall = (34.0 + 54.0 * mh(k, seed, 0x713).powf(1.3)) * (1.0 - 0.35 * r / 250.0);
             let rad = 7.0 + 8.0 * mh(k, seed, 0x714);
             // (they lean out from the middle of the clump, thrust apart)
@@ -466,8 +481,7 @@ pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, 
     // (each shard stands on the land and the lift at its foot)
     let mut shards = Vec::with_capacity(VM_SHARDS * VM_SW);
     let foot = |x: f64, z: f64| {
-        let (i, k) = (((x + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32, ((z + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32);
-        let j = (k.clamp(0, VM_GW as i32 - 1) as usize) * VM_GW + i.clamp(0, VM_GW as i32 - 1) as usize;
+        let j = col_index(x, z);
         (w.cols[j].map_or_else(|| land(x, z), |c| f64::from(c.top - i32::from(c.canopy))), w.cells[j].p)
     };
     for s in &w.geo.shards {
@@ -480,7 +494,120 @@ pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, 
         shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
     let head = vec![1f32.to_bits(), lo.to_bits(), hi.to_bits()];
-    vec![(VM_BASE, head), (VM_TILE, tw), (VM_SHARD, shards), (VM_W0, w0), (VM_W1, w1), (VM_W2, w2)]
+    vec![
+        (VM_BASE, head),
+        (VM_TILE, tw),
+        (VM_SHARD, shards),
+        (VM_FOUNT, vm_founts(w, &foot)),
+        (VM_BOULD, vm_boulders(w, &foot)),
+        (VM_PLATE, vm_plates(w, land)),
+        (VM_W0, w0),
+        (VM_W1, w1),
+        (VM_W2, w2),
+    ]
+}
+
+/// The bursts of lava: on the cracks, few and high up at first, more and all over as it goes on, none past the hush.
+fn vm_founts(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
+    let s = w.geo.seed;
+    let mut out = Vec::with_capacity(VM_FOUNTS * 8);
+    let mut list: Vec<Fount> = (0..VM_FOUNTS as u32)
+        .map(|k| {
+            let u = (f64::from(k) + 0.7 * mh(k, s, 0x740)) / VM_FOUNTS as f64;
+            let t0 = 11.6 + 5.3 * u.powf(0.7);
+            let a0 = TAU * mh(k, s, 0x741);
+            let r = 30.0 + 225.0 * mh(k, s, 0x742).powf(0.9) * (0.45 + 0.55 * u);
+            // (along the ring to the crack nearest)
+            let mut best = (1.0e9, r * a0.cos(), r * a0.sin());
+            for b in -16..=16 {
+                let a = a0 + f64::from(b) * 4.0 / r;
+                let (x, z) = (r * a.cos(), r * a.sin());
+                let j = col_index(x, z);
+                if w.cells[j].d < best.0 {
+                    best = (w.cells[j].d, x, z);
+                }
+            }
+            let (land, p) = foot(best.1, best.2);
+            let dur = 1.0 + 1.5 * mh(k, s, 0x743);
+            Fount { x: best.1, z: best.2, land, p, t0, dur: dur.min((17.15 - t0).max(0.25)), h: 14.0 + 30.0 * mh(k, s, 0x744).powi(2) + 16.0 * u, seed: f64::from(k) * 1.37 }
+        })
+        .collect();
+    list.sort_by(|a, b| a.t0.total_cmp(&b.t0));
+    for f in list {
+        out.extend([f.x, f.z, f.land, f.p, f.t0, f.dur, f.h, f.seed].map(|v| (v as f32).to_bits()));
+    }
+    out
+}
+/// The boulders breaking off and rolling down: each down a line from the middle: its bearing, where it starts, when and
+/// how hard it goes, how big, and the land and the dome at five places on the way.
+fn vm_boulders(w: &Work, foot: &dyn Fn(f64, f64) -> (f64, f64)) -> Vec<u32> {
+    let s = w.geo.seed;
+    let mut out = Vec::with_capacity(VM_BOULDS * VM_BW);
+    for k in 0..VM_BOULDS as u32 {
+        let a = TAU * mh(k, s, 0x750);
+        let r0 = 70.0 + 150.0 * mh(k, s, 0x751);
+        let r1 = r0 + 190.0;
+        let t0 = 11.5 + 5.0 * mh(k, s, 0x752);
+        let acc = 11.0 + 16.0 * mh(k, s, 0x753);
+        let size = 1.6 + 2.2 * mh(k, s, 0x754).powi(2);
+        let mut f = vec![a.cos(), a.sin(), r0, r1, t0, acc, size, f64::from(k)];
+        for i in 0..4 {
+            let r = r0 + (r1 - r0) * f64::from(i) / 3.0;
+            let (l, p) = foot(r * a.cos(), r * a.sin());
+            f.push(l);
+            f.push(p);
+        }
+        out.extend(f.iter().map(|v| (*v as f32).to_bits()));
+    }
+    out
+}
+/// The plates as thrown at the burst: from the top first, up and out, each turning its own way.
+fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
+    crate::meter::spend(100 * VM_COLS as u64);
+    let s = w.geo.seed;
+    let n = w.geo.plates.len();
+    let mut sum = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64); n];
+    for j in 0..VM_COLS {
+        let c = &w.cells[j];
+        let (x, z) = col_xz(j);
+        let t = &mut sum[c.plate as usize];
+        t.0 += x;
+        t.1 += z;
+        t.2 += w.cols[j].map_or_else(|| land(x, z), |c| f64::from(c.top - i32::from(c.canopy)));
+        t.3 += 1.0;
+    }
+    let mut rad = vec![0.0f64; n];
+    for j in 0..VM_COLS {
+        let c = w.cells[j].plate as usize;
+        let (x, z) = col_xz(j);
+        let t = sum[c];
+        if t.3 > 0.0 {
+            rad[c] = rad[c].max((x - t.0 / t.3).hypot(z - t.1 / t.3));
+        }
+    }
+    let mut out = Vec::with_capacity(VM_PW * n);
+    for k in 0..n {
+        let t = sum[k];
+        let m = k as u32;
+        let (cx, cz, l) = if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
+        let g = &w.geo.plates[k];
+        let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
+        let r = cx.hypot(cz).max(1.0);
+        let (ux, uz) = (cx / r, cz / r);
+        // (the sheet: thrown out far more than up, those near the top up hardest; it goes in a fifth of a second)
+        let tr = 18.03 + r / 1300.0 + 0.03 * mh(m, s, 0x760);
+        let up = (105.0 + 230.0 * (1.0 - r / 320.0).clamp(0.0, 1.0)) * (0.7 + 0.6 * mh(m, s, 0x761));
+        let out_v = (45.0 + 120.0 * (PI * (r / 330.0).min(1.0)).sin()) * (0.75 + 0.5 * mh(m, s, 0x762));
+        let aa = TAU * mh(m, s, 0x763);
+        let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 7.0 + 12.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, 0.0];
+        out.extend(f.iter().map(|v| (*v as f32).to_bits()));
+    }
+    out
+}
+/// The column nearest (x, z) from the vent.
+fn col_index(x: f64, z: f64) -> usize {
+    let (i, k) = (((x + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32, ((z + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32);
+    (k.clamp(0, VM_GW as i32 - 1) as usize) * VM_GW + i.clamp(0, VM_GW as i32 - 1) as usize
 }
 
 /// The columns of rows `a..b` of the square.
@@ -703,7 +830,8 @@ mod tests {
         assert!(VM_TILE + VM_TN * VM_TN * 2 <= VM_SHARD);
         assert!(VM_SHARD + VM_SHARDS * VM_SW <= VM_FOUNT);
         assert!(VM_FOUNT + VM_FOUNTS * 8 <= VM_BOULD);
-        assert!(VM_BOULD + VM_BOULDS * 8 <= VM_PLATE);
+        assert!(VM_BOULD + VM_BOULDS * VM_BW <= VM_PLATE);
+        assert_eq!(VM_FLY, Geo::new(37).rings[..5].iter().map(|g| g.n).sum::<usize>());
         assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_W0);
     }
 }

@@ -1229,6 +1229,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let disc = 1.0 - smoothstep(0.052, 0.058, th);
         col = col + (vec3<f32>(1.15, 0.07, 0.02) * disc + vec3<f32>(0.42, 0.05, 0.02) * exp(-th / 0.22) + vec3<f32>(0.12, 0.03, 0.012) * exp(-th / 0.8)) * show * vis * sun_up;
     }
+    col = vm_over(col, C, rd, scene_len, l);
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     let out = mix(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb, srgb, fade);
     if (capture() > 2.5) {
