@@ -1026,5 +1026,6 @@ fn world_fragment(f: Fragment) -> Painted {
     let awayp = length(Q.xz - mq.xz);
     let dusk = max(fw_ss(430.0, 640.0, awayp), fw_ss(0.5 * lands, 0.97 * lands, r)) * fw_ss(30.5, 33.5, tau);
     col = mix(col, vec3<f32>(0.02, 0.024, 0.06), dusk * 0.96);
-    return Painted(vec4<f32>(col, alpha), fog);
+    // (the game's fog goes by how far off a thing is drawn, no use on walls: all of it the sphere's own dusk)
+    return Painted(vec4<f32>(col, alpha), fog * (1.0 - fw_ss(30.0, 33.0, tau)));
 }
