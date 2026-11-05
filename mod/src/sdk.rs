@@ -93,6 +93,7 @@ pub mod fake {
         pub fn set_params(_params: &[f32]) {}
         pub fn set_warp(_wgsl: &str) {}
         pub fn warp_on(_on: bool, _x: f64, _y: f64, _z: f64, _copies: u32, _radius: f32) {}
+        pub fn hold_world(_on: bool) {}
         pub fn clear_post() {}
         pub fn set_history(_on: bool) {}
         pub fn set_data(_words: &[u32]) {}

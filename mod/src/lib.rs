@@ -1598,6 +1598,8 @@ impl Mod for Orbital {
                 let on = (strike::FD_WARP_START..strike::FD_WARP_END).contains(&s.params[3]);
                 let p = &s.params;
                 render::warp_on(on, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]), strike::FD_COPIES, strike::FD_COPY_R);
+                // (the crater made behind what is on screen, and all shown on one frame; the terrain off, nothing to hold)
+                render::hold_world(self.pace.hidden && self.terrain);
             }
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
