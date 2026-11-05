@@ -927,7 +927,9 @@ fn out_edit(b: &mut Blocks, ctx: &Ctx, c: Col, x: i32, z: i32, r: f64, rel: Rel)
         let ridge = (-low / 7.0).clamp(0.0, 1.0);
         let t = pond + (1.3 - 1.3 * ridge) * (0.45 + fall) + apron(-(r - g.at(&g.e, x, z)));
         let cut = if wet > 0.62 { 1.0 } else { 0.0 };
-        let top = base + (t - cut * 0.9).round().max(0.0) as i32;
+        // (never a smooth slope: on flat water its steps would be a contour map's rings)
+        let rough = if t > 0.6 { 2.0 * (qnoise(f64::from(x), f64::from(z), 5.5, s.seed ^ 0xa7) - 0.5) + pick(x * 37 + z * 59, s.seed ^ 0xa8) - 0.5 } else { 0.0 };
+        let top = base + (t - cut * 0.9 + rough).round().max(0.0) as i32;
         let mut top = top;
         // what stands is swept off
         let stands = c.top.max(base);
