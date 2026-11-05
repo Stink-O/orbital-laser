@@ -16,8 +16,8 @@ const FD_SEAL: f32 = 35.0;
 const FD_CRUSH: f32 = 35.0;
 const FD_BEAT: f32 = 40.0;         // the tip touches the target
 const FD_REL: f32 = 40.5;          // it all runs backwards
-const FD_SLAM0: f32 = 43.4;         // the first ring lands
-const FD_SLAM4: f32 = 48.0;        // the last slam
+const FD_SLAM0: f32 = 44.1;         // the first ring lands
+const FD_SLAM4: f32 = 48.7;        // the last slam
 const FD_FALL: f32 = 3000.0;       // how high it starts over the target
 
 fn fd_ss(a: f32, b: f32, x: f32) -> f32 { return smoothstep(a, b, x); }
@@ -45,11 +45,11 @@ fn fd_ring(i: i32) -> f32 {
 }
 fn fd_slam(i: i32) -> f32 {
     switch i {
-        case 4: { return 43.4; }
-        case 3: { return 44.5; }
-        case 2: { return 45.6; }
-        case 1: { return 46.7; }
-        default: { return 48.0; }
+        case 4: { return 44.1; }
+        case 3: { return 45.2; }
+        case 2: { return 46.3; }
+        case 1: { return 47.4; }
+        default: { return 48.7; }
     }
 }
 
@@ -708,7 +708,7 @@ fn fd_tau(t: f32) -> f32 {
     if (t < FD_BEAT) { return t; }
     if (t < FD_REL) { return FD_BEAT; }
     let u = clamp((t - FD_REL) / (FD_SLAM0 - FD_REL), 0.0, 1.0);
-    return FD_BEAT - (FD_BEAT - 20.0) * u * u * (1.4 - 0.4 * u);
+    return FD_BEAT - (FD_BEAT - 20.0) * u * u * (3.11 + u * (-5.05 + u * 2.94));
 }
 fn fd_stay(from_: vec3<f32>, S: f32, mh: f32) -> vec3<f32> {
     let L = 0.55 * S;
@@ -755,7 +755,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     // ---- the void: the sky going out as the land closes, and under the land where it has left ------------------------------
     if (sky0 && t > FD_FOLD - 0.5) {
         let dark = fd_ss(FD_FOLD + 3.0, 30.0, fd_tau(t));
-        let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM0 - 0.2, FD_SLAM4 + 0.2, t));
+        let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM4 - 0.3, FD_SLAM4 + 0.1, t));
         col = mix(col, fd_stars(v), max(dark, under));
     }
 

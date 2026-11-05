@@ -24,10 +24,10 @@ const FW_SEAL: f32 = 35.0;
 const FW_CRUSH: f32 = 35.0;
 const FW_BEAT: f32 = 40.0;
 const FW_REL: f32 = 40.5;
-const FW_FLAT: f32 = 43.4;         // strike/fold.rs's FD_SLAM[0]: the first ring lands, all else still up
-const FW_SLAM4: f32 = 48.0;        // the last of the slams (strike/fold.rs's FD_SLAM)
-const FW_END: f32 = 56.0;
-const FW_FADE: f32 = 48.4;         // the comedown begins
+const FW_FLAT: f32 = 44.1;         // strike/fold.rs's FD_SLAM[0]: the first ring lands, all else still up
+const FW_SLAM4: f32 = 48.7;        // the last of the slams (strike/fold.rs's FD_SLAM)
+const FW_END: f32 = 56.7;
+const FW_FADE: f32 = 49.1;         // the comedown begins
 const FW_TAU: f32 = 6.2831853;
 const FW_PI: f32 = 3.14159265;
 const FW_LEN: f32 = 480.0;         // the sheet's length, the last ring (strike/fold.rs's FD_RINGS[4])
@@ -91,7 +91,7 @@ fn fw_lie(i: i32, tau: f32) -> f32 {
 // ...and the sheet comes back to its own size, so that the land on the sphere's walls is the real land round the player,
 // all of it, its trees and its hills, not a map of what is past the horizon. 0 as it closed, 1 its own size.
 fn fw_lay(tau: f32) -> f32 {
-    return fw_ss(FW_LAY0 + 3.0, FW_LAY1, tau);
+    return fw_ss(FW_LAY0 + 1.8, FW_LAY1 - 0.8, tau);
 }
 // The twelve petals: 0 on a petal's middle line, 1 on its edge, each ring's turned half a petal on the last's.
 fn fw_petal(a: f32, i: i32) -> f32 {
@@ -106,10 +106,10 @@ fn fw_rho(i: i32, a: f32) -> f32 {
 // When ring i lands, outermost first (strike/fold.rs's FD_SLAM).
 fn fw_hit(i: i32) -> f32 {
     switch i {
-        case 4: { return 43.4; }
-        case 3: { return 44.5; }
-        case 2: { return 45.6; }
-        case 1: { return 46.7; }
+        case 4: { return 44.1; }
+        case 3: { return 45.2; }
+        case 2: { return 46.3; }
+        case 1: { return 47.4; }
         default: { return FW_SLAM4; }
     }
 }
@@ -124,6 +124,18 @@ fn fw_p(i: i32, a: f32, tau: f32, t: f32) -> f32 {
     let t0 = FW_FOLD + 2.1 * f32(i) + 0.7 * fw_petal(a, i);
     return fw_ss(0.0, 3.6, tau - t0);
 }
+// The shock of ring i's landing: a single heave running out over the land past it, gone in a second.
+fn fw_shock(r: f32, t: f32) -> f32 {
+    var y = 0.0;
+    for (var i = 1; i < 5; i += 1) {
+        let age = t - fw_hit(i);
+        if (age > 0.0 && age < 1.0) {
+            let x = (r - fw_ring(i) - 330.0 * age) / (12.0 + 34.0 * age);
+            y += 5.0 * exp(-x * x - 2.6 * age) * fw_ss(0.0, 0.05, age) * fw_ss(fw_ring(i) - 30.0, fw_ring(i), r);
+        }
+    }
+    return y;
+}
 // The fold's clock: the strike's up to FW_REL, then back to FW_BACK by FW_FLAT, gathering slowly, and there it stays.
 const FW_BACK: f32 = 20.0;
 fn fw_tau(t: f32) -> f32 {
@@ -134,7 +146,8 @@ fn fw_tau(t: f32) -> f32 {
         return FW_BEAT;
     }
     let u = clamp((t - FW_REL) / (FW_FLAT - FW_REL), 0.0, 1.0);
-    return FW_BEAT - (FW_BEAT - FW_BACK) * u * u * (1.4 - 0.4 * u);
+    // (gathering, then steady as the sphere opens, then the far land falling away)
+    return FW_BEAT - (FW_BEAT - FW_BACK) * u * u * (3.11 + u * (-5.05 + u * 2.94));
 }
 // ---- the chain ----------------------------------------------------------------------------------------------------------
 // The sheet's cross-section at bearing a: from the top pole (the target), plate after rigid plate, each a ring, hinged at
@@ -292,7 +305,7 @@ fn fw_start(k: i32) -> f32 {
     }
 }
 const FW_TIER_L: f32 = 0.72;       // each cone this much shorter than the last
-const FW_TIER_R: f32 = 0.68;       // and this much narrower
+const FW_TIER_R: f32 = 0.62;       // and this much narrower
 // How far on stage k is: quick out of the fold, slow into its place.
 fn fw_stage(k: i32, tau: f32) -> f32 {
     let e = clamp((tau - fw_start(k)) / (fw_start(k + 1) - fw_start(k)), 0.0, 1.0);
@@ -459,10 +472,14 @@ fn fw_cone(k: i32, pos: vec3<f32>, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> 
     let z1 = 2.0 * S * (1.0 - cos(FW_CAP));
     let pz = fw_point(k, tau, z1, ax);
     let qz = fw_point(k - 1, tau, z1, ax);
-    let scale = 0.42 * S * pow(FW_TIER_R, f32(k - 1));
+    let scale = S * sin(FW_CAP) * pow(FW_TIER_R, f32(k - 1));
     let w = r / FW_DISC;
-    // (the rim a little over the last cone's point)
-    let rim = qz - 0.3 * (pz - qz);
+    // (the first as wide as the top that folded in, its rim that top's edge, so it covers all of it; the rest with their rims
+    // a little over the last one's point)
+    var rim = qz - 0.3 * (pz - qz);
+    if (k == 1) {
+        rim = mix(qz, 0.5 * z1, g);
+    }
     let bell = pow(min(w, 1.3), 1.5);
     let height = clamp(Q.y, -6.0, 60.0) * scale / FW_DISC;
     let b = (scale * w + height * 0.8) * g;
@@ -529,6 +546,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // (what is under the sheet doesn't swing out on a lever: pressed up to its cut, then the heights pressed in)
     let cuts = fw_ss(FW_FOLD - 0.5, FW_FOLD, tau) * (1.0 - fw_ss(FW_SLAM4 - 0.3, FW_SLAM4, t));
     var h = Q.y + rip;
+    if (t > FW_FLAT && t < FW_SLAM4) {
+        h += fw_shock(r, t);
+    }
     h = max(h, mix(-4000.0, c.cut, cuts));
     let soft = select(26.0 * (1.0 - exp(h / 26.0)) * -1.0, 110.0 * (1.0 - exp(-h / 110.0)), h > 0.0);
     h = mix(h, soft, folded);
@@ -722,6 +742,10 @@ fn world_fragment(f: Fragment) -> Painted {
     if (t > FW_FOLD - 0.5 && t < FW_SLAM4) {
         // (the caves' walls, sealed rooms, and what the far tiles stand on)
         if (f.light.x < 5.0 || (Q.y < c.cut && !opened)) {
+            // (from inside the sphere, a pit in the land is a dark pit, no window on the void)
+            if (f.front && fw_held(tau) > 0.5) {
+                return Painted(vec4<f32>(0.03, 0.027, 0.03, 1.0), 0.0);
+            }
             return drop_;
         }
     }
@@ -846,6 +870,9 @@ fn world_fragment(f: Fragment) -> Painted {
         col = mix(col, line, clamp(hairline, 0.0, 1.0));
         fog = 1.0 - clamp(hairline + ember, 0.0, 1.0);
     }
+    // ---- past the real land the sphere goes off into its own dusk: the far land's coarse tiles are no use this close --------
+    let dusk = fw_ss(600.0, 1500.0, r) * fw_ss(30.5, 33.5, tau) * 0.88;
+    col = mix(col, vec3<f32>(0.035, 0.04, 0.1), dusk);
     // ---- the mandala's middle, a line of light where it was cut --------------------------------------------------------------
     {
         let px = max(0.05, dist * 0.00095);
