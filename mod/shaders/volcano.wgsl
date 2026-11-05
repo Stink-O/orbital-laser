@@ -134,7 +134,7 @@ fn vc_col(q: vec3<f32>, rho: f32, ang: f32) -> f32 {
     let jets = smoothstep(0.0, 34.0, hy) * (1.0 - smoothstep(60.0, 240.0, hy));
     if (jets > 0.0) {
         let sc = 0.5 + 0.5 * cos(13.0 * ang + 2.0 * sin(3.0 * ang + 0.7) + hy * 0.004);
-        W = W * mix(1.0, 0.3 + 0.9 * sc * sc, jets);
+        W = W * mix(1.0, 0.72 + 0.5 * sc * sc, jets);
     }
     // (the head bulging out of it while it climbs)
     let Rt = vs.Rt;
@@ -839,14 +839,14 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             den = saturate(-sd.x / edge);
         }
         // (the flows' body thinning behind the front, and the air under what has lifted clear)
-        var ext = 0.3;
+        var ext = 0.42;
         if (b.df < 40.0) {
-            ext = mix(0.3, 0.05, smoothstep(160.0, 520.0, b.e));
+            ext = mix(0.42, 0.05, smoothstep(160.0, 520.0, b.e));
         }
         // (the steam: thin and white, before the eruption)
         let steam = (1.0 - smoothstep(0.0, 0.35, vs.a)) * step(b.dc, min(b.df, b.du));
         if (steam > 0.0) {
-            ext = mix(ext, 0.03, steam);
+            ext = mix(ext, 0.016, steam);
         }
         den = den * thin;
         if (den > 1.0e-4) {
@@ -891,16 +891,18 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             let skyg = mix(mix(l.skyl, vec3<f32>(sk_l), 0.75), vec3<f32>(sk_l) * vec3<f32>(1.0, 0.72, 0.52), vs.cov);
             var c = alb * (skyg * (0.1 + 0.6 * ao) * (0.05 + 0.95 * sk) + l.sunc * (1.25 * tsun * ph) + vec3<f32>(0.9, 0.55, 0.32) * sk_l * rim * vs.cov * 1.3 * (1.0 - saturate(-b.d / 30.0)) * saturate(0.25 + 1.2 * b.rho / vs.Ru));
             // ---- fire: the vents' glow on all that hangs over them, the falling mass and the flows' dull red low down --
-            let dr = length(vec2<f32>(b.rho - VC_RING, hy));
+            // (over the land under it: the ring may lie well above or below the vent's own ground)
+            let hyl = hy - select(0.0, vc_land(q.xz), hy < 600.0);
+            let dr = length(vec2<f32>(b.rho - VC_RING, hyl));
             let flick = 0.72 + 0.28 * sin(b.ang * 5.0 + time * 1.7) * sin(b.ang * 11.0 - time * 2.3);
-            let vent = smoothstep(0.0, 0.5, vs.a) * (1.0 - smoothstep(VC_COLLAPSE, VC_COLLAPSE + 5.0, time));
+            let vent = smoothstep(0.0, 0.5, vs.a) * (1.0 - smoothstep(VC_COLLAPSE, VC_COLLAPSE + 2.5, time));
             let crease = (1.0 - sd.y) * (1.0 - sd.y);
             // (from under: what hangs over the ring lit from below, dying out within a hundred or two blocks)
             let under = exp(-dr / 34.0) * 0.8 + 0.012 * exp(-dr / 105.0);
             var fire = vec3<f32>(1.0, 0.22, 0.035) * under * flick * vent * (0.3 + 0.7 * crease);
             // (the jet's foot itself: white-hot in its creases, right down at the land)
-            let hot = exp(-max(hy, 0.0) / 30.0) * wc * (1.0 - steam) * vent;
-            fire = fire + mix(vec3<f32>(1.3, 0.26, 0.03), vec3<f32>(3.4, 1.7, 0.4), exp(-max(hy, 0.0) / 10.0)) * hot * crease * 2.4;
+            let hot = exp(-max(hyl, 0.0) / 24.0) * wc * (1.0 - steam) * vent;
+            fire = fire + mix(vec3<f32>(1.2, 0.22, 0.025), vec3<f32>(2.6, 1.2, 0.26), exp(-max(hyl, 0.0) / 8.0)) * hot * crease * 1.7;
             if (b.e > -60.0) {
                 // (the flows, close behind the front and low down: the hot base of the cloud showing in its creases)
                 let h = hy - b.land;
@@ -1081,11 +1083,11 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     }
     if (stage != 1u && sky) {
         // (what sky is left, in along the horizon under the sheet: dirty with ash, dimmed)
-        let cv = (vs.cov * 0.3 + 0.7 * smoothstep(0.0, 8.0, time - 23.0)) * smoothstep(VC_DARK - 6.0, VC_DARK + 8.0, time) * (1.0 - smoothstep(76.5, VC_LEN - 0.2, time));
+        let cv = (vs.cov * 0.3 + 0.7 * smoothstep(0.0, 8.0, time - 23.0)) * smoothstep(VC_DARK - 6.0, VC_DARK + 8.0, time) * (1.0 - smoothstep(77.5, VC_LEN - 0.2, time));
         let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
         // (its light dirty and red low down, gone by a few degrees up under the sheet's edge)
         let e = saturate(rd.y * 5.0);
-        col = mix(col, vec3<f32>(lum) * mix(vec3<f32>(0.62, 0.3, 0.13), vec3<f32>(0.2, 0.09, 0.05), e), cv);
+        col = mix(col, vec3<f32>(lum) * mix(vec3<f32>(0.62, 0.27, 0.11), vec3<f32>(0.22, 0.075, 0.04), e), cv);
     }
     if (stage == 2u) {
         col = col * up.a + up.rgb;

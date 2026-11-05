@@ -255,17 +255,17 @@ fn wall_block(x: i32, y: i32, z: i32, depth: f64, seed: u32) -> &'static str {
         "minecraft:blackstone"
     }
 }
-/// The ash laid out over the land, in patches (`patch` its noise here).
+/// The ash laid out over the land, in broad patches (`patch` its noise here).
 fn ash_block(x: i32, y: i32, z: i32, seed: u32, patch: f64) -> &'static str {
-    let h = patch + 0.3 * pick(x * 5 + y * 19 + z * 3, seed ^ 0xca);
-    if h < 0.5 {
+    let h = patch + 0.08 * pick(x * 5 + y * 19 + z * 3, seed ^ 0xca);
+    if h < 0.44 {
         "minecraft:tuff"
-    } else if h < 0.72 {
-        "minecraft:gray_terracotta"
-    } else if h < 0.92 {
-        "minecraft:light_gray_terracotta"
+    } else if h < 0.56 {
+        "minecraft:gray_concrete_powder"
+    } else if h < 0.68 {
+        "minecraft:andesite"
     } else {
-        "minecraft:gravel"
+        "minecraft:light_gray_concrete_powder"
     }
 }
 /// What the rim's broken ground is made of.
