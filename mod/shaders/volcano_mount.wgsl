@@ -1,7 +1,10 @@
 // ---- the mount (strike/vc_mount.rs): the land swelling up, then bursting -------------------------------------------
 // Appended to volcano.wgsl as the mod builds the pass; everything here is the mount's, from the tremor's end to the
-// white-out. Its hooks in volcano(): vm_surface (the land's picture, the drawn mount over it), vm_air (the steam, the
-// dust and the fire, soft, in with the cloud), vm_over (what is sharp, and the white-out), vm_join_len (fs_join).
+// white-out, and what it threw for as long as that stays in the air. Its hooks in volcano(): vm_surface (the land's
+// picture, the drawn mount over it, the plates and shards it threw), vm_air (the steam, the dust and the fire, soft, in with
+// the cloud), vm_trails (the dust of what was thrown, in with the bombs' smoke), vm_over (what is sharp, and the white-out),
+// vm_chunk_near, and the half-size stage's word of what it found (fs_join looks only where and for what it says),
+// vm_join_len (fs_join).
 // The drawn height is land(x) + H(t) * P(x) less a crack's cut, read from the columns vc_mount.rs bakes: the real land
 // stays flat underneath, and where it lifts by less than a block or two the real picture is left showing.
 const VM_BASE: u32 = 65536u;
@@ -33,14 +36,14 @@ const VM_H: f32 = 380.0;           // and how high it gets
 const VM_SWELL: f32 = 7.0;         // BEATS.md
 const VM_HUSH: f32 = 17.0;
 const VM_ERUPT: f32 = 18.0;
-const VM_GONE: f32 = 19.0;         // nothing of it is left under the white-out
+const VM_GONE: f32 = 19.0;         // nothing of the mount itself is left under the white-out
 const VM_FIREOUT: f32 = 19.5;      // but the fire sheet's outer ring, burning out as the blast comes up through it
 // What was thrown carries on: plain flight till VM_BRK (under the white-out's rise), then with the air's drag, each plate
 // with its own (VM_FLT: its drag's time, the gravity that brings it down when it should, when it hits, the sphere it fits in; vc_mount.rs).
 const VM_FLT: u32 = 71736u;        // VM_BASE + 6200: four words a plate thrown
 const VM_BRK: f32 = 18.7;
 const VM_TH: f32 = 2.5;            // the drag's time on how far out, every piece's
-const VM_FLYEND: f32 = 37.0;       // the last of it is under the land
+const VM_FLYEND: f32 = 38.0;       // the last of it is under the land
 const VM_CHUNKEND: f32 = 32.5;     // and the last of the chunks
 
 struct VmS {
@@ -420,6 +423,16 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
         if (t0 >= vm.t) {
             break;
         }
+        let fl = max(min(vm.t, VM_BRK) - VM_ERUPT - 0.06, 0.0);
+        if (fl > 0.0) {
+            // (seen from above first, as the plates)
+            let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) * (1.0 + 0.5 * (fl + vm.eh)) - o.xz;
+            let cr = pl0.x * rd.z - pl0.y * rd.x;
+            let rm = vm_w(b + 5u) + vm_w(b + 6u);
+            if (cr * cr > rm * rm * dot(rd.xz, rd.xz) + 1.0) {
+                continue;
+            }
+        }
         let e = saturate((vm.t - t0) / 2.2);
         let rise = 1.0 - (1.0 - e) * (1.0 - e) * (1.0 - e);
         let h = vm_w(b + 5u);
@@ -607,8 +620,15 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         if (a <= 0.0 || vm.t > vm_w(fb + 2u) + rad * 0.012) {
             continue;
         }
+        // (seen from above first: where it is over the land needs no gravity, and most rays pass well clear of it)
+        let vxz = vec2<f32>(vm_w(b + 9u), vm_w(b + 11u));
+        let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) + vxz * (min(a, VM_BRK - tr) + vm.eh) - o.xz;
+        let cr = pl0.x * rd.z - pl0.y * rd.x;
+        if (cr * cr > rad * rad * 1.1 * dot(rd.xz, rd.xz) + 1.0) {
+            continue;
+        }
         let rest = vec3<f32>(vm_w(b), vm_w(b + 2u) + vm_w(b + 3u) * vm.H, vm_w(b + 1u));
-        let c = vm_flown(rest, vec3<f32>(vm_w(b + 9u), vm_w(b + 10u), vm_w(b + 11u)), tr, vm_w(fb), vm_w(fb + 1u), vm.t, vm.eh);
+        let c = vm_flown(rest, vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y), tr, vm_w(fb), vm_w(fb + 1u), vm.t, vm.eh);
         let oc = c - o;
         let tc = dot(oc, rd);
         let dd = dot(oc, oc) - tc * tc;
@@ -644,7 +664,8 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         let cxz = vec2<f32>(vm_w(b), vm_w(b + 1u));
         // (looks down the ray through the slab for this plate's own columns, between their land's top and its thickness
         // under that: it carries the land as it stood, crags and all; its edges are the cracks')
-        let looks = 2 + i32(min((tb - ta) / max(2.5, ta * vs.px), 60.0));
+        // (the half-size stage only has to find it, near enough)
+        let looks = 2 + i32(min((tb - ta) / max(2.5 * vs.fine * vs.fine, ta * vs.px * vs.fine), select(30.0, 60.0, vs.fine < 1.5)));
         let dtl = (tb - ta) / f32(looks);
         for (var k = 0; k < looks; k = k + 1) {
             let t = ta + dtl * (f32(k) + 0.1);
@@ -1085,6 +1106,9 @@ fn vm_join_len(pos: vec2<f32>, len: f32, C: vec3<f32>, rd: vec3<f32>) -> f32 {
 }
 // [end half stage]
 
+fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
+    return a.x * b.y - a.y * b.x;
+}
 // ---- what the thrown leave in the air: dust trailing each piece, a burst of it where a big one comes down ---------------
 // (half size) .rgb what it adds, .a what it leaves; `tm` how far off the nearest of it is.
 fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<function, f32>) -> vec4<f32> {
@@ -1100,12 +1124,23 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         let fb = VM_FLT + i * 4u;
         let hit = vm_w(fb + 2u);
         let rad = vm_w(b + 6u);
-        if (rad < 58.0 || vm.t > hit + 7.0) {
+        if (rad < 66.0 || vm.t > hit + 6.0) {
             continue;
         }
         let trw = vm_w(b + 8u);
-        let p0 = vec3<f32>(vm_w(b), vm_w(b + 2u) + vm_w(b + 3u) * vm.H, vm_w(b + 1u));
-        let v = vec3<f32>(vm_w(b + 9u), vm_w(b + 10u), vm_w(b + 11u));
+        // (from above first: its way is a line out from the vent)
+        let vxz = vec2<f32>(vm_w(b + 9u), vm_w(b + 11u));
+        let p0xz = vec2<f32>(vm_w(b), vm_w(b + 1u));
+        let t3 = min(vm.t, hit);
+        let cr0 = cross2(p0xz + vxz * (min(t3, VM_BRK) - trw + vm_eh(t3)) + C.xz, rd.xz);
+        let t4 = max(t3 - 3.6, VM_BRK);
+        let cr1 = cross2(p0xz + vxz * (VM_BRK - trw + vm_eh(t4)) + C.xz, rd.xz);
+        let cl = (28.0 + 1.5 * rad) * length(rd.xz) + 1.0;
+        if ((cr0 > cl && cr1 > cl) || (cr0 < -cl && cr1 < -cl)) {
+            continue;
+        }
+        let p0 = vec3<f32>(p0xz.x, vm_w(b + 2u) + vm_w(b + 3u) * vm.H, p0xz.y);
+        let v = vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y);
         let tau = vm_w(fb);
         let g = vm_w(fb + 1u);
         let te = min(vm.t, hit);
@@ -1140,7 +1175,7 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         // ---- it strikes: a low dome of dust, rolling out from under it and thinning ------------------------------------
         let age = vm.t - hit + 0.3;
         if (age > 0.0) {
-            let Rd = rad * (0.45 + 1.0 * (1.0 - exp(-age / 1.0)));
+            let Rd = rad * (0.3 + 0.62 * (1.0 - exp(-age / 1.2)));
             let oe = (-C - head) * vec3<f32>(1.0, 1.7, 1.0);
             let de = rd * vec3<f32>(1.0, 1.7, 1.0);
             let A = dot(de, de);
@@ -1152,9 +1187,10 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
                 let t1 = min((-B + sq) / A, tmax);
                 if (t1 > t0) {
                     let q = rd * (t0 + 0.3 * (t1 - t0)) - C;
-                    let n = gnoise3(q * 0.03 + vec3<f32>(0.0, -age * 0.5, f32(i)));
-                    let al = (1.0 - exp(-(t1 - t0) / Rd * 2.4)) * smoothstep(0.2, 0.62, (t1 - t0) / (2.0 * Rd) * sqrt(A) + n - 0.42) * (1.0 - smoothstep(2.2, 7.0, age));
-                    let sc = vec3<f32>(0.26, 0.215, 0.17) * lit + vec3<f32>(0.26, 0.215, 0.17) * vm_firelit(q, vec3<f32>(0.0, 0.0, 0.0) - normalize(q + vec3<f32>(0.0, 1.0, 0.0)));
+                    let n = 0.6 * gnoise3(q * 0.026 + vec3<f32>(0.0, -age * 0.5, f32(i))) + 0.4 * gnoise3(q * 0.08 + vec3<f32>(f32(i), -age * 0.9, 0.0));
+                    let al = (1.0 - exp(-(t1 - t0) / Rd * 1.7)) * smoothstep(0.3, 0.75, (t1 - t0) / (2.0 * Rd) * sqrt(A) + 1.4 * (n - 0.5)) * (1.0 - smoothstep(1.2, 5.5, age));
+                    let up = saturate((q.y - head.y) / (0.6 * Rd));
+                    let sc = vec3<f32>(0.3, 0.255, 0.205) * ((0.25 + 0.45 * up) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up) + vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0)));
                     c = c + tr * al * sc;
                     tr = tr * (1.0 - al);
                     *tm = min(*tm, t0);
@@ -1316,7 +1352,7 @@ fn vm_wakes(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lit: vec3<f32>, c: ptr<funct
     let de = vec3<f32>(rd.x, rd.y / VM_FLAT, rd.z);
     let A = dot(de, de);
     let fade = smoothstep(1.2, 1.7, a);
-    for (var k = 0u; k < 9u; k = k + 1u) {
+    for (var k = 1u; k < 9u; k = k + 2u) {
         let sh = vm_shell(f32(k), a);
         let sb = vm_shell(f32(k), a - BACK);
         let R = 0.5 * (sh.x + sb.x);

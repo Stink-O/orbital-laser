@@ -706,7 +706,7 @@ fn vm_flights(t: &[u32], s: u32, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let a = VM_BRK - word(k, 8);
         let (vx, vy, vz) = (word(k, 9), word(k, 10) - VM_G * a, word(k, 11));
         let y = word(k, 2) + word(k, 3) * H + word(k, 10) * a - 0.5 * VM_G * a * a;
-        let hit = 28.5 + 6.0 * q + 1.5 * mh(k as u32, s, 0x767);
+        let hit = 28.0 + 6.0 * q + 1.5 * mh(k as u32, s, 0x767);
         let tau = 1.0 + 6.0 * q;
         let sec = hit - VM_BRK;
         let e = tau * (1.0 - (-sec / tau).exp());
