@@ -350,12 +350,12 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
         let tt = th * (0.5 + 1.1 * n);
         let sh = exp(-pow(max(e, 0.0) / tt, 2.0));
         let nose = exp(-hgt * 7.0);
-        let rib = mix(fd_ss(0.46, 0.6, n), 1.0, nose * 0.7);
+        let rib = mix(fd_ss(0.46, 0.6, n), 1.0, nose * 0.3);
         let dens = sh * rib * on;
         let x = saturate(hgt * 1.1 + max(e, 0.0) / tt * 0.25);
         var c = mix(vec3<f32>(2.1, 1.25, 0.5), vec3<f32>(1.8, 0.55, 0.08), fd_ss(0.05, 0.4, x));
         c = mix(c, vec3<f32>(0.5, 0.07, 0.01), fd_ss(0.45, 0.9, x));
-        E = E + c * T * dens * dn * 3.2 / (1.0 + after * 26.0);
+        E = E + c * T * dens * dn * 2.2 / (1.0 + after * 26.0);
         // (dark round the tip: the flame burning out into smoke, wrapped in to its point)
         let sm = dens * fd_ss(0.42, 0.85, hgt) * dn * 5.0;
         E = E + vec3<f32>(0.09, 0.075, 0.07) * T * sm;
