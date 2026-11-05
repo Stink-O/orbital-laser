@@ -1455,12 +1455,12 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
 
     // ---- the land and the sky, under it ---------------------------------------------------------------------------
     if (stage != 1u && !sky) {
-        let qg = rel - C;
+        let qg = select(rel, rd * scene_len, vmh.t >= 0.0) - C;
         col = vc_dim(col, qg, L, sun_up);
         // (the cracks, the ring's glow on the land)
         let rg = length(qg.xz);
         let vent = smoothstep(VC_CRACK, VC_ERUPT, time);
-        if (time > VC_ERUPT + 0.9 && abs(qg.y) < 200.0) {
+        if (time > VC_ERUPT + 0.9 && abs(qg.y) < 200.0 && vmh.t < 0.0) {
             let dr = abs(rg - VC_RING);
             let ang = atan2(qg.z, qg.x);
             let wob = 14.0 * sin(ang * 7.0 + 1.0) + 9.0 * sin(ang * 19.0 + 3.0) + 6.0 * sin(ang * 43.0 + 0.5);
@@ -1498,7 +1498,9 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         cloud_t = m.t;
         // (the bombs' smoke, in front of the cloud or behind it)
         var tb = 1.0e9;
-        let sm = vc_bombs_smoke(C, rd, min(scene_len, 9000.0), l, l.skyl * vc_sky_t(-C), &tb);
+        let sb = vc_bombs_smoke(C, rd, min(scene_len, 9000.0), l, l.skyl * vc_sky_t(-C), &tb);
+        let st = vm_trails(C, rd, min(scene_len, 9000.0), l, &tb);
+        let sm = vec4<f32>(st.rgb + sb.rgb * st.a, sb.a * st.a);
         var ac = m.c + sm.rgb * m.tr;
         if (tb < cloud_t) {
             ac = sm.rgb + m.c * sm.a;
@@ -1517,7 +1519,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         }
     }
     if (stage == 1u) {
-        return VcOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(cloud_t, 1.0e6), 0.0, 0.0));
+        return VcOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(cloud_t, 1.0e6), vm_chunk_near(C, rd, scene_len), vmh.id));
     }
     // ---- the needle beam: a hairline down out of the sky, a spark where it touches --------------------------------
     if (time < VC_HIT + 0.3) {
@@ -1636,7 +1638,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let disc = 1.0 - smoothstep(0.052, 0.058, th);
         col = col + (vec3<f32>(1.15, 0.07, 0.02) * disc + vec3<f32>(0.42, 0.05, 0.02) * exp(-th / 0.22) + vec3<f32>(0.12, 0.03, 0.012) * exp(-th / 0.8)) * show * vis * sun_up;
     }
-    col = vm_over(col, C, rd, scene_len, l);
+    col = vm_over(col, C, rd, scene_len, cloud_t, tr_here, l);
     let srgb = linear_to_srgb(max(col, vec3<f32>(0.0)));
     let out = mix(textureSampleLevel(scene_color, linear_sampler, uv, 0.0).rgb, srgb, fade);
     if (capture() > 2.5) {

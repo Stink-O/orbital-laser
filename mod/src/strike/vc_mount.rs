@@ -44,6 +44,8 @@ const VM_PW: usize = 16;
 pub(super) const VM_PLATES: usize = 164;
 /// The plates thrown at the burst: those of the rings on the dome (the others lie out on the land).
 const VM_FLY: usize = 95;
+/// Their flight past the white-out, three words each (`vm_flights`).
+const VM_FLT: usize = VM_BASE + 6200;
 /// The columns' words: the land and the field (what the march reads), the colours, the rest (what the shading reads).
 const VM_W0: usize = VM_BASE + 8192;
 const VM_W1: usize = VM_W0 + VM_COLS;
@@ -576,7 +578,9 @@ pub(super) fn vm_tables(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize,
         }
         shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
-    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, vm_plates(w, land))]
+    let plates = vm_plates(w, land);
+    let flights = vm_flights(&plates, w.geo.seed, land);
+    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, plates), (VM_FLT, flights)]
 }
 
 /// The bursts of lava: on the cracks, few and high up at first, more and all over as it goes on, none past the hush.
@@ -684,6 +688,32 @@ fn vm_plates(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         let aa = TAU * mh(m, s, 0x763);
         let f = [cx, cz, l, pc, g.gx, g.gz, rad[k], 14.0 + 22.0 * mh(m, s, 0x764), if k < VM_FLY { tr } else { 1.0e6 }, ux * out_v, up, uz * out_v, aa.cos(), aa.sin(), (0.2 + 0.55 * mh(m, s, 0x765)) * if mh(m, s, 0x766) < 0.5 { 1.0 } else { -1.0 }, off[k] + 4.0];
         out.extend(f.iter().map(|v| (*v as f32).to_bits()));
+    }
+    out
+}
+/// How the plates come down, the pass's `vm_flown`: from when the air takes them (VM_BRK) each its drag's time `tau`, the
+/// gravity that brings it to the land at the moment chosen for it, and that moment: the biggest last and highest.
+fn vm_flights(t: &[u32], s: u32, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
+    const VM_BRK: f64 = 18.7;
+    const VM_G: f64 = 34.0;
+    const VM_TH: f64 = 2.5;
+    const H: f64 = 400.0; // the dome's height at the burst
+    let word = |k: usize, i: usize| f64::from(f32::from_bits(t[k * VM_PW + i]));
+    let big = (0..VM_FLY).map(|k| word(k, 6)).fold(1.0, f64::max);
+    let mut out = Vec::with_capacity(3 * VM_FLY);
+    for k in 0..VM_FLY {
+        let q = (word(k, 6) / big).powi(2);
+        let a = VM_BRK - word(k, 8);
+        let (vx, vy, vz) = (word(k, 9), word(k, 10) - VM_G * a, word(k, 11));
+        let y = word(k, 2) + word(k, 3) * H + word(k, 10) * a - 0.5 * VM_G * a * a;
+        let hit = 28.5 + 6.0 * q + 1.5 * mh(k as u32, s, 0x767);
+        let tau = 1.0 + 6.0 * q;
+        let sec = hit - VM_BRK;
+        let e = tau * (1.0 - (-sec / tau).exp());
+        let eh = VM_TH * (1.0 - (-sec / VM_TH).exp());
+        let (x, z) = (word(k, 0) + vx * (a + eh), word(k, 1) + vz * (a + eh));
+        let g = (y + vy * e - land(x, z)) / (tau * (sec - e));
+        out.extend([tau, g, hit].iter().map(|v| (*v as f32).to_bits()));
     }
     out
 }
@@ -959,6 +989,7 @@ mod tests {
         assert!(VM_FOUNT + VM_FOUNTS * 8 <= VM_BOULD);
         assert!(VM_BOULD + VM_BOULDS * VM_BW <= VM_PLATE);
         assert_eq!(VM_FLY, Geo::new(37, 0.0).rings[..5].iter().map(|g| g.n).sum::<usize>());
-        assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_W0);
+        assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_FLT);
+        assert!(VM_FLT + 3 * VM_FLY <= VM_W0);
     }
 }
