@@ -155,10 +155,21 @@ fn fd_sdf(pIn: vec3<f32>, d: FdDrop) -> f32 {
     }
     return e * d.R * sc;
 }
-fn fd_normal(p: vec3<f32>, d: FdDrop) -> vec3<f32> {
-    let e = 0.02 * d.R;
-    let k = vec2<f32>(1.0, -1.0);
-    return normalize(k.xyy * fd_sdf(p + k.xyy * e, d) + k.yyx * fd_sdf(p + k.yyx * e, d) + k.yxy * fd_sdf(p + k.yxy * e, d) + k.xxx * fd_sdf(p + k.xxx * e, d));
+// Its normal at p on its surface, worked out, not differenced: the differences depend on how far from the surface the march
+// stopped, and showed as contours in the chrome.
+fn fd_normal(pIn: vec3<f32>, d: FdDrop) -> vec3<f32> {
+    var p = pIn / d.R;
+    p.y = (p.y - d.piv) / d.sy + d.piv;
+    p = vec3<f32>(p.x / d.sx, clamp(p.y, -1.0, FD_TIP), p.z / d.sx);
+    let u = (p.y + 1.0) / (FD_TIP + 1.0);
+    let o = p.xz - d.sway * u * u;
+    let f = fd_prof(p.y);
+    let w = fd_ss(-0.9, -0.3, p.y);
+    let a = d.ph - p.y * 5.0;
+    let m = 1.0 + d.rip * sin(a) * w;
+    let dm = -5.0 * d.rip * cos(a) * w;
+    let gy = -2.0 * dot(o, d.sway) * 2.0 * u / (FD_TIP + 1.0) - (f.y * m * m + 2.0 * f.x * m * dm);
+    return normalize(vec3<f32>(2.0 * o.x / d.sx, gy / d.sy, 2.0 * o.y / d.sx) + vec3<f32>(0.0, -1.0e-5, 0.0));
 }
 // The light on smoke and dust: the Payload's.
 fn fd_light() -> FdLight {
@@ -209,13 +220,17 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     let hx = length(off);
     // (tight off the tip; where the air it has dragged down meets the land it spreads)
     let flare = 34.0 * fd_ss(32.0, 0.0, gy) * fd_ss(0.0, 0.1, after);
-    let rad = mix(0.34 * d.R, 1.05 * d.R + 1.5, 1.0 - exp(-age / 0.09)) + 4.2 * sqrt(age) + flare;
+    let rad = mix(0.3 * d.R, 0.72 * d.R + 1.5, 1.0 - exp(-age / 0.14)) + 4.2 * sqrt(age) + flare;
     if (hx >= rad * 3.4) {
         return m;
     }
     let sn = max(sqrt(a2), 0.08);
     let sw = 2.2 * rad + 3.0;
-    let across = vec3<f32>(off.x, 0.0, off.y) / sw + vec3<f32>(seed_v() * 0.31, seed_v() * 0.17, 0.0);
+    // (its lumps twisted round it, the wind of the fall winding the rope the fire is wound round the droplet with)
+    let tw = laid * 0.045 + seed_v();
+    let ct = cos(tw);
+    let st = sin(tw);
+    let across = vec3<f32>(ct * off.x - st * off.y, 0.0, st * off.x + ct * off.y) / sw + vec3<f32>(seed_v() * 0.31, seed_v() * 0.17, 0.0);
     let lv = log2(sw / 8.0);
     let lk = floor(lv);
     let lf = lv - lk;
@@ -245,7 +260,7 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
         let o = vec3<f32>(1.0, 7.0, 0.15 * age);
         n3 = 0.5 + (mix(gnoise3(qa * 6.1 + o), gnoise3(qb * 6.1 + o), lf) - 0.5) * lsp;
     }
-    let puff = 0.5 + 0.62 * w1 * (n1 - 0.5) + 0.3 * w2 * (n2 - 0.5) + 0.08 * w3 * (n3 - 0.5);
+    let puff = 0.5 + 0.72 * w1 * (n1 - 0.5) + 0.42 * w2 * (n2 - 0.5) + 0.16 * w3 * (n3 - 0.5);
     let rw = rad * (0.45 + puff);
     let rr = hx / rw;
     let prof = exp(-rr * rr * 1.4) * fd_ss(2.3, 1.5, rr);
@@ -253,16 +268,14 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     let thr = mix(0.32, 0.12, smk) + 0.38 * fd_ss(1.5, 18.0, age);
     let mm = (puff - thr) * 3.2 + 0.3 * exp(-age / 0.8);
     let sl = 3.2 * 0.14 * sqrt(0.384 * (1.0 - w1 * w1) + 0.09 * (1.0 - w2 * w2) + 0.0064 * (1.0 - w3 * w3)) + 1.0e-3;
-    let dens = saturate(sl * log(1.0 + exp(clamp(mm / sl, -30.0, 30.0))));
-    let sig = (0.26 * exp(-age / 6.0) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk);
-    // (the column parts round the droplet as it goes on past it)
-    var hollow = 1.0;
-    if (after > 0.0 && ycl > -d.R && ycl < tipy) {
-        let body = d.R * sqrt(max(fd_prof(ycl / d.R).x, 0.0));
-        hollow = fd_ss(body * 0.85, body * 1.3, hx);
-    }
-    let life = (1.0 - fd_ss(9.0, 14.0, t)) * fd_ss(0.1, 0.9, t);
-    let dtau = sig * prof * dens * 1.6 * rad * gin * on * hollow * life;
+    // (a soft max(mm, 0): past 30 its exp would run out, and it is mm)
+    let mz = mm / sl;
+    let dens = saturate(select(sl * log(1.0 + exp(max(mz, -30.0))), mm, mz > 30.0));
+    let sig = (0.26 * exp(-age / 2.6) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk);
+    // (its foot lifting off the land as it thins, the droplet left in the clear)
+    let foot = 42.0 * pow(max(after - 0.7, 0.0), 2.0);
+    let life = (1.0 - fd_ss(9.0, 14.0, t)) * fd_ss(0.1, 0.9, t) * fd_ss(foot - 1.0, foot + 50.0, gy + 40.0 * step(after, 0.7));
+    let dtau = sig * prof * dens * 1.6 * rad * gin * on * life;
     let nrm = normalize(vec3<f32>(off.x, 0.0, off.y) - v * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
     let ln = 0.5 + w1 * (n1 - 0.5);
     let lit = (0.35 + 0.65 * saturate(dot(nrm, li.L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
@@ -270,15 +283,15 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), fd_ss(4.0, 20.0, age));
     var c = alb * (li.sunc * lit * 0.85 + li.amb * (0.6 + 0.4 * ln));
     // (just behind it the smoke is lit by its own flame)
-    c = c + vec3<f32>(1.9, 0.75, 0.22) * exp(-age / 0.3) * dive * (0.4 + 0.6 * ln);
+    c = c + vec3<f32>(1.5, 0.55, 0.14) * exp(-age / 0.16) * dive * (0.4 + 0.6 * ln);
     c = mix(c, li.haze, (1.0 - exp(-sc / 3000.0)) * 0.75);
     m.c = c;
     m.tau = dtau;
     // (the flame: its root white-yellow off the tip, orange back along it, in tongues, not a beam)
     let fw = rad * (0.8 - 0.35 * saturate(age / 0.3));
     let fprof = exp(-pow(hx / max(fw, 0.5), 2.0) * 1.6);
-    let fl = exp(-age / 0.17) * dive * on * hollow;
-    m.glow = mix(vec3<f32>(2.6, 0.72, 0.1), vec3<f32>(4.0, 2.5, 0.9), exp(-age / 0.05)) * fl * fprof * fd_ss(0.3, 0.62, puff) * 2.2;
+    let fl = exp(-age / 0.1) * dive * on;
+    m.glow = mix(vec3<f32>(1.5, 0.42, 0.06), vec3<f32>(2.2, 1.1, 0.3), exp(-age / 0.04)) * fl * fprof * fd_ss(0.34, 0.6, puff + 0.1 * sin(t * 40.0 + laid * 0.2));
     // (high up, the hot streak of air it leaves, white, cooling within a second)
     let fh = (1.0 - dive) * exp(-age / 0.45) * life;
     m.glow = max(m.glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(fprof * rad * 0.3, 1.2));
@@ -290,16 +303,14 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
 fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_end: f32, jit: f32) -> vec3<f32> {
     let after = max(t - FD_STOP, 0.0);
     let hi = fd_ss(FD_STOP - 2.8, FD_STOP - 0.3, t);
-    let on = hi * exp(-after / 0.11);
+    let on = hi * exp(-after / 0.09);
     if (on < 0.01) {
         return colIn;
     }
-    let grow = 1.0 + after * 6.0;
+    let grow = 1.0 + after * 2.5;
     let Cg = C - vec3<f32>(0.0, min(fd_slip(after), max(d.h - d.R, 0.0)), 0.0);
-    // (the shape at rest: the skin doesn't shake)
-    let g = FdDrop(d.R, d.stop_h, d.h, 1.0, 1.0, 0.0, 0.0, 0.0, vec2<f32>(0.0));
     let bc = Cg + vec3<f32>(0.0, 0.36 * d.R * grow, 0.0);
-    let br = 2.1 * d.R * grow;
+    let br = 1.8 * d.R * grow;
     let cd = dot(bc, v);
     let b2 = dot(bc, bc) - cd * cd;
     if (cd < 0.0 || b2 > br * br) {
@@ -311,52 +322,60 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
     if (s1 <= s0) {
         return colIn;
     }
-    const N = 16;
-    let ds = (cd + hc - s0) / f32(N);
+    const N = 24;
+    let ds = (s1 - s0) / f32(N);
     var T = 1.0;
     var E = vec3<f32>(0.0);
     let dn = ds / (d.R * grow);
     for (var i = 0; i < N; i += 1) {
-        let s = s0 + (f32(i) + jit) * ds;
-        if (s > s1) {
-            break;
+        let q = (v * (s0 + (f32(i) + jit) * ds) - Cg) / (d.R * grow);
+        // (how far off its side, across: the same either side of the tip, as a true distance isn't cheaply)
+        let ro = length(q.xz);
+        var e: f32;
+        if (q.y >= FD_TIP) {
+            e = length(vec2<f32>(ro, q.y - FD_TIP));
+        } else if (q.y <= -1.0) {
+            e = length(vec2<f32>(ro, q.y + 1.0));
+        } else {
+            e = ro - sqrt(max(fd_prof(q.y).x, 0.0));
         }
-        let q = (v * s - Cg) / (d.R * grow);
-        let e = fd_sdf(q * d.R, g) / d.R;
         let hgt = saturate((q.y + 1.0) / (FD_TIP + 1.0));
-        let th = mix(0.1, 0.4, hgt * hgt);
-        let sh = exp(-pow(max(e, 0.0) / th, 2.0));
-        if (sh < 0.03 || e < -0.05) {
+        let th = mix(0.1, 0.34, hgt) * (1.0 - fd_ss(0.8, 1.0, hgt) * 0.5) * (1.0 + after * 16.0);
+        if (e > th * 2.4 || e < -0.06) {
             continue;
         }
         // (ribbons running up it and winding half way round on the way; seamless round it)
-        let az = atan2(q.z, q.x) + hgt * 3.6 + seed_v();
+        let az = atan2(q.z, q.x) + hgt * 3.8 + seed_v();
         let ca = cos(az);
         let sa = sin(az);
-        let fl = q.y * 0.8 - t * 7.0;
-        let n = gnoise3(vec3<f32>(ca * 1.4, sa * 1.4, fl)) * 0.7 + gnoise3(vec3<f32>(ca * 3.4, sa * 3.4, fl * 2.2 + 3.0)) * 0.3;
-        let nose = exp(-hgt * 5.0);
-        let rib = mix(fd_ss(0.4, 0.62, n), 1.0, nose * 0.8);
+        let fl = q.y * 0.55 - t * 6.0;
+        let n = gnoise3(vec3<f32>(ca * 1.2, sa * 1.2, fl)) * 0.72 + gnoise3(vec3<f32>(ca * 3.0, sa * 3.0, fl * 2.0 + 3.0)) * 0.28;
+        let tt = th * (0.5 + 1.1 * n);
+        let sh = exp(-pow(max(e, 0.0) / tt, 2.0));
+        let nose = exp(-hgt * 7.0);
+        let rib = mix(fd_ss(0.46, 0.6, n), 1.0, nose * 0.3);
         let dens = sh * rib * on;
-        let x = saturate(hgt * 1.15 + max(e, 0.0) / th * 0.22);
-        var c = mix(vec3<f32>(4.6, 3.7, 2.4), vec3<f32>(3.6, 1.3, 0.24), fd_ss(0.0, 0.42, x));
-        c = mix(c, vec3<f32>(1.0, 0.16, 0.025), fd_ss(0.42, 0.95, x));
-        E = E + c * T * dens * dn * (1.6 + 3.0 * nose);
-        // (dark round the tip: the flame burning out into smoke)
-        T = T * exp(-dens * fd_ss(0.5, 0.95, hgt) * dn * 7.0);
+        let x = saturate(hgt * 1.1 + max(e, 0.0) / tt * 0.25);
+        var c = mix(vec3<f32>(2.1, 1.25, 0.5), vec3<f32>(1.8, 0.55, 0.08), fd_ss(0.05, 0.4, x));
+        c = mix(c, vec3<f32>(0.5, 0.07, 0.01), fd_ss(0.45, 0.9, x));
+        E = E + c * T * dens * dn * 2.2 / (1.0 + after * 26.0);
+        // (dark round the tip: the flame burning out into smoke, wrapped in to its point)
+        let sm = dens * fd_ss(0.42, 0.85, hgt) * dn * 5.0;
+        E = E + vec3<f32>(0.09, 0.075, 0.07) * T * sm;
+        T = T * exp(-sm - dens * dn * 0.8);
     }
     return colIn * T + E;
 }
 // The dust: the air that came down with it hits the land and spreads, a low rolling ring out from under it, lumps of the
 // land's own colour rising off its front and a thin haze left behind. Marched, up to `s_end`.
 fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, land: vec4<f32>, li: FdLight, jit: f32) -> vec3<f32> {
-    if (a <= 0.0 || a > 3.6) {
+    if (a <= 0.0 || a > 3.0) {
         return colIn;
     }
     let rf = 8.0 + 88.0 * (1.0 - exp(-a / 0.68));
     let w = 7.0 + 7.0 * a;
-    let top = 9.0 + 7.0 * (1.0 - exp(-a / 0.45)) + 1.6 * a;
-    let fade = (1.0 - fd_ss(1.1, 3.6, a)) * fd_ss(0.0, 0.05, a);
+    let top = 8.0 + 6.0 * (1.0 - exp(-a / 0.45)) + 0.8 * a;
+    let fade = (1.0 - fd_ss(0.8, 3.0, a)) * fd_ss(0.0, 0.05, a);
     let ylo = min(G.y + land.y, G.y) - 2.0;
     let yhi = max(G.y + land.y, G.y) + top * 2.0;
     // (the ray in the slab of air it fills, and in the disc out to the front)
@@ -407,12 +426,12 @@ fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, lan
         let n = fbm3(vec3<f32>(p.x, p.y * 1.5 - a * 9.0, p.z) * 0.075 - vec3<f32>(p.x, 0.0, p.z) / max(r, 1.0) * (rf * 0.075));
         let ht = top * (0.5 + 1.0 * n);
         let roll = exp(-x * x * 1.2) * exp(-pow(max(y, 0.0) / ht, 2.0));
-        let haze = 0.16 * fd_ss(0.2, -1.2, x) * exp(-max(y, 0.0) / (top * 0.5));
+        let haze = 0.05 * fd_ss(0.2, -1.2, x) * exp(-max(y, 0.0) / (top * 0.5));
         let dens = max(fd_ss(0.3, 0.7, n + 0.25 * exp(-x * x)) * roll, haze) * fade;
         if (dens < 0.003) {
             continue;
         }
-        let dt = dens * ds * 0.13;
+        let dt = dens * ds * 0.09;
         let lit = 0.55 + 0.45 * saturate(y / ht) + 0.35 * saturate(dot(normalize(vec3<f32>(p.x / max(r, 1.0), 0.6, p.z / max(r, 1.0))), li.L));
         C = C + alb * (li.sunc * lit * 0.75 + li.amb * 0.9) * T * (1.0 - exp(-dt));
         T = T * exp(-dt);
@@ -479,6 +498,7 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
             }
             if (rel < 0.1) {
                 hit = true;
+                sb = s + e + fd_sdf(v * (s + e) - C, d);
                 break;
             }
             s += max(e, 0.15 * px * s);
@@ -495,13 +515,14 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
             var c = fd_env(r, normalize(frame.sun.xyz));
             // (the real land in it, where the reflection can be read off the picture)
             let ro = project_rel(v * sb + r * 90.0);
-            if (ro.z > 0.0 && ro.x > 0.0 && ro.x < 1.0 && ro.y > 0.0 && ro.y < 1.0 && r.y < 0.15) {
-                c = mix(c, fd_sample(ro.xy) * 1.1, 0.6);
+            if (ro.z > 0.0 && ro.x > 0.0 && ro.x < 1.0 && ro.y > 0.0 && ro.y < 1.0) {
+                let edge = fd_ss(0.0, 0.12, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))) * fd_ss(0.2, 0.05, r.y);
+                c = mix(c, fd_sample(ro.xy) * 1.1, 0.6 * edge);
             }
             let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
             var mc = c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres);
             // (the sheath's heat on it as it falls, out of it within a second of the stop)
-            mc = mc + vec3<f32>(3.4, 1.3, 0.35) * fd_ss(0.0, -1.0, n.y) * hi * exp(-after / 0.3);
+            mc = mc + vec3<f32>(1.5, 0.55, 0.12) * fd_ss(-0.45, -1.0, n.y) * hi * exp(-after / 0.3);
             col = mix(col, mc, cov);
             if (hit) {
                 s_end = min(s_end, sb);
@@ -510,8 +531,9 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     }
     // ---- the fire round it, and the dust the air raises -----------------------------------------------------------------
     col = fd_sheath(col, v, C, d, t, s_end, jit);
-    col = fd_dust(col, v, G, after - (d.stop_h - d.R) / FD_V, s_end, land, li, jit);
-    return col;
+    // (the dust over it thinned: it stays the thing to look at)
+    let dusty = fd_dust(col, v, G, after - (d.stop_h - d.R) / FD_V, s_end, land, li, jit);
+    return mix(dusty, col, select(0.0, 0.7, s_end < far));
 }
 
 @fragment
@@ -569,7 +591,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             // (the fire's light on the land under it, coming up as it does, and going out with the air that hits the land)
             let lr = d.h * 0.8 + 6.0;
             let fl = fd_ss(FD_STOP - 0.7, FD_STOP, t) * exp(-max(t - FD_STOP, 0.0) / 0.16) / (1.0 + dot(P.xz, P.xz) / (lr * lr));
-            col = col + col * vec3<f32>(2.6, 1.15, 0.4) * fl * (28.0 / (lr + 20.0)) * exp(-max(abs(P.y) - 6.0, 0.0) / 16.0);
+            col = col + col * vec3<f32>(2.6, 1.15, 0.4) * fl * (14.0 / (lr + 20.0)) * exp(-max(abs(P.y) - 6.0, 0.0) / 16.0);
         }
         let C = gq + vec3<f32>(0.0, d.h, 0.0);
         col = fd_droplet(col, t, v, gq, C, d, far, uv, aspect, land, li, jit);

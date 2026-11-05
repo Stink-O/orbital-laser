@@ -199,6 +199,10 @@ VIEWS = {
     "fltop": "cx=0.5 cy=330 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
     "flhill": "cx=0 cy=75 cz=130 lx=0.5 ly=70 lz=0.5 hills=22 trees=1 fov=75 reach=130",
     "flhigh": "cx=60 cy=140 cz=220 lx=0.5 ly=60 lz=0.5 hills=18 trees=1 fov=70 reach=220",
+    # the droplet from 170 off, as a player sees it, close up on it (a long lens) and whole with its wake and the dust
+    "flzoom": "cx=0 cy=72 cz=170 lx=0.5 ly=95 lz=0.5 hills=8 trees=1 fov=16 reach=170",
+    "flsee": "cx=0 cy=72 cz=170 lx=0.5 ly=120 lz=0.5 hills=8 trees=1 fov=70 reach=170",
+    "flup": "cx=0 cy=72 cz=170 lx=0.5 ly=420 lz=0.5 hills=8 fov=70 reach=170",
     "flrim": "cx=0 cy=75 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=75 reach=110",
     # the scar whole (fl_dump_land): from straight over it, from high off to one side, from its rim, and down on its floor
     "fdtop": "cx=0.5 cy=620 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
