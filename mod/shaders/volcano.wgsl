@@ -568,9 +568,11 @@ fn vc_dim(c: vec3<f32>, q: vec3<f32>, L: vec3<f32>, sun_up: f32) -> vec3<f32> {
 }
 
 // ---- the lightning: the Hurricane's (hurricane.wgsl's hu_flashes), a slot a tenth of a second or so, a few alive at once.
-// When and where each flash is, and how strong, vc_sound.rs's `flashes` copies for its thunder: keep them in step. What
-// a flash is, is by another hash (a third of them a bolt to the land, a fifth a channel out of the cloud across the air,
-// the rest in the cloud alone), and its strokes as the Hurricane's: the cloud's a few flickers over a third of a second,
+// When and where each flash is, and how strong (0x901 to 0x906, 0x908), vc_sound.rs's `flashes` copies for its thunder:
+// keep them in step. What
+// a flash is, is by another hash (about one in three a bolt to the land, most of them where the player can see them, a
+// third a channel out of the cloud across the air, the rest in the cloud alone), and its strokes as the Hurricane's: the
+// cloud's a few flickers over a third of a second,
 // the bolt's its leader, its return stroke and a re-stroke or two (the user's reference, a strike filmed at 60 fps).
 // (a third of those in the cloud hardly show: a flash a slot at most would be five a second, the Hurricane's peak four)
 const VC_BOLTS_AHEAD: f32 = 0.5;
