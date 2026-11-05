@@ -457,7 +457,10 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     let q0 = vec3<f32>(q.x, q.y * sy, q.z);
     // (the lattice folded by two sizes of noise, so no cell shows)
     let w = gnoise3(VC_R2 * q0 * (1.0 / 470.0));
-    let w2 = gnoise3(VC_R3 * q0 * (1.0 / 180.0) + vec3<f32>(4.0, 0.0, 0.06 * vs.t));
+    var w2 = 0.5;
+    if (fine) {
+        w2 = gnoise3(VC_R3 * q0 * (1.0 / 180.0) + vec3<f32>(4.0, 0.0, 0.06 * vs.t));
+    }
     warp = vec3<f32>(w - 0.5, w2 - 0.5, w2 - w) * 170.0;
     let ph = fract(vs.t / VC_P);
     let wA = 1.0 - abs(2.0 * ph - 1.0);
@@ -473,11 +476,13 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
         let qk = q0 - vec3<f32>(v.x * tk + q.x * st, v.y * sy * tk, v.z * tk + q.z * st) + warp;
         let o = vec3<f32>(3.1 + 7.3 * cy, 2.9 * f32(k), 7.7 - 4.1 * cy);
         b1 = b1 + wk * vc_dome(VC_R1 * (qk * (1.0 / 310.0) + o));
-        b2 = b2 + wk * vc_dome(VC_R2 * (qk * (1.0 / 122.0) + o * 1.7));
+        if (fine) {
+            b2 = b2 + wk * vc_dome(VC_R2 * (qk * (1.0 / 122.0) + o * 1.7));
+        }
         ws = ws + wk;
     }
     b1 = b1 / max(ws, 1.0e-3);
-    b2 = b2 / max(ws, 1.0e-3);
+    b2 = select(0.62, b2 / max(ws, 1.0e-3), fine);
     if (fine) {
         // (two half sets added are evener than one: their spread put back)
         let sp = 1.0 / sqrt(wA * wA + (1.0 - wA) * (1.0 - wA));
@@ -1057,7 +1062,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
     let gw2 = vc_flash_way(gl2, l.seed);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
     for (var i = 0; i < 132; i = i + 1) {
-        if (t > t_end || o.tr < 0.025) {
+        if (t > t_end || o.tr < 0.05) {
             break;
         }
         let p = rd * t;
@@ -1085,15 +1090,15 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
         let jt = f32(hs & 0xffffu) / 65535.0;
         if (!inband) {
             inband = true;
-            t = t + jt * max(3.2, t * 0.0042);
+            t = t + jt * max(4.0, t * 0.0034);
             continue;
         }
-        let st = max(3.2, t * 0.0034) * (0.7 + 0.6 * jt) * (1.0 + 3.0 * vs.thin);
+        let st = max(4.0, t * 0.0034) * (0.7 + 0.6 * jt) * (1.0 + 3.0 * vs.thin);
         // (still well off the surface: one set of the big lumps is enough to step by)
         if (b.d > 50.0) {
             let sc = vc_sdf(q, &b, foot, false).x;
-            if (sc > 60.0) {
-                t = t + 0.5 * (sc - 30.0);
+            if (sc > 80.0) {
+                t = t + 0.5 * (sc - 50.0);
                 continue;
             }
         }
@@ -1134,7 +1139,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
         if (den > 1.0e-4) {
             let hy = q.y;
             let hyl = hy - select(0.0, vc_land(q.xz), hy < 600.0);
-            if (nl == 0 || (nl == 5 && o.tr > 0.2)) {
+            if (nl == 0 || (nl == 5 && o.tr > 0.35)) {
                 // (the light: looks on the way to the sun through the lumps, close and further, then through the bulk of the
                 // cloud; in the sheet's shadow what light there is comes in low from the open sky round its edge)
                 let st0 = vc_sun_t(q, l.L);
@@ -1166,7 +1171,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 ao = (0.4 + 0.6 * sd.y * sd.y) * (1.0 - 0.72 * occ) * (1.0 - 0.6 * deep);
                 // (and open below it? the fire over the land lights what looks down on it)
                 below = 0.0;
-                if (hyl < 700.0) {
+                if (hyl < 700.0 && time < VC_COLLAPSE + 6.0) {
                     let dq = q - vec3<f32>(0.0, 46.0, 0.0);
                     var db = vc_base(dq);
                     below = saturate((vc_sdf(dq, &db, 40.0, false).x - vc_sdf(q, &b, 40.0, false).x + 6.0) / 64.0);
@@ -1250,7 +1255,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
         t = t + select(st, max(0.65 * sd.x, st * (0.5 + 0.03 * f32(i))), sd.x > 0.0);
     }
     // (what the march left of the land behind it, once it stopped for being nearly opaque, is nothing)
-    o.tr = saturate((o.tr - 0.026) / 0.974);
+    o.tr = saturate((o.tr - 0.051) / 0.949);
     // (going out to the thin end of it: at the end all of it lets the light through, more here and there, red as it goes.
     // Thinned in the density a cloud this deep stays opaque to the last and then clears along a hard edge)
     if (vs.thin > 0.0 && o.tr < 0.999) {
