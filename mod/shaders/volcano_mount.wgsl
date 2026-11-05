@@ -34,9 +34,11 @@ const VM_SWELL: f32 = 7.0;         // BEATS.md
 const VM_HUSH: f32 = 17.0;
 const VM_ERUPT: f32 = 18.0;
 const VM_GONE: f32 = 19.0;         // nothing of it is left under the white-out
+const VM_FIREOUT: f32 = 19.5;      // but the fire sheet's outer ring, burning out as the blast comes up through it
 
 struct VmS {
     on: bool,
+    fire: bool,    // the fire sheet still burns
     t: f32,
     H: f32,        // the dome's height
     hk: vec4<f32>, // and each of the plates' four phases' (they lurch up out of step)
@@ -70,7 +72,12 @@ fn vm_hgt(t: f32, ph: f32) -> f32 {
 fn vm_set(time: f32) {
     var s: VmS;
     s.t = time;
-    s.on = arrayLength(&mod_data) > VM_W2 + VM_COLS - 1u && mod_data[VM_BASE] != 0u && time > VC_CRACK - 0.1 && time < VM_GONE;
+    let got = arrayLength(&mod_data) > VM_W2 + VM_COLS - 1u && mod_data[VM_BASE] != 0u;
+    s.on = got && time > VC_CRACK - 0.1 && time < VM_GONE;
+    s.fire = got && time > VM_ERUPT && time < VM_FIREOUT;
+    if (s.on || s.fire) {
+        s.ylo = vm_w(VM_BASE + 1u) - 12.0;
+    }
     if (s.on) {
         s.H = vm_hgt(time, 0.0);
         s.hk = vec4<f32>(s.H, vm_hgt(time, 1.7), vm_hgt(time, 3.3), vm_hgt(time, 4.9));
@@ -78,7 +85,6 @@ fn vm_set(time: f32) {
         s.open = smoothstep(9.5, 17.0, time);
         s.cw = 1.0 + 12.0 * s.open * s.open;
         s.cd = 4.0 + 75.0 * s.open;
-        s.ylo = vm_w(VM_BASE + 1u) - 12.0;
         s.yhi = vm_w(VM_BASE + 2u) + 1.45 * s.H;
         s.front = 200.0 * max(time - VC_CRACK, 0.0);
     }
@@ -776,7 +782,7 @@ fn vm_field(q: vec3<f32>, t: f32) -> VmAir {
 }
 // How wide the fire sheet is, `a` seconds into the burst: well past the blast's 410 by 18.9, and never to the player's 1,000.
 fn vm_fire_r(a: f32) -> f32 {
-    return select(0.0, 80.0 + 750.0 * (1.0 - exp(-a / 0.55)), a > 0.0);
+    return select(0.0, min(80.0 + 760.0 * (1.0 - exp(-a / 0.55)), 720.0), a > 0.0);
 }
 // Lumps: domes over a jittered lattice, as vc_dome.
 fn vm_lump(p: vec3<f32>) -> f32 {
@@ -801,6 +807,7 @@ fn vm_fireball(o: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, a: f32) -> vec4<f
     }
     const FLAT = 0.56;
     let R = vm_fire_r(a);
+    let burn = smoothstep(VM_GONE - 0.05, VM_FIREOUT - 0.05, vm.t);
     let ng = vm.ylo + 8.0;
     let oe = vec3<f32>(o.x, (o.y - ng) / FLAT, o.z);
     let de = vec3<f32>(rd.x, rd.y / FLAT, rd.z);
@@ -844,14 +851,15 @@ fn vm_fireball(o: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, a: f32) -> vec4<f
             let l2 = vm_lump((wq + vec3<f32>(9.0, 4.0, 1.0)) * (1.0 / 30.0));
             l = l + 0.1 * (l2 - 0.55);
         }
-        let f = 1.0 - rho + l;
+        // (from the white-out on it burns out from the inside, the blast coming up through it)
+        let f = 1.0 - rho + l - 1.2 * burn * smoothstep(1.15, 0.6, rho + 0.35 * burn);
         if (f <= 0.0) {
             continue;
         }
-        let al = 1.0 - exp(-saturate(f * 7.0) * dt * 0.08);
+        let al = (1.0 - exp(-saturate(f * 7.0) * dt * 0.08)) * (1.0 - burn * burn);
         let crease = 1.0 - l1;
         let hot = saturate(f * 2.4) * (0.72 + 0.5 * crease) + 0.1 * smoothstep(0.5, 0.0, a);
-        c = c + tr * al * vm_fire(hot);
+        c = c + tr * al * vm_fire(hot * (1.0 - 0.75 * burn));
         tr = tr * (1.0 - al);
         if (tr < 0.02) {
             break;
@@ -861,14 +869,14 @@ fn vm_fireball(o: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, a: f32) -> vec4<f
 }
 // The steam and dust along the ray up to `tend`: .rgb what it adds, .a what it leaves.
 fn vm_air(C: vec3<f32>, rd: vec3<f32>, tend: f32, j: f32, l: VcLight) -> vec4<f32> {
-    if (!vm.on || vm.t < VC_CRACK) {
+    if ((!vm.on && !vm.fire) || vm.t < VC_CRACK) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
     let o = -C;
     let time = vm.t;
     let fa = max(time - VM_ERUPT, 0.0);
     let fire = vm_fireball(o, rd, tend, j, fa);
-    if (fa > 0.3 && fire.a < 0.02) {
+    if (!vm.on || (fa > 0.3 && fire.a < 0.02)) {
         return fire;
     }
     let ytop = vm.yhi + 240.0;
