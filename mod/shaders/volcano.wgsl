@@ -481,7 +481,7 @@ fn vc_dim(c: vec3<f32>, q: vec3<f32>, L: vec3<f32>, sun_up: f32) -> vec3<f32> {
     // (bright and saturated: fire, lava, torches; or simply bright, a lamp)
     let mx = max(c.r, max(c.g, c.b));
     let sat = (mx - min(c.r, min(c.g, c.b))) / max(mx, 1.0e-3);
-    let glow = smoothstep(0.45, 0.95, mx) * (0.25 + 0.75 * sat);
+    let glow = smoothstep(0.45, 0.95, mx) * (0.06 + 0.94 * sat);
     let k = mix(lit, 1.0, glow);
     // (and what light is left, browned by the ash in the air)
     let g = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
