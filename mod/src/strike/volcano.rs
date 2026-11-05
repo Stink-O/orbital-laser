@@ -358,9 +358,9 @@ mod tests {
 
     #[test]
     fn the_vent_keeps_its_distance_from_the_player() {
-        assert_eq!(vc_vent([10.0, 64.0, 600.0], [10.0, 64.0, 0.0]), [0.0, 0.0]);
+        assert_eq!(vc_vent([10.0, 64.0, 1200.0], [10.0, 64.0, 0.0]), [0.0, 0.0]);
         let d = vc_vent([0.0, 64.0, 120.0], [0.0, 64.0, 0.0]);
-        assert!(d[0].abs() < 1e-6 && (d[1] - 380.0).abs() < 1e-6, "{d:?}");
+        assert!(d[0].abs() < 1e-6 && (d[1] - (VC_NEAR - 120.0)).abs() < 1e-6, "{d:?}");
         let e = vc_vent([3.0, 64.0, 4.0], [0.0, 64.0, 0.0]);
         assert!(((3.0 + e[0]).hypot(4.0 + e[1]) - VC_NEAR).abs() < 1e-6);
     }
@@ -383,6 +383,20 @@ mod tests {
             assert!((y - 3.0).abs() < 6.0, "lands at {y}");
             let (x, z) = (b.p0[0] + b.v[0] * s, b.p0[2] + b.v[2] * s);
             assert!(x.hypot(z) < 1800.0);
+        }
+    }
+    #[test]
+    fn a_third_of_the_bombs_come_down_round_the_player() {
+        for me in [[0.0, 0.0, 1000.0], [-1400.0, 20.0, 900.0]] {
+            let bombs = vc_bombs(37.0, me, &|_, _| 3.0);
+            let near = bombs
+                .iter()
+                .filter(|b| {
+                    let s = b.tl - b.t0;
+                    (b.p0[0] + b.v[0] * s - me[0]).hypot(b.p0[2] + b.v[2] * s - me[2]) < 155.0
+                })
+                .count();
+            assert!(near >= VC_BOMBS_N / 5 && near <= VC_BOMBS_N / 2, "{near} of {VC_BOMBS_N}");
         }
     }
     #[test]
