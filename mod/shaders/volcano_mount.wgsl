@@ -264,7 +264,8 @@ fn vm_shade(C: vec3<f32>, rd: vec3<f32>, t: f32, l: VcLight, cam_uv: vec2<f32>) 
     let cl = vm_cols(rest);
     let pw = t * vs.px;                                   // a pixel's size, blocks
     if (f.y < -1.0) {
-        return vm_fire(0.7 + 0.9 * gnoise2(rest * 0.05 + vec2<f32>(0.0, vm.t * 3.0)));
+        let hn = gnoise2(rest * 0.045 + vec2<f32>(0.0, vm.t * 3.0)) + 0.5 * gnoise2(rest * 0.17);
+        return vm_fire(0.25 + 0.75 * hn);
     }
     // ---- the shape's slope, smooth and rough --------------------------------------------------------------------
     let e = max(2.2, pw * 1.5);
@@ -582,12 +583,12 @@ fn vm_shade_plate(C: vec3<f32>, rd: vec3<f32>, h: VmPl, l: VcLight) -> vec3<f32>
         // (its land, as it lay, torn: lit by the sun over it, the fire on what faces down)
         let alb = mix(vm_lin(cl.top), vec3<f32>(0.06, 0.05, 0.042), 0.2 + 0.5 * nz);
         let d2 = f32((cl.w2 >> 8u) & 255u) / 8.0;
-        return alb * dl * (0.4 + 0.9 * nl) + alb * vec3<f32>(1.6, 0.5, 0.12) * saturate(-h.n.y + 0.1) + vm_ramp(0.55 * (1.0 - smoothstep(0.3, 1.4, d2)));
+        return mix(alb * dl * (0.4 + 0.9 * nl) + alb * vec3<f32>(1.6, 0.5, 0.12) * saturate(-h.n.y + 0.1), vec3<f32>(0.012), 0.8 * (1.0 - smoothstep(0.3, 1.4, d2)));
     }
     // (its broken edge and underside: raw rock, burning)
     let st = gnoise2(vec2<f32>(dot(h.rest, vec2<f32>(0.6, 0.8)) * 0.09, h.dep * 2.2));
-    let hot = smoothstep(0.45, 1.0, h.dep + 0.5 * (st - 0.5));
-    return mix(vec3<f32>(0.03, 0.027, 0.026), vec3<f32>(0.1, 0.09, 0.08), st) * dl * (0.5 + nl) + vm_ramp(0.68 * hot);
+    let hot = smoothstep(0.62, 1.05, h.dep + 0.7 * (st - 0.5));
+    return mix(vec3<f32>(0.02, 0.018, 0.018), vec3<f32>(0.08, 0.07, 0.062), st) * dl * (0.5 + nl) + vm_ramp(0.6 * hot);
 }
 
 // What vm_surface gives: the picture there and how far off it (under 0: nothing of the mount here).
@@ -711,7 +712,7 @@ fn vm_field(q: vec3<f32>, t: f32) -> VmAir {
 }
 // How wide the fire sheet is, `a` seconds into the burst; it never gets to the player's 500 before the white-out.
 fn vm_fire_r(a: f32) -> f32 {
-    return select(0.0, 70.0 + 420.0 * (1.0 - exp(-a / 0.6)), a > 0.0);
+    return select(0.0, 70.0 + 540.0 * (1.0 - exp(-a / 0.55)), a > 0.0);
 }
 // Lumps: domes over a jittered lattice, as vc_dome.
 fn vm_lump(p: vec3<f32>) -> f32 {
@@ -983,7 +984,7 @@ fn vm_chunks(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight) -> vec4<f32> {
     let flat_y = 0.6;
     for (var k = 0u; k < 9u; k = k + 1u) {
         let fk = f32(k);
-        let R = 210.0 + (70.0 + 40.0 * fk) * a * (1.0 + 0.6 * a);
+        let R = 205.0 + (60.0 + 34.0 * fk) * a * (1.0 + 0.4 * a);
         // (an ellipsoid, flattened: the sheet is wider than it is tall)
         let oe = vec3<f32>(-C.x, (-C.y - vm.ylo) / flat_y, -C.z);
         let de = vec3<f32>(rd.x, rd.y / flat_y, rd.z);
@@ -1017,7 +1018,7 @@ fn vm_chunks(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight) -> vec4<f32> {
             // (cells in angle: as big in blocks as the shell's radius makes them; its rock smaller than a cell)
             let scale = vec2<f32>(TAU * R / 220.0 * sqrt(max(1.0 - dir.y * dir.y, 0.02)), 1.5708 * R / 52.0);
             let dv = (vec2<f32>(u, w) - cu) * scale;
-            let size = (0.55 + 3.8 * pow(f32(hs >> 24u) / 255.0, 5.0)) * min(t / 260.0, 1.0) * smoothstep(0.03, 0.2, a);
+            let size = (0.5 + 3.8 * pow(f32(hs >> 24u) / 255.0, 5.0)) * min(t / 260.0, 1.0) * smoothstep(0.03, 0.2, a);
             let pw = t * vs.px;
             // (a broken rock, not a disc: straight sides, turned its own way)
             let ang = f32(hs & 0xfffu) * 0.0015 + a * (2.0 + f32((hs >> 12u) & 7u));

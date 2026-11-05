@@ -340,7 +340,9 @@ mod table {
         let hf = super::vc_hf_pack(&heights, reach);
         w.resize(super::VC_HF + hf.len(), 0);
         w[super::VC_HF..].copy_from_slice(&hf);
-        for (i, words) in super::super::vc_mount::table::all(seed as u32, &|x, z| Some(super::super::vc_mount::table::preview_col(x, z, hills))) {
+        // (VM_NOLAND=1: the land never read, as far off with the terrain off)
+        let noland = std::env::var("VM_NOLAND").is_ok_and(|v| v == "1");
+        for (i, words) in super::super::vc_mount::table::all(seed as u32, &|x, z| (!noland).then(|| super::super::vc_mount::table::preview_col(x, z, hills))) {
             if w.len() < i + words.len() {
                 w.resize(i + words.len(), 0);
             }
