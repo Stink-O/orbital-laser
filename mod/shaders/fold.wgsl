@@ -8,7 +8,7 @@
 // its stars where the land has left, the point, the one flash, and the dust of the slams.
 // strike/fold.rs plans the sounds and the land: keep the FD_* in step with its and fold_warp.wgsl's.
 const FD_STOP: f32 = 3.4;          // the droplet stops dead
-const FD_HANG: f32 = 3.9;          // it has hung still; it lowers
+const FD_HANG: f32 = 4.9;          // it has hung still; it is let go
 const FD_TOUCH: f32 = 6.0;         // it touches the land
 const FD_MELD: f32 = 7.2;          // it has gone in
 const FD_FOLD: f32 = 19.0;
@@ -57,11 +57,10 @@ fn fd_slam(i: i32) -> f32 {
 // ---- the droplet: a classic teardrop of liquid metal, round end down, its tip straight up, the same shape from the top of
 // the sky to the ground. It falls hard, braking all the way (FD_B) but still doing FD_V when it stops dead in one frame; what
 // was moving with it isn't stopped: the fire and the wake go on past it and down (fd_slip), hit the land and throw out a low
-// ring of dust (fd_dust), and it shakes like a jelly for a second (fd_drop), then lowers on to the land.
+// ring of dust (fd_dust), and it shakes like a jelly for a second (fd_drop), hangs, and is let go: it falls to the land from rest.
 // Its height over the land is d.h, to its centre; its bottom is d.R under that, its tip FD_TIP * d.R over it.
 const FD_V: f32 = 280.0;           // how fast it is going as it stops, blocks a second
 const FD_B: f32 = 177.16;          // its braking: (FD_FALL - FD_V * FD_STOP) / FD_STOP^2
-const FD_VT: f32 = 2.5;            // how fast it is coming down as it touches
 const FD_SLIP: f32 = 0.3;          // how soon what moved with it loses its speed, seconds
 const FD_TIP: f32 = 1.72;          // the tip, in radii over the centre
 const FD_PIV: f32 = -0.3;          // the point it squashes about, in radii over the centre: low, the tip does the moving
@@ -77,13 +76,17 @@ fn fd_erf(x: f32) -> f32 {
     let y = clamp(x, -4.0, 4.0);
     return tanh(1.1284 * y + 0.1009 * y * y * y);
 }
-// From FD_TOUCH: Water impact's. Height of its centre over the target (R at FD_TOUCH, falling at FD_VT then), and the ripple on
+// How fast it is falling as it touches the land, blocks a second: 35.6 for R 8.5. Its gravity is 2 * H / 1.1^2 (32.4 for R 8.5,
+// the game's own), H = 1.6 * R + 6 how far it falls, so the 1.1 s fall ends on FD_TOUCH at every size.
+fn fd_vc(R: f32) -> f32 { return 2.0 * (1.6 * R + 6.0) / (FD_TOUCH - FD_HANG); }
+// From FD_TOUCH: Water impact's. Height of its centre over the target (R at FD_TOUCH, falling at fd_vc(R) then), and the ripple on
 // its side (d.rip, d.ph). It keeps its shape and sinks; the land's depth hides it.
 fn fd_meld(t: f32, R: f32) -> vec3<f32> {
     let a = t - FD_TOUCH;
     // (it doesn't flatten: it sinks, drawn in faster and faster, top last; fold_warp.wgsl's fw_sink in step. Waves run up it
     // from the neck, as they do up a drop going into water, and are gone before it is)
-    let h = R - a * (FD_VT + a * (((FD_TIP + 1.0) * R + 1.0 - FD_VT * 1.5) / 2.25));
+    let vc = fd_vc(R);
+    let h = R - vc * 0.25 * (1.0 - exp(-a / 0.25)) - a * a * ((FD_TIP + 1.0) * R + 1.0 - vc * 0.25) / 2.25;
     return vec3<f32>(h, 0.05 * (1.0 - exp(-a * 9.0)) * exp(-a * 1.6), a * 16.0);
 }
 // `side`: across the view, what its tip sways along.
@@ -110,10 +113,9 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         ph = a * 40.0;
         sway = side * 0.1 * e * sin(a * 15.0);
         if (t > FD_HANG) {
-            // (easing in, and still coming down as it touches: FD_VT at FD_TOUCH, its weight)
+            // (let go: from rest where it stopped, under gravity, reaching the land on FD_TOUCH whatever its size: fd_vc)
             let u = (t - FD_HANG) / (FD_TOUCH - FD_HANG);
-            let k = FD_VT * (FD_TOUCH - FD_HANG) / (stop_h - R);
-            h = mix(stop_h, R, u * u * (3.0 - k + (k - 2.0) * u));
+            h = mix(stop_h, R, u * u);
         }
     } else {
         let m = fd_meld(t, R);
