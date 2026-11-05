@@ -633,6 +633,10 @@ pub(super) fn vc_bomb_crater(x: i32, z: i32, r: i32, seed: u32) -> Blocks {
 }
 
 #[cfg(test)]
+#[path = "vc_land_view.rs"]
+mod view;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
