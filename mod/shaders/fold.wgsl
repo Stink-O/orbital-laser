@@ -632,6 +632,77 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     return mix(dusty, col, select(0.0, 0.7, s_end < far));
 }
 
+// ---- the slam's dust: what it drove out of the ground ------------------------------------------------------------------------
+// A wall of dust and ash thrown out of the crater on the frame it appears, running out over the land and slowing, and the
+// crater's air full of what fell into it, thinning as it rises. `a`: seconds since the slam.
+const FDB_LEN: f32 = 8.0;
+const FDB_RIM: f32 = 150.0;
+const FDB_OUT: f32 = 240.0;
+const FDB_HIGH: f32 = 120.0;
+const FDB_STEPS: i32 = 14;
+fn fdb_front(a: f32) -> f32 { return FDB_RIM + FDB_OUT * (1.0 - exp(-a * 0.85)); }
+fn fdb_high(a: f32) -> f32 { return 22.0 + FDB_HIGH * (1.0 - exp(-a * 1.0)); }
+/// How thick the dust is at `p` (from the target).
+fn fdb_density(p: vec3<f32>, a: f32) -> f32 {
+    let r = length(p.xz);
+    let h = fdb_high(a);
+    let width = 24.0 + 26.0 * a;
+    let x = (r - fdb_front(a)) / width;
+    // (the wall leans out, its foot ahead of its top)
+    let lean = (r - fdb_front(a) + 0.5 * max(p.y, 0.0)) / width;
+    let wall = exp(-min(x * x, lean * lean)) * fd_ss(h * (0.75 + 0.25 * fd_ss(0.0, 200.0, r)), h * 0.2, p.y);
+    // (the crater's air: from the floor up over the rim, whatever is above it thin)
+    let air = 0.34 * fd_ss(190.0, 90.0, r) * fd_ss(h * 0.9, -30.0, p.y) * (1.0 - fd_ss(1.0, FDB_LEN - 1.0, a));
+    let d = (wall + air) * pow(1.0 - a / FDB_LEN, 1.6);
+    if (d < 0.01) { return 0.0; }
+    let q = p * 0.021 + vec3<f32>(0.0, -a * 0.35, 0.0) + normalize(vec3<f32>(p.x, 0.0, p.z) + vec3<f32>(0.01)) * a * -0.3;
+    let n = 0.6 * vnoise3(q) + 0.28 * vnoise3(q * 2.3) + 0.12 * vnoise3(q * 5.1);
+    return d * fd_ss(0.3, 0.72, n);
+}
+/// The picture behind `col` seen through the dust, along `v` from `ro` (from the target), up to `far`.
+fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32) -> vec3<f32> {
+    let reach = fdb_front(a) + 90.0 + 30.0 * a;
+    let top = fdb_high(a) * 1.15;
+    // (only the slab of air it can be in, and the circle round the target)
+    let b = dot(ro.xz, v.xz);
+    let aa = max(dot(v.xz, v.xz), 1.0e-5);
+    let c = dot(ro.xz, ro.xz) - reach * reach;
+    let disc = b * b - aa * c;
+    if (disc <= 0.0) { return colIn; }
+    let sq = sqrt(disc);
+    var s0 = max((-b - sq) / aa, 0.0);
+    var s1 = min((-b + sq) / aa, far);
+    let lo = -70.0;
+    if (abs(v.y) > 1.0e-4) {
+        let ya = (lo - ro.y) / v.y;
+        let yb = (top - ro.y) / v.y;
+        s0 = max(s0, min(ya, yb));
+        s1 = min(s1, max(ya, yb));
+    } else if (ro.y < lo || ro.y > top) {
+        return colIn;
+    }
+    if (s1 <= s0) { return colIn; }
+    let sun = normalize(frame.sun.xyz);
+    let day = fd_ss(-0.12, 0.25, sun.y);
+    let step = (s1 - s0) / f32(FDB_STEPS);
+    var seen = 1.0;
+    var light = vec3<f32>(0.0);
+    for (var i = 0; i < FDB_STEPS; i += 1) {
+        let p = ro + v * (s0 + (f32(i) + jit) * step);
+        let d = fdb_density(p, a);
+        if (d <= 0.0) { continue; }
+        // (lit from above and towards the sun; dark ash at its foot, paler dust as it rises)
+        let up = fd_ss(-20.0, fdb_high(a), p.y);
+        let lit = fdb_density(p + sun * 14.0, a);
+        let c = mix(vec3<f32>(0.1, 0.09, 0.085), vec3<f32>(0.5, 0.45, 0.39), up) * (0.35 + 0.65 * exp(-lit * 2.4)) * (0.16 + 0.84 * day);
+        let t = 1.0 - exp(-d * step * 0.065);
+        light += c * t * seen;
+        seen *= 1.0 - t;
+        if (seen < 0.02) { break; }
+    }
+    return colIn * seen + light;
+}
+
 @fragment
 fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     let uv = in.uv;
@@ -720,6 +791,11 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
                 col = mix(col, vec3<f32>(0.2, 0.18, 0.16), clamp(a, 0.0, 0.7));
             }
         }
+    }
+    // ---- the dust the last slam drove out of the ground -------------------------------------------------------------------
+    let fdb_a = t - FD_SLAM4;
+    if (fdb_a > 0.0 && fdb_a < FDB_LEN) {
+        col = fd_blast(col, -gq, v, far, fdb_a, hash21(uv * res));
     }
     return vec4<f32>(linear_to_srgb(max(col, vec3<f32>(0.0))), 1.0);
 }

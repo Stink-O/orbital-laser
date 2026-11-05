@@ -49,9 +49,10 @@ pub(super) const FD_RELEASE: f32 = 40.3;
 pub(super) const FD_FOLDS: [f32; 6] = [35.0, 35.6, 36.3, 37.1, 38.0, 39.0];
 /// When the sheet comes back through flat: the first as the fold ends, the last the slam that shows the crater.
 pub(super) const FD_SLAM: [f32; 5] = [41.1, 42.0, 42.8, 43.7, 45.0];
-/// While the land's edits aren't held back by the frame time: from the sealed globe, where they can't be seen, until the
-/// rings are down and the dust is flying, so the crater is whole as it is seen.
-pub const FD_HIDDEN: std::ops::Range<f32> = 31.5..45.5;
+/// When the crater takes its place: the one frame the game's hold on the terrain lets go (`render.hold-world`).
+pub const FD_REVEAL: f32 = FD_SLAM[4];
+/// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time.
+pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 0.5..FD_REVEAL;
 /// The crease pattern's rings: their outer radii, blocks from the target (fold_warp.wgsl's FW_RING in step). Each is a
 /// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];

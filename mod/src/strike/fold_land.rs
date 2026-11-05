@@ -2,9 +2,12 @@
 //! wound about FD_R radii across with the pattern still in it, broken into tilted plates, split by fissures along the
 //! creases, burnt in patches, round a shaft down to bedrock, a ragged rim, the land past it flattened, blackened and rayed.
 //!
-//! All of it goes in while it can't be seen (the world is folded into a globe from FD_SEAL and a point from FD_BEAT): one
-//! wave from the middle out, FD_LAND0 to FD_LAND1, every chunk's edits on one tick (`Wave`, as the Nuke's). It is read at
-//! the fire, worked out a little ahead of when it is due, in one chain of stages (`fd_work`).
+//! All of it goes in behind the game's hold on the terrain (`render.hold-world`, FD_HIDDEN): the land on screen stays as it
+//! was while one wave goes from the middle out, FD_LAND0 to FD_LAND1, and the whole crater takes its place on the one frame
+//! the hold lets go, FD_REVEAL, as the last slam lands. Every chunk is edited once, on one tick (`fd_tick`): its cut, its
+//! rubble, heaps, fires and felled trees together. A second edit of a chunk is a second resend, nine light jobs and its
+//! sections meshed again, so nothing but falling blocks and fires changes the land after the reveal. It is read at the
+//! fire, worked out a little ahead of when it is due, in one chain of stages (`fd_work`).
 //!
 //! What makes the look, each one apart (see the constants of the same name; each can be taken out alone):
 //!   `mandala`        the unbroken pattern (twelve-fold, mirrored): terraces and tiles, what everything else breaks
@@ -21,7 +24,7 @@
 //!   FD_THROWN        the falling blocks thrown as each ring lands (`fd_thrown`)
 //!   FD_EMBERS        the fires left burning (`fd_embers`)
 //!   FD_SMOKE         the smoke rising after it
-use super::fold::{FD_BEAT, FD_FOLD, FD_LEN, FD_RELEASE, FD_RINGS, FD_SEAL, FD_SLAM, FD_TEAR};
+use super::fold::{FD_BEAT, FD_FOLD, FD_HIDDEN, FD_LEN, FD_RELEASE, FD_REVEAL, FD_RINGS, FD_SEAL, FD_TEAR};
 use super::rod::{Column, Due, LEAF_NAMES, LEAVES, LOG_X, LOG_Y, LOG_Z, Land, Sector, Used, ring_columns, take_in_grid};
 use super::{Act, Blocks, Col, Plan, Rng, TIDY_BORDER, bedrock_top, mh, tidy, vnoise};
 use std::cell::RefCell;
@@ -50,13 +53,14 @@ const FD_FELLED: bool = true;
 const FD_RUBBLE_N: usize = 3400;
 const FD_HEAPS: usize = 110;
 const FD_HEAP_JOBS: u32 = 5;
-const FD_THROWN: [usize; 4] = [46, 64, 84, 60];
+const FD_THROWN: [usize; 4] = [120, 180, 240, 160];
 /// The blocks that peel off the land along the creases and fall upward into the fold, a batch as each stage of it opens
 /// (`fd_peel`); all 0 takes them out. They are real falling blocks with no gravity, gone at the crush.
 const FD_PEEL: [usize; 4] = [100, 140, 160, 120];
 /// How wide round the player the land is left alone until the last slam: they stand on it through the fold (FW_ISLE + 4).
 const FD_ISLE: f64 = 30.0;
 const FD_EMBERS: usize = 1500;
+const FD_EMBER_JOBS: u32 = 4;
 /// Plumes of smoke over the crater after it (0: none).
 const FD_SMOKE: usize = 14;
 
@@ -100,9 +104,16 @@ const FD_PLATE0: f64 = 40.0;
 /// The twelve folds.
 const FD_N: f64 = 12.0;
 
-/// The land's wave: from when to when (the world folded, then a point; the land is under the globe's skin).
-pub(super) const FD_LAND0: f32 = FD_SEAL + 0.5;
-pub(super) const FD_LAND1: f32 = FD_SLAM[4] - 0.2;
+/// The land's wave: from when to when, behind the hold. It ends this long before the reveal: a chunk's resend, its light
+/// and its meshes take the game some tenths of a second, and a chunk not ready by the reveal shows late.
+pub(super) const FD_LAND0: f32 = FD_HIDDEN.start + 0.2;
+pub(super) const FD_LAND1: f32 = FD_REVEAL - 1.6;
+/// The chunks the player's island stands on go in just before the reveal, so they swap in with the rest and the ground goes
+/// from under them with the slam.
+const FD_ISLE_AT: f32 = FD_REVEAL - 0.25;
+/// What a column counts for in the wave's pace, past its blocks (`fd_cost`): what its chunk costs the frame, its resend,
+/// light and meshes, whatever is changed in it. It keeps the chunks a second even: they are what the frames feel.
+const FD_PER_CHUNK: f64 = 30.0;
 /// How long before its edits are due a part of the wave is worked out (the plan holds what is waiting: the wave's whole
 /// edits are too much to carry for half a minute).
 const FD_AHEAD: f32 = 28.0;
@@ -666,28 +677,27 @@ fn ejecta(x: i32, y: i32, z: i32, k: f64, seed: u32) -> &'static str {
 const FD_RING: f64 = 4.0;
 const FD_ITEM: f64 = 250.0;
 /// What is expected to change in a column at radius r (blocks), for the wave's pace: what is dug and its lining, the
-/// chunk sent again (8).
+/// chunk sent again.
 fn fd_cost(r: f64) -> f64 {
     let u = r / FD_R;
-    if r < FD_SHAFT {
-        120.0
-    } else if u < 1.0 {
-        let e = (1.0 - (r - FD_SHAFT) / FD_FUNNEL_R).max(0.0);
-        bowl(u) + FD_TERR * 9.0 + FD_FUNNEL * e * e + 16.0
-    } else if u < FD_RIM {
-        20.0
-    } else if r < FD_FLAT {
-        14.0
-    } else {
-        12.0
-    }
+    FD_PER_CHUNK
+        + if r < FD_SHAFT {
+            120.0
+        } else if u < 1.0 {
+            let e = (1.0 - (r - FD_SHAFT) / FD_FUNNEL_R).max(0.0);
+            bowl(u) + FD_TERR * 9.0 + FD_FUNNEL * e * e + 8.0
+        } else if u < FD_RIM {
+            12.0
+        } else {
+            6.0
+        }
 }
 /// When the wave reaches radius r: paced to the changes, FD_LAND0 at the middle to FD_LAND1 at the end of the land read.
 #[derive(Clone)]
 struct Wave(Rc<Vec<f32>>);
 impl Wave {
     fn new() -> Self {
-        let n = FD_READ as usize + 16;
+        let n = FD_READ as usize + 40;
         let mut v = vec![0.0f64; n + 1];
         let mut work = 0.0;
         for (r, o) in v.iter_mut().enumerate() {
@@ -699,19 +709,28 @@ impl Wave {
     fn at(&self, r: f64) -> f32 {
         self.0[(r.max(0.0) as usize).min(self.0.len() - 1)]
     }
-    /// When it has swept the whole of the chunk column holding (x, z): every edit to a chunk goes in on the one tick.
+    /// When it has swept the whole of the chunk column holding (x, z), its furthest column's ring part included.
     fn chunk(&self, cx: f64, cz: f64, x: i32, z: i32) -> f32 {
         let (mx, mz) = (f64::from((x >> 4) * 16) + 8.0, f64::from((z >> 4) * 16) + 8.0);
         let d = (mx - cx).hypot(mz - cz);
         // (a chunk's neighbours at the same distance a tick or two apart: round the middle eight of them, each the whole
         // depth of the crater, would all land on one)
-        self.at(d - 11.4).max(self.at(d + 11.4)) + 0.2 * mh(((x >> 4) * 8191 + (z >> 4)) as u32, 7, 0xd5) as f32
+        self.at(d + 11.4 + 3.0 * FD_RING) + 0.2 * mh(((x >> 4) * 8191 + (z >> 4)) as u32, 7, 0xd5) as f32
     }
     /// When a part of a ring goes in.
     fn when(&self, sec: &Sector) -> f32 {
         let (t0, t1) = (self.at(sec.r0), self.at(sec.r1));
         t0 + (t1 - t0) * sec.frac as f32
     }
+}
+/// When everything that goes in chunk (x, z) does: the one tick, whatever it is (each chunk is sent and meshed once, and
+/// the player's island goes last, with the chunks it stands on).
+fn fd_tick(s: &Shape, wave: &Wave, x: i32, z: i32) -> f32 {
+    let (mx, mz) = (f64::from((x >> 4) * 16) + 8.0, f64::from((z >> 4) * 16) + 8.0);
+    if (mx - s.me[0]).hypot(mz - s.me[1]) < FD_ISLE + 11.4 {
+        return FD_ISLE_AT;
+    }
+    wave.chunk(s.cx, s.cz, x, z).min(FD_LAND1 + 0.2)
 }
 /// The rings from r0 to r1, each split by angle into parts of about `item` columns and no more than `arc` blocks along
 /// (their seams turned from ring to ring).
@@ -741,6 +760,7 @@ fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
     crate::meter::spend(30);
     land.cols.get(idx(bx, bz, x, z)?).filter(|c| c.known)
 }
+const FD_CUT_COST: u64 = 12_000;
 /// Column (x, z)'s cut, worked out once and kept (each column's neighbours ask for it, and the rubble and fires after).
 fn cut_of(cuts: &mut [Cut], land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z: i32) -> Option<Cut> {
     let i = idx(bx, bz, x, z)?;
@@ -748,6 +768,9 @@ fn cut_of(cuts: &mut [Cut], land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z:
         return Some(cuts[i]);
     }
     let c = land.cols.get(i).filter(|c| c.known)?;
+    // (what a cut really costs: the meter's marks inside it are a part of that, and work that finds its neighbours' cuts not
+    // worked out yet pays for them)
+    crate::meter::spend(FD_CUT_COST);
     let v = fd_cut(s, c, x, z);
     cuts[i] = v;
     Some(v)
@@ -871,10 +894,9 @@ fn fd_col(b: &mut Blocks, air: &mut Blocks, land: &Land, cuts: &mut [Cut], s: &S
 
 /// One part of a ring: its edits, what they leave hanging tidied, the trees standing in it felled. How much more than its
 /// estimate it cost (1 for land of the usual height: tall forest and mountains are dearer).
-fn fd_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cuts: &mut [Cut], made: &mut [u8], wave: &Wave, sec: &Sector) -> f64 {
+fn fd_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cuts: &mut [Cut], made: &mut [u8], late: &mut Due, wave: &Wave, sec: &Sector) -> f64 {
     let (bx, bz) = (q.bx, q.bz);
     let (cells, [x0, z0, x1, z1]) = sec.cells(s.cx, s.cz);
-    let t = wave.when(sec);
     // (what is laid keeps clear of the player; what is cleared does not, or they would be left on a pillar)
     let (mut b, mut air) = (Blocks { clear_of_player: true, ..Default::default() }, Blocks::default());
     let gw = (x1 - x0 + 1) as usize;
@@ -882,12 +904,7 @@ fn fd_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cuts: &mut [Cu
     for &(x, z) in &cells {
         fd_col(&mut b, &mut air, land, cuts, s, bx, bz, x, z, grid.get_mut((z - z0) as usize * gw + (x - x0) as usize));
     }
-    // (each chunk's edits on the tick the wave has swept all of it: its sections redrawn once)
-    // (the player's island, left whole through the fold: it goes in once the rings are down)
-    let when = |x: i32, z: i32| {
-        let by = wave.chunk(s.cx, s.cz, x, z).max(t);
-        if (f64::from(x) + 0.5 - s.me[0]).hypot(f64::from(z) + 0.5 - s.me[1]) < FD_ISLE { by.max(FD_SLAM[4] + 0.4) } else { by }
-    };
+    let when = |x: i32, z: i32| fd_tick(s, wave, x, z);
     for (tc, e) in air.split_by(when) {
         q.ev.push((tc, Act::Blocks(Box::new(e))));
     }
@@ -950,19 +967,14 @@ fn fd_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cuts: &mut [Cu
         q.ev.push((tc, Act::Blocks(Box::new(e))));
     }
     if FD_FELLED {
-        let mut due = Due(Default::default());
-        fd_fell(&mut due, land, s, used, wave, bx, bz, &cells);
-        for e in due.0.values_mut() {
-            e.clear_of_player = true;
-        }
-        due.push(q);
+        fd_fell(late, land, s, used, wave, bx, bz, &cells);
     }
     let tall: i32 = cells.iter().filter_map(|&(x, z)| at(land, bx, bz, x, z)).filter(|c| !c.fluid).map(|c| (c.top - c.g).max(0)).sum();
     1.0 + f64::from(tall) / cells.len().max(1) as f64 / 35.0
 }
 
 /// The trees standing on `cells` felled, lying on the land pointing away (crowns crushed round their ends, stripped off
-/// nearer in), each put in once the wave has swept the land it lies on.
+/// nearer in), each log and leaf in `due` on its own chunk's tick.
 fn fd_fell(due: &mut Due, land: &Land, s: &Shape, used: &mut Used, wave: &Wave, bx: i32, bz: i32, cells: &[(i32, i32)]) {
     let rim = FD_R * FD_RIM * 1.1;
     // (a column a log may lie on: past the rim's reach, dry, its ground near the last one's)
@@ -1025,29 +1037,10 @@ fn fd_fell(due: &mut Due, land: &Land, s: &Shape, used: &mut Used, wave: &Wave, 
         if put.is_empty() {
             continue;
         }
-        let far = put.iter().map(|&(px, pz, _, _)| (f64::from(px) + 0.5 - s.cx).hypot(f64::from(pz) + 0.5 - s.cz)).fold(0.0, f64::max);
-        let b = due.get(put.iter().map(|&(px, pz, _, _)| wave.chunk(s.cx, s.cz, px, pz)).fold(wave.at(far + 2.0 * FD_RING + 1.0), f32::max) + 0.05);
         for (px, pz, y, m) in put {
-            b.run(px, pz, y, y, m);
+            due.get(fd_tick(s, wave, px, pz)).run(px, pz, y, y, m);
         }
     }
-}
-
-/// When ring `r` lands: its slam (the outer rings' first, FD_RINGS and FD_SLAM).
-fn slam_at(r: f64) -> f32 {
-    let k = FD_RINGS.iter().position(|rr| r < *rr).unwrap_or(4);
-    FD_SLAM[4 - k]
-}
-
-/// A chunk's own number, 0 to 1.
-fn chunk_hash(s: &Shape, x: i32, z: i32) -> f64 {
-    cell(x >> 4, z >> 4, s.seed, 0xd6)
-}
-/// When what lands on the chunk holding (x, z) does: `lo` to `lo + span` after its ring slams. All of a chunk's on the one
-/// tick, so it is sent to the client again once, not for every stone.
-fn chunk_late(s: &Shape, x: i32, z: i32, lo: f64, span: f64) -> f32 {
-    let (mx, mz) = (f64::from((x >> 4) * 16) + 8.0, f64::from((z >> 4) * 16) + 8.0);
-    slam_at((mx - s.cx).hypot(mz - s.cz)) + (lo + span * chunk_hash(s, x, z)) as f32
 }
 
 /// What rubble is made of: the burnt ground, shards of the pattern, the land's soil.
@@ -1060,13 +1053,11 @@ fn rubble_block(rng: &mut Rng, seed: u32, r: f64) -> &'static str {
     *rng.pick(&["minecraft:blackstone", "minecraft:basalt", "minecraft:cobbled_deepslate", "minecraft:tuff", "minecraft:coarse_dirt", "minecraft:cobblestone", "minecraft:stone", "minecraft:coal_block", "minecraft:deepslate"])
 }
 
-/// The rubble: chunks of the ground and the pattern, strewn on the crater's floor and out past the rim along the rays,
-/// each landing as its ring slams or in the seconds after (by ~47 s); and a scatter of heaps on the floor.
-fn fd_rubble(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut Used, part: u32) {
-    let (bx, bz) = (q.bx, q.bz);
+/// The rubble: chunks of the ground and the pattern, strewn on the crater's floor and out past the rim along the rays, on
+/// their chunks' ticks.
+fn fd_rubble(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wave, cuts: &mut [Cut], used: &mut Used, part: u32) {
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x7e57 ^ (u64::from(part) << 24));
-    let mut due = Due(Default::default());
-    let lands = |x: i32, z: i32| chunk_late(s, x, z, 0.3, 3.2);
+    let lands = |x: i32, z: i32| fd_tick(s, wave, x, z);
     let n = FD_RUBBLE_N / 3;
     crate::meter::spend(4_000 * n as u64);
     for _ in 0..n {
@@ -1108,17 +1099,11 @@ fn fd_rubble(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut 
             }
         }
     }
-    for e in due.0.values_mut() {
-        e.clear_of_player = true;
-    }
-    due.push(q);
 }
 
 /// Heaps of rubble on the crater's floor, some of them (a job `FD_HEAPS` / FD_HEAP_JOBS of them).
-fn fd_heaps(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], part: u32) {
-    let (bx, bz) = (q.bx, q.bz);
+fn fd_heaps(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wave, cuts: &mut [Cut], part: u32) {
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x4ea9 ^ (u64::from(part) << 24));
-    let mut due = Due(Default::default());
     for _ in 0..FD_HEAPS / FD_HEAP_JOBS as usize {
         let r = FD_SHAFT * 2.0 + (FD_R * 0.98 - FD_SHAFT * 2.0) * rng.next().sqrt();
         let a = rng.uniform(0.0, TAU);
@@ -1140,26 +1125,23 @@ fn fd_heaps(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], part: u32) {
                 }
                 let h = (tall * (f64::from(rad) - d)).ceil() as i32;
                 let y = i32::from(c.top);
-                let b = due.get(chunk_late(s, x + dx, z + dz, 0.3, 3.2));
+                let b = due.get(fd_tick(s, wave, x + dx, z + dz));
                 b.run(x + dx, z + dz, y + 1, y + h, if (dx + 2 * dz + h).rem_euclid(3) == 0 { m2 } else { m });
             }
         }
     }
-    for e in due.0.values_mut() {
-        e.clear_of_player = true;
-    }
-    due.push(q);
 }
 
-/// Real blocks thrown as each ring slams down (ring `k` of the four, from the middle): out of its plates, outward and up,
-/// at all speeds, some landing as blocks, the rest breaking up where they land (CancelDrop).
+/// Real blocks thrown by the slam (band `k` of the four, from the middle, the shock reaching each a little after the one
+/// inside it): out of its plates, outward and up, at all speeds, some landing as blocks, the rest breaking up where they
+/// land (CancelDrop).
 fn fd_thrown(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], k: usize) {
     let (bx, bz) = (q.bx, q.bz);
     let mut rng = Rng::new(u64::from(s.seed) ^ 0x7410 ^ ((k as u64) << 20));
     let woods = land.woods;
     let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
     let (r0, r1) = [(FD_SHAFT * 1.6, FD_RINGS[0]), (FD_RINGS[0], FD_RINGS[1]), (FD_RINGS[1], FD_R * 0.95), (FD_R * 0.95, FD_R * FD_RIM)][k];
-    let t0 = FD_SLAM[4 - k];
+    let t0 = FD_REVEAL + 0.08 * k as f32;
     let want = FD_THROWN[k];
     let mut n = 0;
     crate::meter::spend(want as u64 * 2 * 3_000);
@@ -1247,13 +1229,12 @@ fn fd_peel(q: &mut Plan, land: &Land, s: &Shape, k: usize) {
 }
 
 /// Fires left burning in clumps over the wound: on the burnt plates and the blackened land round it, a block of netherrack
-/// under each so it keeps burning, as the last of the rings comes down and after.
-fn fd_embers(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut Used) {
-    let (bx, bz) = (q.bx, q.bz);
-    let mut rng = Rng::new(u64::from(s.seed) ^ 0xe3b3);
-    let mut due = Due(Default::default());
-    crate::meter::spend(FD_EMBERS as u64 * 3_000);
-    for _ in 0..FD_EMBERS {
+/// under each so it keeps burning, on their chunks' ticks.
+fn fd_embers(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wave, cuts: &mut [Cut], used: &mut Used, part: u32) {
+    let mut rng = Rng::new(u64::from(s.seed) ^ 0xe3b3 ^ (u64::from(part) << 24));
+    let n = FD_EMBERS / FD_EMBER_JOBS as usize;
+    crate::meter::spend(n as u64 * 3_000);
+    for _ in 0..n {
         let r = FD_SHAFT * 2.0 + (FD_FLAT * 0.98 - FD_SHAFT * 2.0) * rng.next().sqrt();
         let a = rng.uniform(0.0, TAU);
         let (x, z) = ((s.cx + a.cos() * r).floor() as i32, (s.cz + a.sin() * r).floor() as i32);
@@ -1267,15 +1248,11 @@ fn fd_embers(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], used: &mut 
             continue;
         }
         let y = i32::from(cut.top);
-        let b = due.get(FD_SLAM[4] + 0.2 + 3.6 * chunk_hash(s, x, z) as f32);
+        let b = due.get(fd_tick(s, wave, x, z));
         b.run(x, z, y, y, PAL[usize::from(NETHERRACK)]);
         b.put(x, z, y + 1, y + 1, "minecraft:fire", Some(AIR), false);
         used.insert((x, z));
     }
-    for e in due.0.values_mut() {
-        e.clear_of_player = true;
-    }
-    due.push(q);
 }
 
 // ---- the land's work: one stage a tick, in order --------------------------------------------------------------------
@@ -1296,14 +1273,19 @@ enum Job {
     Peel(usize),
     Rubble(u32),
     Heaps(u32),
-    Embers,
+    Embers(u32),
     Part(Sector),
+    /// What was gathered for the chunks' ticks past their cuts, handed to the plan after all of them.
+    Late,
 }
 struct Work {
     land: Land,
     s: Shape,
     wave: Wave,
     used: Used,
+    /// The felled trees, the rubble, the heaps and the fires, by tick: on a chunk's tick they must follow its cut (a column's
+    /// clearing would take what lay on it), so they wait here for the last of its parts.
+    late: Due,
     cuts: Vec<Cut>,
     /// What was made of each column, for the tidying (0 not yet known, 1 cleared through, 2 left).
     made: Vec<u8>,
@@ -1342,27 +1324,32 @@ impl Work {
                 jobs.push_back(Job::Peel(k));
             }
         }
-        // (the rubble once the crater's cuts are worked out, so it costs only its own work; the fires last)
-        let mut rubble = FD_RUBBLE_N == 0;
+        // (the rubble, the heaps and the fires once the crater's cuts are worked out, so they cost only their own work; all
+        // gathered in `late`, and handed over behind the wave's parts: `flush`)
+        let mut gathered = false;
         for sec in sectors(0.0, f64::from(FD_READ) + 1.0, FD_RING, FD_ITEM, 150.0) {
-            if !rubble && sec.r0 >= FD_R * FD_RIM * 1.1 {
-                jobs.extend((0..3).map(Job::Rubble));
+            if !gathered && sec.r0 >= FD_R * FD_RIM * 1.1 {
+                if FD_RUBBLE_N > 0 {
+                    jobs.extend((0..3).map(Job::Rubble));
+                }
                 if FD_HEAPS > 0 {
                     jobs.extend((0..FD_HEAP_JOBS).map(Job::Heaps));
                 }
-                rubble = true;
+                if FD_EMBERS > 0 {
+                    jobs.extend((0..FD_EMBER_JOBS).map(Job::Embers));
+                }
+                gathered = true;
             }
             jobs.push_back(Job::Part(sec));
         }
-        if FD_EMBERS > 0 {
-            jobs.push_back(Job::Embers);
-        }
+        jobs.push_back(Job::Late);
         let n = (FD_GW * FD_GW) as usize;
         Work {
             land: Land { cols: Vec::with_capacity(n), missing: vec![Vec::new(); FD_PARTS as usize], woods: [0; 9], done: false },
             s,
             wave: Wave::new(),
             used: Default::default(),
+            late: Due(Default::default()),
             cuts: Vec::with_capacity(n),
             made: Vec::with_capacity(n),
             tags: (0..FD_PARTS).map(|_| crate::columns::new_tag()).collect(),
@@ -1420,10 +1407,10 @@ impl Work {
         match j {
             // (from what has loaded by then if the crater's land still has not all)
             Job::Level => (self.ready() >= FD_R * 1.2 || now >= FD_LAND0 - 1.0, true),
-            Job::Thrown(k) => (self.level && self.land.done && now + FD_AHEAD >= FD_SLAM[4 - k], false),
+            Job::Thrown(_) => (self.level && self.land.done && now + FD_AHEAD >= FD_REVEAL, false),
             Job::Peel(k) => (self.land.done && now + 2.0 >= PEEL_AT[*k], false),
-            Job::Rubble(_) | Job::Heaps(_) => (self.level && self.land.done && now + FD_AHEAD >= FD_SLAM[0], false),
-            Job::Embers => (self.level && self.land.done && now + FD_AHEAD >= FD_SLAM[4], false),
+            Job::Rubble(_) | Job::Heaps(_) | Job::Embers(_) => (self.level && self.land.done, false),
+            Job::Late => (self.level && self.land.done, true),
             Job::Part(sec) => (self.level && now + FD_AHEAD >= self.wave.when(sec) && self.ready() >= sec.r1 + 12.0, true),
         }
     }
@@ -1432,7 +1419,8 @@ impl Work {
             Job::Level => 150.0,
             Job::Thrown(_) | Job::Peel(_) => 500.0,
             Job::Rubble(_) | Job::Heaps(_) => FD_BUDGET * 0.5,
-            Job::Embers => FD_BUDGET * 0.5,
+            Job::Embers(_) => FD_BUDGET * 0.5,
+            Job::Late => 100.0,
             Job::Part(s) => {
                 let a = s.da.min(TAU) / 2.0 * (s.r1 * s.r1 - s.r0 * s.r0);
                 let k = if s.r0 < FD_R * FD_RIM {
@@ -1445,6 +1433,15 @@ impl Work {
                 a * k
             }
         }
+    }
+    /// What is gathered for the ticks before `tick` handed to the plan (they come after what the stages before gave).
+    fn flush(&mut self, q: &mut Plan, tick: i32) {
+        let rest = self.late.0.split_off(&tick);
+        let mut ready = Due(std::mem::replace(&mut self.late.0, rest));
+        for e in ready.0.values_mut() {
+            e.clear_of_player = true;
+        }
+        ready.push(q);
     }
     /// The crater's level: the median ground under it, so a hill at the target does not leave it perched, nor a dell
     /// sink it.
@@ -1576,12 +1573,15 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 }
                 Job::Thrown(k) => fd_thrown(q, &wk.land, &s, &mut wk.cuts, k),
                 Job::Peel(k) => fd_peel(q, &wk.land, &s, k),
-                Job::Rubble(k) => fd_rubble(q, &wk.land, &s, &mut wk.cuts, &mut wk.used, k),
-                Job::Heaps(k) => fd_heaps(q, &wk.land, &s, &mut wk.cuts, k),
-                Job::Embers => fd_embers(q, &wk.land, &s, &mut wk.cuts, &mut wk.used),
+                Job::Rubble(k) => fd_rubble(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, &mut wk.used, k),
+                Job::Heaps(k) => fd_heaps(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, k),
+                Job::Embers(k) => fd_embers(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, &mut wk.used, k),
+                Job::Late => wk.flush(q, i32::MAX),
                 Job::Part(sec) => {
-                    let k = fd_part(q, &wk.land, &s, &mut wk.used, &mut wk.cuts, &mut wk.made, &wave, &sec);
+                    let k = fd_part(q, &wk.land, &s, &mut wk.used, &mut wk.cuts, &mut wk.made, &mut wk.late, &wave, &sec);
                     spent += c * (k - 1.0);
+                    // (a chunk's tick is when the wave has passed all of it: every part of those due by here is done)
+                    wk.flush(q, (wave.at(sec.r0) / 0.05).floor() as i32);
                 }
             }
             crate::trace("fd job");
@@ -1623,13 +1623,16 @@ pub(super) fn land_plan(p: &mut Plan, seed: u32, dimension: &str, me: [f64; 3]) 
     for [x0, z0, x1, z1] in &load {
         p.ev.push((FD_LEN - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
     }
-    for t in [FD_RELEASE, FD_SLAM[2], FD_SLAM[4] + 2.0] {
+    // (the ground goes from under them with the slam, up to a crater's depth: the fall takes nothing from them)
+    p.at(FD_ISLE_AT - 0.1, format!("execute positioned {cx:.1} {} {cz:.1} run effect give @a[distance=..{FD_KILL}] minecraft:resistance 8 4 true", by + 1));
+    // (as the hold starts too: what stands on the land would fall into a crater that can't be seen yet)
+    for t in [FD_HIDDEN.start, FD_RELEASE, FD_REVEAL, FD_REVEAL + 2.0] {
         p.at(t, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FD_KILL}]", by + 1));
     }
     for i in 0..FD_SMOKE as u32 {
         let (a, r) = (mh(i, seed, 0xe5) * TAU, FD_R * 1.15 * mh(i, seed, 0xe6).sqrt());
         let (x, z) = (cx + a.cos() * r, cz + a.sin() * r);
-        let t = FD_SLAM[4] + 0.5 + (FD_LEN - FD_SLAM[4] - 2.0) * i as f32 / FD_SMOKE as f32;
+        let t = FD_REVEAL + 0.5 + (FD_LEN - FD_REVEAL - 2.0) * i as f32 / FD_SMOKE as f32;
         p.at(t, format!("particle minecraft:campfire_signal_smoke {x:.1} {:.1} {z:.1} 14 2 14 0.03 60 force", by - 6));
     }
     let shape = Shape { cx, cz, ph: [TAU * mh(1, seed, 0xc0), TAU * mh(2, seed, 0xc0), TAU * mh(3, seed, 0xc0), TAU * mh(4, seed, 0xc0)], seed, level: by + 1, me: [me[0], me[2]], bot: bedrock_top(dimension) };
@@ -2002,41 +2005,44 @@ mod tests {
         let p = played(0);
         assert!(p.edits.len() > 300);
         let first = p.edits.iter().map(|e| e.1).fold(f32::MAX, f32::min);
-        assert!(first >= FD_SEAL && first < FD_LAND0 + 0.5, "first {first}");
-        let wave = Wave::new();
+        assert!(first >= FD_HIDDEN.start && first < FD_LAND0 + 0.5, "first {first}");
         // (the wave's own, not the rubble and the fires)
         let main: Vec<_> = p.edits.iter().filter(|e| !e.2.clear_of_player).collect();
-        let last = main.iter().map(|e| e.1).fold(0.0, f32::max);
-        assert!(last <= FD_SLAM[4] + 0.2, "the wave's last at {last}");
+        // (all of it behind the hold, the wave done in time for its last chunks' meshes to be ready)
         let all = p.edits.iter().map(|e| e.1).fold(0.0, f32::max);
-        assert!(all <= 47.3, "the last edit at {all}");
+        assert!(all < FD_REVEAL, "the last edit at {all}");
+        let wave_end = p.edits.iter().filter(|e| e.1 < FD_ISLE_AT - 0.01).map(|e| e.1).fold(0.0, f32::max);
+        assert!(wave_end <= FD_LAND1 + 0.25, "the wave's last at {wave_end}");
         let late = p.edits.iter().map(|e| e.0 - e.1).fold(0.0, f32::max);
         assert!(late < 0.2, "{late} s late");
         // (the middle first)
         let at = |r: f64| main.iter().filter(|e| e.2.runs.iter().any(|u| (f64::from(u.x).hypot(f64::from(u.z)) - r).abs() < 4.0)).map(|e| e.1).fold(f32::MAX, f32::min);
         assert!(at(20.0) < at(100.0) && at(100.0) < at(170.0) && at(170.0) < at(280.0));
-        assert!(wave.at(FD_R * 1.1) < FD_SLAM[0] + 1.0, "the crater's not in by the first slam: {}", wave.at(FD_R * 1.1));
-        // (each chunk's edits on one tick: as the chunks' redraws go, the wave's, felled trees apart)
+        // (each chunk edited on one tick, its rubble, fires and felled trees with its cut: a second is a second resend, nine
+        // light jobs and its meshes again)
         let mut chunks: HashMap<(i32, i32), HashSet<i32>> = Default::default();
-        for (t, due, b) in &p.edits {
-            if *due < FD_SLAM[4] + 0.2 && !b.clear_of_player {
-                for r in &b.runs {
-                    chunks.entry((r.x >> 4, r.z >> 4)).or_default().insert((t / 0.05).round() as i32);
-                }
+        for (t, _, b) in &p.edits {
+            for r in &b.runs {
+                chunks.entry((r.x >> 4, r.z >> 4)).or_default().insert((t / 0.05).round() as i32);
             }
         }
         let most = chunks.values().map(HashSet::len).max().unwrap_or(0);
-        assert!(most <= 2, "a chunk edited on {most} ticks");
+        assert_eq!(most, 1, "a chunk edited on {most} ticks");
+        // (what the game's frames feel: never many chunks a second)
+        let mut per: BTreeMap<i32, usize> = Default::default();
+        for t in chunks.values().flatten() {
+            *per.entry(t / 20).or_default() += 1;
+        }
+        let busiest = per.values().max().unwrap_or(&0);
+        assert!(*busiest < 200, "{busiest} chunks in a second");
         assert!(p.cmds.first().is_some_and(|c| c.1.starts_with("forceload add")), "{:?}", p.cmds.first());
         assert!(p.cmds.iter().any(|c| c.1.starts_with("forceload remove") && c.0 >= FD_LEN - 1.1));
         let thrown: Vec<f32> = p.cmds.iter().filter(|c| c.1.contains("falling_block ") && !c.1.contains("NoGravity")).filter(|c| c.1.starts_with("summon")).map(|c| c.0).collect();
         assert!(thrown.len() > 150, "{} thrown", thrown.len());
-        for k in 0..4 {
-            assert!(thrown.iter().any(|t| (*t - FD_SLAM[4 - k]).abs() < 0.3), "none at slam {k}");
-        }
-        assert!(thrown.iter().all(|t| *t >= FD_SLAM[1] - 0.1 && *t <= FD_SLAM[4] + 1.0));
+        // (thrown out of the crater by the slam that made it)
+        assert!(thrown.iter().all(|t| *t >= FD_REVEAL && *t <= FD_REVEAL + 1.2), "{thrown:?}");
         let kills: Vec<&(f32, String)> = p.cmds.iter().filter(|c| c.1.contains("kill @e")).collect();
-        assert!(!kills.is_empty() && kills[0].0 >= FD_RELEASE - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
+        assert!(!kills.is_empty() && kills[0].0 >= FD_HIDDEN.start - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
     }
 
     // ---- the fuel -------------------------------------------------------------------------------------------------------
