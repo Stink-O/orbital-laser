@@ -214,9 +214,9 @@ fn vc_umb(q: vec3<f32>, r0: f32) -> f32 {
     let core = exp(-r * r / (1200.0 * 1200.0));
     let nose = exp(-pow((vs.Ru - r - 300.0) / 280.0, 2.0));
     let th = (210.0 + 240.0 * core + 120.0 * nose) * prof;
-    let hm = VC_HU + 2.2 * vc_ripple(r) + 30.0 * (1.0 - prof);
+    let hm = VC_HU + 30.0 * (1.0 - prof);
     let bot = hm - 0.9 * th - 230.0 * exp(-r * r / (800.0 * 800.0));
-    let tp = hm + 0.9 * th + 140.0 * core;
+    let tp = hm + 2.2 * vc_ripple(r) + 0.9 * th + 140.0 * core;
     return vc_smax(vc_smax(hy - tp, bot - hy, 60.0) * 0.8, (r - vs.Ru) * 0.8, 120.0);
 }
 // The wall of ash and what it leaves: over the land (`land`), behind its front; .x the distance, .y how far behind the
@@ -375,7 +375,7 @@ fn vc_vel(q: vec3<f32>, rho: f32, wc: f32, wu: f32, wf: f32) -> vec4<f32> {
         }
         vr = vr + wc * ur;
         vy = vy + wc * uy;
-        gr = gr + wc * vs.dRb / vs.Rb * (1.0 - smoothstep(0.8 * vs.Hd, 1.4 * vs.Hd, hy));
+        gr = gr + wc * min(vs.dRb / vs.Rb, 0.075) * (1.0 - smoothstep(0.8 * vs.Hd, 1.4 * vs.Hd, hy));
     }
     if (wu > 0.0) {
         gr = gr + wu * min(vs.dRu / max(vs.Ru, 300.0), 0.075);
@@ -1031,7 +1031,8 @@ fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
     let cr = 1.0 - top;
     let skin = mix(0.75 + 0.5 * cr, 0.2 + 1.3 * cr * cr, cool);
     let hot = (0.86 - 0.22 * cool) * (0.55 + 0.75 * n1);
-    return vec2<f32>(saturate(T * skin) * hot * tongues, smoothstep(0.46, 0.68, 0.7 * n1 + 0.5 * (gate - 0.2)) * zone);
+    let far = 1.0 - 0.55 * smoothstep(16.0, 28.0, a);
+    return vec2<f32>(saturate(T * skin) * hot * tongues, smoothstep(0.46, 0.74, 0.7 * n1 + 0.5 * (gate - 0.2)) * zone * far * (0.45 + 0.9 * tongues));
 }
 // The air's colour along a ray: the sky's, gone dirty and red low down as the sheet closes over.
 fn vc_band(rd: vec3<f32>) -> vec3<f32> {
@@ -1225,7 +1226,8 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             // (the light of the fire on the smoke round it)
             let ash = min(alb, vec3<f32>(0.13));
             let cr = 1.0 - sd.y;
-            fire = fire + ash * vec3<f32>(2.6, 0.7, 0.11) * ht.y * (0.06 + 0.94 * cr * cr) * on;
+            c = c * (1.0 - 0.62 * ht.y * on);
+            fire = fire + ash * vec3<f32>(2.5, 0.95, 0.15) * ht.y * (0.3 + 0.7 * cr) * on;
             // (from under: the land burning below what hangs over it)
             let fb = (1.0 - smoothstep(VC_COLLAPSE, VC_COLLAPSE + 6.0, time)) * on;
             fire = fire + ash * vec3<f32>(2.6, 0.72, 0.11) * below * below * exp(-max(hyl, 0.0) / 300.0) * fb;
