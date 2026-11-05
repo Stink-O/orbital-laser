@@ -370,9 +370,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         }
         return out;
     }
-    let Q = pos - c.tgt;
-    let r = length(Q.xz);
-    let a = atan2(Q.z, Q.x);
+    var Q = pos - c.tgt;
+    var r = length(Q.xz);
+    var a = atan2(Q.z, Q.x);
     if (copy > 0u) {
         return fw_cone(i32(copy), pos, Q, r, a, c);
     }
@@ -385,6 +385,15 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // ---- how far on: the sheet's own heights keep to its surface as it goes up ---------------------------------------------
     let tau = fw_tau(t);
+    // (the hole the island left, closed as the rings lie back: from inside it would be a window on the void)
+    let fill = fw_ss(FW_LAY0 - 1.0, FW_LAY0 + 2.0, tau);
+    let dm = length(Q.xz - mq.xz);
+    if (fill > 0.0 && dm < FW_ISLE + 60.0) {
+        let to = mix(dm, (dm - FW_ISLE) * (FW_ISLE + 60.0) / 60.0, fill);
+        Q = vec3<f32>(mq.x + (Q.x - mq.x) * to / dm, Q.y, mq.z + (Q.z - mq.z) * to / dm);
+        r = length(Q.xz);
+        a = atan2(Q.z, Q.x);
+    }
     let opening = fw_ss(FW_REL, FW_FLAT, t);
     let folded = fw_ss(FW_FOLD - 0.5, FW_FOLD + 6.0, tau);
     // (what is under the sheet doesn't swing out on a lever: pressed up to its cut, then the heights pressed in)
@@ -536,9 +545,11 @@ fn world_fragment(f: Fragment) -> Painted {
         if (r > edge || Q.y < -8.0 || f.light.x < 6.0 || plain.a < 0.5) {
             return drop_;
         }
-        let px = max(0.05, dist * 0.0012);
-        let rimline = 1.0 - fw_ss(0.5, 1.2 + px * 8.0, edge - r);
-        return Painted(vec4<f32>(mix(plain.rgb, vec3<f32>(1.0, 0.72, 0.42), rimline), 1.0), 1.0 - rimline);
+        let px = max(0.05, max(length(dpdx(f.home)), length(dpdy(f.home))));
+        let rimline = 1.0 - fw_ss(0.5, 1.0 + px * 1.6, edge - r);
+        // (dark in the throat, where the next cone comes out of it: the steps read)
+        let shade = mix(0.42, 1.0, fw_ss(0.0, 0.62, r / edge));
+        return Painted(vec4<f32>(mix(plain.rgb * shade, vec3<f32>(1.0, 0.72, 0.42), rimline), 1.0), 1.0 - rimline);
     }
     // ---- the sheet: nothing under the land is drawn ------------------------------------------------------------------------
     let opened = t > FW_SEAL - 0.5 && r < FW_LAND_R;
@@ -633,7 +644,8 @@ fn world_fragment(f: Fragment) -> Painted {
     }
     // ---- the creases ---------------------------------------------------------------------------------------------------
     if (scored > 0.001 && r < FW_LEN * 1.2) {
-        let px = max(0.05, dist * 0.00095);
+        // (a pixel in the land's own blocks, however small the warp has made it)
+        let px = max(0.05, max(length(dpdx(f.home)), length(dpdy(f.home))));
         let d = min(dc.x, dc.y + 1.2);
         let hair = 1.0 - fw_ss(0.05 + px, 0.1 + px * 2.2, d);
         // (the tear: wider the more it has opened, broken up block by block)
