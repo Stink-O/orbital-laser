@@ -60,6 +60,7 @@ const FD_PEEL: [usize; 4] = [100, 140, 160, 120];
 /// How wide round the player the land is left alone until the last slam: they stand on it through the fold (FW_ISLE + 4).
 const FD_ISLE: f64 = 30.0;
 const FD_EMBERS: usize = 1500;
+const FD_EMBER_JOBS: u32 = 4;
 /// Plumes of smoke over the crater after it (0: none).
 const FD_SMOKE: usize = 14;
 
@@ -759,6 +760,7 @@ fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
     crate::meter::spend(30);
     land.cols.get(idx(bx, bz, x, z)?).filter(|c| c.known)
 }
+const FD_CUT_COST: u64 = 12_000;
 /// Column (x, z)'s cut, worked out once and kept (each column's neighbours ask for it, and the rubble and fires after).
 fn cut_of(cuts: &mut [Cut], land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z: i32) -> Option<Cut> {
     let i = idx(bx, bz, x, z)?;
@@ -766,6 +768,9 @@ fn cut_of(cuts: &mut [Cut], land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z:
         return Some(cuts[i]);
     }
     let c = land.cols.get(i).filter(|c| c.known)?;
+    // (what a cut really costs: the meter's marks inside it are a part of that, and work that finds its neighbours' cuts not
+    // worked out yet pays for them)
+    crate::meter::spend(FD_CUT_COST);
     let v = fd_cut(s, c, x, z);
     cuts[i] = v;
     Some(v)
@@ -1225,10 +1230,11 @@ fn fd_peel(q: &mut Plan, land: &Land, s: &Shape, k: usize) {
 
 /// Fires left burning in clumps over the wound: on the burnt plates and the blackened land round it, a block of netherrack
 /// under each so it keeps burning, on their chunks' ticks.
-fn fd_embers(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wave, cuts: &mut [Cut], used: &mut Used) {
-    let mut rng = Rng::new(u64::from(s.seed) ^ 0xe3b3);
-    crate::meter::spend(FD_EMBERS as u64 * 3_000);
-    for _ in 0..FD_EMBERS {
+fn fd_embers(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wave, cuts: &mut [Cut], used: &mut Used, part: u32) {
+    let mut rng = Rng::new(u64::from(s.seed) ^ 0xe3b3 ^ (u64::from(part) << 24));
+    let n = FD_EMBERS / FD_EMBER_JOBS as usize;
+    crate::meter::spend(n as u64 * 3_000);
+    for _ in 0..n {
         let r = FD_SHAFT * 2.0 + (FD_FLAT * 0.98 - FD_SHAFT * 2.0) * rng.next().sqrt();
         let a = rng.uniform(0.0, TAU);
         let (x, z) = ((s.cx + a.cos() * r).floor() as i32, (s.cz + a.sin() * r).floor() as i32);
@@ -1267,7 +1273,7 @@ enum Job {
     Peel(usize),
     Rubble(u32),
     Heaps(u32),
-    Embers,
+    Embers(u32),
     Part(Sector),
     /// What was gathered for the chunks' ticks past their cuts, handed to the plan after all of them.
     Late,
@@ -1318,17 +1324,22 @@ impl Work {
                 jobs.push_back(Job::Peel(k));
             }
         }
-        // (gathered in `late`, and handed over behind the wave's parts: `flush`)
-        if FD_RUBBLE_N > 0 {
-            jobs.extend((0..3).map(Job::Rubble));
-        }
-        if FD_HEAPS > 0 {
-            jobs.extend((0..FD_HEAP_JOBS).map(Job::Heaps));
-        }
-        if FD_EMBERS > 0 {
-            jobs.push_back(Job::Embers);
-        }
+        // (the rubble, the heaps and the fires once the crater's cuts are worked out, so they cost only their own work; all
+        // gathered in `late`, and handed over behind the wave's parts: `flush`)
+        let mut gathered = false;
         for sec in sectors(0.0, f64::from(FD_READ) + 1.0, FD_RING, FD_ITEM, 150.0) {
+            if !gathered && sec.r0 >= FD_R * FD_RIM * 1.1 {
+                if FD_RUBBLE_N > 0 {
+                    jobs.extend((0..3).map(Job::Rubble));
+                }
+                if FD_HEAPS > 0 {
+                    jobs.extend((0..FD_HEAP_JOBS).map(Job::Heaps));
+                }
+                if FD_EMBERS > 0 {
+                    jobs.extend((0..FD_EMBER_JOBS).map(Job::Embers));
+                }
+                gathered = true;
+            }
             jobs.push_back(Job::Part(sec));
         }
         jobs.push_back(Job::Late);
@@ -1398,7 +1409,7 @@ impl Work {
             Job::Level => (self.ready() >= FD_R * 1.2 || now >= FD_LAND0 - 1.0, true),
             Job::Thrown(_) => (self.level && self.land.done && now + FD_AHEAD >= FD_REVEAL, false),
             Job::Peel(k) => (self.land.done && now + 2.0 >= PEEL_AT[*k], false),
-            Job::Rubble(_) | Job::Heaps(_) | Job::Embers => (self.level && self.land.done, false),
+            Job::Rubble(_) | Job::Heaps(_) | Job::Embers(_) => (self.level && self.land.done, false),
             Job::Late => (self.level && self.land.done, true),
             Job::Part(sec) => (self.level && now + FD_AHEAD >= self.wave.when(sec) && self.ready() >= sec.r1 + 12.0, true),
         }
@@ -1408,7 +1419,7 @@ impl Work {
             Job::Level => 150.0,
             Job::Thrown(_) | Job::Peel(_) => 500.0,
             Job::Rubble(_) | Job::Heaps(_) => FD_BUDGET * 0.5,
-            Job::Embers => FD_BUDGET * 0.5,
+            Job::Embers(_) => FD_BUDGET * 0.5,
             Job::Late => 100.0,
             Job::Part(s) => {
                 let a = s.da.min(TAU) / 2.0 * (s.r1 * s.r1 - s.r0 * s.r0);
@@ -1564,7 +1575,7 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
                 Job::Peel(k) => fd_peel(q, &wk.land, &s, k),
                 Job::Rubble(k) => fd_rubble(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, &mut wk.used, k),
                 Job::Heaps(k) => fd_heaps(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, k),
-                Job::Embers => fd_embers(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, &mut wk.used),
+                Job::Embers(k) => fd_embers(&mut wk.late, bx, bz, &wk.land, &s, &wave, &mut wk.cuts, &mut wk.used, k),
                 Job::Late => wk.flush(q, i32::MAX),
                 Job::Part(sec) => {
                     let k = fd_part(q, &wk.land, &s, &mut wk.used, &mut wk.cuts, &mut wk.made, &mut wk.late, &wave, &sec);
