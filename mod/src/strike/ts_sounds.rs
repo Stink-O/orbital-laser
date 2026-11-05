@@ -16,22 +16,22 @@ pub(super) fn ts_sounds(p: &mut Plan, geo: &TsGeo, me: [f64; 3], s: u32, t_t: f6
     let late = dp / 343.0;
     let far = smooth(250.0, 800.0, dp);
     let share = (0.6 + 0.0017 * (dp - 300.0)).clamp(0.6, 1.0);
-    sound(&mut p, 0.0, "rupture", 1.0);
-    sound(&mut p, 1.5, "rumble", 1.0);
-    sound(&mut p, 2.5, "roar_far", (0.35 + 0.0013 * dp).clamp(0.6, 1.0));
-    sound(&mut p, (tp - 9.0).max(1.0), "roar_mid", 1.0);
-    sound(&mut p, tp - 4.0, "roar_near", (0.63 + 0.0022 * (dp - 250.0)).clamp(0.63, 1.0));
-    sound(&mut p, t_t + late - 0.06, "crash", share * (1.0 - far));
-    sound(&mut p, t_t + late - 0.06, "crash_far", share * far * (1.25 / (1.0 + dp / 2000.0)).min(1.0));
+    sound(p, 0.0, "rupture", 1.0);
+    sound(p, 1.5, "rumble", 1.0);
+    sound(p, 2.5, "roar_far", (0.35 + 0.0013 * dp).clamp(0.6, 1.0));
+    sound(p, (tp - 9.0).max(1.0), "roar_mid", 1.0);
+    sound(p, tp - 4.0, "roar_near", (0.63 + 0.0022 * (dp - 250.0)).clamp(0.63, 1.0));
+    sound(p, t_t + late - 0.06, "crash", share * (1.0 - far));
+    sound(p, t_t + late - 0.06, "crash_far", share * far * (1.25 / (1.0 + dp / 2000.0)).min(1.0));
     if immersed {
-        sound(&mut p, tp, "engulf", (0.72 + 0.0028 * (dp - 250.0)).clamp(0.72, 1.0));
-        sound(&mut p, tp + 0.3, "under", 1.0);
-        sound(&mut p, tp + 8.5, "surface", 1.0);
+        sound(p, tp, "engulf", (0.72 + 0.0028 * (dp - 250.0)).clamp(0.72, 1.0));
+        sound(p, tp + 0.3, "under", 1.0);
+        sound(p, tp + 8.5, "surface", 1.0);
     }
-    sound(&mut p, tp + 9.0, "drain", 1.0);
-    sound(&mut p, tp + 9.5, "roar_back", 1.0);
-    sound(&mut p, tp + 9.0, "rumble_after", 1.0);
-    sound(&mut p, tp + 17.0, "trickle", 1.0);
+    sound(p, tp + 9.0, "drain", 1.0);
+    sound(p, tp + 9.5, "roar_back", 1.0);
+    sound(p, tp + 9.0, "rumble_after", 1.0);
+    sound(p, tp + 17.0, "trickle", 1.0);
     // (the trees and the walls the front reaches round the player, heard where it is as it gets there: not while they are
     // under, which the file for it covers)
     let mut t = tp - 3.5;

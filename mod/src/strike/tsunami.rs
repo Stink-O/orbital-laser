@@ -719,7 +719,7 @@ pub(super) fn tsunami_plan(laser: &'static Laser, target: &Target, terrain: bool
         p.shake(t as f32, (0.025 + 0.11 * k) as f32 * fo.max(0.4), 0.5);
         t += 0.35;
     }
-    p.shake((t_t + late) as f32, 0.55 * fo.max(0.3), 3.0);
+    p.shake((t_t + dp / 343.0) as f32, 0.55 * fo.max(0.3), 3.0);
     if t_imm.is_some() {
         p.shake(tp as f32, 0.95, 2.4);
         let mut t = tp + 0.8;
