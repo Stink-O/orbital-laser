@@ -261,9 +261,15 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32, plain: f32) -> vec3<f32
         let a0 = mix(ph[i], 0.5 * (last + ph[i]), soft);
         let a1 = mix(ph[i], 0.5 * (ph[i] + ph[i + 1]), soft);
         let L = (rho - prev) * k;
-        total += fw_arc(a0, a1, L, L).y;
-        if (r > prev) {
-            let x = (min(r, rho) - prev) * k;
+        // (a plate gone past is the whole of its arc: every vertex comes through here)
+        let whole = fw_arc(a0, a1, L, L);
+        total += whole.y;
+        if (r >= rho) {
+            R += whole.x;
+            Y -= whole.y;
+            here = a1;
+        } else if (r > prev) {
+            let x = (r - prev) * k;
             let along = fw_arc(a0, a1, L, x);
             R += along.x;
             Y -= along.y;
