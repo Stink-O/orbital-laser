@@ -232,8 +232,17 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         }
     }
 
-    // ---- the sounds: strike/vc_sound.rs, wired in at the merge ---------------------------------------------------------
-    // [vc_sounds call site] vc_sound::vc_sounds(&mut p, ...);
+    // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
+    {
+        let bombs: Vec<(f32, f64, f64)> = vc_bombs(shader_seed, &|_, _| 0.0)
+            .iter()
+            .map(|b| {
+                let c = b.tl - b.t0;
+                (b.tl as f32, b.p0[0] + b.v[0] * c, b.p0[2] + b.v[2] * c)
+            })
+            .collect();
+        vc_sound::vc_sounds(&mut p, shader_seed as u32, [cx, gy, cz], me, bombs);
+    }
 
     // ---- the ground shaking: a tremor building from the hit, faster and harder, the eruption's jolt late by the distance,
     // the column's roar in the ground, the collapse, the wall arriving -------------------------------------------------
