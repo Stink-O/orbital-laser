@@ -6,7 +6,8 @@ use super::{Act, Plan, mh};
 
 // (seconds; tools/sounds_tsunami.py has the same numbers)
 const FAR_AT: f64 = 0.9; // roar_far: its first big seas come down as the horizon stands up
-const FAR_AGAIN: f64 = 7.4; // and again, lower, for a player the wave is that far from yet
+const FAR_AGAIN: f64 = 7.4; // and again, lower, for a player the wave is far from yet
+const FAR_IF: f64 = 9.0; // (roar_mid starting after this)
 const MID_LEN: f64 = 9.0; // roar_mid ends as the front arrives
 const NEAR_PRE: f64 = 4.0; // roar_near: the immersion is exactly this far into the file
 const UNDER_AT: f64 = 0.2; // tp + these
@@ -32,7 +33,7 @@ pub(super) fn ts_sounds(p: &mut Plan, geo: &TsGeo, me: [f64; 3], s: u32, t_t: f6
     let reach = 1.0 - smooth(geo.send, geo.send + 400.0, dp);
     // (a player the front reaches sooner hears the crash on top of the immersion: less of it there. The volumes keep the mix
     // of every distance under -1 dBTP, `--listen`)
-    let share = (0.26 + 0.0016 * (dp - 100.0)).clamp(0.26, 0.72);
+    let share = (0.26 + 0.0019 * (dp - 100.0)).clamp(0.26, 0.8);
     let near_v = (0.72 + 0.0022 * (dp - 250.0)).clamp(0.72, 1.0);
     let far_v = (0.7 + 0.001 * dp).clamp(0.8, 1.0);
     sound(p, 0.0, "rupture", 1.0);
@@ -40,8 +41,8 @@ pub(super) fn ts_sounds(p: &mut Plan, geo: &TsGeo, me: [f64; 3], s: u32, t_t: f6
     sound(p, FAR_AT, "roar_far", far_v);
     sound(p, (tp - MID_LEN).max(1.0), "roar_mid", reach);
     // (the far roar is over well before the immersion of a near player, whose mix has no room for it; a far one gets it again)
-    if tp - MID_LEN > FAR_AGAIN + 0.2 {
-        p.ev.push((FAR_AGAIN as f32, Act::Sound { event: "orbital:tsunami.roar_far".into(), at: None, volume: (0.85 * far_v) as f32, pitch: 0.94 }));
+    if tp - MID_LEN > FAR_IF {
+        p.ev.push((FAR_AGAIN as f32, Act::Sound { event: "orbital:tsunami.roar_far".into(), at: None, volume: (0.75 * far_v) as f32, pitch: 0.94 }));
     }
     sound(p, t_t + late - 0.06, "crash", share * (1.0 - far));
     sound(p, t_t + late - 0.06, "crash_far", share * far * (1.25 / (1.0 + dp / 2000.0)).min(1.0));

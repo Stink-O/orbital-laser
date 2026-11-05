@@ -1,88 +1,98 @@
-"""The Tsunami's sounds (a 130-block wall of dark, debris-laden water, ~2.8 km wide, crossing the land at ~100 blocks a
-second: strike/tsunami.rs), all synthesised here from noise, bubbles, resonant knocks and filters, nothing sampled.
-Its drama is scale: a roar that is first a rumour on the horizon, then the whole sky; a crash of timber and stone; the
-immersion; then the dull pressure of being under it, the water draining off and the quiet it leaves.
+"""The Tsunami's sounds, all synthesised here, nothing sampled: a wall of dark, debris-laden water up to 320 blocks tall out
+far, that stands up on the horizon in the first second and a half, crosses the land and goes over the player's head.
+Its drama is scale: dread from the first seconds, a roar that takes the whole sky, the immersion, what goes by under the
+water, the head coming out and the land's water pouring away beneath the player, the quiet it leaves.
+
+Water must sound like water, not wind. Measured against real recordings (the texture statistics of McDermott & Simoncelli
+2011: envelope sparsity per ear's filter, how fast it falls when channels are summed, onsets sharper than decays), plain or
+octave-gated noise reads as wind or rain, so the water here (`water`) is thousands of ringing Minnaert bubbles, see below.
 
 Horizon decodes every sound to mono ((L+R)/2) and plays one played to the listener dead centre, 0.596 in each ear (a
 positional one is panned by its direction), so every file here is mono: nothing is lost, the folder is half the size
 and what is measured is what the game plays.
 
-Timeline the files are built for, as strike/tsunami.rs plays them (strike seconds; T_T = 9.0 the front reaching the
-target; `dp` = the player's distance from the target in blocks; `t_p` = 9.0 + dp / 100 + 1.07e-5 dp^2, the front
-reaching the player; sound reaches the player dp / 343 s after leaving the target, so it always arrives before the
-wave does):
+The schedule, `schedule(dp)` here and strike/ts_sounds.rs there, the same arithmetic (strike seconds; T_T = 9.0 the front
+reaching the target; `dp` = the player's distance from the target in blocks; `tp` = when the water closes over their head,
+`t_p` here; sound from the target arrives dp / 343 s after it leaves, always before the wave does):
 
-  rupture      at 0 (global): the seabed far off letting go; sub-heavy, a thump 1.1 s in, a long falling rumble
-  rumble       at 1.5 (global): the ground under the wave, growing; low only; 18 s
-  roar_far     at 2.5 (global): the wave on the horizon, a rumour growing; dark; 12.5 s, fading out
-  roar_mid     at t_p - 9.0 (global): closer, bigger; 9 s, ending as the front arrives (fades out over its last 2 s)
-  roar_near    at t_p - 4.0 (global): enormous; the immersion is 4.0 s into it (NEAR_PRE): the roar is swallowed, muffled
-               and let go over 3 s while `engulf` and `under` take over
-  crash        at 9.0 + dp / 343 - CRASH_LEAD (global, or positional at the target): the wave hitting the target
+  rupture      at 0: the seabed far off letting go; felt more than heard: a thump 1.1 s in, a long falling rumble
+  rumble       at 1.5: the ground under the wave; low only; up by 8 s, out of the immersion's way by 14 s; 18 s
+  roar_far     at 0.9: the wall on the horizon, huge at once, its first big seas 0.75 s in, as it stands up; 9.5 s, gone
+               before the immersion of a near player; again at 7.4, at pitch 0.94, for one the wave is far from yet
+  roar_mid     at tp - 9: closer, bigger, 9 s, crossfading into roar_near over its last 3.6 s
+  roar_near    at tp - 4: enormous; the immersion is exactly 4.0 s into it (NEAR_PRE): a breath of 120 ms, then it is cut off
+  roar_pass    at tp - 4 instead, for a player on a hill it never closes over: the same wall going by below; 12 s
+  crash        at 9 + dp / 343 - CRASH_LEAD: the wave coming down on the target's land: water and weight, nothing single
   crash_far    the same moment, cross-faded in by distance (`far_mix`: 250 to 800 blocks, smoothstep)
-  engulf       at t_p (global): the immersion
-  under        at t_p + 0.3 (global): inside the water; 10 s, fading out for the surface
-  surface      at t_p + 8.5 (global): breaking the surface
-  drain        at t_p + 9.0 (global): the backwash
-  roar_back    at t_p + 9.5 (global): the roar going off over the far side of the land
-  rumble_after at t_p + 9.0 (global): the ground, low, settling
-  trickle      at t_p + 17 (global): the quiet after
+  engulf       at tp: the loudest, heaviest thing there is, its slam on the first sample; 0.15 s blown white, 1.5 s of
+               violent foam closing in round the head, then the drop
+  under        at tp + 0.2: inside the water, under the foam until it drops; ends just after the head is out
+  surface      at tp + 6.5: the head out: the burst is on its first sample, everything above 1 kHz back at once
+  torrent      at tp + 6.5: the whole land's water pouring away round the player as they ride it down; 13 s, thinning
+  drain        at tp + 9: separate runs of water now, glugs from every hollow; 12 s
+  roar_back    at tp + 9.5: the wave going off over the far land
+  rumble_after at tp + 9: the ground, low, settling
+  trickle      at tp + 17, at 31 at the latest (it has dried up by the strike's end, 42 s, at any distance)
   crack1-4     positional, where a tree or a timber breaks (the front reaching the player's surroundings)
   slap1-3      positional, where water slams into stone or a wall
 
-Volumes (`schedule`: a player the front reaches sooner hears the crash and the wave's own roar on top of each other, so
-less of each there; `--listen` sweeps every distance from 100 to 720 blocks and keeps the whole mix under -1 dBTP):
+If the water never closes over the player, engulf, under and surface do not play. Past the wave's end (`reach`) the roars die
+out and nothing pours off the land round them.
 
-  crash        (1 - far_mix(dp)) * clamp(0.6 + 0.0017 (dp - 300), 0.6, 1)
-  crash_far    far_mix(dp) * clamp(0.6 + 0.0017 (dp - 300), 0.6, 1) * min(1.25 / (1 + dp / 2000), 1)
-  roar_far     clamp(0.35 + 0.0013 dp, 0.6, 1)         roar_near  clamp(0.63 + 0.0022 (dp - 250), 0.63, 1)
-  engulf       clamp(0.72 + 0.0028 (dp - 250), 0.72, 1)     everything else 1
+Volumes: share = clamp(0.26 + 0.0019 (dp - 100), 0.26, 0.8) (the crash lies on top of the immersion for a near player)
+
+  crash        (1 - far_mix(dp)) * share
+  crash_far    far_mix(dp) * share * min(1.25 / (1 + dp / 2000), 1)
+  roar_far     clamp(0.7 + 0.001 dp, 0.8, 1), 0.75 of that the second time
+  roar_near    clamp(0.72 + 0.0022 (dp - 250), 0.72, 1)
+  everything else 1 (times `reach` for what needs the wave)
 
 How each is made:
 
-  rupture      the sea floor breaking, far away: a small thud first (the sound that arrives first through the rock), the
-               push 1.1 s in (a ~42 Hz thump sinking to 20, a heave rather than a bang: its attack is 40 ms), a long
-               rumble sinking from ~150 Hz to ~30 over six seconds with a shudder (low noise chopped at 7-11 Hz) in
-               its first seconds, rolls of low thunder, a grinding of rock in the low mids; the lows' harmonics so
-               small speakers carry it, the sub clean.
-  rumble       low swells rolling in under a sub bed that heaves and grows over 14 s, a grinding in the low mids; nothing
-               above ~350 Hz.
-  roar_*       one crescendo cut into three: each layer is band noise (nine octaves, each with its own grainy surges: the
-               low bands slow and heavy, the top bands crackling like foam and spray) whose spectrum and level follow the
-               wave's nearness (`FAR_SH` to `NEAR_SH`: dark, low-mid and distant, then full, with the spray's hiss
-               and a deep pressure under it), a slow swell over all of it; `roar_mid` and `roar_near` have timber groaning
-               and debris thudding in them, water slapping. Nothing sweeps, nothing rises as a tone.
-  crash        the wave hits the target: a heavy whump (not a bang: its attack is 40-90 ms; ~58 Hz sinking to 33, its
-               harmonics stacked on it), a slam of water, a roar of rushing water that holds a few seconds and lets
-               go; hundreds of trunks snapping (cracks with a dull thud in them), planks and beams breaking in showers,
-               masonry coming down in runs of knocks with a rumble under them, a faint sheet of glass far under it
-               all; rolls of low thunder off the land and its dark echoes. Heard from hundreds of blocks off, so its
-               top is gone and no single block is heard: a dense roaring crunch with the weight in it.
-  crash_far    the same through ~a kilometre of air (the Nuke's `far_of`): highs let down, the front smeared, more low
-               rolls, a long dark reverb, the mids kept so it carries.
-  engulf       the front reaching the player: a sub thump, the slam of water over the head (a hard wet front, a body of
-               noise 45-1400 Hz), a wash that closes from open air to muffled in half a second, a flood of bubbles, the
-               pressure; handing over to `under`.
-  under        inside the water: a dark churning roar (nothing above ~600 Hz), a pressure in the ears, bubbles, timber
-               groaning, dull thuds of debris passing, gravel scouring; the last 2 s let the roar open up.
-  surface      the head breaking out: the muffled bed opens to the roar in 0.5 s, water pouring off, splashes.
-  drain        rushing water leaving the land: a broad flowing bed thinning and darkening over 12 s, gurgles and glugs
-               from every hollow, streams, timber knocking and grinding along, the roar of the wave going off dark under it.
-  roar_back    the roar of the wave on the far side of the land: dark, low-mid, level falling 20 dB over 12 s.
+  water        The engine: 112 resonators from 36 Hz to 9 kHz, each firing damped sines that climb a little as they ring (a
+               bubble of radius r rings at 3.26 / r Hz, Minnaert; van den Doel's 2005 climb; Q ~18 in the mids, but the low
+               ones are clouds ringing together, Q ~3, never a tone), Poisson, at a rate given as how many overlap per ear's filter.
+               48 independent patches a filter or so wide hold them: heavy-tailed clusters, the bubbles in a busy patch louder as
+               well as commoner, which is what the ear hears as water. Under 900 Hz each bubble is written on its own at a pitch
+               of its own, above it three pitches a resonator through one FFT. A thin bed of turbulence so the gaps are not empty.
+               This wave is a much bigger bubble field than a beach's, so it runs low and slow: surf peaks near 1 kHz for small
+               waves and at 250-400 Hz over a metre, level (+-3 dB) from 100 to 1600 Hz, falling over 2 kHz; a waterfall's broad
+               peak is near 100 Hz.
+  plunge       A mass of water coming down: the jet's slam near 100 Hz, the air cavity under it knocking at 40-70 Hz with its pitch
+               still climbing as it dies (50-80 Hz in surf), a crunch of broken water; every patch bursts with it, the top a
+               moment later (spray comes down after the slam). `breakers` says when, heavy-tailed sizes.
+  rupture      a small thud first (what arrives ahead through the rock), the push 1.1 s in (a ~42 Hz heave), a long rumble
+               sinking from ~150 Hz to ~30 over six seconds with a shudder in it, rolls of low thunder, rock grinding.
+  rumble       low swells rolling in under a sub bed, a grinding in the low mids; nothing above ~350 Hz.
+  roar_*       `water` whose spectrum and bubbles follow the wave's nearness (`FAR_SH`, air having taken the top off, to `NEAR_SH`),
+               surging (`swell`: up quickly, away slowly, each a sea breaking), plunges in it. Nothing sweeps, nothing is a tone.
+  crash        a heavy whump (a heave, its attack 40-90 ms), seas coming down one on another, the roar letting go; the land under
+               them only as a dark crushing under 1.1 kHz: from hundreds of blocks off no board or pane of glass is heard. The
+               land's rolls and dark echoes.
+  crash_far    the same through ~a kilometre of air (the Nuke's `far_of`): highs let down, the front smeared, a long dark tail.
+  engulf       a sub heave on the first sample and a smack of everything over the head, then `water` at its densest, bright, shut
+               in over 1.5 s (a lowpass from 14 kHz to 1.9 kHz) with seas slamming in it, then shut off to 700 Hz in a quarter of a
+               second.
+  under        the churn: `water` under the water (nothing above ~700 Hz), a pressure in the ears, plunges without their top; solid
+               things through water, knocks of wood (hollow) and stone (harder), a whole tree going by (the push of the water
+               before it, a long creak, limbs knocking as it rolls: 1.3 s into the file), a piece of a house (a heavy blow, stone
+               clattering off it, a beam, the air in it getting out in big slow gulps: 3.2 s in). Over 1 kHz only bubbles close to
+               the ear, in clouds, rushing up with the player in the last second and a half.
+  surface      a burst of everything on the first sample, `water` open and bright, drops, the size of the air round the player.
+  torrent      `water` close (`TORRENT_SH`), dense, ledges of it coming down; the low weight going first, falling apart into
+               separate running water (`RILL_SH`, ever fewer bubbles).
+  drain        six runs of water (`rill`), each its own pitch and its own life, glugs from every hollow, a few slaps and knocks.
+  roar_back    `water` far and going, through the air's dark tail.
   rumble_after the ground settling: a low bed sinking away, a few far thuds.
-  trickle      drips, a few trickling streams, mud sagging and glugging, a last timber settling twice; very quiet,
-               with air round it.
-  crack1-4     a trunk snapping (a strain, the break, a splinter run, a thud), a young tree's quick double snap, a house
-               beam and planks going, a trunk wrenched out roots and all; each in white water (a wash of bubbling
-               water under it); 1.5-1.9 s.
-  slap1-3      water slamming a wall: a wet thump, the splash, a sheet of spray pouring down; one big, a double surge, a
-               cascade of small ones.
+  trickle      drips, a few trickling streams, mud sagging and glugging, a last timber settling twice; very quiet.
+  crack1-4     a trunk snapping, a young tree's quick double snap, a house beam and planks going, a trunk wrenched out roots and all.
+  slap1-3      water slamming a wall: one big, a double surge, a cascade of small ones.
 
     python3 tools/sounds_tsunami.py                      # writes orbital-sounds/assets/orbital/sounds/tsunami/*.ogg and the
-                                                         # tsunami.* events in sounds.json (nothing else touched)
-    python3 tools/sounds_tsunami.py --only roar_mid      # one (crash before crash_far)
-    python3 tools/sounds_tsunami.py --listen DIR         # also WAVs/MP3s of each, and the whole strike as heard from
-                                                         # 200 and 600 blocks (and the true peak of every mix)
+                                                         # tsunami.* events in sounds.json (nothing else touched), in ~15 s
+    python3 tools/sounds_tsunami.py --only roar_mid      # some (build crash before crash_far)
+    python3 tools/sounds_tsunami.py --listen DIR         # also MP3s of each, the whole strike as heard from 200 and 600 blocks
+                                                         # and the true peak of every mix, immersed or not, 100 to 720 blocks
     python3 tools/sounds_tsunami.py --plots DIR          # spectrogram pictures of each file and of those two mixes
 """
 import argparse, json, subprocess, sys, wave
@@ -109,8 +119,7 @@ ROOT = Path(__file__).resolve().parent.parent
 NAMES = ["rupture", "rumble", "roar_far", "roar_mid", "roar_near", "roar_pass", "crash", "crash_far", "engulf", "under", "surface",
          "torrent", "drain", "roar_back", "rumble_after", "trickle", "crack1", "crack2", "crack3", "crack4", "slap1", "slap2", "slap3"]
 TP_MAX = 10 ** (-1.15 / 20)     # every file's decoded true peak (4x oversampled) at most this
-# The mix balance, dB added to each file's nominal level (found by `python3 tools/sounds_tsunami.py --balance`: the whole
-# strike heard from every distance between 100 and 700 blocks stays under CEIL, the loudest layers let down first)
+# The mix balance, dB added to a file's nominal level
 TRIM = {"rumble": -6.0}
 
 # ---- the timeline (seconds; 0 = fired)
@@ -118,14 +127,14 @@ T_T = 9.0                       # the front crosses the target
 SPEED = 343.0
 CRASH_LEAD = 0.06               # the crash file's first sound is this far into it
 FAR_AT = 0.9                    # roar_far: its first big seas come down as the horizon stands up (1.5 s)
-FAR_AGAIN = 7.4                 # played again (lower) only if the wave is that far off yet: it must be gone before the immersion
+FAR_AGAIN, FAR_IF = 7.4, 9.0    # played again (lower) only if roar_mid starts after FAR_IF: it must be gone before the immersion
 MID_LEN = 9.0                   # roar_mid ends as the front arrives
 NEAR_PRE = 4.0                  # roar_near: the immersion is this far into it
 ROAR_NEAR_LEN, PASS_LEN = 7.0, 12.0
 SURF_AT = 6.5                   # the head breaks the surface at tp + this (strike/tsunami.rs's carry)
 DRAIN_AT, BACK_AT, SETTLE_AT = 9.0, 9.5, 9.0       # tp + these
 TRICKLE_AT, TRICKLE_LAST = 17.0, 31.0              # tp + this, or this at the latest (dried up by the strike's end, 42)
-NEAR_DB, ENGULF_DB = -12.0, -7.0
+NEAR_DB, ENGULF_DB = -12.0, -7.3
 # what plays with what at each distance (see `schedule`)
 CEIL = 10 ** (-1.0 / 20)        # the whole strike's mix, true peak, at most this (file domain, as the Rod's)
 
@@ -160,7 +169,7 @@ def schedule(dp, immersed=True):
     reach = 1.0 - u * u * (3 - 2 * u)                                         # past it the wave only roars, and dies
     # (a player the front reaches sooner hears the crash and the wave's own roar on top of each other: less of each there;
     # the volumes are what keeps the mix of every distance under CEIL, `--listen`)
-    share = float(np.clip(0.26 + 0.0016 * (dp - 100.0), 0.26, 0.72))
+    share = float(np.clip(0.26 + 0.0019 * (dp - 100.0), 0.26, 0.8))
     near_v = float(np.clip(0.72 + 0.0022 * (dp - 250.0), 0.72, 1.0))
     far_v = float(np.clip(0.7 + 0.001 * dp, 0.8, 1.0))
     crash_v = {"crash": share * (1.0 - far), "crash_far": share * far * min(1.25 / (1.0 + dp / 2000.0), 1.0)}
@@ -168,7 +177,7 @@ def schedule(dp, immersed=True):
             ("rumble", "rumble", 1.5, 1.0, 1.0),
             ("roar_far", "roar_far", FAR_AT, 1.0, far_v),
             ("roar_mid", "roar_mid", max(tp - MID_LEN, 1.0), 1.0, reach),
-            ("roar_far2", "roar_far", FAR_AGAIN, 0.94, 0.85 * far_v if tp - MID_LEN > FAR_AGAIN + 0.2 else 0.0),
+            ("roar_far2", "roar_far", FAR_AGAIN, 0.94, 0.75 * far_v if tp - MID_LEN > FAR_IF else 0.0),
             ("crash", "crash", T_T + late - CRASH_LEAD, 1.0, crash_v["crash"]),
             ("crash_far", "crash_far", T_T + late - CRASH_LEAD, 1.0, crash_v["crash_far"]),
             ("torrent", "torrent", tp + SURF_AT, 1.0, reach),
@@ -285,7 +294,7 @@ def slap_event(size, wet=1.0):
 # for small waves and at 250-400 Hz over a metre; a waterfall's broad peak is near 100 Hz, plunging jets near 100 Hz and their air
 # cylinders at 50-80 Hz in surf).
 OCT = np.array([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000])
-FAR_SH = np.array([-12.0, -5.0, -1.0, 0.0, -3.0, -10.0, -22.0, -42.0, -80.0])      # through a kilometre of air
+FAR_SH = np.array([-13.0, -7.0, -2.0, 0.0, -1.5, -6.5, -17.0, -34.0, -70.0])      # through a kilometre of air
 NEAR_SH = np.array([-12.0, -6.0, -1.0, 0.0, -0.5, -1.0, -5.0, -12.0, -22.0])       # surf's level 100-1600 Hz, falling over 2 kHz
 UNDER_SH = np.array([-4.0, 0.0, -1.0, -4.0, -11.0, -24.0, -42.0, -62.0, -90.0])    # under the water
 TORRENT_SH = np.array([-14.0, -7.0, -2.0, 0.0, 0.0, -1.0, -4.0, -9.0, -16.0])      # the land pouring away, close
@@ -316,7 +325,7 @@ def patch_gain(m, fc, rate, beta):
     x = np.zeros(m)
     np.add.at(x, rng().integers(0, m, k), np.minimum(rng().pareto(1.5, k) + 0.15, 14.0))
     s = np.arange(int(tau * FR * 7) + 2) / FR
-    y = np.convolve(x, (1 - np.exp(-s / 0.0025)) * np.exp(-s / tau))[:m]
+    y = np.convolve(x, (1 - np.exp(-s / (0.3 * tau))) * np.exp(-s / tau))[:m]
     return (1 - beta) + beta * y / (y.mean() + 1e-9)
 
 
@@ -380,15 +389,17 @@ def water(d, x_pts, far=FAR_SH, near=NEAR_SH, level=None, den=(0.5, 0.9), hits=(
                 s = np.arange(ml) / SR
                 y[st[j]:st[j] + ml] += a[j] * np.sin(2 * np.pi * fs[j] * (s + 0.5 * cs[j] * s * s / ts[j])) * np.exp(-s / ts[j]) * (1 - np.exp(-s * fs[j] * 6))
         else:
-            for qm, cm in ((0.8, 0.6), (1.2, 1.4)):
-                sel = rng().random(k) < 0.5
+            # (three pitches a resonator, so the bins are never heard as the semitones they are)
+            which = rng().integers(0, 3, k)
+            for v, (qm, cm, det) in enumerate(((0.8, 0.6, 0.983), (1.0, 1.0, 1.0), (1.25, 1.4, 1.017))):
+                sel = which == v
                 if not sel.any():
                     continue
                 imp = np.zeros(size)
                 np.add.at(imp, (at[sel] * SR).astype(int), a[sel])
                 ts = tau[i] * qm
                 s = np.arange(int(ts * 6 * SR) + 8) / SR
-                spec += rfft(imp) * rfft(np.sin(2 * np.pi * fc * (s + 0.5 * chirp * cm * s * s / ts)) * np.exp(-s / ts), size)
+                spec += rfft(imp) * rfft(np.sin(2 * np.pi * fc * det * (s + 0.5 * chirp * cm * s * s / ts)) * np.exp(-s / ts), size)
     y += irfft(spec, size)[:n]
     if bed is not None:
         # (the thin bed of plain turbulence, so the gaps between events are never empty)
@@ -700,7 +711,7 @@ def roar_far():
         lvl = added(db_curve([(0.0, -34.0), (0.65, -2.0), (2.0, -1.5), (6.0, -0.5), (d, 0.0)]), swell(d, 0.42, 5.0, 0.25, 1.5))
         hits = [(0.75, 2.2), (1.9, 1.2), (2.6, 1.6), (3.3, 1.1), (4.3, 1.5), (5.0, 1.2)] + [h for h in breakers(d, lambda v: 1.0) if h[0] > 5.4]
         x = water(d, [(0.0, 0.14), (d, 0.42)], level=lvl, den=(0.9, 1.1), hits=hits, bed=-11.0, hit_gain=0.9)
-        x = x + plunges(n, hits, np.std(x) * 1.3, bright=0.5)
+        x = x + plunges(n, hits, np.std(x) * 1.0, bright=0.8)
         ir = T.outdoor_ir(2.2, 70, density=60.0, darken=(1800, 260), decay=0.8)
         x = x + fftconvolve(x, ir)[:n] * 0.32
         x = lowpass_to(x, glide_fc(n, [(0.0, 2400.0), (d, 3600.0)]))
@@ -715,7 +726,7 @@ def roar_mid():
         lvl = added(db_curve([(0.0, -8.0), (d - 2.0, 0.0), (d, 0.0)]), swell(d, 0.55, 5.0, 0.22, 1.2))
         hits = breakers(d, lambda v: 1.1 + 0.9 * v / d, 0.6, 2.4)
         x = water(d, [(0.0, 0.36), (d, 0.85)], level=lvl, den=(0.9, 1.2), hits=hits, bed=-12.0, hit_gain=1.3)
-        x = x + plunges(n, hits, np.std(x) * 1.2, bright=0.7)
+        x = x + plunges(n, hits, np.std(x) * 0.9, bright=0.9)
         x = lows_harm(x, -12.0, f_hi=80.0, lo=60.0, hi=260.0)
     # (its last 4 s always lie under roar_near's first 4: their peaks are kept down there)
     ceil_k = 1.6 - 0.5 * np.clip((np.arange(n) / SR - (d - 4.0)) / 1.5, 0, 1)
@@ -731,7 +742,7 @@ def near_signal():
         lvl = added(db_curve([(0.0, -5.0), (NEAR_PRE, 0.0), (NEAR_PRE + 1.0, -0.5), (d, -1.5)]), swell(d, 0.7, 6.0, 0.18, 1.0))
         hits = breakers(d, lambda v: 1.6 + 1.6 * min(v / NEAR_PRE, 1.0), 0.7, 2.6)
         x = water(d, [(0.0, 0.66), (NEAR_PRE, 1.0), (d, 1.0)], level=lvl, den=(0.9, 1.3), hits=hits, bed=-12.0)
-        x = x + plunges(n, hits, np.std(x) * 1.25, bright=1.0)
+        x = x + plunges(n, hits, np.std(x) * 0.95, bright=1.2)
         # (what the front is dragging, only in its last 60 blocks: heavy dull knocks, no single board)
         acc = accents(n, d, [("thud", 7, 1.4, 2.4, 3.9, 0.8, 2.0), ("snap", 4, 0.9, 2.8, 3.8, 0.8, 1.6)], np.full(n, 1500.0))
         x = x + acc * np.std(x) * 0.8
@@ -748,8 +759,10 @@ def roar_near():
     u = np.maximum(t - NEAR_PRE, 0)
     fc = np.where(t < NEAR_PRE, 14000.0, 420.0 + 11000.0 * np.exp(-u / 0.12))
     y = lowpass_to(x, fc)
-    g = np.where(t < NEAR_PRE, 1.0, 10 ** (-12.0 / 20) * 10 ** (-24.0 * np.minimum(u / 2.0, 1.0) ** 0.8 / 20))
-    g *= 1 - (1 - 10 ** (-4.5 / 20)) * np.clip((t - (NEAR_PRE - 0.13)) / 0.1, 0, 1) * (t < NEAR_PRE)
+    g = np.where(t < NEAR_PRE, 1.0, 10 ** (-27.0 / 20) * 10 ** (-14.0 * np.minimum(u / 2.0, 1.0) ** 0.8 / 20))
+    g *= 1 - (1 - 10 ** (-4.5 / 20)) * np.clip((t - (NEAR_PRE - 0.13)) / 0.07, 0, 1) * (t < NEAR_PRE)
+    # (Vorbis smears a step over its 46 ms block, into the engulf: so it is a slope, down 12 dB more by the hit)
+    g *= 1 - (1 - 10 ** (-12.0 / 20)) * np.clip((t - (NEAR_PRE - 0.06)) / 0.06, 0, 1) * (t < NEAR_PRE)
     return write("roar_near", y * g, db=NEAR_DB, fade_in=2.2, fade_out=0.05, crest=1.35 + 0.3 * np.clip((t - 2.4) / 1.2, 0, 1))
 
 
@@ -1095,7 +1108,7 @@ def crash():
         benv = band(np.abs(boom), None, 10, 1)
         low = boom + noise(n, 40, 120, 3) * np.maximum(benv, 0) * 0.5
         # ---- the water: seas coming down one on another over the first seconds, then the roar of it letting go
-        lvl = added(db_curve([(0.0, -40.0), (t0 + 0.04, -40.0), (t0 + 0.25, -3.0), (1.1, 0.0), (2.0, -5.0), (4.0, -10.0), (8.0, -19.0), (12.0, -28.0), (d, -40.0)]),
+        lvl = added(db_curve([(0.0, -40.0), (t0 + 0.02, -40.0), (t0 + 0.12, -1.0), (1.1, 0.0), (2.0, -5.0), (4.0, -10.0), (8.0, -19.0), (12.0, -28.0), (d, -40.0)]),
                     swell(d, 0.6, 5.0, 0.2, 1.1))
         hits = [(t0 + 0.02, 2.4), (t0 + 0.42, 2.2), (t0 + 0.8, 1.6), (t0 + 1.05, 2.0), (t0 + 1.5, 1.4)] + [h for h in breakers(d, lambda v: 2.2 * np.exp(-v / 3.5), 0.6, 1.8) if h[0] > 1.7]
         wat = water(d, [(0.0, 0.92), (d, 0.8)], level=lvl, den=(1.1, 1.3), hits=hits, bed=-12.0)
@@ -1115,7 +1128,7 @@ def crash():
 
         def trim(y, db_, a, b):
             return y * lref * 10 ** (db_ / 20) / (np.sqrt(np.mean(band(y, a, b, 2)[nsm(0.5):nsm(3.0)] ** 2)) + 1e-12)
-        x = low + trim(wat, -3.0, 60, 3000) + trim(pl, -3.0, 30, 400) + trim(crush, -11.0, 100, 1100)
+        x = low * 0.6 + trim(wat, 5.0, 200, 3000) + trim(pl, -5.0, 30, 400) + trim(crush, -6.0, 100, 1100)
         # ---- the land's rolls and echoes
         rl, rr = PB.thunder_rolls(d, t0 + 0.6, count=12, length=11.0)
         roll = (rl + rr) / 2
@@ -1137,7 +1150,7 @@ def crash():
         x = x * on
         # (the heavy part is the first second: after it the peaks come down with the level, 2.2 dB a second, so the crash
         # never stands over what plays with it, the roar of the front and the immersion)
-        ceil_k = 1.75 * 10 ** (-np.clip((t - 1.0) * 2.2, 0, 16) / 20)
+        ceil_k = 1.75 * 10 ** (-np.clip((t - 1.0) * 4.0, 0, 16) / 20)
     write("crash", x, db=CRASH_LEVEL, fade_in=0.0, fade_out=2.6, crest=ceil_k)
 
 
@@ -1203,7 +1216,7 @@ def crack_take(v):
             put(x, T.thud(nsm(0.8), 2.6) / 4.0, 0.98)
         x = x + white_water(d, 1.0, 0.3) * np.abs(x).max() * 0.04
         x = band(x, 60, None, 1)
-    write(f"crack{v}", x, peak_db=-3.0, fade_in=0.0, fade_out=0.35)
+    write(f"crack{v}", x, peak_db=-7.0, fade_in=0.0, fade_out=0.35)
 
 
 def slap_take(v):
@@ -1226,7 +1239,7 @@ def slap_take(v):
         drip = bubbles(n, 120.0 * np.exp(-t / 0.7), 900, 4000, q=10.0) * np.exp(-np.maximum(t - 0.3, 0) / 0.8) * 0.18
         x = x + rush * np.abs(x).max() * 0.25 + drip * np.abs(x).max() * 0.2
         x = band(x, 55, None, 1)
-    write(f"slap{v}", x, peak_db=-3.0, fade_in=0.0, fade_out=0.4)
+    write(f"slap{v}", x, peak_db=-7.0, fade_in=0.0, fade_out=0.4)
 
 
 # ==============================================================================================================  trickle
@@ -1291,7 +1304,10 @@ def mixdown(dp, pad=0.5, immersed=True):
     """The whole strike as heard `dp` blocks from the target, from strike second 0 (file domain, mono, as the Rod's
     `--listen`: every file at its volume, on its time, its pitch a change of speed)."""
     ev = schedule(dp, immersed)
-    clips = {f: CLIPS.setdefault(f, decoded(f)) for _, f, _, _, _ in ev}
+    for _, f, _, _, _ in ev:
+        if f not in CLIPS:
+            CLIPS[f] = decoded(f)
+    clips = CLIPS
     end = max(at + len(clips[f]) / SR / pitch for _, f, at, pitch, _ in ev) + pad
     out = np.zeros(nsm(end))
     parts = {}
