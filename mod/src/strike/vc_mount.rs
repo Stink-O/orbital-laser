@@ -25,23 +25,24 @@ pub(super) const VM_HALF: i32 = 360;
 pub(super) const VM_STEP: i32 = 3;
 pub(super) const VM_GW: usize = 241;
 const VM_COLS: usize = VM_GW * VM_GW;
-/// The tiles the march skips by: VM_TC cells a side, each three words (the land's highest, P's highest, the spires'
-/// tallest), a tile's words taking in the tiles round it (the land slides under the march's feet).
+/// The tiles the march skips by: VM_TC cells a side, each two words (the land's highest, P's highest), a tile's words
+/// taking in the tiles round it (the land slides under the march's feet).
 const VM_TC: usize = 16;
 const VM_TN: usize = 15;
 const VM_TILE: usize = VM_BASE + 16;
-/// The spires, four words each (when, how tall, x, z); the fountains and the boulders, eight each; the plates, twelve.
-const VM_SPIRE: usize = VM_BASE + 700;
-pub(super) const VM_SPIRES: usize = 14;
-const VM_FOUNT: usize = VM_BASE + 1024;
+/// The shards (VM_SW words each, in order of when they punch up), the fountains and the boulders (eight each), the plates.
+const VM_SHARD: usize = VM_BASE + 512;
+pub(super) const VM_SHARDS: usize = 56;
+const VM_SW: usize = 22;
+const VM_FOUNT: usize = VM_BASE + 2200;
 pub(super) const VM_FOUNTS: usize = 64;
-const VM_BOULD: usize = VM_BASE + 1536;
+const VM_BOULD: usize = VM_BASE + 2800;
 pub(super) const VM_BOULDS: usize = 40;
-const VM_PLATE: usize = VM_BASE + 2048;
+const VM_PLATE: usize = VM_BASE + 3300;
 const VM_PW: usize = 12;
-pub(super) const VM_PLATES: usize = 128;
+pub(super) const VM_PLATES: usize = 164;
 /// The columns' words: the land and the field (what the march reads), the colours, the rest (what the shading reads).
-const VM_W0: usize = VM_BASE + 4096;
+const VM_W0: usize = VM_BASE + 8192;
 const VM_W1: usize = VM_W0 + VM_COLS;
 const VM_W2: usize = VM_W1 + VM_COLS;
 /// The dome's radius, on average.
@@ -81,13 +82,17 @@ struct Ring {
     n: usize,
     first: usize,
 }
+/// A column of rock thrust up through the land: a tapered prism with five straight sides, leaning, its top broken.
 #[derive(Clone, Copy)]
-pub(super) struct Spire {
+pub(super) struct Shard {
     pub t0: f64,
     pub h: f64,
     pub x: f64,
     pub z: f64,
     pub rad: f64,
+    pub lean: (f64, f64),
+    pub tilt: (f64, f64),
+    pub face: [(f64, f64); 5],
 }
 /// The dome and how it breaks, for a seed: worked out as the strike starts.
 pub(super) struct Geo {
@@ -95,7 +100,7 @@ pub(super) struct Geo {
     ph: [f64; 4],
     rings: Vec<Ring>,
     plates: Vec<Plate>,
-    pub spires: Vec<Spire>,
+    pub shards: Vec<Shard>,
 }
 /// A column of the field.
 #[derive(Clone, Copy, Default)]
@@ -104,15 +109,17 @@ pub(super) struct Cell {
     pub d: f64,
     pub plate: u8,
     pub phase: u8,
+    /// How far from the smaller breaks inside the plate.
+    pub d2: f64,
 }
 impl Geo {
     pub fn new(seed: u32) -> Self {
         let ph = [TAU * mh(1, seed, 0x700), TAU * mh(2, seed, 0x700), TAU * mh(3, seed, 0x700), TAU * mh(4, seed, 0x700)];
-        let mut g = Geo { seed, ph, rings: Vec::new(), plates: Vec::new(), spires: Vec::new() };
+        let mut g = Geo { seed, ph, rings: Vec::new(), plates: Vec::new(), shards: Vec::new() };
         // (wedges in rings: long down the slope, a star of them round the top, on out past the dome's foot over the land,
         // where only the cracks show)
         let mut first = 0;
-        for &(r0, r1, n) in &[(0.0, 66.0, 7usize), (66.0, 140.0, 11), (140.0, 225.0, 16), (225.0, 310.0, 20), (310.0, 400.0, 26), (400.0, 540.0, 31)] {
+        for &(r0, r1, n) in &[(0.0, 60.0, 8usize), (60.0, 125.0, 13), (125.0, 195.0, 19), (195.0, 265.0, 25), (265.0, 340.0, 30), (340.0, 430.0, 34), (430.0, 540.0, 35)] {
             g.rings.push(Ring { r0, r1, n, first });
             first += n;
         }
@@ -143,22 +150,44 @@ impl Geo {
                 });
             }
         }
-        g.spires = (0..VM_SPIRES)
-            .map(|i| {
-                let k = i as u32;
-                let u = (i as f64 + 0.5 * mh(k, seed, 0x710)) / VM_SPIRES as f64;
-                let a = TAU * (0.618_034 * i as f64 + 0.2 * mh(k, seed, 0x711));
-                // (the first the highest up, on down the flanks as it goes on, late ones anywhere)
-                let r = 40.0 + 210.0 * (0.25 + 0.75 * mh(k, seed, 0x712)).powf(0.8);
-                Spire {
-                    t0: 10.4 + 6.0 * u.powf(0.8),
-                    h: 26.0 + 46.0 * mh(k, seed, 0x713).powf(1.4) * (1.0 - 0.4 * r / 250.0),
-                    x: r * a.cos(),
-                    z: r * a.sin(),
-                    rad: 9.0 + 11.0 * mh(k, seed, 0x714),
-                }
-            })
-            .collect();
+        // (in clumps, one tall one and a few by it: the first high up, on down the flanks as it goes on)
+        let clumps = VM_SHARDS / 4;
+        let mut shards = Vec::with_capacity(VM_SHARDS);
+        for c in 0..clumps {
+            let k = c as u32;
+            let u = (c as f64 + 0.6 * mh(k, seed, 0x710)) / clumps as f64;
+            let a = TAU * (0.618_034 * c as f64 + 0.2 * mh(k, seed, 0x711));
+            let r = 45.0 + 195.0 * (0.2 + 0.8 * mh(k, seed, 0x712)).powf(0.8);
+            let t0 = 10.2 + 6.2 * u.powf(0.8);
+            let tall = (34.0 + 54.0 * mh(k, seed, 0x713).powf(1.3)) * (1.0 - 0.35 * r / 250.0);
+            let rad = 7.0 + 8.0 * mh(k, seed, 0x714);
+            // (they lean out from the middle of the clump, thrust apart)
+            for b in 0..4u32 {
+                let m = |q: u32| mh(k * 7 + b, seed, q);
+                let oa = TAU * m(0x730);
+                let o = if b == 0 { 0.0 } else { rad * (0.9 + 1.0 * m(0x731)) };
+                let rot = TAU * m(0x734);
+                let face = [0.0, 1.0, 2.0, 3.0, 4.0].map(|i: f64| {
+                    let t = rot + i * TAU / 5.0 + 0.5 * (mh(k * 13 + b + i as u32, seed, 0x735) - 0.5);
+                    (t.cos(), t.sin())
+                });
+                let (lx, lz) = (oa.cos(), oa.sin());
+                let le = if b == 0 { 0.06 * m(0x736) } else { 0.1 + 0.22 * m(0x736) };
+                let ta = TAU * m(0x737);
+                shards.push(Shard {
+                    t0: t0 + 0.5 * m(0x738) * f64::from(u32::from(b > 0)),
+                    h: tall * if b == 0 { 1.0 } else { 0.42 + 0.46 * m(0x732) },
+                    x: r * a.cos() + o * oa.cos(),
+                    z: r * a.sin() + o * oa.sin(),
+                    rad: rad * if b == 0 { 1.0 } else { 0.5 + 0.4 * m(0x733) },
+                    lean: (le * lx, le * lz),
+                    tilt: (0.5 * ta.cos(), 0.5 * ta.sin()),
+                    face,
+                });
+            }
+        }
+        shards.sort_by(|a, b| a.t0.total_cmp(&b.t0));
+        g.shards = shards;
         g
     }
     /// The dome at (x, z) from the vent: its share of the height, 0 past its foot, about 1 at the top. Never a circle,
@@ -218,9 +247,10 @@ impl Geo {
         let on = smooth(0.012, 0.16, s0);
         let mut p = s0 + (plane - s0) * on;
         // (and each plate is broken again, smaller and less)
+        let mut d_in = 31.0;
         if s0 > 0.0 {
             let (cx, cz) = ((x / 34.0).floor(), (z / 34.0).floor());
-            let (mut dn, mut v) = (1.0e18f64, 0.0);
+            let (mut dn, mut dn2, mut v) = (1.0e18f64, 1.0e18f64, 0.0);
             for b in -1..=1 {
                 for c in -1..=1 {
                     let (ci, ck) = (cx + f64::from(b), cz + f64::from(c));
@@ -228,14 +258,18 @@ impl Geo {
                     let (px, pz) = ((ci + mh(id, s, 0x720)) * 34.0, (ck + mh(id, s, 0x721)) * 34.0);
                     let d = (x - px).hypot(z - pz);
                     if d < dn {
+                        dn2 = dn;
                         dn = d;
                         v = mh(id, s, 0x722) - 0.5;
+                    } else if d < dn2 {
+                        dn2 = d;
                     }
                 }
             }
-            p += v * 0.022 * on * (0.4 + s0);
+            p += v * 0.03 * on * (0.4 + s0);
+            d_in = 0.5 * (dn2 - dn);
         }
-        Cell { p, d: 0.5 * (d2 - d1), plate: best as u8, phase: k.phase }
+        Cell { p, d: 0.5 * (d2 - d1), plate: best as u8, phase: k.phase, d2: d_in }
     }
 }
 fn smooth(a: f64, b: f64, x: f64) -> f64 {
@@ -325,12 +359,10 @@ pub(super) struct Work {
     next_cell: usize,
     cols: Vec<Option<Col>>,
     known: usize,
-    /// How much each column's height is of a spire: spire + 1, and its share (0 to 1).
-    sp: Vec<(u8, u8)>,
 }
 impl Work {
     fn new(seed: u32) -> Self {
-        Work { geo: Rc::new(Geo::new(seed)), cells: vec![Cell::default(); VM_COLS], next_cell: 0, cols: vec![None; VM_COLS], known: 0, sp: vec![(0, 0); VM_COLS] }
+        Work { geo: Rc::new(Geo::new(seed)), cells: vec![Cell::default(); VM_COLS], next_cell: 0, cols: vec![None; VM_COLS], known: 0 }
     }
     /// The next `n` columns of the field; whether that was the last of them.
     fn field(&mut self, n: usize) -> bool {
@@ -341,77 +373,7 @@ impl Work {
             self.cells[j] = self.geo.cell(x, z);
         }
         self.next_cell = end;
-        if end == VM_COLS {
-            self.spires();
-            return true;
-        }
-        false
-    }
-    fn spires(&mut self) {
-        let geo = self.geo.clone();
-        for (id, s) in geo.spires.iter().enumerate() {
-            let k = id as u32;
-            let n = (s.rad * 1.4 / f64::from(VM_STEP)).ceil() as i32 + 1;
-            let (ci, ck) = (((s.x + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32, ((s.z + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32);
-            // (not a cone: a few columns of rock thrust up together, each a slab with straight sides and a broken, tilted top)
-            struct Shard {
-                x: f64,
-                z: f64,
-                tall: f64,
-                rad: f64,
-                face: [(f64, f64); 5],
-                tx: f64,
-                tz: f64,
-            }
-            let shards: Vec<Shard> = (0..4u32)
-                .map(|b| {
-                    let m = |c: u32| mh(k * 7 + b, geo.seed, c);
-                    let a = TAU * m(0x730);
-                    let o = if b == 0 { 0.0 } else { s.rad * (0.45 + 0.5 * m(0x731)) };
-                    let rot = TAU * m(0x734);
-                    let face = [0.0, 1.0, 2.0, 3.0, 4.0].map(|i: f64| {
-                        let t = rot + i * TAU / 5.0 + 0.4 * (mh(k * 13 + b + i as u32, geo.seed, 0x735) - 0.5);
-                        (t.cos(), t.sin())
-                    });
-                    let lean = TAU * m(0x736);
-                    Shard {
-                        x: s.x + o * a.cos(),
-                        z: s.z + o * a.sin(),
-                        tall: if b == 0 { 1.0 } else { 0.45 + 0.45 * m(0x732) },
-                        rad: s.rad * if b == 0 { 0.62 } else { 0.32 + 0.3 * m(0x733) },
-                        face,
-                        tx: 0.05 * lean.cos(),
-                        tz: 0.05 * lean.sin(),
-                    }
-                })
-                .collect();
-            for dk in -n..=n {
-                for di in -n..=n {
-                    let (i, c) = (ci + di, ck + dk);
-                    if i < 0 || c < 0 || i >= VM_GW as i32 || c >= VM_GW as i32 {
-                        continue;
-                    }
-                    let j = c as usize * VM_GW + i as usize;
-                    let (x, z) = col_xz(j);
-                    let mut h = 0.0f64;
-                    for b in &shards {
-                        let (dx, dz) = (x - b.x, z - b.z);
-                        // (a polygon's distance from its middle, its sides straight)
-                        let u = b.face.iter().fold(0.0f64, |m, f| m.max((dx * f.0 + dz * f.1) / b.rad));
-                        if u < 1.0 {
-                            let top = b.tall + b.tx * dx + b.tz * dz;
-                            h = h.max(top * (1.0 - u.powi(6)).max(0.0).sqrt().min(1.0));
-                        }
-                    }
-                    if h > 0.004 {
-                        let v = (h.min(1.0) * 255.0).round() as u8;
-                        if v > self.sp[j].1 {
-                            self.sp[j] = (id as u8 + 1, v);
-                        }
-                    }
-                }
-            }
-        }
+        end == VM_COLS
     }
 }
 /// Column j's place, from the vent.
@@ -473,7 +435,7 @@ pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, 
     let mut w0 = Vec::with_capacity(VM_COLS);
     let mut w2 = Vec::with_capacity(VM_COLS);
     let mut w1 = Vec::with_capacity(VM_COLS);
-    let mut tiles = vec![[f32::MIN, f32::MIN, 0.0f32]; VM_TN * VM_TN];
+    let mut tiles = vec![[f32::MIN, f32::MIN]; VM_TN * VM_TN];
     let (mut lo, mut hi) = (f32::MAX, f32::MIN);
     for j in 0..VM_COLS {
         let (x, z) = col_xz(j);
@@ -482,15 +444,14 @@ pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, 
         let h = ((top + 512.0) * 2.0).round().clamp(0.0, 2047.0) as u32;
         let p = (((cell.p + 0.25) / 1.6) * 2047.0).round().clamp(0.0, 2047.0) as u32;
         let d = (cell.d * 4.0).round().clamp(0.0, 127.0) as u32;
-        let (sid, sv) = w.sp[j];
-        w0.push(h | p << 11 | d << 22 | u32::from(cell.phase & 3) << 29 | u32::from(sid > 0) << 31);
+        w0.push(h | p << 11 | d << 22 | u32::from(cell.phase & 3) << 29);
         w1.push(if c0[j] != 0 { c0[j] | c1[j] << 16 } else { c565([95.0, 135.0, 60.0]) | c565([134.0, 96.0, 67.0]) << 16 });
-        w2.push(u32::from(cell.plate) | u32::from(sid) << 8 | u32::from(sv) << 16 | u32::from(kk[j] & 7) << 24 | u32::from(canopy.min(31)) << 27);
+        let d2 = (cell.d2 * 8.0).round().clamp(0.0, 255.0) as u32;
+        w2.push(u32::from(cell.plate) | d2 << 8 | u32::from(kk[j] & 7) << 24 | u32::from(canopy.min(31)) << 27);
         // (a tile's words take in the columns of the tiles round it)
         let (i, k) = (j % VM_GW, j / VM_GW);
         let (ti, tk) = ((i / VM_TC).min(VM_TN - 1), (k / VM_TC).min(VM_TN - 1));
         let (tl, pl) = (top as f32, cell.p as f32);
-        let sh = if sid > 0 { w.geo.spires[sid as usize - 1].h as f32 } else { 0.0 };
         lo = lo.min(tl);
         hi = hi.max(tl);
         for b in ti.saturating_sub(1)..(ti + 2).min(VM_TN) {
@@ -498,14 +459,28 @@ pub(super) fn vm_words(w: &Work, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, 
                 let t = &mut tiles[c * VM_TN + b];
                 t[0] = t[0].max(tl);
                 t[1] = t[1].max(pl);
-                t[2] = t[2].max(sh);
             }
         }
     }
     let tw: Vec<u32> = tiles.iter().flat_map(|t| t.iter().map(|v| v.to_bits())).collect();
-    let spires: Vec<u32> = w.geo.spires.iter().flat_map(|s| [s.t0, s.h, s.x, s.z].map(|v| (v as f32).to_bits())).collect();
+    // (each shard stands on the land and the lift at its foot)
+    let mut shards = Vec::with_capacity(VM_SHARDS * VM_SW);
+    let foot = |x: f64, z: f64| {
+        let (i, k) = (((x + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32, ((z + f64::from(VM_HALF)) / f64::from(VM_STEP)).round() as i32);
+        let j = (k.clamp(0, VM_GW as i32 - 1) as usize) * VM_GW + i.clamp(0, VM_GW as i32 - 1) as usize;
+        (w.cols[j].map_or_else(|| land(x, z), |c| f64::from(c.top - i32::from(c.canopy))), w.cells[j].p)
+    };
+    for s in &w.geo.shards {
+        let (l, p) = foot(s.x, s.z);
+        let mut f = vec![s.x, s.z, l, p, s.t0, s.h, s.rad, s.lean.0, s.lean.1, s.tilt.0, s.tilt.1, 0.62 * s.rad / s.h];
+        for c in s.face {
+            f.push(c.0);
+            f.push(c.1);
+        }
+        shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
+    }
     let head = vec![1f32.to_bits(), lo.to_bits(), hi.to_bits()];
-    vec![(VM_BASE, head), (VM_TILE, tw), (VM_SPIRE, spires), (VM_W0, w0), (VM_W1, w1), (VM_W2, w2)]
+    vec![(VM_BASE, head), (VM_TILE, tw), (VM_SHARD, shards), (VM_W0, w0), (VM_W1, w1), (VM_W2, w2)]
 }
 
 /// The columns of rows `a..b` of the square.
@@ -647,9 +622,9 @@ pub(super) mod table {
         }
         let n = f64::from(hash(x as i32, z as i32));
         if let Some(t) = tree(x as f32, z as f32) {
-            return Col { top: (g + f64::from(t)).round() as i32, canopy: t as u8, c0: c565([32.0 + 18.0 * n, 62.0 + 24.0 * n, 26.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 1 };
+            return Col { top: (g + f64::from(t)).round() as i32, canopy: t as u8, c0: c565([52.0 + 18.0 * n, 92.0 + 24.0 * n, 58.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 1 };
         }
-        Col { top: g.round() as i32, canopy: 0, c0: c565([62.0 + 18.0 * n, 118.0 + 28.0 * n, 44.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 0 }
+        Col { top: g.round() as i32, canopy: 0, c0: c565([108.0 + 18.0 * n, 168.0 + 22.0 * n, 118.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 0 }
     }
     /// The whole table at once (the tests' and the preview's: the game's goes in stages).
     pub(in crate::strike) fn all(seed: u32, col: &dyn Fn(f64, f64) -> Option<Col>) -> Vec<(usize, Vec<u32>)> {
@@ -725,8 +700,8 @@ mod tests {
     #[test]
     fn the_table_fits_the_pass_data() {
         assert!(VM_W2 + VM_COLS <= 262_144);
-        assert!(VM_TILE + VM_TN * VM_TN * 3 <= VM_SPIRE);
-        assert!(VM_SPIRE + VM_SPIRES * 4 <= VM_FOUNT);
+        assert!(VM_TILE + VM_TN * VM_TN * 2 <= VM_SHARD);
+        assert!(VM_SHARD + VM_SHARDS * VM_SW <= VM_FOUNT);
         assert!(VM_FOUNT + VM_FOUNTS * 8 <= VM_BOULD);
         assert!(VM_BOULD + VM_BOULDS * 8 <= VM_PLATE);
         assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_W0);

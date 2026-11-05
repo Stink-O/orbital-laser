@@ -1115,8 +1115,12 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         if (tb < cloud_t) {
             ac = sm.rgb + m.c * sm.a;
         }
-        let at = m.tr * sm.a;
+        let at0 = m.tr * sm.a;
         cloud_t = min(cloud_t, tb);
+        // (the mount's steam and dust, in front of it all)
+        let va = vm_air(C, rd, min(scene_len, 9000.0), j, l);
+        ac = va.rgb + ac * va.a;
+        let at = at0 * va.a;
         if (stage == 0u) {
             col = col * at + ac;
         } else {
@@ -1314,7 +1318,9 @@ fn vc_up(pos: vec2<f32>, len: f32) -> VcOut {
 fn fs_join(in0: StageIn) -> @location(0) vec4<f32> {
     let in = vc_jolt(in0);
     let d = depth_at(in.uv);
-    let len = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
+    let len0 = select(1.0e9, length(world_offset(in.uv, d)), !is_sky(d));
+    let anc = anchor_xz();
+    let len = vm_join_len(in.position.xy, len0, vec3<f32>(anc.x, block_y() + 1.0, anc.y) - frame.camera_position.xyz, normalize(world_offset(in.uv, 0.5)));
     let u = vc_up(in.position.xy, len);
     return volcano(in, 2u, u.c, u.e.x).c;
 }
