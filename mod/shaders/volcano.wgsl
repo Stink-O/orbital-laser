@@ -451,7 +451,7 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
         let nose = exp(-max(vs.Ru - rho, 0.0) / 520.0);
         let under = 1.0 - smoothstep(VC_HU - 260.0, VC_HU - 40.0, q.y);
         let core = exp(-rho * rho / (1800.0 * 1800.0));
-        gain = gain + wu * (0.42 + 0.4 * core + 0.55 * nose + 0.75 * under);
+        gain = gain + wu * (0.3 + 0.4 * core + 0.55 * nose + 0.85 * under);
         sy = sy + wu * mix(0.8, 0.25, under);
     }
     let q0 = vec3<f32>(q.x, q.y * sy, q.z);
@@ -646,7 +646,7 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3
     if (time < VC_ERUPT + 1.0 || time > VC_COLLAPSE + 14.0) {
         return vec4<f32>(c, tr);
     }
-    let brown = vec3<f32>(0.2, 0.145, 0.105);
+    let brown = vec3<f32>(0.13, 0.095, 0.07);
     let amb = mix(amb0, vec3<f32>(dot(amb0, vec3<f32>(0.2126, 0.7152, 0.0722))) * vec3<f32>(1.3, 0.8, 0.5), vs.cov);
     for (var i = 0u; i < n; i = i + 1u) {
         let b = vc_bomb(i);
@@ -697,14 +697,14 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3
                 // (thick from the first, swelling with age, thinning; brown smoke, hot at its head)
                 let w = size * (5.0 + 6.2 * sqrt(age));
                 let wv = max(w, tc * vs.px * 1.5);
-                if (tc > 2.0 && tc < tmax && length(P - rd * tc) < 1.9 * wv) {
+                if (tc > 2.0 && tc < tmax + wv && length(P - rd * tc) < 1.9 * wv) {
                     let q = rd * tc - C;
                     let f = vc_tube(q, P - C, rd, l.L, wv, age, 26.0 * size);
-                    let al = f.x * saturate(0.95 * exp(-age / 6.5) * (w / wv)) * (1.0 - smoothstep(te - ts - 0.5, te - ts, age) * smoothstep(9.0, 10.0, age)) * smoothstep(0.0, 0.5, age + 0.2);
+                    let al = saturate((tmax - tc + wv) / wv) * f.x * saturate(0.95 * exp(-age / 6.5) * (w / wv)) * (1.0 - smoothstep(te - ts - 0.5, te - ts, age) * smoothstep(9.0, 10.0, age)) * smoothstep(0.0, 0.5, age + 0.2);
                     if (al > 0.003) {
                         let hot = exp(-age / 0.5);
                         let sun = l.sunc * vc_sun_t(q, l.L) * f.y * f.y * 1.1;
-                        let sc = brown * (amb * (0.5 + 0.6 * f.y) + sun) + vec3<f32>(1.3, 0.34, 0.05) * hot * hot;
+                        let sc = brown * (amb * (0.5 + 0.6 * f.y) + sun) + vec3<f32>(1.3, 0.34, 0.05) * hot * hot * hot;
                         c = c + tr * al * sc;
                         tr = tr * (1.0 - al);
                         *tm = min(*tm, tc);
@@ -723,7 +723,7 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3
                 let q = rd * sg.y - C;
                 let ax = P + vec3<f32>(0.0, Hp * sg.z, 0.0) - C;
                 let f = vc_tube(q, ax, rd, l.L, wv, late, 34.0 * size);
-                let al = f.x * saturate(1.1 * exp(-late / 5.0) * (w / wv)) * (1.0 - 0.5 * sg.z * (1.0 - exp(-late / 2.0)));
+                let al = saturate((tmax - sg.y + 2.0 * wv) / (2.0 * wv)) * f.x * saturate(1.1 * exp(-late / 5.0) * (w / wv)) * (1.0 - 0.5 * sg.z * (1.0 - exp(-late / 2.0)));
                 if (al > 0.003) {
                     let sun = l.sunc * vc_sun_t(q, l.L) * f.y * f.y * 0.5;
                     let sc = vec3<f32>(0.036, 0.032, 0.03) * (amb * (0.4 + 0.6 * f.y) + sun) + vec3<f32>(0.9, 0.2, 0.03) * exp(-late / 0.35) * (1.0 - sg.z);
@@ -778,6 +778,47 @@ fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
         c = c + hc * (core * 1.6 + glow) * land;
     }
     return c;
+}
+
+// ---- the spray of rock thrown out of the blast: chunks flung radially out of the fireball, dark against it, hot where they
+// show against the sky (sharp, at full size). .rgb what it adds, .a what it leaves of what is behind.
+fn vc_spray(C: vec3<f32>, rd: vec3<f32>, tmax: f32, seed: u32) -> vec4<f32> {
+    var c = vec3<f32>(0.0);
+    var tr = 1.0;
+    let focal = frame.resolution.y / (2.0 * tan(frame.view_params.w * 0.5));
+    for (var i = 0u; i < 56u; i = i + 1u) {
+        let t0 = 0.8 + 6.5 * mh(i, seed, 0x941u);
+        let s = vs.a - t0;
+        if (s <= 0.0 || s > 9.0) {
+            continue;
+        }
+        let th = TAU * mh(i, seed, 0x942u);
+        let el = 0.12 + 1.15 * mh(i, seed, 0x943u);
+        let dir = vec3<f32>(cos(th) * cos(el), sin(el), sin(th) * cos(el));
+        let v = dir * (150.0 + 210.0 * mh(i, seed, 0x944u));
+        let p0 = dir * vec3<f32>(320.0, 160.0, 320.0);
+        let p = p0 + v * s - vec3<f32>(0.0, 0.5 * VC_G * s * s, 0.0);
+        if (p.y < 0.0) {
+            continue;
+        }
+        let vn = v - vec3<f32>(0.0, VC_G * s, 0.0);
+        let a = p + C;
+        let b = a - vn * 0.05;
+        let sg = pl_ray_seg(rd, a, b, 0.0, 1.0);
+        if (sg.y <= 1.0 || sg.y > tmax + 30.0) {
+            continue;
+        }
+        let px = sg.x * focal / sg.y;
+        let rpx = clamp((2.0 + 3.0 * mh(i, seed, 0x945u)) * focal / sg.y, 0.8, 6.0);
+        if (px > 3.0 * rpx) {
+            continue;
+        }
+        let core = saturate(1.0 - px / rpx);
+        let hot = exp(-s / 3.0);
+        c = c + tr * core * (vec3<f32>(0.03, 0.022, 0.018) + vec3<f32>(1.5, 0.42, 0.06) * hot * hot * (1.0 - sg.z * 0.8));
+        tr = tr * (1.0 - core);
+    }
+    return vec4<f32>(c, tr);
 }
 
 // ---- the bolts themselves: what of a flash is seen as lightning, sharp, at full size ------------------------------
@@ -1114,7 +1155,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
                 face = 1.0;
                 if (foot < 24.0) {
                     let rs = sd.x + 40.0;
-                    face = 0.35 + 1.15 * saturate(0.62 - (vc_fine(q + Lf * 11.0, rs, foot).x - vc_fine(q, rs, foot).x) / 10.0);
+                    face = 0.62 + 0.72 * saturate(0.62 - (vc_fine(q + Lf * 11.0, rs, foot).x - vc_fine(q, rs, foot).x) / 10.0);
                 }
                 tsun = lit * st0 * (1.0 - 0.5 * l.warm);
                 rim = lit * (1.0 - smoothstep(0.15, 0.75, st0));
@@ -1141,7 +1182,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             let crown = smoothstep(0.55 * vs.H - 40.0, 0.92 * vs.H, hy) * (1.0 - smoothstep(9.0, 23.0, vs.a)) * smoothstep(0.34, 0.6, mott + 0.3 * sd.y);
             alb = mix(alb, vec3<f32>(0.5, 0.48, 0.46), crown * wc * step(0.0, vs.a));
             // (the sheet's sunlit top pale, as ash spread thin; its underside as dark as the column)
-            alb = mix(alb, mix(vec3<f32>(0.115, 0.1, 0.09), vec3<f32>(0.34, 0.31, 0.28), smoothstep(VC_HU - 40.0, VC_HU + 180.0, hy)) * (0.72 + 0.56 * mott), wu);
+            alb = mix(alb, mix(vec3<f32>(0.115, 0.1, 0.09), vec3<f32>(0.25, 0.225, 0.2), smoothstep(VC_HU - 40.0, VC_HU + 180.0, hy)) * (0.8 + 0.4 * mott), wu);
             alb = mix(alb, vec3<f32>(0.115, 0.1, 0.092) * (0.72 + 0.56 * mott), wf);
             alb = mix(alb, vec3<f32>(0.75, 0.74, 0.72), steam);
             alb = alb * mix(1.0, 0.42, wc * (1.0 - smoothstep(0.35 * vs.H, 0.8 * vs.H, hy)) * (1.0 - crown));
@@ -1149,7 +1190,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             let sk_l = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
             // (the sky's light, and under the sheet the brown light that gets in round its edge)
             let skyg = mix(mix(l.skyl, vec3<f32>(sk_l), 0.7), vec3<f32>(sk_l) * vec3<f32>(1.0, 0.72, 0.52), vs.cov);
-            var c = alb * (skyg * (0.06 + 0.66 * ao) * (0.05 + 0.95 * sk) + (l.sunc * (1.5 * tsun * ph) + vec3<f32>(0.9, 0.55, 0.32) * sk_l * rim * vs.cov * 1.5 * saturate(0.25 + 1.2 * b.rho / vs.Ru)) * face * mix(0.6, 1.2, sd.y));
+            var c = alb * (skyg * (0.06 + 0.66 * ao) * (0.03 + 0.97 * sk * sk) + (l.sunc * (1.5 * tsun * ph) + vec3<f32>(0.9, 0.55, 0.32) * sk_l * rim * vs.cov * 0.8 * saturate(0.25 + 1.2 * b.rho / vs.Ru)) * face * mix(0.78, 1.12, sd.y));
             // ---- fire: pockets all through the lower half of it, the smoke round them lit by them, all of it lit from below --
             let on = smoothstep(0.0, 0.4, vs.a);
             let ht = vc_heat(q, hyl, sd.y);
@@ -1223,8 +1264,8 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight) -> VcMar
             o.t = dist;
         }
         // (the air's haze over it)
-        let ap = 1.0 - exp(-max(dist - 1600.0, 0.0) / mix(9000.0, 3800.0, vs.cov));
-        o.c = mix(o.c, vc_haze(rd, l) * (1.0 - o.tr), ap * mix(0.8, 0.97, vs.cov));
+        let ap = 1.0 - exp(-max(dist - 1600.0, 0.0) / mix(9000.0, 1900.0, vs.cov));
+        o.c = mix(o.c, vc_haze(rd, l) * (1.0 - o.tr), ap * mix(0.8, 1.0, vs.cov));
     }
     return o;
 }
@@ -1535,7 +1576,11 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
             col = mix(col, vec3<f32>(0.28, 0.25, 0.23) * (0.2 + 0.8 * day), saturate(af) * ash * 0.8);
         }
     }
-    // ---- the bombs' heads, the bolts ----------------------------------------------------------------------------------
+    // ---- the spray of rock, the bombs' heads, the bolts ----------------------------------------------------------------------------------
+    if (vs.a > 0.8 && vs.a < 17.0) {
+        let sp = vc_spray(C, rd, min(scene_len, cloud_t + 60.0), seed);
+        col = col * sp.a + sp.rgb * k;
+    }
     if (time > VC_ERUPT + 1.0 && time < VC_COLLAPSE + 2.0) {
         col = col + vc_bombs_heads(C, rd, min(scene_len, cloud_t + 40.0)) * k;
     }
