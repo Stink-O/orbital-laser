@@ -13,10 +13,13 @@ mod payload;
 mod sh_land;
 mod sinkhole;
 mod storm;
+mod volcano;
 mod vortex;
 
 /// The Hurricane's wind, for its carry of the player (carry.rs).
 pub(crate) use hurricane::{HU_FLING, HU_R_EYE, front_t as hu_front_t, hu_repack, omega as hu_omega, spin as hu_spin};
+/// Where a Supervolcano's vent goes for a designated point (at least VC_NEAR in front of the player).
+pub(crate) use volcano::vc_vent;
 /// A number from 0 to 1 for `k`, the same every time (the carry's choice of sounds).
 pub(crate) fn hash01(k: u32) -> f64 {
     mh(k, 0x51ed, 0x77)
@@ -641,6 +644,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "hurricane" {
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "supervolcano" {
+        return volcano::volcano_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4409,7 +4415,7 @@ mod tests {
             // here; strike/payload.rs's tests check it against a forest)
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "supervolcano" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {

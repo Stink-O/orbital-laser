@@ -65,6 +65,11 @@ fn supercell_pass(fast: bool) -> &'static str {
 fn hurricane_pass(fast: bool) -> &'static str {
     PASS_HURRICANE[usize::from(fast)]
 }
+/// The Supervolcano's, the same way (volcano.wgsl's `[half stage]`: its cloud at half size, the bolts and the lava
+/// bombs' heads drawn sharp at full size).
+fn volcano_pass(fast: bool) -> &'static str {
+    PASS_VOLCANO[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -77,6 +82,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "rod" => 7,
         "supercell" => 8,
         "hurricane" => 9,
+        "supervolcano" => 10,
         _ => 0,
     }
 }
@@ -281,9 +287,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the supervolcano's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 10],
+    passes: [&'static str; 11],
     compiled: Option<usize>,
     warming: bool,
     /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
@@ -398,7 +404,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), volcano_pass(fast)],
             compiled: None,
             warming: false,
             building: None,
@@ -800,6 +806,7 @@ impl Orbital {
         self.rebuild("rod", rod_pass(fast));
         self.rebuild("supercell", supercell_pass(fast));
         self.rebuild("hurricane", hurricane_pass(fast));
+        self.rebuild("supervolcano", volcano_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -929,13 +936,21 @@ impl Orbital {
     // ---- the strike ----
     fn fire(&mut self) {
         let laser = LASERS[self.laser];
-        let Some(hit) = world::raycast(laser.range) else {
+        let Some(mut hit) = world::raycast(laser.range) else {
             Self::actionbar("NO TARGET IN RANGE", "gray");
             return;
         };
         let player = game::get_player();
         let dimension = player.as_ref().map_or("minecraft:overworld".to_string(), |p| p.dimension.clone());
         let me = player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]);
+        // (the Supervolcano's vent at least so far in front of the player, along the way they aimed)
+        if laser.key == "supervolcano" {
+            let [dx, dz] = strike::vc_vent([hit.x, hit.y, hit.z], me);
+            hit.x += dx;
+            hit.z += dz;
+            hit.block_x = hit.x.floor() as i32;
+            hit.block_z = hit.z.floor() as i32;
+        }
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         // a fresh look every strike, unless one is held (`/orbital seed`)
@@ -970,7 +985,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "supervolcano" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -1436,10 +1451,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "supervolcano" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1541,6 +1556,7 @@ impl Mod for Orbital {
                         "sinkhole" => "SEISMIC SCAN",
                         "payload" | "nuke" | "rod" => "DESIGNATING",
                         "hurricane" => "TRACKING STORM",
+                        "supervolcano" => "BREACHING CRUST",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));

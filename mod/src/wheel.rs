@@ -277,13 +277,13 @@ fn segment_angle(k: usize) -> f32 {
     PI + k as f32 * TAU / PAGE as f32
 }
 
-/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's, the Rod's and the
-/// Hurricane's carry) and the follow camera (the Nuke's and the Payload's).
+/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's, the Rod's, the
+/// Supervolcano's and the Hurricane's carry) and the follow camera (the Nuke's and the Payload's).
 pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "supervolcano" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
