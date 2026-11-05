@@ -607,11 +607,14 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
             let n = fd_normal(p, d);
             let r = reflect(v, n);
             var c = fd_env(r, normalize(frame.sun.xyz));
-            // (the real land in it, where the reflection can be read off the picture)
-            let ro = project_rel(v * sb + r * 90.0);
-            if (ro.z > 0.0 && ro.x > 0.0 && ro.x < 1.0 && ro.y > 0.0 && ro.y < 1.0) {
-                let edge = fd_ss(0.0, 0.12, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))) * fd_ss(0.2, 0.05, r.y);
-                c = mix(c, fd_sample(ro.xy) * 1.1, 0.6 * edge);
+            // (the real land in it: where the reflection meets the ground, read off the picture, the picture's edge if it is off it,
+            // so its underside shows the land's own colours and not a grey)
+            if (r.y < 0.15) {
+                let up = max(-r.y, 0.03);
+                let ro = project_rel(v * sb + r * clamp((dot(v * sb, vec3<f32>(0.0, 1.0, 0.0)) - G.y) / up, 8.0, 400.0));
+                // (what lies behind the eye: the land nearest it, the picture's foot)
+                let px_ = select(vec2<f32>(0.5, 0.92), clamp(ro.xy, vec2<f32>(0.02, 0.45), vec2<f32>(0.98, 0.98)), ro.z > 0.0);
+                c = mix(c, fd_sample(px_) * 1.05, 0.85 * fd_ss(0.15, -0.05, r.y));
             }
             let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
             var mc = c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres);
