@@ -984,6 +984,29 @@ mod tests {
         assert!(w1.iter().all(|c| *c != 0));
     }
     #[test]
+    fn what_is_thrown_comes_down_and_some_of_it_passes_the_player() {
+        let all = table::all(37, &|x, z| Some(table::preview_col(x, z, 0.0)));
+        let plates = &all.iter().find(|t| t.0 == VM_PLATE).unwrap().1;
+        let fl = &all.iter().find(|t| t.0 == VM_FLT).unwrap().1;
+        assert_eq!(fl.len(), 4 * VM_FLY);
+        let w = |t: &[u32], i: usize| f64::from(f32::from_bits(t[i]));
+        let mut far = 0;
+        for k in 0..VM_FLY {
+            let (tau, g, hit) = (w(fl, 4 * k), w(fl, 4 * k + 1), w(fl, 4 * k + 2));
+            assert!(tau >= 1.0 && (5.0..240.0).contains(&g), "plate {k}: tau {tau}, g {g}");
+            assert!((28.0..35.6).contains(&hit), "plate {k} hits at {hit}");
+            let b = k * VM_PW;
+            let a = 18.7 - w(plates, b + 8);
+            let eh = 2.5 * (1.0 - (-(hit - 18.7) / 2.5f64).exp());
+            let (x, z) = (w(plates, b) + w(plates, b + 9) * (a + eh), w(plates, b + 1) + w(plates, b + 11) * (a + eh));
+            assert!(w(fl, 4 * k + 3) >= w(plates, b + 6));
+            if x.hypot(z) > 900.0 {
+                far += 1;
+            }
+        }
+        assert!(far >= 8, "only {far} plates come down past 900 blocks");
+    }
+    #[test]
     fn the_table_fits_the_pass_data() {
         assert!(VM_W2 + VM_COLS <= 262_144);
         assert!(VM_TILE + VM_TN * VM_TN * 2 <= VM_SHARD);
