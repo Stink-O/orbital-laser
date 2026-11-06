@@ -925,7 +925,12 @@ fn vm_look(o: vec3<f32>, rd: vec3<f32>, lim: f32) {
         return;
     }
     vm_lkd = true;
-    vm_lsh = vm_shards(o, rd, lim);
+    // (past VM_FLYEND nothing is left of the shards)
+    if (vm.t > VM_FLYEND) {
+        vm_lsh.t = -1.0;
+    } else {
+        vm_lsh = vm_shards(o, rd, lim);
+    }
     vm_lpl = vm_plates(o, rd, select(lim, vm_lsh.t, vm_lsh.t > 0.0));
 }
 // The land's picture: the drawn mount where the ray meets it first; on the real land past it, the cracks.
@@ -1278,8 +1283,8 @@ fn vl_burst(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lb: u32, age: f32, l: VcLigh
     let d = vec3<f32>(vm_w(lb + 13u), 0.0, vm_w(lb + 14u));
     let a = vec3<f32>(-d.z, 0.0, d.x);
     let seed = f32(lb & 255u);
-    let fade = 1.0 - smoothstep(3.5, 10.5, age);
-    let dust = vec3<f32>(0.15, 0.118, 0.09) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up);
+    let fade = 1.0 - smoothstep(2.5, 9.5, age);
+    let dust = vec3<f32>(0.088, 0.072, 0.058) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up);
     for (var k = 0u; k < 8u; k = k + 1u) {
         let h0 = hash21(vec2<f32>(f32(k), seed));
         let h1 = hash21(vec2<f32>(f32(k) + 0.5, seed + 3.0));
@@ -1305,7 +1310,7 @@ fn vl_burst(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lb: u32, age: f32, l: VcLigh
         let q = rd * (t0 + 0.3 * (t1 - t0)) - C;
         let fq = 3.4 / R;
         let n = 0.55 * gnoise3(q * fq + vec3<f32>(f32(k), -age * 0.35, seed)) + 0.45 * gnoise3(q * fq * 3.1 + vec3<f32>(seed, -age * 0.6, f32(k)));
-        let al = (1.0 - exp(-(t1 - t0) / R * 2.2)) * smoothstep(0.32, 0.62, (t1 - t0) / (2.0 * R) * sqrt(A) + 1.3 * (n - 0.5)) * fade;
+        let al = (1.0 - exp(-(t1 - t0) / R * 2.2)) * smoothstep(0.2, 0.78, (t1 - t0) / (2.0 * R) * sqrt(A) + 1.3 * (n - 0.5)) * fade;
         if (al < 0.004) {
             continue;
         }

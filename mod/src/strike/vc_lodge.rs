@@ -46,7 +46,7 @@ const VL_BRK: f64 = 18.7;
 const VL_TH: f64 = 2.5;
 /// A stage's work on the blocks, counted, and how many chunks a read asks at a time, in flight at a time, and may wait
 /// to go in at a time.
-const VL_TICK: u64 = 8_000_000;
+const VL_TICK: u64 = 9_500_000;
 const VL_LOT: usize = 12;
 const VL_FLIGHT: usize = 3;
 const VL_QUEUE: u32 = 48;
@@ -1227,7 +1227,9 @@ fn vl_tick(q: &mut Plan, l: Shared, now: f32) {
         let waiting: u32 = (0..w.slabs.len()).map(|i| w.made[i] - w.sent[i].get()).sum();
         let held: usize = w.lots.iter().map(|l| l.chunks.len() - l.next).sum();
         if w.lots.len() < VL_FLIGHT && waiting + (held as u32) < VL_QUEUE {
-            for i in 0..w.slabs.len() {
+            // (those the player can see first: the others stay drawn as long as they have to)
+            let first = (0..w.slabs.len()).filter(|&i| w.slabs[i].site.near).chain((0..w.slabs.len()).filter(|&i| !w.slabs[i].site.near));
+            for i in first.collect::<Vec<usize>>() {
                 if w.stage[i] == Step::Building && w.next[i] < w.todo[i].len() {
                     let end = (w.next[i] + VL_LOT).min(w.todo[i].len());
                     let chunks: Vec<(i32, i32)> = w.todo[i][w.next[i]..end].to_vec();
