@@ -1,9 +1,9 @@
 //! The Fold's land: the scar. The crease pattern smashed into the ground as it slammed back: a wound whose outline is the
-//! pattern's fourth ring (FD_INV, fold_warp.wgsl's cp_ix: about 600 across, its corners out to 350), every kite of the pattern a
-//! panel of its own, the mandala laid out on them so its wedges run along the big creases and its bands along the chords, broken
+//! pattern's fourth ring (FD_INV, fold_warp.wgsl's cp_ix: about 530 across, its corners out to 300), every panel of the pattern
+//! (`facet`: its parts, by the strike's pattern) of its own, the mandala laid out on them so its wedges run along the big creases and its bands along the chords, broken
 //! into tilted plates, split by straight fissures along the creases, burnt in patches, round a shaft down to bedrock, a ragged
 //! rim, the land past it flattened, blackened and rayed. The warp holds it up at the land's level as it swaps in and lets it
-//! fall, kite by kite (fold_warp.wgsl's fw_sunk, the same `bowl`).
+//! fall, panel by panel (fold_warp.wgsl's fw_sunk, the same `bowl`).
 //!
 //! All of it goes in behind the game's hold on the terrain (`render.hold-world`, FD_HIDDEN): the land on screen stays as it
 //! was while one wave goes from the middle out, FD_LAND0 to FD_LAND1, and the whole crater takes its place on the one frame
@@ -14,7 +14,7 @@
 //!
 //! What makes the look, each one apart (see the constants of the same name; each can be taken out alone):
 //!   `mandala`        the unbroken pattern (mirrored): terraces and tiles, what everything else breaks; `laid` lays it on the kites
-//!   `kite_drop`      each kite of the crease pattern its own panel: a drop and a tilt, so the creases stand as scarps
+//!   `kite_drop`      each panel of the crease pattern on its own: a drop and a tilt, so the creases stand as scarps
 //!   FD_SHATTER       the plates: `plate`, each with its own drop, tilt and slide, the pattern going with it
 //!   FD_CRACKS        the cracks between the plates
 //!   FD_BURN          the pattern burnt off the plates (`burn`), whole plates of it gone

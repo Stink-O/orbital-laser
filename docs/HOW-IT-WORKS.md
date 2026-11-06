@@ -387,6 +387,7 @@ goes in through `world.edit-blocks`.
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
+| `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
 | `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) and the Hurricane's carry on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
@@ -801,19 +802,24 @@ pixel really is however far it has been thrown, so everything is anchored to the
   star, a plasma sheath, fire, a smoke rope. At 3.4 s it stops dead in one frame, the sound cuts, the fire rushes on past it and
   is gone in half a second. It hangs still half a second, lowers very slowly, touches at 6 s and melds into the land like mercury.
 - **Ripples** (from 6.6 s; the warp, and its cost, begin at 6.5 s). Five rings run out, each bigger than the last.
-- **Scoring** (12 s). The rings sharpen into hairline creases racing over the land, cutting through houses and trees: twelve
-  petals in five rings (FD_RINGS, 44 to 480 blocks), their edges scalloped.
-- **Tearing** (16 s). The creases split, ember-edged. The void is painted on the land's own pixels, so nothing under it shows.
+- **Scoring** (12 s). The rings sharpen into creases racing over the land: one crease pattern, twelve straight creases 30 degrees
+  apart, mountain and valley in turn, and five rings (FD_RINGS, 44 to 480 blocks), every line a real kink of the sheet. Across each
+  panel, by the wheel's FOLD row or `/orbital foldpattern a|b|c` (kept, the next strike's): nothing (UMBRELLA, the default), an X with
+  its middle up or down (WATERBOMB), or one diagonal, in diamonds (DIAGONAL). `tools/foldview/pattern.py` writes the tables.
 - **Folding** (19-31 s). The land is pinched up at the target and closes ring by ring, a petal's middle leading its edges, top
   outwards: `fw_chain`, one rigid plate a ring, hinged at its edge, the last lying flat and sliding in. What has closed is a dome
   no wider than the globe, always inside the player's distance. Radial pleats take up the circumference; the far land curls up
   and in. The player stands on an island punched out of the sheet (26 blocks round where they fired), left where it was.
 - **The bud** (31-35 s). A globe of real land against the stars. **The crush** (35-37.5 s): wound up to a point. 1.2 s of silence.
 - **The bloom** (38.7 s) is the one flash. The rings then slam down outermost first, 39.8-43.1 s, a thud and a jolt each.
+- **The damage** (from 40 s). Nothing appears from nowhere. From the touch a wound runs out along the creases and soaks into the
+  panels; each bang sinks its ring a little, panel by panel, burns it and cracks it along the creases (`fw_sag`, `fw_hurt`), so by the last
+  bang the land on the hold lies where the crater is going to be, as dark as it. The swap lands on that, and the crater's colours
+  come up out of the soot as its panels fall.
 - **The comedown.** The creases fade and the void seals; the warp ends at 53 s, the strike at 56 s.
 
 Along the way, each a constant in `fold_warp.wgsl` or `fold_land.rs`: block faces near the creases show smaller copies of
-themselves, 2 by 2 to 8 by 8 (`FW_FRACTAL`); blocks by the creases of a lifting petal are carved into sponges (`FW_SPONGE`); cards of
+themselves, 2 by 2 to 8 by 8 (`FW_FRACTAL`); cards of
 the land are dealt along the creases (`FW_CARDS`, the warp's `copies`); hundreds of real blocks peel off the creases and fall
 upward (`FD_PEEL`); hue drifts slowly over the land like oil on water, up to about 36 degrees, strongest on the creases and the
 petals (`FW_IRID`, its strength); mobs and items ride the land through the warp.
