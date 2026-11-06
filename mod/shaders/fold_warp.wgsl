@@ -170,7 +170,6 @@ fn fw_tau(t: f32) -> f32 {
 // fires as its crease reaches it, big creases first. Nodes keep to their bearing, so a wedge never leaves its sector of the circle
 // and no two wedges can meet; along a bearing the sheet is one line going one way: nothing over anything.
 const CP_K: f32 = 0.5;             // the big creases' fold: a panel's slope, per radian of cp_rise
-const CP_R: f32 = 0.085;           // the chords': each ring's node this much of its radius up, then down, turn about
 const CP_V: f32 = 0.16;            // a kite's apex off its panel, of the kite's width
 const CP_PRE: f32 = 0.62;          // how far the folds go before the land lifts: all of it by FW_FOLD + 5
 const CP_REST: f32 = 0.5;          // how much of them is left in the sphere's walls
@@ -218,6 +217,8 @@ fn cp_end(k: i32) -> f32 {
 // either side); and four numbers of the kite at wedge k, ring i. Private and constant, as every vertex wants them.
 var<private> CP_INV: array<f32, 40> = array<f32, 40>(0.019573, 0.011678, 0.004623, 0.004120, 0.001782, 0.027736, 0.008565, 0.006843, 0.002906, 0.002638, 0.020483, 0.011177, 0.005123, 0.004379, 0.001742, 0.025310, 0.007770, 0.007426, 0.002897, 0.002555, 0.020316, 0.010662, 0.004848, 0.003851, 0.001855, 0.026149, 0.008739, 0.006787, 0.002974, 0.002662, 0.019413, 0.011845, 0.004865, 0.004264, 0.001793, 0.026306, 0.007756, 0.007470, 0.002833, 0.002597);
 var<private> CP_Q: array<f32, 40> = array<f32, 40>(51.09, 85.63, 216.31, 242.72, 561.17, 36.05, 116.75, 146.13, 344.12, 379.08, 48.82, 89.47, 195.20, 228.36, 574.05, 39.51, 128.70, 134.66, 345.18, 391.39, 49.22, 93.79, 206.27, 259.67, 539.08, 38.24, 114.43, 147.34, 336.25, 375.66, 51.51, 84.42, 205.55, 234.52, 557.72, 38.01, 128.93, 133.87, 352.98, 385.06);
+// (and how far up or down each node stands of its radius, in turn along a crease, no further than the room it has between its rings, which on half the creases is little)
+var<private> CP_Z: array<f32, 40> = array<f32, 40>(-0.0850, 0.0850, -0.0488, 0.0435, -0.0850, -0.0850, 0.0850, -0.0804, 0.0406, -0.0369, -0.0850, 0.0850, -0.0680, 0.0581, -0.0850, -0.0850, 0.0185, -0.0177, 0.0535, -0.0472, -0.0850, 0.0850, -0.0850, 0.0823, -0.0850, -0.0850, 0.0850, -0.0850, 0.0469, -0.0420, -0.0850, 0.0850, -0.0564, 0.0494, -0.0850, -0.0850, 0.0153, -0.0148, 0.0364, -0.0333);
 var<private> CP_AT: array<f32, 40> = array<f32, 40>(13.28, 13.63, 14.52, 14.65, 15.89, 12.97, 13.75, 13.96, 14.99, 15.13, 13.21, 13.62, 14.36, 14.54, 15.89, 12.78, 13.61, 13.65, 14.76, 14.95, 13.94, 14.38, 15.14, 15.42, 16.50, 13.26, 13.99, 14.23, 15.22, 15.38, 14.09, 14.42, 15.26, 15.41, 16.68, 13.23, 14.08, 14.12, 15.27, 15.39);
 var<private> CP_CORD: array<f32, 40> = array<f32, 40>(16.64, 16.15, 15.77, 15.40, 14.85, 16.48, 16.09, 15.98, 15.31, 15.09, 16.47, 16.33, 15.47, 14.94, 14.75, 16.79, 16.47, 15.50, 15.03, 14.87, 16.57, 16.59, 15.62, 15.42, 14.92, 16.59, 16.45, 15.72, 15.27, 14.69, 16.62, 16.01, 16.09, 14.84, 14.68, 16.45, 16.07, 15.75, 14.99, 14.55);
 var<private> CP_H: array<vec4<f32>, 40> = array<vec4<f32>, 40>(vec4<f32>(0.7871, 0.9337, 0.4569, 0.8698), vec4<f32>(0.9882, 0.5722, 0.8110, 0.8550), vec4<f32>(0.7124, 0.6829, 0.2213, 0.8636), vec4<f32>(0.2846, 0.2659, 0.6005, 0.6233), vec4<f32>(0.7048, 0.3936, 0.5385, 0.2343), vec4<f32>(0.3773, 0.5747, 0.2596, 0.5330), vec4<f32>(0.3728, 0.7326, 0.0184, 0.0967), vec4<f32>(0.4612, 0.3595, 0.9426, 0.7963), vec4<f32>(0.3427, 0.4555, 0.3885, 0.2805), vec4<f32>(0.0175, 0.3002, 0.8398, 0.2267), vec4<f32>(0.5535, 0.7705, 0.9446, 0.9883), vec4<f32>(0.0424, 0.4468, 0.9917, 0.1300), vec4<f32>(0.7927, 0.9143, 0.0683, 0.7475), vec4<f32>(0.3587, 0.1730, 0.7005, 0.2073), vec4<f32>(0.7404, 0.9254, 0.1749, 0.5496), vec4<f32>(0.7635, 0.3448, 0.5099, 0.9395), vec4<f32>(0.8343, 0.7834, 0.5945, 0.9038), vec4<f32>(0.4735, 0.9375, 0.2453, 0.8242), vec4<f32>(0.2007, 0.8072, 0.8073, 0.2075), vec4<f32>(0.0159, 0.0875, 0.6499, 0.1123), vec4<f32>(0.8494, 0.7886, 0.8655, 0.7468), vec4<f32>(0.2928, 0.3381, 0.6910, 0.8977), vec4<f32>(0.8845, 0.6046, 0.3449, 0.5112), vec4<f32>(0.5142, 0.5882, 0.1705, 0.5199), vec4<f32>(0.1819, 0.1683, 0.0917, 0.4446), vec4<f32>(0.7576, 0.4723, 0.1035, 0.9860), vec4<f32>(0.5429, 0.3322, 0.5535, 0.2036), vec4<f32>(0.8287, 0.2220, 0.8490, 0.7318), vec4<f32>(0.5654, 0.1419, 0.0577, 0.8631), vec4<f32>(0.7528, 0.5611, 0.5672, 0.5777), vec4<f32>(0.7531, 0.8493, 0.2238, 0.1454), vec4<f32>(0.7905, 0.0630, 0.1820, 0.1580), vec4<f32>(0.3193, 0.2357, 0.7576, 0.1544), vec4<f32>(0.1764, 0.3675, 0.4691, 0.5609), vec4<f32>(0.3620, 0.8975, 0.0766, 0.9193), vec4<f32>(0.3345, 0.0958, 0.8281, 0.6725), vec4<f32>(0.3229, 0.0119, 0.7974, 0.9960), vec4<f32>(0.3926, 0.8933, 0.8448, 0.5192), vec4<f32>(0.7454, 0.7400, 0.2095, 0.2472), vec4<f32>(0.3814, 0.1526, 0.2195, 0.6228));
@@ -436,7 +437,7 @@ fn cp_lift(k: i32, i: i32, t: f32, pin: vec2<i32>) -> f32 {
     if (i >= 4 || cp_pinned(k, i, pin)) {
         return 0.0;
     }
-    var ring = select(-CP_R, CP_R, (i & 1) == 1);
+    var ring = CP_Z[k * 5 + i];
     var big = CP_K * cp_rise(k);
     if (t < 19.0) {
         big *= fw_ss(0.0, 1.5, t - CP_AT[k * 5 + i]);
@@ -528,7 +529,7 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
             let up = cross(C - A, B - D);
             let nv = up * select(1.0, -1.0, up.y < 0.0) / max(length(up), 0.001);
             let f = fw_ss(0.0, 1.3, t - (FW_SCORE + 3.2 + 1.3 * kt.h.y)) * select(1.0, g.ps[i], t >= FW_REL && lifts);
-            V += nv * select(-CP_V, CP_V, kt.h.x > 0.5) * length(C - B) * f * amount;
+            V += nv * select(-CP_V, CP_V, kt.h.x > 0.5) * min(length(C - B), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w)) * f * amount;
         }
         var c = array<vec3<f32>, 4>(A, B, C, D);
         let X = c[tr.j];
@@ -572,7 +573,7 @@ fn cp_lying(w: CpW, i: i32, kt: CpKite, tr: CpTri, t: f32, pin: vec2<i32>) -> ve
     }
     var zv = mix(mix(za, zb, kt.m.x), mix(zd, zc, kt.m.y), kt.m.z);
     if (w.k != pin.x || i != pin.y) {
-        zv += select(-CP_V, CP_V, kt.h.x > 0.5) * length(kt.c - kt.b);
+        zv += select(-CP_V, CP_V, kt.h.x > 0.5) * min(length(kt.c - kt.b), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w));
     }
     var z = array<f32, 4>(za, zb, zc, zd);
     var c = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
