@@ -210,6 +210,23 @@ laser, command, capability and timing). This file is the short, factual version 
   `thunder_mid` to 320, `thunder_far` past it, `rumble` for a flash in the cloud, late by the distance); `--listen DIR`
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
+- **The Tsunami** (`strike/tsunami.rs`, `strike/ts_sounds.rs`, `surge.rs`, `shaders/tsunami.wgsl`; 42 s, reaches 1000
+  blocks) digs no crater: it sweeps a swath. A wave (320 high out at sea, ~145 over the target's ground at the land, a
+  closed-form model, `TsGeo`, kept in step with the pass) crosses the land, and under its water a swath about 700 blocks
+  across (345 each side, thinning from 255 out), from 300 upstream of the target to 160 past the player and at most 720
+  past the target, loses every tree, plant and building: trunks are left as stumps of 1-3 logs, buildings as footings
+  of up to 3 blocks, the soil is scoured to mud, packed mud, coarse dirt, gravel, sand and clay in streaks along the
+  flow, channels are gouged up to 5 deep, and wreckage, a wrack line and timber in the trees at its limit are laid down.
+  Up to 36 boats are summoned, every mob and item in each chunk is killed as the water gets there (not players), and
+  real ponds are left in the hollows, up to 3 deep (`ponds`, a priority flood a 64 by 64 tile at a time; the
+  `no_pond_leaks` test holds any land to it). Chests and the like, and what `stays` names, stay where they are. The
+  ~2,200 chunks of a strike from 300 blocks (~1,600 to ~2,900, by how far off the player stands) are force-loaded from
+  the start, and each is read and edited once, as the crest has passed it (`ts_chunk`, through `world.read-columns` and
+  `world.edit-blocks`). With the knockback on the player is carried in the water (`world.carry-player`, as the
+  Hurricane's), surfaces at `SURF` (6.5 s after it took them) and is set down 2 over where it took them, facing the
+  wreck, with a small throw (`Surge::set_down`, `world.push-player` while carried) that keeps the game from putting a
+  creative player back into flight, unless they were flying when it took them; sneak held half a second breaks free. **Photosensitivity:** the blow as the water takes the player is one white
+  flash over the whole picture, about a fifth of a second.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-10` or newer (it adds
@@ -254,22 +271,26 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell` or `hurricane`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell and the Hurricane on the third. Its FLY
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` or `tsunami`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
 `game.player-flying`, `render.set-data` or the `atlas` capability, won't start the mod.
 The wheel's left column has the strike options: SEED (a field: the last strike's seed, or one typed) and LOCK SEED
-at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
+at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,
-`DESIGNATING …`, the Hurricane's `TRACKING STORM …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
+`DESIGNATING …`, the Hurricane's `TRACKING STORM …`, the Tsunami's `READING THE SEA …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
 the strikes have no messages; firing during a strike only clicks). With the Rod loaded or pointed at, an IMPACT FX row under the ring (OFF, KANADA, BLACK FLASH,
 CINEMATIC). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound` or `/orbital nukesound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
-only picks a ready-made one. The QUALITY switch under PANEL (top right; `/orbital quality full|fast`, kept
+only picks a ready-made one, but the game holds one pipeline at a time and builds a new one on the render thread as `warm` hands it
+over: some 60 ms each time, and up to 2 s (the Downfall's 7) the first time the driver sees a pass. So a wheel pick stays up for the two
+frames that takes, saying LOADING (`close_picked`). On native a pass is built on a thread of its own and kept
+(`native/engine-shim/mod_post.rs`; a strike's frame waits for its pass, and on macOS every frame, where `BUILDING` needs the build in
+the frame). The fork would need the engine to do the same. The QUALITY switch under PANEL (top right; `/orbital quality full|fast`, kept
 between sessions, default FAST) picks whether the Payload's, the Nuke's and the Rod's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7` (an older fork would compile the same source and draw its `fs_main` at full size; FAST needs no
@@ -301,7 +322,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 ## Layout
 
 - `mod/`: the mod (Rust for `wasm32-unknown-unknown`): `src/lib.rs` hooks, designator and strike playback,
-  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's, `src/strike/sinkhole.rs` the Sinkhole's, `src/strike/payload.rs` the Payload's, `src/strike/nuke.rs` the Nuke's, `src/strike/rod.rs` the Rod's), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
+  `src/lasers.rs` the lasers, `src/strike.rs` a strike's plan (`src/strike/crystal.rs` the Crystal Bloom's, `src/strike/sinkhole.rs` the Sinkhole's, `src/strike/payload.rs` the Payload's, `src/strike/nuke.rs` the Nuke's, `src/strike/rod.rs` the Rod's, `src/strike/tsunami.rs` the Tsunami's, `src/surge.rs` its carry of the player), `src/wheel.rs` the wheel, `shaders/strike.wgsl` the post
   pass, `shaders/downfall.wgsl`, `shaders/planetkiller.wgsl`, `shaders/crystalbloom.wgsl`, `shaders/sinkhole.wgsl`, `shaders/payload.wgsl`, `shaders/nuke.wgsl` and `shaders/rod.wgsl` the
   Downfall's, the Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's and the Rod's own passes (the
   mod appends each to `strike.wgsl` up to its `fs_main`; `pass_of` in lib.rs picks a strike's),
@@ -313,6 +334,10 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   the landings: `tree_landing`, `hu_landings`), `src/carry.rs` the player's carry, `shaders/hurricane.wgsl` its pass (`hu_debris`, `hu_trees`,
   `hu_volume`; FAST's `[half stage]`). Preview views `hu*` (`hustrip=1` takes the preview's trees away as the front
   reaches them); `hu_write_table` (ignored) writes its table over the preview's wooded land.
+- The Tsunami: `src/strike/tsunami.rs` its plan (`TsGeo`, the land's read and edits, `ts_chunk`, `ponds`, `table_words`),
+  `src/strike/ts_sounds.rs` its sounds' schedule, `src/surge.rs` the player carried in the water,
+  `shaders/tsunami.wgsl` its pass (no half-size stage), `tools/sounds_tsunami.py` its sounds. Preview views `ts*`;
+  `ts_write_table` (ignored) writes its table.
 - `orbital-laser-mod/` (items, models, textures, names) and `orbital-sounds/` (the sounds): the mod's content.
 - `orbital-laser-shader/`, `strike.py`, `themes.py`: 0.1's setup for stock Horizon (`install.py --legacy`).
 
@@ -347,6 +372,23 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   fork; `payload_pass` in lib.rs drops the section for FULL. `tools/preview.py payload T --quality both` shows FULL and
   FAST side by side (`--whole`: FAST as a fork without the stage draws it). The Planet Killer, the Crystal Bloom and
   the Sinkhole could take the same split.
+- **The Tsunami's land work is metered by its columns** (`strike/tsunami.rs`): a first version counted a column at a
+  sixth of what it cost (a block-name lookup for every column's ground, the noise per column) and the game stopped the mod
+  mid-strike ("it took too long", 50M fuel in one tick). Now the ground's kind is looked up once per palette name, the
+  strength of the wave, its height and the scour streak are worked out per 4 by 4 cells, and the honest costs are
+  charged; `mod_soak` over the tsunami (`SOAK_LASERS=tsunami`) shows the worst tick at about 13M of 50M. Keep any cost you
+  add in `ts_chunk` honest, and the stage under `TS_STAGE`. A real village is the case to try: `wreck_ok`'s string
+  searches per building block ran the mod out of fuel there, on nothing the synthetic land had (now once a palette name).
+- **The Tsunami's model is in three places**: `TsGeo` (`strike/tsunami.rs`), `tsunami.wgsl`'s `ts_*` and `surge.rs`'s
+  flow (and `ts_drift`). Change the arrival, the envelope, the profile, the drain (`ts_x`, `ts_fall`) or the speed in all of them; the tests
+  (`it_reaches_the_player_when_the_sounds_say`, `the_front_comes_in_order_...`) catch only the plan's side. The
+  pass's debris table (`TS_KINDS`, `TSB`, `TSM`) is mirrored in tsunami.wgsl too (`ts_kind` picks among the 24 by index). Its map's words also carry the land's height over the target's ground (`ts_ground`: the foot follows it). A log's long axis in `ts_piece_hit` is its block up: bark along it, end grain on its ends.
+  The preview reads the table from `cargo test ts_write_table -- --ignored` (tools/preview.py does it).
+- **A jump of the world's clock isn't always another world** (`in_world`): when the frames stall and the world runs on,
+  the clock jumps forward, or back by what the client had run ahead (a Fold run under load saw -71). It counts as another
+  world only with over `AWAY` seconds of frames since the last tick (each frame at most `AWAY_FRAME`; the fork ticks no mod
+  at the title screen, but its frames run) or the player over `AWAY_ROOM` from where they were. On native a stall needs the
+  window not drawn or the frames held up with the integrated server going on; `a_stall_is_not_another_world` holds both ways.
 - **A call into the mod has a fuel limit** (a tick 50 million WebAssembly instructions, a frame 10 million; past it the
   game stops the mod for good: "it took too long"). `mod/src/meter.rs` counts each call's work (the loops that do the
   heavy work `spend`), and what can wait (a stage, a job of the Nuke's, an edit, a command, an answer taken in) waits
@@ -379,8 +421,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 ## Verifying work
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
-Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's and the
-Hurricane's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
+Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's, the
+Hurricane's and the Tsunami's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)

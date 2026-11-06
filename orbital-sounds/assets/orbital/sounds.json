@@ -1160,6 +1160,251 @@
     ],
     "subtitle": "subtitles.orbital.rod.hum"
   },
+  "tsunami.rupture": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/rupture",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.rupture"
+  },
+  "tsunami.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.rumble"
+  },
+  "tsunami.roar_far": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/roar_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.roar_far"
+  },
+  "tsunami.roar_mid": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/roar_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.roar_mid"
+  },
+  "tsunami.roar_near": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/roar_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.roar_near"
+  },
+  "tsunami.roar_pass": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/roar_pass",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.roar_pass"
+  },
+  "tsunami.crash": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crash",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crash"
+  },
+  "tsunami.crash_far": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crash_far",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crash_far"
+  },
+  "tsunami.engulf": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/engulf",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.engulf"
+  },
+  "tsunami.under": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/under",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.under"
+  },
+  "tsunami.surface": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/surface",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.surface"
+  },
+  "tsunami.torrent": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/torrent",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.torrent"
+  },
+  "tsunami.drain": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/drain",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.drain"
+  },
+  "tsunami.roar_back": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/roar_back",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.roar_back"
+  },
+  "tsunami.rumble_after": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/rumble_after",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.rumble_after"
+  },
+  "tsunami.trickle": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/trickle",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.trickle"
+  },
+  "tsunami.crack1": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crack1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crack"
+  },
+  "tsunami.crack2": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crack2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crack"
+  },
+  "tsunami.crack3": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crack3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crack"
+  },
+  "tsunami.crack4": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crack4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crack"
+  },
+  "tsunami.slap1": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/slap1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.slap"
+  },
+  "tsunami.slap2": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/slap2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.slap"
+  },
+  "tsunami.slap3": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/slap3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.slap"
+  },
+  "tsunami.crack": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/crack1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:tsunami/crack2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:tsunami/crack3",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:tsunami/crack4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.crack"
+  },
+  "tsunami.slap": {
+    "sounds": [
+      {
+        "name": "orbital:tsunami/slap1",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:tsunami/slap2",
+        "attenuation_distance": 256
+      },
+      {
+        "name": "orbital:tsunami/slap3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.tsunami.slap"
+  },
   "supercell.buildup": {
     "sounds": [
       {

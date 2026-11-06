@@ -18,7 +18,9 @@ use std::sync::Mutex;
 
 pub(super) const ID: &str = "orbital";
 const NAME: &str = "Orbital Laser";
-const VERSION: &str = "0.5.9";
+const VERSION: &str = "0.5.10";
+/// The operator level of the console, which the server half runs a client's world work at (`native_run_command`).
+const CONSOLE_LEVEL: u8 = 4;
 const WORK: &str = "orbital:work";
 const ANSWER: &str = "orbital:answer";
 /// A message's bytes at most (the channel's 30 000, less room for its header).
@@ -736,11 +738,14 @@ pub(super) fn level_tick(game: &mut Game<'_>, dimension: &str) {
         players.iter().filter(|p| p.dimension == dimension).map(|p| (p.uuid, p.permission)).collect();
     for (player, permission) in mine {
         let work = SERVER.with(|s| s.borrow_mut().work.remove(&player)).unwrap_or_default();
-        // (what a client sends is its own input: only an operator's runs, as the fork ran them for the owner)
-        if permission < 2 {
+        // (what a client sends is its own input, and it runs as the console: only a player at the console's level, who
+        // can already run anything, as the fork ran them for the owner)
+        if permission < CONSOLE_LEVEL {
             if !work.is_empty() {
                 static SAID: std::sync::Once = std::sync::Once::new();
-                SAID.call_once(|| log::warn!("[mod {ID}] world work from {} left out: not an operator", uuid(player)));
+                SAID.call_once(|| {
+                    log::warn!("[mod {ID}] world work from {} left out: not a level {CONSOLE_LEVEL} operator", uuid(player))
+                });
             }
             continue;
         }
@@ -1021,10 +1026,7 @@ pub(super) fn command(game: &mut Game<'_>, command: &str) -> bool {
         return false;
     }
     if !game.native_window() {
-        if let Ok(mut c) = SERVER_COMMANDS.lock() {
-            c.push(line.to_owned());
-        }
-        return true;
+        return from_owner(game, line);
     }
     if !running(game) {
         return false;
@@ -1231,12 +1233,13 @@ const USAGES: &[&str] = &[
     "orbital rod",
     "orbital supercell",
     "orbital hurricane",
+    "orbital tsunami",
 ];
 
 /// The `register_commands` hook: `/orbital` and its usages in the server's command tree.
 pub(super) fn register_commands(game: &mut Game<'_>, commands: &mut Vec<crate::mod_api::NativeCommand>) {
     if game.native_on(ID) {
-        commands.extend(USAGES.iter().map(|u| crate::mod_api::NativeCommand::new(u)));
+        commands.extend(USAGES.iter().map(|u| crate::mod_api::NativeCommand::op(u, CONSOLE_LEVEL)));
     }
 }
 
@@ -1289,10 +1292,23 @@ pub(super) fn perform_command(game: &mut Game<'_>, command: &str, ran: &mut bool
     if *ran || game.native_window() || (line != ID && !line.starts_with("orbital ")) {
         return;
     }
+    *ran = from_owner(game, line);
+}
+
+/// `/orbital …` heard on the server: for the window, which runs the mod, when the owner sent it (a guest's own window
+/// runs theirs, and one without the mod has none: it must not change the host's game). The owner's console runs inside
+/// the owner's own player swap, so `lan_acting` alone doesn't tell them from a guest. True when it was the owner's.
+fn from_owner(game: &Game<'_>, line: &str) -> bool {
+    if let Some(conn) = game.lan_acting {
+        let sender = game.lan.as_ref().and_then(|l| l.hub.guest(conn)).map(|g| g.uuid);
+        if sender.is_none() || sender != game.serving.as_ref().map(|s| s.owner) {
+            return false;
+        }
+    }
     if let Ok(mut c) = SERVER_COMMANDS.lock() {
         c.push(line.to_owned());
     }
-    *ran = true;
+    true
 }
 
 // ---- the content ---------------------------------------------------------------------------------------------------

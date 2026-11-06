@@ -19,6 +19,7 @@ mod meter;
 mod pace;
 mod sdk;
 mod strike;
+mod surge;
 mod wheel;
 
 use horizon_mod_sdk::{
@@ -65,6 +66,10 @@ fn supercell_pass(fast: bool) -> &'static str {
 fn hurricane_pass(fast: bool) -> &'static str {
     PASS_HURRICANE[usize::from(fast)]
 }
+/// The Tsunami's, the same way (tsunami.wgsl's `[half stage]`, if it has one).
+fn tsunami_pass(fast: bool) -> &'static str {
+    PASS_TSUNAMI[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
@@ -77,6 +82,8 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "rod" => 7,
         "supercell" => 8,
         "hurricane" => 9,
+        // (10 and 11 are spare)
+        "tsunami" => 12,
         _ => 0,
     }
 }
@@ -106,6 +113,12 @@ fn holding_designator() -> bool {
 /// Game ticks (of the world's clock) a reopened world may be off from where it was left and still be taken for the
 /// same play (`tick`): a pause, or a save and quit, keeps the clock where it was; another world's is elsewhere.
 const SAME_PLAY: u64 = 40;
+/// A jump of the world's clock is another world only if the game was somewhere else meanwhile (`in_world`): more than
+/// AWAY seconds of frames since the last tick, each frame counting at most AWAY_FRAME (one stalled frame is no time
+/// away), or the player over AWAY_ROOM blocks from where they were a tick ago.
+const AWAY: f32 = 0.75;
+const AWAY_FRAME: f32 = 0.25;
+const AWAY_ROOM: f64 = 16.0;
 /// Ticks of play (in a world, not paused) before the loaded laser's pass is given to the game to build ahead of its
 /// first strike (`warm`): not as the game starts, so a pass the game can't build stops nothing but that laser.
 const WARM_AFTER: u64 = 60;
@@ -281,11 +294,13 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 12 the tsunami's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 10],
+    passes: [&'static str; 13],
     compiled: Option<usize>,
     warming: bool,
+    /// A pick has left the wheel up while its pass is built (`close_picked`).
+    closing: bool,
     /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
     building: Option<u8>,
     /// The laser whose pass the game stopped building last time, to tell the player of once they are in a world
@@ -339,6 +354,8 @@ struct Orbital {
     carrying: Option<carry::Carry>,
     /// The game's last answer to a carry (`world.carry-player`): whether the one before held the player.
     carry_held: bool,
+    /// The Tsunami's surge carrying the player (`surge.rs`), while its strike is under way and the knockback is on.
+    surging: Option<surge::Surge>,
     /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
     /// (`/orbital carryview turn|still`; turn, the default).
     carry_turn: bool,
@@ -370,6 +387,9 @@ struct Orbital {
     ticks: u64,
     /// The world's clock (game time) at the last tick in a world, none while out of one (`tick`).
     clock: Option<u64>,
+    /// Where the player was last tick, and the seconds of frames since it (`AWAY_FRAME`): `in_world`.
+    place: Option<[f64; 3]>,
+    away: f32,
     /// The forceload removes in storage are the strike under way's (`FORCELOADS`): deleted once it and the world
     /// changes it left waiting are done.
     owes: bool,
@@ -398,9 +418,10 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_OWN[0], PASS_OWN[0], tsunami_pass(fast)],
             compiled: None,
             warming: false,
+            closing: false,
             building: None,
             broke: None,
             carving: std::collections::VecDeque::new(),
@@ -427,6 +448,7 @@ impl Orbital {
             following: None,
             carrying: None,
             carry_held: true,
+            surging: None,
             carry_turn,
             follow_distance,
             seed_lock,
@@ -443,6 +465,8 @@ impl Orbital {
             meter_log: None,
             ticks: 0,
             clock: None,
+            place: None,
+            away: 0.0,
             owes: false,
             hint: None,
             knows: None,
@@ -645,6 +669,21 @@ impl Orbital {
         self.show_wheel();
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
+    /// A pick closes the wheel. If the picked laser's pass isn't the one the game holds, the wheel stays up for the two
+    /// frames it takes to build it (`warm`), saying so: the build stops the game's frames for up to seconds the first
+    /// time and some 60 ms after, and over the wheel that reads as the pick being taken, not as the world hitching.
+    fn close_picked(&mut self) {
+        if self.compiled == Some(pass_of(LASERS[self.laser])) || self.strike.is_some() || self.ticks < WARM_AFTER {
+            ui::close();
+            self.wheel = None;
+            return;
+        }
+        self.closing = true;
+        if let Some(w) = &mut self.wheel {
+            w.loading = Some(self.laser);
+        }
+        self.show_wheel();
+    }
     fn turn_page(&mut self, k: usize) {
         let Some(w) = &mut self.wheel else { return };
         w.turn(k);
@@ -654,6 +693,9 @@ impl Orbital {
         self.save();
     }
     fn wheel_click(&mut self, x: f32, y: f32) {
+        if self.closing {
+            return;
+        }
         let (row, page) = self.wheel.as_ref().map_or((None, self.page), |w| (w.row_laser(self.laser), w.page));
         let spot = wheel::spot(x, y, wheel::Rows::of(row), page).or_else(|| wheel::toggle_spot(x, y, row.unwrap_or(self.laser)));
         // a click anywhere but the field takes the keyboard from it, leaving the speed as it was
@@ -685,8 +727,7 @@ impl Orbital {
             Some(wheel::Spot::Laser(i)) => {
                 self.laser = i;
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Page(k)) => self.turn_page(k),
@@ -695,16 +736,14 @@ impl Orbital {
                 self.approach = a;
                 self.laser = row.unwrap_or(self.laser);
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Arrival(a)) => {
                 self.arrival = a;
                 self.laser = row.unwrap_or(self.laser);
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Colour(c)) => {
@@ -712,8 +751,7 @@ impl Orbital {
                 self.colours[i] = c;
                 self.laser = i;
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Sound(k)) => {
@@ -723,8 +761,7 @@ impl Orbital {
                     self.blast_alt[s] = k == 1;
                 }
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Centre) => {
@@ -800,6 +837,7 @@ impl Orbital {
         self.rebuild("rod", rod_pass(fast));
         self.rebuild("supercell", supercell_pass(fast));
         self.rebuild("hurricane", hurricane_pass(fast));
+        self.rebuild("tsunami", tsunami_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -869,6 +907,37 @@ impl Orbital {
             world::play_sound(&event, None, volume, pitch);
         }
     }
+    /// The Tsunami's surge this tick (`surge.rs`): the player carried along with the water once it has them.
+    fn surge_tick(&mut self) {
+        let Some(t) = self.strike.as_ref().map(|s| f64::from(s.ticks) * 0.05) else { return };
+        let Some(c) = &mut self.surging else { return };
+        if c.over(t) {
+            // (still held as the strike ends: set down, as the water does, not left flying)
+            if let Some([x, y, z]) = c.set_down().filter(|_| c.lifted()) {
+                world::push_player(x, y, z);
+            }
+            self.surging = None;
+            return;
+        }
+        let Some(p) = game::get_player() else { return };
+        let o = c.tick(t, [p.x, p.y, p.z], f64::from(p.yaw), self.carry_held, game::player_flying(), self.carry_turn);
+        // (set down: a push while carried is what the game lets them go with, out of flight)
+        if let Some([x, y, z]) = o.throw {
+            world::push_player(x, y, z);
+        }
+        if !o.cmds.is_empty() {
+            world::run_commands(&o.cmds);
+        }
+        // (the game's answer: whether the carry it was asked for before held them)
+        let held = match o.carry {
+            Some([x, y, z]) => world::carry_player(x, y, z, o.turn),
+            None => true,
+        };
+        self.carry_held = held;
+        for (event, volume, pitch) in o.sounds {
+            world::play_sound(&event, None, volume, pitch);
+        }
+    }
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
     /// shadow off`), and for the Rod from God 2 more if its impact frames are.
     fn flags_of(&self, index: u32) -> f32 {
@@ -912,6 +981,12 @@ impl Orbital {
             }
         } else {
             self.warming = false;
+        }
+        // (the wheel a pick left up: its pass built by now, `close_picked`)
+        if self.closing && !self.warming {
+            self.closing = false;
+            ui::close();
+            self.wheel = None;
         }
     }
     /// Pass `pass` given to the game. One it doesn't hold yet is built as the frame is drawn (about a second the first
@@ -970,7 +1045,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -995,6 +1070,8 @@ impl Orbital {
         self.hold_forceloads(&dimension, clock, laser.length);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
+        // (the Tsunami's surge carrying the player along once the water has them, with the knockback on)
+        self.surging = (laser.key == "tsunami" && self.knock && player.is_some()).then(|| surge::Surge::new(strike::TsGeo::new(&target, me, seed)));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
         self.unfollow();
         if self.follow
@@ -1165,6 +1242,7 @@ impl Orbital {
     fn end_strike(&mut self) {
         self.unfollow();
         self.carrying = None;
+        self.surging = None;
         render::clear_post();
         self.strike = None;
         ground::clear();
@@ -1277,8 +1355,21 @@ impl Orbital {
     /// was is another world (a pause, or this world saved and opened again, keeps it where it was). Either way a strike
     /// under way ends there (`left_world`).
     fn in_world(&mut self) -> bool {
-        let clock = game::get_player().and(game::get_clock()).map(|c| c.game_time);
-        let elsewhere = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
+        let player = game::get_player();
+        let clock = player.as_ref().and(game::get_clock()).map(|c| c.game_time);
+        let place = player.map(|p| [p.x, p.y, p.z]);
+        let jumped = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
+        // (a stall jumps the clock too, either way: the game's frames stop while the world runs on, and it catches up.
+        // Nothing but a stalled frame has passed since the last tick and the player is where they were, so it is this
+        // world. Between worlds the frames run on with no ticks, and the fork has no tick with no player to say so.)
+        let moved = matches!((self.place, place), (Some(a), Some(b)) if (a[0] - b[0]).hypot(a[2] - b[2]).hypot(a[1] - b[1]) > AWAY_ROOM);
+        let elsewhere = jumped && (self.away > AWAY || moved);
+        if jumped && self.strike.is_some() {
+            let said = if elsewhere { "another world" } else { "a stall: the strike goes on" };
+            log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?} ({:.2} s of frames, moved: {moved}): {said}", self.clock, self.away));
+        }
+        self.place = place;
+        self.away = 0.0;
         if clock.is_none() || elsewhere {
             self.left_world();
         }
@@ -1288,6 +1379,10 @@ impl Orbital {
         }
         self.clock = clock;
         clock.is_some()
+    }
+    /// A frame's part in telling time away from a stall (`in_world`).
+    fn count_frame(&mut self, seconds: f32) {
+        self.away += seconds.min(AWAY_FRAME);
     }
     /// The first line on joining a world (`HINT`), a second in, until the player knows how to get the Designator: they
     /// ran `/orbital give` or hold one (`KNOWS`).
@@ -1439,7 +1534,7 @@ impl Orbital {
             if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1520,7 +1615,10 @@ impl Mod for Orbital {
                 Event::KeyDown(k) if k == "wheel" && input::held().is_some_and(|h| h.id == DESIGNATOR) => self.open_wheel(),
                 Event::ScreenClick(c) if c.button == 0 => self.wheel_click(c.x, c.y),
                 Event::ScreenClick(c) if c.button == 1 => self.turn_page(self.page + 1),
-                Event::ScreenClosed => self.wheel = None,
+                Event::ScreenClosed => {
+                    self.wheel = None;
+                    self.closing = false;
+                }
                 _ => {}
             }
         }
@@ -1541,6 +1639,7 @@ impl Mod for Orbital {
                         "sinkhole" => "SEISMIC SCAN",
                         "payload" | "nuke" | "rod" => "DESIGNATING",
                         "hurricane" => "TRACKING STORM",
+                        "tsunami" => "READING THE SEA",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -1551,6 +1650,7 @@ impl Mod for Orbital {
         self.tick_strike();
         self.follow_tick();
         self.carry_tick();
+        self.surge_tick();
         self.update_panel();
         self.paid();
         self.release_held();
@@ -1566,6 +1666,7 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         meter::reset();
+        self.count_frame(seconds);
         self.pace.frame(seconds);
         self.warm();
         if let Some(s) = &mut self.strike {
@@ -1598,6 +1699,7 @@ impl Mod for Orbital {
             (Some("left-world"), _) => {
                 self.left_world();
                 self.clock = None;
+                self.place = None;
                 Ok(None)
             }
             (Some("approach"), Some(k)) if APPROACHES.iter().any(|a| a.key == k) => {
@@ -1826,6 +1928,10 @@ mod tests {
             assert_eq!(h.matches("@fragment").count(), if fast { 3 } else { 1 });
             assert!(h.len() <= 256 << 10 && h.contains("fn hurricane(") && h.contains("fn hu_debris(") && !h.contains("fn rod("));
             assert_eq!(h.contains("half_picture"), fast);
+            // (the Tsunami's has no half-size stage: both qualities are the same pass)
+            let t = super::tsunami_pass(fast);
+            assert_eq!(t.matches("@fragment").count(), 1);
+            assert!(t.len() <= 256 << 10 && t.contains("fn tsunami(") && t.contains("fn ts_under(") && !t.contains("fn hurricane("));
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
@@ -2095,9 +2201,9 @@ mod stress {
                 self.o.pace.frame(self.frame);
             }
             meter::reset();
-            let began = std::time::Instant::now();
+            let began = thread_time();
             self.o.tick_strike();
-            let took = began.elapsed();
+            let took = thread_time().saturating_sub(began);
             let spent = meter::spent();
             // (how much longer it took than the work the meter counted would: a natively built instruction is well
             // under half a nanosecond)
@@ -2139,8 +2245,32 @@ mod stress {
         }
     }
 
-    /// `bound`: the most a tick may take past what its counted work explains (release builds only; tight only where
-    /// the test runs alone: other tests beside it slow it down).
+    /// The CPU time this thread has used: what a tick's own work took, whatever else the machine is busy with. A tick
+    /// timed by the clock on the wall is failed by a game, a build or the other tests taking its core away.
+    #[cfg(target_os = "linux")]
+    fn thread_time() -> std::time::Duration {
+        #[repr(C)]
+        struct Timespec {
+            sec: i64,
+            nsec: i64,
+        }
+        unsafe extern "C" {
+            fn clock_gettime(clock: i32, t: *mut Timespec) -> i32;
+        }
+        const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+        let mut t = Timespec { sec: 0, nsec: 0 };
+        // SAFETY: `t` is a timespec of the 64-bit layout, alive for the call, and the call only writes it.
+        assert_eq!(unsafe { clock_gettime(CLOCK_THREAD_CPUTIME_ID, &mut t) }, 0);
+        std::time::Duration::new(t.sec as u64, t.nsec as u32)
+    }
+    /// (elsewhere the clock on the wall, from the first call: such a run wants the test alone, or `ORBITAL_NO_TIMING`)
+    #[cfg(not(target_os = "linux"))]
+    fn thread_time() -> std::time::Duration {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        START.get_or_init(std::time::Instant::now).elapsed()
+    }
+
+    /// `bound`: the most CPU time a tick may take past what its counted work explains (release builds only).
     fn soak(sequences: u64, seed: u64, bound: f64) -> (u64, String) {
         let (worst, at, slow, slow_at) = soak_timed(sequences, seed);
         eprintln!("most uncounted in a tick: {:.2} ms ({slow_at})", slow.as_secs_f64() * 1e3);
@@ -2153,7 +2283,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -2340,6 +2470,67 @@ mod stress {
         fake::with(|w| w.holding = false);
         assert_eq!(hints(&mut held, None, 5) + hints(&mut held, Some(40000), 60), 0, "and after");
     }
+    /// A stall is not another world: the frames stop, the world runs on and the clock jumps (forwards, or back by what the
+    /// client had run ahead), the player where they were, and the strike goes on. Another world's jump has seconds of
+    /// frames before it, or the player somewhere else, and ends it.
+    #[test]
+    fn a_stall_is_not_another_world() {
+        let player = Player { x: 0.5, y: 100.0, z: 400.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        let start = |o: &mut Orbital| {
+            fake::with(|w| {
+                *w = fake::Fake::default();
+                w.hit = Some(Hit { block_x: 0, block_y: 64, block_z: 0, x: 0.5, y: 65.0, z: 0.5, block: "minecraft:grass_block".into() });
+                w.player = Some(player.clone());
+                w.clock = 5000;
+            });
+            assert!(o.in_world());
+            o.fire();
+            assert!(o.strike.is_some(), "no strike");
+        };
+        let tick = |o: &mut Orbital, clock: u64, z: f64| {
+            fake::with(|w| {
+                w.clock = clock;
+                if let Some(p) = w.player.as_mut() {
+                    p.z = z;
+                }
+            });
+            o.in_world()
+        };
+        for jump in [5000 + 25 * 20, 5000 + 75 * 20, 5000 + 3600 * 20, 4929] {
+            let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+            start(&mut o);
+            o.count_frame(0.016);
+            o.count_frame(70.0);
+            assert!(tick(&mut o, jump, 400.5) && o.strike.is_some(), "a jump to {jump} ended it");
+            assert!(tick(&mut o, jump + 1, 400.5) && o.strike.is_some());
+        }
+        // (the title screen's frames, then a world with a clock of its own, forwards or back)
+        for jump in [9000, 1000] {
+            let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+            start(&mut o);
+            for _ in 0..120 {
+                o.count_frame(0.016);
+            }
+            assert!(tick(&mut o, jump, 400.5));
+            assert!(o.strike.is_none(), "a world at {jump} left it going");
+        }
+        // (no frames seen, but the player somewhere else)
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+        start(&mut o);
+        assert!(tick(&mut o, 9000, 2400.5));
+        assert!(o.strike.is_none());
+        // (a jump within the same play is nothing; a tick with no player still ends it)
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+        start(&mut o);
+        for _ in 0..120 {
+            o.count_frame(0.016);
+        }
+        assert!(tick(&mut o, 5030, 400.5) && o.strike.is_some());
+        fake::with(|w| w.player = None);
+        assert!(!o.in_world());
+        assert!(o.strike.is_none());
+    }
+
     /// Leaving the world mid-strike ends it there (nothing of it goes on into the next world), and its forceloads are
     /// let go the next time that world is played, not in another one; a strike that runs its course leaves none kept.
     #[test]
@@ -2473,6 +2664,51 @@ mod stress {
         }
         assert!(s.o.cleanup.is_empty() && s.o.edits.is_empty());
         assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+    }
+
+    /// A Tsunami called in on land far off, none of it loaded as it fires (the player 800 blocks away): it waits for the
+    /// land cheaply, its edits go in as it loads (or are left out where it never does), no tick overworks, it ends on time;
+    /// and one close by carries the player along (carry-player and pushes of the surge) with the knockback on, never with
+    /// it off.
+    #[test]
+    fn a_tsunami_on_far_unloaded_land_stays_light() {
+        let ts = LASERS.iter().position(|l| l.key == "tsunami").expect("the tsunami");
+        for slow in [4, 0] {
+            let mut s = Soak::new(5);
+            s.loaded = Loaded { me: (1800, -2000), view: 8, forced: Default::default(), slow, now: 0 };
+            s.fire(ts, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 1400, "it never ended");
+            }
+            let edits = fake::with(|w| w.edits);
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow > 0 {
+                assert!(edits > 50, "the land swept as it loaded ({edits} edits)");
+            }
+        }
+        for knock in [true, false] {
+            let mut s = Soak::new(7);
+            s.o.knock = knock;
+            fake::with(|w| w.pushes = 0);
+            s.fire(ts, (0, 0));
+            // (the player 100 blocks off the target, where the water reaches them by 12 s)
+            fake::with(|w| {
+                if let Some(p) = w.player.as_mut() {
+                    p.x = 0.5;
+                    p.z = 100.5;
+                }
+            });
+            for _ in 0..(40 * 20) {
+                s.step("surge");
+                s.o.surge_tick();
+            }
+            let carries = fake::with(|w| w.pushes);
+            assert_eq!(carries > 100, knock, "{carries} carries with the knockback {knock}");
+        }
     }
 
     /// A Hurricane called in on land far off, none of it loaded as it fires (the player 800 blocks away): it waits for

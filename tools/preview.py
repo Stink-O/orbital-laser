@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13}
+INDEX = {"supercell": 12, "hurricane": 13, "tsunami": 16}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
 VIEWS = {
     "player": "cx=0 cy=70 cz=60 yaw=-90 pitch=28",
@@ -188,13 +188,39 @@ VIEWS = {
     # looking along the debris field at the eyewall's foot from 180 out and from 110, as a player sees it
     "hufield": "cx=0 cy=68 cz=180 lx=0.5 ly=130 lz=0.5 flat=1 trees=1 hustrip=1 fov=55 reach=180",
     "hufieldnear": "cx=60 cy=70 cz=95 lx=-20 ly=110 lz=0 flat=1 trees=1 hustrip=1 fov=60 reach=110",
+    # the tsunami (the player 300 blocks south of the target, the wave coming from the north over a wood): from the
+    # player's spot looking at the horizon it rises on, at the target as it hits, up at the face towering overhead,
+    # from the side, from high above, and 120 off as it arrives
+    "tsplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=95 lz=-300 flat=1 trees=1 fov=70 reach=300",
+    "tshorizon": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=-900 flat=1 trees=1 fov=70 reach=300",
+    "tsup": "cx=0 cy=67 cz=300 lx=0.5 ly=190 lz=100 flat=1 trees=1 fov=80 reach=300",
+    "tsside": "cx=1400 cy=140 cz=-200 lx=0.5 ly=90 lz=-200 flat=1 trees=1 fov=60 reach=300",
+    "tsaerial": "cx=0 cy=500 cz=900 lx=0.5 ly=65 lz=-100 flat=1 trees=1 fov=60 reach=300",
+    "tsnear": "cx=0 cy=67 cz=300 lx=0.5 ly=95 lz=120 flat=1 trees=1 fov=80 reach=300",
+    "tsunder": "cx=0 cy=67 cz=300 lx=0.5 ly=62 lz=-300 flat=1 trees=1 fov=75 reach=300",
+    "tsunderup": "cx=0 cy=67 cz=300 lx=40 ly=200 lz=100 flat=1 trees=1 fov=80 reach=300",
+    "tsfar": "cx=0 cy=75 cz=1100 lx=0.5 ly=110 lz=-300 flat=1 trees=1 fov=60 reach=1100",
+    # on hills, as the clip is filmed; riding the falling water (from 40 over the land, and a few over it), looking back
+    # the way it goes
+    "tshill": "cx=0 cy=74 cz=300 lx=0.5 ly=100 lz=-300 hills=30 trees=1 fov=70 reach=300",
+    "tsride": "cx=0 cy=104 cz=250 lx=0.5 ly=88 lz=-300 flat=1 trees=1 fov=70 reach=300",
+    "tsdeb": "cx=0 cy=67 cz=300 lx=0.5 ly=80 lz=-300 flat=1 fov=70 reach=300",
+    "tsridelow": "cx=0 cy=72 cz=220 lx=0.5 ly=66 lz=-300 hills=20 trees=1 fov=70 reach=300",
+    # (the hill shot of the clips: high on a hill, level, the wave coming at the lens; across a valley; down on the drain)
+    "tspeak": "cx=0 cy=160 cz=300 lx=0.5 ly=172 lz=-300 hills=30 trees=1 fov=70 reach=300",
+    "tsvalley": "cx=330 cy=118 cz=120 lx=-120 ly=66 lz=-140 hills=30 trees=1 fov=70 reach=300",
+    "tsfoot": "cx=40 cy=84 cz=40 lx=-40 ly=64 lz=-300 hills=30 trees=1 fov=70 reach=300",
+    "tstop": "cx=30 cy=480 cz=240 lx=0.5 ly=65 lz=-80 hills=30 trees=1 fov=62 reach=300",
+    "tsdrain": "cx=0 cy=125 cz=300 lx=0.5 ly=62 lz=-100 hills=30 trees=1 fov=70 reach=300",
+    "tsdrainlow": "cx=0 cy=69 cz=300 lx=0.5 ly=60 lz=120 hills=30 trees=1 fov=70 reach=300",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
                  "payload": "plplayer,plsky,pltop", "nuke": "nkplayer,nkfar,nkclose",
                  "rod": "rdplayer,rdmid,rdfar",
                  "supercell": "scplayer,scunder,scfar",
-                 "hurricane": "huplayer,hufar,huunder,huaerial"}
+                 "hurricane": "huplayer,hufar,huunder,huaerial",
+                 "tsunami": "tsplayer,tsside,tsaerial"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -203,7 +229,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
@@ -225,16 +251,16 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
-    if laser in ("payload", "nuke", "rod", "supercell", "hurricane"):
+    if laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
         env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills,
                    PL_FLUSH="1" if "flush=1" in sets else "0")
-        if laser == "hurricane" and ATLAS:
+        if laser in ("hurricane", "tsunami") and ATLAS:
             # (the blocks' sprites as the fake atlas has them, matching the stand-in arrays the preview binds)
             env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
-        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table"}.get(laser, "pl_write_table")
+        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table", "tsunami": "ts_write_table"}.get(laser, "pl_write_table")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
@@ -297,12 +323,12 @@ def main() -> int:
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
-    if a.laser == "hurricane" and not a.notex:
+    if a.laser in ("hurricane", "tsunami") and not a.notex:
         atlas(out)
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
-    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     shots = []
@@ -312,7 +338,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami") else None
     env = dict(env or os.environ)
     if ATLAS:
         env["PREVIEW_ATLAS"] = str(ATLAS / "atlas.raw")

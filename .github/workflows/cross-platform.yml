@@ -10,7 +10,7 @@ on:
     branches: [ci-cross-platform]
 
 env:
-  HORIZON_REV: c06a83b1caa17ba7c9a7868f02645148436b2a6e   # the bundle's pin (horizon-mixin.toml)
+  HORIZON_REV: e57b1d34bb0dcf6bf081c19fe6d2e7f69b60cdf4   # the bundle's pin (horizon-mixin.toml)
   MIXINS_REV: a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab    # the launcher's horizon-mixins (horizon-native.json)
   RUST: 1.99.1                                            # the launcher's own toolchain
 

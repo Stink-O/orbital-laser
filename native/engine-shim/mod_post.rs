@@ -8,8 +8,10 @@
 //! without the stages, or a pass without them, draws `fs_main` alone: the declarations are only the pass's, so the
 //! same source compiles and runs on either.
 //!
-//! The source is compiled when its version changes; one that does not validate is logged and skipped until the
-//! mod gives a new one. One the driver fails to build (wgpu's internal and out-of-memory errors: on Metal, its shader
+//! The source is compiled when its version changes, on a thread of its own so that a frame never waits for the driver
+//! (`prepare`: a strike's frame does wait, and on macOS every one, where `BUILDING` needs the build inside the frame);
+//! what was built is kept, so going back to a pass costs nothing. One that does not validate is logged and skipped until
+//! the mod gives a new one. One the driver fails to build (wgpu's internal and out-of-memory errors: on Metal, its shader
 //! compiler service dropping the connection on a large pass) is logged and skipped too, and tried again a few
 //! seconds and then half a minute later, since the next try may work; never a device fault that ends the game.
 //! `HORIZON_DEBUG_MOD_POST_FAIL=N` makes the first N builds fail that way, to try this on any machine.
@@ -24,6 +26,8 @@
 //! that doesn't sample them compiles and runs everywhere; one that does is refused (logged) by a game without them,
 //! or for a mod without the capability.
 use bytemuck::{Pod, Zeroable};
+use std::collections::HashMap;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 /// What a mod's pass is given before its own source.
@@ -180,6 +184,12 @@ enum Stages {
     Split { extra: bool },
 }
 
+/// A build under way on its own thread.
+struct Build {
+    version: u64,
+    done: mpsc::Receiver<Result<Pipelines, Failure>>,
+}
+
 /// A pass's bind group layouts: the whole pass's (and the half-size stage's), and the join's (the same, and the
 /// half-size stage's two pictures at 6 and 7).
 struct Layouts {
@@ -205,6 +215,9 @@ pub struct ModPost {
     data_version: u64,
     /// The source's version, and its pipelines or why it has none.
     built: Option<Built<Pipelines>>,
+    /// The other passes built so far, by version, and the builds under way.
+    kept: HashMap<u64, Pipelines>,
+    builds: Vec<Build>,
     /// Builds still to fail as the driver would (`HORIZON_DEBUG_MOD_POST_FAIL`).
     fail_builds: u32,
     output: Option<Output>,
@@ -329,6 +342,8 @@ impl ModPost {
             data: data_buffer(device, &[0]),
             data_version: 0,
             built: None,
+            kept: HashMap::new(),
+            builds: Vec::new(),
             fail_builds: std::env::var("HORIZON_DEBUG_MOD_POST_FAIL")
                 .ok()
                 .and_then(|n| n.trim().parse().ok())
@@ -377,14 +392,17 @@ impl ModPost {
     /// Compile `source` (without the prelude) if `version` is new, or if it failed in the driver and its next try
     /// is due; with the atlas's bindings when `atlas` (the mod has capability `atlas`). True when the pass can run;
     /// while it cannot, the frame is drawn without it.
+    /// Whether the pass `version` can run this frame. Not yet built, it is built on a thread of its own and the frame
+    /// goes on without it, unless `wait` (or on macOS, where a compiler crash has to fall inside the frame).
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
         version: u64,
         source: &str,
         atlas: bool,
+        wait: bool,
     ) -> bool {
-        self.prepare_at(device, version, source, atlas, Instant::now())
+        self.prepare_at(device, version, source, atlas, wait || cfg!(target_os = "macos"), Instant::now())
     }
 
     fn prepare_at(
@@ -393,6 +411,7 @@ impl ModPost {
         version: u64,
         source: &str,
         atlas: bool,
+        wait: bool,
         now: Instant,
     ) -> bool {
         if atlas && self.atlas.is_none() {
@@ -401,14 +420,65 @@ impl ModPost {
         // (the same source with the atlas or without is another pass: other layouts)
         if atlas != self.built_atlas {
             self.built = None;
+            self.kept.clear();
+            self.builds.clear();
             self.built_atlas = atlas;
         }
-        if Built::due(self.built.as_ref(), version, now) {
-            let before = Built::failures(self.built.as_ref(), version);
-            let full = format!("{PRELUDE}\n{source}");
-            let result = validate(&full)
-                .map_err(Failure::Invalid)
-                .and_then(|stages| self.pipelines(device, &full, stages, atlas));
+        self.finish_builds(version, wait, now);
+        if Built::due(self.built.as_ref().filter(|b| b.version == version), version, now)
+            && !self.kept.contains_key(&version)
+            && !self.builds.iter().any(|b| b.version == version)
+        {
+            self.start_build(device, version, source, atlas);
+            self.finish_builds(version, wait, now);
+        }
+        if let Some(pipelines) = self.kept.remove(&version) {
+            self.keep_built();
+            self.built = Some(Built {
+                version,
+                state: State::Ready(pipelines),
+            });
+        }
+        self.built
+            .as_ref()
+            .is_some_and(|b| b.version == version && b.ready().is_some())
+    }
+
+    /// The pass in `built`, if it is ready, into `kept`.
+    fn keep_built(&mut self) {
+        if self.built.as_ref().is_some_and(|b| b.ready().is_some())
+            && let Some(Built {
+                version,
+                state: State::Ready(pipelines),
+            }) = self.built.take()
+        {
+            self.kept.insert(version, pipelines);
+        }
+    }
+
+    /// Takes in the builds that have finished, waiting for `version`'s if `wait`. A failure counts only for the pass
+    /// asked for now: another's is tried again when it is asked for.
+    fn finish_builds(&mut self, version: u64, wait: bool, now: Instant) {
+        let mut i = 0;
+        while i < self.builds.len() {
+            let b = &self.builds[i];
+            let result = if wait && b.version == version {
+                b.done.recv().map_err(|_| mpsc::TryRecvError::Disconnected)
+            } else {
+                b.done.try_recv()
+            };
+            let result = match result {
+                Err(mpsc::TryRecvError::Empty) => {
+                    i += 1;
+                    continue;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    Err(Failure::Driver("its build stopped".into()))
+                }
+                Ok(result) => result,
+            };
+            let done = self.builds.swap_remove(i).version;
+            let before = Built::failures(self.built.as_ref(), done);
             match &result {
                 Ok(_) if before > 0 => {
                     log::info!("Horizon: a mod's post pass compiled on try {}", before + 1);
@@ -433,22 +503,55 @@ impl ModPost {
                     }
                 }
             }
-            self.built = Some(Built::after(self.built.take(), version, result, now));
+            match result {
+                Ok(pipelines) => {
+                    self.kept.insert(done, pipelines);
+                }
+                Err(failure) if done == version => {
+                    self.keep_built();
+                    self.built = Some(Built::after(self.built.take(), done, Err(failure), now));
+                }
+                Err(_) => {}
+            }
         }
-        self.built.as_ref().is_some_and(|b| b.ready().is_some())
+    }
+
+    /// Starts `version`'s build on a thread of its own.
+    fn start_build(&mut self, device: &wgpu::Device, version: u64, source: &str, atlas: bool) {
+        let fail = self.fail_builds > 0;
+        self.fail_builds = self.fail_builds.saturating_sub(1);
+        let layouts = &self.layouts[usize::from(atlas)];
+        let (whole, join) = (layouts.pipeline_layout.clone(), layouts.join_pipeline_layout.clone());
+        let (device, format, full) = (device.clone(), self.format, format!("{PRELUDE}\n{source}"));
+        let (send, done) = mpsc::channel();
+        // (naga walks a big pass deeply: the render thread's stack is no guide)
+        let thread = std::thread::Builder::new()
+            .name("mod post pass".into())
+            .stack_size(64 << 20)
+            .spawn(move || {
+                let result = validate(&full)
+                    .map_err(Failure::Invalid)
+                    .and_then(|stages| Self::pipelines(&device, &whole, &join, format, &full, stages, fail));
+                let _ = send.send(result);
+            });
+        match thread {
+            Ok(_) => self.builds.push(Build { version, done }),
+            Err(e) => log::warn!("Horizon: a mod's post pass was not built: {e}"),
+        }
     }
 
     /// The pass's pipelines, made under error scopes for every kind of error: a pass whose bindings do not match the
     /// layout, or one the driver fails to compile, is an error to log, not a device fault (with no scope wgpu's
     /// default handler panics, which ends the game).
     fn pipelines(
-        &mut self,
         device: &wgpu::Device,
+        whole: &wgpu::PipelineLayout,
+        join: &wgpu::PipelineLayout,
+        format: wgpu::TextureFormat,
         source: &str,
         stages: Stages,
-        atlas: bool,
+        fail: bool,
     ) -> Result<Pipelines, Failure> {
-        let layouts = &self.layouts[usize::from(atlas)];
         // popped in the reverse order
         let out_of_memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
@@ -489,20 +592,20 @@ impl ModPost {
         };
         let pipelines = match stages {
             Stages::Whole => Pipelines::Whole(pipeline(
-                &layouts.pipeline_layout,
+                whole,
                 "fs_main",
-                &[target(self.format)],
+                &[target(format)],
             )),
             Stages::Split { extra } => Pipelines::Split {
                 half: pipeline(
-                    &layouts.pipeline_layout,
+                    whole,
                     "fs_half",
                     &[target(HALF_FORMAT), target(HALF_FORMAT).filter(|_| extra)],
                 ),
                 join: pipeline(
-                    &layouts.join_pipeline_layout,
+                    join,
                     "fs_join",
-                    &[target(self.format)],
+                    &[target(format)],
                 ),
                 extra,
             },
@@ -513,8 +616,7 @@ impl ModPost {
         if let Some(failure) = Failure::caught(validation, internal, out_of_memory) {
             return Err(failure);
         }
-        if self.fail_builds > 0 {
-            self.fail_builds -= 1;
+        if fail {
             return Err(Failure::Driver(
                 "HORIZON_DEBUG_MOD_POST_FAIL: a driver failure, as on Metal: \
                  Compilation failed due to an interrupted connection: XPC_ERROR_CONNECTION_INTERRUPTED"
@@ -933,14 +1035,14 @@ mod tests {
         post.fail_builds = 0;
         let plain = "@fragment fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    \
             return textureSampleLevel(scene_color, linear_sampler, in.uv, 0.0);\n}\n";
-        assert!(post.prepare(&device, 1, plain, false));
+        assert!(post.prepare(&device, 1, plain, false, true));
         // binding 6 is only in the join's layout
         let unbound = SPLIT.replace(
             "return textureSampleLevel(scene_color, linear_sampler, in.uv, 0.0);",
             "return textureLoad(half_picture, vec2<i32>(0), 0);",
         );
         validate(&format!("{PRELUDE}\n{unbound}")).unwrap();
-        assert!(!post.prepare(&device, 2, &unbound, false));
+        assert!(!post.prepare(&device, 2, &unbound, false, true));
         assert!(matches!(post.built.as_ref().unwrap().state, State::Refused));
         assert!(!post.prepare_at(
             &device,
@@ -952,17 +1054,17 @@ mod tests {
         // the driver fails twice, then builds
         post.fail_builds = 2;
         let t0 = Instant::now();
-        assert!(!post.prepare_at(&device, 3, plain, false, t0));
+        assert!(!post.prepare_at(&device, 3, plain, false, true, t0));
         assert_eq!(post.fail_builds, 1);
-        assert!(!post.prepare_at(&device, 3, plain, false, t0 + Duration::from_secs(1)));
+        assert!(!post.prepare_at(&device, 3, plain, false, true, t0 + Duration::from_secs(1)));
         assert_eq!(
             post.fail_builds, 1,
             "not tried again before its retry is due"
         );
         let t1 = t0 + RETRY_AFTER[0];
-        assert!(!post.prepare_at(&device, 3, plain, false, t1));
+        assert!(!post.prepare_at(&device, 3, plain, false, true, t1));
         assert_eq!(post.fail_builds, 0);
-        assert!(post.prepare_at(&device, 3, plain, false, t1 + RETRY_AFTER[1]));
+        assert!(post.prepare_at(&device, 3, plain, false, true, t1 + RETRY_AFTER[1]));
     }
 
     /// A pass with the atlas declares bindings 8 to 16 itself (the prelude only shows them in its comments), so it
@@ -1066,13 +1168,13 @@ mod tests {
         let mut post = ModPost::new(&device, rgba8);
         post.fail_builds = 0;
         // no atlas given yet: a pass with it waits
-        assert!(!post.prepare(&device, 1, ATLAS, true));
+        assert!(!post.prepare(&device, 1, ATLAS, true, true));
         post.set_atlas(&[array(&first), array(&second)], &sampler);
         // without the capability the pass's bindings are not in the layout: refused, logged
-        assert!(!post.prepare(&device, 1, ATLAS, false));
+        assert!(!post.prepare(&device, 1, ATLAS, false, true));
         assert!(matches!(post.built.as_ref().unwrap().state, State::Refused));
         // with it, built (the same version: another layout is another pass)
-        assert!(post.prepare(&device, 1, ATLAS, true));
+        assert!(post.prepare(&device, 1, ATLAS, true, true));
         let size = 4;
         let world = texture(
             "world",
@@ -1164,13 +1266,13 @@ mod tests {
         // a pass that doesn't use the atlas runs with it as without
         let plain = "@fragment fn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    \
             return textureSampleLevel(scene_color, linear_sampler, in.uv, 0.0);\n}\n";
-        assert!(post.prepare(&device, 2, plain, true));
+        assert!(post.prepare(&device, 2, plain, true, true));
         assert!(
             draw(&mut post, [0.0; 4])
                 .iter()
                 .all(|&p| p == [9, 9, 9, 255])
         );
-        assert!(post.prepare(&device, 2, plain, false));
+        assert!(post.prepare(&device, 2, plain, false, true));
         assert!(
             draw(&mut post, [0.0; 4])
                 .iter()

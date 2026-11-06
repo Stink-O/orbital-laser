@@ -183,6 +183,8 @@ pub struct Wheel {
     bar_hover: Option<f32>,
     /// A strike is under way: the stop button shows.
     pub striking: bool,
+    /// The laser whose pass is being built as a pick closes the wheel.
+    pub loading: Option<usize>,
 }
 
 /// How many pages of lasers there are, and the page a laser is on.
@@ -283,7 +285,7 @@ pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -607,6 +609,7 @@ impl Wheel {
         // under the ring: a laser's name in its colour (and what it does, while no ship's rows are showing), or in a
         // few words what a click does
         let (info, rgb) = match self.hover {
+            _ if self.loading.is_some() => self.loading.map_or((String::new(), 0), |i| (format!("LOADING {}", LASERS[i].title), LASERS[i].rgb)),
             Some(Spot::Laser(i)) => (LASERS[i].title.to_string(), LASERS[i].rgb),
             _ if self.typing.is_some() && self.seed_typing => ("Type a seed, 1 to 997  ·  Enter to set it".to_string(), 0x8C93A0),
             _ if self.typing.is_some() => ("Type a speed  ·  Enter to set it".to_string(), 0x8C93A0),

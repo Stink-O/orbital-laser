@@ -223,7 +223,7 @@ fn grass_block() -> usize {
 /// A block type's words for the pass (HU_BKW): its top's average colour and its sides', its bottom's and which block
 /// it is; then for its top, its bottom and its sides (the game's up, down and north) the faces the game draws there
 /// (`face_words`), the textures in the game's block sprite arrays (atlas.block-sprites), where it has them.
-fn bk_words(b: u16, grass: u32, foliage: u32) -> [u32; HU_BKW] {
+pub(super) fn bk_words(b: u16, grass: u32, foliage: u32) -> [u32; HU_BKW] {
     let [t, s, d] = bk_rgb(b, grass, foliage);
     let mut w = [0u32; HU_BKW];
     w[0] = c565(t) | c565(s) << 16;

@@ -9,7 +9,9 @@
 `panicked`, that a call of the mod's used over half its fuel (`used N of its 50M fuel`: the game logs only those), or
 name `orbital` at WARN or ERROR level; 0 when they are clean. A run they fail is a failed run: its
 results are not good, whatever it looked like. The log is the control socket's (/run/user/$UID/horizon-control.log),
-else the game folder's logs/latest.log ($HORIZON_HOME, default ~/.local/share/horizon).
+else the game folder's logs/latest.log ($HORIZON_HOME, default ~/.local/share/horizon). A game on a control socket
+of its own (`horizon-ctl --socket PATH`): ORBITAL_GAME_LOG=its .log (beside the socket) and ORBITAL_GAME_MARK=a file of
+your own for the mark.
 """
 import os
 import pathlib
@@ -17,7 +19,7 @@ import re
 import sys
 import time
 
-MARK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "orbital-game-check.mark"
+MARK = pathlib.Path(os.environ.get("ORBITAL_GAME_MARK") or pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "orbital-game-check.mark")
 BAD = re.compile(
     r"mod orbital stopped|did not start|panicked|post pass did not compile|mod orbital's \w+ used [\d.]+M of its|(WARN|ERROR)\].*orbital",
     re.IGNORECASE,
@@ -25,6 +27,8 @@ BAD = re.compile(
 
 
 def log_path() -> pathlib.Path:
+    if os.environ.get("ORBITAL_GAME_LOG"):
+        return pathlib.Path(os.environ["ORBITAL_GAME_LOG"])
     ctl = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "horizon-control.log"
     if ctl.exists():
         return ctl

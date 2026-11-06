@@ -14,7 +14,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
   &nbsp;·&nbsp;
-  <a href="#getting-started"><b>Getting started</b></a>
+  <a href="#quick-install-regular-horizon"><b>Quick install</b></a>
+  &nbsp;·&nbsp;
+  <a href="#getting-started"><b>Fork version</b></a>
   &nbsp;·&nbsp;
   <a href="docs/HOW-IT-WORKS.md"><b>How it works</b></a>
 </p>
@@ -37,25 +39,58 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **It needs the Orbital Laser build of Horizon, release `orbital-mod-api-10` or newer.** Horizon's mod API doesn't
-> yet let a mod catch an item's use, open its own screen, draw effects or change the world, so the mod runs on a
-> fork that adds those:
-> [Stink-O/horizon, branch `mod-api-input-ui-render-world`](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world),
-> with a ready-built Linux download on its [releases](https://github.com/Stink-O/horizon/releases). Older fork builds
-> won't start the mod. You also need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
-> repository or the downloads.
+> **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: the launcher
+> compiles it into the game. The [fork version](#getting-started) is a WebAssembly mod for the Orbital Laser build of
+> Horizon ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), release
+> `orbital-mod-api-10` or newer), with a ready-built Linux download on its
+> [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
+> Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
 > a user (the fork built from source); on macOS the Downfall's effects may not draw (see [Known gaps](#known-gaps)). The
 > ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
 
-**Contents:** [New in 0.5.9](#new-in-059) · [The lasers](#the-lasers) · [Getting started](#getting-started) ·
+**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.10](#new-in-0510) · [The lasers](#the-lasers) · [Fork version](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
 [If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
 
+## Quick install (regular Horizon)
+
+1. Install the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) and set up an instance from your own
+   Minecraft Java Edition 26.3.
+2. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
+3. Close the game. On the launcher's Instances page press **Open folder**, and put `orbital.hnmod` in the
+   **`horizon-native-mods`** folder (make it if it isn't there).
+4. On the launcher's **Mods** page, check Orbital Laser is on.
+5. On the **Native build** row pick **Release build**, press **Build**, and choose **I trust these mods: build**. The
+   first build takes 20 to 30 minutes.
+6. Press Play, open a creative world and type **`/orbital give`**. Hold the Designator and press **R** to pick a
+   laser, then hold right-click on a target to fire.
+
+**What each system needs first.** Linux: a C compiler, `pkg-config` and the ALSA and libudev development files (the
+launcher gives you the command). Windows: nothing. macOS on Apple Silicon: `xcode-select --install`. Intel Macs can't
+build native mods. It's played and tested on Linux; on Windows and Apple Silicon it builds but hasn't been played yet.
+
+A native mod isn't sandboxed: its code runs with full access to your computer, so only build it if you trust it. A
+listing in the launcher's Mods browser is in review. The
+[install guide](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) has the known issues
+and how to remove it.
+
+## New in 0.5.10
+
+A new laser, the **Tsunami**: the horizon stands up into a dark wall 320 blocks high, rolls in over the land at about
+100 blocks a second, sweeps a swath 700 across down to stumps and mud, and takes you with it. It's on the wheel's third
+page and `/orbital tsunami`. See [The lasers](#the-lasers).
+
+For the native version there's a server safety fix: on a server or LAN host, a strike's world changes now need operator
+level 4, and a guest's `/orbital` no longer changes the host's game. It's also built on a newer Horizon, so land a strike
+changes out of your view now shows in far terrain, and your hand draws during the Hurricane.
+
 ## New in 0.5.9
 
+- **It runs on regular Horizon.** The new native version needs no fork build and no `play.sh`: see
+  [Quick install](#quick-install-regular-horizon).
 - **The Orbital Remote is gone.** The Designator is the one item: `/orbital give` gives you it, and **R** with it in
   hand opens the laser wheel. A Remote already in a world's inventory turns into an empty slot.
 - **R opens the wheel only while you hold the Designator.** With anything else in hand R is left alone for whatever
@@ -63,14 +98,14 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 - **Leaving the world ends the strike.** Before, a strike carried on into the next world you opened. Now it ends
   as you leave, and the chunks it forceloaded are let go the next time you play that world. The pause menu holds the
   strike where it is, sounds included, until you go back to the game.
-- **A known gap in Horizon:** the game doesn't stop the sounds playing when you Save and Quit to Title, so a strike's
-  sounds can run on over the title screen until they end. It needs a fix in Horizon itself.
+- **A known gap on the fork version:** the game doesn't stop the sounds playing when you Save and Quit to Title, so a
+  strike's sounds can run on over the title screen until they end. It needs a fix in Horizon itself.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Fourteen lasers, five to a page of the wheel.
+Fifteen lasers, five to a page of the wheel.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -131,8 +166,20 @@ Fourteen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
+- **Tsunami** (page three). The horizon stands up: over three seconds a line, a swell, then a dark wall 320 blocks high and over five kilometres
+  wide lies across the whole of it, spray blowing off its top, and the sky goes grey. It comes in at about 100 blocks a
+  second, losing height over the land, a huge grey-green mass with its lip tearing and long streaks of foam drawn up its
+  face, a brown foot boiling over the ground, mist pushed ahead of it and spray thrown up where it hits things, and in its
+  foot what it has swept up, in the game's own textures. It hits the target at 9 seconds and rolls on over you: the blow
+  is a white flash and seconds of foam, then you are under it, with trees and pieces of houses going by; the water hauls
+  you up, you ride it down as it falls, and it sets you down about where it found you, looking at what it has left. It
+  sweeps a swath 700 across for real: trees snapped to stumps, houses to their footings, the soil scoured to mud and
+  gravel in streaks along the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland,
+  ponds left standing in the hollows. **Photosensitivity:** the blow as the water takes you is one white flash over the whole picture,
+  about a fifth of a second.
+
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell and the Hurricane reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -173,6 +220,10 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
 | Rod from God | The impact frames | The burst | What it leaves |
 |---|---|---|---|
 | ![The rod coming straight down onto the land, glowing white, god rays round it](docs/37-rod-fall.jpg) | ![An impact frame: the rod and the land as gold and umber silhouettes, thick lines converging on the point](docs/38-rod-impact-frames.jpg) | ![The radiant burst as it strikes, rays fanning out over the land](docs/39-rod-burst.jpg) | ![The rod standing in its crater, the land round it bleached white and gold](docs/40-rod-crater.jpg) |
+
+| Tsunami | The wall | Under the water | What it leaves |
+|---|---|---|---|
+| ![A dark wall of water with a white crest standing across the horizon beyond the snowy land](docs/45-tsunami-horizon.jpg) | ![The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land](docs/46-tsunami-wall.jpg) | ![Green water, logs and pieces of a house going by](docs/47-tsunami-underwater.jpg) | ![The land scoured to mud and gravel in streaks along the flow, the wet swath running to the horizon](docs/48-tsunami-aftermath.jpg) |
 
 <!-- HURRICANE STILLS GO HERE (optional): a gallery row like the ones above, for example
 | Hurricane | The eye | The tear-up | What it leaves |
@@ -215,7 +266,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
    over the one at the top of the fork's folder (it's read as `horizon-prepare` runs: nothing to rebuild) and run it
    again.
 
-2. **Install the mod.** Download `orbital-laser-v0.5.8.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.10.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -292,15 +343,18 @@ Mods), read the reason it gives first.
    are remembered.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar counts
    down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
-   `TRACKING STORM…` for the Hurricane), then the strike lands where your crosshair is. Nothing else pops up over the
+   `TRACKING STORM…` for the Hurricane, `READING THE SEA…` for the Tsunami), then the strike lands where your crosshair is. Nothing else pops up over the
    hotbar but `NO TARGET IN RANGE`.
-4. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
+4. **Caught in the Tsunami?** The water takes you once it is over your head, tumbles you along with it, hauls you to the
+   surface after about six seconds, and carries you back as it falls, to be set down near where it took you, facing the
+   way it went. Hold **sneak** for half a second to break free. `/orbital knockback off` leaves you standing in it, the picture still drowned.
+5. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
    to break free; while you fly it leaves you alone, but stop flying for a second while it still blows where you are
    and it grabs you again. If it still has you at 46 seconds it throws you clear (a survival player gets a few seconds
    of Resistance V so the landing doesn't kill them).
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell 42, the Crystal Bloom and the Rod from God 60, the Downfall and the Hurricane 64, the Payload 70 and the Nuke 90.
+Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell 42, the Crystal Bloom and the Rod from God 60, the Downfall and the Hurricane 64, the Tsunami 42, the Payload 70 and the Nuke 90.
 
 The wheel also has:
 
@@ -314,7 +368,7 @@ The wheel also has:
   has already done to the world stays), the same as `/orbital stop`.
 - Down the left, the strike options. **SEED** shows the last strike's seed, or takes one you type (1 to 997), and
   **LOCK SEED** keeps it, so a strike plays out the same way take after take (`/orbital seed`). Under them, for the
-  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod and the Hurricane), whether the blast pushes you or the wind
+  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod, the Hurricane and the Tsunami), whether the blast pushes you or the wind
   carries you, and **FOLLOW** (the Nuke and the Payload), the follow camera.
 - An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: **OFF**, **KANADA** (the
   default), **BLACK FLASH** or **CINEMATIC**, as `/orbital impactframes`.
@@ -327,7 +381,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -337,7 +391,7 @@ The wheel also has:
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
 | `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks (Kanada is the default), or off; kept; also the wheel's IMPACT FX row |
-| `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays), and whether the Hurricane carries you off; also the wheel's KNOCKBACK switch |
+| `/orbital knockback on\|off` | the Nuke's and the Rod's push on you as the blast reaches you (the camera's jolt stays), and whether the Hurricane's wind or the Tsunami's water carries you off; also the wheel's KNOCKBACK switch |
 | `/orbital carryview turn\|still` | while the Hurricane carries you, your view turns a little with you round the storm and sways with the gusts (`turn`, the default), or stays your own (`still`); kept |
 | `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
 | `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
@@ -365,7 +419,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
   and rebind it. R only opens the wheel while you play with the designator in hand, not over another screen. With
   anything else in hand it does nothing (`/orbital wheel` opens the wheel either way).
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell and the Hurricane can aim, and only with **LOD Distance** on in Video Settings.
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell, the Hurricane and the Tsunami can aim, and only with **LOD Distance** on in Video Settings.
 - **The designator only clicks.** A strike is already under way, and one runs at a time. Wait for it to finish, or end
   it with the wheel's STOP STRIKE or `/orbital stop`.
 - **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.

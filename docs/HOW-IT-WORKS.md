@@ -232,6 +232,24 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   gone by 63.4 s; it ends at 64 s. It reaches 1000 blocks. **Photosensitivity:** the eyewall's lightning is bright
   flashes over much of the picture, in bursts.
 
+- **Tsunami** (page three, `/orbital tsunami`). No beam: the sea stands up. Over the first three seconds a dark line, a swell, then a wall
+  rises across the whole horizon beyond the target, 320 blocks high and over five kilometres wide, about 1,200 blocks from
+  you, straight as a rule, a thin torn white lip and spray blowing off its top, and the sky goes a dark grey. It comes in
+  at about 100 blocks a second, losing height over the land to some 145 over the target's ground, and starts to tear:
+  stretches of its crest pitch forward, long streaks of foam are drawn up its grey-green, almost black face, fine chop
+  runs over all of it, its foot turns into a brown boiling bore with what it has swept up in it, mist is pushed along the
+  ground ahead of it, its shadow takes the land, and close by, torn fans of spray are thrown up where it hits trees, buildings and rises. Its foot
+  is held back by high ground and runs on up the low, so it wraps the hills and tongues up the valleys.
+  It reaches the target at 9 seconds and you a few seconds after. The blow is a white flash, the picture thrown round,
+  and a second or two of foam thrown past at a violent speed, opening on dark water; then the green water, bright
+  overhead and with light coming down through it, silt and bubbles streaming by, wreckage going past (a whole tree, a
+  corner of a house, a second tree), lit by the water, dark underneath, going into the murk with distance. The water
+  hauls you up and you break the surface 6.5 seconds after it took you, on a brown torrent running back the way it came,
+  wreckage floating by, and ride it down as it falls: hard at first, slowing as it nears the land, hilltops first, the
+  plains under a few blocks of running water for a while, wet land and rills as it goes. It sets you down near where it
+  found you, facing the way it went, the sky clearing as the strike ends. It lasts 42 seconds and reaches 1000 blocks.
+  **Photosensitivity:** the blow is one white flash over the whole picture, about a fifth of a second.
+
 All of them:
 
 - **Real camera shake.** Booms and impacts shake the actual camera, timed to when the blast reaches you and weaker the
@@ -373,13 +391,28 @@ round and, at the fling, thrown out to fall: the fall hurts them, but nothing is
 thrown with KNOCKBACK on, terrain damage on or off. It keeps the chunks within 184 loaded while it works. All of it
 goes in through `world.edit-blocks`.
 
+The **Tsunami** digs no crater: it sweeps and scours a swath, under its water. The swath runs from 300 blocks upstream of
+the target (fading in over its first 130) through it to 160 past the player, and at most 720 past the target, 345 each
+side (the share of columns taken fading from 255 out). That is about 2,200 chunks from 300 blocks off (about 1,600 to
+2,900 by how far off you stand), forceloaded from the start and let go at the end. Each chunk is read
+(`world.read-columns`, 40 under each column's top) in the order the front reaches it and changed as one edit
+(`world.edit-blocks`) as the crest has passed it, only where the wave stands at least 2 over the column's ground. What
+stood there goes, but for stumps of 1 to 3 logs under most trunks and footings of up to 3 blocks under buildings; the
+soil turns to mud, packed mud, coarse dirt, gravel, sand and clay in streaks along the flow, and in the strongest streaks
+channels are gouged up to 5 deep; trunks and building blocks are laid down along the flow, a few boulders, and at the
+limit of its reach a line of drift (logs, planks, gravel), with timber jammed in the crowns of the trees it left. Every
+mob and item in the chunk dies as the water gets there, up to 36 boats are left stranded, and when all the land is read
+each 64 by 64 tile is flooded from its edges and whatever drains (priority flood, lowest first; a column with a hollow
+under it counts as a drain, the tile's edge holds no water): each hollow keeps water up to 3 over its floor, the blocks
+going in while the falling wave still hides them.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -388,7 +421,7 @@ goes in through `world.edit-blocks`.
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) and the Hurricane's carry on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
 | `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
@@ -623,6 +656,20 @@ eyewall's lightning has its thunder, timed to the pass's flashes and late by the
 within about 110 blocks, a duller clap with a longer roll to 320, mostly roll further off, and a roll up in the cloud
 for a flash that strikes nothing. `--listen DIR` mixes it as the game plays it at 60, 150 and 500 blocks and carried.
 
+The Tsunami's ([`tools/sounds_tsunami.py`](../tools/sounds_tsunami.py)) are 23 mono files, 2 MB, all synthesised, with no resonators in the water at all: thirty third-octave bands of independent noise, each with its own chaotic gain in decibels (slow eddies, heavy-tailed regional surges, splashes), broadband blows in which every band rises at once, and debris as noise bursts buried in the roar (Horizon
+decodes every file to mono and plays a global sound dead centre, so nothing is built stereo). A rupture and a long rumble
+from the first second; a roar in three layers that overlap into one rising wall, `roar_far` from 2.5 s, `roar_mid` 9 s
+and `roar_near` 4 s before the water reaches the player (its last second is the immersion cut into it: the level drops
+9 dB in 3 ms and the top closes in a third of a second); the crash at the target, late by the distance (`crash`, and
+`crash_far` crossfaded in from 250 to 800 blocks: a heave, a slam of water, hundreds of trunks and beams, masonry); the
+`engulf` slam as the water goes over the head, the muffled churning bed `under`, `surface` at 6.5 s, the `torrent` ridden
+down, the `drain` and its far roar `roar_back`, `rumble_after`, and a dry-up `trickle`; `roar_pass` for a player the wave
+never closes over; and short positional trunk cracks and
+water slaps placed where the front is as it reaches the ground round the player (`tools/sounds_tsunami.py`'s `schedule`
+and `strike/tsunami.rs` use the same formulas: the arrival `tp = 9 + dp / 100 + 1.07e-5 dp^2`, the sound's lateness
+`dp / 343`). The strike's mix stays under -1 dBTP at every distance from 100 to 720 blocks (the script's `--listen DIR`
+writes it as heard from 200 and 600 blocks, mixed as the game plays it, with spectrograms).
+
 The Sinkhole's pass ([`mod/shaders/sinkhole.wgsl`](../mod/shaders/sinkhole.wgsl)) reads the rings and slabs the mod
 cuts the land into (`sh_table`, through `render.set-data` on the tick after it fires), each slab's ground height and
 slope once the world has said them (`world.surface-height`), the waterfalls, where the rim's columns stand under
@@ -747,6 +794,34 @@ game draws them, with each block type's average colour as the fallback and for t
 drops in the world round the camera, strung the way they fall and blown with the wind, on grids in four layers out. The
 lightning is a fifth-of-a-second slot each in bursts, the brightest flash lighting the cloud. QUALITY FAST marches the
 cloud at half size and finds each two by two's nearest block or tree there, the join drawing it sharp.
+
+The Tsunami's pass ([`mod/shaders/tsunami.wgsl`](../mod/shaders/tsunami.wgsl)) is a closed-form wave: the front reaches a
+point (s along the wave's way from the target, u across it) at `ts_arr`, the water over it climbs a concave face to its
+crest (`ts_prof`, about 105 blocks) and sits a little under that, then all the land's water falls together (`ts_x`,
+`ts_fall`: hard, then slowly past the land), its height by `ts_env` (stood up by `ts_rise` over the first three seconds,
+320 over the target's ground far out, about 145 at the land, spent at its end, out to 3,300 blocks across), the crest leaning out where it is
+breaking (`ts_break`) once it comes in; so nothing is kept from frame to frame, a strike started part way in lands where
+it should, and `strike/tsunami.rs` (`TsGeo`) and `surge.rs` use the same functions, in sines rather than noise where they
+are asked for hundreds of times a pixel. A ray is marched to the surface and bisected, with long strides over the level
+water behind the front. The face is dark grey-green going to black, with a grey sky in it, chop over it, sun glitter, a
+little green where it thins, and foam only in its torn lip and in long streaks sheared across the face and drawn up it
+(white in curtains, or anywhere near this much of it, reads as a waterfall or a snowy mountain, not as water). Close to,
+every edge is cut by `ts_chop`, wavelets from 17 blocks long down to a few pixels whatever the distance, and streaks become a
+lace of cell walls (`ts_lace`): nothing there is stretched noise, which is what smears as it fills the frame. The foot
+follows the land's height from the table (`ts_ground`), and is held back by it (`ts_toe`, the pass only, up to 0.42 s on
+high ground and 0.55 s ahead on low, none round the player, whose engulfing the sounds and the carry have to the moment,
+and little enough that the land's edits, which go by the plain arrival, stay under water): round lumps packed together (`ts_boil`), nearly black in their
+creases and cream on top, a flat mud grey at a distance. Spray and mist are marched in the band the front lies in; the
+rooster tails (`ts_tails`) are drawn on planes across its way at the rows of land just reached, close to the camera only,
+ahead of the front only. Wreckage is boxes in cells of a grid in the wave's own frame, in the game's block textures
+(`atlas`), kinds chosen from the land's map of trees and buildings. Under the water (camera below the surface) the
+picture is rotated and the ray followed to where it leaves the water; twelve steps through foam streaming past (dense at
+first, gone in two seconds), silt and bubbles, light shafts, wreckage riding the water's drift and a tree, a house's corner
+and a second tree on the sounds' moments (`ts_bigs`), all lit by the water from above, not by the sky. The land the
+water has left is soaked dark on the blocks' own pixels, with a dull sheen, pools on the level ground that hold the sky and
+what stands round them (a short march through the picture) and dark runs of water down the slopes, drying in patches with
+the pools last, the lakes left alone (`ts_wet`, normals from the depth), and the draining surface is
+its own shading (`ts_torrent`). At 1920x1080 the pass takes about 5 ms looking at the wave and 2.5 ms under the water.
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half
 the width and height, draws what is soft and costly (the column, the trail and its glow, the pieces' smoke, the dust)

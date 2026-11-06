@@ -4,7 +4,7 @@
 set -euo pipefail
 B=$(dirname "$(readlink -f "$0")")
 REPO=${REPO:-$HOME/Downloads/orbital-laser}
-REF=${REF:-f74091d}
+REF=${REF:-HEAD}
 E=$B/mixins/orbital/engine
 rm -rf "$E"; mkdir -p "$E/src"
 tmp=$(mktemp -d)
@@ -43,7 +43,7 @@ PY
 cat > "$E/Cargo.toml" <<'TOML'
 [package]
 name = "orbital-laser"
-version = "0.5.9"
+version = "0.5.10"
 edition = "2024"
 description = "Orbital Laser's engine for the native build: the mod's code, unchanged, on a native Horizon mod SDK."
 license = "MIT"
