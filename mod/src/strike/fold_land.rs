@@ -348,6 +348,31 @@ fn facet(pattern: usize, w: &FdWedge, i: usize, r: f64) -> u32 {
     let round = [a, b, c, d];
     (0..4).find(|j| side(v, round[*j]) && !side(v, round[(*j + 1) % 4])).map_or(0, |j| j as u32)
 }
+/// The crack along the strike's pattern's own lines across panel `i`, if any, at the point `r` out in wedge `w`: how near its middle.
+fn panel_crack(pattern: usize, w: &FdWedge, i: usize, r: f64) -> Option<f64> {
+    if pattern == 0 {
+        return None;
+    }
+    crate::meter::spend(300);
+    // (the plan, the wedge's first crease along x)
+    let st = (30.0f64).to_radians();
+    let on1 = |q: f64| (q * st.cos(), q * st.sin());
+    let p = ((w.u + w.v * st.cos()) * r, w.v * st.sin() * r);
+    let (b, c) = ((FdWedge::node(w.k, i), 0.0), on1(FdWedge::node(w.k1, i)));
+    let (a, d) = if i == 0 { ((0.0, 0.0), (0.0, 0.0)) } else { ((FdWedge::node(w.k, i - 1), 0.0), on1(FdWedge::node(w.k1, i - 1))) };
+    let near = |o: (f64, f64), e: (f64, f64)| {
+        let (dx, dz) = (e.0 - o.0, e.1 - o.1);
+        let t = (((p.0 - o.0) * dx + (p.1 - o.1) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+        (p.0 - o.0 - t * dx).hypot(p.1 - o.1 - t * dz)
+    };
+    let d0 = if pattern == 2 {
+        if (w.k + i) % 2 == 1 { near(b, d) } else { near(a, c) }
+    } else {
+        let v = (0.25 * (a.0 + b.0 + c.0 + d.0), 0.25 * (a.1 + b.1 + c.1 + d.1));
+        near(v, a).min(near(v, b)).min(near(v, c)).min(near(v, d))
+    };
+    (d0 < 2.2).then(|| 1.0 - d0 / 2.2)
+}
 /// The floor's own panel: a panel of the crease pattern, a drop and a tilt of its own, so that the creases stand as scarps. `r` out along
 /// bearing wedge `w`, in the wedge's cell `i`, its inner and outer chords `r0`, `r1` there.
 fn kite_drop(seed: u32, w: &FdWedge, i: usize, r: f64, r0: f64, r1: f64, part: u32) -> f64 {
@@ -627,7 +652,7 @@ fn fd_cut(s: &Shape, c: &Column, x: i32, z: i32) -> Cut {
             top -= (4.0 + 9.0 * (1.0 - p.gap / w) + 7.0 * h(0xae)) as i32;
         }
     }
-    let fs = fis.map(|f| f.0).or_else(|| ring_crack(s, r, a, &w));
+    let fs = fis.map(|f| f.0).or_else(|| ring_crack(s, r, a, &w)).or_else(|| panel_crack(s.pattern, &w, i, r));
     if let Some(f) = fs {
         top -= (10.0 + 26.0 * f) as i32;
     }
@@ -2309,7 +2334,8 @@ mod tests {
         let land: u8 = std::env::var("FL_LAND").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
         let seed: f32 = std::env::var("FL_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(37.0);
         LAND.with(|l| l.set(land));
-        let ev = plan(the_laser(), &target(), true, "minecraft:overworld", seed, ME, 0);
+        let pattern: usize = std::env::var("FL_PATTERN").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let ev = plan(the_laser(), &target(), true, "minecraft:overworld", seed, ME, pattern);
         let p = sim::play(ev, FD_LEN, &column);
         let a = After::new(&p);
         let n = FD_READ + 30;
