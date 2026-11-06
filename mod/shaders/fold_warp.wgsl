@@ -881,7 +881,8 @@ fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
         let C = P0 * (m * m * m) + P1 * (3.0 * m * m * v) + P2 * (3.0 * m * v * v) + vec2<f32>(0.0, FW_TIP) * (v * v * v);
         let k = fw_ss(0.0, 0.12, g.draw);
         on = vec3<f32>(mix(on.xy, C, k), on.z);
-        let tw = FW_TURNS * FW_TAU * v * v * k;
+        // (all the winding is in the funnel: down the neck the far land's tiles are too long to go round it, and cut across it)
+        let tw = FW_TURNS * FW_TAU * fw_ss(0.0, 0.75, v) * k;
         let ct = cos(tw);
         let st = sin(tw);
         ca = ca0 * ct - sa0 * st;
@@ -1448,6 +1449,10 @@ fn world_fragment(f: Fragment) -> Painted {
     let shown = gone * (1.0 - fw_ss(FW_SLAM4, FW_SLAM4 + 0.3, t));
     // (the land's top faces only, by the face's real normal: plants and leaves have backs too)
     let real_n = cross(dpdx(f.home), dpdy(f.home));
+    // (the rim's way down: a far tile is long enough to span the funnel's winding and shows its back, a black shard: only the land's top is drawn there)
+    if (tau > 34.4 && real_n.y > 0.5 * length(real_n) && r > FW_RIM0 * max(clamp(min(globals.fog.y, globals.fog.w), 480.0, 20000.0) - length(mq.xz), 300.0)) {
+        return drop_;
+    }
     // (which side of a top face is seen, by which way round the land's own (x, z) lies on the screen: water is wound the other way, and a
     // far tile's water is opaque)
     if (FW_UNDER > 0.0 && real_n.y > 0.9 * length(real_n) && shown > 0.0 && plain.a > 0.99) {
