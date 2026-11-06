@@ -1302,11 +1302,13 @@ fn fd_embers(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wav
 /// before it is due. Each stage does about FD_BUDGET columns' worth (well under a tick's fuel).
 const FD_BUDGET: f64 = 870.0;
 /// What an answer of the land's read is reckoned to cost past what `take_in_grid` counts.
-const FD_ANSWER: u64 = 5_000_000;
+const FD_ANSWER: u64 = 7_000_000;
 /// About what a unit of that work costs in instructions.
 const FD_UNIT: f64 = 8_000.0;
 /// Columns of the land's square made ready a stage.
 const FD_GROW: usize = 100_000;
+/// While the wave's edits are going in a stage starts no job past this.
+const FD_WAVE_SOFT: u64 = 12_500_000;
 /// Reads of the land asked and not taken in yet, at most.
 const FD_IN_FLIGHT: usize = 8;
 enum Job {
@@ -1597,6 +1599,10 @@ fn fd_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
         }
         // the jobs: the first that can be done (never past one of the wave's parts that cannot yet: they go in order)
         loop {
+            // (the wave's edits come after the stage in the same tick, up to meter::EDITS, and the meter reads a little under the real thing)
+            if now >= FD_HIDDEN.start && crate::meter::spent() >= FD_WAVE_SOFT {
+                break;
+            }
             let mut pick = None;
             for (i, j) in wk.jobs.iter().enumerate() {
                 crate::meter::spend(300);
