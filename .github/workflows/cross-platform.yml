@@ -52,7 +52,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: windows-latest
             target: x86_64-pc-windows-gnu      # the launcher's Windows host: MinGW, no Visual Studio
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin       # Apple Silicon; the launcher has no toolchain for Intel Macs
     runs-on: ${{ matrix.os }}
     defaults:
