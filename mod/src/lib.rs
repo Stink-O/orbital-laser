@@ -324,9 +324,6 @@ struct Orbital {
     blast_alt: [bool; 2],
     /// While the Fold's sphere is shut round the player (`strike::FD_STAY`): their flight kept to vanilla's at most.
     fly_held: bool,
-    /// A dev switch, not kept, for the next Fold: its origami crease pattern (fold_warp.wgsl's `cp_*`, `/orbital crease on`), in
-    /// params[10], in place of its cracks.
-    crease: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
@@ -430,7 +427,6 @@ impl Orbital {
             colours,
             fly,
             fly_held: false,
-            crease: false,
             blast_alt,
             fast,
             impact,
@@ -995,9 +991,6 @@ impl Orbital {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
-        }
-        if laser.key == "fold" {
-            params[10] = f32::from(u8::from(self.crease));
         }
         self.hand_post(pass_of(laser));
         render::set_params(&params);
@@ -1800,11 +1793,6 @@ impl Mod for Orbital {
             },
             (Some("follow"), None) => Ok(Some(format!("Follow camera: {}, {} blocks out (/orbital follow on|off, /orbital follow distance N)", if self.follow { "on" } else { "off" }, self.follow_distance))),
             (Some("impactframes"), None) => Ok(Some(format!("Impact frames: {} (/orbital impactframes kanada, blackflash, cinematic or off)", if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" }))),
-            (Some("crease"), Some(v @ ("on" | "off"))) => {
-                self.crease = v == "on";
-                Ok(Some(format!("The Fold's crease pattern {v}, from the next strike ({})", if self.crease { "origami creases" } else { "the cracks" })))
-            }
-            (Some("crease"), None) => Ok(Some(format!("The Fold's crease pattern: {} (/orbital crease on or off, the next strike)", if self.crease { "on" } else { "off" }))),
             (Some("shadow"), Some(v @ ("on" | "off"))) => {
                 self.shadow_off = v == "off";
                 let flags = |o: &Self, i: f32| o.flags_of(i as u32);

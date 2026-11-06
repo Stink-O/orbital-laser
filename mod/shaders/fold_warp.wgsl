@@ -3,7 +3,7 @@
 // `[fragments]` line) with where it really is, so all of it is anchored to the world and none to the screen. The land is a
 // thin sheet: what is under it never moves far and is never drawn (see FRAGMENTS, "the sheet").
 //   FW_RIPPLE  rings running out of the target, each bigger than the last
-//   FW_SCORE   they sharpen into hairline creases racing over the land: the mandala (fw_crease)
+//   FW_SCORE   they sharpen into hairline creases racing over the land: the crease pattern (cp_lines)
 //   FW_TEAR    the creases split on the void, painted on the land itself so nothing under it shows
 //   FW_FOLD    the land swells up round the target ring by ring, one smooth sheet, nothing over anything: every point of it
 //              goes to one place (fw_chain), the horizon rolling up and over behind it (fw_roll)
@@ -111,20 +111,6 @@ fn fw_wob(a: f32, i: i32) -> f32 {
     let k = f32(i);
     return (sin(a * 2.0 + 1.3 * k + 0.4) + 0.7 * sin(a * 5.0 - 2.1 * k + 1.1) + 0.45 * sin(a * 11.0 + 0.7 * k) + 0.3 * sin(a * 17.0 - 1.9 * k)) / 2.45;
 }
-// A wandering broken line round bearing a, -1 to 1: straight runs of uneven length between corners, as cracks run.
-fn fw_zig(x: f32) -> f32 {
-    return abs(fract(x) - 0.5) * 4.0 - 1.0;
-}
-fn fw_jag(a: f32, i: i32) -> f32 {
-    let u = a / FW_TAU;
-    let k = f32(i);
-    return (fw_zig(u * 3.0 + 0.37 * k) + 0.7 * fw_zig(u * 5.0 + 0.61 * k + 0.2) + 0.45 * fw_zig(u * 11.0 + 0.83 * k + 0.5)) / 2.15;
-}
-// Ring i's outer edge at bearing a: where it hinges, and the crack along it (fw_crease), no two alike.
-fn fw_rho(i: i32, a: f32) -> f32 {
-    let ring = fw_ring(i);
-    return ring * (1.0 + 0.26 * fw_jag(a, i));
-}
 // When ring i lands, outermost first (strike/fold.rs's FD_SLAM).
 fn fw_hit(i: i32) -> f32 {
     switch i {
@@ -173,66 +159,12 @@ fn fw_tau(t: f32) -> f32 {
     // (gathering, then steady as the sphere opens, then the far land falling away)
     return FW_BEAT - (FW_BEAT - FW_BACK) * u * u * (3.11 + u * (-5.05 + u * 2.94));
 }
-// The cracks: land broken as ice is by a blow, shards long and small near the blow and bigger further off, each to its own
-// size: a Voronoi pattern in (log r, bearing), so it runs radially from the middle and is the same at every scale, its points
-// scattered and its lines bent, and only some of its shards broken again. (x how far to the nearest crack, blocks, y to the nearest
-// of the big ones; those tear open, the small ones stay hairlines)
-const FW_SK: f32 = 2.3;            // shards a unit of log r long
-const FW_SM: f32 = 9.0;           // and this many round
-fn fw_cell(p: vec2<f32>, m: f32) -> vec3<f32> {
-    let c = floor(p);
-    var d1 = 9.0;
-    var d2 = 9.0;
-    var id = 0.0;
-    for (var j = -1; j <= 1; j += 1) {
-        for (var i = -1; i <= 1; i += 1) {
-            let o = c + vec2<f32>(f32(i), f32(j));
-            let w = vec2<f32>(o.x, o.y - m * floor(o.y / m));
-            let h = fw_hash(w * 3.7 + vec2<f32>(11.0, 5.0));
-            let h2 = fw_hash(w.yx * 2.3 + vec2<f32>(3.0, 17.0));
-            let q = o + vec2<f32>(0.5 + 0.8 * (h - 0.5), 0.5 + 0.8 * (h2 - 0.5)) - p;
-            let d = dot(q, q);
-            if (d < d1) {
-                d2 = d1;
-                d1 = d;
-                id = h;
-            } else if (d < d2) {
-                d2 = d;
-            }
-        }
-    }
-    return vec3<f32>(sqrt(d2) - sqrt(d1), id, 0.0);
-}
-fn fw_shard_at(r: f32, a: f32) -> vec2<f32> {
-    let lr = log(r + 22.0);
-    let bent = a + 0.16 * sin(lr * 3.1 + 2.0 * a) + 0.09 * sin(lr * 7.3 - 3.0 * a) + 0.05 * sin(lr * 13.0 + 5.0 * a);
-    let u = (bent + FW_PI) / FW_TAU;
-    return vec2<f32>(lr * FW_SK + 0.13 * sin(a * 3.0 + lr), u * FW_SM);
-}
-fn fw_shard(r: f32, a: f32) -> vec2<f32> {
-    let lr = log(r + 22.0);
-    let p = fw_shard_at(r, a);
-    let big = fw_cell(p, FW_SM);
-    let size = (r + 22.0) / FW_SK;
-    let wide = big.x * 0.5 * size;
-    // (some shards broken again, smaller)
-    var fine = wide;
-    if (big.y > 0.42) {
-        let b = fw_cell(p * 2.0 + vec2<f32>(0.37, 0.71), FW_SM * 2.0);
-        fine = min(fine, b.x * 0.25 * size);
-    }
-    return vec2<f32>(fine, wide);
-}
-// ---- option B, the origami crease pattern (`/orbital crease on`, globals.warp[2].z, the next strike; A, the cracks, is the rest of
-// this file). Straight lines, nothing wandering: eight big creases out of the target at bearings that fold flat (Kawasaki: every
-// other angle round it adds up to 180 degrees), two of them one straight line through it; then, ring by ring, chords between them
-// from node to node (fw_rho's hinges, straight, so the bends lie on the lines); then in each facet a vein off a big crease, and
+// ---- the crease pattern: origami. Straight lines, nothing wandering: eight big creases out of the target at bearings that fold flat
+// (Kawasaki: every other angle round it adds up to 180 degrees), two of them one straight line through it; then, ring by ring, chords
+// between them from node to node (cp_rho, straight, so the bends lie on the lines); then in each facet a vein off a big crease, and
 // branches off the vein. The sheet zigzags from one big crease to the next, flat facets between them, each big crease a mountain or a
 // valley in turn: cp_rise, a height a block out along each. All of it a height over (x, z): one sheet, nothing over anything.
 const CP_K: f32 = 0.34;            // the pleats' slope, per radian of cp_rise
-fn cp_on() -> bool {
-    return globals.warp[2].z > 0.5;
-}
 fn cp_dir(k: i32) -> vec2<f32> {
     switch k {
         case 0: { return vec2<f32>(1.000000, 0.000000); }
@@ -332,7 +264,7 @@ fn cp_node(k: i32, i: i32) -> f32 {
     var n = cp_inv(k);
     return 1.0 / n[i];
 }
-// Ring i's edge in this wedge, at its bearing: fw_rho's place, the straight chord from node to node.
+// Ring i's edge in this wedge, at its bearing: the straight chord from node to node.
 fn cp_rho(w: CpW, i: i32) -> f32 {
     var x = w.x;
     return 1.0 / x[i];
@@ -439,16 +371,7 @@ fn fw_score(t: f32) -> f32 {
 // its edge, the last lying on the ground. A point r along it: (R out from the axis, Y up, the plate's angle).
 // A plate shrinks to `kappa` as it closes, so what has closed is a dome no wider than the globe, inside the player's distance
 // whatever it is, and what hasn't lies flat and slides in to the dome's foot.
-fn fw_fold(r: f32, a: f32) -> f32 {
-    let p = fw_shard_at(r, a);
-    let big = fw_cell(p, FW_SM);
-    let size = (r + 22.0) / FW_SK;
-    let d = big.x * 0.5 * size;
-    let amount = (big.y - 0.5) * 2.0;
-    let sign = select(-1.0, 1.0, fract(big.y * 7.3) > 0.45);
-    return sign * (0.35 + 0.65 * abs(amount)) * 0.34 * size * (1.0 - exp(-d / (0.22 * size)));
-}
-fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32, plain: f32, b: bool, w: CpW) -> vec3<f32> {
+fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32, plain: f32, w: CpW) -> vec3<f32> {
     var prev = 0.0;
     var R = 0.0;
     var Y = 0.0;
@@ -465,12 +388,7 @@ fn fw_chain(r: f32, a: f32, t: f32, kappa: f32, rt: f32, plain: f32, b: bool, w:
     ph[5] = 0.0;
     var last = 0.0;
     for (var i = 0; i < 5; i += 1) {
-        var rho = 0.0;
-        if (b) {
-            rho = cp_rho(w, i);
-        } else {
-            rho = fw_rho(i, a);
-        }
+        let rho = cp_rho(w, i);
         let k = mix(1.0, kappa, ps[i]);
         // (the plate's angle from end to end: all one on a rigid plate, which leaves a hinge at each ring; as the land closes
         // into one sheet each runs into the next, so it bends in arcs: no kink, and no gap across a hinge between what stands on it)
@@ -972,12 +890,11 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let dist = length(mq.xz);
     let e = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
     var rest = Q + vec3<f32>(0.0, rip, 0.0);
-    // (B: the land pressed along the creases, all but what is underfoot, whether or not it has gone to the sheet yet)
-    let b = cp_on();
-    let crease = b && t > FW_SCORE && t < FW_SLAM4 && tau < FW_FLAT0 && r < FW_LEN * 1.25;
+    // (the land pressed along the creases, all but what is underfoot, whether or not it has gone to the sheet yet)
+    let crease = t > FW_SCORE && t < FW_SLAM4 && tau < FW_FLAT0 && r < FW_LEN * 1.25;
     var w: CpW;
     var pr = vec2<f32>(1.0, 0.0);
-    if (b && tau >= FW_SCORE && tau < FW_FLAT0) {
+    if (tau >= FW_SCORE && tau < FW_FLAT0) {
         w = cp_wedge(a);
     }
     if (crease && tau < FW_LAY1) {
@@ -1015,7 +932,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     if (t > FW_FLAT && t < FW_SLAM4) {
         h += fw_shock(r, t);
     }
-    // (B: the land creased along the big lines from the scoring on, before it lifts)
+    // (the land creased along the big lines from the scoring on, before it lifts)
     var zv = 0.0;
     var pre = 0.0;
     if (crease) {
@@ -1030,7 +947,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         h = mix(h, c.cut + 0.15 * (h - c.cut), cuts);
     }
     var soft = select(26.0 * (1.0 - exp(h / 26.0)) * -1.0, 110.0 * (1.0 - exp(-h / 110.0)), h > 0.0);
-    // (B: its relief is pressed out already: only brought to the sheet's level, or what lies under it would be pressed on to it too)
+    // (its relief is pressed out already: only brought to the sheet's level, or what lies under it would be pressed on to it too)
     if (pr.y != 0.0) {
         soft = mix(soft, h - pr.y, fw_ss(FW_LEN * 1.25, FW_LEN, r));
     }
@@ -1048,7 +965,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var ch = vec3<f32>(r, 0.0, 0.0);
     if (!lying) {
         span = fw_span(tau, kappa, t);
-        ch = fw_chain(r, a, tau, kappa, t, span.y, b, w);
+        ch = fw_chain(r, a, tau, kappa, t, span.y, w);
     }
     var R = ch.x;
     var Y = ch.y;
@@ -1062,9 +979,6 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         let lost = sqrt(max(1.0 - squeeze * squeeze, 0.0)) * (1.0 - fw_lay(tau)) * fw_ss(FW_LEN * 1.1, FW_LEN * 0.9, r);
         if (crease) {
             hh += FW_PLEATS * max(lost - pre, 0.0) * zv;
-        } else if (lost > 0.0 && !b) {
-            let sh = fw_fold(r, a);
-            hh += FW_PLEATS * lost * sh;
         }
     }
     R += hh * sn;
@@ -1087,23 +1001,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     return out;
 }
 // [fragments]
-// ---- the mandala ----------------------------------------------------------------------------------------------------
-// How far (r, a) is from the nearest crease, blocks: x a ring's scalloped edge or a petal's edge, y a petal's middle line.
-fn fw_crease(r: f32, a: f32) -> vec2<f32> {
-    var ring = 1000.0;
-    var inside = 4;
-    for (var i = 4; i >= 0; i -= 1) {
-        let rho = fw_rho(i, a);
-        ring = min(ring, abs(r - rho));
-        if (r < rho) {
-            inside = i;
-        }
-    }
-    let past = max(r - fw_rho(4, a), 0.0);
-    let s = fw_shard(r, a);
-    return vec2<f32>(min(ring + 1.0, s.y + past * 4.0), s.x + past * 4.0);
-}
-// ---- option B's lines, as the land's pixels see them ------------------------------------------------------------------------
+// ---- the creases, as the land's pixels see them ----------------------------------------------------------------------------
 // big: blocks to the edge of the nearest big crease or chord. hot: how much of the pixel is such a crease's bright core, glow its
 // light round it. ink: how much is a fine crease's dark line. tear: blocks to the void's edge, under 0 in it. light: the sheet's
 // tilt towards the light, one for a full fold, its facets' and the veins' sides, for the land's own lighting doesn't follow the warp.
@@ -1366,26 +1264,18 @@ fn world_fragment(f: Fragment) -> Painted {
     let healed = fw_ss(25.5, 28.0, tau);
     // (past the land they are healed, and the pattern's dear: not worked out when there is nothing to show)
     var dc = vec2<f32>(1000.0);
-    let b = cp_on();
     var hit = CpHit(1000.0, 0.0, 0.0, 0.0, 1000.0, 0.0);
     if (healed < 1.0 && front > 0.0 && r < FW_LEN * 1.2) {
-        if (b) {
-            let turn = fract(c.seed * 0.618034) * FW_TAU;
-            hit = cp_lines(r, a, t, max(0.05, dist * 0.00095), fw_rot(normalize(globals.sun.xz + vec2<f32>(0.001, 0.0)), -turn), fw_ss(FW_FEET + 25.0, FW_FEET + 70.0, length(f.home.xz - c.me.xz)));
-            dc = vec2<f32>(hit.big);
-        } else {
-            dc = fw_crease(r, a);
-        }
+        let turn = fract(c.seed * 0.618034) * FW_TAU;
+        hit = cp_lines(r, a, t, max(0.05, dist * 0.00095), fw_rot(normalize(globals.sun.xz + vec2<f32>(0.001, 0.0)), -turn), fw_ss(FW_FEET + 25.0, FW_FEET + 70.0, length(f.home.xz - c.me.xz)));
+        dc = vec2<f32>(hit.big);
     }
     let scored = fw_ss(0.0, 26.0, front - r);
     let fade = 1.0 - fw_ss(FW_FADE, FW_END - 1.5, t);
     // (the block's own texture, tiled smaller and smaller as the land goes)
     var tex = plain;
     let dnear = min(dc.x, dc.y);
-    var ring = 4;
-    if (b) {
-        ring = min(cp_cell(cp_wedge(a), r), 4);
-    } else if (r < fw_rho(0, a)) { ring = 0; } else if (r < fw_rho(1, a)) { ring = 1; } else if (r < fw_rho(2, a)) { ring = 2; } else if (r < fw_rho(3, a)) { ring = 3; }
+    let ring = min(cp_cell(cp_wedge(a), r), 4);
     let lifting = fw_p(ring, fw_lead(a, ring), tau, t);
     let zone = scored * fade * (1.0 - fw_ss(5.0, 24.0, dnear - 6.0 * fw_ss(0.0, 1.0, lifting)));
     if (FW_FRACTAL > 0.0 && zone > 0.01 && dist < 460.0 && r < FW_LEN) {
@@ -1437,8 +1327,8 @@ fn world_fragment(f: Fragment) -> Painted {
     }
     // ---- the sponge: as a petal goes, blocks by the creases eaten away to the void ---------------------------------------
     if (FW_SPONGE > 0.0 && dist < 260.0 && lifting > 0.02) {
-        // (B: only by a tear: the void nowhere else)
-        let sp = fw_ss(0.02, 0.45, lifting) * (1.0 - fw_ss(0.88, 1.0, lifting)) * (1.0 - fw_ss(6.0, 26.0, select(dnear, hit.tear, b))) * (1.0 - healed);
+        // (only by a tear: the void nowhere else)
+        let sp = fw_ss(0.02, 0.45, lifting) * (1.0 - fw_ss(0.88, 1.0, lifting)) * (1.0 - fw_ss(6.0, 26.0, hit.tear)) * (1.0 - healed);
         // (block by block, by the blocks' own grid; past a little way off a sponge three blocks wide, or it couldn't be seen)
         let w = globals.warp;
         let size = select(1.0, 3.0, dist > 70.0);
@@ -1459,8 +1349,8 @@ fn world_fragment(f: Fragment) -> Painted {
             col = col * (1.0 - min(depth * 1.1, 0.85));
         }
     }
-    // ---- B's creases ------------------------------------------------------------------------------------------------------
-    if (b && r < FW_LEN * 1.2) {
+    // ---- the creases ------------------------------------------------------------------------------------------------------
+    if (r < FW_LEN * 1.2) {
         if (hit.tear < 0.0) {
             return Painted(vec4<f32>(fw_stars(normalize(f.at)), 1.0), 0.0);
         }
@@ -1480,31 +1370,6 @@ fn world_fragment(f: Fragment) -> Painted {
         col = mix(col, vec3<f32>(1.0, 0.5, 0.2), clamp(ember, 0.0, 1.0));
         col = mix(col, line, clamp(on * hit.hot, 0.0, 1.0));
         fog = 1.0 - clamp(on * hit.hot + ember + 0.5 * on * hit.glow, 0.0, 1.0);
-    } else if (scored > 0.001 && r < FW_LEN * 1.2) {
-        let px = max(0.05, dist * 0.00095);
-        let d = min(dc.x, dc.y + 1.2);
-        let hair = 1.0 - fw_ss(0.05 + px, 0.1 + px * 2.2, d);
-        // (the tear: wider the more it has opened, broken up block by block)
-        // (and sealed, smoothly, as the land comes together: no void from inside, no hatching as it goes)
-        let jag = mix(0.45 + 1.1 * fw_hash(floor(Q.xz / 3.0)), 1.0, healed);
-        let opens = fw_ss(FW_TEAR, FW_FOLD + 1.0, t) * (1.0 - fw_ss(FW_FADE + 1.0, FW_END - 2.0, t)) * (1.0 - healed);
-        let tw = opens * jag * (1.6 + 0.009 * r + 2.2 * (1.0 - fw_ss(0.0, 3.0, dc.x)));
-        let void_ = dc.x < tw;
-        if (void_) {
-            return Painted(vec4<f32>(fw_stars(normalize(f.at)), 1.0), 0.0);
-        }
-        // (the seam's hot edge, then only a scorch as it seals)
-        let tone = 0.5 + 0.5 * sin(r * 0.012 - t * 0.2);
-        let line = mix(vec3<f32>(1.0, 0.93, 0.82), vec3<f32>(0.86, 0.8, 1.0), tone) * 1.5;
-        let hairline = scored * fade * hair * (1.0 - 0.8 * opens) * (1.0 - healed);
-        // (an ember's edge on the tear: thin and low, scorch behind it)
-        let e = max(dc.x - tw, 0.0);
-        let ember = opens * fade * (1.0 - fw_ss(0.0, 0.5 + px * 1.5, e));
-        let scorch = opens * (1.0 - fw_ss(0.3, 2.6, e));
-        col = col * (1.0 - 0.75 * scorch);
-        col = mix(col, vec3<f32>(1.0, 0.4, 0.12), clamp(ember, 0.0, 1.0));
-        col = mix(col, line, clamp(hairline, 0.0, 1.0));
-        fog = 1.0 - clamp(hairline + ember, 0.0, 1.0);
     }
     // ---- past the real land the sphere goes off into its own dusk: the far land's coarse tiles are no use this close, and the
     // darker it gets towards the hole the less there is to see of how it ends ----------------------------------------------------
