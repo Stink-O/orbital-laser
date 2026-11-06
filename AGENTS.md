@@ -256,6 +256,25 @@ laser, command, capability and timing). This file is the short, factual version 
   [VC_LAND_SEED=N] cargo test --release vc_land_picture -- --ignored --nocapture` (strike/vc_land_view.rs) makes the real
   edits on a synthetic land in a voxel grid and writes a top-down map and ray-traced views as PPMs, in seconds: look there
   before the game. **The far terrain doesn't see these edits:** see `docs/HOW-IT-WORKS.md`.
+- **The Supervolcano's plates that stay** (`strike/vc_lodge.rs`; the pass's `VL_*`, `vl_*` and `vm_plates` in
+  `shaders/volcano_mount.wgsl`): the ten biggest whole plates the mount throws come down as real land, terrain on only,
+  and stay. Their sites are worked out as the strike fires (`vl_sites`: five on the player's side, 290-460 from them,
+  the rest round the mount, all 570-860 from the vent), their chunks force-loaded from then (`vl_patch`, 136 round each);
+  the plates are picked at the end of the mount's tables (`vl_pick`) and aimed, their flight's words rewritten (`vl_one`,
+  `Slab::fly`). From 19.5 s the ground where each meets it is asked (a small `world.surface-height` query) and its pose
+  settled (`Pose`, `set_pose`: its plane to the way it comes down at 29-53 degrees, a third of it under the ground;
+  `Lodge`'s words at `VL_BASE`) before its last 3.5 s, in which the pass slerps its tumble into that pose and slides it
+  in (`vl_add`, `vl_slerp`). From the moment it hits its chunks are read (`Lot`, `vl_tick`) and made (`Slab::chunk`: the
+  plate a world column at a time, `spans`, so it has no holes; soil, rock and a burnt underside as strata by depth; its
+  ground's lip, cracks of tuff and rubble round its foot), each chunk one edit through the paced queue, none worked out
+  before it's needed, so nothing is held. The pass holds the drawn plate where it lies until every edit is in
+  (`Blocks::sent`, then the plate's word `gone`) and fades it out over `VL_FADE`; past `VL_SEEN` (470, about the render
+  distance: the game doesn't show the land's changes further) it goes on drawing it until `VL_END`. Land not answered,
+  or the player in the way: it stays drawn and goes on into the ground (`Step::Failed`). Terrain off: the same flight, no
+  blocks. A stop finishes the plates under way, nothing else (`vl_finish`, a far-future `Act::Cleanup`), and the land's
+  work leaves their columns alone (`Lodge::covers`). `vc_plate_picture` (ignored; `VC_VIEW_OUT=DIR
+  VC_VIEWS=p0g,p0h,p0f,p0a,p0m`) makes their real edits on the synthetic land. Keep `vl_thk` in step with the pass. Stages
+  wait their turn (one a tick): `strike::set_clock`'s clock is the true one, a stage's own count falls behind it.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-10` or newer (it adds
