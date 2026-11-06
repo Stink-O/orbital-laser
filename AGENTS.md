@@ -231,6 +231,11 @@ laser, command, capability and timing). This file is the short, factual version 
   of the loop for that (once a ray), and skipping pixels saves nothing (a chequerboard of pixels or of 2x2 blocks was
   tried). `vc_gn3` is gnoise3 with a hash a corner; `VC_HOLD` keeps the big lumps longer far from the surface; the air
   the wall has emptied is crossed without looking up lumps (`VC_ST_AIR`).
+  **The blast** (`vc_col`) is lobed round a low base surge (the surge only till the collapse, bounded at its rim: past it a
+  flat ellipsoid's distance is about the height over the land everywhere, and the lumps stand a dark sheet on all of it).
+  The shock is a thin torn veil at the pressure ring's speed (`vc_shells`, worked out from the ray's closest approach so no
+  line runs round it) and a low haze of dust behind it (`vc_dust`). **The pass is close to the game's 256 KiB**, comments
+  included (`tools/check-shader.sh` says): new code here wants something taken out.
   **A chain of stages takes the strike's clock** (`now.max(clock())`, in `vc_work` and `vl_tick`): counting its own time it
   runs at half speed beside another chain, and what's due last never goes in.
   **Thin walls show the land through:** the ring's wall must stay thicker than the lumps cut (`vc_ww`, the gain in

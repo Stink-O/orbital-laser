@@ -3,19 +3,13 @@
 // Validate with tools/check-shader.sh.
 
 // ---- laser 14: the supervolcano -----------------------------------------------------------------------------------
-// A hairline beam, then nothing for ten seconds but the tremor. The land cracks in a ring, steam rising off it, and from
-// the eruption on all of it is one soft volume: a density falling off through a real depth (a surface bulged by lumps on
-// lumps, `vc_sdf`, sphere-traced only to skip the empty air), each step jittered by white noise, shaded by looks towards
-// the light. The blast first, far wider than tall (`vc_col`), a head of steam on it and pale shock shells over it
-// (`vc_shells`), a spray of rock (`vc_spray`); the trunk breaking out of its middle, lobed, its lower half full of pockets
-// of fire that flare and die (`vc_heat`); lava bombs arc off it on thick ropes of smoke, a third of them coming down round
-// the player, each landing in a black plume (`vc_bombs_smoke`); the umbrella spreads across the whole sky with real bulk,
-// a ripple running out through it, lightning in the plume and in rings through the sheet (`vc_umb`, `vc_flash`,
-// `vc_bolts`); the sky goes dark at noon (`vc_dim`, the land and the sky darkened, what glows left glowing, the game's
-// clock and weather never touched). The column loses its buoyancy and falls back on itself (`VC_COLLAPSE`), feeding a wall
-// of ash that rolls out over the land in lobes and clefts (`vc_flow`), torn into rolling banks behind its head. It engulfs
-// the player for six or seven seconds, then lifts into a rolling ceiling and the land shows. Then a world dimmed under
-// falling ash, ending on a blood-red sun as the ash thins, all of it gone by VC_LEN.
+// A hairline beam, the tremor, the land cracking in a ring and steam, then one soft volume: a density falling off through a
+// surface bulged by lumps on lumps (`vc_sdf`, sphere-traced only to skip empty air), shaded by looks towards the light. The
+// blast (`vc_col`) and the shock over it (`vc_shells`, `vc_dust`), a spray of rock (`vc_spray`); the trunk, its lower half full
+// of fire (`vc_heat`); lava bombs on ropes of smoke (`vc_bombs_smoke`); the umbrella across the whole sky, lightning through
+// it (`vc_umb`, `vc_flash`, `vc_bolts`); the sky dark at noon (`vc_dim`). The column falls back (`VC_COLLAPSE`), feeding a
+// wall of ash over the land (`vc_flow`) that engulfs the player and lifts into a ceiling; then a dim world, ending on a
+// blood-red sun as the ash thins, all of it gone by VC_LEN.
 // strike/volcano.rs keeps its VC_* in step with these, and gives the table: the bombs, the land's height.
 const VC_LEN: f32 = 88.0;
 const VC_HIT: f32 = 2.0;           // the beam hits and cuts out
@@ -32,15 +26,16 @@ const VC_P: f32 = 6.0;             // how long the lumps are carried before they
 const VC_HU: f32 = 1500.0;         // the umbrella's middle over the land
 const VC_V: f32 = 343.0;           // the pressure ring's speed (the sound's)
 const VC_DM: f32 = 190.0;          // the most the lumps stand out of a smooth body
+const VC_DUST: f32 = 8.0;          // the dust the shock lifts has settled
 const VC_ST: f32 = 1.35;           // the march's stride
 const VC_ST_AIR: f32 = 2.5;        // and through the air the wall has emptied
-const VC_HOLD: f32 = 0.3;          // the big lumps kept for this share of how far off the surface the march is
+const VC_HOLD: f32 = 0.3;          // the big lumps kept for this share of the way off the surface
 const VC_BOMB: u32 = 16u;          // the table: the bombs from here, VC_BW words each
 const VC_BW: u32 = 8u;
 const VC_G: f32 = 28.0;
 const VC_HF: u32 = 1024u;          // the land's height (volcano.rs's vc_hf_pack)
 
-// Gradient noise as gnoise3's, its gradients from one hash a corner, not three (the march looks it up a great many times).
+// gnoise3 with one hash a corner.
 fn vc_gc(hx: u32, hy: u32, hz: u32, f: vec3<f32>) -> f32 {
     let h = pcg(hx ^ hy ^ hz);
     let g = vec3<f32>(f32(h >> 21u), f32((h >> 10u) & 2047u), f32(h & 1023u)) * vec3<f32>(2.0 / 2047.0, 2.0 / 2047.0, 2.0 / 1023.0) - 1.0;
@@ -205,12 +200,24 @@ fn vc_col(q: vec3<f32>, rho: f32, ang: f32, land: f32) -> f32 {
     }
     let c = max(vs.c, 0.0);
     // (no lathe turned this: pushed out unevenly round its foot, its trunk lobed and twisting as it climbs)
-    let Rb = vs.Rb * (1.0 + 0.075 * sin(2.0 * ang + 1.0) + 0.05 * sin(5.0 * ang + 0.4));
-    let Hd = vs.Hd * (1.0 - 0.96 * smoothstep(3.0, 15.0, c));
+    // (bursting out harder one way than another)
+    let br = 0.12 * sin(2.0 * ang + 1.0) + 0.09 * sin(5.0 * ang + 0.4) + 0.05 * sin(11.0 * ang + 2.1);
+    let Rb = vs.Rb * (1.0 + br);
+    let tall = 0.34 * sin(3.0 * ang + 2.0) + 0.24 * sin(7.0 * ang + 0.6) + 0.16 * sin(13.0 * ang + 4.0);
+    let Hd = vs.Hd * (1.0 - 0.96 * smoothstep(3.0, 15.0, c)) * (1.0 + tall * (1.0 - smoothstep(6.0, 16.0, vs.a)));
     let e = vec2<f32>(rho / Rb, hy / Hd);
     let k0 = length(e);
     let k1 = max(length(vec2<f32>(rho / (Rb * Rb), hy / (Hd * Hd))), 1.0e-5);
     var d = k0 * (k0 - 1.0) / k1;
+    // (its foot running on ahead of it: the base surge, gone as the column falls)
+    if (c < 9.0) {
+        let sr = 1.22 * Rb;
+        let sh = 0.36 * vs.Hd;
+        let es = vec2<f32>(rho / sr, hy / sh);
+        let s0 = length(es);
+        let s1 = max(length(vec2<f32>(rho / (sr * sr), hy / (sh * sh))), 1.0e-5);
+        d = vc_smin(d, max(s0 * (s0 - 1.0) / s1, (rho - sr) * 0.8) + 300.0 * smoothstep(2.0, 9.0, c), 130.0);
+    }
     let H = vs.H;
     if (H > vs.Hd + 15.0 && vs.Hb > 0.0) {
         // (bellied at the head while it climbs, flaring into the umbrella once there, thinning as it falls)
@@ -442,7 +449,7 @@ var<private> vc_cq: vec4<f32>;
 var<private> vc_cb: vec4<f32>;
 var<private> vc_cw: vec4<f32>;
 var<private> vc_cy: f32;
-var<private> vc_cs: f32;     // how far off the surface the last look was: past the smoke's edge the lumps needn't be exact
+var<private> vc_cs: f32;
 var<private> vc_lsy: vec2<f32>;
 fn vc_fine(q: vec3<f32>, rest: f32, foot: f32) -> vec3<f32> {
     var o = vec3<f32>(0.0, 1.0, 0.5);
@@ -1289,7 +1296,7 @@ fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
         return vec2<f32>(0.0);
     }
     // (how high it burns: nearly all the blast, then the lower half of what stands)
-    let hf = mix(0.92 * vs.Hd, 0.5 * min(vs.H, 1500.0), smoothstep(5.0, 15.0, a));
+    let hf = mix(0.62 * vs.Hd, 0.5 * min(vs.H, 1500.0), smoothstep(5.0, 15.0, a));
     let zone = (1.0 - smoothstep(0.45 * hf, 1.2 * hf, hy)) * (1.0 - smoothstep(4.0, 14.0, vs.c));
     if (zone <= 0.0) {
         return vec2<f32>(0.0);
@@ -1300,17 +1307,17 @@ fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
     let gate = vc_gn3(vec3<f32>(q.x, 0.5 * q.y, q.z) * (1.0 / 560.0) + vec3<f32>(0.0, -0.05 * vs.t, 0.19 * vs.t));
     let n = 0.6 * n1 + 0.4 * n2 + 0.42 * (gate - 0.5);
     let cool = smoothstep(1.5, 11.0, a);
-    let thr = mix(0.34, 0.565, cool);
+    let thr = mix(0.5, 0.565, cool);
     let T = smoothstep(thr, thr + 0.1, n) * zone;
     // (tongues of flame in it, drawn up, soot between them: never a flat fill)
     let n3 = vc_gn3(VC_R3 * (q * vec3<f32>(1.0 / 26.0, 1.0 / 58.0, 1.0 / 26.0) - vec3<f32>(0.0, 2.0 * vs.t, 0.0)));
     let tongues = saturate(0.2 + 2.1 * (0.7 * n3 + 0.3 * n2) - 0.45);
     // (a crown's skin cools first: the fire shows between the lumps; less so while the blast is young)
     let cr = 1.0 - top;
-    let skin = mix(0.75 + 0.5 * cr, 0.2 + 1.3 * cr * cr, cool);
-    let hot = (0.86 - 0.22 * cool) * (0.55 + 0.75 * n1);
+    let skin = mix(0.3 + 1.1 * cr * cr, 0.2 + 1.3 * cr * cr, cool);
+    let hot = (0.8 - 0.16 * cool) * (0.5 + 0.75 * n1);
     let far = 1.0 - 0.55 * smoothstep(16.0, 28.0, a);
-    return vec2<f32>(saturate(T * skin) * hot * tongues, smoothstep(0.46, 0.74, 0.7 * n1 + 0.5 * (gate - 0.2)) * zone * far * (0.45 + 0.9 * tongues));
+    return vec2<f32>(1.2 * pow(saturate(T * skin) * hot * tongues, 1.35), mix(0.5, 1.0, cool) * smoothstep(0.46, 0.74, 0.7 * n1 + 0.5 * (gate - 0.2)) * zone * far * (0.45 + 0.9 * tongues));
 }
 // The air's colour along a ray: the sky's, gone dirty and red low down as the sheet closes over.
 fn vc_band(rd: vec3<f32>) -> vec3<f32> {
@@ -1354,10 +1361,8 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     let gw = vc_flash_way(gl, l.seed);
     let gw2 = max(dot(gw, gw), 1.0);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
-    // (the march is two runs of one loop with the look at the light between them, a look a ray: a GPU works on pixels in
-    // groups, and pixels that come to a branch at different steps each cost the whole group the branch. Out here the group
-    // looks once. For the same reason skipping pixels saves nothing, a chequerboard of them or of 2x2 blocks: a group lasts
-    // as long as its slowest)
+    // (two runs of one loop with the look at the light between them: a GPU's group of pixels pays for a branch at every
+    // step any of them takes it, and lasts as long as its slowest, so skipping pixels saves nothing. Out here it looks once)
     var i = 0;
     var lq = vec3<f32>(0.0);
     var lb: VcB;
@@ -1425,7 +1430,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             let th = mix(mix(0.36, 0.56, smoothstep(40.0, 560.0, b.e)), 0.36, lifted);
             torn = smoothstep(base - 40.0, base + 110.0, hb) * mix(1.0, smoothstep(th - 0.08, th + 0.2, bank), wb);
             ext = mix(0.15, 0.05, wb);
-            // (the air the wall has emptied: no lumps to look up, and the banks are big)
+            // (the air the wall has emptied)
             if (torn <= 0.0) {
                 t = t + max(st * VC_ST_AIR, 14.0);
                 continue;
@@ -1492,7 +1497,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             fire = fire + ash * vec3<f32>(2.5, 0.95, 0.15) * ht.y * (0.3 + 0.7 * cr) * on;
             // (from under: the land burning below what hangs over it)
             let fb = (1.0 - smoothstep(VC_COLLAPSE, VC_COLLAPSE + 6.0, time)) * on;
-            fire = fire + ash * vec3<f32>(2.6, 0.72, 0.11) * below * below * exp(-max(hyl, 0.0) / 300.0) * fb;
+            fire = fire + ash * vec3<f32>(1.5, 0.42, 0.07) * below * below * (0.3 + 0.7 * cr) * exp(-max(hyl, 0.0) / 300.0) * fb;
             if (b.e > -60.0) {
                 // (the flows, close behind the front and low down: the hot base of the cloud showing in its creases; inside the
                 // wall, the banks lit red from under by what they have laid down)
@@ -1599,47 +1604,99 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     return o;
 }
 
-// The shock's shells over the fireball: thin pale domes running out ahead of it one after another, each seen edge on as a
-// bright arc, broken up, gone in a few seconds. Over the picture `col` as far as `tend`.
+// The dust the shock lifts off the land: a thin low haze behind the pressure ring, three looks where the ray crosses it.
+fn vc_dust(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight) -> vec3<f32> {
+    let a = vs.a;
+    let Rs = VC_RING + VC_V * a;
+    let w = 46.0 + 0.2 * (Rs - VC_RING);
+    let h = (18.0 + 14.0 * a) * (1.0 - smoothstep(VC_DUST - 4.0, VC_DUST, a));
+    let o = -C.xz;
+    let d = rd.xz;
+    let aa = max(dot(d, d), 1.0e-6);
+    let bq = dot(o, d) / aa;
+    let oo = dot(o, o);
+    let disc = bq * bq - (oo - Rs * Rs) / aa;
+    if (disc <= 0.0) {
+        return col0;
+    }
+    // (the air over the land the ray is in, and the ring's stretch of it, the near one if the ray is low enough there)
+    let ry = select(1.0e-4, rd.y, abs(rd.y) > 1.0e-4);
+    let y0 = -C.y;
+    let t_a = (-14.0 - y0) / ry;
+    let t_b = (h + 26.0 - y0) / ry;
+    let lo = max(min(t_a, t_b), 0.0);
+    let hi = min(max(t_a, t_b), tend);
+    let sq = sqrt(disc);
+    let Ri = max(Rs - 2.6 * w, 1.0);
+    let di = bq * bq - (oo - Ri * Ri) / aa;
+    let si = sqrt(max(di, 0.0));
+    var ta = max(lo, -bq - sq);
+    var tb = min(hi, select(-bq + sq, -bq - si, di > 0.0));
+    if (tb <= ta && di > 0.0) {
+        ta = max(lo, -bq + si);
+        tb = min(hi, -bq + sq);
+    }
+    if (tb <= ta) {
+        return col0;
+    }
+    let jt = f32(pcg(u32(vc_px.x) ^ (u32(vc_px.y) << 13u)) & 1023u) / 1023.0;
+    let ds = (tb - ta) / 3.0;
+    let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let tan_ = vec3<f32>(0.62, 0.55, 0.46) * (0.62 * lum + 0.5 * dot(l.sunc, vec3<f32>(0.33)));
+    var col = col0;
+    for (var i = 0; i < 3; i = i + 1) {
+        let p = rd * (ta + (f32(i) + jt) * ds) - C;
+        let v = (p.y - vc_land(p.xz)) / h;
+        let u = (Rs - length(p.xz)) / w;
+        let n = vc_gn3(vec3<f32>(p.x, p.y * 2.0 - 40.0 * a, p.z) * (1.0 / 95.0));
+        let n2 = vc_gn3(VC_R1 * p * (1.0 / 340.0));
+        let den = exp(-u * 1.1) * smoothstep(0.0, 0.2, u) * step(-0.2, v) * (1.0 - smoothstep(0.25, 1.0, v + 0.5 * (n - 0.5))) * smoothstep(0.34, 0.68, 0.5 * n + 0.5 * n2);
+        col = mix(col, tan_, (1.0 - exp(-den * ds * 0.0055)) * (1.0 - smoothstep(4.0, VC_DUST, a) * 0.6) * smoothstep(60.0, 420.0, length(p + C)));
+    }
+    return col;
+}
+// The shock seen for a moment: a thin torn veil of condensation at the pressure ring's speed, two fainter behind it, its
+// amount along the ray from where it passes closest, so no line runs round it.
 fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight) -> vec3<f32> {
     var col = col0;
-    let sy = 1.75;
+    let sy = 1.16;
     let o = vec3<f32>(-C.x, -C.y * sy, -C.z);
     let d = vec3<f32>(rd.x, rd.y * sy, rd.z);
     let aa = dot(d, d);
-    let bq = dot(o, d) / aa;
-    let cc0 = dot(o, o);
-    for (var k = 0; k < 5; k = k + 1) {
-        let born = 0.9 + 0.95 * f32(k);
+    let tca = -dot(o, d) / aa;
+    let pc = o + d * tca;
+    let b2 = dot(pc, pc);
+    let b = sqrt(b2);
+    let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let veil = vec3<f32>(0.9, 0.89, 0.87) * (0.55 * lum + 0.55 * dot(l.sunc, vec3<f32>(0.33)));
+    for (var k = 0; k < 3; k = k + 1) {
+        let born = 0.25 + 0.8 * f32(k);
         let s = vs.a - born;
-        if (s <= 0.0 || s > 6.0) {
+        if (s <= 0.0 || s > 5.5) {
             continue;
         }
-        let R = 420.0 + 150.0 * f32(k) + 560.0 * (1.0 - exp(-s / 2.1));
-        let disc = bq * bq - (cc0 - R * R) / aa;
-        if (disc <= 0.0) {
+        let R = VC_RING + VC_V * s;
+        let w = 12.0 + 0.03 * R;
+        let in2 = R * R - b2;
+        let hc = sqrt(max(in2, 0.0) / aa);
+        var th = tca - hc;
+        if (th <= 0.0) {
+            th = tca + hc;
+        }
+        if (th <= 0.0 || th > tend) {
             continue;
         }
-        let sq = sqrt(disc);
-        for (var h = 0; h < 2; h = h + 1) {
-            let th = select(-bq - sq, -bq + sq, h == 1);
-            if (th <= 0.0 || th > tend) {
-                continue;
-            }
-            let hp = rd * th - C;
-            if (hp.y < 0.0) {
-                continue;
-            }
-            // (how much of the shell the ray runs through: most where it grazes it, so the rim shows as an arc)
-            let cs = sq * sqrt(aa) / R;
-            let graze = 1.0 / max(cs, 0.06);
-            let n = vc_gn3(hp * (1.0 / 190.0) + vec3<f32>(0.0, 0.0, 0.3 * s));
-            let n2 = vc_gn3(VC_R1 * hp * (1.0 / 64.0));
-            let br = smoothstep(0.34, 0.62, n + 0.3 * (n2 - 0.5));
-            let al = saturate(0.018 * graze * br) * smoothstep(0.0, 0.7, s) * (1.0 - smoothstep(2.5, 6.0, s)) * (1.0 - 0.45 * f32(h));
-            let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));
-            col = mix(col, vec3<f32>(0.86, 0.84, 0.8) * (0.55 * lum + 0.55 * dot(l.sunc, vec3<f32>(0.33))), al);
-        }
+        let p = o + d * th;
+        let dir = p / max(length(p), 1.0);
+        let n = vc_gn3(dir * 5.0 + vec3<f32>(0.0, 0.14 * s, 1.7 * f32(k)));
+        let n2 = vc_gn3(VC_R1 * dir * 15.0 + vec3<f32>(0.0, 0.0, 0.3 * s));
+        let x = (b - R * (1.0 + 0.05 * (n - 0.5))) / w;
+        let past = exp(-pow(max(x, 0.0), 2.0));
+        let along = sqrt(R / (2.0 * w)) / sqrt(1.0 + max(-x, 0.0));
+        let patch_ = smoothstep(0.4, 0.76, 0.68 * n + 0.32 * n2);
+        let life = smoothstep(0.1, 0.7, s) * (1.0 - smoothstep(1.8, 5.5, s)) * (1.0 - 0.34 * f32(k));
+        let al = saturate(0.075 * along * past * patch_ * life * smoothstep(0.03, 0.3, dir.y));
+        col = mix(col, veil, al);
     }
     return col;
 }
@@ -1862,10 +1919,11 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
                 if (pb.z < 0.0) {
                     dirs = -dirs;
                 }
-                let off = normalize(dirs + vec2<f32>(1.0e-5)) * (0.009 * edge + 0.002 * exp(-sq / (0.25 * Rs))) * sf;
+                let soft = 1.0 - exp(-sq / (0.012 * Rs + 3.0));
+                let off = normalize(dirs + vec2<f32>(1.0e-5)) * (0.009 * edge + 0.002 * exp(-sq / (0.25 * Rs))) * sf * soft;
                 let sc = srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, uv - off, 0.0).rgb);
-                col = col + (sc - scene) * saturate(edge * 4.0 + 0.5) * sf * tr_here;
-                col = col + vec3<f32>(1.0, 0.86, 0.72) * 0.16 * edge * exp(-vs.a / 1.4) * sf * tr_here;
+                col = col + (sc - scene) * saturate(edge * 4.0 + 0.5) * sf * tr_here * soft;
+                col = col + vec3<f32>(1.0, 0.86, 0.72) * 0.1 * edge * exp(-vs.a / 1.4) * sf * tr_here * soft;
             }
         }
         // (the flash: a blaze along the horizon where the ring opens, out over the land)
@@ -1877,7 +1935,10 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         col = col + vec3<f32>(3.0, 1.2, 0.3) * fl * (0.07 / (1.0 + pow(dr2 / 120.0, 2.0)) + 0.01) * smoothstep(-0.02, 0.02, vs.a) * k * tr_here;
     }
     // ---- the shock's pale shells, out over the fireball -----------------------------------------------------------------
-    if (vs.a > 0.9 && vs.a < 11.0) {
+    if (vs.a > 0.0 && vs.a < VC_DUST) {
+        col = vc_dust(C, rd, min(scene_len, cloud_t), col, l);
+    }
+    if (vs.a > 0.25 && vs.a < 7.8) {
         col = vc_shells(C, rd, min(scene_len, cloud_t), col, l) ;
     }
     // ---- the air once the wall has gone over: thick with ash, the light gone brown, a red glow low towards the vent ---
