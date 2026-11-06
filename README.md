@@ -400,7 +400,8 @@ The wheel also has:
 | `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
 
 [How it works](docs/HOW-IT-WORKS.md#commands) has the full details of each command. To rebind **R**: **Options →
-Controls → Key Binds**, the *Orbital Laser* section at the bottom.
+Controls → Key Binds**, the *Orbital Laser* section at the bottom (on a native build of Horizon: **Options → Mods →
+Orbital Laser → Settings**).
 
 ## If something goes wrong
 
@@ -416,7 +417,7 @@ Controls → Key Binds**, the *Orbital Laser* section at the bottom.
   prepared resources. Double-clicking `play.sh` in a file manager may show nothing: run it from a terminal to see its
   messages (or read `play-error.txt` beside it).
 - **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
-  and rebind it. R only opens the wheel while you play with the designator in hand, not over another screen. With
+  and rebind it (on a native build, on **Options → Mods → Orbital Laser → Settings**). R only opens the wheel while you play with the designator in hand, not over another screen. With
   anything else in hand it does nothing (`/orbital wheel` opens the wheel either way).
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
   the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell, the Hurricane and the Tsunami can aim, and only with **LOD Distance** on in Video Settings.

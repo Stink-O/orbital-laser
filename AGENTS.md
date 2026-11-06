@@ -297,7 +297,7 @@ game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which 
 import of its own).
 R with the Orbital Laser Designator in hand opens the laser wheel (with anything else in hand R is left to the game;
 `/orbital wheel` opens it from anywhere); holding right-click with the designator for under a second fires. Rebind R in
-Options > Controls > Key Binds. There is no Orbital Remote any more (0.5.9): a Remote left in an old world's inventory
+Options > Controls > Key Binds (on a native build: Options > Mods > Orbital Laser > Settings). There is no Orbital Remote any more (0.5.9): a Remote left in an old world's inventory
 loads as an empty slot, does nothing and breaks nothing.
 
 **Leaving the world mid-strike ends the strike** (`left_world` in lib.rs): the API has no leave hook, so the mod takes a

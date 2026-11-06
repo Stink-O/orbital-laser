@@ -431,7 +431,8 @@ going in while the falling wave still hides them.
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
-search box).
+search box). On a native build of Horizon the key is on the mod's own page instead, as upstream keeps native mods'
+keys: **Options → Mods → Orbital Laser → Settings** (saved in `horizon-mods.txt`).
 
 ## The mod
 
