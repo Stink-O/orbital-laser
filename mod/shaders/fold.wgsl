@@ -1051,6 +1051,75 @@ fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>) -> vec3<f3
     c = c + (vec3<f32>(1.0, 0.98, 0.95) * (1.6 * pow(k1, 90.0) + 0.12 * pow(k1, 6.0)) + vec3<f32>(0.75, 0.85, 1.05) * (1.1 * pow(k2, 60.0) + 0.09 * pow(k2, 5.0))) * day;
     return c;
 }
+// ---- no edge to it: the plate and the metal don't stop at the land's end but creep out over the land round it, in runs, thinning to a wet shine and a scatter of beads, the land's dark places
+// (water, valleys, shadow) taking it first, so its own colours and grain show through as it goes. `q` a place on the land, `rho` how far out, the rim `rd`. Out: how far inside the metal, inside the plate's stain, inside the wet.
+fn fb_creep(q: vec2<f32>, rho: f32, rd: f32, t: f32, S: vec2<f32>) -> vec3<f32> {
+    let th = atan2(q.y, q.x);
+    let fa = 0.5 + 0.5 * sin(th * 3.0 + 1.0 + 0.8 * sin(th * 2.0 + 0.5));
+    let fb = 0.5 + 0.5 * sin(th * 7.0 - 0.7 + 1.1 * sin(th * 3.0));
+    let fc = 0.5 + 0.5 * sin(th * 17.0 + 2.0 + 1.3 * sin(th * 5.0));
+    let runs = 0.22 + 0.6 * fa * fa + 0.5 * fb * fb * fb + 0.35 * fc * fc * fc * fc;
+    let when_ = fb_wet(q / rho * rd, S, rd);
+    let n1 = fbm(q * 0.021) - 0.5;
+    let n2 = fbm(q * 0.083 + 9.0) - 0.5;
+    let back = 1.0 - fw_ss(FW_LETGO + 0.12, FW_LETGO + 0.6, t);
+    let out_ = rho - rd;
+    let g = fw_ss(when_ - 0.1, when_ + 1.3, t);
+    let f = 150.0 * runs * g * back - out_ + (70.0 * n1 + 34.0 * n2) * fw_ss(0.0, 0.3, g) - 40.0 * (1.0 - back);
+    let pg = fw_ss(FB_PLATE + 0.1, FB_PLATE + 1.3, t) * back;
+    let fp = 95.0 * (0.4 + 0.6 * fb + 0.4 * fa) * pg - out_ + (46.0 * n1 + 22.0 * n2) * fw_ss(0.0, 0.25, pg) - 30.0 * (1.0 - back);
+    let wet = (150.0 * runs * g + 40.0) * (1.0 - fw_ss(FW_LETGO + 0.5, FW_LETGO + 1.0, t)) - out_ + 60.0 * n1;
+    return vec3<f32>(f, fp, wet);
+}
+fn fb_on_land(colIn: vec3<f32>, v: vec3<f32>, q: vec2<f32>, rho: f32, far: f32, rd: f32, t: f32, S: vec2<f32>, gq: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
+    var col = colIn;
+    let c = fb_creep(q, rho, rd, t, S);
+    if (c.z < -30.0 && c.y < -30.0 && c.x < -60.0) {
+        return col;
+    }
+    let lum = luminance(col);
+    let rh = q / rho;
+    // ---- the plate's stain: dark steel in the land, the land's grain through it -------------------------------------------------
+    let fp = c.y + 34.0 * (0.2 - lum);
+    let pa = fw_ss(0.0, 24.0, fp);
+    if (pa > 0.0) {
+        let n = normalize(fd_returned(normalize(vec3<f32>(rh.x * 0.2 * (1.0 - pa), -1.0, rh.y * 0.2 * (1.0 - pa))), g, at));
+        col = mix(col, fb_chrome(v, v * far, n, gq) * 0.16 + vec3<f32>(0.02, 0.022, 0.026) + col * 0.12, 0.85 * pa);
+    }
+    // ---- the wet: a shine on the land ahead of it ----------------------------------------------------------------------------
+    let fl = fb_flow(q, t);
+    let f = c.x + 64.0 * (0.22 - lum);
+    let w = fw_ss(-40.0, 6.0, c.z + 40.0 * (0.22 - lum));
+    if (w > 0.0) {
+        let n = normalize(fd_returned(normalize(vec3<f32>(-fl.y * 0.6, -1.0, -fl.z * 0.6)), g, at));
+        col = col * (1.0 - 0.4 * w) + fb_chrome(v, v * far, n, gq) * 0.2 * w;
+    }
+    // ---- the metal, thinning to nothing, and what it has left ahead of it ----------------------------------------------------
+    var a = fw_ss(0.0, 34.0, f);
+    var thick = fw_ss(14.0, 90.0, f);
+    var gr = fl.yz * (2.2 - 1.4 * thick) + rh * 0.6 * (1.0 - thick) * sin(f * 0.17 + 0.03 * (q.x - q.y));
+    let e = fb_mesh(q);
+    let id = round((q - e.xy) * 0.2);
+    let h = hash21(id + 3.0);
+    let h2 = fract(h * 29.3);
+    // (the beads run thin out past the edge, and go back with it)
+    let rb = FB_PITCH * (0.14 + 0.3 * h2) * fw_ss(-70.0 * h - 4.0, -8.0 * h, f) * step(h, 0.55);
+    if (rb > 0.1 && e.z < rb) {
+        let ba = saturate((rb - e.z) / (0.0011 * far) + 0.5);
+        if (ba > a) {
+            a = ba;
+            thick = 1.0;
+            gr = e.xy / max(rb, 0.5) * 1.1;
+        }
+    }
+    if (a > 0.0) {
+        let n = normalize(fd_returned(normalize(vec3<f32>(-gr.x, -1.0, -gr.y)), g, at));
+        let ch = fb_chrome(v, v * far, n, gq);
+        // (thin, it is a film on the land: the land's own colours in it)
+        col = mix(col, mix(col * 0.75 + ch * (0.22 + 1.1 * col), ch, thick), a);
+    }
+    return col;
+}
 fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
     var col = colIn;
     let o = fd_unturn(mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at, true);
@@ -1060,23 +1129,40 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
     let y0 = rim.y + FB_UP;
     let px = frame.view_params.w / frame.resolution.y;
     let Rd = fb_R(g.d);
-    var drawn = false;
+    let S0 = fb_source(g);
+    // ---- what has crept out on to the land ---------------------------------------------------------------------------------------
+    if (far < 1.0e6) {
+        let P = o + d * far;
+        let rho = length(P.xz);
+        if (rho > 0.7 * rd && rho < rd + 300.0 && P.y > y0 - 320.0) {
+            col = fb_on_land(col, v, P.xz, rho, far, rd, t, S0, gq, g, at);
+        }
+    }
     // ---- the plate and the metal on it ---------------------------------------------------------------------------------------
     if (d.y > 0.05) {
         let s = (y0 - o.y) / d.y;
         let q = o.xz + d.xz * s;
         let r = length(q);
         if (s > 0.0 && s < far + 8.0 && r < rd * FB_FIT) {
-            let S = fb_source(g);
+            let S = S0;
             let ps = px * s;
             let u = fw_ss(FB_PLATE, FB_SHUT, t);
             // (the stars narrow to one side: where the plate hasn't reached)
             let ic = -S * rd * 0.34 * u;
-            let iris = length(q - ic) - (rd * 1.08 * (1.0 - u)) * (1.0 + 0.012 * sin(atan2(q.y, q.x) * 3.0 + 1.0 + t) * 1.0);
             let th = atan2(q.y, q.x);
-            let open = fb_opened(t, rd) * (1.0 + 0.045 * sin(th * 2.0 + 1.0 + 1.3 * sin(th * 3.0 - t * 2.0)) + 0.03 * sin(th * 5.0 - 0.7 + 0.9 * sin(th * 2.0 + t)) + 0.014 * sin(th * 13.0 + 2.0));
-            let edge = min(iris, r - open);
-            let cov = saturate(edge / ps + 0.5);
+            let wn0 = fbm(q * 0.013 + vec2<f32>(4.0, 1.0)) - 0.5;
+            let iris = length(q - ic) - (rd * 1.08 * (1.0 - u)) * (1.0 + 0.012 * sin(th * 3.0 + 1.0 + t)) + 44.0 * wn0;
+            // (it tears, it doesn't iris: a ragged edge that wanders, runs and grain in it, thin metal first)
+            var edge = iris;
+            var soft = ps;
+            if (t > FW_LETGO) {
+                let open = fb_opened(t, rd) * (1.0 + 0.055 * sin(th * 2.0 + 1.0 + 1.3 * sin(th * 3.0 - t * 2.0)) + 0.03 * sin(th * 5.0 - 0.7 + 0.9 * sin(th * 2.0 + t)));
+                let rag = fbm(q * 0.031 + vec2<f32>(t * 0.6, 2.0)) - 0.5;
+                let grain = fbm(q * 0.16 + 7.0) - 0.5;
+                edge = min(edge, r - open + 110.0 * wn0 + 90.0 * rag + 34.0 * grain);
+                soft = max(ps, 7.0);
+            }
+            let cov = saturate(edge / soft + 0.5);
             if (cov > 0.0) {
                 let f = fb_field(fb_ran(q, t, rd), t, S, rd);
                 let fl = fb_flow(q, t);
@@ -1084,7 +1170,7 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 // ---- the plate: dark steel, its holes darker --------------------------------------------------------------------
                 let hr = 0.21 * FB_PITCH;
                 let dot_ = saturate((hr - hl.z) / ps + 0.5);
-                let lipn = fw_ss(9.0, 0.0, edge);
+                let lipn = fw_ss(14.0, 0.0, edge);
                 let dn = normalize(vec3<f32>(hl.x * 0.06 * dot_ + q.x * 0.00012 + 0.3 * lipn * (q.x - ic.x) / max(length(q - ic), 1.0), -1.0, hl.y * 0.06 * dot_ + q.y * 0.00012 + 0.3 * lipn * (q.y - ic.y) / max(length(q - ic), 1.0)));
                 let wn = normalize(fd_returned(dn, g, at));
                 var pl = fb_chrome(v, v * s, wn, gq) * 0.16 + vec3<f32>(0.02, 0.022, 0.026);
@@ -1104,7 +1190,6 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                     c = mix(c, fb_chrome(v, v * s, n, gq), wet);
                 }
                 col = mix(col, c, cov);
-                drawn = true;
             }
         }
     }
