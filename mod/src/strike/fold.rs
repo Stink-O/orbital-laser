@@ -14,9 +14,9 @@
 //!   FD_TEAR           the creases split open on the void
 //!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land rolls up round the player, holding as a tube, the rings lying back to a mound
 //!   FD_SEAL           the player is inside a tube, the whole land on its walls, the land's end the hole in its roof
-//!   34.5-FD_BEAT      the rim gathers and lets go, and reaches down to the target as one heavy gesture, a catch at 37 s and a long creep at the end, straining
-//!                     from 38 s (fold_warp.wgsl's fw_gather, fw_tip, fw_flex); FD_BEAT the drop at its tip touches it: a tiny light and a ding; held, straining, to 40.95
-//!   FD_RELEASE        going back, not a rewind: at 40.95 the reach lets go and is back up by 42.25; the tube gives at 42.2, catches at 42.55-42.88, and lets go
+//!   34.5-FD_BEAT      the hole closes on a mesh of metal and the metal boils up through it, joins, runs in to the middle, hangs on a neck and lets one drop go, which
+//!                     falls the length of the tube (fold.wgsl's the boil); FD_BEAT it hits the target: a tiny light, a small hit and a ding
+//!   FD_RELEASE        going back, not a rewind: at 40.95 the metal lets go and the hole opens; the tube gives at 42.2, catches at 42.55-42.88, and lets go
 //!                     (fw_tau): the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
 //!   FD_SLAM[4]        the last ring lands, breaking the land along its creases: the crater goes in held up at the land's level (FD_REVEAL), and
