@@ -14,6 +14,7 @@ mod sh_land;
 mod sinkhole;
 mod storm;
 mod vc_land;
+mod vc_lodge;
 mod vc_mount;
 mod vc_sound;
 mod volcano;
@@ -111,6 +112,8 @@ pub struct Blocks {
     /// Blocks laid down (landing rubble, a landed tree): none goes in where the player is as it is made (lib.rs's
     /// `edit` leaves out the runs that would fill their body or the block over their head).
     pub clear_of_player: bool,
+    /// Counted as it goes in (a plate that comes down waits for all of its to be in the world before the pass lets it go).
+    pub sent: Option<std::rc::Rc<std::cell::Cell<u32>>>,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {

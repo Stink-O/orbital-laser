@@ -439,6 +439,86 @@ fn tally(w: &Vox) {
     }
 }
 
+/// The plates that come down, their real edits on the land, and two views of each: from the ground and from the air.
+fn plates(w: &mut Vox) -> Vec<(String, Cam)> {
+    use crate::strike::vc_mount::{read_col, table};
+    let me = [0.0, 10.0, 1000.0];
+    let (mut chunks_all, mut runs, mut most) = (0usize, 0usize, 0u64);
+    let mats: Vec<(u8, crate::strike::sh_land::Class)> = w.names.iter().map(|n| crate::strike::sh_land::material(n)).collect();
+    let col = |x: f64, z: f64| {
+        let (xi, zi) = (x as i32, z as i32);
+        let top = w.world_surface(xi, zi);
+        let stack: Vec<u16> = (top - 12..top + 1).map(|y| u16::from(w.get(xi, y, zi))).collect();
+        read_col(&stack, top, 12, &mats, (0, 0), GY)
+    };
+    let land = |x: f64, z: f64| f64::from(w.motion(x as i32, z as i32) - GY);
+    let (_, lodge) = table::all_lodged(37, me, &land, &col);
+    let mut cams = Vec::new();
+    let n = lodge.borrow().slabs.len();
+    for i in 0..n {
+        let band = lodge.borrow().slabs[i].band_test(0, 0);
+        let gs = band.iter().map(|&(x, z)| f64::from(w.motion(x, z) - GY)).sum::<f64>() / band.len().max(1) as f64;
+        let list = lodge.borrow_mut().settle_test(i, gs, 0, 0);
+        let palette = w.names.clone();
+        let kinds: Vec<_> = palette.iter().map(|n| crate::strike::nuke::kind(n)).collect();
+        let l = lodge.borrow();
+        let s = &l.slabs[i];
+        let mut tot = 0u64;
+        for &(x0, z0) in &list {
+            let cols: Vec<(i32, i32)> = (0..256).map(|j| (x0 + (j & 15), z0 + (j >> 4))).collect();
+            let per = (VC_BELOW + 1) as usize;
+            let mut a = Answer { columns: cols.clone(), palette: palette.clone(), bases: Vec::new(), blocks: Vec::new(), tints: Vec::new(), per, below: VC_BELOW as i32 };
+            for &(x, z) in &cols {
+                let top = w.world_surface(x, z);
+                a.bases.push(Some(top));
+                a.blocks.extend((top - VC_BELOW as i32..=top).map(|y| u16::from(w.get(x, y, z))));
+            }
+            let read: Vec<Option<Col>> = (0..256).map(|j| column_of(&a, j, &kinds)).collect();
+            crate::meter::reset();
+            let b = s.chunk(x0, z0, 0, 0, GY, 37, Some(&read));
+            let m = crate::meter::spent();
+            tot += m;
+            most = most.max(m);
+            runs += b.runs.len();
+            apply(w, &b);
+        }
+        chunks_all += list.len();
+        let f = s.foot;
+        let d = s.site.dir;
+        let (ax, az) = (-d.1, d.0);
+        let y = f64::from(GY) + f[1];
+        eprintln!("plate {i} (rock {}): near {} hit {:.1} {} chunks, {:.1}M counted, foot {:.0} {:.0} {:.0} r {:.0}, from the player {:.0}", s.rock_id, s.site.near, s.hit, list.len(), tot as f64 / 1e6, f[0], f[1], f[2], f[0].hypot(f[2]), (f[0] - me[0]).hypot(f[2] - me[2]));
+        let at = [f[0] - d.0 * 30.0, y + 30.0, f[2] - d.1 * 30.0];
+        cams.push((format!("p{i}g"), Cam { eye: [f[0] + ax * 170.0 + d.0 * 60.0, y + 8.0, f[2] + az * 170.0 + d.1 * 60.0], at, fov: 62.0 }));
+        cams.push((format!("p{i}h"), Cam { eye: [f[0] - ax * 150.0 - d.0 * 150.0, y + 14.0, f[2] - az * 150.0 - d.1 * 150.0], at, fov: 62.0 }));
+        cams.push((format!("p{i}f"), Cam { eye: [f[0] + d.0 * 170.0 + ax * 50.0, y + 16.0, f[2] + d.1 * 170.0 + az * 50.0], at, fov: 62.0 }));
+        cams.push((format!("p{i}a"), Cam { eye: [f[0] + ax * 150.0 + d.0 * 150.0, y + 190.0, f[2] + az * 150.0 + d.1 * 150.0], at, fov: 60.0 }));
+        cams.push((format!("p{i}m"), Cam { eye: [me[0], y + 20.0, me[2]], at, fov: 50.0 }));
+    }
+    eprintln!("plates: {chunks_all} chunks, {runs} runs, worst chunk {:.2}M counted", most as f64 / 1e6);
+    cams
+}
+
+/// Only the plates: `VC_VIEWS=p0g,p0a,...` of what they make on the land, with none of the rest of the strike.
+#[test]
+#[ignore]
+fn vc_plate_picture() {
+    let out = std::env::var("VC_VIEW_OUT").unwrap();
+    let mut w = Vox::new();
+    land(&mut w);
+    let t0 = std::time::Instant::now();
+    let cams = plates(&mut w);
+    eprintln!("plates {:?}", t0.elapsed());
+    let m = mats(&w.names);
+    let want = std::env::var("VC_VIEWS").unwrap_or("p0g,p0a".into());
+    let want: Vec<&str> = want.split(',').collect();
+    for (name, c) in cams {
+        if want.contains(&name.as_str()) {
+            write_ppm(&format!("{out}/{name}.ppm"), 960, 540, &render(&w, &m, c, 960, 540));
+        }
+    }
+}
+
 #[test]
 #[ignore]
 fn vc_land_picture() {

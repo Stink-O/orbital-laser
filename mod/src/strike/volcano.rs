@@ -247,7 +247,18 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     }
 
     // ---- the mount: strike/vc_mount.rs, drawn whatever the terrain setting ----------------------------------------------
-    super::vc_mount::vm_plan(&mut p, shader_seed as u32, hf.clone(), rel[2].atan2(rel[0]));
+    // (the plates that come down as real land: strike/vc_lodge.rs; where, known now, so their chunks can be held from now)
+    let sites = super::vc_lodge::vl_sites(shader_seed as u32, rel);
+    let patches: Vec<[i32; 4]> = if terrain { sites.iter().flat_map(|s| super::vc_lodge::vl_patch([cx, gy, cz], s)).collect() } else { Vec::new() };
+    let lodge: super::vc_lodge::Shared = Rc::new(RefCell::new(super::vc_lodge::Lodge::new(sites, shader_seed as u32, terrain, rel, [cx, gy, cz])));
+    super::vc_mount::vm_plan(&mut p, shader_seed as u32, hf.clone(), rel[2].atan2(rel[0]), lodge.clone());
+    if terrain {
+        super::vc_lodge::vl_plan(&mut p, lodge.clone());
+    }
+    for [x0, z0, x1, z1] in &patches {
+        p.at(0.0, format!("forceload add {x0} {z0} {x1} {z1}"));
+        p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
+    }
 
     // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
     {
@@ -294,7 +305,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     let _ = sdist;
 
     if terrain {
-        super::vc_land::vc_land_plan(&mut p, laser, shader_seed as u32, hf.clone());
+        super::vc_land::vc_land_plan(&mut p, laser, shader_seed as u32, hf.clone(), lodge.clone());
         // (the bombs' craters, each as it lands, wherever the world has land loaded there)
         let h3 = hf.clone();
         let s = shader_seed;
@@ -356,7 +367,8 @@ mod table {
         w[super::VC_HF..].copy_from_slice(&hf);
         // (VM_NOLAND=1: the land never read, as far off with the terrain off)
         let noland = std::env::var("VM_NOLAND").is_ok_and(|v| v == "1");
-        for (i, words) in super::super::vc_mount::table::all(seed as u32, &|x, z| (!noland).then(|| super::super::vc_mount::table::preview_col(x, z, hills))) {
+        let (tables, _) = super::super::vc_mount::table::all_lodged(seed as u32, rel, &|x, z| f(x + 0.5, z + 0.5) - f0, &|x, z| (!noland).then(|| super::super::vc_mount::table::preview_col(x, z, hills)));
+        for (i, words) in tables {
             if w.len() < i + words.len() {
                 w.resize(i + words.len(), 0);
             }

@@ -13,6 +13,7 @@
 //! What the pass reads (render.set-data, keep in step with volcano_mount.wgsl's VM_*): everything from VM_BASE, none of it
 //! the table's or the land's (volcano.rs). The columns run from the vent's less VM_HALF, every VM_STEP, x then z.
 use super::sh_land::{self, Class, MATS};
+use super::vc_lodge::{self, Lodge, Rock, RockCol, Slab, VL_BASE, VL_MAP};
 use super::volcano::Hf;
 use super::*;
 use std::cell::RefCell;
@@ -43,7 +44,7 @@ const VM_PLATE: usize = VM_BASE + 3500;
 const VM_PW: usize = 16;
 pub(super) const VM_PLATES: usize = 164;
 /// The plates thrown at the burst: those of the rings on the dome (the others lie out on the land).
-const VM_FLY: usize = 95;
+pub(super) const VM_FLY: usize = 95;
 /// Their flight past the white-out, four words each (`vm_flights`).
 const VM_FLT: usize = VM_BASE + 6200;
 /// The slab each is in its own frame, four words each (`vm_slabs`).
@@ -330,6 +331,8 @@ pub(super) struct Col {
     pub c1: u32,
     /// 0 ground, 1 a tree, 2 water, 3 snow, 4 sand or bare stone.
     pub kind: u8,
+    /// What the ground itself is (`MATS`), under what stands on it.
+    pub m: u8,
 }
 fn c565(c: [f64; 3]) -> u32 {
     let (r, g, b) = ((c[0].clamp(0.0, 255.0)) as u32, (c[1].clamp(0.0, 255.0)) as u32, (c[2].clamp(0.0, 255.0)) as u32);
@@ -348,7 +351,7 @@ fn tinted(m: u8, grass: u32, foliage: u32) -> [f64; 3] {
     [c[0] * f64::from((t >> 16) & 255) / 255.0, c[1] * f64::from((t >> 8) & 255) / 255.0, c[2] * f64::from(t & 255) / 255.0]
 }
 /// What a column's stack read comes to; none where it holds nothing but air.
-fn read_col(stack: &[u16], base: i32, below: i32, mats: &[(u8, Class)], tints: (u32, u32), gy: i32) -> Option<Col> {
+pub(super) fn read_col(stack: &[u16], base: i32, below: i32, mats: &[(u8, Class)], tints: (u32, u32), gy: i32) -> Option<Col> {
     let y0 = base - below;
     let (mut top, mut surface) = (None, None);
     let mut ground = None;
@@ -382,6 +385,7 @@ fn read_col(stack: &[u16], base: i32, below: i32, mats: &[(u8, Class)], tints: (
         c.kind = 3;
     }
     // (the ground under it, and what lies under that: what shows when the land breaks)
+    c.m = ground.map_or(m, |g| g.1);
     let under = match ground {
         Some((y, _, i)) => {
             c.canopy = (top - y).clamp(0, 31) as u8;
@@ -684,12 +688,14 @@ struct PlateSums {
     fit: Vec<[f64; 5]>,
     /// How far under and over that plane they lie, at the height it all stood at the burst.
     span: Vec<(f64, f64)>,
+    /// All its columns' height over its middle's at the burst: how far off the height it flies at its rock is.
+    lift: Vec<f64>,
     done: usize,
 }
 impl PlateSums {
     fn new(w: &Work) -> Self {
         let n = w.geo.plates.len();
-        PlateSums { sum: vec![(0.0, 0.0, 0.0, 0.0); n], rad: vec![0.0; n], off: vec![0.0; n], fit: vec![[0.0; 5]; n], span: vec![(f64::MAX, f64::MIN); n], done: 0 }
+        PlateSums { sum: vec![(0.0, 0.0, 0.0, 0.0); n], rad: vec![0.0; n], off: vec![0.0; n], fit: vec![[0.0; 5]; n], span: vec![(f64::MAX, f64::MIN); n], lift: vec![0.0; n], done: 0 }
     }
     /// The plane that fits plate c's tops, from its middle: (dy/dx, dy/dz).
     fn plane(&self, c: usize) -> (f64, f64) {
@@ -742,6 +748,7 @@ impl PlateSums {
                     let wood = 0.7 * w.cols[j].map_or(0.0, |k| f64::from(k.canopy));
                     let s = &mut self.span[c];
                     *s = (s.0.min(u), s.1.max(u + wood));
+                    self.lift[c] += dy;
                 }
             }
         }
@@ -857,7 +864,7 @@ impl Round {
 
 /// The mount's part of the plan: the field worked out as it starts, the land read, whatever the terrain setting, since
 /// the mount is only drawn.
-pub(super) fn vm_plan(p: &mut Plan, seed: u32, hf: Rc<RefCell<Hf>>, facing: f64) {
+pub(super) fn vm_plan(p: &mut Plan, seed: u32, hf: Rc<RefCell<Hf>>, facing: f64, lodge: vc_lodge::Shared) {
     let w: Shared = Rc::new(RefCell::new(Work::new(seed, facing)));
     {
         let w = w.clone();
@@ -870,7 +877,7 @@ pub(super) fn vm_plan(p: &mut Plan, seed: u32, hf: Rc<RefCell<Hf>>, facing: f64)
         let r = Round::new(all);
         r.ask(q, 0, 0.6);
         r.ask(q, 1, 0.6);
-        q.later(0.7, move |q| vm_land_step(q, w, hf, r, 0, 0, 0.7, 0));
+        q.later(0.7, move |q| vm_land_step(q, w, hf, r, lodge, 0, 0, 0.7, 0));
     });
 }
 
@@ -883,9 +890,9 @@ fn vm_field_step(q: &mut Plan, w: Shared, at: f32) {
 /// The land's answers worked through, a part at a time, waiting for each; columns not loaded yet asked again until 5 s;
 /// the pass given what there is after each round and in any case by 5.6 s.
 #[allow(clippy::too_many_arguments)]
-fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, part: usize, start: usize, at: f32, round: u32) {
+fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, lodge: vc_lodge::Shared, part: usize, start: usize, at: f32, round: u32) {
     if part >= r.tags.len() {
-        vm_send(q, &w, &hf, at);
+        vm_send(q, &w, &hf, &lodge, at);
         let (bx, bz) = (q.bx, q.bz);
         if round < 3 && at < 4.6 {
             let missing: Vec<(i32, i32)> = {
@@ -899,20 +906,20 @@ fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, part
                     let r = Round::new(missing);
                     r.ask(q, 0, t);
                     r.ask(q, 1, t);
-                    vm_land_step(q, w, hf, r, 0, 0, t + 0.1, round + 1);
+                    vm_land_step(q, w, hf, r, lodge, 0, 0, t + 0.1, round + 1);
                 });
             }
         }
         return;
     }
-    let next = |q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, part: usize, start: usize| {
-        q.later(at + 0.05, move |q| vm_land_step(q, w, hf, r, part, start, at + 0.05, round));
+    let next = |q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, lodge: vc_lodge::Shared, part: usize, start: usize| {
+        q.later(at + 0.05, move |q| vm_land_step(q, w, hf, r, lodge, part, start, at + 0.05, round));
     };
     let Some(a) = crate::columns::get(r.tags[part]) else {
         if at < 5.2 {
-            next(q, w, hf, r, part, start);
+            next(q, w, hf, r, lodge, part, start);
         } else {
-            vm_send(q, &w, &hf, at);
+            vm_send(q, &w, &hf, &lodge, at);
         }
         return;
     };
@@ -936,64 +943,226 @@ fn vm_land_step(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, r: Rc<Round>, part
     if end >= a.columns.len() {
         crate::columns::take(r.tags[part]);
         r.ask(q, part + 2, at);
-        next(q, w, hf, r, part + 1, 0);
+        next(q, w, hf, r, lodge, part + 1, 0);
     } else {
-        next(q, w, hf, r, part, end);
+        next(q, w, hf, r, lodge, part, end);
     }
 }
 
 /// The land as it stands given to the pass, over a few ticks.
-fn vm_send(q: &mut Plan, w: &Shared, hf: &Rc<RefCell<Hf>>, at: f32) {
+fn vm_send(q: &mut Plan, w: &Shared, hf: &Rc<RefCell<Hf>>, lodge: &vc_lodge::Shared, at: f32) {
     if w.borrow().next_cell < VM_COLS {
         return;
     }
-    let (w, hf) = (w.clone(), hf.clone());
+    let (w, hf, lodge) = (w.clone(), hf.clone(), lodge.clone());
     q.later(at + 0.05, move |q| {
         let p = Rc::new(RefCell::new(Pack::new(&w.borrow())));
         q.later(at + 0.1, move |q| {
             p.borrow_mut().soften(&w.borrow());
-            vm_send_rows(q, w, hf, p, at + 0.15);
+            vm_send_rows(q, w, hf, p, lodge, at + 0.15);
         });
     });
 }
-fn vm_send_rows(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, p: Rc<RefCell<Pack>>, at: f32) {
+fn vm_send_rows(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, p: Rc<RefCell<Pack>>, lodge: vc_lodge::Shared, at: f32) {
     q.later(at, move |q| {
         let last = {
             let (wb, h) = (w.borrow(), hf.borrow());
             p.borrow_mut().rows(&wb, PACK_COLS, &|x, z| h.at(x, z))
         };
         if !last {
-            vm_send_rows(q, w, hf, p, at + 0.05);
+            vm_send_rows(q, w, hf, p, lodge, at + 0.05);
             return;
         }
         let Ok(p) = Rc::try_unwrap(p) else { return };
-        for (index, words) in p.into_inner().finish() {
-            q.ev.push((at, Act::Words { index: index as u32, words }));
+        let mut words = None;
+        for (index, w) in p.into_inner().finish() {
+            match (index, &mut words) {
+                (VM_W0, _) => words = Some((w.clone(), Vec::new())),
+                (VM_W2, Some(k)) => k.1 = w.clone(),
+                _ => {}
+            }
+            q.ev.push((at, Act::Words { index: index as u32, words: w }));
         }
         let sums = PlateSums::new(&w.borrow());
-        vm_send_tables(q, w, hf, sums, at + 0.05);
+        vm_send_tables(q, w, hf, sums, lodge, Rc::new(words.unwrap_or_default()), at + 0.05);
     });
 }
 /// The tables that stand on the land, once the plates are summed.
-fn vm_send_tables(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, mut sums: PlateSums, at: f32) {
+fn vm_send_tables(q: &mut Plan, w: Shared, hf: Rc<RefCell<Hf>>, mut sums: PlateSums, lodge: vc_lodge::Shared, words: Rc<(Vec<u32>, Vec<u32>)>, at: f32) {
     q.later(at, move |q| {
         let last = {
             let (wb, h) = (w.borrow(), hf.borrow());
             sums.rows(&wb, PACK_COLS, &|x, z| h.at(x, z))
         };
         if !last {
-            vm_send_tables(q, w, hf, sums, at + 0.05);
+            vm_send_tables(q, w, hf, sums, lodge, words, at + 0.05);
             return;
         }
-        let (wb, h) = (w.borrow(), hf.borrow());
-        for (index, words) in vm_tables(&wb, &sums, &|x, z| h.at(x, z)) {
+        let tables = {
+            let (wb, h) = (w.borrow(), hf.borrow());
+            vm_tables(&wb, &sums, &|x, z| h.at(x, z))
+        };
+        let plates = tables.iter().find(|t| t.0 == VM_PLATE).map_or_else(Vec::new, |t| t.1.clone());
+        let flights = tables.iter().find(|t| t.0 == VM_FLT).map_or_else(Vec::new, |t| t.1.clone());
+        for (index, words) in tables {
             q.ev.push((at, Act::Words { index: index as u32, words }));
         }
+        let picks = vl_pick(&w.borrow(), &sums, &lodge.borrow().sites);
+        let make = Make { w, hf, sums, words, lodge, plates, flights, picks, slabs: Vec::new() };
+        vl_make(q, make, at + 0.05);
+    });
+}
+
+// ---- the plates that come down as real land: strike/vc_lodge.rs ---------------------------------------------------------
+/// Which plates (`VM_FLY`), with their sites: the biggest that are whole, none whose middle flies far off the rock it
+/// carries, nor a thin sliver. The biggest near the player. (plate, site, when it hits, how thick.)
+fn vl_pick(w: &Work, p: &PlateSums, sites: &[vc_lodge::Site]) -> Vec<(usize, vc_lodge::Site, f64, f64)> {
+    crate::meter::spend(100_000);
+    let seed = w.geo.seed;
+    let mut c: Vec<(f64, usize, f64)> = Vec::new();
+    let fits = |k: usize, fill0: f64, off0: f64| {
+        let n = p.sum[k].3;
+        if n < 200.0 {
+            return None;
+        }
+        let area = n * f64::from(VM_STEP * VM_STEP);
+        let rad = p.rad[k].sqrt();
+        let fill = area / (PI * rad * rad);
+        let off = (p.lift[k] / n - vm_burst_h() * (w.geo.plates[k].s + w.geo.plates[k].gx * (p.sum[k].0 / n - w.geo.plates[k].x) + w.geo.plates[k].gz * (p.sum[k].1 / n - w.geo.plates[k].z))).abs();
+        let span = p.span[k].1 - p.span[k].0;
+        (fill >= fill0 && off <= off0 && rad < 128.0 && span < 90.0).then_some(area)
+    };
+    for (fill, off) in [(0.33, 45.0), (0.26, 90.0), (0.0, 1.0e6)] {
+        c.clear();
+        for k in 0..VM_FLY {
+            if let Some(a) = fits(k, fill, off) {
+                c.push((a, k, p.sum[k].1.atan2(p.sum[k].0)));
+            }
+        }
+        if c.len() >= sites.len() {
+            break;
+        }
+    }
+    c.sort_by(|a, b| b.0.total_cmp(&a.0));
+    c.truncate(sites.len());
+    // (the times: the smallest first; the biggest last, in about the same second as what is thrown does)
+    let mut order: Vec<(f64, usize)> = c.iter().map(|e| (e.0, e.1)).collect();
+    order.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let hit = |k: usize| {
+        let r = order.iter().position(|e| e.1 == k).unwrap_or(0) as f64;
+        29.2 + 0.74 * r + 0.34 * mh(k as u32, seed, 0x76a)
+    };
+    let mut left = c;
+    let mut out = Vec::with_capacity(sites.len());
+    for (j, s) in sites.iter().enumerate() {
+        // (of the biggest left, for the near ones, the one that lay nearest that way already)
+        let a = s.z.atan2(s.x);
+        let span = if s.near { (sites.len() / 2 - j.min(sites.len() / 2 - 1)).min(left.len()) } else { left.len() };
+        let Some(i) = (0..span).min_by(|&p, &q| {
+            let off = |i: usize| ((left[i].2 - a).rem_euclid(TAU) - PI).abs();
+            off(q).total_cmp(&off(p))
+        }) else {
+            break;
+        };
+        let e = left.remove(i);
+        out.push((e.1, *s, hit(e.1), 30.0 + 10.0 * mh(e.1 as u32, seed, 0x76b)));
+    }
+    out
+}
+/// What's being worked out of those plates, a stage each.
+struct Make {
+    w: Shared,
+    hf: Rc<RefCell<Hf>>,
+    sums: PlateSums,
+    words: Rc<(Vec<u32>, Vec<u32>)>,
+    lodge: vc_lodge::Shared,
+    plates: Vec<u32>,
+    flights: Vec<u32>,
+    picks: Vec<(usize, vc_lodge::Site, f64, f64)>,
+    slabs: Vec<Slab>,
+}
+/// Plate `n` of the picks as a rock, a slab and its flight (the words of the plate and its flight changed).
+fn vl_one(n: usize, m: &mut Make) -> Slab {
+    let (k, site, hit, th) = m.picks[n];
+    let word = |t: &[u32], i: usize| f64::from(f32::from_bits(t[k * VM_PW + i]));
+    let (cx, cz, l, pc) = (word(&m.plates, 0), word(&m.plates, 1), word(&m.plates, 2), word(&m.plates, 3));
+    let hb = vm_burst_h();
+    let wb = m.w.borrow();
+    let (w0, w2) = (&m.words.0, &m.words.1);
+    let mut cols = Vec::new();
+    crate::meter::spend(40 * VM_COLS as u64);
+    if !w0.is_empty() && !w2.is_empty() {
+        for j in 0..VM_COLS {
+            if (w2[j] & 255) as usize == k {
+                let a = w0[j];
+                let land = f64::from(a & 0x7ff) * 0.5 - 512.0;
+                let p = f64::from((a >> 11) & 0x7ff) * (1.6 / 2047.0) - 0.25;
+                let (kk, d2) = (((w2[j] >> 24) & 7) as u8, ((w2[j] >> 8) & 255) as f32 / 8.0);
+                let m = wb.cols[j].map_or(1, |c| c.m);
+                cols.push(RockCol { i: (j % VM_GW) as i32, k: (j / VM_GW) as i32, top: (land + p * hb) as f32, m, kind: kk, d2 });
+                crate::meter::spend(60);
+            }
+        }
+    }
+    let big = (0..VM_FLY).map(|q| f64::from(f32::from_bits(m.plates[q * VM_PW + 6]))).fold(1.0, f64::max);
+    let q = (word(&m.plates, 6) / big).powi(2);
+    let rock = Rock {
+        id: k,
+        rest: [cx, l + pc * hb, cz],
+        v: [word(&m.plates, 9), word(&m.plates, 10), word(&m.plates, 11)],
+        tr: word(&m.plates, 8),
+        tau: 1.0 + 6.0 * q,
+        axis: (word(&m.plates, 12), word(&m.plates, 13)),
+        spin: word(&m.plates, 14),
+        th,
+        plane: m.sums.plane(k),
+        cols,
+    };
+    let mut s = Slab::new(&rock, site, hit, n, wb.geo.seed, 0.0);
+    drop(wb);
+    let gs = m.hf.borrow().at(site.x, site.z);
+    let v = s.fly(gs);
+    // (its own words: how thick, the way it goes; its flight's)
+    for (i, x) in [(7, th), (9, v[0]), (11, v[2])] {
+        m.plates[k * VM_PW + i] = (x as f32).to_bits();
+    }
+    let e = k * 4;
+    let fit = word(&m.plates, 6) * (1.0 + (400.0 * word(&m.plates, 4)).powi(2) + (400.0 * word(&m.plates, 5)).powi(2)).sqrt() + word(&m.plates, 15) + th;
+    for (i, x) in [rock.tau, s.g, hit, fit].iter().enumerate() {
+        m.flights[e + i] = (*x as f32).to_bits();
+    }
+    s
+}
+fn vl_make(q: &mut Plan, mut m: Make, at: f32) {
+    q.later(at, move |q| {
+        let n = m.slabs.len();
+        if n < m.picks.len() {
+            let mut s = vl_one(n, &mut m);
+            let w2 = m.words.1.clone();
+            let id = s.rock_id;
+            let (i0, k0) = s.grid_cells();
+            s.set_bits(&|i, k| w2.get((k0 + k) * VM_GW + i0 + i).is_some_and(|w| (*w & 255) as usize == id));
+            m.slabs.push(s);
+            vl_make(q, m, at + 0.05);
+            return;
+        }
+        let Make { lodge, plates, flights, slabs, .. } = m;
+        for s in &slabs {
+            let k = s.rock_id;
+            q.ev.push((at, Act::Words { index: (VM_PLATE + k * VM_PW) as u32, words: plates[k * VM_PW..(k + 1) * VM_PW].to_vec() }));
+            q.ev.push((at, Act::Words { index: (VM_FLT + k * 4) as u32, words: flights[k * 4..(k + 1) * 4].to_vec() }));
+        }
+        let mut l = lodge.borrow_mut();
+        l.set_slabs(slabs);
+        let (map, words) = l.words();
+        q.ev.push((at, Act::Data { index: VM_BASE as u32 + 5, value: 1.0 }));
+        q.ev.push((at, Act::Words { index: VL_MAP as u32, words: map }));
+        q.ev.push((at, Act::Words { index: VL_BASE as u32, words }));
     });
 }
 
 #[cfg(test)]
-pub(super) mod table {
+pub(in crate::strike) mod table {
     use super::*;
     /// The preview's land for the table (`flat=1 trees=1` of tools/preview, read every VM_STEP), a river across it and a
     /// patch of bare ground, so its slopes can be seen carrying them.
@@ -1022,17 +1191,22 @@ pub(super) mod table {
         let g = hills * (0.5 * (gx * 0.045 + 0.7).sin() * (gz * 0.038).cos() + 0.5 * (gx * 0.013 - gz * 0.017).sin());
         let river = (z + 60.0 + 70.0 * (x * 0.006).sin() + 18.0 * (x * 0.021).sin()).abs();
         if river < 8.0 {
-            return Col { top: g.round() as i32, canopy: 0, c0: c565([52.0, 96.0, 190.0]), c1: c565([120.0, 110.0, 96.0]), kind: 2 };
+            return Col { top: g.round() as i32, canopy: 0, c0: c565([52.0, 96.0, 190.0]), c1: c565([120.0, 110.0, 96.0]), kind: 2, m: 25 };
         }
         let n = f64::from(hash(x as i32, z as i32));
         if let Some(t) = tree(x as f32, z as f32) {
-            return Col { top: (g + f64::from(t)).round() as i32, canopy: t as u8, c0: c565([52.0 + 18.0 * n, 92.0 + 24.0 * n, 58.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 1 };
+            return Col { top: (g + f64::from(t)).round() as i32, canopy: t as u8, c0: c565([52.0 + 18.0 * n, 92.0 + 24.0 * n, 58.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 1, m: 1 };
         }
-        Col { top: g.round() as i32, canopy: 0, c0: c565([108.0 + 18.0 * n, 168.0 + 22.0 * n, 118.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 0 }
+        Col { top: g.round() as i32, canopy: 0, c0: c565([108.0 + 18.0 * n, 168.0 + 22.0 * n, 118.0 + 12.0 * n]), c1: c565([134.0, 96.0, 67.0]), kind: 0, m: 1 }
     }
     /// The whole table at once (the tests' and the preview's: the game's goes in stages).
     pub(in crate::strike) fn all(seed: u32, col: &dyn Fn(f64, f64) -> Option<Col>) -> Vec<(usize, Vec<u32>)> {
-        let mut w = Work::new(seed, PI / 2.0);
+        all_lodged(seed, [0.0, 5.0, 1000.0], &|_, _| 0.0, col).0
+    }
+    /// The same with the plates that come down: `me` the player, `land` the ground's height from the vent.
+    pub(in crate::strike) fn all_lodged(seed: u32, me: [f64; 3], land: &dyn Fn(f64, f64) -> f64, col: &dyn Fn(f64, f64) -> Option<Col>) -> (Vec<(usize, Vec<u32>)>, vc_lodge::Shared) {
+        let facing = me[2].atan2(me[0]);
+        let mut w = Work::new(seed, facing);
         while !w.field(PER_STAGE) {}
         for j in 0..VM_COLS {
             let (x, z) = col_xz(j);
@@ -1044,8 +1218,43 @@ pub(super) mod table {
         let mut o = p.finish();
         let mut sums = PlateSums::new(&w);
         while !sums.rows(&w, PACK_COLS, &|_, _| 0.0) {}
-        o.extend(vm_tables(&w, &sums, &|_, _| 0.0));
-        o
+        let t = vm_tables(&w, &sums, &|_, _| 0.0);
+        let plates = t.iter().find(|e| e.0 == VM_PLATE).unwrap().1.clone();
+        let flights = t.iter().find(|e| e.0 == VM_FLT).unwrap().1.clone();
+        o.extend(t);
+        let words = (o.iter().find(|e| e.0 == VM_W0).unwrap().1.clone(), o.iter().find(|e| e.0 == VM_W2).unwrap().1.clone());
+        let lodge: vc_lodge::Shared = Rc::new(RefCell::new(Lodge::new(vc_lodge::vl_sites(seed, me), seed, true, me, [0.5, 65.0, 0.5])));
+        let picks = vl_pick(&w, &sums, &lodge.borrow().sites);
+        let mut hf = Hf::default();
+        let cells = (super::super::volcano::VC_HN * super::super::volcano::VC_HN) as usize;
+        let reach = 1500.0;
+        let n = super::super::volcano::VC_HN;
+        hf.set(&(0..cells).map(|c| { let st = 2.0 * reach / (n - 1) as f64; Some(land(st * (c % n) as f64 - reach, st * (c / n) as f64 - reach)) }).collect::<Vec<_>>(), reach);
+        let mut m = Make { w: Rc::new(RefCell::new(w)), hf: Rc::new(RefCell::new(hf)), sums, words: Rc::new(words), lodge: lodge.clone(), plates, flights, picks, slabs: Vec::new() };
+        for n in 0..m.picks.len() {
+            let mut s = vl_one(n, &mut m);
+            let w2 = m.words.1.clone();
+            let id = s.rock_id;
+            let (i0, k0) = s.grid_cells();
+            s.set_bits(&|i, k| w2.get((k0 + k) * VM_GW + i0 + i).is_some_and(|w| (*w & 255) as usize == id));
+            m.slabs.push(s);
+        }
+        for e in &mut o {
+            if e.0 == VM_PLATE {
+                e.1 = m.plates.clone();
+            }
+            if e.0 == VM_FLT {
+                e.1 = m.flights.clone();
+            }
+        }
+        let mut l = lodge.borrow_mut();
+        l.set_slabs(m.slabs);
+        let (map, words) = l.words();
+        o.push((VM_BASE + 5, vec![1f32.to_bits()]));
+        o.push((VL_MAP, map));
+        o.push((VL_BASE, words));
+        drop(l);
+        (o, lodge)
     }
 }
 
@@ -1449,6 +1658,6 @@ mod tests {
         assert_eq!(VM_FLY, Geo::new(37, 0.0).rings[..5].iter().map(|g| g.n).sum::<usize>());
         assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_FLT);
         assert!(VM_FLT + 4 * VM_FLY <= VM_SLAB);
-        assert!(VM_SLAB + 4 * VM_FLY <= VM_W0);
+        assert!(VM_SLAB + 4 * VM_FLY <= VL_MAP && VL_MAP + VM_FLY <= VL_BASE && VL_BASE + vc_lodge::VL_N * vc_lodge::VL_W <= VM_W0);
     }
 }

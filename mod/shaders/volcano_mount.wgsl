@@ -42,6 +42,18 @@ const VM_FIREOUT: f32 = 19.5;      // but the fire sheet's outer ring, burning o
 // with its own (VM_FLT: its drag's time, the gravity that brings it down when it should, when it hits, the sphere it fits in; vc_mount.rs).
 const VM_FLT: u32 = 71736u;        // VM_BASE + 6200: four words a plate thrown
 const VM_SLAB: u32 = 72136u;       // VM_BASE + 6600: the slab each is in its own frame, four words (vc_mount.rs's vm_slabs)
+// Ten of the plates come down as real land (strike/vc_lodge.rs): a word a plate (its place among them and one), then
+// VL_W words each: where it comes to rest turned (a quaternion, its frame to the world), what the ease adds to its flight,
+// when it goes (0 not yet, under 0 on into the ground), when the ease starts, where it meets the ground, its plate, the
+// way it comes down, half its length.
+const VL_MAP: u32 = 72536u;        // VM_BASE + 7000
+const VL_BASE: u32 = 72636u;       // VM_BASE + 7100
+const VL_W: u32 = 16u;
+const VL_N: u32 = 10u;
+const VL_EASE: f32 = 3.5;
+const VL_FADE: f32 = 0.45;         // the drawn one going, the real one in its place
+const VL_SEEN: f32 = 470.0;        // past this the game doesn't show the land's changes: the drawn one stays
+const VL_END: f32 = 86.0;          // and goes with the ash, by the strike's end
 const VM_BRK: f32 = 18.7;
 const VM_TH: f32 = 2.5;            // the drag's time on how far out, every piece's
 const VM_FLYEND: f32 = 38.0;       // the last of it is under the land
@@ -89,7 +101,7 @@ fn vm_set(time: f32) {
     let got = arrayLength(&mod_data) > VM_W2 + VM_COLS - 1u && mod_data[VM_BASE] != 0u;
     s.on = got && time > VC_CRACK - 0.1 && time < VM_GONE;
     s.fire = got && time > VM_ERUPT && time < VM_FIREOUT;
-    s.fly = got && time > VM_ERUPT && time < VM_FLYEND;
+    s.fly = got && time > VM_ERUPT && (time < VM_FLYEND || (time < VL_END && mod_data[VM_BASE + 5u] != 0u));
     if (s.on || s.fire || s.fly) {
         s.ylo = vm_w(VM_BASE + 1u) - 12.0;
     }
@@ -572,6 +584,8 @@ struct VmPl {
     i: u32,
     dep: f32,         // how far down through it, 0 to 1
     y: f32,           // how high it was, at rest
+    vis: f32,         // how much of it shows: one that stays goes as the real one takes its place
+    lodged: bool,
 }
 // What is thrown never goes through the eye: a plate there would black out the picture, and with the eye inside it the
 // half stage's march would stop at nothing. It slides round a ball about the eye instead, `keep` from its middle.
@@ -635,8 +649,36 @@ fn vm_top(xz: vec2<f32>, i: u32, miss: f32) -> f32 {
     let p = vec4<f32>(f32((a0 >> 11u) & 0x7ffu), f32((a1 >> 11u) & 0x7ffu), f32((a2 >> 11u) & 0x7ffu), f32((a3 >> 11u) & 0x7ffu)) * (1.6 / 2047.0) - 0.25;
     return dot(land + p * vm.Hb, m) / k;
 }
+// A quaternion's turn of v.
+fn vl_rot(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
+    return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+}
+fn vl_slerp(a: vec4<f32>, b0: vec4<f32>, u: f32) -> vec4<f32> {
+    var d = dot(a, b0);
+    let b = select(b0, -b0, d < 0.0);
+    d = abs(d);
+    if (d > 0.9995) {
+        return normalize(mix(a, b, u));
+    }
+    let th = acos(d);
+    return (a * sin((1.0 - u) * th) + b * sin(u * th)) / sin(th);
+}
+// How thick a plate that comes down is at (x, z), a share of its thickness: its underside torn (vc_lodge.rs's vl_thk).
+fn vl_thk(xz: vec2<f32>) -> f32 {
+    let a = sin(xz.x * 0.083 + 1.3 * sin(xz.y * 0.047)) * sin(xz.y * 0.071 - 0.9);
+    let b = sin(xz.x * 0.19 - xz.y * 0.13 + 0.7) * sin(xz.y * 0.17 + xz.x * 0.05);
+    return 0.82 + 0.13 * a + 0.05 * b;
+}
+// How far the ease has come at time t, for the plate with words at lb.
+fn vl_u(lb: u32, t: f32) -> f32 {
+    return saturate((t - vm_w(lb + 8u)) / VL_EASE);
+}
+// What the ease adds to its flight by then: it slides in along its way, faster and faster.
+fn vl_add(lb: u32, u: f32) -> vec3<f32> {
+    return vec3<f32>(vm_w(lb + 4u), vm_w(lb + 5u), vm_w(lb + 6u)) * u * u;
+}
 // Whether the point lp of plate i's frame (cxz its middle, y0 its height) is in it.
-fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th: f32) -> bool {
+fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th0: f32, lodged: bool) -> bool {
     let xz = lp.xz + cxz;
     if (any(abs(xz) > vec2<f32>(VM_HALF - 3.0))) {
         return false;
@@ -649,38 +691,79 @@ fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th: f32) -> bool 
     }
     let y = lp.y + y0;
     let top = vm_top(xz, i, -1.0e6);
+    let th = select(th0, th0 * vl_thk(xz), lodged);
     return y <= top && y >= top - th;
 }
 fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
     var r: VmPl;
     r.t = -1.0;
+    r.vis = 1.0;
     if (vm.t <= VM_ERUPT) {
         return r;
     }
     var best = tmax;
-    for (var i = 0u; i < VM_FLY; i = i + 1u) {
+    // (past VM_FLYEND only those that stay are left to look at)
+    let tail = vm.t > VM_FLYEND;
+    let count = select(VM_FLY, VL_N, tail);
+    for (var n = 0u; n < count; n = n + 1u) {
+        let i = select(n, u32(vm_w(VL_BASE + n * VL_W + 12u)), tail);
         if (vm_only.w != 0u && all(vm_only != vec4<u32>(i + 1u))) {
             continue;
         }
+        let lk = mod_data[VL_MAP + i];
+        if (tail && lk == 0u) {
+            continue;
+        }
+        let lb = VL_BASE + (lk - 1u) * VL_W;
         let b = VM_PLATE + i * VM_PW;
         let tr = vm_w(b + 8u);
         let a = vm.t - tr;
         let fb = VM_FLT + i * 4u;
         let rad = vm_w(fb + 3u);
-        // (not yet thrown; or gone into the land, a plate's width after it struck)
-        if (a <= 0.0 || vm.t > vm_w(fb + 2u) + rad * 0.012) {
+        let hit = vm_w(fb + 2u);
+        // (not yet thrown; or gone into the land, a plate's width after it struck; or one that stays, its real one in)
+        var vis = 1.0;
+        var sink = lk == 0u;
+        if (lk != 0u) {
+            let gone = vm_w(lb + 7u);
+            sink = gone < 0.0;
+            if (gone > 0.0 && vm.t > gone) {
+                let e = vec3<f32>(vm_w(lb + 9u), vm_w(lb + 10u), vm_w(lb + 11u)) - o;
+                vis = select(1.0 - saturate((vm.t - gone) / VL_FADE), 1.0, dot(e, e) > VL_SEEN * VL_SEEN);
+            }
+            vis = vis * (1.0 - smoothstep(VL_END - 4.0, VL_END, vm.t));
+            if (vis <= 0.0) {
+                continue;
+            }
+        }
+        if (a <= 0.0 || (sink && vm.t > hit + rad * 0.012)) {
             continue;
         }
         // (seen from above first: where it is over the land needs no gravity, and most rays pass well clear of it)
         let vxz = vec2<f32>(vm_w(b + 9u), vm_w(b + 11u));
-        let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) + vxz * (min(a, VM_BRK - tr) + vm.eh) - o.xz;
-        let cr = pl0.x * rd.z - pl0.y * rd.x;
-        let keep = rad + 140.0;
-        if (cr * cr > rad * rad * 1.1 * dot(rd.xz, rd.xz) + 1.0 && dot(pl0, pl0) > keep * keep) {
-            continue;
+        let keep0 = rad + 140.0;
+        if (lk == 0u) {
+            let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) + vxz * (min(a, VM_BRK - tr) + vm.eh) - o.xz;
+            let cr = pl0.x * rd.z - pl0.y * rd.x;
+            if (cr * cr > rad * rad * 1.1 * dot(rd.xz, rd.xz) + 1.0 && dot(pl0, pl0) > keep0 * keep0) {
+                continue;
+            }
         }
         let rest = vec3<f32>(vm_w(b), vm_w(b + 2u) + vm_w(b + 3u) * vm.Hb, vm_w(b + 1u));
-        let c = vm_clear(vm_flown(rest, vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y), tr, vm_w(fb), vm_w(fb + 1u), vm.t, vm.eh), o, keep);
+        // (one that stays eases into where it comes to rest, tumble and all, and stops there)
+        let te = select(vm.t, min(vm.t, hit), lk != 0u);
+        var c = vm_flown(rest, vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y), tr, vm_w(fb), vm_w(fb + 1u), te, vm_eh(te));
+        var keep = keep0;
+        var eu = 0.0;
+        if (lk != 0u) {
+            eu = vl_u(lb, te);
+            c = c + vl_add(lb, eu);
+            keep = keep0 * (1.0 - eu) * (1.0 - eu);
+            if (sink && vm.t > hit) {
+                c = c + vec3<f32>(0.35 * vm_w(lb + 13u), -1.0, 0.35 * vm_w(lb + 14u)) * 130.0 * (vm.t - hit);
+            }
+        }
+        c = vm_clear(c, o, keep);
         let oc = c - o;
         let tc = dot(oc, rd);
         let dd = dot(oc, oc) - tc * tc;
@@ -692,8 +775,16 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         let ang = -vm_w(b + 14u) * a;
         let cs = cos(ang);
         let sn = sin(ang);
-        let lo = vm_rot(o - c, ax, cs, sn);
-        let ld = vm_rot(rd, ax, cs, sn);
+        var lo = vm_rot(o - c, ax, cs, sn);
+        var ld = vm_rot(rd, ax, cs, sn);
+        var qe = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        if (lk != 0u) {
+            let hf = 0.5 * vm_w(b + 14u) * (te - tr);
+            qe = vl_slerp(vec4<f32>(ax * sin(hf), cos(hf)), vec4<f32>(vm_w(lb), vm_w(lb + 1u), vm_w(lb + 2u), vm_w(lb + 3u)), smoothstep(0.0, 1.0, eu));
+            let inv = vec4<f32>(-qe.xyz, qe.w);
+            lo = vl_rot(inv, o - c);
+            ld = vl_rot(inv, rd);
+        }
         // (between its top and its underside: the planes its own land's tops lie between, vm_slabs)
         let sb = VM_SLAB + i * 4u;
         let n = vec3<f32>(-vm_w(sb), 1.0, -vm_w(sb + 1u));
@@ -723,7 +814,7 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         let dtl = (tb - ta) / f32(looks);
         for (var k = 0; k < looks; k = k + 1) {
             let t = ta + dtl * (f32(k) + 0.1);
-            if (!vm_in_plate(lo + ld * t, cxz, rest.y, i, th)) {
+            if (!vm_in_plate(lo + ld * t, cxz, rest.y, i, th, lk != 0u)) {
                 continue;
             }
             var a0 = t - dtl;
@@ -733,11 +824,13 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
                 best = t;
                 r.t = t;
                 r.i = i;
+                r.vis = vis;
+                r.lodged = lk != 0u;
                 break;
             }
             for (var q = 0; q < 4; q = q + 1) {
                 let m = 0.5 * (a0 + b0);
-                if (vm_in_plate(lo + ld * m, cxz, rest.y, i, th)) {
+                if (vm_in_plate(lo + ld * m, cxz, rest.y, i, th, lk != 0u)) {
                     b0 = m;
                 } else {
                     a0 = m;
@@ -752,6 +845,8 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
             r.rest = xz;
             r.kind = select(1u, 0u, dep < 3.4);
             r.i = i;
+            r.vis = vis;
+            r.lodged = lk != 0u;
             r.dep = saturate(dep / th);
             r.y = lp.y + rest.y;
             // (its broken side, or its underside)
@@ -760,7 +855,7 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
                 let e = 4.0;
                 nn = normalize(vec3<f32>((vm_top(xz - vec2<f32>(e, 0.0), i, top) - vm_top(xz + vec2<f32>(e, 0.0), i, top)) / (2.0 * e), 1.0, (vm_top(xz - vec2<f32>(0.0, e), i, top) - vm_top(xz + vec2<f32>(0.0, e), i, top)) / (2.0 * e)));
             }
-            r.n = vm_rot(nn, ax, cs, -sn);
+            r.n = select(vm_rot(nn, ax, cs, -sn), vl_rot(qe, nn), lk != 0u);
             break;
         }
     }
@@ -788,7 +883,9 @@ fn vm_shade_plate(C: vec3<f32>, rd: vec3<f32>, h: VmPl, l: VcLight) -> vec3<f32>
         alb = mix(alb, rock, smoothstep(1.25, 1.75, tear));
         alb = mix(alb, vec3<f32>(0.105, 0.09, 0.08), 0.5 * (0.6 + 0.8 * nf2));
         let d2 = f32((cl.w2 >> 8u) & 255u) / 8.0;
-        alb = mix(alb, vec3<f32>(0.03, 0.026, 0.023) * (0.3 + 3.0 * nf2 * nf2 * nf), 0.88 * smoothstep(VM_GONE, 21.0, vm.t));
+        // (one that stays shakes it off as it comes down: its land as the real one will show it)
+        let burnt = select(0.88, 0.88 * (1.0 - smoothstep(vm_w(VM_FLT + h.i * 4u + 2u) - 7.0, vm_w(VM_FLT + h.i * 4u + 2u) - 1.0, vm.t)), h.lodged);
+        alb = mix(alb, vec3<f32>(0.03, 0.026, 0.023) * (0.3 + 3.0 * nf2 * nf2 * nf), burnt * smoothstep(VM_GONE, 21.0, vm.t));
         return mix(alb * dl * (0.4 + 0.9 * nl) + alb * vm_firelit(p, h.n), vec3<f32>(0.012), 0.8 * (1.0 - smoothstep(0.3, 1.4, d2)));
     }
     // (its broken edge and underside: raw rock, burning)
@@ -853,7 +950,7 @@ fn vm_surface(C: vec3<f32>, rd: vec3<f32>, scene_len: f32, col: vec3<f32>, stage
         o.t = pl.t;
         o.id = f32(pl.i + 1u);
         if (stage != 1u) {
-            o.c = mix(vm_shade_plate(C, rd, pl, l), vc_haze(rd, l), 0.3 * ap);
+            o.c = mix(col, mix(vm_shade_plate(C, rd, pl, l), vc_haze(rd, l), 0.3 * ap), pl.vis);
             vm_plc = o.c;
             vm_plk = 1.0 - smoothstep(VM_GONE - 0.05, VM_GONE + 0.1, vm.t);
         }
@@ -1175,7 +1272,7 @@ fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
 fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<function, f32>) -> vec4<f32> {
     var c = vec3<f32>(0.0);
     var tr = 1.0;
-    if (!vm.fly || vm.t < VM_BRK + 0.1) {
+    if (!vm.fly || vm.t < VM_BRK + 0.1 || vm.t > VM_FLYEND + 11.0) {
         return vec4<f32>(c, tr);
     }
     let dl = 0.14 + 0.86 * l.day;
@@ -1185,7 +1282,9 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         let fb = VM_FLT + i * 4u;
         let hit = vm_w(fb + 2u);
         let rad = vm_w(b + 6u);
-        if (rad < 66.0 || vm.t > hit + 6.0) {
+        let lk = mod_data[VL_MAP + i];
+        let lb = VL_BASE + (lk - 1u) * VL_W;
+        if (rad < 66.0 || vm.t > hit + select(6.0, 11.0, lk != 0u)) {
             continue;
         }
         let trw = vm_w(b + 8u);
@@ -1196,7 +1295,7 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         let cr0 = cross2(p0xz + vxz * (min(t3, VM_BRK) - trw + vm_eh(t3)) + C.xz, rd.xz);
         let t4 = max(t3 - 3.6, VM_BRK);
         let cr1 = cross2(p0xz + vxz * (VM_BRK - trw + vm_eh(t4)) + C.xz, rd.xz);
-        let cl = (28.0 + 1.5 * rad) * length(rd.xz) + 1.0;
+        let cl = (28.0 + select(1.5 * rad, 2.0 * rad + 260.0, lk != 0u)) * length(rd.xz) + 1.0;
         if ((cr0 > cl && cr1 > cl) || (cr0 < -cl && cr1 < -cl)) {
             continue;
         }
@@ -1205,17 +1304,26 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         let tau = vm_w(fb);
         let g = vm_w(fb + 1u);
         let te = min(vm.t, hit);
-        let head = vm_flown(p0, v, trw, tau, g, te, vm_eh(te));
+        var head = vm_flown(p0, v, trw, tau, g, te, vm_eh(te));
+        if (lk != 0u) {
+            head = head + vl_add(lb, vl_u(lb, te));
+        }
         // ---- its trail, thin, hanging where it passed, thinning as it goes -----------------------------------------------
         if (vm.t < hit + 4.0) {
             let t2 = max(te - 3.6, VM_BRK);
-            let tail = vm_flown(p0, v, trw, tau, g, t2, vm_eh(t2));
+            var tail = vm_flown(p0, v, trw, tau, g, t2, vm_eh(t2));
+            if (lk != 0u) {
+                tail = tail + vl_add(lb, vl_u(lb, t2));
+            }
             let g0 = vm_seg(rd, head + C, tail + C);
             let span = length(head - tail);
             let wm = 14.0 + 0.09 * rad + 0.2 * span;
             if (g0.x < wm * wm && g0.z > 4.0) {
                 let t1 = mix(te, t2, 0.4);
-                let mid = vm_flown(p0, v, trw, tau, g, t1, vm_eh(t1));
+                var mid = vm_flown(p0, v, trw, tau, g, t1, vm_eh(t1));
+                if (lk != 0u) {
+                    mid = mid + vl_add(lb, vl_u(lb, t1));
+                }
                 let g1 = vm_seg(rd, head + C, mid + C);
                 let g2 = vm_seg(rd, mid + C, tail + C);
                 let gb = select(vec4<f32>(g2, 0.4 + 0.6 * g2.y), vec4<f32>(g1, 0.4 * g1.y), g1.x < g2.x);
@@ -1236,9 +1344,13 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         // ---- it strikes: a low dome of dust, rolling out from under it and thinning ------------------------------------
         let age = vm.t - hit + 0.3;
         if (age > 0.0) {
-            let Rd = rad * (0.3 + 0.62 * (1.0 - exp(-age / 1.2)));
-            let oe = (-C - head) * vec3<f32>(1.0, 1.7, 1.0);
-            let de = rd * vec3<f32>(1.0, 1.7, 1.0);
+            // (one that stays a far bigger burst, round where it went in, wider than tall and slow to go)
+            let big = lk != 0u;
+            let Rd = select(rad * (0.3 + 0.62 * (1.0 - exp(-age / 1.2))), vm_w(lb + 15u) * (0.5 + 1.25 * (1.0 - exp(-age / 1.5))), big);
+            let dc = select(head, vec3<f32>(vm_w(lb + 9u), vm_w(lb + 10u), vm_w(lb + 11u)), big);
+            let sq_y = select(1.7, 1.25, big);
+            let oe = (-C - dc) * vec3<f32>(1.0, sq_y, 1.0);
+            let de = rd * vec3<f32>(1.0, sq_y, 1.0);
             let A = dot(de, de);
             let B = dot(oe, de);
             let disc = B * B - A * (dot(oe, oe) - Rd * Rd);
@@ -1249,8 +1361,8 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
                 if (t1 > t0) {
                     let q = rd * (t0 + 0.3 * (t1 - t0)) - C;
                     let n = 0.6 * gnoise3(q * 0.026 + vec3<f32>(0.0, -age * 0.5, f32(i))) + 0.4 * gnoise3(q * 0.08 + vec3<f32>(f32(i), -age * 0.9, 0.0));
-                    let al = (1.0 - exp(-(t1 - t0) / Rd * 1.7)) * smoothstep(0.3, 0.75, (t1 - t0) / (2.0 * Rd) * sqrt(A) + 1.4 * (n - 0.5)) * (1.0 - smoothstep(1.2, 5.5, age));
-                    let up = saturate((q.y - head.y) / (0.6 * Rd));
+                    let al = (1.0 - exp(-(t1 - t0) / Rd * 1.7)) * smoothstep(0.3, 0.75, (t1 - t0) / (2.0 * Rd) * sqrt(A) + 1.4 * (n - 0.5)) * (1.0 - smoothstep(select(1.2, 3.5, big), select(5.5, 10.5, big), age));
+                    let up = saturate((q.y - dc.y) / (0.6 * Rd));
                     let sc = vec3<f32>(0.3, 0.255, 0.205) * ((0.25 + 0.45 * up) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up) + vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0)));
                     c = c + tr * al * sc;
                     tr = tr * (1.0 - al);

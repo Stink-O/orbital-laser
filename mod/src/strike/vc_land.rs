@@ -33,7 +33,7 @@ const VC_READ0: f64 = 236.0;
 const VC_READ: i32 = 612;
 const VC_GW: i32 = 2 * VC_READ + 1;
 const VC_CHUNKS: i32 = 2 * (VC_READ / 16 + 3);
-const VC_BELOW: u32 = 34;
+pub(super) const VC_BELOW: u32 = 34;
 const VC_ABOVE: u32 = 1;
 const VC_PARTS: i32 = 248;
 /// The chunks within this are force-loaded.
@@ -74,16 +74,16 @@ const VC_UNIT: u64 = 300;
 
 /// A column as read, packed into a 32-bit word (0: not read), 6 MB of them.
 #[derive(Clone, Copy, Debug, Default)]
-struct Col {
-    g: i32,
+pub(super) struct Col {
+    pub g: i32,
     /// At most 35 over `g`: the read goes no further.
-    top: i32,
+    pub top: i32,
     /// At most 40.
     trunk: u8,
     leaves: bool,
     /// 1 grass, 2 dirt.
     ground: u8,
-    fluid: bool,
+    pub fluid: bool,
     /// Water deeper than the read reaches: `g` is no more than how far it read.
     deep: bool,
 }
@@ -201,67 +201,80 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
     crate::meter::spend(60 * out.len() as u64 + 200 * (2 * n + 1) as u64);
     out
 }
+/// Column i of an answer: its ground and what stands on it (`Ok(None)`: not a thing to go by, `Err`: not loaded).
+fn read_one(a: &crate::columns::Answer, i: usize, kinds: &[(Kind, u8)]) -> Result<Option<Col>, ()> {
+    let Some((surface, blocks)) = a.column(i) else {
+        crate::meter::spend(60);
+        return Err(());
+    };
+    let base = surface - a.below;
+    crate::meter::spend(200 + 12 * blocks.len() as u64);
+    let mut c = Col::default();
+    let mut top = None;
+    let mut g = None;
+    for j in (0..blocks.len()).rev() {
+        let (k, w) = kinds.get(blocks[j] as usize).copied().unwrap_or((Kind::Loose, 0));
+        match k {
+            Kind::Air => {}
+            Kind::Ground => {
+                top.get_or_insert(base + j as i32);
+                g = Some(j);
+                c.ground = w;
+                break;
+            }
+            Kind::Fluid => {
+                c.fluid = true;
+                top.get_or_insert(base + j as i32);
+            }
+            Kind::Leaves => {
+                c.leaves = true;
+                top.get_or_insert(base + j as i32);
+            }
+            _ => {
+                top.get_or_insert(base + j as i32);
+            }
+        }
+    }
+    let Some(gj) = g else {
+        // (the sea, or a lake deeper than it reads)
+        if c.fluid {
+            c.deep = true;
+            c.g = base;
+            c.top = top.unwrap_or(base);
+            return Ok(Some(c));
+        }
+        return Ok(None);
+    };
+    c.g = base + gj as i32;
+    c.top = top.unwrap_or(c.g);
+    let mut n = 0;
+    while gj + 1 + n < blocks.len() {
+        match kinds.get(blocks[gj + 1 + n] as usize) {
+            Some(&(Kind::Log, _)) => n += 1,
+            _ => break,
+        }
+    }
+    c.trunk = n.min(40) as u8;
+    Ok(Some(c))
+}
+/// Column i of an answer, as the plates that come down read it (strike/vc_lodge.rs).
+pub(super) fn column_of(a: &crate::columns::Answer, i: usize, kinds: &[(Kind, u8)]) -> Option<Col> {
+    read_one(a, i, kinds).ok().flatten()
+}
 /// One answer taken in: each column's ground and what stands on it; those not loaded kept to be asked again.
 fn take_in(cols: &mut [u32], missing: &mut Missing, a: &crate::columns::Answer, bx: i32, bz: i32) {
     let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
     crate::meter::spend(2_000 + 4_000 * a.palette.len() as u64);
     for (i, &(x, z)) in a.columns.iter().enumerate() {
-        let Some((surface, blocks)) = a.column(i) else {
-            crate::meter::spend(60);
-            missing.add(x, z, bx, bz);
-            continue;
-        };
-        let base = surface - a.below;
-        crate::meter::spend(200 + 12 * blocks.len() as u64);
-        let mut c = Col::default();
-        let mut top = None;
-        let mut g = None;
-        for j in (0..blocks.len()).rev() {
-            let (k, w) = kinds.get(blocks[j] as usize).copied().unwrap_or((Kind::Loose, 0));
-            match k {
-                Kind::Air => {}
-                Kind::Ground => {
-                    top.get_or_insert(base + j as i32);
-                    g = Some(j);
-                    c.ground = w;
-                    break;
-                }
-                Kind::Fluid => {
-                    c.fluid = true;
-                    top.get_or_insert(base + j as i32);
-                }
-                Kind::Leaves => {
-                    c.leaves = true;
-                    top.get_or_insert(base + j as i32);
-                }
-                _ => {
-                    top.get_or_insert(base + j as i32);
+        match read_one(a, i, &kinds) {
+            Err(()) => missing.add(x, z, bx, bz),
+            Ok(None) => {}
+            Ok(Some(c)) => {
+                let (ii, kk) = (x - bx + VC_READ, z - bz + VC_READ);
+                if (0..VC_GW).contains(&ii) && (0..VC_GW).contains(&kk) {
+                    cols[(kk * VC_GW + ii) as usize] = c.pack();
                 }
             }
-        }
-        let (ii, kk) = (x - bx + VC_READ, z - bz + VC_READ);
-        let Some(gj) = g else {
-            // (the sea, or a lake deeper than it reads)
-            if c.fluid && (0..VC_GW).contains(&ii) && (0..VC_GW).contains(&kk) {
-                c.deep = true;
-                c.g = base;
-                c.top = top.unwrap_or(base);
-                cols[(kk * VC_GW + ii) as usize] = c.pack();
-            }
-            continue;
-        };
-        c.g = base + gj as i32;
-        c.top = top.unwrap_or(c.g);
-        let mut n = 0;
-        while gj + 1 + n < blocks.len() {
-            match kinds.get(blocks[gj + 1 + n] as usize) {
-                Some(&(Kind::Log, _)) => n += 1,
-                _ => break,
-            }
-        }
-        c.trunk = n.min(40) as u8;
-        if (0..VC_GW).contains(&ii) && (0..VC_GW).contains(&kk) {
-            cols[(kk * VC_GW + ii) as usize] = c.pack();
         }
     }
 }
@@ -391,11 +404,11 @@ impl Shape {
 const VC_RING_F: f64 = 284.0;
 
 /// A number from 0 to 1 for `k`, cheaply (a block's pick, thousands of them a stage).
-fn pick(k: i32, seed: u32) -> f64 {
+pub(super) fn pick(k: i32, seed: u32) -> f64 {
     f64::from(pcg(k as u32 ^ seed) >> 16) / 65536.0
 }
 /// Smooth noise from 0 to 1, a cheaper `vnoise` (one hash a corner): thousands of these a chunk.
-fn qnoise(x: f64, z: f64, scale: f64, seed: u32) -> f64 {
+pub(super) fn qnoise(x: f64, z: f64, scale: f64, seed: u32) -> f64 {
     crate::meter::spend(110);
     let (fx, fz) = (x / scale, z / scale);
     let (ix, iz) = (fx.floor(), fz.floor());
@@ -1288,6 +1301,8 @@ struct Work {
     queued: usize,
     /// The columns never loaded have been said.
     said: bool,
+    /// The plates that come down as real land (strike/vc_lodge.rs): their ground is their own.
+    lodge: Option<super::vc_lodge::Shared>,
 }
 impl Work {
     fn new(s: Shape, bx: i32, bz: i32) -> Self {
@@ -1309,7 +1324,7 @@ impl Work {
         }
         chunks.sort_by(|a, b| a.0.total_cmp(&b.0));
         crate::meter::spend(300 * chunks.len() as u64);
-        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false }
+        Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false, lodge: None }
     }
 }
 
@@ -1353,14 +1368,28 @@ fn vc_chunk(q: &mut Plan, w: &Work, t: f32, x0: i32, z0: i32) {
             vc_col_edit(&mut b, &ctx, x, z, inner);
         }
     }
+    // (a plate that came down here has its own ground: what was read before it landed says nothing of it)
+    let spare = |b: &mut Blocks| {
+        if let Some(l) = &w.lodge {
+            let l = l.borrow();
+            if l.near(ox, oz) {
+                crate::meter::spend(120 * b.runs.len() as u64);
+                b.runs.retain(|r| !l.covers(f64::from(r.x) + 0.5 - s.cx, f64::from(r.z) + 0.5 - s.cz));
+            }
+        }
+    };
+    spare(&mut b);
     if !b.runs.is_empty() {
         q.ev.push((t, Act::Blocks(Box::new(b))));
     }
     if !w.cols.is_empty() {
         let mut due = Vec::new();
         vc_fell(&mut due, &ctx, x0, z0);
-        for (tf, b) in due {
-            q.ev.push((tf, Act::Blocks(Box::new(b))));
+        for (tf, mut b) in due {
+            spare(&mut b);
+            if !b.runs.is_empty() {
+                q.ev.push((tf, Act::Blocks(Box::new(b))));
+            }
         }
     }
 }
@@ -1543,7 +1572,7 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
 
 /// The forceloads that keep the chunks within `r` of `point` loaded, a row of chunks each: `pk_load_rows`'s, which by way
 /// of its lists and sets costs this many chunks 18 million instructions on the tick the strike fires.
-fn vc_load_rows(point: [f64; 3], r: f64) -> Vec<[i32; 4]> {
+pub(super) fn vc_load_rows(point: [f64; 3], r: f64) -> Vec<[i32; 4]> {
     let (c0x, c1x) = (((point[0] - r).floor() as i32) >> 4, ((point[0] + r).floor() as i32) >> 4);
     let (c0z, c1z) = (((point[2] - r).floor() as i32) >> 4, ((point[2] + r).floor() as i32) >> 4);
     let reach = |cx: i32, cz: i32| {
@@ -1566,7 +1595,7 @@ fn vc_load_rows(point: [f64; 3], r: f64) -> Vec<[i32; 4]> {
 
 /// The land's work in the plan: the chunks round it force-loaded, its stages from a little after it fires; the land's
 /// height handed over as it comes (`hf`).
-pub(super) fn vc_land_plan(p: &mut Plan, laser: &'static Laser, seed: u32, hf: Rc<RefCell<Hf>>) {
+pub(super) fn vc_land_plan(p: &mut Plan, laser: &'static Laser, seed: u32, hf: Rc<RefCell<Hf>>, lodge: super::vc_lodge::Shared) {
     let (bx, by, bz) = (p.bx, p.by, p.bz);
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let point = [cx, f64::from(by) + 1.0, cz];
@@ -1581,6 +1610,7 @@ pub(super) fn vc_land_plan(p: &mut Plan, laser: &'static Laser, seed: u32, hf: R
     p.later(0.2, move |q| {
         let mut w = Work::new(s, q.bx, q.bz);
         w.hf = hf;
+        w.lodge = Some(lodge);
         let w = Rc::new(RefCell::new(w));
         // (the land asked for once its chunks have had a moment to load)
         q.later(3.0, move |q| vc_work(q, w, 3.0));
@@ -1624,7 +1654,7 @@ mod tests {
     /// Column (x, z)'s runs on land at 64: the lowest block and the highest, and where the air over it starts.
     fn column(x: i32, z: i32) -> (i32, i32, i32) {
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
+        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false, lodge: None };
         w.hf.borrow_mut().set(&vec![Some(0.0); crate::strike::volcano::VC_HN * crate::strike::volcano::VC_HN], 1500.0);
         let mut p = Plan { laser: &crate::lasers::SUPERVOLCANO, ev: Vec::new(), rng: Rng::new(7), bx: 0, by: 64, bz: 0 };
         vc_chunk(&mut p, &w, 50.0, x.div_euclid(16) * 16, z.div_euclid(16) * 16);
@@ -1731,7 +1761,7 @@ mod tests {
     fn a_chunk_stays_light() {
         crate::meter::reset();
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: true, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false };
+        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 74, leaves: true, trunk: 6, ground: 1, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false, lodge: None };
         let mut worst = 0;
         for (x, z) in [(0, 0), (0, 268), (288, 0), (0, 350), (-420, 0), (0, 490)] {
             crate::meter::reset();

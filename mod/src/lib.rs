@@ -1044,9 +1044,14 @@ impl Orbital {
         {
             let before = meter::spent();
             for (_, a) in job() {
-                if let Act::Blocks(b) = a {
-                    meter::spend(60 * b.runs.len() as u64);
-                    self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b));
+                match a {
+                    Act::Blocks(b) => {
+                        meter::spend(60 * b.runs.len() as u64);
+                        self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b));
+                    }
+                    // (more of what has to be finished, a stage a tick)
+                    Act::Cleanup(next) => self.cleanup.push_back(next),
+                    _ => {}
                 }
             }
             meter::spend(STAGE_COST.saturating_sub(meter::spent().saturating_sub(before)));
@@ -1405,6 +1410,9 @@ impl Orbital {
             match game::get_player().filter(|_| b.clear_of_player) {
                 Some(p) => world::edit_blocks(&b.edit_clear_of([p.x, p.y, p.z])),
                 None => world::edit_blocks(&b.edit()),
+            }
+            if let Some(c) = &b.sent {
+                c.set(c.get() + 1);
             }
             m += 1;
         }

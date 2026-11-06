@@ -100,6 +100,20 @@ fn near_far(p: &mut Plan, t: f32, name: &str, d: f64) {
     }
 }
 
+/// One of the big plates comes down at `t`, `at` in the world (strike/vc_lodge.rs): one heavy blow, late by the distance.
+pub(super) fn plate_down(p: &mut Plan, t: f32, at: [f64; 3], me: [f64; 3], size: f64) {
+    let m = live_rel(me, at);
+    let (late, d) = sound_from(at, m);
+    let big = (size / 22_000.0).clamp(0.4, 1.0);
+    let k = (1.0 - d / 1800.0).clamp(0.15, 1.0);
+    play(p, t + late, "report_sub", 0.6 * big * k, 0.6 + 0.12 * (1.0 - big as f32));
+    play(p, t + late, "thud_far1", 0.9 * k, 0.55 + 0.15 * (1.0 - big as f32));
+    p.shake(t + late, (0.75 * big * (1.0 - d / 1100.0)).clamp(0.0, 0.8) as f32, 1.5);
+}
+/// Where the player is in the world, `me` from the vent under `at`'s if the game can't say.
+fn live_rel(me: [f64; 3], at: [f64; 3]) -> [f64; 3] {
+    crate::sdk::game::get_player().map_or([at[0] + me[0], at[1] + me[1], at[2] + me[2]], |p| [p.x, p.y, p.z])
+}
 /// How far the wall of ash has come from the middle at time `t` (volcano.wgsl's vc_front): 60 blocks a second at the
 /// ring, slowing to 25.
 fn front_r(t: f32) -> f64 {
