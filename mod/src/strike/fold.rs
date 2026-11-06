@@ -14,10 +14,10 @@
 //!   FD_TEAR           the creases split open on the void
 //!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land rolls up round the player, holding as a tube, the rings lying back to a mound
 //!   FD_SEAL           the player is inside a tube, the whole land on its walls, the land's end the hole in its roof
-//!   FD_FOLDS          the rim draws in, gathering from 34.5, and comes round and down to the target, one sheet, winding, its mouth closing
-//!                     as it comes, slower and slower; FD_BEAT its tip touches it: a tiny light and a ding;
-//!                     stillness to FD_RELEASE
-//!   FD_RELEASE        all of it runs backwards, gathering slowly: the sphere opens, the bud stands again with every ring up
+//!   34.5-FD_BEAT      the rim gathers and lets go, and reaches down to the target as one heavy gesture, a catch at 37 s and a long creep at the end, straining
+//!                     from 38 s (fold_warp.wgsl's fw_gather, fw_tip, fw_flex); FD_BEAT the drop at its tip touches it: a tiny light and a ding; held, straining, to 40.95
+//!   FD_RELEASE        going back, not a rewind: at 40.95 the reach lets go and is back up by 42.25; the tube gives at 42.2, catches at 42.55-42.88, and lets go
+//!                     (fw_tau): the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
 //!   FD_SLAM[4]        the last ring lands, breaking the land along its creases: the crater goes in held up at the land's level (FD_REVEAL), and
 //!                     falls in over about 3 s, kite by kite, from the middle out (fold_warp.wgsl's fw_sunk)
@@ -31,7 +31,7 @@ pub(super) const FD_LEN: f32 = 59.7;
 /// when it is on, the world's own culling back the rest of the time.
 pub const FD_COPIES: u32 = 0;
 pub const FD_COPY_R: f32 = 130.0;
-/// When the copies are drawn: the root swelling on the wall from 34.5 (fold_warp.wgsl's fw_swell), the arm out and back.
+/// When the copies are drawn: the rim gathering from 34.5, the arm out and back.
 pub const FD_COPY_ON: std::ops::Range<f32> = 34.45..42.1;
 pub const FD_WARP_START: f32 = 5.5;
 pub const FD_WARP_END: f32 = 56.7;
@@ -50,7 +50,6 @@ pub(super) const FD_BEAT: f32 = 40.0;
 pub(super) const FD_RELEASE: f32 = 40.5;
 /// When each of the branch's six stages starts (the last ends at 39.0, the tip a few blocks short of the target: there it
 /// creeps and waits, and closes the last of it in the 0.3 s up to FD_BEAT): shorter and shorter, slower and slower.
-pub(super) const FD_FOLDS: [f32; 6] = [35.0, 35.5, 36.1, 36.8, 37.5, 38.2];
 /// When each ring bangs down, outermost first (ring 4 at FD_SLAM[0], with the far land, ring 0 last): the last shows the
 /// crater. Each falls for 0.8 s and stops dead, so there is a stillness before each but the first.
 pub(super) const FD_SLAM: [f32; 5] = [44.1, 45.2, 46.3, 47.4, 48.7];
@@ -239,9 +238,6 @@ mod tests {
         }
         for (k, t) in FD_SLAM.iter().enumerate() {
             assert!(pass.contains(&format!("{t:.1}")), "slam {k} in the pass");
-        }
-        for (k, t) in FD_FOLDS.iter().enumerate() {
-            assert!(warp.contains(&format!("case {k}: {{ return {t:.1}; }}")), "fold {k}");
         }
         // (the land's height as it meets the drop: the warp moves the land, the pass draws the metal and the glow on it)
         assert!(warp.contains("const FW_MEET: f32 = -0.08;") && pass.contains("const FD_MEET: f32 = -0.08;"));

@@ -13,8 +13,9 @@
 //   FW_CRUSH   the rim draws in and down: the land's outer band sags from the tube, one sheet, a stalactite of land lowering
 //              to the target (fw_place), its mouth closing as it comes, on a timing of its own (fw_gather, fw_tip), with a sway and a strain on it (fw_flex)
 //              (from about 36.8 fold.wgsl turns it to the droplet's metal from the tip up, over this same surface: fd_stal, fd_stalactite)
-//   FW_BEAT    the drop hanging from its tip (fold.wgsl's fd_hang) touches the target. Stillness
-//   FW_REL     it all runs backwards (fw_tau), slowly at first: the rim goes back up, the tube opens and the bud stands again, every ring up; then
+//   FW_BEAT    the drop hanging from its tip (fold.wgsl's fd_hang) touches the target, the strain still building
+//   FW_REL     it goes back, not as it came: the reach holds, straining, lets go and is back up (fw_gather, fw_tip); the tube gives, catches itself and lets go (fw_tau),
+//              and the bud stands again, every ring up; then
 //              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, breaking the land along its creases:
 //              the crater swaps in held up at the land's level and falls in, kite by kite (fw_sunk)
 // The land under the player is one piece of the sheet: it takes less and less of the sheet's motion the nearer it is to them

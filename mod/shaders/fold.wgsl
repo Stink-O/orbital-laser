@@ -1046,7 +1046,7 @@ fn fd_form(uv: vec2<f32>, colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, g: FwB
             let stone = mix(vec3<f32>(0.14, 0.14, 0.145), vec3<f32>(0.23, 0.225, 0.22), h.y);
             let dirt = mix(vec3<f32>(0.12, 0.09, 0.06), vec3<f32>(0.22, 0.17, 0.11), h.x);
             let ground = mix(mix(forest, dirt, fw_ss(0.5, 0.56, wide + 0.1 * h.y)), stone, fw_ss(0.58, 0.64, wide + 0.1 * h.x));
-            col = mix(c, ground, blue) * (0.9 + 0.2 * h.y);
+            col = mix(c, ground * (0.14 + 0.86 * fd_ss(-0.2, 0.1, frame.sun.y)), blue) * (0.9 + 0.2 * h.y);
         }
     }
     // ---- the light and the air -------------------------------------------------------------------------------------------------------------------------------
