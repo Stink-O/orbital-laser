@@ -1,4 +1,4 @@
-//! The Supervolcano's mount: the land swelling into a dome some 800 across and 300 high (more at its crest) (VC_SWELL to VC_HUSH), then
+//! The Supervolcano's mount: the land swelling into a dome some 800 across and 225 high (more at its crest) (VC_SWELL to VC_HUSH), then
 //! bursting (VC_ERUPT). Nothing of it is real: the pass draws it (shaders/volcano_mount.wgsl) over the real land, on the
 //! land's own heights and colours, and the white-out at the burst hides it going, so it needs no blocks, leaves none and
 //! shows with the terrain off too.
@@ -56,7 +56,7 @@ pub(super) const VM_W2: usize = VM_W1 + VM_COLS;
 /// The dome's radius, on average.
 const VM_RAD: f64 = 400.0;
 /// How high it gets (the pass's vm_hgt, before the last heave).
-const VM_H: f64 = 380.0;
+const VM_H: f64 = 285.0;
 /// The beats (BEATS.md).
 const VC_SWELL: f64 = 7.0;
 const VC_HUSH: f64 = 17.0;
@@ -189,7 +189,7 @@ impl Geo {
             let a = TAU * (0.618_034 * c as f64 + 0.2 * mh(k, seed, 0x711));
             let r = 100.0 + 250.0 * (0.2 + 0.8 * mh(k, seed, 0x712)).powf(0.8);
             let t0 = 11.4 + 5.0 * u.powf(0.8);
-            let tall = (65.0 + 105.0 * mh(k, seed, 0x713).powf(1.3)) * (1.0 - 0.35 * r / 330.0);
+            let tall = (49.0 + 79.0 * mh(k, seed, 0x713).powf(1.3)) * (1.0 - 0.35 * r / 330.0);
             let rad = 18.0 + 18.0 * mh(k, seed, 0x714);
             // (they lean out from the middle of the clump, thrust apart)
             for b in 0..4u32 {
@@ -787,7 +787,7 @@ fn vm_flights(t: &[u32], s: u32, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
     const VM_BRK: f64 = 18.7;
     const VM_G: f64 = 34.0;
     const VM_TH: f64 = 2.5;
-    const H: f64 = 400.0; // the dome's height at the burst
+    const H: f64 = 300.0; // the dome's height at the burst
     let word = |k: usize, i: usize| f64::from(f32::from_bits(t[k * VM_PW + i]));
     let big = (0..VM_FLY).map(|k| word(k, 6)).fold(1.0, f64::max);
     let mut out = Vec::with_capacity(4 * VM_FLY);
@@ -1132,7 +1132,7 @@ fn vl_one(n: usize, m: &mut Make) -> Slab {
         m.plates[k * VM_PW + i] = (x as f32).to_bits();
     }
     let e = k * 4;
-    let fit = word(&m.plates, 6) * (1.0 + (400.0 * word(&m.plates, 4)).powi(2) + (400.0 * word(&m.plates, 5)).powi(2)).sqrt() + word(&m.plates, 15) + th;
+    let fit = word(&m.plates, 6) * (1.0 + (300.0 * word(&m.plates, 4)).powi(2) + (300.0 * word(&m.plates, 5)).powi(2)).sqrt() + word(&m.plates, 15) + th;
     for (i, x) in [rock.tau, s.g, hit, fit].iter().enumerate() {
         m.flights[e + i] = (*x as f32).to_bits();
     }
