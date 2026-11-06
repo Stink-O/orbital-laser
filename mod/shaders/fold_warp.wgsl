@@ -980,9 +980,15 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     if (b && tau >= FW_SCORE && tau < FW_FLAT0) {
         w = cp_wedge(a);
     }
-    if (crease && t < FW_REL && tau < FW_LAY1) {
+    if (crease && tau < FW_LAY1) {
         pr = cp_press(r, w, t, globals.warp[0].y);
-        pr.x = mix(1.0, pr.x, (1.0 - fw_lay(tau)) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - mix(-c.tgt.xz, mq.xz, fw_held(tau)))));
+        // (going back the land is pressed again as the sphere opens, and each ring lets its relief go as it lands)
+        var back = 1.0;
+        if (t >= FW_REL) {
+            let lands = fw_hit(min(cp_cell(w, r), 4));
+            back = 1.0 - fw_ss(lands - 0.15, lands + 0.1, t);
+        }
+        pr.x = mix(1.0, pr.x, back * (1.0 - fw_lay(tau)) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - mix(-c.tgt.xz, mq.xz, fw_held(tau)))));
         rest.y = pr.y + (rest.y - pr.y) * pr.x;
     }
     var own = 4;
@@ -1459,7 +1465,8 @@ fn world_fragment(f: Fragment) -> Painted {
             return Painted(vec4<f32>(fw_stars(normalize(f.at)), 1.0), 0.0);
         }
         let px = max(0.05, dist * 0.00095);
-        let on = fade * (1.0 - healed);
+        // (the lines low while the rings stand and fall: the land under them is stretched, and they with it)
+        let on = fade * (1.0 - healed) * (1.0 - 0.65 * fw_ss(FW_REL + 1.5, FW_FLAT - 0.8, t) * (1.0 - fw_ss(FW_SLAM4 - 0.3, FW_SLAM4, t)));
         // (the facets and the veins' sides, turned to and from the light, as far as the land has folded)
         let folded = max(cp_pre(t, tau, r), 0.85 * lifting * (1.0 - fw_lay(tau))) * fw_ss(30.0, 60.0, r) * fw_ss(FW_LEN * 1.1, FW_LEN * 0.9, r) * (1.0 - healed);
         col = col * clamp(1.0 + 1.6 * folded * hit.light, 0.55, 1.45);
