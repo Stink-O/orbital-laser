@@ -105,3 +105,33 @@ jobs:
         run: |
           python3 tools/build_mod.py
           tools/check-shader.sh
+
+  registry:
+    name: the registry's native check (the pin alone, then the newest Nightly)
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read       # as the registry's job: this compiles Horizon and other mods' code, build scripts included
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: repo, persist-credentials: false }
+      - uses: actions/checkout@v4
+        with: { repository: horizon-rust/horizon-mods, path: registry, persist-credentials: false }
+      - uses: actions/download-artifact@v4
+        with: { name: packages, path: dist }
+      - run: rustup toolchain install "$RUST" --profile minimal && rustup default "$RUST"
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config
+      - name: On our pin, alone, with the horizon-mixins the launcher picks
+        run: |
+          set -o pipefail
+          echo "### On the pin, alone" >> "$GITHUB_STEP_SUMMARY"
+          python3 repo/tools/registry_check.py registry dist/orbital.hnmod --horizon "$HORIZON_REV" --popular 0 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: On the newest Nightly, with the 20 most downloaded native mods
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          echo "### On the newest Nightly, with the popular mods" >> "$GITHUB_STEP_SUMMARY"
+          python3 repo/tools/registry_check.py registry dist/orbital.hnmod | tee -a "$GITHUB_STEP_SUMMARY"
