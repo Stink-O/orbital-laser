@@ -221,6 +221,10 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
 |---|---|---|---|
 | ![The rod coming straight down onto the land, glowing white, god rays round it](docs/37-rod-fall.jpg) | ![An impact frame: the rod and the land as gold and umber silhouettes, thick lines converging on the point](docs/38-rod-impact-frames.jpg) | ![The radiant burst as it strikes, rays fanning out over the land](docs/39-rod-burst.jpg) | ![The rod standing in its crater, the land round it bleached white and gold](docs/40-rod-crater.jpg) |
 
+| Tsunami | The wall | Under the water | What it leaves |
+|---|---|---|---|
+| ![A dark wall of water with a white crest standing across the horizon beyond the snowy land](docs/45-tsunami-horizon.jpg) | ![The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land](docs/46-tsunami-wall.jpg) | ![Green water, logs and pieces of a house going by](docs/47-tsunami-underwater.jpg) | ![The land scoured to mud and gravel in streaks along the flow, the wet swath running to the horizon](docs/48-tsunami-aftermath.jpg) |
+
 <!-- HURRICANE STILLS GO HERE (optional): a gallery row like the ones above, for example
 | Hurricane | The eye | The tear-up | What it leaves |
 |---|---|---|---|
