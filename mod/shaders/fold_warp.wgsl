@@ -10,7 +10,7 @@
 //   FW_WRAP0   the roll's ring comes in to the target and its tube down, as the swell lies down onto its floor and the land comes back to
 //              its own size; by FW_HOLD it has stopped closing (fw_tb), a tube: the player on its floor, the whole of the land round them to
 //              the far land's end, the hole in the roof that end, one round line
-//   FW_CRUSH   the rim draws in and down: the land's outer band leaves the tube on its tangent, winding, one sheet, and runs down the axis
+//   FW_CRUSH   the rim draws in and down: the land's outer band sags from the tube, one sheet, a stalactite of land lowering
 //              to the target (fw_place), its mouth closing as it comes, in six stages (fw_stage), each smaller and slower
 //   FW_BEAT    its tip touches the target. Stillness
 //   FW_REL     it all runs backwards (fw_tau), slowly at first: the rim goes back up, the tube opens and the bud stands again, every ring up; then
@@ -59,8 +59,8 @@ const FW_HOLD: f32 = 31.5;         // the fold's clock where the tube stops clos
 const FW_EASE: f32 = 1.5;          // how long it takes to stop
 const FW_TUBE_W: f32 = 0.5933;     // fw_bend's w, and how much of the r0 of fw_bend is left, as it holds
 const FW_TUBE_R0: f32 = 0.352;
-const FW_RIM0: f32 = 0.62;         // the band of land that goes down to the target: from this much of the way to the land's end, to its end
-const FW_TURNS: f32 = 0.9;         // how many times round it winds on the way
+const FW_RIM0: f32 = 0.4;          // the band of land that goes down to the target: from this much of the way to the land's end, to its end
+const FW_TURNS: f32 = 0.18;        // how far round it leans on the way
 const FW_TIP: f32 = 1.0;           // how high over the target's land it stops
 const FW_END_K: f32 = 0.97;        // how much of the far land's reach is drawn: its own end goes in steps, a chunk at a time, and this one is a circle
 const FW_MOUTH: f32 = 2.8;         // how far round the tube the land's end comes, radians, wherever the far land ends
@@ -863,27 +863,34 @@ fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
     let c = cos(f);
     return vec3<f32>(g.r0 + (g.rc - yy) * s + rem * c, g.rc * (1.0 - c) + yy * c + rem * s, f);
 }
+// How far along the funnel's curve the land goes, for how far it is through the band's scale (0 to 1): the curve's steps of length over width, so that a step
+// along it is as much squeezed as a step round it, all the way down: the land grows smaller towards the tip as it does on the tube's map, no streaks. Its width
+// is floored 40 blocks from the tip, or the tip would take all the land there is. (tools/foldview/mocks.py's spend(), from one typical curve; the shape hardly moves it.)
+var<private> FW_SPEND: array<f32, 17> = array<f32, 17>(0.0000, 0.2953, 0.4280, 0.5225, 0.5991, 0.6644, 0.7214, 0.7714, 0.8153, 0.8535, 0.8859, 0.9127, 0.9342, 0.9511, 0.9671, 0.9835, 1.0000);
+fn fw_spend(q: f32) -> f32 {
+    let x = clamp(q, 0.0, 1.0) * 16.0;
+    let i = min(i32(x), 15);
+    return mix(FW_SPEND[i], FW_SPEND[i + 1], x - f32(i));
+}
 // Where the sheet goes: R along it from the target at the bearing (ca, sa), y over it. The result is from the target, x and z as the world's.
-// The land's outer band, R1 on to its end, is what goes down to the target: past `draw` it lies on one curve leaving the tube on the tube's own
-// tangent at R1, so there is no join to it, in over the hole and down the axis, winding, the land's end its mouth. Each bearing goes one way along the
-// one curve, so nothing can cross anything.
+// The land's outer band, R1 on to its end, is what comes down to the target: `draw` eases it from the tube to one curve that leaves the tube on the tube's own
+// tangent at R1, so there is no join to it, broad for most of the way and rounding off at the target: a stalactite of land lowering, the land's end its mouth.
+// Each bearing goes one way along the one curve, so nothing can cross anything.
 fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
     var on = fw_roll(R, y, g);
     var ca = ca0;
     var sa = sa0;
     let R1 = FW_RIM0 * g.edge;
     if (g.draw > 0.0 && R > R1) {
-        let v = min((R - R1) / (g.edge - R1), 1.0) * g.draw;
+        let v = fw_spend(log(R / R1) / log(g.edge / R1));
         let a = fw_roll(R1, 0.0, g);
         let P0 = a.xy;
-        let P1 = P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.7;
-        let P2 = vec2<f32>(0.04 * P0.x, 0.42 * P0.y);
+        let P1 = P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.42;
+        let P2 = vec2<f32>(min(0.46 * P0.x, 1.45 * max(g.d, 60.0)), -30.0);
         let m = 1.0 - v;
         let C = P0 * (m * m * m) + P1 * (3.0 * m * m * v) + P2 * (3.0 * m * v * v) + vec2<f32>(0.0, FW_TIP) * (v * v * v);
-        let k = fw_ss(0.0, 0.12, g.draw);
-        on = vec3<f32>(mix(on.xy, C, k), on.z);
-        // (all the winding is in the funnel: down the neck the far land's tiles are too long to go round it, and cut across it)
-        let tw = FW_TURNS * FW_TAU * fw_ss(0.0, 0.75, v) * k;
+        on = vec3<f32>(mix(on.xy, C, g.draw), on.z);
+        let tw = FW_TURNS * FW_TAU * v * g.draw;
         let ct = cos(tw);
         let st = sin(tw);
         ca = ca0 * ct - sa0 * st;

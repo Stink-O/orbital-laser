@@ -74,3 +74,12 @@ def ribbon(H,Hr,T,turns=1.1,flat=0.22,bear=0.0):
     return mix(H, T, m) + vec3<f32>(ring * cos(th), 0.0, ring * sin(th));
 }}
 const FW_THROAT: f32 = 22.0;""")]
+def spend(x0=650.0,y0=600.0,a=1.9,d=170.0,floor=40.0,n=17):
+    """FW_SPEND of fold_warp.wgsl: the curve's parameter at equal steps of length over width, the width floored; returns the table and the land's stretch K it costs for the band of FW_RIM0"""
+    v=np.linspace(0,1,8001); m=1-v
+    T=np.array([np.cos(a),np.sin(a)]); P0=np.array([x0,y0]); P1=P0+T*0.42*x0
+    P2=np.array([min(0.46*x0,1.45*max(d,60.0)),-30.0]); P3=np.array([0.0,1.0])
+    C=np.outer(m**3,P0)+np.outer(3*m*m*v,P1)+np.outer(3*m*v*v,P2)+np.outer(v**3,P3)
+    dl=np.linalg.norm(np.diff(C,axis=0),axis=1)
+    q=np.concatenate([[0],np.cumsum(dl/np.maximum(C[:-1,0],floor))]); tot=q[-1]
+    return np.interp(np.linspace(0,1,n),q/tot,v),tot,C
