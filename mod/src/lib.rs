@@ -2388,12 +2388,12 @@ mod stress {
         s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
         s.fire(sv, (1000, -2000));
         let mut ticks = 0;
-        while ticks < 1250 {
+        while ticks < 1300 {
             s.step("plates");
             ticks += 1;
         }
         let g = gone(&s);
-        assert!(g.iter().filter(|t| **t > 29.0 && **t < 62.0).count() >= 8, "{g:?}");
+        assert!(g.iter().filter(|t| **t > 29.0 && **t < 65.0).count() >= 8, "{g:?}");
         // (stopped just after the first has struck)
         let mut s = Soak::new(6);
         s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };

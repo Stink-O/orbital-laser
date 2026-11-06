@@ -456,9 +456,7 @@ fn plates(w: &mut Vox) -> Vec<(String, Cam)> {
     let mut cams = Vec::new();
     let n = lodge.borrow().slabs.len();
     for i in 0..n {
-        let band = lodge.borrow().slabs[i].band_test(0, 0);
-        let gs = band.iter().map(|&(x, z)| f64::from(w.motion(x, z) - GY)).sum::<f64>() / band.len().max(1) as f64;
-        let list = lodge.borrow_mut().settle_test(i, gs, 0, 0);
+        let list = lodge.borrow_mut().settle_test(i, &|x, z| f64::from(w.motion(x, z) - GY), 0, 0);
         let palette = w.names.clone();
         let kinds: Vec<_> = palette.iter().map(|n| crate::strike::nuke::kind(n)).collect();
         let l = lodge.borrow();

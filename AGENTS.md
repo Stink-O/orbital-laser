@@ -263,7 +263,9 @@ laser, command, capability and timing). This file is the short, factual version 
   the plates are picked at the end of the mount's tables (`vl_pick`) and aimed, their flight's words rewritten (`vl_one`,
   `Slab::fly`). From 19.5 s the ground where each meets it is asked (a small `world.surface-height` query) and its pose
   settled (`Pose`, `set_pose`: lying low, `VL_LOW` to `VL_STEEP` degrees, turned up to 42 degrees off the way it came and
-  rolled up to 15, its low end in the ground, what it lifts packed under with crushed earth so none of it is held up by air, `under`;
+  rolled up to 15, on a plane fitted to the ground under the whole plate, `Slab::bed`, at most `VL_BANK` steep, so a bank or a
+  shore by its foot doesn't leave it stood on a stack of earth; its low end in the ground, what it lifts packed under with crushed
+  earth, `under`, and that earth heaped away from its edges, `fall_of`, `talus`, so nothing is held up by air or a sheer wall;
   `Lodge`'s words at `VL_BASE`) before its last 3.5 s, in which the pass slerps its tumble into that pose and slides it
   in (`vl_add`, `vl_slerp`). From the moment it hits its chunks are read (`Lot`, `vl_tick`) and made (`Slab::chunk`: the
   plate a world column at a time, `spans`, so it has no holes; soil, rock and a burnt underside as strata by depth; its

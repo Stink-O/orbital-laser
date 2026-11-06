@@ -34,6 +34,12 @@ const VL_BURY: f64 = 0.42;
 /// How steeply it lies, degrees, from and to: a slab thrown down on the land, never a wing held up in the air.
 const VL_LOW: f64 = 7.0;
 const VL_STEEP: f64 = 20.0;
+/// The steepest bank of ground it follows.
+const VL_BANK: f64 = 16.0;
+/// How the earth it shoved up falls away from it: blocks down a block out, its edge's samples this far apart, how many.
+const VL_FALL: f64 = 1.25;
+const VL_TS: usize = 8;
+const VL_TALL: f64 = 44.0;
 /// A plate's thickness at the least.
 const VL_THICK: f64 = 30.0;
 /// How far round a site its chunks are force-loaded.
@@ -199,6 +205,14 @@ pub(super) fn vl_thk(x: f64, z: f64) -> f64 {
 }
 const STEP: f64 = super::vc_mount::VM_STEP as f64;
 const HALF: f64 = super::vc_mount::VM_HALF as f64;
+/// How high the earth stands round a plate: a grid from `o`, `n` by `m`, `VL_TS` apart.
+#[derive(Default)]
+struct Fall {
+    o: (f64, f64),
+    n: usize,
+    m: usize,
+    t: Vec<f32>,
+}
 /// A plate come down.
 pub(super) struct Slab {
     pub rock_id: usize,
@@ -243,6 +257,7 @@ pub(super) struct Slab {
     s1: f64,
     wide: f64,
     pub pose: Pose,
+    fall: Fall,
     /// Where it comes down (from the vent's ground).
     pub foot: [f64; 3],
     u_top: f64,
@@ -407,6 +422,7 @@ impl Slab {
             s1,
             wide: w1 - w0,
             pose: Pose { r: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], c: [0.0; 3] },
+            fall: Fall::default(),
             foot: [site.x, 0.0, site.z],
             u_top: 0.0,
             bits_done: false,
@@ -415,12 +431,12 @@ impl Slab {
             spalls: Vec::new(),
             cracks: Vec::new(),
         };
-        s.set_pose(0.0);
+        s.set_pose(0.0, (0.0, 0.0));
         s
     }
     /// The pose with the ground `gs` at its foot: its plane to the way it comes down at its tilt, the leading end of its
     /// length the one nearer how it is tumbling, `VL_BURY` of it past where it meets the ground.
-    fn set_pose(&mut self, gs: f64) {
+    fn set_pose(&mut self, gs: f64, slope: (f64, f64)) {
         *self.list.borrow_mut() = None;
         let d = [self.lay.0, 0.0, self.lay.1];
         let up = [0.0, 1.0, 0.0];
@@ -432,6 +448,19 @@ impl Slab {
         let (cr, sr) = (self.roll.cos(), self.roll.sin());
         let fnr = [0, 1, 2].map(|i| fn0[i] * cr + fw0[i] * sr);
         let fw = norm(cross(fl, fnr));
+        // (all of that on the ground it comes down on, not on the level)
+        let gn = norm([-slope.0, 1.0, -slope.1]);
+        let sf = gn[0].hypot(gn[2]);
+        let (fl, fnr, fw) = if sf > 1e-6 {
+            let k = [gn[2] / sf, 0.0, -gn[0] / sf];
+            let tip = |v: [f64; 3]| {
+                let (c, x, d) = (cross(k, v), gn[1], dot(k, v));
+                [0, 1, 2].map(|i| v[i] * x + c[i] * sf + k[i] * d * (1.0 - x))
+            };
+            (tip(fl), tip(fnr), tip(fw))
+        } else {
+            (fl, fnr, fw)
+        };
         let en = norm([-self.plane.0, 1.0, -self.plane.1]);
         let _ = up;
         let mut best: Option<(f64, Pose, f64)> = None;
@@ -464,6 +493,62 @@ impl Slab {
         self.foot = [self.site.x, gs, self.site.z];
         self.u_top = (0.5 * self.th / sn).min(VL_BURY * (self.s1 - self.s0));
     }
+    /// The ground under the whole of it, from what's known of the land's height at (x, z): how high at its site and how it
+    /// slopes, a plane through what lies under the plate (a steep bank or a shore by its foot must not leave the rest of
+    /// it stood up on a stack of earth), a little low where the land is rough.
+    fn bed(&self, pts: &[(i32, i32, f64)], bx: i32, bz: i32) -> Option<(f64, (f64, f64))> {
+        let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
+        let mut sp = Vec::new();
+        let (mut n, mut sx, mut sz, mut sh, mut xx, mut xz, mut zz, mut xh, mut zh) = (0.0f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        let (mut all, mut alls) = (0.0f64, 0.0f64);
+        for &(x, z, h) in pts {
+            all += 1.0;
+            alls += h;
+            let (wx, wz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+            self.spans(wx, wz, &mut sp);
+            if sp.is_empty() {
+                continue;
+            }
+            let (dx, dz) = (wx - self.site.x, wz - self.site.z);
+            n += 1.0;
+            sx += dx;
+            sz += dz;
+            sh += h;
+            xx += dx * dx;
+            xz += dx * dz;
+            zz += dz * dz;
+            xh += dx * h;
+            zh += dz * h;
+        }
+        if all == 0.0 {
+            return None;
+        }
+        if n < 8.0 {
+            return Some((alls / all, (0.0, 0.0)));
+        }
+        // (the plane h = c + a dx + b dz, by least squares, its slope no steeper than the land's own hills)
+        let (mx, mz, mh) = (sx / n, sz / n, sh / n);
+        let (cxx, cxz, czz, cxh, czh) = (xx - n * mx * mx, xz - n * mx * mz, zz - n * mz * mz, xh - n * mx * mh, zh - n * mz * mh);
+        let det = cxx * czz - cxz * cxz;
+        let (mut a, mut b) = if det.abs() > 1.0 { ((cxh * czz - czh * cxz) / det, (czh * cxx - cxh * cxz) / det) } else { (0.0, 0.0) };
+        let t = a.hypot(b);
+        let most = VL_BANK.to_radians().tan();
+        if t > most {
+            a *= most / t;
+            b *= most / t;
+        }
+        let c = mh - a * mx - b * mz;
+        let mut e = 0.0;
+        for &(x, z, h) in pts {
+            let (wx, wz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
+            self.spans(wx, wz, &mut sp);
+            if !sp.is_empty() {
+                let r = h - (c + a * (wx - self.site.x) + b * (wz - self.site.z));
+                e += r * r;
+            }
+        }
+        Some((c - (0.4 * (e / n).sqrt()).min(10.0), (a, b)))
+    }
     /// How the tumble has turned it `t` into the strike, the pass's way.
     fn spin_quat(&self, t: f64) -> [f64; 4] {
         let a = 0.5 * self.spin * (t - self.tr);
@@ -489,7 +574,7 @@ impl Slab {
     }
     /// Its pose over ground at `gs`, and the flight that takes it there: how fast it is thrown (its gravity set too).
     pub fn fly(&mut self, gs: f64) -> [f64; 3] {
-        self.set_pose(gs);
+        self.set_pose(gs, (0.0, 0.0));
         let aim = self.aim();
         let a = VL_BRK - self.tr;
         let sec = self.hit - VL_BRK;
@@ -694,6 +779,7 @@ impl Slab {
     }
     /// What it does to the ground: the rubble and cracks round it, worked out once it is known where it stands.
     fn litter(&mut self, seed: u32) {
+        self.make_fall();
         let s = seed ^ (self.rock_id as u32).wrapping_mul(0x9e37);
         let (dx, dz) = self.lay;
         let (ax, az) = (-dz, dx);
@@ -885,6 +971,89 @@ impl Slab {
         }
         crate::meter::spend(800);
     }
+    /// How high the earth shoved up under it stands round it, coarsely, from the vent's ground: its underside where it is,
+    /// falling away `VL_FALL` a block from there. Once, as it comes to rest: a chunk's worth of this each chunk was a sixth
+    /// of all its work.
+    fn make_fall(&mut self) {
+        let st = VL_TS as f64;
+        let (mut x0, mut z0, mut x1, mut z1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for k in 0..self.gh {
+            for i in 0..self.gw {
+                if self.cr[k * self.gw + i] != 255 {
+                    let (lx, lz) = (self.g0.0 + i as f64 * STEP - self.rest[0], self.g0.1 + k as f64 * STEP - self.rest[2]);
+                    let w = self.pose.world([lx, f64::from(self.t[k * self.gw + i]) + self.plane.0 * lx + self.plane.1 * lz, lz]);
+                    (x0, z0, x1, z1) = (x0.min(w[0]), z0.min(w[2]), x1.max(w[0]), z1.max(w[2]));
+                }
+            }
+        }
+        let (ox, oz) = (((x0 - VL_TALL) / st).floor() * st, ((z0 - VL_TALL) / st).floor() * st);
+        let (n, m) = (((x1 + VL_TALL - ox) / st) as usize + 2, ((z1 + VL_TALL - oz) / st) as usize + 2);
+        let mut t = vec![f32::MIN; n * m];
+        let mut sp = Vec::with_capacity(3);
+        for k in 0..m {
+            for i in 0..n {
+                self.spans(ox + st * i as f64, oz + st * k as f64, &mut sp);
+                if let Some(y) = sp.iter().map(|s| s.y0).reduce(f64::min) {
+                    t[k * n + i] = y as f32;
+                }
+            }
+        }
+        let (d1, d2) = ((VL_FALL * st) as f32, (VL_FALL * st * 1.4142) as f32);
+        let mut pass = |k: usize, i: usize, rel: [(i32, i32, f32); 4]| {
+            for (a, b, d) in rel {
+                let (ii, kk) = (i as i32 + a, k as i32 + b);
+                if ii >= 0 && kk >= 0 && (ii as usize) < n && (kk as usize) < m {
+                    let v = t[kk as usize * n + ii as usize];
+                    if v != f32::MIN && v - d > t[k * n + i] {
+                        t[k * n + i] = v - d;
+                    }
+                }
+            }
+        };
+        for k in 0..m {
+            for i in 0..n {
+                pass(k, i, [(-1, 0, d1), (0, -1, d1), (-1, -1, d2), (1, -1, d2)]);
+            }
+        }
+        for k in (0..m).rev() {
+            for i in (0..n).rev() {
+                pass(k, i, [(1, 0, d1), (0, 1, d1), (1, 1, d2), (-1, 1, d2)]);
+            }
+        }
+        crate::meter::spend(40 * (n * m) as u64);
+        self.fall = Fall { o: (ox, oz), n, m, t };
+    }
+    /// A column beside it: the earth it shoved up, heaped against its edge so no wall of it stands sheer.
+    fn talus(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, g: i32, c: &Col, seed: u32) {
+        let (st, f) = (VL_TS as f64, &self.fall);
+        let (u, v) = ((wx - f.o.0) / st, (wz - f.o.1) / st);
+        if u < 0.0 || v < 0.0 || u as usize + 1 >= f.n || v as usize + 1 >= f.m {
+            return;
+        }
+        let (i, k) = (u as usize, v as usize);
+        let at = |a: usize, b: usize| f.t[(k + b) * f.n + i + a];
+        if at(0, 0) == f32::MIN || at(1, 0) == f32::MIN || at(0, 1) == f32::MIN || at(1, 1) == f32::MIN {
+            return;
+        }
+        let (fu, fv) = (u - i as f64, v - k as f64);
+        let h = (f64::from(at(0, 0)) * (1.0 - fu) + f64::from(at(1, 0)) * fu) * (1.0 - fv) + (f64::from(at(0, 1)) * (1.0 - fu) + f64::from(at(1, 1)) * fu) * fv;
+        if h + f64::from(gy) + 4.0 < f64::from(g) {
+            return;
+        }
+        let n1 = qnoise(wx, wz, 7.0, seed ^ 0x54);
+        let n2 = qnoise(wx, wz, 3.0, seed ^ 0x55);
+        crate::meter::spend(900);
+        let y = (h + f64::from(gy) + 5.0 * (n1 - 0.5) + 2.5 * (n2 - 0.5)).round() as i32;
+        if y <= g {
+            return;
+        }
+        let bed = if c.fluid { c.g + 1 } else { g + 1 };
+        b.run(x, z, bed, y - 1, if n1 < 0.45 { "minecraft:dirt" } else { "minecraft:tuff" });
+        b.run(x, z, y, y, heap_block(n1, n2));
+        if c.top > y {
+            b.run(x, z, y + 1, c.top, "minecraft:air");
+        }
+    }
     /// The edits of the chunk with corner (x0, z0): its ground, then the plate. `read`: what stands on each of its columns
     /// (x then z), none where the world has not said.
     pub fn chunk(&self, x0: i32, z0: i32, bx: i32, bz: i32, gy: i32, seed: u32, read: Option<&[Option<Col>]>) -> Blocks {
@@ -907,7 +1076,11 @@ impl Slab {
                 let g = self.ground_col(&mut b, x, z, wx, wz, gy, col, seed, &near);
                 self.plate_col(&mut b, x, z, wx, wz, gy, g.map(|g| g - 1), &mut sp);
                 if let (Some(g), Some(c)) = (g, col) {
-                    self.under(&mut b, x, z, wx, wz, gy, g, c, &sp, seed);
+                    if sp.is_empty() {
+                        self.talus(&mut b, x, z, wx, wz, gy, g, c, seed);
+                    } else {
+                        self.under(&mut b, x, z, wx, wz, gy, g, c, &sp, seed);
+                    }
                 }
             }
         }
@@ -1223,7 +1396,7 @@ fn vl_tick(q: &mut Plan, l: Shared, now: f32) {
                         }
                         continue;
                     }
-                    let Some(gs) = gs.filter(|_| share >= VL_LOADED && w.terrain) else {
+                    let Some((gs, slope)) = gs.filter(|_| share >= VL_LOADED && w.terrain) else {
                         if w.terrain {
                             vl_fail(q, w, i, now, "its land never loaded");
                         } else {
@@ -1233,7 +1406,7 @@ fn vl_tick(q: &mut Plan, l: Shared, now: f32) {
                     };
                     let seed = w.seed;
                     let s = &mut w.slabs[i];
-                    s.set_pose(gs);
+                    s.set_pose(gs, slope);
                     s.litter(seed);
                     w.todo[i] = s.chunks(bx, bz);
                     q.ev.push((now, Act::Words { index: (VL_BASE + i * VL_W) as u32, words: s.words(0.0) }));
@@ -1338,23 +1511,18 @@ fn vl_fail(q: &mut Plan, w: &mut Lodge, i: usize, now: f32, why: &str) {
     #[cfg(test)]
     let _ = why;
 }
-/// The ground under where it meets it, from the query (from the vent's ground), and how much of what was asked answered.
-fn ground_of(s: &Slab, bx: i32, bz: i32, gy: i32) -> (Option<f64>, f64) {
+/// The ground it comes down on, from the query, and how much of what was asked answered.
+fn ground_of(s: &Slab, bx: i32, bz: i32, gy: i32) -> (Option<(f64, (f64, f64))>, f64) {
     let cols = asked_cols(s, bx, bz);
-    let (mut sum, mut n, mut band) = (0.0f64, 0.0f64, 0.0f64);
-    let m = cols.len() - s.chunks(bx, bz).len();
     let mut got = 0.0f64;
-    for (j, &(x, z)) in cols.iter().enumerate() {
+    let mut pts = Vec::with_capacity(cols.len());
+    for &(x, z) in &cols {
         let Some(g) = crate::ground::at(x, z) else { continue };
         got += 1.0;
-        if j < m {
-            sum += f64::from(g + crate::ground::water(x, z).unwrap_or(0) - gy);
-            n += 1.0;
-        }
-        band = n;
+        pts.push((x, z, f64::from(g + crate::ground::water(x, z).unwrap_or(0) - gy)));
     }
     crate::meter::spend(160 * cols.len() as u64);
-    ((band > 0.0).then_some(sum / n.max(1.0)), got / cols.len().max(1) as f64)
+    (s.bed(&pts, bx, bz), got / cols.len().max(1) as f64)
 }
 /// Whether the player is in or right by the plate as it comes down.
 fn near_player(s: &Slab, me: [f64; 3], vent: [f64; 3]) -> bool {
@@ -1396,19 +1564,14 @@ fn vl_finish(l: Shared) -> Vec<(f32, Act)> {
 #[cfg(test)]
 impl Lodge {
     /// What the game's stages do, at once: plate i's ground known, its pose settled, its chunks' list made.
-    pub(super) fn settle_test(&mut self, i: usize, gs: f64, bx: i32, bz: i32) -> Vec<(i32, i32)> {
+    pub(super) fn settle_test(&mut self, i: usize, h: &dyn Fn(i32, i32) -> f64, bx: i32, bz: i32) -> Vec<(i32, i32)> {
         let seed = self.seed;
         let s = &mut self.slabs[i];
-        s.set_pose(gs);
+        let pts: Vec<(i32, i32, f64)> = asked_cols(s, bx, bz).iter().map(|&(x, z)| (x, z, h(x, z))).collect();
+        let (gs, slope) = s.bed(&pts, bx, bz).unwrap();
+        s.set_pose(gs, slope);
         s.litter(seed);
         s.chunks(bx, bz)
-    }
-}
-#[cfg(test)]
-impl Slab {
-    pub(super) fn band_test(&self, bx: i32, bz: i32) -> Vec<(i32, i32)> {
-        let (cols, n) = (asked_cols(self, bx, bz), self.chunks(bx, bz).len());
-        cols[..cols.len() - n].to_vec()
     }
 }
 
