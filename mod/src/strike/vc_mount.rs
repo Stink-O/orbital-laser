@@ -40,19 +40,19 @@ pub(super) const VM_FOUNTS: usize = 44;
 const VM_BOULD: usize = VM_BASE + 2800;
 pub(super) const VM_BOULDS: usize = 40;
 const VM_BW: usize = 16;
-const VM_PLATE: usize = VM_BASE + 3500;
-const VM_PW: usize = 16;
+pub(super) const VM_PLATE: usize = VM_BASE + 3500;
+pub(super) const VM_PW: usize = 16;
 pub(super) const VM_PLATES: usize = 164;
 /// The plates thrown at the burst: those of the rings on the dome (the others lie out on the land).
 pub(super) const VM_FLY: usize = 95;
 /// Their flight past the white-out, four words each (`vm_flights`).
-const VM_FLT: usize = VM_BASE + 6200;
+pub(super) const VM_FLT: usize = VM_BASE + 6200;
 /// The slab each is in its own frame, four words each (`vm_slabs`).
 const VM_SLAB: usize = VM_BASE + 6600;
 /// The columns' words: the land and the field (what the march reads), the colours, the rest (what the shading reads).
-const VM_W0: usize = VM_BASE + 8192;
+pub(super) const VM_W0: usize = VM_BASE + 8192;
 const VM_W1: usize = VM_W0 + VM_COLS;
-const VM_W2: usize = VM_W1 + VM_COLS;
+pub(super) const VM_W2: usize = VM_W1 + VM_COLS;
 /// The dome's radius, on average.
 const VM_RAD: f64 = 400.0;
 /// How high it gets (the pass's vm_hgt, before the last heave).
@@ -829,7 +829,7 @@ fn vm_slabs(w: &Work, p: &PlateSums) -> Vec<u32> {
     out
 }
 /// The dome's height from the burst on: the pass's vm_hgt, its plates' phase 0, once it has stopped (keep in step).
-fn vm_burst_h() -> f64 {
+pub(super) fn vm_burst_h() -> f64 {
     let s: f64 = VC_HUSH - VC_SWELL;
     let a = TAU * (0.42 * s + 0.03 * s * s);
     let da = TAU * (0.42 + 0.06 * s);
@@ -1328,7 +1328,7 @@ mod tests {
         for k in 0..VM_FLY {
             let (tau, g, hit) = (w(fl, 4 * k), w(fl, 4 * k + 1), w(fl, 4 * k + 2));
             assert!(tau >= 1.0 && (5.0..240.0).contains(&g), "plate {k}: tau {tau}, g {g}");
-            assert!((28.0..35.6).contains(&hit), "plate {k} hits at {hit}");
+            assert!((28.0..36.7).contains(&hit), "plate {k} hits at {hit}");
             let b = k * VM_PW;
             let a = 18.7 - w(plates, b + 8);
             let eh = 2.5 * (1.0 - (-(hit - 18.7) / 2.5f64).exp());

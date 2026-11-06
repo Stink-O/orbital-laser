@@ -37,17 +37,17 @@ const VL_THICK: f64 = 30.0;
 pub(super) const VL_PATCH: f64 = 136.0;
 /// How far from the vent the sites lie: past the deposit and the felled trees, or the land's work buries them.
 const VL_R0: f64 = 570.0;
-const VL_R1: f64 = 800.0;
+const VL_R1: f64 = 860.0;
 /// How near a player a site's middle may lie (its plate reaches some 120 from it), and how far from them the near ones.
 const VL_ME0: f64 = 290.0;
-const VL_ME1: f64 = 450.0;
+const VL_ME1: f64 = 460.0;
 const VL_G: f64 = 34.0;
 const VL_BRK: f64 = 18.7;
 const VL_TH: f64 = 2.5;
 /// A stage's work on the blocks, counted, and how many chunks a read asks at a time, in flight at a time, and may wait
 /// to go in at a time.
-const VL_TICK: u64 = 5_000_000;
-const VL_LOT: usize = 5;
+const VL_TICK: u64 = 6_000_000;
+const VL_LOT: usize = 6;
 const VL_FLIGHT: usize = 2;
 const VL_QUEUE: u32 = 24;
 const VL_ASK: f32 = 19.5;
@@ -85,7 +85,7 @@ pub(super) fn vl_sites(seed: u32, me: [f64; 3]) -> Vec<Site> {
             };
             let r = x.hypot(z);
             let sep = out.iter().map(|s| (s.x - x).hypot(s.z - z)).fold(1.0e9, f64::min);
-            let over = (VL_R0 - r).max(r - VL_R1).max(0.0) + 4.0 * (190.0 - sep).max(0.0) + (VL_ME0 - (me[0] - x).hypot(me[2] - z)).max(0.0);
+            let over = 8.0 * (VL_R0 - r).max(r - VL_R1).max(0.0) + 3.0 * (175.0 - sep).max(0.0) + (VL_ME0 - (me[0] - x).hypot(me[2] - z)).max(0.0);
             if over < best.0 {
                 best = (over, x, z);
             }
@@ -251,6 +251,8 @@ struct Boulder {
     r: f64,
     h: f64,
     m: u8,
+    c: f64,
+    s: f64,
 }
 /// A broken piece of it stuck in the ground round the foot: a box turned its own way.
 #[derive(Clone, Copy)]
@@ -680,8 +682,9 @@ impl Slab {
             let u = if a < 0.6 { ut + 4.0 + 42.0 * m(k, 0xe1).powi(2) } else { -ut - 50.0 + (2.0 * ut + 130.0) * m(k, 0xe1) };
             let v = (w + 42.0) * (2.0 * m(k, 0xe2) - 1.0);
             let (x, z) = place(u, v);
-            let r = 1.5 + 7.5 * m(k, 0xe3).powi(3);
-            self.rocks.push(Boulder { x, z, r, h: r * (0.6 + 0.5 * m(k, 0xe4)), m: (m(k, 0xe5) * 5.0) as u8 });
+            let r = 1.5 + 6.0 * m(k, 0xe3).powi(3);
+            let a = TAU * m(k, 0xe9);
+            self.rocks.push(Boulder { x, z, r, h: r * (0.5 + 0.5 * m(k, 0xe4)), m: (m(k, 0xe5) * 5.0) as u8, c: a.cos(), s: a.sin() });
         }
         for k in 0..14 {
             let u = -ut * 0.5 + (2.0 * ut + 34.0) * m(k, 0xe6);
@@ -737,13 +740,13 @@ impl Slab {
     }
     /// A column's ground: heaped or dug, the trees on it gone, its cracks, its rubble: the world's Y its ground is at
     /// afterwards. `col`: what the read said stands there.
-    fn ground_col(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, col: Option<&Col>, seed: u32) -> Option<i32> {
+    fn ground_col(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, col: Option<&Col>, seed: u32, near_ones: &Near) -> Option<i32> {
         let (dx, dz) = self.site.dir;
         let (ox, oz) = (wx - self.foot[0], wz - self.foot[2]);
         let (u, v) = (ox * dx + oz * dz, oz * dx - ox * dz);
         let w = 0.5 * self.wide;
         let len = self.s1 - self.s0;
-        let near = u > -len - 20.0 && u < self.u_top + 110.0 && v.abs() < w + 70.0;
+        let near = u > -self.u_top - 70.0 - 0.3 * len && u < self.u_top + 90.0 && v.abs() < w + 56.0;
         crate::meter::spend(420);
         if !near {
             return col.map(|c| c.g);
@@ -753,13 +756,14 @@ impl Slab {
         let h = self.heap(u, v, 0.65 * n + 0.35 * n2);
         let air = "minecraft:air";
         let mut cracked = 2.0e9f64;
-        for c in &self.cracks {
+        for &c in &near_ones.cracks {
+            let c = &self.cracks[c];
             let (sx, sz) = (c[2] - c[0], c[3] - c[1]);
             let t = (((wx - c[0]) * sx + (wz - c[1]) * sz) / (sx * sx + sz * sz)).clamp(0.0, 1.0);
             let d = (wx - c[0] - t * sx).hypot(wz - c[1] - t * sz) / c[4];
             cracked = cracked.min(d);
         }
-        crate::meter::spend(30 * self.cracks.len() as u64);
+        crate::meter::spend(30 * near_ones.cracks.len() as u64);
         let hh = h.round() as i32;
         let g = match col {
             Some(c) => {
@@ -797,16 +801,20 @@ impl Slab {
                 b.run(x, z, top - 3, top, "minecraft:tuff");
             }
         }
-        for r in &self.rocks {
-            let q = ((wx - r.x) * (wx - r.x) + (wz - r.z) * (wz - r.z)) / (r.r * r.r);
+        for &r in &near_ones.rocks {
+            let r = &self.rocks[r];
+            // (broken, not round: its corners by the way it lies, its top in steps)
+            let (ex, ez) = ((wx - r.x) / r.r, (wz - r.z) / r.r);
+            let q = 0.55 * (ex * r.c + ez * r.s).abs() + 0.55 * (ez * r.c - ex * r.s).abs() + 0.4 * ex.hypot(ez);
             if q < 1.0 {
-                let y = top + (r.h * (1.0 - q).sqrt() * (0.8 + 0.4 * n2)).round() as i32;
+                let y = top + (r.h * (1.0 - q * q).sqrt() * (0.7 + 0.6 * n2)).round() as i32;
                 b.run(x, z, top, y, boulder_block(r.m, n2));
                 top = y;
             }
         }
-        crate::meter::spend(16 * self.rocks.len() as u64);
-        for s in &self.spalls {
+        crate::meter::spend(20 * near_ones.rocks.len() as u64);
+        for &s in &near_ones.spalls {
+            let s = &self.spalls[s];
             if let Some((y0, y1)) = box_span(s, wx, wz) {
                 let (a, c) = ((y0 + f64::from(gy) - 0.5).ceil() as i32, (y1 + f64::from(gy) - 0.5).floor() as i32);
                 let lo = a.max(top - 2);
@@ -816,7 +824,7 @@ impl Slab {
                 }
             }
         }
-        crate::meter::spend(60 * self.spalls.len() as u64);
+        crate::meter::spend(60 * near_ones.spalls.len() as u64);
         Some(top)
     }
     /// The edits of the chunk with corner (x0, z0): its ground, then the plate. `read`: what stands on each of its columns
@@ -825,11 +833,20 @@ impl Slab {
         let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
         let mut b = Blocks::default();
         let mut sp: Vec<Stretch> = Vec::with_capacity(3);
+        // (what lies round the chunk: most of it lies nowhere near)
+        let (mx, mz) = (f64::from(x0) + 8.0 - cx, f64::from(z0) + 8.0 - cz);
+        let in_reach = |x: f64, z: f64, r: f64| (x - mx).abs() < r + 8.5 && (z - mz).abs() < r + 8.5;
+        let near = Near {
+            rocks: self.rocks.iter().enumerate().filter(|(_, r)| in_reach(r.x, r.z, r.r)).map(|e| e.0).collect(),
+            spalls: self.spalls.iter().enumerate().filter(|(_, r)| in_reach(r.c[0], r.c[2], r.half[0] + r.half[2])).map(|e| e.0).collect(),
+            cracks: self.cracks.iter().enumerate().filter(|(_, c)| in_reach(0.5 * (c[0] + c[2]), 0.5 * (c[1] + c[3]), 0.5 * (c[0] - c[2]).hypot(c[1] - c[3]) + c[4])).map(|e| e.0).collect(),
+        };
+        crate::meter::spend(30 * (self.rocks.len() + self.spalls.len() + self.cracks.len()) as u64);
         for z in z0..z0 + 16 {
             for x in x0..x0 + 16 {
                 let (wx, wz) = (f64::from(x) + 0.5 - cx, f64::from(z) + 0.5 - cz);
                 let col = read.and_then(|r| r[((z - z0) * 16 + x - x0) as usize].as_ref());
-                let g = self.ground_col(&mut b, x, z, wx, wz, gy, col, seed);
+                let g = self.ground_col(&mut b, x, z, wx, wz, gy, col, seed, &near);
                 self.plate_col(&mut b, x, z, wx, wz, gy, g.map(|g| g - 1), &mut sp, seed);
             }
         }
@@ -887,6 +904,12 @@ impl Slab {
         let (u, v) = (ox * self.site.dir.0 + oz * self.site.dir.1, oz * self.site.dir.0 - ox * self.site.dir.1);
         v.abs() < 0.5 * self.wide + 40.0 && u > -(self.s1 - self.s0) - 10.0 && u < self.u_top + 70.0
     }
+}
+/// What of its rubble and cracks reach a chunk.
+struct Near {
+    rocks: Vec<usize>,
+    spalls: Vec<usize>,
+    cracks: Vec<usize>,
 }
 /// A stretch of a world column inside a plate, from the vent's ground, with how high the plate's top is along that line.
 #[derive(Clone, Copy)]
@@ -1155,6 +1178,8 @@ fn vl_tick(q: &mut Plan, l: Shared, now: f32) {
                     q.ev.push((now, Act::Data { index: (VL_BASE + i * VL_W + 7) as u32, value: now.max(1.0) }));
                     w.stage[i] = Step::Done;
                     w.landed += 1;
+                    #[cfg(not(test))]
+                    crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("supervolcano: plate {} in the world {:.1} s after it hit, {} chunks", w.slabs[i].rock_id, now - hit, w.made[i]));
                 }
                 _ => {}
             }
@@ -1297,5 +1322,200 @@ impl Slab {
     pub(super) fn band_test(&self, bx: i32, bz: i32) -> Vec<(i32, i32)> {
         let (cols, n) = (asked_cols(self, bx, bz), self.chunks(bx, bz).len());
         cols[..cols.len() - n].to_vec()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::vc_mount::{VM_FLT, VM_FLY, VM_GW, VM_PLATE, VM_PW, VM_W0, VM_W2, table, vm_burst_h};
+    use super::*;
+    use std::collections::HashSet;
+
+    const ME: [f64; 3] = [0.0, 5.0, 1000.0];
+    fn land(hills: f64) -> (Vec<(usize, Vec<u32>)>, Shared) {
+        table::all_lodged(37, ME, &|x, z| hills * (x * 0.013).sin() * (z * 0.017).cos(), &|x, z| Some(table::preview_col(x, z, hills)))
+    }
+    /// The pass at the moment it hands over: where plate `i` (of the ten) lies, its own words only.
+    struct Drawn<'a> {
+        i: usize,
+        rest: [f64; 3],
+        c: [f64; 3],
+        q: [f64; 4],
+        th: f64,
+        w0: &'a [u32],
+        w2: &'a [u32],
+    }
+    fn rot(q: [f64; 4], v: [f64; 3]) -> [f64; 3] {
+        let u = [q[0], q[1], q[2]];
+        let t = cross(u, v);
+        let t = [t[0] + q[3] * v[0], t[1] + q[3] * v[1], t[2] + q[3] * v[2]];
+        let t2 = cross(u, t);
+        [v[0] + 2.0 * t2[0], v[1] + 2.0 * t2[1], v[2] + 2.0 * t2[2]]
+    }
+    fn drawn<'a>(all: &'a [(usize, Vec<u32>)], n: usize) -> Drawn<'a> {
+        let get = |k: usize| all.iter().rev().find(|t| t.0 == k).unwrap().1.as_slice();
+        let (pl, fl, lw, map) = (get(VM_PLATE), get(VM_FLT), get(VL_BASE), get(VL_MAP));
+        let f = |t: &[u32], j: usize| f64::from(f32::from_bits(t[j]));
+        let i = (0..VM_FLY).find(|&k| map[k] == n as u32 + 1).unwrap();
+        let b = i * VM_PW;
+        let lb = n * VL_W;
+        let hb = vm_burst_h();
+        let rest = [f(pl, b), f(pl, b + 2) + f(pl, b + 3) * hb, f(pl, b + 1)];
+        let (tr, hit, tau, g) = (f(pl, b + 8), f(fl, i * 4 + 2), f(fl, i * 4), f(fl, i * 4 + 1));
+        let (v, s) = ([f(pl, b + 9), f(pl, b + 10), f(pl, b + 11)], hit - VL_BRK);
+        let eh = VL_TH * (1.0 - (-s / VL_TH).exp());
+        let a = hit - tr - s;
+        let mut c = [rest[0] + v[0] * (a + eh), rest[1] + (v[1] - 0.5 * VL_G * a) * a, rest[2] + v[2] * (a + eh)];
+        let vy = v[1] - VL_G * a;
+        c[1] += (vy + g * tau) * tau * (1.0 - (-s / tau).exp()) - g * tau * s;
+        let c = [c[0] + f(lw, lb + 4), c[1] + f(lw, lb + 5), c[2] + f(lw, lb + 6)];
+        let q = [f(lw, lb), f(lw, lb + 1), f(lw, lb + 2), f(lw, lb + 3)];
+        Drawn { i, rest, c, q, th: f(pl, b + 7), w0: get(VM_W0), w2: get(VM_W2) }
+    }
+    impl Drawn<'_> {
+        fn own(&self, g: (usize, usize)) -> bool {
+            (self.w2[g.1 * VM_GW + g.0] & 255) as usize == self.i
+        }
+        /// vm_top: its land's top at (x, z) of the mount, from its own columns.
+        fn top(&self, x: f32, z: f32) -> Option<f32> {
+            let (gx, gz) = (((x + 480.0) / 4.0).clamp(0.0, 239.999), ((z + 480.0) / 4.0).clamp(0.0, 239.999));
+            let (ci, ck) = (gx as usize, gz as usize);
+            let (u, v) = (gx - ci as f32, gz - ck as f32);
+            let hb = vm_burst_h() as f32;
+            let (mut s, mut k) = (0.0, 0.0);
+            for (a, b, m) in [(0, 0, (1.0 - u) * (1.0 - v)), (1, 0, u * (1.0 - v)), (0, 1, (1.0 - u) * v), (1, 1, u * v)] {
+                if self.own((ci + a, ck + b)) {
+                    let w = self.w0[(ck + b) * VM_GW + ci + a];
+                    let land = (w & 0x7ff) as f32 * 0.5 - 512.0;
+                    let p = ((w >> 11) & 0x7ff) as f32 * (1.6 / 2047.0) - 0.25;
+                    s += (land + p * hb) * m;
+                    k += m;
+                }
+            }
+            (k > 1e-4).then_some(s / k)
+        }
+        /// vm_in_plate at the point (from the vent) of the world, `grow` blocks' grace.
+        fn inside(&self, w: [f64; 3], grow: f32) -> bool {
+            let d = [w[0] - self.c[0], w[1] - self.c[1], w[2] - self.c[2]];
+            let lp = rot([-self.q[0], -self.q[1], -self.q[2], self.q[3]], d);
+            let (x, z) = ((lp[0] + self.rest[0]) as f32, (lp[2] + self.rest[2]) as f32);
+            let (jx, jz) = ((z * 0.43 + x * 0.11).sin() * 0.8, (x * 0.47 - z * 0.13).sin() * 0.8);
+            let g = (((x + 480.0) / 4.0 + 0.5 + jx).clamp(0.0, 240.0) as usize, ((z + 480.0) / 4.0 + 0.5 + jz).clamp(0.0, 240.0) as usize);
+            if !self.own(g) {
+                return false;
+            }
+            let y = (lp[1] + self.rest[1]) as f32;
+            let Some(top) = self.top(x, z) else { return false };
+            let th = (self.th * vl_thk(f64::from(x), f64::from(z))) as f32;
+            y <= top + grow && y >= top - th - grow
+        }
+    }
+    fn blocks_of(s: &Slab) -> HashSet<(i32, i32, i32)> {
+        let mut set = HashSet::new();
+        for (x0, z0) in s.chunks(0, 0) {
+            let b = s.chunk(x0, z0, 0, 0, 65, 37, None);
+            let e = b.edit();
+            for r in &e.runs {
+                if r.surface.is_none() && !e.palette[r.block as usize].ends_with(":air") {
+                    for y in r.y..r.y + r.height as i32 {
+                        set.insert((r.x, y, r.z));
+                    }
+                }
+            }
+        }
+        set
+    }
+    /// At the moment it hands over the blocks are where the pass draws the plate: none of them outside what it draws, a
+    /// block's grace for the two ways of breaking an edge, and no hole in what it draws. (The vent at 0.5, 0.5, its ground
+    /// at Y 65.)
+    #[test]
+    fn a_lodged_plate_is_where_the_pass_draws_it() {
+        for hills in [0.0, 30.0] {
+            let (all, l) = land(hills);
+            let l = l.borrow();
+            for n in 0..l.slabs.len() {
+                let (d, s) = (drawn(&all, n), &l.slabs[n]);
+                let set = blocks_of(s);
+                assert!(set.len() > 150_000, "plate {n}: {} blocks", set.len());
+                let (mut out, mut total) = (0, 0);
+                for (j, &(x, y, z)) in set.iter().enumerate() {
+                    if j % 7 == 0 {
+                        total += 1;
+                        // (the two ways of breaking an edge a block or two apart)
+                        let p = [f64::from(x), f64::from(y) + 0.5 - 65.0, f64::from(z)];
+                        out += usize::from(![[0.0, 0.0], [2.5, 0.0], [-2.5, 0.0], [0.0, 2.5], [0.0, -2.5]].iter().any(|o| d.inside([p[0] + o[0], p[1], p[2] + o[1]], 2.5)));
+                    }
+                }
+                assert!((out as f64) < 0.025 * total as f64, "plate {n}: {out} of {total} blocks outside what the pass draws");
+                // (and every block of the world inside what the pass draws, well in from its faces and edges, is there)
+                let (mut holes, mut inner) = (0, 0);
+                let c = s.foot;
+                for x in (c[0] as i32 - 150..c[0] as i32 + 150).step_by(5) {
+                    for z in (c[2] as i32 - 150..c[2] as i32 + 150).step_by(5) {
+                        for y in (-60..240).step_by(3) {
+                            let w = [f64::from(x), f64::from(y) + 0.5, f64::from(z)];
+                            if [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [-5.0, 0.0, 0.0], [0.0, 0.0, 5.0], [0.0, 0.0, -5.0], [0.0, 7.0, 0.0], [0.0, -7.0, 0.0]].iter().all(|o| d.inside([w[0] + o[0], w[1] + o[1], w[2] + o[2]], 0.0)) {
+                                inner += 1;
+                                holes += usize::from(!set.contains(&(x, y + 65, z)));
+                            }
+                        }
+                    }
+                }
+                assert!(inner > 500, "plate {n}: {inner}");
+                assert!((holes as f64) < 0.004 * inner as f64, "plate {n}: {holes} holes of {inner}");
+            }
+        }
+    }
+    #[test]
+    fn they_keep_off_the_player_the_ash_and_each_other() {
+        for seed in [37, 5, 1234] {
+            for me in [[0.0, 5.0, 1000.0], [700.0, 5.0, -800.0], [-1300.0, 20.0, 300.0]] {
+                let sites = vl_sites(seed, me);
+                assert_eq!(sites.len(), VL_N);
+                let phi = me[2].atan2(me[0]);
+                for (i, s) in sites.iter().enumerate() {
+                    let (r, d) = (s.x.hypot(s.z), (s.x - me[0]).hypot(s.z - me[2]));
+                    assert!((VL_R0 - 1.0..VL_R1 + 30.0).contains(&r), "seed {seed} site {i}: {r} from the vent");
+                    assert!(d >= VL_ME0 - 1.0, "seed {seed} site {i}: {d} from the player");
+                    assert!((s.dir.0.hypot(s.dir.1) - 1.0).abs() < 1e-9);
+                    if s.near {
+                        assert!(i < VL_NEAR && (d < VL_ME1 + 10.0 || me[0].hypot(me[2]) > 1100.0), "seed {seed} near site {i}: {d} from the player");
+                    } else {
+                        let off = ((s.z.atan2(s.x) - phi).rem_euclid(TAU) - PI).abs();
+                        assert!(off < 2.3, "seed {seed} far site {i} on the player's side");
+                    }
+                    for t in &sites[..i] {
+                        assert!((s.x - t.x).hypot(s.z - t.z) > 120.0, "seed {seed}: sites {i} and another");
+                    }
+                }
+            }
+        }
+        // (the plates themselves: all of what stands over the ground at least 150 from the player)
+        let (_, l) = land(0.0);
+        for s in &l.borrow().slabs {
+            for b in blocks_of(s).iter().step_by(11) {
+                let d = (f64::from(b.0) - ME[0]).hypot(f64::from(b.2) - ME[2]);
+                assert!(d > 150.0, "rock {}: a block {d} from the player", s.rock_id);
+            }
+        }
+    }
+    /// A third or so of it in the ground, tilted, its top the land's and its underside burnt; and it isn't a sheet.
+    #[test]
+    fn it_stands_as_it_should() {
+        let (_, l) = land(0.0);
+        for s in &l.borrow().slabs {
+            let up = s.pose.world([0.0, 0.0, 0.0])[1] - s.foot[1];
+            let n = norm([-s.plane.0, 1.0, -s.plane.1]);
+            let tilt = dot(s.pose.r[1], n).clamp(-1.0, 1.0).acos().to_degrees();
+            assert!((10.0..75.0).contains(&tilt), "rock {}: {tilt} degrees", s.rock_id);
+            assert!(up > 10.0, "rock {}: its middle {up} over the ground", s.rock_id);
+            let set = blocks_of(s);
+            let ys: Vec<i32> = set.iter().map(|b| b.1).collect();
+            let (lo, hi) = (*ys.iter().min().unwrap(), *ys.iter().max().unwrap());
+            assert!(hi - 65 > 45, "rock {}: it stands {} high", s.rock_id, hi - 65);
+            assert!(lo < 65 - 10 && hi < 318, "rock {}: {lo} to {hi}", s.rock_id);
+            let under = set.iter().filter(|b| b.1 < 65).count() as f64 / set.len() as f64;
+            assert!((0.08..0.6).contains(&under), "rock {}: {under} of it under the ground", s.rock_id);
+        }
     }
 }
