@@ -58,7 +58,9 @@ const VC_LEAD: f32 = 4.0;
 const VC_QUEUE: usize = 200_000;
 /// No more chunks are worked out while the mod holds this much (`mem`): the edits waiting behind a slow frame (`pace`) are
 /// past `VC_QUEUE`'s count once they fall due, and they can pile up for as long as the frames stay slow.
-const VC_HOLD: usize = 24 << 20;
+const VC_HOLD: usize = 20 << 20;
+/// The most chunks that fall due a tick.
+const VC_A_TICK: usize = 12;
 /// How many parts of the read may be out at once (one is asked a tick, two taken in). Everything hangs on this. An answer
 /// is 400 KB, and those asked ahead of the ones taken in add up in the mod's 64 MB (a late world hands over everything it
 /// has at once); and each is a stretch of the server thread's time, so reads asked faster than they are answered fall
@@ -1323,6 +1325,10 @@ impl Work {
             }
         }
         chunks.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // (the chunks round the ring all fall due as the wall sets off: taken in at once they fill a tick with their edits)
+        for i in VC_A_TICK..chunks.len() {
+            chunks[i].0 = chunks[i].0.max(chunks[i - VC_A_TICK].0 + 0.05);
+        }
         crate::meter::spend(300 * chunks.len() as u64);
         Work { s, hf: Default::default(), cols: Vec::new(), tags: (0..VC_PARTS).map(|_| crate::columns::new_tag()).collect(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks, next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false, lodge: None }
     }
@@ -1469,6 +1475,9 @@ fn far_chunks(bx: i32, bz: i32, s: &Shape, mut each: impl FnMut(i32, i32, f64)) 
 
 /// One stage of the land's work: the reads, then the chunks coming due.
 fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
+    // (it takes its turn with the other stages, a tick in two as often as not: counting its own time it fell so far behind
+    // the strike that the middle of the caldera, due last, was never dug)
+    let now = now.max(super::clock());
     let more = {
         let mut guard = w.borrow_mut();
         let wk = &mut *guard;

@@ -2416,6 +2416,28 @@ mod stress {
         assert!((60..1800).contains(&(after - before)), "{} edits to finish it", after - before);
     }
 
+    /// The Supervolcano's caldera is dug to its middle before the strike is over, the plates' work going on beside it:
+    /// its land's stages wait their turn with theirs, and the strike's clock doesn't.
+    #[test]
+    fn the_caldera_is_dug_to_its_middle() {
+        let sv = LASERS.iter().position(|l| l.key == "supervolcano").expect("the supervolcano");
+        let mut s = Soak::new(5);
+        s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
+        fake::with(|w| w.keep_chunks = true);
+        s.fire(sv, (1000, -2000));
+        for tick in 0..1900 {
+            fake::with(|w| w.tick = tick);
+            s.step("caldera");
+        }
+        let (cx, cz) = (1000_i32 >> 4, -2000_i32 >> 4);
+        let chunks = fake::with(|w| std::mem::take(&mut w.chunks));
+        let inner: Vec<_> = (-14..=14).flat_map(|z| (-14..=14).map(move |x| (x, z))).filter(|(x, z)| x * x + z * z <= 14 * 14).collect();
+        let left: Vec<_> = inner.iter().filter(|(x, z)| !chunks.contains_key(&(cx + x, cz + z))).collect();
+        assert!(left.is_empty(), "{} of {} chunks of the caldera never dug: {:?}", left.len(), inner.len(), &left[..left.len().min(12)]);
+        let last = inner.iter().map(|(x, z)| chunks[&(cx + x, cz + z)]).max().unwrap_or(0);
+        assert!(last < 84 * 20, "the caldera's last chunk went in at {} s", last as f32 / 20.0);
+    }
+
     /// The follow camera: a Nuke fired with it on moves the player by kicks to their velocity once the bomb comes
     /// near (never a teleport, never a turn of their view, never their game mode), and puts them back where they stood
     /// once it is over (their view kept); the knockback left out meanwhile. Off, nothing of it.
