@@ -117,7 +117,7 @@ pub(super) const FD_LAND0: f32 = FD_HIDDEN.start + 0.2;
 pub(super) const FD_LAND1: f32 = FD_REVEAL - 1.6;
 /// The chunks the player's island stands on go in just before the reveal, so they swap in with the rest and the ground goes
 /// from under them with the slam.
-const FD_ISLE_AT: f32 = FD_REVEAL - 0.25;
+const FD_ISLE_AT: f32 = FD_REVEAL - 0.5;
 /// What a column counts for in the wave's pace, past its blocks (`fd_cost`): what its chunk costs the frame, its resend,
 /// light and meshes, whatever is changed in it. It keeps the chunks a second even: they are what the frames feel.
 const FD_PER_CHUNK: f64 = 30.0;
@@ -798,7 +798,7 @@ fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
     crate::meter::spend(30);
     land.cols.get(idx(bx, bz, x, z)?).filter(|c| c.known)
 }
-const FD_CUT_COST: u64 = 12_000;
+const FD_CUT_COST: u64 = 13_500;
 /// Column (x, z)'s cut, worked out once and kept (each column's neighbours ask for it, and the rubble and fires after).
 fn cut_of(cuts: &mut [Cut], land: &Land, s: &Shape, bx: i32, bz: i32, x: i32, z: i32) -> Option<Cut> {
     let i = idx(bx, bz, x, z)?;

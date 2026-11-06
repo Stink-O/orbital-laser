@@ -41,7 +41,7 @@ const FW_FEET: f32 = 15.0;         // how far from the player the land is all th
 const FW_EYE: f32 = 1.62;          // their eye over their feet
 const FW_LAND_R: f32 = 480.0;      // from FD_LAND on the crater is in the land within this: nothing is cut under it
 const FW_BOWL: f32 = 66.0;         // how deep the crater's bowl is (strike/fold_land.rs's FD_BOWL)
-const FW_SUNK: f32 = 3.8;          // the crater has fallen in by this long after the last slam
+const FW_SUNK: f32 = 5.6;          // the crater has fallen in by this long after the last slam
 const FW_CAVE: f32 = 18.0;         // half the panels' fall's acceleration, blocks a second squared: a little more than what the player falls with
 
 // ---- what can be taken out: 0 turns each off -----------------------------------------------------------------------
@@ -1063,7 +1063,7 @@ fn fw_sunk(Q: vec3<f32>, r: f32, a: f32, t: f32, mq: vec3<f32>) -> f32 {
     let mr = length(mq.xz);
     let mw = cp_wedge(atan2(mq.z, mq.x), mq.xz, mr);
     let h = fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
-    let late = select(0.1 + 0.34 * f32(i) + 0.4 * h, 0.0, w.k == mw.k && i == cp_cell(mw, mr));
+    let late = select(0.2 + 0.62 * f32(i) + 0.5 * h, 0.0, w.k == mw.k && i == cp_cell(mw, mr));
     let s = max(t - FW_SLAM4 - late, 0.0);
     return max(FW_BOWL * pow(1.0 - u * u * u, 0.75) - FW_CAVE * s * s, 0.0);
 }

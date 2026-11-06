@@ -689,10 +689,10 @@ fn fdb_density(p: vec3<f32>, a: f32) -> f32 {
     let x = (r - fdb_front(a)) / width;
     // (the wall leans out, its foot ahead of its top)
     let lean = (r - fdb_front(a) + 0.5 * max(p.y, 0.0)) / width;
-    let wall = fd_ss(0.0, 0.5, a) * exp(-min(x * x, lean * lean)) * fd_ss(h * (0.75 + 0.25 * fd_ss(0.0, 200.0, r)), h * 0.2, p.y);
+    let wall = 0.55 * fd_ss(0.0, 0.5, a) * exp(-min(x * x, lean * lean)) * fd_ss(h * (0.75 + 0.25 * fd_ss(0.0, 200.0, r)), h * 0.2, p.y);
     // (the crater's air: from the floor up over the rim, whatever is above it thin)
     // (only once the panels have fallen: it is what they drive up, and while they fall they are the picture)
-    let air = 0.26 * fd_ss(2.2, 4.0, a) * fd_ss(350.0, 170.0, r) * fd_ss(h * 0.9, -30.0, p.y) * (1.0 - fd_ss(3.0, FDB_LEN - 0.5, a));
+    let air = 0.16 * fd_ss(3.6, 5.6, a) * fd_ss(350.0, 170.0, r) * fd_ss(h * 0.9, -30.0, p.y) * (1.0 - fd_ss(3.0, FDB_LEN - 0.5, a));
     let d = (wall + air) * pow(1.0 - a / FDB_LEN, 1.6);
     if (d < 0.01) { return 0.0; }
     let q = p * 0.021 + vec3<f32>(0.0, -a * 0.35, 0.0) + normalize(vec3<f32>(p.x, 0.0, p.z) + vec3<f32>(0.01)) * a * -0.3;
