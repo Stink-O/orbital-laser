@@ -3,8 +3,10 @@
 //! sunel sunaz, fov, w h, hills (height of the land's relief), copies (draw arm copies).
 //! `noland=1` skips the mesh (for check and pts). `pts=1` warps the points in the file $WV_PTS (f32 x y z copy, from the target) and writes
 //! OUT/pts_NNN.bin (x y z tint.x, from the target). `check=1` warps a polar grid and counts crossing pairs, on the land of $WV_MAP if set.
+//! `post=1` puts the real post pass (the prelude, strike.wgsl up to its fs_main, what the warp shares, fold.wgsl) over the picture, on the same depth; no entities, no sky but the clear colour.
 //! $WV_MAP: the real land (tools/foldview/fv.py writes it from land_from_save.py's): i32 W, then i16 ground[W*W], i16 top[W*W], u8 class[W*W], u8 ground class[W*W], and 16 colours rgb.
 use std::collections::HashMap;
+#[path = "../../../mod/src/passbuild.rs"] mod passbuild;
 use wgpu::util::DeviceExt;
 #[repr(C)] #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct V { p: [f32; 3], uv: [f32; 2], layer: u32, c: [f32; 3] }
@@ -115,6 +117,25 @@ fn map_land(v: &mut Vec<V>, i: &mut Vec<u32>, m: &Map, st: i32, ext: i32, hole: 
         }
     }}
 }
+// The far land past what the save has: the save's own land mirrored on, so that what fills the far land's ring looks like land and not a flat colour.
+fn map_far(v: &mut Vec<V>, i: &mut Vec<u32>, m: &Map, st: i32, ext: i32, hole: i32, c: [f32; 3]) {
+    let h = (m.w as i32 / 2 - 2).min(1400);
+    let tri = |x: i32| { let p = 4 * h; let y = (x + h).rem_euclid(p); (if y < 2 * h { y } else { p - y }) - h };
+    let n = ext / st;
+    for gx in -n..n { for gz in -n..n {
+        let (x, z) = (gx * st, gz * st);
+        if x.abs().max(z.abs()) < hole && (x + st).abs().max((z + st).abs()) <= hole { continue; }
+        let (xf, zf, s) = (x as f32, z as f32, st as f32);
+        if (xf - c[0]).hypot(zf - c[1]) > c[2] { continue; }
+        let idx = m.at(tri(x), tri(z));
+        let k = m.gcl[idx] as usize;
+        let tall = m.cls[idx] as usize;
+        let tree = m.top[idx] as i32 > m.ground[idx] as i32 + 2;
+        let col = m.col[if tree { tall } else { k }];
+        let hg = m.g(tri(x), tri(z));
+        quad(v, i, [xf, hg, zf], [xf, hg, zf + s], [xf + s, hg, zf + s], [xf + s, hg, zf], if k == 5 { 5 } else { 1 }, col, st.min(2) as f32);
+    }}
+}
 fn m4(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
     let mut o = [[0.0; 4]; 4];
     for c in 0..4 { for r in 0..4 { for k in 0..4 { o[c][r] += a[k][r] * b[c][k]; } } }
@@ -205,8 +226,8 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
         map_land(&mut v, &mut i, m, 1, g("fine", 280.0) as i32, 144, ec);
         map_land(&mut v, &mut i, m, 2, 640, g("fine", 280.0) as i32, ec);
         map_land(&mut v, &mut i, m, 8, 1500, 640, ec);
-        land(&mut v, &mut i, 8.0, 2400.0, 1500.0, tx, tz, ty, hills, false, ec);
-        land(&mut v, &mut i, 32.0, 20000.0, 2400.0, tx, tz, ty, hills, false, ec);
+        map_far(&mut v, &mut i, m, 8, 2400, 1500, ec);
+        map_far(&mut v, &mut i, m, 16, 20000, 2400, ec);
     } else {
         land(&mut v, &mut i, 2.0, 144.0, 0.0, tx, tz, ty, hills, true, ec);
         near = i.len() as u32;
@@ -228,17 +249,57 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
         label: None, layout: Some(&pl),
         vertex: wgpu::VertexState { module: &module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<V>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x3] })] },
         primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
-        depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::Less), stencil: Default::default(), bias: Default::default() }),
+        depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::Greater), stencil: Default::default(), bias: Default::default() }),
         multisample: Default::default(),
         fragment: Some(wgpu::FragmentState { module: &module, entry_point: Some("fs"), compilation_options: Default::default(), targets: &[Some(fmt.into())] }),
         multiview_mask: None, cache: None,
     });
     let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
-    let tex = |f: wgpu::TextureFormat| device.create_texture(&wgpu::TextureDescriptor { label: None, size, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: f, usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC, view_formats: &[] });
+    let tex = |f: wgpu::TextureFormat| device.create_texture(&wgpu::TextureDescriptor { label: None, size, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: f, usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[] });
     let (color, depth) = (tex(fmt), tex(wgpu::TextureFormat::Depth32Float));
     let (cv, dv) = (color.create_view(&Default::default()), depth.create_view(&Default::default()));
     let pad = (w * 4).div_ceil(256) * 256;
     let rb = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: (pad * h) as u64, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    // ---- the post pass ----
+    let shaders = std::path::Path::new(warp).parent().unwrap();
+    let read = |f: &str| std::fs::read_to_string(shaders.join(f)).unwrap();
+    let post_src = format!("{}\n{}", include_str!("../../wgslcheck/prelude.wgsl"), passbuild::own_pass(&read("strike.wgsl"), &(passbuild::warp_shared(&read("fold_warp.wgsl")) + &read("fold.wgsl"))));
+    // ($WV_SUB: old=>new@@old=>new, a try at the post pass's source, no edit of it)
+    let post_src = std::env::var("WV_SUB").map(|t| t.split("@@").fold(post_src.clone(), |a, r| { let (o, n) = r.split_once("=>").unwrap(); assert!(a.contains(o), "{o}"); a.replace(o, n) })).unwrap_or(post_src);
+    let post_on = shots.iter().any(|k| k.get("post").copied().unwrap_or(0.0) > 0.5);
+    let pmod = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: None, source: wgpu::ShaderSource::Wgsl(post_src.into()) });
+    let pdepth = wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Depth, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None };
+    let pbgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &[
+        wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
+        pdepth,
+        wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+        wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering), count: None },
+        wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::VERTEX_FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+        wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+    ] });
+    let ppl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&pbgl)], immediate_size: 0 });
+    let ppipe = post_on.then(|| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None, layout: Some(&ppl),
+        vertex: wgpu::VertexState { module: &pmod, entry_point: Some("horizon_mod_post_vertex"), compilation_options: Default::default(), buffers: &[] },
+        primitive: Default::default(), depth_stencil: None, multisample: Default::default(),
+        fragment: Some(wgpu::FragmentState { module: &pmod, entry_point: Some("fs_main"), compilation_options: Default::default(), targets: &[Some(fmt.into())] }),
+        multiview_mask: None, cache: None,
+    }));
+    let pub_ = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 1024, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    let pdata = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: &[0u8; 16], usage: wgpu::BufferUsages::STORAGE });
+    let lin = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() });
+    let near_s = device.create_sampler(&Default::default());
+    let pout = tex(fmt);
+    let poutv = pout.create_view(&Default::default());
+    let dsv = depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+    let pbg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &pbgl, entries: &[
+        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&cv) },
+        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&dsv) },
+        wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&lin) },
+        wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&near_s) },
+        wgpu::BindGroupEntry { binding: 4, resource: pub_.as_entire_binding() },
+        wgpu::BindGroupEntry { binding: 5, resource: pdata.as_entire_binding() },
+    ] });
     let bgl1_ = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &[
         wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -319,7 +380,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
         let view = [[s[0], up[0], -f[0], 0.0], [s[1], up[1], -f[1], 0.0], [s[2], up[2], -f[2], 0.0], [0.0, 0.0, 0.0, 1.0]];
         let fov = g("fov", 70.0).to_radians();
         let ft = 1.0 / (fov * 0.5).tan(); let asp = w as f32 / h as f32; let (zn, zf) = (0.3, 30000.0);
-        let proj = [[ft / asp, 0.0, 0.0, 0.0], [0.0, ft, 0.0, 0.0], [0.0, 0.0, zf / (zn - zf), -1.0], [0.0, 0.0, zn * zf / (zn - zf), 0.0]];
+        let proj = [[ft / asp, 0.0, 0.0, 0.0], [0.0, ft, 0.0, 0.0], [0.0, 0.0, zn / (zf - zn), -1.0], [0.0, 0.0, zn * zf / (zf - zn), 0.0]];
         let vpm = m4(proj, view);
         queue.write_buffer(&vpb, 0, bytemuck::cast_slice(&vpm));
         queue.write_buffer(&eb, 0, bytemuck::cast_slice(&[cam[0], cam[1], cam[2], 0.0]));
@@ -329,7 +390,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
             let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &cv, resolve_target: None, depth_slice: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.012, g: 0.012, b: 0.03, a: 1.0 }), store: wgpu::StoreOp::Store } })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &dv, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &dv, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
                 timestamp_writes: None, occlusion_query_set: None, multiview_mask: None,
             });
             p.set_pipeline(&pipe); p.set_bind_group(0, &bg, &[]);
@@ -348,7 +409,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
                 { let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: None,
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &cv, resolve_target: None, depth_slice: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.012, g: 0.012, b: 0.03, a: 1.0 }), store: wgpu::StoreOp::Store } })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &dv, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &dv, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
                     timestamp_writes: None, occlusion_query_set: None, multiview_mask: None,
                 });
                 p.set_pipeline(&pipe); p.set_bind_group(0, &bg, &[]);
@@ -362,7 +423,37 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
             eprintln!("BENCH t={t} {w}x{h}: {:.1} ms (min {:.1})", ts[ts.len() / 2], ts[0]);
             continue;
         }
-        enc.copy_texture_to_buffer(color.as_image_copy(), wgpu::TexelCopyBufferInfo { buffer: &rb, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(pad), rows_per_image: None } }, size);
+        let post = g("post", 0.0) > 0.5;
+        if post {
+            let tp = |m: [[f32; 4]; 4]| { let mut o = [[0.0f32; 4]; 4]; for c in 0..4 { for r in 0..4 { o[c][r] = m[r][c]; } } o };
+            let inv_proj = [[asp / ft, 0.0, 0.0, 0.0], [0.0, 1.0 / ft, 0.0, 0.0], [0.0, 0.0, 0.0, (zf - zn) / (zn * zf)], [0.0, 0.0, -1.0, zn / (zf - zn) * (zf - zn) / (zn * zf)]];
+            let mut f: Vec<f32> = Vec::new();
+            let push = |o: &mut Vec<f32>, m: [[f32; 4]; 4]| for c in m { o.extend_from_slice(&c); };
+            let ([rx, ry, rz], o3) = ([g("ox", 0.0), g("oy", 0.0), g("oz", 0.0)], [0.0f32; 3]); let _ = o3;
+            push(&mut f, view); push(&mut f, proj); push(&mut f, tp(view)); push(&mut f, inv_proj);
+            f.extend_from_slice(&[cam[0], cam[1], cam[2], 1.0]);
+            f.extend_from_slice(&[w as f32, h as f32, 1.0 / w as f32, 1.0 / h as f32]);
+            f.extend_from_slice(&[0.0, 0.0, 0.25, 0.0]);
+            f.extend_from_slice(&[sun[0], sun[1], sun[2], 0.0]);
+            f.extend_from_slice(&[0.47, 0.65, 1.0, 1.0]);
+            f.extend_from_slice(&[0.7, 0.8, 1.0, 1.0]);
+            f.extend_from_slice(&[zn, zf, g("fog", 4096.0), fov]);
+            f.extend_from_slice(&[tx, ty, tz, t]);
+            f.extend_from_slice(&[tx.floor() + 0.5, tz.floor() + 0.5, 0.0, 14.0]);
+            f.extend_from_slice(&[g("seed", 37.0), 1.0, 0.0, ty]);
+            f.extend_from_slice(&[me[0], me[1], me[2], 0.0]);
+            f.extend_from_slice(&[0.0; 4]);
+            push(&mut f, view); push(&mut f, proj);
+            f.extend_from_slice(&[rx, ry, rz, 1.0]);
+            queue.write_buffer(&pub_, 0, bytemuck::cast_slice(&f));
+            let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &poutv, resolve_target: None, depth_slice: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None, multiview_mask: None,
+            });
+            p.set_pipeline(ppipe.as_ref().unwrap()); p.set_bind_group(0, &pbg, &[]); p.draw(0..3, 0..1);
+        }
+        enc.copy_texture_to_buffer(if post { pout.as_image_copy() } else { color.as_image_copy() }, wgpu::TexelCopyBufferInfo { buffer: &rb, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(pad), rows_per_image: None } }, size);
         queue.submit([enc.finish()]);
         rb.slice(..).map_async(wgpu::MapMode::Read, |_| {});
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();

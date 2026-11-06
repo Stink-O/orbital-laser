@@ -21,6 +21,7 @@
 // is all the sheet; and from the time the world closes they can't leave it: the tube and its hole are one rigid frame that goes
 // with them, whatever they do (fw_stay).
 // strike/fold.rs and fold.wgsl share the beats: keep them in step (`the_warp_keeps_the_beats`).
+// [post pass too] (mod/build.rs puts what is between these marks before fold.wgsl, which works out the stalactite's surface from the same code)
 const FW_RIPPLE: f32 = 6.6;
 const FW_SCORE: f32 = 12.0;
 const FW_TEAR: f32 = 16.0;
@@ -61,13 +62,14 @@ const FW_TUBE_W: f32 = 0.5933;     // fw_bend's w, and how much of the r0 of fw_
 const FW_TUBE_R0: f32 = 0.352;
 const FW_RIM0: f32 = 0.4;          // the band of land that goes down to the target: from this much of the way to the land's end, to its end
 const FW_TURNS: f32 = 0.18;        // how far round it leans on the way
-const FW_TIP: f32 = 1.0;           // how high over the target's land it stops
+const FW_TIP: f32 = 11.0;          // how high over the target's land the band stops: what touches it is the drop hanging from it (fold.wgsl's fd_hang)
 const FW_END_K: f32 = 0.97;        // how much of the far land's reach is drawn: its own end goes in steps, a chunk at a time, and this one is a circle
 const FW_MOUTH: f32 = 2.8;         // how far round the tube the land's end comes, radians, wherever the far land ends
 fn fw_ss(a: f32, b: f32, x: f32) -> f32 {
     let t = clamp((x - a) / (b - a), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
 }
+// [end post pass too]
 fn fw_rot(v: vec2<f32>, a: f32) -> vec2<f32> {
     let c = cos(a);
     let s = sin(a);
@@ -765,6 +767,7 @@ fn fw_pull(r: f32, ang: f32, y: f32, t: f32, R: f32) -> f32 {
     let s = 0.8 * r + 0.01;
     return s * (1.0 - exp(-p / s));
 }
+// [post pass too]
 // ---- the sphere ------------------------------------------------------------------------------------------------------
 // How big it ends: the player well inside, whatever their distance and however high they stood over the target.
 fn fw_radius(d: f32, y: f32) -> f32 {
@@ -876,20 +879,26 @@ fn fw_spend(q: f32) -> f32 {
 // The land's outer band, R1 on to its end, is what comes down to the target: `draw` eases it from the tube to one curve that leaves the tube on the tube's own
 // tangent at R1, so there is no join to it, broad for most of the way and rounding off at the target: a stalactite of land lowering, the land's end its mouth.
 // Each bearing goes one way along the one curve, so nothing can cross anything.
+struct FwWay { P0: vec2<f32>, P1: vec2<f32>, P2: vec2<f32>, R1: f32, k: f32 }
+fn fw_way(g: FwBend) -> FwWay {
+    let R1 = FW_RIM0 * g.edge;
+    let a = fw_roll(R1, 0.0, g);
+    let P0 = a.xy;
+    return FwWay(P0, P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.3, vec2<f32>(min(0.2 * P0.x, 0.75 * max(g.d, 60.0)), -10.0), R1, log(g.edge / R1));
+}
+// The curve at v, 0 to 1 down the band.
+fn fw_curve(v: f32, f: FwWay) -> vec2<f32> {
+    let m = 1.0 - v;
+    return f.P0 * (m * m * m) + f.P1 * (3.0 * m * m * v) + f.P2 * (3.0 * m * v * v) + vec2<f32>(0.0, FW_TIP) * (v * v * v);
+}
 fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
     var on = fw_roll(R, y, g);
     var ca = ca0;
     var sa = sa0;
-    let R1 = FW_RIM0 * g.edge;
-    if (g.draw > 0.0 && R > R1) {
-        let v = fw_spend(log(R / R1) / log(g.edge / R1));
-        let a = fw_roll(R1, 0.0, g);
-        let P0 = a.xy;
-        let P1 = P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.3;
-        let P2 = vec2<f32>(min(0.2 * P0.x, 0.75 * max(g.d, 60.0)), -10.0);
-        let m = 1.0 - v;
-        let C = P0 * (m * m * m) + P1 * (3.0 * m * m * v) + P2 * (3.0 * m * v * v) + vec2<f32>(0.0, FW_TIP) * (v * v * v);
-        on = vec3<f32>(mix(on.xy, C, g.draw), on.z);
+    if (g.draw > 0.0 && R > FW_RIM0 * g.edge) {
+        let f = fw_way(g);
+        let v = fw_spend(log(R / f.R1) / f.k);
+        on = vec3<f32>(mix(on.xy, fw_curve(v, f), g.draw), on.z);
         let tw = FW_TURNS * FW_TAU * v * g.draw;
         let ct = cos(tw);
         let st = sin(tw);
@@ -937,6 +946,7 @@ fn fw_turn(x3: f32, Y: f32, z3: f32, at: vec3<f32>, g: FwBend) -> vec3<f32> {
     let q = fw_turned(x3 * g.e.x + z3 * g.e.y - at.x, Y - at.y, at, g.d, g.pin);
     return vec3<f32>(q.x * g.e.x - dv * g.e.y, q.y, q.x * g.e.y + dv * g.e.x);
 }
+// [end post pass too]
 // How much of the sheet's motion the land `off` from the player takes, 0 at their feet to 1: nothing under them, more and more
 // away from them, and over twice as far behind them as towards the target: the sheet slides towards the target as it closes,
 // and the land behind them has that much further to catch it. `e` the way from the target to them, `d` how far. `slid` 1 as the sheet slides

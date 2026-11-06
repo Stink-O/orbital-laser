@@ -26,7 +26,7 @@ cat "$here/wgslcheck/prelude.wgsl" "$shaders/strike.wgsl" > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "strike.wgsl:"; echo "$out"; exit 1; }
 pre() { sed -e '/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d' -e '/^@fragment/,$d' "$shaders/strike.wgsl"; }
 for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane fold; do
-    { cat "$here/wgslcheck/prelude.wgsl"; pre; cat "$shaders/$own.wgsl"; } > "$tmp"
+    { cat "$here/wgslcheck/prelude.wgsl"; pre; [ "$own" = fold ] && sed -n '/^\/\/ \[post pass too\]/,/^\/\/ \[end post pass too\]/p' "$shaders/fold_warp.wgsl"; cat "$shaders/$own.wgsl"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass (strike.wgsl up to its fs_main, then $own.wgsl):"; echo "$out"; exit 1; }
     # the game takes a pass of 256 KiB at most
     size=$(( $(pre | wc -c) + $(wc -c < "$shaders/$own.wgsl") ))

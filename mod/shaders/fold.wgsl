@@ -743,6 +743,289 @@ fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
     return colIn * seen + light;
 }
 
+// ---- the stalactite turned to metal ---------------------------------------------------------------------------------------
+// The land's outer band comes down from the hole's rim as a stalactite (fold_warp.wgsl's fw_place), and there isn't enough land in it: drawn as land it is
+// long flat shards. So from part way down it turns to the droplet's metal, the tip wholly metal: what melted into the land at 6 s comes back as what touches
+// it. All of it here, not in the warp's world_fragment: this pass has the picture to reflect, the droplet's own shading, and the depth to place a pixel on the
+// band's smooth surface (the warp's own curve, shared), whose normal no facet of the far land's tiles gets in the way of. A pixel comes off the depth, is turned
+// back to the band's own frame and found on the curve; what the band's land has gone to at that place then decides how much of it is metal.
+struct FdOn { hit: bool, q: f32, v: f32, miss: f32, ang: f32, n: vec3<f32>, T: vec3<f32> }
+fn fd_on_curve(q: f32, g: FwBend, f: FwWay) -> vec2<f32> {
+    let C = fw_curve(fw_spend(q), f);
+    if (g.draw > 0.999) {
+        return C;
+    }
+    return mix(fw_roll(f.R1 * exp(f.k * q), 0.0, g).xy, C, g.draw);
+}
+// fw_turn undone: from where fw_place leaves a point, or a way, to the band's own frame; and back, for a way.
+fn fd_unturn(P: vec3<f32>, g: FwBend, at: vec3<f32>, point: bool) -> vec3<f32> {
+    let ct = cos(at.z);
+    let st = sin(at.z);
+    let w = select(0.0, 1.0, point);
+    let al = dot(P.xz, g.e) - g.d * w;
+    let dv = -P.x * g.e.y + P.z * g.e.x;
+    let dy0 = P.y - g.pin * w;
+    let along = al * ct - dy0 * st + at.x * w;
+    let Y = al * st + dy0 * ct + at.y * w;
+    return vec3<f32>(along * g.e.x - dv * g.e.y, Y, along * g.e.y + dv * g.e.x);
+}
+fn fd_returned(n: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
+    let ct = cos(at.z);
+    let st = sin(at.z);
+    let al = dot(n.xz, g.e);
+    let dv = -n.x * g.e.y + n.z * g.e.x;
+    let qx = al * ct + n.y * st;
+    let qy = -al * st + n.y * ct;
+    return vec3<f32>(qx * g.e.x - dv * g.e.y, qy, qx * g.e.y + dv * g.e.x);
+}
+// `P` a point in the band's frame as fw_place leaves it, the player's feet under them: where is it on the band?
+fn fd_stal(P: vec3<f32>, g: FwBend, at: vec3<f32>, f: FwWay, tol: f32) -> FdOn {
+    var o = FdOn(false, 0.0, 0.0, 1.0e6, 0.0, vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0));
+    // (fw_turn undone)
+    let ct = cos(at.z);
+    let st = sin(at.z);
+    let al = dot(P.xz, g.e) - g.d;
+    let dv = -P.x * g.e.y + P.z * g.e.x;
+    let dy0 = P.y - g.pin;
+    let along = al * ct - dy0 * st + at.x;
+    let Y = al * st + dy0 * ct + at.y;
+    let rad = sqrt(along * along + dv * dv);
+    if (rad > f.P0.x + tol + 8.0) {
+        return o;
+    }
+    let p = vec2<f32>(rad, Y);
+    // (the curve is spent fast at first: fw_spend goes as the root of q, near enough)
+    var best = 1.0e12;
+    var bi = 0.0;
+    for (var i = 0; i <= 10; i += 1) {
+        let u = f32(i) * 0.1;
+        let e = p - fd_on_curve(u * u, g, f);
+        let d = dot(e, e);
+        if (d < best) {
+            best = d;
+            bi = u;
+        }
+    }
+    if (best > 3600.0 + (tol + 60.0) * (tol + 60.0)) {
+        return o;
+    }
+    var w = 0.05;
+    for (var i = 0; i < 3; i += 1) {
+        let a = clamp(bi - w, 0.0, 1.0);
+        let b = clamp(bi + w, 0.0, 1.0);
+        let ea = p - fd_on_curve(a * a, g, f);
+        let eb = p - fd_on_curve(b * b, g, f);
+        let da = dot(ea, ea);
+        let db = dot(eb, eb);
+        if (da < best) {
+            best = da;
+            bi = a;
+        }
+        if (db < best) {
+            best = db;
+            bi = b;
+        }
+        w *= 0.5;
+    }
+    // (a mirror shows every step of this: on to the curve's own foot)
+    for (var i = 0; i < 2; i += 1) {
+        let C = fd_on_curve(bi * bi, g, f);
+        let D = (fd_on_curve((bi + 0.002) * (bi + 0.002), g, f) - C) / 0.002;
+        bi = clamp(bi + dot(p - C, D) / max(dot(D, D), 1.0e-3), 0.0, 1.0);
+    }
+    best = dot(p - fd_on_curve(bi * bi, g, f), p - fd_on_curve(bi * bi, g, f));
+    let q = bi * bi;
+    o.q = q;
+    o.v = fw_spend(q);
+    o.miss = sqrt(best);
+    o.hit = o.miss < tol;
+    // (the surface's way out, from the curve's own way along)
+    let dq = 0.012 + 0.03 * bi;
+    let A = fd_on_curve(clamp(bi - dq, 0.0, 1.0) * clamp(bi - dq, 0.0, 1.0), g, f);
+    let B = fd_on_curve(clamp(bi + dq, 0.0, 1.0) * clamp(bi + dq, 0.0, 1.0), g, f);
+    let T = normalize(B - A + vec2<f32>(0.0, 1.0e-5));
+    let ca = along / max(rad, 0.01);
+    let sa = dv / max(rad, 0.01);
+    // (on the turned frame: round the axis, then fw_turn's turn)
+    let nr = -T.y;
+    let ny = T.x;
+    let n_al = nr * ca;
+    let n_dv = nr * sa;
+    let qx = n_al * ct + ny * st;
+    let qy = -n_al * st + ny * ct;
+    o.n = normalize(vec3<f32>(qx * g.e.x - n_dv * g.e.y, qy, qx * g.e.y + n_dv * g.e.x));
+    let t_al = T.x * ca;
+    let t_dv = T.x * sa;
+    let tx = t_al * ct + T.y * st;
+    let ty = -t_al * st + T.y * ct;
+    o.T = normalize(vec3<f32>(tx * g.e.x - t_dv * g.e.y, ty, tx * g.e.y + t_dv * g.e.x));
+    // (the land's own bearing: the lean taken off)
+    let x3 = along * g.e.x - dv * g.e.y;
+    let z3 = along * g.e.y + dv * g.e.x;
+    o.ang = atan2(z3, x3) - FW_TURNS * FW_TAU * o.v * g.draw;
+    return o;
+}
+// What the metal sees past the picture's edge. The picture hasn't what is behind the eye, and a mirror this big shows everything it reflects, so not a map of the land: what makes
+// chrome chrome. Dark, the land's own dim greens and blues far off in it, and long soft ribbons of the sky's light lying along it, which the metal's curves draw out and bend.
+fn fd_round(r: vec3<f32>) -> vec3<f32> {
+    let w = r.y * 5.0 + 0.7 * sin(r.x * 2.7 + 1.0 * sin(r.z * 3.1)) + 0.55 * sin(r.z * 3.3 - 0.8 * sin(r.x * 2.2 + 1.0));
+    let n = 0.6 * sin(r.x * 3.1 + 1.3 * sin(r.z * 3.7 + 0.7) + r.y) + 0.5 * sin(r.z * 4.3 - 1.1 * sin(r.x * 2.9 - 1.0) - 1.4 * r.y);
+    let k = fw_ss(-0.4, 0.9, n);
+    let hue = 0.5 + 0.5 * sin(r.x * 2.3 - r.z * 1.7 + 1.1 * sin(r.y * 5.0));
+    let land = mix(vec3<f32>(0.03, 0.05, 0.03), vec3<f32>(0.02, 0.035, 0.075), hue);
+    var c = mix(land * 0.3, land * 1.5 + vec3<f32>(0.035, 0.04, 0.05), k);
+    let a = 0.5 + 0.5 * cos(w * 2.0);
+    c = c + vec3<f32>(0.62, 0.66, 0.74) * pow(a, 26.0) * (0.3 + 0.7 * k);
+    c = c + vec3<f32>(0.1, 0.11, 0.13) * pow(0.5 + 0.5 * cos(w * 2.0 + 1.9), 3.0);
+    return c;
+}
+// The droplet's own metal, for a surface at `S` from the eye (along `v`) with normal `n`: fd_env's sky, its hard dark line, the sun, and under it the land off the picture.
+// `near` how much of the real land it mirrors: what is under it at the tip, where there is real land to mirror.
+fn fd_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, G: vec3<f32>, near: f32) -> vec3<f32> {
+    let r = reflect(v, n);
+    // (its horizon drawn down: seen from under it, most of a thing hung up looks down, and the droplet's bright half would be lost)
+    let e = normalize(vec3<f32>(r.x, (r.y + FD_LIFT) * 1.7, r.z));
+    var c = fd_env(e, normalize(frame.sun.xyz));
+    c = c * (1.0 - 0.9 * exp(-e.y * e.y * 24000.0));
+    if (e.y < 0.03) {
+        let up = max(-r.y, 0.03);
+        let ro = project_rel(S + r * clamp((S.y - G.y) / up, 8.0, 400.0));
+        let edge = fd_ss(0.0, 0.05, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y)));
+        let there = select(0.0, edge, ro.z > 0.0 && r.y < 0.0) * near;
+        var l = fd_round(r);
+        if (there > 0.0) {
+            l = mix(l, fd_sample(ro.xy), there);
+        }
+        c = mix(c, l * 1.05, 0.9 * fd_ss(0.012, -0.012, e.y));
+    }
+    let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
+    return c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres);
+}
+const FD_LIFT: f32 = 0.26;
+// ---- the drop at its tip -------------------------------------------------------------------------------------------------
+// The metal gathers at the bottom of the stalactite and hangs: a drop on a neck, heavy, slowly filling, the droplet's own material, and its round end is what touches the
+// target; the band's own end stops FW_TIP over it. A real surface, marched as the droplet is: the far land's tiles are too coarse for it. By the fold's clock, so it goes back up as it came.
+struct FdHang { y: f32, b: f32, R: f32 }
+// The band's underside's y over the target, the bead's bottom's, its radius.
+fn fd_hang(tau: f32, g: FwBend, f: FwWay) -> FdHang {
+    let y = fd_on_curve(1.0, g, f).y;
+    let fill = fw_ss(38.2, FW_BEAT, tau);
+    return FdHang(y, y - (FW_TIP - 1.0) * fill, 0.8 + 2.9 * fill);
+}
+fn fd_smin(a: f32, b: f32, k: f32) -> f32 {
+    let h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+// `p` (out from the axis, up): the bead, a neck up from it, the band's underside as a big ball, each running into the next.
+fn fd_hang_sdf(p: vec2<f32>, H: FdHang) -> f32 {
+    let bead = length(p - vec2<f32>(0.0, H.b + H.R)) - H.R;
+    let ny = clamp(p.y, H.b + H.R, H.y + 2.0);
+    let neck = length(p - vec2<f32>(0.0, ny)) - 0.32 * H.R;
+    let cap = length(p - vec2<f32>(0.0, H.y + 30.0)) - 30.0;
+    return fd_smin(fd_smin(bead, neck, H.R * 0.8), cap, 1.5 + H.R);
+}
+fn fd_hanging(colIn: vec3<f32>, v: vec3<f32>, far: f32, tau: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, f: FwWay, at: vec3<f32>) -> vec3<f32> {
+    let H = fd_hang(tau, g, f);
+    if (H.y > 60.0) {
+        return colIn;
+    }
+    // (the eye and the ray in the band's frame)
+    let o = fd_unturn(mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at, true);
+    let d = fd_unturn(v, g, at, false);
+    let top = H.y + 4.0;
+    let c = vec3<f32>(0.0, 0.5 * (H.b + top), 0.0);
+    let rb = 0.5 * (top - H.b) + 14.0;
+    let bcd = dot(c - o, d);
+    if (bcd <= 0.0 || length(o + d * bcd - c) > rb) {
+        return colIn;
+    }
+    let px = frame.view_params.w / frame.resolution.y;
+    var s = max(bcd - rb, 0.05);
+    var best = 1.0e9;
+    var sb = s;
+    var hit = false;
+    for (var i = 0; i < 40; i += 1) {
+        let q = o + d * s;
+        let e = fd_hang_sdf(vec2<f32>(length(q.xz), q.y), H);
+        let rel = e / (px * s);
+        if (rel < best) {
+            best = rel;
+            sb = s;
+        }
+        if (rel < 0.1) {
+            hit = true;
+            sb = s + e;
+            break;
+        }
+        s += max(e, 0.15 * px * s);
+        if (s > bcd + rb) {
+            break;
+        }
+    }
+    let cov = saturate(1.0 - best);
+    if (cov <= 0.0 || sb > far + 3.0) {
+        return colIn;
+    }
+    let q = o + d * sb;
+    let p = vec2<f32>(length(q.xz), q.y);
+    let e = 0.02;
+    let gr = vec2<f32>(fd_hang_sdf(p + vec2<f32>(e, 0.0), H) - fd_hang_sdf(p - vec2<f32>(e, 0.0), H), fd_hang_sdf(p + vec2<f32>(0.0, e), H) - fd_hang_sdf(p - vec2<f32>(0.0, e), H));
+    let ca = select(vec2<f32>(1.0, 0.0), q.xz / max(p.x, 0.001), p.x > 0.001);
+    let n = normalize(fd_returned(vec3<f32>(gr.x * ca.x, gr.y, gr.x * ca.y), g, at));
+    return mix(colIn, fd_chrome(v, v * sb, n, gq, 0.8), cov);
+}
+const FD_V0: f32 = 0.56;           // the band's v: where the highest of the metal runs reach, and from where it is all metal, wandering, when it has all gone
+const FD_V1: f32 = 0.74;
+// The metal's slow swells: a slope, along the band and round it.
+fn fd_swell(v: f32, ang: f32, t: f32) -> vec2<f32> {
+    let s = v * 2600.0;
+    var a = 0.0;
+    var b = 0.0;
+    let c1 = cos(s * 0.035 + 3.2 * sin(ang * 3.0 + 1.0) + 1.7 * sin(ang * 2.0 - s * 0.006) - t * 0.5);
+    let c2 = cos(s * 0.062 - 2.6 * sin(ang * 5.0 - 2.0) - t * 0.8);
+    let c3 = cos(ang * 7.0 + s * 0.012 + 1.4 * sin(s * 0.018 - t * 0.3));
+    let c4 = cos(ang * 13.0 - s * 0.02 + t * 0.2);
+    let c5 = cos(s * 0.17 + 3.0 * sin(ang * 4.0) - t * 1.1);
+    let c6 = cos(ang * 23.0 + s * 0.05 + 2.0 * sin(s * 0.03 - t * 0.4));
+    a = 0.075 * c1 + 0.05 * c2 + 0.03 * c5;
+    b = 0.07 * c3 + 0.04 * c4 + 0.022 * c6;
+    return vec2<f32>(a, b);
+}
+fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, f: FwWay, at: vec3<f32>, on: FdOn) -> vec3<f32> {
+    // ---- how far it has gone: the runs first, from high up down the land's low ground, then the land between them --------------------------------------------
+    let fr = fw_ss(36.1, 38.4, tau);
+    if (fr <= 0.0) {
+        return colIn;
+    }
+    let R = f.R1 * exp(f.k * on.q);
+    let h = vec2<f32>(cos(on.ang), sin(on.ang)) * R;
+    // (block by block: the land's own blocks, long down the band as the land is)
+    let c0 = hash21(floor(h / 5.0)) - 0.5;
+    let c1 = hash21(floor(h / 19.0) + 7.0) - 0.5;
+    let wide = fbm(h * 0.006) - 0.5;
+    // (the low ground: the water, and what is dark. The land's relief went in the fold; this is what it left in the picture)
+    let blue = fw_ss(0.02, 0.2, colIn.b - max(colIn.r, colIn.g * 1.05));
+    let dark = 1.0 - fw_ss(0.015, 0.14, luminance(colIn));
+    let low = blue * 0.8 + dark * 0.2 + 0.9 * wide + 0.28 * c1 + 0.12 * c0;
+    let lv = fw_ss(FD_V0, FD_V1, on.v);
+    let head = FD_V0 + (1.1 - FD_V0) * fw_ss(0.0, 0.55, fr);
+    let e = (lv * 1.3 + low) - mix(2.2, 0.75, fr);
+    let ran = 1.0 - fw_ss(head - 0.02, head + 0.04, on.v + 0.08 * c1);
+    // (the band's top: nothing gets past FD_V0 but the runs)
+    let shore = fw_ss(0.0, 0.02, e) * ran * fw_ss(FD_V0 - 0.03, FD_V0, on.v + 0.05 * c1);
+    // (ahead of it the land goes dark, wet with it)
+    let wet = (1.0 - fw_ss(-0.14, 0.0, e)) * 0.0 + fw_ss(-0.16, 0.0, e) * ran;
+    var col = colIn * (1.0 - 0.6 * wet);
+    if (shore <= 0.0) {
+        return col;
+    }
+    // ---- the metal ----------------------------------------------------------------------------------------------------------------------------------------
+    let sw = fd_swell(on.v, on.ang, t) * mix(1.0, 0.25, fw_ss(0.86, 0.97, on.v));
+    // (at its edge it stands up round, a bead: the swell of the edge)
+    let bead = 1.0 - fw_ss(0.0, 0.1, e);
+    let n = normalize(on.n + on.T * (sw.x - 0.34 * bead) + cross(on.n, on.T) * sw.y);
+    return mix(col, fd_chrome(v, off, n, gq, 0.8 * fw_ss(0.8, 0.93, on.v) * fw_ss(0.9, 1.0, g.draw)), shore);
+}
 // The fold's clock: fold_warp.wgsl's fw_tau.
 fn fd_tau(t: f32) -> f32 {
     if (t < FD_BEAT) { return t; }
@@ -887,6 +1170,39 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         col = fd_glow(col, t, v, gq, off - gq, lit, far, d);
     }
 
+    // ---- the stalactite's metal ------------------------------------------------------------------------------------------------
+    if (t > FD_CRUSH && t < FD_REL + 2.2) {
+        let tau = fd_tau(t);
+        let mq = me - tgt;
+        let e2 = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
+        let g = fw_bend(tau, FW_LEN, mq, e2, max(FW_END_K * clamp(frame.view_params.z, 480.0, 20000.0) - dist, 300.0), 0.0);
+        let f = fw_way(g);
+        let at_ = fw_roll(g.d, g.pin, g);
+        let tol = 2.5 + 60.0 * (1.0 - g.draw);
+        var pix = off;
+        // (the warp's: what fw_stay and fw_place leave of a point)
+        var on = FdOn(false, 0.0, 0.0, 1.0e6, 0.0, vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0));
+        if (!sky0) {
+            on = fd_stal(pix + mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at_, f, tol);
+        }
+        if (!on.hit) {
+            // (the band's tiles have gaps while they still have relief, a pixel or two: what is under one is taken for the land beside it)
+            for (var i = 0; i < 4 && !on.hit; i += 1) {
+                let dd = 3.0 * vec2<f32>(f32(i & 1) * 2.0 - 1.0, f32(i >> 1u) * 2.0 - 1.0) / res;
+                let d1 = depth_at(uv + dd);
+                if (d1 > d0 * 1.02 && !is_sky(d1)) {
+                    pix = world_offset(uv + dd, d1);
+                    on = fd_stal(pix + mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at_, f, tol);
+                }
+            }
+        }
+        if (on.hit) {
+            col = fd_stalactite(col, pix, v, t, tau, mq, gq, g, f, at_, on);
+        }
+        if (tau > 38.2) {
+            col = fd_hanging(col, v, far, tau, mq, gq, g, f, at_);
+        }
+    }
     // ---- the touch: a tiny light at the point the moment the tip reaches it, there for the stillness, gone as it runs back -----
     let dd = length((uv - pt.xy) * vec2<f32>(aspect, 1.0));
     if (t >= FD_BEAT && t < FD_REL + 0.25 && pt.z > 0.0) {
