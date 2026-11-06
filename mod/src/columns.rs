@@ -97,6 +97,15 @@ pub fn take(tag: u32) -> Option<Rc<Answer>> {
     STORE.with(|s| s.borrow_mut().got.remove(&tag))
 }
 
+/// Forget query `tag`: its answer, if one comes, is let go as it comes.
+pub fn forget(tag: u32) {
+    STORE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.asked.remove(&tag);
+        s.got.remove(&tag);
+    });
+}
+
 /// Forget everything asked and answered (a new strike).
 pub fn clear() {
     STORE.with(|s| {

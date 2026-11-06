@@ -1253,7 +1253,9 @@ fn vl_tick(q: &mut Plan, l: Shared, now: f32) {
                     crate::meter::spend(2_000 + 4_000 * a.palette.len() as u64);
                     lot.read = Some(a);
                     lot.answered = true;
-                } else if now > lot.asked + 1.2 {
+                } else if now > lot.asked + 3.5 {
+                    // (given up on: its answer, should it come, isn't kept)
+                    crate::columns::forget(lot.tag);
                     lot.answered = true;
                 } else {
                     break;
