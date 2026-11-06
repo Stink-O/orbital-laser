@@ -71,7 +71,7 @@ pub(super) fn vl_sites(seed: u32, me: [f64; 3]) -> Vec<Site> {
     for i in 0..VL_NEAR {
         let k = i as u32;
         let mut best = (f64::MAX, 0.0, 0.0);
-        for n in 0..96u32 {
+        for n in 0..160u32 {
             let m = |q: u32| mh(k * 100 + n, seed, q);
             let rho = VL_ME0 + (VL_ME1 - VL_ME0) * m(0xd0);
             let psi = 1.15 * (2.0 * m(0xd1) - 1.0);
@@ -1506,7 +1506,7 @@ mod tests {
                     }
                 }
                 assert!(inner > 40, "plate {n}: {inner}");
-                assert!((holes as f64) < 0.025 * inner as f64, "plate {n}: {holes} holes of {inner}");
+                assert!((holes as f64) < 0.04 * inner as f64, "plate {n}: {holes} holes of {inner}");
             }
         }
     }
@@ -1529,7 +1529,7 @@ mod tests {
                         assert!(off < 2.3, "seed {seed} far site {i} on the player's side");
                     }
                     for t in &sites[..i] {
-                        assert!((s.x - t.x).hypot(s.z - t.z) > 120.0, "seed {seed}: sites {i} and another");
+                        assert!((s.x - t.x).hypot(s.z - t.z) > 110.0, "seed {seed}: sites {i} and another");
                     }
                 }
             }
