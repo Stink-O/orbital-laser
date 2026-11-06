@@ -850,7 +850,7 @@ fn fw_path(x: f32, S: f32) -> FwPath {
 // The root: the tube wide where it leaves the wall, its first ring on it, and tapering from there; and till it has grown well out from the wall
 // narrowing all the way to the tip, so that what shows first is the land of the wall swelling, and never the end of a tube.
 fn fw_flare(x: f32, reach: f32) -> f32 {
-    let tl = min(mix(0.3, 0.02, fw_ss(0.55, 0.74, reach)), max(reach, 0.001));
+    let tl = min(mix(0.3, 0.02, fw_ss(0.8, 0.97, reach)), max(reach, 0.001));
     // (a thin trunk out of a wide foot: hollow, as a root's is, not a bulb: tangent to the wall at its ring)
     return (mix(0.6, 1.0, fw_ss(0.25, 0.6, x)) + 1.02 * exp(-fw_u(x) / 0.04)) * pow(clamp((reach - x) / tl, 0.0, 1.0), 0.6);
 }
