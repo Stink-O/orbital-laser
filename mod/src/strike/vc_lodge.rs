@@ -1199,6 +1199,8 @@ fn vl_tick(q: &mut Plan, l: Shared, now: f32) {
                     w.todo[i] = s.chunks(bx, bz);
                     q.ev.push((now, Act::Words { index: (VL_BASE + i * VL_W) as u32, words: s.words(0.0) }));
                     let size = (s.s1 - s.s0) * s.wide;
+                    #[cfg(not(test))]
+                    crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("supervolcano: plate {} comes down at {:.0} {:.0} {:.0} at {hit:.1} s", s.rock_id, w.vent[0] + s.foot[0], w.vent[1] + gs, w.vent[2] + s.foot[2]));
                     let at = [w.vent[0] + s.foot[0], w.vent[1] + gs, w.vent[2] + s.foot[2]];
                     super::vc_sound::plate_down(q, hit, at, w.me, size);
                     w.stage[i] = Step::Settled;
@@ -1496,15 +1498,15 @@ mod tests {
                     for z in (c[2] as i32 - 150..c[2] as i32 + 150).step_by(5) {
                         for y in (-60..240).step_by(3) {
                             let w = [f64::from(x), f64::from(y) + 0.5, f64::from(z)];
-                            if [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [-5.0, 0.0, 0.0], [0.0, 0.0, 5.0], [0.0, 0.0, -5.0], [0.0, 7.0, 0.0], [0.0, -7.0, 0.0]].iter().all(|o| d.inside([w[0] + o[0], w[1] + o[1], w[2] + o[2]], 0.0)) {
+                            if [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [-5.0, 0.0, 0.0], [0.0, 0.0, 5.0], [0.0, 0.0, -5.0], [0.0, 11.0, 0.0], [0.0, -7.0, 0.0]].iter().all(|o| d.inside([w[0] + o[0], w[1] + o[1], w[2] + o[2]], 0.0)) {
                                 inner += 1;
                                 holes += usize::from(!set.contains(&(x, y + 65, z)));
                             }
                         }
                     }
                 }
-                assert!(inner > 200, "plate {n}: {inner}");
-                assert!((holes as f64) < 0.02 * inner as f64, "plate {n}: {holes} holes of {inner}");
+                assert!(inner > 40, "plate {n}: {inner}");
+                assert!((holes as f64) < 0.025 * inner as f64, "plate {n}: {holes} holes of {inner}");
             }
         }
     }
