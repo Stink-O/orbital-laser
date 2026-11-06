@@ -162,6 +162,32 @@ mod tests {
         }
     }
 
+    /// Option B's crease pattern (fold_warp.wgsl's cp_*): its big creases fold flat (Kawasaki's theorem: every other angle round
+    /// the target adds up to 180 degrees), so its zigzag of one slope closes on itself, and each is a mountain or a valley in turn.
+    #[test]
+    fn the_creases_fold_flat() {
+        let warp = include_str!("../../shaders/fold_warp.wgsl");
+        let table = |name: &str, one: fn(&str) -> f64| -> Vec<f64> {
+            let from = warp.find(&format!("fn {name}(")).expect(name);
+            let to = from + warp[from..].find("\n}\n").expect("its end");
+            warp[from..to].lines().filter(|l| l.contains("return")).map(|l| one(l)).collect()
+        };
+        let dirs = table("cp_dir", |l| {
+            let v: Vec<f64> = l.split("vec2<f32>(").nth(1).unwrap().split(')').next().unwrap().split(", ").map(|x| x.parse().unwrap()).collect();
+            v[1].atan2(v[0]).to_degrees().rem_euclid(360.0)
+        });
+        let rise = table("cp_rise", |l| l.split("return ").nth(1).unwrap().trim_end_matches(|c| c == ';' || c == ' ' || c == '}').parse().unwrap());
+        assert_eq!((dirs.len(), rise.len()), (8, 8));
+        let gap = |k: usize| (dirs[(k + 1) % 8] - dirs[k]).rem_euclid(360.0);
+        let odd: f64 = (0..8).step_by(2).map(gap).sum();
+        assert!((odd - 180.0).abs() < 1.0e-3, "every other angle adds up to {odd}");
+        for k in 0..8 {
+            let up = rise[(k + 1) % 8] - rise[k];
+            assert!((up.abs() - gap(k).to_radians()).abs() < 0.002, "wedge {k}: a slope of {}", up.abs() / gap(k).to_radians());
+            assert!(up * (rise[(k + 2) % 8] - rise[(k + 1) % 8]) < 0.0, "crease {} neither a mountain nor a valley", (k + 1) % 8);
+        }
+    }
+
     fn the_laser() -> &'static Laser {
         crate::lasers::LASERS.iter().find(|l| l.key == "fold").expect("the fold")
     }
