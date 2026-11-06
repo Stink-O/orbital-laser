@@ -95,9 +95,11 @@ fn ts_break(s: f32, u: f32, sd: f32) -> f32 {
 }
 // How far it has drained at `s` at `t`, 0 to 1. All the land's water goes together, not in the order it came: it starts when
 // the player's has held long enough, the seaward side a little first, so the whole sheet tilts away and runs back.
+fn ts_t0(s: f32, g: TsG) -> f32 {
+    return TS_T + ts_tau(g.dp) + TS_FACE / ts_vel(g.dp) + TS_HOLD + 0.0016 * (s - g.dp);
+}
 fn ts_x(t: f32, s: f32, g: TsG) -> f32 {
-    let t0 = TS_T + ts_tau(g.dp) + TS_FACE / ts_vel(g.dp) + TS_HOLD + 0.0016 * (s - g.dp);
-    return clamp((t - t0) / TS_DRAIN, 0.0, 1.0);
+    return clamp((t - ts_t0(s, g)) / TS_DRAIN, 0.0, 1.0);
 }
 // The water's height over its sea (0 to 1) `tau` seconds after the front reached a point whose front is `s` out: up the
 // concave face to its crest, down behind it to where it holds.
@@ -518,8 +520,9 @@ fn ts_piece_hit(ro: vec3<f32>, rd: vec3<f32>, c: vec3<f32>, h: vec3<f32>, m: mat
     return out;
 }
 // A piece from the hash `hh` at `ctr`, spinning with `time`, grown from nothing by `grow` (0 to 1); the nearest hit of the ray
-// with it. `tr`, `bd` the land's trees and buildings there.
-fn ts_piece(ro: vec3<f32>, rd: vec3<f32>, hh: u32, ctr: vec3<f32>, time: f32, grow: f32, scale: f32, tr: f32, bd: f32, li: TsLight, wet: f32, flat: f32, longest: f32) -> TsPieceHit {
+// with it. `tr`, `bd` the land's trees and buildings there. `rest`: when its tumbling dies away, for one that comes to lie
+// on the water (`flat` going to 1).
+fn ts_piece(ro: vec3<f32>, rd: vec3<f32>, hh: u32, ctr: vec3<f32>, time: f32, grow: f32, scale: f32, tr: f32, bd: f32, li: TsLight, wet: f32, flat: f32, longest: f32, rest: f32) -> TsPieceHit {
     let h2 = pcg(hh ^ 0x68E31DA4u);
     let h3 = pcg(h2 + 0x1B873593u);
     let r = vec4<f32>(vec4<u32>(hh & 0xFFFFu, hh >> 16u, h2 & 0xFFFFu, h2 >> 16u)) / 65536.0;
@@ -543,12 +546,19 @@ fn ts_piece(ro: vec3<f32>, rd: vec3<f32>, hh: u32, ctr: vec3<f32>, time: f32, gr
     // (never longer than the cells it is looked for in can show whole)
     half.z = min(half.z, longest);
     let ax = normalize(vec3<f32>(r.y - 0.5, r.z - 0.5, r.w - 0.5) + vec3<f32>(0.001, 0.002, 0.003));
-    let ang = r2.z * 6.283 + time * (0.35 + 1.2 * r2.x) * select(1.0, 0.4, log);
+    // (the tumbling slows to nothing over the two seconds round `rest`, and its angle is taken to the nearest whole turn from
+    // where it ends, the same way round: scaling the angle by 1 - flat then settles it by half a turn at most. Scaling the
+    // whole angle wound a piece back through every turn it had made since the strike began, several a second.)
+    let rate = (0.35 + 1.2 * r2.x) * select(1.0, 0.4, log);
+    let slow = clamp((time - (rest - 1.0)) / 2.0, 0.0, 1.0);
+    let spun = min(time, rest - 1.0) + 2.0 * (slow - 0.5 * slow * slow);
+    let ang = r2.z * 6.2831853 + rate * spun - round((r2.z * 6.2831853 + rate * rest) / 6.2831853) * 6.2831853;
     var m = ts_rodrigues(ax, ang * (1.0 - flat));
-    // (afloat: lying on the water, turning slowly, rocked by it)
+    // (afloat: lying on the water, turning very slowly, rocked by it, each about its own line)
     if (flat > 0.0) {
-        let rock = ts_rodrigues(vec3<f32>(0.8, 0.0, 0.6), flat * 0.14 * sin(time * (1.1 + r.w) + r.x * 6.283));
-        m = ts_rodrigues(vec3<f32>(0.0, 1.0, 0.0), flat * (r.w * 6.283 + time * (0.1 + 0.25 * r2.y))) * rock * m;
+        let rock = ts_rodrigues(vec3<f32>(cos(r.x * 6.283), 0.0, sin(r.x * 6.283)), flat * 0.09 * sin(time * (0.9 + 0.7 * r.w) + r.x * 6.283));
+        let turn = (r.w - 0.5) * 6.283 + (time - rest) * (0.03 + 0.09 * r2.y) * select(-1.0, 1.0, r2.x > 0.5);
+        m = ts_rodrigues(vec3<f32>(0.0, 1.0, 0.0), flat * turn) * rock * m;
     }
     return ts_piece_hit(ro, rd, ctr, half, m, kind, li, wet);
 }
@@ -620,11 +630,12 @@ fn ts_deb_ext(ro: vec3<f32>, rd: vec3<f32>, hp: vec3<f32>, t_hit: f32, time: f32
                     continue;
                 }
                 // (afloat low in the water, most of it under; in the wave anywhere in the churn)
-                let flat = smoothstep(0.02, 0.14, x_c);
+                // (settled by the time the player's head breaks the surface, so nothing is seen coming to rest)
+                let flat = smoothstep(-1.8, 0.7, time - ts_t0(s_c, g));
                 let y_c = lvl + mix(-0.8 + (r3 - 0.4) * 3.0, -0.3 - 0.4 * r3, flat);
                 let ctr = vec3<f32>(g.m.x * s_c + g.n.x * u_c, y_c, g.m.y * s_c + g.n.y * u_c);
                 let mp = ts_map(s_c, u_c);
-                let ph = ts_piece(ro, rd, pcg(hh ^ h2), ctr, time, grow, mix(1.2 + clamp(t_hit / 200.0, 0.0, 2.0), 1.0 + clamp(t_hit / 500.0, 0.0, 1.0), flat), mp.x, mp.y, li, 0.55 + 0.4 * flat, flat, 6.8);
+                let ph = ts_piece(ro, rd, pcg(hh ^ h2), ctr, time, grow, mix(1.2 + clamp(t_hit / 200.0, 0.0, 2.0), 1.0 + clamp(t_hit / 500.0, 0.0, 1.0), flat), mp.x, mp.y, li, 0.55 + 0.4 * flat, flat, 6.8, ts_t0(g.dp, g) - 0.8);
                 if (ph.hit && ph.t < best.t && ph.t < t_hit + 5.0) {
                     best = ph;
                 }
@@ -667,7 +678,7 @@ fn ts_deb_under(ro: vec3<f32>, rd: vec3<f32>, lw: f32, time: f32, cs: f32, cu: f
                 let jit = vec3<f32>(f32(h2 & 255u), f32((h2 >> 8u) & 255u), f32((h2 >> 16u) & 255u)) / 255.0 - 0.5;
                 // (the first any size, the other small and free to sit anywhere)
                 let ctr = (vec3<f32>(ic) + vec3<f32>(0.5)) * cell + jit * select(1.6, 7.0, k == 1u);
-                let ph = ts_piece(rop, rd, pcg(hk ^ h2), ctr, time, 1.0, select(1.0, 0.5, k == 1u), mp.x, mp.y, li, 0.3, 0.0, 6.0);
+                let ph = ts_piece(rop, rd, pcg(hk ^ h2), ctr, time, 1.0, select(1.0, 0.5, k == 1u), mp.x, mp.y, li, 0.3, 0.0, 6.0, TS_LEN + 60.0);
                 if (ph.hit && ph.t < best.t) {
                     best = ph;
                 }
