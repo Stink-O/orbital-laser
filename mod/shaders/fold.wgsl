@@ -812,7 +812,7 @@ fn fd_stal(P: vec3<f32>, g: FwBend, at: vec3<f32>, f: FwWay, tol: f32) -> FdOn {
             bi = u;
         }
     }
-    if (best > 3600.0 + (tol + 60.0) * (tol + 60.0)) {
+    if (best > 12000.0 + (tol + 60.0) * (tol + 60.0)) {
         return o;
     }
     var w = 0.05;
@@ -846,7 +846,8 @@ fn fd_stal(P: vec3<f32>, g: FwBend, at: vec3<f32>, f: FwWay, tol: f32) -> FdOn {
     o.h = fd_on_curve(q, g, f).y - f.P3.y;
     o.rad = p.x;
     o.miss = sqrt(best);
-    o.hit = o.miss < tol;
+    // (the band's ridges stand off the curve: the metal, with none, is on it)
+    o.hit = o.miss < tol + 1.5 * FW_RIDGE * p.x * (1.0 - fw_ss(0.78, 0.92, o.v));
     // (the surface's way out, from the curve's own way along)
     let dq = 0.012 + 0.03 * bi;
     let A = fd_on_curve(clamp(bi - dq, 0.0, 1.0) * clamp(bi - dq, 0.0, 1.0), g, f);
@@ -987,8 +988,8 @@ fn fd_hanging(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, g
 }
 const FD_METAL: f32 = 46.0;        // how far up from the band's end the metal comes, blocks: most of what is seen stays land
 const FD_WET: f32 = 70.0;          // how far over that the land has gone dark
-const FD_SOFT0: f32 = 0.12;        // the band's v: where the far land's tiles begin to go, and have gone
-const FD_SOFT1: f32 = 0.5;
+const FD_SOFT0: f32 = 0.05;        // the band's v: where the far land's tiles begin to go, and have gone
+const FD_SOFT1: f32 = 0.42;
 // The metal's slow swells: a slope, along the band and round it.
 fn fd_swell(v: f32, ang: f32, t: f32) -> vec2<f32> {
     let s = v * 2600.0;
@@ -1014,7 +1015,7 @@ fn fd_even(q: f32) -> f32 {
 }
 fn fd_form(uv: vec2<f32>, colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, g: FwBend, f: FwWay, on: FdOn, d0: f32) -> vec3<f32> {
     // (none of it where the band leaves the tube's wall)
-    let k = g.draw * fw_ss(0.0, 0.3, on.v);
+    let k = fw_ss(0.5, 1.0, g.draw) * fw_ss(0.0, 0.3, on.v);
     if (k <= 0.0) {
         return colIn;
     }
@@ -1049,8 +1050,11 @@ fn fd_form(uv: vec2<f32>, colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, g: FwB
         }
     }
     // ---- the light and the air -------------------------------------------------------------------------------------------------------------------------------
+    // (the ridges in the light: their slope, round the band)
+    let aw = on.ang + 0.04;
+    let sl = (fw_ridge(aw, on.v) - fw_ridge(on.ang, on.v)) / 0.04;
     let L = normalize(vec3<f32>(frame.sun.x * 0.7, 0.35, frame.sun.z * 0.7) + vec3<f32>(0.3, 0.0, 0.2));
-    let lit = 0.5 + 0.5 * dot(on.n, L);
+    let lit = 0.5 + 0.5 * dot(normalize(on.n - normalize(cross(on.n, on.T)) * sl * 1.6), L);
     col = col * mix(1.0, 0.85 + 0.6 * lit * lit, k);
     let air = 0.08 * fw_ss(160.0, 620.0, length(off));
     let day = 0.14 + 0.86 * fd_ss(-0.2, 0.1, frame.sun.y);
@@ -1075,11 +1079,11 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, gq: vec
     let blue = fw_ss(0.02, 0.2, colIn.b - max(colIn.r, colIn.g * 1.05));
     let dark = 1.0 - fw_ss(0.015, 0.14, luminance(colIn));
     let low = blue * 0.8 + dark * 0.2 + 0.9 * wide + 0.28 * c1 + 0.12 * c0;
-    let e = top * (1.0 + 0.3 * wide + 0.12 * sin(on.ang * 5.0 + 1.0) + 0.1 * sin(on.ang * 9.0 - 2.0 + on.h * 0.05)) - on.h;
+    let e = top * (1.0 + 0.2 * wide + 0.07 * sin(on.ang * 5.0 + 1.0) + 0.05 * sin(on.ang * 9.0 - 2.0 + on.h * 0.05)) - on.h;
     // (ahead of it the land goes dark, wet with it)
     let wet = fw_ss(-FD_WET, 0.0, e);
     var col = colIn * (1.0 - 0.6 * wet);
-    let shore = fw_ss(0.0, 3.0, e);
+    let shore = fw_ss(0.0, 7.0, e);
     if (shore <= 0.0) {
         return col;
     }
@@ -1087,16 +1091,14 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, gq: vec
     // (least at the very tip)
     let sw = fd_swell(on.v, on.ang, t) * mix(1.0, 0.25, fw_ss(0.86, 0.97, on.v));
     // (at its edge it stands up round, a bead: the swell of the edge)
-    let bead = 1.0 - fw_ss(0.0, 6.0, e);
+    let bead = 1.0 - fw_ss(0.0, 9.0, e);
     let n = normalize(on.n + on.T * (sw.x - 0.34 * bead) + cross(on.n, on.T) * sw.y);
-    return mix(col, fd_chrome(v, off, n, gq, 0.8 * fw_ss(0.9, 1.0, g.draw)), shore);
+    // (a thing this thin shows mostly the sky at its edges: held down, or its edges are lines of white)
+    let ch = fd_chrome(v, off, n, gq, 0.8 * fw_ss(0.9, 1.0, g.draw));
+    return mix(col, ch / (1.0 + 1.3 * luminance(ch)), shore);
 }
-// The fold's clock: fold_warp.wgsl's fw_tau.
 fn fd_tau(t: f32) -> f32 {
-    if (t < FD_BEAT) { return t; }
-    if (t < FD_REL) { return FD_BEAT; }
-    let u = clamp((t - FD_REL) / (FD_SLAM0 - FD_REL), 0.0, 1.0);
-    return FD_BEAT - (FD_BEAT - 20.0) * u * u * (3.11 + u * (-5.05 + u * 2.94));
+    return fw_tau(t);
 }
 // Where the branch's tip ends: fold_warp.wgsl's fw_seat and fw_turned with the sphere shut, the same (`the_warp_keeps_the_beats`).
 fn fd_radius(d: f32, y: f32) -> f32 {

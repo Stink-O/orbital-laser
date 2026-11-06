@@ -65,6 +65,7 @@ const FW_RIM0: f32 = 0.3;          // the band of land that goes down to the tar
 const FW_TURNS: f32 = 0.18;        // how far round it leans on the way
 const FW_SHOULDER: f32 = 0.3;      // how far the curve keeps to the tube's own way as it leaves it, of its radius there
 const FW_WAIST: f32 = 0.095;       // the curve's third point: how far out of the axis, of that radius...
+const FW_RIDGE: f32 = 0.2;         // how far its land stands out of the curve, of its radius
 const FW_KNEE: f32 = 200.0;        // ...and how high, blocks: low and near the axis, it comes in and hangs: a long thin taper, a reach, not a bag
 const FW_TIP: f32 = 14.0;          // how high over the target's land the band stops: what touches it is the drop hanging from it (fold.wgsl's fd_hang)
 const FW_END_K: f32 = 0.97;        // how much of the far land's reach is drawn: its own end goes in steps, a chunk at a time, and this one is a circle
@@ -162,19 +163,6 @@ fn fw_shock(r: f32, t: f32) -> f32 {
         }
     }
     return y;
-}
-// The fold's clock: the strike's up to FW_REL, then back to FW_BACK by FW_FLAT, gathering slowly, and there it stays.
-const FW_BACK: f32 = 20.0;
-fn fw_tau(t: f32) -> f32 {
-    if (t < FW_BEAT) {
-        return t;
-    }
-    if (t < FW_REL) {
-        return FW_BEAT;
-    }
-    let u = clamp((t - FW_REL) / (FW_FLAT - FW_REL), 0.0, 1.0);
-    // (gathering, then steady as the sphere opens, then the far land falling away)
-    return FW_BEAT - (FW_BEAT - FW_BACK) * u * u * (3.11 + u * (-5.05 + u * 2.94));
 }
 // ---- the crease pattern: origami. Straight lines, nothing wandering: eight big creases out of the target at bearings that fold flat
 // (Kawasaki: every other angle round it adds up to 180 degrees), two of them one straight line through it; then, ring by ring, chords
@@ -777,6 +765,35 @@ fn fw_pull(r: f32, ang: f32, y: f32, t: f32, R: f32) -> f32 {
 fn fw_radius(d: f32, y: f32) -> f32 {
     return max(max(d * 1.3, 170.0), y * 1.15);
 }
+// The fold's clock: the strike's up to FW_BEAT, then back to FW_BACK by FW_FLAT. Not the fold played backwards: it stays shut through the touch and while the band goes back up
+// (fw_gather, fw_tip); the tube gives all at once and catches itself, hangs there, and then lets go for good, the far land falling away as it did.
+const FW_BACK: f32 = 20.0;
+fn fw_tau(t: f32) -> f32 {
+    if (t < FW_BEAT) {
+        return t;
+    }
+    if (t < FW_REL) {
+        return FW_BEAT;
+    }
+    if (t < 42.2) {
+        return fw_h(vec3<f32>(FW_REL, FW_BEAT, 0.0), vec3<f32>(42.2, 34.6, -3.0), t);
+    }
+    if (t < 42.55) {
+        return fw_h(vec3<f32>(42.2, 34.6, -3.0), vec3<f32>(42.55, 32.0, -8.5), t);
+    }
+    if (t < 42.88) {
+        return fw_h(vec3<f32>(42.55, 32.0, -8.5), vec3<f32>(42.88, 31.1, -1.0), t);
+    }
+    if (t < 43.3) {
+        return fw_h(vec3<f32>(42.88, 31.1, -1.0), vec3<f32>(43.3, 28.37, -6.7), t);
+    }
+    let u = clamp((t - FW_REL) / (FW_FLAT - FW_REL), 0.0, 1.0);
+    return FW_BEAT - (FW_BEAT - FW_BACK) * u * u * (3.11 + u * (-5.05 + u * 2.94));
+}
+// ...and it doesn't go all round at once: as the tube gives, each side of it is a little ahead of or behind the rest.
+fn fw_uneven(a: f32, t: f32) -> f32 {
+    return 0.9 * fw_ss(42.15, 42.6, t) * (1.0 - fw_ss(43.0, 43.45, t)) * (sin(a * 2.0 + 0.8) + 0.6 * sin(a * 3.0 - 1.2));
+}
 // ---- the reach: nothing here goes by the fold's clock, the rim's way down and back has a timing of its own, keyed by hand -------------------------------------------
 // One piece of a track: from (time, value, slope) a to b.
 fn fw_h(a: vec3<f32>, b: vec3<f32>, t: f32) -> f32 {
@@ -918,13 +935,23 @@ fn fw_way(g: FwBend) -> FwWay {
     let P0 = a.xy;
     // (long and thin the further it has come: short, what is in it is in a fat bulge)
     let e = clamp((P0.y - g.tip) / (P0.y - FW_TIP), 0.2, 1.0);
-    let P2 = vec2<f32>(min(FW_WAIST * P0.x, 0.35 * max(g.d, 60.0)) / sqrt(e), P0.y - (P0.y - FW_KNEE) * e);
+    // (held at the touch it draws itself thin with the strain, and when it lets go that goes at once)
+    let thin = 1.0 - 0.14 * fw_ss(39.8, 40.95, g.t) * (1.0 - fw_ss(40.95, 41.12, g.t));
+    let P2 = vec2<f32>(min(FW_WAIST * P0.x, 0.35 * max(g.d, 60.0)) * thin / sqrt(e), P0.y - (P0.y - FW_KNEE) * e);
     return FwWay(P0, P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * FW_SHOULDER, P2, vec2<f32>(0.0, g.tip), R1, log(g.edge / R1));
 }
 // The curve at v, 0 to 1 down the band.
 fn fw_curve(v: f32, f: FwWay) -> vec2<f32> {
     let m = 1.0 - v;
     return f.P0 * (m * m * m) + f.P1 * (3.0 * m * m * v) + f.P2 * (3.0 * m * v * v) + f.P3 * (v * v * v);
+}
+// How far out of the curve the land stands at bearing a, of the curve's own radius there, v down the band.
+fn fw_ridge(a: f32, v: f32) -> f32 {
+    let w = fw_ss(0.2, 0.42, v) * (1.0 - fw_ss(0.78, 0.92, v));
+    if (w <= 0.0) {
+        return 0.0;
+    }
+    return w * FW_RIDGE * (0.5 * sin(3.0 * a + 1.0 + 2.0 * v) + 0.32 * sin(5.0 * a - 2.0 + 3.0 * v) + 0.26 * sin(8.0 * a + 0.5 - 4.0 * v) + 0.18 * sin(13.0 * a + 2.1 + 5.0 * v));
 }
 fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
     var on = fw_roll(R, y, g);
@@ -935,6 +962,8 @@ fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
         let f = fw_way(g);
         let v = fw_spend(log(R / f.R1) / f.k);
         on = vec3<f32>(mix(on.xy, fw_curve(v, f), g.draw), on.z);
+        // (a mountain's shoulders and gullies, running down it: no pipe)
+        on.x *= 1.0 + fw_ridge(atan2(sa0, ca0), v) * max(g.draw, 0.0);
         let tw = FW_TURNS * FW_TAU * v * g.draw;
         let ct = cos(tw);
         let st = sin(tw);
@@ -1212,7 +1241,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // ---- the sheet on the sphere -----------------------------------------------------------------------------------------
     let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 20000.0);
     let edge = max(FW_END_K * reach - dist, 300.0);
-    let P = mix(rest, fw_place(R, ca, sa, y, fw_bend(tau, t, span.x, mq, e, edge, span.y - sink)), share);
+    let P = mix(rest, fw_place(R, ca, sa, y, fw_bend(tau + fw_uneven(a, t), t, span.x, mq, e, edge, span.y - sink)), share);
     let bubble = 46.0 - 16.0 * fw_lay(tau);
     out.pos = fw_clear(P + c.tgt + stay, pos + stay, bubble * (1.0 - fw_ss(FW_SLAM4, FW_SLAM4 + 1.0, t)));
     return out;
