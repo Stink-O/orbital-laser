@@ -29,8 +29,8 @@ pub(super) const FD_LEN: f32 = 59.7;
 /// when it is on, the world's own culling back the rest of the time.
 pub const FD_COPIES: u32 = 5;
 pub const FD_COPY_R: f32 = 130.0;
-/// When the copies are drawn: the cones of the fold down, out and back.
-pub const FD_COPY_ON: std::ops::Range<f32> = 34.9..42.1;
+/// When the copies are drawn: the root swelling on the wall from 34.5 (fold_warp.wgsl's fw_swell), the arm out and back.
+pub const FD_COPY_ON: std::ops::Range<f32> = 34.45..42.1;
 pub const FD_WARP_START: f32 = 5.5;
 pub const FD_WARP_END: f32 = 56.7;
 /// The strike's beats (see the top of this file).

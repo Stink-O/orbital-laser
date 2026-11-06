@@ -813,19 +813,55 @@ fn fw_girth(x: f32, S: f32) -> f32 {
     }
     return 0.26 * S * pow(0.84, q) * (1.0 + 0.12 * node) * pow(max(1.0 - x, 0.0), 0.6);
 }
-// Its middle line x along, in the plane through the axis (out from the axis, up): over the rim and down to the target.
+// Its middle line x along, in the plane through the axis (out from the axis, up), as many of S as the sphere is: from the wall, square off it,
+// just under the hole's rim, to the target. Past FW_JOIN it is a curve of its own coming down the axis to the target; up to there, a curve
+// from the wall that runs into that one, gone along at a pace that grows (fw_u) to be the other's where they meet: the tip works its way out
+// of the wall and then gathers. A ring of the tube is square to this line, so the wide first ring lies on the wall (fw_flare).
+const FW_JOIN: f32 = 0.78;
+const FW_PACE: f32 = 2.85;
+fn fw_u(x: f32) -> f32 {
+    return pow(clamp(x / FW_JOIN, 0.0, 1.0), FW_PACE);
+}
 struct FwPath { c: vec2<f32>, n: vec2<f32> }
-fn fw_path(x: f32, S: f32, top: f32) -> FwPath {
-    // (starting behind the wall, under the rim, so it hooks over the rim's edge, clear of it, as a root does over a stone)
-    let p0 = vec2<f32>(1.02 * S, 1.76 * S);
-    let p1 = vec2<f32>(0.24 * S, 2.76 * S);
-    let p2 = vec2<f32>(0.12 * S, 1.41 * S);
-    let p3 = vec2<f32>(0.0, top);
-    let m = 1.0 - x;
-    let C = p0 * (m * m * m) + p1 * (3.0 * m * m * x) + p2 * (3.0 * m * x * x) + p3 * (x * x * x);
-    var T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * x) + (p3 - p2) * (x * x);
+fn fw_path(x: f32, S: f32) -> FwPath {
+    var C = vec2<f32>(0.0);
+    var T = vec2<f32>(0.0, -1.0);
+    if (x < FW_JOIN) {
+        let u = fw_u(x);
+        let m = 1.0 - u;
+        let p0 = vec2<f32>(0.787, 1.453);
+        let p1 = vec2<f32>(0.44, 1.253);
+        let p2 = vec2<f32>(0.128, 1.245);
+        let p3 = vec2<f32>(0.086227, 0.897504);
+        C = p0 * (m * m * m) + p1 * (3.0 * m * m * u) + p2 * (3.0 * m * u * u) + p3 * (u * u * u);
+        T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * u) + (p3 - p2) * (u * u);
+    } else {
+        let m = 1.0 - x;
+        let p0 = vec2<f32>(1.02, 1.76);
+        let p1 = vec2<f32>(0.24, 2.76);
+        let p2 = vec2<f32>(0.12, 1.41);
+        C = p0 * (m * m * m) + p1 * (3.0 * m * m * x) + p2 * (3.0 * m * x * x);
+        T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * x) - p2 * (x * x);
+    }
     T = T / max(length(T), 0.001);
-    return FwPath(C, vec2<f32>(-T.y, T.x));
+    return FwPath(C * S, vec2<f32>(-T.y, T.x));
+}
+// The root: the tube wide where it leaves the wall, its first ring on it, and tapering from there; and till it has grown well out from the wall
+// narrowing all the way to the tip, so that what shows first is the land of the wall swelling, and never the end of a tube.
+fn fw_flare(x: f32, reach: f32) -> f32 {
+    let tl = min(mix(0.3, 0.02, fw_ss(0.55, 0.74, reach)), max(reach, 0.001));
+    // (a thin trunk out of a wide foot: hollow, as a root's is, not a bulb: tangent to the wall at its ring)
+    return (mix(0.6, 1.0, fw_ss(0.25, 0.6, x)) + 1.02 * exp(-fw_u(x) / 0.04)) * pow(clamp((reach - x) / tl, 0.0, 1.0), 0.6);
+}
+// The arm comes round the axis as it comes down: its root off to the player's side of the rim, so that they see it leave the wall from the side and not
+// end on, as a ball; it is in the old plane, straight over the target from behind the hole, by the time the path is the old one.
+const FW_BEAR: f32 = 1.2;
+fn fw_bear(x: f32) -> f32 {
+    return FW_BEAR * (1.0 - fw_ss(0.0, 1.0, fw_u(x)));
+}
+// The bulge: what the tip has reached before the stages take it, the land swelling on the wall.
+fn fw_swell(tau: f32) -> f32 {
+    return 0.26 * fw_ss(34.5, 35.25, tau);
 }
 const FW_THROAT: f32 = 22.0;       // what of a copy's disc rounds off its length's end
 // Length k (1 to 5) of the branch: the land of a copy to where it goes.
@@ -835,7 +871,7 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
     let mq = c.me - c.tgt;
     let dist = length(mq.xz);
     let S = fw_radius(dist, mq.y);
-    let reach = fw_reached(tau, S);
+    let reach = max(fw_reached(tau, S), fw_swell(tau));
     let cap = fw_cap(reach);
     let from_ = select(fw_knot(k - 1), 0.0, k == 1);
     // (the length's end, its rounded end past that: the tip itself is `reach`, no further)
@@ -847,10 +883,10 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
     // (along it by the log of r, as a disc rolled to a tube without stretching goes; inside the throat it rounds off)
     var x = end;
     var rho = 0.0;
-    let endr = fw_girth(end, S);
+    let endr = fw_girth(end, S) * fw_flare(end, reach);
     if (r > FW_THROAT) {
         x = from_ + (end - from_) * log(FW_DISC / r) / log(FW_DISC / FW_THROAT);
-        rho = fw_girth(x, S);
+        rho = fw_girth(x, S) * fw_flare(x, reach);
     } else {
         let u = r / FW_THROAT;
         rho = endr * u;
@@ -858,10 +894,10 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
     }
     // (the land's own heights, as big as the land is at this place on the tube)
     rho += clamp(Q.y, -6.0, 40.0) * clamp(rho / max(r, FW_THROAT), 0.08, 1.2) * 0.8;
-    let P = fw_path(x, S, 0.0);
+    let P = fw_path(x, S);
     // (turning a little as it goes, each length its own way round)
     let phi = -a + f32(k) * 1.9 + x * 2.2;
-    let at = atan2(-e.y, -e.x);
+    let at = atan2(-e.y, -e.x) + fw_bear(x);
     let ca = cos(at);
     let sa = sin(at);
     let c2 = P.c + P.n * (rho * cos(phi));
@@ -1382,9 +1418,18 @@ fn world_fragment(f: Fragment) -> Painted {
             col = vec3<f32>(0.1, 0.2, 0.46);
         }
         // (a dark line at each join, deep in the throat of the length before; and in the dusk where it comes over the rim)
-        col = col * mix(0.45, 1.0, fw_ss(FW_DISC, FW_DISC - 16.0, r)) * mix(0.5, 1.0, fw_ss(FW_THROAT, FW_THROAT + 18.0, r));
+        col = col * mix(select(0.45, 1.0, f.copy == 1u), 1.0, fw_ss(FW_DISC, FW_DISC - 16.0, r)) * mix(0.5, 1.0, fw_ss(FW_THROAT, FW_THROAT + 18.0, r));
+        // (the root's first ring lies on the wall: it comes apart into it, block by block, so no edge shows)
         if (f.copy == 1u) {
-            col = mix(vec3<f32>(0.02, 0.024, 0.06), col, fw_ss(110.0, 52.0, r));
+            let w = globals.warp;
+            let block = floor(f.home + fract(w[4].xyz) + w[5].xyz);
+            let h = fw_hash(block.xz + block.y * 7.0);
+            if (h < fw_ss(100.0, 130.0, r)) {
+                return drop_;
+            }
+            // (and it is what it looks like, the earth under the land torn off the wall, not a stretched picture of whatever lay round the target)
+            let l = dot(col, vec3<f32>(0.3, 0.59, 0.11));
+            col = mix(col, vec3<f32>(0.2, 0.16, 0.13) * (0.55 + 0.6 * h) + vec3<f32>(0.25 * l), fw_ss(48.0, 100.0, r));
         }
         return Painted(vec4<f32>(col, 1.0), 0.0);
     }
@@ -1532,7 +1577,9 @@ fn world_fragment(f: Fragment) -> Painted {
     // ---- past the real land the sphere goes off into its own dusk: the far land's coarse tiles are no use this close, and the
     // darker it gets towards the hole the less there is to see of how it ends ----------------------------------------------------
     let awayp = length(Q.xz - mq.xz);
-    let dusk = max(fw_ss(430.0, 640.0, awayp), fw_ss(0.5 * lands, 0.97 * lands, r)) * fw_ss(30.5, 33.5, tau);
+    // (less of it round the arm's root, on the far side of the rim, so that the land it comes out of is seen; and where the land's end is, none of that)
+    let root = fw_ss(260.0, 90.0, length(Q.xz + fw_rot(mq.xz / max(dmq, 0.001), FW_BEAR) * 0.8 * fw_rim(dmq))) * (1.0 - fw_ss(0.9 * lands, 0.97 * lands, r));
+    let dusk = max(fw_ss(430.0, 640.0, awayp), fw_ss(0.5 * lands, 0.97 * lands, r)) * fw_ss(30.5, 33.5, tau) * (1.0 - 0.8 * root);
     col = mix(col, vec3<f32>(0.02, 0.024, 0.06), dusk * 0.96);
     // (the game's fog goes by how far off a thing is drawn, no use on walls: all of it the sphere's own dusk)
     return Painted(vec4<f32>(col, alpha), fog * (1.0 - fw_ss(30.0, 33.0, tau)));
