@@ -32,11 +32,44 @@ const VC_P: f32 = 6.0;             // how long the lumps are carried before they
 const VC_HU: f32 = 1500.0;         // the umbrella's middle over the land
 const VC_V: f32 = 343.0;           // the pressure ring's speed (the sound's)
 const VC_DM: f32 = 190.0;          // the most the lumps stand out of a smooth body
+const VC_ST: f32 = 1.35;           // the march's stride
+const VC_ST_AIR: f32 = 2.5;        // and through the air the wall has emptied
+const VC_HOLD: f32 = 0.3;          // the big lumps kept for this share of how far off the surface the march is
 const VC_BOMB: u32 = 16u;          // the table: the bombs from here, VC_BW words each
 const VC_BW: u32 = 8u;
 const VC_G: f32 = 28.0;
 const VC_HF: u32 = 1024u;          // the land's height (volcano.rs's vc_hf_pack)
 
+// Gradient noise as gnoise3's, its gradients from one hash a corner, not three (the march looks it up a great many times).
+fn vc_gc(hx: u32, hy: u32, hz: u32, f: vec3<f32>) -> f32 {
+    let h = pcg(hx ^ hy ^ hz);
+    let g = vec3<f32>(f32(h >> 21u), f32((h >> 10u) & 2047u), f32(h & 1023u)) * vec3<f32>(2.0 / 2047.0, 2.0 / 2047.0, 2.0 / 1023.0) - 1.0;
+    return dot(g, f);
+}
+fn vc_gn3(p: vec3<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let c = bitcast<vec3<u32>>(vec3<i32>(i));
+    let x0 = c.x * 73856093u;
+    let x1 = x0 + 73856093u;
+    let y0 = c.y * 19349663u;
+    let y1 = y0 + 19349663u;
+    let z0 = c.z * 83492791u;
+    let z1 = z0 + 83492791u;
+    let e = vec3<f32>(1.0, 0.0, 0.0);
+    let n000 = vc_gc(x0, y0, z0, f);
+    let n100 = vc_gc(x1, y0, z0, f - e.xyy);
+    let n010 = vc_gc(x0, y1, z0, f - e.yxy);
+    let n110 = vc_gc(x1, y1, z0, f - e.xxy);
+    let n001 = vc_gc(x0, y0, z1, f - e.yyx);
+    let n101 = vc_gc(x1, y0, z1, f - e.xyx);
+    let n011 = vc_gc(x0, y1, z1, f - e.yxx);
+    let n111 = vc_gc(x1, y1, z1, f - e.xxx);
+    let a = mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y);
+    let b = mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y);
+    return mix(a, b, u.z) * 0.75 + 0.5;
+}
 fn vc_w(i: u32) -> f32 {
     if (i >= arrayLength(&mod_data)) {
         return 0.0;
@@ -44,16 +77,23 @@ fn vc_w(i: u32) -> f32 {
     return bitcast<f32>(mod_data[i]);
 }
 // The land at q (level, from the vent): its height over the vent's ground, smoothly between the heightfield's cells.
+var<private> vc_hf_n: f32;
+var<private> vc_hf_r: f32;
+fn vc_land_set() {
+    vc_hf_n = vc_w(VC_HF);
+    vc_hf_r = vc_w(VC_HF + 1u);
+    let n = u32(vc_hf_n + 0.5);
+    if (vc_hf_n < 2.0 || arrayLength(&mod_data) < VC_HF + 8u + n * n) {
+        vc_hf_n = 0.0;
+    }
+}
 fn vc_land(q: vec2<f32>) -> f32 {
-    let nf = vc_w(VC_HF);
+    let nf = vc_hf_n;
     if (nf < 2.0) {
         return 0.0;
     }
     let n = u32(nf + 0.5);
-    if (arrayLength(&mod_data) < VC_HF + 8u + n * n) {
-        return 0.0;
-    }
-    let R = vc_w(VC_HF + 1u);
+    let R = vc_hf_r;
     let step = 2.0 * R / (nf - 1.0);
     let fc = clamp((q + R) / step, vec2<f32>(0.0), vec2<f32>(nf - 1.001));
     let i0 = vec2<u32>(floor(fc));
@@ -124,6 +164,7 @@ fn vc_set_state(time: f32) {
     s.px = frame.view_params.w / frame.resolution.y;
     s.fine = 1.0;
     vs = s;
+    vc_land_set();
 }
 
 // ---- the shapes: each one's smooth body, as a distance ----------------------------------------------------------
@@ -150,14 +191,14 @@ fn vc_steam(hy: f32, rho: f32, ang: f32) -> f32 {
 // The eruption's body, solid: the blast, an ellipsoid over the land far wider than it is tall, and out of its middle a
 // trunk half its width, flaring into the head that feeds the umbrella. After the collapse the trunk falls back on
 // itself and the blast's foot sinks into the flows.
-fn vc_col(q: vec3<f32>, rho: f32, ang: f32) -> f32 {
+fn vc_col(q: vec3<f32>, rho: f32, ang: f32, land: f32) -> f32 {
     if (vs.t < VC_CRACK) {
         return 1.0e5;
     }
     // (its foot on the land, not at the vent's height: the land may lie well above or below it)
     var hy = q.y;
     if (hy < 700.0) {
-        hy = hy - vc_land(q.xz) * (1.0 - smoothstep(120.0, 700.0, hy));
+        hy = hy - land * (1.0 - smoothstep(120.0, 700.0, hy));
     }
     if (vs.a < 0.0) {
         return vc_steam(hy, rho, ang);
@@ -276,16 +317,22 @@ fn vc_base(q: vec3<f32>) -> VcB {
     let rho = length(q.xz);
     b.rho = rho;
     b.ang = atan2(q.z, q.x);
-    b.dc = vc_col(q, rho, b.ang);
+    let fl = vs.c > 0.0 && q.y < vs.ftop + VC_DM && rho < vs.rfm + VC_DM;
+    b.land = 0.0;
+    if (fl || q.y < 700.0) {
+        b.land = vc_land(q.xz);
+    }
+    b.dc = vc_col(q, rho, b.ang, b.land);
     b.du = vc_umb(q, rho);
     b.df = 1.0e5;
     b.e = -1.0e5;
-    b.land = 0.0;
-    if (vs.c > 0.0 && q.y < vs.ftop + VC_DM && rho < vs.rfm + VC_DM) {
-        b.land = vc_land(q.xz);
+    if (fl) {
         let f = vc_flow(q, rho, b.ang, b.land);
         b.df = f.x;
         b.e = f.y;
+    } else {
+        // (the rest of the march reads it only under the flows)
+        b.land = 0.0;
     }
     b.d = vc_smin(vc_smin(b.dc, b.du, 120.0), b.df, 60.0);
     return b;
@@ -395,6 +442,7 @@ var<private> vc_cq: vec4<f32>;
 var<private> vc_cb: vec4<f32>;
 var<private> vc_cw: vec4<f32>;
 var<private> vc_cy: f32;
+var<private> vc_cs: f32;     // how far off the surface the last look was: past the smoke's edge the lumps needn't be exact
 var<private> vc_lsy: vec2<f32>;
 fn vc_fine(q: vec3<f32>, rest: f32, foot: f32) -> vec3<f32> {
     var o = vec3<f32>(0.0, 1.0, 0.5);
@@ -405,17 +453,17 @@ fn vc_fine(q: vec3<f32>, rest: f32, foot: f32) -> vec3<f32> {
     let gain = vc_lw.w;
     let qf = vec3<f32>(q.x, q.y * vc_lsy.x, q.z) - vec3<f32>(0.0, 16.0 * vs.t * vc_lsy.y, 0.0) + vc_lw.xyz * 0.5;
     // (smooth noise from here down, not domes: a dome's sharp crease this small reads as cracked mud)
-    let n3 = gnoise3(VC_R3 * (qf * (1.0 / 44.0) + vec3<f32>(1.7, 0.0, -2.1)));
+    let n3 = vc_gn3(VC_R3 * (qf * (1.0 / 44.0) + vec3<f32>(1.7, 0.0, -2.1)));
     let bl3 = sqrt((2.0 * n3 - 1.0) * (2.0 * n3 - 1.0) + 0.012);
     o.x = g3 * (6.0 + 26.0 * gain) * (0.9 * (n3 - 0.5) + 1.1 * (bl3 - 0.3));
     let g4 = saturate((90.0 - rest) / 30.0) * saturate((11.0 - foot) / 5.0);
     if (g4 > 0.0) {
-        let n4 = gnoise3(VC_R1 * (qf * (1.0 / 19.0) + vec3<f32>(-4.7, 2.0, 0.3)));
+        let n4 = vc_gn3(VC_R1 * (qf * (1.0 / 19.0) + vec3<f32>(-4.7, 2.0, 0.3)));
         let bl4 = sqrt((2.0 * n4 - 1.0) * (2.0 * n4 - 1.0) + 0.012);
         o.x = o.x + g4 * 22.0 * (bl4 - 0.3);
         let g5 = saturate((70.0 - rest) / 25.0) * saturate((4.5 - foot) / 2.0);
         if (g5 > 0.0) {
-            let n5 = gnoise3(VC_R2 * (qf * (1.0 / 7.0)) + vec3<f32>(0.3, 0.0, 0.25 * vs.t));
+            let n5 = vc_gn3(VC_R2 * (qf * (1.0 / 7.0)) + vec3<f32>(0.3, 0.0, 0.25 * vs.t));
             o.x = o.x + g5 * 9.0 * (n5 - 0.5);
             o.z = mix(0.5, n5, g5);
         }
@@ -439,7 +487,7 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     let wf = wf0 / sum;
     // (the big lumps looked up again only every few blocks along the ray: they change slowly and cost the most)
     let dq = q - vc_cq.xyz;
-    let hold = 4.0 + 0.6 * foot;
+    let hold = 4.0 + 0.6 * foot + VC_HOLD * vc_cs;
     var out_ = 0.0;
     var top = 0.0;
     var warp = vc_cw.xyz;
@@ -463,10 +511,10 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     }
     let q0 = vec3<f32>(q.x, q.y * sy, q.z);
     // (the lattice folded by two sizes of noise, so no cell shows)
-    let w = gnoise3(VC_R2 * q0 * (1.0 / 470.0));
+    let w = vc_gn3(VC_R2 * q0 * (1.0 / 470.0));
     var w2 = 0.5;
     if (fine) {
-        w2 = gnoise3(VC_R3 * q0 * (1.0 / 180.0) + vec3<f32>(4.0, 0.0, 0.06 * vs.t));
+        w2 = vc_gn3(VC_R3 * q0 * (1.0 / 180.0) + vec3<f32>(4.0, 0.0, 0.06 * vs.t));
     }
     warp = vec3<f32>(w - 0.5, w2 - 0.5, w2 - w) * 170.0;
     let ph = fract(vs.t / VC_P);
@@ -525,7 +573,11 @@ fn vc_sdf(q: vec3<f32>, b: ptr<function, VcB>, foot: f32, fine: bool) -> vec4<f3
     // (the lumps' height capped smoothly, so nothing stands out past what the march allows)
     let bp = max(l.x, 0.0);
     let bump = l.x - bp + bp / sqrt(sqrt(1.0 + pow(bp / VC_DM, 4.0)));
-    return vec4<f32>((*b).d - bump, l.y, l.z, l.w);
+    let d = (*b).d - bump;
+    if (fine) {
+        vc_cs = min(abs(d), 120.0);
+    }
+    return vec4<f32>(d, l.y, l.z, l.w);
 }
 
 // ---- the light ----------------------------------------------------------------------------------------------------
@@ -718,8 +770,8 @@ fn vc_rope_at(b: VcBomb, ph: f32, s: f32) -> vec3<f32> {
 // sun's light its face takes.
 fn vc_tube(X: vec3<f32>, ax: vec3<f32>, rd: vec3<f32>, L: vec3<f32>, w: f32, age: f32, sz: f32) -> vec2<f32> {
     let r = X - ax;
-    let n1 = gnoise3(X * (1.0 / sz) + vec3<f32>(0.0, -0.08 * vs.t, 0.06 * vs.t));
-    let n2 = gnoise3(VC_R1 * X * (3.0 / sz) + vec3<f32>(0.16 * vs.t, 3.0, 0.0));
+    let n1 = vc_gn3(X * (1.0 / sz) + vec3<f32>(0.0, -0.08 * vs.t, 0.06 * vs.t));
+    let n2 = vc_gn3(VC_R1 * X * (3.0 / sz) + vec3<f32>(0.16 * vs.t, 3.0, 0.0));
     let x = length(r) / w;
     let xe = x + 0.85 * (0.26 - abs(2.0 * n1 - 1.0)) + 0.38 * (n2 - 0.5);
     let cov = 1.0 - smoothstep(0.35, 1.0, xe);
@@ -1243,15 +1295,15 @@ fn vc_heat(q: vec3<f32>, hy: f32, top: f32) -> vec2<f32> {
         return vec2<f32>(0.0);
     }
     let qf = q - vec3<f32>(0.0, 44.0 * vs.t, 0.0);
-    let n1 = gnoise3(VC_R1 * qf * (1.0 / 230.0) + vec3<f32>(0.0, 0.0, 0.14 * vs.t));
-    let n2 = gnoise3(VC_R2 * qf * (1.0 / 84.0) + vec3<f32>(1.7, 0.21 * vs.t, 0.0));
-    let gate = gnoise3(vec3<f32>(q.x, 0.5 * q.y, q.z) * (1.0 / 560.0) + vec3<f32>(0.0, -0.05 * vs.t, 0.19 * vs.t));
+    let n1 = vc_gn3(VC_R1 * qf * (1.0 / 230.0) + vec3<f32>(0.0, 0.0, 0.14 * vs.t));
+    let n2 = vc_gn3(VC_R2 * qf * (1.0 / 84.0) + vec3<f32>(1.7, 0.21 * vs.t, 0.0));
+    let gate = vc_gn3(vec3<f32>(q.x, 0.5 * q.y, q.z) * (1.0 / 560.0) + vec3<f32>(0.0, -0.05 * vs.t, 0.19 * vs.t));
     let n = 0.6 * n1 + 0.4 * n2 + 0.42 * (gate - 0.5);
     let cool = smoothstep(1.5, 11.0, a);
     let thr = mix(0.34, 0.565, cool);
     let T = smoothstep(thr, thr + 0.1, n) * zone;
     // (tongues of flame in it, drawn up, soot between them: never a flat fill)
-    let n3 = gnoise3(VC_R3 * (q * vec3<f32>(1.0 / 26.0, 1.0 / 58.0, 1.0 / 26.0) - vec3<f32>(0.0, 2.0 * vs.t, 0.0)));
+    let n3 = vc_gn3(VC_R3 * (q * vec3<f32>(1.0 / 26.0, 1.0 / 58.0, 1.0 / 26.0) - vec3<f32>(0.0, 2.0 * vs.t, 0.0)));
     let tongues = saturate(0.2 + 2.1 * (0.7 * n3 + 0.3 * n2) - 0.45);
     // (a crown's skin cools first: the fire shows between the lumps; less so while the blast is young)
     let cr = 1.0 - top;
@@ -1280,7 +1332,6 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
         return o;
     }
     var t = 0.0;
-    var nl = 0;
     var tsun = 1.0;
     var ao = 1.0;
     var rim = 0.0;
@@ -1288,6 +1339,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     var inband = false;
     var face = 1.0;
     vc_cq = vec4<f32>(1.0e7);
+    vc_cs = 0.0;
     var hs = pcg(u32(vc_px.x) ^ (u32(vc_px.y) << 13u) ^ (u32(fract(time * 7.0) * 1024.0) << 3u));
     var wmid = 0.0;
     var tmid = 0.0;
@@ -1302,7 +1354,18 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     let gw = vc_flash_way(gl, l.seed);
     let gw2 = max(dot(gw, gw), 1.0);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
-    for (var i = 0; i < 132; i = i + 1) {
+    // (the march is two runs of one loop with the look at the light between them, a look a ray: a GPU works on pixels in
+    // groups, and pixels that come to a branch at different steps each cost the whole group the branch. Out here the group
+    // looks once. For the same reason skipping pixels saves nothing, a chequerboard of them or of 2x2 blocks: a group lasts
+    // as long as its slowest)
+    var i = 0;
+    var lq = vec3<f32>(0.0);
+    var lb: VcB;
+    var lsd = vec4<f32>(0.0);
+    var lfoot = 0.0;
+    for (var leg = 0; leg < 2; leg = leg + 1) {
+    var look = false;
+    for (; i < 132; i = i + 1) {
         if (t > t_end || o.tr < 0.05) {
             break;
         }
@@ -1334,7 +1397,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             t = t + jt * max(4.0, t * 0.0034);
             continue;
         }
-        let st = max(4.0, t * 0.0034) * (0.7 + 0.6 * jt) * (1.0 + 3.0 * vs.thin);
+        let st = VC_ST * max(4.0, t * 0.0034) * (0.7 + 0.6 * jt) * (1.0 + 3.0 * vs.thin);
         // (still well off the surface: one set of the big lumps is enough to step by)
         if (b.d > 50.0) {
             let sc = vc_sdf(q, &b, foot, false).x;
@@ -1344,6 +1407,30 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             }
         }
         let steam = (1.0 - smoothstep(-0.6, 0.0, vs.a)) * step(b.dc, min(b.df, b.du));
+        // (the wall of ash torn into rolling banks behind its head, rolling past as it comes on, thinning to nothing a few
+        // seconds behind the front, all but the clouds lifting off it)
+        var ext = 0.15;
+        var wb = 0.0;
+        var torn = 1.0;
+        if (b.df < 40.0) {
+            let dir = q.xz / max(b.rho, 1.0);
+            let hb = q.y - b.land;
+            let qb = vec3<f32>(q.x - dir.x * vs.rf * 1.6, hb * 1.25 - 26.0 * time, q.z - dir.y * vs.rf * 1.6);
+            let bank = 0.62 * vc_gn3(qb * (1.0 / 150.0) + vec3<f32>(0.0, 0.0, 0.11 * time)) + 0.38 * vc_gn3(VC_R2 * qb * (1.0 / 58.0));
+            wb = smoothstep(-5.0, 35.0, b.e);
+            // (the ash lifting clear: the air under it empties, the land shows, a rolling ceiling over it)
+            let lf = smoothstep(VC_LIFT - 8.0, VC_LIFT + 6.0, time) * smoothstep(150.0, 520.0, b.e);
+            let base = lf * (250.0 + 340.0 * (bank - 0.5));
+            let lifted = lf * smoothstep(180.0, 420.0, hb);
+            let th = mix(mix(0.36, 0.56, smoothstep(40.0, 560.0, b.e)), 0.36, lifted);
+            torn = smoothstep(base - 40.0, base + 110.0, hb) * mix(1.0, smoothstep(th - 0.08, th + 0.2, bank), wb);
+            ext = mix(0.15, 0.05, wb);
+            // (the air the wall has emptied: no lumps to look up, and the banks are big)
+            if (torn <= 0.0) {
+                t = t + max(st * VC_ST_AIR, 14.0);
+                continue;
+            }
+        }
         var den = 0.0;
         var sd = vec4<f32>(b.d, 0.5, 8.0, 0.5);
         if (b.d < -VC_DM - 8.0) {
@@ -1355,81 +1442,26 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             let ramp = saturate(-sd.x / edge);
             den = ramp * mix(saturate(0.22 + 1.5 * sd.w), 1.0, ramp);
         }
-        // (the wall of ash torn into rolling banks behind its head, rolling past as it comes on, thinning to nothing a few
-        // seconds behind the front, all but the clouds lifting off it)
-        var ext = 0.15;
-        var wb = 0.0;
-        if (b.df < 40.0) {
-            let dir = q.xz / max(b.rho, 1.0);
-            let hb = q.y - b.land;
-            let qb = vec3<f32>(q.x - dir.x * vs.rf * 1.6, hb * 1.25 - 26.0 * time, q.z - dir.y * vs.rf * 1.6);
-            let bank = 0.62 * gnoise3(qb * (1.0 / 150.0) + vec3<f32>(0.0, 0.0, 0.11 * time)) + 0.38 * gnoise3(VC_R2 * qb * (1.0 / 58.0));
-            wb = smoothstep(-5.0, 35.0, b.e);
-            // (the ash lifting clear: the air under it empties, the land shows, a rolling ceiling over it)
-            let lf = smoothstep(VC_LIFT - 8.0, VC_LIFT + 6.0, time) * smoothstep(150.0, 520.0, b.e);
-            let base = lf * (250.0 + 340.0 * (bank - 0.5));
-            den = den * smoothstep(base - 40.0, base + 110.0, hb);
-            let lifted = lf * smoothstep(180.0, 420.0, hb);
-            let th = mix(mix(0.36, 0.56, smoothstep(40.0, 560.0, b.e)), 0.36, lifted);
-            den = den * mix(1.0, smoothstep(th - 0.08, th + 0.2, bank), wb);
-            ext = mix(0.15, 0.05, wb);
-        }
+        den = den * torn;
         if (steam > 0.0) {
             ext = mix(ext, 0.016, steam);
         }
         if (den > 1.0e-4) {
             let hy = q.y;
             let hyl = hy - select(0.0, vc_land(q.xz), hy < 600.0);
-            if (nl == 0 || (nl == 5 && o.tr > 0.35)) {
-                // (the light: looks on the way to the sun through the lumps, close and further, then through the bulk of the
-                // cloud; in the sheet's shadow what light there is comes in low from the open sky round its edge)
-                let st0 = vc_sun_t(q, l.L);
-                let Lr = normalize(vec3<f32>(q.x, -0.4 * b.rho, q.z));
-                let Lf = normalize(mix(Lr, l.L, smoothstep(0.15, 0.75, st0)));
-                let f1q = q + Lf * 24.0;
-                var fb1 = vc_base(f1q);
-                let f1 = vc_sdf(f1q, &fb1, 40.0, false).x;
-                let f2q = q + Lf * 78.0;
-                var fb2 = vc_base(f2q);
-                let f2 = vc_sdf(f2q, &fb2, 40.0, false).x;
-                let o1 = saturate(0.5 - f1 / 40.0);
-                let o2 = saturate(0.5 - f2 / 74.0);
-                // (the sheet's underside, in its own shadow, needs no looks at the bulk: most of what fills the sky)
-                let under = b.du < min(b.dc, b.df) && hy < VC_HU && st0 < 0.3;
-                var s3 = 0.0;
-                var s4 = 0.0;
-                if (!under) {
-                    s3 = saturate((10.0 - vc_dist(q + Lf * 240.0)) / 120.0);
-                    s4 = saturate((10.0 - vc_dist(q + Lf * 560.0)) / 260.0);
-                }
-                let tau = 1.35 * o1 + 1.9 * o2 + 2.2 * s3 + 2.6 * s4;
-                let lit = exp(-tau);
-                // (and close to, the small lumps' own faces: which side of each looks at the light)
-                face = 1.0;
-                if (foot < 24.0) {
-                    let rs = sd.x + 40.0;
-                    face = 0.7 + 0.62 * saturate(0.5 - (vc_fine(q + Lf * 11.0, rs, foot).x - vc_fine(q, rs, foot).x) / 40.0);
-                }
-                tsun = lit * st0 * (1.0 - 0.5 * l.warm);
-                rim = lit * (1.0 - smoothstep(0.15, 0.75, st0));
-                // (the sky's light shut out from under what hangs over it and deep in it)
-                let occ = select(saturate((10.0 - vc_dist(q + vec3<f32>(0.0, 190.0, 0.0))) / 150.0), 1.0, under);
-                let deep = saturate(-sd.x / 90.0);
-                ao = (0.4 + 0.6 * sd.y * sd.y) * (1.0 - 0.72 * occ) * (1.0 - 0.6 * deep);
-                // (and open below it? the fire over the land lights what looks down on it)
-                below = 0.0;
-                if (hyl < 700.0 && time < VC_COLLAPSE + 6.0) {
-                    let dq = q - vec3<f32>(0.0, 46.0, 0.0);
-                    var db = vc_base(dq);
-                    below = saturate((vc_sdf(dq, &db, 40.0, false).x - vc_sdf(q, &b, 40.0, false).x + 6.0) / 64.0);
-                }
+            if (leg == 0) {
+                look = true;
+                lq = q;
+                lb = b;
+                lsd = sd;
+                lfoot = foot;
+                break;
             }
-            nl = nl + 1;
             // ---- its colour: charcoal and umber, pale steam over the blast, paler on the umbrella's top and the flows ---
             let wc = saturate(1.0 + (min(b.du, b.df) - b.dc) / 70.0);
             let wf = saturate(1.0 + (min(b.dc, b.du) - b.df) / 70.0);
             let wu = saturate(1.0 + (min(b.dc, b.df) - b.du) / 70.0);
-            let mott = gnoise3(q * (1.0 / 380.0) + vec3<f32>(3.0, -0.03 * time, 1.0));
+            let mott = vc_gn3(q * (1.0 / 380.0) + vec3<f32>(3.0, -0.03 * time, 1.0));
             var alb = mix(vec3<f32>(0.075, 0.066, 0.06), vec3<f32>(0.2, 0.172, 0.15), smoothstep(0.3, 0.72, mott));
             // (a head of steam and pale ash riding the top of what is rising, going dark as it climbs and mixes)
             let crown = smoothstep(0.55 * vs.H - 40.0, 0.92 * vs.H, hy) * (1.0 - smoothstep(9.0, 23.0, vs.a)) * smoothstep(0.34, 0.6, mott + 0.3 * sd.y);
@@ -1491,12 +1523,66 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
         }
         t = t + select(st, max(0.65 * sd.x, st * (0.5 + 0.03 * f32(i))), sd.x > 0.0);
     }
+    if (!look) {
+        break;
+    }
+    {
+        let q = lq;
+        var b = lb;
+        let sd = lsd;
+        let foot = lfoot;
+        let hy = q.y;
+        let hyl = hy - select(0.0, vc_land(q.xz), hy < 600.0);
+            // (the light: looks on the way to the sun through the lumps, close and further, then through the bulk of the
+            // cloud; in the sheet's shadow what light there is comes in low from the open sky round its edge)
+            let st0 = vc_sun_t(q, l.L);
+            let Lr = normalize(vec3<f32>(q.x, -0.4 * b.rho, q.z));
+            let Lf = normalize(mix(Lr, l.L, smoothstep(0.15, 0.75, st0)));
+            let f1q = q + Lf * 24.0;
+            var fb1 = vc_base(f1q);
+            let f1 = vc_sdf(f1q, &fb1, 40.0, false).x;
+            let f2q = q + Lf * 78.0;
+            var fb2 = vc_base(f2q);
+            let f2 = vc_sdf(f2q, &fb2, 40.0, false).x;
+            let o1 = saturate(0.5 - f1 / 40.0);
+            let o2 = saturate(0.5 - f2 / 74.0);
+            // (the sheet's underside, in its own shadow, needs no looks at the bulk: most of what fills the sky)
+            let under = b.du < min(b.dc, b.df) && hy < VC_HU && st0 < 0.3;
+            var s3 = 0.0;
+            var s4 = 0.0;
+            if (!under) {
+                s3 = saturate((10.0 - vc_dist(q + Lf * 240.0)) / 120.0);
+                s4 = saturate((10.0 - vc_dist(q + Lf * 560.0)) / 260.0);
+            }
+            let tau = 1.35 * o1 + 1.9 * o2 + 2.2 * s3 + 2.6 * s4;
+            let lit = exp(-tau);
+            // (and close to, the small lumps' own faces: which side of each looks at the light)
+            face = 1.0;
+            if (foot < 24.0) {
+                let rs = sd.x + 40.0;
+                face = 0.7 + 0.62 * saturate(0.5 - (vc_fine(q + Lf * 11.0, rs, foot).x - vc_fine(q, rs, foot).x) / 40.0);
+            }
+            tsun = lit * st0 * (1.0 - 0.5 * l.warm);
+            rim = lit * (1.0 - smoothstep(0.15, 0.75, st0));
+            // (the sky's light shut out from under what hangs over it and deep in it)
+            let occ = select(saturate((10.0 - vc_dist(q + vec3<f32>(0.0, 190.0, 0.0))) / 150.0), 1.0, under);
+            let deep = saturate(-sd.x / 90.0);
+            ao = (0.4 + 0.6 * sd.y * sd.y) * (1.0 - 0.72 * occ) * (1.0 - 0.6 * deep);
+            // (and open below it? the fire over the land lights what looks down on it)
+            below = 0.0;
+            if (hyl < 700.0 && time < VC_COLLAPSE + 6.0) {
+                let dq = q - vec3<f32>(0.0, 46.0, 0.0);
+                var db = vc_base(dq);
+                below = saturate((vc_sdf(dq, &db, 40.0, false).x - vc_sdf(q, &b, 40.0, false).x + 6.0) / 64.0);
+            }
+    }
+    }
     // (what the march left of the land behind it, once it stopped for being nearly opaque, is nothing)
     o.tr = saturate((o.tr - 0.051) / 0.949);
     // (going out to the thin end of it: at the end all of it lets the light through, more here and there, red as it goes.
     // Thinned in the density a cloud this deep stays opaque to the last and then clears along a hard edge)
     if (vs.thin > 0.0 && o.tr < 0.999) {
-        let g = 0.6 * gnoise3(rd * 2.3 + vec3<f32>(0.0, 0.0, time * 0.03)) + 0.4 * gnoise3(VC_R1 * rd * 6.1 + vec3<f32>(time * 0.05));
+        let g = 0.6 * vc_gn3(rd * 2.3 + vec3<f32>(0.0, 0.0, time * 0.03)) + 0.4 * vc_gn3(VC_R1 * rd * 6.1 + vec3<f32>(time * 0.05));
         let x = 1.0 - smoothstep(0.0, 1.0, vs.thin * 1.2 + 0.55 * (g - 0.5) - 0.1);
         o.c = mix(o.c, vec3<f32>(0.1, 0.04, 0.026) * (1.0 - o.tr) * (0.2 + 0.8 * l.sun_up), 0.75 * vs.thin) * x;
         o.tr = 1.0 - (1.0 - o.tr) * x;
@@ -1547,8 +1633,8 @@ fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight
             // (how much of the shell the ray runs through: most where it grazes it, so the rim shows as an arc)
             let cs = sq * sqrt(aa) / R;
             let graze = 1.0 / max(cs, 0.06);
-            let n = gnoise3(hp * (1.0 / 190.0) + vec3<f32>(0.0, 0.0, 0.3 * s));
-            let n2 = gnoise3(VC_R1 * hp * (1.0 / 64.0));
+            let n = vc_gn3(hp * (1.0 / 190.0) + vec3<f32>(0.0, 0.0, 0.3 * s));
+            let n2 = vc_gn3(VC_R1 * hp * (1.0 / 64.0));
             let br = smoothstep(0.34, 0.62, n + 0.3 * (n2 - 0.5));
             let al = saturate(0.018 * graze * br) * smoothstep(0.0, 0.7, s) * (1.0 - smoothstep(2.5, 6.0, s)) * (1.0 - 0.45 * f32(h));
             let lum = dot(l.skyl, vec3<f32>(0.2126, 0.7152, 0.0722));

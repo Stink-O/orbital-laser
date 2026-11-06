@@ -226,6 +226,13 @@ laser, command, capability and timing). This file is the short, factual version 
   smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting off the land behind it into new
   clouds from 60 s), the player engulfed (near black, embers, `vc_specks`), then a dim world under falling ash, the sheet
   thinning from 69 s to a blood-red sun, all gone by 80 (`thin`). FAST's half stage holds the cloud and the bombs' smoke.
+  **Its cloud's cost:** a GPU works on pixels in groups and a group lasts as long as its slowest, so `vc_march`'s time
+  goes with the worst ray of a group and with what its lanes branch into at different steps. The look at the light is out
+  of the loop for that (once a ray), and skipping pixels saves nothing (a chequerboard of pixels or of 2x2 blocks was
+  tried). `vc_gn3` is gnoise3 with a hash a corner; `VC_HOLD` keeps the big lumps longer far from the surface; the air
+  the wall has emptied is crossed without looking up lumps (`VC_ST_AIR`).
+  **A chain of stages takes the strike's clock** (`now.max(clock())`, in `vc_work` and `vl_tick`): counting its own time it
+  runs at half speed beside another chain, and what's due last never goes in.
   **Thin walls show the land through:** the ring's wall must stay thicker than the lumps cut (`vc_ww`, the gain in
   `vc_lump_col`). Its land (terrain on only, `vc_land.rs`): a caldera about 560 across and 90 deep, a lake of dark crust
   (`lake_edit`: big plates warped irregular, broken further in places, veins of lava towards the ring's vents `Hot`,
