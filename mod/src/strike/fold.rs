@@ -117,6 +117,10 @@ impl FdWedge {
     pub fn bearing(k: usize, turn: f64) -> f64 {
         (f64::from(FD_CREASES[k]) + turn).to_radians()
     }
+    /// How far out ring i meets crease k.
+    pub fn node(k: usize, i: usize) -> f64 {
+        1.0 / f64::from(FD_INV[k][i])
+    }
     /// How far out the last ring meets crease k.
     pub fn reach(k: usize) -> f64 {
         1.0 / f64::from(FD_INV[k][4])
@@ -141,9 +145,15 @@ pub fn fd_pin(target: [f64; 3], me: [f64; 3], seed: f32) -> u32 {
     let cell = (0..5).find(|i| r * (u * FD_INV[k][*i] + v * FD_INV[k1][*i]) < 1.0).unwrap_or(5);
     (6 * k + cell) as u32
 }
-/// params[10]: the land's level (`fd_level`, a whole number, 0 or under) and under it, in 128ths, the player's panel (`fd_pin`), as the warp reads them.
-pub fn fd_lie(level: f32, pin: u32) -> f32 {
-    level - (pin + 1) as f32 / 128.0
+/// The crease patterns, by fold_warp.wgsl's cp_mode: (the setting's and command's word, the wheel's, what it is). All three are the same twelve creases and five rings; they differ across a panel.
+pub const FD_PATTERNS: [(&str, &str, &str); 3] = [
+    ("a", "UMBRELLA", "Umbrella: creases and rings, flat panels, the clearest"),
+    ("b", "WATERBOMB", "Waterbomb: an X across every panel, its middle up or down"),
+    ("c", "DIAGONAL", "Diagonal: a fold across every panel, in diamonds"),
+];
+/// params[10]: the land's level (`fd_level`, a whole number, 0 or under) and under it, in 1024ths, the pattern and the player's panel (`fd_pin`), as the warp reads them (cp_code).
+pub fn fd_lie(level: f32, pin: u32, pattern: usize) -> f32 {
+    level - (pattern as u32 * 100 + pin + 1) as f32 / 1024.0
 }
 
 /// The columns asked of the world at the strike's start, for how low the land lies round the target (`fd_level`).
@@ -172,7 +182,7 @@ pub fn fd_level(target_y: i32, heights: &[Option<i32>]) -> f32 {
     ((low - target_y - 1) as f32).clamp(-80.0, 0.0)
 }
 
-pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
+pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3], pattern: usize) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
@@ -223,7 +233,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         return p.ev;
     }
     // ---- the land: all of it strike/fold_land.rs ---------------------------------------------------------------------
-    fold_land::land_plan(&mut p, s, fd_turn(shader_seed), dimension, me);
+    fold_land::land_plan(&mut p, s, fd_turn(shader_seed), dimension, me, pattern);
     // (playback goes through the plan in order, and stops at the first not due: one out of order holds up all after it)
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -293,7 +303,8 @@ mod tests {
         assert_eq!(fd_pin([0.0; 3], [100.0, 0.0, 1.0], 0.0), 2);
         assert_eq!(fd_pin([0.0; 3], [-30.0, 0.0, -1.0], 0.0), 6 * 6);
         assert_eq!(fd_pin([0.0; 3], [2000.0, 0.0, 1.0], 0.0), 5);
-        assert_eq!(fd_lie(-45.0, 7), -45.0 - 8.0 / 128.0);
+        assert_eq!(fd_lie(-45.0, 7, 0), -45.0 - 8.0 / 1024.0);
+        assert_eq!(fd_lie(-45.0, 7, 2), -45.0 - 208.0 / 1024.0);
     }
 
     /// A plateau is pressed to itself, not to the sea; a few low columns don't drag it down; land not loaded says nothing.

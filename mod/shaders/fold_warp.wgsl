@@ -164,16 +164,21 @@ fn fw_shock(r: f32, t: f32) -> f32 {
     }
     return y;
 }
-// ---- the crease pattern: origami, the one pattern, the same everywhere it is used (tools/foldview/pattern.py makes its tables, here and in strike/fold.rs).
+// ---- the crease pattern: origami, one pattern at a time, the same everywhere it is used (tools/foldview/pattern.py makes its tables, here and in strike/fold.rs).
 // Twelve straight creases 30 degrees apart, out of the target, mountain and valley in turn, and five rings of straight chords round them, mountain and
-// valley in turn from ring to ring: a pleated sheet, which is what a closing umbrella is. Nothing else is drawn and nothing else folds: every line on the
-// land is a real kink of the sheet and every kink is on a line. What isn't regular is the time each line takes and how far each runs: the mountains on past the
-// last ring, the valleys stopping short of it.
+// valley in turn from ring to ring: a pleated sheet, which is what a closing umbrella is. Across each panel of it, by the wheel's FOLD switch (`/orbital foldpattern`, cp_mode):
+//   0 UMBRELLA    nothing: the panels are flat
+//   1 WATERBOMB   an X, its middle off the panel, up and down in turn
+//   2 DIAGONAL    one diagonal, turn about, so that they run in diamonds, a fold along each (the nodes at their ends stand off the others, CP_DIA)
+// Nothing else is drawn and nothing else folds: every line on the land is a real kink of the sheet and every kink is on a line. What isn't regular is the time each line
+// takes and how far each runs: the mountains on past the last ring, the valleys stopping short of it.
 // It folds as paper does: the pattern's nodes go somewhere (cp_bear), and every point of the land goes where the nodes of its panel put it (cp_sheet). A panel
 // between two creases and two chords is flat: its chords are parallel, whatever the nodes do. Each node fires as its crease reaches it. Nodes keep to their
 // bearing, so a wedge never leaves its sector of the circle and no two wedges can meet; along a bearing the sheet is one line going one way: nothing over anything.
 const CP_K: f32 = 0.5;             // the big creases' fold: a panel's slope, per radian of cp_rise
 const CP_N: i32 = 12;              // the creases (the tables are CP_N * 5 long)
+const CP_V: f32 = 0.12;            // WATERBOMB: a panel's middle off it, of its width
+const CP_DIA: f32 = 0.05;          // DIAGONAL: how far up or down a node stands, of its radius, in turn
 const CP_PRE: f32 = 0.62;          // how far the folds go before the land lifts: all of it by FW_FOLD + 5
 const CP_REST: f32 = 0.5;          // how much of them is left in the sphere's walls
 fn cp_dir(k: i32) -> vec2<f32> {
@@ -293,9 +298,18 @@ fn cp_cell(w: CpW, r: f32) -> i32 {
     }
     return 5;
 }
+// Which pattern this strike folds on: (strike/fold.rs's fd_lie) under params[10]'s whole number, 1024ths of one, one more than 100 pattern + 6 k + cell.
+fn cp_code() -> i32 {
+    let x = globals.warp[2].z;
+    return i32(round((ceil(x) - x) * 1024.0)) - 1;
+}
+fn cp_mode() -> i32 {
+    return clamp(cp_code() / 100, 0, 2);
+}
 // A panel of the pattern: the wedge's cell i, its corners round it, a and b on crease k, c and d on crease k1 (a and d the target in
-// cell 0), and v its middle, where its four triangles meet: flat across unless its ring stands out of round, and no line there.
-struct CpKite { a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>, v: vec2<f32>, bq: vec4<f32> }
+// cell 0), and v where its four triangles meet, its point m of the way across and along (flat across unless its pattern folds there; a line there only then); sp which of its corners
+// a line of the pattern's own goes to: every other from 0 (DIAGONAL) or 1, -1 none, 2 all four.
+struct CpKite { a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>, v: vec2<f32>, m: vec3<f32>, up: f32, bq: vec4<f32>, sp: i32 }
 fn cp_kite(w: CpW, i: i32) -> CpKite {
     let in0 = select(0.0, cp_node(w.k, max(i - 1, 0)), i > 0);
     let in1 = select(0.0, cp_node(w.k1, max(i - 1, 0)), i > 0);
@@ -305,7 +319,17 @@ fn cp_kite(w: CpW, i: i32) -> CpKite {
     let b = q0 * w.e0;
     let d = in1 * w.e1;
     let c = q1 * w.e1;
-    return CpKite(a, b, c, d, 0.25 * (a + b + c + d), vec4<f32>(q0, q1, in0, in1));
+    let odd = ((w.k + i) & 1) == 1;
+    let mode = cp_mode();
+    var m = vec3<f32>(0.5);
+    var sp = -1;
+    if (mode == 1) {
+        sp = 2;
+    } else if (mode == 2) {
+        m = select(vec3<f32>(0.0, 1.0, 0.5), vec3<f32>(1.0, 0.0, 0.5), odd);
+        sp = select(0, 1, odd);
+    }
+    return CpKite(a, b, c, d, mix(mix(a, b, m.x), mix(d, c, m.y), m.z), m, select(-1.0, 1.0, odd), vec4<f32>(q0, q1, in0, in1), sp);
 }
 // Which of the kite's four facets p is in, between its corners j and j + 1 and the apex: its weights there, how far it is from the
 // nearest of the facet's three lines, blocks.
@@ -330,10 +354,16 @@ fn cp_tri(kt: CpKite, p: vec2<f32>, exact: bool) -> CpTri {
     let lx = max(cp_x(q, y) / dd, 0.0);
     let ly = max(cp_x(x, q) / dd, 0.0);
     let lv = max(1.0 - lx - ly, 0.0);
-    // (how far off the chord it is; near enough, lying on the sphere: a groove)
+    // (how far off the chord it is, or its pattern's own lines; near enough, lying on the sphere: a groove)
     var e = lv * (kt.bq.x - kt.bq.z);
     if (exact) {
         e = lv * dd / max(length(y - x), 0.001);
+        if (kt.sp == 2 || kt.sp == ((j + 1) & 1)) {
+            e = min(e, lx * dd / max(length(y), 0.001));
+        }
+        if (kt.sp == 2 || kt.sp == (j & 1)) {
+            e = min(e, ly * dd / max(length(x), 0.001));
+        }
     }
     return CpTri(j, lv, lx, ly, e);
 }
@@ -401,10 +431,9 @@ fn cp_amount(tau: f32, rt: f32) -> f32 {
     return select(mix(CP_PRE, 1.0, fw_ss(FW_FOLD, FW_FOLD + 5.0, tau)), 1.0, rt >= FW_REL) * mix(1.0, CP_REST, fw_lay(tau));
 }
 // The player's own kite is left alone, so that nothing rises under them: (its crease, its cell), from where they stood as it fired (fd_pin in
-// strike/fold.rs): under params[10]'s whole number, 128ths of one, one more than 6 k + cell.
+// strike/fold.rs): under params[10]'s whole number, with the pattern (cp_code).
 fn cp_pin() -> vec2<i32> {
-    let x = globals.warp[2].z;
-    let code = i32(round((ceil(x) - x) * 128.0)) - 1;
+    let code = cp_code() % 100;
     return vec2<i32>(code / 6, code % 6);
 }
 // Is ring i's node on big crease k one of the pinned kite's?
@@ -448,6 +477,10 @@ fn cp_lift(k: i32, i: i32, t: f32, pin: vec2<i32>) -> f32 {
         return 0.0;
     }
     var ring = CP_Z[k * 5 + i];
+    // (the diagonals' fold: the nodes at their ends one way, the others the other)
+    if (cp_mode() == 2) {
+        ring += select(-CP_DIA, CP_DIA, ((k + i) & 1) == 1);
+    }
     var big = CP_K * cp_rise(k);
     if (t < 19.0) {
         big *= fw_ss(0.0, 1.5, t - CP_AT[k * 5 + i]);
@@ -533,7 +566,13 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
             A = vec3<f32>(A2.x * w.e0.x, A2.y, A2.x * w.e0.y);
             D = vec3<f32>(D2.x * w.e1.x, D2.y, D2.x * w.e1.y);
         }
-        let V = 0.25 * (A + B + C + D);
+        var V = mix(mix(A, B, kt.m.x), mix(D, C, kt.m.y), kt.m.z);
+        if (cp_mode() == 1 && (w.k != pin.x || i != pin.y)) {
+            let up = cross(C - A, B - D);
+            let nv = up / max(length(up), 0.001);
+            let f = fw_ss(0.0, 1.3, t - CP_CH[w.k * 5 + i] - 0.6) * select(1.0, g.ps[i], t >= FW_REL && lifts);
+            V += nv * kt.up * CP_V * min(length(C - B), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w)) * f * amount;
+        }
         var c = array<vec3<f32>, 4>(A, B, C, D);
         let X = c[tr.j];
         let Y = c[(tr.j + 1) & 3];
@@ -575,7 +614,10 @@ fn cp_lying(w: CpW, i: i32, kt: CpKite, tr: CpTri, t: f32, pin: vec2<i32>) -> ve
         za = kt.bq.z * cp_lift(w.k, i - 1, t, pin);
         zd = kt.bq.w * cp_lift(w.k1, i - 1, t, pin);
     }
-    let zv = 0.25 * (za + zb + zc + zd);
+    var zv = mix(mix(za, zb, kt.m.x), mix(zd, zc, kt.m.y), kt.m.z);
+    if (cp_mode() == 1 && (w.k != pin.x || i != pin.y)) {
+        zv += kt.up * CP_V * min(length(kt.c - kt.b), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w));
+    }
     var z = array<f32, 4>(za, zb, zc, zd);
     var c = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
     let zx = z[tr.j];
@@ -1057,7 +1099,44 @@ fn cp_shade(n: vec3<f32>, tau: f32) -> f32 {
     let L = normalize(vec3<f32>(globals.sun.x, abs(globals.sun.y) + 0.45, globals.sun.z));
     return clamp(1.0 + mix(1.5, 2.6, fw_lay(tau)) * (dot(n, L) - L.y), 0.42, 1.55);
 }
-// The crater goes in held up at the land's level: the last slam breaks the land along its creases, and each kite of the pattern lets go on
+// ---- the damage: the crater earned. Each bang leaves its ring sunk a little, panel by panel, along the creases, and the land burnt (fw_hurt): by the last bang the land on
+// the hold already lies where the crater is going to be, as dark as it, broken along the same lines, and the swap is the last blow of it. All of it goes by the pattern's nodes,
+// so each panel is flat, its bends on the creases. How far ring n's nodes have gone of their way down, n = -1 the target: most as the ring outside them lands, the rest as their own does.
+fn fw_step(hit: f32, t: f32) -> f32 {
+    return fw_ss(hit - 0.04, hit + 0.12, t);
+}
+fn fw_gone(n: i32, t: f32) -> f32 {
+    let own = fw_step(fw_hit(max(n, 0)), t);
+    return select(0.55 * fw_step(fw_hit(n + 1), t) + 0.45 * own, own, n < 0);
+}
+// How far down node (k, n) ends up: the rim not at all.
+fn fw_sag_node(k: i32, n: i32) -> f32 {
+    var d = 20.0;
+    if (n >= 3) {
+        return 0.0;
+    }
+    if (n >= 0) {
+        d = select(select(8.0, 13.0, n == 1), 18.0, n == 0) * (0.75 + 0.5 * fw_hash(vec2<f32>(f32(k) * 5.0 + 2.0, f32(n) * 9.0 + 4.0)));
+    }
+    return d;
+}
+// How far the land at this point of panel kt has sunk by t.
+fn fw_sag(w: CpW, i: i32, kt: CpKite, tr: CpTri, t: f32) -> f32 {
+    if (i > 3) {
+        return 0.0;
+    }
+    let in_ = fw_gone(i - 1, t);
+    let out_ = fw_gone(i, t);
+    var z = array<f32, 4>(in_ * fw_sag_node(w.k, select(-1, i - 1, i > 0)), out_ * fw_sag_node(w.k, i), out_ * fw_sag_node(w.k1, i), in_ * fw_sag_node(w.k1, select(-1, i - 1, i > 0)));
+    // (the waterbomb's points go on standing out of what has sunk)
+    let zv = mix(mix(z[0], z[1], kt.m.x), mix(z[3], z[2], kt.m.y), kt.m.z) + select(0.0, kt.up * 5.0 * out_, kt.sp == 2);
+    return zv * tr.lv + z[tr.j] * tr.lx + z[(tr.j + 1) & 3] * tr.ly;
+}
+// When panel (w, i) lets go of the land's level, after the last slam: from the middle out.
+fn fw_late(w: CpW, i: i32) -> f32 {
+    return 0.2 + 0.62 * f32(i) + 0.5 * fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
+}
+// The crater goes in held up where the land had sunk to: the last slam breaks the land along its creases, and each panel of the pattern lets go on
 // its own time, from the middle out, the one under the player first, and falls to where it really lies (strike/fold_land.rs's `bowl`:
 // keep them in step). What it is still held up by.
 fn fw_sunk(Q: vec3<f32>, r: f32, a: f32, t: f32, mq: vec3<f32>) -> f32 {
@@ -1069,10 +1148,11 @@ fn fw_sunk(Q: vec3<f32>, r: f32, a: f32, t: f32, mq: vec3<f32>) -> f32 {
     let i = cp_cell(w, r);
     let mr = length(mq.xz);
     let mw = cp_wedge(atan2(mq.z, mq.x), mq.xz, mr);
-    let h = fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
-    let late = select(0.2 + 0.62 * f32(i) + 0.5 * h, 0.0, w.k == mw.k && i == cp_cell(mw, mr));
+    let late = select(fw_late(w, i), 0.0, w.k == mw.k && i == cp_cell(mw, mr));
     let s = max(t - FW_SLAM4 - late, 0.0);
-    return max(FW_BOWL * pow(1.0 - u * u * u, 0.75) - FW_CAVE * s * s, 0.0);
+    let kt = cp_kite(w, i);
+    let sag = fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - mq.xz));
+    return max(FW_BOWL * pow(1.0 - u * u * u, 0.75) - sag - FW_CAVE * s * s, 0.0);
 }
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var out = Warped(pos, vec3<f32>(1.0));
@@ -1096,6 +1176,14 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     if (t >= FW_SLAM4 + 0.01 && t < FW_SLAM4 + FW_SUNK) {
         Q.y += fw_sunk(Q, r, a, t, c.me - c.tgt);
+    } else if (t > FW_FLAT && t < FW_SLAM4 + 0.01 && r < 310.0) {
+        // (each ring sunk a little as it lands)
+        let w = cp_wedge(a, Q.xz, r);
+        let i = cp_cell(w, r);
+        if (i < 4) {
+            let kt = cp_kite(w, i);
+            Q.y -= fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - (c.me - c.tgt).xz));
+        }
     }
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
     let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
@@ -1284,7 +1372,59 @@ fn cp_lines(r: f32, w: CpW, i: i32, t: f32, px: f32, near: f32) -> CpHit {
             cp_line(&h, abs(sg.x), near * cp_taper(sg.y, g), px);
         }
     }
+    // (the pattern's own lines across the panel, a moment after its chord)
+    if (i < 5) {
+        let kt = cp_kite(w, i);
+        let g = fw_ss(0.0, 1.0, (t - cp_chord(w.k, i) - 0.6) / 1.3);
+        if (kt.sp >= 0 && g > 0.0) {
+            var cn = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
+            for (var j = 0; j < 4; j += 1) {
+                if (kt.sp == 2 || (j & 1) == kt.sp) {
+                    let s = cp_seg(p, cn[j], kt.v);
+                    cp_line(&h, abs(s.x), near * cp_taper(s.y, g), px);
+                }
+            }
+        }
+    }
     return h;
+}
+// ---- the damage on the land's pixels: burnt, cracked ---------------------------------------------------------------------
+// soot: how far it has gone to the crater's char. crack: how much of the pixel is a crack's dark. ember: how hot it glows.
+struct FwHurt { soot: f32, crack: f32, ember: f32 }
+const FW_BURN: f32 = 396.0;        // how far out the bangs burn (strike/fold_land.rs's FD_CHAR)
+fn fw_hurt(r: f32, w: CpW, i: i32, d: f32, t: f32, px: f32) -> FwHurt {
+    var o = FwHurt(0.0, 0.0, 0.0);
+    // ---- the wound: from the touch, out along the creases, each crease its own time, the stain soaking out from them into the panels ------
+    let u = t - FW_BEAT;
+    let k = select(w.k, w.k1, w.v > w.u);
+    let v = max(u - 0.3 * (cp_born(k) - FW_SCORE), 0.0);
+    let got = (12.0 + 20.0 * v) * v - r;
+    if (got > 0.0) {
+        let wide = 2.5 + 40.0 * fw_ss(1.0, 8.7, u);
+        o.soot = (1.0 - fw_ss(0.2 * wide, wide, d)) * fw_ss(0.0, 50.0, got) * 0.75;
+        o.ember = (1.0 - fw_ss(0.15, 0.7 + px, d)) * exp(-got / 45.0) * fw_ss(FW_LEN, FW_LEN - 40.0, r);
+        o.crack = (1.0 - fw_ss(0.4, 1.2 + px, d)) * fw_ss(0.0, 30.0, got) * 0.6;
+    }
+    // ---- the bangs: each burns its ring, and goes on burning what has landed; cracks run in along the creases from where it landed ----
+    let c = min(i, 4);
+    let a = t - fw_hit(c);
+    let inner = c < 4;
+    var burn = 0.46 * fw_step(fw_hit(c), t);
+    for (var n = 0; n < c; n += 1) {
+        burn += 0.46 / f32(c) * fw_step(fw_hit(n), t);
+    }
+    // (past the crater the burn goes off to the char's own edge, by the rays)
+    if (!inner) {
+        burn *= 0.8 * fw_ss(FW_BURN, 300.0, r + 26.0 * sin(atan2(w.v, w.u) * 5.0 + f32(w.k) * 2.1));
+    }
+    o.soot = max(o.soot, burn);
+    if (a > 0.0) {
+        let out_ = 1.0 / cp_ix(w, c);
+        let run = fw_ss(0.0, 34.0, a * 480.0 - (out_ - r));
+        o.crack = max(o.crack, (1.0 - fw_ss(0.5, 1.4 + px, d - 0.5 * fw_ss(0.0, 0.5, a))) * run);
+        o.ember = max(o.ember, (1.0 - fw_ss(0.05, 0.6 + px, d)) * run * (0.3 + 0.7 * exp(-a * 1.8)));
+    }
+    return o;
 }
 // ---- the void ---------------------------------------------------------------------------------------------------------
 fn fw_stars(dir: vec3<f32>) -> vec3<f32> {
@@ -1484,6 +1624,26 @@ fn world_fragment(f: Fragment) -> Painted {
         let core = on * hit.hot * fw_ss(0.5, 0.85, abs(real_n.y) / max(length(real_n), 1.0e-6));
         col = mix(col, line, clamp(core, 0.0, 1.0));
         fog = 1.0 - clamp(core + 0.5 * on * hit.glow, 0.0, 1.0);
+    }
+    // ---- the damage: from the touch on the land is hurt along its creases, and each bang makes it worse; what is left of it fades off the crater as its panels fall ---
+    if (t > FW_BEAT && r < FW_LEN * 1.2 && fade > 0.0) {
+        var hurt = fw_hurt(r, wedge, cell, hit.big, t, max(0.05, dist * 0.00095));
+        // (the crater comes up out of the soot as it falls; what lay past it clears at once)
+        let s = t - FW_SLAM4;
+        if (s > 0.0) {
+            let go = select(1.0 - fw_ss(0.0, 1.0, s), 1.0 - fw_ss(0.0, 2.0, s - fw_late(wedge, ring)), cell < 4);
+            hurt = FwHurt(hurt.soot * go, hurt.crack * go, hurt.ember * go);
+        }
+        let g = dot(col, vec3<f32>(0.3, 0.5, 0.2));
+        let burnt = vec3<f32>(0.075, 0.066, 0.07) + vec3<f32>(0.33, 0.3, 0.3) * g;
+        col = mix(col, burnt, clamp(hurt.soot, 0.0, 1.0));
+        col = col * (1.0 - 0.92 * clamp(hurt.crack, 0.0, 1.0));
+        // (on what faces up, as the lines are)
+        let hot = clamp(hurt.ember, 0.0, 1.0) * fw_ss(0.5, 0.85, abs(real_n.y) / max(length(real_n), 1.0e-6));
+        // (dull where it has cooled, white-hot only just after a bang; never one flat orange along a crack)
+        let along = 0.62 + 0.38 * sin(r * 0.13 + f32(wedge.k) * 2.4 + t * 1.3) * sin(r * 0.041 - f32(wedge.k));
+        col = col + mix(vec3<f32>(0.55, 0.1, 0.03), vec3<f32>(1.15, 0.5, 0.14), hot * hot) * hot * along;
+        fog = fog * (1.0 - hot);
     }
     // ---- the land overhead goes off in a thin haze: it has to read as land, right up to the torn edge of the hole -----------------
     let awayp = length(Q.xz - mq.xz);

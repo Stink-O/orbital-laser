@@ -297,6 +297,8 @@ pub(super) struct Shape {
     bot: i32,
     /// Where the player stood (x, z): their island.
     me: [f64; 2],
+    /// Which crease pattern (fold.rs's FD_PATTERNS): what parts each panel breaks into (`facet`).
+    pattern: usize,
 }
 impl Shape {
     /// The pattern at bearing `a`.
@@ -326,10 +328,30 @@ impl Shape {
         st.max(0.6 * fine)
     }
 }
-/// The floor's own panel: a kite of the crease pattern, a drop and a tilt of its own, so that the creases stand as scarps. `r` out along
+/// Which part of panel `i` of wedge `w` the point `r` out on its bearing is in, by the pattern's own lines across it (fold_warp.wgsl's cp_kite, cp_tri): UMBRELLA one part,
+/// WATERBOMB four round its middle, DIAGONAL the two sides of its diagonal.
+fn facet(pattern: usize, w: &FdWedge, i: usize, r: f64) -> u32 {
+    if pattern == 0 {
+        return 0;
+    }
+    // (in the two creases' own axes: a skew frame keeps which side of a line a point is on)
+    let p = (w.u * r, w.v * r);
+    let (b, c) = ((FdWedge::node(w.k, i), 0.0), (0.0, FdWedge::node(w.k1, i)));
+    let (a, d) = if i == 0 { ((0.0, 0.0), (0.0, 0.0)) } else { ((FdWedge::node(w.k, i - 1), 0.0), (0.0, FdWedge::node(w.k1, i - 1))) };
+    let side = |o: (f64, f64), e: (f64, f64)| (e.0 - o.0) * (p.1 - o.1) - (e.1 - o.1) * (p.0 - o.0) > 0.0;
+    if pattern == 2 {
+        let (o, e) = if (w.k + i) % 2 == 1 { (b, d) } else { (a, c) };
+        return u32::from(side(o, e));
+    }
+    // (round its middle, spoke by spoke, as cp_tri)
+    let v = (0.25 * (a.0 + b.0 + c.0 + d.0), 0.25 * (a.1 + b.1 + c.1 + d.1));
+    let round = [a, b, c, d];
+    (0..4).find(|j| side(v, round[*j]) && !side(v, round[(*j + 1) % 4])).map_or(0, |j| j as u32)
+}
+/// The floor's own panel: a panel of the crease pattern, a drop and a tilt of its own, so that the creases stand as scarps. `r` out along
 /// bearing wedge `w`, in the wedge's cell `i`, its inner and outer chords `r0`, `r1` there.
-fn kite_drop(seed: u32, w: &FdWedge, i: usize, r: f64, r0: f64, r1: f64) -> f64 {
-    let id = (w.k * 5 + i) as u32;
+fn kite_drop(seed: u32, w: &FdWedge, i: usize, r: f64, r0: f64, r1: f64, part: u32) -> f64 {
+    let id = (w.k * 5 + i) as u32 * 4 + part;
     let h = |k: u32| mh(id, seed, k);
     let e = (r - 0.5 * (r0 + r1)) / (r1 - r0).max(1.0) * 2.0;
     // (each dips in towards the middle, or now and then out, its outer edge a scarp over the next)
@@ -592,7 +614,7 @@ fn fd_cut(s: &Shape, c: &Column, x: i32, z: i32) -> Cut {
     let bow = if FD_SHATTER { bowl(su).min(bowl(u * 0.92)) } else { bowl(u) };
     let t = sstep(0.0, 0.24, 1.0 - u);
     let base = f64::from(g) + (lv - f64::from(g)) * t;
-    let tilt = shift(p.id, s.seed, dx, dz, p.sa, p.sr, su, dest == Fate::Gone) + kite_drop(s.seed, &w, i, r, r0, r1) * t;
+    let tilt = shift(p.id, s.seed, dx, dz, p.sa, p.sr, su, dest == Fate::Gone) + kite_drop(s.seed, &w, i, r, r0, r1, facet(s.pattern, &w, i, r)) * t;
     let funnel = FD_FUNNEL * (1.0 - ((r - wound) / FD_FUNNEL_R).clamp(0.0, 1.0)).powi(2);
     let top = base - bow - FD_TERR * f64::from(dig) - funnel + tilt;
     // (never heaped higher than a little over the land round it; hollows filled)
@@ -1678,7 +1700,7 @@ fn load_rows(cx: f64, cz: f64) -> Vec<[i32; 4]> {
 
 /// The land's plan, from fold_plan when the terrain is on: kept loaded from the fire, read, and the chain of stages that
 /// does the rest; mobs and items killed as the bloom goes; smoke after it.
-pub(super) fn land_plan(p: &mut Plan, seed: u32, turn: f64, dimension: &str, me: [f64; 3]) {
+pub(super) fn land_plan(p: &mut Plan, seed: u32, turn: f64, dimension: &str, me: [f64; 3], pattern: usize) {
     let (bx, by, bz) = (p.bx, p.by, p.bz);
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
     let load = load_rows(cx, cz);
@@ -1700,7 +1722,7 @@ pub(super) fn land_plan(p: &mut Plan, seed: u32, turn: f64, dimension: &str, me:
         let t = FD_REVEAL + 0.5 + (FD_LEN - FD_REVEAL - 2.0) * i as f32 / FD_SMOKE as f32;
         p.at(t, format!("particle minecraft:campfire_signal_smoke {x:.1} {:.1} {z:.1} 18 2 18 0.03 80 force", by - 12));
     }
-    let shape = Shape { cx, cz, ph: [TAU * mh(1, seed, 0xc0), TAU * mh(2, seed, 0xc0), TAU * mh(3, seed, 0xc0), TAU * mh(4, seed, 0xc0)], seed, turn, level: by + 1, me: [me[0], me[2]], bot: bedrock_top(dimension) };
+    let shape = Shape { cx, cz, ph: [TAU * mh(1, seed, 0xc0), TAU * mh(2, seed, 0xc0), TAU * mh(3, seed, 0xc0), TAU * mh(4, seed, 0xc0)], seed, turn, level: by + 1, me: [me[0], me[2]], pattern, bot: bedrock_top(dimension) };
     // (its state made on a stage of its own, not as it fires: the land's square of columns is some megabytes)
     p.later(0.15, move |q| {
         crate::meter::spend(9_000_000);
@@ -1818,10 +1840,14 @@ mod tests {
         let (below, above) = (below as i32, above as i32);
         Some((top, (top - below..top + above).map(|y| f(y)).collect()))
     }
+    thread_local! {
+        /// The crease pattern the tests play on.
+        static PATTERN: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
     fn played_at(land: u8, len: f32) -> Played {
         LAND.with(|l| l.set(land));
         ASKED.with(|a| a.set(0));
-        let ev = plan(the_laser(), &target(), true, "minecraft:overworld", 37.0, ME, 0);
+        let ev = plan(the_laser(), &target(), true, "minecraft:overworld", 37.0, ME, PATTERN.with(std::cell::Cell::get));
         sim::play(ev, len, &column)
     }
     fn played(land: u8) -> Played {
@@ -2127,7 +2153,9 @@ mod tests {
         if timed && cfg!(debug_assertions) {
             return;
         }
-        for land in [0u8, 1, 2, 3, 4, 5, 6] {
+        // (the land's work is the same on all three patterns but for the panels' drops: each on the two lands that find the most of it)
+        for (land, pattern) in [(0u8, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (0, 1), (0, 2), (3, 1), (3, 2)] {
+            PATTERN.with(|p| p.set(pattern));
             let mut best: Vec<f64> = Vec::new();
             let mut late_all = 0.0f32;
             for _ in 0..if timed { 3 } else { 1 } {
@@ -2138,12 +2166,30 @@ mod tests {
                 best = if best.len() != ms.len() { ms } else { best.iter().zip(&ms).map(|(a, b)| a.min(*b)).collect() };
             }
             let worst = best.iter().copied().fold(0.0, f64::max);
-            eprintln!("LAND {land}: {} stages, edits {late_all:.2} s late at most, heaviest {worst:.2} ms", best.len());
+            eprintln!("LAND {land} pattern {pattern}: {} stages, edits {late_all:.2} s late at most, heaviest {worst:.2} ms", best.len());
             assert!(!timed || worst < 1.3, "land {land}: a stage took {worst:.2} ms");
             // (the jungle's many runs meet FD_HELD: it goes in up to some 4 s late, its outer land past the reveal. Known, not fixed: round 3)
             assert!(land == 6 || late_all < if land == 3 { 5.5 } else { 0.4 }, "land {land}: an edit {late_all:.2} s late");
         }
         LAND.with(|l| l.set(0));
+        PATTERN.with(|p| p.set(0));
+    }
+    /// The three patterns' panels: an umbrella's whole, a waterbomb's in four, a diagonal's in two, each part inside its own panel.
+    #[test]
+    fn the_panels_break_along_their_pattern() {
+        for (pattern, parts) in [(0usize, 1usize), (1, 4), (2, 2)] {
+            let mut seen = std::collections::HashSet::new();
+            for n in 0..1440 {
+                let w = fd_wedge(f64::from(n).to_radians() / 4.0 + 0.001, 0.0);
+                for r in (116..250).step_by(3) {
+                    let r = f64::from(r);
+                    let i = (0..4).find(|i| r * w.ix(*i) < 1.0).unwrap_or(3);
+                    seen.insert((w.k, i, facet(pattern, &w, i, r)));
+                }
+            }
+            let most = (0..12).flat_map(|k| (0..4).map(move |i| (k, i))).map(|(k, i)| seen.iter().filter(|s| s.0 == k && s.1 == i).count()).max();
+            assert_eq!(most, Some(parts), "pattern {pattern}");
+        }
     }
     /// `cargo test --release fd_wave_profile -- --ignored --nocapture`: the land's edits as the mod plays them out: how far
     /// out they reach a second at a time, how many blocks, chunks; $FD_LAND the land.
