@@ -247,7 +247,8 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   hauls you up and you break the surface 6.5 seconds after it took you, on a brown torrent running back the way it came,
   wreckage floating by, and ride it down as it falls: hard at first, slowing as it nears the land, hilltops first, the
   plains under a few blocks of running water for a while, wet land and rills as it goes. It sets you down near where it
-  found you, facing the way it went, the sky clearing as the strike ends.
+  found you, facing the way it went, the sky clearing as the strike ends. It lasts 42 seconds and reaches 1000 blocks.
+  **Photosensitivity:** the blow is one white flash over the whole picture, about a fifth of a second.
 
 All of them:
 
@@ -391,8 +392,9 @@ thrown with KNOCKBACK on, terrain damage on or off. It keeps the chunks within 1
 goes in through `world.edit-blocks`.
 
 The **Tsunami** digs no crater: it sweeps and scours a swath, under its water. The swath runs from 300 blocks upstream of
-the target (fading in over its first 130) through it to 160 past the player, 345 each side (the share of columns taken
-fading from 255 out), about 2,000 to 2,300 chunks, forceloaded from the start and let go at the end. Each chunk is read
+the target (fading in over its first 130) through it to 160 past the player, and at most 720 past the target, 345 each
+side (the share of columns taken fading from 255 out). That is about 2,200 chunks from 300 blocks off (about 1,600 to
+2,900 by how far off you stand), forceloaded from the start and let go at the end. Each chunk is read
 (`world.read-columns`, 40 under each column's top) in the order the front reaches it and changed as one edit
 (`world.edit-blocks`) as the crest has passed it, only where the wave stands at least 2 over the column's ground. What
 stood there goes, but for stumps of 1 to 3 logs under most trunks and footings of up to 3 blocks under buildings; the

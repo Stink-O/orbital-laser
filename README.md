@@ -79,9 +79,13 @@ and how to remove it.
 
 ## New in 0.5.10
 
-A fix release for the native version. On a server or LAN host, a strike's world changes now need operator level 4, and a
-guest's `/orbital` no longer changes the host's game. It's built on a newer Horizon: land a strike changes out of your
-view now shows in far terrain, and your hand draws during the Hurricane. Single player plays as before.
+A new laser, the **Tsunami**: the horizon stands up into a dark wall 320 blocks high, rolls in over the land at about
+100 blocks a second, sweeps a swath 700 across down to stumps and mud, and takes you with it. It's on the wheel's third
+page and `/orbital tsunami`. See [The lasers](#the-lasers).
+
+For the native version there's a server safety fix: on a server or LAN host, a strike's world changes now need operator
+level 4, and a guest's `/orbital` no longer changes the host's game. It's also built on a newer Horizon, so land a strike
+changes out of your view now shows in far terrain, and your hand draws during the Hurricane.
 
 ## New in 0.5.9
 
@@ -171,7 +175,8 @@ Fifteen lasers, five to a page of the wheel.
   you up, you ride it down as it falls, and it sets you down about where it found you, looking at what it has left. It
   sweeps a swath 700 across for real: trees snapped to stumps, houses to their footings, the soil scoured to mud and
   gravel in streaks along the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland,
-  ponds left standing in the hollows.
+  ponds left standing in the hollows. **Photosensitivity:** the blow as the water takes you is one white flash over the whole picture,
+  about a fifth of a second.
 
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
@@ -257,7 +262,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
    over the one at the top of the fork's folder (it's read as `horizon-prepare` runs: nothing to rebuild) and run it
    again.
 
-2. **Install the mod.** Download `orbital-laser-v0.5.8.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.10.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh

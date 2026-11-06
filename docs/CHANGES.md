@@ -4,13 +4,24 @@ What each release of Orbital Laser added, newest first. The current release is i
 
 ## 0.5.10
 
+- **Tsunami**, the fifteenth laser, on the wheel's third page and `/orbital tsunami`. No beam: over three seconds the
+  horizon stands up into a dark wall 320 blocks high and over five kilometres wide, and it comes in at about 100 blocks
+  a second, losing height over the land, its lip tearing and its foot a brown boil of what it has swept up. It hits the
+  target at 9 seconds and rolls on over you: a blow, seconds of foam, then green water with trees and pieces of houses
+  going by. It hauls you to the surface and you ride the torrent down as it falls, to be set down about where it found
+  you (hold **sneak** for half a second to break free; `/orbital knockback off` leaves you standing in it). It sweeps a
+  swath 700 across for real: trees to stumps, buildings to footings, the soil scoured to mud and gravel in streaks along
+  the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland and ponds left in the
+  hollows. Every mob and dropped item in the swath dies; chests and the like stay. It has its own sounds and lasts 42
+  seconds. **Photosensitivity:** the blow is one white flash over the whole picture, about a fifth of a second.
 - **Native: world changes need operator level 4.** On a server or LAN host, a strike's world changes run at the console's
   level, so they are now taken only from a level 4 operator. Before, a level 2 operator with a modified client could run
   any command that way. Single player is unchanged.
 - **Native: a guest's `/orbital` no longer changes the host's game,** and the command is listed for level 4 operators.
 - **Native: built on a newer Horizon.** Land a strike changes out of your view now shows in far terrain, and the first
   person hand draws during the Hurricane.
-- The `native/` folder holds the exact source of the native build. NOTICE counts the sounds correctly.
+- The `native/` folder holds the exact source of the native build. NOTICE no longer gives a count of the sounds, and
+  names the scripts that make them.
 
 ## 0.5.9
 
