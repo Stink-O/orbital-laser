@@ -1,0 +1,81 @@
+<title>Fold Evidence</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* layout: one workbench, frames left and numbers right on one clock, then the findings */
+:root{--bg:#14161c;--panel:#1c1f27;--line:#333845;--fg:#e8e6df;--dim:#a3a39b;--accent:#f0b24a;--bad:#ef6f5e;--ok:#6fc48f;--wait:#8fa8e8;
+--sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans)}
+main{max-width:1500px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+h1{font-size:26px;margin:0;text-wrap:balance}h2{font-size:19px;margin:0 0 10px;text-wrap:balance}h3{font-size:15px;margin:0 0 4px}
+p{margin:0 0 8px;max-width:75ch}.dim{color:var(--dim)}code,.mono{font-family:var(--mono);font-size:.88em}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.bar input[type=range]{flex:1 1 280px;min-width:0;accent-color:var(--accent)}
+button,select{font:13px var(--mono);background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:3px;padding:4px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}button:focus-visible,select:focus-visible,input:focus-visible,canvas:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.clock{font:500 18px var(--mono);font-variant-numeric:tabular-nums;min-width:6.5ch}.beat{font:13px var(--mono);color:var(--dim)}
+.work{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+@media(max-width:900px){.work{grid-template-columns:minmax(0,1fr)}}
+.cams{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px}
+.cam{position:relative;aspect-ratio:16/9;background-repeat:no-repeat;background-color:#000;max-width:100%}
+.cam span{position:absolute;left:4px;top:2px;font:11px var(--mono);color:#ffe9a8;text-shadow:0 0 3px #000}
+.heats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.heat h3{font:12px var(--mono);margin:0 0 2px;color:var(--fg)}.heat small{display:block;font:11px var(--sans);color:var(--dim);margin-bottom:2px;min-height:2.6em}
+.heat canvas{width:100%;height:auto;display:block;cursor:crosshair;image-rendering:pixelated}
+.ax{display:flex;justify-content:space-between;font:10px var(--mono);color:var(--dim)}
+table{border-collapse:collapse;width:100%;min-width:760px}th,td{text-align:left;vertical-align:top;padding:8px 10px;border-top:1px solid var(--line)}th{font:12px var(--mono);color:var(--dim);font-weight:400}
+.wrap{overflow-x:auto}.tag{font:11px var(--mono);padding:1px 6px;border:1px solid currentColor;border-radius:3px;white-space:nowrap}.tag.fixed{color:var(--ok)}.tag.open{color:var(--bad)}.tag.choice{color:var(--wait)}.tag.look{color:var(--accent)}
+.jump{white-space:nowrap}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.opt{border:1px solid var(--line);padding:12px;min-width:0}.opt img{width:100%;display:block;margin-bottom:8px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}.pair img{width:100%;display:block}figure{margin:0}figcaption{font:12px var(--sans);color:var(--dim);margin-top:3px}
+.note{border-left:3px solid var(--accent);padding-left:10px}
+</style>
+<main>
+<header>
+<h1>The Fold, measured</h1>
+<p class="dim">BODY_INTRO</p>
+</header>
+<div class="bar"><button id="play">Play at half speed</button><input id="t" type="range" min="12" max="48" step="0.5" value="20" aria-label="Strike time in seconds"><span class="clock" id="clock"></span><span class="beat" id="beat"></span>
+<select id="scn" aria-label="Which build to show"></select></div>
+<section class="work">
+<div><div class="cams" id="cams"></div><p class="dim" style="margin-top:6px">CAM_NOTE</p></div>
+<div><div class="heats" id="heats"></div><p class="dim" style="margin-top:6px">Each map: time across, distance from the target up. The white line is the clock. Click a map to move the clock.</p></div>
+</section>
+<section id="problems"></section>
+<section id="tube"></section>
+<section id="options"></section>
+<section id="log"></section>
+</main>
+<script>
+const D=DATA_JSON;
+const $=s=>document.querySelector(s);
+const BEATS=[[12,'scoring'],[16,'tears'],[19,'land lifts'],[20,'horizon roll starts'],[27,'world closes'],[35,'arm grows'],[40,'tip touches'],[40.5,'running back'],[44.1,'ring 4 lands'],[45.2,'ring 3'],[46.3,'ring 2'],[47.4,'ring 1'],[48.7,'last ring']];
+const MAG=[[0,0,4],[59,15,112],[140,41,129],[222,73,104],[254,159,109],[252,253,191]];
+function col(x){x=Math.max(0,Math.min(1,x))*5;const i=Math.min(4,x|0),f=x-i;return MAG[i].map((v,k)=>v+(MAG[i+1][k]-v)*f)}
+let scn=Object.keys(D.scn)[0],t=+(new URLSearchParams(location.hash.slice(1)).get('t')||20);
+const heats={};
+function scale(sp,v){return sp.log?Math.log(Math.max(v,1e-6)/sp.lo)/Math.log(sp.hi/sp.lo):(v-sp.lo)/(sp.hi-sp.lo)}
+function build(){
+ const S=D.scn[scn],C=$('#cams'),H=$('#heats');C.textContent='';H.textContent='';
+ S.sprite.views.forEach(v=>{const e=document.createElement('div');e.className='cam';e.dataset.v=v;const b=document.createElement('span');b.textContent=D.camname[v]||v;e.append(b);e.style.backgroundImage=`url(${S.prefix}${v}.jpg)`;e.style.backgroundSize=`${S.sprite.times.length*100}% 100%`;C.append(e)});
+ D.heats.forEach(sp=>{const h=S.heat,Z=h.m[sp.k];if(!Z)return;const d=document.createElement('div');d.className='heat';const nt=document.createElement('h3');nt.textContent=sp.k;const sm=document.createElement('small');sm.textContent=sp.d;const c=document.createElement('canvas');c.width=h.t.length;c.height=h.r.length;c.tabIndex=0;c.setAttribute('role','img');c.setAttribute('aria-label',sp.k+' against time and radius');const g=c.getContext('2d'),I=g.createImageData(c.width,c.height);for(let j=0;j<h.r.length;j++)for(let i=0;i<h.t.length;i++){const q=col(scale(sp,Z[j][i])),o=((h.r.length-1-j)*c.width+i)*4;I.data[o]=q[0];I.data[o+1]=q[1];I.data[o+2]=q[2];I.data[o+3]=255}g.putImageData(I,0,0);heats[sp.k]={c,I,g};const ax=document.createElement('div');ax.className='ax';ax.innerHTML=`<span>${h.t[0]} s</span><span>r ${h.r[0]}..${h.r[h.r.length-1]}</span><span>${h.t[h.t.length-1]} s</span>`;c.onclick=e=>{const b=c.getBoundingClientRect();const x=(e.clientX-b.left)/b.width;setT(h.t[0]+x*(h.t[h.t.length-1]-h.t[0]))};d.append(nt,sm,c,ax);H.append(d)});
+ draw();
+}
+function draw(){
+ const S=D.scn[scn],ts=S.sprite.times;let i=0;ts.forEach((x,k)=>{if(Math.abs(x-t)<Math.abs(ts[i]-t))i=k});
+ document.querySelectorAll('.cam').forEach(e=>{e.style.backgroundPosition=`${ts.length>1?i/(ts.length-1)*100:0}% 0`});
+ $('#clock').textContent=t.toFixed(2)+' s';$('#t').value=t;
+ let b='';BEATS.forEach(x=>{if(t>=x[0])b=x[1]});$('#beat').textContent=b;
+ const h=S.heat;let k=0;h.t.forEach((x,j)=>{if(Math.abs(x-t)<Math.abs(h.t[k]-t))k=j});
+ Object.values(heats).forEach(q=>{q.g.putImageData(q.I,0,0);q.g.fillStyle='rgba(255,255,255,.9)';q.g.fillRect(k,0,1,q.c.height)});
+}
+function setT(x){t=Math.max(12,Math.min(48,x));draw()}
+window.jump=(x,c)=>{if(c&&D.scn[c]){scn=c;$('#scn').value=c;build()}setT(x);scrollTo({top:0,behavior:'smooth'})};
+$('#t').oninput=e=>setT(+e.target.value);
+let pl=null;$('#play').onclick=()=>{if(pl){clearInterval(pl);pl=null;$('#play').textContent='Play at half speed';return}$('#play').textContent='Stop';pl=setInterval(()=>{t+=0.5;if(t>48)t=12;draw()},1000)};
+for(const k in D.scn){const o=document.createElement('option');o.value=k;o.textContent=D.scn[k].name;$('#scn').append(o)}
+$('#scn').onchange=e=>{scn=e.target.value;build()};
+['problems','tube','options','log'].forEach(k=>{$('#'+k).innerHTML=D.html[k]||''});
+build();
+</script>
