@@ -162,7 +162,7 @@ Fifteen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
-- **Tsunami** (page three). The horizon stands up: within two seconds a dark wall 320 blocks high and over five kilometres
+- **Tsunami** (page three). The horizon stands up: over three seconds a line, a swell, then a dark wall 320 blocks high and over five kilometres
   wide lies across the whole of it, spray blowing off its top, and the sky goes grey. It comes in at about 100 blocks a
   second, losing height over the land, a huge grey-green mass with its lip tearing and long streaks of foam drawn up its
   face, a brown foot boiling over the ground, mist pushed ahead of it and spray thrown up where it hits things, and in its

@@ -904,8 +904,8 @@ fn ts_surface(p: vec3<f32>, rd: vec3<f32>, ht: f32, time: f32, g: TsG, li: TsLig
     var rushn = 0.0;
     if (rush > 0.0) {
         rushn = ts_fbm3(vec3<f32>(u * 0.1, (p.y + time * 60.0) * 0.05, time * 1.5), 3) + ch.h * 0.42;
-        // (not a sheet: pieces of it, more and closer together the nearer, the dark still showing between them)
-        white = max(white, 0.4 * smoothstep(0.0, 0.3, rush) * smoothstep(0.62 - 0.26 * rush, 0.7 - 0.26 * rush, rushn));
+        // (not a sheet: a web of it thrown over the dark water, which stays dark and sharp until the blow itself)
+        white = max(white, 0.21 * smoothstep(0.0, 0.3, rush) * smoothstep(0.6 - 0.2 * rush, 0.72 - 0.2 * rush, rushn));
     }
     // ---- the relief of what is white: the lip's threads; the foot's lumps ------------------------------------------------
     // (close by the chop has taken over from this)
@@ -1498,8 +1498,8 @@ fn ts_tails(ro: vec3<f32>, rd: vec3<f32>, t1: f32, tmore: f32, time: f32, g: TsG
         let top = 1.0 - smoothstep(0.55, 1.02, fray);
         let jets = smoothstep(0.42, 0.56, n * 0.62 + fine * 0.5 - 0.5 * (abs(fan) / width) * (abs(fan) / width) + 0.16);
         // (the drops it comes apart into, sharp and small, thinning out above it)
-        let dp = vec2<f32>(u * 2.7 + 7.0 * fine, (p.y - time * 60.0) * 1.3 + 11.0 * n);
-        let drops = smoothstep(0.7, 0.8, ts_vnd(dp).z) * smoothstep(0.42, 0.56, fine) * (1.0 - smoothstep(0.75, 1.5, fray)) * smoothstep(0.3, 0.8, fray);
+        let dp = vec2<f32>(u * 5.3 + 13.0 * fine, (p.y - time * 60.0) * 2.4 + 19.0 * n);
+        let drops = smoothstep(0.72, 0.8, ts_vnd(dp).z) * smoothstep(0.42, 0.56, fine) * (1.0 - smoothstep(0.75, 1.5, fray)) * smoothstep(0.3, 0.8, fray);
         let fade = 1.0 - smoothstep(1.3, 4.0, age);
         let edge = smoothstep(0.5, 0.36, abs(u / cell - ci - 0.5));
         // (close by only: a long way off they would be puffs on a line; and melting into what stands behind them)

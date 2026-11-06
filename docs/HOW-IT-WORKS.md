@@ -232,13 +232,14 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   gone by 63.4 s; it ends at 64 s. It reaches 1000 blocks. **Photosensitivity:** the eyewall's lightning is bright
   flashes over much of the picture, in bursts.
 
-- **Tsunami** (page three, `/orbital tsunami`). No beam: the sea stands up. In the first second and a half a dark wall
+- **Tsunami** (page three, `/orbital tsunami`). No beam: the sea stands up. Over the first three seconds a dark line, a swell, then a wall
   rises across the whole horizon beyond the target, 320 blocks high and over five kilometres wide, about 1,200 blocks from
   you, straight as a rule, a thin torn white lip and spray blowing off its top, and the sky goes a dark grey. It comes in
   at about 100 blocks a second, losing height over the land to some 145 over the target's ground, and starts to tear:
   stretches of its crest pitch forward, long streaks of foam are drawn up its grey-green, almost black face, fine chop
   runs over all of it, its foot turns into a brown boiling bore with what it has swept up in it, mist is pushed along the
-  ground ahead of it, its shadow takes the land, and close by, spray is thrown up where it hits trees, buildings and rises.
+  ground ahead of it, its shadow takes the land, and close by, torn fans of spray are thrown up where it hits trees, buildings and rises. Its foot
+  is held back by high ground and runs on up the low, so it wraps the hills and tongues up the valleys.
   It reaches the target at 9 seconds and you a few seconds after. The blow is a white flash, the picture thrown round,
   and a second or two of foam thrown past at a violent speed, opening on dark water; then the green water, bright
   overhead and with light coming down through it, silt and bubbles streaming by, wreckage going past (a whole tree, a
@@ -795,15 +796,19 @@ cloud at half size and finds each two by two's nearest block or tree there, the 
 The Tsunami's pass ([`mod/shaders/tsunami.wgsl`](../mod/shaders/tsunami.wgsl)) is a closed-form wave: the front reaches a
 point (s along the wave's way from the target, u across it) at `ts_arr`, the water over it climbs a concave face to its
 crest (`ts_prof`, about 105 blocks) and sits a little under that, then all the land's water falls together (`ts_x`,
-`ts_fall`: hard, then slowly past the land), its height by `ts_env` (stood up in the first 1.4 s, 320 over the target's
-ground far out, about 145 at the land, spent at its end, out to 2,700 blocks across), the crest leaning out where it is
+`ts_fall`: hard, then slowly past the land), its height by `ts_env` (stood up by `ts_rise` over the first three seconds,
+320 over the target's ground far out, about 145 at the land, spent at its end, out to 3,300 blocks across), the crest leaning out where it is
 breaking (`ts_break`) once it comes in; so nothing is kept from frame to frame, a strike started part way in lands where
 it should, and `strike/tsunami.rs` (`TsGeo`) and `surge.rs` use the same functions, in sines rather than noise where they
 are asked for hundreds of times a pixel. A ray is marched to the surface and bisected, with long strides over the level
 water behind the front. The face is dark grey-green going to black, with a grey sky in it, chop over it, sun glitter, a
 little green where it thins, and foam only in its torn lip and in long streaks sheared across the face and drawn up it
-(white in curtains, or anywhere near this much of it, reads as a waterfall or a snowy mountain, not as water). The foot
-follows the land's height from the table (`ts_ground`): round lumps packed together (`ts_boil`), nearly black in their
+(white in curtains, or anywhere near this much of it, reads as a waterfall or a snowy mountain, not as water). Close to,
+every edge is cut by `ts_chop`, wavelets from 17 blocks long down to a few pixels whatever the distance, and streaks become a
+lace of cell walls (`ts_lace`): nothing there is stretched noise, which is what smears as it fills the frame. The foot
+follows the land's height from the table (`ts_ground`), and is held back by it (`ts_toe`, the pass only, up to 0.42 s on
+high ground and 0.55 s ahead on low, none round the player, whose engulfing the sounds and the carry have to the moment,
+and little enough that the land's edits, which go by the plain arrival, stay under water): round lumps packed together (`ts_boil`), nearly black in their
 creases and cream on top, a flat mud grey at a distance. Spray and mist are marched in the band the front lies in; the
 rooster tails (`ts_tails`) are drawn on planes across its way at the rows of land just reached, close to the camera only,
 ahead of the front only. Wreckage is boxes in cells of a grid in the wave's own frame, in the game's block textures
