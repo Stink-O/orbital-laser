@@ -23,11 +23,11 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
   unravel   19 s: long falling glissandi off a thick sheet, heave after heave, room between them.
   groan     19 s: the land bending, a hull's and a tree's stress, the far land's slow lift to 23.5 under it, closing overhead from 26 s: the
             sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
-  foldown   34.5 s: the rim gathering at the hole, huge and far off; from 35 the whole land winding in and pouring down in six
-            lurches, a vortex; a thread by 38; nothing by 39.6.
+  foldown   34.5 s: the rim gathering at the hole, huge and far off; from 35 a stalactite of land lowering on the six stages, heavy and
+            slow, nothing going round, earth and rock turning into the droplet's metal towards its tip; nothing by 39.6.
   ding      40 s: the touch: one small pure tone in the silence, a fork's kind of note, the hollow answering far off.
-  reverse   40.5 s, exactly 3.6 s: the whole fold going back, on the picture's own clock: the ground starting to move, the vortex's
-            turns undoing one by one, the rim going back up, the tube opening from 42.8 and the sky's air coming in,
+  reverse   40.5 s, exactly 3.6 s: the whole fold going back, on the picture's own clock: the ground starting to move, the stalactite
+            drawn back up on its stages, metal first and then earth, the rim up, the tube opening from 42.8 and the sky's air coming in,
             the far land going at the end. Forward sounds gathering: nothing played backwards, nothing climbing in pitch.
   bang1-4   44.1, 45.2, 46.3, 47.4 less 0.8 s: a ring of land falling for 0.8 s and stopping dead: its own fall, its own bang.
             bang1 the far land, a long hit rolling away round the horizon; bang2 a broken ring, two blows; bang3 the nearest and
@@ -1161,70 +1161,93 @@ def groan():
     L, R = muffle(L, w * 0.85), muffle(R, w * 0.85)
     wl, wr = inside(L, R, 0.05 + 0.95 * ss(close, seal - 1.0, t), 0.6)
     k = 1 - 0.6 * w
-    hush = 1 - 0.9 * ss(seal + 0.1, seal + 1.0, t)              # (and the stillness: its long tail shut off, only the air left)
+    hush = 1 - 0.84 * ss(seal + 0.1, seal + 1.0, t)             # (and the stillness: its long tail shut off, only the air left)
     L, R = (L * k + wl) * hush, (R * k + wr) * hush
     # (the air in it)
-    room = ss(close + 2.0, seal, t) * (1 - ss(end - 1.2, end - 0.2, t))
+    room = ss(close + 2.0, seal, t) * (1 - ss(end - 0.7, end - 0.1, t))
     a, b = wide(hollow(n), hollow(n, (61.0, 103.0, 149.0, 211.0, 293.0)), 0.5)
-    L += a * room * 0.09
-    R += b * room * 0.09
+    L += a * room * 0.36
+    R += b * room * 0.36
     L, R = low_mono(L, R, 190.0)
     out("groan", L, R, -15.5, tail=0.6, peak=10 ** (-4.0 / 20))
 
 
 # ===========================================================================================================  the fold down
+def settle(size=1.0):
+    """The droplet's own weight, one surge of it: what `wobble` is made of, a dense dark band sinking as it dies and one small swing back,
+    a tonne of mercury heard through the wall, with no sine in it. Mono, 0.8 s, peak about `size`."""
+    d = 0.8
+    n = n_of(d)
+    t = times(n)
+    swing = np.abs(np.sin(2 * np.pi * 2.2 * t + 1.16))
+    env = np.exp(-5.5 * t) * ss(0.0, 0.05, t) * (0.12 + 0.88 * swing ** 2.2) * (1 - ss(0.36, 0.56, t))
+    x = (P.glide_band(d, 82.0 - 26.0 * ss(0.0, 0.5, t), 0.42) + P.glide_band(d, 190.0 - 70.0 * ss(0.0, 0.5, t), 0.6) * 0.34
+         + P.glide_band(d, 41.0 - 7.0 * ss(0.0, 0.5, t), 0.3) * 0.75) * env
+    return x / (np.abs(x).max() + 1e-9) * size
+
+
 def foldown():
-    """The rim goes: from 34.5 it gathers at the hole, huge and far off, and from 35 the whole land winds in and pours down it in six
-    lurches (the fold's stages, CREASES), a vortex of soil and rock, no branch and no mechanism. It goes round, unevenly, quicker as it
-    narrows; all the weight is in the first of it, and by 38 the neck is a thread with nothing heavy left in it. It creeps, and it's
-    gone by 39.6: the ding has true silence."""
+    """The rim gathers at the hole from 34.5, huge and far off, and from 35 a narrow stalactite of the land lowers from it on the six stages:
+    nothing goes round, it comes down, heavy and slow, each stage a weight taken up and let down. It starts as earth and rock, and towards the
+    tip it is the droplet's metal: the grind and the rattle go, the ground's blows turn into `settle`, the dark band under it is `wobble`'s,
+    and the last stages close on `meld`'s deep sinking gulps. It stops at 39, and it's gone by 39.6: the ding has true silence."""
     last = REACHED - GATHER                                   # (the stages are over; the tip creeps on to 39.7, and this is gone by 39.6)
     d = DING - GATHER - 0.3
     n = n_of(d)
     t = times(n)
-    pour = np.zeros(n)                                        # (how much land is coming down: each stage a surge of it, less each time)
-    for k, c in enumerate(CREASES):
-        u = np.maximum(t - (c - GATHER), 0)
-        pour += 0.8 ** k * (1 - np.exp(-u / 0.14)) * np.exp(-u / 0.42) * (t >= c - GATHER)
-    pour = pour / pour.max()
+    stages = [c - GATHER for c in CREASES]
+    metal = ss(1.6, 3.9, t)                                   # (36.1 to 38.4: earth into metal, as the picture's grade comes down it)
+    mass = np.zeros(n)                                        # (how much is moving: each stage a slow lowering, up in a third of a second, eased off over a second)
+    for k, at in enumerate(stages):
+        u = np.maximum(t - at, 0)
+        mass += 0.86 ** k * (1 - np.exp(-u / 0.3)) * np.exp(-u / 0.75) * (t >= at)
+    mass = mass / mass.max()
     gather = ss(0.0, 0.75, t)
-    move = 0.14 * gather + 0.86 * pour
-    thin = ss(3.1, 4.1, t)                                    # (by 38 the neck is a thread)
-    # (the land going round: its turn quickening as it narrows, uneven, the great mass of it passing and passing)
-    turn = (0.7 + 0.8 * ss(0.5, 3.5, t)) * np.clip(1 + 0.3 * PB.slow_random(n, 0.3, 1.5), 0.4, None)
-    whirl = 1 + 0.26 * np.sin(2 * np.pi * np.cumsum(turn) / SR + 1.3) * ss(0.4, 1.2, t)
-    roar = eddies(d, 45, 5600, 3.0, -4.4, 11.0, 6.0, np.clip(move * 2.2, 0.2, 2.4), 1.6, 300.0) * move * whirl
-    low = bn(n, 22, 100) * boiled(n, 0.3, 2.0, 4.0) * move * (1 - thin) * 0.7
-    rattle = rocks(d, (20.0 + 300.0 * pour ** 1.2) * gather + 1e-3, 130, 1700, (0.3, 0.7, 1.4), (0.58, 0.32, 0.1)) * move ** 0.6
-    M = roar * 0.55 + low + rattle * 0.3
-    # (the rim dragging round: rock under load, no note, slowing as the weight goes)
-    for at, ln, f0, g in ((0.2, 2.6, 62, 0.34), (1.4, 2.4, 54, 0.3), (2.6, 1.8, 74, 0.2)):
-        M = M + moan(n, at, ln, f0, f0 * 0.72) * g
-    # (the gathering: the first of it shifting, a long way off, heard through the ground)
-    far = bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.55
-    P.put(M, far, 0.0)
-    L, R = M.copy(), M.copy()
-    for k, c in enumerate(CREASES):
-        at = c - GATHER
-        v = k / (len(CREASES) - 1)
-        size = 0.74 ** k
-        # (each stage's lurch: the land giving another turn, the ground taking the weight of it, no sweep)
+    move = 0.14 * gather + 0.86 * mass
+    # (earth and rock: the land's weight sliding, a dull rattle, rock dragged under load)
+    earth = eddies(d, 40, 2600, 3.0, -5.0, 11.0, 6.0, np.clip(move * 2.0, 0.2, 2.0), 1.2, 260.0) * move * 0.3
+    earth = earth + rocks(d, (16.0 + 150.0 * mass ** 1.2) * gather + 1e-3, 120, 1300, (0.3, 0.7, 1.4), (0.5, 0.36, 0.14)) * move ** 0.6 * 0.26
+    for at, ln, f0, g in ((0.2, 2.4, 58, 0.36), (1.5, 2.2, 50, 0.3)):
+        earth = earth + moan(n, at, ln, f0, f0 * 0.78) * g
+    # (the metal: wobble's dark band, sinking as it comes, its skin dragging against itself very faintly)
+    ex = (n + 0.5) / SR
+    ooze = (P.glide_band(ex, 84.0 - 30.0 * ss(1.6, 4.5, t), 0.42) + P.glide_band(ex, 190.0 - 70.0 * ss(1.6, 4.5, t), 0.6) * 0.34
+            + P.glide_band(ex, 41.0 - 7.0 * ss(1.6, 4.5, t), 0.3) * 0.75) * boiled(n, 0.3, 1.6, 3.5) * (0.3 + 0.7 * mass) * 0.3
+    a, b = wide(bn(n, 420, 1300), bn(n, 420, 1300), 0.6)
+    drag = (0.3 + 0.7 * mass) * boiled(n, 0.5, 3.0, 5.0) * metal * 0.014
+    low = bn(n, 22, 100) * boiled(n, 0.3, 2.0, 4.0) * move * 0.6 * (1 - 0.6 * metal)
+    M = earth * (1 - metal) + ooze * metal + low
+    P.put(M, bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.55, 0.0)  # (the gathering: the first of it shifting, a long way off, through the ground)
+    L, R = M + a * drag, M + b * drag
+    for k, at in enumerate(stages):
+        size = 0.84 ** k
+        m_ = float(metal[n_of(at)])
+        # (each stage's weight let down: the ground taking it, turning into the metal's own surge)
         m = n_of(1.6)
-        y = struck(m, 0.0, 0.12, GROUND[1:], 26, 0.4) * 0.9 + struck(m, 0.0, 0.08, RUBBLE, 16, 0.5) * 0.5
-        P.put(y, bare_blow(2.2, 22, 110, 0.03, 0.16) * 0.5, 0.0)
+        y = (struck(m, 0.0, 0.12, GROUND[1:], 26, 0.4) * 0.9 + struck(m, 0.0, 0.08, RUBBLE, 16, 0.5) * 0.45) * (1 - m_)
+        P.put(y, bare_blow(2.2, 22, 110, 0.05, 0.16) * 0.5 * (1 - m_), 0.0)
+        P.put(y, settle(1.15 * m_), 0.0)
         y = y * size
         P.put(L, y, at)
         P.put(R, y, at)
-        # (the sheet's own voice, thinner as it narrows)
-        pew(L, R, at + 0.02, 170 - 110 * v, 110.0 * (640.0 / 110.0) ** v, 0.42 * size ** 0.8, rng().uniform(-0.25, 0.25), 2)
-    # (it hangs in the land round it)
-    wl, wr = inside(L, R, 1.0, 0.34, 90.0)
+        # (the sheet's own voice, only while it's still land)
+        if m_ < 0.6:
+            pew(L, R, at + 0.02, 200 - 60 * k, THICK[("slab", "thick", "thick", "mid")[min(k, 3)]], 0.34 * size * (1 - m_), rng().uniform(-0.25, 0.25), 2)
+    # (the tip's last weight: the stages over, it comes to rest as the droplet did; then meld's gulps, sinking, the last the deepest)
+    y = settle(0.8)
+    P.put(L, y, last)
+    P.put(R, y, last)
+    for at, f0, a_ in ((stages[3] + 0.42, 78, 0.34), (stages[4] + 0.38, 62, 0.46), (stages[5] + 0.34, 52, 0.55)):
+        y = bubble(f0, a_ * 0.4, rng().uniform(-0.2, -0.05), 0.03)
+        P.put(L, y, at)
+        P.put(R, y, at)
+    # (it hangs in the land round it, less so as it's metal)
+    wl, wr = inside(L, R, 1 - 0.6 * metal, 0.3, 90.0)
     L, R = L + wl, R + wr
-    L, R = L * (1 - thin) + bp(L, 200, 2600) * thin * 0.5, R * (1 - thin) + bp(R, 200, 2600) * thin * 0.5
     gone = 1 - ss(last + 0.05, last + 0.6, t)                 # (nothing left by 39.6)
-    L, R = lows_heard(L * gone, 70, 420, -5.0), lows_heard(R * gone, 70, 420, -5.0)
+    L, R = lows_heard(L * gone, 70, 360, -6.0), lows_heard(R * gone, 70, 360, -6.0)
     L, R = low_mono(L, R, 170.0)
-    out("foldown", L, R, -11.5, tail=0.05, peak=10 ** (-3.0 / 20))
+    out("foldown", L, R, -14.0, tail=0.05, peak=10 ** (-3.0 / 20))
 
 
 def ding():
@@ -1268,7 +1291,7 @@ def back_at(tau):
 def reverse():
     """The whole fold going back, 3.6 s of it, as slow as the picture: a very great weight starting to move, not a tape rewound.
     Every sound here goes forward, with forward attacks, and comes in the fold's order backwards: the ground stirring under the
-    ding, the vortex's turns undoing one by one, each bigger, the rim going back up, the tube opening from 42.8 with the sky's air
+    ding, the stalactite drawn up on its stages, each bigger, the droplet's metal in the first of them and earth after, the rim up, the tube opening from 42.8 with the sky's air
     coming in through it, and the far land going at the end. Its loudness is the picture's speed; nothing climbs in pitch."""
     dur = FLAT - REL
     n = n_of(dur)
@@ -1298,7 +1321,7 @@ def reverse():
         tones += moan(n, at, ln, f0, f0 * rng().choice([0.72, 0.84, 1.18])) * rng().uniform(0.6, 1.0)
     M = sub + bed_ + roll + hull + T.unit(tones) * lv ** 0.5 * (0.3 + 0.7 * strain) * 0.55
     L, R = M.copy(), M.copy()
-    # (the vortex's turns undoing, smallest first: each a reversed breath of the land round it into a forward lurch of the ground)
+    # (the stalactite drawn up, smallest first: each stage a reversed breath of the land round it into a forward weight, the metal's near the tip, the ground's after)
     for k, tau in enumerate((39.0, 38.2, 37.5, 36.8, 36.1, 35.5)):
         at = back_at(tau)
         v = 1 - k / 5
@@ -1308,9 +1331,11 @@ def reverse():
         y = bn(m, 70, 420) * np.exp((s - 0.2) / 0.06) * 0.22 * strength
         P.put(L, y, at - 0.2)
         P.put(R, y, at - 0.2)
-        m = n_of(0.3)
+        m = n_of(0.8)
         s = times(m)
-        y = (struck(m, 0.0, 0.05, GROUND[1:], 14, 0.4) * 0.8 + struck(m, 0.0, 0.04, RUBBLE, 10, 0.5) * 0.4) * strength
+        m_ = 1 - ss(0.2, 0.8, k / 5)                            # (k 0 is the tip: all metal; by k 4 all earth)
+        y = (struck(m, 0.0, 0.05, GROUND[1:], 14, 0.4) * 0.8 + struck(m, 0.0, 0.04, RUBBLE, 10, 0.5) * 0.4) * strength * (1 - m_)
+        P.put(y, settle(1.2 * m_ * strength), 0.0)
         y += bn(m, 36, 220 - 90 * v) * (1 - np.exp(-s / 0.02)) * np.exp(-s / 0.1) * 0.5 * strength
         l, r = pan(y, rng().uniform(-0.3, 0.3))
         P.put(L, l, at)
