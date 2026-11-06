@@ -258,6 +258,7 @@ pub(super) struct Slab {
     wide: f64,
     pub pose: Pose,
     fall: Fall,
+    slope: (f64, f64),
     /// Where it comes down (from the vent's ground).
     pub foot: [f64; 3],
     u_top: f64,
@@ -423,6 +424,7 @@ impl Slab {
             wide: w1 - w0,
             pose: Pose { r: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], c: [0.0; 3] },
             fall: Fall::default(),
+            slope: (0.0, 0.0),
             foot: [site.x, 0.0, site.z],
             u_top: 0.0,
             bits_done: false,
@@ -491,6 +493,7 @@ impl Slab {
         }
         self.pose = best.unwrap().1;
         self.foot = [self.site.x, gs, self.site.z];
+        self.slope = slope;
         self.u_top = (0.5 * self.th / sn).min(VL_BURY * (self.s1 - self.s0));
     }
     /// The ground under the whole of it, from what's known of the land's height at (x, z): how high at its site and how it
@@ -1136,6 +1139,18 @@ impl Slab {
         for c in self.cracks.iter().filter(|c| (c[2] - fx).powi(2) + (c[3] - fz).powi(2) < (VL_PATCH - 12.0) * (VL_PATCH - 12.0)) {
             add(c[0], c[1]);
             add(c[2], c[3]);
+        }
+        // (and all the earth it shoved up reaches: a chunk left out would cut its heap off in a straight wall)
+        let f = &self.fall;
+        for k in 0..f.m {
+            for i in 0..f.n {
+                let (x, z) = (f.o.0 + (i * VL_TS) as f64, f.o.1 + (k * VL_TS) as f64);
+                let (ox, oz) = (x - self.foot[0], z - self.foot[2]);
+                let y = self.foot[1] + self.slope.0 * ox + self.slope.1 * oz;
+                if f64::from(f.t[k * f.n + i]) > y - 12.0 && ox * ox + oz * oz < (VL_PATCH - 6.0) * (VL_PATCH - 6.0) {
+                    add(x, z);
+                }
+            }
         }
         let mut out: Vec<(i32, i32)> = set.keys().map(|&(a, b)| (a * 16, b * 16)).collect();
         let (fx, fz) = (self.foot[0] + cx, self.foot[2] + cz);
