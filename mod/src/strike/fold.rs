@@ -200,10 +200,16 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         } else {
             p.csound(*t - FD_FALL, "fall", 10.0, 1.0);
             p.csound(*t, "slam", 10.0, 1.0);
+            p.csound(*t, "sink", 10.0, 1.0);
         }
         p.shake(*t, (0.5 + 0.4 * f) * super::falloff(dist * 0.5), 0.6 + 0.9 * f);
     }
-    p.csound(FD_SLAM[4] + 1.0, "comedown", 10.0, 1.0);
+    // (the panel under the player lets go on the slam and lands by how deep the crater is there: fw_sunk's fall, a crater 300 in radius)
+    if dist < 295.0 {
+        let u = dist as f32 / 300.0;
+        p.csound(FD_SLAM[4] + (66.0 * (1.0 - u * u * u).powf(0.75) / 18.0).sqrt(), "underfoot", 10.0, 1.0);
+    }
+    p.csound(FD_SLAM[4] + 4.6, "comedown", 10.0, 1.0);
 
     if !terrain {
         p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -373,6 +379,12 @@ mod tests {
         }
         assert_eq!(when("fall"), Some(FD_SLAM[4] - FD_FALL));
         assert_eq!(when("slam"), Some(FD_SLAM[4]));
+        assert_eq!(when("sink"), Some(FD_SLAM[4]));
+        assert_eq!(when("comedown"), Some(FD_SLAM[4] + 4.6));
+        assert!(when("underfoot").is_none(), "a player on the rim has no panel under them");
+        let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 170.5], 0);
+        let t = ev.iter().find(|e| matches!(&e.1, Act::Sound { event, .. } if event == "orbital:fold.underfoot")).map(|e| e.0).expect("a player inside the crater");
+        assert!(t > FD_SLAM[4] + 1.5 && t < FD_SLAM[4] + 2.0, "underfoot at {t}");
     }
 
     /// The plan as it is made on the fire tick stays light: the tiles wait for stages of their own.
