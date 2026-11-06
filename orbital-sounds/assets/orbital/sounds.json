@@ -2044,15 +2044,6 @@
     ],
     "subtitle": "subtitles.orbital.fold.unravel"
   },
-  "fold.foldown": {
-    "sounds": [
-      {
-        "name": "orbital:fold/foldown",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.foldown"
-  },
   "fold.ding": {
     "sounds": [
       {
@@ -2151,5 +2142,23 @@
       }
     ],
     "subtitle": "subtitles.orbital.fold.underfoot"
+  },
+  "fold.boil": {
+    "sounds": [
+      {
+        "name": "orbital:fold/boil",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.boil"
+  },
+  "fold.drip": {
+    "sounds": [
+      {
+        "name": "orbital:fold/drip",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.drip"
   }
 }
