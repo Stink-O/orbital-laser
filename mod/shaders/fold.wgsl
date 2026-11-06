@@ -847,7 +847,7 @@ fn fd_stal(P: vec3<f32>, g: FwBend, at: vec3<f32>, f: FwWay, tol: f32) -> FdOn {
     o.rad = p.x;
     o.miss = sqrt(best);
     // (the band's ridges stand off the curve: the metal, with none, is on it)
-    o.hit = o.miss < tol + 1.5 * FW_RIDGE * p.x * (1.0 - fw_ss(0.78, 0.92, o.v));
+    o.hit = o.miss < tol + 0.3 * p.x + FW_RIDGE * p.x * (1.0 - fw_ss(0.78, 0.92, o.v));
     // (the surface's way out, from the curve's own way along)
     let dq = 0.012 + 0.03 * bi;
     let A = fd_on_curve(clamp(bi - dq, 0.0, 1.0) * clamp(bi - dq, 0.0, 1.0), g, f);
@@ -942,7 +942,9 @@ fn fd_hanging(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, g
         return colIn;
     }
     // (the eye and the ray in the band's frame)
-    let o = fd_unturn(mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at, true);
+    // (and it sways with the end it hangs from)
+    let fl = fw_flex(H.y, f.P0.y, t);
+    let o = fd_unturn(mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at, true) - vec3<f32>(fl.x, 0.0, fl.y);
     let d = fd_unturn(v, g, at, false);
     let top = H.y + 4.0;
     let c = vec3<f32>(0.0, 0.5 * (H.b + top), 0.0);
@@ -1093,9 +1095,10 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, gq: vec
     // (at its edge it stands up round, a bead: the swell of the edge)
     let bead = 1.0 - fw_ss(0.0, 9.0, e);
     let n = normalize(on.n + on.T * (sw.x - 0.34 * bead) + cross(on.n, on.T) * sw.y);
-    // (a thing this thin shows mostly the sky at its edges: held down, or its edges are lines of white)
+    // (a thing this thin shows mostly the sky at its edges: held down, or its edges are a pale shell)
     let ch = fd_chrome(v, off, n, gq, 0.8 * fw_ss(0.9, 1.0, g.draw));
-    return mix(col, ch / (1.0 + 1.3 * luminance(ch)), shore);
+    let face = max(dot(-v, n), 0.0);
+    return mix(col, ch * (0.3 + 0.7 * face) / (1.0 + 1.3 * luminance(ch)), shore);
 }
 fn fd_tau(t: f32) -> f32 {
     return fw_tau(t);
