@@ -71,7 +71,7 @@ function draw(){
  Object.values(heats).forEach(q=>{q.g.putImageData(q.I,0,0);q.g.fillStyle='rgba(255,255,255,.9)';q.g.fillRect(k,0,1,q.c.height)});
 }
 function setT(x){t=Math.max(12,Math.min(48,x));draw()}
-window.jump=(x,c)=>{if(c&&D.scn[c]){scn=c;$('#scn').value=c;build()}setT(x);scrollTo({top:0,behavior:'smooth'})};
+document.addEventListener('click',e=>{const q=e.target.closest('[data-jump]');if(q){setT(+q.dataset.jump);scrollTo({top:0,behavior:'smooth'})}});
 $('#t').oninput=e=>setT(+e.target.value);
 let pl=null;$('#play').onclick=()=>{if(pl){clearInterval(pl);pl=null;$('#play').textContent='Play at half speed';return}$('#play').textContent='Stop';pl=setInterval(()=>{t+=0.5;if(t>48)t=12;draw()},1000)};
 for(const k in D.scn){const o=document.createElement('option');o.value=k;o.textContent=D.scn[k].name;$('#scn').append(o)}
