@@ -87,15 +87,15 @@ fn fw_ring(i: i32) -> f32 {
     }
 }
 // Ring i's plate's bearing, radians from the top pole: as it closes, never past upright, so what rises stands over the land
-// and nothing over anything; running back, `rt` past FW_REL, the bud stands right up, its last two past upright.
+// and nothing over anything; running back, `rt` past FW_REL, the bud stands right up, its last all but upright: past that its land folds back over itself.
 fn fw_phi(i: i32, rt: f32) -> f32 {
     if (rt >= FW_REL) {
         switch i {
             case 0: { return 0.14; }
             case 1: { return 0.48; }
             case 2: { return 0.92; }
-            case 3: { return 1.52; }
-            default: { return 2.52; }
+            case 3: { return 1.3; }
+            default: { return 1.5; }
         }
     }
     switch i {
@@ -1118,7 +1118,8 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // ---- the chain: the plates, hinged at the rings, as the far land slides in ---------------------------------------------
     let rb = clamp(dist * 0.56, 60.0, 150.0);
-    let kappa = mix(rb / 153.0, 1.0, fw_lay(tau));
+    // (running back the plates stay their own size: drawn in as they stand again, the land under the player's ramp slid further than the ramp is wide)
+    let kappa = mix(rb / 153.0, 1.0, select(fw_lay(tau), 1.0, t >= FW_REL));
     // (once it lies on the sphere there is no chain to work out: this is most of the vertices' work, every one of them)
     let lying = tau >= FW_FLAT0;
     var g: CpR;
