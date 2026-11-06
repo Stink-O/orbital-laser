@@ -1159,7 +1159,7 @@ def unravel():
     L, R = muffle(L, w ** 0.7 * 0.8, 700.0) * (1 - 0.3 * w), muffle(R, w ** 0.7 * 0.8, 700.0) * (1 - 0.3 * w)
     L, R = lows_heard(L, 70, 420, -6.0), lows_heard(R, 70, 420, -6.0)
     L, R = low_mono(L, R, 170.0)
-    out("unravel", L, R, -12.0, tail=1.0, peak=10 ** (-2.5 / 20))
+    out("unravel", L, R, -12.5, tail=1.0, peak=10 ** (-3.0 / 20))
 
 
 # =======================================================================================================  the land closing
@@ -1967,9 +1967,9 @@ def slam():
     for at, dull, g_ in ((0.8, 500, 0.3), (1.7, 360, 0.2), (3.0, 260, 0.13)):
         for c, x in zip((L, R), (L.copy(), R.copy())):
             P.put(c, bp(x[:n_of(1.5)], None, dull) * g_, at)
-    e = 1 - 0.45 * ss(2.0, 3.2, t)                             # (from where `sink`'s landings come in it stands back)
+    e = 1 - 0.6 * ss(2.0, 2.8, t)                              # (from where `sink`'s landings come in it stands back)
     L, R = low_mono(L * e, R * e, 170.0)
-    out("slam", L, R, -6.3, tail=0.8, peak=10 ** (-2.0 / 20))
+    out("slam", L, R, -6.0, tail=0.8, peak=10 ** (-3.2 / 20))
 
 
 def sink():
@@ -2063,7 +2063,7 @@ def underfoot():
     x = x + jump * 0.12
     x = x + bn(n, 20, 62) * (1 - np.exp(-t / 0.03)) * np.exp(-t / 0.5) * 0.5
     x = lows_heard(x, 70, 420, -5.0)
-    out("underfoot", x, x.copy(), -16.0, tail=0.4, peak=10 ** (-5.0 / 20))
+    out("underfoot", x, x.copy(), -18.0, tail=0.4, peak=10 ** (-7.0 / 20))
 
 
 def comedown():
