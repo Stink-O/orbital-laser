@@ -116,7 +116,9 @@ pub fn draw(world: &mut crate::gfx::native_render::WorldDrawn<'_>) {
     // sampler did: upstream's `WorldDrawn::block_sprites`.
     let sprites = &world.block_sprites;
     drawer.post.set_atlas(sprites.views, sprites.nearest);
-    if !drawer.post.prepare(world.device, pass.version, &pass.source, true) {
+    // (a strike's frame waits for its pass; the frame that builds it ahead, its parameters all nothing, doesn't)
+    let strike = pass.params.iter().any(|&p| p != 0.0);
+    if !drawer.post.prepare(world.device, pass.version, &pass.source, true, strike) {
         return;
     }
     let size = world.size;
