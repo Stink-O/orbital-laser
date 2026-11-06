@@ -224,7 +224,8 @@ laser, command, capability and timing). This file is the short, factual version 
   the start, and each is read and edited once, as the crest has passed it (`ts_chunk`, through `world.read-columns` and
   `world.edit-blocks`). With the knockback on the player is carried in the water (`world.carry-player`, as the
   Hurricane's), surfaces at `SURF` (6.5 s after it took them) and is set down 2 over where it took them, facing the
-  wreck; sneak held half a second breaks free. **Photosensitivity:** the blow as the water takes the player is one white
+  wreck, with a small throw (`Surge::set_down`, `world.push-player` while carried) that keeps the game from putting a
+  creative player back into flight, unless they were flying when it took them; sneak held half a second breaks free. **Photosensitivity:** the blow as the water takes the player is one white
   flash over the whole picture, about a fifth of a second.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
