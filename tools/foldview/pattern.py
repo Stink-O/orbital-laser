@@ -66,19 +66,31 @@ def rust(s):
     rows=''.join('    ['+', '.join(f'{x:.6f}' for x in r)+'],\n' for r in t['INV'])
     s,c=re.subn(r'const FD_INV: \[\[f32; 5\]; \d+\] = \[\n.*?\n\];',lambda m:f'const FD_INV: [[f32; 5]; {N}] = [\n{rows.rstrip()}\n];',s,flags=re.S); assert c==1
     return s
-def plan(path,size=1100,span=620):
+def plan(path,size=700,span=620,mode=0):
+    """the pattern from above: mountains red, valleys blue; mode 0 umbrella, 1 waterbomb, 2 diagonal"""
     from PIL import Image,ImageDraw
     t=tables(); Q=t['Q']; im=Image.new('RGB',(size,size),(250,247,240)); d=ImageDraw.Draw(im)
     S=size/2/span; P=lambda r,k:(size/2+r*math.cos(math.radians(k*K_DEG))*S,size/2+r*math.sin(math.radians(k*K_DEG))*S)
-    for k in range(N):
-        e=Q[k][4]*ENDK[k]; d.line((P(0,k),P(e,k)),fill=(190,40,30) if k%2==0 else (40,70,190),width=3)
+    M,V=(190,40,30),(40,70,190)
     for i in range(5):
         for k in range(N):
-            d.line((P(Q[k][i],k),P(Q[(k+1)%N][i],k+1)),fill=(190,40,30) if i%2 else (40,70,190),width=3)
+            a=P(Q[k][i-1],k) if i else (size/2,size/2); b=P(Q[k][i],k); c=P(Q[(k+1)%N][i],k+1); e=P(Q[(k+1)%N][i-1],k+1) if i else (size/2,size/2)
+            mid=tuple(.25*(a[j]+b[j]+c[j]+e[j]) for j in (0,1)); odd=(k+i)%2==1
+            if mode==1:
+                for n,p in enumerate((a,b,c,e)): d.line((mid,p),fill=M if (n+k+i)%2 else V,width=1)
+            if mode==2:
+                d.line((b,e) if odd else (a,c),fill=V,width=1)
+    for k in range(N):
+        d.line((P(0,k),P(Q[k][4]*ENDK[k],k)),fill=M if k%2==0 else V,width=2)
+    for i in range(5):
+        for k in range(N):
+            d.line((P(Q[k][i],k),P(Q[(k+1)%N][i],k+1)),fill=M if i%2 else V,width=2)
     im.save(path)
 if __name__=='__main__':
     a=sys.argv[1:]
-    if '--plan' in a: plan(a[a.index('--plan')+1])
+    if '--plan' in a:
+        p=a[a.index('--plan')+1]
+        for m,n in enumerate('abc'): plan(p.replace('.png',f'_{n}.png'),mode=m)
     if '--to' in a:
         d=pathlib.Path(a[a.index('--to')+1]); f=d/'fold_warp.wgsl'; f.write_text(wgsl(f.read_text()))
         r=a[a.index('--to')+2:]
