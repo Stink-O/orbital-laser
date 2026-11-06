@@ -866,7 +866,7 @@ fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
 // How far along the funnel's curve the land goes, for how far it is through the band's scale (0 to 1): the curve's steps of length over width, so that a step
 // along it is as much squeezed as a step round it, all the way down: the land grows smaller towards the tip as it does on the tube's map, no streaks. Its width
 // is floored 40 blocks from the tip, or the tip would take all the land there is. (tools/foldview/mocks.py's spend(), from one typical curve; the shape hardly moves it.)
-var<private> FW_SPEND: array<f32, 17> = array<f32, 17>(0.0000, 0.2953, 0.4280, 0.5225, 0.5991, 0.6644, 0.7214, 0.7714, 0.8153, 0.8535, 0.8859, 0.9127, 0.9342, 0.9511, 0.9671, 0.9835, 1.0000);
+var<private> FW_SPEND: array<f32, 17> = array<f32, 17>(0.0000, 0.2983, 0.4246, 0.5151, 0.5873, 0.6477, 0.6996, 0.7447, 0.7844, 0.8193, 0.8501, 0.8772, 0.9008, 0.9215, 0.9437, 0.9694, 1.0000);
 fn fw_spend(q: f32) -> f32 {
     let x = clamp(q, 0.0, 1.0) * 16.0;
     let i = min(i32(x), 15);
@@ -885,8 +885,8 @@ fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
         let v = fw_spend(log(R / R1) / log(g.edge / R1));
         let a = fw_roll(R1, 0.0, g);
         let P0 = a.xy;
-        let P1 = P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.42;
-        let P2 = vec2<f32>(min(0.46 * P0.x, 1.45 * max(g.d, 60.0)), -30.0);
+        let P1 = P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.3;
+        let P2 = vec2<f32>(min(0.2 * P0.x, 0.75 * max(g.d, 60.0)), -10.0);
         let m = 1.0 - v;
         let C = P0 * (m * m * m) + P1 * (3.0 * m * m * v) + P2 * (3.0 * m * v * v) + vec2<f32>(0.0, FW_TIP) * (v * v * v);
         on = vec3<f32>(mix(on.xy, C, g.draw), on.z);
