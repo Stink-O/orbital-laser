@@ -10,8 +10,8 @@
 //!   FD_HANG           it has hung perfectly still; it is let go and falls to the land under gravity
 //!   FD_TOUCH-FD_MELD  it falls straight into the land without slowing, the land closing over it; no splash
 //!   FD_RIPPLE         the warp begins (off before it): rings running out, each bigger than the last
-//!   FD_SCORE          the rings sharpen into hairline creases racing over the land, the mandala's pattern
-//!   FD_TEAR           the creases split open on the void
+//!   FD_SCORE          the rings sharpen into creases racing over the land, one pattern: twelve straight creases, mountain and valley in turn, five rings (tools/foldview/pattern.py)
+//!   FD_TEAR           every crease and ring drawn, the sheet folding along them
 //!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land rolls up round the player, holding as a tube, the rings lying back to a mound
 //!   FD_SEAL           the player is inside a tube, the whole land on its walls, the land's end the hole in its roof
 //!   34.5-FD_BEAT      the rim gathers and lets go, and reaches down to the target as one heavy gesture, a catch at 37 s and a long creep at the end, straining
@@ -74,18 +74,23 @@ pub const FD_TETHER: f64 = 320.0;
 /// hinge of the fold; the crater is the pattern inside the fourth (strike/fold_land.rs), its fissures run out along the big creases.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];
 
-/// The crease pattern as the mod needs it (fold_warp.wgsl's cp_dir and CP_INV, `the_warp_keeps_the_beats`): big creases' bearings, degrees, and
+/// The crease pattern as the mod needs it (fold_warp.wgsl's cp_dir and CP_INV, `the_pin_is_the_warps`; tools/foldview/pattern.py writes both): the creases' bearings, degrees, and
 /// one over how far out each ring meets each.
-const FD_CREASES: [f32; 8] = [0.0, 38.0, 109.0, 125.0, 180.0, 263.0, 289.0, 332.0];
-const FD_INV: [[f32; 5]; 8] = [
-    [0.019573, 0.011678, 0.004623, 0.004120, 0.001782],
-    [0.027736, 0.008565, 0.006843, 0.002906, 0.002638],
-    [0.020483, 0.011177, 0.005123, 0.004379, 0.001742],
-    [0.025310, 0.007770, 0.007426, 0.002897, 0.002555],
-    [0.020316, 0.010662, 0.004848, 0.003851, 0.001855],
-    [0.026149, 0.008739, 0.006787, 0.002974, 0.002662],
-    [0.019413, 0.011845, 0.004865, 0.004264, 0.001793],
-    [0.026306, 0.007756, 0.007470, 0.002833, 0.002597],
+pub(super) const FD_N: usize = 12;
+const FD_CREASES: [f32; 12] = [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0, 270.0, 300.0, 330.0];
+const FD_INV: [[f32; 5]; 12] = [
+    [0.022727, 0.010339, 0.005310, 0.004272, 0.001877],
+    [0.022727, 0.008986, 0.006109, 0.003357, 0.002341],
+    [0.022727, 0.010339, 0.005310, 0.004272, 0.001877],
+    [0.022727, 0.008986, 0.006109, 0.003357, 0.002341],
+    [0.022727, 0.010339, 0.005310, 0.004272, 0.001877],
+    [0.022727, 0.008986, 0.006109, 0.003357, 0.002341],
+    [0.022727, 0.010339, 0.005310, 0.004272, 0.001877],
+    [0.022727, 0.008986, 0.006109, 0.003357, 0.002341],
+    [0.022727, 0.010339, 0.005310, 0.004272, 0.001877],
+    [0.022727, 0.008986, 0.006109, 0.003357, 0.002341],
+    [0.022727, 0.010339, 0.005310, 0.004272, 0.001877],
+    [0.022727, 0.008986, 0.006109, 0.003357, 0.002341],
 ];
 /// Bearing `a` (radians) in the pattern turned by `turn` degrees: its wedge's big creases k and k + 1, and the unit vector at `a` as u e_k + v e_k1.
 #[derive(Clone, Copy)]
@@ -97,8 +102,8 @@ pub(super) struct FdWedge {
 }
 pub(super) fn fd_wedge(a: f64, turn: f64) -> FdWedge {
     let x = (a.to_degrees() - turn).rem_euclid(360.0);
-    let k = FD_CREASES.iter().rposition(|c| x >= f64::from(*c)).unwrap_or(7);
-    let k1 = (k + 1) % 8;
+    let k = FD_CREASES.iter().rposition(|c| x >= f64::from(*c)).unwrap_or(FD_N - 1);
+    let k1 = (k + 1) % FD_N;
     let cr = |p: f64, q: f64| (q - p).to_radians().sin();
     let (a0, a1) = (f64::from(FD_CREASES[k]), f64::from(FD_CREASES[k1]));
     FdWedge { k, k1, u: cr(x, a1) / cr(a0, a1), v: cr(a0, x) / cr(a0, a1) }
@@ -128,17 +133,17 @@ pub fn fd_pin(target: [f64; 3], me: [f64; 3], seed: f32) -> u32 {
     let r = dx.hypot(dz);
     let turn = (seed * 0.618_034).fract() * 360.0;
     let x = (dz.atan2(dx).to_degrees() - turn).rem_euclid(360.0);
-    let k = FD_CREASES.iter().rposition(|c| x >= *c).unwrap_or(7);
-    let k1 = (k + 1) % 8;
+    let k = FD_CREASES.iter().rposition(|c| x >= *c).unwrap_or(FD_N - 1);
+    let k1 = (k + 1) % FD_N;
     let cr = |a: f32, b: f32| (b - a).to_radians().sin();
     let (a0, a1) = (FD_CREASES[k], FD_CREASES[k1]);
     let (u, v) = (cr(x, a1) / cr(a0, a1), cr(a0, x) / cr(a0, a1));
     let cell = (0..5).find(|i| r * (u * FD_INV[k][*i] + v * FD_INV[k1][*i]) < 1.0).unwrap_or(5);
     (6 * k + cell) as u32
 }
-/// params[10]: the land's level (`fd_level`, a whole number, 0 or under) and under it the player's kite (`fd_pin`), as the warp reads them.
+/// params[10]: the land's level (`fd_level`, a whole number, 0 or under) and under it, in 128ths, the player's panel (`fd_pin`), as the warp reads them.
 pub fn fd_lie(level: f32, pin: u32) -> f32 {
-    level - (pin + 1) as f32 / 64.0
+    level - (pin + 1) as f32 / 128.0
 }
 
 /// The columns asked of the world at the strike's start, for how low the land lies round the target (`fd_level`).
@@ -286,9 +291,9 @@ mod tests {
         }
         // (on a crease's own bearing, with no turn: the seed's turn is its fractional part of a turn)
         assert_eq!(fd_pin([0.0; 3], [100.0, 0.0, 1.0], 0.0), 2);
-        assert_eq!(fd_pin([0.0; 3], [-30.0, 0.0, -1.0], 0.0), 6 * 4);
+        assert_eq!(fd_pin([0.0; 3], [-30.0, 0.0, -1.0], 0.0), 6 * 6);
         assert_eq!(fd_pin([0.0; 3], [2000.0, 0.0, 1.0], 0.0), 5);
-        assert_eq!(fd_lie(-45.0, 7), -45.0 - 8.0 / 64.0);
+        assert_eq!(fd_lie(-45.0, 7), -45.0 - 8.0 / 128.0);
     }
 
     /// A plateau is pressed to itself, not to the sea; a few low columns don't drag it down; land not loaded says nothing.
@@ -323,14 +328,14 @@ mod tests {
             v[1].atan2(v[0]).to_degrees().rem_euclid(360.0)
         });
         let rise = table("cp_rise", |l| l.split("return ").nth(1).unwrap().trim_end_matches(|c| c == ';' || c == ' ' || c == '}').parse().unwrap());
-        assert_eq!((dirs.len(), rise.len()), (8, 8));
-        let gap = |k: usize| (dirs[(k + 1) % 8] - dirs[k]).rem_euclid(360.0);
-        let odd: f64 = (0..8).step_by(2).map(gap).sum();
+        assert_eq!((dirs.len(), rise.len()), (FD_N, FD_N));
+        let gap = |k: usize| (dirs[(k + 1) % FD_N] - dirs[k]).rem_euclid(360.0);
+        let odd: f64 = (0..FD_N).step_by(2).map(gap).sum();
         assert!((odd - 180.0).abs() < 1.0e-3, "every other angle adds up to {odd}");
-        for k in 0..8 {
-            let up = rise[(k + 1) % 8] - rise[k];
+        for k in 0..FD_N {
+            let up = rise[(k + 1) % FD_N] - rise[k];
             assert!((up.abs() - gap(k).to_radians()).abs() < 0.002, "wedge {k}: a slope of {}", up.abs() / gap(k).to_radians());
-            assert!(up * (rise[(k + 2) % 8] - rise[(k + 1) % 8]) < 0.0, "crease {} neither a mountain nor a valley", (k + 1) % 8);
+            assert!(up * (rise[(k + 2) % FD_N] - rise[(k + 1) % FD_N]) < 0.0, "crease {} neither a mountain nor a valley", (k + 1) % FD_N);
         }
     }
 
