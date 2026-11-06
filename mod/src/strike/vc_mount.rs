@@ -1081,6 +1081,11 @@ struct Make {
     picks: Vec<(usize, vc_lodge::Site, f64, f64)>,
     slabs: Vec<Slab>,
 }
+impl Make {
+    fn seed(&self) -> u32 {
+        self.w.borrow().geo.seed
+    }
+}
 /// Plate `n` of the picks as a rock, a slab and its flight (the words of the plate and its flight changed).
 fn vl_one(n: usize, m: &mut Make) -> Slab {
     let (k, site, hit, th) = m.picks[n];
@@ -1141,7 +1146,7 @@ fn vl_make(q: &mut Plan, mut m: Make, at: f32) {
             let w2 = m.words.1.clone();
             let id = s.rock_id;
             let (i0, k0) = s.grid_cells();
-            s.set_bits(&|i, k| w2.get((k0 + k) * VM_GW + i0 + i).is_some_and(|w| (*w & 255) as usize == id));
+            s.set_bits(&|i, k| w2.get((k0 + k) * VM_GW + i0 + i).is_some_and(|w| (*w & 255) as usize == id), m.seed());
             m.slabs.push(s);
             vl_make(q, m, at + 0.05);
             return;
@@ -1236,7 +1241,7 @@ pub(in crate::strike) mod table {
             let w2 = m.words.1.clone();
             let id = s.rock_id;
             let (i0, k0) = s.grid_cells();
-            s.set_bits(&|i, k| w2.get((k0 + k) * VM_GW + i0 + i).is_some_and(|w| (*w & 255) as usize == id));
+            s.set_bits(&|i, k| w2.get((k0 + k) * VM_GW + i0 + i).is_some_and(|w| (*w & 255) as usize == id), seed);
             m.slabs.push(s);
         }
         for e in &mut o {

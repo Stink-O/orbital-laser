@@ -59,6 +59,18 @@ fn debris_big(i: usize, seed: f32) -> bool {
 
 /// Part of a plan, worked out when it is due (`Act::Later`).
 pub type Stage = Box<dyn FnOnce() -> Vec<(f32, Act)>>;
+thread_local! {
+    static CLOCK: std::cell::Cell<f32> = const { std::cell::Cell::new(0.0) };
+}
+/// The strike's clock as a tick begins (lib.rs): a stage waits its turn, so one that counts its own time falls behind it.
+pub fn set_clock(t: f32) {
+    CLOCK.with(|c| c.set(t));
+}
+fn clock() -> f32 {
+    CLOCK.with(std::cell::Cell::get)
+}
+#[cfg(test)]
+pub(crate) use vc_lodge::vl_gone_word;
 
 pub enum Act {
     Cmd(String),

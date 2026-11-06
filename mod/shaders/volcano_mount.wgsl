@@ -1264,6 +1264,83 @@ fn vm_join_len(pos: vec2<f32>, len: f32, C: vec3<f32>, rd: vec3<f32>) -> f32 {
 }
 // [end half stage]
 
+// A plate that stays strikes: what it ploughed up, a line of billows along where it went in, climbing and rolling out, and
+// rock flung out of them.
+fn vl_burst(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lb: u32, age: f32, l: VcLight, c: ptr<function, vec3<f32>>, tr: ptr<function, f32>, tm: ptr<function, f32>) {
+    let f = vec3<f32>(vm_w(lb + 9u), vm_w(lb + 10u), vm_w(lb + 11u));
+    let hl = vm_w(lb + 15u);
+    let reach = 1.5 * hl + 150.0;
+    let e0 = f + C;
+    let tc = dot(e0, rd);
+    if (dot(e0, e0) - tc * tc > reach * reach || tc + reach < 0.0) {
+        return;
+    }
+    let d = vec3<f32>(vm_w(lb + 13u), 0.0, vm_w(lb + 14u));
+    let a = vec3<f32>(-d.z, 0.0, d.x);
+    let seed = f32(lb & 255u);
+    let fade = 1.0 - smoothstep(3.5, 10.5, age);
+    let dust = vec3<f32>(0.15, 0.118, 0.09) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up);
+    for (var k = 0u; k < 8u; k = k + 1u) {
+        let h0 = hash21(vec2<f32>(f32(k), seed));
+        let h1 = hash21(vec2<f32>(f32(k) + 0.5, seed + 3.0));
+        let h2 = hash21(vec2<f32>(f32(k) + 0.3, seed + 7.0));
+        let grow = 1.0 - exp(-age / (0.9 + 0.7 * h1));
+        let side = (f32(k) / 3.5 - 1.0) * (0.55 * hl + 30.0 * grow);
+        let P = f + a * side + d * ((h0 - 0.35) * 0.9 * hl * (0.3 + grow)) + vec3<f32>(0.0, (14.0 + 95.0 * h1 * h1) * grow, 0.0);
+        let R = (0.26 * hl + 34.0 * h2) * (0.3 + 0.9 * grow) + 3.0 * age;
+        let oe = (-C - P) * vec3<f32>(1.0, 1.15, 1.0);
+        let de = rd * vec3<f32>(1.0, 1.15, 1.0);
+        let A = dot(de, de);
+        let B = dot(oe, de);
+        let disc = B * B - A * (dot(oe, oe) - R * R);
+        if (disc <= 0.0) {
+            continue;
+        }
+        let sq = sqrt(disc);
+        let t0 = max((-B - sq) / A, 0.0);
+        let t1 = min((-B + sq) / A, tmax);
+        if (t1 <= t0) {
+            continue;
+        }
+        let q = rd * (t0 + 0.3 * (t1 - t0)) - C;
+        let fq = 3.4 / R;
+        let n = 0.55 * gnoise3(q * fq + vec3<f32>(f32(k), -age * 0.35, seed)) + 0.45 * gnoise3(q * fq * 3.1 + vec3<f32>(seed, -age * 0.6, f32(k)));
+        let al = (1.0 - exp(-(t1 - t0) / R * 2.2)) * smoothstep(0.32, 0.62, (t1 - t0) / (2.0 * R) * sqrt(A) + 1.3 * (n - 0.5)) * fade;
+        if (al < 0.004) {
+            continue;
+        }
+        let up = saturate((q.y - P.y + R) / (1.6 * R));
+        let sc = dust * (0.3 + 0.8 * up) * (0.75 + 0.5 * n) + vec3<f32>(0.1, 0.08, 0.065) * vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0));
+        *c = *c + *tr * al * sc;
+        *tr = *tr * (1.0 - al);
+        *tm = min(*tm, t0);
+    }
+    if (age < 5.0) {
+        for (var k = 0u; k < 14u; k = k + 1u) {
+            let h0 = hash21(vec2<f32>(f32(k) + 9.0, seed));
+            let h1 = hash21(vec2<f32>(f32(k) + 9.5, seed + 3.0));
+            let h2 = hash21(vec2<f32>(f32(k) + 9.3, seed + 7.0));
+            let ang = 6.283 * h0;
+            let v = (0.5 + h1) * vec3<f32>(55.0 * cos(ang) + 35.0 * d.x, 0.0, 55.0 * sin(ang) + 35.0 * d.z);
+            let vy = 45.0 + 70.0 * h2;
+            let P0 = f + a * ((h1 - 0.5) * 1.1 * hl);
+            let s1 = age;
+            let s0 = max(age - 0.03 - 0.05 * h1, 0.0);
+            let y1 = vy * s1 - 17.0 * s1 * s1;
+            if (y1 < -2.0) {
+                continue;
+            }
+            let g = vm_seg(rd, P0 + v * s1 + vec3<f32>(0.0, y1, 0.0) + C, P0 + v * s0 + vec3<f32>(0.0, vy * s0 - 17.0 * s0 * s0, 0.0) + C);
+            let w = max(1.6 + 2.2 * h0, g.z * vs.px * 1.3);
+            let al = exp(-g.x / (w * w)) * min((1.6 + 2.2 * h0) / w, 1.0);
+            if (al > 0.01 && g.z < tmax) {
+                *c = *c + *tr * al * vec3<f32>(0.012, 0.011, 0.01);
+                *tr = *tr * (1.0 - al);
+                *tm = min(*tm, g.z);
+            }
+        }
+    }
+}
 fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
     return a.x * b.y - a.y * b.x;
 }
@@ -1344,13 +1421,13 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
         // ---- it strikes: a low dome of dust, rolling out from under it and thinning ------------------------------------
         let age = vm.t - hit + 0.3;
         if (age > 0.0) {
-            // (one that stays a far bigger burst, round where it went in, wider than tall and slow to go)
-            let big = lk != 0u;
-            let Rd = select(rad * (0.3 + 0.62 * (1.0 - exp(-age / 1.2))), vm_w(lb + 15u) * (0.5 + 1.25 * (1.0 - exp(-age / 1.5))), big);
-            let dc = select(head, vec3<f32>(vm_w(lb + 9u), vm_w(lb + 10u), vm_w(lb + 11u)), big);
-            let sq_y = select(1.7, 1.25, big);
-            let oe = (-C - dc) * vec3<f32>(1.0, sq_y, 1.0);
-            let de = rd * vec3<f32>(1.0, sq_y, 1.0);
+            if (lk != 0u) {
+                vl_burst(C, rd, tmax, lb, age, l, &c, &tr, tm);
+                continue;
+            }
+            let Rd = rad * (0.3 + 0.62 * (1.0 - exp(-age / 1.2)));
+            let oe = (-C - head) * vec3<f32>(1.0, 1.7, 1.0);
+            let de = rd * vec3<f32>(1.0, 1.7, 1.0);
             let A = dot(de, de);
             let B = dot(oe, de);
             let disc = B * B - A * (dot(oe, oe) - Rd * Rd);
@@ -1361,8 +1438,8 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
                 if (t1 > t0) {
                     let q = rd * (t0 + 0.3 * (t1 - t0)) - C;
                     let n = 0.6 * gnoise3(q * 0.026 + vec3<f32>(0.0, -age * 0.5, f32(i))) + 0.4 * gnoise3(q * 0.08 + vec3<f32>(f32(i), -age * 0.9, 0.0));
-                    let al = (1.0 - exp(-(t1 - t0) / Rd * 1.7)) * smoothstep(0.3, 0.75, (t1 - t0) / (2.0 * Rd) * sqrt(A) + 1.4 * (n - 0.5)) * (1.0 - smoothstep(select(1.2, 3.5, big), select(5.5, 10.5, big), age));
-                    let up = saturate((q.y - dc.y) / (0.6 * Rd));
+                    let al = (1.0 - exp(-(t1 - t0) / Rd * 1.7)) * smoothstep(0.3, 0.75, (t1 - t0) / (2.0 * Rd) * sqrt(A) + 1.4 * (n - 0.5)) * (1.0 - smoothstep(1.2, 5.5, age));
+                    let up = saturate((q.y - head.y) / (0.6 * Rd));
                     let sc = vec3<f32>(0.3, 0.255, 0.205) * ((0.25 + 0.45 * up) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up) + vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0)));
                     c = c + tr * al * sc;
                     tr = tr * (1.0 - al);

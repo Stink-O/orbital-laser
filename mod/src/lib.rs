@@ -1062,6 +1062,7 @@ impl Orbital {
         };
         s.ticks += 1;
         let now = s.ticks as f32 * 0.05;
+        strike::set_clock(now);
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
@@ -2374,6 +2375,45 @@ mod stress {
                 assert!(mem::live() < base + (2 << 20), "{:.1} MB held after it", mem::mb(mem::live() - base));
             }
         }
+    }
+
+    /// The Supervolcano's ten big plates (strike/vc_lodge.rs): on land that loads they go in as blocks and only then does
+    /// the pass let them go; stopped with one half built, it is finished, and no other starts.
+    #[test]
+    fn the_plates_that_stay_go_in_whole() {
+        let sv = LASERS.iter().position(|l| l.key == "supervolcano").expect("the supervolcano");
+        let gone = |s: &Soak| (0..10).map(|i| s.o.strike.as_ref().map_or(0.0, |k| k.data.get(strike::vl_gone_word(i)).map_or(0.0, |w| f32::from_bits(*w)))).collect::<Vec<f32>>();
+        // (all of it, to the end)
+        let mut s = Soak::new(5);
+        s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
+        s.fire(sv, (1000, -2000));
+        let mut ticks = 0;
+        while ticks < 1250 {
+            s.step("plates");
+            ticks += 1;
+        }
+        let g = gone(&s);
+        assert!(g.iter().filter(|t| **t > 29.0 && **t < 62.0).count() >= 8, "{g:?}");
+        // (stopped just after the first has struck)
+        let mut s = Soak::new(6);
+        s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
+        s.fire(sv, (1000, -2000));
+        let mut ticks = 0;
+        while ticks < 700 {
+            s.step("plates");
+            ticks += 1;
+        }
+        assert!(gone(&s).iter().all(|t| *t == 0.0), "{:?}", gone(&s));
+        s.stop();
+        let before = fake::with(|w| w.edits);
+        let mut left = 0;
+        while (!s.o.cleanup.is_empty() || !s.o.edits.is_empty()) && left < 2000 {
+            s.step("plates");
+            left += 1;
+        }
+        let after = fake::with(|w| w.edits);
+        assert!(left < 2000, "it never finished");
+        assert!((60..1800).contains(&(after - before)), "{} edits to finish it", after - before);
     }
 
     /// The follow camera: a Nuke fired with it on moves the player by kicks to their velocity once the bomb comes
