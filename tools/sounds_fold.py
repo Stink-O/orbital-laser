@@ -1578,7 +1578,7 @@ def ding_horn():
         h = bank(fftconvolve(imp, noise(n_of(0.004)) * np.exp(-times(n_of(0.004)) / 0.0012) + np.exp(-times(n_of(0.004)) / 0.0015))[:n], BODY)
         v = 0.0
         y = np.zeros(n)
-        for (lo, hi), late, a_ in (((None, 150), -0.7, 0.8), ((150, 420), -0.3, 0.8), ((420, 1000), 0.1, 0.8), ((1000, 3200), 0.5, 0.55)):
+        for (lo, hi), late, a_ in (((None, 150), -0.7, 0.62), ((150, 420), -0.3, 0.62), ((420, 1000), 0.1, 0.8), ((1000, 3200), 0.5, 0.55)):
             e = ss(late, late + 0.75, u) * (1 - ss(1.5 + late * 0.3, 3.0, u))
             y += bp(h, lo, hi) * e * a_
         l, r = pan(T.unit(y) * (0.5 if f0 < 30 else 1.0), side)
@@ -1610,7 +1610,7 @@ def ding_countdown():
         y = struck(m, 0.0, 0.02, GROUND[1:], 16, 0.4) * 0.9 + bn(m, 110, 520) * (1 - np.exp(-s / 0.0015)) * np.exp(-s / 0.04) * 0.6
         y = y + rough(m, 0.0, 0.006, 6, 200, 1400, 0.004) * 0.1
         P.put(y, bare_blow(1.6, 24, 110, 0.008, 0.11) * 0.6, 0.0)
-        y = y * (0.42 + 0.46 * v ** 1.3) * rng().uniform(0.92, 1.05)
+        y = y * (0.36 + 0.36 * v ** 1.3) * rng().uniform(0.92, 1.05)
         l, r = pan(y, (-1) ** k * 0.08)
         P.put(L, l, a_)
         P.put(R, r, a_)
