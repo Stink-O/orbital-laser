@@ -53,6 +53,8 @@ pub(super) const FD_RELEASE: f32 = 40.5;
 /// When each ring bangs down, outermost first (ring 4 at FD_SLAM[0], with the far land, ring 0 last): the last shows the
 /// crater. Each falls for 0.8 s and stops dead, so there is a stillness before each but the first.
 pub(super) const FD_SLAM: [f32; 5] = [44.1, 45.2, 46.3, 47.4, 48.7];
+/// How long before FD_BEAT ding.ogg starts, for what leads into the touch (tools/sounds_fold.py's DING_LEAD).
+pub(super) const FD_DING_LEAD: f32 = 2.2;
 /// How long each ring falls (fold_warp.wgsl's FW_FALL): a ring's sound starts this far before its bang, its fall in the same file.
 pub(super) const FD_FALL: f32 = 0.8;
 /// When the crater takes its place: the one frame the game's hold on the terrain lets go (`render.hold-world`).
@@ -174,7 +176,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     let dist = (me[0] - cx).hypot(me[2] - cz);
 
     // ---- sound (tools/sounds_fold.py) ------------------------------------------------------------------------------
-    // (the fall, a roar cut dead on the stop; a heavy settle in the silence; the air arriving late by the distance)
+    // (the fall, a roar cut dead on the stop; whatever catches it, holding it; the air arriving late by the distance)
     p.csound(0.0, "descent", 10.0, 1.0);
     p.csound(FD_STOP + 0.09, "wobble", 10.0, 1.0);
     p.csound(FD_STOP + (dist as f32 / 343.0).clamp(0.2, 1.0), "air", 10.0, 1.0);
@@ -186,9 +188,10 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     p.csound(FD_SCORE, "score", 10.0, 1.0);
     p.csound(FD_FOLD, "unravel", 10.0, 1.0);
     p.csound(FD_FOLD, "groan", 10.0, 1.0);
-    // (the seal and the fold running down to nothing; the ding alone; everything going back, gathering, till the first ring lands)
-    p.csound(FD_SEAL, "foldown", 10.0, 1.0);
-    p.csound(FD_BEAT, "ding", 10.0, 1.0);
+    // (the rim gathering at the hole, the land coming down it, the strain building right into the touch; the touch, its lead-in on the front of its file; everything going
+    // back, till the first ring lands)
+    p.csound(FD_SEAL - 0.5, "foldown", 10.0, 1.0);
+    p.csound(FD_BEAT - FD_DING_LEAD, "ding", 10.0, 1.0);
     p.csound(FD_RELEASE, "reverse", 10.0, 1.0);
     p.shake(FD_RELEASE + 1.5, 0.3 * super::falloff(dist), 1.6);
     // (each ring its own fall and its own bang, in one file, and a jolt with each; the last's fall and the slam apart)
@@ -199,10 +202,16 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         } else {
             p.csound(*t - FD_FALL, "fall", 10.0, 1.0);
             p.csound(*t, "slam", 10.0, 1.0);
+            p.csound(*t, "sink", 10.0, 1.0);
         }
         p.shake(*t, (0.5 + 0.4 * f) * super::falloff(dist * 0.5), 0.6 + 0.9 * f);
     }
-    p.csound(FD_SLAM[4] + 1.0, "comedown", 10.0, 1.0);
+    // (the panel under the player lets go on the slam and lands by how deep the crater is there: fw_sunk's fall, a crater 300 in radius)
+    if dist < 295.0 {
+        let u = dist as f32 / 300.0;
+        p.csound(FD_SLAM[4] + (66.0 * (1.0 - u * u * u).powf(0.75) / 18.0).sqrt(), "underfoot", 10.0, 1.0);
+    }
+    p.csound(FD_SLAM[4] + 4.6, "comedown", 10.0, 1.0);
 
     if !terrain {
         p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -363,11 +372,18 @@ mod tests {
             }
         }
         assert_eq!(when("letgo"), Some(FD_HANG));
+        assert_eq!(when("ding"), Some(FD_BEAT - FD_DING_LEAD));
         for k in 0..4 {
             assert_eq!(when(&format!("bang{}", k + 1)), Some(FD_SLAM[k] - FD_FALL), "bang {k}");
         }
         assert_eq!(when("fall"), Some(FD_SLAM[4] - FD_FALL));
         assert_eq!(when("slam"), Some(FD_SLAM[4]));
+        assert_eq!(when("sink"), Some(FD_SLAM[4]));
+        assert_eq!(when("comedown"), Some(FD_SLAM[4] + 4.6));
+        assert!(when("underfoot").is_none(), "a player on the rim has no panel under them");
+        let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 170.5], 0);
+        let t = ev.iter().find(|e| matches!(&e.1, Act::Sound { event, .. } if event == "orbital:fold.underfoot")).map(|e| e.0).expect("a player inside the crater");
+        assert!(t > FD_SLAM[4] + 1.5 && t < FD_SLAM[4] + 2.0, "underfoot at {t}");
     }
 
     /// The plan as it is made on the fire tick stays light: the tiles wait for stages of their own.

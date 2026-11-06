@@ -2133,5 +2133,23 @@
       }
     ],
     "subtitle": "subtitles.orbital.fold.letgo"
+  },
+  "fold.sink": {
+    "sounds": [
+      {
+        "name": "orbital:fold/sink",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.sink"
+  },
+  "fold.underfoot": {
+    "sounds": [
+      {
+        "name": "orbital:fold/underfoot",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.underfoot"
   }
 }
