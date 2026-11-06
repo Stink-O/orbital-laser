@@ -1243,7 +1243,9 @@ fn cp_lines(r: f32, w: CpW, i: i32, t: f32, px: f32, near: f32, shut: f32) -> Cp
                     let xm = mix(x0, x1, 0.38 + 0.25 * fract(hn * 41.0));
                     let tri = max(select((x1 - q) / (x1 - xm), (q - x0) / (xm - x0), q < xm), 0.0);
                     let at = FW_TEAR + 3.0 * hm;
-                    let opens = fw_ss(at, at + 2.6, t) * (1.0 - fw_ss(FW_FADE + 1.0, FW_END - 2.0, t)) * (1.0 - shut);
+                    // (shut by the time its ring lands: past that the land has its relief back, and a straight diamond laid over hills and crowns is a black blob)
+                    let land = fw_hit(min(n + 1, 4));
+                    let opens = fw_ss(at, at + 2.6, t) * (1.0 - fw_ss(land - 0.3, land, t)) * (1.0 - shut);
                     if (tri * opens > 0.0) {
                         h.tear = min(h.tear, d - select(0.7, 1.0, sd > 0.0) * (2.2 + 0.0085 * q0) * tri * opens);
                     }
