@@ -1006,10 +1006,12 @@ fn fw_turn(x3: f32, Y: f32, z3: f32, at: vec3<f32>, g: FwBend) -> vec3<f32> {
 }
 // How much of the sheet's motion the land `off` from the player takes, 0 at their feet to 1: nothing under them, more and more
 // away from them, and over twice as far behind them as towards the target: the sheet slides towards the target as it closes,
-// and the land behind them has that much further to catch it. `e` the way from the target to them, `d` how far.
-fn fw_share(off: vec2<f32>, e: vec2<f32>, d: f32) -> f32 {
+// and the land behind them has that much further to catch it. `e` the way from the target to them, `d` how far. `slid` 1 as the sheet slides
+// furthest: behind them the ramp stretches out with it, or more of the slide than its width folds the land back over itself in a crescent behind them.
+const FW_SLID: f32 = 2.0;
+fn fw_share(off: vec2<f32>, e: vec2<f32>, d: f32, slid: f32) -> f32 {
     let dm = length(off);
-    return fw_ss(FW_FEET, clamp(0.95 * d, 90.0, 190.0) * (1.0 + fw_ss(-0.2, 0.6, dot(off, e) / max(dm, 0.001))), dm);
+    return fw_ss(FW_FEET, clamp(0.95 * d, 90.0, 190.0) * (1.0 + fw_ss(-0.2, 0.6, dot(off, e) / max(dm, 0.001)) * (1.0 + FW_SLID * slid)), dm);
 }
 // When the land under the player has all gone back to the sheet: the sheet is at its own size again by then and their own ring
 // (`own`) has lain down (fw_lie), so it is the land that was there and nothing comes up through them.
@@ -1147,7 +1149,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // (under them as they are till the sphere has hold of them, then under where it has them)
     let join = fw_join(tau, own);
-    let share = mix(fw_share(Q.xz - mix(-c.tgt.xz, mq.xz, fw_held(tau)), e, dist), 1.0, join);
+    let share = mix(fw_share(Q.xz - mix(-c.tgt.xz, mq.xz, fw_held(tau)), e, dist, select(0.0, fw_ss(24.0, 27.5, tau), t < FW_REL)), 1.0, join);
     if (share <= 0.0) {
         out.pos = c.tgt + rest + stay;
         return out;
