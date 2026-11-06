@@ -418,7 +418,7 @@ fn cp_press(r: f32, w: CpW, t: f32, top: f32) -> vec2<f32> {
             bl = max(bl, fw_ss(0.0, 60.0, g - q) * fw_ss(0.0, 34.0, q) * fw_ss(end, end * 0.72, q) * (1.0 - fw_ss(0.22 * wide, wide, d)));
         }
     }
-    return vec2<f32>((1.0 - CP_FLAT * fw_ss(FW_SCORE + 0.3, FW_TEAR + 1.5, t) * fw_ss(0.0, 150.0, fw_score(t) - r)) * (1.0 - 0.9 * bl), (67.0 - top) * min(r / 170.0, 1.0));
+    return vec2<f32>((1.0 - CP_FLAT * fw_ss(FW_SCORE + 0.3, FW_TEAR + 1.5, t) * fw_ss(0.0, 150.0, fw_score(t) - r) * fw_ss(FW_LEN * 1.25, FW_LEN, r)) * (1.0 - 0.9 * bl), (67.0 - top) * min(r / 170.0, 1.0));
 }
 // When the chord of wedge k at ring i is scored.
 fn cp_chord(k: i32, i: i32) -> f32 {
@@ -974,13 +974,13 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var rest = Q + vec3<f32>(0.0, rip, 0.0);
     // (B: the land pressed along the creases, all but what is underfoot, whether or not it has gone to the sheet yet)
     let b = cp_on();
-    let crease = b && t > FW_SCORE && t < FW_SLAM4 && r < FW_LEN * 1.25;
+    let crease = b && t > FW_SCORE && t < FW_SLAM4 && tau < FW_FLAT0 && r < FW_LEN * 1.25;
     var w: CpW;
     var pr = vec2<f32>(1.0, 0.0);
-    if (crease || b && tau >= FW_FOLD) {
+    if (b && tau >= FW_SCORE && tau < FW_FLAT0) {
         w = cp_wedge(a);
     }
-    if (crease && t < FW_REL) {
+    if (crease && t < FW_REL && tau < FW_LAY1) {
         pr = cp_press(r, w, t, globals.warp[0].y);
         pr.x = mix(1.0, pr.x, (1.0 - fw_lay(tau)) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - mix(-c.tgt.xz, mq.xz, fw_held(tau)))));
         rest.y = pr.y + (rest.y - pr.y) * pr.x;
@@ -1023,7 +1023,11 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     if (h < c.cut) {
         h = mix(h, c.cut + 0.15 * (h - c.cut), cuts);
     }
-    let soft = select(26.0 * (1.0 - exp(h / 26.0)) * -1.0, 110.0 * (1.0 - exp(-h / 110.0)), h > 0.0);
+    var soft = select(26.0 * (1.0 - exp(h / 26.0)) * -1.0, 110.0 * (1.0 - exp(-h / 110.0)), h > 0.0);
+    // (B: its relief is pressed out already: only brought to the sheet's level, or what lies under it would be pressed on to it too)
+    if (pr.y != 0.0) {
+        soft = mix(soft, h - pr.y, fw_ss(FW_LEN * 1.25, FW_LEN, r));
+    }
     h = mix(h, soft, folded);
     if (tau < FW_FOLD - 0.01 || t >= FW_SLAM4) {
         out.pos = c.tgt + mix(rest, vec3<f32>(Q.x, h, Q.z), share);
@@ -1109,7 +1113,7 @@ fn cp_taper(s: f32, g: f32) -> f32 {
     }
     return pow(1.0 - s / g, 0.7);
 }
-fn cp_lines(r: f32, a: f32, t: f32, px: f32, sun: vec2<f32>) -> CpHit {
+fn cp_lines(r: f32, a: f32, t: f32, px: f32, sun: vec2<f32>, near: f32) -> CpHit {
     var h = CpHit(1000.0, 0.0, 0.0, 0.0, 1000.0, 0.0);
     let w = cp_wedge(a);
     let p = (w.u * w.e0 + w.v * w.e1) * r;
@@ -1166,8 +1170,9 @@ fn cp_lines(r: f32, a: f32, t: f32, px: f32, sun: vec2<f32>) -> CpHit {
             let d = abs(sg.x);
             let hw = 0.5 * cp_taper(sg.y, g);
             h.big = min(h.big, d - hw);
-            h.hot = max(h.hot, 0.6 * cp_cover(d, hw, px));
-            h.glow = max(h.glow, 0.3 * exp(-max(d - hw, 0.0) / 2.0) * cp_taper(sg.y, g));
+            // (none close by the player: their own land isn't pressed, and a thin bright line over its trees is a dotted road)
+            h.hot = max(h.hot, 0.6 * near * cp_cover(d, hw, px));
+            h.glow = max(h.glow, 0.3 * near * exp(-max(d - hw, 0.0) / 2.0) * cp_taper(sg.y, g));
         }
     }
     // ---- the fine ones: a vein into the facet, a branch off it, a branch off that; each only as far as it has grown, thinner and
@@ -1360,7 +1365,7 @@ fn world_fragment(f: Fragment) -> Painted {
     if (healed < 1.0 && front > 0.0 && r < FW_LEN * 1.2) {
         if (b) {
             let turn = fract(c.seed * 0.618034) * FW_TAU;
-            hit = cp_lines(r, a, t, max(0.05, dist * 0.00095), fw_rot(normalize(globals.sun.xz + vec2<f32>(0.001, 0.0)), -turn));
+            hit = cp_lines(r, a, t, max(0.05, dist * 0.00095), fw_rot(normalize(globals.sun.xz + vec2<f32>(0.001, 0.0)), -turn), fw_ss(FW_FEET + 25.0, FW_FEET + 70.0, length(f.home.xz - c.me.xz)));
             dc = vec2<f32>(hit.big);
         } else {
             dc = fw_crease(r, a);
