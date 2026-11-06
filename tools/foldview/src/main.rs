@@ -429,7 +429,6 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
             let inv_proj = [[asp / ft, 0.0, 0.0, 0.0], [0.0, 1.0 / ft, 0.0, 0.0], [0.0, 0.0, 0.0, (zf - zn) / (zn * zf)], [0.0, 0.0, -1.0, zn / (zf - zn) * (zf - zn) / (zn * zf)]];
             let mut f: Vec<f32> = Vec::new();
             let push = |o: &mut Vec<f32>, m: [[f32; 4]; 4]| for c in m { o.extend_from_slice(&c); };
-            let ([rx, ry, rz], o3) = ([g("ox", 0.0), g("oy", 0.0), g("oz", 0.0)], [0.0f32; 3]); let _ = o3;
             push(&mut f, view); push(&mut f, proj); push(&mut f, tp(view)); push(&mut f, inv_proj);
             f.extend_from_slice(&[cam[0], cam[1], cam[2], 1.0]);
             f.extend_from_slice(&[w as f32, h as f32, 1.0 / w as f32, 1.0 / h as f32]);
@@ -444,7 +443,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
             f.extend_from_slice(&[me[0], me[1], me[2], 0.0]);
             f.extend_from_slice(&[0.0; 4]);
             push(&mut f, view); push(&mut f, proj);
-            f.extend_from_slice(&[rx, ry, rz, 1.0]);
+            f.extend_from_slice(&[cam[0], cam[1], cam[2], 1.0]);
             queue.write_buffer(&pub_, 0, bytemuck::cast_slice(&f));
             let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,

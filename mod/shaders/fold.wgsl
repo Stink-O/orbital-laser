@@ -880,7 +880,7 @@ fn fd_round(r: vec3<f32>) -> vec3<f32> {
     return c;
 }
 // The droplet's own metal, for a surface at `S` from the eye (along `v`) with normal `n`: fd_env's sky, its hard dark line, the sun, and under it the land off the picture.
-// `near` how much of the real land it mirrors: what is under it at the tip, where there is real land to mirror.
+// `near` how much of the real land it mirrors: what is under it at the tip, where there is land on the picture to mirror.
 fn fd_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, G: vec3<f32>, near: f32) -> vec3<f32> {
     let r = reflect(v, n);
     // (its horizon drawn down: seen from under it, most of a thing hung up looks down, and the droplet's bright half would be lost)
@@ -993,7 +993,7 @@ fn fd_swell(v: f32, ang: f32, t: f32) -> vec2<f32> {
     b = 0.07 * c3 + 0.04 * c4 + 0.022 * c6;
     return vec2<f32>(a, b);
 }
-fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, f: FwWay, at: vec3<f32>, on: FdOn) -> vec3<f32> {
+fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f32, gq: vec3<f32>, g: FwBend, f: FwWay, on: FdOn) -> vec3<f32> {
     // ---- how far it has gone: the runs first, from high up down the land's low ground, then the land between them --------------------------------------------
     let fr = fw_ss(36.1, 38.4, tau);
     if (fr <= 0.0) {
@@ -1016,7 +1016,7 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f3
     // (the band's top: nothing gets past FD_V0 but the runs)
     let shore = fw_ss(0.0, 0.02, e) * ran * fw_ss(FD_V0 - 0.03, FD_V0, on.v + 0.05 * c1);
     // (ahead of it the land goes dark, wet with it)
-    let wet = (1.0 - fw_ss(-0.14, 0.0, e)) * 0.0 + fw_ss(-0.16, 0.0, e) * ran;
+    let wet = fw_ss(-0.16, 0.0, e) * ran;
     var col = colIn * (1.0 - 0.6 * wet);
     if (shore <= 0.0) {
         return col;
@@ -1200,7 +1200,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             }
         }
         if (on.hit) {
-            col = fd_stalactite(col, pix, v, t, tau, mq, gq, g, f, at_, on);
+            col = fd_stalactite(col, pix, v, t, tau, gq, g, f, on);
         }
         if (tau > 38.2) {
             col = fd_hanging(col, v, far, tau, mq, gq, g, f, at_);
