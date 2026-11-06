@@ -7,9 +7,11 @@
 //! It carries them through the fork's `world.carry-player`, as the Hurricane's wind does (carry.rs): each tick their move
 //! in place of their own (the game's collision move, no gravity, no drag), a turn of their view spread over the tick's
 //! frames. Never faster than a few blocks a tick. With the KNOCKBACK switch off (`/orbital knockback off`) they are left
-//! standing. A deliberate break-free (sneak held half a second: the game decides) lets go at once; they are left alone
-//! while they fly, and once they stop flying for REARM ticks while the water still has the place they are at, it takes
-//! them again.
+//! standing. A deliberate break-free (sneak held half a second: the game decides) lets go at once, back into flight for a
+//! creative player; they are left alone while they fly, and once they stop flying for REARM ticks while the water still
+//! has the place they are at, it takes them again. Put down by the water they are let go with a small throw
+//! (`Surge::set_down`), which keeps them out of the flight the game would put them in, unless they were flying when it
+//! took them.
 //!
 //! The water is the strike's closed-form model (strike/tsunami.rs's `TsGeo`), so this needs nothing from the world: its
 //! depth over them is `level` less their height.
@@ -28,6 +30,8 @@ const LEAVE: f64 = 0.6;
 /// and how far under the surface their feet ride from then on (their eye about half a block over it).
 pub const SURF: f64 = 6.5;
 const RIDE: f64 = 1.1;
+/// The most of its move across they keep as it sets them down (blocks a tick).
+const RELEASE: f64 = 0.3;
 /// How far over where it took them it puts them down.
 const SET: f64 = 2.0;
 /// How fast their view turns to look the way the water goes (degrees a tick at most).
@@ -40,6 +44,8 @@ struct Lift {
     home: [f64; 2],
     /// Their drift across the flow, and its phase.
     ph: f64,
+    /// Whether they were flying when it took them: only they go back to it as it lets go.
+    flew: bool,
 }
 
 pub struct Surge {
@@ -54,6 +60,8 @@ pub struct Surge {
     /// Where their feet were a tick ago and the rise or fall it asked for then; the ticks the land has held them up.
     last: (f64, f64),
     held_up: u32,
+    /// The move across it asked for last.
+    drift: [f64; 2],
     pub freed_at: Option<f64>,
     /// When it let them go, for the tests.
     pub left_at: Option<f64>,
@@ -66,7 +74,7 @@ fn ease(a: f64, b: f64, t: f64) -> f64 {
 
 impl Surge {
     pub fn new(geo: TsGeo) -> Surge {
-        Surge { geo, lift: None, done: false, free: false, grounded: 0, asked: [false; 2], sway: 0.0, n: 0, last: (0.0, 0.0), held_up: 0, freed_at: None, left_at: None }
+        Surge { geo, lift: None, done: false, free: false, grounded: 0, asked: [false; 2], sway: 0.0, n: 0, last: (0.0, 0.0), held_up: 0, drift: [0.0; 2], freed_at: None, left_at: None }
     }
     /// Whether it is over: the water gone from them, or the strike's end near.
     pub fn over(&self, t: f64) -> bool {
@@ -74,6 +82,15 @@ impl Surge {
     }
     pub fn lifted(&self) -> bool {
         self.lift.is_some() && !self.done && !self.free
+    }
+    /// What to let them go with (`world.push-player` while carried, blocks a tick): a little of its drift, falling. Without
+    /// it the game puts a creative player who is off the ground back into flight as a carry stops, which is for a player
+    /// who chose to break free, not for one the water has put down. None for one who was flying when it took them.
+    pub fn set_down(&self) -> Option<[f32; 3]> {
+        self.lift.as_ref().filter(|l| !l.flew && !self.free)?;
+        let (x, z) = (self.drift[0] * 0.35, self.drift[1] * 0.35);
+        let k = (RELEASE / x.hypot(z).max(1e-6)).min(1.0);
+        Some([(x * k) as f32, -0.08, (z * k) as f32])
     }
     /// The water over a point at `t`: its surface less the height given (`y`), none where there is none.
     fn depth(&self, x: f64, y: f64, z: f64, t: f64) -> Option<f64> {
@@ -118,7 +135,7 @@ impl Surge {
             let (s, u) = self.geo.su(feet[0], feet[2]);
             let tau = t - self.geo.arr(s, u);
             if depth.is_some_and(|d| d >= TAKE) && tau < TsGeo::rise_t(s) + crate::strike::TS_HOLD + 2.0 {
-                self.lift = Some(Lift { t0: t, y0: feet[1], home: [feet[0], feet[2]], ph: f64::from(self.n) });
+                self.lift = Some(Lift { t0: t, y0: feet[1], home: [feet[0], feet[2]], ph: f64::from(self.n), flew: flying });
                 // (a soft landing wherever it sets them down; the creative and spectators need none)
                 out.cmds.push("effect give @s[gamemode=!creative,gamemode=!spectator] minecraft:resistance 28 4 true".into());
                 out.cmds.push("effect give @s[gamemode=!creative,gamemode=!spectator] minecraft:slow_falling 26 0 true".into());
@@ -148,6 +165,7 @@ impl Surge {
         }
         let down = l.y0 + SET;
         if ((draining && (self.held_up >= 4 || (feet[1] <= down + 0.2 && feet[1] + d - RIDE < down))) || depth.is_none() || late) && tau > SURF + 1.0 {
+            out.throw = self.set_down();
             self.done = true;
             self.left_at = Some(t);
             return out;
@@ -186,6 +204,7 @@ impl Surge {
         out.carry = Some([want[0] as f32, want[1] as f32, want[2] as f32]);
         self.asked[0] = true;
         self.last = (feet[1], want[1]);
+        self.drift = [want[0], want[2]];
         // (their view: tumbled a little by the flow, gusting; up, turned to look the way the water is going)
         if turn {
             let sway = 3.2 * ((0.9 * tau + l.ph).sin() + 0.5 * (2.1 * tau + 1.0).sin()) * k * shake;
@@ -264,6 +283,34 @@ mod tests {
         let mut s = Surge::new(far);
         for i in 0..800 {
             assert!(s.tick(f64::from(i) * 0.05, [0.5, 65.0, 900.0], 0.0, true, false, true).carry.is_none());
+        }
+    }
+    /// The water lets go of a creative player with a throw, which keeps the game from putting them into flight; of one who
+    /// was flying when it took them, without.
+    #[test]
+    fn it_sets_them_down_out_of_flight() {
+        for flew in [false, true] {
+            let g = geo(300.0);
+            let mut s = Surge::new(g.clone());
+            let (_, imm) = g.at_player(65.0);
+            let mut t = imm.unwrap() + 0.1;
+            let mut feet = [0.5, 65.0, 300.0];
+            let mut thrown = None;
+            while s.left_at.is_none() && t < f64::from(crate::strike::TS_LEN) {
+                let o = s.tick(t, feet, 0.0, true, flew, false);
+                thrown = thrown.or(o.throw);
+                if let Some(c) = o.carry {
+                    for i in 0..3 {
+                        feet[i] += f64::from(c[i]);
+                    }
+                }
+                t += 0.05;
+            }
+            assert!(s.left_at.is_some());
+            match thrown {
+                Some(v) => assert!(!flew && v[1] < 0.0 && f64::from(v[0]).hypot(f64::from(v[2])) <= RELEASE + 1e-6, "{v:?}"),
+                None => assert!(flew),
+            }
         }
     }
     #[test]

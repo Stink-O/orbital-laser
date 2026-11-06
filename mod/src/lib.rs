@@ -885,11 +885,19 @@ impl Orbital {
         let Some(t) = self.strike.as_ref().map(|s| f64::from(s.ticks) * 0.05) else { return };
         let Some(c) = &mut self.surging else { return };
         if c.over(t) {
+            // (still held as the strike ends: set down, as the water does, not left flying)
+            if let Some([x, y, z]) = c.set_down().filter(|_| c.lifted()) {
+                world::push_player(x, y, z);
+            }
             self.surging = None;
             return;
         }
         let Some(p) = game::get_player() else { return };
         let o = c.tick(t, [p.x, p.y, p.z], f64::from(p.yaw), self.carry_held, game::player_flying(), self.carry_turn);
+        // (set down: a push while carried is what the game lets them go with, out of flight)
+        if let Some([x, y, z]) = o.throw {
+            world::push_player(x, y, z);
+        }
         if !o.cmds.is_empty() {
             world::run_commands(&o.cmds);
         }
