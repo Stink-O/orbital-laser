@@ -17,7 +17,7 @@ const VM_TN: i32 = 15;
 const VM_TILE: u32 = 65552u;       // VM_BASE + 16: two words a tile
 const VM_SHARD: u32 = 66048u;      // VM_BASE + 512: VM_SW words a shard
 const VM_SHARDS: u32 = 56u;
-const VM_SW: u32 = 22u;
+const VM_SW: u32 = 26u;
 const VM_FOUNT: u32 = 67736u;      // VM_BASE + 2200: eight words each
 const VM_FOUNTS: u32 = 44u;
 const VM_BOULD: u32 = 68336u;      // VM_BASE + 2800
@@ -41,6 +41,7 @@ const VM_FIREOUT: f32 = 19.5;      // but the fire sheet's outer ring, burning o
 // What was thrown carries on: plain flight till VM_BRK (under the white-out's rise), then with the air's drag, each plate
 // with its own (VM_FLT: its drag's time, the gravity that brings it down when it should, when it hits, the sphere it fits in; vc_mount.rs).
 const VM_FLT: u32 = 71736u;        // VM_BASE + 6200: four words a plate thrown
+const VM_SLAB: u32 = 72136u;       // VM_BASE + 6600: the slab each is in its own frame, four words (vc_mount.rs's vm_slabs)
 const VM_BRK: f32 = 18.7;
 const VM_TH: f32 = 2.5;            // the drag's time on how far out, every piece's
 const VM_FLYEND: f32 = 38.0;       // the last of it is under the land
@@ -53,6 +54,7 @@ struct VmS {
     t: f32,
     eh: f32,       // the way out it has gone since VM_BRK, as seconds of its speed then
     H: f32,        // the dome's height
+    Hb: f32,       // and at the burst: what was thrown keeps that for good (vc_mount.rs's vm_burst_h)
     hk: vec4<f32>, // and each of the plates' four phases' (they lurch up out of step)
     sl: f32,       // how far the land has slid down the dome's back
     cw: f32,       // the cracks' width
@@ -93,6 +95,7 @@ fn vm_set(time: f32) {
     }
     if (s.on || s.fly) {
         s.H = vm_hgt(time, 0.0);
+        s.Hb = vm_hgt(VM_GONE, 0.0);
         s.eh = vm_eh(time);
     }
     if (s.on) {
@@ -407,7 +410,7 @@ struct VmSh {
     t: f32,
     n: vec3<f32>,
     i: u32,
-    face: u32,  // 5 its broken top
+    face: u32,  // 5 its broken top, 6 its broken foot
     lp: vec3<f32>,  // the hit in its own frame, up its length
 }
 // The nearest shard the ray meets before `tmax` (`o` the eye from the vent).
@@ -429,7 +432,7 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
             // (seen from above first, as the plates)
             let pl0 = vec2<f32>(vm_w(b), vm_w(b + 1u)) * (1.0 + 0.5 * (fl + vm.eh)) - o.xz;
             let cr = pl0.x * rd.z - pl0.y * rd.x;
-            let rm = vm_w(b + 5u) + vm_w(b + 6u);
+            let rm = vm_w(b + 25u) + 0.5 * vm_w(b + 5u);
             if (cr * cr > rm * rm * dot(rd.xz, rd.xz) + 1.0 && dot(pl0, pl0) > (rm + 90.0) * (rm + 90.0)) {
                 continue;
             }
@@ -438,14 +441,16 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
         let rise = 1.0 - (1.0 - e) * (1.0 - e) * (1.0 - e);
         let h = vm_w(b + 5u);
         let rad = vm_w(b + 6u);
+        // (the ball it fits in, round the middle it tumbles about: all of it, its foot and its top's corners)
+        let rb = vm_w(b + 25u);
         let y0 = vm_w(b + 2u) + vm_w(b + 3u) * vm.H - 30.0 + (h + 30.0) * rise - h;
         var c = vec3<f32>(vm_w(b), y0, vm_w(b + 1u));
         // (the burst takes them with the plates)
         let fly = max(vm.t - VM_ERUPT - 0.06, 0.0);
         if (fly > 0.0) {
             let up = 230.0 + 150.0 * fract(t0 * 7.3);
-            c = vm_clear(vm_flown(c, vec3<f32>(c.x * 0.5, up, c.z * 0.5), VM_ERUPT + 0.06, 2.4, 44.0, vm.t, vm.eh), o, h + rad + 80.0);
-            if (c.y + 1.2 * h < vm.ylo) {
+            c = vm_clear(vm_flown(c, vec3<f32>(c.x * 0.5, up, c.z * 0.5), VM_ERUPT + 0.06, 2.4, 44.0, vm.t, vm.eh), o, rb + 0.5 * h + 80.0);
+            if (c.y + rb + 0.5 * h < vm.ylo) {
                 continue;
             }
         }
@@ -453,7 +458,6 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
         let mid = c + vec3<f32>(vm_w(b + 7u) * h, 0.5 * h, vm_w(b + 8u) * h) * 0.5;
         let oc = mid - o;
         let tc = dot(oc, rd);
-        let rb = 0.62 * h + rad;
         let dd = dot(oc, oc) - tc * tc;
         if (dd > rb * rb || tc + rb < 0.0) {
             continue;
@@ -500,6 +504,20 @@ fn vm_shards(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmSh {
         } else {
             tf = min(tf, tt);
         }
+        // (its foot, broken off under the land's slope: without one its sides run on down, and all that ends them is the
+        // edge of its sphere, a round cut that faces the eye however the shard is turned)
+        let fp = vec3<f32>(vm_w(b + 22u), 1.0, vm_w(b + 23u));
+        let fden = dot(fp, dv);
+        let ft = (-vm_w(b + 24u) - dot(fp, ro)) / fden;
+        if (fden > 0.0) {
+            if (ft > tn) {
+                tn = ft;
+                nb = -fp;
+                fb = 6u;
+            }
+        } else {
+            tf = min(tf, ft);
+        }
         if (tn < tf && tn > 0.0 && tn < best) {
             best = tn;
             r.t = tn;
@@ -520,7 +538,8 @@ fn vm_shade_shard(C: vec3<f32>, rd: vec3<f32>, h: VmSh, l: VcLight) -> vec3<f32>
     let f = f32(h.face);
     let ac = dot(h.lp.xz, vec2<f32>(0.7, -0.7));
     // (its streaks fine up close, broad from afar: the fine ones would only shimmer there)
-    let st = mix(gnoise2(vec2<f32>(ac * 0.9 + f * 7.0, h.lp.y * 0.05)), gnoise2(vec2<f32>(ac * 0.13 + f * 7.0, h.lp.y * 0.014)), smoothstep(0.7, 2.2, h.t * vs.px));
+    // (its foot has no length for them to run down: rough, as a plate's underside)
+    let st = select(mix(gnoise2(vec2<f32>(ac * 0.9 + f * 7.0, h.lp.y * 0.05)), gnoise2(vec2<f32>(ac * 0.13 + f * 7.0, h.lp.y * 0.014)), smoothstep(0.7, 2.2, h.t * vs.px)), gnoise2(h.lp.xz * 0.16 + vec2<f32>(f, 2.0)), h.face == 6u);
     var alb = mix(vec3<f32>(0.018, 0.017, 0.019), vec3<f32>(0.095, 0.086, 0.08), st * st);
     if (h.face == 5u) {
         alb = mix(vm_lin(vm_cols(vec2<f32>(vm_w(b), vm_w(b + 1u))).top), vec3<f32>(0.07, 0.06, 0.05), 0.4);
@@ -534,6 +553,10 @@ fn vm_shade_shard(C: vec3<f32>, rd: vec3<f32>, h: VmSh, l: VcLight) -> vec3<f32>
     let heat = saturate(vm_heat(length(p.xz)) + 0.35);
     c = c + alb * vec3<f32>(9.0, 1.7, 0.2) * exp(-max(up, 0.0) / 18.0) * heat;
     c = c + vm_ramp(0.55 * exp(-max(up, 0.0) / 7.0) * heat);
+    // (its foot was in the fire: burning as it tears loose, going out)
+    if (h.face == 6u) {
+        c = c + vm_ramp(0.6 * smoothstep(0.35, 0.85, st) * exp(-max(vm.t - VM_GONE, 0.0) / 2.2));
+    }
     return c + alb * vm_firelit(p, h.n);
 }
 
@@ -585,20 +608,29 @@ fn vm_firelit(p: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
 fn vm_rot(v: vec3<f32>, ax: vec3<f32>, c: f32, s: f32) -> vec3<f32> {
     return v * c + cross(ax, v) * s + ax * dot(ax, v) * (1.0 - c);
 }
-// The land's top at rest position xz, as it stood when it broke (the holes not counted).
-fn vm_top(xz: vec2<f32>) -> f32 {
+// Plate i's top at rest position xz, as it stood when it broke, from its own columns only: between two plates the land
+// steps as far as they were heaved apart, and a top that ran across that step would stand a fin along the plate's edge,
+// a block thin and tens of blocks high, that the looks catch from some sides and not from others. `miss` where none of
+// the four is its own (the very tip of a broken edge).
+fn vm_top(xz: vec2<f32>, i: u32, miss: f32) -> f32 {
     let g = clamp((xz + VM_HALF) / VM_STEP, vec2<f32>(0.0), vec2<f32>(239.999));
     let c = floor(g);
     let f = g - c;
     let b = VM_W0 + u32(c.y) * VM_GW + u32(c.x);
+    let o = b - VM_W0 + VM_W2;
+    let own = vec4<u32>(mod_data[o] & 255u, mod_data[o + 1u] & 255u, mod_data[o + VM_GW] & 255u, mod_data[o + VM_GW + 1u] & 255u) == vec4<u32>(i);
+    let m = select(vec4<f32>(0.0), vec4<f32>((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y), own);
+    let k = m.x + m.y + m.z + m.w;
+    if (k < 1.0e-4) {
+        return miss;
+    }
     let a0 = mod_data[b];
     let a1 = mod_data[b + 1u];
     let a2 = mod_data[b + VM_GW];
     let a3 = mod_data[b + VM_GW + 1u];
     let land = vec4<f32>(f32(a0 & 0x7ffu), f32(a1 & 0x7ffu), f32(a2 & 0x7ffu), f32(a3 & 0x7ffu)) * 0.5 - 512.0;
     let p = vec4<f32>(f32((a0 >> 11u) & 0x7ffu), f32((a1 >> 11u) & 0x7ffu), f32((a2 >> 11u) & 0x7ffu), f32((a3 >> 11u) & 0x7ffu)) * (1.6 / 2047.0) - 0.25;
-    let v = land + p * vm.H;
-    return mix(mix(v.x, v.y, f.x), mix(v.z, v.w, f.x), f.y);
+    return dot(land + p * vm.Hb, m) / k;
 }
 // Whether the point lp of plate i's frame (cxz its middle, y0 its height) is in it.
 fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th: f32) -> bool {
@@ -613,7 +645,7 @@ fn vm_in_plate(lp: vec3<f32>, cxz: vec2<f32>, y0: f32, i: u32, th: f32) -> bool 
         return false;
     }
     let y = lp.y + y0;
-    let top = vm_top(xz);
+    let top = vm_top(xz, i, -1.0e6);
     return y <= top && y >= top - th;
 }
 fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
@@ -644,7 +676,7 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         if (cr * cr > rad * rad * 1.1 * dot(rd.xz, rd.xz) + 1.0 && dot(pl0, pl0) > keep * keep) {
             continue;
         }
-        let rest = vec3<f32>(vm_w(b), vm_w(b + 2u) + vm_w(b + 3u) * vm.H, vm_w(b + 1u));
+        let rest = vec3<f32>(vm_w(b), vm_w(b + 2u) + vm_w(b + 3u) * vm.Hb, vm_w(b + 1u));
         let c = vm_clear(vm_flown(rest, vec3<f32>(vxz.x, vm_w(b + 10u), vxz.y), tr, vm_w(fb), vm_w(fb + 1u), vm.t, vm.eh), o, keep);
         let oc = c - o;
         let tc = dot(oc, rd);
@@ -659,18 +691,18 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
         let sn = sin(ang);
         let lo = vm_rot(o - c, ax, cs, sn);
         let ld = vm_rot(rd, ax, cs, sn);
-        // (between its top and its underside, planes tilted as the dome was there)
-        let g = vec3<f32>(vm_w(b + 4u), 1.0 / vm.H, vm_w(b + 5u));
-        let gn = g * vm.H;                   // (-gx, 1, -gz) up to the sign of x and z
-        let n = vec3<f32>(-gn.x, 1.0, -gn.z);
+        // (between its top and its underside: the planes its own land's tops lie between, vm_slabs)
+        let sb = VM_SLAB + i * 4u;
+        let n = vec3<f32>(-vm_w(sb), 1.0, -vm_w(sb + 1u));
         let dn = dot(n, ld);
         if (abs(dn) < 1.0e-5) {
             continue;
         }
         let th = vm_w(b + 7u);
-        let mg = vm_w(b + 15u);
-        let t0 = (mg - dot(n, lo)) / dn;
-        let t1 = (-th - mg - dot(n, lo)) / dn;
+        let lt = vm_w(sb + 2u) - th;
+        let hi = vm_w(sb + 3u);
+        let t0 = (hi - dot(n, lo)) / dn;
+        let t1 = (lt - dot(n, lo)) / dn;
         // (only where the ray is near it: its sphere's chord, so the looks are spent on it)
         let ch = sqrt(max(rad * rad * 1.1 - dd, 0.0));
         let ta = max(max(min(t0, t1), tc - ch), 0.0);
@@ -710,7 +742,7 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
             }
             let lp = lo + ld * b0;
             let xz = lp.xz + cxz;
-            let top = vm_top(xz);
+            let top = vm_top(xz, i, 0.0);
             let dep = top - (lp.y + rest.y);
             best = b0;
             r.t = b0;
@@ -723,7 +755,7 @@ fn vm_plates(o: vec3<f32>, rd: vec3<f32>, tmax: f32) -> VmPl {
             var nn = select(normalize(vec3<f32>(-ld.x, 0.0, -ld.z) + vec3<f32>(1.0e-4)), -normalize(n), r.dep > 0.8);
             if (r.kind == 0u) {
                 let e = 4.0;
-                nn = normalize(vec3<f32>((vm_top(xz - vec2<f32>(e, 0.0)) - vm_top(xz + vec2<f32>(e, 0.0))) / (2.0 * e), 1.0, (vm_top(xz - vec2<f32>(0.0, e)) - vm_top(xz + vec2<f32>(0.0, e))) / (2.0 * e)));
+                nn = normalize(vec3<f32>((vm_top(xz - vec2<f32>(e, 0.0), i, top) - vm_top(xz + vec2<f32>(e, 0.0), i, top)) / (2.0 * e), 1.0, (vm_top(xz - vec2<f32>(0.0, e), i, top) - vm_top(xz + vec2<f32>(0.0, e), i, top)) / (2.0 * e)));
             }
             r.n = vm_rot(nn, ax, cs, -sn);
             break;

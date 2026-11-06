@@ -33,7 +33,7 @@ const VM_TILE: usize = VM_BASE + 16;
 /// The shards (VM_SW words each, in order of when they punch up), the fountains and the boulders (eight each), the plates.
 const VM_SHARD: usize = VM_BASE + 512;
 pub(super) const VM_SHARDS: usize = 56;
-const VM_SW: usize = 22;
+const VM_SW: usize = 26;
 const VM_FOUNT: usize = VM_BASE + 2200;
 pub(super) const VM_FOUNTS: usize = 44;
 const VM_BOULD: usize = VM_BASE + 2800;
@@ -46,6 +46,8 @@ pub(super) const VM_PLATES: usize = 164;
 const VM_FLY: usize = 95;
 /// Their flight past the white-out, four words each (`vm_flights`).
 const VM_FLT: usize = VM_BASE + 6200;
+/// The slab each is in its own frame, four words each (`vm_slabs`).
+const VM_SLAB: usize = VM_BASE + 6600;
 /// The columns' words: the land and the field (what the march reads), the colours, the rest (what the shading reads).
 const VM_W0: usize = VM_BASE + 8192;
 const VM_W1: usize = VM_W0 + VM_COLS;
@@ -560,6 +562,27 @@ impl Pack {
         vec![(VM_BASE, head), (VM_TILE, tw), (VM_W0, self.w0), (VM_W1, self.w1), (VM_W2, self.w2)]
     }
 }
+/// How far a shard reaches from the middle it tumbles about (`mid` in the pass's vm_shards): its corners, where each two
+/// sides meet its top and its foot. The ball the pass looks in has to hold all of it, or its edge cuts the shard.
+fn shard_fit(s: &Shard, fx: f64, fz: f64, down: f64) -> f64 {
+    let taper = 0.62 * s.rad / s.h;
+    let mid = (0.5 * s.lean.0 * s.h, 0.25 * s.h, 0.5 * s.lean.1 * s.h);
+    let mut far = 0.0f64;
+    for i in 0..5 {
+        let (a, b) = (s.face[i], s.face[(i + 1) % 5]);
+        // (where the two sides meet, a unit in from each of them)
+        let det = a.0 * b.1 - a.1 * b.0;
+        let (vx, vz) = ((b.1 - a.1) / det, (a.0 - b.0) / det);
+        let tl = s.tilt.0 * vx + s.tilt.1 * vz;
+        let fl = fx * vx + fz * vz;
+        for y in [(s.h - s.rad * tl) / (1.0 - taper * tl), (-down - s.rad * fl) / (1.0 - taper * fl)] {
+            let r = s.rad - taper * y;
+            let (dx, dy, dz) = (vx * r + s.lean.0 * y - mid.0, y - mid.1, vz * r + s.lean.1 * y - mid.2);
+            far = far.max((dx * dx + dy * dy + dz * dz).sqrt());
+        }
+    }
+    far + 1.0
+}
 /// The pass's tables that stand on the land: the shards, the fountains, the boulders, the plates (`p`, worked out).
 fn vm_tables(w: &Work, p: &PlateSums, land: &dyn Fn(f64, f64) -> f64) -> Vec<(usize, Vec<u32>)> {
     crate::meter::spend(500_000);
@@ -576,11 +599,23 @@ fn vm_tables(w: &Work, p: &PlateSums, land: &dyn Fn(f64, f64) -> f64) -> Vec<(us
             f.push(c.0);
             f.push(c.1);
         }
+        // (its foot: broken off under the land's slope there, so it never shows before it flies)
+        let e = 24.0;
+        let at = |x: f64, z: f64| {
+            let (l, p) = foot(x, z);
+            l + p * VM_H
+        };
+        let (mut sx, mut sz) = ((at(s.x + e, s.z) - at(s.x - e, s.z)) / (2.0 * e), (at(s.x, s.z + e) - at(s.x, s.z - e)) / (2.0 * e));
+        let k = 1.0 / sx.hypot(sz).max(1.0);
+        sx *= k;
+        sz *= k;
+        let down = 0.37 * s.h + 0.5 * s.rad;
+        f.extend([-sx, -sz, down, shard_fit(s, -sx, -sz, down)]);
         shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
     let plates = vm_plates(w, p);
     let flights = vm_flights(&plates, w.geo.seed, land);
-    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, plates), (VM_FLT, flights)]
+    vec![(VM_SHARD, shards), (VM_FOUNT, vm_founts(w, &foot)), (VM_BOULD, vm_boulders(w, &foot)), (VM_PLATE, plates), (VM_FLT, flights), (VM_SLAB, vm_slabs(w, p))]
 }
 
 /// The bursts of lava: on the cracks, few and high up at first, more and all over as it goes on, none past the hush.
@@ -644,16 +679,29 @@ struct PlateSums {
     sum: Vec<(f64, f64, f64, f64)>,
     rad: Vec<f64>,
     off: Vec<f64>,
+    /// What the plane through its land's tops needs: xx, xz, zz, xy, zy, each column's from the plate's middle.
+    fit: Vec<[f64; 5]>,
+    /// How far under and over that plane they lie, at the height it all stood at the burst.
+    span: Vec<(f64, f64)>,
     done: usize,
 }
 impl PlateSums {
     fn new(w: &Work) -> Self {
         let n = w.geo.plates.len();
-        PlateSums { sum: vec![(0.0, 0.0, 0.0, 0.0); n], rad: vec![0.0; n], off: vec![0.0; n], done: 0 }
+        PlateSums { sum: vec![(0.0, 0.0, 0.0, 0.0); n], rad: vec![0.0; n], off: vec![0.0; n], fit: vec![[0.0; 5]; n], span: vec![(f64::MAX, f64::MIN); n], done: 0 }
     }
-    /// The next `n` columns of the two rounds; whether that was the last of them.
+    /// The plane that fits plate c's tops, from its middle: (dy/dx, dy/dz).
+    fn plane(&self, c: usize) -> (f64, f64) {
+        let [xx, xz, zz, xy, zy] = self.fit[c];
+        let det = xx * zz - xz * xz;
+        if det.abs() < 1.0 {
+            return (0.0, 0.0);
+        }
+        ((xy * zz - zy * xz) / det, (zy * xx - xy * xz) / det)
+    }
+    /// The next `n` columns of the three rounds; whether that was the last of them.
     fn rows(&mut self, w: &Work, n: usize, land: &dyn Fn(f64, f64) -> f64) -> bool {
-        let end = (self.done + n).min(2 * VM_COLS);
+        let end = (self.done + n).min(3 * VM_COLS);
         crate::meter::spend(500 * (end - self.done) as u64);
         let centre = |t: (f64, f64, f64, f64)| if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3, t.2 / t.3) } else { (0.0, 0.0, 0.0) };
         for i in self.done..end {
@@ -672,16 +720,32 @@ impl PlateSums {
             let t = self.sum[c];
             if t.3 > 0.0 {
                 let (cx, cz, l) = centre(t);
-                self.rad[c] = self.rad[c].max((x - cx).powi(2) + (z - cz).powi(2));
-                let g = &w.geo.plates[c];
-                let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
-                let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * VM_H;
-                let plane = l + VM_H * (pc + g.gx * (x - cx) + g.gz * (z - cz));
-                self.off[c] = self.off[c].max((top - plane).abs());
+                let (dx, dz) = (x - cx, z - cz);
+                // (the land's top as the pass has it, at the height the dome had when it burst)
+                let dy = w.cols[j].map_or_else(|| land(x, z), |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * vm_burst_h() - l;
+                if i < 2 * VM_COLS {
+                    self.rad[c] = self.rad[c].max(dx * dx + dz * dz);
+                    let g = &w.geo.plates[c];
+                    let pc = g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z);
+                    let top = w.cols[j].map_or(l, |k| f64::from(k.top - i32::from(k.canopy))) + cell.p * VM_H;
+                    let plane = l + VM_H * (pc + g.gx * dx + g.gz * dz);
+                    self.off[c] = self.off[c].max((top - plane).abs());
+                    let f = &mut self.fit[c];
+                    for (v, a) in f.iter_mut().zip([dx * dx, dx * dz, dz * dz, dx * dy, dz * dy]) {
+                        *v += a;
+                    }
+                } else {
+                    let (a, b) = self.plane(c);
+                    let u = dy - a * dx - b * dz;
+                    // (a wood stands a little over its ground: the pack's soft roof)
+                    let wood = 0.7 * w.cols[j].map_or(0.0, |k| f64::from(k.canopy));
+                    let s = &mut self.span[c];
+                    *s = (s.0.min(u), s.1.max(u + wood));
+                }
             }
         }
         self.done = end;
-        end == 2 * VM_COLS
+        end == 3 * VM_COLS
     }
 }
 /// The plates as thrown at the burst: from the top first, up and out, each turning its own way.
@@ -736,6 +800,33 @@ fn vm_flights(t: &[u32], s: u32, land: &dyn Fn(f64, f64) -> f64) -> Vec<u32> {
         out.extend([tau, g, hit, fit].iter().map(|v| (*v as f32).to_bits()));
     }
     out
+}
+/// The slab each thrown plate is, in its own frame: the plane through its land's tops (its slope in x and in z) and how
+/// far under and over that plane the tops lie, from the height its middle flies at. (The plate's word 3 and its tilt are
+/// the plane it was made from, which is a long way off the land where the dome dies out: the slab the pass looks in has
+/// to be the land's own, or the looks go on air, the plate is cut, or both.)
+fn vm_slabs(w: &Work, p: &PlateSums) -> Vec<u32> {
+    let mut out = Vec::with_capacity(4 * VM_FLY);
+    for k in 0..VM_FLY {
+        let t = p.sum[k];
+        let (cx, cz) = if t.3 > 0.0 { (t.0 / t.3, t.1 / t.3) } else { (0.0, 0.0) };
+        let g = &w.geo.plates[k];
+        let y0 = vm_burst_h() * (g.s + g.gx * (cx - g.x) + g.gz * (cz - g.z));
+        let (a, b) = p.plane(k);
+        // (between columns the pass's top goes straight, and a broken edge reaches a column and a bit past its own)
+        let m = 3.0 + 8.0 * a.hypot(b);
+        let (lo, hi) = p.span[k];
+        out.extend([a, b, lo - y0 - m, hi - y0 + m].iter().map(|v| (*v as f32).to_bits()));
+    }
+    out
+}
+/// The dome's height from the burst on: the pass's vm_hgt, its plates' phase 0, once it has stopped (keep in step).
+fn vm_burst_h() -> f64 {
+    let s: f64 = VC_HUSH - VC_SWELL;
+    let a = TAU * (0.42 * s + 0.03 * s * s);
+    let da = TAU * (0.42 + 0.06 * s);
+    let u = ((s - 0.8 * a.sin() / da) / 10.0).clamp(0.0, 1.0);
+    VM_H * (0.62 * u + 0.08 * u * u + 0.3 * u.powi(4)) * 0.988 * 1.09
 }
 /// The column nearest (x, z) from the vent.
 fn col_index(x: f64, z: f64) -> usize {
@@ -1039,6 +1130,314 @@ mod tests {
         }
         assert!(far >= 8, "only {far} plates come down past 900 blocks");
     }
+    // ---- a thrown plate's and shard's shape: the pass's vm_plates and vm_shards on the CPU --------------------------------
+    struct Tb<'a> {
+        w0: &'a [u32],
+        w2: &'a [u32],
+        pl: &'a [u32],
+        fl: &'a [u32],
+        sl: &'a [u32],
+        hb: f32,
+    }
+    fn tb(all: &[(usize, Vec<u32>)]) -> Tb<'_> {
+        let get = |k: usize| all.iter().find(|t| t.0 == k).unwrap().1.as_slice();
+        Tb { w0: get(VM_W0), w2: get(VM_W2), pl: get(VM_PLATE), fl: get(VM_FLT), sl: get(VM_SLAB), hb: vm_burst_h() as f32 }
+    }
+    fn w(t: &[u32], i: usize) -> f32 {
+        f32::from_bits(t[i])
+    }
+    fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+        a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    }
+    fn at(o: [f32; 3], d: [f32; 3], t: f32) -> [f32; 3] {
+        [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t]
+    }
+    /// What the pass has of plate i: its middle and height, its slab (the plane's slopes, its top and underside over and
+    /// under the plate's middle), its thickness.
+    struct Pl {
+        i: usize,
+        cxz: [f32; 2],
+        y0: f32,
+        sl: [f32; 2],
+        th: f32,
+        lt: f32,
+        hi: f32,
+    }
+    fn pl(t: &Tb, i: usize) -> Pl {
+        let (b, sb) = (i * VM_PW, i * 4);
+        let th = w(t.pl, b + 7);
+        let (lt, hi) = (w(t.sl, sb + 2) - th, w(t.sl, sb + 3));
+        Pl { i, cxz: [w(t.pl, b), w(t.pl, b + 1)], y0: w(t.pl, b + 2) + w(t.pl, b + 3) * t.hb, sl: [w(t.sl, sb), w(t.sl, sb + 1)], th, lt, hi }
+    }
+    fn top(t: &Tb, q: &Pl, xz: [f32; 2]) -> Option<f32> {
+        let (hf, st) = (VM_HALF as f32, VM_STEP as f32);
+        let g = [((xz[0] + hf) / st).clamp(0.0, 239.999), ((xz[1] + hf) / st).clamp(0.0, 239.999)];
+        let c = [g[0].floor(), g[1].floor()];
+        let f = [g[0] - c[0], g[1] - c[1]];
+        let b = c[1] as usize * VM_GW + c[0] as usize;
+        let m = [(1.0 - f[0]) * (1.0 - f[1]), f[0] * (1.0 - f[1]), (1.0 - f[0]) * f[1], f[0] * f[1]];
+        let (mut k, mut v) = (0.0, 0.0);
+        for (j, o) in [b, b + 1, b + VM_GW, b + VM_GW + 1].into_iter().enumerate() {
+            if t.w2[o] & 255 == q.i as u32 {
+                let a = t.w0[o];
+                k += m[j];
+                v += m[j] * ((a & 0x7ff) as f32 * 0.5 - 512.0 + (((a >> 11) & 0x7ff) as f32 * (1.6 / 2047.0) - 0.25) * t.hb);
+            }
+        }
+        (k >= 1.0e-4).then(|| v / k)
+    }
+    fn in_plate(t: &Tb, q: &Pl, lp: [f32; 3]) -> bool {
+        let xz = [lp[0] + q.cxz[0], lp[2] + q.cxz[1]];
+        let hf = VM_HALF as f32;
+        if xz[0].abs() > hf - 3.0 || xz[1].abs() > hf - 3.0 {
+            return false;
+        }
+        let jit = [(xz[1] * 0.43 + xz[0] * 0.11).sin() * 0.8, (xz[0] * 0.47 - xz[1] * 0.13).sin() * 0.8];
+        let gc = [((xz[0] + hf) / VM_STEP as f32 + 0.5 + jit[0]).clamp(0.0, 240.0) as usize, ((xz[1] + hf) / VM_STEP as f32 + 0.5 + jit[1]).clamp(0.0, 240.0) as usize];
+        if t.w2[gc[1] * VM_GW + gc[0]] & 255 != q.i as u32 {
+            return false;
+        }
+        let y = lp[1] + q.y0;
+        top(t, q, xz).is_some_and(|tp| y <= tp && y >= tp - q.th)
+    }
+    /// The pass's look along a ray in the plate's own frame (`ld` unit, `px` the pixel's angle, `dense` over 0: a look
+    /// every `dense` blocks of the same stretch): how far, or under 0.
+    fn march(t: &Tb, q: &Pl, lo: [f32; 3], ld: [f32; 3], fine: f32, px: f32, dense: f32) -> f32 {
+        let rad = w(t.fl, q.i * 4 + 3);
+        let tc = -dot(lo, ld);
+        let dd = dot(lo, lo) - tc * tc;
+        if dd > rad * rad * 1.1 || tc + rad < 0.0 {
+            return -1.0;
+        }
+        let n = [-q.sl[0], 1.0, -q.sl[1]];
+        let dn = dot(n, ld);
+        if dn.abs() < 1.0e-5 {
+            return -1.0;
+        }
+        let (t0, t1) = ((q.hi - dot(n, lo)) / dn, (q.lt - dot(n, lo)) / dn);
+        let ch = (rad * rad * 1.1 - dd).max(0.0).sqrt();
+        let ta = t0.min(t1).max(tc - ch).max(0.0);
+        let tb = t0.max(t1).min(tc + ch);
+        if ta >= tb {
+            return -1.0;
+        }
+        let looks = if dense > 0.0 { 2 + ((tb - ta) / dense) as i32 } else { 2 + ((tb - ta) / (2.5 * fine).max(ta * px)).min(if fine < 1.5 { 60.0 } else { 44.0 }) as i32 };
+        let dtl = (tb - ta) / looks as f32;
+        for k in 0..looks {
+            let s = ta + dtl * (k as f32 + 0.1);
+            if in_plate(t, q, at(lo, ld, s)) {
+                return s;
+            }
+        }
+        -1.0
+    }
+    /// What is truly there along the ray: the plate's columns, however far from its slab.
+    fn truth(t: &Tb, q: &Pl, lo: [f32; 3], ld: [f32; 3], reach: f32, step: f32) -> bool {
+        let tc = -dot(lo, ld);
+        let mut s = (tc - reach).max(0.0);
+        while s < tc + reach {
+            if in_plate(t, q, at(lo, ld, s)) {
+                return true;
+            }
+            s += step;
+        }
+        false
+    }
+    fn hash01(k: u32) -> f32 {
+        let mut h = k.wrapping_mul(2_654_435_761);
+        h ^= h >> 15;
+        h = h.wrapping_mul(2_246_822_519);
+        h ^= h >> 13;
+        (h & 0xffffff) as f32 / 16_777_216.0
+    }
+    fn nz(a: [f32; 3]) -> [f32; 3] {
+        let l = dot(a, a).sqrt();
+        [a[0] / l, a[1] / l, a[2] / l]
+    }
+    fn dir(k: u32) -> [f32; 3] {
+        let (a, y) = (hash01(k + 1) * 6.283, hash01(k + 101) * 1.98 - 0.99);
+        let q = (1.0 - y * y).sqrt();
+        [q * a.cos(), y, q * a.sin()]
+    }
+    /// Plate q's outline from direction `d`, `gs` blocks a ray: what is there, what a look at all of the slab finds, and
+    /// the pass's looks at full and half size.
+    fn outline(t: &Tb, q: &Pl, d: [f32; 3], gs: f32, px: f32) -> (Vec<bool>, Vec<bool>, Vec<bool>, Vec<bool>, usize) {
+        let fit = w(t.fl, q.i * 4 + 3) * 1.1;
+        let up = if d[1].abs() > 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+        let cr = |a: [f32; 3], b: [f32; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        let u = nz(cr(up, d));
+        let v = cr(d, u);
+        let n = (2.0 * fit / gs) as i32 + 1;
+        let mut o = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for y in 0..n {
+            for x in 0..n {
+                let (sx, sy) = (-fit + gs * x as f32, -fit + gs * y as f32);
+                // (a far eye: near enough parallel rays, as far as a plate goes)
+                let lo = [d[0] * -900.0 + u[0] * sx + v[0] * sy, d[1] * -900.0 + u[1] * sx + v[1] * sy, d[2] * -900.0 + u[2] * sx + v[2] * sy];
+                o.0.push(truth(t, q, lo, d, fit * 1.05, 1.0));
+                o.1.push(march(t, q, lo, d, 1.0, px, 0.5) >= 0.0);
+                o.2.push(march(t, q, lo, d, 1.0, px, 0.0) >= 0.0);
+                o.3.push(march(t, q, lo, d, 2.0, px, 0.0) >= 0.0);
+            }
+        }
+        (o.0, o.1, o.2, o.3, n as usize)
+    }
+    /// Each plate from all round: at worst, how much of it its slab cuts away, and how much of what's left the pass's
+    /// looks miss by more than a ray's width (7 blocks) from what they found, at full and half size: a plate seen one way
+    /// can't lose what it shows another. `VM_REPORT=1` prints every plate's.
+    fn plate_shapes(hills: f64, seed: u32) -> (f32, f32, f32) {
+        let all = table::all(seed, &|x, z| Some(table::preview_col(x, z, hills)));
+        let t = tb(&all);
+        let px = 70f32.to_radians() / 1080.0;
+        let (mut wc, mut wf, mut wh) = (0.0f32, 0.0f32, 0.0f32);
+        let report = std::env::var("VM_REPORT").is_ok();
+        let lost = |ev: &[bool], m: &[bool], n: usize| {
+            (0..ev.len()).filter(|&j| ev[j] && !(0..9).any(|o: usize| {
+                let (x, y) = ((j % n + (o % 3)).wrapping_sub(1), (j / n + o / 3).wrapping_sub(1));
+                x < n && y < n && m[y * n + x]
+            })).count()
+        };
+        // (every fourth, in a test run: a look at all of them takes a minute)
+        for i in (0..VM_FLY).step_by(if report { 1 } else { 4 }) {
+            let q = pl(&t, i);
+            let (mut there, mut cut, mut found, mut lf, mut lh) = (0, 0, 0, 0, 0);
+            for k in 0..8u32 {
+                let (tv, ev, mf, mh, n) = outline(&t, &q, dir(k), 7.0, px);
+                there += tv.iter().filter(|b| **b).count();
+                cut += (0..tv.len()).filter(|&j| tv[j] && !ev[j]).count();
+                found += ev.iter().filter(|b| **b).count();
+                lf += lost(&ev, &mf, n);
+                lh += lost(&ev, &mh, n);
+            }
+            let (c, f, h) = (cut as f32 / there.max(1) as f32, lf as f32 / found.max(1) as f32, lh as f32 / found.max(1) as f32);
+            if report {
+                println!("{i:3} th {:4.0} slab {:6.0} {:6.0} | there {there:6} cut {:5.1}% | looks lose {:5.2}% half {:5.2}%", q.th, q.lt, q.hi, 100.0 * c, 100.0 * f, 100.0 * h);
+            }
+            (wc, wf, wh) = (wc.max(c), wf.max(f), wh.max(h));
+        }
+        (wc, wf, wh)
+    }
+    #[test]
+    fn a_thrown_plate_keeps_its_shape_from_every_side() {
+        for hills in [0.0, 60.0] {
+            let (cut, full, half) = plate_shapes(hills, 37);
+            assert!(cut < 0.01, "a plate's slab cuts {:.1}% of it", cut * 100.0);
+            assert!(full < 0.005 && half < 0.01, "a plate's looks lose {:.1}% of it, {:.1}% at half size", full * 100.0, half * 100.0);
+        }
+    }
+    #[test]
+    fn a_plate_has_no_fin_along_its_edges() {
+        let all = table::all(37, &|x, z| Some(table::preview_col(x, z, 30.0)));
+        let t = tb(&all);
+        for i in 0..VM_FLY {
+            let q = pl(&t, i);
+            // (every block of its columns, against the slab the pass looks in)
+            let (mut c, mut n) = (0, 0);
+            for gz in 0..960 {
+                for gx in 0..960 {
+                    let lp = [gx as f32 - 480.0 - q.cxz[0], 0.0, gz as f32 - 480.0 - q.cxz[1]];
+                    let xz = [gx as f32 - 480.0, gz as f32 - 480.0];
+                    let Some(tp) = top(&t, &q, xz) else { continue };
+                    if !in_plate(&t, &q, [lp[0], tp - q.y0, lp[2]]) {
+                        continue;
+                    }
+                    n += 1;
+                    let u = tp - q.y0 - q.sl[0] * lp[0] - q.sl[1] * lp[2];
+                    c += usize::from(u > q.hi || u < q.lt + q.th);
+                }
+            }
+            assert!(n > 0 && c == 0, "plate {i}: {c} columns of {n} stand out of its slab");
+        }
+    }
+    /// The pass's look at shard `b` in its own frame, its sides, top and foot and nothing else: how far in and out.
+    fn shard_hit(s: &[u32], b: usize, ro: [f32; 3], dv: [f32; 3]) -> Option<(f32, f32)> {
+        let (taper, rad) = (w(s, b + 11), w(s, b + 6));
+        let (mut tn, mut tf) = (f32::MIN, f32::MAX);
+        let mut plane = |n: [f32; 3], d: f32| {
+            let den = dot(n, dv);
+            let tt = (d - dot(n, ro)) / den;
+            if den < 0.0 {
+                tn = tn.max(tt);
+            } else {
+                tf = tf.min(tt);
+            }
+        };
+        for f in 0..5 {
+            plane([w(s, b + 12 + 2 * f), taper, w(s, b + 13 + 2 * f)], rad);
+        }
+        plane([w(s, b + 9), 1.0, w(s, b + 10)], w(s, b + 5));
+        // (the foot's the other way up)
+        plane([-w(s, b + 22), -1.0, -w(s, b + 23)], w(s, b + 24));
+        (tn < tf).then_some((tn, tf))
+    }
+    #[test]
+    fn a_shard_ends_and_fits_its_ball() {
+        let all = table::all(37, &|x, z| Some(table::preview_col(x, z, 30.0)));
+        let s = &all.iter().find(|t| t.0 == VM_SHARD).unwrap().1;
+        assert_eq!(s.len(), VM_SHARDS * VM_SW);
+        for i in 0..VM_SHARDS {
+            let b = i * VM_SW;
+            let (h, rb) = (w(s, b + 5), w(s, b + 25));
+            let lean = [w(s, b + 7), w(s, b + 8)];
+            let mid = [lean[0] * h * 0.5, h * 0.25, lean[1] * h * 0.5];
+            let mut far = 0.0f32;
+            // (the frame's rays are sheared by its lean: a straight line still, so the ends of its stretch in it are the solid's)
+            for k in 0..40_000u32 {
+                let d = dir(k);
+                let (a, r) = (dir(k + 90_000), rb * 1.3 * hash01(k + 200_000).sqrt());
+                let o = [mid[0] + a[0] * r - d[0] * 900.0, mid[1] + a[1] * r - d[1] * 900.0, mid[2] + a[2] * r - d[2] * 900.0];
+                let shear = |p: [f32; 3]| [p[0] - lean[0] * p[1], p[1], p[2] - lean[1] * p[1]];
+                let (ro, dv) = (shear(o), shear(d));
+                if let Some((tn, tf)) = shard_hit(s, b, ro, dv) {
+                    assert!(tf < 2_000.0, "shard {i} has no end: a ray goes on through it to {tf}");
+                    for t in [tn, tf] {
+                        let p = at(o, d, t);
+                        far = far.max((p[0] - mid[0]).hypot(p[1] - mid[1]).hypot(p[2] - mid[2]));
+                    }
+                }
+            }
+            assert!(far > 0.0 && far <= rb, "shard {i}: {far} from its middle, its ball {rb}");
+        }
+    }
+    /// A plate's outlines from all round for looking at: VM_PL=4,88 VM_OUT=dir (VM_HILLS=H) writes dir/p4.pgm..., a column
+    /// a side, rows: what is there; white what the looks find, pale what they miss, grey what the slab cuts.
+    #[test]
+    #[ignore]
+    fn vm_plate_sheet() {
+        let hills: f64 = std::env::var("VM_HILLS").map_or(0.0, |v| v.parse().unwrap());
+        let all = table::all(37, &|x, z| Some(table::preview_col(x, z, hills)));
+        let t = tb(&all);
+        let px = 70f32.to_radians() / 1080.0;
+        let out = std::env::var("VM_OUT").unwrap();
+        for ps in std::env::var("VM_PL").unwrap().split(',') {
+            let i: usize = ps.parse().unwrap();
+            let q = pl(&t, i);
+            let gs = (w(t.fl, i * 4 + 3) * 2.2 / 120.0).max(1.0);
+            let mut rows: [Vec<(Vec<u8>, usize)>; 3] = [vec![], vec![], vec![]];
+            for d in [[0.0, 1.0, 0.01], [0.0, -1.0, 0.01], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.7, 0.3, 0.65], [-0.6, -0.5, 0.62]] {
+                let (tv, ev, mf, mh, n) = outline(&t, &q, nz(d), gs, px);
+                rows[0].push((tv.iter().map(|b| if *b { 255u8 } else { 0 }).collect(), n));
+                rows[1].push(((0..tv.len()).map(|j| if !ev[j] { if tv[j] { 90u8 } else { 0 } } else if mf[j] { 255 } else { 170 }).collect(), n));
+                rows[2].push(((0..tv.len()).map(|j| if !ev[j] { 0u8 } else if mh[j] { 255 } else { 170 }).collect(), n));
+            }
+            let (n, wd) = (rows[0][0].1, rows[0].iter().map(|r| r.1 + 2).sum::<usize>());
+            let mut sheet: Vec<Vec<u8>> = vec![];
+            for r in &rows {
+                for y in 0..n {
+                    let mut line = vec![];
+                    for (v, n) in r {
+                        line.extend_from_slice(&v[y * n..(y + 1) * n]);
+                        line.extend_from_slice(&[40, 40]);
+                    }
+                    sheet.push(line);
+                }
+                sheet.push(vec![40; wd]);
+            }
+            let mut f = format!("P5\n{} {}\n255\n", wd, sheet.len()).into_bytes();
+            f.extend(sheet.into_iter().flatten());
+            std::fs::write(format!("{out}/p{i}.pgm"), f).unwrap();
+        }
+    }
     #[test]
     fn the_table_fits_the_pass_data() {
         assert!(VM_W2 + VM_COLS <= 262_144);
@@ -1048,6 +1447,7 @@ mod tests {
         assert!(VM_BOULD + VM_BOULDS * VM_BW <= VM_PLATE);
         assert_eq!(VM_FLY, Geo::new(37, 0.0).rings[..5].iter().map(|g| g.n).sum::<usize>());
         assert!(VM_PLATE + VM_PLATES * VM_PW <= VM_FLT);
-        assert!(VM_FLT + 4 * VM_FLY <= VM_W0);
+        assert!(VM_FLT + 4 * VM_FLY <= VM_SLAB);
+        assert!(VM_SLAB + 4 * VM_FLY <= VM_W0);
     }
 }
