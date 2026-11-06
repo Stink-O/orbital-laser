@@ -806,9 +806,46 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
 
     // ---- the void: the sky going out as the land closes, and under the land where it has left ------------------------------
     if (sky0 && t > FD_FOLD - 0.5) {
-        let dark = fd_ss(FD_FOLD + 3.0, 30.0, fd_tau(t));
+        let tau = fd_tau(t);
+        let dark = fd_ss(FD_FOLD + 3.0, 30.0, tau);
         let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM4, FD_SLAM4 + 0.2, t));
         col = mix(col, fd_stars(v), max(dark, under));
+        // ---- land that isn't there. Far land not loaded leaves gaps in what the sheet carries, which would show the void: the stars belong to the
+        // tears and the hole in the roof. A gap the land closes round takes the land's colours round it; on the shut sphere any other that isn't
+        // the roof's hole is the walls' dusk ---------------------------------------------------------------------------------------------
+        if (t < FD_SLAM4) {
+            let shut = fd_ss(33.0, 34.2, tau);
+            if (shut > 0.0) {
+                let S = max(max(dist * 1.3, 170.0), mh * 1.15);
+                let qo = fd_turned(-at.x, S - at.y, at, dist, mh);
+                let qh = fd_turned(-at.x, 2.0 * S - at.y, at, dist, mh);
+                let rel = tgt - me + vec3<f32>(0.0, -1.62, 0.0);
+                let O = rel + vec3<f32>(te.x * qo.x, qo.y, te.y * qo.x);
+                let H = rel + vec3<f32>(te.x * qh.x, qh.y, te.y * qh.x);
+                let b = dot(v, O);
+                let hit = v * (b + sqrt(max(b * b - dot(O, O) + S * S, 0.0)));
+                let inhole = fd_ss(0.72, 0.8, dot(hit - O, H - O) / (S * S));
+                col = mix(col, vec3<f32>(0.02, 0.024, 0.06), shut * (1.0 - inhole));
+            }
+            var near = vec3<f32>(0.0);
+            var found = 0.0;
+            let step = res.y / 1440.0;
+            for (var i = 0; i < 8; i += 1) {
+                let ang = f32(i) * 0.7853982 + 0.3;
+                let dir = vec2<f32>(cos(ang), sin(ang)) * step / res;
+                for (var j = 0; j < 3; j += 1) {
+                    let uv2 = uv + dir * (22.0 + 44.0 * f32(j * (j + 1)));
+                    if (!is_sky(depth_at(uv2))) {
+                        near += fd_sample(uv2);
+                        found += 1.0;
+                        break;
+                    }
+                }
+            }
+            if (found > 5.5) {
+                col = mix(col, near / found, fd_ss(5.5, 7.5, found));
+            }
+        }
     }
 
     // ---- the droplet -------------------------------------------------------------------------------------------------------

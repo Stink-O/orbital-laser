@@ -892,6 +892,11 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
         rho = endr * u;
         x = min(end + cap * (1.0 - u * u), reach);
     }
+    // (the foot isn't round: buttresses out over the wall, as a tree's roots go)
+    if (k == 1) {
+        let foot = exp(-fw_u(x) / 0.05);
+        rho *= 1.0 + foot * (0.2 * sin(3.0 * a + 1.0) + 0.14 * sin(5.0 * a - 2.0) + 0.08 * sin(8.0 * a + 0.5));
+    }
     // (the land's own heights, as big as the land is at this place on the tube)
     rho += clamp(Q.y, -6.0, 40.0) * clamp(rho / max(r, FW_THROAT), 0.08, 1.2) * 0.8;
     let P = fw_path(x, S);
