@@ -27,10 +27,10 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
             the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
   boil      34.5 s, exactly 5.5 s: the hole shutting and turning to metal (`BOIL`): an intake, the mouth's note sinking, a thick seethe from one edge growing to the join, the skin slumping as one, the surface running to the
             middle; a low strain (`strain`) building in slow uneven pulses under it and on through the drop's fall, at its heaviest on its last sample, the touch.
-  drip      36.7 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 37.2, and the one drop falling all the way down, far off and coming, cut on the touch.
+  drip      36.95 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 37.5, and the one drop falling all the way down, far off and coming, cut on the touch.
   ding      37.8 s, the touch on 40.0: `DING_PICK`, one of `DINGS`, each a different idea of that moment and all of them holding up to it: it has its lead-in on the front of it and the
             held strain (`held`) on it to the let-go at 40.95; the blends have the drop's own impact (`arrival`) on their front.
-  reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.7, the rim back on the tube at 42.25,
+  reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.5, the rim back on the tube at 42.25,
             the tube's lurch to 42.55, the hang, the last let-go at 42.88, the walls' fastest at 43.1 with the sky's air coming in, the far land going at the end. Forward sounds: nothing played backwards, nothing climbing in pitch.
   bang1-4   44.1, 45.2, 46.3, 47.4 less 0.8 s: a ring of land falling for 0.8 s and stopping dead: its own fall, its own bang, no stones after it.
             bang1 the far land, a long hit rolling away round the horizon; bang2 a broken ring, two deep blows with the air under the ring shoved out; bang3 the nearest and hardest, the same deep push, nothing after it; bang4 short, hollow and dead.
@@ -73,8 +73,9 @@ PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 STOP, HANG, TOUCH, CLOSED, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL = 3.4, 4.5, 6.0, 6.2, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0
 HOLD, GATHER, TUBE = 31.5, 34.5, 42.88                 # the world stops closing; the hole opens a hair, an intake; on the way back the tube lets go for good
 LIFT = 23.5                                           # the far land's slow lift (20.1 s on) at its height
-# The boil and the drop (fold.wgsl's `the boil`, on fold-boil): every time they use is here, so a retime is this one table. (Provisional: fold-boil's agent's numbers, 2026-11-06, finals to come.)
-BOIL = dict(close=34.5, beads=35.0, join=35.6, pooled=36.4, neck=36.7, pinch=37.2, torn=40.95, gone=41.7)   # the hole starts closing; first beads, at one edge; the join, all at once; the surface across; the bead on its neck; it lets go; on the way back the metal tears from the middle; run out to the rim and back through the plate
+# The boil and the drop (fold.wgsl's `the boil`, on fold-boil): every time they use is here, so a retime is this one table. (fold-boil 50a4c8c: FB_*, FW_LETGO; offscreen numbers, not yet seen in the game. fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"].)
+BOIL = dict(close=34.5, beads=34.95, join=35.6, pooled=36.2, neck=36.95, pinch=37.5, torn=40.95, gone=41.5)   # the hole starts closing; first beads, at one edge; the join, all at once; the streaks run in; the bead draws out on its neck; it lets go; on the way back the metal tears from the middle; run out to the rim and back through the plate
+DROP_V0, DROP_G = 34.0, 217.0                         # the drop's fall from the pinch to the touch, blocks a second and a second squared: 576 a second at the end
 WOB = 2.2                                             # the drop's wobble, long and round and long, Hz
 BOIL_STRAIN = -2.0                                    # (the strain in `boil` against the boil's loudest, dB)
 LETGO, SNAP, RIM_BACK = 40.95, (41.3, 41.85), 42.25   # held and straining to the first; the run back's first fast stretch; the rim back on the tube
@@ -1424,8 +1425,15 @@ def drip_frame():
 
 
 def fall_of(st):
-    """How far down it is at `st`: 0 at the pinch, 1 on the touch: constant g, 800 blocks in about 2.8 s, so about 560 blocks a second at the end."""
-    return np.clip((st - BOIL["pinch"]) / (DING - BOIL["pinch"]), 0, 1) ** 2
+    """How far down it is at `st`: 0 at the pinch, 1 on the touch: constant acceleration (`DROP_V0`, `DROP_G`), about 763 blocks."""
+    s_ = np.clip(st - BOIL["pinch"], 0, DING - BOIL["pinch"])
+    return (DROP_V0 * s_ + 0.5 * DROP_G * s_ ** 2) / (DROP_V0 * (DING - BOIL["pinch"]) + 0.5 * DROP_G * (DING - BOIL["pinch"]) ** 2)
+
+
+def speed_of(st):
+    """How fast it's going at `st`: 0 before the pinch, 1 on the touch."""
+    s_ = np.clip(st - BOIL["pinch"], 0, DING - BOIL["pinch"])
+    return (st > BOIL["pinch"]) * (DROP_V0 + DROP_G * s_) / (DROP_V0 + DROP_G * (DING - BOIL["pinch"]))
 
 
 def neck(n, t0, t1, top=1.0):
@@ -1451,10 +1459,10 @@ def knock(t1, n, size=1.0):
 
 
 def pinch(n, t1, f0=50.0, f1=128.0, tau=0.2):
-    """It lets go: a deep plop from the roof as the neck parts, the same water as `meld`'s and the touch's, and the mass left up there slopping back twice. Mono."""
+    """It lets go: a deep plop from the roof as the neck parts, the same water as `meld`'s and the touch's, the stump snapping back up in 0.15 s, and the bulge bouncing once at the picture's 1.2 Hz. Mono."""
     x = np.zeros(n)
     P.put(x, plop(f0, f1, 1.0, tau), t1)
-    for at, g in ((0.24, 0.5), (0.72, 0.26)):
+    for at, g in ((0.15, 0.5), (0.98, 0.26)):
         P.put(x, settle(g), t1 + at)
     return x
 
@@ -1489,7 +1497,7 @@ def drip_tank():
     y = ring(p + knock(t1, n, 1.6), IR) * 1.1
     # (it comes back, the gaps closing: a thick soft knock, the tank ringing, bigger each time)
     ex = np.zeros(n)
-    at, g = t1 + 0.62, 0.5
+    at, g = t1 + 0.5, 0.42
     while at < d - 0.04:
         v = (at - t1) / (d - t1)
         P.put(ex, plink(rng().uniform(130.0, 170.0), rng().uniform(330.0, 400.0) * (1 + 0.5 * v), 0.05 + 0.03 * v, (0.42 + 0.58 * v ** 1.4) * rng().uniform(0.85, 1.1)), at)
@@ -1595,7 +1603,7 @@ def drip_pipe():
     n, t, st, u, c = drip_frame()
     d = n / SR
     t1 = BOIL["pinch"] - BOIL["neck"]
-    sp = np.sqrt(np.maximum(u, 0))                                        # (its speed, 0 to 1, by the distance fallen)
+    sp = speed_of(st)
     air = eddies(d, 90, 3000, 3.0, -2.6, 12.0, 5.5)
     modes = ((167, 26, 0.7), (241, 28, 0.9), (337, 30, 1.0), (463, 32, 1.0), (659, 32, 0.9), (887, 30, 0.75), (1243, 28, 0.55), (1733, 26, 0.35), (2411, 24, 0.2))
     sing = T.unit(bank(air, modes))
@@ -1747,7 +1755,7 @@ def ding_blend_even():
 
 def ding_blend_over():
     """The note carrying it: it's up before the touch, and the mercury lands inside it."""
-    blended(1.0, -0.15, -9.6)
+    blended(1.0, -0.15, -10.6)
 
 
 def ding_inbreath():
@@ -1979,7 +1987,7 @@ def back_at(tau):
 
 def reverse():
     """The whole fold going back, 3.6 s of it, on the picture's clock: a very great weight let go, not a tape rewound. Every sound here goes forward, with forward attacks. It starts low under the touch's
-    held strain; on 40.95 the metal lets go, tearing from the middle, and runs out to the rim and back through the plate, gone by 41.7 (`BOIL`); the rim lands back on the tube at 42.25, a blow and a small
+    held strain; on 40.95 the metal lets go, tearing from the middle, and runs out to the rim and back through the plate, gone by 41.5 (`BOIL`); the rim lands back on the tube at 42.25, a blow and a small
     overshoot, and the tube gives, a lurch to 42.55; it catches and hangs, nearly still; on 42.88 it lets go for good, the walls fastest at 43.1, the sky's air coming in, and the far land going at the end.
     Its loudness is the picture's speed; nothing climbs in pitch."""
     dur = FLAT - REL
