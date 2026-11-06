@@ -175,7 +175,7 @@ fn fw_shock(r: f32, t: f32) -> f32 {
 // It folds as paper does: the pattern's nodes go somewhere (cp_bear), and every point of the land goes where the nodes of its panel put it (cp_sheet). A panel
 // between two creases and two chords is flat: its chords are parallel, whatever the nodes do. Each node fires as its crease reaches it. Nodes keep to their
 // bearing, so a wedge never leaves its sector of the circle and no two wedges can meet; along a bearing the sheet is one line going one way: nothing over anything.
-const CP_K: f32 = 0.5;             // the big creases' fold: a panel's slope, per radian of cp_rise
+const CP_K: f32 = 0.75;            // the big creases' fold: a panel's slope, per radian of cp_rise
 const CP_N: i32 = 12;              // the creases (the tables are CP_N * 5 long)
 const CP_V: f32 = 0.12;            // WATERBOMB: a panel's middle off it, of its width
 const CP_DIA: f32 = 0.05;          // DIAGONAL: how far up or down a node stands, of its radius, in turn
