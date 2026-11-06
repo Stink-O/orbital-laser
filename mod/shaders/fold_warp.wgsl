@@ -62,6 +62,7 @@ const FW_TUBE_R0: f32 = 0.352;
 const FW_RIM0: f32 = 0.62;         // the band of land that goes down to the target: from this much of the way to the land's end, to its end
 const FW_TURNS: f32 = 0.9;         // how many times round it winds on the way
 const FW_TIP: f32 = 1.0;           // how high over the target's land it stops
+const FW_END_K: f32 = 0.97;        // how much of the far land's reach is drawn: its own end goes in steps, a chunk at a time, and this one is a circle
 const FW_MOUTH: f32 = 2.8;         // how far round the tube the land's end comes, radians, wherever the far land ends
 fn fw_ss(a: f32, b: f32, x: f32) -> f32 {
     let t = clamp((x - a) / (b - a), 0.0, 1.0);
@@ -1155,7 +1156,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     // ---- the sheet on the sphere -----------------------------------------------------------------------------------------
     let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 20000.0);
-    let edge = max(reach - dist, 300.0);
+    let edge = max(FW_END_K * reach - dist, 300.0);
     let P = mix(rest, fw_place(R, ca, sa, y, fw_bend(tau, span.x, mq, e, edge, span.y - sink)), share);
     let bubble = 46.0 - 16.0 * fw_lay(tau);
     out.pos = fw_clear(P + c.tgt + stay, pos + stay, bubble * (1.0 - fw_ss(FW_SLAM4, FW_SLAM4 + 1.0, t)));
@@ -1379,6 +1380,11 @@ fn world_fragment(f: Fragment) -> Painted {
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
     let mq = c.me - c.tgt;
+    // ---- the far land's end: a clean circle round the player, the hole's edge ---------------------------------------------------
+    let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 20000.0);
+    if (tau > FW_FOLD && length(Q.xz - mq.xz) > FW_END_K * reach) {
+        return drop_;
+    }
     // ---- the sheet: nothing under the land is drawn ------------------------------------------------------------------------
     let opened = t > FW_SEAL - 0.5 && r < FW_LAND_R;
     if (t > FW_FOLD - 0.5 && t < FW_SLAM4) {
@@ -1450,7 +1456,7 @@ fn world_fragment(f: Fragment) -> Painted {
     // (the land's top faces only, by the face's real normal: plants and leaves have backs too)
     let real_n = cross(dpdx(f.home), dpdy(f.home));
     // (the rim's way down: a far tile is long enough to span the funnel's winding and shows its back, a black shard: only the land's top is drawn there)
-    if (tau > 34.4 && real_n.y > 0.5 * length(real_n) && r > FW_RIM0 * max(clamp(min(globals.fog.y, globals.fog.w), 480.0, 20000.0) - length(mq.xz), 300.0)) {
+    if (tau > 34.4 && real_n.y > 0.5 * length(real_n) && r > FW_RIM0 * max(FW_END_K * reach - length(mq.xz), 300.0)) {
         return drop_;
     }
     // (which side of a top face is seen, by which way round the land's own (x, z) lies on the screen: water is wound the other way, and a
