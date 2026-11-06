@@ -818,7 +818,9 @@ ahead of the front only. Wreckage is boxes in cells of a grid in the wave's own 
 picture is rotated and the ray followed to where it leaves the water; twelve steps through foam streaming past (dense at
 first, gone in two seconds), silt and bubbles, light shafts, wreckage riding the water's drift and a tree, a house's corner
 and a second tree on the sounds' moments (`ts_bigs`), all lit by the water from above, not by the sky. The land the
-water has left is darkened, with a film of sky and rills (`ts_wet`, normals from the depth), and the draining surface is
+water has left is soaked dark on the blocks' own pixels, with a dull sheen, pools on the level ground that hold the sky and
+what stands round them (a short march through the picture) and dark runs of water down the slopes, drying in patches with
+the pools last, the lakes left alone (`ts_wet`, normals from the depth), and the draining surface is
 its own shading (`ts_torrent`). At 1920x1080 the pass takes about 5 ms looking at the wave and 2.5 ms under the water.
 
 At QUALITY FAST (the default) the pass is drawn in two stages. `fs_half`, at half

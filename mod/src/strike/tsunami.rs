@@ -692,13 +692,13 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
     let mut b = Blocks { clear_of_player: true, ..Default::default() };
     let geo = &w.geo;
     let ty = geo.t[1];
-    // (what the wave does is worked out for each 4 by 4 cells' middle: its strength, the water's height, the streak)
-    let mut cell = [(0.0f64, 0.0f64, 0.0f64); 16];
+    // (what the wave does is worked out for each 4 by 4 cells' middle: its strength, the water's height)
+    let mut cell = [(0.0f64, 0.0f64); 16];
     for (c, v) in cell.iter_mut().enumerate() {
         let (mx, mz) = (f64::from(x0 + (c % 4) as i32 * 4) + 2.0, f64::from(z0 + (c / 4) as i32 * 4) + 2.0);
         let (s, u) = geo.su(mx, mz);
         let m = mask(geo, s, u);
-        *v = if m > 0.0 { (m, geo.peak(s, u), f64::from(fvnoise((s * 0.011) as f32 + geo.sd, (u * 0.075) as f32))) } else { (0.0, 0.0, 0.0) };
+        *v = if m > 0.0 { (m, geo.peak(s, u)) } else { (0.0, 0.0) };
     }
     // (the wreck to strew: a column's wood or building, laid down in the chunk along the flow)
     let mut wrecks: Vec<(usize, u16, u8)> = Vec::new();
@@ -729,7 +729,7 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
                 w.map_dirty = true;
             }
         }
-        let (m, peak, n) = cell[(lz / 4) * 4 + lx / 4];
+        let (m, peak) = cell[(lz / 4) * 4 + lx / 4];
         let over = peak - (f64::from(c.g) - ty);
         let take = !c.fluid && m > 0.0 && coherent(x, z, w.seed) < m && over >= 2.0;
         if !take {
@@ -764,7 +764,12 @@ fn ts_chunk(w: &mut Work, cur: &Cur, k: usize, now: f64, q: &mut Plan) -> bool {
         land[i] = Land { h: ground as i16, fill: keep == 0 && !c.hole, drains: c.hole };
         // (the soil scoured in streaks along the flow, the strongest of them gouged out in channels)
         if c.soil != 0 && keep == 0 {
-            let r = scoured(c.soil, n, chance(x, z, w.seed, 7));
+            // (each column's own, so a streak's edges wander and fray: a cell's would be a straight-sided patch)
+            crate::meter::spend(160);
+            let (s, u) = geo.su(f64::from(x) + 0.5, f64::from(z) + 0.5);
+            let n = f64::from(fvnoise((s * 0.011) as f32 + geo.sd, (u * 0.075) as f32));
+            let fray = 0.22 * (f64::from(fvnoise(s as f32 * 0.09 + 3.0, u as f32 * 0.31 + geo.sd)) - 0.5) + 0.13 * (chance(x, z, w.seed, 18) - 0.5);
+            let r = scoured(c.soil, (n + fray).clamp(0.0, 1.0), chance(x, z, w.seed, 7));
             let side = |dx: usize, dz: usize| cols.get(lz.min(15).wrapping_add(dz).min(255) * 16 + lx + dx).copied().flatten().is_some_and(|c| c.fluid);
             let by_water = side(1, 0) || side(0, 1) || (lx > 0 && cols[i - 1].is_some_and(|c| c.fluid)) || (lz > 0 && cols[i - 16].is_some_and(|c| c.fluid));
             if c.soil == 1 && n > 0.74 && !by_water && over > 6.0 && chance(x, z, w.seed, 3) < 0.92 {

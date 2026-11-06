@@ -1538,39 +1538,114 @@ fn ts_closed(y: f32, s: f32, u: f32, time: f32, g: TsG) -> f32 {
     return time - ts_arr(s, u, g.sd) - x * TS_FACE / ts_vel(s);
 }
 
-// Land the water has been over: dark and wet, a film of water on it shining, and rills running off it, down the faces of
-// the blocks and over the ground the way the water went. `k` how much (it dries off towards the strike's end).
-fn ts_wet(col: vec3<f32>, pl: vec3<f32>, rel: vec3<f32>, uv: vec2<f32>, rd: vec3<f32>, time: f32, k: f32, g: TsG, li: TsLight) -> vec3<f32> {
+// One of the two differences from a pixel to its neighbours, the shorter: it stays on the pixel's own face at a block's edge.
+fn ts_face_d(uv: vec2<f32>, du: vec2<f32>, rel: vec3<f32>) -> vec3<f32> {
+    let a = world_offset(uv + du, depth_at(uv + du)) - rel;
+    let b = rel - world_offset(uv - du, depth_at(uv - du));
+    return select(b, a, dot(a, a) < dot(b, b));
+}
+
+// What standing water shows along `r` from the land at `rel` (off the camera): the picture itself, as far as a few steps out
+// along the ray can find it there (alpha how sure), so the stumps and the hills stand in the pools.
+fn ts_mirror(rel: vec3<f32>, r: vec3<f32>) -> vec4<f32> {
+    var t = 0.7;
+    for (var i = 0; i < 12; i++) {
+        let p = rel + r * t;
+        let q = project_rel(p);
+        if (q.z < 0.0 || q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) {
+            break;
+        }
+        let d = depth_at(q.xy);
+        if (!is_sky(d)) {
+            let lp = length(p);
+            let over = lp - length(world_offset(q.xy, d));
+            if (over > 0.0 && over < t * 0.75 + 1.0) {
+                let e = min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y));
+                return vec4<f32>(srgb_to_linear(textureSampleLevel(scene_color, linear_sampler, q.xy, 0.0).rgb), smoothstep(0.0, 0.06, e));
+            }
+        }
+        t = t * 1.55;
+    }
+    return vec4<f32>(0.0);
+}
+
+// Land the water has been over. It is painted onto the blocks' own pixels, a sixteenth of a block each, so it looks part of
+// them: the land dark and deep in colour, drying in blotches; a dull damp sheen on it; pools lying in the level ground with
+// the sky and what stands round them in them; and thin dark runs of water down the slopes and the blocks' sides, the way
+// the water went. `reach` how far it lies under the high water. The land dries in patches, the pools last.
+fn ts_wet(col: vec3<f32>, pl: vec3<f32>, rel: vec3<f32>, uv: vec2<f32>, rd: vec3<f32>, time: f32, reach: f32, g: TsG, li: TsLight) -> vec3<f32> {
     // (the block face's normal from the depth round it)
     let px = frame.resolution.zw;
-    let rx = world_offset(uv + vec2<f32>(px.x, 0.0), depth_at(uv + vec2<f32>(px.x, 0.0))) - rel;
-    let ry = world_offset(uv + vec2<f32>(0.0, px.y), depth_at(uv + vec2<f32>(0.0, px.y))) - rel;
-    var nrm = normalize(cross(ry, rx));
+    var nrm = normalize(cross(ts_face_d(uv, vec2<f32>(0.0, px.y), rel), ts_face_d(uv, vec2<f32>(px.x, 0.0), rel)));
     if (dot(nrm, rd) > 0.0) {
         nrm = -nrm;
     }
-    let s = dot(pl.xz, g.m);
-    let u = dot(pl.xz, g.n);
     let top = smoothstep(0.5, 0.8, nrm.y);
     let dist = length(rel);
     let fine = 1.0 - smoothstep(60.0, 220.0, dist);
-    // what the rills are: thin lines over the ground, sheets down the sides
+    // (the pixel of the block it is on: the top's, or the side's, along the face)
+    let wp = pl + vec3<f32>(fract(anchor_x()), 0.0, fract(anchor_z()));
+    let across = select(wp.x, wp.z, abs(nrm.x) > abs(nrm.z));
+    let tx = (floor(select(vec2<f32>(across, wp.y), wp.xz, top > 0.5) * 16.0 + 0.002) + 0.5) / 16.0;
+    let s = select(tx.x, dot(tx, g.m), top > 0.5);
+    let u = select(tx.y, dot(tx, g.n), top > 0.5);
+    let bits = pcg(u32(i32(floor(tx.x * 16.0))) * 0x9E3779B1u ^ pcg(u32(i32(floor(tx.y * 16.0)))));
+    let grain = (f32(bits & 0xFFFFu) / 65536.0 - 0.5) * (1.0 - smoothstep(25.0, 70.0, dist));
+    // (how level the land is here, from the land's map: water doesn't stand on a hillside)
+    let ps = dot(pl.xz, g.m);
+    let pu = dot(pl.xz, g.n);
+    let g0 = ts_ground(ps, pu);
+    let level = 1.0 - smoothstep(0.1, 0.3, length(vec2<f32>(ts_ground(ps + 10.0, pu) - g0, ts_ground(ps, pu + 10.0) - g0)) / 10.0);
+    let lowest = 1.0 - smoothstep(1.2, 2.8, pl.y - g0);
+    // (blotches over the land: what stays wet longest, and where the pools lie, stretched a little along the flow)
+    let wob = fvnoise(vec2<f32>(s * 0.021, u * 0.034) + vec2<f32>(3.1, 7.7)) - 0.5;
+    let n1 = fvnoise(vec2<f32>(s * 0.06 + 4.0 * wob, u * 0.095 - 3.0 * wob));
+    let n2 = fvnoise(vec2<f32>(s * 0.21, u * 0.26) + vec2<f32>(11.0, 5.0));
+    let blot = saturate(0.65 * n1 + 0.35 * n2 + 0.1 * grain);
+    // (a lake's own water is no part of this: its surface lies a ninth of a block under the block's top, the land's tops on it)
+    let height = abs(fract(pl.y + 0.5) - 0.5);
+    let on_block = 1.0 - smoothstep(0.03, 0.05, height - 0.05 * saturate(dist / 400.0));
+    let land = mix(1.0, max(on_block, smoothstep(250.0, 400.0, dist)), top);
+    let pool = smoothstep(0.585, 0.615, blot + 0.09 * (level - 1.0)) * top * level * lowest * on_block * (1.0 - smoothstep(180.0, 340.0, dist));
+    // (it dries in patches from 33 s, the pools going last, all of it gone by 41.5 s)
+    let dry = saturate(blot * 1.1 - 0.05 + 0.45 * pool);
+    let k = (1.0 - smoothstep(33.0 + 6.0 * dry, 35.5 + 6.0 * dry, time)) * smoothstep(0.0, 5.0, reach + 3.0 * (n2 - 0.3)) * land;
+    // (the runs of water: thin dark lines down the slopes, a few on the level; sheets down the blocks' sides)
     let w0 = fvnoise(vec2<f32>(s * 0.03, u * 0.05));
     let line = fvnoise(vec2<f32>(u * 0.6 + 6.0 * w0, (s + time * 9.0) * 0.05));
-    let rtop = pow(saturate(1.0 - abs(2.0 * line - 1.0)), 26.0);
-    let sheet = fvnoise(vec2<f32>((pl.x + pl.z) * 0.8, (pl.y + time * 7.0) * 0.09));
-    let rside = smoothstep(0.58, 0.74, sheet) * (1.0 - smoothstep(20.0, 70.0, dist));
-    let rill = mix(rside * 0.7, rtop, top) * fine;
-    let dark = mix(vec3<f32>(1.0), vec3<f32>(0.5, 0.45, 0.4), k);
-    var c = col * dark;
-    let fr = 0.04 + 0.96 * pow(1.0 - saturate(dot(nrm, -rd)), 5.0);
-    let refl = reflect(rd, normalize(nrm + vec3<f32>(0.0, 0.02 * (w0 - 0.5), 0.0)));
-    // (the film on it, and the sun in it)
-    c = mix(c, ts_skyr(refl, li) * 0.7, fr * top * k * 0.5);
-    c = c + li.sunc * pow(saturate(dot(refl, li.L)), 150.0) * 0.7 * top * k;
-    // (the rills' water, brown and catching the sky)
-    let wc = vec3<f32>(0.11, 0.08, 0.05) * (li.amb * 1.6 + li.sunc * 0.6 + li.nightw) + ts_skyr(vec3<f32>(rd.x, abs(rd.y) + 0.2, rd.z), li) * 0.14;
-    return mix(c, wc, rill * k * 0.85);
+    let rtop = smoothstep(0.93, 0.985, 1.0 - abs(2.0 * line - 1.0) + 0.05 * grain) * mix(1.0, 0.25, level);
+    let sheet = fvnoise(vec2<f32>(s * 0.8, (u + time * 7.0) * 0.09));
+    let rside = smoothstep(0.6, 0.68, sheet + 0.12 * grain) * (1.0 - smoothstep(20.0, 70.0, dist));
+    let rill = mix(rside * 0.7, rtop, top) * fine * (1.0 - pool);
+    // (soaked ground: darker and deeper in colour, unevenly)
+    let lum = luminance(col);
+    let deep = max(vec3<f32>(lum) + (col - vec3<f32>(lum)) * 1.3, vec3<f32>(0.0));
+    let soak = mix(0.74, 0.5, smoothstep(0.34, 0.6, blot + 0.3 * grain)) * mix(1.0, 0.72, rill);
+    let tint = vec3<f32>(soak * 1.03, soak, soak * 0.92);
+    var c = mix(col, deep * tint, k);
+    // (a dull sheen on the damp ground, broad and weak: added, so the blocks' pixels show through it)
+    let nv = saturate(dot(nrm, -rd));
+    let fr = pow(1.0 - nv, 5.0);
+    let refl = reflect(rd, nrm);
+    let sky_r = ts_skyr(vec3<f32>(refl.x, abs(refl.y), refl.z), li);
+    let sheen = (0.02 + 0.13 * fr) * (0.35 + 0.65 * level) * (0.55 + 0.9 * saturate(grain + n2 * 0.6)) * top;
+    c = c + sky_r * sheen * k;
+    c = c + sky_r * rill * (0.03 + 0.16 * fr) * k;
+    // (the pools: a skin of still water, trembling a little, the world upside down in it)
+    let pk = pool * k;
+    if (pk > 0.003) {
+        let tr = vec2<f32>(fvnoise(vec2<f32>(wp.x * 1.3 + time * 0.5, wp.z * 1.3)), fvnoise(vec2<f32>(wp.x * 1.3, wp.z * 1.3 - time * 0.4))) - vec2<f32>(0.5);
+        let rn = normalize(vec3<f32>(tr.x * 0.05, 1.0, tr.y * 0.05));
+        let rr = reflect(rd, rn);
+        let m = ts_mirror(rel, rr);
+        let seen = mix(ts_skyr(rr, li), m.rgb, m.a);
+        let f = 0.03 + 0.97 * pow(1.0 - saturate(dot(rn, -rd)), 5.0);
+        // (shallow and silty: the ground dim under it, the rim of it darker still)
+        let under = c * vec3<f32>(0.55, 0.5, 0.42);
+        c = mix(c, mix(under, seen, saturate(f + 0.12)), pk);
+        c = c + li.sunc * pow(saturate(dot(rr, li.L)), 400.0) * 1.6 * pk * (1.0 - m.a);
+    }
+    return c;
 }
 
 fn tsunami(in: StageIn) -> vec4<f32> {
@@ -1662,8 +1737,9 @@ fn tsunami(in: StageIn) -> vec4<f32> {
         // (what the water has been over, as it comes out from under it)
         let pu = dot(pl.xz, g.n);
         let tau_p = time - ts_arr(ps, pu, g.sd);
-        if (tau_p > 1.0 && pl.y < TS_A * ts_env(ps, pu, g) - TS_SEA) {
-            col = ts_wet(col, pl, rel, uv, rd, time, 1.0 - smoothstep(35.0, 41.5, time), g, li);
+        let reach = TS_A * ts_env(ps, pu, g) - TS_SEA - pl.y;
+        if (tau_p > 1.0 && reach > -3.0 && time < 41.5) {
+            col = ts_wet(col, pl, rel, uv, rd, time, reach, g, li);
         }
     }
 
