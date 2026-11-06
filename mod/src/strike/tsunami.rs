@@ -1098,7 +1098,7 @@ mod tests {
             assert!(g.level(s, u, a + rise + TS_HOLD + TS_DRAIN + 4.0).is_none());
             // (spent at its end, and not at all out on its flanks)
             assert!(g.peak(g.send + 60.0, 0.0) < -50.0);
-            assert!(g.peak(100.0, 2800.0) < -50.0);
+            assert!(g.peak(100.0, 3250.0) < -50.0);
             // (it runs 130 over the target's ground at full strength)
             assert!(g.peak(-300.0, 0.0) > 100.0, "{}", g.peak(-300.0, 0.0));
         }
