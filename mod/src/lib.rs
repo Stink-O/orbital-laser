@@ -983,6 +983,9 @@ impl Orbital {
         params[8] = seed;
         params[9] = 1.0;
         params[11] = hit.block_y as f32;
+        if laser.key == "fold" {
+            params[10] = strike::fd_lie(0.0, strike::fd_pin(target.point, me, seed));
+        }
         if is_ship(laser) {
             params[12] = self.approach as f32;
             params[13] = self.arrival as f32;
@@ -1072,9 +1075,10 @@ impl Orbital {
             && ground::ready(tag)
         {
             let tops: Vec<Option<i32>> = strike::fd_survey(block).iter().map(|&(x, z)| ground::at(x, z).map(|g| g + ground::water(x, z).unwrap_or(0))).collect();
-            s.params[10] = strike::fd_level(block[1], &tops);
+            let level = strike::fd_level(block[1], &tops);
+            s.params[10] += level;
             s.level = None;
-            log::write(log::Level::Info, &format!("fold: the land's level {} from the target", s.params[10]));
+            log::write(log::Level::Info, &format!("fold: the land's level {level} from the target"));
         }
         trace("polled");
         let carved = self.carve(CARVE_CMDS);

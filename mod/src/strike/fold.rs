@@ -70,6 +70,38 @@ pub const FD_TETHER: f64 = 320.0;
 /// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];
 
+/// The crease pattern as the mod needs it (fold_warp.wgsl's cp_dir and CP_INV, `the_warp_keeps_the_beats`): big creases' bearings, degrees, and
+/// one over how far out each ring meets each.
+const FD_CREASES: [f32; 8] = [0.0, 38.0, 109.0, 125.0, 180.0, 263.0, 289.0, 332.0];
+const FD_INV: [[f32; 5]; 8] = [
+    [0.019573, 0.011678, 0.004623, 0.004120, 0.001782],
+    [0.027736, 0.008565, 0.006843, 0.002906, 0.002638],
+    [0.020483, 0.011177, 0.005123, 0.004379, 0.001742],
+    [0.025310, 0.007770, 0.007426, 0.002897, 0.002555],
+    [0.020316, 0.010662, 0.004848, 0.003851, 0.001855],
+    [0.026149, 0.008739, 0.006787, 0.002974, 0.002662],
+    [0.019413, 0.011845, 0.004865, 0.004264, 0.001793],
+    [0.026306, 0.007756, 0.007470, 0.002833, 0.002597],
+];
+/// Which kite of the pattern the player stood in as it fired, for the warp to leave alone (fold_warp.wgsl's cp_pin): 6 k + its cell, 5 past the rings.
+pub fn fd_pin(target: [f64; 3], me: [f64; 3], seed: f32) -> u32 {
+    let (dx, dz) = ((me[0] - target[0]) as f32, (me[2] - target[2]) as f32);
+    let r = dx.hypot(dz);
+    let turn = (seed * 0.618_034).fract() * 360.0;
+    let x = (dz.atan2(dx).to_degrees() - turn).rem_euclid(360.0);
+    let k = FD_CREASES.iter().rposition(|c| x >= *c).unwrap_or(7);
+    let k1 = (k + 1) % 8;
+    let cr = |a: f32, b: f32| (b - a).to_radians().sin();
+    let (a0, a1) = (FD_CREASES[k], FD_CREASES[k1]);
+    let (u, v) = (cr(x, a1) / cr(a0, a1), cr(a0, x) / cr(a0, a1));
+    let cell = (0..5).find(|i| r * (u * FD_INV[k][*i] + v * FD_INV[k1][*i]) < 1.0).unwrap_or(5);
+    (6 * k + cell) as u32
+}
+/// params[10]: the land's level (`fd_level`, a whole number, 0 or under) and under it the player's kite (`fd_pin`), as the warp reads them.
+pub fn fd_lie(level: f32, pin: u32) -> f32 {
+    level - (pin + 1) as f32 / 64.0
+}
+
 /// The columns asked of the world at the strike's start, for how low the land lies round the target (`fd_level`).
 pub fn fd_survey(block: [i32; 3]) -> Vec<(i32, i32)> {
     let mut out = Vec::with_capacity(FD_SURVEY_RINGS.len() * FD_SURVEY_ROUND);
@@ -186,6 +218,34 @@ mod tests {
             };
             assert_eq!(body(warp, "fw"), body(pass, "fd"), "{name}");
         }
+    }
+
+    /// The mod and the warp agree on the pattern, and on where the kite goes.
+    #[test]
+    fn the_pin_is_the_warps() {
+        let warp = include_str!("../../shaders/fold_warp.wgsl");
+        for row in FD_INV {
+            for x in row {
+                assert!(warp.contains(&format!("{x:.6}")), "{x} in CP_INV");
+            }
+        }
+        let from = warp.find("fn cp_dir(").expect("cp_dir");
+        let dirs: Vec<f32> = warp[from..from + warp[from..].find("\n}\n").expect("its end")]
+            .lines()
+            .filter(|l| l.contains("return"))
+            .map(|l| {
+                let v: Vec<f32> = l.split("vec2<f32>(").nth(1).unwrap().split(')').next().unwrap().split(", ").map(|x| x.parse().unwrap()).collect();
+                v[1].atan2(v[0]).to_degrees().rem_euclid(360.0)
+            })
+            .collect();
+        for (k, c) in FD_CREASES.iter().enumerate() {
+            assert!((dirs[k] - c).abs() < 0.01, "crease {k} at {c}, the warp's {}", dirs[k]);
+        }
+        // (on a crease's own bearing, with no turn: the seed's turn is its fractional part of a turn)
+        assert_eq!(fd_pin([0.0; 3], [100.0, 0.0, 1.0], 0.0), 2);
+        assert_eq!(fd_pin([0.0; 3], [-30.0, 0.0, -1.0], 0.0), 6 * 4);
+        assert_eq!(fd_pin([0.0; 3], [2000.0, 0.0, 1.0], 0.0), 5);
+        assert_eq!(fd_lie(-45.0, 7), -45.0 - 8.0 / 64.0);
     }
 
     /// A plateau is pressed to itself, not to the sea; a few low columns don't drag it down; land not loaded says nothing.

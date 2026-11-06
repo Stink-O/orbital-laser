@@ -239,9 +239,11 @@ fn cp_x(a: vec2<f32>, b: vec2<f32>) -> f32 {
 }
 // The wedge bearing a lies in: big creases k and k1, the unit vector at a as u e0 + v e1, and x[i] one over how far out ring i's
 // chord is at a.
-struct CpW { k: i32, k1: i32, e0: vec2<f32>, e1: vec2<f32>, u: f32, v: f32, turn: f32 }
-fn cp_wedge(a: f32) -> CpW {
+struct CpW { k: i32, k1: i32, e0: vec2<f32>, e1: vec2<f32>, u: f32, v: f32, ct: f32, st: f32 }
+fn cp_wedge(a: f32, q: vec2<f32>, r: f32) -> CpW {
     let turn = fract(globals.warp[2].x * 0.618034) * FW_TAU;
+    let ct = cos(turn);
+    let st = sin(turn);
     let x = fract((a - turn) / FW_TAU) * 360.0;
     var k = 7;
     if (x < 125.0) {
@@ -254,10 +256,10 @@ fn cp_wedge(a: f32) -> CpW {
     let k1 = (k + 1) % 8;
     let e0 = cp_dir(k);
     let e1 = cp_dir(k1);
-    let at = x * 0.017453293;
-    let d = vec2<f32>(cos(at), sin(at));
+    let qr = q / max(r, 0.001);
+    let d = vec2<f32>(qr.x * ct + qr.y * st, qr.y * ct - qr.x * st);
     let det = cp_x(e0, e1);
-    return CpW(k, k1, e0, e1, cp_x(d, e1) / det, cp_x(e0, d) / det, turn);
+    return CpW(k, k1, e0, e1, cp_x(d, e1) / det, cp_x(e0, d) / det, ct, st);
 }
 // Where ring i meets big crease k.
 fn cp_node(k: i32, i: i32) -> f32 {
@@ -282,24 +284,26 @@ fn cp_cell(w: CpW, r: f32) -> i32 {
 }
 // A kite of the pattern: the wedge's cell i, its corners round it, a and b on crease k, c and d on crease k1 (a and d the target in
 // cell 0), and v its apex: what its lines and its folds are made of.
-struct CpKite { a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>, v: vec2<f32>, m: vec3<f32>, h: vec4<f32>, id: vec2<f32> }
+struct CpKite { a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>, v: vec2<f32>, m: vec3<f32>, h: vec4<f32>, id: vec2<f32>, bq: vec4<f32> }
 fn cp_kite(w: CpW, i: i32) -> CpKite {
     let id = vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0);
     let h = CP_H[w.k * 5 + i];
     let in0 = select(0.0, cp_node(w.k, max(i - 1, 0)), i > 0);
     let in1 = select(0.0, cp_node(w.k1, max(i - 1, 0)), i > 0);
+    let q0 = cp_node(w.k, i);
+    let q1 = cp_node(w.k1, i);
     let a = in0 * w.e0;
-    let b = cp_node(w.k, i) * w.e0;
+    let b = q0 * w.e0;
     let d = in1 * w.e1;
-    let c = cp_node(w.k1, i) * w.e1;
+    let c = q1 * w.e1;
     // (off its middle, each its own way: the kites no two alike)
     let m = vec3<f32>(0.3 + 0.45 * h.x, 0.3 + 0.45 * h.y, 0.32 + 0.36 * h.z);
-    return CpKite(a, b, c, d, mix(mix(a, b, m.x), mix(d, c, m.y), m.z), m, h, id);
+    return CpKite(a, b, c, d, mix(mix(a, b, m.x), mix(d, c, m.y), m.z), m, h, id, vec4<f32>(q0, q1, in0, in1));
 }
 // Which of the kite's four facets p is in, between its corners j and j + 1 and the apex: its weights there, how far it is from the
 // nearest of the facet's three lines, blocks.
 struct CpTri { j: i32, lv: f32, lx: f32, ly: f32, e: f32 }
-fn cp_tri(kt: CpKite, p: vec2<f32>) -> CpTri {
+fn cp_tri(kt: CpKite, p: vec2<f32>, exact: bool) -> CpTri {
     var c = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
     let q = p - kt.v;
     var s0 = cp_x(c[0] - kt.v, q);
@@ -319,7 +323,11 @@ fn cp_tri(kt: CpKite, p: vec2<f32>) -> CpTri {
     let lx = max(cp_x(q, y) / dd, 0.0);
     let ly = max(cp_x(x, q) / dd, 0.0);
     let lv = max(1.0 - lx - ly, 0.0);
-    let e = min(min(lx * dd / max(length(y), 0.001), ly * dd / max(length(x), 0.001)), lv * dd / max(length(y - x), 0.001));
+    // (near enough, lying on the sphere: a groove)
+    var e = min(min(lx, ly), lv) * (kt.bq.x - kt.bq.z);
+    if (exact) {
+        e = min(min(lx * dd / max(length(y), 0.001), ly * dd / max(length(x), 0.001)), lv * dd / max(length(y - x), 0.001));
+    }
     return CpTri(j, lv, lx, ly, e);
 }
 // One line of the kite: a spoke, from corner a to its apex, or a branch off one.
@@ -337,7 +345,7 @@ fn cp_seg(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> vec3<f32> {
 // strike/fold.rs's fd_level, from the target), brought to the target's height at the target. Only what stands over it is pressed: pressed
 // from under, a column's rock would stand up through the lower land beside it.
 fn cp_level(r: f32) -> f32 {
-    return globals.warp[2].z * min(r / 170.0, 1.0);
+    return ceil(globals.warp[2].z) * min(r / 170.0, 1.0);
 }
 fn cp_squash(y: f32, level: f32, pr: f32) -> f32 {
     return level + max(y - level, 0.0) * pr + min(y - level, 0.0);
@@ -381,10 +389,12 @@ fn fw_score(t: f32) -> f32 {
 fn cp_amount(tau: f32, rt: f32) -> f32 {
     return select(mix(CP_PRE, 1.0, fw_ss(FW_FOLD, FW_FOLD + 5.0, tau)), 1.0, rt >= FW_REL) * mix(1.0, CP_REST, fw_lay(tau));
 }
-// The player's own kite is left alone, so that nothing rises under them: (its crease, its cell).
-fn cp_pin(mq: vec3<f32>) -> vec2<i32> {
-    let w = cp_wedge(atan2(mq.z, mq.x));
-    return vec2<i32>(w.k, cp_cell(w, length(mq.xz)));
+// The player's own kite is left alone, so that nothing rises under them: (its crease, its cell), from where they stood as it fired (fd_pin in
+// strike/fold.rs): under params[10]'s whole number, sixty-fourths of one, one more than 6 k + cell.
+fn cp_pin() -> vec2<i32> {
+    let x = globals.warp[2].z;
+    let code = i32(round((ceil(x) - x) * 64.0)) - 1;
+    return vec2<i32>(code / 6, code % 6);
 }
 // Is ring i's node on big crease k one of the pinned kite's?
 fn cp_pinned(k: i32, i: i32, pin: vec2<i32>) -> bool {
@@ -546,9 +556,37 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
     }
     let level = cp_level(r);
     let P = S + n * max(hh - level, 0.0) + under * min(hh, level);
-    let q = fw_rot(P.xz, w.turn);
-    let m2 = fw_rot(n.xz, w.turn);
-    return CpS(vec3<f32>(q.x, P.y, q.y), vec3<f32>(m2.x, n.y, m2.y));
+    return CpS(vec3<f32>(P.x * w.ct - P.z * w.st, P.y, P.x * w.st + P.z * w.ct), vec3<f32>(n.x * w.ct - n.z * w.st, n.y, n.x * w.st + n.z * w.ct));
+}
+// All that is left of it lying on the sphere, every vertex of the walls: the facet's height over the sheet, and its way up (x, z).
+fn cp_lying(w: CpW, i: i32, kt: CpKite, tr: CpTri, t: f32, pin: vec2<i32>) -> vec3<f32> {
+    let ik = w.k * 5;
+    let ik1 = w.k1 * 5;
+    let zb = kt.bq.x * cp_lift(w.k, i, t, pin);
+    let zc = kt.bq.y * cp_lift(w.k1, i, t, pin);
+    var za = 0.0;
+    var zd = 0.0;
+    if (i > 0) {
+        za = kt.bq.z * cp_lift(w.k, i - 1, t, pin);
+        zd = kt.bq.w * cp_lift(w.k1, i - 1, t, pin);
+    }
+    var zv = mix(mix(za, zb, kt.m.x), mix(zd, zc, kt.m.y), kt.m.z);
+    if (w.k != pin.x || i != pin.y) {
+        zv += select(-CP_V, CP_V, kt.h.x > 0.5) * length(kt.c - kt.b);
+    }
+    var z = array<f32, 4>(za, zb, zc, zd);
+    var c = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
+    let zx = z[tr.j];
+    let zy = z[(tr.j + 1) & 3];
+    let x = c[tr.j];
+    let y = c[(tr.j + 1) & 3];
+    // (the plane through the three: its slope)
+    let e1 = x - kt.v;
+    let e2 = y - kt.v;
+    let dd = max(cp_x(e1, e2), 0.001);
+    let g = vec2<f32>((zx - zv) * e2.y - (zy - zv) * e1.y, (zy - zv) * e1.x - (zx - zv) * e2.x) / dd * CP_REST;
+    let n = vec2<f32>(-g.x * w.ct + g.y * w.st, -g.x * w.st - g.y * w.ct);
+    return vec3<f32>(CP_REST * (zv * tr.lv + zx * tr.lx + zy * tr.ly), n);
 }
 // How far the rigid plates have gone to one curved sheet: all of it going up; rigid only as the rings fall back.
 fn fw_soft(t: f32, rt: f32) -> f32 {
@@ -999,22 +1037,24 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let e = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
     var rest = Q + vec3<f32>(0.0, rip, 0.0);
     // (the land pressed along the creases, all but what is underfoot, whether or not it has gone to the sheet yet)
-    let crease = t > FW_SCORE && t < FW_SLAM4;
+    // (on the sphere only what the pattern covers: the far land has nothing to work out)
+    let crease = t > FW_SCORE && t < FW_SLAM4 && (tau < FW_FLAT0 || r < FW_LEN * 1.25);
     var w: CpW;
     var kt: CpKite;
     var tr: CpTri;
     var cell = 5;
     if (crease) {
-        w = cp_wedge(a);
+        w = cp_wedge(a, Q.xz, r);
         cell = cp_cell(w, r);
         if (cell < 5) {
             kt = cp_kite(w, cell);
-            tr = cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r);
+            tr = cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, tau < FW_FLAT0);
         }
     }
     var pr = 1.0;
-    if (crease && r < FW_LEN * 1.25) {
-        let pp = cp_press(r, w, t, select(1000.0, tr.e, cell < 5));
+    if (crease && r < FW_LEN * 1.25 && (tau < FW_FLAT0 || cell < 5)) {
+        // (on the sphere only the creases' grooves are left)
+        let pp = select(cp_press(r, w, t, select(1000.0, tr.e, cell < 5)), vec2<f32>(1.0, 1.0 - 0.9 * (1.0 - fw_ss(1.0, 9.0, tr.e))), tau >= FW_FLAT0);
         // (going back the land is pressed again as the sphere opens, and each ring lets its relief go as it lands)
         var back = 1.0;
         if (t >= FW_REL) {
@@ -1061,7 +1101,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         soft = mix(soft, h, fw_ss(FW_LEN * 1.25, FW_LEN, r));
     }
     h = mix(h, soft, folded);
-    let pin = cp_pin(mq);
+    let pin = cp_pin();
     if (tau < FW_FOLD - 0.01 || t >= FW_SLAM4) {
         var P = vec3<f32>(Q.x, h, Q.z);
         // (flat on the land still: only the folds)
@@ -1085,8 +1125,15 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     }
     let span = g.foot;
     var s = CpS(vec3<f32>(r * cos(a), h, r * sin(a)), vec3<f32>(0.0, 1.0, 0.0));
-    if (crease && (cell < 5 || !lying)) {
-        s = cp_sheet(w, cell, kt, tr, r, h, tau, t, span.y, pin, g, !lying);
+    if (lying) {
+        if (crease && cell < 5) {
+            let l = cp_lying(w, cell, kt, tr, t, pin);
+            s.pos.y += l.x;
+            s.n = normalize(vec3<f32>(l.y, 1.0, l.z));
+            out.tint = vec3<f32>(mix(1.0, cp_shade(s.n, tau), share));
+        }
+    } else if (crease) {
+        s = cp_sheet(w, cell, kt, tr, r, h, tau, t, span.y, pin, g, true);
         out.tint = vec3<f32>(mix(1.0, cp_shade(s.n, tau), share));
     }
     let R = length(s.pos.xz);
@@ -1125,11 +1172,9 @@ fn cp_taper(s: f32, g: f32) -> f32 {
     }
     return pow(1.0 - s / g, 0.7);
 }
-fn cp_lines(r: f32, a: f32, t: f32, px: f32, near: f32, shut: f32) -> CpHit {
+fn cp_lines(r: f32, w: CpW, i: i32, t: f32, px: f32, near: f32, shut: f32) -> CpHit {
     var h = CpHit(1000.0, 0.0, 0.0, 0.0, 1000.0);
-    let w = cp_wedge(a);
     let p = (w.u * w.e0 + w.v * w.e1) * r;
-    let i = cp_cell(w, r);
     // ---- the two big creases either side -----------------------------------------------------------------------------------
     for (var j = 0; j < 2; j += 1) {
         let k = select(w.k, w.k1, j == 1);
@@ -1146,7 +1191,7 @@ fn cp_lines(r: f32, a: f32, t: f32, px: f32, near: f32, shut: f32) -> CpHit {
             h.glow = max(h.glow, exp(-max(d - hw, 0.0) / 3.5) * fw_ss(0.0, 30.0, q) * cp_taper(q / end, g / end));
         }
         // (where it really tears: round some of the nodes, a long thin diamond along it, its edges straight, wider on one side)
-        if (d < 26.0 && q > 0.0) {
+        if (d < 26.0 && q > 0.0 && shut < 1.0) {
             for (var n = max(i - 1, 0); n <= min(i, 4); n += 1) {
                 let hn = fw_hash(vec2<f32>(f32(k) * 11.0 + 5.0, f32(n) * 6.0 + 3.0));
                 if (hn < 0.42) {
@@ -1187,7 +1232,7 @@ fn cp_lines(r: f32, a: f32, t: f32, px: f32, near: f32, shut: f32) -> CpHit {
     // has grown, thinner and later than the one it comes off, and each inside its facet, so they never cross ----------------------
     if (i < 5 && shut < 1.0) {
         let kt = cp_kite(w, i);
-        let tr = cp_tri(kt, p);
+        let tr = cp_tri(kt, p, false);
         var cn = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
         let born0 = FW_SCORE + 3.2 + 1.3 * kt.h.y;
         if (t >= born0) {
@@ -1373,8 +1418,14 @@ fn world_fragment(f: Fragment) -> Painted {
     // (past the land they are healed, and the pattern's dear: not worked out when there is nothing to show)
     var dc = vec2<f32>(1000.0);
     var hit = CpHit(1000.0, 0.0, 0.0, 0.0, 1000.0);
+    if (plain.a < 0.5 && f.layer < 32768u) {
+        // (the leaves' holes: nothing of them is drawn)
+        return Painted(plain, 1.0);
+    }
+    let wedge = cp_wedge(a, Q.xz, r);
+    let cell = cp_cell(wedge, r);
     if (front > 0.0 && r < FW_LEN * 1.2) {
-        hit = cp_lines(r, a, t, max(0.05, dist * 0.00095), fw_ss(FW_FEET + 25.0, FW_FEET + 70.0, length(f.home.xz - c.me.xz)), healed);
+        hit = cp_lines(r, wedge, cell, t, max(0.05, dist * 0.00095), fw_ss(FW_FEET + 25.0, FW_FEET + 70.0, length(f.home.xz - c.me.xz)), healed);
         dc = vec2<f32>(hit.big);
     }
     let scored = fw_ss(0.0, 26.0, front - r);
@@ -1382,7 +1433,7 @@ fn world_fragment(f: Fragment) -> Painted {
     // (the block's own texture, tiled smaller and smaller as the land goes)
     var tex = plain;
     let dnear = min(dc.x, dc.y);
-    let ring = min(cp_cell(cp_wedge(a), r), 4);
+    let ring = min(cell, 4);
     let lifting = fw_p(ring, fw_lead(a, ring), tau, t);
     let zone = scored * fade * (1.0 - fw_ss(5.0, 24.0, dnear - 6.0 * fw_ss(0.0, 1.0, lifting)));
     if (FW_FRACTAL > 0.0 && zone > 0.01 && dist < 460.0 && r < FW_LEN) {
