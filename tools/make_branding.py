@@ -36,8 +36,8 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    # (the Hurricane over the land, its eyewall towering, its debris and lightning in the middle)
-    shot = Image.open(ROOT / "docs" / "branding" / "hurricane-card.jpg").convert("RGB")
+    # (the Tsunami over the hills, its crest rising to the right, spray blown up where it hits the land)
+    shot = Image.open(ROOT / "docs" / "branding" / "tsunami-card.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H / shot.height), H), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width, 0))
@@ -57,7 +57,7 @@ def social_preview():
     names = ImageFont.truetype(str(FONT), 19)
     d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM · MOTHERSHIP", font=names, fill="#FF9A2E")
     d.text((80, 140 + logo.height + 166), "DOWNFALL · PLANET KILLER · CRYSTAL BLOOM · SINKHOLE · PAYLOAD", font=names, fill="#FF9A2E")
-    d.text((80, 140 + logo.height + 196), "NUKE · ROD FROM GOD · SUPERCELL · HURRICANE", font=names, fill="#FF9A2E")
+    d.text((80, 140 + logo.height + 196), "NUKE · ROD FROM GOD · SUPERCELL · HURRICANE · TSUNAMI", font=names, fill="#FF9A2E")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 

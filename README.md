@@ -223,7 +223,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
 
 | Tsunami | The wall | Under the water | What it leaves |
 |---|---|---|---|
-| ![A dark wall of water with a white crest standing across the horizon beyond the snowy land](docs/45-tsunami-horizon.jpg) | ![The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land](docs/46-tsunami-wall.jpg) | ![Green water, logs and pieces of a house going by](docs/47-tsunami-underwater.jpg) | ![The land scoured to mud and gravel in streaks along the flow, the wet swath running to the horizon](docs/48-tsunami-aftermath.jpg) |
+| ![A dark wall of water rising over the hills, its white crest climbing away, jets of spray blown up where it hits the land](docs/45-tsunami-horizon.jpg) | ![The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land](docs/46-tsunami-wall.jpg) | ![Green water, logs and pieces of a house going by](docs/47-tsunami-underwater.jpg) | ![The land scoured to mud and gravel in streaks along the flow, the wet swath running to the horizon](docs/48-tsunami-aftermath.jpg) |
 
 <!-- HURRICANE STILLS GO HERE (optional): a gallery row like the ones above, for example
 | Hurricane | The eye | The tear-up | What it leaves |
