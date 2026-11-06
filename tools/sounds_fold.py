@@ -17,7 +17,7 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
   letgo     4.9 s, to 6.0: let go: one faint give in the metal, then the air over it as it falls, its speed the picture's.
   meld      5.6 s: the land rising to meet it, faintly; 6 s the landing, a heavy blow with its full speed behind it; the land
             closing over it at 6.3 with the first deep gulp, heaving to a peak at 6.4; the gulps sinking on to 7.5.
-  ripple    7.5 s: the land moving like water: low heaves, each bigger, slow water and wet soil over them.
+  ripple    7.5 s: the land moving like water: nine slow seas on the picture's pulses and swell, bands of chaos, no note and nothing ringing.
   score     12 s: the creases: ice. Clean pews one at a time with air between them, stones skipping away, a thicker sheet as it
             goes on, and from 16 s the tears: a heavy falling chirp and a dark breath of ground parting.
   unravel   19 s: long falling glissandi off a thick sheet, heave after heave, room between them.
@@ -56,6 +56,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np
 from scipy.fft import irfft, next_fast_len, rfft, rfftfreq
+from scipy.ndimage import gaussian_filter1d
 from scipy.signal import butter, fftconvolve, lfilter, sosfilt
 import soundlib
 from soundlib import SR
@@ -257,20 +258,21 @@ def rock_crack(d, size=1.0, bright=1.0):
 
 
 def patter(d, t_lo, t_hi, rate, gain=1.0):
-    """Debris coming down: clods, stones clacking, grit ticks; the further off the darker. (L, R), dry."""
+    """Debris coming down: clods, a stone clacking now and then, small stones; the further off the darker, and nothing bare and bright:
+    a run of high ticks with nothing under them is tin foil. (L, R), dry."""
     n = n_of(d)
     L = np.zeros(n)
     R = np.zeros(n)
     for t1 in P.poisson_times(t_lo, t_hi, rate):
         near = rng().random() ** 1.6
         kind = rng().random()
-        if kind < 0.3:
+        if kind < 0.45:
             size = min(rng().pareto(2.0) * 0.4 + 0.3, 2.0)
             m = n_of(0.2 + 0.3 * size)
             s = times(m)
             x = T.thud(m, size) * size * 0.12
             x += T.unit(bp(noise(m), 500, 4000)) * np.exp(-s / rng().uniform(0.012, 0.03)) * np.minimum(s / 0.002, 1) * 0.03
-        elif kind < 0.65:
+        elif kind < 0.62:
             size = rng().uniform(0.3, 1.0)
             m = n_of(0.3)
             x = P.modal_hit(m, rng().uniform(700, 2400) / (0.6 + size), [1.0, rng().uniform(1.45, 2.2), rng().uniform(2.4, 3.9), rng().uniform(4.1, 5.6)],
@@ -279,9 +281,9 @@ def patter(d, t_lo, t_hi, rate, gain=1.0):
             if rng().random() < 0.3:
                 P.put(x, x * rng().uniform(0.25, 0.5), rng().uniform(0.07, 0.2))
         else:
-            m = n_of(0.006)
-            x = bp(PB.tick(m, 0, min(rng().pareto(2.4) * 0.35 + 0.15, 2.0) * 0.06, rng().uniform(0.0002, 0.0008), rng().choice([-1.0, 1.0])), 900, 8000)
-        x = bp(x, None, 1500 + 7000 * near)
+            m = n_of(0.09)                                     # (a small stone: a body under it, never a bare tick)
+            x = T.thud(m, rng().uniform(0.08, 0.2)) * min(rng().pareto(2.4) * 0.35 + 0.15, 2.0) * 0.1
+        x = bp(x, None, 1300 + 3200 * near)
         l, r = pan(x * (0.3 + 0.7 * near) * gain, rng().uniform(-0.85, 0.85))
         P.put(L, l, t1)
         P.put(R, r, t1)
@@ -399,6 +401,79 @@ def land(x, length=4.0, wet=0.5, darken=(1800, 180), decay=1.6, density=35.0, se
     """`x` off the land round it: clumps of echoes, each later one duller. Mono."""
     ir = T.outdoor_ir(length, seed, density=density, darken=darken, decay=decay)
     return x + fftconvolve(x, ir)[:len(x)] * wet
+
+
+# Water that big has no note and it isn't a lot of small water: 30 thirds of an octave of independent noise, each under a gain that is
+# chaos in dB (the Tsunami's `water`, its numbers from measured surf): eddies on a 1/f curve, slow low down and quick up high, part shared;
+# surges of a second or more, up fast, away slowly, bunched, never an LFO; blobs, slaps in the time-frequency plane an octave wide.
+CR = 400                                                       # frames a second of the gains
+FCS = 20.0 * 2 ** (np.arange(30) / 3.0)
+LFC = np.log2(FCS)
+
+
+def one_over_f(nt, beta, fcut, fmin=0.05):
+    """A unit-variance curve with a power spectrum f^-beta between `fmin` and `fcut` Hz, at CR."""
+    m = next_fast_len(nt + CR // 2, real=True)
+    f = rfftfreq(m, 1 / CR)
+    a = np.where(f > 0, np.maximum(f, fmin) ** (-beta / 2), 0.0) / (1 + (f / fcut) ** 6)
+    y = irfft(a * (rng().standard_normal(len(f)) + 1j * rng().standard_normal(len(f))), m)[:nt]
+    return y / (y.std() + 1e-12)
+
+
+def surges(d, rate, up=(0.2, 0.9), down=(0.7, 2.8), bunch=0.55, top=4.5):
+    """Swells over seconds, dB, mean 0: arrivals with a wandering rate, heavy-tailed sizes, up quickly, away slowly; no period."""
+    nt = int(d * CR) + 2
+    r = np.maximum(rate * np.exp(bunch * one_over_f(nt, 1.5, 1.0)), 1e-3)
+    p = np.cumsum(r) / CR
+    s = np.zeros(nt)
+    for a in np.searchsorted(p, rng().uniform(0, p[-1], rng().poisson(p[-1]))):
+        u = np.arange(nt - a) / CR
+        s[a:] += min(rng().pareto(1.9) + 0.3, top) * (1 - np.exp(-u * 2.5 / rng().uniform(*up))) * np.exp(-u / rng().uniform(*down))
+    L = 10 * np.log10(1 + s)
+    return L - L.mean()
+
+
+def blob_field(d, rate, level, flo, fhi, width=(0.5, 1.4), rise=(0.012, 0.05), fall=(0.08, 0.55)):
+    """The slaps, as a power gain over 1, bands by frames."""
+    nt = int(d * CR) + 2
+    H = np.zeros((len(FCS), nt))
+    for _ in range(rng().poisson(rate * d)):
+        i = int(rng().uniform(0, nt - 2))
+        fc, w = rng().uniform(np.log2(flo), np.log2(fhi)), rng().uniform(*width)
+        a = level * min(rng().pareto(1.9) + 0.25, 3.5) ** 2
+        ru, fa = rng().uniform(*rise), rng().uniform(*fall) * np.clip(1.5 / 2 ** (fc - 9), 0.35, 1.6)
+        u = np.arange(min(int(fa * 7 * CR), nt - i)) / CR
+        H[:, i:i + len(u)] += a * np.exp(-0.5 * ((LFC - fc) / w) ** 2)[:, None] * ((1 - np.exp(-u / ru)) ** 2 * np.exp(-u / fa))[None, :]
+    return H
+
+
+def water(d, shape, level, surge=(0.42, 1.0), eddy=1.0, blobs=(10.0, 0.6, 90.0, 2400.0)):
+    """`d` s of it. `shape`: dB at (20, 31.5, 50, 79, 125, 198, 315, 500, 794, 1260, 2000, 3175, 5040, 8000, 12700, 16000 Hz). `level(t)`: dB over
+    it all, `t` in seconds at CR. Unit RMS bands: 0 dB is a band of unit RMS."""
+    n, nt = n_of(d), int(d * CR) + 2
+    t = np.arange(nt) / CR
+    sf = np.log2((20, 31.5, 50, 79, 125, 198, 315, 500, 794, 1260, 2000, 3175, 5040, 8000, 12700, 16000.0))
+    over = lambda xs, ys: np.interp(LFC, np.log2(xs), ys)
+    s = np.interp(LFC, sf, shape)[:, None] + level(t)[None, :]
+    fcut = over([20, 200, 1000, 8000], [3, 8, 14, 22])
+    sd = over([20, 200, 1000, 8000], [3.5, 2.6, 2.4, 3.2]) * eddy
+    Z = gaussian_filter1d(np.stack([one_over_f(nt, 1.2, c) for c in fcut]), 2.0, axis=0, mode="nearest")
+    Z /= Z.std(axis=1, keepdims=True) + 1e-12
+    F_ = (np.sqrt(0.75) * Z + np.sqrt(0.25) * one_over_f(nt, 1.2, 8.0)) * sd[:, None]
+    sea = surges(d, surge[0])
+    regs = [surges(d, surge[0] * r, down=(0.7 * q, 2.8 * q)) for r, q in ((0.7, 1.3), (1.0, 1.0), (1.5, 0.7))]
+    wl, wh = over([200, 700], [1, 0]), over([1000, 3000], [0, 1])
+    wm = np.clip(1 - wl - wh, 0, 1)
+    L = 0.6 * sea[None, :] + 0.7 * (wl[:, None] * regs[0][None, :] + wm[:, None] * regs[1][None, :] + wh[:, None] * regs[2][None, :])
+    L = np.where(L > 0, 9.0 * np.tanh(L / 9.0), L)
+    s = s + F_ + L * (surge[1] * over([20, 200, 1000, 8000], [0.9, 1.0, 1.2, 1.9]))[:, None]
+    G = np.sqrt(10 ** (s / 10) * (1 + blob_field(d, *blobs)))
+    ts = np.arange(n) * CR / SR
+    y = np.zeros(n)
+    for b, fc in enumerate(FCS):
+        if G[b].max() > 2e-4:
+            y += band_noise(n, fc) * np.interp(ts, np.arange(nt), G[b])
+    return y
 
 
 def rolls(n, t0, count, length):
@@ -913,40 +988,35 @@ def meld():
 
 
 def ripple():
+    """The land moving like water, and not one note in it: the five pulses, then the swell going under the player, each a slow sea of the
+    ground's own weight, built as big water is. Its top is the wet soil going by, opening a little on each crest; the first hairline at the end."""
     d = 7.9
     n = n_of(d)
     t = times(n)
-    L, R = np.zeros(n), np.zeros(n)
-    # (the five pulses, each stronger, then the swell itself passing under the player, dying under the scoring)
-    for t_, f, dur, amp in zip((*PULSES, *SWELLS), (46.0, 42.0, 38.0, 34.0, 30.0, 31.0, 29.0, 31.0, 33.0), (0.9, 1.0, 1.0, 1.0, 1.1, 1.6, 1.7, 1.5, 1.3),
-                               (0.14, 0.3, 0.46, 0.6, 0.42, 0.34, 1.0, 0.62, 0.28)):
-        at = t_ - RIPPLE
-        m = n_of(dur)
-        s = times(m)
-        v = s / dur
-        e = v ** 0.8 * (1 - v) ** 1.7
-        e /= e.max()
-        ph = 2 * np.pi * np.cumsum(f * (1 - 0.1 * v)) / SR
-        y = (np.sin(ph) + 0.28 * np.sin(2 * ph + 0.6) + 0.12 * np.sin(3 * ph + 1.7)) * e * amp
-        P.put(L, y, at)
-        P.put(R, y, at)
-        # (the land's weight of water going by: a slow wash, wet soil seeping and sucking in its wake)
-        a, b = wide(bn(m, 150, 900), bn(m, 150, 900), 0.3)
-        g = np.clip(1 + 0.4 * PB.slow_random(m, 0.6, 3.5), 0.2, None)
-        P.put(L, a * g * e ** 1.5 * amp * 0.07, at + 0.1)
-        P.put(R, b * g * e ** 1.5 * amp * 0.07, at + 0.1)
-        for t1 in P.poisson_times(at + 0.3 * dur, at + dur, lambda _: 1.0 + 2.5 * amp):    # (a few slow deep gulps, each its own)
-            y = bubble(rng().uniform(48, 120), rng().uniform(0.5, 1.0) * 0.16 * amp, rng().uniform(-0.2, -0.05), 0.04)
-            l, r = pan(y, rng().uniform(-0.6, 0.6))
-            P.put(L, l, t1)
-            P.put(R, r, t1)
+    SEAS = tuple(zip((*PULSES, *SWELLS), (0.9, 1.0, 1.0, 1.0, 1.1, 1.6, 1.7, 1.5, 1.3), (0.14, 0.3, 0.46, 0.6, 0.42, 0.34, 1.0, 0.62, 0.28)))
+
+    def crest(tc, power=1.0):
+        """How the heaves stand at `tc` seconds: a sum of the seas, each up quickly and away slowly."""
+        e = np.zeros(len(tc))
+        for t_, dur, amp in SEAS:
+            v = np.clip((tc - (t_ - RIPPLE)) / dur, 0, 1)
+            e = e + amp * (v ** 0.8 * (1 - v) ** 1.7 / 0.31) ** power
+        return e
+
+    # (the weight of it, under 200 Hz; the wash over it, what a phone hears, opening later and only on the crests)
+    weight = water(d, (-8.0, 0, 2, 0, -4, -9, -16, -24, -34, -46, -60, -70, -80, -90, -90, -90), lambda s: 20 * np.log10(0.05 + crest(s)), (0.3, 0.5), 1.0, (6.0, 0.5, 40.0, 240.0))
+    wash = water(d, (-40.0, -30, -20, -12, -6, -2, -1, -3, -6, -10, -15, -21, -28, -36, -48, -60), lambda s: 20 * np.log10(0.035 + 0.8 * crest(s - 0.12, 1.5)), (0.5, 0.9), 1.0, (9.0, 0.8, 120.0, 1800.0))
+    L, R = weight + wash * 0.6, weight + wash * 0.6
+    b = water(d, (-40.0, -30, -20, -12, -6, -2, -1, -3, -6, -10, -15, -21, -28, -36, -48, -60), lambda s: 20 * np.log10(0.035 + 0.8 * crest(s - 0.12, 1.5)), (0.5, 0.9), 1.0, (9.0, 0.8, 120.0, 1800.0))
+    R = R + (b - wash) * 0.2
+    L, R = lows_heard(L, 70, 300, -9.0), lows_heard(R, 70, 300, -9.0)
     L, R = low_mono(L, R, 170.0)
-    L, R = verb(L, R, 0.2, length=2.6, darken=(900, 200), decay=1.0)
+    L, R = verb(L, R, 0.14, length=2.6, darken=(900, 200), decay=1.0)
     # (the first hairline, right at the end, a hint)
     a, b = np.zeros(n), np.zeros(n)
     pew(a, b, 3.7, 300, THICK["skate"], 0.03, -0.5)
     pew(a, b, 4.25, 220, THICK["skate"], 0.05, 0.4)
-    out("ripple", L + a, R + b, -20.0, tail=0.2)
+    out("ripple", L + a, R + b, -17.5, tail=0.2)
 
 
 # ============================================================================================================  the creases
@@ -1018,18 +1088,23 @@ def unravel():
 
 # =======================================================================================================  the land closing
 def moan(n, at, dur, f0, f1, wob=0.05):
-    """One of the land's moans: a slow irregular glide pulled rough by stick-slip, swelling and easing. Mono."""
+    """One of the land's moans, with no note in it: rock dragged under load, stick and slip, each period about a third out from the
+    last and the rate gliding from `f0` to `f1`, through wide bands that come and go. A body and a strain. Mono."""
     m = min(n_of(dur), n - n_of(at))
     s = times(m)
     v = s / dur
-    f = f0 * (f1 / f0) ** (v + 0.2 * np.sin(np.pi * v) * rng().uniform(-1, 1))
-    f = f * (1 + wob * np.clip(PB.slow_random(m, 0.4, 3.0), -2.5, 2.5))
-    ph = 2 * np.pi * np.cumsum(f) / SR
+    f = f0 * (f1 / f0) ** (v + 0.2 * np.sin(np.pi * v) * rng().uniform(-1, 1)) * (1 + wob * np.clip(PB.slow_random(m, 0.4, 3.0), -2.5, 2.5))
+    imp = np.zeros(m)
+    k = 0.0
+    while k < m:
+        imp[int(k)] = rng().lognormal(0, 0.8)
+        k += max(SR / f[int(k)] * (1 + rng().normal(0, 0.3)), 60.0)
+    h = np.arange(n_of(0.024) + 1)
+    y = np.maximum(fftconvolve(imp, np.exp(-h / (0.004 * SR)))[:m], 0.0) * noise(m)
     e = np.sin(np.pi * v ** rng().uniform(0.55, 1.2)) ** 1.5
-    rough = np.clip(1 + (0.25 + 0.45 * v) * PB.slow_random(m, 9.0, 34.0), 0.05, None)
-    y = bp(np.tanh((1.2 + 2.5 * e) * np.sin(ph + 0.5 * np.sin(ph * 0.5))) * e * rough, None, 520)
+    body = sum(T.unit(bp(y, lo, hi)) * boiled(m, 0.5, 4.0, 8.0) * a_ for (lo, hi), a_ in (((70, 210), 1.0), ((210, 520), 0.62), ((520, 1200), 0.26)))
     o = np.zeros(n)
-    P.put(o, y, at)
+    P.put(o, body * e, at)
     return o
 
 
