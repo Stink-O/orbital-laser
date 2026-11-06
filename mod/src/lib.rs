@@ -2146,9 +2146,9 @@ mod stress {
                 self.o.pace.frame(self.frame);
             }
             meter::reset();
-            let began = std::time::Instant::now();
+            let began = thread_time();
             self.o.tick_strike();
-            let took = began.elapsed();
+            let took = thread_time().saturating_sub(began);
             let spent = meter::spent();
             // (how much longer it took than the work the meter counted would: a natively built instruction is well
             // under half a nanosecond)
@@ -2190,8 +2190,32 @@ mod stress {
         }
     }
 
-    /// `bound`: the most a tick may take past what its counted work explains (release builds only; tight only where
-    /// the test runs alone: other tests beside it slow it down).
+    /// The CPU time this thread has used: what a tick's own work took, whatever else the machine is busy with. A tick
+    /// timed by the clock on the wall is failed by a game, a build or the other tests taking its core away.
+    #[cfg(target_os = "linux")]
+    fn thread_time() -> std::time::Duration {
+        #[repr(C)]
+        struct Timespec {
+            sec: i64,
+            nsec: i64,
+        }
+        unsafe extern "C" {
+            fn clock_gettime(clock: i32, t: *mut Timespec) -> i32;
+        }
+        const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+        let mut t = Timespec { sec: 0, nsec: 0 };
+        // SAFETY: `t` is a timespec of the 64-bit layout, alive for the call, and the call only writes it.
+        assert_eq!(unsafe { clock_gettime(CLOCK_THREAD_CPUTIME_ID, &mut t) }, 0);
+        std::time::Duration::new(t.sec as u64, t.nsec as u32)
+    }
+    /// (elsewhere the clock on the wall, from the first call: such a run wants the test alone, or `ORBITAL_NO_TIMING`)
+    #[cfg(not(target_os = "linux"))]
+    fn thread_time() -> std::time::Duration {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        START.get_or_init(std::time::Instant::now).elapsed()
+    }
+
+    /// `bound`: the most CPU time a tick may take past what its counted work explains (release builds only).
     fn soak(sequences: u64, seed: u64, bound: f64) -> (u64, String) {
         let (worst, at, slow, slow_at) = soak_timed(sequences, seed);
         eprintln!("most uncounted in a tick: {:.2} ms ({slow_at})", slow.as_secs_f64() * 1e3);
