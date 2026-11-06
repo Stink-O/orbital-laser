@@ -815,7 +815,7 @@ const FB_B0: f32 = 35.0;           // the first beads
 const FB_BT: f32 = 1.5;            // how long from the first beads to the last dry place
 const FB_JOIN: f32 = 35.6;          // about two fifths of the way through it, they join
 const FB_RUN: f32 = 36.2;          // the streaks begin to run in
-const FB_PIN: f32 = 37.2;          // the pinch: the drop is let go
+const FB_PIN: f32 = 37.5;          // the pinch: the drop is let go
 const FB_PITCH: f32 = 13.0;        // the mesh's holes, blocks apart: about 15 pixels at 1080p from the floor
 const FB_UP: f32 = 4.0;            // the surface over the land's end, so what is left of the land goes in front of it
 const FB_FIT: f32 = 1.2;           // past the hole's rim it goes on, behind the land
@@ -972,12 +972,12 @@ fn fb_R(dist: f32) -> f32 {
 fn fb_pool(t: f32, Rd: f32) -> FbPool {
     let x = t - FB_PIN;
     // (the bead's hang: slowly out of the bulge, heavier and heavier, the last of it drawn long by its own weight)
-    let hang = fw_ss(36.45, FB_PIN, t);
-    let L = FB_LONG * (0.1 * hang + 0.9 * hang * hang * hang * hang);
-    let R = Rd * (0.3 + 0.7 * fw_ss(36.45, 37.0, t));
+    let long = clamp((t - 36.95) / (FB_PIN - 36.95), 0.0, 1.0);
+    let L = FB_LONG * (0.17 * fw_ss(36.5, 36.95, t) + 0.83 * long * long * long) + 1.4 * sin(t * 8.3) * fw_ss(36.7, 37.0, t) * (1.0 - long);
+    let R = Rd * (0.3 + 0.7 * fw_ss(36.45, 37.2, t));
     if (x < 0.0) {
         let swell = fw_ss(36.2, 36.85, t);
-        return FbPool(30.0 * swell, 40.0 - 8.0 * swell, 6.0 * fw_ss(36.1, 36.6, t), L, R, mix(0.62 * R, 0.1 * R, fw_ss(36.75, FB_PIN, t)), 0.0);
+        return FbPool(30.0 * swell, 40.0 - 8.0 * swell, 6.0 * fw_ss(36.1, 36.6, t), L, R, mix(0.62 * R, 0.1 * R, fw_ss(36.85, FB_PIN, t)), 0.0);
     }
     // (let go: the bulge goes back up with a bounce or two and the dimple fills)
     let e = exp(-x / 0.62);
@@ -1047,7 +1047,8 @@ fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>) -> vec3<f3
     }
     let k1 = max(dot(r, normalize(vec3<f32>(0.5, -0.62, 0.3))), 0.0);
     let k2 = max(dot(r, normalize(vec3<f32>(-0.7, -0.5, -0.45))), 0.0);
-    c = c + vec3<f32>(1.0, 0.98, 0.95) * (1.6 * pow(k1, 90.0) + 0.12 * pow(k1, 6.0)) + vec3<f32>(0.75, 0.85, 1.05) * (1.1 * pow(k2, 60.0) + 0.09 * pow(k2, 5.0));
+    let day = 0.14 + 0.86 * fd_ss(-0.2, 0.1, frame.sun.y);
+    c = c + (vec3<f32>(1.0, 0.98, 0.95) * (1.6 * pow(k1, 90.0) + 0.12 * pow(k1, 6.0)) + vec3<f32>(0.75, 0.85, 1.05) * (1.1 * pow(k2, 60.0) + 0.09 * pow(k2, 5.0))) * day;
     return c;
 }
 fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
@@ -1110,7 +1111,7 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
     // ---- the bulge, the bead and its neck ----------------------------------------------------------------------------------
     if (t > FB_RUN && t < FB_PIN + 2.6 && d.y > 0.05) {
         let P = fb_pool(t, Rd);
-        let D = fb_drop_at(vec2<f32>(0.0), P.R, mix(1.0, fb_wobble(0.0), fw_ss(36.8, FB_PIN, t)));
+        let D = fb_drop_at(vec2<f32>(0.0), P.R, mix(1.0, fb_wobble(0.0), fw_ss(37.1, FB_PIN, t)));
         let bot = -(max(P.L, P.top) + 1.5 * P.R + 4.0);
         let a = (y0 + bot - o.y) / d.y;
         let b = (y0 + 3.0 - o.y) / d.y;
@@ -1156,9 +1157,11 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
     if (t >= FB_PIN && t < FD_BEAT + 0.16) {
         let x = t - FB_PIN;
         let w = fb_wobble(x);
-        let D = fb_drop_at(vec2<f32>(0.0), Rd, w);
+        // (its tip swaying a little, and a little off the plumb line on the way, on it as it lands)
+        let D = fb_drop_at(vec2<f32>(sin(x * 4.3 + 0.4), cos(x * 3.1)) * 0.04 * exp(-x / 1.1), Rd, w);
         let cy = y0 - fb_fall(x, y0, Rd);
-        let c = vec3<f32>(0.0, cy, 0.0);
+        let off_ = clamp(FD_BEAT - t, 0.0, 1.0);
+        let c = vec3<f32>(1.6 * sin(x * 1.9 + 0.5) * off_, cy, 1.1 * sin(x * 1.4 + 2.1) * off_);
         let bc = c + vec3<f32>(0.0, 0.36 * Rd, 0.0) - o;
         let rb = 1.9 * Rd * max(w, 1.0 / sqrt(w));
         let bcd = dot(bc, d);
@@ -1206,6 +1209,16 @@ fn fb_hit(colIn: vec3<f32>, v: vec3<f32>, far: f32, off: vec3<f32>, sky0: bool, 
     let Rd = fb_R(g.d);
     let o = fd_unturn(mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at, true);
     let d = fd_unturn(v, g, at, false);
+    // ---- before it: its shadow on the land, closing up as it comes down, as the first droplet's did ------------------------------------
+    if (a < 0.0) {
+        if (!sky0) {
+            let P = o + d * far;
+            let hh = -a * (140.0 + 200.0 * -a);
+            let sr = Rd * (1.5 + 0.05 * hh);
+            col = col * (1.0 - exp(-dot(P.xz, P.xz) / (sr * sr)) * 0.6 * exp(-abs(P.y) / 12.0) * fd_ss(420.0, 30.0, hh));
+        }
+        return col;
+    }
     // ---- on the land ------------------------------------------------------------------------------------------------------
     if (!sky0) {
         let P = o + d * far;
@@ -1412,7 +1425,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         let g = fw_bend(tau, t, FW_LEN, mq, e2, max(FW_END_K * clamp(frame.view_params.z, 480.0, 20000.0) - dist, 300.0), 0.0);
         let at_ = fw_roll(g.d, g.pin, g);
         col = fb_boil(col, v, far, t, mq, gq, g, at_);
-        if (t > FD_BEAT) {
+        if (t > 39.2) {
             col = fb_hit(col, v, far, off, sky0, t, mq, gq, g, at_);
         }
     }
