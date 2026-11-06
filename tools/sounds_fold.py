@@ -73,6 +73,7 @@ PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 STOP, HANG, TOUCH, CLOSED, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL = 3.4, 4.9, 6.0, 6.3, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0
 HOLD, GATHER, TUBE = 31.5, 34.5, 42.8                  # the world stops closing; the rim gathers at the hole; on the way back the tube opens
 LIFT = 23.5                                           # the far land's slow lift (20.1 s on) at its height
+METAL_UP = (41.2, 41.6)                               # on the way back: all metal to the first, earth back by the second
 REACHED, DING, REL, LEN = 39.0, 40.0, 40.5, 59.7      # (the arm's stages done, the tip 13 short and creeping: FW_HANG; FD_LEN)
 SLAMS = [44.1, 45.2, 46.3, 47.4, 48.7]                # (FD_SLAM: each ring falling for FALL s and stopping dead)
 FLAT, SLAM = SLAMS[0], SLAMS[4]
@@ -1190,13 +1191,14 @@ def foldown():
     """The rim gathers at the hole from 34.5, huge and far off, and from 35 a narrow stalactite of the land lowers from it on the six stages:
     nothing goes round, it comes down, heavy and slow, each stage a weight taken up and let down. It starts as earth and rock, and towards the
     tip it is the droplet's metal: the grind and the rattle go, the ground's blows turn into `settle`, the dark band under it is `wobble`'s,
-    and the last stages close on `meld`'s deep sinking gulps. It stops at 39, and it's gone by 39.6: the ding has true silence."""
+    and the last of it closes on `meld`'s deep sinking gulps, with the drop gathering under the tip from 38.2 as a thin slow swell. It stops
+    at 39, and it's gone by 39.6: the ding has true silence."""
     last = REACHED - GATHER                                   # (the stages are over; the tip creeps on to 39.7, and this is gone by 39.6)
     d = DING - GATHER - 0.3
     n = n_of(d)
     t = times(n)
     stages = [c - GATHER for c in CREASES]
-    metal = ss(1.6, 3.9, t)                                   # (36.1 to 38.4: earth into metal, as the picture's grade comes down it)
+    metal = ss(2.3, 3.5, t)                                   # (36.8 to 38.0: earth into metal, what the picture is seen to turn)
     mass = np.zeros(n)                                        # (how much is moving: each stage a slow lowering, up in a third of a second, eased off over a second)
     for k, at in enumerate(stages):
         u = np.maximum(t - at, 0)
@@ -1211,8 +1213,8 @@ def foldown():
         earth = earth + moan(n, at, ln, f0, f0 * 0.78) * g
     # (the metal: wobble's dark band, sinking as it comes, its skin dragging against itself very faintly)
     ex = (n + 0.5) / SR
-    ooze = (P.glide_band(ex, 84.0 - 30.0 * ss(1.6, 4.5, t), 0.42) + P.glide_band(ex, 190.0 - 70.0 * ss(1.6, 4.5, t), 0.6) * 0.34
-            + P.glide_band(ex, 41.0 - 7.0 * ss(1.6, 4.5, t), 0.3) * 0.75) * boiled(n, 0.3, 1.6, 3.5) * (0.3 + 0.7 * mass) * 0.3
+    ooze = (P.glide_band(ex, 84.0 - 30.0 * ss(2.3, 4.5, t), 0.42) + P.glide_band(ex, 190.0 - 70.0 * ss(2.3, 4.5, t), 0.6) * 0.34
+            + P.glide_band(ex, 41.0 - 7.0 * ss(2.3, 4.5, t), 0.3) * 0.75) * boiled(n, 0.3, 1.6, 3.5) * (0.3 + 0.7 * mass) * 0.3
     a, b = wide(bn(n, 420, 1300), bn(n, 420, 1300), 0.6)
     drag = (0.3 + 0.7 * mass) * boiled(n, 0.5, 3.0, 5.0) * metal * 0.014
     low = bn(n, 22, 100) * boiled(n, 0.3, 2.0, 4.0) * move * 0.6 * (1 - 0.6 * metal)
@@ -1237,10 +1239,13 @@ def foldown():
     y = settle(0.8)
     P.put(L, y, last)
     P.put(R, y, last)
-    for at, f0, a_ in ((stages[3] + 0.42, 78, 0.34), (stages[4] + 0.38, 62, 0.46), (stages[5] + 0.34, 52, 0.55)):
+    for at, f0, a_ in ((stages[4] + 0.42, 78, 0.34), (stages[5] + 0.38, 62, 0.46), (last + 0.25, 52, 0.55)):
         y = bubble(f0, a_ * 0.4, rng().uniform(-0.2, -0.05), 0.03)
         P.put(L, y, at)
         P.put(R, y, at)
+    # (the drop gathering under the tip from 38.2, the one that touches: a thin slow swell of the same liquid, its weight small and rounding)
+    y = P.glide_band(ex, 128.0 - 22.0 * ss(3.7, 5.1, t), 0.3) * boiled(n, 0.4, 1.8, 3.0) * ss(3.7, 4.8, t) * 0.11
+    L, R = L + y, R + y
     # (it hangs in the land round it, less so as it's metal)
     wl, wr = inside(L, R, 1 - 0.6 * metal, 0.3, 90.0)
     L, R = L + wl, R + wr
@@ -1333,13 +1338,17 @@ def reverse():
         P.put(R, y, at - 0.2)
         m = n_of(0.8)
         s = times(m)
-        m_ = 1 - ss(0.2, 0.8, k / 5)                            # (k 0 is the tip: all metal; by k 4 all earth)
+        m_ = 1 - ss(METAL_UP[0] - REL, METAL_UP[1] - REL, at)   # (the tip's stages all metal, earth back by 41.6)
         y = (struck(m, 0.0, 0.05, GROUND[1:], 14, 0.4) * 0.8 + struck(m, 0.0, 0.04, RUBBLE, 10, 0.5) * 0.4) * strength * (1 - m_)
         P.put(y, settle(1.2 * m_ * strength), 0.0)
         y += bn(m, 36, 220 - 90 * v) * (1 - np.exp(-s / 0.02)) * np.exp(-s / 0.1) * 0.5 * strength
         l, r = pan(y, rng().uniform(-0.3, 0.3))
         P.put(L, l, at)
         P.put(R, r, at)
+    # (the drop going back up into the tip, gone by 41.3: the thin swell it came with, under the ding's ring)
+    y = P.glide_band((n + 0.5) / SR, 106.0 + 0 * t, 0.3) * ss(0.0, 0.2, t) * (1 - ss(0.45, 0.8, t)) * 0.05
+    L += y
+    R += y
     # (the tube opening: the land's weight going off it, no blow to it; then the walls tearing free one at a time)
     boom = blow(n, seal, 52, 36, 27, 0.12, 0.05, [(0.7, 0.5), (0.3, 1.3)], drive=2.4) * 0.34
     L += boom
