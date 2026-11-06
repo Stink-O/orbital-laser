@@ -19,7 +19,8 @@
 //!                     stillness to FD_RELEASE
 //!   FD_RELEASE        all of it runs backwards, gathering slowly: the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
-//!   FD_SLAM[4]        the last ring lands, and the crater shows (FD_REVEAL)
+//!   FD_SLAM[4]        the last ring lands, breaking the land along its creases: the crater goes in held up at the land's level (FD_REVEAL), and
+//!                     falls in over about 3 s, kite by kite, from the middle out (fold_warp.wgsl's fw_sunk)
 //!   FD_SLAM[4]-FD_LEN the comedown: the creases fade, the void seals
 //!
 use super::{Act, Plan, Rng, Target, fold_land};
@@ -57,8 +58,9 @@ pub(super) const FD_SLAM: [f32; 5] = [44.1, 45.2, 46.3, 47.4, 48.7];
 pub(super) const FD_FALL: f32 = 0.8;
 /// When the crater takes its place: the one frame the game's hold on the terrain lets go (`render.hold-world`).
 pub const FD_REVEAL: f32 = FD_SLAM[4];
-/// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time.
-pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 0.5..FD_REVEAL;
+/// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time. The hold lets go a
+/// frame ahead of the reveal: the swap shows the frame after it is asked for, and the warp lifting the old land for that frame is a dome.
+pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 4.5..FD_REVEAL - 0.03;
 /// The world closed round the player, from the walls coming in to their opening again: the sphere goes with them (fold_warp's
 /// fw_stay), so they can't leave it or see its outside, and lib.rs keeps their flight to vanilla's and them from going too far.
 pub const FD_STAY: std::ops::Range<f32> = 27.0..43.5;
@@ -68,7 +70,7 @@ pub const FD_TETHER_ON: f32 = 30.0;
 /// target has to stay loaded). The sphere goes with them whole (fold_warp's fw_stay), so it doesn't show.
 pub const FD_TETHER: f64 = 320.0;
 /// The crease pattern's rings: their outer radii, blocks from the target (fold_warp.wgsl's FW_RING in step). Each is a
-/// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
+/// hinge of the fold; the crater is the pattern inside the fourth (strike/fold_land.rs), its fissures run out along the big creases.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];
 
 /// The crease pattern as the mod needs it (fold_warp.wgsl's cp_dir and CP_INV, `the_warp_keeps_the_beats`): big creases' bearings, degrees, and
@@ -84,6 +86,41 @@ const FD_INV: [[f32; 5]; 8] = [
     [0.019413, 0.011845, 0.004865, 0.004264, 0.001793],
     [0.026306, 0.007756, 0.007470, 0.002833, 0.002597],
 ];
+/// Bearing `a` (radians) in the pattern turned by `turn` degrees: its wedge's big creases k and k + 1, and the unit vector at `a` as u e_k + v e_k1.
+#[derive(Clone, Copy)]
+pub(super) struct FdWedge {
+    pub k: usize,
+    pub k1: usize,
+    pub u: f64,
+    pub v: f64,
+}
+pub(super) fn fd_wedge(a: f64, turn: f64) -> FdWedge {
+    let x = (a.to_degrees() - turn).rem_euclid(360.0);
+    let k = FD_CREASES.iter().rposition(|c| x >= f64::from(*c)).unwrap_or(7);
+    let k1 = (k + 1) % 8;
+    let cr = |p: f64, q: f64| (q - p).to_radians().sin();
+    let (a0, a1) = (f64::from(FD_CREASES[k]), f64::from(FD_CREASES[k1]));
+    FdWedge { k, k1, u: cr(x, a1) / cr(a0, a1), v: cr(a0, x) / cr(a0, a1) }
+}
+impl FdWedge {
+    /// One over how far out ring i's chord is at this bearing (fold_warp.wgsl's cp_ix).
+    pub fn ix(&self, i: usize) -> f64 {
+        self.u * f64::from(FD_INV[self.k][i]) + self.v * f64::from(FD_INV[self.k1][i])
+    }
+    /// Crease k's bearing, radians, in the world.
+    pub fn bearing(k: usize, turn: f64) -> f64 {
+        (f64::from(FD_CREASES[k]) + turn).to_radians()
+    }
+    /// How far out the last ring meets crease k.
+    pub fn reach(k: usize) -> f64 {
+        1.0 / f64::from(FD_INV[k][4])
+    }
+}
+/// How the pattern is turned, degrees, for the strike's shader seed (fold_warp.wgsl's cp_wedge).
+pub(super) fn fd_turn(seed: f32) -> f64 {
+    f64::from((seed * 0.618_034).fract() * 360.0)
+}
+
 /// Which kite of the pattern the player stood in as it fired, for the warp to leave alone (fold_warp.wgsl's cp_pin): 6 k + its cell, 5 past the rings.
 pub fn fd_pin(target: [f64; 3], me: [f64; 3], seed: f32) -> u32 {
     let (dx, dz) = ((me[0] - target[0]) as f32, (me[2] - target[2]) as f32);
@@ -173,7 +210,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         return p.ev;
     }
     // ---- the land: all of it strike/fold_land.rs ---------------------------------------------------------------------
-    fold_land::land_plan(&mut p, s, dimension, me);
+    fold_land::land_plan(&mut p, s, fd_turn(shader_seed), dimension, me);
     // (playback goes through the plan in order, and stops at the first not due: one out of order holds up all after it)
     p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
     p.ev
@@ -195,6 +232,7 @@ mod tests {
         for (name, v) in [("STOP", FD_STOP), ("HANG", FD_HANG), ("TOUCH", FD_TOUCH), ("MELD", FD_MELD), ("FOLD", FD_FOLD), ("SEAL", FD_SEAL), ("CRUSH", FD_CRUSH), ("BEAT", FD_BEAT), ("REL", FD_RELEASE), ("SLAM0", FD_SLAM[0]), ("SLAM4", FD_SLAM[4])] {
             assert!(pass.contains(&format!("const FD_{name}: f32 = {v:.1};")), "FD_{name}");
         }
+        assert!(warp.contains(&format!("const FW_BOWL: f32 = {:.1};", super::fold_land::FD_BOWL)), "FW_BOWL");
         for (i, r) in FD_RINGS.iter().enumerate() {
             assert!(warp.contains(&format!("case {i}: {{ return {r:.1}; }}")) || (i == 4 && warp.contains(&format!("const FW_LEN: f32 = {r:.1};"))), "ring {i}");
             assert!(pass.contains(&format!("{r:.1}")), "ring {i} in the pass");

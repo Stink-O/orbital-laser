@@ -674,10 +674,10 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
 // ---- the slam's dust: what it drove out of the ground ------------------------------------------------------------------------
 // A wall of dust and ash thrown out of the crater on the frame it appears, running out over the land and slowing, and the
 // crater's air full of what fell into it, thinning as it rises. `a`: seconds since the slam.
-const FDB_LEN: f32 = 8.0;
-const FDB_RIM: f32 = 150.0;
-const FDB_OUT: f32 = 240.0;
-const FDB_HIGH: f32 = 120.0;
+const FDB_LEN: f32 = 9.0;
+const FDB_RIM: f32 = 270.0;
+const FDB_OUT: f32 = 280.0;
+const FDB_HIGH: f32 = 160.0;
 const FDB_STEPS: i32 = 14;
 fn fdb_front(a: f32) -> f32 { return FDB_RIM + FDB_OUT * (1.0 - exp(-a * 0.85)); }
 fn fdb_high(a: f32) -> f32 { return 22.0 + FDB_HIGH * (1.0 - exp(-a * 1.0)); }
@@ -685,13 +685,14 @@ fn fdb_high(a: f32) -> f32 { return 22.0 + FDB_HIGH * (1.0 - exp(-a * 1.0)); }
 fn fdb_density(p: vec3<f32>, a: f32) -> f32 {
     let r = length(p.xz);
     let h = fdb_high(a);
-    let width = 24.0 + 26.0 * a;
+    let width = 34.0 + 34.0 * a;
     let x = (r - fdb_front(a)) / width;
     // (the wall leans out, its foot ahead of its top)
     let lean = (r - fdb_front(a) + 0.5 * max(p.y, 0.0)) / width;
-    let wall = exp(-min(x * x, lean * lean)) * fd_ss(h * (0.75 + 0.25 * fd_ss(0.0, 200.0, r)), h * 0.2, p.y);
+    let wall = fd_ss(0.0, 0.5, a) * exp(-min(x * x, lean * lean)) * fd_ss(h * (0.75 + 0.25 * fd_ss(0.0, 200.0, r)), h * 0.2, p.y);
     // (the crater's air: from the floor up over the rim, whatever is above it thin)
-    let air = 0.34 * fd_ss(190.0, 90.0, r) * fd_ss(h * 0.9, -30.0, p.y) * (1.0 - fd_ss(1.0, FDB_LEN - 1.0, a));
+    // (only once the panels have fallen: it is what they drive up, and while they fall they are the picture)
+    let air = 0.26 * fd_ss(2.2, 4.0, a) * fd_ss(350.0, 170.0, r) * fd_ss(h * 0.9, -30.0, p.y) * (1.0 - fd_ss(3.0, FDB_LEN - 0.5, a));
     let d = (wall + air) * pow(1.0 - a / FDB_LEN, 1.6);
     if (d < 0.01) { return 0.0; }
     let q = p * 0.021 + vec3<f32>(0.0, -a * 0.35, 0.0) + normalize(vec3<f32>(p.x, 0.0, p.z) + vec3<f32>(0.01)) * a * -0.3;
@@ -711,7 +712,7 @@ fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
     let sq = sqrt(disc);
     var s0 = max((-b - sq) / aa, 0.0);
     var s1 = min((-b + sq) / aa, far);
-    let lo = -70.0;
+    let lo = -110.0;
     if (abs(v.y) > 1.0e-4) {
         let ya = (lo - ro.y) / v.y;
         let yb = (top - ro.y) / v.y;

@@ -173,7 +173,14 @@ impl Blocks {
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
         }
-        out.into_iter().map(|(k, b)| (k as f32 * 0.05, b)).collect()
+        // (they wait in the plan, and a list grown a run at a time holds up to twice its room: a big land's edits are tens of megabytes of the mod's 64)
+        out.into_iter()
+            .map(|(k, mut b)| {
+                b.runs.shrink_to_fit();
+                b.palette.shrink_to_fit();
+                (k as f32 * 0.05, b)
+            })
+            .collect()
     }
     /// The runs as the fills they stand for (for the tests and the profilers).
     #[cfg(test)]

@@ -379,6 +379,11 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   dimension. Every chunk is edited once, on its one tick (`fd_tick`): a second edit of a chunk is a second resend, nine light jobs
   and its meshes again, and that was the 12-30 fps after the last slam. The rubble and fires gathered in `late` are handed over behind
   the parts of the chunks they lie on (`flush`), and only once the crater's cuts are cached: an uncached heap went to 91% of a tick's fuel.
+- **The Fold's crater is the crease pattern** (`fold_land.rs`): its outline the fourth ring's chords (`Shape::edge`, 228-353 out), a kite of the
+  pattern a panel (`kite_drop`), the mandala laid on the kites. It swaps in held up by the warp at the land's level (`fw_sunk`, `FD_BOWL` =
+  `FW_BOWL`) and falls in over ~3 s; the hold lets go 0.03 s before the warp lifts, or the old land shows a one-frame dome. **The mod has 64 MiB**
+  (`runtime.rs`'s MEMORY): the land's square is ~19 MiB and worked-out edits wait in memory, so `FD_HELD` caps them and `FD_IN_FLIGHT` the reads
+  (answers pile up otherwise: `rust_oom` on real land). The log gives the peak: `the mod's memory N MiB of 64`.
 - **Scripted input doesn't reset the game's AFK limit** (60 s without real input: 30 fps; 10 minutes: 10 fps): a strike fired by
   script is capped part way through, in `horizon-ctl bench` and in recordings. `horizon-ctl options-set inactivityFpsLimit minimized`
   before a measurement, `afk` after it. Real play fires with a click, and the longest strikes end before 60 s.

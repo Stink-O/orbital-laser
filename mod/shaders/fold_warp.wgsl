@@ -14,7 +14,8 @@
 //              target (fw_length), in six stages (fw_stage), each smaller and slower
 //   FW_BEAT    its tip touches the target. Stillness
 //   FW_REL     it all runs backwards (fw_tau), slowly at first: the sphere opens and the bud stands again, every ring up; then
-//              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, letting the crater show
+//              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, breaking the land along its creases:
+//              the crater swaps in held up at the land's level and falls in, kite by kite (fw_sunk)
 // The land under the player is one piece of the sheet: it takes less and less of the sheet's motion the nearer it is to them
 // (fw_share), so they stand level on land that bends away from them, no edge to it, till the land is back at its own size and it
 // is all the sheet; and from the time the world closes they can't leave it: the sphere, its hole and the branch are one rigid
@@ -38,7 +39,10 @@ const FW_LEN: f32 = 480.0;         // the sheet's length, the last ring (strike/
 const FW_SINK: f32 = 16.0;         // how far the sheet sinks from under the player
 const FW_FEET: f32 = 15.0;         // how far from the player the land is all their own, no part of the sheet's motion
 const FW_EYE: f32 = 1.62;          // their eye over their feet
-const FW_LAND_R: f32 = 300.0;      // from FD_LAND on the crater is in the land within this: nothing is cut under it
+const FW_LAND_R: f32 = 480.0;      // from FD_LAND on the crater is in the land within this: nothing is cut under it
+const FW_BOWL: f32 = 66.0;         // how deep the crater's bowl is (strike/fold_land.rs's FD_BOWL)
+const FW_SUNK: f32 = 3.8;          // the crater has fallen in by this long after the last slam
+const FW_CAVE: f32 = 18.0;         // half the panels' fall's acceleration, blocks a second squared: a little more than what the player falls with
 
 // ---- what can be taken out: 0 turns each off -----------------------------------------------------------------------
 const FW_IRID: f32 = 1.0;          // the iridescence's strength: 1 is about 36 degrees of hue and a quarter more saturation at its peak
@@ -1046,6 +1050,23 @@ fn cp_shade(n: vec3<f32>, tau: f32) -> f32 {
     let L = normalize(vec3<f32>(globals.sun.x, abs(globals.sun.y) + 0.45, globals.sun.z));
     return clamp(1.0 + mix(1.5, 2.6, fw_lay(tau)) * (dot(n, L) - L.y), 0.42, 1.55);
 }
+// The crater goes in held up at the land's level: the last slam breaks the land along its creases, and each kite of the pattern lets go on
+// its own time, from the middle out, the one under the player first, and falls to where it really lies (strike/fold_land.rs's `bowl`:
+// keep them in step). What it is still held up by.
+fn fw_sunk(Q: vec3<f32>, r: f32, a: f32, t: f32, mq: vec3<f32>) -> f32 {
+    let w = cp_wedge(a, Q.xz, r);
+    let u = r * cp_ix(w, 3);
+    if (u >= 1.0) {
+        return 0.0;
+    }
+    let i = cp_cell(w, r);
+    let mr = length(mq.xz);
+    let mw = cp_wedge(atan2(mq.z, mq.x), mq.xz, mr);
+    let h = fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
+    let late = select(0.1 + 0.34 * f32(i) + 0.4 * h, 0.0, w.k == mw.k && i == cp_cell(mw, mr));
+    let s = max(t - FW_SLAM4 - late, 0.0);
+    return max(FW_BOWL * pow(1.0 - u * u * u, 0.75) - FW_CAVE * s * s, 0.0);
+}
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var out = Warped(pos, vec3<f32>(1.0));
     let c = fw_clock();
@@ -1063,6 +1084,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let a = atan2(Q.z, Q.x);
     if (copy > 0u) {
         return fw_length(i32(copy), Q, r, a, c);
+    }
+    if (t >= FW_SLAM4 + 0.01 && t < FW_SLAM4 + FW_SUNK) {
+        Q.y += fw_sunk(Q, r, a, t, c.me - c.tgt);
     }
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
     let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
