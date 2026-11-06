@@ -70,6 +70,32 @@ pub const FD_TETHER: f64 = 320.0;
 /// hinge of the fold; the crater is dug in the innermost three, the land (strike/fold_land.rs) scarred out to the fourth.
 pub(super) const FD_RINGS: [f64; 5] = [44.0, 104.0, 176.0, 290.0, 480.0];
 
+/// The columns asked of the world at the strike's start, for how low the land lies round the target (`fd_level`).
+pub fn fd_survey(block: [i32; 3]) -> Vec<(i32, i32)> {
+    let mut out = Vec::with_capacity(FD_SURVEY_RINGS.len() * FD_SURVEY_ROUND);
+    for r in FD_SURVEY_RINGS {
+        for k in 0..FD_SURVEY_ROUND {
+            let a = (k as f64 + 0.5 * f64::from(r > 200.0)) * std::f64::consts::TAU / FD_SURVEY_ROUND as f64;
+            out.push((block[0] + (r * a.cos()) as i32, block[2] + (r * a.sin()) as i32));
+        }
+    }
+    out
+}
+const FD_SURVEY_RINGS: [f64; 4] = [90.0, 170.0, 280.0, 420.0];
+const FD_SURVEY_ROUND: usize = 16;
+/// The level the land's relief is pressed towards as it creases (fold_warp.wgsl's cp_level, params[10]), blocks from the target, 0 or under:
+/// a little under what most of the land round it stands on, water's top where there is water, so that hardly any is under it and it isn't
+/// pulled further than it has to be: a plateau is pressed to itself, not to the sea. `heights` the columns' tops, none not loaded.
+pub fn fd_level(target_y: i32, heights: &[Option<i32>]) -> f32 {
+    let mut h: Vec<i32> = heights.iter().flatten().copied().collect();
+    if h.is_empty() {
+        return 0.0;
+    }
+    h.sort_unstable();
+    let low = h[h.len() / 6];
+    ((low - target_y - 1) as f32).clamp(-80.0, 0.0)
+}
+
 pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
@@ -162,7 +188,24 @@ mod tests {
         }
     }
 
-    /// Option B's crease pattern (fold_warp.wgsl's cp_*): its big creases fold flat (Kawasaki's theorem: every other angle round
+    /// A plateau is pressed to itself, not to the sea; a few low columns don't drag it down; land not loaded says nothing.
+    #[test]
+    fn the_pressing_level_is_the_lands_own() {
+        let flat: Vec<Option<i32>> = vec![Some(200); 64];
+        assert_eq!(fd_level(200, &flat), -1.0);
+        let mut pits = flat.clone();
+        for p in pits.iter_mut().take(6) {
+            *p = Some(70);
+        }
+        assert_eq!(fd_level(200, &pits), -1.0);
+        let mut low: Vec<Option<i32>> = vec![Some(70); 32];
+        low.extend(vec![Some(109); 32]);
+        assert_eq!(fd_level(109, &low), -40.0);
+        assert_eq!(fd_level(109, &[None, None]), 0.0);
+        assert_eq!(fd_survey([0, 64, 0]).len(), 64);
+    }
+
+    /// The crease pattern (fold_warp.wgsl's cp_*): its big creases fold flat (Kawasaki's theorem: every other angle round
     /// the target adds up to 180 degrees), so its zigzag of one slope closes on itself, and each is a mountain or a valley in turn.
     #[test]
     fn the_creases_fold_flat() {

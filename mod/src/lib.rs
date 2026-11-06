@@ -170,6 +170,8 @@ struct Strike {
     length: f32,
     /// What the post pass reads; [3] is the strike clock, set each frame.
     params: [f32; 16],
+    /// The Fold's question about the land round the target, until it is answered (its tag, the target's block).
+    level: Option<(u32, [i32; 3])>,
     /// Stages due that wait for a tick of their own (`tick_strike` works out one a tick).
     waiting: std::collections::VecDeque<strike::Stage>,
     /// Those that go before them (`Act::Soon`), in order.
@@ -965,6 +967,12 @@ impl Orbital {
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
         let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
+        // (the Fold asks how low the land lies round the target; `tick` takes the answer in)
+        let level_tag = (laser.key == "fold").then(|| {
+            let tag = ground::new_tag();
+            ground::ask(tag, strike::fd_survey(target.block));
+            tag
+        });
         meter::spend(FIRE_COST);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
@@ -1016,7 +1024,7 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
         self.hold_forceloads(&dimension, clock, laser.length);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
@@ -1059,6 +1067,15 @@ impl Orbital {
         // (the world's answers to the ground asked for, before the stages that read them)
         ground::poll();
         columns::poll();
+        if let Some(s) = &mut self.strike
+            && let Some((tag, block)) = s.level
+            && ground::ready(tag)
+        {
+            let tops: Vec<Option<i32>> = strike::fd_survey(block).iter().map(|&(x, z)| ground::at(x, z).map(|g| g + ground::water(x, z).unwrap_or(0))).collect();
+            s.params[10] = strike::fd_level(block[1], &tops);
+            s.level = None;
+            log::write(log::Level::Info, &format!("fold: the land's level {} from the target", s.params[10]));
+        }
         trace("polled");
         let carved = self.carve(CARVE_CMDS);
         trace("carved");
@@ -2623,7 +2640,7 @@ mod stress {
         };
         let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
         plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
-        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default(), key: "", sprites: 0 });
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], level: None, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default(), key: "", sprites: 0 });
         let mut worst = 0;
         let mut ticks = 0;
         while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {

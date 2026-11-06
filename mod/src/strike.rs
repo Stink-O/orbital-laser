@@ -8,7 +8,7 @@ mod crystal;
 mod hu_blocks;
 mod fold;
 mod fold_land;
-pub use fold::{FD_COPIES, FD_COPY_ON, FD_COPY_R, FD_HIDDEN, FD_STAY, FD_TETHER, FD_TETHER_ON, FD_WARP_END, FD_WARP_START};
+pub use fold::{FD_COPIES, FD_COPY_ON, FD_COPY_R, FD_HIDDEN, FD_STAY, FD_TETHER, FD_TETHER_ON, FD_WARP_END, FD_WARP_START, fd_level, fd_survey};
 mod hurricane;
 mod nuke;
 mod rod;
