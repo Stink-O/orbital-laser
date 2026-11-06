@@ -1274,10 +1274,10 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             col = fd_hanging(col, v, far, t, mq, gq, g, f, at_);
         }
     }
-    // ---- the touch: a tiny light at the point the moment the tip reaches it, there for the stillness, gone as it runs back -----
+    // ---- the touch: a tiny light at the point the moment the tip reaches it, there while it holds, gone as it lets go -----
     let dd = length((uv - pt.xy) * vec2<f32>(aspect, 1.0));
-    if (t >= FD_BEAT && t < FD_REL + 0.25 && pt.z > 0.0) {
-        let on = fd_ss(FD_BEAT, FD_BEAT + 0.04, t) * (1.0 - fd_ss(FD_REL - 0.02, FD_REL + 0.25, t));
+    if (t >= FD_BEAT && t < FD_REL + 0.6 && pt.z > 0.0) {
+        let on = fd_ss(FD_BEAT, FD_BEAT + 0.04, t) * (1.0 - fd_ss(FD_REL + 0.42, FD_REL + 0.6, t));
         let g = 0.0022;
         col = col + vec3<f32>(1.0, 0.97, 0.92) * (exp(-dd / g) * 2.6 + exp(-dd / (g * 6.0)) * 0.3) * on;
     }
