@@ -806,24 +806,16 @@ fn fw_reached(tau: f32, S: f32) -> f32 {
 fn fw_cap(reach: f32) -> f32 {
     return mix(0.02, 0.004, fw_ss(0.95, 1.0, reach));
 }
-// Its thickness x along, blocks: down a step at each stage's end, a node there, to nothing at the tip.
+// Its thickness x along, blocks: one long taper from a root like a tree's to nothing at the tip, no joints: it grows, it isn't assembled.
 fn fw_girth(x: f32, S: f32) -> f32 {
-    var q = 0.0;
-    var node = 0.0;
-    for (var k = 1; k < 5; k += 1) {
-        let at = fw_knot(k);
-        q += fw_ss(at - 0.014, at + 0.014, x);
-        let n = (x - at) / 0.016;
-        node += exp(-n * n);
-    }
-    return 0.26 * S * pow(0.84, q) * (1.0 + 0.12 * node) * pow(max(1.0 - x, 0.0), 0.6);
+    return 0.3 * S * (0.26 + 0.74 * pow(max(1.0 - x, 0.0), 1.7)) * pow(max(1.0 - x, 0.0), 0.4);
 }
 // Its middle line x along, in the plane through the axis (out from the axis, up), as many of S as the sphere is: from the wall, square off it,
 // just under the hole's rim, to the target. Past FW_JOIN it is a curve of its own coming down the axis to the target; up to there, a curve
 // from the wall that runs into that one, gone along at a pace that grows (fw_u) to be the other's where they meet: the tip works its way out
 // of the wall and then gathers. A ring of the tube is square to this line, so the wide first ring lies on the wall (fw_flare).
 const FW_JOIN: f32 = 0.78;
-const FW_PACE: f32 = 2.85;
+const FW_PACE: f32 = 2.05;
 fn fw_u(x: f32) -> f32 {
     return pow(clamp(x / FW_JOIN, 0.0, 1.0), FW_PACE);
 }
@@ -835,8 +827,8 @@ fn fw_path(x: f32, S: f32) -> FwPath {
         let u = fw_u(x);
         let m = 1.0 - u;
         let p0 = vec2<f32>(0.787, 1.453);
-        let p1 = vec2<f32>(0.44, 1.253);
-        let p2 = vec2<f32>(0.128, 1.245);
+        let p1 = vec2<f32>(0.5, 1.47);
+        let p2 = vec2<f32>(0.1456, 1.3939);
         let p3 = vec2<f32>(0.086227, 0.897504);
         C = p0 * (m * m * m) + p1 * (3.0 * m * m * u) + p2 * (3.0 * m * u * u) + p3 * (u * u * u);
         T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * u) + (p3 - p2) * (u * u);
@@ -856,7 +848,7 @@ fn fw_path(x: f32, S: f32) -> FwPath {
 fn fw_flare(x: f32, reach: f32) -> f32 {
     let tl = min(mix(0.3, 0.02, fw_ss(0.8, 0.97, reach)), max(reach, 0.001));
     // (a thin trunk out of a wide foot: hollow, as a root's is, not a bulb: tangent to the wall at its ring)
-    return (mix(0.6, 1.0, fw_ss(0.25, 0.6, x)) + 1.02 * exp(-fw_u(x) / 0.04)) * pow(clamp((reach - x) / tl, 0.0, 1.0), 0.6);
+    return (1.0 + 1.02 * exp(-fw_u(x) / 0.04)) * pow(clamp((reach - x) / tl, 0.0, 1.0), 0.6);
 }
 // The arm comes round the axis as it comes down: its root off to the player's side of the rim, so that they see it leave the wall from the side and not
 // end on, as a ball; it is in the old plane, straight over the target from behind the hole, by the time the path is the old one.
@@ -903,7 +895,8 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
         rho *= 1.0 + foot * (0.2 * sin(3.0 * a + 1.0) + 0.14 * sin(5.0 * a - 2.0) + 0.08 * sin(8.0 * a + 0.5));
     }
     // (the land's own heights, as big as the land is at this place on the tube)
-    rho += clamp(Q.y, -6.0, 40.0) * clamp(rho / max(r, FW_THROAT), 0.08, 1.2) * 0.8;
+    // (none at a length's end: a hill round the target there would stand as a collar round the join)
+    rho += clamp(Q.y, -6.0, 40.0) * clamp(rho / max(r, FW_THROAT), 0.08, 0.6) * 0.8 * fw_ss(FW_THROAT, 2.2 * FW_THROAT, r);
     let P = fw_path(x, S);
     // (turning a little as it goes, each length its own way round)
     let phi = -a + f32(k) * 1.9 + x * 2.2;
@@ -1445,12 +1438,11 @@ fn world_fragment(f: Fragment) -> Painted {
             return drop_;
         }
         var col = plain.rgb;
-        // (the water isn't copied: what lies under it stands for it)
+        // (the water isn't copied: it is moss here, a blue stripe down it reads as a pipe)
         if (f.light.x < 6.0) {
-            col = vec3<f32>(0.1, 0.2, 0.46);
+            col = vec3<f32>(0.14, 0.22, 0.11);
         }
-        // (a dark line at each join, deep in the throat of the length before; and in the dusk where it comes over the rim)
-        col = col * mix(select(0.45, 1.0, f.copy == 1u), 1.0, fw_ss(FW_DISC, FW_DISC - 16.0, r)) * mix(0.5, 1.0, fw_ss(FW_THROAT, FW_THROAT + 18.0, r));
+        // (no line at the joins: it is one piece of land, grown, not lengths put together)
         // (the root's first ring lies on the wall: it comes apart into it, block by block, so no edge shows)
         if (f.copy == 1u) {
             let w = globals.warp;
@@ -1606,13 +1598,12 @@ fn world_fragment(f: Fragment) -> Painted {
         col = mix(col, line, clamp(on * hit.hot, 0.0, 1.0));
         fog = 1.0 - clamp(on * hit.hot + ember + 0.5 * on * hit.glow, 0.0, 1.0);
     }
-    // ---- past the real land the sphere goes off into its own dusk: the far land's coarse tiles are no use this close, and the
-    // darker it gets towards the hole the less there is to see of how it ends ----------------------------------------------------
+    // ---- the land overhead goes off in a thin haze: it has to read as land, right up to the torn edge of the hole -----------------
     let awayp = length(Q.xz - mq.xz);
     // (less of it round the arm's root, on the far side of the rim, so that the land it comes out of is seen; and where the land's end is, none of that)
     let root = fw_ss(260.0, 90.0, length(Q.xz + fw_rot(mq.xz / max(dmq, 0.001), FW_BEAR) * 0.8 * fw_rim(dmq))) * (1.0 - fw_ss(0.9 * lands, 0.97 * lands, r));
-    let dusk = max(fw_ss(430.0, 640.0, awayp), fw_ss(0.5 * lands, 0.97 * lands, r)) * fw_ss(30.5, 33.5, tau) * (1.0 - 0.8 * root);
-    col = mix(col, vec3<f32>(0.02, 0.024, 0.06), dusk * 0.96);
+    let dusk = (0.5 * fw_ss(430.0, 900.0, awayp) + 0.28 * fw_ss(0.82 * lands, 0.98 * lands, r)) * fw_ss(30.5, 33.5, tau) * (1.0 - 0.8 * root);
+    col = mix(col, vec3<f32>(0.035, 0.05, 0.11), dusk);
     // (the game's fog goes by how far off a thing is drawn, no use on walls: all of it the sphere's own dusk)
     return Painted(vec4<f32>(col, alpha), fog * (1.0 - fw_ss(30.0, 33.0, tau)));
 }

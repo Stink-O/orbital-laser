@@ -825,7 +825,8 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
                 let H = rel + vec3<f32>(te.x * qh.x, qh.y, te.y * qh.x);
                 let b = dot(v, O);
                 let hit = v * (b + sqrt(max(b * b - dot(O, O) + S * S, 0.0)));
-                let inhole = fd_ss(0.72, 0.8, dot(hit - O, H - O) / (S * S));
+                // (the hole is what the land leaves open, right out to its own torn edge, however far that lies: only what is under the sphere's middle is dusk)
+                let inhole = fd_ss(-0.15, 0.2, dot(hit - O, H - O) / (S * S));
                 col = mix(col, vec3<f32>(0.02, 0.024, 0.06), shut * (1.0 - inhole));
             }
             var near = vec3<f32>(0.0);
