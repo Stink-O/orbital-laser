@@ -14,8 +14,9 @@
 //!   FD_TEAR           the creases split open on the void
 //!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land closes round the player, the rings lying back to a mound
 //!   FD_SEAL           the player is inside a sphere, real land on its walls, a hole left in its roof
-//!   FD_FOLDS          a branch of land comes over the hole's rim and down to the target, slower and slower, thinner at
-//!                     each stage; FD_BEAT its tip touches it: a tiny light and a ding; stillness to FD_RELEASE
+//!   FD_FOLDS          a branch of land grows out of the wall by the hole's rim, its foot swelling from 34.5, and comes round and down
+//!                     to the target, slower and slower, thinner at each stage; FD_BEAT its tip touches it: a tiny light and a ding;
+//!                     stillness to FD_RELEASE
 //!   FD_RELEASE        all of it runs backwards, gathering slowly: the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
 //!   FD_SLAM[4]        the last ring lands, and the crater shows (FD_REVEAL)
