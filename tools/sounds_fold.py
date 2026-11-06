@@ -1551,7 +1551,8 @@ def slam():
     # (the rock going to pieces all along the sheet: a tearing roar, mids a phone can hear, gone in half a second)
     shatter = eddies(d, 280, 7000, 2.5, -3.2, 12.0, 5.0) * (1 - np.exp(-u / 0.004)) * np.exp(-u / 0.42) * on
     M = ground * 0.8 + rock_ * 0.4 + b * 1.0 + press * 0.9 + front_ * 0.5 + crack * 0.7 + shatter * 1.0
-    M = land(M, 3.0, 0.3, (1300, 170), 0.9, 45.0, 7)
+    dark = bp(M, None, 1100)                                   # (only its dark part goes off the land: a single loud echo of all of it would comb the top)
+    M = M + land(dark, 3.0, 0.3, (1300, 170), 0.9, 45.0, 7) - dark
     L, R = M.copy(), M.copy()
     # (the sheet letting go along its creases: the fold's own voice, its thickest, all round, in the first half second)
     a_, b_ = np.zeros(n), np.zeros(n)
