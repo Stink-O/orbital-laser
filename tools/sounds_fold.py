@@ -1163,7 +1163,7 @@ def groan():
     L += a * room * 0.09
     R += b * room * 0.09
     L, R = low_mono(L, R, 190.0)
-    out("groan", L, R, -11.5, tail=0.8, peak=10 ** (-3.0 / 20))
+    out("groan", L, R, -13.0, tail=0.8, peak=10 ** (-4.0 / 20))
 
 
 # ===========================================================================================================  the fold down
@@ -1183,12 +1183,12 @@ def foldown():
         size = 0.52 ** k
         # (the sheet creased: a bending wave off a plate, thinner and higher as the folds halve)
         fc = 110.0 * (640.0 / 110.0) ** v
-        ice(L, R, at + 0.02, 170 - 110 * v, fc, 0.42 * size ** 0.8, rng().uniform(-0.25, 0.25), 2)
-        # (the crease itself: a run of paper-fine breaks)
+        pew(L, R, at + 0.02, 170 - 110 * v, fc, 0.42 * size ** 0.8, rng().uniform(-0.25, 0.25), 2)
+        # (the crease itself: a run of small dull breaks, kept low: paper-fine is tin foil)
         m = n_of(0.34)
         s = times(m)
         cr = stick(m, 240 * np.exp(-s / 0.12) + 20, 0.6, 0.15, 0.0015, 0.0005)
-        cr = bp(cr, 220 + 900 * v, 1100 + 2600 * v) * np.exp(-s / (0.13 - 0.05 * v))
+        cr = bp(cr, 180 + 260 * v, 760 + 640 * v) * np.exp(-s / (0.13 - 0.05 * v))
         y = T.unit(cr) * 0.09 * size ** 0.6
         P.put(L, y, at)
         P.put(R, y, at)
@@ -1224,7 +1224,7 @@ def foldown():
     gone = 1 - ss(last + 0.05, last + 0.6, t)               # (nothing left by 39.6)
     L, R = L * gone, R * gone
     L, R = low_mono(L, R, 170.0)
-    out("foldown", L, R, -13.0, tail=0.05, peak=10 ** (-4.0 / 20))
+    out("foldown", L, R, -14.5, tail=0.05, peak=10 ** (-4.0 / 20))
 
 
 def ding():
@@ -1565,7 +1565,7 @@ def slam():
     L, R = L + rl * g, R + rr * g
     L, R = lows_heard(L, 70, 420, -5.0), lows_heard(R, 70, 420, -5.0)
     L, R = low_mono(L, R, 170.0)
-    out("slam", L, R, -5.5, tail=1.0, peak=10 ** (-1.2 / 20))
+    out("slam", L, R, -5.5, tail=1.0, peak=10 ** (-2.0 / 20))
 
 
 def sink():
@@ -1600,7 +1600,7 @@ def sink():
         # (it lands: a contact, the ground taking it, the rock of it breaking, over however long its span takes to come down)
         span = last - first
         k = n_of(1.6 + span)
-        c = 0.0 if ring < 2 else span * 0.82                   # (rings 2 and 3: the deep inner edge is the weight, the rim only a roll before it)
+        c = 0.0 if ring < 2 else max(span - 0.12, 0.0)         # (rings 2 and 3: the deep inner edge is the weight, the rim only a roll before it)
         g = rng().uniform(0.85, 1.1) * s
         y = struck(k, c, max(span - c, 0.012) + 0.02 + 0.03 * s, GROUND[1:], 30, 0.4) * 0.8
         y = y + struck(k, c, max(span - c, 0.012) + 0.02, RUBBLE, 18, 0.5) * 0.55
