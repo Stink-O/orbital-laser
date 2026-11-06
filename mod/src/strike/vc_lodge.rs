@@ -38,6 +38,8 @@ const VL_STEEP: f64 = 20.0;
 const VL_BANK: f64 = 16.0;
 /// How the earth it shoved up falls away from it: blocks down a block out, its edge's samples this far apart, how many.
 const VL_FALL: f64 = 1.25;
+/// How far up its edge the earth is heaped.
+const VL_UP: f64 = 0.62;
 const VL_TS: usize = 8;
 const VL_TALL: f64 = 44.0;
 /// A plate's thickness at the least.
@@ -974,7 +976,7 @@ impl Slab {
         }
         crate::meter::spend(800);
     }
-    /// How high the earth shoved up under it stands round it, coarsely, from the vent's ground: its underside where it is,
+    /// How high the earth shoved up against it stands round it, coarsely, from the vent's ground: most of the way up it,
     /// falling away `VL_FALL` a block from there. Once, as it comes to rest: a chunk's worth of this each chunk was a sixth
     /// of all its work.
     fn make_fall(&mut self) {
@@ -996,8 +998,10 @@ impl Slab {
         for k in 0..m {
             for i in 0..n {
                 self.spans(ox + st * i as f64, oz + st * k as f64, &mut sp);
-                if let Some(y) = sp.iter().map(|s| s.y0).reduce(f64::min) {
-                    t[k * n + i] = y as f32;
+                // (up its edge a good way, so its broken side stands out of a slope of its own wreckage, never a bare wall)
+                if let Some(s) = sp.first() {
+                    let (lo, hi) = sp.iter().fold((s.y0, s.y1), |a, s| (a.0.min(s.y0), a.1.max(s.y1)));
+                    t[k * n + i] = (lo + VL_UP * (hi - lo)) as f32;
                 }
             }
         }
