@@ -834,10 +834,10 @@ fn fb_wet(c: vec2<f32>, S: vec2<f32>, rd: f32) -> f32 {
     let k2 = k * k;
     return FB_B0 + FB_BT * (0.55 * k + 0.45 * k2 * k2 * k2);
 }
-struct FbField { m: f32, gm: vec2<f32>, dent: f32, dg: vec2<f32> }
+struct FbField { m: f32, gm: vec2<f32>, dent: f32, dg: vec2<f32>, age: f32 }
 // `q` on the mesh: the liquid's edge field (m > 0 inside it, about blocks), the dimples, and how far the nearest hole is.
 fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
-    var o = FbField(0.0, vec2<f32>(0.0), 0.0, vec2<f32>(0.0));
+    var o = FbField(0.0, vec2<f32>(0.0), 0.0, vec2<f32>(0.0), 0.0);
     let a0 = FB_PITCH;
     let row = 0.866 * a0;
     let j0 = round(q.y / row);
@@ -850,10 +850,12 @@ fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
         let i0 = round((q.x - off) / a0);
         for (var di = -1.0; di < 1.5; di += 1.0) {
             let i = i0 + di;
-            let c = vec2<f32>(off + i * a0, j * row);
+            let h0 = hash21(vec2<f32>(i, j) + 7.0);
+            // (a little off the lattice, each its own size: no rows to it)
+            let c = vec2<f32>(off + i * a0, j * row) + (vec2<f32>(h0, fract(h0 * 53.1)) - 0.5) * a0 * 0.5;
             let e = q - c;
             let e2 = dot(e, e);
-            let h = hash21(vec2<f32>(i, j) + 7.0);
+            let h = h0;
             let h2 = fract(h * 37.7);
             // (a few well ahead of the front, the rest about it)
             let ahead = select(0.0, 0.34 * FB_BT * h2, h < 0.2);
@@ -863,21 +865,24 @@ fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
             }
             // (they don't blend by degrees: past a certain size neighbours snap together, nearly all at once, FB_JOIN)
             let snap = 0.17 * fw_ss(FB_JOIN + 0.1 * h2, FB_JOIN + 0.14 + 0.1 * h2, t) * fw_ss(0.03, 0.2, age);
-            let r = a0 * (0.1 + (0.5 + 0.34 * h) * (1.0 - exp(-age / (0.26 * FB_BT))) + 0.5 * fw_ss(0.5, 1.6, age) + snap);
+            let r = a0 * (0.1 + (0.32 + 0.62 * h * h + 0.18 * h2) * (1.0 - exp(-age / (0.26 * FB_BT))) + 0.5 * fw_ss(0.5, 1.6, age) + snap);
             let m = r - e2 / r;
             let w = exp(m / k);
             sum += w;
+            o.age += w * age;
             gs += w * (-2.0 / r) * e;
             // (a dimple over the hole, closing slowly, some much slower)
-            let close = 0.5 + 2.8 * max(h - 0.62, 0.0) * 2.6;
-            let dd = (1.0 - fw_ss(0.12, close, age)) * exp(-e2 / (0.1 * a0 * a0)) * (0.6 + 0.8 * h);
+            // (the lumps the holes leave in it: only some, and soft, no dimples)
+            let w2 = (0.16 + 0.3 * h2) * a0 * a0;
+            let dd = -(1.0 - fw_ss(0.3, 1.1 + 1.6 * h, age)) * exp(-e2 / w2) * step(0.72, h) * 0.8;
             o.dent += dd;
-            o.dg += dd * (-2.0 / (0.1 * a0 * a0)) * e;
+            o.dg += dd * (-2.0 / w2) * e;
         }
     }
     if (sum > 0.0) {
         o.m = k * log(sum);
         o.gm = gs / sum;
+        o.age = o.age / sum;
     } else {
         o.m = -1.0e3;
     }
@@ -1065,7 +1070,7 @@ fn fb_creep(q: vec2<f32>, rho: f32, rd: f32, t: f32, S: vec2<f32>) -> vec3<f32> 
     let back = 1.0 - fw_ss(FW_LETGO + 0.12, FW_LETGO + 0.6, t);
     let out_ = rho - rd;
     let g = fw_ss(when_ - 0.1, when_ + 1.3, t);
-    let f = 150.0 * runs * g * back - out_ + (70.0 * n1 + 34.0 * n2) * fw_ss(0.0, 0.3, g) - 40.0 * (1.0 - back);
+    let f = 150.0 * runs * g * back - out_ + (70.0 * n1 + 34.0 * n2) * fw_ss(0.0, 0.3, g) - 40.0 * (1.0 - back) + 90.0 * fw_ss(0.3, 1.0, g) * back * (1.0 - fw_ss(0.0, 90.0, out_));
     let pg = fw_ss(FB_PLATE + 0.1, FB_PLATE + 1.3, t) * back;
     let fp = 95.0 * (0.4 + 0.6 * fb + 0.4 * fa) * pg - out_ + (46.0 * n1 + 22.0 * n2) * fw_ss(0.0, 0.25, pg) - 30.0 * (1.0 - back);
     let wet = (150.0 * runs * g + 40.0) * (1.0 - fw_ss(FW_LETGO + 0.5, FW_LETGO + 1.0, t)) - out_ + 60.0 * n1;
@@ -1094,24 +1099,14 @@ fn fb_on_land(colIn: vec3<f32>, v: vec3<f32>, q: vec2<f32>, rho: f32, far: f32, 
         let n = normalize(fd_returned(normalize(vec3<f32>(-fl.y * 0.6, -1.0, -fl.z * 0.6)), g, at));
         col = col * (1.0 - 0.4 * w) + fb_chrome(v, v * far, n, gq) * 0.2 * w;
     }
-    // ---- the metal, thinning to nothing, and what it has left ahead of it ----------------------------------------------------
-    var a = fw_ss(0.0, 34.0, f);
-    var thick = fw_ss(14.0, 90.0, f);
-    var gr = fl.yz * (2.2 - 1.4 * thick) + rh * 0.6 * (1.0 - thick) * sin(f * 0.17 + 0.03 * (q.x - q.y));
-    let e = fb_mesh(q);
-    let id = round((q - e.xy) * 0.2);
-    let h = hash21(id + 3.0);
-    let h2 = fract(h * 29.3);
-    // (the beads run thin out past the edge, and go back with it)
-    let rb = FB_PITCH * (0.14 + 0.3 * h2) * fw_ss(-70.0 * h - 4.0, -8.0 * h, f) * step(h, 0.55);
-    if (rb > 0.1 && e.z < rb) {
-        let ba = saturate((rb - e.z) / (0.0011 * far) + 0.5);
-        if (ba > a) {
-            a = ba;
-            thick = 1.0;
-            gr = e.xy / max(rb, 0.5) * 1.1;
-        }
-    }
+    // ---- the metal, thinning to nothing: no line of beads at its edge, it ends in smears and thin runs. Long thin ones along the way it is going, and it keeps to the low ground (lum) ------
+    let run = fbm(rh * 30.0 + vec2<f32>(rho * 0.0045, -rho * 0.0031)) - 0.5;
+    let run2 = fbm(rh * 83.0 + vec2<f32>(-rho * 0.006, rho * 0.0042)) - 0.5;
+    let smear = fbm(q * 0.047 + rh * 3.0 + 5.0) - 0.5;
+    let f2 = f + (170.0 * run + 70.0 * run2 + 60.0 * smear) * (1.0 - fw_ss(30.0, 130.0, f)) - 16.0;
+    let a = fw_ss(0.0, 26.0, f2);
+    let thick = fw_ss(14.0, 90.0, f);
+    let gr = fl.yz * (2.2 - 1.4 * thick) + rh * 0.6 * (1.0 - thick) * sin(f * 0.17 + 0.03 * (q.x - q.y));
     if (a > 0.0) {
         let n = normalize(fd_returned(normalize(vec3<f32>(-gr.x, -1.0, -gr.y)), g, at));
         let ch = fb_chrome(v, v * far, n, gq);
@@ -1119,6 +1114,12 @@ fn fb_on_land(colIn: vec3<f32>, v: vec3<f32>, q: vec2<f32>, rho: f32, far: f32, 
         col = mix(col, mix(col * 0.75 + ch * (0.22 + 1.1 * col), ch, thick), a);
     }
     return col;
+}
+fn fb_solid(n: vec3<f32>) -> vec3<f32> {
+    let day = 0.14 + 0.86 * fd_ss(-0.2, 0.1, frame.sun.y);
+    let l = max(dot(n, vec3<f32>(0.42, -0.78, 0.46)), 0.0);
+    let s = max(dot(n, vec3<f32>(0.3, -0.92, 0.25)), 0.0);
+    return (vec3<f32>(0.62, 0.65, 0.7) * (0.12 + 0.62 * l * l) + vec3<f32>(0.9, 0.92, 0.96) * pow(s, 24.0) * 0.55) * day;
 }
 fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
     var col = colIn;
@@ -1168,13 +1169,15 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 let fl = fb_flow(q, t);
                 let hl = fb_mesh(q);
                 // ---- the plate: dark steel, its holes darker --------------------------------------------------------------------
-                let hr = 0.21 * FB_PITCH;
+                // (fine and low: dense rows of dark holes look like something they shouldn't. Pale pins, each its own size, some not there)
+                let hid = hash21(round((q - hl.xy) * 0.3) + 11.0);
+                let hr = FB_PITCH * 0.15 * hid * step(0.3, hid) * 1.4;
                 let dot_ = saturate((hr - hl.z) / ps + 0.5);
                 let lipn = fw_ss(14.0, 0.0, edge);
                 let dn = normalize(vec3<f32>(hl.x * 0.06 * dot_ + q.x * 0.00012 + 0.3 * lipn * (q.x - ic.x) / max(length(q - ic), 1.0), -1.0, hl.y * 0.06 * dot_ + q.y * 0.00012 + 0.3 * lipn * (q.y - ic.y) / max(length(q - ic), 1.0)));
                 let wn = normalize(fd_returned(dn, g, at));
                 var pl = fb_chrome(v, v * s, wn, gq) * 0.16 + vec3<f32>(0.02, 0.022, 0.026);
-                pl = mix(pl, col * 0.45, dot_);
+                pl = pl * (1.0 + 0.9 * dot_) + vec3<f32>(0.03, 0.032, 0.036) * dot_;
                 var c = pl;
                 // ---- the metal ------------------------------------------------------------------------------------------------
                 // (what was left dry goes under by itself; the fine grain of the boil is gone by the time the drop is)
@@ -1183,11 +1186,16 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 let wet = saturate(m / ps + 0.5);
                 if (wet > 0.0) {
                     let ex = exp(-max(m, 0.0) / FB_EDGE);
-                    let dh = FB_THICK / FB_EDGE * ex;
+                    // (quickly flat inside: what has joined is one surface, not a honeycomb of the beads it was)
+                    let dh = FB_THICK / FB_EDGE * ex * ex;
                     let dent = 1.5 * (1.0 - ex);
                     let gr = (f.gm * dh * 0.7 - f.dg * dent) * fine + fl.yz * (1.0 - ex) * 0.8;
-                    let n = normalize(fd_returned(normalize(vec3<f32>(-gr.x, -1.0, -gr.y)), g, at));
-                    c = mix(c, fb_chrome(v, v * s, n, gq), wet);
+                    let nl = normalize(vec3<f32>(-gr.x, -1.0, -gr.y));
+                    let n = normalize(fd_returned(nl, g, at));
+                    // (while it is beads, each a solid dome, lit from one side, brightest over its top: no ring round a dark middle)
+                    // (young metal is solid, over its whole dome, and turns to the mirror as it settles, a place at a time: nothing dark in the middle of anything)
+                    let sep = fine * (1.0 - fw_ss(0.3, 0.95, f.age));
+                    c = mix(c, fb_chrome(v, v * s, n, gq) * (1.0 - 0.4 * sep) + fb_solid(nl) * sep * 0.6, wet);
                 }
                 col = mix(col, c, cov);
             }
@@ -1234,7 +1242,8 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 let fl = fb_flow(q.xz, t);
                 let keep = fw_ss(-12.0, -2.0, q.y - y0);
                 let n = normalize(fd_returned(normalize(n0 - vec3<f32>(fl.y, 0.0, fl.z) * 0.8 * keep), g, at));
-                col = mix(col, fb_chrome(v, v * sb, n, gq), cov);
+                // (only what really hangs: the rest is the surface's, drawn above)
+                col = mix(col, fb_chrome(v, v * sb, n, gq), cov * fw_ss(-0.4, -3.5, q.y - y0));
             }
         }
     }
