@@ -5,3 +5,4 @@ The Fold looked at with numbers: the real mod/shaders/fold_warp.wgsl offscreen o
   land_from_save.py: reads a save's region files (read only) to an npz of columns.
   fv.py: Scene, warp(), sweep() (metrics per time and radius; `python3 fv.py` self-tests them on maps with known answers), KO (one term taken out at a time), sheet(), planmap(), xsec().
   plots.py: heatmaps. build_page.py, mkpage.py, page.html: the evidence page.
+  pattern.py: the crease pattern's tables, here and in strike/fold.rs: `--to mod/shaders mod/src/strike/fold.rs` writes them, `--plan out.png` draws it. Scene(pattern=0|1|2): which of the three the warp folds on.
