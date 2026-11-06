@@ -355,7 +355,7 @@ fn cp_level(r: f32) -> f32 {
 fn cp_squash(y: f32, level: f32, pr: f32) -> f32 {
     return level + max(y - level, 0.0) * pr + min(y - level, 0.0);
 }
-const CP_FLAT: f32 = 0.68;
+const CP_FLAT: f32 = 0.35;
 // The groove a crease runs down, what cp_press's second number leaves: only so deep. Taken from all the land's height over the level it was a trench as
 // deep as the hills, a wall of stretched columns either side of every line.
 const CP_GROOVE: f32 = 5.0;

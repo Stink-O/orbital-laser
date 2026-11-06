@@ -78,7 +78,8 @@ class Scene:
         return [f'tx=0',f'ty={TY}','tz=0',f'seed={s.seed}',f'level={s.lev}',f'cx={s.mx}',f'cy={s.my}',f'cz={s.mz}']
 SH_CACHE={}
 def shader(patch=None):
-    """the shader with text replacements [(old,new),...]; every old must be there"""
+    """the shader with text replacements [(old,new),...]; every old must be there; patch 'old' is the base build ($FV/old_warp.wgsl)"""
+    if patch=='old': return FV/'old_warp.wgsl'
     if not patch: return WARP
     t=src()
     for a,b in patch:
