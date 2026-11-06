@@ -898,7 +898,9 @@ fn vm_shade_plate(C: vec3<f32>, rd: vec3<f32>, h: VmPl, l: VcLight) -> vec3<f32>
     let n2 = gnoise2(h.rest * 0.31 + vec2<f32>(5.2, 1.3));
     let nb = normalize(h.n + 0.9 * (vec3<f32>(n1, 0.5 * (n1 + n2), n2) - 0.5));
     let big = gnoise2(h.rest * 0.045 + vec2<f32>(2.0, 8.0));
-    let raw = mix(vec3<f32>(0.011, 0.0105, 0.011), vec3<f32>(0.068, 0.06, 0.053), st * st * (0.45 + big));
+    // (one that stays as dark as its real rock will be: soil and stone near its top, burnt rock under them)
+    let raw0 = mix(vec3<f32>(0.011, 0.0105, 0.011), vec3<f32>(0.068, 0.06, 0.053), st * st * (0.45 + big));
+    let raw = select(raw0, mix(mix(vec3<f32>(0.16, 0.105, 0.07), vec3<f32>(0.12, 0.115, 0.11), smoothstep(0.1, 0.22, h.dep)), raw0 * 1.4, smoothstep(0.5, 0.8, h.dep + 0.2 * (st - 0.5))), h.lodged);
     let fill = 0.2 + 0.32 * saturate(0.5 + 0.5 * nb.y);
     return raw * (dl * (fill + 1.05 * saturate(dot(nb, l.L)) * l.sun_up) + vm_firelit(p, nb)) + vm_ramp(0.6 * hot);
 }
@@ -1284,7 +1286,7 @@ fn vl_burst(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lb: u32, age: f32, l: VcLigh
     let a = vec3<f32>(-d.z, 0.0, d.x);
     let seed = f32(lb & 255u);
     let fade = 1.0 - smoothstep(2.5, 9.5, age);
-    let dust = vec3<f32>(0.088, 0.072, 0.058) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up);
+    let dust = vec3<f32>(0.088, 0.072, 0.058) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up) * (1.0 - 0.72 * smoothstep(34.0, 46.0, vm.t));
     for (var k = 0u; k < 8u; k = k + 1u) {
         let h0 = hash21(vec2<f32>(f32(k), seed));
         let h1 = hash21(vec2<f32>(f32(k) + 0.5, seed + 3.0));
