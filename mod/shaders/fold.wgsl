@@ -813,6 +813,7 @@ const FB_PLATE: f32 = 34.5;        // the plate starts in from the rim (fw_shut 
 const FB_SHUT: f32 = 36.05;        // the last of the stars has gone
 const FB_B0: f32 = 35.0;           // the first beads
 const FB_BT: f32 = 1.5;            // how long from the first beads to the last dry place
+const FB_JOIN: f32 = 35.6;          // about two fifths of the way through it, they join
 const FB_RUN: f32 = 36.2;          // the streaks begin to run in
 const FB_PIN: f32 = 37.2;          // the pinch: the drop is let go
 const FB_PITCH: f32 = 13.0;        // the mesh's holes, blocks apart: about 15 pixels at 1080p from the floor
@@ -821,7 +822,7 @@ const FB_FIT: f32 = 1.2;           // past the hole's rim it goes on, behind the
 const FB_LONG: f32 = 78.0;         // how far the bead hangs under the surface as it lets go
 const FB_V0: f32 = 34.0;           // how fast it is going as it does
 const FB_THICK: f32 = 3.4;         // the metal's thickness, blocks
-const FB_EDGE: f32 = 2.2;          // how soon it reaches that from its edge
+const FB_EDGE: f32 = 3.4;          // how soon it reaches that from its edge
 fn fb_source(g: FwBend) -> vec2<f32> {
     // (off to one side of the player, so that it starts where they can see it start)
     return vec2<f32>(-0.32 * g.e.x - 0.947 * g.e.y, 0.947 * g.e.x - 0.32 * g.e.y);
@@ -833,10 +834,10 @@ fn fb_wet(c: vec2<f32>, S: vec2<f32>, rd: f32) -> f32 {
     let k2 = k * k;
     return FB_B0 + FB_BT * (0.55 * k + 0.45 * k2 * k2 * k2);
 }
-struct FbField { m: f32, gm: vec2<f32>, dent: f32, dg: vec2<f32>, hole: f32, hd: vec2<f32> }
+struct FbField { m: f32, gm: vec2<f32>, dent: f32, dg: vec2<f32> }
 // `q` on the mesh: the liquid's edge field (m > 0 inside it, about blocks), the dimples, and how far the nearest hole is.
 fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
-    var o = FbField(0.0, vec2<f32>(0.0), 0.0, vec2<f32>(0.0), 1.0e6, vec2<f32>(0.0));
+    var o = FbField(0.0, vec2<f32>(0.0), 0.0, vec2<f32>(0.0));
     let a0 = FB_PITCH;
     let row = 0.866 * a0;
     let j0 = round(q.y / row);
@@ -852,10 +853,6 @@ fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
             let c = vec2<f32>(off + i * a0, j * row);
             let e = q - c;
             let e2 = dot(e, e);
-            if (e2 < o.hole) {
-                o.hole = e2;
-                o.hd = e;
-            }
             let h = hash21(vec2<f32>(i, j) + 7.0);
             let h2 = fract(h * 37.7);
             // (a few well ahead of the front, the rest about it)
@@ -864,14 +861,16 @@ fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
             if (age <= 0.0) {
                 continue;
             }
-            let r = a0 * (0.1 + (0.5 + 0.34 * h) * (1.0 - exp(-age / (0.26 * FB_BT))) + 0.5 * fw_ss(0.5, 1.6, age));
+            // (they don't blend by degrees: past a certain size neighbours snap together, nearly all at once, FB_JOIN)
+            let snap = 0.17 * fw_ss(FB_JOIN + 0.1 * h2, FB_JOIN + 0.14 + 0.1 * h2, t) * fw_ss(0.03, 0.2, age);
+            let r = a0 * (0.1 + (0.5 + 0.34 * h) * (1.0 - exp(-age / (0.26 * FB_BT))) + 0.5 * fw_ss(0.5, 1.6, age) + snap);
             let m = r - e2 / r;
             let w = exp(m / k);
             sum += w;
             gs += w * (-2.0 / r) * e;
             // (a dimple over the hole, closing slowly, some much slower)
-            let close = 0.8 + 2.6 * h2 * h2;
-            let dd = (1.0 - fw_ss(0.15, close, age)) * exp(-e2 / (0.1 * a0 * a0)) * (0.6 + 0.8 * h);
+            let close = 0.5 + 2.8 * max(h - 0.62, 0.0) * 2.6;
+            let dd = (1.0 - fw_ss(0.12, close, age)) * exp(-e2 / (0.1 * a0 * a0)) * (0.6 + 0.8 * h);
             o.dent += dd;
             o.dg += dd * (-2.0 / (0.1 * a0 * a0)) * e;
         }
@@ -882,8 +881,37 @@ fn fb_field(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbField {
     } else {
         o.m = -1.0e3;
     }
-    o.hole = sqrt(o.hole);
     return o;
+}
+// The mesh itself, which doesn't move: how far `q` is from the nearest hole, the way from it, and that distance last.
+fn fb_mesh(q: vec2<f32>) -> vec3<f32> {
+    let row = 0.866 * FB_PITCH;
+    let j0 = round(q.y / row);
+    var best = vec3<f32>(0.0, 0.0, 1.0e6);
+    for (var dj = -1.0; dj < 1.5; dj += 1.0) {
+        let j = j0 + dj;
+        let off = 0.5 * FB_PITCH * (j - 2.0 * floor(j * 0.5));
+        let e = q - vec2<f32>(off + round((q.x - off) / FB_PITCH) * FB_PITCH, j * row);
+        let e2 = dot(e, e);
+        if (e2 < best.z) {
+            best = vec3<f32>(e, e2);
+        }
+    }
+    return vec3<f32>(best.xy, sqrt(best.z));
+}
+// The metal on the mesh running in, from FB_RUN: where on what wet the mesh the metal now at `q` came from. Slowly, then faster, winding a little, drawing its lumps out along the way.
+fn fb_ran(q: vec2<f32>, t: f32, rd: f32) -> vec2<f32> {
+    let x = clamp(t - FB_RUN, 0.0, 1.1);
+    if (x <= 0.0) {
+        return q;
+    }
+    let r = max(length(q), 1.0);
+    let u = min(r / rd, 1.0);
+    let D = 150.0 * x * x * (1.0 + 0.5 * x) * (0.35 + 0.65 * u) * (1.0 - u * u * u);
+    let a = 0.0016 * D * (1.0 - 0.5 * u);
+    let c = cos(a);
+    let s = sin(a);
+    return vec2<f32>(q.x * c - q.y * s, q.x * s + q.y * c) * (r + D) / r;
 }
 // The metal's slow flow: lumps, and from FB_RUN its streaks running in and winding a little to the drip. (height, its slope along x, z), blocks.
 fn fb_flow(q: vec2<f32>, t: f32) -> vec3<f32> {
@@ -895,7 +923,7 @@ fn fb_flow(q: vec2<f32>, t: f32) -> vec3<f32> {
     var hh = 0.0;
     var dr = 0.0;
     var dt = 0.0;
-    let on = fw_ss(FB_RUN, FB_RUN + 0.9, t) * fw_ss(16.0, 60.0, r);
+    let on = fw_ss(FB_RUN, FB_RUN + 0.9, t) * fw_ss(8.0, 36.0, r);
     if (on > 0.0) {
         // (the run in: slow to start, and it goes on)
         let clock = 8.0 * (t - FB_RUN) + 1.3 * sin(1.7 * t);
@@ -906,10 +934,19 @@ fn fb_flow(q: vec2<f32>, t: f32) -> vec3<f32> {
         for (var j = 0; j < 5; j += 1) {
             let ph = K[j] * th + C[j] * lr + clock * sign(C[j]) * (0.9 + 0.13 * f32(j)) + P[j] + 0.5 * sin(0.9 * t + P[j]);
             let c = cos(ph);
-            hh += A[j] * on * sin(ph);
-            dr += A[j] * on * c * C[j] / r;
-            dt += A[j] * on * c * K[j] / r;
+            // (the fine lines thin out towards the middle, or they crowd into a frost)
+            let am = A[j] * on * fw_ss(0.9 * K[j], 3.0 * K[j], r);
+            hh += am * sin(ph);
+            dr += am * c * C[j] / r;
+            dt += am * c * K[j] / r;
         }
+    }
+    // (rings running out of the middle from the pinch, and a last one from the touch)
+    let xp = t - FB_PIN;
+    if (xp > 0.0 && xp < 1.6) {
+        let ph = r * 0.16 - xp * 16.0;
+        let a_ = 2.2 * exp(-xp / 0.5) * fw_ss(0.0, 0.05, xp) * fw_ss(r * 0.16 - 16.0 * xp - 0.5, r * 0.16 - 16.0 * xp + 1.5, 0.0);
+        dr += a_ * 0.16 * cos(ph) * exp(-r / 150.0);
     }
     let lump = 1.0 - 0.6 * fw_ss(FB_RUN, FB_PIN, t);
     let a = q * 0.021 + vec2<f32>(0.2 * t, -0.13 * t);
@@ -945,7 +982,7 @@ fn fb_pool(t: f32, Rd: f32) -> FbPool {
     // (let go: the bulge goes back up with a bounce or two and the dimple fills)
     let e = exp(-x / 0.62);
     let b = cos(x * 7.6) * e;
-    return FbPool(max(30.0 * b, 0.0) + 2.2 * sin(x * 7.6 + 1.0) * e, 32.0, 6.0 * e, L, R, 0.1 * R * (1.0 - fw_ss(0.0, 0.03, x)), 0.0);
+    return FbPool(max(30.0 * b, 0.0) + 2.2 * sin(x * 7.6 + 1.0) * e, 32.0, 6.0 * e, 0.0, 0.0, 0.12 * R * (1.0 + 2.2 * fw_ss(0.0, 0.16, x)), FB_LONG * 0.72 * exp(-x / 0.075));
 }
 // The drop as it hangs, its tip in the neck: fd_bead's own teardrop.
 fn fb_drop_at(p0: vec2<f32>, R: f32, wob: f32) -> FdDrop {
@@ -974,6 +1011,10 @@ fn fb_sdf(p: vec3<f32>, y0: f32, P: FbPool, d: FdDrop) -> f32 {
         let wide = P.n * (1.0 + 2.0 * fw_ss(-P.L * 0.5, -0.1 * P.a, ny));
         let neck = length(vec2<f32>(rho, y - ny)) - wide;
         s = fd_smin(s, fd_smin(b, neck, 0.5 * P.R), 2.5 + 0.34 * P.a);
+    } else if (P.top > 0.5) {
+        // (the neck's stump, pulled back up into the bulge)
+        let ny = clamp(y, -P.top, 0.0);
+        s = fd_smin(s, length(vec2<f32>(rho, y - ny)) - P.n, 4.0);
     }
     return s;
 }
@@ -993,9 +1034,20 @@ fn fd_smin(a: f32, b: f32, k: f32) -> f32 {
 fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>) -> vec3<f32> {
     var c = fd_chrome(v, S, n, gq, 0.0);
     let r = reflect(v, n);
+    // (over it is the metal's own roof, not the sky)
+    c = mix(c, fd_round(r.xzy) * 1.6 + vec3<f32>(0.05, 0.055, 0.06), fd_ss(-0.1, 0.2, r.y));
+    // (the world in it. What a mirror overhead really shows is the floor behind the eye, which isn't on the picture: this bends its rays out to the walls round the hole, which are, and the
+    // metal takes the land's own colours, bent by every lump in it)
+    let side = vec3<f32>(r.x * 3.2, 0.3 + 0.5 * abs(r.y), r.z * 3.2) + 0.65 * v;
+    let ro = project_rel(normalize(side) * 600.0);
+    let there = select(0.0, fd_ss(0.0, 0.14, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))), ro.z > 0.0);
+    if (there > 0.0) {
+        let l = fd_sample(ro.xy);
+        c = mix(c, l * (0.55 + 1.1 * luminance(l)) * 1.3 + c * 0.25, 0.85 * there);
+    }
     let k1 = max(dot(r, normalize(vec3<f32>(0.5, -0.62, 0.3))), 0.0);
     let k2 = max(dot(r, normalize(vec3<f32>(-0.7, -0.5, -0.45))), 0.0);
-    c = c + vec3<f32>(1.0, 0.98, 0.95) * (2.4 * pow(k1, 90.0) + 0.14 * pow(k1, 6.0)) + vec3<f32>(0.75, 0.85, 1.05) * (1.6 * pow(k2, 60.0) + 0.1 * pow(k2, 5.0));
+    c = c + vec3<f32>(1.0, 0.98, 0.95) * (1.6 * pow(k1, 90.0) + 0.12 * pow(k1, 6.0)) + vec3<f32>(0.75, 0.85, 1.05) * (1.1 * pow(k2, 60.0) + 0.09 * pow(k2, 5.0));
     return c;
 }
 fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
@@ -1020,29 +1072,33 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             // (the stars narrow to one side: where the plate hasn't reached)
             let ic = -S * rd * 0.34 * u;
             let iris = length(q - ic) - (rd * 1.08 * (1.0 - u)) * (1.0 + 0.012 * sin(atan2(q.y, q.x) * 3.0 + 1.0 + t) * 1.0);
-            let open = fb_opened(t, rd) * (1.0 + 0.05 * sin(atan2(q.y, q.x) * 7.0 + 1.0) + 0.03 * sin(atan2(q.y, q.x) * 17.0));
+            let th = atan2(q.y, q.x);
+            let open = fb_opened(t, rd) * (1.0 + 0.045 * sin(th * 2.0 + 1.0 + 1.3 * sin(th * 3.0 - t * 2.0)) + 0.03 * sin(th * 5.0 - 0.7 + 0.9 * sin(th * 2.0 + t)) + 0.014 * sin(th * 13.0 + 2.0));
             let edge = min(iris, r - open);
             let cov = saturate(edge / ps + 0.5);
             if (cov > 0.0) {
-                let f = fb_field(q, t, S, rd);
+                let f = fb_field(fb_ran(q, t, rd), t, S, rd);
                 let fl = fb_flow(q, t);
+                let hl = fb_mesh(q);
                 // ---- the plate: dark steel, its holes darker --------------------------------------------------------------------
                 let hr = 0.21 * FB_PITCH;
-                let dot_ = saturate((hr - f.hole) / ps + 0.5);
+                let dot_ = saturate((hr - hl.z) / ps + 0.5);
                 let lipn = fw_ss(9.0, 0.0, edge);
-                let dn = normalize(vec3<f32>(f.hd.x * 0.06 * dot_ + q.x * 0.00012 + 0.3 * lipn * (q.x - ic.x) / max(length(q - ic), 1.0), -1.0, f.hd.y * 0.06 * dot_ + q.y * 0.00012 + 0.3 * lipn * (q.y - ic.y) / max(length(q - ic), 1.0)));
+                let dn = normalize(vec3<f32>(hl.x * 0.06 * dot_ + q.x * 0.00012 + 0.3 * lipn * (q.x - ic.x) / max(length(q - ic), 1.0), -1.0, hl.y * 0.06 * dot_ + q.y * 0.00012 + 0.3 * lipn * (q.y - ic.y) / max(length(q - ic), 1.0)));
                 let wn = normalize(fd_returned(dn, g, at));
-                var pl = fb_chrome(v, v * s, wn, gq) * 0.34 + vec3<f32>(0.03, 0.032, 0.036);
+                var pl = fb_chrome(v, v * s, wn, gq) * 0.16 + vec3<f32>(0.02, 0.022, 0.026);
                 pl = mix(pl, col * 0.45, dot_);
                 var c = pl;
                 // ---- the metal ------------------------------------------------------------------------------------------------
-                let m = min(f.m, edge);
+                // (what was left dry goes under by itself; the fine grain of the boil is gone by the time the drop is)
+                let m = min(max(f.m, 40.0 * (t - 37.3)), edge);
+                let fine = 1.0 - fw_ss(36.75, 37.35, t);
                 let wet = saturate(m / ps + 0.5);
                 if (wet > 0.0) {
                     let ex = exp(-max(m, 0.0) / FB_EDGE);
                     let dh = FB_THICK / FB_EDGE * ex;
                     let dent = 1.5 * (1.0 - ex);
-                    let gr = f.gm * dh * 0.7 - f.dg * dent + fl.yz * (1.0 - ex) * 0.8;
+                    let gr = (f.gm * dh * 0.7 - f.dg * dent) * fine + fl.yz * (1.0 - ex) * 0.8;
                     let n = normalize(fd_returned(normalize(vec3<f32>(-gr.x, -1.0, -gr.y)), g, at));
                     c = mix(c, fb_chrome(v, v * s, n, gq), wet);
                 }
@@ -1054,11 +1110,11 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
     // ---- the bulge, the bead and its neck ----------------------------------------------------------------------------------
     if (t > FB_RUN && t < FB_PIN + 2.6 && d.y > 0.05) {
         let P = fb_pool(t, Rd);
-        let D = fb_drop_at(vec2<f32>(0.0), P.R, 1.0);
-        let bot = -(P.L + 1.3 * P.R + 2.0);
+        let D = fb_drop_at(vec2<f32>(0.0), P.R, mix(1.0, fb_wobble(0.0), fw_ss(36.8, FB_PIN, t)));
+        let bot = -(max(P.L, P.top) + 1.5 * P.R + 4.0);
         let a = (y0 + bot - o.y) / d.y;
         let b = (y0 + 3.0 - o.y) / d.y;
-        let bound = max(3.0 * P.w, 2.4 * P.R);
+        let bound = max(3.0 * P.w, 2.6 * P.R);
         let s0 = o.xz + d.xz * a;
         let s1 = o.xz + d.xz * b;
         let sd = s1 - s0;
@@ -1093,6 +1149,116 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 let keep = fw_ss(-12.0, -2.0, q.y - y0);
                 let n = normalize(fd_returned(normalize(n0 - vec3<f32>(fl.y, 0.0, fl.z) * 0.8 * keep), g, at));
                 col = mix(col, fb_chrome(v, v * sb, n, gq), cov);
+            }
+        }
+    }
+    // ---- the drop, let go ---------------------------------------------------------------------------------------------------
+    if (t >= FB_PIN && t < FD_BEAT + 0.16) {
+        let x = t - FB_PIN;
+        let w = fb_wobble(x);
+        let D = fb_drop_at(vec2<f32>(0.0), Rd, w);
+        let cy = y0 - fb_fall(x, y0, Rd);
+        let c = vec3<f32>(0.0, cy, 0.0);
+        let bc = c + vec3<f32>(0.0, 0.36 * Rd, 0.0) - o;
+        let rb = 1.9 * Rd * max(w, 1.0 / sqrt(w));
+        let bcd = dot(bc, d);
+        let miss = length(bc - d * bcd);
+        // (a bright point the eye can stay on, as long as it is small, and a little soft light round it all the way down)
+        if (bcd > 0.0) {
+            let ang = miss / bcd;
+            let close = fw_ss(0.05, 0.012, Rd / bcd);
+            col = col + vec3<f32>(0.92, 0.96, 1.05) * (exp(-ang / (0.0016 + 0.25 * Rd / bcd * (1.0 - close))) * 0.5 * (0.35 + 0.65 * close) + exp(-ang / 0.014) * 0.07);
+        }
+        if (miss < rb && bcd > 0.0) {
+            var s = max(bcd - rb, 0.05);
+            var best = 1.0e9;
+            var sb = s;
+            for (var i = 0; i < 40; i += 1) {
+                let e = fd_bead(o + d * s - c, D);
+                let rel = e / (px * s);
+                if (rel < best) {
+                    best = rel;
+                    sb = s;
+                }
+                if (rel < 0.1) {
+                    sb = s + e + fd_bead(o + d * (s + e) - c, D);
+                    break;
+                }
+                s += max(e, 0.15 * px * s);
+                if (s > bcd + rb) {
+                    break;
+                }
+            }
+            let cov = saturate(1.0 - best);
+            if (cov > 0.0 && sb < far + 0.4) {
+                let n = normalize(fd_returned(fd_bead_n(o + d * sb - c, D), g, at));
+                col = mix(col, fb_chrome(v, v * sb, n, gq), cov);
+            }
+        }
+    }
+    return col;
+}
+// ---- the hit: on the land, where it lands. A little crown of the metal thrown up and out and falling back, a ring of it running out over the land, a splash that soaks in.
+const FB_SPLASH: i32 = 14;
+fn fb_hit(colIn: vec3<f32>, v: vec3<f32>, far: f32, off: vec3<f32>, sky0: bool, t: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
+    var col = colIn;
+    let a = t - FD_BEAT;
+    let Rd = fb_R(g.d);
+    let o = fd_unturn(mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at, true);
+    let d = fd_unturn(v, g, at, false);
+    // ---- on the land ------------------------------------------------------------------------------------------------------
+    if (!sky0) {
+        let P = o + d * far;
+        let r = length(P.xz);
+        if (abs(P.y) < 26.0 && r < 90.0) {
+            let front = Rd * 0.6 + 46.0 * (1.0 - exp(-a / 0.2));
+            let x = (r - front) / (1.0 + 2.4 * a);
+            let fade = exp(-a / 0.3);
+            col = col + vec3<f32>(0.85, 0.92, 1.05) * exp(-x * x) * fade * 0.75 * saturate(a / 0.02);
+            // (the splash: chrome on the land, thrown out with the ring, soaking in by the time the metal lets go)
+            let wet = Rd * (0.4 + 1.5 * (1.0 - exp(-a / 0.09))) * (1.0 + 0.12 * sin(atan2(P.z, P.x) * 5.0 + 1.0) + 0.08 * sin(atan2(P.z, P.x) * 11.0));
+            let dry = wet * fw_ss(0.5, 1.0, a);
+            let edge = min(wet - r, r - dry);
+            let cov = saturate(edge / (0.0016 * far) + 0.5);
+            if (cov > 0.0) {
+                let nr = 0.5 * fw_ss(0.0, 2.0, edge) * 0.0 + 0.8 * fw_ss(2.5, 0.0, min(edge, 2.5)) * sign(wet - r - (r - dry));
+                let rh = P.xz / max(r, 0.01);
+                let n = normalize(fd_returned(normalize(vec3<f32>(rh.x * nr + 0.25 * sin(r * 1.6 - a * 26.0) * exp(-a / 0.25) * rh.x, 1.0, rh.y * nr + 0.25 * sin(r * 1.6 - a * 26.0) * exp(-a / 0.25) * rh.y)), g, at));
+                col = mix(col, fd_chrome(v, v * far, n, gq, 0.8), cov);
+            }
+        }
+    }
+    // ---- the crown --------------------------------------------------------------------------------------------------------
+    if (a < 0.95) {
+        let px = frame.view_params.w / frame.resolution.y;
+        let bc = -o;
+        let bcd = dot(bc, d);
+        if (length(bc - d * bcd) < 90.0 && bcd > 0.0) {
+            for (var i = 0; i < FB_SPLASH; i += 1) {
+                let h = hash21(vec2<f32>(f32(i), 3.0));
+                let h2 = fract(h * 19.3);
+                let an = (f32(i) + 0.8 * h) * 6.2831853 / f32(FB_SPLASH);
+                let vo = 16.0 + 26.0 * h2;
+                let vu = 30.0 + 34.0 * fract(h * 7.1);
+                let life = a - 0.03 * h;
+                if (life <= 0.0) {
+                    continue;
+                }
+                let y = vu * life - 62.0 * life * life;
+                if (y < -1.0) {
+                    continue;
+                }
+                let c = vec3<f32>(cos(an) * (Rd * 0.5 + vo * life), y, sin(an) * (Rd * 0.5 + vo * life));
+                let rb = (0.35 + 0.5 * h) * 0.2 * Rd * (1.0 - 0.3 * life);
+                let oc = c - o;
+                let b = dot(oc, d);
+                let miss = length(oc - d * b);
+                let cov = saturate((rb - miss) / (px * b) + 0.5);
+                if (cov > 0.0 && b - rb < far + 1.0) {
+                    let z = sqrt(max(rb * rb - miss * miss, 0.0));
+                    let n = normalize(fd_returned(normalize(d * (b - z) - oc), g, at));
+                    col = mix(col, fd_chrome(v, v * (b - z), n, gq, 0.8), cov);
+                }
             }
         }
     }
@@ -1244,7 +1410,11 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         let mq = me - tgt;
         let e2 = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
         let g = fw_bend(tau, t, FW_LEN, mq, e2, max(FW_END_K * clamp(frame.view_params.z, 480.0, 20000.0) - dist, 300.0), 0.0);
-        col = fb_boil(col, v, far, t, mq, gq, g, fw_roll(g.d, g.pin, g));
+        let at_ = fw_roll(g.d, g.pin, g);
+        col = fb_boil(col, v, far, t, mq, gq, g, at_);
+        if (t > FD_BEAT) {
+            col = fb_hit(col, v, far, off, sky0, t, mq, gq, g, at_);
+        }
     }
     // ---- the touch: a tiny light at the point the moment the tip reaches it, there while it holds, gone as it lets go -----
     let dd = length((uv - pt.xy) * vec2<f32>(aspect, 1.0));
