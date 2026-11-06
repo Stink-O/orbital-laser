@@ -21,13 +21,13 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
   score     12 s: the creases: ice. Clean pews one at a time with air between them, stones skipping away, a thicker sheet as it
             goes on, and from 16 s the tears: a heavy falling chirp and a dark breath of ground parting.
   unravel   19 s: long falling glissandi off a thick sheet, heave after heave, room between them.
-  groan     19 s: the land bending, a hull's and a tree's stress, closing overhead from 26 s: the sky's air goes, the sound turns
-            inward to a huge dark space.
-  foldown   35 s: the seal, a far vault shutting, and the fold coming down: creases getting smaller and further apart, a vast
-            mechanism's ticks running slower and slower, the air draining till there is nothing by 39.6.
+  groan     19 s: the land bending, a hull's and a tree's stress, the far land's slow lift to 23.5 under it, closing overhead from 26 s: the
+            sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
+  foldown   34.5 s: the rim gathering at the hole, huge and far off; from 35 the whole land winding in and pouring down in six
+            lurches, a vortex; a thread by 38; nothing by 39.6.
   ding      40 s: the touch: one small pure tone in the silence, a fork's kind of note, the hollow answering far off.
-  reverse   40.5 s, exactly 3.6 s: the whole fold going back, on the picture's own clock: the ground starting to move, the arm's
-            stages undoing one by one, the seal parting at 41.9, the walls of land working open and the sky's air coming in,
+  reverse   40.5 s, exactly 3.6 s: the whole fold going back, on the picture's own clock: the ground starting to move, the vortex's
+            turns undoing one by one, the rim going back up, the tube opening from 42.8 and the sky's air coming in,
             the far land going at the end. Forward sounds gathering: nothing played backwards, nothing climbing in pitch.
   bang1-4   44.1, 45.2, 46.3, 47.4 less 0.8 s: a ring of land falling for 0.8 s and stopping dead: its own fall, its own bang.
             bang1 the far land, a long hit rolling away round the horizon; bang2 a broken ring, two blows; bang3 the nearest and
@@ -71,6 +71,8 @@ PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 
 # The beats (strike/fold.rs's FD_*): the stems are built on them.
 STOP, HANG, TOUCH, CLOSED, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL = 3.4, 4.9, 6.0, 6.3, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0
+HOLD, GATHER, TUBE = 31.5, 34.5, 42.8                  # the world stops closing; the rim gathers at the hole; on the way back the tube opens
+LIFT = 23.5                                           # the far land's slow lift (20.1 s on) at its height
 REACHED, DING, REL, LEN = 39.0, 40.0, 40.5, 59.7      # (the arm's stages done, the tip 13 short and creeping: FW_HANG; FD_LEN)
 SLAMS = [44.1, 45.2, 46.3, 47.4, 48.7]                # (FD_SLAM: each ring falling for FALL s and stopping dead)
 FLAT, SLAM = SLAMS[0], SLAMS[4]
@@ -97,14 +99,14 @@ def underfoot_at(dist=SITE):
 # (time, file, volume, pitch), as fold_plan plays them
 EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0), (HANG, "letgo", 1.0, 1.0),
           (TOUCH - MELD_LEAD, "meld", 1.0, 1.0), (RIPPLE, "ripple", 1.0, 1.0), (SCORE, "score", 1.0, 1.0),
-          (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (SEAL, "foldown", 1.0, 1.0),
+          (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (GATHER, "foldown", 1.0, 1.0),
           (DING, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
           *[(t - FALL, f"bang{k + 1}", 1.0, 1.0) for k, t in enumerate(SLAMS[:4])],
           (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM, "sink", 1.0, 1.0), (SLAM + underfoot_at(), "underfoot", 1.0, 1.0),
           (COMEDOWN, "comedown", 1.0, 1.0)]
 SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 4.9), ("drop", 4.9, 6.0), ("hit", 6.0, 6.5), ("sink", 6.5, 7.5), ("ripple", 7.5, 12.0),
-            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 35.0), ("foldown", 35.0, 39.0), ("hush2", 39.6, 40.0),
-            ("ding", 40.0, 40.5), ("gather", 40.5, 41.9), ("open", 41.9, 43.3), ("farland", 43.3, 44.1), ("bang1", 44.1, 45.2), ("bang2", 45.2, 46.3),
+            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 32.2, 34.5), ("vortex", 34.5, 39.0), ("hush2", 39.6, 40.0),
+            ("ding", 40.0, 40.5), ("gather", 40.5, 42.8), ("open", 42.8, 43.3), ("farland", 43.3, 44.1), ("bang1", 44.1, 45.2), ("bang2", 45.2, 46.3),
             ("bang3", 46.3, 47.4), ("bang4", 47.4, 47.9), ("fall", 47.9, 48.7), ("slam", 48.7, 49.1), ("letgo", 49.1, 51.0), ("land", 51.0, 53.1), ("debris", 53.1, 56.0), ("comedown", 56.0, 59.7)]
 
 
@@ -1074,16 +1076,17 @@ def unravel():
         L += a
         R += b
     # (between them one far crack at a time)
-    for t1 in P.poisson_times(0.6, dur - 2.5, lambda s: 0.45 + 0.4 * s / dur):
+    for t1 in P.poisson_times(0.6, HOLD - FOLD - 0.8, lambda s: 0.45 + 0.4 * s / dur):
         fc = THICK[rng().choice(["skate", "mid", "thick", "thick", "slab"])]
         pew(L, R, t1, rng().uniform(200, 800), fc, rng().uniform(0.2, 0.5), rng().uniform(-0.9, 0.9))
     L, R = verb(L, R, 0.1, length=3.0, darken=(2200, 280), decay=1.2)
     # (the sky going: from 26 s it closes overhead, and all that's left of this is heard through the ground)
     w = ss(CLOSING - FOLD, dur - 0.8, t)
-    L, R = muffle(L, w ** 0.7, 500.0) * (1 - 0.65 * w), muffle(R, w ** 0.7, 500.0) * (1 - 0.65 * w)
+    still = 1 - ss(HOLD - FOLD - 0.1, HOLD - FOLD + 0.7, t)     # (the world stops closing)
+    L, R = muffle(L, w ** 0.7, 500.0) * (1 - 0.65 * w) * still, muffle(R, w ** 0.7, 500.0) * (1 - 0.65 * w) * still
     L, R = PB.causal_lowcut(L, 45.0), PB.causal_lowcut(R, 45.0)
     L, R = low_mono(L, R, 170.0)
-    out("unravel", L, R, -11.0, tail=1.0, peak=10 ** (-2.5 / 20))
+    out("unravel", L, R, -11.5, tail=1.0, peak=10 ** (-2.5 / 20))
 
 
 # =======================================================================================================  the land closing
@@ -1109,12 +1112,12 @@ def moan(n, at, dur, f0, f1, wob=0.05):
 
 
 def groan():
-    seal, close = SEAL - FOLD, CLOSING - FOLD
-    end = 38.0 - FOLD                                         # (gone before the last folds)
+    seal, close = HOLD - FOLD, CLOSING - FOLD                 # (it stops with the world's closing; what's left is the tube's air)
+    end = GATHER + 1.0 - FOLD
     d = end
     n = n_of(d)
     t = times(n)
-    build = (0.06 + 0.94 * ss(1.0, seal - 0.5, t) ** 1.7) * (1 - ss(seal - 0.1, seal + 1.4, t))
+    build = (0.06 + 0.94 * ss(1.0, seal - 0.5, t) ** 1.7) * (1 - ss(seal - 0.1, seal + 0.7, t))
     heave = np.clip(1 + 0.42 * PB.slow_random(n, 0.1, 0.8), 0.25, None)
     strain = np.clip(0.42 + 0.85 * PB.slow_random(n, 0.1, 0.5), 0.12, None) ** 1.5     # (it comes and goes: never a wall)
     bed_ = bn(n, 19, 58) * heave * build * 0.8
@@ -1135,6 +1138,8 @@ def groan():
         tones += moan(n, t1, dur, f0, f0 * rng().choice([0.72, 0.84, 1.18, 1.32])) * rng().uniform(0.5, 1.0) * (0.35 + 0.65 * v)
         t1 += rng().uniform(0.8, 2.3) * (1.15 - 0.6 * v)
     M = bed_ + sub + hull + T.unit(tones) * (0.2 + 0.8 * strain) * build * 1.1
+    # (the far land lifting: a slow heave of the whole horizon, up from 20.1 s, no note in it)
+    M = M + eddies(d, 24, 320, 2.5, -5.0, 13.0, 6.0) * np.exp(-0.5 * ((t - (LIFT - FOLD)) / 1.5) ** 2) * ss(1.0, 2.5, t) * 0.5
     L, R = M.copy(), M.copy()
     for t1 in P.poisson_times(0.5, seal, lambda s: 0.5 + s / d):
         x = T.thud(n_of(1.0), rng().uniform(1.6, 3.0)) * rng().uniform(0.8, 1.8) * (0.3 + 0.7 * t1 / d)
@@ -1156,75 +1161,70 @@ def groan():
     L, R = muffle(L, w * 0.85), muffle(R, w * 0.85)
     wl, wr = inside(L, R, 0.05 + 0.95 * ss(close, seal - 1.0, t), 0.6)
     k = 1 - 0.6 * w
-    L, R = L * k + wl, R * k + wr
+    hush = 1 - 0.9 * ss(seal + 0.1, seal + 1.0, t)              # (and the stillness: its long tail shut off, only the air left)
+    L, R = (L * k + wl) * hush, (R * k + wr) * hush
     # (the air in it)
-    room = ss(close + 2.0, seal, t) * (1 - ss(seal + 0.5, end - 0.2, t))
+    room = ss(close + 2.0, seal, t) * (1 - ss(end - 1.2, end - 0.2, t))
     a, b = wide(hollow(n), hollow(n, (61.0, 103.0, 149.0, 211.0, 293.0)), 0.5)
     L += a * room * 0.09
     R += b * room * 0.09
     L, R = low_mono(L, R, 190.0)
-    out("groan", L, R, -13.0, tail=0.8, peak=10 ** (-4.0 / 20))
+    out("groan", L, R, -15.5, tail=0.6, peak=10 ** (-4.0 / 20))
 
 
 # ===========================================================================================================  the fold down
 def foldown():
-    last = REACHED - SEAL                                     # (the stages are over; the tip creeps on to 39.7, and this is gone by 39.6)
-    d = DING - SEAL - 0.3
+    """The rim goes: from 34.5 it gathers at the hole, huge and far off, and from 35 the whole land winds in and pours down it in six
+    lurches (the fold's stages, CREASES), a vortex of soil and rock, no branch and no mechanism. It goes round, unevenly, quicker as it
+    narrows; all the weight is in the first of it, and by 38 the neck is a thread with nothing heavy left in it. It creeps, and it's
+    gone by 39.6: the ding has true silence."""
+    last = REACHED - GATHER                                   # (the stages are over; the tip creeps on to 39.7, and this is gone by 39.6)
+    d = DING - GATHER - 0.3
     n = n_of(d)
     t = times(n)
-    L, R = np.zeros(n), np.zeros(n)
-    # (the seal itself: a vault door a long way off, heard through the ground; the first fold starts on it)
-    boom = blow(n, 0.0, 66, 36, 27, 0.1, 0.01, [(0.7, 0.5), (0.3, 1.6)], drive=2.4) * 1.5
-    L += boom
-    R += boom
+    pour = np.zeros(n)                                        # (how much land is coming down: each stage a surge of it, less each time)
     for k, c in enumerate(CREASES):
-        at = c - SEAL
+        u = np.maximum(t - (c - GATHER), 0)
+        pour += 0.8 ** k * (1 - np.exp(-u / 0.14)) * np.exp(-u / 0.42) * (t >= c - GATHER)
+    pour = pour / pour.max()
+    gather = ss(0.0, 0.75, t)
+    move = 0.14 * gather + 0.86 * pour
+    thin = ss(3.1, 4.1, t)                                    # (by 38 the neck is a thread)
+    # (the land going round: its turn quickening as it narrows, uneven, the great mass of it passing and passing)
+    turn = (0.7 + 0.8 * ss(0.5, 3.5, t)) * np.clip(1 + 0.3 * PB.slow_random(n, 0.3, 1.5), 0.4, None)
+    whirl = 1 + 0.26 * np.sin(2 * np.pi * np.cumsum(turn) / SR + 1.3) * ss(0.4, 1.2, t)
+    roar = eddies(d, 45, 5600, 3.0, -4.4, 11.0, 6.0, np.clip(move * 2.2, 0.2, 2.4), 1.6, 300.0) * move * whirl
+    low = bn(n, 22, 100) * boiled(n, 0.3, 2.0, 4.0) * move * (1 - thin) * 0.7
+    rattle = rocks(d, (20.0 + 300.0 * pour ** 1.2) * gather + 1e-3, 130, 1700, (0.3, 0.7, 1.4), (0.58, 0.32, 0.1)) * move ** 0.6
+    M = roar * 0.55 + low + rattle * 0.3
+    # (the rim dragging round: rock under load, no note, slowing as the weight goes)
+    for at, ln, f0, g in ((0.2, 2.6, 62, 0.34), (1.4, 2.4, 54, 0.3), (2.6, 1.8, 74, 0.2)):
+        M = M + moan(n, at, ln, f0, f0 * 0.72) * g
+    # (the gathering: the first of it shifting, a long way off, heard through the ground)
+    far = bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.55
+    P.put(M, far, 0.0)
+    L, R = M.copy(), M.copy()
+    for k, c in enumerate(CREASES):
+        at = c - GATHER
         v = k / (len(CREASES) - 1)
-        size = 0.52 ** k
-        # (the sheet creased: a bending wave off a plate, thinner and higher as the folds halve)
-        fc = 110.0 * (640.0 / 110.0) ** v
-        pew(L, R, at + 0.02, 170 - 110 * v, fc, 0.42 * size ** 0.8, rng().uniform(-0.25, 0.25), 2)
-        # (the crease itself: a run of small dull breaks, kept low: paper-fine is tin foil)
-        m = n_of(0.34)
-        s = times(m)
-        cr = stick(m, 240 * np.exp(-s / 0.12) + 20, 0.6, 0.15, 0.0015, 0.0005)
-        cr = bp(cr, 180 + 260 * v, 760 + 640 * v) * np.exp(-s / (0.13 - 0.05 * v))
-        y = T.unit(cr) * 0.09 * size ** 0.6
+        size = 0.74 ** k
+        # (each stage's lurch: the land giving another turn, the ground taking the weight of it, no sweep)
+        m = n_of(1.6)
+        y = struck(m, 0.0, 0.12, GROUND[1:], 26, 0.4) * 0.9 + struck(m, 0.0, 0.08, RUBBLE, 16, 0.5) * 0.5
+        P.put(y, bare_blow(2.2, 22, 110, 0.03, 0.16) * 0.5, 0.0)
+        y = y * size
         P.put(L, y, at)
         P.put(R, y, at)
-        # (the air it shoves)
-        m = n_of(0.9)
-        s = times(m)
-        y = bn(m, 40, 260 - 100 * v) * (1 - np.exp(-s / 0.05)) * np.exp(-s / 0.2) * 0.34 * size
-        P.put(L, y, at)
-        P.put(R, y, at)
-    # (a mechanism the size of a county, running down: slower and slower, to one last tick as the arm comes to its stop)
-    tk, rate = 0.15, 13.0
-    while tk < last + 0.3:
-        v = tk / last
-        m = n_of(0.25)
-        f1 = rng().uniform(170, 215) * (1 + 0.5 * v)
-        y = P.modal_hit(m, f1, [1.0, rng().uniform(1.5, 1.7), rng().uniform(2.6, 3.1), rng().uniform(4.6, 5.4)],
-                        [rng().uniform(0.012, 0.03), 0.012, 0.008, 0.004], [1.0, 0.6, 0.3, 0.15], 0.25, 2500)
-        y = y / (np.abs(y).max() + 1e-9) * 0.075 * (1 - 0.72 * v) * rng().uniform(0.7, 1.1)
-        l, r = pan(y, rng().uniform(-0.25, 0.25))
-        P.put(L, l, tk)
-        P.put(R, r, tk)
-        rate = max(13.0 * np.exp(-3.0 * v), 1.1)
-        tk += (1 / rate) * rng().uniform(0.88, 1.12)
-    # (it hangs, all of it, in the hollow)
-    wl, wr = inside(L, R, 1.0, 0.5, 90.0)
-    # (the pressure sinking and the air going, till there is nothing)
-    f = 27.0 - 9.0 * ss(0, last, t)
-    ph = 2 * np.pi * np.cumsum(f) / SR
-    drain = np.exp(-t / 0.9) * (1 - ss(last * 0.5, last + 0.1, t))
-    sub = (np.sin(ph) + 0.3 * np.sin(2 * ph + 0.4)) * drain * 0.16
-    a, b = wide(hollow(n, (61.0, 103.0, 149.0, 211.0, 293.0)), hollow(n, (61.0, 103.0, 149.0, 211.0, 293.0)), 0.5)
-    L, R = L + wl + a * drain * 0.06 + sub, R + wr + b * drain * 0.06 + sub
-    gone = 1 - ss(last + 0.05, last + 0.6, t)               # (nothing left by 39.6)
-    L, R = L * gone, R * gone
+        # (the sheet's own voice, thinner as it narrows)
+        pew(L, R, at + 0.02, 170 - 110 * v, 110.0 * (640.0 / 110.0) ** v, 0.42 * size ** 0.8, rng().uniform(-0.25, 0.25), 2)
+    # (it hangs in the land round it)
+    wl, wr = inside(L, R, 1.0, 0.34, 90.0)
+    L, R = L + wl, R + wr
+    L, R = L * (1 - thin) + bp(L, 200, 2600) * thin * 0.5, R * (1 - thin) + bp(R, 200, 2600) * thin * 0.5
+    gone = 1 - ss(last + 0.05, last + 0.6, t)                 # (nothing left by 39.6)
+    L, R = lows_heard(L * gone, 70, 420, -5.0), lows_heard(R * gone, 70, 420, -5.0)
     L, R = low_mono(L, R, 170.0)
-    out("foldown", L, R, -14.5, tail=0.05, peak=10 ** (-4.0 / 20))
+    out("foldown", L, R, -11.5, tail=0.05, peak=10 ** (-3.0 / 20))
 
 
 def ding():
@@ -1268,8 +1268,8 @@ def back_at(tau):
 def reverse():
     """The whole fold going back, 3.6 s of it, as slow as the picture: a very great weight starting to move, not a tape rewound.
     Every sound here goes forward, with forward attacks, and comes in the fold's order backwards: the ground stirring under the
-    ding, the arm's stages undoing one by one, each bigger, the seal parting at 41.9, the walls working open with the sky's air
-    coming in through them, and the far land going at the end. Its loudness is the picture's speed; nothing climbs in pitch."""
+    ding, the vortex's turns undoing one by one, each bigger, the rim going back up, the tube opening from 42.8 with the sky's air
+    coming in through it, and the far land going at the end. Its loudness is the picture's speed; nothing climbs in pitch."""
     dur = FLAT - REL
     n = n_of(dur)
     t = times(n)
@@ -1277,7 +1277,7 @@ def reverse():
     sp = (6.22 * u - 15.15 * u ** 2 + 11.76 * u ** 3) / 2.83    # (how fast the fold's clock runs back: fw_tau; 1 at the very end)
     # (how much is moving: the ground's weight taking up slowly, the speed's own run at the end)
     lv = 10 ** (np.interp(u, (0.0, 0.08, 0.25, 0.4, 0.6, 0.78, 0.9, 1.0), (-60.0, -44.0, -33.0, -27.0, -22.0, -15.5, -7.0, 0.0)) / 20)
-    seal, sky = back_at(SEAL), back_at(29.0)                    # (41.94 the seal parts, 43.2 the sky is back)
+    seal, sky = TUBE - REL, back_at(27.0)                       # (the tube opens: fw_tau reaches FW_HOLD on 42.8; the sky is back by about 43.4)
     wide_ = ss(seal, sky, t)
     # (the ground: the groan's two low tones a hair apart, the land's weight taking up, a rumble rolling under them)
     heave = np.clip(1 + 0.42 * PB.slow_random(n, 0.2, 1.2), 0.25, None)
@@ -1298,7 +1298,7 @@ def reverse():
         tones += moan(n, at, ln, f0, f0 * rng().choice([0.72, 0.84, 1.18])) * rng().uniform(0.6, 1.0)
     M = sub + bed_ + roll + hull + T.unit(tones) * lv ** 0.5 * (0.3 + 0.7 * strain) * 0.55
     L, R = M.copy(), M.copy()
-    # (the arm's stages undoing, smallest first: each a reversed breath of the hollow into a forward knock, the same mechanism's)
+    # (the vortex's turns undoing, smallest first: each a reversed breath of the land round it into a forward lurch of the ground)
     for k, tau in enumerate((39.0, 38.2, 37.5, 36.8, 36.1, 35.5)):
         at = back_at(tau)
         v = 1 - k / 5
@@ -1310,14 +1310,12 @@ def reverse():
         P.put(R, y, at - 0.2)
         m = n_of(0.3)
         s = times(m)
-        y = P.modal_hit(m, rng().uniform(130, 170) * (1 + 0.6 * v), [1.0, rng().uniform(1.5, 1.7), rng().uniform(2.6, 3.1), rng().uniform(4.6, 5.4)],
-                        [0.03, 0.016, 0.009, 0.004], [1.0, 0.6, 0.3, 0.15], 0.2, 1800)
-        y = y / (np.abs(y).max() + 1e-9) * 0.7 * strength
+        y = (struck(m, 0.0, 0.05, GROUND[1:], 14, 0.4) * 0.8 + struck(m, 0.0, 0.04, RUBBLE, 10, 0.5) * 0.4) * strength
         y += bn(m, 36, 220 - 90 * v) * (1 - np.exp(-s / 0.02)) * np.exp(-s / 0.1) * 0.5 * strength
         l, r = pan(y, rng().uniform(-0.3, 0.3))
         P.put(L, l, at)
         P.put(R, r, at)
-    # (the seal parting: the far vault again, opening, no blow to it; then the walls tearing free one at a time)
+    # (the tube opening: the land's weight going off it, no blow to it; then the walls tearing free one at a time)
     boom = blow(n, seal, 52, 36, 27, 0.12, 0.05, [(0.7, 0.5), (0.3, 1.3)], drive=2.4) * 0.34
     L += boom
     R += boom

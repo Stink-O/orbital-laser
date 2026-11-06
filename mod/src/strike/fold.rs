@@ -187,8 +187,8 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     p.csound(FD_SCORE, "score", 10.0, 1.0);
     p.csound(FD_FOLD, "unravel", 10.0, 1.0);
     p.csound(FD_FOLD, "groan", 10.0, 1.0);
-    // (the seal and the fold running down to nothing; the ding alone; everything going back, gathering, till the first ring lands)
-    p.csound(FD_SEAL, "foldown", 10.0, 1.0);
+    // (the rim gathering at the hole and the land pouring down it to nothing; the ding alone; everything going back, till the first ring lands)
+    p.csound(FD_SEAL - 0.5, "foldown", 10.0, 1.0);
     p.csound(FD_BEAT, "ding", 10.0, 1.0);
     p.csound(FD_RELEASE, "reverse", 10.0, 1.0);
     p.shake(FD_RELEASE + 1.5, 0.3 * super::falloff(dist), 1.6);
