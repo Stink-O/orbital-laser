@@ -286,7 +286,11 @@ switch under them). Nothing goes over the hotbar but the designator's: its count
 the strikes have no messages; firing during a strike only clicks). With the Rod loaded or pointed at, an IMPACT FX row under the ring (OFF, KANADA, BLACK FLASH,
 CINEMATIC). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound` or `/orbital nukesound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
-only picks a ready-made one. The QUALITY switch under PANEL (top right; `/orbital quality full|fast`, kept
+only picks a ready-made one, but the game holds one pipeline at a time and builds a new one on the render thread as `warm` hands it
+over: some 60 ms each time, and up to 2 s (the Downfall's 7) the first time the driver sees a pass. So a wheel pick stays up for the two
+frames that takes, saying LOADING (`close_picked`). On native a pass is built on a thread of its own and kept
+(`native/engine-shim/mod_post.rs`; a strike's frame waits for its pass, and on macOS every frame, where `BUILDING` needs the build in
+the frame). The fork would need the engine to do the same. The QUALITY switch under PANEL (top right; `/orbital quality full|fast`, kept
 between sessions, default FAST) picks whether the Payload's, the Nuke's and the Rod's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7` (an older fork would compile the same source and draw its `fs_main` at full size; FAST needs no
@@ -380,6 +384,11 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   (`it_reaches_the_player_when_the_sounds_say`, `the_front_comes_in_order_...`) catch only the plan's side. The
   pass's debris table (`TS_KINDS`, `TSB`, `TSM`) is mirrored in tsunami.wgsl too (`ts_kind` picks among the 24 by index). Its map's words also carry the land's height over the target's ground (`ts_ground`: the foot follows it). A log's long axis in `ts_piece_hit` is its block up: bark along it, end grain on its ends.
   The preview reads the table from `cargo test ts_write_table -- --ignored` (tools/preview.py does it).
+- **A jump of the world's clock isn't always another world** (`in_world`): when the frames stall and the world runs on,
+  the clock jumps forward, or back by what the client had run ahead (a Fold run under load saw -71). It counts as another
+  world only with over `AWAY` seconds of frames since the last tick (each frame at most `AWAY_FRAME`; the fork ticks no mod
+  at the title screen, but its frames run) or the player over `AWAY_ROOM` from where they were. On native a stall needs the
+  window not drawn or the frames held up with the integrated server going on; `a_stall_is_not_another_world` holds both ways.
 - **A call into the mod has a fuel limit** (a tick 50 million WebAssembly instructions, a frame 10 million; past it the
   game stops the mod for good: "it took too long"). `mod/src/meter.rs` counts each call's work (the loops that do the
   heavy work `spend`), and what can wait (a stage, a job of the Nuke's, an edit, a command, an answer taken in) waits

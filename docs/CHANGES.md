@@ -14,6 +14,12 @@ What each release of Orbital Laser added, newest first. The current release is i
   the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland and ponds left in the
   hollows. Every mob and dropped item in the swath dies; chests and the like stay. It has its own sounds and lasts 42
   seconds. **Photosensitivity:** the blow is one white flash over the whole picture, about a fifth of a second.
+- **Switching lasers doesn't hitch the game.** A laser's effects have to be built when you pick it, which can stop the
+  game for a moment, up to a few seconds the first time. On the wheel that now happens with the wheel still up, saying
+  LOADING, and on the native version it happens in the background while the game keeps running, and going back to a laser is
+  instant.
+- **A long stall no longer ends a strike.** If the game stopped drawing for a while (the window hidden, the machine busy)
+  the mod took the jump in the world's clock for another world and ended the strike. Leaving the world still ends it.
 - **Native: world changes need operator level 4.** On a server or LAN host, a strike's world changes run at the console's
   level, so they are now taken only from a level 4 operator. Before, a level 2 operator with a modified client could run
   any command that way. Single player is unchanged.
