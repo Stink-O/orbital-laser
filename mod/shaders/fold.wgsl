@@ -749,10 +749,10 @@ fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
 // it. All of it here, not in the warp's world_fragment: this pass has the picture to reflect, the droplet's own shading, and the depth to place a pixel on the
 // band's smooth surface (the warp's own curve, shared), whose normal no facet of the far land's tiles gets in the way of. A pixel comes off the depth, is turned
 // back to the band's own frame and found on the curve; what the band's land has gone to at that place then decides how much of it is metal.
-struct FdOn { hit: bool, q: f32, v: f32, miss: f32, ang: f32, n: vec3<f32>, T: vec3<f32> }
+struct FdOn { hit: bool, q: f32, v: f32, h: f32, rad: f32, miss: f32, ang: f32, n: vec3<f32>, T: vec3<f32> }
 fn fd_on_curve(q: f32, g: FwBend, f: FwWay) -> vec2<f32> {
     let C = fw_curve(fw_spend(q), f);
-    if (g.draw > 0.999) {
+    if (g.draw == 1.0) {
         return C;
     }
     return mix(fw_roll(f.R1 * exp(f.k * q), 0.0, g).xy, C, g.draw);
@@ -780,20 +780,26 @@ fn fd_returned(n: vec3<f32>, g: FwBend, at: vec3<f32>) -> vec3<f32> {
 }
 // `P` a point in the band's frame as fw_place leaves it, the player's feet under them: where is it on the band?
 fn fd_stal(P: vec3<f32>, g: FwBend, at: vec3<f32>, f: FwWay, tol: f32) -> FdOn {
-    var o = FdOn(false, 0.0, 0.0, 1.0e6, 0.0, vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0));
+    var o = FdOn(false, 0.0, 0.0, 1.0e6, 1.0e6, 1.0e6, 0.0, vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0));
     // (fw_turn undone)
     let ct = cos(at.z);
     let st = sin(at.z);
     let al = dot(P.xz, g.e) - g.d;
-    let dv = -P.x * g.e.y + P.z * g.e.x;
+    let dv1 = -P.x * g.e.y + P.z * g.e.x;
     let dy0 = P.y - g.pin;
-    let along = al * ct - dy0 * st + at.x;
+    let along0 = al * ct - dy0 * st + at.x;
     let Y = al * st + dy0 * ct + at.y;
+    // (the band's sway and strain taken off: they are all a matter of its height)
+    let fl = fw_flex(Y, f.P0.y, g.t);
+    let x30 = along0 * g.e.x - dv1 * g.e.y - fl.x;
+    let z30 = along0 * g.e.y + dv1 * g.e.x - fl.y;
+    let along = x30 * g.e.x + z30 * g.e.y;
+    let dv = -x30 * g.e.y + z30 * g.e.x;
     let rad = sqrt(along * along + dv * dv);
     if (rad > f.P0.x + tol + 8.0) {
         return o;
     }
-    let p = vec2<f32>(rad, Y);
+    let p = vec2<f32>(max(rad - fl.z, 0.0), Y);
     // (the curve is spent fast at first: fw_spend goes as the root of q, near enough)
     var best = 1.0e12;
     var bi = 0.0;
@@ -837,6 +843,8 @@ fn fd_stal(P: vec3<f32>, g: FwBend, at: vec3<f32>, f: FwWay, tol: f32) -> FdOn {
     let q = bi * bi;
     o.q = q;
     o.v = fw_spend(q);
+    o.h = fd_on_curve(q, g, f).y - f.P3.y;
+    o.rad = p.x;
     o.miss = sqrt(best);
     o.hit = o.miss < tol;
     // (the surface's way out, from the curve's own way along)
@@ -909,9 +917,9 @@ const FD_LIFT: f32 = 0.26;
 // target; the band's own end stops FW_TIP over it. A real surface, marched as the droplet is: the far land's tiles are too coarse for it. By the fold's clock, so it goes back up as it came.
 struct FdHang { y: f32, b: f32, R: f32 }
 // The band's underside's y over the target, the bead's bottom's, its radius.
-fn fd_hang(tau: f32, g: FwBend, f: FwWay) -> FdHang {
+fn fd_hang(t: f32, g: FwBend, f: FwWay) -> FdHang {
     let y = fd_on_curve(1.0, g, f).y;
-    let fill = fw_ss(38.2, FW_BEAT, tau);
+    let fill = fw_ss(38.2, FW_BEAT, t) * (1.0 - fw_ss(40.95, 41.2, t));
     return FdHang(y, y - (FW_TIP - 1.0) * fill, 0.8 + 3.8 * fill);
 }
 fn fd_smin(a: f32, b: f32, k: f32) -> f32 {
@@ -923,11 +931,12 @@ fn fd_hang_sdf(p: vec2<f32>, H: FdHang) -> f32 {
     let bead = length(p - vec2<f32>(0.0, H.b + H.R)) - H.R;
     let ny = clamp(p.y, H.b + H.R, H.y + 2.0);
     let neck = length(p - vec2<f32>(0.0, ny)) - 0.3 * H.R;
-    let cap = length(p - vec2<f32>(0.0, H.y + 30.0)) - 30.0;
-    return fd_smin(fd_smin(bead, neck, H.R * 0.8), cap, 1.5 + H.R);
+    // (the band's end is a point, and the drop runs into it)
+    let cone = max(p.x - 0.32 * (p.y - H.y), H.y - p.y) * 0.95;
+    return fd_smin(fd_smin(bead, neck, H.R * 0.8), cone, 1.0 + 0.5 * H.R);
 }
-fn fd_hanging(colIn: vec3<f32>, v: vec3<f32>, far: f32, tau: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, f: FwWay, at: vec3<f32>) -> vec3<f32> {
-    let H = fd_hang(tau, g, f);
+fn fd_hanging(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: vec3<f32>, g: FwBend, f: FwWay, at: vec3<f32>) -> vec3<f32> {
+    let H = fd_hang(t, g, f);
     if (H.y > 60.0) {
         return colIn;
     }
@@ -976,8 +985,10 @@ fn fd_hanging(colIn: vec3<f32>, v: vec3<f32>, far: f32, tau: f32, mq: vec3<f32>,
     let n = normalize(fd_returned(vec3<f32>(gr.x * ca.x, gr.y, gr.x * ca.y), g, at));
     return mix(colIn, fd_chrome(v, v * sb, n, gq, 0.8), cov);
 }
-const FD_V0: f32 = 0.56;           // the band's v: where the highest of the metal runs reach, and from where it is all metal, wandering, when it has all gone
-const FD_V1: f32 = 0.74;
+const FD_METAL: f32 = 46.0;        // how far up from the band's end the metal comes, blocks: most of what is seen stays land
+const FD_WET: f32 = 70.0;          // how far over that the land has gone dark
+const FD_SOFT0: f32 = 0.12;        // the band's v: where the far land's tiles begin to go, and have gone
+const FD_SOFT1: f32 = 0.5;
 // The metal's slow swells: a slope, along the band and round it.
 fn fd_swell(v: f32, ang: f32, t: f32) -> vec2<f32> {
     let s = v * 2600.0;
@@ -993,10 +1004,65 @@ fn fd_swell(v: f32, ang: f32, t: f32) -> vec2<f32> {
     b = 0.07 * c3 + 0.04 * c4 + 0.022 * c6;
     return vec2<f32>(a, b);
 }
-fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f32, gq: vec3<f32>, g: FwBend, f: FwWay, on: FdOn) -> vec3<f32> {
-    // ---- how far it has gone: the runs first, from high up down the land's low ground, then the land between them --------------------------------------------
-    let fr = fw_ss(36.1, 38.4, tau);
-    if (fr <= 0.0) {
+// The band's land has no shape of its own left: it lies on the curve, seen from under it. So the curve's own shape, in the light, and the air between: what hangs nearest stands off what is behind it.
+// How far down the band `q` is with its land square, the steps of its length over its width added up: cut into equal cells of this and of its bearing, blocks are as long as they are wide.
+var<private> FD_EVEN: array<f32, 17> = array<f32, 17>(0.000, 0.140, 0.292, 0.458, 0.639, 0.840, 1.062, 1.311, 1.592, 1.914, 2.289, 2.735, 3.277, 3.960, 4.874, 6.568, 11.706);
+fn fd_even(q: f32) -> f32 {
+    let x = clamp(q, 0.0, 1.0) * 16.0;
+    let i = min(i32(x), 15);
+    return mix(FD_EVEN[i], FD_EVEN[i + 1], x - f32(i));
+}
+fn fd_form(uv: vec2<f32>, colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, g: FwBend, f: FwWay, on: FdOn, d0: f32) -> vec3<f32> {
+    // (none of it where the band leaves the tube's wall)
+    let k = g.draw * fw_ss(0.0, 0.3, on.v);
+    if (k <= 0.0) {
+        return colIn;
+    }
+    // ---- the far land's tiles, each a long flat shard this far down the band. So block by block, the blocks here cut square whatever the land has been stretched to (fd_even), each
+    // takes its colour from somewhere near it on the land: the land's own colours, no tiles' edges and no streaks. Water doesn't lie on a mountain: what was sea is bare ground. -----
+    var col = colIn;
+    let soft = k * fw_ss(FD_SOFT0, FD_SOFT1, on.v);
+    if (soft > 0.0) {
+        let n = select(select(select(30.0, 60.0, on.rad > 15.0), 120.0, on.rad > 30.0), 240.0, on.rad > 60.0);
+        let e = vec2<f32>(on.ang / FW_TAU + 0.5, fd_even(on.q) / FW_TAU) * n;
+        let id = floor(e);
+        let h = vec3<f32>(hash21(id), hash21(id + 17.3), hash21(id + 41.7));
+        if (h.z < soft) {
+            let R = f.R1 * exp(f.k * on.q);
+            let wa = 150.0 * clamp(on.rad / R, 0.002, 0.2);
+            let B = normalize(cross(on.n, on.T));
+            // (patches of it, not each block on its own: the block's place among the patch's taken back out, so all of the patch's blocks read the same place on the land)
+            let id2 = floor(e / 7.0 + 0.6 * vec2<f32>(sin(e.y * 0.31), sin(e.x * 0.27)));
+            let hp = vec2<f32>(hash21(id2 + 3.1), hash21(id2 + 9.7));
+            let u = project_rel(off + B * (wa * (2.4 * (hp.x - 0.5) + 0.5 * (h.x - 0.5))) + on.T * (wa * (16.0 * (hp.y - 0.5) + 3.0 * (h.y - 0.5))));
+            var c = colIn;
+            if (u.z > 0.0 && abs(depth_at(u.xy) - d0) < 0.2 * d0) {
+                c = fd_sample(u.xy);
+            }
+            let wide = fbm(vec2<f32>(cos(on.ang) * 5.0 + fd_even(on.q) * 2.5, sin(on.ang) * 5.0 + 7.0));
+            let blue = fw_ss(0.01, 0.12, c.b - max(c.r, c.g * 1.05));
+            let forest = mix(vec3<f32>(0.05, 0.1, 0.035), vec3<f32>(0.1, 0.16, 0.055), h.x);
+            let stone = mix(vec3<f32>(0.14, 0.14, 0.145), vec3<f32>(0.23, 0.225, 0.22), h.y);
+            let dirt = mix(vec3<f32>(0.12, 0.09, 0.06), vec3<f32>(0.22, 0.17, 0.11), h.x);
+            let ground = mix(mix(forest, dirt, fw_ss(0.5, 0.56, wide + 0.1 * h.y)), stone, fw_ss(0.58, 0.64, wide + 0.1 * h.x));
+            col = mix(c, ground, blue) * (0.9 + 0.2 * h.y);
+        }
+    }
+    // ---- the light and the air -------------------------------------------------------------------------------------------------------------------------------
+    let L = normalize(vec3<f32>(frame.sun.x * 0.7, 0.35, frame.sun.z * 0.7) + vec3<f32>(0.3, 0.0, 0.2));
+    let lit = 0.5 + 0.5 * dot(on.n, L);
+    col = col * mix(1.0, 0.85 + 0.6 * lit * lit, k);
+    let air = 0.08 * fw_ss(160.0, 620.0, length(off));
+    let day = 0.14 + 0.86 * fd_ss(-0.2, 0.1, frame.sun.y);
+    return mix(col, vec3<f32>(0.3, 0.38, 0.52) * day, air * k);
+}
+fn fd_metal_h(t: f32) -> f32 {
+    return FD_METAL * fw_ss(36.9, 38.9, t) * (1.0 - fw_ss(40.95, 41.35, t));
+}
+fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, gq: vec3<f32>, g: FwBend, f: FwWay, on: FdOn) -> vec3<f32> {
+    // ---- how far up it has come: from the tip, along the land's low ground first ------------------------------------------------------------------------------
+    let top = fd_metal_h(t);
+    if (top <= 0.0) {
         return colIn;
     }
     let R = f.R1 * exp(f.k * on.q);
@@ -1009,25 +1075,21 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f3
     let blue = fw_ss(0.02, 0.2, colIn.b - max(colIn.r, colIn.g * 1.05));
     let dark = 1.0 - fw_ss(0.015, 0.14, luminance(colIn));
     let low = blue * 0.8 + dark * 0.2 + 0.9 * wide + 0.28 * c1 + 0.12 * c0;
-    let lv = fw_ss(FD_V0, FD_V1, on.v);
-    let head = FD_V0 + (1.1 - FD_V0) * fw_ss(0.0, 0.4, fr);
-    let e = (lv * 1.3 + low) - mix(2.2, 0.75, sqrt(fr));
-    let ran = 1.0 - fw_ss(head - 0.02, head + 0.04, on.v + 0.08 * c1);
-    // (the band's top: nothing gets past FD_V0 but the runs)
-    let shore = fw_ss(0.0, 0.02, e) * ran * fw_ss(FD_V0 - 0.03, FD_V0, on.v + 0.05 * c1);
+    let e = top * (1.0 + 0.3 * wide + 0.12 * sin(on.ang * 5.0 + 1.0) + 0.1 * sin(on.ang * 9.0 - 2.0 + on.h * 0.05)) - on.h;
     // (ahead of it the land goes dark, wet with it)
-    let wet = fw_ss(-0.16, 0.0, e) * ran;
+    let wet = fw_ss(-FD_WET, 0.0, e);
     var col = colIn * (1.0 - 0.6 * wet);
+    let shore = fw_ss(0.0, 3.0, e);
     if (shore <= 0.0) {
         return col;
     }
     // ---- the metal ----------------------------------------------------------------------------------------------------------------------------------------
-    // (least high up, where it looks at the sky and every swell would be a ring, and at the tip)
-    let sw = fd_swell(on.v, on.ang, t) * mix(0.45, 1.0, fw_ss(0.66, 0.78, on.v)) * mix(1.0, 0.25, fw_ss(0.86, 0.97, on.v));
+    // (least at the very tip)
+    let sw = fd_swell(on.v, on.ang, t) * mix(1.0, 0.25, fw_ss(0.86, 0.97, on.v));
     // (at its edge it stands up round, a bead: the swell of the edge)
-    let bead = 1.0 - fw_ss(0.0, 0.1, e);
+    let bead = 1.0 - fw_ss(0.0, 6.0, e);
     let n = normalize(on.n + on.T * (sw.x - 0.34 * bead) + cross(on.n, on.T) * sw.y);
-    return mix(col, fd_chrome(v, off, n, gq, 0.8 * fw_ss(0.8, 0.93, on.v) * fw_ss(0.9, 1.0, g.draw)), shore);
+    return mix(col, fd_chrome(v, off, n, gq, 0.8 * fw_ss(0.9, 1.0, g.draw)), shore);
 }
 // The fold's clock: fold_warp.wgsl's fw_tau.
 fn fd_tau(t: f32) -> f32 {
@@ -1178,13 +1240,13 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         let tau = fd_tau(t);
         let mq = me - tgt;
         let e2 = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
-        let g = fw_bend(tau, FW_LEN, mq, e2, max(FW_END_K * clamp(frame.view_params.z, 480.0, 20000.0) - dist, 300.0), 0.0);
+        let g = fw_bend(tau, t, FW_LEN, mq, e2, max(FW_END_K * clamp(frame.view_params.z, 480.0, 20000.0) - dist, 300.0), 0.0);
         let f = fw_way(g);
         let at_ = fw_roll(g.d, g.pin, g);
         let tol = 2.5 + 60.0 * (1.0 - g.draw);
         var pix = off;
         // (the warp's: what fw_stay and fw_place leave of a point)
-        var on = FdOn(false, 0.0, 0.0, 1.0e6, 0.0, vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0));
+        var on = FdOn(false, 0.0, 0.0, 1.0e6, 1.0e6, 1.0e6, 0.0, vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0));
         if (!sky0) {
             on = fd_stal(pix + mq + vec3<f32>(0.0, FW_EYE, 0.0), g, at_, f, tol);
         }
@@ -1200,10 +1262,11 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             }
         }
         if (on.hit) {
-            col = fd_stalactite(col, pix, v, t, tau, gq, g, f, on);
+            col = fd_form(uv, col, pix, v, g, f, on, d0);
+            col = fd_stalactite(col, pix, v, t, gq, g, f, on);
         }
-        if (tau > 38.2) {
-            col = fd_hanging(col, v, far, tau, mq, gq, g, f, at_);
+        if (t > 38.2 && t < 41.3) {
+            col = fd_hanging(col, v, far, t, mq, gq, g, f, at_);
         }
     }
     // ---- the touch: a tiny light at the point the moment the tip reaches it, there for the stillness, gone as it runs back -----
