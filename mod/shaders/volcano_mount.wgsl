@@ -553,9 +553,12 @@ fn vm_shade_shard(C: vec3<f32>, rd: vec3<f32>, h: VmSh, l: VcLight) -> vec3<f32>
     let heat = saturate(vm_heat(length(p.xz)) + 0.35);
     c = c + alb * vec3<f32>(9.0, 1.7, 0.2) * exp(-max(up, 0.0) / 18.0) * heat;
     c = c + vm_ramp(0.55 * exp(-max(up, 0.0) / 7.0) * heat);
-    // (its foot was in the fire: burning as it tears loose, going out)
+    // (its foot was in the fire, as a plate's underside: burning all over as it tears loose, going out to the veins in
+    // it, and then those)
     if (h.face == 6u) {
-        c = c + vm_ramp(0.6 * smoothstep(0.35, 0.85, st) * exp(-max(vm.t - VM_GONE, 0.0) / 2.2));
+        let q = h.lp.xz + vec2<f32>(f32(h.i) * 37.0, 9.0);
+        let vein = (1.0 - smoothstep(0.0, 0.07, abs(gnoise2(q * 0.07) - 0.5))) * smoothstep(0.36, 0.56, gnoise2(q * 0.03));
+        c = c + vm_ramp(0.6 * mix(smoothstep(0.3, 0.7, st), vein, smoothstep(18.9, 19.6, vm.t)) * exp(-max(vm.t - VM_GONE, 0.0) / 2.2));
     }
     return c + alb * vm_firelit(p, h.n);
 }

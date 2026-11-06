@@ -599,17 +599,18 @@ fn vm_tables(w: &Work, p: &PlateSums, land: &dyn Fn(f64, f64) -> f64) -> Vec<(us
             f.push(c.0);
             f.push(c.1);
         }
-        // (its foot: broken off under the land's slope there, so it never shows before it flies)
+        // (its foot: broken off under the land's slope there, so it hardly shows before it flies; no steeper than its
+        // flare allows, or a short wide shard's sides run on far past the rock it is)
         let e = 24.0;
         let at = |x: f64, z: f64| {
             let (l, p) = foot(x, z);
             l + p * VM_H
         };
         let (mut sx, mut sz) = ((at(s.x + e, s.z) - at(s.x - e, s.z)) / (2.0 * e), (at(s.x, s.z + e) - at(s.x, s.z - e)) / (2.0 * e));
-        let k = 1.0 / sx.hypot(sz).max(1.0);
-        sx *= k;
-        sz *= k;
-        let down = 0.37 * s.h + 0.5 * s.rad;
+        let k = 1.0f64.min(0.25 * s.h / (0.62 * s.rad)) / sx.hypot(sz).max(1.0e-3);
+        sx *= k.min(1.0);
+        sz *= k.min(1.0);
+        let down = 0.37 * s.h + 0.3 * s.rad;
         f.extend([-sx, -sz, down, shard_fit(s, -sx, -sz, down)]);
         shards.extend(f.iter().map(|v| (*v as f32).to_bits()));
     }
