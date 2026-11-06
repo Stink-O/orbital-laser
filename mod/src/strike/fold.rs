@@ -12,10 +12,10 @@
 //!   FD_RIPPLE         the warp begins (off before it): rings running out, each bigger than the last
 //!   FD_SCORE          the rings sharpen into hairline creases racing over the land, the mandala's pattern
 //!   FD_TEAR           the creases split open on the void
-//!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land closes round the player, the rings lying back to a mound
-//!   FD_SEAL           the player is inside a sphere, real land on its walls, a hole left in its roof
-//!   FD_FOLDS          a branch of land grows out of the wall by the hole's rim, its foot swelling from 34.5, and comes round and down
-//!                     to the target, slower and slower, thinner at each stage; FD_BEAT its tip touches it: a tiny light and a ding;
+//!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land rolls up round the player, holding as a tube, the rings lying back to a mound
+//!   FD_SEAL           the player is inside a tube, the whole land on its walls, the land's end the hole in its roof
+//!   FD_FOLDS          the rim draws in, gathering from 34.5, and comes round and down to the target, one sheet, winding, its mouth closing
+//!                     as it comes, slower and slower; FD_BEAT its tip touches it: a tiny light and a ding;
 //!                     stillness to FD_RELEASE
 //!   FD_RELEASE        all of it runs backwards, gathering slowly: the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
@@ -29,7 +29,7 @@ use crate::lasers::Laser;
 pub(super) const FD_LEN: f32 = 59.7;
 /// The world warp (shaders/fold_warp.wgsl): how many times it draws the land near the target again, how far from it, and
 /// when it is on, the world's own culling back the rest of the time.
-pub const FD_COPIES: u32 = 5;
+pub const FD_COPIES: u32 = 0;
 pub const FD_COPY_R: f32 = 130.0;
 /// When the copies are drawn: the root swelling on the wall from 34.5 (fold_warp.wgsl's fw_swell), the arm out and back.
 pub const FD_COPY_ON: std::ops::Range<f32> = 34.45..42.1;
@@ -243,7 +243,6 @@ mod tests {
         for (k, t) in FD_FOLDS.iter().enumerate() {
             assert!(warp.contains(&format!("case {k}: {{ return {t:.1}; }}")), "fold {k}");
         }
-        assert!(warp.contains(&format!("const FW_DISC: f32 = {FD_COPY_R:.1};")));
         // (the land's height as it meets the drop: the warp moves the land, the pass draws the metal and the glow on it)
         assert!(warp.contains("const FW_MEET: f32 = -0.08;") && pass.contains("const FD_MEET: f32 = -0.08;"));
         // (its fall)

@@ -36,11 +36,12 @@ fn boxy(v: &mut Vec<V>, i: &mut Vec<u32>, lo: [f32; 3], hi: [f32; 3], layer: u32
     quad(v, i, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], layer, s, 1.0);
 }
 // a square of the land round (0,0): cells `st` wide out to `ext`, leaving out what is inside `hole`
-fn land(v: &mut Vec<V>, i: &mut Vec<u32>, st: f32, ext: f32, hole: f32, tx: f32, tz: f32, ty: f32, hills: f32, trees: bool) {
+fn land(v: &mut Vec<V>, i: &mut Vec<u32>, st: f32, ext: f32, hole: f32, tx: f32, tz: f32, ty: f32, hills: f32, trees: bool, c: [f32; 3]) {
     let n = (ext / st) as i32;
     for gx in -n..n { for gz in -n..n {
         let (x, z) = (gx as f32 * st + tx, gz as f32 * st + tz);
         if (x - tx).abs().max((z - tz).abs()) < hole && (x + st - tx).abs().max((z + st - tz).abs()) <= hole { continue; }
+        if (x - c[0]).hypot(z - c[1]) > c[2] { continue; }
         let hf = |x: f32, z: f32| (land_h(x + 0.5 * st, z + 0.5 * st, ty, hills) / st.min(2.0)).floor() * st.min(2.0);
         let h = hf(x, z);
         let g = hash(gx, gz) * 0.1 + 0.9;
@@ -80,12 +81,14 @@ impl Map {
     fn t(&self, x: i32, z: i32) -> f32 { self.top[self.at(x, z)] as f32 + 1.0 }
 }
 // The real land round (0,0): blocks `st` wide between the squares `hole` and `ext`. Tops, the sides down to the lowest neighbour, what stands on the ground (leaves, trunks) as boxes.
-fn map_land(v: &mut Vec<V>, i: &mut Vec<u32>, m: &Map, st: i32, ext: i32, hole: i32) {
+fn map_land(v: &mut Vec<V>, i: &mut Vec<u32>, m: &Map, st: i32, ext: i32, hole: i32, c: [f32; 3]) {
     let n = ext / st;
+    let rch = c[2];
     for gx in -n..n { for gz in -n..n {
         let (x, z) = (gx * st, gz * st);
         if x.abs().max(z.abs()) < hole && (x + st).abs().max((z + st).abs()) <= hole { continue; }
         let (xf, zf, s) = (x as f32, z as f32, st as f32);
+        if (xf - c[0]).hypot(zf - c[1]) > rch { continue; }
         let idx = m.at(x, z);
         let h = m.g(x, z);
         let k = m.gcl[idx] as usize;
@@ -190,23 +193,25 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
     let mut v = Vec::new(); let mut i = Vec::new();
     // the near land, the one drawn again as the arm's copies (within FW_DISC + a bit)
     let map = std::env::var("WV_MAP").ok().map(|p| read_map(&p));
+    // the far land ends in a circle round the camera, as far as the game's LOD Distance puts it (fog=blocks)
+    let ec = [g("mx", g("cx", 0.0)), g("mz", g("cz", 170.0)), g("fog", 4096.0)];
     let noland = g("noland", 0.0) > 0.5;
     let mut near = 0;
     if noland {
         quad(&mut v, &mut i, [0.0; 3], [0.0; 3], [0.0; 3], [0.0; 3], 1, [0.0; 3], 1.0);
     } else if let Some(m) = &map {
-        map_land(&mut v, &mut i, m, 1, 144, 0);
+        map_land(&mut v, &mut i, m, 1, 144, 0, ec);
         near = i.len() as u32;
-        map_land(&mut v, &mut i, m, 1, g("fine", 280.0) as i32, 144);
-        map_land(&mut v, &mut i, m, 2, 640, g("fine", 280.0) as i32);
-        map_land(&mut v, &mut i, m, 8, 1500, 640);
-        land(&mut v, &mut i, 8.0, 2400.0, 1500.0, tx, tz, ty, hills, false);
-        land(&mut v, &mut i, 32.0, g("farland", 9000.0), 2400.0, tx, tz, ty, hills, false);
+        map_land(&mut v, &mut i, m, 1, g("fine", 280.0) as i32, 144, ec);
+        map_land(&mut v, &mut i, m, 2, 640, g("fine", 280.0) as i32, ec);
+        map_land(&mut v, &mut i, m, 8, 1500, 640, ec);
+        land(&mut v, &mut i, 8.0, 2400.0, 1500.0, tx, tz, ty, hills, false, ec);
+        land(&mut v, &mut i, 32.0, 20000.0, 2400.0, tx, tz, ty, hills, false, ec);
     } else {
-        land(&mut v, &mut i, 2.0, 144.0, 0.0, tx, tz, ty, hills, true);
+        land(&mut v, &mut i, 2.0, 144.0, 0.0, tx, tz, ty, hills, true, ec);
         near = i.len() as u32;
-        land(&mut v, &mut i, 2.0, 640.0, 144.0, tx, tz, ty, hills, true);
-        land(&mut v, &mut i, 8.0, 2400.0, 640.0, tx, tz, ty, hills, false);
+        land(&mut v, &mut i, 2.0, 640.0, 144.0, tx, tz, ty, hills, true, ec);
+        land(&mut v, &mut i, 8.0, 2400.0, 640.0, tx, tz, ty, hills, false, ec);
     }
     eprintln!("land: {} verts, {} tris", v.len(), i.len() / 3);
     let vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX });
@@ -268,7 +273,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
         let (el, az) = (g("sunel", 50.0).to_radians(), g("sunaz", 130.0).to_radians());
         let sun = [el.cos() * az.cos(), el.sin(), el.cos() * az.sin(), 0.0];
         let mut u = [[0.0f32; 4]; 10];
-        u[0] = [0.5, 0.65, 0.9, 1.0]; u[1] = [0.5, 0.65, 0.9, 1.0]; u[2] = sun; u[3] = [0.0, 3000.0, 0.0, 3000.0];
+        u[0] = [0.5, 0.65, 0.9, 1.0]; u[1] = [0.5, 0.65, 0.9, 1.0]; u[2] = sun; u[3] = [0.0, g("fog", 4096.0), 0.0, g("fog", 4096.0)];
         u[4] = [tx, ty, tz, t];
         u[5] = [0.0, g("p5", 0.0), 0.0, 0.0];
         u[6] = [g("seed", 37.0), 1.0, g("level", -8.0), ty];

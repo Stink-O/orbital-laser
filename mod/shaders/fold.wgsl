@@ -758,19 +758,28 @@ fn fd_rim(d: f32) -> f32 {
     return max(620.0, d + 480.0);
 }
 const FD_PI: f32 = 3.14159265;
-const FD_HOLE: f32 = 0.6;
+const FD_TUBE_W: f32 = 0.5933;     // fold_warp.wgsl's: the tube as it holds
+const FD_TUBE_R0: f32 = 0.352;
+const FD_LEN: f32 = 480.0;
 fn fd_seat(d: f32, mh: f32) -> vec3<f32> {
     let S = fd_radius(d, mh);
     let rim = fd_rim(d);
-    let x = d / (2.0 * S);
-    let th = FD_PI - FD_HOLE;
-    let lim = 2.0 * atan(rim / (2.0 * S));
-    let f = min(2.0 * atan(x) + (th - lim) * fd_ss(0.45 * rim, rim, d), th);
-    let lip = 34.0 * pow(fd_ss(rim * 0.8, rim, d), 2.0);
-    let yy = mh / (1.0 + x * x) - lip;
+    let r0 = (max(FD_LEN, d) + 170.0) * FD_TUBE_R0;
+    let rc = mix(700.0, S, FD_TUBE_W);
+    let fm = mix(3.2, FD_PI, FD_TUBE_W);
+    let u = d - r0;
+    if (u <= 0.0) {
+        return vec3<f32>(d, mh, 0.0);
+    }
+    let e = u / (rc * fm);
+    let x = e * 1.5707963;
+    let ex = exp(-e);
+    let f = min(fm * mix(1.0 - ex, 0.63662 * atan(x), FD_TUBE_W), 3.3);
+    let lip = 34.0 * FD_TUBE_W * pow(fd_ss(rim * 0.8, rim, d), 2.0);
+    let yy = mh * mix(ex, 1.0 / (1.0 + x * x), FD_TUBE_W) - lip;
     let s = sin(f);
     let c = cos(f);
-    return vec3<f32>((S - yy) * s, S * (1.0 - c) + yy * c, f);
+    return vec3<f32>(r0 + (rc - yy) * s, rc * (1.0 - c) + yy * c, f);
 }
 fn fd_turned(du: f32, dy: f32, at: vec3<f32>, d: f32, mh: f32) -> vec2<f32> {
     let c = cos(at.z);
@@ -812,23 +821,9 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         let under = fd_ss(0.03, -0.015, v.y) * fd_ss(FD_FOLD, FD_FOLD + 1.2, t) * (1.0 - fd_ss(FD_SLAM4, FD_SLAM4 + 0.2, t));
         col = mix(col, fd_stars(v), max(dark, under));
         // ---- land that isn't there. Far land not loaded leaves gaps in what the sheet carries, which would show the void: the stars belong to the
-        // tears and the hole in the roof. A gap the land closes round takes the land's colours round it; on the shut sphere any other that isn't
-        // the roof's hole is the walls' dusk ---------------------------------------------------------------------------------------------
+        // tears and the hole in the roof. A gap the land closes round takes the land's colours round it, but for the hole: a ray that comes near
+        // the axis, on which the hole's mouth lies however far down it has come ------------------------------------------------------------
         if (t < FD_SLAM4) {
-            let shut = fd_ss(33.0, 34.2, tau);
-            if (shut > 0.0) {
-                let S = max(max(dist * 1.3, 170.0), mh * 1.15);
-                let qo = fd_turned(-at.x, S - at.y, at, dist, mh);
-                let qh = fd_turned(-at.x, 2.0 * S - at.y, at, dist, mh);
-                let rel = tgt - me + vec3<f32>(0.0, -1.62, 0.0);
-                let O = rel + vec3<f32>(te.x * qo.x, qo.y, te.y * qo.x);
-                let H = rel + vec3<f32>(te.x * qh.x, qh.y, te.y * qh.x);
-                let b = dot(v, O);
-                let hit = v * (b + sqrt(max(b * b - dot(O, O) + S * S, 0.0)));
-                // (the hole is what the land leaves open, right out to its own torn edge, however far that lies: only what is under the sphere's middle is dusk)
-                let inhole = fd_ss(-0.15, 0.2, dot(hit - O, H - O) / (S * S));
-                col = mix(col, vec3<f32>(0.02, 0.024, 0.06), shut * (1.0 - inhole));
-            }
             var near = vec3<f32>(0.0);
             var found = 0.0;
             let step = res.y / 1440.0;
@@ -844,8 +839,15 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
                     }
                 }
             }
+            // (the axis, turned as the land is: how near this ray comes to it. Filled, a hole under the rays' reach grew an averaged star)
+            let ax0 = tgt - me + vec3<f32>(te.x * tip.x, tip.y - 1.62, te.y * tip.x);
+            let u1 = fd_turned(-at.x, 1000.0 - at.y, at, dist, mh);
+            let ax = normalize(vec3<f32>(te.x * (u1.x - tip.x), u1.y - tip.y, te.y * (u1.x - tip.x)));
+            let cr = cross(v, ax);
+            let miss = abs(dot(ax0, cr)) / max(length(cr), 0.001);
+            let hole = fd_ss(27.0, 29.0, tau) * fd_ss(1100.0, 800.0, miss);
             if (found > 5.5) {
-                col = mix(col, near / found, fd_ss(5.5, 7.5, found));
+                col = mix(col, near / found, fd_ss(5.5, 7.5, found) * (1.0 - hole));
             }
         }
     }

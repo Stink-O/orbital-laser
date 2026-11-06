@@ -68,14 +68,15 @@ class Land:
         h.sort(); low=h[len(h)//6]
         return float(max(min(low-ty-1,0),-80))
 class Scene:
-    def __init__(s,dist=170.0,high=33.0,bearing=-90.0,seed=5.0,level=None,land=None):
+    def __init__(s,dist=170.0,high=33.0,bearing=-90.0,seed=5.0,level=None,land=None,fog=4096.0):
+        s.fog=fog
         a=math.radians(bearing); s.mx,s.mz=dist*math.cos(a),dist*math.sin(a); s.my=TY+high
         s.seed=seed; s.land=land
         s.level=(land.level() if land else -8.0) if level is None else level
         s.pin=fd_pin(s.mx,s.mz,seed)
         s.lev=s.level-(s.pin+1)/64.0
     def args(s):
-        return [f'tx=0',f'ty={TY}','tz=0',f'seed={s.seed}',f'level={s.lev}',f'cx={s.mx}',f'cy={s.my}',f'cz={s.mz}']
+        return [f'tx=0',f'ty={TY}','tz=0',f'seed={s.seed}',f'level={s.lev}',f'cx={s.mx}',f'cy={s.my}',f'cz={s.mz}',f'fog={s.fog}']
 SH_CACHE={}
 def shader(patch=None):
     """the shader with text replacements [(old,new),...]; every old must be there; patch 'old' is the base build ($FV/old_warp.wgsl)"""

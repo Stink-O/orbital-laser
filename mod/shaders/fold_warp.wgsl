@@ -7,19 +7,19 @@
 //   FW_TEAR    the creases split on the void, painted on the land itself so nothing under it shows
 //   FW_FOLD    the land swells up round the target ring by ring, one smooth sheet, nothing over anything: every point of it
 //              goes to one place (cp_sheet), the horizon rolling up and over behind it (fw_roll)
-//   FW_WRAP0   the roll's ring comes in to the target and its tube down to the sphere's size, as the swell lies down onto its
-//              floor and the land comes back to its own size: FW_SEAL all but shut, the player inside, the real land on the
-//              walls, and a hole left in the roof (FW_HOLE): the land stops at a rim that curls away round it
-//   FW_CRUSH   a branch of land grows out of the wall under the rim, its root swelling first (fw_swell), and comes round and down to the
-//              target (fw_length), in six stages (fw_stage), each smaller and slower
+//   FW_WRAP0   the roll's ring comes in to the target and its tube down, as the swell lies down onto its floor and the land comes back to
+//              its own size; by FW_HOLD it has stopped closing (fw_tb), a tube: the player on its floor, the whole of the land round them to
+//              the far land's end, the hole in the roof that end, one round line
+//   FW_CRUSH   the rim draws in and down: the land's outer band leaves the tube on its tangent, winding, one sheet, and runs down the axis
+//              to the target (fw_place), its mouth closing as it comes, in six stages (fw_stage), each smaller and slower
 //   FW_BEAT    its tip touches the target. Stillness
-//   FW_REL     it all runs backwards (fw_tau), slowly at first: the sphere opens and the bud stands again, every ring up; then
+//   FW_REL     it all runs backwards (fw_tau), slowly at first: the rim goes back up, the tube opens and the bud stands again, every ring up; then
 //              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, breaking the land along its creases:
 //              the crater swaps in held up at the land's level and falls in, kite by kite (fw_sunk)
 // The land under the player is one piece of the sheet: it takes less and less of the sheet's motion the nearer it is to them
 // (fw_share), so they stand level on land that bends away from them, no edge to it, till the land is back at its own size and it
-// is all the sheet; and from the time the world closes they can't leave it: the sphere, its hole and the branch are one rigid
-// frame that goes with them, whatever they do (fw_stay).
+// is all the sheet; and from the time the world closes they can't leave it: the tube and its hole are one rigid frame that goes
+// with them, whatever they do (fw_stay).
 // strike/fold.rs and fold.wgsl share the beats: keep them in step (`the_warp_keeps_the_beats`).
 const FW_RIPPLE: f32 = 6.6;
 const FW_SCORE: f32 = 12.0;
@@ -55,8 +55,14 @@ const FW_LAY1: f32 = 32.6;
 const FW_FLAT0: f32 = 34.5;        // from here on the sheet lies on the sphere with nothing left standing on it
 const FW_WRAP0: f32 = 27.0;        // the roll's ring comes in to the target, its tube to the sphere's size, from here to FW_SEAL
 const FW_SINK_END: f32 = 0.0;      // how much of FW_SINK is left once the sheet lies on the sphere
-const FW_HOLE: f32 = 0.6;          // the hole in the roof: radians, round the point across from the target
-const FW_DISC: f32 = 130.0;        // how far the branch's land reaches from the target (lib.rs asks for these sections)
+const FW_HOLD: f32 = 31.5;         // the fold's clock where the tube stops closing (fw_tb)
+const FW_EASE: f32 = 1.5;          // how long it takes to stop
+const FW_TUBE_W: f32 = 0.5933;     // fw_bend's w, and how much of the r0 of fw_bend is left, as it holds
+const FW_TUBE_R0: f32 = 0.352;
+const FW_RIM0: f32 = 0.62;         // the band of land that goes down to the target: from this much of the way to the land's end, to its end
+const FW_TURNS: f32 = 0.9;         // how many times round it winds on the way
+const FW_TIP: f32 = 1.0;           // how high over the target's land it stops
+const FW_MOUTH: f32 = 2.8;         // how far round the tube the land's end comes, radians, wherever the far land ends
 fn fw_ss(a: f32, b: f32, x: f32) -> f32 {
     let t = clamp((x - a) / (b - a), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
@@ -763,12 +769,7 @@ fn fw_pull(r: f32, ang: f32, y: f32, t: f32, R: f32) -> f32 {
 fn fw_radius(d: f32, y: f32) -> f32 {
     return max(max(d * 1.3, 170.0), y * 1.15);
 }
-// The fold down from the roof: a branch of land grows out of the wall by the hole's rim and comes down to the target, in six stages, each
-// shorter and slower than the last, thinner at each. The far land past the rim is no use for it: its tiles are too big and too few to
-// be bent that tightly, and go to blades and streaks. So it is the real land round the target, its blocks and trees, drawn five
-// more times (`copy`), each time a length of one tube: a disc of land rolled up conformally, its middle at the length's end,
-// its edge joined to the end of the one before, a node at each join. It goes along one curve (fw_path), one length after
-// another, one radius at any point along it: nothing can cross anything.
+// The rim's way down to the target goes in six stages, each shorter and slower than the last.
 fn fw_start(k: i32) -> f32 {
     switch k {
         case 0: { return 35.0; }
@@ -786,10 +787,6 @@ fn fw_stage(k: i32, tau: f32) -> f32 {
     let e = clamp((tau - fw_start(k)) / (fw_start(k + 1) - fw_start(k)), 0.0, 1.0);
     return 1.0 - pow(1.0 - e, 2.0);
 }
-// Where stage k ends along the branch's path, 0 to 1.
-fn fw_knot(k: i32) -> f32 {
-    return (1.0 - pow(FW_TIER_L, f32(k + 1))) / (1.0 - pow(FW_TIER_L, 6.0));
-}
 // The stages are done by FW_HANG with the tip FW_SHORT blocks short; it all but stops there, and creeps, and waits, and then in
 // the last 0.3 s up to FW_BEAT it closes the rest of it. Nothing of the branch ever goes past this.
 const FW_HANG: f32 = 39.0;
@@ -798,132 +795,32 @@ const FW_SHORT: f32 = 13.0;
 fn fw_gap(tau: f32) -> f32 {
     return FW_SHORT - 6.0 * fw_ss(FW_HANG - 0.1, FW_BEAT - 0.3, tau) - 7.0 * pow(clamp((tau - FW_BEAT + 0.3) / 0.3, 0.0, 1.0), 2.0);
 }
-// How far along its path the very tip has reached by `tau`, 0 to 1: 1 is the target. (4.245 S: the path's blocks to one of x at its end)
-fn fw_reached(tau: f32, S: f32) -> f32 {
+// How far down its way the mouth has come by `tau`, 0 to 1: 1 is the target. `L` the way's blocks, near enough.
+fn fw_reached(tau: f32, L: f32) -> f32 {
     var x = 0.0;
     var len = (1.0 - FW_TIER_L) / (1.0 - pow(FW_TIER_L, 6.0));
     for (var k = 0; k < 6; k += 1) {
         x += len * fw_stage(k, tau);
         len *= FW_TIER_L;
     }
-    let L = 4.245 * S;
     return (1.0 - FW_SHORT / L) * x + (FW_SHORT - fw_gap(tau)) / L;
 }
-// How much of the path the rounded end takes up, behind the tip: finer as it arrives.
-fn fw_cap(reach: f32) -> f32 {
-    return mix(0.02, 0.004, fw_ss(0.95, 1.0, reach));
-}
-// Its thickness x along, blocks: one long taper from a root like a tree's to nothing at the tip, no joints: it grows, it isn't assembled.
-fn fw_girth(x: f32, S: f32) -> f32 {
-    return 0.3 * S * (0.26 + 0.74 * pow(max(1.0 - x, 0.0), 1.7)) * pow(max(1.0 - x, 0.0), 0.4);
-}
-// Its middle line x along, in the plane through the axis (out from the axis, up), as many of S as the sphere is: from the wall, square off it,
-// just under the hole's rim, to the target. Past FW_JOIN it is a curve of its own coming down the axis to the target; up to there, a curve
-// from the wall that runs into that one, gone along at a pace that grows (fw_u) to be the other's where they meet: the tip works its way out
-// of the wall and then gathers. A ring of the tube is square to this line, so the wide first ring lies on the wall (fw_flare).
-const FW_JOIN: f32 = 0.78;
-const FW_PACE: f32 = 2.05;
-fn fw_u(x: f32) -> f32 {
-    return pow(clamp(x / FW_JOIN, 0.0, 1.0), FW_PACE);
-}
-struct FwPath { c: vec2<f32>, n: vec2<f32> }
-fn fw_path(x: f32, S: f32) -> FwPath {
-    var C = vec2<f32>(0.0);
-    var T = vec2<f32>(0.0, -1.0);
-    if (x < FW_JOIN) {
-        let u = fw_u(x);
-        let m = 1.0 - u;
-        let p0 = vec2<f32>(0.787, 1.453);
-        let p1 = vec2<f32>(0.5, 1.47);
-        let p2 = vec2<f32>(0.1456, 1.3939);
-        let p3 = vec2<f32>(0.086227, 0.897504);
-        C = p0 * (m * m * m) + p1 * (3.0 * m * m * u) + p2 * (3.0 * m * u * u) + p3 * (u * u * u);
-        T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * u) + (p3 - p2) * (u * u);
-    } else {
-        let m = 1.0 - x;
-        let p0 = vec2<f32>(1.02, 1.76);
-        let p1 = vec2<f32>(0.24, 2.76);
-        let p2 = vec2<f32>(0.12, 1.41);
-        C = p0 * (m * m * m) + p1 * (3.0 * m * m * x) + p2 * (3.0 * m * x * x);
-        T = (p1 - p0) * (m * m) + (p2 - p1) * (2.0 * m * x) - p2 * (x * x);
-    }
-    T = T / max(length(T), 0.001);
-    return FwPath(C * S, vec2<f32>(-T.y, T.x));
-}
-// The root: the tube wide where it leaves the wall, its first ring on it, and tapering from there; and till it has grown well out from the wall
-// narrowing all the way to the tip, so that what shows first is the land of the wall swelling, and never the end of a tube.
-fn fw_flare(x: f32, reach: f32) -> f32 {
-    let tl = min(mix(0.3, 0.02, fw_ss(0.8, 0.97, reach)), max(reach, 0.001));
-    // (a thin trunk out of a wide foot: hollow, as a root's is, not a bulb: tangent to the wall at its ring)
-    return (1.0 + 1.02 * exp(-fw_u(x) / 0.04)) * pow(clamp((reach - x) / tl, 0.0, 1.0), 0.6);
-}
-// The arm comes round the axis as it comes down: its root off to the player's side of the rim, so that they see it leave the wall from the side and not
-// end on, as a ball; it is in the old plane, straight over the target from behind the hole, by the time the path is the old one.
-const FW_BEAR: f32 = 1.2;
-fn fw_bear(x: f32) -> f32 {
-    return FW_BEAR * (1.0 - fw_ss(0.0, 1.0, fw_u(x)));
-}
-// The bulge: what the tip has reached before the stages take it, the land swelling on the wall.
+// The gathering: what the rim has drawn in before the stages take it.
 fn fw_swell(tau: f32) -> f32 {
     return 0.26 * fw_ss(34.5, 35.25, tau);
-}
-const FW_THROAT: f32 = 22.0;       // what of a copy's disc rounds off its length's end
-// Length k (1 to 5) of the branch: the land of a copy to where it goes.
-fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
-    var out = Warped(c.tgt + vec3<f32>(0.0, -4000.0, 0.0), vec3<f32>(-1.0));
-    let tau = fw_tau(c.t);
-    let mq = c.me - c.tgt;
-    let dist = length(mq.xz);
-    let S = fw_radius(dist, mq.y);
-    let reach = max(fw_reached(tau, S), fw_swell(tau));
-    let cap = fw_cap(reach);
-    let from_ = select(fw_knot(k - 1), 0.0, k == 1);
-    // (the length's end, its rounded end past that: the tip itself is `reach`, no further)
-    let end = min(max(reach - cap, from_ + 0.0001), fw_knot(k));
-    if (reach <= select(from_ + cap, 0.0, k == 1) || r > FW_DISC) {
-        return out;
-    }
-    let e = select(vec2<f32>(1.0, 0.0), mq.xz / max(dist, 0.001), dist > 0.5);
-    // (along it by the log of r, as a disc rolled to a tube without stretching goes; inside the throat it rounds off)
-    var x = end;
-    var rho = 0.0;
-    let endr = fw_girth(end, S) * fw_flare(end, reach);
-    if (r > FW_THROAT) {
-        x = from_ + (end - from_) * log(FW_DISC / r) / log(FW_DISC / FW_THROAT);
-        rho = fw_girth(x, S) * fw_flare(x, reach);
-    } else {
-        let u = r / FW_THROAT;
-        rho = endr * u;
-        x = min(end + cap * (1.0 - u * u), reach);
-    }
-    // (the foot isn't round: buttresses out over the wall, as a tree's roots go)
-    if (k == 1) {
-        let foot = exp(-fw_u(x) / 0.05);
-        rho *= 1.0 + foot * (0.2 * sin(3.0 * a + 1.0) + 0.14 * sin(5.0 * a - 2.0) + 0.08 * sin(8.0 * a + 0.5));
-    }
-    // (the land's own heights, as big as the land is at this place on the tube)
-    // (none at a length's end: a hill round the target there would stand as a collar round the join)
-    rho += clamp(Q.y, -6.0, 40.0) * clamp(rho / max(r, FW_THROAT), 0.08, 0.6) * 0.8 * fw_ss(FW_THROAT, 2.2 * FW_THROAT, r);
-    let P = fw_path(x, S);
-    // (turning a little as it goes, each length its own way round)
-    let phi = -a + f32(k) * 1.9 + x * 2.2;
-    let at = atan2(-e.y, -e.x) + fw_bear(x);
-    let ca = cos(at);
-    let sa = sin(at);
-    let c2 = P.c + P.n * (rho * cos(phi));
-    let side = rho * sin(phi);
-    let bend = fw_bend(FW_BEAT, 0.0, mq, e, 1.0e6, 0.0);
-    out.pos = fw_turn(c2.x * ca - side * sa, c2.y, c2.x * sa + side * ca, fw_seat(dist, mq.y), bend) + c.tgt + fw_stay(c, tau);
-    out.tint = vec3<f32>(1.0);
-    return out;
 }
 // ---- the roll -----------------------------------------------------------------------------------------------------------
 // Past `r0` the sheet rolls up and in over a tube of radius `rc`, up to `fm` round it. As the world closes r0 comes in to
 // the target and the tube's radius to the sphere's: a tube whose ring has come down to nothing is a sphere, so it is one
-// sheet and one motion from the horizon's first curl to the sphere shut over the player. `w` eases it from the roll's own
-// spacing to the stereographic map's, conformal, so that on the sphere the land is only scaled, never stretched.
+// sheet and one motion from the horizon's first curl to the tube. `w` eases it from the roll's own spacing towards the stereographic
+// map's, conformal, so that the land is only scaled, hardly stretched.
 // The player's feet, and the land under them, are left where they are, level: the whole of it is turned about them.
-struct FwBend { tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32, r0: f32, rc: f32, fm: f32, w: f32, shut: f32, S: f32, pin: f32, rim: f32 }
+struct FwBend { tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32, r0: f32, rc: f32, fm: f32, w: f32, fit: f32, draw: f32, pin: f32, rim: f32 }
+// The clock the tube closes by: `tau` to FW_HOLD - FW_EASE, then easing to a stop at FW_HOLD, and the same way back.
+fn fw_tb(tau: f32) -> f32 {
+    let s = FW_HOLD - FW_EASE;
+    return select(tau, FW_HOLD - FW_EASE * exp((s - tau) / FW_EASE), tau > s);
+}
 const FW_TAIL0: f32 = 0.7;         // the land past the roll's end lies on along its tangent till fm is this, and is drawn in by FW_TAIL1
 const FW_TAIL1: f32 = 1.5;
 fn fw_curl(tau: f32) -> f32 {
@@ -932,10 +829,17 @@ fn fw_curl(tau: f32) -> f32 {
 fn fw_bend(tau: f32, foot: f32, mq: vec3<f32>, e: vec2<f32>, edge: f32, top: f32) -> FwBend {
     let d = length(mq.xz);
     let curl = fw_curl(tau);
-    let w = fw_ss(FW_WRAP0, FW_SEAL, tau);
+    let tb = fw_tb(tau);
+    let w = fw_ss(FW_WRAP0, FW_SEAL, tb);
     let S = fw_radius(d, mq.y);
-    let r0 = (max(foot, d) + 170.0) * (1.0 - fw_ss(FW_WRAP0, FW_SEAL - 0.5, tau));
-    return FwBend(tau, d, e, edge, top, r0, mix(mix(3000.0, 700.0, curl), S, w), mix(curl * 3.2, FW_PI, w), w, fw_ss(FW_SEAL - 2.0, FW_SEAL - 0.5, tau), S, mq.y, fw_rim(d));
+    let r0 = (max(foot, d) + 170.0) * (1.0 - fw_ss(FW_WRAP0, FW_SEAL - 0.5, tb));
+    let rc = mix(mix(3000.0, 700.0, curl), S, w);
+    let fm = mix(curl * 3.2, FW_PI, w);
+    // (where the far land ends is the player's setting: wherever that is, the land's end comes as far round the tube)
+    let en = max(edge - r0, 1.0) / (rc * max(fm, 0.001));
+    let fe = fm * mix(1.0 - exp(-en), 0.63662 * atan(en * 1.5707963), w);
+    let fit = max(FW_MOUTH - fe, 0.0) * fw_ss(FW_WRAP0, FW_HOLD, tb);
+    return FwBend(tau, d, e, edge, top, r0, rc, fm, w, fit, max(fw_reached(tau, 900.0), fw_swell(tau)), mq.y, fw_rim(d));
 }
 // A point R along the sheet, y over it, on the roll: (out from the axis, up, how far round).
 fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
@@ -947,11 +851,7 @@ fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
     let x = e * 1.5707963;
     let ex = exp(-e);
     var f = g.fm * mix(1.0 - ex, 0.63662 * atan(x), g.w);
-    // (the land brought on to the rim, however far off the real land's edge would have put it, and no further: round its
-    // rim it curls away, outwards, so that it ends in a lip and not an edge)
-    let th = FW_PI - FW_HOLE;
-    let lim = 2.0 * atan(g.rim / (2.0 * g.S));
-    f = min(f + g.w * g.shut * (th - lim) * fw_ss(0.45 * g.rim, g.rim, R), mix(3.3, th, g.w * g.shut));
+    f = min(f + g.fit * fw_ss(0.2 * g.edge, g.edge, R), 3.3);
     let lip = 34.0 * g.w * pow(fw_ss(g.rim * 0.8, g.rim, R), 2.0);
     // (the roll is only rc * fm long, and fm starts from nothing: what is past that lies on along the tangent, or all the land out to the horizon would land on one
     // circle the moment it starts; drawn in as the roll grows long enough to take it)
@@ -963,34 +863,58 @@ fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
     return vec3<f32>(g.r0 + (g.rc - yy) * s + rem * c, g.rc * (1.0 - c) + yy * c + rem * s, f);
 }
 // Where the sheet goes: R along it from the target at the bearing (ca, sa), y over it. The result is from the target, x and z as the world's.
-fn fw_place(R: f32, ca: f32, sa: f32, y: f32, g: FwBend) -> vec3<f32> {
-    let on = fw_roll(R, y, g);
+// The land's outer band, R1 on to its end, is what goes down to the target: past `draw` it lies on one curve leaving the tube on the tube's own
+// tangent at R1, so there is no join to it, in over the hole and down the axis, winding, the land's end its mouth. Each bearing goes one way along the
+// one curve, so nothing can cross anything.
+fn fw_place(R: f32, ca0: f32, sa0: f32, y: f32, g: FwBend) -> vec3<f32> {
+    var on = fw_roll(R, y, g);
+    var ca = ca0;
+    var sa = sa0;
+    let R1 = FW_RIM0 * g.edge;
+    if (g.draw > 0.0 && R > R1) {
+        let v = min((R - R1) / (g.edge - R1), 1.0) * g.draw;
+        let a = fw_roll(R1, 0.0, g);
+        let P0 = a.xy;
+        let P1 = P0 + vec2<f32>(cos(a.z), sin(a.z)) * P0.x * 0.7;
+        let P2 = vec2<f32>(0.04 * P0.x, 0.42 * P0.y);
+        let m = 1.0 - v;
+        let C = P0 * (m * m * m) + P1 * (3.0 * m * m * v) + P2 * (3.0 * m * v * v) + vec2<f32>(0.0, FW_TIP) * (v * v * v);
+        let k = fw_ss(0.0, 0.12, g.draw);
+        on = vec3<f32>(mix(on.xy, C, k), on.z);
+        let tw = FW_TURNS * FW_TAU * v * v * k;
+        let ct = cos(tw);
+        let st = sin(tw);
+        ca = ca0 * ct - sa0 * st;
+        sa = ca0 * st + sa0 * ct;
+    }
     let p = vec3<f32>(on.x * ca, on.y, on.x * sa);
     return fw_turn(p.x, p.y, p.z, fw_roll(g.d, g.pin, g), g);
 }
-// The land's own end, on the walls, at bearing a: a wandering line round the hole.
-fn fw_edge(a: f32, rim: f32) -> f32 {
-    return rim * (0.93 + 0.06 * fw_wob(a, 11));
-}
-// How far out from the target the walls' land goes: the real land's end, near enough.
+// Where the lip of the land near the target's own columns ends.
 fn fw_rim(d: f32) -> f32 {
     return max(620.0, d + 480.0);
 }
-// The player's place on the shut sphere: fw_roll at that place with the world closed, as the branch and its tip have it. With
-// fw_turned, what puts the branch's tip on the target: fold.wgsl's fd_seat and fd_turned light the target with the same
-// (`the_warp_keeps_the_beats`).
+// The player's place on the held tube: fw_roll at that place, as the rim's tip has it. With fw_turned, what puts the rim's tip on the target:
+// fold.wgsl's fd_seat and fd_turned light the target with the same (`the_warp_keeps_the_beats`).
 fn fw_seat(d: f32, mh: f32) -> vec3<f32> {
     let S = fw_radius(d, mh);
     let rim = fw_rim(d);
-    let x = d / (2.0 * S);
-    let th = FW_PI - FW_HOLE;
-    let lim = 2.0 * atan(rim / (2.0 * S));
-    let f = min(2.0 * atan(x) + (th - lim) * fw_ss(0.45 * rim, rim, d), th);
-    let lip = 34.0 * pow(fw_ss(rim * 0.8, rim, d), 2.0);
-    let yy = mh / (1.0 + x * x) - lip;
+    let r0 = (max(FW_LEN, d) + 170.0) * FW_TUBE_R0;
+    let rc = mix(700.0, S, FW_TUBE_W);
+    let fm = mix(3.2, FW_PI, FW_TUBE_W);
+    let u = d - r0;
+    if (u <= 0.0) {
+        return vec3<f32>(d, mh, 0.0);
+    }
+    let e = u / (rc * fm);
+    let x = e * 1.5707963;
+    let ex = exp(-e);
+    let f = min(fm * mix(1.0 - ex, 0.63662 * atan(x), FW_TUBE_W), 3.3);
+    let lip = 34.0 * FW_TUBE_W * pow(fw_ss(rim * 0.8, rim, d), 2.0);
+    let yy = mh * mix(ex, 1.0 / (1.0 + x * x), FW_TUBE_W) - lip;
     let s = sin(f);
     let c = cos(f);
-    return vec3<f32>((S - yy) * s, S * (1.0 - c) + yy * c, f);
+    return vec3<f32>(r0 + (rc - yy) * s, rc * (1.0 - c) + yy * c, f);
 }
 // `du` along the land from the player's place and `dy` off it, turned to bring that place to their feet: (out from the axis, up).
 fn fw_turned(du: f32, dy: f32, at: vec3<f32>, d: f32, mh: f32) -> vec2<f32> {
@@ -1091,7 +1015,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
     if (copy > 0u) {
-        return fw_length(i32(copy), Q, r, a, c);
+        out.pos = c.tgt + vec3<f32>(0.0, -4000.0, 0.0);
+        out.tint = vec3<f32>(-1.0);
+        return out;
     }
     if (t >= FW_SLAM4 + 0.01 && t < FW_SLAM4 + FW_SUNK) {
         Q.y += fw_sunk(Q, r, a, t, c.me - c.tgt);
@@ -1199,7 +1125,8 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     if (!lying) {
         g = cp_rings(tau, t, kappa);
     }
-    let span = g.foot;
+    // (lying flat the foot is the sheet's own length)
+    let span = select(g.foot, vec2<f32>(FW_LEN, 0.0), lying);
     var s = CpS(vec3<f32>(r * cos(a), h, r * sin(a)), vec3<f32>(0.0, 1.0, 0.0));
     if (lying) {
         if (crease && cell < 5) {
@@ -1225,7 +1152,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         y = mix(dish + (y - dish) * mix(1.0, fw_ss(26.0, 116.0, far_), seat), y, join);
     }
     // ---- the sheet on the sphere -----------------------------------------------------------------------------------------
-    let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 6000.0);
+    let reach = clamp(min(globals.fog.y, globals.fog.w), 480.0, 20000.0);
     let edge = max(reach - dist, 300.0);
     let P = mix(rest, fw_place(R, ca, sa, y, fw_bend(tau, span.x, mq, e, edge, span.y - sink)), share);
     let bubble = 46.0 - 16.0 * fw_lay(tau);
@@ -1449,38 +1376,7 @@ fn world_fragment(f: Fragment) -> Painted {
     let tau = fw_tau(t);
     let r = length(Q.xz);
     let a = atan2(Q.z, Q.x);
-    // ---- the branch: a disc of land round the target, rolled to a length of a tube --------------------------------------------
-    if (f.copy > 0u) {
-        if (r > FW_DISC || !f.front || plain.a < 0.5) {
-            return drop_;
-        }
-        var col = plain.rgb;
-        // (the water isn't copied: it is moss here, a blue stripe down it reads as a pipe)
-        if (f.light.x < 6.0) {
-            col = vec3<f32>(0.14, 0.22, 0.11);
-        }
-        // (no line at the joins: it is one piece of land, grown, not lengths put together)
-        // (the root's first ring lies on the wall: it comes apart into it, block by block, so no edge shows)
-        if (f.copy == 1u) {
-            let w = globals.warp;
-            let block = floor(f.home + fract(w[4].xyz) + w[5].xyz);
-            let h = fw_hash(block.xz + block.y * 7.0);
-            if (h < fw_ss(100.0, 130.0, r)) {
-                return drop_;
-            }
-            // (and it is what it looks like, the earth under the land torn off the wall, not a stretched picture of whatever lay round the target)
-            let l = dot(col, vec3<f32>(0.3, 0.59, 0.11));
-            col = mix(col, vec3<f32>(0.2, 0.16, 0.13) * (0.55 + 0.6 * h) + vec3<f32>(0.25 * l), fw_ss(48.0, 100.0, r));
-        }
-        return Painted(vec4<f32>(col, 1.0), 0.0);
-    }
-    // ---- the hole in the roof: the walls' land ends in a wandering line --------------------------------------------------------
     let mq = c.me - c.tgt;
-    let dmq = length(mq.xz);
-    let lands = fw_edge(a, fw_rim(dmq));
-    if (r > lands + (1.0 - fw_ss(31.0, 34.5, tau)) * 8000.0) {
-        return drop_;
-    }
     // ---- the sheet: nothing under the land is drawn ------------------------------------------------------------------------
     let opened = t > FW_SEAL - 0.5 && r < FW_LAND_R;
     if (t > FW_FOLD - 0.5 && t < FW_SLAM4) {
@@ -1617,9 +1513,7 @@ fn world_fragment(f: Fragment) -> Painted {
     }
     // ---- the land overhead goes off in a thin haze: it has to read as land, right up to the torn edge of the hole -----------------
     let awayp = length(Q.xz - mq.xz);
-    // (less of it round the arm's root, on the far side of the rim, so that the land it comes out of is seen; and where the land's end is, none of that)
-    let root = fw_ss(260.0, 90.0, length(Q.xz + fw_rot(mq.xz / max(dmq, 0.001), FW_BEAR) * 0.8 * fw_rim(dmq))) * (1.0 - fw_ss(0.9 * lands, 0.97 * lands, r));
-    let dusk = (0.5 * fw_ss(430.0, 900.0, awayp) + 0.28 * fw_ss(0.82 * lands, 0.98 * lands, r)) * fw_ss(30.5, 33.5, tau) * (1.0 - 0.8 * root);
+    let dusk = 0.5 * fw_ss(430.0, 900.0, awayp) * fw_ss(30.5, 33.5, tau);
     col = mix(col, vec3<f32>(0.035, 0.05, 0.11), dusk);
     // (the game's fog goes by how far off a thing is drawn, no use on walls: all of it the sphere's own dusk)
     return Painted(vec4<f32>(col, alpha), fog * (1.0 - fw_ss(30.0, 33.0, tau)));
