@@ -484,7 +484,7 @@ fn plates(w: &mut Vox) -> Vec<(String, Cam)> {
         }
         chunks_all += list.len();
         let f = s.foot;
-        let d = s.site.dir;
+        let d = s.lay;
         let (ax, az) = (-d.1, d.0);
         let y = f64::from(GY) + f[1];
         eprintln!("plate {i} (rock {}): near {} hit {:.1} {} chunks, {:.1}M counted, foot {:.0} {:.0} {:.0} r {:.0}, from the player {:.0}", s.rock_id, s.site.near, s.hit, list.len(), tot as f64 / 1e6, f[0], f[1], f[2], f[0].hypot(f[2]), (f[0] - me[0]).hypot(f[2] - me[2]));

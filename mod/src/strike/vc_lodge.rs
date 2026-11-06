@@ -1,6 +1,6 @@
 //! The ten biggest plates the Supervolcano's mount throws, come down as real land. The pass flies them as it does all 95
-//! (shaders/volcano_mount.wgsl's vm_plates), but these are aimed (`Site`), eased into a pose (`Pose`, tilted, leading edge
-//! first, a third of the way into the ground) and stay there as real blocks: their own land's surface, soil and rock, torn
+//! (shaders/volcano_mount.wgsl's vm_plates), but these are aimed (`Site`), eased into a pose (`Pose`, lying low on the land, its
+//! low end in the ground and what it lifts packed under with crushed earth) and stay there as real blocks: their own land's surface, soil and rock, torn
 //! and burnt on the underside, with a lip of ground heaped in front of them, cracks of tuff round them and rubble at the
 //! foot. The drawn plate stays where it came down until every chunk of it is in the world, and then goes: the real one is
 //! in the same place (`a_lodged_plate_is_where_the_pass_draws_it`).
@@ -30,16 +30,19 @@ const VL_EASE: f64 = 3.5;
 /// How far it slides along the way it comes down in those seconds, faster and faster.
 const VL_SLIDE: f64 = 110.0;
 /// How much of its length goes into the ground.
-const VL_BURY: f64 = 1.0 / 3.0;
+const VL_BURY: f64 = 0.42;
+/// How steeply it lies, degrees, from and to: a slab thrown down on the land, never a wing held up in the air.
+const VL_LOW: f64 = 7.0;
+const VL_STEEP: f64 = 20.0;
 /// A plate's thickness at the least.
 const VL_THICK: f64 = 30.0;
 /// How far round a site its chunks are force-loaded.
-pub(super) const VL_PATCH: f64 = 136.0;
+pub(super) const VL_PATCH: f64 = 160.0;
 /// How far from the vent the sites lie: past the deposit and the felled trees, or the land's work buries them.
 const VL_R0: f64 = 570.0;
 const VL_R1: f64 = 860.0;
 /// How near a player a site's middle may lie (its plate reaches some 120 from it), and how far from them the near ones.
-const VL_ME0: f64 = 290.0;
+const VL_ME0: f64 = 310.0;
 const VL_ME1: f64 = 460.0;
 const VL_G: f64 = 34.0;
 const VL_BRK: f64 = 18.7;
@@ -204,6 +207,8 @@ pub(super) struct Slab {
     pub near_rank: usize,
     tilt: f64,
     roll: f64,
+    /// The way it lies, its low end first: near the way it came down.
+    pub lay: (f64, f64),
     pub rest: [f64; 3],
     pub v: [f64; 3],
     tr: f64,
@@ -359,8 +364,12 @@ impl Slab {
             w1 = w1.max(w);
         }
         let k = rock.id as u32;
-        let tilt = (29.0 + 24.0 * mh(k, seed, 0xd6)).to_radians();
-        let roll = (10.0 * (2.0 * mh(k, seed, 0xd7) - 1.0)).to_radians();
+        // (each as it happened to land: most low, the odd one higher; not all lying the way they came, or over the same
+        // side)
+        let tilt = (VL_LOW + (VL_STEEP - VL_LOW) * mh(k, seed, 0xd6).powf(1.6)).to_radians();
+        let roll = (15.0 * (2.0 * mh(k, seed, 0xd7) - 1.0)).to_radians();
+        let yaw = (42.0 * (2.0 * mh(k, seed, 0xd8) - 1.0)).to_radians();
+        let lay = (site.dir.0 * yaw.cos() - site.dir.1 * yaw.sin(), site.dir.0 * yaw.sin() + site.dir.1 * yaw.cos());
         let mut s = Slab {
             rock_id: rock.id,
             site,
@@ -368,6 +377,7 @@ impl Slab {
             near_rank,
             tilt,
             roll,
+            lay,
             rest: rock.rest,
             v: rock.v,
             tr: rock.tr,
@@ -409,10 +419,10 @@ impl Slab {
         s
     }
     /// The pose with the ground `gs` at its foot: its plane to the way it comes down at its tilt, the leading end of its
-    /// length the one nearer how it is tumbling, a third of it under the ground.
+    /// length the one nearer how it is tumbling, `VL_BURY` of it past where it meets the ground.
     fn set_pose(&mut self, gs: f64) {
         *self.list.borrow_mut() = None;
-        let d = [self.site.dir.0, 0.0, self.site.dir.1];
+        let d = [self.lay.0, 0.0, self.lay.1];
         let up = [0.0, 1.0, 0.0];
         let (cs, sn) = (self.tilt.cos(), self.tilt.sin());
         let fl = [cs * d[0], -sn, cs * d[2]];
@@ -436,7 +446,7 @@ impl Slab {
                     *v = fl[i] * el[j] + fnr[i] * en[j] + fw[i] * ew[j];
                 }
             }
-            // (the point of its middle sheet that stays at the ground: a third back from its leading end)
+            // (the point of its middle sheet that stays at the ground: `VL_BURY` back from its leading end)
             let (a, b) = if sign > 0.0 { (self.s1, self.s1 - self.s0) } else { (-self.s0, self.s1 - self.s0) };
             let sp = sign * (a - VL_BURY * b);
             let mid = self.tmean - 0.5 * self.th;
@@ -452,7 +462,7 @@ impl Slab {
         }
         self.pose = best.unwrap().1;
         self.foot = [self.site.x, gs, self.site.z];
-        self.u_top = 0.5 * self.th / sn;
+        self.u_top = (0.5 * self.th / sn).min(VL_BURY * (self.s1 - self.s0));
     }
     /// How the tumble has turned it `t` into the strike, the pass's way.
     fn spin_quat(&self, t: f64) -> [f64; 4] {
@@ -475,7 +485,7 @@ impl Slab {
     }
     /// The aim of its flight: where its middle has to be as it hits, before the ease slides it in.
     pub fn aim(&self) -> [f64; 3] {
-        [self.pose.c[0] - VL_SLIDE * self.site.dir.0, self.pose.c[1], self.pose.c[2] - VL_SLIDE * self.site.dir.1]
+        [self.pose.c[0] - VL_SLIDE * self.lay.0, self.pose.c[1], self.pose.c[2] - VL_SLIDE * self.lay.1]
     }
     /// Its pose over ground at `gs`, and the flight that takes it there: how fast it is thrown (its gravity set too).
     pub fn fly(&mut self, gs: f64) -> [f64; 3] {
@@ -497,7 +507,7 @@ impl Slab {
         let q = self.pose.quat();
         let f = self.flown(self.hit);
         let d = [self.pose.c[0] - f[0], self.pose.c[1] - f[1], self.pose.c[2] - f[2]];
-        let w = [q[0], q[1], q[2], q[3], d[0], d[1], d[2], gone, self.hit - VL_EASE, self.foot[0], self.foot[1], self.foot[2], self.rock_id as f64, self.site.dir.0, self.site.dir.1, 0.5 * (self.s1 - self.s0)];
+        let w = [q[0], q[1], q[2], q[3], d[0], d[1], d[2], gone, self.hit - VL_EASE, self.foot[0], self.foot[1], self.foot[2], self.rock_id as f64, self.lay.0, self.lay.1, 0.5 * (self.s1 - self.s0)];
         crate::meter::spend(2_000);
         w.iter().map(|v| (*v as f32).to_bits()).collect()
     }
@@ -685,7 +695,7 @@ impl Slab {
     /// What it does to the ground: the rubble and cracks round it, worked out once it is known where it stands.
     fn litter(&mut self, seed: u32) {
         let s = seed ^ (self.rock_id as u32).wrapping_mul(0x9e37);
-        let (dx, dz) = self.site.dir;
+        let (dx, dz) = self.lay;
         let (ax, az) = (-dz, dx);
         let w = 0.5 * self.wide;
         let (ut, f) = (self.u_top, self.foot);
@@ -760,7 +770,7 @@ impl Slab {
     /// A column's ground: heaped or dug, the trees on it gone, its cracks, its rubble: the world's Y its ground is at
     /// afterwards. `col`: what the read said stands there.
     fn ground_col(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, col: Option<&Col>, seed: u32, near_ones: &Near) -> Option<i32> {
-        let (dx, dz) = self.site.dir;
+        let (dx, dz) = self.lay;
         let (ox, oz) = (wx - self.foot[0], wz - self.foot[2]);
         let (u, v) = (ox * dx + oz * dz, oz * dx - ox * dz);
         let w = 0.5 * self.wide;
@@ -853,6 +863,28 @@ impl Slab {
         crate::meter::spend(60 * near_ones.spalls.len() as u64);
         Some(top)
     }
+    /// What lies under it where it stands clear of the ground: the land it came down on, crushed and shoved up under it,
+    /// so nothing of it is held up by air. `sp`: its stretches in this column, `g` the ground's top as `ground_col` left it.
+    fn under(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, g: i32, c: &Col, sp: &[Stretch], seed: u32) {
+        let Some(low) = sp.iter().map(|s| s.y0).reduce(f64::min) else { return };
+        let y = (low + f64::from(gy) - 0.5).ceil() as i32 - 1;
+        if y <= g {
+            return;
+        }
+        let n = qnoise(wx, wz, 17.0, seed ^ 0x53);
+        let bed = if c.fluid { c.g + 1 } else { g + 1 };
+        // (in beds, whose edges wander: a stripe of its own to a column would show as bars down its face)
+        let h = f64::from(y - bed + 1);
+        let a = bed + (h * (0.35 + 0.3 * n)) as i32;
+        let d = (y - 1 - (2.0 + 4.0 * n) as i32).max(a);
+        b.run(x, z, bed, a, "minecraft:tuff");
+        b.run(x, z, a + 1, d, "minecraft:cobbled_deepslate");
+        b.run(x, z, d + 1, y, "minecraft:coarse_dirt");
+        if c.top > y {
+            b.run(x, z, y + 1, c.top, "minecraft:air");
+        }
+        crate::meter::spend(800);
+    }
     /// The edits of the chunk with corner (x0, z0): its ground, then the plate. `read`: what stands on each of its columns
     /// (x then z), none where the world has not said.
     pub fn chunk(&self, x0: i32, z0: i32, bx: i32, bz: i32, gy: i32, seed: u32, read: Option<&[Option<Col>]>) -> Blocks {
@@ -874,6 +906,9 @@ impl Slab {
                 let col = read.and_then(|r| r[((z - z0) * 16 + x - x0) as usize].as_ref());
                 let g = self.ground_col(&mut b, x, z, wx, wz, gy, col, seed, &near);
                 self.plate_col(&mut b, x, z, wx, wz, gy, g.map(|g| g - 1), &mut sp);
+                if let (Some(g), Some(c)) = (g, col) {
+                    self.under(&mut b, x, z, wx, wz, gy, g, c, &sp, seed);
+                }
             }
         }
         b
@@ -909,19 +944,23 @@ impl Slab {
             }
         }
         // (the ground round its foot)
-        let (dx, dz) = self.site.dir;
+        let (dx, dz) = self.lay;
         let (ax, az) = (-dz, dx);
         let w = 0.5 * self.wide + 50.0;
         let mut u = -self.u_top - 60.0;
         while u < self.u_top + 90.0 {
             let mut v = -w;
             while v <= w {
-                add(self.foot[0] + dx * u + ax * v, self.foot[2] + dz * u + az * v);
+                // (no further than its site's chunks are held)
+                if u * u + v * v < (VL_PATCH - 12.0) * (VL_PATCH - 12.0) {
+                    add(self.foot[0] + dx * u + ax * v, self.foot[2] + dz * u + az * v);
+                }
                 v += 8.0;
             }
             u += 8.0;
         }
-        for c in &self.cracks {
+        let (fx, fz) = (self.foot[0], self.foot[2]);
+        for c in self.cracks.iter().filter(|c| (c[2] - fx).powi(2) + (c[3] - fz).powi(2) < (VL_PATCH - 12.0) * (VL_PATCH - 12.0)) {
             add(c[0], c[1]);
             add(c[2], c[3]);
         }
@@ -935,7 +974,7 @@ impl Slab {
     /// Whether (wx, wz) from the vent lies in its reach: the land's work leaves it alone.
     pub fn covers(&self, wx: f64, wz: f64) -> bool {
         let (ox, oz) = (wx - self.foot[0], wz - self.foot[2]);
-        let (u, v) = (ox * self.site.dir.0 + oz * self.site.dir.1, oz * self.site.dir.0 - ox * self.site.dir.1);
+        let (u, v) = (ox * self.lay.0 + oz * self.lay.1, oz * self.lay.0 - ox * self.lay.1);
         v.abs() < 0.5 * self.wide + 40.0 && u > -(self.s1 - self.s0) - 10.0 && u < self.u_top + 70.0
     }
 }
@@ -1128,10 +1167,10 @@ pub(super) fn vl_plan(p: &mut Plan, l: Shared) {
 /// The columns asked about a plate: across the way it comes down, where it meets the ground, and a column of each chunk.
 fn asked_cols(s: &Slab, bx: i32, bz: i32) -> Vec<(i32, i32)> {
     let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
-    let (dx, dz) = s.site.dir;
+    let (dx, dz) = s.lay;
     let (ax, az) = (-dz, dx);
     let w = 0.5 * s.wide + 8.0;
-    let ut = s.u_top + 8.0;
+    let ut = s.u_top.min(32.0) + 8.0;
     let mut out = Vec::new();
     let mut u = -ut;
     while u <= ut {
@@ -1502,7 +1541,7 @@ mod tests {
                     for z in (c[2] as i32 - 150..c[2] as i32 + 150).step_by(5) {
                         for y in (-60..240).step_by(3) {
                             let w = [f64::from(x), f64::from(y) + 0.5, f64::from(z)];
-                            if [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [-5.0, 0.0, 0.0], [0.0, 0.0, 5.0], [0.0, 0.0, -5.0], [0.0, 11.0, 0.0], [0.0, -7.0, 0.0]].iter().all(|o| d.inside([w[0] + o[0], w[1] + o[1], w[2] + o[2]], 0.0)) {
+                            if [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [-5.0, 0.0, 0.0], [0.0, 0.0, 5.0], [0.0, 0.0, -5.0], [0.0, 8.0, 0.0], [0.0, -5.0, 0.0]].iter().all(|o| d.inside([w[0] + o[0], w[1] + o[1], w[2] + o[2]], 0.0)) {
                                 inner += 1;
                                 holes += usize::from(!set.contains(&(x, y + 65, z)));
                             }
@@ -1547,7 +1586,7 @@ mod tests {
             }
         }
     }
-    /// A third or so of it in the ground, tilted, its top the land's and its underside burnt; and it isn't a sheet.
+    /// Lying low with its low end in the ground, nowhere near standing up; and it isn't a sheet.
     #[test]
     fn it_stands_as_it_should() {
         let (_, l) = land(0.0);
@@ -1555,15 +1594,15 @@ mod tests {
             let up = s.pose.world([0.0, 0.0, 0.0])[1] - s.foot[1];
             let n = norm([-s.plane.0, 1.0, -s.plane.1]);
             let tilt = dot(s.pose.r[1], n).clamp(-1.0, 1.0).acos().to_degrees();
-            assert!((10.0..75.0).contains(&tilt), "rock {}: {tilt} degrees", s.rock_id);
-            assert!(up > 10.0, "rock {}: its middle {up} over the ground", s.rock_id);
+            assert!((VL_LOW - 1.0..VL_STEEP + 17.0).contains(&tilt), "rock {}: {tilt} degrees", s.rock_id);
+            assert!(up > 2.0, "rock {}: its middle {up} over the ground", s.rock_id);
             let set = blocks_of(s);
             let ys: Vec<i32> = set.iter().map(|b| b.1).collect();
             let (lo, hi) = (*ys.iter().min().unwrap(), *ys.iter().max().unwrap());
-            assert!(hi - 65 > 45, "rock {}: it stands {} high", s.rock_id, hi - 65);
+            assert!((25..85).contains(&(hi - 65)), "rock {}: it stands {} high", s.rock_id, hi - 65);
             assert!(lo < 65 - 10 && hi < 318, "rock {}: {lo} to {hi}", s.rock_id);
             let under = set.iter().filter(|b| b.1 < 65).count() as f64 / set.len() as f64;
-            assert!((0.08..0.6).contains(&under), "rock {}: {under} of it under the ground", s.rock_id);
+            assert!((0.02..0.6).contains(&under), "rock {}: {under} of it under the ground", s.rock_id);
         }
     }
 }

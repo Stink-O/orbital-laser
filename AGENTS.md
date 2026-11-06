@@ -258,11 +258,12 @@ laser, command, capability and timing). This file is the short, factual version 
   before the game. **The far terrain doesn't see these edits:** see `docs/HOW-IT-WORKS.md`.
 - **The Supervolcano's plates that stay** (`strike/vc_lodge.rs`; the pass's `VL_*`, `vl_*` and `vm_plates` in
   `shaders/volcano_mount.wgsl`): the ten biggest whole plates the mount throws come down as real land, terrain on only,
-  and stay. Their sites are worked out as the strike fires (`vl_sites`: five on the player's side, 290-460 from them,
-  the rest round the mount, all 570-860 from the vent), their chunks force-loaded from then (`vl_patch`, 136 round each);
+  and stay. Their sites are worked out as the strike fires (`vl_sites`: five on the player's side, 310-460 from them,
+  the rest round the mount, all 570-860 from the vent), their chunks force-loaded from then (`vl_patch`, 160 round each);
   the plates are picked at the end of the mount's tables (`vl_pick`) and aimed, their flight's words rewritten (`vl_one`,
   `Slab::fly`). From 19.5 s the ground where each meets it is asked (a small `world.surface-height` query) and its pose
-  settled (`Pose`, `set_pose`: its plane to the way it comes down at 29-53 degrees, a third of it under the ground;
+  settled (`Pose`, `set_pose`: lying low, `VL_LOW` to `VL_STEEP` degrees, turned up to 42 degrees off the way it came and
+  rolled up to 15, its low end in the ground, what it lifts packed under with crushed earth so none of it is held up by air, `under`;
   `Lodge`'s words at `VL_BASE`) before its last 3.5 s, in which the pass slerps its tumble into that pose and slides it
   in (`vl_add`, `vl_slerp`). From the moment it hits its chunks are read (`Lot`, `vl_tick`) and made (`Slab::chunk`: the
   plate a world column at a time, `spans`, so it has no holes; soil, rock and a burnt underside as strata by depth; its
