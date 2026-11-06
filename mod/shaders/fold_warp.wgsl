@@ -345,7 +345,7 @@ fn cp_seg(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> vec3<f32> {
     return vec3<f32>(cp_x(n, p - a), dot(p - a, n) / l, l);
 }
 // A crease is a straight line in the world, not one draped over the hills, and a facet is flat: so as the front comes the land's relief
-// is pressed out towards one level, CP_FLAT of it everywhere and nearly all of it along any crease, and that last stays in the sphere's walls, a groove the line runs down. `e` how far the nearest fine line is. What is
+// is pressed out towards one level, CP_FLAT of it everywhere, and along any crease it runs in a groove, CP_GROOVE deep at most, that stays in the sphere's walls. `e` how far the nearest fine line is. What is
 // left of its height here: (over the land, along the creases). The level is the land's own, how low it lies round the target (params[10],
 // strike/fold.rs's fd_level, from the target), brought to the target's height at the target. Only what stands over it is pressed: pressed
 // from under, a column's rock would stand up through the lower land beside it.
@@ -356,6 +356,12 @@ fn cp_squash(y: f32, level: f32, pr: f32) -> f32 {
     return level + max(y - level, 0.0) * pr + min(y - level, 0.0);
 }
 const CP_FLAT: f32 = 0.68;
+// The groove a crease runs down, what cp_press's second number leaves: only so deep. Taken from all the land's height over the level it was a trench as
+// deep as the hills, a wall of stretched columns either side of every line.
+const CP_GROOVE: f32 = 5.0;
+fn cp_groove(y: f32, level: f32, gv: f32) -> f32 {
+    return y - min((1.0 - gv) * max(y - level, 0.0), CP_GROOVE);
+}
 fn cp_press(r: f32, w: CpW, t: f32, e: f32) -> vec2<f32> {
     let p = (w.u * w.e0 + w.v * w.e1) * r;
     var bl = 0.0;
@@ -531,7 +537,7 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
         var V = mix(mix(A, B, kt.m.x), mix(D, C, kt.m.y), kt.m.z);
         if (w.k != pin.x || i != pin.y) {
             let up = cross(C - A, B - D);
-            let nv = up * select(1.0, -1.0, up.y < 0.0) / max(length(up), 0.001);
+            let nv = up / max(length(up), 0.001);
             let f = fw_ss(0.0, 1.3, t - (FW_SCORE + 3.2 + 1.3 * kt.h.y)) * select(1.0, g.ps[i], t >= FW_REL && lifts);
             V += nv * select(-CP_V, CP_V, kt.h.x > 0.5) * min(length(C - B), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w)) * f * amount;
         }
@@ -540,9 +546,11 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
         let Y = c[(tr.j + 1) & 3];
         S = V * tr.lv + X * tr.lx + Y * tr.ly;
         let up = cross(Y - V, X - V);
-        n = up * select(1.0, -1.0, up.y < 0.0) / max(length(up), 0.001);
-        // (what lies under the land goes straight down from the sheet, one way on both sides of a crease: leaning with its facet it would come
-        // out through a steep ridge)
+        // (a facet's own winding, never turned to face the sky: a plate past upright has its land on what is now its underside, and turned over here
+        // that land stands out through the back of the sheet, inside out)
+        n = up / max(length(up), 0.001);
+        // (what stands on the sheet and what lies under it go one way off it, the same way on both sides of a crease: along each facet's own normal
+        // the heights fan apart over a ridge and cross in a valley)
         let dd = w.u * w.e0 + w.v * w.e1;
         let in_out = clamp((r - select(0.0, cp_rho(w, in_), i > 0)) / max(cp_rho(w, m) - select(0.0, cp_rho(w, in_), i > 0), 0.001), 0.0, 1.0);
         let a2 = mix(vec2<f32>(sn0, cs0), vec2<f32>(sn1, cs1), in_out);
@@ -559,8 +567,7 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
         let more = mix(x, x * s0 + (1.0 - s0) * (x - 600.0 * (1.0 - exp(-x / 600.0))), fw_soft(tau, t));
         S = vec3<f32>(on.x + d.x * more, on.y, on.z + d.y * more);
     }
-    let level = cp_level(r);
-    let P = S + n * max(hh - level, 0.0) + under * min(hh, level);
+    let P = S + under * hh;
     return CpS(vec3<f32>(P.x * w.ct - P.z * w.st, P.y, P.x * w.st + P.z * w.ct), vec3<f32>(n.x * w.ct - n.z * w.st, n.y, n.x * w.st + n.z * w.ct));
 }
 // All that is left of it lying on the sphere, every vertex of the walls: the facet's height over the sheet, and its way up (x, z).
@@ -917,6 +924,8 @@ fn fw_length(k: i32, Q: vec3<f32>, r: f32, a: f32, c: FwClock) -> Warped {
 // spacing to the stereographic map's, conformal, so that on the sphere the land is only scaled, never stretched.
 // The player's feet, and the land under them, are left where they are, level: the whole of it is turned about them.
 struct FwBend { tau: f32, d: f32, e: vec2<f32>, edge: f32, top: f32, r0: f32, rc: f32, fm: f32, w: f32, shut: f32, S: f32, pin: f32, rim: f32 }
+const FW_TAIL0: f32 = 0.7;         // the land past the roll's end lies on along its tangent till fm is this, and is drawn in by FW_TAIL1
+const FW_TAIL1: f32 = 1.5;
 fn fw_curl(tau: f32) -> f32 {
     return fw_ss(FW_FOLD + 1.0, 29.0, tau);
 }
@@ -944,10 +953,14 @@ fn fw_roll(R: f32, y: f32, g: FwBend) -> vec3<f32> {
     let lim = 2.0 * atan(g.rim / (2.0 * g.S));
     f = min(f + g.w * g.shut * (th - lim) * fw_ss(0.45 * g.rim, g.rim, R), mix(3.3, th, g.w * g.shut));
     let lip = 34.0 * g.w * pow(fw_ss(g.rim * 0.8, g.rim, R), 2.0);
-    let yy = y * mix(ex, 1.0 / (1.0 + x * x), g.w) - lip;
+    // (the roll is only rc * fm long, and fm starts from nothing: what is past that lies on along the tangent, or all the land out to the horizon would land on one
+    // circle the moment it starts; drawn in as the roll grows long enough to take it)
+    let tail = 1.0 - fw_ss(FW_TAIL0, FW_TAIL1, g.fm);
+    let rem = max(u - g.rc * f, 0.0) * tail;
+    let yy = y * mix(mix(ex, 1.0 / (1.0 + x * x), g.w), 1.0, tail) - lip;
     let s = sin(f);
     let c = cos(f);
-    return vec3<f32>(g.r0 + (g.rc - yy) * s, g.rc * (1.0 - c) + yy * c, f);
+    return vec3<f32>(g.r0 + (g.rc - yy) * s + rem * c, g.rc * (1.0 - c) + yy * c + rem * s, f);
 }
 // Where the sheet goes: R along it from the target at the bearing (ca, sa), y over it. The result is from the target, x and z as the world's.
 fn fw_place(R: f32, ca: f32, sa: f32, y: f32, g: FwBend) -> vec3<f32> {
@@ -1111,6 +1124,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         }
     }
     var pr = 1.0;
+    var gv = 1.0;
     if (crease && r < FW_LEN * 1.25 && (tau < FW_FLAT0 || cell < 5)) {
         // (on the sphere only the creases' grooves are left)
         let pp = select(cp_press(r, w, t, select(1000.0, tr.e, cell < 5)), vec2<f32>(1.0, 1.0 - 0.9 * (1.0 - fw_ss(1.0, 9.0, tr.e))), tau >= FW_FLAT0);
@@ -1121,8 +1135,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
             back = 1.0 - fw_ss(lands - 0.15, lands + 0.1, t);
         }
         let them = back * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - mix(-c.tgt.xz, mq.xz, fw_held(tau))));
-        pr = mix(1.0, pp.x, them * (1.0 - fw_lay(tau))) * mix(1.0, pp.y, them);
-        rest.y = cp_squash(rest.y, cp_level(r), pr);
+        pr = mix(1.0, pp.x, them * (1.0 - fw_lay(tau)));
+        gv = mix(1.0, pp.y, them);
+        rest.y = cp_groove(cp_squash(rest.y, cp_level(r), pr), cp_level(r), gv);
     }
     var own = 4;
     for (var i = 3; i >= 0; i -= 1) {
@@ -1149,7 +1164,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         h += fw_shock(r, t);
     }
     if (crease) {
-        h = cp_squash(h, cp_level(r), pr);
+        h = cp_groove(cp_squash(h, cp_level(r), pr), cp_level(r), gv);
     }
     if (h < c.cut) {
         h = mix(h, c.cut + 0.15 * (h - c.cut), cuts);

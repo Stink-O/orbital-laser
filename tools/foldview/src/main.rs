@@ -201,6 +201,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
         map_land(&mut v, &mut i, m, 2, 640, g("fine", 280.0) as i32);
         map_land(&mut v, &mut i, m, 8, 1500, 640);
         land(&mut v, &mut i, 8.0, 2400.0, 1500.0, tx, tz, ty, hills, false);
+        land(&mut v, &mut i, 32.0, g("farland", 9000.0), 2400.0, tx, tz, ty, hills, false);
     } else {
         land(&mut v, &mut i, 2.0, 144.0, 0.0, tx, tz, ty, hills, true);
         near = i.len() as u32;
@@ -296,7 +297,7 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
                 }}
                 o
             };
-            let mut grab = |yy: f32| warp_pts(&polar(yy));
+            let grab = |yy: f32| warp_pts(&polar(yy));
             let pts = grab(0.0);
             let top = grab(8.0);
             let (hits, worst, hitr) = check(&pts, nr as usize, nm as usize, rmax as f32);
