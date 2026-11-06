@@ -1,4 +1,4 @@
-//! The Tsunami's plan: a wave of dark, debris-laden water 130 blocks high and nearly three kilometres wide rises on the
+//! The Tsunami's plan: a wave of dark, debris-laden water 320 blocks high and over five kilometres wide rises on the
 //! horizon beyond the target, crosses the land at about 100 blocks a second, sweeps the target away, washes over the
 //! player and drains off, leaving mud, gravel and wreckage.
 //!
@@ -8,7 +8,7 @@
 //! nothing is kept from frame to frame, and the land's work, the sounds, the carry and the shakes all take their times
 //! from the same functions.
 //!
-//! The real land under it: every column of a swath about 500 across (`mask`) is read (`world.read-columns`) in the
+//! The real land under it: every column of a swath about 700 across (`mask`) is read (`world.read-columns`) in the
 //! order the front reaches it; each chunk is changed on one tick (`world.edit-blocks`) a second after its water is
 //! deep, hidden under it: everything that stood on the land goes (trees, plants, buildings: all but what `stays`), the
 //! soil is scoured to mud, packed mud, gravel, sand and coarse dirt in streaks along the flow, the wreckage of what
@@ -16,7 +16,7 @@
 //!
 //! Timeline (TS_LEN 42 s): the wave rises on the horizon (0 to 3 s), crosses the land at TS_V0 (TS_T, 9 s, at the
 //! target; slowing past it), reaches the player (`arr` at their place, about 14.7 s from 400 blocks), washes over them,
-//! holds 7.5 s, drains over 10 s.
+//! holds 6.5 s, drains over 14 s.
 //!
 //! Keep the TS_* here and in tsunami.wgsl in step.
 #![cfg_attr(not(test), allow(dead_code))]

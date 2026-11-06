@@ -500,7 +500,7 @@ pub const HURRICANE: Laser = Laser {
 };
 
 /// The tsunami, planned in `strike::tsunami_plan` (strike/tsunami.rs; the pass shaders/tsunami.wgsl): no beam. A wave of
-/// dark, debris-laden water 130 blocks high rises on the horizon beyond the target, crosses the land and sweeps it clean,
+/// dark, debris-laden water 320 blocks high rises on the horizon beyond the target, crosses the land and sweeps it clean,
 /// washes over the player and drains away, leaving mud and wreckage. The crater fields below are only what the shared
 /// tests read: what it sweeps and scours is planned there.
 pub const TSUNAMI: Laser = Laser {
@@ -508,7 +508,7 @@ pub const TSUNAMI: Laser = Laser {
     index: 16,
     title: "TSUNAMI",
     rgb: 0x2E9FB5,
-    blurb: "A wave of dark water 130 blocks high crosses the land and sweeps it clean.",
+    blurb: "A wave of dark water 320 blocks high crosses the land and sweeps it clean.",
     icon_model: "orbital:tsunami_icon",
     length: 42.0,
     range: 1000.0,

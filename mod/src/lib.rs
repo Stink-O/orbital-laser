@@ -82,7 +82,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "rod" => 7,
         "supercell" => 8,
         "hurricane" => 9,
-        // (10 and 11: the Fold's and the Supervolcano's, in their branches)
+        // (10 and 11 are spare)
         "tsunami" => 12,
         _ => 0,
     }
