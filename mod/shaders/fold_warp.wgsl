@@ -6,12 +6,12 @@
 //   FW_SCORE   they sharpen into hairline creases racing over the land: the crease pattern (cp_lines)
 //   FW_TEAR    the creases split on the void, painted on the land itself so nothing under it shows
 //   FW_FOLD    the land swells up round the target ring by ring, one smooth sheet, nothing over anything: every point of it
-//              goes to one place (fw_chain), the horizon rolling up and over behind it (fw_roll)
+//              goes to one place (cp_sheet), the horizon rolling up and over behind it (fw_roll)
 //   FW_WRAP0   the roll's ring comes in to the target and its tube down to the sphere's size, as the swell lies down onto its
 //              floor and the land comes back to its own size: FW_SEAL all but shut, the player inside, the real land on the
 //              walls, and a hole left in the roof (FW_HOLE): the land stops at a rim that curls away round it
-//   FW_CRUSH   a branch of that same sheet flows down off the rim to the target (fw_spout), in six stages (fw_stage), each
-//              smaller and slower
+//   FW_CRUSH   a branch of land grows out of the wall under the rim, its root swelling first (fw_swell), and comes round and down to the
+//              target (fw_length), in six stages (fw_stage), each smaller and slower
 //   FW_BEAT    its tip touches the target. Stillness
 //   FW_REL     it all runs backwards (fw_tau), slowly at first: the sphere opens and the bud stands again, every ring up; then
 //              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, letting the crater show
@@ -752,8 +752,8 @@ fn fw_pull(r: f32, ang: f32, y: f32, t: f32, R: f32) -> f32 {
 fn fw_radius(d: f32, y: f32) -> f32 {
     return max(max(d * 1.3, 170.0), y * 1.15);
 }
-// The fold down from the roof: a branch of land comes over the hole's rim and down to the target, in six stages, each shorter
-// and slower than the last, thinner at each. The far land past the rim is no use for it: its tiles are too big and too few to
+// The fold down from the roof: a branch of land grows out of the wall by the hole's rim and comes down to the target, in six stages, each
+// shorter and slower than the last, thinner at each. The far land past the rim is no use for it: its tiles are too big and too few to
 // be bent that tightly, and go to blades and streaks. So it is the real land round the target, its blocks and trees, drawn five
 // more times (`copy`), each time a length of one tube: a disc of land rolled up conformally, its middle at the length's end,
 // its edge joined to the end of the one before, a node at each join. It goes along one curve (fw_path), one length after
@@ -1456,7 +1456,7 @@ fn world_fragment(f: Fragment) -> Painted {
         if ((dim || (Q.y < c.cut && !opened)) && !f.front) {
             return drop_;
         }
-        // (what the sky doesn't reach is dark, no window on the void: that is the cracks' alone, and a deep crater open to the sky
+        // (what the sky doesn't reach is dark, no window on the void: that is the tears' alone, and a deep crater open to the sky
         // goes on being a crater)
         if (dim && plain.a > 0.5) {
             let pit = fw_ss(FW_FOLD - 0.5, FW_FOLD + 0.5, t);
