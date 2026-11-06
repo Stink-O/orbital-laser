@@ -899,7 +899,9 @@ fn fd_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, G: vec3<f32>, near: f32) 
         c = mix(c, l * 1.05, 0.9 * fd_ss(0.012, -0.012, e.y));
     }
     let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
-    return c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres);
+    // (the droplet is small: this much of a thing at night has to go down with the sky)
+    let day = 0.14 + 0.86 * fd_ss(-0.2, 0.1, frame.sun.y);
+    return c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres) * day;
 }
 const FD_LIFT: f32 = 0.26;
 // ---- the drop at its tip -------------------------------------------------------------------------------------------------
@@ -910,7 +912,7 @@ struct FdHang { y: f32, b: f32, R: f32 }
 fn fd_hang(tau: f32, g: FwBend, f: FwWay) -> FdHang {
     let y = fd_on_curve(1.0, g, f).y;
     let fill = fw_ss(38.2, FW_BEAT, tau);
-    return FdHang(y, y - (FW_TIP - 1.0) * fill, 0.8 + 2.9 * fill);
+    return FdHang(y, y - (FW_TIP - 1.0) * fill, 0.8 + 3.8 * fill);
 }
 fn fd_smin(a: f32, b: f32, k: f32) -> f32 {
     let h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
@@ -920,7 +922,7 @@ fn fd_smin(a: f32, b: f32, k: f32) -> f32 {
 fn fd_hang_sdf(p: vec2<f32>, H: FdHang) -> f32 {
     let bead = length(p - vec2<f32>(0.0, H.b + H.R)) - H.R;
     let ny = clamp(p.y, H.b + H.R, H.y + 2.0);
-    let neck = length(p - vec2<f32>(0.0, ny)) - 0.32 * H.R;
+    let neck = length(p - vec2<f32>(0.0, ny)) - 0.3 * H.R;
     let cap = length(p - vec2<f32>(0.0, H.y + 30.0)) - 30.0;
     return fd_smin(fd_smin(bead, neck, H.R * 0.8), cap, 1.5 + H.R);
 }
@@ -1008,8 +1010,8 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f3
     let dark = 1.0 - fw_ss(0.015, 0.14, luminance(colIn));
     let low = blue * 0.8 + dark * 0.2 + 0.9 * wide + 0.28 * c1 + 0.12 * c0;
     let lv = fw_ss(FD_V0, FD_V1, on.v);
-    let head = FD_V0 + (1.1 - FD_V0) * fw_ss(0.0, 0.55, fr);
-    let e = (lv * 1.3 + low) - mix(2.2, 0.75, fr);
+    let head = FD_V0 + (1.1 - FD_V0) * fw_ss(0.0, 0.4, fr);
+    let e = (lv * 1.3 + low) - mix(2.2, 0.75, sqrt(fr));
     let ran = 1.0 - fw_ss(head - 0.02, head + 0.04, on.v + 0.08 * c1);
     // (the band's top: nothing gets past FD_V0 but the runs)
     let shore = fw_ss(0.0, 0.02, e) * ran * fw_ss(FD_V0 - 0.03, FD_V0, on.v + 0.05 * c1);
@@ -1020,7 +1022,8 @@ fn fd_stalactite(colIn: vec3<f32>, off: vec3<f32>, v: vec3<f32>, t: f32, tau: f3
         return col;
     }
     // ---- the metal ----------------------------------------------------------------------------------------------------------------------------------------
-    let sw = fd_swell(on.v, on.ang, t) * mix(1.0, 0.25, fw_ss(0.86, 0.97, on.v));
+    // (least high up, where it looks at the sky and every swell would be a ring, and at the tip)
+    let sw = fd_swell(on.v, on.ang, t) * mix(0.45, 1.0, fw_ss(0.66, 0.78, on.v)) * mix(1.0, 0.25, fw_ss(0.86, 0.97, on.v));
     // (at its edge it stands up round, a bead: the swell of the edge)
     let bead = 1.0 - fw_ss(0.0, 0.1, e);
     let n = normalize(on.n + on.T * (sw.x - 0.34 * bead) + cross(on.n, on.T) * sw.y);

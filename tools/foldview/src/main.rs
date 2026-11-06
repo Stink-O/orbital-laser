@@ -453,6 +453,24 @@ async fn run(warp: &str, out: &str, shots: &[HashMap<String, f32>]) {
             });
             p.set_pipeline(ppipe.as_ref().unwrap()); p.set_bind_group(0, &pbg, &[]); p.draw(0..3, 0..1);
         }
+        let pbench = g("pbench", 0.0) as usize;
+        if post && pbench > 0 {
+            queue.submit([std::mem::replace(&mut enc, device.create_command_encoder(&Default::default())).finish()]);
+            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            let mut ts = Vec::new();
+            for _ in 0..pbench {
+                let t0 = std::time::Instant::now();
+                let mut e2 = device.create_command_encoder(&Default::default());
+                { let mut p = e2.begin_render_pass(&wgpu::RenderPassDescriptor { label: None, color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &poutv, resolve_target: None, depth_slice: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })], depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None, multiview_mask: None });
+                  p.set_pipeline(ppipe.as_ref().unwrap()); p.set_bind_group(0, &pbg, &[]); p.draw(0..3, 0..1); }
+                queue.submit([e2.finish()]);
+                device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+                ts.push(t0.elapsed().as_secs_f32() * 1000.0);
+            }
+            ts.sort_by(|a, b| a.total_cmp(b));
+            eprintln!("PBENCH t={t} {w}x{h}: {:.2} ms (min {:.2})", ts[ts.len() / 2], ts[0]);
+            continue;
+        }
         enc.copy_texture_to_buffer(if post { pout.as_image_copy() } else { color.as_image_copy() }, wgpu::TexelCopyBufferInfo { buffer: &rb, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(pad), rows_per_image: None } }, size);
         queue.submit([enc.finish()]);
         rb.slice(..).map_async(wgpu::MapMode::Read, |_| {});

@@ -12,7 +12,8 @@
 //              the far land's end, the hole in the roof that end, one round line
 //   FW_CRUSH   the rim draws in and down: the land's outer band sags from the tube, one sheet, a stalactite of land lowering
 //              to the target (fw_place), its mouth closing as it comes, in six stages (fw_stage), each smaller and slower
-//   FW_BEAT    its tip touches the target. Stillness
+//              (from about 36.8 fold.wgsl turns it to the droplet's metal from the tip up, over this same surface: fd_stal, fd_stalactite)
+//   FW_BEAT    the drop hanging from its tip (fold.wgsl's fd_hang) touches the target. Stillness
 //   FW_REL     it all runs backwards (fw_tau), slowly at first: the rim goes back up, the tube opens and the bud stands again, every ring up; then
 //              ring by ring, outermost first, each falls and bangs down (fw_hit), the last, FW_SLAM4, breaking the land along its creases:
 //              the crater swaps in held up at the land's level and falls in, kite by kite (fw_sunk)
@@ -62,7 +63,7 @@ const FW_TUBE_W: f32 = 0.5933;     // fw_bend's w, and how much of the r0 of fw_
 const FW_TUBE_R0: f32 = 0.352;
 const FW_RIM0: f32 = 0.4;          // the band of land that goes down to the target: from this much of the way to the land's end, to its end
 const FW_TURNS: f32 = 0.18;        // how far round it leans on the way
-const FW_TIP: f32 = 11.0;          // how high over the target's land the band stops: what touches it is the drop hanging from it (fold.wgsl's fd_hang)
+const FW_TIP: f32 = 14.0;          // how high over the target's land the band stops: what touches it is the drop hanging from it (fold.wgsl's fd_hang)
 const FW_END_K: f32 = 0.97;        // how much of the far land's reach is drawn: its own end goes in steps, a chunk at a time, and this one is a circle
 const FW_MOUTH: f32 = 2.8;         // how far round the tube the land's end comes, radians, wherever the far land ends
 fn fw_ss(a: f32, b: f32, x: f32) -> f32 {
