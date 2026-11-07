@@ -7,7 +7,7 @@
 // shaders/fold_warp.wgsl. This pass draws what is not the world: the droplet (its fall, its stop, its meld), the void and
 // its stars where the land has left, the point, the one flash, and the dust of the slams.
 // strike/fold.rs plans the sounds and the land: keep the FD_* in step with its and fold_warp.wgsl's.
-const FD_STOP: f32 = 3.4;          // the droplet stops dead
+const FD_STOP: f32 = 3.4;          // the middle of its brake
 const FD_HANG: f32 = 4.5;          // it has hung still; it is let go
 const FD_TOUCH: f32 = 6.0;         // it touches the land
 const FD_MELD: f32 = 6.2;          // the land has closed over its tip: it has gone in
@@ -18,7 +18,7 @@ const FD_BEAT: f32 = 40.0;         // the tip touches the target
 const FD_REL: f32 = 40.5;          // it all runs backwards
 const FD_SLAM0: f32 = 44.1;         // the first ring lands
 const FD_SLAM4: f32 = 48.7;        // the last slam
-const FD_FALL: f32 = 3000.0;       // how high it starts over the target
+const FD_FALL: f32 = 3600.0;       // how high it starts over the target
 
 fn fd_ss(a: f32, b: f32, x: f32) -> f32 { return smoothstep(a, b, x); }
 fn fd_sample(uv: vec2<f32>) -> vec3<f32> {
@@ -54,14 +54,16 @@ fn fd_slam(i: i32) -> f32 {
 }
 
 // ---- the droplet: a classic teardrop of liquid metal, round end down, its tip straight up, the same shape from the top of
-// the sky to the ground. It falls hard, braking all the way (FD_B) but still doing FD_V when it stops dead in one frame; what
+// the sky to the ground. It falls hard, braking all the way (FD_B), then OVERRUN's long smooth brake (fd_brake_t) takes the rest; what
 // was moving with it isn't stopped: the fire and the wake go on past it and down (fd_slip), hit the land and throw out a low
 // ring of dust (fd_dust), and it shakes like a jelly for a second (fd_drop), hangs, and is let go: it falls to the land from rest.
 // Its height over the land is d.h, to its centre; its bottom is d.R under that, its tip FD_TIP * d.R over it.
 const FD_V: f32 = 280.0;           // how fast it is going as it stops, blocks a second
-const FD_B: f32 = 177.16;          // its braking: (FD_FALL - FD_V * FD_STOP) / FD_STOP^2
+const FD_LEAD: f32 = 4.0;          // the clock starts this far before 0: its fall takes FD_LEAD + FD_STOP, time to look up (lib.rs's Strike::wait, fold.rs's FD_LEAD)
+const FD_B: f32 = 27.88;           // its braking: (FD_FALL - FD_V * T) / T^2, T being FD_LEAD + FD_STOP
 const FD_SLIP: f32 = 0.3;          // how soon what moved with it loses its speed, seconds
-const FD_BRAKE: f32 = 0.15;        // OVERRUN's stop: it starts braking this long before FD_STOP and comes smoothly to rest as long after it, about (fd_brake_t)
+const FD_BRAKE: f32 = 0.5;         // OVERRUN's stop: it starts braking this long before FD_STOP and comes to rest about as long after it (fd_brake_t), the force rising and falling smoothly
+const FD_OVER: f32 = 1.6;          // OVERRUN: how soon the air it brakes out of loses its speed, seconds
 const FD_TIP: f32 = 1.72;          // the tip, in radii over the centre
 const FD_PIV: f32 = -0.3;          // the point it squashes about, in radii over the centre: low, the tip does the moving
 struct FdDrop { R: f32, stop_h: f32, h: f32, sx: f32, sy: f32, piv: f32, rip: f32, ph: f32, sway: vec2<f32>, pool: f32, pw: f32 }
@@ -78,7 +80,13 @@ struct FdMist { c: vec3<f32>, tau: f32, glow: vec3<f32>, fire: vec4<f32> }
 fn fd_fall(tau: f32) -> f32 { return tau * (FD_V + FD_B * tau); }
 fn fd_fall_inv(H: f32) -> f32 { return (sqrt(FD_V * FD_V + 4.0 * FD_B * max(H, 0.0)) - FD_V) / (2.0 * FD_B); }
 // How far the air that was moving with it has gone on, `after` seconds after the stop.
-fn fd_slip(after: f32) -> f32 { return FD_V * FD_SLIP * (1.0 - exp(-after / FD_SLIP)); }
+fn fd_slip(after: f32) -> f32 {
+    if (fd_stop() == 4) {
+        // (OVERRUN: `after` is from the brake's start, and the air goes on at the speed it was doing as the drop slows away from it)
+        return (FD_V + 2.0 * FD_B * FD_BRAKE) * after / (1.0 + after / FD_OVER);
+    }
+    return FD_V * FD_SLIP * (1.0 - exp(-after / FD_SLIP));
+}
 fn fd_erf(x: f32) -> f32 {
     let y = clamp(x, -4.0, 4.0);
     return tanh(1.1284 * y + 0.1009 * y * y * y);
@@ -141,10 +149,13 @@ fn fd_foot(a: f32, h: f32, R: f32) -> vec2<f32> {
     let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - (land + 0.4 * R) * fd_ss(0.12, 0.26, a);
     return vec2<f32>(max(top, 0.0), rho + 0.12 * R);
 }
-// How long OVERRUN's brake takes: from the speed it has at FD_STOP - FD_BRAKE down to nothing, evenly, over what is left of its fall, so the speed never jumps.
+// How long OVERRUN's brake takes: from the speed it has at FD_STOP - FD_BRAKE down to nothing over what is left of its fall. The speed goes by a smoothstep, so the force on it rises from nothing,
+// peaks half way and dies away to nothing: no jolt at either end. Everything after the stop goes by this clock too: `fd_since`.
 fn fd_brake_t() -> f32 {
     return 2.0 * fd_fall(FD_BRAKE) / (FD_V + 2.0 * FD_B * FD_BRAKE);
 }
+// Seconds since what was moving with it started to leave it: the stop for the rest, the brake's start for OVERRUN.
+fn fd_since(t: f32) -> f32 { return max(t - select(FD_STOP, FD_STOP - FD_BRAKE, fd_stop() == 4), 0.0); }
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     let R = clamp(dist * 0.05, 5.0, 15.0);
@@ -161,8 +172,12 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     let brake_t = select(0.0, fd_brake_t(), fd_stop() == 4);
     let at_rest = FD_STOP - FD_BRAKE + brake_t;
     if (brake_t > 0.0 && t >= FD_STOP - FD_BRAKE && t < at_rest) {
-        let left = at_rest - t;
-        h = stop_h + fd_fall(FD_BRAKE) * (left * left) / (brake_t * brake_t);
+        // (the integral of 1 - smoothstep(u); and it squashes with the force on it, its foot held back, and the settle below takes it from there)
+        let u = (t - (FD_STOP - FD_BRAKE)) / brake_t;
+        h = stop_h + fd_fall(FD_BRAKE) * (1.0 - 2.0 * (u - u * u * u + 0.5 * u * u * u * u));
+        sy = 1.0 - 0.16 * 4.0 * u * (1.0 - u);
+        sx = 1.0 / sqrt(sy);
+        piv = -1.0;
     } else if (t < FD_STOP) {
         h = stop_h + fd_fall(FD_STOP - t);
     } else if (t < FD_TOUCH) {
@@ -361,7 +376,7 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
     if (sc <= 0.0 || sc > far) {
         return m;
     }
-    let after = max(t - FD_STOP, 0.0);
+    let after = fd_since(t);
     let ycl = v.y * sc - C.y;                    // how far over the droplet's centre the ray passes the fall's line
     let gy = ycl + d.h;                          // over the land
     if (gy < -1.0) {
@@ -372,7 +387,7 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
     // (the last of the wake carried on down, less of it the higher up)
     let mode = fd_stop();
     let k = fd_stopk(mode);
-    let laid = yw + k.x * fd_slip(after) * exp(-max(yw, 0.0) / select(170.0, 420.0, mode == 4)) - tipy;
+    let laid = yw + k.x * fd_slip(after) * exp(-max(yw, 0.0) / select(170.0, 900.0, mode == 4)) - tipy;
     let head = d.h - d.stop_h;
     let on = fd_ss(head - 0.1 * d.R, head + 0.9 * d.R, laid);
     if (on <= 0.0) {
@@ -380,17 +395,17 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
     }
     let te = FD_STOP - fd_fall_inv(laid);
     let age = max(t - te, 0.0);
-    let dive = fd_ss(1.0, 3.0, te);
+    let dive = fd_ss(-2.5, 1.5, te);
     let smk = fd_ss(2500.0, 1100.0, laid);
     // (it wanders as it ages, the wind having it)
-    let wa = min(age, 9.0);
-    let bend = vec2<f32>(sin(laid * 0.0071 + 1.3) + 0.5 * sin(laid * 0.019), cos(laid * 0.0053) + 0.5 * sin(laid * 0.023 + 2.0)) * wa * 1.5;
+    let wa = min(age, 18.0);
+    let bend = vec2<f32>(sin(laid * 0.0071 + 1.3) + 0.5 * sin(laid * 0.019), cos(laid * 0.0053) + 0.5 * sin(laid * 0.023 + 2.0)) * wa * (1.5 + 0.18 * wa);
     let off = v.xz * sc - (nearest + bend);
     let hx = length(off);
     // (tight off the tip; where the air it has dragged down meets the land it spreads)
     let flare = 10.0 * fd_ss(26.0, 0.0, gy) * fd_ss(0.0, 0.1, after);
     // (and never thinner than a pixel or two: from far off it is a line drawn across the sky, not nothing)
-    let rad = max(mix(0.3 * d.R, 0.72 * d.R + 1.5, 1.0 - exp(-age / 0.14)) + 3.4 * sqrt(age) + flare + select(0.0, 11.0 * (1.0 - exp(-after / 0.3)) * exp(-max(yw, 0.0) / 50.0), mode == 5), 1.5 * px * sc);
+    let rad = max(mix(0.3 * d.R, 0.72 * d.R + 1.5, 1.0 - exp(-age / 0.14)) + 3.4 * sqrt(age) + 1.1 * max(t - FD_STOP, 0.0) + flare + select(0.0, 11.0 * (1.0 - exp(-after / 0.3)) * exp(-max(yw, 0.0) / 50.0), mode == 5), 1.5 * px * sc);
     if (hx >= rad * 3.4) {
         return m;
     }
@@ -435,7 +450,8 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
     let rr = hx / rw;
     let prof = exp(-rr * rr * 1.4) * fd_ss(2.3, 1.5, rr);
     let gin = 1.0 / max(sn, 0.5);
-    let thr = mix(0.32, 0.12, smk) + 0.38 * fd_ss(1.5, 18.0, age);
+    // (it doesn't go anywhere: it comes apart where it hangs, the thin between its lumps opening until only wisps are left, and those go. Its old high end first)
+    let thr = mix(0.32, 0.12, smk) + 0.38 * fd_ss(1.5, 18.0, age) + 0.5 * fd_ss(2.0, 14.0, t - FD_STOP);
     let mm = (puff - thr) * 3.2 + 0.3 * exp(-age / 0.8);
     let sl = 3.2 * 0.14 * sqrt(0.384 * (1.0 - w1 * w1) + 0.09 * (1.0 - w2 * w2) + 0.0064 * (1.0 - w3 * w3)) + 1.0e-3;
     // (a soft max(mm, 0): past 30 its exp would run out, and it is mm)
@@ -443,15 +459,8 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
     let dens = saturate(select(sl * log(1.0 + exp(max(mz, -30.0))), mm, mz > 30.0));
     // (dense where it is laid and thinning slowly; right behind the flame nearly solid, the fire going out into dark smoke)
     let sig = (0.3 * exp(-age / 4.5) + 0.5 * exp(-age / 0.6) * dive) * mix(0.6, 1.15, smk);
-    // (its foot lifting off the land as it thins, the droplet left in the clear)
-    let foot = 42.0 * pow(max(after - 0.7, 0.0), 2.0);
-    let life = (1.0 - fd_ss(9.0, 14.0, t)) * fd_ss(0.1, 0.9, t) * fd_ss(foot - 1.0, foot + 50.0, gy + 40.0 * step(after, 0.7));
+    let life = (1.0 - fd_ss(13.0, 18.5, t)) * fd_ss(0.1 - FD_LEAD, 0.9 - FD_LEAD, t);
     var dtau = sig * prof * dens * 1.6 * rad * gin * on * life;
-    if (mode == 4 && after > 0.0) {
-        // (it parts round the drop, as water round a stone)
-        let mid = C + vec3<f32>(0.0, 0.36 * d.R, 0.0);
-        dtau *= fd_ss(1.2 * d.R, 2.3 * d.R, length(mid - v * dot(mid, v)));
-    }
     let nrm = normalize(vec3<f32>(off.x, 0.0, off.y) - v * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
     let ln = 0.5 + w1 * (n1 - 0.5);
     let lit = (0.35 + 0.65 * saturate(dot(nrm, li.L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
@@ -490,15 +499,19 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
 // streaming up its sides in ribbons that wind round it, drawn in to the tip where it goes dark and turns into the wake. Marched
 // through, up to `s_end`. At the stop the droplet is left behind: the skin goes on down in its shape, swelling, and is gone.
 fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_end: f32, jit: f32) -> vec3<f32> {
-    let after = max(t - FD_STOP, 0.0);
-    let hi = fd_ss(FD_STOP - 2.8, FD_STOP - 0.3, t);
+    let after = fd_since(t);
+    let hi = fd_ss(FD_STOP - 5.5, FD_STOP - 0.3, t);
     let k = fd_stopk(fd_stop());
     let on = hi * exp(-after / k.z);
     if (on < 0.01) {
         return colIn;
     }
-    let grow = 1.0 + after * 2.5;
-    let Cg = C - vec3<f32>(0.0, min(k.x * fd_slip(after), max(d.h - d.R, 0.0)), 0.0);
+    // (OVERRUN: it holds its shape and burns out as the speed goes, sliding off past the drop: swelling as it does, over a whole second, it was a big glass dome)
+    let over = select(1.0, 0.16, fd_stop() == 4);
+    let grow = 1.0 + after * 2.5 * over;
+    // (OVERRUN: it only goes on past the drop by what the drop has fallen behind it)
+    let past = k.x * fd_slip(after) - select(0.0, d.stop_h + fd_fall(FD_BRAKE) - d.h, fd_stop() == 4 && t >= FD_STOP - FD_BRAKE);
+    let Cg = C - vec3<f32>(0.0, min(max(past, 0.0), max(d.h - d.R, 0.0)), 0.0);
     let bc = Cg + vec3<f32>(0.0, 0.36 * d.R * grow, 0.0);
     let br = 1.8 * d.R * grow;
     let cd = dot(bc, v);
@@ -530,7 +543,7 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
             e = ro - sqrt(max(fd_prof(q.y).x, 0.0));
         }
         let hgt = saturate((q.y + 1.0) / (FD_TIP + 1.0));
-        let th = mix(0.1, 0.34, hgt) * (1.0 - fd_ss(0.8, 1.0, hgt) * 0.5) * (1.0 + after * 16.0);
+        let th = mix(0.1, 0.34, hgt) * (1.0 - fd_ss(0.8, 1.0, hgt) * 0.5) * (1.0 + after * 16.0 * over);
         if (e > th * 2.4 || e < -0.06) {
             continue;
         }
@@ -549,7 +562,7 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
         var c = mix(vec3<f32>(1.0, 0.95, 0.72), vec3<f32>(1.0, 0.5, 0.08), fd_ss(0.05, 0.4, x));
         c = mix(c, vec3<f32>(0.6, 0.09, 0.015), fd_ss(0.45, 0.9, x));
         // (it hides what is behind it: fire over a bright sky, added to it, only goes pink)
-        let fa = 1.0 - exp(-dens * dn * 4.0 / (1.0 + after * 26.0));
+        let fa = 1.0 - exp(-dens * dn * 4.0 / (1.0 + after * 26.0 * over));
         E = E + c * T * fa;
         T = T * (1.0 - fa);
         // (dark round the tip: the flame burning out into smoke, wrapped in to its point)
@@ -636,7 +649,7 @@ fn fd_sparks(colIn: vec3<f32>, v: vec3<f32>, S: vec3<f32>, way: vec2<f32>, t: f3
     var col = colIn;
     for (var i = 0; i < 6; i += 1) {
         let k = f32(i);
-        let ti = 1.6 + 0.27 * k + 0.09 * sin(k * 12.9 + seed_v());
+        let ti = 0.6 + 0.27 * k + 0.09 * sin(k * 12.9 + seed_v());
         let a = t - ti;
         if (a <= 0.0 || a > 1.3) {
             continue;
@@ -662,7 +675,7 @@ fn fd_sparks(colIn: vec3<f32>, v: vec3<f32>, S: vec3<f32>, way: vec2<f32>, t: f3
 //   1 AIR POND   the air takes it as water takes a drop: rings run out across a plane at its foot, seen by what they bend behind them, and the fire and the smoke flatten on it
 //   2 SHOCK      all that speed goes into the air at once: a white bubble of condensation and the ring of its shock front leave it and run out, bending the sky as they go
 //   3 SQUASH     it takes the stop itself: flattens hard, comes back tall, and rocks slowly to rest, heavy
-//   4 OVERRUN    the one the game uses. It brakes hard but smoothly (FD_BRAKE), and the fire and the wake overrun it: they pour on past and round it, and it is left standing in the stream
+//   4 OVERRUN    the one the game uses. It brakes over about a second (FD_BRAKE), the force rising and falling smoothly, and the fire and the wake overrun it: they pour on past and round it, and it is left standing in the stream
 //   5 MUSHROOM   the column behind it has nowhere to go: it stacks up over it and rolls out in one thick smoke ring
 //   6 STUTTER    time catches: the fire and the smoke hang frozen for a beat with the world drained, the drop's echoes running on under it, and everything lets go
 fn fd_stop() -> i32 { return clamp(i32(frame.mod_params[3].w + 0.5), 0, 6); }
@@ -672,7 +685,7 @@ fn fd_stopk(mode: i32) -> vec3<f32> {
         case 1: { return vec3<f32>(0.0, 0.03, 0.04); }
         case 2: { return vec3<f32>(0.6, 0.04, 0.05); }
         case 3: { return vec3<f32>(0.35, 0.04, 0.035); }
-        case 4: { return vec3<f32>(1.5, 0.3, 0.05); }
+        case 4: { return vec3<f32>(1.0, 0.6, 0.3); }
         case 5: { return vec3<f32>(0.0, 0.04, 0.05); }
         default: { return vec3<f32>(1.0, 0.05, 0.09); }
     }
@@ -886,22 +899,24 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     var col = colIn;
     let px = frame.view_params.w / frame.resolution.y;
     let q = project_rel(C);
-    let after = max(t - FD_STOP, 0.0);
-    let hi = fd_ss(FD_STOP - 2.6, FD_STOP - 0.2, t);
+    let after = fd_since(t);
+    let hi = fd_ss(FD_STOP - 5.5, FD_STOP - 0.2, t);
     let mode = fd_stop();
     let tx = fd_stopclock(t, mode);
     if (after > 0.0) {
         col = fd_bent(col, v, C, d, after, far, uv, aspect, mode);
     }
     // ---- the wake, hung in the sky -----------------------------------------------------------------------------------------
-    if (t < 14.0) {
+    var wake = FdMist(vec3<f32>(0.0), 0.0, vec3<f32>(0.0), vec4<f32>(0.0));
+    if (t < 18.5) {
         let m = fd_trail(v, C, d, way, tx, px, li, far);
+        wake = m;
         if (m.tau > 0.0) {
             col = mix(col, m.c, 1.0 - exp(-m.tau));
         }
         col = mix(col, m.fire.rgb, m.fire.a) + m.glow;
     }
-    if (t > 1.6 && t < 4.6) {
+    if (t > 0.6 && t < 3.4) {
         let head0 = d.h - d.stop_h;
         col = fd_sparks(col, v, C - vec3<f32>(way.x * fd_arc(head0), head0, way.y * fd_arc(head0)), way, t, px);
     }
@@ -971,6 +986,10 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
             let hot = fd_ss(0.25, -0.75, n.y) * hi * exp(-after / 0.4);
             mc = mix(mc, mix(vec3<f32>(0.85, 0.2, 0.03), vec3<f32>(1.0, 0.86, 0.6), fd_ss(-0.2, -0.85, n.y) * exp(-after / 0.15)), saturate(hot * 1.15));
             col = mix(col, mc, cov);
+            // (the stream going by in front of it, thin, its lumps showing, and clearing off it as the stream dies: it stays the thing to look at)
+            if (mode == 4 && wake.tau > 0.0) {
+                col = mix(col, wake.c, cov * (1.0 - exp(-wake.tau)) * 0.55 * fd_ss(0.2, 0.7, after) * (1.0 - fd_ss(1.5, 3.2, after)));
+            }
             if (hit) {
                 s_end = min(s_end, sb);
             }
@@ -981,7 +1000,7 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     col = fd_after(col, v, C, d, t, after, s_end, li, jit, mode);
     // (the dust over it thinned: it stays the thing to look at)
     // (POND and MUSHROOM keep the air off the land; STUTTER's arrives late)
-    let air = select(after - (d.stop_h - d.R) / FD_V - select(0.0, FD_HOLD, mode == 6), -1.0, mode == 1 || mode == 5);
+    let air = select(after - select((d.stop_h - d.R) / FD_V, 1.2, mode == 4) - select(0.0, FD_HOLD, mode == 6), -1.0, mode == 1 || mode == 5);
     let dusty = fd_dust(col, v, G, air, s_end, land, li, jit);
     var out_ = mix(dusty, col, select(0.0, 0.7, s_end < far));
     // (STUTTER: the world drained for the beat it hangs, and let go at once)

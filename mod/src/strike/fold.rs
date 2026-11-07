@@ -5,8 +5,8 @@
 //! the void and its stars, the light at the touch, the dust of the slams); the plan makes the sounds and the land.
 //!
 //! The timeline (strike seconds; FD_* here, FW_* in fold_warp.wgsl and fold.wgsl's in step, `the_warp_keeps_the_beats`):
-//!   0 - FD_STOP       the droplet's fall out of the top of the sky: a glint, a plasma sheath, fire, a smoke trail
-//!   FD_STOP           it stops dead in one frame, the fire rushes past it, the sound cuts to near silence
+//!   -FD_LEAD - FD_STOP the droplet's fall out of the top of the sky: a glint, a plasma sheath, fire, a smoke trail. The clock starts under 0, nothing else going on, to give time to look up
+//!   FD_STOP           the middle of a smooth brake of about a second, the fire and the smoke pouring on past it
 //!   FD_HANG           it has hung perfectly still; it is let go and falls to the land under gravity
 //!   FD_TOUCH-FD_MELD  it falls straight into the land without slowing, the land closing over it; no splash
 //!   FD_RIPPLE         the warp begins (off before it): rings running out, each bigger than the last
@@ -37,6 +37,8 @@ pub const FD_COPY_ON: std::ops::Range<f32> = 34.45..42.1;
 pub const FD_WARP_START: f32 = 5.5;
 pub const FD_WARP_END: f32 = 56.7;
 /// The strike's beats (see the top of this file).
+/// The clock starts this far under 0, with the drop at the top of the sky: `Strike::wait`. Nothing but its fall happens before 0.
+pub const FD_LEAD: f32 = 4.0;
 pub(super) const FD_STOP: f32 = 3.4;
 pub(super) const FD_HANG: f32 = 4.5;
 pub(super) const FD_TOUCH: f32 = 6.0;
@@ -197,7 +199,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
 
     // ---- sound (tools/sounds_fold.py) ------------------------------------------------------------------------------
     // (the fall, a roar cut dead on the stop; whatever catches it, holding it; the air arriving late by the distance)
-    p.csound(0.0, "descent", 10.0, 1.0);
+    p.csound(-FD_LEAD, "descent", 10.0, 1.0);
     p.csound(FD_STOP + 0.09, "wobble", 10.0, 1.0);
     p.csound(FD_STOP + (dist as f32 / 343.0).clamp(0.2, 1.0), "air", 10.0, 1.0);
     // (let go, the air over it as it falls; it lands at full speed, the land shutting over it; then the land like water, then ice:

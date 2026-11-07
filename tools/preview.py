@@ -203,6 +203,9 @@ VIEWS = {
     "flzoom": "cx=0 cy=72 cz=170 lx=0.5 ly=95 lz=0.5 hills=8 trees=1 fov=16 reach=170",
     "flsee": "cx=0 cy=72 cz=170 lx=0.5 ly=120 lz=0.5 hills=8 trees=1 fov=70 reach=170",
     "flup": "cx=0 cy=72 cz=170 lx=0.5 ly=420 lz=0.5 hills=8 fov=70 reach=170",
+    # the brake and the stream going past it, and the whole fall as it looks to someone 170 off who has looked up
+    "flbrake": "cx=0 cy=72 cz=170 lx=0.5 ly=165 lz=0.5 hills=8 trees=1 fov=38 reach=170",
+    "flhalf": "cx=0 cy=72 cz=170 lx=0.5 ly=1000 lz=0.5 hills=8 fov=75 reach=170",
     "flrim": "cx=0 cy=75 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=75 reach=110",
     # the scar whole (fl_dump_land): from straight over it, from high off to one side, from its rim, and down on its floor
     "fdtop": "cx=0.5 cy=620 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",

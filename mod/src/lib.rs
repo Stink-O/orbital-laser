@@ -187,6 +187,9 @@ struct Strike {
     data_sent: bool,
     /// Started this far in (`/orbital skip`): commands, sounds and jolts due before then are left out.
     skipped: f32,
+    /// Ticks still to go before the clock reaches 0, which it starts this far under (the Fold's FD_LEAD): only a plan's events
+    /// before 0 are due while it runs down.
+    wait: u32,
     /// The sounds it has played, to cut them short if it is stopped.
     sounds: std::collections::BTreeSet<String>,
     /// Its laser, and the game's textures as they were when its table packed them (`atlas.resources-version`: the
@@ -241,6 +244,10 @@ impl Strike {
         meter::spend(STAGE_COST.saturating_sub(own));
     }
     /// When what falls due next does: the plan's next act or a stage's.
+    /// The strike's clock, seconds: under 0 while `wait` runs down.
+    fn clock(&self) -> f32 {
+        (self.ticks as f32 - self.wait as f32) * 0.05
+    }
     fn next_due(&self) -> Option<f32> {
         match (self.plan.get(self.next).map(|e| e.0), self.more.peek().map(|g| g.t)) {
             (Some(a), Some(b)) => Some(a.min(b)),
@@ -1070,7 +1077,8 @@ impl Orbital {
         // the pass's tables due before then are worked out on the first ticks, as the pass needs them, what they give
         // that was due before then left out too)
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
-        let skipped = ticks as f32 * 0.05;
+        let wait = if ticks == 0 && laser.key == "fold" { (strike::FD_LEAD * 20.0) as u32 } else { 0 };
+        let skipped = if wait > 0 { -strike::FD_LEAD } else { ticks as f32 * 0.05 };
         let mut plan = plan;
         plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Cleanup(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. }));
         let next = 0;
@@ -1079,8 +1087,8 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
-        self.hold_forceloads(&dimension, clock, laser.length);
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
+        self.hold_forceloads(&dimension, clock, laser.length + wait as f32 * 0.05);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
@@ -1152,10 +1160,12 @@ impl Orbital {
             self.edit();
             return;
         };
-        if self.hold <= 0.0 || (s.ticks as f32) * 0.05 < self.hold {
+        if s.wait > 0 {
+            s.wait -= 1;
+        } else if self.hold <= 0.0 || (s.ticks as f32) * 0.05 < self.hold {
             s.ticks += 1;
         }
-        let now = s.ticks as f32 * 0.05;
+        let now = s.clock();
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
@@ -1721,7 +1731,7 @@ impl Mod for Orbital {
         self.warm();
         if let Some(s) = &mut self.strike {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
-            s.params[3] = s.ticks as f32 * 0.05;
+            s.params[3] = s.clock();
             render::set_params(&s.params);
             // (the warp on for its span only: before and after it the frame keeps its culling)
             self.pace.hidden = s.key == "fold" && strike::FD_HIDDEN.contains(&s.params[3]);
@@ -2801,7 +2811,7 @@ mod stress {
         };
         let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
         plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
-        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], level: None, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default(), key: "", sprites: 0 });
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], level: None, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, wait: 0, sounds: Default::default(), key: "", sprites: 0 });
         let mut worst = 0;
         let mut ticks = 0;
         while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {
