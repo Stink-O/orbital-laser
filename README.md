@@ -52,7 +52,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
 > a user (the fork built from source); on macOS the Downfall's effects may not draw (see [Known gaps](#known-gaps)). The
-> ready-built Horizon is Linux x86-64 only (elsewhere, build the fork from source).
+> ready-built Horizon is for Linux x86-64, with a Windows test build that has only been run under Wine so far (on macOS, build the fork from source).
 
 **Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.11](#new-in-0511) · [The lasers](#the-lasers) · [Fork version](#getting-started) ·
 [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
@@ -233,7 +233,11 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
    and unpack it to `~/horizon-orbital`.
 
-   **On Windows and macOS**, build it from source instead: branch `mod-api-input-ui-render-world` of
+   **On Windows**, try the test build: download `orbital-laser-windows-test.zip` from the
+   [latest release](https://github.com/Stink-O/orbital-laser/releases/latest) and follow its `README-WINDOWS.txt`. The game and the mod are both in it,
+   so skip the steps below. It has only been run under Wine, never on real Windows, so please report how it goes.
+
+   **On macOS**, or to build Windows yourself, build it from source instead: branch `mod-api-input-ui-render-world` of
    [Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), with the mod runtime
    switched on:
 
@@ -425,7 +429,7 @@ Orbital Laser → Settings**).
 
 ## Known gaps
 
-- **The fork version needs a Horizon fork**, and its ready-built download is Linux x86-64 only. The native version runs on regular Horizon but stays at 0.5.10, without the Fold,
+- **The fork version needs a Horizon fork**. Its ready-built download is for Linux x86-64, with a Windows test build that hasn't been run on real Windows yet. The native version runs on regular Horizon but stays at 0.5.10, without the Fold,
   until regular Horizon has the renderer changes the Fold needs.
 - **On the fork version, a strike's sounds can run on over the title screen** after Save and Quit to Title, until they end: the game doesn't stop them. It needs a fix in Horizon itself.
 - **Tested on Linux.** Reported working on Windows 11 by a user (the fork built from source, `--features mods`).
