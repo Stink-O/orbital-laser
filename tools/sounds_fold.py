@@ -25,9 +25,9 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
             as it comes round, the last on the world's stopping at 31.5, each going off the land still standing. From 26 s it comes through the ground.
   groan     19 s: the land bending, a hull's stress, moans with no note, the bangs (`BANG_UP`, on or halfway to the clacks), the far land's slow lift to 23.5, closing overhead from 26 s:
             the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
-  boil      34.5 s, exactly 5.5 s: the hole shutting and turning to metal (`BOIL`): an intake, the mouth's note sinking, tongues of metal crawling in from the rim, the skin slumping as one at the join, the surface running to the
-            middle with six great slow bubbles swelling and bursting (`BUBBLES`); a low strain (`strain`) building in slow uneven pulses under it and on through the drop's fall, at its heaviest on its last sample, the touch.
-  drip      36.95 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 37.5, and the one drop falling all the way down, far off and coming, cut on the touch.
+  boil      32.5 s, exactly 7.5 s: the hole shutting and turning to metal (`BOIL`): an intake, the mouth's note sinking, wet metal crawling in in surges, a thick seethe of bubbles of every size to the join, the skin slumping as one,
+            the heave and roll, six great slow bubbles swelling and bursting (`BUBBLES`), the slow flow to the middle; a low strain (`strain`) building in slow uneven pulses under it and on through the drop's fall, at its heaviest on its last sample, the touch.
+  drip      37.72 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 38.35, and the one drop falling all the way down, far off and coming, cut on the touch.
   ding      37.8 s, the touch on 40.0: `DING_PICK`, one of `DINGS`, each a different idea of that moment and all of them holding up to it: it has its lead-in on the front of it and the
             held strain (`held`) on it to the let-go at 40.95; the blends have the drop's own impact (`arrival`) on their front.
   reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.5, the rim back on the tube at 42.25,
@@ -73,11 +73,13 @@ PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 STOP, HANG, TOUCH, CLOSED, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL = 3.4, 4.5, 6.0, 6.2, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0
 HOLD, GATHER, TUBE = 31.5, 34.5, 42.88                 # the world stops closing; the hole opens a hair, an intake; on the way back the tube lets go for good
 LIFT = 23.5                                           # the far land's slow lift (20.1 s on) at its height
-# The boil and the drop (fold.wgsl's `the boil`, on fold-boil): every time they use is here, so a retime is this one table. (fold-boil afa0658: FB_*, FW_LETGO; offscreen numbers, not yet seen in the game. fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"].)
-BOIL = dict(close=34.5, clear=34.8, join=35.6, joined=35.76, sealed=36.05, pooled=36.2, neck=36.95, pinch=37.5, torn=40.95, gone=41.5)   # the land's end starts to melt; the tongues clear of the rim; they join, all at once, to `joined`; the last of the stars gone; the streaks run in; the bead draws out on its neck; it lets go; on the way back the metal tears from the middle; run out to the rim and back through the plate
-BUBBLES = ((36.1, 0.8, 46.0), (36.3, 0.85, 62.0), (36.42, 0.65, 38.0), (36.7, 0.85, 54.0), (36.86, 0.7, 42.0), (37.02, 0.8, 34.0))   # fold.wgsl's fb_bubbles: (starts swelling, how long till it bursts, its radius in blocks)
-DROP_V0, DROP_G = 34.0, 217.0                         # the drop's fall from the pinch to the touch, blocks a second and a second squared: 576 a second at the end
+# The boil and the drop (fold.wgsl's `the boil`, on fold-boil): every time they use is here, so a retime is this one table. (fold-boil2 4bf01a1, handoffs/boil2-times.md: FB_*, FW_LETGO; offscreen numbers, not yet seen in the game. fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"].)
+BOIL = dict(close=32.5, clear=33.2, join=35.8, joined=36.3, sealed=36.85, pooled=37.2, flowing=38.7, neck=37.72, pinch=38.35, torn=40.95, gone=41.5)   # the land's end starts to melt; first metal at the hole, one side first; the bridges start; split into pockets; the stars gone; the slow flow starts, and is full; the bead draws out on its neck; it lets go; on the way back the metal tears from the middle; run out to the rim and back through the plate
+SEETHE, HEAVE = (33.4, 35.2, 36.8, 37.5), (36.0, 37.5)  # the seethe's start, full, holds to, gone; the heave and roll, dying down with a little left after
+BUBBLES = ((36.4, 1.25, 46.0), (36.72, 1.3, 62.0), (36.95, 1.0, 38.0), (37.3, 1.3, 54.0), (37.55, 1.1, 42.0), (37.8, 1.2, 34.0))   # fold.wgsl's fb_bubbles: (starts swelling, how long till it bursts, its radius in blocks)
+DROP_V0, DROP_G = 34.0, 514.0                         # the drop's fall from the pinch to the touch, blocks a second and a second squared: about 880 a second at the end, for a player 170 out
 WOB = 2.2                                             # the drop's wobble, long and round and long, Hz
+BOIL_RISE = ((32.5, -25.0), (33.4, -24.0), (34.5, -22.5), (35.5, -20.0), (35.8, -18.0), (36.3, -17.0), (37.2, -16.5), (38.35, -16.5), (39.0, -16.2), (39.6, -15.8), (40.0, -15.5))   # the boil's level, dB, a half second's RMS: it only climbs
 BOIL_STRAIN = -4.5                                    # (the strain in `boil` against the boil's loudest, dB)
 LETGO, SNAP, RIM_BACK = 40.95, (41.3, 41.85), 42.25   # held and straining to the first; the run back's first fast stretch; the rim back on the tube
 GIVES, WALLS = (42.2, 42.55), 43.1                    # the tube gives, a lurch, and catches and hangs to TUBE; the walls' fastest
@@ -122,7 +124,7 @@ EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP +
           (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM, "sink", 1.0, 1.0), (SLAM + underfoot_at(), "underfoot", 1.0, 1.0),
           (COMEDOWN, "comedown", 1.0, 1.0)]
 SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 4.9), ("drop", 4.9, 6.0), ("hit", 6.0, 6.5), ("sink", 6.5, 7.5), ("ripple", 7.5, 12.0),
-            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 32.2, 34.5), ("seethe", 34.5, 35.6), ("join", 35.6, 36.7), ("neck", 36.7, 37.2), ("pinch", 37.2, 37.7), ("drop", 37.7, 39.0), ("nearing", 39.0, 40.0),
+            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 31.8, 32.5), ("crawl", 32.5, 33.4), ("seethe", 33.4, 35.8), ("join", 35.8, 36.85), ("heave", 36.85, 37.72), ("neck", 37.72, 38.35), ("pinch", 38.35, 38.85), ("nearing", 38.85, 40.0),
             ("touch", 40.0, 40.95), ("back", 40.95, 42.55), ("hangs", 42.55, 42.88), ("open", 42.88, 43.3), ("farland", 43.3, 44.1), ("bang1", 44.1, 45.2), ("bang2", 45.2, 46.3),
             ("bang3", 46.3, 47.4), ("bang4", 47.4, 47.9), ("fall", 47.9, 48.7), ("slam", 48.7, 49.1), ("letgo", 49.1, 51.0), ("land", 51.0, 53.1), ("debris", 53.1, 56.0), ("comedown", 56.0, 59.7)]
 
@@ -1351,36 +1353,44 @@ def seethe(n, a, b, rate, flo, fhi, rise, fall, level):
 
 
 def boil():
-    """The hole shutting and turning to metal, 34.5 to the touch (`BOIL`): an intake, the mouth's own low note sinking as it narrows; the land's end melting, tongues of heavy metal crawling in from the rim, each its own slow swell; they
-    join all at once, a slump of the whole skin; the last of the stars sealing; then the thick surface running to the middle with six great slow bubbles on it (`BUBBLES`), each a dome swelling and a heavy burst, its weight gathering low;
-    and under it from the join a low strain (`strain`) in slow uneven pulses, on at the end through the drop's fall, at its heaviest on the last sample, the touch. Nothing over 2.4 kHz; no small bubbles: it's flow, not a fizz.
-    The drop itself is `drip`'s."""
+    """The hole shutting and turning to metal, 32.5 to the touch (`BOIL`): an intake, the mouth's own low note sinking as it narrows; the land's end melting, wet metal crawling in over it in slow surges; from 33.4 a thick seethe (`SEETHE`) of
+    bubbles of every size, each its own, building to the join; the bridges, a slump of the whole skin; the last of the stars sealing; the heave and roll of all of it (`HEAVE`) dying down; six great slow bubbles on it (`BUBBLES`), each a dome swelling
+    and a heavy burst; the slow flow to the middle from 37.2, its weight gathering low; and under it from the join a low strain (`strain`) in slow uneven pulses, on at the end through the drop's fall, at its heaviest on the last sample, the touch.
+    Nothing over 2.4 kHz: it's flow, not a fizz. The drop itself is `drip`'s."""
     d = DING - BOIL["close"]
     n = n_of(d)
     t = times(n)
-    st = BOIL["close"] + t
-    K, J, H, E = BOIL["clear"], BOIL["join"], BOIL["pooled"], DING
+    Z = BOIL["close"]
+    st = Z + t
+    K, J, H, E, Q = BOIL["clear"], BOIL["join"], BOIL["pooled"], DING, BOIL["pinch"]
     # (the mouth: a cavity's note falls as its neck narrows: a wide band sinking, no sine; air drawn in with it)
-    shut = ss(BOIL["close"], BOIL["sealed"], st)
+    shut = ss(Z, BOIL["sealed"], st)
     ex = (n + 0.5) / SR
-    mouth = T.unit(P.glide_band(ex, 88.0 * (34.0 / 88.0) ** shut, 0.55)) * boiled(n, 0.3, 1.6, 3.0) * 10 ** (np.interp(st, (34.5, 35.0, H, E), (-30.0, -18.0, -14.0, -20.0)) / 20)
+    mouth = T.unit(P.glide_band(ex, 88.0 * (34.0 / 88.0) ** shut, 0.55)) * boiled(n, 0.3, 1.6, 3.0) * 10 ** (np.interp(st, (Z, K, BOIL["sealed"], E), (-20.0, -16.0, -13.0, -20.0)) / 20)
     M = mouth * 0.7
-    P.put(M, bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.42, 0.0)
-    M = M + eddies(d, 90, 1200, 2.5, -4.5, 12.0, 5.0) * (1 - shut) ** 2 * ss(0.0, 0.5, t) * 0.09
+    P.put(M, bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.3, 0.0)
+    M = M + eddies(d, 90, 1200, 2.5, -4.5, 12.0, 5.0) * (1 - shut) ** 2 * ss(0.0, 0.7, t) * 0.08
     # (the skin: a thick slow churn, its bands each on their own, swelling till the join, a step up on it, thicker and lower after)
     churn = eddies(d, 44, 1000, 3.0, -6.5, 14.0, 6.0)
-    Q = BOIL["pinch"]
-    M = M + churn * 10 ** (np.interp(st, (34.5, K, J - 0.05, J + 0.05, H, Q, E), (-48.0, -32.0, -20.0, -13.0, -11.0, -11.0, -12.0)) / 20)
+    M = M + churn * 10 ** (np.interp(st, (Z, K, SEETHE[1], J - 0.05, J + 0.05, BOIL["sealed"], H, Q, E), (-36.0, -29.0, -22.0, -18.0, -14.0, -12.0, -10.0, -10.0, -12.0)) / 20)
     body = steel(1.6, 74.0, 1500.0, 70, 0.34, 7101)                       # (it's metal: a pan of it, all of it ringing that faintly)
-    # (the tongues, crawling in from the rim one after another, the first from one side: each a thick band sinking as it slows, on a swell of its own, nothing short)
+    # (the crawl: wet metal coming in over the land in surges, one after another, each a thick band sinking as it slows, on a slow swell of its own, nothing short)
     fl = np.zeros(n)
-    for k, (at, ln, f0) in enumerate(((34.55, 1.5, 300), (34.68, 1.4, 215), (34.8, 1.3, 390), (34.92, 1.2, 180), (35.03, 1.1, 265), (35.14, 1.0, 340), (35.24, 0.9, 150), (35.33, 0.8, 235), (35.42, 0.7, 195))):
+    k = 0
+    for at, ln, f0 in ((32.15, 2.0, 300), (32.5, 1.9, 215), (32.85, 1.9, 390), (33.2, 1.9, 250), (33.5, 1.8, 180), (33.8, 1.8, 265), (34.1, 1.7, 340), (34.4, 1.7, 150), (34.7, 1.5, 235), (35.0, 1.4, 195), (35.25, 1.2, 310), (35.5, 1.0, 170)):
         m = n_of(ln)
         v = times(m) / ln
-        y = T.unit(P.glide_band((m + 0.5) / SR, f0 * 0.68 ** v, 0.55)) * boiled(m, 0.4, 2.2, 3.0) * np.sin(np.pi * v ** 0.7) ** 1.5
-        P.put(fl, y * (0.5 + 0.5 * k / 8), at - BOIL["close"])
+        y = T.unit(P.glide_band((m + 0.5) / SR, f0 * 0.68 ** v, 0.55)) * boiled(m, 0.3, 1.6, 5.0) * np.sin(np.pi * v ** 0.7) ** 1.5
+        P.put(fl, y * (0.7 + 0.3 * k / 11), at - Z)
+        k += 1
     fl = fl + ring(fl, body) * 0.2
-    fl = fl * 10 ** (np.interp(st, (34.5, J, BOIL["joined"], E), (-24.0, -15.0, -15.0, -15.0)) / 20) * 0.9
+    fl = fl * 10 ** (np.interp(st, (Z, K, J, BOIL["joined"], E), (-15.0, -14.0, -12.0, -12.0, -13.0)) / 20) * 0.9
+    # (the seethe, thick: bubbles of every size, each its own, so no two bands go together: the middling ones many, the big slow ones few; none of them small enough to fizz)
+    full = lambda u: float(ss(SEETHE[0], SEETHE[1], u + Z) * (1 - ss(SEETHE[2], SEETHE[3], u + Z)))
+    mid_ = seethe(n, SEETHE[0] - Z, SEETHE[3] - Z, lambda u: 30.0 * full(u) + 0.5, lambda u: 150.0, lambda u: 560.0, (0.02, 0.06), (0.05, 0.14), lambda u: 0.13 + 0.25 * full(u))
+    big_ = seethe(n, SEETHE[0] - Z, SEETHE[3] - Z, lambda u: 10.0 * full(u) + 0.3, lambda u: 58.0, lambda u: 210.0, (0.05, 0.12), (0.09, 0.24), lambda u: 0.2 + 0.45 * full(u))
+    sb = mid_ + big_
+    sb = sb + ring(sb, body) * 0.26
     # (the six great bubbles: a dome swelling, its band tightening a little as it thins, and the burst, a heavy wet slump in the same steel; bigger is lower; those after the pinch step back with the rest)
     bb = np.zeros(n)
     for a_, ln, r_ in BUBBLES:
@@ -1390,24 +1400,26 @@ def boil():
         m = n_of(ln + 0.02)
         v = np.clip(times(m) / ln, 0, 1)
         y = T.unit(P.glide_band((m + 0.5) / SR, f * 2.0 * (1 + 0.5 * v ** 2), 0.42)) * v ** 1.8 * (1 - ss(ln - 0.008, ln + 0.008, times(m))) * 0.2 * size
-        P.put(bb, y, a_ - BOIL["close"])
-        P.put(bb, plop(f, f * 2.3, 0.9 * size ** 0.6, 0.13 + 0.08 * size), b_ - BOIL["close"])
-        P.put(bb, settle(0.42 * size), b_ - BOIL["close"] + 0.12)
+        P.put(bb, y, a_ - Z)
+        P.put(bb, plop(f, f * 2.3, 0.6 * size ** 0.6, 0.13 + 0.08 * size), b_ - Z)
+        P.put(bb, settle(0.3 * size), b_ - Z + 0.12)
     bb = bb + ring(bb, body) * 0.3
-    L, R = M + fl + bb, M + fl + bb
+    # (the heave and roll: the whole of it lifting and going over, slow, low, each band its own, dying down, a little left after)
+    roll = eddies(d, 26, 300, 2.5, -6.0, 22.0, 7.0) * boiled(n, 0.35, 1.2, 4.0)
+    roll = roll * 10 ** (-13.0 / 20) * ss(HEAVE[0] - 0.15, HEAVE[0] + 0.35, st) * (1 - 0.5 * ss(HEAVE[0] + 0.9, HEAVE[1] + 0.3, st))
+    L, R = M + fl + sb + bb + roll, M + fl + sb + bb + roll
     # (the join: the whole skin slumping as one: no edge on it, a push from under it and the steel taking it)
     m = n_of(1.8)
-    y = struck(m, 0.0, 0.16, GROUND[1:], 26, 0.3) * 0.8
+    y = struck(m, 0.0, BOIL["joined"] - J, GROUND[1:], 34, 0.3) * 0.8
     P.put(y, bare_blow(3.0, 22, 120, 0.05, 0.2) * 0.8, 0.0)
-    l, r = plop(44, 118, 0.8, 0.24), None
-    P.put(y, l, 0.03)
-    y = bp(y + ring(y, body) * 0.2, None, 1500)
-    P.put(L, y, J - BOIL["close"])
-    P.put(R, y, J - BOIL["close"])
-    # (running to the middle: a band of its weight sliding down from the skin to under it)
-    run = ss(J, H + 0.4, st)
+    P.put(y, plop(44, 118, 0.8, 0.24), 0.03)
+    y = bp(y + ring(y, body) * 0.2, None, 1500) * 0.6
+    P.put(L, y, J - Z)
+    P.put(R, y, J - Z)
+    # (the slow flow to the middle: a band of its weight sliding down from the skin to under it)
+    run = ss(H, BOIL["flowing"], st)
     ctr = 420.0 * (96.0 / 420.0) ** run
-    pool = T.unit(P.glide_band(ex, ctr, 0.8)) * boiled(n, 0.5, 2.6, 4.0) * ss(J, J + 0.2, st) * 10 ** (np.interp(st, (J, H, E), (-14.0, -10.0, -12.0)) / 20)
+    pool = T.unit(P.glide_band(ex, ctr, 0.8)) * boiled(n, 0.5, 2.6, 4.0) * ss(HEAVE[0] + 0.5, H - 0.1, st) * 10 ** (np.interp(st, (H, BOIL["flowing"], E), (-9.0, -9.0, -10.0)) / 20)
     L, R = L + pool, R + pool
     # (it hangs in the hollow)
     wl, wr = inside(L, R, 1.0, 0.3, 90.0)
@@ -1421,7 +1433,13 @@ def boil():
     w = ss(BOIL["pinch"] - 0.2, BOIL["pinch"] + 0.3, st)                  # (from the pinch the mids are the drop's: the tension goes low)
     sl, sr = (muffle(x, w, 240.0) for x in (sl[:n], sr[:n]))
     A = T.loudest((ref[0] + ref[1]) / 2) * 10 ** (BOIL_STRAIN / 20)
-    out("boil", ref[0] + sl * A, ref[1] + sr * A, -15.0, tail=0.012, peak=10 ** (-5.5 / 20), ref=ref)
+    L, R = ref[0] + sl * A, ref[1] + sr * A
+    # (the tension never lets go: held to a rising level (`BOIL_RISE`) by a gain moving far slower than anything heard as a flicker; what stands out of the bed still stands out of it)
+    env = np.sqrt(gaussian_filter1d(((L + R) / 2) ** 2, n_of(0.25))) + 1e-9
+    miss = np.interp(st, *zip(*BOIL_RISE)) - 20 * np.log10(env)            # (the stem has no level of its own yet: the curve's)
+    g = gaussian_filter1d(np.median(miss) + np.clip(miss - np.median(miss), -9.0, 9.0), n_of(0.2))
+    L, R = L * 10 ** (g / 20), R * 10 ** (g / 20)
+    out("boil", L, R, 20 * np.log10(T.loudest((L + R) / 2)), tail=0.012, peak=10 ** (-6.5 / 20))
 
 
 # ===========================================================================================================  the drop
@@ -2642,12 +2660,12 @@ def takes(out_dir):
 
     for k in DRIPS:
         c = stem("drip", DRIPS, k)
-        m = context(d, f"drip_{k}", ((GATHER, boil_), (BOIL["neck"], c), (DING - DING_LEAD, touch), (REL, back)), GATHER, 41.7)
-        lev = " ".join(f"{db(np.sqrt(np.mean(m[n_of(t):n_of(t + 0.5)] ** 2))):5.0f}" for t in np.arange(36.5, 41.5, 0.5))
+        m = context(d, f"drip_{k}", ((BOIL["close"], boil_), (BOIL["neck"], c), (DING - DING_LEAD, touch), (REL, back)), BOIL["close"], 41.7)
+        lev = " ".join(f"{db(np.sqrt(np.mean(m[n_of(t):n_of(t + 0.5)] ** 2))):5.0f}" for t in np.arange(32.5, 41.5, 0.5))
         print(f"{k:10s} peak {db(np.abs(m).max()):5.1f}  {lev}")
     for k in DINGS:
         c = stem("ding", DINGS, k)
-        m = context(d, f"ding_{k}", ((GATHER, boil_), (BOIL["neck"], drop), (DING - DING_LEAD, c), (REL, back)), 37.2, 43.3)
+        m = context(d, f"ding_{k}", ((BOIL["close"], boil_), (BOIL["neck"], drop), (DING - DING_LEAD, c), (REL, back)), 37.2, 43.3)
         lev = " ".join(f"{db(np.sqrt(np.mean(m[n_of(t):n_of(t + 0.25)] ** 2))):5.0f}" for t in np.arange(38.5, 42.5, 0.25))
         print(f"{k:10s} peak {db(np.abs(m).max()):5.1f}  {lev}")
 
