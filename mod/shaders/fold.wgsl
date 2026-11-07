@@ -1051,84 +1051,80 @@ fn fdb_density(p: vec3<f32>, a: f32) -> f32 {
     return d * fd_ss(0.3, 0.72, n);
 }
 /// The picture behind `col` seen through the dust, along `v` from `ro` (from the target), up to `far`.
-// ---- the eruption: all that was pent up, let go along the ground. No column and no cloud: a low wall of fire racing out from the middle over the broken land, burning out as it goes,
-// and the first instant lighting everything it can see. `a`: seconds since FD_ERUPT.
-const FDE_LEN: f32 = 3.2;
+// ---- the eruption: all that was pent up, let go along the ground. No column and no cloud: fire running out from the middle to the edges over the land as it lies, in the land itself
+// (fold_warp.wgsl's own burn, the same front) and here the flames standing off it. Each pixel looks down the picture for the land under it, by the depth, so they follow every slope and
+// stand on every ridge. `a`: seconds since FD_ERUPT.
+const FDE_LEN: f32 = 3.6;
 const FDE_OUT: f32 = 560.0;
-const FDE_HIGH: f32 = 58.0;
-const FDE_STEPS: i32 = 20;
-fn fde_front(a: f32) -> f32 { return 14.0 + FDE_OUT * (1.0 - exp(-a / 0.8)); }
-fn fde_density(p: vec3<f32>, a: f32) -> vec2<f32> {
-    let r = length(p.xz);
-    let f = fde_front(a);
-    let w = 26.0 + 44.0 * a;
-    let x = (r - f) / w;
-    if (x > 1.2 || x < -2.6) {
-        return vec2<f32>(0.0);
-    }
-    let q = vec3<f32>(p.x, p.y * 1.6, p.z) * 0.024 + vec3<f32>(0.0, -a * 0.9, 0.0) - normalize(vec3<f32>(p.x, 0.0, p.z) + vec3<f32>(0.01)) * a * 1.4;
-    let n2 = gnoise3(q * 3.4 + 7.3);
-    let n = 0.6 * gnoise3(q) + 0.28 * gnoise3(q * 1.9 + 3.1) + 0.12 * n2;
-    // (the wall's foot ahead of its top, lower the further it has run)
-    let H = FDE_HIGH * (0.55 + 0.45 * exp(-a * 0.5)) * (0.55 + 0.9 * n);
-    let y = p.y + 22.0;
-    let body = fd_ss(1.2, 0.2, x + (n - 0.5) * 1.2) * fd_ss(-2.6, -0.8, x) * fd_ss(H, H * 0.25, y) * fd_ss(-16.0, 0.0, y);
-    let heat = fd_ss(0.9, -0.2, x) * fd_ss(-2.2, -0.6, x) * exp(-a / 0.8) * fd_ss(0.3, 0.62, n + 0.3 * (n2 - 0.5)) * 1.6;
-    return vec2<f32>(body * (1.0 - fd_ss(1.6, FDE_LEN, a)), heat);
-}
-fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32) -> vec3<f32> {
+const FDE_HIGH: f32 = 46.0;
+const FDE_STEPS: i32 = 14;
+fn fde_front(a: f32) -> f32 { return 14.0 + FDE_OUT * (1.0 - exp(-a / 1.05)); }
+fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32, uv: vec2<f32>) -> vec3<f32> {
     var col = colIn;
     // (the first instant, on everything)
     col = col + (col * 1.6 + vec3<f32>(0.34, 0.22, 0.12)) * exp(-a / 0.2) * fd_ss(0.0, 0.03, a);
     if (a > FDE_LEN) {
         return col;
     }
-    let reach = fde_front(a) + 90.0 + 60.0 * a;
-    let b = dot(ro.xz, v.xz);
+    let f = fde_front(a);
+    let w = 16.0 + 26.0 * a;
+    // (how far up the picture a flame reaches from here)
+    let P = v * clamp(far, 12.0, 900.0);
+    let q0 = project_rel(P);
+    let q1 = project_rel(P + vec3<f32>(0.0, FDE_HIGH, 0.0));
+    if (q0.z < 0.0 || q1.z < 0.0) {
+        return col;
+    }
+    let dv = q1.xy - q0.xy;
     let aa = max(dot(v.xz, v.xz), 1.0e-5);
-    let disc = b * b - aa * (dot(ro.xz, ro.xz) - reach * reach);
-    if (disc <= 0.0) {
-        return col;
-    }
-    let sq = sqrt(disc);
-    var s0 = max((-b - sq) / aa, 0.0);
-    var s1 = min((-b + sq) / aa, far);
-    if (abs(v.y) > 1.0e-4) {
-        let ya = (-38.0 - ro.y) / v.y;
-        let yb = (FDE_HIGH * 1.6 - ro.y) / v.y;
-        s0 = max(s0, min(ya, yb));
-        s1 = min(s1, max(ya, yb));
-    } else if (ro.y < -38.0 || ro.y > FDE_HIGH * 1.6) {
-        return col;
-    }
-    if (s1 <= s0) {
-        return col;
-    }
-    // (a ray along the ground crosses all of it: the near part is all that shows, and its steps stay fine enough not to speckle)
-    s1 = min(s1, s0 + 260.0);
-    let day = fd_ss(-0.12, 0.25, normalize(frame.sun.xyz).y);
-    let step = (s1 - s0) / f32(FDE_STEPS);
-    var seen = 1.0;
-    var light = vec3<f32>(0.0);
-    for (var i = 0; i < FDE_STEPS; i += 1) {
-        let p = ro + v * (s0 + (f32(i) + jit) * step);
-        let d = fde_density(p, a);
-        if (d.x <= 0.002) {
+    var best = 0.0;
+    var at = 1.0;
+    for (var k = 0; k < FDE_STEPS; k += 1) {
+        let uk = uv - dv * (f32(k) + jit) / f32(FDE_STEPS);
+        if (uk.x < 0.0 || uk.x > 1.0 || uk.y < 0.0 || uk.y > 1.0) {
             continue;
         }
-        var c = vec3<f32>(0.1, 0.085, 0.075) * (0.3 + 0.7 * day);
-        let h = saturate(d.y * 1.5);
-        var fc = mix(vec3<f32>(0.75, 0.13, 0.02), vec3<f32>(1.25, 0.56, 0.1), fd_ss(0.1, 0.5, h));
-        fc = mix(fc, vec3<f32>(1.5, 1.32, 0.95), fd_ss(0.5, 0.95, h));
-        c = mix(c, fc, fd_ss(0.05, 0.3, h));
-        let f = 1.0 - exp(-d.x * step * 0.14);
-        light += c * f * seen;
-        seen *= 1.0 - f;
-        if (seen < 0.02) {
-            break;
+        let dk = depth_at(uk);
+        if (is_sky(dk)) {
+            continue;
+        }
+        let off = world_offset(uk, dk);
+        let G = off + ro;
+        let r = length(G.xz);
+        if (abs(r - f) > 3.0 * w + 40.0) {
+            continue;
+        }
+        // (this pixel's ray over that bit of land: how high, and how near)
+        let s = dot(off.xz, v.xz) / aa;
+        let h = v.y * s - off.y;
+        if (s <= 0.0 || s > far + 1.0 || h < -1.0) {
+            continue;
+        }
+        let nw = gnoise3(vec3<f32>(G.xz * 0.05, a * 2.2));
+        let x = (r - f + (nw - 0.5) * 70.0) / w;
+        let band = fd_ss(1.0, 0.1, x) * fd_ss(-2.4, -0.3, x);
+        if (band < 0.01) {
+            continue;
+        }
+        let nf = gnoise3(vec3<f32>(G.xz * 0.09, h * 0.035 - a * 3.2));
+        let tall = FDE_HIGH * band * (0.3 + 1.15 * nf) * (1.0 - fd_ss(1.6, FDE_LEN, a)) * fd_ss(560.0, 420.0, r);
+        let e = h / max(tall, 0.1);
+        if (e >= 1.0) {
+            continue;
+        }
+        let dens = (1.0 - e) * fd_ss(7.0, 1.0, length(v.xz * s - off.xz));
+        if (dens > best) {
+            best = dens;
+            at = e;
         }
     }
-    return col * seen + light;
+    if (best > 0.0) {
+        // (white at its foot, yellow, orange, dull red at its tips)
+        var fc = mix(vec3<f32>(0.72, 0.12, 0.02), vec3<f32>(1.25, 0.52, 0.09), fd_ss(0.9, 0.5, at));
+        fc = mix(fc, vec3<f32>(1.5, 1.3, 0.9), fd_ss(0.4, 0.05, at));
+        col = mix(col, fc, saturate(best * 1.8));
+    }
+    return col;
 }
 fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32) -> vec3<f32> {
     let reach = fdb_front(a) + 90.0 + 30.0 * a;
@@ -2176,7 +2172,7 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
     // ---- the dust the last slam drove out of the ground -------------------------------------------------------------------
     let fdb_a = t - FD_ERUPT;
     if (fdb_a > 0.0 && fdb_a < FDB_LEN) {
-        col = fd_erupt(col, -gq, v, far, fdb_a, hash21(uv * res));
+        col = fd_erupt(col, -gq, v, far, fdb_a, hash21(uv * res), uv);
         col = fd_blast(col, -gq, v, far, fdb_a, hash21(uv * res));
     }
     return vec4<f32>(linear_to_srgb(max(col, vec3<f32>(0.0))), 1.0);
