@@ -172,6 +172,11 @@ const CP_V: f32 = 0.12;            // WATERBOMB: a panel's middle off it, of its
 const CP_DIA: f32 = 0.05;          // DIAGONAL: how far up or down a node stands, of its radius, in turn
 const CP_PRE: f32 = 0.62;          // how far the folds go before the land lifts: all of it by FW_FOLD + 5
 const CP_REST: f32 = 0.5;          // how much of them is left in the sphere's walls
+const FW_TIP_UP: f32 = 150.0;      // cp_tip going up: the knee, per kappa (the bud's top goes as about that), and how far over it the ceiling is
+const FW_TIP_ROOM: f32 = 1.22;
+const FW_TIP_RUN: f32 = 120.0;     // running back: the knee as the bud stands, so it rounds over on the way up
+const FW_TIP_STAND: f32 = 205.0;   // and by the first bang: over what is left standing then (201), which is left as it is
+const FW_TIP_BACK: f32 = 250.0;    // and the ceiling
 fn cp_dir(k: i32) -> vec2<f32> {
     switch k {
         case 0: { return vec2<f32>(1.000000, 0.000000); }
@@ -459,7 +464,26 @@ fn cp_rings(tau: f32, t: f32, kappa: f32) -> CpR {
         prev = rho;
         last = ph[i];
     }
+    // (the chain's top eases over rather than shooting up: on the run back the last ring's 190 blocks stand all but upright for a second, on top of the rest. Only the
+    // chain's height goes, so nothing moves sideways, the pleats keep their size, and below the knee this is nothing: the run back's knee rises to clear the rings left standing)
+    var kn = 20.0 + FW_TIP_UP * kappa;
+    var ceil_ = kn * FW_TIP_ROOM;
+    if (t >= FW_REL) {
+        kn = mix(FW_TIP_RUN, FW_TIP_STAND, fw_ss(43.7, FW_FLAT, t));
+        ceil_ = FW_TIP_BACK;
+    }
+    let top = cp_tip(g.foot.y, kn, ceil_);
+    let sc = top / max(g.foot.y, 0.001);
+    for (var i = 0; i < 5; i += 1) {
+        g.D[i].y *= sc;
+    }
+    g.foot.y = top;
     return g;
+}
+// The sheet's top: x up to the knee, then easing towards the ceiling.
+fn cp_tip(x: f32, knee: f32, ceil_: f32) -> f32 {
+    let room = ceil_ - knee;
+    return select(x, knee + room * (1.0 - exp((knee - x) / room)), x > knee);
 }
 // How far node (k, i) stands off the sheet, of how far out it is: each fires as its crease comes to it, and as its chords do; the last ring lies on
 // the land past it.
