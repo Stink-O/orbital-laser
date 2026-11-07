@@ -1738,7 +1738,7 @@ pub(super) fn land_plan(p: &mut Plan, seed: u32, turn: f64, dimension: &str, me:
         p.ev.push((FD_LEN - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
     }
     // (the ground goes from under them with the slam, up to a crater's depth: the fall takes nothing from them)
-    p.at(FD_ISLE_AT - 0.1, format!("execute positioned {cx:.1} {} {cz:.1} run effect give @a[distance=..{FD_KILL}] minecraft:resistance 8 4 true", by + 1));
+    p.at(FD_ISLE_AT - 0.1, format!("execute positioned {cx:.1} {} {cz:.1} run effect give @a[distance=..{FD_KILL},gamemode=!creative,gamemode=!spectator] minecraft:resistance 8 4 true", by + 1));
     // (as the hold starts too: what stands on the land would fall into a crater that can't be seen yet)
     for t in [FD_HIDDEN.start, FD_RELEASE, FD_REVEAL, FD_REVEAL + 2.0] {
         p.at(t, format!("execute positioned {cx:.1} {} {cz:.1} run kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{FD_KILL}]", by + 1));
