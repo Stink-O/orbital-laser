@@ -1348,7 +1348,7 @@ fn fd_embers(due: &mut Due, bx: i32, bz: i32, land: &Land, s: &Shape, wave: &Wav
 /// All the land's work is one chain of stages, a tick each: the land read (its rings asked from the middle out and taken in
 /// as they are answered), the crater's level from it, then the parts of the wave ring by ring, each worked out FD_AHEAD
 /// before it is due. Each stage does about FD_BUDGET columns' worth (well under a tick's fuel).
-const FD_BUDGET: f64 = 720.0;
+const FD_BUDGET: f64 = 870.0;
 /// What an answer of the land's read is reckoned to cost past what `take_in_grid` counts.
 const FD_ANSWER: u64 = 7_000_000;
 /// About what a unit of that work costs in instructions.
