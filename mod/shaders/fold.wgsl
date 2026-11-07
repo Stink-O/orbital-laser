@@ -64,8 +64,15 @@ const FD_SLIP: f32 = 0.3;          // how soon what moved with it loses its spee
 const FD_TIP: f32 = 1.72;          // the tip, in radii over the centre
 const FD_PIV: f32 = -0.3;          // the point it squashes about, in radii over the centre: low, the tip does the moving
 struct FdDrop { R: f32, stop_h: f32, h: f32, sx: f32, sy: f32, piv: f32, rip: f32, ph: f32, sway: vec2<f32>, pool: f32, pw: f32 }
+// It comes down an arc, not a plumb line: seen from under a straight fall its whole trail lies end on, a dot. High up it is off to the player's side, so the trail is seen
+// side on across the sky, and it comes round to plumb over the target by the time it stops. How far to the side it is, H over where it stops.
+const FD_ARC: f32 = 820.0;
+fn fd_arc(H: f32) -> f32 {
+    let u = max(H, 0.0) / FD_FALL;
+    return FD_ARC * u * u;
+}
 struct FdLight { L: vec3<f32>, sunc: vec3<f32>, amb: vec3<f32>, haze: vec3<f32> }
-struct FdMist { c: vec3<f32>, tau: f32, glow: vec3<f32> }
+struct FdMist { c: vec3<f32>, tau: f32, glow: vec3<f32>, fire: vec4<f32> }
 // How far over where it stops it is, `tau` seconds before it does, and when it was at that height.
 fn fd_fall(tau: f32) -> f32 { return tau * (FD_V + FD_B * tau); }
 fn fd_fall_inv(H: f32) -> f32 { return (sqrt(FD_V * FD_V + 4.0 * FD_B * max(H, 0.0)) - FD_V) / (2.0 * FD_B); }
@@ -158,6 +165,16 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         rip = 0.015 * e * (1.0 - exp(-a * 30.0));
         ph = a * 24.0;
         sway = side * 0.035 * e * sin(a * 10.0);
+        if (fd_stop() == 3) {
+            // (SQUASH: it takes it all itself, its foot held and the rest coming down on it, and rocks back slowly, heavy)
+            let sq = fd_ss(0.0, 0.12, a) * exp(-a * 1.9) * cos(7.85 * (a - 0.12)) * (1.0 - fd_ss(0.85, 1.05, a));
+            sy = 1.0 - 0.5 * sq;
+            sx = 1.0 / sqrt(sy);
+            piv = -1.0;
+            rip = 0.03 * exp(-a * 3.0) * (1.0 - exp(-a * 30.0));
+            ph = a * 16.0;
+            sway = vec2<f32>(0.0);
+        }
         if (t > FD_HANG) {
             // (let go: from rest where it stopped, under gravity, reaching the land on FD_TOUCH whatever its size: fd_vc)
             h = R + fd_over(t - FD_TOUCH, R);
@@ -318,10 +335,18 @@ fn fd_light() -> FdLight {
 // The wake: the Payload's trail on the droplet's straight fall, one piece: a cord of lumpy smoke hung in the sky where it came
 // down, its lumps fixed where they were laid, tight off the tip and swelling with age, pale high up and dark low down, with the
 // flame in its first fifth of a second. After the stop the last of it keeps falling, past the droplet and into the land.
-fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight, far: f32) -> FdMist {
-    var m = FdMist(vec3<f32>(0.0), 0.0, vec3<f32>(0.0));
+fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f32, li: FdLight, far: f32) -> FdMist {
+    var m = FdMist(vec3<f32>(0.0), 0.0, vec3<f32>(0.0), vec4<f32>(0.0));
     let a2 = max(dot(v.xz, v.xz), 1.0e-4);
-    let sc = dot(C.xz, v.xz) / a2;
+    // (where the ray passes nearest the arc: the arc is the plumb line's height's way off to the side, and a couple of steps find it)
+    let head0 = d.h - d.stop_h;
+    let S = C - vec3<f32>(way.x * fd_arc(head0), head0, way.y * fd_arc(head0));
+    var nearest = S.xz;
+    var sc = dot(nearest, v.xz) / a2;
+    for (var i = 0; i < 3; i += 1) {
+        nearest = S.xz + way * fd_arc(v.y * sc - S.y);
+        sc = dot(nearest, v.xz) / a2;
+    }
     if (sc <= 0.0 || sc > far) {
         return m;
     }
@@ -334,7 +359,9 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     let tipy = FD_TIP * d.R;
     let yw = ycl + d.h - d.stop_h;
     // (the last of the wake carried on down, less of it the higher up)
-    let laid = yw + fd_slip(after) * exp(-max(yw, 0.0) / 170.0) - tipy;
+    let mode = fd_stop();
+    let k = fd_stopk(mode);
+    let laid = yw + k.x * fd_slip(after) * exp(-max(yw, 0.0) / select(170.0, 420.0, mode == 4)) - tipy;
     let head = d.h - d.stop_h;
     let on = fd_ss(head - 0.1 * d.R, head + 0.9 * d.R, laid);
     if (on <= 0.0) {
@@ -343,15 +370,16 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     let te = FD_STOP - fd_fall_inv(laid);
     let age = max(t - te, 0.0);
     let dive = fd_ss(1.0, 3.0, te);
-    let smk = fd_ss(1800.0, 500.0, laid);
+    let smk = fd_ss(2500.0, 1100.0, laid);
     // (it wanders as it ages, the wind having it)
     let wa = min(age, 9.0);
     let bend = vec2<f32>(sin(laid * 0.0071 + 1.3) + 0.5 * sin(laid * 0.019), cos(laid * 0.0053) + 0.5 * sin(laid * 0.023 + 2.0)) * wa * 1.5;
-    let off = v.xz * sc - (C.xz + bend);
+    let off = v.xz * sc - (nearest + bend);
     let hx = length(off);
     // (tight off the tip; where the air it has dragged down meets the land it spreads)
     let flare = 10.0 * fd_ss(26.0, 0.0, gy) * fd_ss(0.0, 0.1, after);
-    let rad = mix(0.3 * d.R, 0.72 * d.R + 1.5, 1.0 - exp(-age / 0.14)) + 4.2 * sqrt(age) + flare;
+    // (and never thinner than a pixel or two: from far off it is a line drawn across the sky, not nothing)
+    let rad = max(mix(0.3 * d.R, 0.72 * d.R + 1.5, 1.0 - exp(-age / 0.14)) + 3.4 * sqrt(age) + flare + select(0.0, 11.0 * (1.0 - exp(-after / 0.3)) * exp(-max(yw, 0.0) / 50.0), mode == 5), 1.5 * px * sc);
     if (hx >= rad * 3.4) {
         return m;
     }
@@ -402,30 +430,49 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
     // (a soft max(mm, 0): past 30 its exp would run out, and it is mm)
     let mz = mm / sl;
     let dens = saturate(select(sl * log(1.0 + exp(max(mz, -30.0))), mm, mz > 30.0));
-    let sig = (0.26 * exp(-age / 2.6) + 0.25 * exp(-age / 0.7) * dive) * mix(0.35, 1.0, smk);
+    // (dense where it is laid and thinning slowly; right behind the flame nearly solid, the fire going out into dark smoke)
+    let sig = (0.3 * exp(-age / 4.5) + 0.5 * exp(-age / 0.6) * dive) * mix(0.6, 1.15, smk);
     // (its foot lifting off the land as it thins, the droplet left in the clear)
     let foot = 42.0 * pow(max(after - 0.7, 0.0), 2.0);
     let life = (1.0 - fd_ss(9.0, 14.0, t)) * fd_ss(0.1, 0.9, t) * fd_ss(foot - 1.0, foot + 50.0, gy + 40.0 * step(after, 0.7));
-    let dtau = sig * prof * dens * 1.6 * rad * gin * on * life;
+    var dtau = sig * prof * dens * 1.6 * rad * gin * on * life;
+    if (mode == 4 && after > 0.0) {
+        // (it parts round the drop, as water round a stone)
+        let mid = C + vec3<f32>(0.0, 0.36 * d.R, 0.0);
+        dtau *= fd_ss(1.2 * d.R, 2.3 * d.R, length(mid - v * dot(mid, v)));
+    }
     let nrm = normalize(vec3<f32>(off.x, 0.0, off.y) - v * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
     let ln = 0.5 + w1 * (n1 - 0.5);
     let lit = (0.35 + 0.65 * saturate(dot(nrm, li.L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
-    var alb = mix(vec3<f32>(0.5, 0.5, 0.52), vec3<f32>(0.17, 0.145, 0.125), smk);
-    alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), fd_ss(4.0, 20.0, age));
+    // (white vapour high up, soot-dark low down, paling as it spreads thin)
+    var alb = mix(vec3<f32>(0.74, 0.74, 0.76), vec3<f32>(0.115, 0.1, 0.09), smk);
+    alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), fd_ss(3.0, 16.0, age));
     var c = alb * (li.sunc * lit * 0.85 + li.amb * (0.6 + 0.4 * ln));
-    // (just behind it the smoke is lit by its own flame)
-    c = c + vec3<f32>(1.5, 0.55, 0.14) * exp(-age / 0.16) * dive * (0.4 + 0.6 * ln);
-    c = mix(c, li.haze, (1.0 - exp(-sc / 3000.0)) * 0.75);
+    // (just behind the fire the smoke is lit by it, dying back at once)
+    c = c + vec3<f32>(1.2, 0.42, 0.09) * exp(-age / 0.1) * dive * (0.4 + 0.6 * ln);
+    c = mix(c, li.haze, (1.0 - exp(-sc / 3000.0)) * 0.5);
     m.c = c;
     m.tau = dtau;
-    // (the flame: its root white-yellow off the tip, orange back along it, in tongues, not a beam)
-    let fw = rad * (0.8 - 0.35 * saturate(age / 0.3));
-    let fprof = exp(-pow(hx / max(fw, 0.5), 2.0) * 1.6);
-    let fl = exp(-age / 0.1) * dive * on;
-    m.glow = mix(vec3<f32>(1.5, 0.42, 0.06), vec3<f32>(2.2, 1.1, 0.3), exp(-age / 0.04)) * fl * fprof * fd_ss(0.34, 0.6, puff + 0.1 * sin(t * 40.0 + laid * 0.2));
+    // (the fire, a body and not a light: burning back off the tip, how long by how fast it goes; white at its root, yellow, orange, dull red at its end, torn to tongues there.
+    // It hides what is behind it, or over a bright sky it would only wash out)
+    let spd = FD_V + 2.0 * FD_B * max(FD_STOP - te, 0.0);
+    let db = max(laid - head, 0.0);
+    let u = db / (34.0 + 0.055 * spd);
+    let fw = max(d.R * (0.74 - 0.42 * saturate(u)), 1.4 * px * sc);
+    let tore = u + 1.3 * (n2 - 0.5) * saturate(u * 2.0) + 0.5 * sin(t * 31.0 + laid * 0.17) * saturate(u * 1.4) * 0.3;
+    let ee = hx / fw * (1.0 + 0.9 * (n1 - 0.5) * saturate(u * 3.0));
+    let body = fd_ss(1.15, 0.45, ee) * fd_ss(1.25, 0.7, tore) * dive * on * exp(-after / k.y);
+    if (body > 0.0) {
+        let heat = saturate(1.0 - 0.8 * tore - 0.45 * ee);
+        var fc = mix(vec3<f32>(0.62, 0.09, 0.015), vec3<f32>(1.0, 0.36, 0.05), fd_ss(0.05, 0.4, heat));
+        fc = mix(fc, vec3<f32>(1.0, 0.72, 0.2), fd_ss(0.4, 0.68, heat));
+        fc = mix(fc, vec3<f32>(1.0, 0.97, 0.82), fd_ss(0.68, 0.92, heat));
+        m.fire = vec4<f32>(fc, body);
+    }
     // (high up, the hot streak of air it leaves, white, cooling within a second)
     let fh = (1.0 - dive) * exp(-age / 0.45) * life;
-    m.glow = max(m.glow, vec3<f32>(2.4, 2.3, 2.1) * fh * min(fprof * rad * 0.3, 1.2));
+    let fprof = exp(-pow(hx / max(rad * 0.6, 0.5), 2.0) * 1.6);
+    m.glow = vec3<f32>(2.0, 1.9, 1.75) * fh * min(fprof * rad * 0.3, 1.0);
     return m;
 }
 // The fire on the droplet: a skin of flame wrapped round the teardrop itself, thin and white on the round end it is falling on,
@@ -434,12 +481,13 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, px: f32, li: FdLight,
 fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_end: f32, jit: f32) -> vec3<f32> {
     let after = max(t - FD_STOP, 0.0);
     let hi = fd_ss(FD_STOP - 2.8, FD_STOP - 0.3, t);
-    let on = hi * exp(-after / 0.09);
+    let k = fd_stopk(fd_stop());
+    let on = hi * exp(-after / k.z);
     if (on < 0.01) {
         return colIn;
     }
     let grow = 1.0 + after * 2.5;
-    let Cg = C - vec3<f32>(0.0, min(fd_slip(after), max(d.h - d.R, 0.0)), 0.0);
+    let Cg = C - vec3<f32>(0.0, min(k.x * fd_slip(after), max(d.h - d.R, 0.0)), 0.0);
     let bc = Cg + vec3<f32>(0.0, 0.36 * d.R * grow, 0.0);
     let br = 1.8 * d.R * grow;
     let cd = dot(bc, v);
@@ -487,9 +535,12 @@ fn fd_sheath(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, s_
         let rib = mix(fd_ss(0.46, 0.6, n), 1.0, nose * 0.3);
         let dens = sh * rib * on;
         let x = saturate(hgt * 1.1 + max(e, 0.0) / tt * 0.25);
-        var c = mix(vec3<f32>(2.1, 1.25, 0.5), vec3<f32>(1.8, 0.55, 0.08), fd_ss(0.05, 0.4, x));
-        c = mix(c, vec3<f32>(0.5, 0.07, 0.01), fd_ss(0.45, 0.9, x));
-        E = E + c * T * dens * dn * 2.2 / (1.0 + after * 26.0);
+        var c = mix(vec3<f32>(1.0, 0.95, 0.72), vec3<f32>(1.0, 0.5, 0.08), fd_ss(0.05, 0.4, x));
+        c = mix(c, vec3<f32>(0.6, 0.09, 0.015), fd_ss(0.45, 0.9, x));
+        // (it hides what is behind it: fire over a bright sky, added to it, only goes pink)
+        let fa = 1.0 - exp(-dens * dn * 4.0 / (1.0 + after * 26.0));
+        E = E + c * T * fa;
+        T = T * (1.0 - fa);
         // (dark round the tip: the flame burning out into smoke, wrapped in to its point)
         let sm = dens * fd_ss(0.42, 0.85, hgt) * dn * 5.0;
         E = E + vec3<f32>(0.09, 0.075, 0.07) * T * sm;
@@ -569,6 +620,244 @@ fn fd_dust(colIn: vec3<f32>, v: vec3<f32>, G: vec3<f32>, a: f32, s_end: f32, lan
     }
     return colIn * T + C;
 }
+// Beads of burning metal shed off it in the last of its fall, each dropping back behind it with a short bright tail, as the Payload sheds its pieces.
+fn fd_sparks(colIn: vec3<f32>, v: vec3<f32>, S: vec3<f32>, way: vec2<f32>, t: f32, px: f32) -> vec3<f32> {
+    var col = colIn;
+    for (var i = 0; i < 6; i += 1) {
+        let k = f32(i);
+        let ti = 1.6 + 0.27 * k + 0.09 * sin(k * 12.9 + seed_v());
+        let a = t - ti;
+        if (a <= 0.0 || a > 1.3) {
+            continue;
+        }
+        let tau = FD_STOP - ti;
+        let H0 = fd_fall(tau);
+        let sp = FD_V + 2.0 * FD_B * tau;
+        let b = S + vec3<f32>(way.x * fd_arc(H0), H0, way.y * fd_arc(H0));
+        let ang = k * 2.4 + seed_v() * 3.0;
+        let dir = vec3<f32>(cos(ang), 0.0, sin(ang)) * (24.0 + 26.0 * fract(k * 0.37 + seed_v()));
+        let a0 = max(a - 0.045, 0.0);
+        let A = b - vec3<f32>(0.0, sp * (1.0 - exp(-2.0 * a)) / 2.0, 0.0) + dir * (1.0 - exp(-2.5 * a));
+        let B = b - vec3<f32>(0.0, sp * (1.0 - exp(-2.0 * a0)) / 2.0, 0.0) + dir * (1.0 - exp(-2.5 * a0));
+        let h = ray_seg(v, A, B);
+        let w = max(0.8, 1.1 * px * h.y);
+        let c = exp(-h.x * h.x / (w * w)) * (1.0 - h.z * 0.8) * (1.0 - fd_ss(0.7, 1.3, a));
+        col = mix(col, mix(vec3<f32>(1.0, 0.92, 0.6), vec3<f32>(1.0, 0.4, 0.06), h.z), saturate(c * 1.5));
+    }
+    return col;
+}
+// ---- how it stops: `/orbital foldstop N`, for trying them. What each keeps the same: it stops at FD_STOP, it is let go at FD_HANG and it touches on FD_TOUCH.
+//   0 THE WAKE   as it was: the fire and the wake go on past it and hit the land
+//   1 AIR POND   the air takes it as water takes a drop: rings run out across a plane at its foot, seen by what they bend behind them, and the fire and the smoke flatten on it
+//   2 SHOCK      all that speed goes into the air at once: a white bubble of condensation and the ring of its shock front leave it and run out, bending the sky as they go
+//   3 SQUASH     it takes the stop itself: flattens hard, comes back tall, and rocks slowly to rest, heavy
+//   4 OVERRUN    the fire and the wake overrun it: they pour on past and round it, and it is left standing in the stream
+//   5 MUSHROOM   the column behind it has nowhere to go: it stacks up over it and rolls out in one thick smoke ring
+//   6 STUTTER    time catches: the fire and the smoke hang frozen for a beat with the world drained, the drop's echoes running on under it, and everything lets go
+fn fd_stop() -> i32 { return clamp(i32(frame.mod_params[3].w + 0.5), 0, 6); }
+// (how much of the wake goes on past it, how long the fire lasts, and how long the fire's skin)
+fn fd_stopk(mode: i32) -> vec3<f32> {
+    switch mode {
+        case 1: { return vec3<f32>(0.0, 0.03, 0.04); }
+        case 2: { return vec3<f32>(0.6, 0.04, 0.05); }
+        case 4: { return vec3<f32>(1.5, 0.3, 0.22); }
+        case 5: { return vec3<f32>(0.0, 0.04, 0.05); }
+        default: { return vec3<f32>(1.0, 0.05, 0.09); }
+    }
+}
+// The clock the fire and the smoke go by: the strike's, but STUTTER's hangs at the stop for FD_HOLD, then catches up.
+const FD_HOLD: f32 = 0.3;
+fn fd_stopclock(t: f32, mode: i32) -> f32 {
+    if (mode != 6 || t < FD_STOP) {
+        return t;
+    }
+    if (t < FD_STOP + FD_HOLD) {
+        return FD_STOP;
+    }
+    return t - FD_HOLD * (1.0 - fd_ss(FD_STOP + 0.8, FD_STOP + 1.8, t));
+}
+// Where the ray meets the level of the drop's foot: (how far along the ray, x and z from the drop), the second -1 if it doesn't.
+fn fd_plane(v: vec3<f32>, y: f32, far: f32) -> f32 {
+    if (abs(v.y) < 1.0e-4) {
+        return -1.0;
+    }
+    let s = y / v.y;
+    return select(-1.0, s, s > 0.0 && s < far);
+}
+// AIR POND's rings at r: (their height's slope, how much of it there is here). Groups running out, the crests quicker than the group, as on water.
+fn fd_pond(r: f32, a: f32) -> vec2<f32> {
+    var sl = 0.0;
+    var on = 0.0;
+    for (var i = 0; i < 3; i += 1) {
+        let b = a - f32(i) * 0.2;
+        if (b <= 0.0) {
+            continue;
+        }
+        let g = 150.0 * b + 6.0;
+        let w = 15.0 + 36.0 * b;
+        let x = (r - g) / w;
+        let e = exp(-x * x) * exp(-b * 1.5);
+        sl += e * sin((r - 2.0 * g) * 0.42 / (1.0 + 0.5 * b)) * (1.0 - f32(i) * 0.25);
+        on = max(on, e);
+    }
+    return vec2<f32>(sl, on);
+}
+// The picture behind what is in the air, bent by what the stop did to it.
+fn fd_bent(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, a: f32, far: f32, uv: vec2<f32>, aspect: f32, mode: i32) -> vec3<f32> {
+    var col = colIn;
+    if (mode == 1 && a < 2.4) {
+        let y = C.y - (d.h - d.stop_h) - d.R;
+        let s = fd_plane(v, y, far);
+        if (s > 30.0) {
+            let P = v * s;
+            let q = P.xz - C.xz;
+            let r = length(q);
+            let w = fd_pond(r, a);
+            if (w.y > 0.003) {
+                let dir = q / max(r, 0.1);
+                let p0 = project_rel(P);
+                let p1 = project_rel(P + vec3<f32>(dir.x, 0.0, dir.y) * 24.0);
+                let fade = fd_ss(0.0, 0.05, a) * (1.0 - fd_ss(1.6, 2.4, a));
+                if (p0.z > 0.0 && p1.z > 0.0) {
+                    let bend = (p1.xy - p0.xy) * w.x * 1.1;
+                    let lb = length(bend);
+                    col = fd_sample(clamp(uv + bend * min(1.0, 0.03 / max(lb, 1.0e-5)) * fade * fd_ss(30.0, 90.0, s), vec2<f32>(0.002), vec2<f32>(0.998)));
+                }
+                // (its crests catching the sky's light, as a skin on the air)
+                let lift = max(w.x, 0.0);
+                col = col + vec3<f32>(0.62, 0.68, 0.76) * pow(lift, 2.0) * 0.5 * fade + vec3<f32>(0.5, 0.56, 0.66) * w.y * 0.05 * fade;
+            }
+        }
+    }
+    if (mode == 2 && a < 1.6) {
+        let Rs = 12.0 + 330.0 * a * (1.0 - 0.22 * a);
+        let c0 = dot(C, v);
+        let b = length(C - v * c0);
+        let wd = 5.0 + 26.0 * a;
+        let x = (b - Rs) / wd;
+        if (abs(x) < 3.0 && c0 > 0.0) {
+            let q = project_rel(C);
+            let dr = (uv - q.xy) * vec2<f32>(aspect, 1.0);
+            let dir = dr / max(length(dr), 1.0e-4);
+            let k = x * exp(-x * x) * exp(-a * 1.8) * fd_ss(0.0, 0.04, a) * 0.03 * (1.0 - fd_ss(1.0, 1.6, a));
+            col = fd_sample(clamp(uv + dir * k / vec2<f32>(aspect, 1.0), vec2<f32>(0.002), vec2<f32>(0.998)));
+        }
+    }
+    return col;
+}
+// What the stop leaves in the air, in front of what is behind it, up to `s_end`.
+fn fd_after(colIn: vec3<f32>, v: vec3<f32>, C: vec3<f32>, d: FdDrop, t: f32, a: f32, s_end: f32, li: FdLight, jit: f32, mode: i32) -> vec3<f32> {
+    var col = colIn;
+    if (a <= 0.0) {
+        return col;
+    }
+    if (mode == 1 && a < 3.0) {
+        // (the fire and the smoke stopped by the skin of the air and running out flat along it)
+        let s = fd_plane(v, C.y - (d.h - d.stop_h) - d.R, s_end);
+        if (s > 0.0) {
+            let P = v * s;
+            let q = P.xz - C.xz;
+            let r = length(q);
+            let Rd = 7.0 + 62.0 * (1.0 - exp(-a / 0.5));
+            let ang = atan2(q.y, q.x);
+            let wob = 0.84 + 0.32 * vnoise(vec2<f32>(cos(ang) * 2.2 + 3.0, sin(ang) * 2.2 + a * 0.25));
+            let x = r / (Rd * wob);
+            if (x < 1.5) {
+                let n = fbm3(vec3<f32>(q.x * 0.05, a * 0.5, q.y * 0.05) + vec3<f32>(0.0, 0.0, seed_v()));
+                let rim = fd_ss(1.0, 0.72, x + (n - 0.5) * 0.9) * fd_ss(0.0, 0.1, a);
+                let hole = fd_ss(0.9 * d.R, 1.5 * d.R, r);
+                let thin = (1.0 - fd_ss(0.7, 3.0, a)) * fd_ss(0.28, 0.6, n);
+                let alpha = saturate(0.8 * rim * hole * thin);
+                let lit = 0.5 + 0.5 * saturate(li.L.y + n - 0.3);
+                var c = vec3<f32>(0.13, 0.115, 0.105) * (li.sunc * lit * 0.85 + li.amb);
+                let burn = exp(-a / 0.2) * fd_ss(0.5, 1.0, x + n * 0.5);
+                c = mix(c, vec3<f32>(1.0, 0.5, 0.1), saturate(burn * 1.3));
+                col = mix(col, c, alpha);
+            }
+        }
+    }
+    if (mode == 2 && a < 1.5) {
+        // (the bubble: cloud for a moment, where the air was let go; its skin brighter, seen edge on)
+        let Rs = 12.0 + 330.0 * a * (1.0 - 0.22 * a);
+        let c0 = dot(C, v);
+        let b = length(C - v * c0);
+        if (c0 > 0.0) {
+            let bub = fd_ss(0.0, 0.03, a) * exp(-a / 0.16);
+            let u = saturate(b / Rs);
+            let n = vnoise(vec2<f32>(atan2(v.z, v.x) * 30.0, v.y * 60.0) + vec2<f32>(a * 2.0));
+            col = mix(col, vec3<f32>(0.92, 0.94, 0.98), saturate(bub * (0.2 + 0.7 * u * u * u * u) * (0.6 + 0.8 * n)) * fd_ss(1.03, 0.97, b / Rs));
+        }
+        // (and the ring round it, where the shock runs flat out through the drop's own level)
+        let s = fd_plane(v, C.y, s_end);
+        if (s > 0.0) {
+            let q = (v * s).xz - C.xz;
+            let r = length(q);
+            let w = 3.0 + 16.0 * a;
+            let x = (r - Rs) / w;
+            if (abs(x) < 3.0) {
+                let n = fbm3(vec3<f32>(q.x * 0.035, a * 0.8, q.y * 0.035));
+                let al = exp(-x * x) * (0.3 + 1.0 * n) * exp(-a * 2.1) * fd_ss(0.0, 0.05, a);
+                col = mix(col, vec3<f32>(0.9, 0.92, 0.96), saturate(al));
+            }
+        }
+    }
+    if (mode == 5 && a < 3.2) {
+        // (the ring: what piled up over it rolls out and over, the thick of it going round its own core)
+        let Rt = 5.0 + 46.0 * (1.0 - exp(-a / 0.6));
+        let rt = 6.0 + 12.0 * (1.0 - exp(-a / 0.6));
+        let Ct = C + vec3<f32>(0.0, FD_TIP * d.R + 7.0 + 26.0 * (1.0 - exp(-a / 0.5)), 0.0);
+        let Bo = Rt + rt * 1.9;
+        let c0 = dot(Ct, v);
+        let h = dot(Ct, Ct) - c0 * c0;
+        if (h < Bo * Bo) {
+            let sq = sqrt(Bo * Bo - h);
+            let s0 = max(c0 - sq, 0.05);
+            let s1 = min(c0 + sq, s_end);
+            if (s1 > s0) {
+                const N = 16;
+                let ds = (s1 - s0) / f32(N);
+                var T = 1.0;
+                var L = vec3<f32>(0.0);
+                let fade = fd_ss(0.0, 0.12, a) * (1.0 - fd_ss(0.9, 2.6, a));
+                for (var i = 0; i < N; i += 1) {
+                    let p = v * (s0 + (f32(i) + jit) * ds) - Ct;
+                    let ro = length(p.xz);
+                    let qx = ro - Rt;
+                    let e = length(vec2<f32>(qx, p.y * 1.15));
+                    if (e > rt * 1.5) {
+                        continue;
+                    }
+                    let phi = atan2(p.y, qx);
+                    let n = gnoise3(vec3<f32>(p.x * 0.1, p.z * 0.1, phi * 0.9 - a * 2.8)) * 0.65 + gnoise3(vec3<f32>(p.x * 0.27, p.z * 0.27, phi * 2.0 - a * 3.6 + 2.0)) * 0.35;
+                    let dn = fd_ss(rt * (0.9 + 0.7 * n), rt * (0.1 + 0.5 * n), e) * fade;
+                    if (dn < 0.01) {
+                        continue;
+                    }
+                    let up = saturate(p.y / rt * 0.5 + 0.5);
+                    var c = vec3<f32>(0.1, 0.09, 0.082) * (li.sunc * (0.3 + 0.7 * up * saturate(li.L.y + 0.4)) + li.amb * 0.8);
+                    // (the fire still in its heart, going out)
+                    c = c + vec3<f32>(1.3, 0.42, 0.07) * exp(-a / 0.28) * fd_ss(0.7, 0.1, e / rt);
+                    let fa = 1.0 - exp(-dn * ds * 0.2);
+                    L = L + c * T * fa;
+                    T = T * (1.0 - fa);
+                }
+                col = col * T + L;
+            }
+        }
+    }
+    if (mode == 6 && a < 0.5) {
+        // (the drop's echoes, running on where it would have gone, thinning out: hollow, the rim of it only)
+        for (var i = 1; i < 6; i += 1) {
+            let g = C - vec3<f32>(0.0, FD_V * 0.2 * a * f32(i) + f32(i) * 1.5 * d.R * fd_ss(0.0, 0.05, a), 0.0);
+            let c0 = dot(g, v);
+            let b = length(g - v * c0);
+            let x = (b - d.R) / (0.09 * d.R);
+            let al = exp(-x * x) * 0.8 * exp(-f32(i) * 0.4) * (1.0 - fd_ss(0.25, 0.5, a));
+            col = mix(col, vec3<f32>(0.86, 0.92, 1.04), saturate(al));
+        }
+    }
+    return col;
+}
 // What a chrome surface sees: the sky, a hard dark line at the horizon, the land, the sun as a hard bright point.
 fn fd_env(dir: vec3<f32>, sun: vec3<f32>) -> vec3<f32> {
     let y = dir.y;
@@ -581,19 +870,28 @@ fn fd_env(dir: vec3<f32>, sun: vec3<f32>) -> vec3<f32> {
 }
 // The droplet over the picture (`col` so far, `far` how far the scene is along this ray); `land` the land this pixel's ray ends
 // on: its height over the target (x, kept near), where it is (zw), for the dust.
-fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>, d: FdDrop, far: f32, uv: vec2<f32>, aspect: f32, land: vec4<f32>, li: FdLight, jit: f32) -> vec3<f32> {
+fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, far: f32, uv: vec2<f32>, aspect: f32, land: vec4<f32>, li: FdLight, jit: f32) -> vec3<f32> {
     var col = colIn;
     let px = frame.view_params.w / frame.resolution.y;
     let q = project_rel(C);
     let after = max(t - FD_STOP, 0.0);
     let hi = fd_ss(FD_STOP - 2.6, FD_STOP - 0.2, t);
+    let mode = fd_stop();
+    let tx = fd_stopclock(t, mode);
+    if (after > 0.0) {
+        col = fd_bent(col, v, C, d, after, far, uv, aspect, mode);
+    }
     // ---- the wake, hung in the sky -----------------------------------------------------------------------------------------
     if (t < 14.0) {
-        let m = fd_trail(v, C, d, t, px, li, far);
+        let m = fd_trail(v, C, d, way, tx, px, li, far);
         if (m.tau > 0.0) {
             col = mix(col, m.c, 1.0 - exp(-m.tau));
         }
-        col = col + m.glow;
+        col = mix(col, m.fire.rgb, m.fire.a) + m.glow;
+    }
+    if (t > 1.6 && t < 4.6) {
+        let head0 = d.h - d.stop_h;
+        col = fd_sparks(col, v, C - vec3<f32>(way.x * fd_arc(head0), head0, way.y * fd_arc(head0)), way, t, px);
     }
     // ---- the glint: from far up a star, for as long as it is smaller than a few pixels ------------------------------------
     if (q.z > 0.0 && t < FD_STOP) {
@@ -657,7 +955,9 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
             let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
             var mc = c * vec3<f32>(0.9, 0.93, 0.98) * (0.86 + 0.5 * fres);
             // (the sheath's heat on it as it falls, out of it within a second of the stop)
-            mc = mc + vec3<f32>(1.5, 0.55, 0.12) * fd_ss(-0.45, -1.0, n.y) * hi * exp(-after / 0.3);
+            // (its belly white hot, red up its sides, cooling to chrome from the top down within a second or so of the stop)
+            let hot = fd_ss(0.25, -0.75, n.y) * hi * exp(-after / 0.4);
+            mc = mix(mc, mix(vec3<f32>(0.85, 0.2, 0.03), vec3<f32>(1.0, 0.86, 0.6), fd_ss(-0.2, -0.85, n.y) * exp(-after / 0.15)), saturate(hot * 1.15));
             col = mix(col, mc, cov);
             if (hit) {
                 s_end = min(s_end, sb);
@@ -665,10 +965,19 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
         }
     }
     // ---- the fire round it, and the dust the air raises -----------------------------------------------------------------
-    col = fd_sheath(col, v, C, d, t, s_end, jit);
+    col = fd_sheath(col, v, C, d, tx, s_end, jit);
+    col = fd_after(col, v, C, d, t, after, s_end, li, jit, mode);
     // (the dust over it thinned: it stays the thing to look at)
-    let dusty = fd_dust(col, v, G, after - (d.stop_h - d.R) / FD_V, s_end, land, li, jit);
-    return mix(dusty, col, select(0.0, 0.7, s_end < far));
+    // (POND and MUSHROOM keep the air off the land; STUTTER's arrives late)
+    let air = select(after - (d.stop_h - d.R) / FD_V - select(0.0, FD_HOLD, mode == 6), -1.0, mode == 1 || mode == 5);
+    let dusty = fd_dust(col, v, G, air, s_end, land, li, jit);
+    var out_ = mix(dusty, col, select(0.0, 0.7, s_end < far));
+    // (STUTTER: the world drained for the beat it hangs, and let go at once)
+    if (mode == 6 && after > 0.0 && after < FD_HOLD + 0.1) {
+        let g = dot(out_, vec3<f32>(0.3, 0.55, 0.15));
+        out_ = mix(out_, vec3<f32>(g) * vec3<f32>(0.86, 0.9, 1.0), 0.42 * fd_ss(0.0, 0.03, after) * (1.0 - fd_ss(FD_HOLD, FD_HOLD + 0.1, after)));
+    }
+    return out_;
 }
 
 // ---- the slam's dust: what it drove out of the ground ------------------------------------------------------------------------
@@ -1688,17 +1997,20 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
             let fl = fd_ss(FD_STOP - 0.7, FD_STOP, t) * exp(-max(t - FD_STOP, 0.0) / 0.16) / (1.0 + dot(P.xz, P.xz) / (lr * lr));
             col = col + col * vec3<f32>(2.6, 1.15, 0.4) * fl * (14.0 / (lr + 20.0)) * exp(-max(abs(P.y) - 6.0, 0.0) / 16.0);
         }
-        let C = gq + vec3<f32>(0.0, d.h, 0.0);
+        // (to the player's side: the same side whatever they do)
+        let way = vec2<f32>(-te.y, te.x);
+        let H = fd_arc(d.h - d.stop_h);
+        let C = gq + vec3<f32>(way.x * H, d.h, way.y * H);
         // (what the land has reached up inside the drop is taken into it, not seen through it)
         // (until the land has closed over it: a pixel of land in it melts from drop to land as that happens, and has little of the
         // join's light, or the drop's own pixels burn white)
         let swallowed = t >= FD_TOUCH + FD_MEET && t < FD_MELD && !sky0 && fd_bead(off - C, d) < 0.0;
         let under = col;
-        col = fd_droplet(under, t, v, gq, C, d, far, uv, aspect, land, li, jit);
+        col = fd_droplet(under, t, v, gq, C, d, way, far, uv, aspect, land, li, jit);
         var lit = select(0.0, 1.0, !sky0);
         if (swallowed) {
             let closing = fd_ss(FD_MELD - 0.16, FD_MELD, t);
-            col = mix(fd_droplet(under, t, v, gq, C, d, 1.0e7, uv, aspect, land, li, jit), col, closing);
+            col = mix(fd_droplet(under, t, v, gq, C, d, way, 1.0e7, uv, aspect, land, li, jit), col, closing);
             lit = mix(0.12, 1.0, closing * closing * closing);
         }
         col = fd_glow(col, t, v, gq, off - gq, lit, far, d);

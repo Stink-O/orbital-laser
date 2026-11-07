@@ -236,6 +236,10 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
         rdif = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("rdif=")), None)
         if rdif is not None:
             own = re.sub(r"const RD_IF_STYLE: i32 = \d+;", f"const RD_IF_STYLE: i32 = {int(rdif)};", own)
+        if laser == "fold":
+            # (what of the warp the pass has too: mod/src/passbuild.rs's warp_shared)
+            warp = (SHADERS / "fold_warp.wgsl").read_text()
+            own = "".join(re.findall(r"^// \[post pass too\].*?\n(.*?)^// \[end post pass too\]", warp, re.S | re.M)) + own
         path.write_text(pre + own)
     else:
         path.write_text(strike)

@@ -327,6 +327,8 @@ struct Orbital {
     blast_alt: [bool; 2],
     /// Which crease pattern the next Fold folds on (strike::FD_PATTERNS; `/orbital foldpattern`, the wheel's FOLD row).
     fold_pattern: usize,
+    /// How the Fold's droplet stops (fold.wgsl's fd_stop; `/orbital foldstop N`, a dev command for trying them, not kept).
+    fold_stop: usize,
     /// While the Fold's sphere is shut round the player (`strike::FD_STAY`): their flight kept to vanilla's at most.
     fly_held: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
@@ -437,6 +439,7 @@ impl Orbital {
             impact,
             impact_style,
             fold_pattern,
+            fold_stop: 0,
             knock,
             follow,
             following: None,
@@ -898,6 +901,9 @@ impl Orbital {
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
     /// shadow off`), and for the Rod from God 2 more if its impact frames are.
     fn flags_of(&self, index: u32) -> f32 {
+        if LASERS.iter().any(|l| l.index == index && l.key == "fold") {
+            return self.fold_stop as f32;
+        }
         f32::from(u8::from(self.shadow_off)) + if index == 11 { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
@@ -1864,6 +1870,16 @@ impl Mod for Orbital {
                     None => Err("/orbital foldpattern a|b|c (umbrella, waterbomb, diagonal)".to_string()),
                 }
             }
+            (Some("foldstop"), v) => {
+                const STOPS: [&str; 7] = ["the wake", "air pond", "shock", "squash", "overrun", "mushroom", "stutter"];
+                match v.and_then(|v| v.parse::<usize>().ok()).filter(|&n| n < STOPS.len()) {
+                    Some(n) => {
+                        self.fold_stop = n;
+                        Ok(Some(format!("Fold stop {n}: {} (the next strike's)", STOPS[n])))
+                    }
+                    None => Ok(Some(format!("Fold stop {}: {} (/orbital foldstop 0 to 6)", self.fold_stop, STOPS[self.fold_stop]))),
+                }
+            }
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
                 Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's, the Nuke's and the Rod's smoke at half size" } else { "full: every pixel" })))
@@ -1878,7 +1894,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | foldpattern a|b|c | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | foldpattern a|b|c | foldstop 0-6 | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
