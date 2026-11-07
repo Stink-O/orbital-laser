@@ -28,13 +28,14 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
             held strain (`held`) on it to the let-go at 40.95; the blends have the drop's own impact (`arrival`) on their front.
   reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.5, the rim back on the tube at 42.25,
             the tube's lurch to 42.55, the hang, the last let-go at 42.88, the walls' fastest at 43.1 with the sky's air coming in, the far land going at the end. Forward sounds: nothing played backwards, nothing climbing in pitch.
-  bang1-4   44.1, 45.2, 46.3, 47.4 less 0.8 s: a ring of land falling for 0.8 s and stopping dead: its own fall, its own bang, no stones after it.
-            bang1 the far land, a long hit rolling away round the horizon; bang2 a broken ring, two deep blows with the air under the ring shoved out; bang3 the nearest and hardest, the same deep push, nothing after it; bang4 short, hollow and dead.
-  fall      47.9 s: the last fall: the air under the land going, rising, and 90 ms of nothing before the slam.
-  slam      48.7 s: the last ring comes down: a door the size of the sky: the kick, the air slammed out, the ground taking it, the land's sheet answering, four deep breaks of rock; no noise burst, no roar, no stones.
-  sink      48.7 s, ~9 s: the crater going in, panel by panel on the picture's own clock (`panels`, read from fold_warp.wgsl):
-            rock shearing as each lets go, ring after ring from the middle out; the pit's walls and air going while they fall; then the landings (`landings`), built as the bangs are,
-            each ring one deep blow at its heaviest, ring 3 the longest; the debris rattling after them; two thick far chirps, well down; no stones.
+  bang1-4   44.1, 45.2, 46.3, 47.4 less 0.8 s: a ring of land falling for 0.8 s and stopping dead: its own fall, then land breaking, each heavier than the last: `groan`'s thuds grown huge (`weight_of`), rock going (`rock_break`), a rolling tail (`long_rolls`).
+            bang1 the far land, a long hit rolling away round the horizon; bang2 a broken ring, two deep blows with the air under the ring shoved out; bang3 the nearest and hardest, the same deep push; bang4 the heaviest, the rock of it going.
+  fall      47.9 s: the last fall: the air under the land going, rising, and 40 ms of nothing before the slam.
+  slam      48.7 s: the last ring comes down, the biggest bang yet: `ENDING_PICK`, one of `ENDINGS`, each a different idea of the slam and of `erupt` together, its weight from 100 to 800 Hz as much as under 80. No noise burst, no roar, no stones.
+  erupt     49.9 s, 8 s: all that was pent up bursts out of the middle and runs out along the ground, the climax, over the slam: a blast coming at the listener, not a door: at 170 blocks it arrives 0.45 s in (`SITE`), opening as it nears, goes past them with the biggest shove of the strike, darkens as it runs on, burns out by 52, and the debris it threw and its roll round the land hold the level on.
+  sink      48.7 s, 11 s: the crater going in, panel by panel on the picture's own clock (`panels`, read from fold_warp.wgsl), 48.9 to about 55:
+            rock shearing as each lets go, ring after ring from the middle out, a second between rings; the pit's walls and air going while they fall; then the landings (`landings`), built as the bangs are,
+            each ring one deep blow, the last at 54.5; the debris rattling after them; two thick far chirps, well down; no stones.
   underfoot the panel under the player stopping, on its own: a shove through the soles and a second of the ground shuddering; when depends on how deep the crater is where they are (fold.rs).
   comedown  53.3 s, to the strike's end at 59.7: four slow seas of the ground going flat, `ripple`'s own making, the last thunder going round, cold air, nothing to count, nothing over 800 Hz or so: the fires.
 
@@ -43,6 +44,7 @@ the two sides is out of phase, and the levels here are measured on the sum.
 
     python3 tools/sounds_fold.py                  # writes orbital-sounds/assets/orbital/sounds/fold/*.ogg and the fold.* events
     python3 tools/sounds_fold.py --only ding      # one (or several)
+    python3 tools/sounds_fold.py --endings DIR    # also every take of the slam and `erupt`, in context, 40.5 to 58 s on the clock, and the ending's checks
     python3 tools/sounds_fold.py --listen DIR     # also an MP3 of each, the whole strike's mix (fold_mix.mp3, spectrograms)
                                                   # and the levels section by section, stereo and summed
 """
@@ -88,6 +90,8 @@ TAU = ((40.5, 40.0), (40.7, 39.86), (40.9, 39.46), (41.1, 38.87), (41.3, 38.14),
 DING, REL, LEN = 40.0, 40.5, 59.7                     # (FD_LEN)
 SLAMS = [44.1, 45.2, 46.3, 47.4, 48.7]                # (FD_SLAM: each ring falling for FALL s and stopping dead)
 FLAT, SLAM = SLAMS[0], SLAMS[4]
+ERUPT = 49.9                          # what was pent up bursts out of the middle (`erupt`, FD_ERUPT): a low wall of fire and the biggest shock racing out along the ground, 300 blocks in 0.8 s, burnt out by about 52
+ERUPT_V, ERUPT_GO = 300.0 / 0.8, 0.8  # (how fast it runs, blocks a second, and for how long)
 # when the land lets go in great heaves
 RINGS = [19.1, 21.0, 23.3, 25.1, 27.6, 29.9]
 # the land's detents as it bends: the heaves are the downbeats, each cut into even steps, so the beat tightens as it goes and the last falls on HOLD (`groan`'s thuds land on these; the clacks that were on them are gone)
@@ -98,9 +102,9 @@ SWELLS = [11.25, 12.25, 13.2, 14.2]   # the swell under a player at 170 blocks, 
 MELD_LEAD = 0.4                       # meld starts this far before contact, as the land rises to meet the droplet (5.6 s)
 FALL = 0.8                            # how long each ring falls (fold_warp's FW_FALL): 1 - u^3, slowly away, its weight in the last of it
 AIR_LATE = 0.5                        # the air's sound after the stop, at 170 blocks (the plan uses the real distance)
-# The crater (fold_warp.wgsl's fw_sunk): a panel lets go `LATE0 + LATE1 ring + up to LATE2` after the slam, and falls with CAVE t^2 blocks
-LATE0, LATE1, LATE2, CAVE, BOWL = 0.2, 0.62, 0.5, 18.0, 66.0
-COMEDOWN = SLAM + 4.6                 # comedown starts here: the last panel is down at slam + 4.2 (`panels`)
+# The crater (fold_warp.wgsl's fw_late and fw_sunk): a panel lets go `LATE0 + LATE1 ring + up to LATE2` after the slam, and falls with CAVE t^2 blocks: the panels from 48.9 to about 55 s, about a second between rings
+LATE0, LATE1, LATE2, CAVE, BOWL = 0.2, 1.0, 0.5, 10.0, 66.0
+COMEDOWN = SLAM + 4.6                 # comedown starts here, under the last landings (`panels`) and `erupt`'s tail
 DING_LEAD = 2.2                       # ding.ogg starts this long before the touch, for what leads into it (fold.rs's FD_DING_LEAD)
 DING_PICK = "blend_even"              # which of `DINGS` is the one in the game
 DRIP_PICK = "hum"                     # which of `DRIPS` is the one in the game (fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"])
@@ -121,12 +125,12 @@ EVENTS = [(-PRE, "descent", 1.0, 1.0), (STOP - STOP_LEAD, "wobble", 1.0, 1.0), (
           (BOIL["neck"], "drip", 1.0, 1.0),
           (DING - DING_LEAD, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
           *[(t - FALL, f"bang{k + 1}", 1.0, 1.0) for k, t in enumerate(SLAMS[:4])],
-          (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM, "sink", 1.0, 1.0), (SLAM + underfoot_at(), "underfoot", 1.0, 1.0),
+          (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM, "sink", 1.0, 1.0), (ERUPT, "erupt", 1.0, 1.0), (SLAM + underfoot_at(), "underfoot", 1.0, 1.0),
           (COMEDOWN, "comedown", 1.0, 1.0)]
 SECTIONS = [("far", -4.0, 0.0), ("descent", 0.0, 2.9), ("brake", 2.9, 3.86), ("hang", 3.86, 4.5), ("drop", 4.5, 6.0), ("hit", 6.0, 6.5), ("sink", 6.5, 7.5), ("ripple", 7.5, 12.0),
             ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("curl", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 31.8, 32.5), ("crawl", 32.5, 33.4), ("seethe", 33.4, 35.8), ("join", 35.8, 36.85), ("heave", 36.85, 37.72), ("neck", 37.72, 38.35), ("pinch", 38.35, 38.85), ("nearing", 38.85, 40.0),
             ("touch", 40.0, 40.95), ("back", 40.95, 42.55), ("hangs", 42.55, 42.88), ("open", 42.88, 43.3), ("farland", 43.3, 44.1), ("bang1", 44.1, 45.2), ("bang2", 45.2, 46.3),
-            ("bang3", 46.3, 47.4), ("bang4", 47.4, 47.9), ("fall", 47.9, 48.7), ("slam", 48.7, 49.1), ("letgo", 49.1, 51.0), ("land", 51.0, 53.1), ("debris", 53.1, 56.0), ("comedown", 56.0, 59.7)]
+            ("bang3", 46.3, 47.4), ("bang4", 47.4, 47.9), ("fall", 47.9, 48.7), ("slam", 48.7, 49.9), ("erupt", 49.9, 51.5), ("land", 51.5, 55.0), ("debris", 55.0, 57.9), ("comedown", 57.9, 59.7)]
 
 
 def rng():
@@ -2587,27 +2591,133 @@ def reverse():
 
 
 # ==================================================================================================================  the rings
+# ===================================================================================================================  weight
+# What `slam` lost when the noise bursts went: most of its energy was under 80 Hz, and a laptop or headphones lose that. So: real body between 100 and 800 Hz, none of it a short burst of noise there (`bn(120, 900)` on
+# a fast decay is what the user called a snare): the lows' own harmonics (`heat`), `groan`'s thuds grown huge, rock going with its own inharmonic body (`rock_break`, under 12 a second), a mass of the ground with a slow
+# front and a long life (`mass`), and tails that roll, each swell in a band of its own (`long_rolls`).
+def heat(x, g=3.0, lo=80.0, hi=900.0, bias=0.2, db_=0.0, under=260.0):
+    """The lows of `x` driven hard, kept to `lo`-`hi`: harmonics that move with the blow itself, so what a small speaker gets is the same blow, not a second sound. A layer, `db_` dB against `x`."""
+    low = bp(x, None, under, 3)
+    c = np.percentile(np.abs(low), 99.5) + 1e-9
+    h = bp(np.tanh(g * low / c + bias) - np.tanh(bias), lo, hi)
+    return h / (T.loudest(h) + 1e-9) * T.loudest(x) * 10 ** (db_ / 20)
+
+
+def lows_go(L, R, curve, f=130.0):
+    """(L, R) with what's under `f` Hz taken down by `curve` (dB, one value a sample): the lows of a blow are what fill the sum's headroom long after anyone can hear them as the blow."""
+    g = 10 ** (curve / 20)
+    return tuple(c + bp(c, None, f, 3) * (g - 1) for c in (L, R))
+
+
+def mass(n, at, fall=0.4, lo=90.0, hi=800.0, tilt=-3.0, rise=0.025):
+    """The ground's mass moving: thirds of an octave from `lo` to `hi`, each of its own, up over `rise` s and dying at its own rate over about `fall`, the lows last. Long enough never to be a burst. Loudest 400 ms 1."""
+    t = times(n)
+    u = np.maximum(t - at, 0)
+    y = np.zeros(n)
+    for fc in lo * 2 ** (np.arange(int(np.log2(hi / lo) * 3) + 1) / 3.0):
+        y += band_noise(n, fc) * (1 - np.exp(-u / (rise * rng().uniform(0.7, 1.5)))) ** 2 * np.exp(-u / (fall * (fc / 120.0) ** -0.3)) * 10 ** (tilt * np.log2(fc / lo) / 20)
+    return y / (T.loudest(y) + 1e-9)
+
+
+def rock_break(size=1.0, top=950.0):
+    """One lump of rock going: a thud, `groan`'s, with a stone's own inharmonic body on it, no two alike, and the crack opening a moment after the first of it. Peak 1."""
+    m = n_of(0.3 + 0.55 * size)
+    s = times(m)
+    x = T.thud(m, size * 1.6)
+    modes = []
+    f = rng().uniform(105, 170) / (0.8 + 0.2 * size)
+    while f < top:
+        modes.append((f, rng().uniform(4, 10), rng().uniform(0.5, 1.0) * (f / 150.0) ** -0.6))
+        f *= rng().uniform(1.13, 1.42)
+    imp = np.zeros(m)
+    for at_, g in ((0.0, 1.0), (rng().uniform(0.008, 0.03), rng().uniform(0.4, 0.8)), (rng().uniform(0.03, 0.08), rng().uniform(0.2, 0.5))):
+        k = n_of(0.01)
+        P.put(imp, np.exp(-times(k) / 0.0035) * (1 + 0.35 * noise(k)) * g, at_)
+    y = bank(imp, modes)
+    x = x / (np.abs(x).max() + 1e-9) + y / (np.abs(y).max() + 1e-9) * 0.75
+    return bp(x, 55.0, top * 1.15) / (np.abs(x).max() + 1e-9)     # (its lows are the blow's: on its own a lump only takes the sum's headroom down there)
+
+
+def lumps(n, at, gain=1.0, top=950.0):
+    """`at`: ((seconds, size, gain, pan), ...), each a `rock_break` of its own. (L, R), dry."""
+    L, R = np.zeros(n), np.zeros(n)
+    for a, size, g, p_ in at:
+        l, r = pan(rock_break(size, top) * g * gain, p_)
+        P.put(L, l, a)
+        P.put(R, r, a)
+    return L, R
+
+
+def lump_times(t0, t1, rate0, rate1, s0, s1, top=11.0):
+    """(seconds, size, gain, pan) of lumps from `t0` to `t1`, their rate going from `rate0` to `rate1` a second (never over `top`: they stay ones you could count) and their size from `s0` to `s1`, uneven in both."""
+    o, t = [], t0
+    while t < t1:
+        v = (t - t0) / (t1 - t0)
+        o.append((t, (s0 + (s1 - s0) * v) * rng().uniform(0.7, 1.25), (1 - 0.3 * v) * min(rng().pareto(2.4) * 0.3 + 0.55, 1.3), rng().uniform(-0.8, 0.8)))
+        t += rng().uniform(0.65, 1.45) / min(rate0 + (rate1 - rate0) * v, top)
+    return o
+
+
+def long_rolls(n, t0, count, length, lo=70.0, hi=620.0, w=(0.3, 1.0), dark=0.55):
+    """A blow rolling off round the land, the way `PB.thunder_rolls` does it, higher up: each swell its own band of its own noise, from somewhere of its own, up over a tenth of its length and away slowly, the later ones lower and further. (L, R), loudest 400 ms of the sum 1."""
+    L, R = np.zeros(n), np.zeros(n)
+    for k in range(count):
+        v = rng().random() ** 1.4
+        c = t0 + 0.1 + length * v
+        wd = rng().uniform(*w) * (1 + 0.8 * v)
+        m = n_of(wd * 6.5)
+        s = times(m)
+        fc = np.exp(rng().uniform(np.log(lo), np.log(hi))) * (1 - dark * v)
+        y = band_noise(m, fc, rng().uniform(0.45, 0.8)) * (1 - np.exp(-s / (wd * 0.14))) ** 2 * np.exp(-s / wd) * rng().uniform(0.55, 1.0) * np.exp(-v * 1.6) * (fc / 160.0) ** -0.35
+        l, r = pan(y, rng().uniform(-0.75, 0.75))
+        P.put(L, l, c)
+        P.put(R, r, c)
+    g = T.loudest((L + R) / 2) + 1e-9
+    return L / g, R / g
+
+
+def weight_of(n, t0, w, ref):
+    """A ring's mid-range weight, on the blow at `t0`: `groan`'s thud at the ring's size, the mass of the ground, the rock of it going, and the roll it goes off in, all set against `ref`, the blow's own loudest. (L, R), dry."""
+    wn = lambda x, g: x / (T.loudest(x) + 1e-9) * ref * 10 ** (g / 20)
+    m = n_of(1.8)
+    th = T.thud(m, w["thud"][0]) + T.thud(m, w["thud"][0] * 0.7)
+    x = np.zeros(n)
+    P.put(x, wn(th, w["thud"][1]), t0)
+    x = x + wn(mass(n, t0 + 0.004, w["mass"][1], 90.0, w["mass"][2]), w["mass"][0])
+    L, R = x.copy(), x.copy()
+    a, b = lumps(n, tuple((t0 + at, s, g, p_) for at, s, g, p_ in w["breaks"]))
+    g = T.loudest((a + b) / 2) + 1e-9
+    k = ref * 10 ** (w["break_db"] / 20) / g
+    c, ln, e, db_ = w["roll"]
+    rl, rr = long_rolls(n, t0 + 0.05, c, ln, 70.0, e)
+    return L + a * k + rl * ref * 10 ** (db_ / 20), R + b * k + rr * ref * 10 ** (db_ / 20)
+
+
 # Each ring has its own way of landing, by where it is and what it is: outermost first, nearer and harder each time. A ring's
 # arrival is spread by its size, as the land round the horizon comes down, so the hits tighten as they come in.
 # body and modes the ground's response; flam the same blow again; roll the ring's far side coming in after it; edge how hard its
 # front is; stones what comes down after; echoes the land still standing (time, how dark, gain); room how much hollow is left.
 BANGS = (
-    dict(name="bang1", db=-13.5, fall_db=-15.0, d=3.1, span=0.11, body=(46, 40, 30), decs=[(0.9, 0.12), (0.1, 0.5)],
+    dict(name="bang1", db=-11.5, fall_db=-15.0, d=3.6, span=0.11, body=(46, 40, 30), decs=[(0.9, 0.12), (0.1, 0.5)],
          modes=((28, 3, 0.8), (39, 4, 0.9), (57, 5, 1.0), (84, 4, 1.1), (121, 3, 1.0)), thick=((92, 2.5, 1.0), (140, 2.5, 0.9), (205, 2, 0.4)), thick_g=0.9,
          mass=(60, 230, 0.085, 0.66), edge=(0.08, 120, 600, 0.014), flam=(), roll=(0.62, 11, 0.5), puff=(0.26, 0.22, 520), stones=(6.0, 0.5, 2.4, 0.45, 1800), echoes=((0.36, 420, 0.12), (0.77, 300, 0.08), (1.31, 220, 0.05)),
-         wet=0.12, room=1.0, gap=0.055, side=-0.2),
-    dict(name="bang2", db=-11.5, fall_db=-15.0, d=2.5, span=0.05, body=(46, 38, 28), decs=[(0.88, 0.1), (0.12, 0.36)],
+         wet=0.12, room=1.0, gap=0.02, side=-0.2,
+         weight=dict(thud=(4.0, -0.5), mass=(-8.0, 0.3, 520.0), breaks=((0.1, 1.1, 0.8, -0.5), (0.38, 1.3, 0.8, 0.4), (0.74, 0.9, 0.5, -0.2)), break_db=-6.0, roll=(13, 2.6, 520.0, -12.0), heat=-6.0)),
+    dict(name="bang2", db=-10.5, fall_db=-15.0, d=3.4, span=0.05, body=(46, 38, 28), decs=[(0.88, 0.1), (0.12, 0.36)],
          modes=((26, 4, 0.8), (37, 5, 1.0), (54, 5, 1.1), (78, 5, 1.1), (115, 4, 0.9)), thick=((98, 3, 1.0), (160, 3, 1.0), (246, 3, 0.7), (405, 2, 0.35)), thick_g=1.1,
          mass=(60, 300, 0.06, 0.66), edge=(0.16, 170, 800, 0.012), flam=((0.118, 0.86),), roll=(0.34, 5, 0.3), puff=(0.42, 0.2, 520), stones=(4.5, 0.3, 1.7, 0.5, 3000), echoes=((0.29, 380, 0.07), (0.63, 260, 0.04)),
-         wet=0.08, room=0.5, gap=0.04, side=0.3, deep=(1.5, 0.3, 3.2, 1.9)),
-    dict(name="bang3", db=-11.0, fall_db=-14.5, d=2.2, span=0.022, body=(50, 42, 31), decs=[(0.88, 0.14), (0.12, 0.6)],
+         wet=0.08, room=0.5, gap=0.04, side=0.3, deep=(1.5, 0.3, 3.2, 1.9),
+         weight=dict(thud=(5.0, 2.0), mass=(-5.0, 0.3, 620.0), breaks=((0.06, 1.3, 0.9, 0.5), (0.26, 1.5, 0.9, -0.4), (0.5, 1.1, 0.6, 0.2), (0.86, 1.2, 0.45, -0.6)), break_db=-1.5, roll=(13, 2.4, 560.0, -11.0), heat=-2.5)),
+    dict(name="bang3", db=-9.5, fall_db=-14.5, d=3.2, span=0.022, body=(50, 42, 31), decs=[(0.88, 0.14), (0.12, 0.6)],
          modes=((31, 3, 1.0), (45, 6, 0.8), (68, 4, 1.0), (97, 6, 1.1), (146, 5, 1.1), (214, 4, 0.9)), thick=((158, 2.5, 1.0), (262, 2.5, 1.1), (420, 2, 0.8), (690, 2, 0.45)), thick_g=1.5,
          mass=(70, 380, 0.05, 0.7), edge=(0.2, 200, 900, 0.01), flam=(), roll=(0.0, 0, 0.0), puff=(0.46, 0.18, 560), stones=(2.5, 0.3, 1.5, 0.4, 4200), echoes=(),
-         wet=0.08, room=0.34, gap=0.07, side=0.0, deep=(1.7, 0.34, 3.6, 2.1)),
-    dict(name="bang4", db=-13.0, fall_db=-15.5, d=1.5, span=0.014, body=(70, 60, 44), decs=[(1.0, 0.06)],
+         wet=0.08, room=0.34, gap=0.07, side=0.0, deep=(1.7, 0.34, 3.6, 2.1),
+         weight=dict(thud=(6.0, 2.5), mass=(-4.0, 0.32, 700.0), breaks=((0.04, 1.5, 1.0, -0.3), (0.21, 1.7, 0.9, 0.5), (0.45, 1.3, 0.7, -0.6), (0.68, 1.5, 0.55, 0.3), (0.98, 1.2, 0.4, -0.1)), break_db=-1.0, roll=(14, 2.3, 600.0, -10.0), heat=-1.5)),
+    dict(name="bang4", db=-8.5, fall_db=-15.5, d=3.0, span=0.014, body=(70, 60, 44), decs=[(1.0, 0.06)],
          modes=((43, 4, 0.7), (61, 8, 1.1), (87, 8, 1.2), (123, 7, 1.2), (178, 6, 1.0), (257, 5, 0.6)), thick=((196, 6, 1.0), (283, 6, 0.9), (407, 5, 0.6)), thick_g=1.3,
          mass=(130, 420, 0.03, 0.4), edge=(0.34, 500, 3400, 0.004), flam=(), roll=(0.0, 0, 0.0), puff=(0.1, 0.045, 1200), stones=(0.0, 0.0, 0.0, 0.0, 0), echoes=(),
-         wet=0.06, room=0.1, gap=0.05, side=-0.1),
+         wet=0.1, room=0.3, gap=0.05, side=-0.1, deep=(1.9, 0.36, 3.8, 2.3),
+         weight=dict(thud=(7.0, 2.0), mass=(-4.0, 0.34, 800.0), breaks=((0.03, 1.8, 1.0, 0.4), (0.17, 2.0, 0.9, -0.5), (0.36, 1.6, 0.75, 0.6), (0.57, 1.9, 0.6, -0.2), (0.82, 1.5, 0.45, 0.3), (1.08, 1.3, 0.35, -0.6)), break_db=-1.0, roll=(15, 2.2, 640.0, -8.0), heat=-1.5)),
 )
 
 
@@ -2672,7 +2782,10 @@ def bang(b):
     M += bn(n, 90, p[2]) * (1 - np.exp(-u / 0.012)) * np.exp(-u / p[1]) * on * p[0]
     tail = bn(n, 24, 110) * N.env_ar(n, t0 + 0.02, 0.05, 0.14, 0.2, 0.3 + b["d"] * 0.12) * np.clip(1 + 0.5 * PB.slow_random(n, 2.0, 9.0), 0.1, None) * (0.17 + 0.05 * b["room"])
     M += tail
-    L, R = M.copy(), M.copy()
+    ref = T.loudest(M)
+    M += heat(M, 3.0, db_=b["weight"]["heat"])                 # (the blow's own harmonics, for what can't play its lows)
+    wl_, wr_ = weight_of(n, t0, b["weight"], ref)              # (land breaking: what it has between 100 and 800 Hz)
+    L, R = M + wl_, M + wr_
     # (the ring's further parts landing after the near side: fewer and duller with distance, each on its own bearing)
     span, count, g = b["roll"]
     for k in range(count):
@@ -2736,7 +2849,7 @@ def fall():
     sub = bn(n, 22, 80) * lv * 1.3
     L, R = a * gust * lv + sub, b * gust * lv + sub
     L, R = low_mono(L, R, 170.0)
-    gate = 1 - ss(FALL - 0.14, FALL - 0.09, t)                 # (the last 90 ms: nothing)
+    gate = 1 - ss(FALL - 0.09, FALL - 0.04, t)                 # (the last 40 ms: nothing, and `bang4`'s roll under that)
     out("fall", L * gate, R * gate, -18.0, tail=0, peak=10 ** (-5.0 / 20))
 
 
@@ -2753,88 +2866,273 @@ def slam_dice(n, d):
     patter(d, 1.5, 5.4, lambda v: 30.0 * np.clip((v - 1.5) / 0.7, 0, 1) * np.exp(-max(v - 2.3, 0) / 1.1), 1.4)
 
 
-def slam():
-    """The last ring down, and all the land with it: a door the size of the sky. The kick, the air slammed out, its front the ground itself taking it, the land's whole sheet answering from all round,
-    four deep breaks of rock going under the first two seconds, each a lump of the ground, and it rolls off round the land. No noise burst anywhere on it (that was a snare), no grains in it (that was
-    the flicker), no stones. The panels are `sink`, on the same instant."""
-    d = 7.0
+SLAM_LOWS = lambda t: np.interp(t, (0.0, 0.5, 1.2, 1.7), (0.0, 0.0, -6.0, -12.0))    # (dB: `erupt` has the lows from 1.2 s on, and the sum has none to spare)
+
+SLAM_OUT = lambda t: 10 ** (np.interp(t, (0.0, 1.3, 1.6, 1.9, 2.7, 4.6), (0.0, 0.0, -6.0, -12.0, -16.0, -30.0)) / 20)    # (and from there it's `erupt`'s: the slam goes under it as it rises)
+
+ERUPT_OUT = lambda t: 10 ** (np.interp(t, (0.0, 0.95, 1.9, 3.1, 5.0), (0.0, 0.0, -2.0, -3.5, -5.0)) / 20)    # (after its front it stands back a little, room for the landings to land on it; the level's held by them)
+
+
+def slam_rock():
+    """The last ring down and the land breaking under it: the old slam's blow (the kick, the air slammed out, the ground taking it, the land's sheet answering), and now the rock of it: great lumps going, thick and quick, for the 1.2 s to `erupt`, the mass of the ground moving and a roll under them that doesn't let go."""
+    d = 6.5
     n = n_of(d)
     t = times(n)
     t0 = 0.002
-    # (a door the size of the sky: the air slammed out, a chest blow that doesn't let go)
-    chest = blow(n, t0, 150, 43, 29, 0.05, 0.0012, [(0.7, 0.3), (0.3, 1.5)], drive=3.6, octv=0.3, h3=0.16, harm=0.6) * 3.0
-    press = bn(n, 22, 160, 3) * N.env_ar(n, t0, 0.006, 0.25, 0.25, 1.6) * 1.2
+    chest = blow(n, t0, 150, 43, 29, 0.05, 0.0012, [(0.8, 0.3), (0.2, 0.8)], drive=3.6, octv=0.3, h3=0.16, harm=0.6) * 3.0
+    press = bn(n, 22, 160, 3) * N.env_ar(n, t0, 0.006, 0.25, 0.2, 0.9) * 1.2
     bn(n, 300, 6000), bn(n, 120, 900)                          # (spent: the crack)
     M = chest + press
-    L, R = M.copy(), M.copy()
     a, b = np.zeros(n), np.zeros(n)
     for k in range(5):                                         # (the land's whole sheet answering, from all round)
-        ice(a, b, 0.0, 180 + 170 * k, THICK[("thick", "slab", "thick", "slab", "mid")[k]], 1.0 - 0.13 * k, (-0.7, 0.6, -0.3, 0.8, 0.1)[k], 2)
-    L += a
-    R += b
+        ice(a, b, 0.0, 180 + 170 * k, THICK[("thick", "slab", "thick", "slab", "mid")[k]], 0.6 * (1.0 - 0.13 * k), (-0.7, 0.6, -0.3, 0.8, 0.1)[k], 2)
     slam_dice(n, d)
     with PB.seeded(SEEDS["slam"] + 1):
         y = struck(n, t0, 0.03, GROUND, 40, 0.3) * 1.5 + struck(n, t0, 0.02, RUBBLE[:3], 20, 0.3) * 0.6    # (its front: the ground, not air)
-        L += y
-        R += y
-        for at, g, p_ in ((0.31, 0.6, -0.5), (0.72, 0.75, 0.45), (1.2, 0.5, -0.2), (1.75, 0.4, 0.6)):      # (the rock going, four great lumps of it, dark)
-            m = n_of(1.4)
-            y = struck(m, 0.0, 0.03, GROUND[1:], 18, 0.3) * 0.8 + struck(m, 0.0, 0.02, RUBBLE[:3], 10, 0.3) * 0.35
-            P.put(y, bare_blow(1.6, 24, 120, 0.015, 0.12) * 0.5, 0.0)
-            l, r = pan(y * g, p_)
-            P.put(L, l, at)
-            P.put(R, r, at)
-    L, R = verb(L, R, 0.4, length=4.5, darken=(1400, 220), decay=1.8)
-    # (it rolls off round the land, out and away)
-    for at, dull, g_ in ((0.8, 500, 0.3), (1.7, 360, 0.2), (3.0, 260, 0.13)):
-        for c, x in zip((L, R), (L.copy(), R.copy())):
-            P.put(c, bp(x[:n_of(1.5)], None, dull) * g_, at)
-    e = 1 - 0.6 * ss(2.0, 2.8, t)                              # (from where `sink`'s landings come in it stands back)
-    L, R = low_mono(L * e, R * e, 170.0)
-    out("slam", L, R, -6.0, tail=0.8, peak=10 ** (-3.6 / 20))
+        M = M + y
+        ref = T.loudest(M)
+        M = M + heat(M, 3.2, db_=-3.0)
+        M = M + mass(n, t0, 0.45, 110.0, 800.0, -2.0, 0.022) * ref * 10 ** (-5.0 / 20)
+        L, R = M + a, M + b
+        at = [(0.03, 2.6, 1.0, 0.3), (0.16, 2.8, 1.0, -0.5), (0.31, 2.4, 0.95, 0.6)] + [(a_, s_, g_ * (0.6 + 0.55 * max(a_ - 0.46, 0.0)), p_) for a_, s_, g_, p_ in lump_times(0.46, 1.65, 7.0, 10.0, 1.8, 2.0)]    # (they gather, up to `erupt`)
+        l, r = lumps(n, at)
+        g = ref * 10 ** (-1.5 / 20) / (T.loudest((l + r) / 2) + 1e-9)
+        L, R = L + l * g, R + r * g
+        L, R = verb(L, R, 0.4, length=4.5, darken=(1400, 220), decay=1.8)
+        rl, rr = long_rolls(n, 0.1, 20, 3.0, 70.0, 640.0, (0.35, 1.0))
+        e = ref * 10 ** (-8.0 / 20) * ss(0.0, 0.3, t)
+        L, R = L + rl * e, R + rr * e
+    L, R = lows_go(L * SLAM_OUT(t), R * SLAM_OUT(t), SLAM_LOWS(t))
+    L, R = low_mono(L, R, 170.0)
+    out("slam", L, R, -6.8, tail=0.8, peak=10 ** (-1.6 / 20))
 
 
+def front_r(t):
+    """How far `erupt`'s front is from a listener at `SITE`, blocks: it comes, it passes, it stops 130 beyond them."""
+    return np.abs(SITE - ERUPT_V * np.minimum(t, ERUPT_GO))
+
+
+def runs_past(L, R, t, top=1500.0, near=70.0, floor=170.0):
+    """(L, R) with its top following the front: dark while it's far, open as it goes past, dark as it runs on: the distance in the file, since the game plays it at the ear."""
+    fc = floor + top / (1 + front_r(t) / near)
+    return PB.lowpass_track(L, fc), PB.lowpass_track(R, fc)
+
+
+def thrown(F_, gain=1.0):
+    """What it throws up as it goes by, coming down for seconds, thinning and going further off: lumps for `lumps`."""
+    at = lump_times(F_ + 0.5, 3.0, 10.0, 6.0, 2.2, 1.4) + lump_times(3.0, 6.8, 5.0, 1.5, 1.3, 0.8)
+    return [(a_, s_, g_ * gain * 10 ** (-(a_ - F_) * 3.2 / 20), p_) for a_, s_, g_, p_ in at]
+
+
+def erupt_rock():
+    """The shock through the land: the rock breaks in a line running at the listener, each lump nearer and bigger than the last, the ground's own blow arrives under their feet and shoves them, and it runs on past them, the breaking going dark behind them; what it threw comes down for seconds and the land rolls with it."""
+    d = 8.0
+    n = n_of(d)
+    t = times(n)
+    F_ = SITE / ERUPT_V
+    u = np.maximum(t - F_, 0)
+    swell = ss(0.0, F_, t) ** 1.6
+    press = bp(T.friedlander(n, F_ - 0.03, 0.75, 1.1), 12, 70)
+    M = press / np.abs(press).max() * 0.45 + bn(n, 24, 90, 3) * swell * np.exp(-u / 2.2) * (1 - ss(3.5, 7.5, t)) * 0.3
+    P.put(M, bare_blow(4.5, 26, 120, 0.05, 0.14) * 0.8, F_ - 0.05)
+    ref = T.loudest(M)
+    M = M + heat(M, 3.4, db_=1.0)
+    wall = eddies(d, 125, 900, 2.5, -2.5, 12.0, 5.0)
+    level = np.interp(t, (0.0, 0.12, F_ - 0.08, F_ + 0.1, 1.2, 2.1, 3.1, 5.0, 7.8), (-24.0, -11.0, -5.0, 0.0, -1.5, -4.0, -5.0, -12.0, -36.0))
+    M = M + wall * 10 ** (level / 20) * ref * 1.35
+    L, R = M.copy(), M.copy()
+    coming = [(a_, s_, g_ * (0.55 + 0.45 * a_ / F_), p_) for a_, s_, g_, p_ in lump_times(0.0, F_, 8.0, 11.0, 1.6, 2.6)]    # (the break running at them)
+    front = [(F_ + 0.05, 3.2, 0.75, 0.0), (F_ + 0.16, 3.0, 0.85, -0.5), (F_ + 0.3, 2.8, 0.9, 0.5)]    # (under the blow's own rise: it isn't a hit)
+    l, r = lumps(n, coming + front + thrown(F_))
+    g = ref * 10 ** (4.0 / 20) / (T.loudest((l + r) / 2) + 1e-9)
+    L, R = runs_past(L + l * g, R + r * g, t)
+    L, R = verb(L, R, 0.42, length=4.5, darken=(1300, 200), decay=1.8)
+    rl, rr = long_rolls(n, F_ + 0.3, 30, 6.2, 100.0, 620.0, (0.4, 1.2))
+    e = ref * 10 ** (-1.5 / 20)
+    L, R = low_mono((L + rl * e) * ERUPT_OUT(t), (R + rr * e) * ERUPT_OUT(t), 170.0)
+    out("erupt", L, R, -6.5, tail=1.2, peak=10 ** (-1.8 / 20))
+
+
+def slam_boom():
+    """One huge overdriven blow, a mortar the size of the sky: no rock in it, no ground's modes to speak of, the whole weight in low noise driven into itself, so what's between 100 and 800 Hz is the blow's own harmonics; a long booming body that rolls straight on into `erupt`."""
+    d = 6.5
+    n = n_of(d)
+    t = times(n)
+    t0 = 0.002
+    x = blow(n, t0, 130, 41, 28, 0.06, 0.003, [(0.75, 0.35), (0.25, 0.9)], drive=5.0, octv=0.42, h3=0.3, harm=0.9) * 2.4
+    P.put(x, bare_blow(7.0, 26, 200, 0.006, 0.09) * 2.4, t0)
+    x = x + struck(n, t0, 0.04, GROUND, 40, 0.3) * 1.0
+    ref = T.loudest(x)
+    drive = 1 + 3.2 * np.exp(-t / 0.9)
+    low = bp(x, None, 320, 3)
+    c = np.percentile(np.abs(low), 99.5)
+    grit = (np.tanh(drive * low / c + 0.25) - np.tanh(0.25)) * c
+    M = x + bp(grit, 70, 1000) / (T.loudest(bp(grit, 70, 1000)) + 1e-9) * ref * 10 ** (1.0 / 20)
+    L, R = verb(M, M.copy(), 0.5, length=4.5, darken=(1300, 200), decay=1.9)
+    rl, rr = long_rolls(n, 0.12, 22, 3.4, 60.0, 560.0, (0.4, 1.2), 0.45)
+    e = ref * 10 ** (-1.5 / 20) * ss(0.0, 0.4, t)
+    L, R = lows_go((L + rl * e) * SLAM_OUT(t), (R + rr * e) * SLAM_OUT(t), SLAM_LOWS(t))
+    L, R = low_mono(L, R, 170.0)
+    out("slam", L, R, -6.8, tail=0.8, peak=10 ** (-1.6 / 20))
+
+
+def erupt_boom():
+    """A wall of pressure along the ground: it comes up out of the dark as it nears, driven till it's solid, goes over the listener as one huge shove and on out; great blows behind it as the land goes, the last far off; what it threw coming down in it; then the thunder, a long way round the land."""
+    d = 8.0
+    n = n_of(d)
+    t = times(n)
+    F_ = SITE / ERUPT_V
+
+    def opens(s_, f):
+        r_ = float(front_r(s_))
+        fc = 120.0 + 760.0 / (1 + (r_ / 55.0) ** 1.3) + 220.0 * (1 - ss(1.0, 3.6, s_))
+        return np.minimum((f / 50.0) ** 1.0, 1.0) / (1 + (f / fc) ** 2.2)
+
+    wall = morph(n, opens)
+    level = np.interp(t, (0.0, 0.12, F_ - 0.1, F_ + 0.12, 1.4, 2.1, 3.1, 5.0, 7.8), (-24.0, -10.0, -5.0, 0.0, -1.0, -3.0, -5.0, -12.0, -40.0))
+    x = wall * 10 ** (level / 20) * 1.3
+    press = bp(T.friedlander(n, F_ - 0.05, 0.8, 1.1), 12, 70)
+    x = x + press / np.abs(press).max() * 1.2
+    for at, size, g in ((F_, 6.5, 2.4), (1.3, 4.5, 1.3), (2.05, 4.0, 0.9), (3.1, 3.4, 0.5)):
+        P.put(x, bare_blow(size, 24, 170, 0.035, 0.1) * g, at)
+    ref = T.loudest(x)
+    drive = 1 + 3.0 * ss(0.0, F_, t) * (1 - ss(2.0, 5.0, t))
+    low = bp(x, None, 340, 3)
+    c = np.percentile(np.abs(low), 99.5)
+    grit = bp((np.tanh(drive * low / c + 0.25) - np.tanh(0.25)) * c, 70, 1100)
+    M = x + grit / (T.loudest(grit) + 1e-9) * ref * 10 ** (0.5 / 20)
+    l, r = lumps(n, thrown(F_))
+    g = ref * 10 ** (-5.0 / 20) / (T.loudest((l + r) / 2) + 1e-9)
+    L, R = verb(M + l * g, M + r * g, 0.5, length=4.5, darken=(1200, 200), decay=2.0)
+    rl, rr = long_rolls(n, F_ + 0.4, 34, 6.3, 50.0, 480.0, (0.5, 1.5), 0.5)
+    e = ref * 10 ** (-1.0 / 20)
+    L, R = low_mono((L + rl * e) * ERUPT_OUT(t), (R + rr * e) * ERUPT_OUT(t), 170.0)
+    out("erupt", L, R, -6.5, tail=1.2, peak=10 ** (-1.8 / 20))
+
+
+CHAMBER = ((104, 22, 1.0), (151, 26, 0.95), (197, 30, 0.8), (268, 34, 0.8), (331, 30, 0.6), (449, 36, 0.5), (563, 34, 0.32), (742, 30, 0.18))    # (the pit under the land, a hall as wide as a county: uneven, and no two of them in any chord)
+
+
+def slam_hall():
+    """Something vast shutting: the blow goes into the hollow under the land and the hollow takes it, its walls ringing dark and uneven for a second and more, a boom in a closed space with the pressure trapped; then the pressure under it heaving at the lid, up to `erupt`."""
+    d = 6.5
+    n = n_of(d)
+    t = times(n)
+    t0 = 0.002
+    x = blow(n, t0, 120, 44, 31, 0.05, 0.002, [(0.8, 0.3), (0.2, 0.8)], drive=3.4, octv=0.3, h3=0.16, harm=0.6) * 4.6
+    x = x + bn(n, 22, 150, 3) * N.env_ar(n, t0, 0.006, 0.3, 0.2, 0.9) * 1.6 + struck(n, t0, 0.03, GROUND, 40, 0.3) * 1.4
+    ref = T.loudest(x)
+    imp = np.zeros(n)
+    for k in range(9):                                         # (the blow arriving at the hall's walls, a few at a time)
+        m = n_of(0.03)
+        P.put(imp, bp(noise(m), 60, 1000) * np.exp(-times(m) / 0.006) * (1 if k == 0 else rng().uniform(0.2, 0.6)), t0 + (0.0 if k == 0 else 0.26 * rng().random() ** 1.6))
+    y = bank(imp, tuple((f * rng().uniform(0.97, 1.03), q, a) for f, q, a in CHAMBER))
+    x = x + heat(x, 3.0, db_=-5.0)
+    x = x + y / (T.loudest(y) + 1e-9) * ref * 10 ** (-4.0 / 20)
+    x = x + mass(n, t0, 0.6, 80.0, 620.0, -3.5, 0.03) * ref * 10 ** (-7.0 / 20)
+    L, R = x.copy(), x.copy()
+    hl, hr = inside(L, R, 1.0, 0.3, 120.0)                     # (the hollow's own long answer)
+    L, R = verb(L + hl, R + hr, 0.3, length=3.5, darken=(1100, 200), decay=1.6)
+    # (the pressure under it: slow heaves against the lid, climbing to `erupt`)
+    b_ = eddies(d, 90, 520, 2.5, -3.5, 16.0, 5.0)
+    e = ref * 10 ** (np.interp(t, (0.0, 0.35, 1.2, 2.4, 4.5, 6.5), (-40.0, -13.0, -10.0, -14.0, -26.0, -50.0)) / 20)
+    L, R = L + b_ * e, R + np.roll(b_, 311) * e
+    L, R = lows_go(L * SLAM_OUT(t), R * SLAM_OUT(t), SLAM_LOWS(t))
+    L, R = low_mono(L, R, 170.0)
+    out("slam", L, R, -6.8, tail=0.8, peak=10 ** (-1.6 / 20))
+
+
+def erupt_fire():
+    """The wall of fire: a low sheet of flame racing along the ground at the listener, a rush thickening and opening as it nears; it goes through them with the ground's shove under it, its bands of fire each boiling on their own and dropping as it passes; it runs on and burns out by 52; what it threw comes down, and the land rolls on under that. No throat, nothing going up: all of it along the ground."""
+    d = 8.0
+    n = n_of(d)
+    t = times(n)
+    F_ = SITE / ERUPT_V
+    by = 1.28 - 0.56 * ss(F_ - 0.14, F_ + 0.2, t)              # (each band a little high coming and a little low going: it went past)
+    sheet = 0
+    for f0, wd, g in ((105.0, 0.55, 1.0), (175.0, 0.5, 1.0), (290.0, 0.5, 0.85), (470.0, 0.5, 0.6), (760.0, 0.55, 0.36), (1250.0, 0.6, 0.16)):
+        fc = f0 * by * (1 + 0.07 * np.clip(PB.slow_random(n, 0.3, 2.0), -2, 2))
+        sheet = sheet + P.glide_band(d, fc, wd) * g * boiled(n, 1.2, 8.0, 3.5)
+    sheet = T.unit(sheet)
+    level = np.interp(t, (0.0, 0.12, F_ - 0.05, F_ + 0.12, 1.3, 1.8, 2.15, 3.0, 4.0), (-30.0, -13.0, -6.0, 0.0, -1.5, -5.0, -13.0, -24.0, -60.0))    # (burnt out by 52)
+    pr = bp(T.friedlander(n, F_ - 0.03, 0.7, 1.1), 12, 70)
+    x = pr / np.abs(pr).max() * 1.6
+    P.put(x, bare_blow(5.5, 26, 130, 0.04, 0.13) * 2.0, F_ - 0.03)
+    # (its front going through them: the whoomph, its band falling away)
+    fw = P.glide_band(d, 170.0 + 620.0 * np.exp(-np.maximum(t - F_, 0) / 0.2), 0.5) * (1 - np.exp(-np.maximum(t - F_ + 0.06, 0) / 0.04)) ** 2 * np.exp(-np.maximum(t - F_, 0) / 0.45)
+    x = x + T.unit(fw) * 1.6
+    ref = T.loudest(x)
+    x = x + heat(x, 3.2, db_=-4.0)
+    body = eddies(d, 60, 1400, 2.5, -4.0, 11.0, 5.0)
+    a, b = sheet * 0.85 + body * 0.5, sheet * 0.85 + np.roll(body, 523) * 0.5
+    e = 10 ** (level / 20) * ref * 0.95
+    l, r = lumps(n, thrown(F_))
+    g = ref * 10 ** (-3.0 / 20) / (T.loudest((l + r) / 2) + 1e-9)
+    L, R = runs_past(x + a * e + l * g, x + b * e + r * g, t, 1900.0, 80.0, 240.0)
+    L, R = verb(L, R, 0.45, length=4.5, darken=(1500, 200), decay=1.8)
+    rl, rr = long_rolls(n, 1.0, 30, 6.0, 55.0, 520.0, (0.45, 1.3))
+    e = ref * 10 ** (-1.0 / 20)
+    L, R = low_mono((L + rl * e) * ERUPT_OUT(t), (R + rr * e) * ERUPT_OUT(t), 170.0)
+    out("erupt", L, R, -6.5, tail=1.2, peak=10 ** (-1.8 / 20))
+
+
+ENDINGS = {"rock": (slam_rock, erupt_rock), "boom": (slam_boom, erupt_boom), "fire": (slam_hall, erupt_fire)}
+ENDING_PICK = "fire"                                  # which of `ENDINGS` is the one in the game
+
+
+def slam():
+    ENDINGS[ENDING_PICK][0]()
+
+
+def erupt():
+    ENDINGS[ENDING_PICK][1]()
+
+
+SINK_LAND = 1.5                                       # (the landings against what's round them)
 LANDED = ((92, 2.5, 1.0), (140, 2.5, 0.95), (205, 2, 0.7), (330, 2, 0.5))                  # (the body of a ring coming down: `bang1`'s, a little wider)
 
 
 def landings(n, table, sizes):
-    """The panels coming down, deep and heavy, the way the rings' bangs are made: land stopping on land, the ground's own low modes and the air shoved out from under it, nothing bright, no rocks on
-    top. Each panel a low contact on its own bearing, and each ring's whole weight one blow at its deepest. Nothing here is noise on its own: it all goes through the ground. (L, R), dry."""
+    """The panels coming down one by one, deep and heavy, the way the rings' bangs are made: land stopping on land, the ground's own low modes, the air shoved out from under it, and the rock of it breaking; nothing bright. Each panel its own contact on its own bearing; each ring's whole weight one blow at its heaviest, about a second apart. (L, R), dry."""
     L, R = np.zeros(n), np.zeros(n)
     with PB.seeded(SEEDS["sink"] + 1):
         for ring, late, first, last in table:
-            m = n_of(1.4)
+            m = n_of(1.6)
             s = sizes[ring]
-            y = struck(m, 0.0, 0.02 + 0.03 * s, GROUND[1:], 16, 0.3) * 0.26 * s * rng().uniform(0.8, 1.1)    # (small: a ring's panels land within milliseconds of each other, and they add up)
+            at = last - 0.14 * (last - first) * rng().random() - 0.1 * rng().random()    # (its deep inner edge is the weight of it)
+            y = struck(m, 0.0, 0.02 + 0.03 * s, GROUND[1:], 16, 0.3) * 0.26 * s * rng().uniform(0.7, 1.1)
             P.put(y, bare_blow(1.4 + s, 20, 84, 0.012, 0.1) * 0.24 * s, 0.0)
-            l, r = pan(y, rng().uniform(-0.6, 0.6))
-            P.put(L, l, first)
-            P.put(R, r, first)
+            P.put(y, rock_break(1.3 * s) * 0.3 * s * rng().uniform(0.6, 1.1), 0.0)    # (the rock of it: these are what's left on a small speaker)
+            l, r = pan(y, rng().uniform(-0.7, 0.7))
+            P.put(L, l, at)
+            P.put(R, r, at)
         for ring in range(4):
             on = [p_ for p_ in table if p_[0] == ring]
-            a, z = min(p_[2] for p_ in on), max(p_[3] for p_ in on)
-            at = a if ring < 2 else z - 0.12                  # (rings 2 and 3: the deep inner edge is the weight)
+            at = float(np.mean([p_[3] for p_ in on]))          # (the deep inner edge is the weight)
             s = sizes[ring]
-            m = n_of(2.4)
-            # (built as `bang` builds a ring: the ground's low modes, a thick body over them, rough weight, a dark edge; `struck` is peak 1, so each is set against the lows)
-            y = struck(m, 0.0, 0.05 + 0.03 * ring, GROUND, 40, 0.35) * 0.8 + struck(m, 0.0, 0.04, LANDED, 24, 0.35) * 1.2
+            m = n_of(3.2)
             q = times(m)
-            y = y + bn(m, 60, 420) * (1 - np.exp(-q / 0.0025)) * np.exp(-q / (0.08 + 0.02 * ring)) * 0.75 + rough(m, 0.0, 0.03, 14, 120, 620, 0.014) * 0.14
+            # (built as `bang` builds a ring)
+            y = struck(m, 0.0, 0.05 + 0.03 * ring, GROUND, 40, 0.35) * 0.8 + struck(m, 0.0, 0.04, LANDED, 24, 0.35) * 1.2
             pr = bp(T.friedlander(m, 0.0, 0.22 + 0.06 * ring, 1.4), 12, 72)
-            y = y + pr / (np.abs(pr).max() + 1e-9) * 0.9
-            P.put(y, bare_blow(3.0 + ring, 18, 72, 0.01, 0.14) * 1.0, 0.0)
-            y = y * s * (0.5, 0.68, 0.9, 1.0)[ring]               # (the rings build: ring 0 is the tight start of it, and ring 3 the county)
-            P.put(L, y, at)
-            P.put(R, y, at)
+            y = y + pr / (np.abs(pr).max() + 1e-9) * 0.5
+            P.put(y, bare_blow(3.0 + ring, 24, 90, 0.01, 0.14) * 0.6, 0.0)
+            ref = T.loudest(y)
+            y = y + heat(y, 3.0, db_=-1.0) + mass(m, 0.002, 0.34, 90.0, 720.0) * ref * 10 ** (1.0 / 20)
+            th = np.zeros(m)
+            P.put(th, T.thud(n_of(1.6), 5.0 + ring) * ref * 1.4, 0.0)
+            y = y + th
+            y = y * (0.92, 0.94, 0.97, 1.0)[ring] * sizes[3]      # (each one a landing of its own, the last the heaviest)
+            l, r = lumps(m, tuple((a_, 1.6 + 0.2 * ring, g_, p_) for a_, g_, p_ in ((0.02, 1.0, 0.4), (0.16, 0.9, -0.5), (0.34, 0.8, 0.2), (0.56, 0.55, -0.3))), ref * 0.9 * sizes[3])
+            P.put(L, y + l, at)
+            P.put(R, y + r, at)
     return L, R
 
 
 def sink():
-    """The crater going in, on the picture's clock, panel by panel (`panels`): 0.2 s of nothing moving, then each kite shears off its
-    neighbours, ring after ring from the middle out to 2.4 s; while they fall the walls of the pit grind and the air goes down
-    after them; from 2.1 s they land (`landings`), each ring one great deep blow, the last of the deep edge of ring 3 at 4.2; what they threw rattles down
-    after them; it all rolls off round the land. A staged collapse, not a roar with a fade: every event here is a panel."""
-    d = 9.0
+    """The crater going in, on the picture's clock, panel by panel (`panels`): 0.2 s of nothing moving, then each kite shears off its neighbours, ring after ring from the middle out, a second between rings, to 3.6 s; while they fall the walls of the pit grind and the air goes down
+    after them; from 2.9 s they land (`landings`), one by one and each ring a great deep blow, the last at 5.8, about 54.5 on the clock; what they threw rattles down after them; it all rolls off round the land. A staged collapse, not a roar with a fade: every event here is a panel."""
+    d = LEN - SLAM
     n = n_of(d)
     t = times(n)
     table = panels()
@@ -2847,61 +3145,40 @@ def sink():
     falling /= falling.max()
     # (the walls of the pit going: rock sliding on rock, boiling at every scale, its top opening as more of it moves)
     wave = falling
-    fade = 10 ** (np.interp(t, (0.0, 0.2, 0.6, 2.0, 4.4, 6.0, 8.0, 9.0), (-70.0, -44.0, -14.0, -2.0, 0.0, -11.0, -24.0, -60.0)) / 20)
+    fade = 10 ** (np.interp(t, (0.0, 0.2, 0.6, 2.6, 5.9, 7.6, 9.8, 11.0), (-70.0, -44.0, -14.0, -2.0, 0.0, -11.0, -24.0, -60.0)) / 20)
     slide = eddies(d, 55, 2200, 3.0, -5.0, 11.0, 6.0, np.clip(wave * 2.0, 0.2, 2.4), 1.6, 280.0) * (0.14 + 1.0 * wave) * fade
     # (the air: dragged down after the land, then shoved back up out of the pit; a slow suck, no whistle)
-    ai = bp(noise(n), 18, 70) * 10 ** (np.interp(t, (0.0, 0.4, 1.8, 2.3, 4.3, 5.5, 8.0), (-70.0, -26.0, -9.0, -6.0, -3.0, -14.0, -60.0)) / 20)
-    rush = eddies(d, 90, 900, 2.5, -4.0, 9.0, 5.0) * 10 ** (np.interp(t, (0.0, 0.5, 2.1, 4.3, 5.6, 7.5), (-70.0, -44.0, -26.0, -21.0, -32.0, -70.0)) / 20)
-    x = slide * 0.13 + ai * 0.16 + rush * 0.7
-    was = np.zeros(n)                                          # (the old landings, spent: they set the level, so what stays keeps its own)
+    ai = bp(noise(n), 18, 70) * 10 ** (np.interp(t, (0.0, 0.4, 2.4, 3.0, 5.9, 7.2, 10.0), (-70.0, -26.0, -9.0, -6.0, -3.0, -14.0, -60.0)) / 20)
+    rush = eddies(d, 90, 900, 2.5, -4.0, 9.0, 5.0) * 10 ** (np.interp(t, (0.0, 0.5, 2.8, 5.9, 7.2, 9.5), (-70.0, -44.0, -26.0, -21.0, -32.0, -70.0)) / 20)
+    x = slide * 0.13 + ai * 0.08 + rush * 0.7
     for ring, late, first, last in table:
         s = SIZE[ring]
         # (it lets go: a shear through the rock along the crease, a dull break with its weight under it, no bright edge)
         y = bp(rock_crack(1.4, 0.8 + 0.7 * s, 0.6), None, 1300) * 0.3 * s * rng().uniform(0.75, 1.1) * each
-        P.put(y, bare_blow(1.2 + s, 28, 120, 0.02, 0.09) * 0.32 * s * each, 0.0)
+        P.put(y, bare_blow(1.2 + s, 34, 130, 0.02, 0.09) * 0.2 * s * each, 0.0)
+        y = bp(y, 100.0, None, 3) * 0.7                        # (nothing of its low thump: `slam` and `erupt` are on top of it, and it's the rock that's heard)
         P.put(x, y, max(late - 0.02, 0.0))
-        # (it lands: a contact, the ground taking it, the rock of it breaking, over however long its span takes to come down)
-        span = last - first
-        k = n_of(1.6 + span)
-        c = 0.0 if ring < 2 else max(span - 0.12, 0.0)         # (rings 2 and 3: the deep inner edge is the weight, the rim only a roll before it)
-        g = rng().uniform(0.85, 1.1) * s
-        y = struck(k, c, max(span - c, 0.012) + 0.02 + 0.03 * s, GROUND[1:], 30, 0.4) * 0.8
-        y = y + struck(k, c, max(span - c, 0.012) + 0.02, RUBBLE, 18, 0.5) * 0.55
-        q = np.maximum(times(k) - c, 0)
-        y = y + rocks(k / SR, (260.0 + 240.0 * s) * (1 - np.exp(-q / 0.03)) * np.exp(-q / (0.08 + 0.08 * s)) + 1e-3, 110, 2600, (0.4, 0.9, 1.7), (0.5, 0.36, 0.14)) * np.exp(-q / (0.2 + 0.14 * s)) * 0.5
-        P.put(y, bare_blow(1.2 + s, 24, 130, 0.012, 0.09) * 0.5, c)
-        P.put(y, whole(0.8, 0.78, 0.003, 0.12 + 0.05 * s, 0.01), c)
-        if ring >= 2:                                          # (the rim first, the contact running in along it)
-            q0 = times(k)
-            y = y + rocks(k / SR, 160.0 * ss(0.0, 0.2, q0) * (1 - ss(c - 0.1, c + 0.05, q0)) + 1e-3, 90, 900, (0.5, 1.0, 1.8), (0.5, 0.36, 0.14)) * 0.12 + \
-                bn(k, 26, 140) * ss(0.0, c, q0) * (1 - ss(c, c + 0.25, q0)) * 0.14
-        P.put(was, y * g * 0.8 * each, first)
         # (the debris it threw: starting a moment after it lands, a thing of the same size as the panel)
         landing += s * (1 - np.exp(-np.maximum(t - last - 0.3, 0) / 0.12)) * np.exp(-np.maximum(t - last - 0.3, 0) / (0.8 + 0.4 * s)) * (t > last + 0.3)
     landing /= landing.max()
-    clatter = rocks(d, 90.0 * landing ** 0.8 + 1e-3, 150, 1500, (0.2, 0.45, 1.0), (0.6, 0.3, 0.1))
+    clatter = rocks(d, 90.0 * landing ** 0.8 + 1e-3, 150, 1100, (0.2, 0.45, 1.0), (0.6, 0.3, 0.1))
     L, R = x.copy(), x.copy()
     # (the ice's voice, thick and far, as each ring goes: the crease running off)
     a_, b_ = np.zeros(n), np.zeros(n)
-    for at, fc, dd, amp, side in ((0.42, "thick", 240, 0.0, -0.4), (1.05, "slab", 320, 0.1, 0.5), (1.72, "slab", 420, 0.0, -0.2), (2.3, "slab", 300, 0.08, 0.3)):    # (two of the four, 10 dB down)
+    for at, fc, dd, amp, side in ((0.6, "thick", 240, 0.0, -0.4), (1.45, "slab", 320, 0.1, 0.5), (2.45, "slab", 420, 0.0, -0.2), (3.4, "slab", 300, 0.08, 0.3)):    # (two of the four, 10 dB down)
         pew(a_, b_, at, dd, THICK[fc], amp, side, 2)
-    patter(d, 2.6, 7.6, lambda v: 13.0 * np.clip((v - 2.6) / 0.9, 0, 1) * np.exp(-max(v - 4.0, 0) / 1.2), 0.9)      # (spent: the stones are gone)
     L, R = L + a_ + clatter * 0.13, R + b_ + clatter * 0.13
     hl, hr = landings(n, table, SIZE)
-    lg = 0.77 * T.loudest(was) / (T.loudest((hl + hr) / 2) + 1e-9)     # (under where the old ones stood: they're all weight now, and they land on `slam`'s tail and `underfoot`)
-    hl, hr = hl * lg, hr * lg
-    st = rng().bit_generator.state
-    ol, orr = verb(L + was, R + was, 0.16, length=3.0, darken=(1300, 200), decay=0.9)      # (as it was, for the level)
-    rng().bit_generator.state = st
-    Lr, Rr = verb(L + hl, R + hr, 0.16, length=3.0, darken=(1300, 200), decay=0.9)
-    rl, rr = rolls(n, 2.8, 22, 5.2)
-    g = T.loudest(x + was) * 0.16 / each / (T.loudest((rl + rr) / 2) + 1e-9)
-    L, R = Lr + rl * g, Rr + rr * g
-    ol, orr = ol + rl * g, orr + rr * g
+    g = T.loudest(x) * 1.0 / (T.loudest((hl + hr) / 2) + 1e-9)
+    Lr, Rr = verb(L + hl * g * SINK_LAND, R + hr * g * SINK_LAND, 0.16, length=3.0, darken=(1300, 200), decay=0.9)
+    rl, rr = rolls(n, 3.4, 26, 6.4)                            # (the thunder of it, on from the first landings)
+    ml, mr = long_rolls(n, 3.0, 22, 6.0, 80.0, 500.0, (0.4, 1.1))
+    e = T.loudest(x) * 0.1 / each / (T.loudest((rl + rr) / 2) + 1e-9)
+    L, R = Lr + rl * e + ml * T.loudest(x) * 0.28, Rr + rr * e + mr * T.loudest(x) * 0.28
     L, R = lows_heard(L, 70, 420, -4.0), lows_heard(R, 70, 420, -4.0)
-    ol, orr = lows_heard(ol, 70, 420, -4.0), lows_heard(orr, 70, 420, -4.0)
+    L, R = lows_go(bp(L, 36.0, None), bp(R, 36.0, None), np.full(n, -7.0), 95.0)    # (nothing under 36 Hz, and less under 95: `erupt` has them, and they were the sum's headroom)
     L, R = low_mono(L, R, 170.0)
-    out("sink", L, R, -10.5, tail=1.0, peak=10 ** (-2.0 / 20), ref=low_mono(ol, orr, 170.0))
+    out("sink", L, R, -10.5, tail=1.0, peak=10 ** (-4.0 / 20))
 
 
 def underfoot():
@@ -2969,7 +3246,7 @@ def comedown():
 
 BUILD = {"descent": descent, "wobble": wobble, "air": air, "meld": meld, "ripple": ripple, "score": score,
          "groan": groan, "boil": boil, "ding": ding, "reverse": reverse, "bang1": bang1, "bang2": bang2,
-         "bang3": bang3, "bang4": bang4, "fall": fall, "slam": slam, "comedown": comedown, "letgo": letgo, "sink": sink, "underfoot": underfoot, "drip": drip}
+         "bang3": bang3, "bang4": bang4, "fall": fall, "slam": slam, "comedown": comedown, "letgo": letgo, "sink": sink, "underfoot": underfoot, "drip": drip, "erupt": erupt}
 GONE = ("unravel", "foldown", "stop", "tear", "creak", "crush", "bloom", "thud", "drone", "bounce1", "bounce2", "bounce3", "bounce4")
 SEED_ORDER = list(BUILD)
 SEED_ORDER.insert(SEED_ORDER.index("groan"), "unravel")                 # (gone, but it held this place: every stem after it keeps its take)
@@ -3089,12 +3366,29 @@ def listen(out_dir):
         print(f"  {what}: {a:.2f} to {b:.2f} s peak {db(np.abs(mix[n_of(a + PRE):n_of(b + PRE)]).max()):.1f} dB")
 
 
+def game_limit(x, block=1024):
+    """The game's own output limiter (horizon-client's audio.rs, OpenAL Soft's): a buffer over full scale has all of it taken down to fit, and that lets go over 200 ms."""
+    y = x.copy()
+    held = 1.0
+    rel = np.exp(-1 / (0.2 * SR))
+    for i in range(0, len(x), block):
+        c = y[i:i + block]
+        peak = max(float(np.abs(c).max()), 1.0)
+        held = max(held, peak)
+        g = np.maximum(held * rel ** np.arange(len(c)), peak)
+        held = float(g[-1])
+        c /= g[:, None]
+    return y
+
+
 def context(d, tag, items, a, b, pre=0.0, as_game=False):
     """`items` ((at, stereo clip), ...) on the strike's clock, `a` to `b` s of it as tag.mp3 and tag.png in `d`. Its sum, for the levels, its first sample `-pre` on the clock. `as_game`: the clip summed to mono, as the game does, and its WAV kept."""
     mix = np.zeros((n_of(b + pre + 4.0), 2))
     for at, c in items:
         i = n_of(at + pre)
         mix[i:i + len(c)] += c[:len(mix) - i]
+    if as_game:
+        mix = game_limit(mix)
     w = mix[n_of(a + pre):n_of(b + pre)].copy()
     w[-n_of(0.15):] *= np.linspace(1, 0, n_of(0.15))[:, None]
     wav = mp3(np.repeat(w.mean(axis=1, keepdims=True), 2, axis=1) if as_game else w, d / f"{tag}.mp3")
@@ -3139,6 +3433,74 @@ def stops(out_dir):
         print("        >150 " + " ".join(f"{v:4.0f}" for v in h[::2]))
 
 
+def shares(x):
+    """How the energy of `x` lies: the part under 80 Hz, the part from 100 to 800 Hz, the part over 1.5 kHz."""
+    p = np.abs(rfft(x)) ** 2
+    f = rfftfreq(len(x), 1 / SR)
+    return tuple(float(p[w].sum() / p.sum()) for w in (f < 80, (f >= 100) & (f < 800), f >= 1500))
+
+
+def flicker(x, a=0.0, b=None, lo=150.0, hi=2000.0):
+    """The banned fast gain, as a number: how much the level of `x`'s mids moves at 18 to 70 Hz, against its level. The grainy roar reads 0.41, `eddies` 0.26, and a stem of separate blows sits round 0.35 on its blows: read it on what's held."""
+    y = x[n_of(a):n_of(b) if b else len(x)]
+    e = bp(np.abs(bp(y, lo, hi, 3)), None, 160.0, 2)[::SR // 800]
+    return float(np.std(sosfilt(butter(3, [18.0, 70.0], "band", fs=SR / (SR // 800), output="sos"), e)) / (np.mean(e) + 1e-12))
+
+
+def snare(x, at=0.0):
+    """What the front of a hit at `at` s has of a snare: how long its 150-1000 Hz stays within 12 dB of its top (s; a snare's is under 0.1), and the share of the first 40 ms over 1.5 kHz."""
+    i = n_of(at)
+    m = bp(x[i:i + n_of(2.0)], 150.0, 1000.0, 3)
+    w = n_of(0.02)
+    r = np.array([np.sqrt(np.mean(m[k:k + w] ** 2)) for k in range(0, len(m) - w, w)])
+    top = int(np.argmax(r))
+    below = np.nonzero(r[top:] < r[top] * 10 ** (-12 / 20))[0]
+    return float((below[0] if len(below) else len(r) - top) * 0.02), shares(x[i:i + n_of(0.04)])[2]
+
+
+def rise_of(x):
+    """How long the 100-800 Hz of `x` takes from 20 dB under its top to 3 dB under it, s: a door's is a few ms."""
+    m = bp(x, 100.0, 800.0, 3)
+    w = n_of(0.01)
+    r = np.array([np.sqrt(np.mean(m[k:k + w] ** 2)) for k in range(0, min(len(m), n_of(1.0)) - w, w)])
+    r = np.maximum.accumulate(r)
+    return float((np.argmax(r >= r.max() * 10 ** (-3 / 20)) - np.argmax(r >= r.max() * 10 ** (-20 / 20))) * 0.01)
+
+
+def ending_checks(m, a=40.5, b=58.0, pre=PRE):
+    """The ending's levels, in the sum `m`: every 100 ms, all of it and over 150 Hz (what a small speaker's left with), the dips over 48.7 to 53, and its peak."""
+    hi = bp(m, 150.0, None, 2)
+    rms = lambda x, c, w: db(np.sqrt(np.mean(x[n_of(c + pre):n_of(c + pre + w)] ** 2)))
+    ts = np.arange(a, b, 0.5)
+    print("   clock " + " ".join(f"{c:5.1f}" for c in ts))
+    print("     all " + " ".join(f"{rms(m, c, 0.5):5.0f}" for c in ts))
+    print("    >150 " + " ".join(f"{rms(hi, c, 0.5):5.0f}" for c in ts))
+    tt = np.arange(SLAM + 0.1, 53.0, 0.05)
+    v, w = np.array([rms(m, c, 0.25) for c in tt]), np.array([rms(hi, c, 0.25) for c in tt])
+    dip = lambda y: float(np.max(np.maximum.accumulate(y) - y))
+    lo = lambda y, c0, c1: float(y[(tt >= c0) & (tt < c1)].min())
+    print(f"    peak {db(np.abs(m[n_of(a + pre):n_of(b + pre)]).max()):5.1f} dB; 48.8 to 53: lowest {v.min():5.1f} ({w.min():5.1f} over 150 Hz); 49.5 to 49.9 {lo(v, 49.4, 49.9):5.1f} ({lo(w, 49.4, 49.9):5.1f}); after the front, 50.3 to 53, biggest fall from the highest so far {dip(v[tt >= 50.3]):4.1f} dB ({dip(w[tt >= 50.3]):4.1f})")
+
+
+def endings(out_dir):
+    """Every way of the slam and `erupt` together in what's round them, 40.5 to 58 on the clock, mono as the game sums it, as ending_TAKE.mp3 (and its WAV). And the checks: where the energy lies, the flicker, the snare, the levels."""
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    rest = [(at, decoded(f)) for at, f, _, _ in EVENTS if f not in ("slam", "erupt") and at + len(decoded(f)) / SR > 40.5]
+    around = rest
+    real = ENDING_PICK
+    for k in ENDINGS:
+        s_ = take_of(d, "slam", {k: ENDINGS[k][0]}, k)
+        e_ = take_of(d, "erupt", {k: ENDINGS[k][1]}, k)
+        m = context(d, f"ending_{k}", (*around, (SLAM, s_), (ERUPT, e_)), 40.5, 58.0, PRE, as_game=True)
+        print(k)
+        for nm, c in (("slam", s_), ("erupt", e_)):
+            y = c.mean(axis=1)
+            a_, b_, c_ = shares(y)
+            print(f"  {nm:6s} under 80 Hz {a_ * 100:4.0f}%  100-800 Hz {b_ * 100:4.0f}%  over 1.5 kHz {c_ * 100:5.2f}%  flicker {flicker(y, 0.5, 1.2) if nm == 'slam' else flicker(y, 1.0, 4.0):4.2f}  rise {rise_of(y):4.2f} s  snare {snare(y, 0.002 if nm == 'slam' else SITE / ERUPT_V)}  loudest {db(T.loudest(y)):5.1f}  over 150 Hz {db(T.loudest(bp(y, 150.0, None, 2))):5.1f}  peak {db(np.abs(y).max()):5.1f}")
+        ending_checks(m)
+
+
 def takes(out_dir):
     """Every way of the drop in what leads into it and out of it, 34.5 to 41.7 s, and every way of the touch, 37.2 to 43.3 s, on the pick of the other. MP3s, pictures and the levels."""
     d = Path(out_dir)
@@ -3165,6 +3527,7 @@ def main():
     ap.add_argument("--listen", help="also write MP3s, the whole strike's mix and the level checks here")
     ap.add_argument("--takes", help="also write every way of the drop and of the touch here, in its context (after the stems)")
     ap.add_argument("--stops", help="also write every way of the stop here, in its context, -4 to 8 on the clock (after the stems)")
+    ap.add_argument("--endings", help="also write every way of the slam and `erupt` here, in their context, 40.5 to 58 on the clock, and their checks (after the stems)")
     a = ap.parse_args()
     soundlib.init(a.out)
     for name in a.only if a.only is not None else BUILD:
@@ -3185,6 +3548,8 @@ def main():
         takes(a.takes)
     if a.stops:
         stops(a.stops)
+    if a.endings:
+        endings(a.endings)
 
 
 if __name__ == "__main__":
