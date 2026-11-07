@@ -11,9 +11,8 @@ of the hit itself comes last through the air, d / 340 s late. Distance is the ch
 
 As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
 
-  descent   0 s, exactly 3.4 s: a body of fire coming down, with the Payload's way of falling in it: a roar with low resonances wandering in it, a thin tearing whine bending up
-            a little, torn air sweeping up under it, a few dull pops for the fire, no crackle; swelling as it nears and ending at full force on its last sample, no tail.
-  wobble    3.49 s, to 4.6: something catches it: a push of pressure, a heavy hum thrown off its pitch and settling back on the picture's wobble, then only the hum, low and still.
+  descent   -4 s, exactly 7.86 s, to the brake's end: something in the top of the sky coming down, the Payload's way (`through_air`, `sky`, `old_time`): a far boom, a thin whine, a dark roar in a sky of its own echo, 3.6 km up; its top and its sub only in the last two seconds or so; at full force as the brake takes it at 2.9 s, and it eases away with the speed (`speed_left`) to nothing at 3.86.
+  wobble    2.8 s, to 4.62: `STOP_PICK`, one of `STOPS`, each a different idea of the brake and each only the force on it (`brake_force`), up and down over 2.9 to 3.86 with nothing struck, then the low hum holding it still (`hold_on`), where `letgo` takes it.
   air       ~3.9 s (late by the distance, 0.5 s at 170 blocks): the air that kept going: a soft shove, the fire's roar carried
             past and away with a few embers, a gust thinning over the ground, gone by ~6.9 s.
   letgo     4.5 s, to contact at 6.0: the hum falling out from under it, and the fall: air split by a great body, its loudness the speed squared, cut on contact.
@@ -21,13 +20,10 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
             and the last small drop falling back; then only the land's heave.
   ripple    7.5 s: the land moving like water: nine slow seas on the picture's pulses and swell, bands of chaos, no note and nothing ringing.
   score     12 s: the first of the creases: ice, one pew and a stone skipping off, and no more cracks; only a dark breath of ground parting under the tears, 15.2 to 19.
-  unravel   19 s: the land bending as a machine turns: `CLACKS`, a great mechanism going over one detent at a time, tick and tock, each heave of the land a bigger one, closing up
-            as it comes round, the last on the world's stopping at 31.5, each going off the land still standing. From 26 s it comes through the ground.
-  groan     19 s: the land bending, a hull's stress, moans with no note, the bangs (`BANG_UP`, on or halfway to the clacks), the far land's slow lift to 23.5, closing overhead from 26 s:
-            the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
+  groan     19 s: the land bending as thuds, the main thing in it: `T.thud` over `thud_weight`, on the old clacks' beat or halfway to it (`CLACKS`, `THUD_MORE`), no note under them; round them a hull's stress, moans with no note, the far land's slow lift to 23.5 (`BED_UP`: never quiet), closing overhead from 26 s: the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5. (No `unravel` ships: `BOOM_PICK`, and `BOOMS` keeps the takes tried.)
   boil      32.5 s, exactly 7.5 s: the hole shutting and turning to metal (`BOIL`): an intake, the mouth's note sinking, wet metal crawling in in surges, a thick seethe of bubbles of every size to the join, the skin slumping as one,
             the heave and roll, six great slow bubbles swelling and bursting (`BUBBLES`), the slow flow to the middle; a low strain (`strain`) building in slow uneven pulses under it and on through the drop's fall, at its heaviest on its last sample, the touch.
-  drip      37.72 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 38.35, and the one drop falling all the way down, far off and coming, cut on the touch.
+  drip      37.72 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 38.35 (for `hum`, `PINCH_PICK`, one of `PINCHES`), and the one drop falling all the way down, far off and coming, cut on the touch.
   ding      37.8 s, the touch on 40.0: `DING_PICK`, one of `DINGS`, each a different idea of that moment and all of them holding up to it: it has its lead-in on the front of it and the
             held strain (`held`) on it to the let-go at 40.95; the blends have the drop's own impact (`arrival`) on their front.
   reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.5, the rim back on the tube at 42.25,
@@ -71,6 +67,10 @@ PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 
 # The beats (strike/fold.rs's FD_*): the stems are built on them.
 STOP, HANG, TOUCH, CLOSED, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL = 3.4, 4.5, 6.0, 6.2, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0
+PRE = 4.0                                             # the strike's clock starts at -PRE: `descent` plays from there
+BRAKE_ON, BRAKE_PEAK, BRAKE_OFF, BRAKE_V = 2.9, 3.38, 3.86, 308.0    # the stop: speed easing from BRAKE_V blocks a second to none (a smoothstep), the force at its peak halfway, no jolt at either end
+FALL_TOP = 3600.0                                     # how high the fall starts, at -PRE (blocks over the land)
+STOP_LEAD = 0.6                                       # wobble.ogg starts this long before STOP, a tenth before the brake, so each take can set its own curve early to allow for its echo (fold.rs's event)
 HOLD, GATHER, TUBE = 31.5, 34.5, 42.88                 # the world stops closing; the hole opens a hair, an intake; on the way back the tube lets go for good
 LIFT = 23.5                                           # the far land's slow lift (20.1 s on) at its height
 # The boil and the drop (fold.wgsl's `the boil`, on fold-boil): every time they use is here, so a retime is this one table. (fold-boil2 4bf01a1, handoffs/boil2-times.md: FB_*, FW_LETGO; offscreen numbers, not yet seen in the game. fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"].)
@@ -90,7 +90,7 @@ SLAMS = [44.1, 45.2, 46.3, 47.4, 48.7]                # (FD_SLAM: each ring fall
 FLAT, SLAM = SLAMS[0], SLAMS[4]
 # when the land lets go in great heaves
 RINGS = [19.1, 21.0, 23.3, 25.1, 27.6, 29.9]
-# the land's detents as it bends (`unravel`): the heaves are the downbeats, each cut into even clacks, so the beat tightens as it goes and the last falls on HOLD
+# the land's detents as it bends: the heaves are the downbeats, each cut into even steps, so the beat tightens as it goes and the last falls on HOLD (`groan`'s thuds land on these; the clacks that were on them are gone)
 BEATS = (2, 3, 3, 4, 4, 3)
 CLACKS = [(a + (b - a) * k / q, k == 0) for a, b, q in zip(RINGS, RINGS[1:] + [HOLD], BEATS) for k in range(q)] + [(HOLD, True)]
 PULSES = [7.5, 8.6, 9.6, 10.6, 11.5]  # the water's pulses of the middle, from when the droplet is absorbed
@@ -100,7 +100,7 @@ FALL = 0.8                            # how long each ring falls (fold_warp's FW
 AIR_LATE = 0.5                        # the air's sound after the stop, at 170 blocks (the plan uses the real distance)
 # The crater (fold_warp.wgsl's fw_sunk): a panel lets go `LATE0 + LATE1 ring + up to LATE2` after the slam, and falls with CAVE t^2 blocks
 LATE0, LATE1, LATE2, CAVE, BOWL = 0.2, 0.62, 0.5, 18.0, 66.0
-COMEDOWN = SLAM + 4.6                 # comedown starts here: the last panel is down at slam + 4.3 (`panels`)
+COMEDOWN = SLAM + 4.6                 # comedown starts here: the last panel is down at slam + 4.2 (`panels`)
 DING_LEAD = 2.2                       # ding.ogg starts this long before the touch, for what leads into it (fold.rs's FD_DING_LEAD)
 DING_PICK = "blend_even"              # which of `DINGS` is the one in the game
 DRIP_PICK = "hum"                     # which of `DRIPS` is the one in the game (fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"])
@@ -115,16 +115,16 @@ def underfoot_at(dist=SITE):
     return float(np.sqrt(BOWL * (1 - u ** 3) ** 0.75 / CAVE))
 
 # (time, file, volume, pitch), as fold_plan plays them
-EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0), (HANG, "letgo", 1.0, 1.0),
+EVENTS = [(-PRE, "descent", 1.0, 1.0), (STOP - STOP_LEAD, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0), (HANG, "letgo", 1.0, 1.0),
           (TOUCH - MELD_LEAD, "meld", 1.0, 1.0), (RIPPLE, "ripple", 1.0, 1.0), (SCORE, "score", 1.0, 1.0),
-          (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (BOIL["close"], "boil", 1.0, 1.0),
+          (FOLD, "groan", 1.0, 1.0), (BOIL["close"], "boil", 1.0, 1.0),
           (BOIL["neck"], "drip", 1.0, 1.0),
           (DING - DING_LEAD, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
           *[(t - FALL, f"bang{k + 1}", 1.0, 1.0) for k, t in enumerate(SLAMS[:4])],
           (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM, "sink", 1.0, 1.0), (SLAM + underfoot_at(), "underfoot", 1.0, 1.0),
           (COMEDOWN, "comedown", 1.0, 1.0)]
-SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 4.9), ("drop", 4.9, 6.0), ("hit", 6.0, 6.5), ("sink", 6.5, 7.5), ("ripple", 7.5, 12.0),
-            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 31.8, 32.5), ("crawl", 32.5, 33.4), ("seethe", 33.4, 35.8), ("join", 35.8, 36.85), ("heave", 36.85, 37.72), ("neck", 37.72, 38.35), ("pinch", 38.35, 38.85), ("nearing", 38.85, 40.0),
+SECTIONS = [("far", -4.0, 0.0), ("descent", 0.0, 2.9), ("brake", 2.9, 3.86), ("hang", 3.86, 4.5), ("drop", 4.5, 6.0), ("hit", 6.0, 6.5), ("sink", 6.5, 7.5), ("ripple", 7.5, 12.0),
+            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("curl", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 31.8, 32.5), ("crawl", 32.5, 33.4), ("seethe", 33.4, 35.8), ("join", 35.8, 36.85), ("heave", 36.85, 37.72), ("neck", 37.72, 38.35), ("pinch", 38.35, 38.85), ("nearing", 38.85, 40.0),
             ("touch", 40.0, 40.95), ("back", 40.95, 42.55), ("hangs", 42.55, 42.88), ("open", 42.88, 43.3), ("farland", 43.3, 44.1), ("bang1", 44.1, 45.2), ("bang2", 45.2, 46.3),
             ("bang3", 46.3, 47.4), ("bang4", 47.4, 47.9), ("fall", 47.9, 48.7), ("slam", 48.7, 49.1), ("letgo", 49.1, 51.0), ("land", 51.0, 53.1), ("debris", 53.1, 56.0), ("comedown", 56.0, 59.7)]
 
@@ -507,7 +507,8 @@ def panels():
     """The crater's kites as fw_sunk drops them: (ring, let go, first of it down, last of it down), seconds after the slam, in the
     order they let go. Every part of a kite falls alike, so it lands from its shallow edge in; ring 3's reaches the rim."""
     src = (ROOT / "mod" / "shaders" / "fold_warp.wgsl").read_text()
-    inv = np.array([float(v) for v in re.search(r"CP_INV: array<f32, 40> = array<f32, 40>\(([^)]*)\)", src).group(1).split(",")]).reshape(8, 5)
+    inv = np.array([float(v) for v in re.search(r"CP_INV: array<f32, \d+> = array<f32, \d+>\(([^)]*)\)", src).group(1).split(",")]).reshape(-1, 5)    # (k * 5 + i: ring i on crease k, however many creases the pattern has)
+    creases = len(inv)
 
     def hash_(k, i):                                           # (fw_hash, in f32 as the shader has it)
         p = np.array([k * 13.0 + 3.0, i * 7.0 + 1.0], dtype=np.float32)
@@ -518,10 +519,10 @@ def panels():
         return float(v - np.floor(v))
 
     out_ = []
-    for k in range(8):
+    for k in range(creases):
         for i in range(4):
             late = LATE0 + LATE1 * i + LATE2 * hash_(k, i)
-            us = [r * inv[c, 3] for c in (k, (k + 1) % 8) for r in ((1 / inv[c, i - 1] if i else 0.0), 1 / inv[c, i])]
+            us = [r * inv[c, 3] for c in (k, (k + 1) % creases) for r in ((1 / inv[c, i - 1] if i else 0.0), 1 / inv[c, i])]
             fall_ = [np.sqrt(BOWL * max(1 - min(u, 1.0) ** 3, 0.0) ** 0.75 / CAVE) for u in (max(us), min(us))]
             out_.append((i, late, late + fall_[0], late + fall_[1]))
     return sorted(out_, key=lambda p_: p_[1])
@@ -575,80 +576,146 @@ def out(name, L, R, db, tail=0.3, length=None, peak=PEAK, ref=None):
 
 
 # =================================================================================================================  the fall
+# Every sound in the game plays at the listener, so a thing far off has to be far off in the file. The Payload's way: most of it is the air between: `AIR_ABS`, the air's own loss, takes the top first and hardest; one
+# sound overhead, the two ears nearly alike, opening only as it arrives; a dark sky's worth of echo round it that the direct sound climbs out of; pitch that hardly moves while it's far and bends up as it comes; the lows of it, the sub, only at the end.
+AIR_ABS = ((16.0, 0.0), (63.0, 0.1), (125.0, 0.4), (250.0, 1.0), (500.0, 1.9), (1000.0, 3.7), (2000.0, 9.7), (4000.0, 33.0), (8000.0, 117.0), (16000.0, 300.0))    # (dB a kilometre, 20 C and 70% humidity)
+FD_V, FD_B, STOP_H = 280.0, 177.16, 70.0              # (fold.wgsl's FD_V, FD_B: `fd_fall`; where it stops, over the land)
+
+
+def speed_left(c):
+    """The share of the fall's speed left at `c` on the strike's clock: 1 to BRAKE_ON, a smoothstep down to none at BRAKE_OFF."""
+    return 1 - ss(BRAKE_ON, BRAKE_OFF, c)
+
+
+def brake_force(c):
+    """The brake's force at `c`, 1 at its peak: the slope of `speed_left`, so it comes up from nothing and goes back to nothing."""
+    u = np.clip((c - BRAKE_ON) / (BRAKE_OFF - BRAKE_ON), 0, 1)
+    return 4 * u * (1 - u)
+
+
+def fall_height(c):
+    """Where the drop is at `c` on the strike's clock, blocks over the land: FALL_TOP at -PRE, about 218 and doing BRAKE_V as the brake takes it, STOP_H at rest."""
+    length = BRAKE_OFF - BRAKE_ON
+    rest = length * BRAKE_V / 2                               # (how far it goes under the brake)
+    u = np.clip((c - BRAKE_ON) / length, 0, 1)
+    tau = np.maximum(BRAKE_ON - c, 0)
+    b = (FALL_TOP - STOP_H - rest - BRAKE_V * (BRAKE_ON + PRE)) / (BRAKE_ON + PRE) ** 2
+    return STOP_H + length * BRAKE_V * (0.5 - (u - u ** 3 + u ** 4 / 2)) + tau * (BRAKE_V + b * tau)
+
+
+def old_time(c):
+    """What the 3.4 s fall's own clock read at this height: the fall is built on it, so the longer fall is heard as that one was at each range, only for longer. Under 0 above where that one started. """
+    tau = (np.sqrt(FD_V ** 2 + 4 * FD_B * np.maximum(fall_height(c) - STOP_H, 0)) - FD_V) / (2 * FD_B)
+    return STOP - tau
+
+
+def closed_over(x, top, size=2048, hop=256):
+    """`x` with its top closing over `top` (Hz, one value a sample), a slow change and no gating."""
+    n = len(x)
+    win = np.hanning(size)
+    f = np.fft.rfftfreq(size, 1 / SR)
+    o = np.zeros(n + 2 * size)
+    w = np.zeros(n + 2 * size)
+    for s in range(-size, n, hop):
+        fr = np.zeros(size)
+        i, j = max(s, 0), min(s + size, n)
+        fr[i - s:j - s] = x[i:j]
+        H = 1 / np.sqrt(1 + (f / float(top[min(max(s + size // 2, 0), n - 1)])) ** 6)
+        o[s + size:s + 2 * size] += np.fft.irfft(np.fft.rfft(fr * win) * H, size) * win
+        w[s + size:s + 2 * size] += win ** 2
+    return (o / np.maximum(w, 1e-6))[size:size + n]
+
+
+def through_air(x, r, ref, spread=1.0, thick=0.6, size=2048, hop=256):
+    """`x` heard across `r` blocks of air (one value a sample), as it would be at `ref`: spreading out (`spread`, 1 the free field's 6 dB a doubling), and the air's own loss (`AIR_ABS`, `thick` times it). The mids hardly change,
+    the top goes first and comes back last. A slow change, no gating."""
+    n = len(x)
+    win = np.hanning(size)
+    f = np.maximum(np.fft.rfftfreq(size, 1 / SR), 16.0)
+    ab = np.interp(np.log2(f), np.log2([a for a, _ in AIR_ABS]), [b for _, b in AIR_ABS])
+    o = np.zeros(n + 2 * size)
+    w = np.zeros(n + 2 * size)
+    for s in range(-size, n, hop):
+        a = s + size
+        fr = np.zeros(size)
+        i, j = max(s, 0), min(s + size, n)
+        fr[i - s:j - s] = x[i:j]
+        q = float(r[min(max(s + size // 2, 0), n - 1)])
+        H = (ref / q) ** spread * 10 ** (-np.minimum(ab * thick * (q - ref) / 1000.0, 48.0) / 20.0)
+        o[a:a + size] += np.fft.irfft(np.fft.rfft(fr * win) * H, size) * win
+        w[a:a + size] += win ** 2
+    return (o / np.maximum(w, 1e-6))[size:size + n]
+
+
+def sky(L, R, wet, length=3.2, darken=(1500, 200), decay=1.5):
+    """What a thing up in the sky has round it: its echoes off the land and the air, dark, late, thin at first and all most of what's heard: nearly the same on both sides (the game sums them). `wet`, one value a sample. The tail only; add it."""
+    m = (L + R) / 2
+    a = fftconvolve(m, T.outdoor_ir(length, 21, density=45.0, darken=darken, decay=decay))[:len(m)]
+    b = fftconvolve(m, T.outdoor_ir(length, 22, density=45.0, darken=darken, decay=decay))[:len(m)]
+    return (a * 0.985 + b * 0.17) * wet, (a * 0.985 - b * 0.17) * wet
+
+
 def descent():
-    pad = 0.5
-    n = n_of(STOP + pad)
-    ts = times(n)
-    u = np.clip(ts / STOP, 0, 1)
-    db = -15.0 * (1 - u) ** 1.2                      # (a fire getting nearer, not a riser; nothing eases before the cut)
-    lv = 10 ** (db / 20)
-
-    def roar(t, f):
-        fc = 620.0 * (1 + 0.1 * np.sin(t * 2.3))              # (no pitch moving: a roar that stays where it is)
-        fa = 9000.0
-        lf = np.log2(f / fc)
-        body = np.minimum((f / fc) ** 1.0, (fc / f) ** 0.95)
-        ridges = sum(a * np.exp(-0.5 * ((lf - o) / 0.17) ** 2) for o, a in ((-1.1, 1.2), (0.0, 2.2), (0.75, 1.5), (1.45, 0.9)))
-        return (body + body * ridges) * np.exp(-(f / fa) ** 1.5)
-
-    gust = np.clip(1 + (0.2 + 0.45 * u) * PB.slow_random(n, 3.0, 16.0), 0.15, None)
-    near = u ** 2
-    a, b = wide(morph(n, roar), morph(n, roar), 0.94 - 0.42 * near)
-    L = a * gust * lv
-    R = b * gust * lv
-
-    # (wind-shear: bands of the air torn, chopped at an uneven flutter that deepens as it comes)
-    for lo, hi, rate, lvl in ((1300, 7500, (18, 55), 0.55), (260, 1100, (7, 26), 0.8)):
-        common = PB.slow_random(n, *rate)
-        for ch in (L, R):
-            chop = np.clip(0.75 * common + 0.25 * PB.slow_random(n, *rate) + 0.3, 0, None) ** 1.7
-            chop = 1 + (chop / np.sqrt(np.mean(chop ** 2)) - 1) * (0.35 + 0.65 * near)
-            top = np.exp(-(1 - u) * 3.2)
-            ch += bn(n, lo, hi) * chop * lv * lvl * (0.25 + 0.75 * top)
-
-    # (flame: a body of fire flapping and tearing at itself, its flicker uneven, fuller as it nears)
-    fl = np.clip(0.5 + 0.8 * PB.slow_random(n, 5.0, 26.0), 0.02, None) ** 1.5
-    fa_, fb_ = wide(bn(n, 90, 950), bn(n, 90, 950), 0.75 - 0.3 * near)
-    L += fa_ * fl * lv * 0.85
-    R += fb_ * fl * lv * 0.85
-
-    # (the Payload's way of falling, loosely: a few low resonances wandering in the roar, a thin tearing whine that bends up a little as it closes, never a
-    # held note, a rush of torn air sweeping up under it, and in place of a crackle a few dull pops through the air, each a small cluster)
-    for f0, q, g in ((112.0, 0.16, 1.0), (139.0, 0.14, 0.8), (262.0, 0.2, 0.75)):
+    """Something in the top of the sky coming down, the Payload's way, the whole 3.6 km in 7.4 s. It starts as a far boom in the air, a thin whine and a dark roar a long way up, with nearly all of it what the sky gives back; the air between takes it
+    as it would (`through_air`, on its height), so the top and the sub only come in the last two seconds or so, and most of the loudness with them. Everything in it is built on `old_time`, so it's the 3.4 s fall heard at each range for longer. It is at full force as the brake
+    takes it at 2.9 s; then the speed goes out of it: the whine sinks, the top closes, and it eases away to nothing on the brake's end at 3.86, the file's last sample. `wobble` comes up under it."""
+    pad = 0.6
+    d = PRE + BRAKE_OFF + pad
+    n = n_of(d)
+    dg = (n + 0.5) / SR
+    t = times(n)
+    c = t - PRE
+    r = np.hypot(SITE, fall_height(c))
+    q = np.minimum(old_time(c) * STOP / float(old_time(np.array(3.0))), STOP)    # (the old clock's end at 3.0, a little into the brake: its full force is there)
+    of = lambda v: np.minimum(old_time(v - PRE) * STOP / float(old_time(np.array(3.0))), STOP)    # (the same, for the pops' own clock)
+    left = speed_left(c)
+    near = ss(2.3, STOP, q)                                     # (its last two seconds: the quick flutter, the width, the sub)
+    # (the roar: the air it's splitting and the fire on it, each band boiling on its own, nothing gating all of it; low resonances wandering in it, as the Payload's)
+    M = eddies(d, 70, 1900, 2.5, -3.0, 14.0, 4.5) * np.clip(1 + 0.25 * PB.slow_random(n, 0.4, 2.0), 0.3, None)
+    for f0, q_, g in ((114.0, 0.16, 0.9), (139.0, 0.14, 0.75), (262.0, 0.2, 0.7)):
         fc = f0 * (1 + 0.08 * np.clip(PB.slow_random(n, 0.3, 0.9), -1.5, 1.5))
-        y = P.glide_band((n + 0.5) / SR, fc, q) * lv * g * 0.7 * np.clip(1 + 0.5 * PB.slow_random(n, 0.4, 1.5), 0.2, None)
-        L += y
-        R += y
-    pitch = 1 + 0.2 * u ** 2.2
-    for r, w, g in ((1.0, 0.07, 1.0), (1.437, 0.08, 0.5), (2.23, 0.1, 0.25)):
-        fc = 720.0 * r * pitch * (1 + 0.006 * PB.slow_random(n, 2.0, 7.0) + 0.01 * PB.slow_random(n, 0.2, 1.2))
-        am = np.exp((2.4 * PB.slow_random(n, 0.3, 2.5) + 1.2 * PB.slow_random(n, 4.0, 14.0)) / 8.686) * (0.08 + 0.26 * u ** 1.5) * lv * g * 3.2
-        y, y2 = P.glide_band((n + 0.5) / SR, fc, w), P.glide_band((n + 0.5) / SR, fc * 1.003, w)
-        L += (y + y2 * 0.15) * am
-        R += (y - y2 * 0.15) * am
-    fc = 330.0 * (1450.0 / 330.0) ** (u ** 1.8)
-    rl, rr = wide(P.glide_band((n + 0.5) / SR, fc, 1.0), P.glide_band((n + 0.5) / SR, fc * 1.02, 1.0), 0.92 - 0.3 * near)
-    e = 10 ** (np.interp(u, (0, 0.6, 0.85, 1), (-16.0, -11.0, -6.0, -2.0)) / 20) * np.exp(1.8 * PB.slow_random(n, 0.5, 3.0) / 8.686) * 2.2
-    L += rl * e
-    R += rr * e
-    pl, pr = P.pop_crackle(STOP + pad, 0.0, lambda v: np.interp(v, (0, 2.2, STOP), (5.0, 6.5, 9.0)), lambda v: np.interp(v, (0, STOP), (-4.0, 6.0)), big=1.4, smear=0.8,
-                           air_fc=lambda v: np.interp(v, (0, 2.4, STOP), (3200.0, 4200.0, 5600.0)))
-    L += pl[:n]
-    R += pr[:n]
-
-    # (the pressure rising under it)
-    f = 31.0 * (1 + 0.04 * np.clip(PB.slow_random(n, 2.0, 12.0), -2, 2))
-    ph = 2 * np.pi * np.cumsum(f) / SR
-    sub = (np.sin(ph) + 0.5 * np.sin(2 * ph + 1) + 0.3 * np.tanh(3 * np.sin(ph))) * lv * (0.5 + 0.5 * near) * 2.2
-    rumble = bn(n, 28, 170) * gust * lv * 2.0
-    L += sub + rumble
-    R += sub + rumble
-
+        M = M + P.glide_band(dg, fc, q_) * g * np.clip(1 + 0.5 * PB.slow_random(n, 0.4, 1.5), 0.2, None)
+    # (a thin whine over it, three noise-blown modes out of line, hardly moving while it's far, bending up as it closes and sinking again with the speed: never a held note)
+    bend = np.interp(q, (0.0, 1.6, 2.4, 2.9, STOP), (1.0, 1.05, 1.16, 1.42, 1.78)) * (0.5 + 0.5 * left)
+    Lw, Rw = np.zeros(n), np.zeros(n)
+    for r_, w, g in ((1.0, 0.07, 1.0), (1.437, 0.08, 0.5), (2.23, 0.1, 0.26)):
+        fc = 900.0 * r_ * bend * (1 + (0.006 * PB.slow_random(n, 2.0, 7.0) * (0.3 + 0.7 * near)) + 0.012 * PB.slow_random(n, 0.2, 1.2))
+        am = np.exp((2.4 * PB.slow_random(n, 0.3, 2.5) + 1.2 * PB.slow_random(n, 4.0, 14.0) * (0.3 + 0.7 * near)) / 8.686) * g * (1.5 + 0.4 * near)
+        y, y2 = P.glide_band(dg, fc, w), P.glide_band(dg, fc * 1.003, w)
+        Lw += (y + y2 * 0.1 * near) * am
+        Rw += (y - y2 * 0.1 * near) * am
+    # (the air torn: a thin band high up that's all but gone at this range, and a rush sweeping up under it as it arrives, and back down with the speed)
+    tear = eddies(d, 1200, 7000, 3.0, -3.0, 16.0, 3.5) * (0.4 + 0.6 * near)
+    fc = 330.0 * (1450.0 / 330.0) ** (ss(1.8, STOP, q) ** 1.6) * (0.4 + 0.6 * left)
+    a, b = wide(P.glide_band(dg, fc, 1.0), P.glide_band(dg, fc * 1.02, 1.0), 0.97 - 0.2 * near)
+    e = 10 ** (np.interp(q, (0.0, 2.0, 2.8, STOP), (-14.0, -9.0, -3.0, 1.0)) / 20)
+    L = M + tear + Lw + a * e
+    R = M + tear + Rw + b * e
+    # (its burning: a few dull pops a second, through kilometres of air, smeared, each coming back off the land; thinner than the 3.4 s fall's, for being heard longer, and gone with the speed)
+    pl, pr = P.pop_crackle(dg, 0.0, lambda v: np.interp(of(v), (0.25, 2.2, STOP), (2.0, 3.5, 6.0)) * (v > 0.25) * float(speed_left(np.array(v - PRE))), lambda v: np.interp(of(v), (0, STOP), (-1.0, 3.0)), big=1.0, smear=1.0,
+                           air_fc=lambda v: np.interp(of(v), (0, 2.6, STOP), (2600.0, 3400.0, 5200.0)))
+    L = L + pl[:n]
+    R = R + pr[:n]
+    # (the weight bearing down, only as it arrives: low air, no tone)
+    sub = bn(n, 24, 72) * 10 ** (np.interp(q, (2.2, 2.9, STOP), (-40.0, -12.0, 0.0)) / 20) * 2.6
+    rumble = bn(n, 40, 170) * near ** 1.5 * 1.1
+    ref = float(np.hypot(SITE, STOP_H + 14.0))
+    L, R = through_air(L, r, ref), through_air(R, r, ref)
+    L, R = L + sub + rumble, R + sub + rumble
+    # (the sky round it; the boom as it first bites the thick air, a long way up and out of it)
+    el, er = P.entry_boom(dg, 0.14)
+    gone = 1 - ss(0.5, STOP - 0.1, q) * 0.75
+    wl, wr = sky(L + el[:n] * 0.55, R + er[:n] * 0.55, gone * 1.1)
+    k = 0.72 + 0.28 * ss(1.0, STOP - 0.3, q)                    # (it climbs out of its own echo)
+    L, R = L * k + wl + el[:n] * 0.42, R * k + wr + er[:n] * 0.42
     L, R = low_mono(L, R, 200.0)
-    # (full force: the last of it driven hard)
-    g = 1.0 / np.abs(np.stack([L, R])[:, n_of(STOP - 0.4):n_of(STOP)]).max()
-    L, R = (np.tanh(c * g * 1.4) / np.tanh(1.4) for c in (L, R))
-    out("descent", L, R, -9.0, tail=0, length=n_of(STOP))
+    # (full force: the last of it driven a little)
+    g = 1.0 / np.abs(np.stack([L, R])[:, n_of(PRE + 2.5):n_of(PRE + 3.2)]).max()
+    L, R = (np.tanh(x * g * 1.2) / np.tanh(1.2) for x in (L, R))
+    # (the brake: the speed going out of it, its top first)
+    top = 900.0 + 15000.0 * left ** 1.6
+    ease = left ** 1.4
+    out("descent", closed_over(L, top) * ease, closed_over(R, top) * ease, -10.5, tail=0, length=n_of(PRE + BRAKE_OFF))
 
 # ===================================================================================================================  ice
 AIR = 340.0
@@ -885,37 +952,140 @@ def field(d, f, top, seed_side=0.3):
     return out_[0], out_[1]
 
 
-def wobble():
-    """The fire is cut dead and the thing doesn't stop by itself: something catches it. A deep soft push of pressure as all that speed is taken up, no contact and nothing struck, and
-    a heavy hum coming up under it, thrown off its pitch by the catch and settling back in the picture's wobble (fold.wgsl: 0.055 e^(-5.5 a) sin 14 a), the top of it closing as
-    it locks on; a dark sheen of air going through the same comb for a moment; then only the hum, low and steady, holding it dead still to the let-go at 4.5. Plays 0.09 s after the stop."""
-    d = HANG - STOP - 0.09 + 0.12
+HOLD_HUM = 46.25                                      # (what holds the drop still to the let-go: `letgo` falls away from this note)
+STOP_LEN = HANG + 0.12 - (STOP - STOP_LEAD)           # (the file: from just before the brake to just past the let-go)
+
+
+def hold_on(d, at, db_=-4.5):
+    """The low hum holding it still to the let-go at 4.5, up from `at` s into the stem, where `letgo` takes it. (L, R)."""
+    t = times(n_of(d))
+    a, b = field(d, np.full(len(t), HOLD_HUM), np.full(len(t), 420.0))
+    e = ss(at, at + 0.3, t) * 10 ** (db_ / 20)
+    return a * e, b * e
+
+
+def stop_clock(early=0.0):
+    """What every stop is built on: (d, n, a length for `glide_band`, seconds from the brake taking it, the brake's force, the speed left), the curve set `early` s ahead of the picture's, for the echo that lags it: each take's loudest (200 ms) is within 0.1 s of BRAKE_PEAK. Its seconds start under 0."""
+    d = STOP_LEN
     n = n_of(d)
-    t = times(n)
-    e_wob = np.exp(-5.5 * t) * np.sin(14.0 * t + 0.25)
-    f = 46.25 * (1 + 1.1 * np.exp(-t / 0.045) + 0.32 * e_wob)
-    top = 300.0 + 3000.0 * np.exp(-t / 0.17)
-    a, b = field(d, f, top)
-    lv = 10 ** (np.interp(t, (0.0, 0.03, 0.14, 0.4, 0.75, d - 0.14, d), (-14.0, -3.0, 0.0, -10.0, -18.0, -22.0, -22.0)) / 20)
-    L, R = a * lv, b * lv
-    # (the catch: all that speed taken up by nothing, a push of air and pressure)
-    M = bare_blow(3.6, 20, 95, 0.03, 0.11) * 1.6
-    x = np.zeros(n)
-    P.put(x, M[:n], 0.0)
-    x = x + bn(n, 34, 170) * (1 - np.exp(-t / 0.02)) * np.exp(-t / 0.2) * 0.8
-    x = x + bn(n, 20, 62) * ss(0.0, 0.1, t) * 10 ** (np.interp(t, (0.0, 0.4, d), (-6.0, -16.0, -27.0)) / 20) * 0.6     # (its weight, the hold's pressure)
-    # (the air it was carrying going through the same field for a moment: noise on the hum's own comb, dark, gone in half a second)
-    sheen = np.zeros(n)
-    for k in range(3, 40, 2):
-        sheen += P.glide_band((n + 0.5) / SR, np.maximum(f * k, 60.0), 0.012)
-    sheen = bp(sheen, 240, 3400) / (T.loudest(bp(sheen, 240, 3400)) + 1e-9)
-    e = ss(0.0, 0.03, t) * np.exp(-t / 0.16)
-    a, b = wide(sheen, np.roll(sheen, 613), 0.5)
-    L, R = L + x + a * e * 0.9, R + x + b * e * 0.9
-    L, R = verb(L, R, 0.2, length=1.6, darken=(1100, 200), decay=0.7)
-    L, R = lows_heard(L, 70, 360, -7.0), lows_heard(R, 70, 360, -7.0)
+    c = times(n) + STOP - STOP_LEAD + early
+    return d, n, (n + 0.5) / SR, c - BRAKE_ON, brake_force(c), speed_left(c)
+
+
+def stop_out(L, R, db_, wet=0.35, top=3400.0, heard=-7.0):
+    """A couple of hundred blocks up: the air's loss on its top and the sky's dark echo round it, so it's out there and not at the ear."""
+    n = len(L)
+    L, R = closed_over(L, np.full(n, top)), closed_over(R, np.full(n, top))
+    wl, wr = sky(L, R, np.full(n, wet), length=2.4, darken=(1100, 200), decay=1.2)
+    L, R = lows_heard(L + wl, 70, 360, heard), lows_heard(R + wr, 70, 360, heard)
     L, R = low_mono(L, R, 170.0)
-    out("wobble", L, R, -15.0, tail=0.1)
+    out("wobble", L, R, db_, tail=0.1)
+
+
+def stop_piston():
+    """Air and nothing else: the whole column of air under it being shoved down and packed. A huge soft body of low air swelling with the force, its pitch and its top pressed up as it packs and easing back as it spills out sideways. No tone and no machine."""
+    d, n, dg, t, F, v = stop_clock(0.1)
+
+    def shape(s, f):
+        k = float(brake_force(np.array(s + t[0] + BRAKE_ON)))
+        fc = 52.0 + 150.0 * k
+        top = 300.0 + 1800.0 * k
+        return np.minimum((f / fc) ** 1.3, (fc / f) ** 1.0) * np.exp(-(f / top) ** 1.6)
+
+    a, b = wide(morph(n, shape), morph(n, shape), 0.65)
+    spill = ss(0.5, 0.9, t) * np.exp(-np.maximum(t - 0.9, 0) / 0.34) * 0.3           # (it spilling out from under, after the peak)
+    e = np.sqrt(F ** 2.4 + spill ** 2) * np.clip(1 + 0.18 * PB.slow_random(n, 0.4, 1.8), 0.4, None)
+    L, R = a * e, b * e
+    for f0, g in ((41.0, 1.0), (63.0, 0.8), (97.0, 0.6), (151.0, 0.38)):             # (the column's own low notes, noise-blown, pressed up by the packing)
+        y = P.glide_band(dg, f0 * (1 + 0.36 * F), 0.2) * g * F * 0.45
+        L, R = L + y, R + y
+    tl, tr = eddies(d, 130, 1500, 2.5, -4.0, 14.0, 4.5, drive=1 + F, lift=3.0), eddies(d, 130, 1500, 2.5, -4.0, 14.0, 4.5, drive=1 + F, lift=3.0)
+    L, R = L + tl * F ** 1.6 * 0.34, R + tr * F ** 1.6 * 0.34
+    x = T.unit(bn(n, 18, 52)) * F * 0.9
+    k, m_ = hold_on(d, 0.62 - t[0])
+    stop_out(L + x + k, R + x + m_, -13.0, 0.42)
+
+
+def stop_servo():
+    """A huge drive taking the load: the field that holds it, heard working. A deep electric hum whose pitch IS the speed, winding down with it from about two octaves up to the holding note, opening and straining with the force, a thin whine of its windings going down with it. It lands on the hold."""
+    d, n, dg, t, F, v = stop_clock(0.09)
+    f = HOLD_HUM * (1 + 2.7 * v ** 1.4)
+    a, b = field(d, f, 320.0 + 2600.0 * F + 700.0 * v)
+    lv = np.sqrt(F ** 2.2 + (0.56 * ss(0.4, 0.9, t)) ** 2)
+    L, R = a * lv, b * lv
+    Lw, Rw = np.zeros(n), np.zeros(n)
+    for r_, w, g in ((6.13, 0.05, 1.0), (9.4, 0.05, 0.6), (13.7, 0.06, 0.3)):        # (the windings, out of line with the hum: noise-blown, never a pure note)
+        y, y2 = P.glide_band(dg, f * r_, w), P.glide_band(dg, f * r_ * 1.004, w)
+        Lw, Rw = Lw + y * g, Rw + (y * 0.8 + y2 * 0.6) * g
+    x = T.unit(bn(n, 20, 62)) * F * 0.8
+    stop_out(L + Lw * F ** 1.5 * 0.42 + x, R + Rw * F ** 1.5 * 0.42 + x, -13.8, 0.3)
+
+
+def stop_swell():
+    """A pressure with a note in it and no movement of pitch at all: one enormous bowed note on the hold's own pitch, swelling up from the bottom with the force, its upper partials only there round the peak, and closing again until only the bottom of the same note is left: the hold is that note."""
+    d, n, dg, t, F, v = stop_clock(0.05)
+    L, R = np.zeros(n), np.zeros(n)
+    for f0, side in ((HOLD_HUM, -0.25), (HOLD_HUM + 0.27, 0.25)):
+        ph = 2 * np.pi * np.cumsum(f0 * (1 + 0.0012 * PB.slow_random(n, 0.2, 1.0))) / SR
+        y = np.zeros(n)
+        for k in range(1, 41):
+            fk = f0 * k
+            body = 0.1 + sum(g * np.exp(-0.5 * (np.log2(fk / fm) / 0.32) ** 2) for fm, g in BOWED)
+            late = 0.2 * np.log2(k) / np.log2(40.0)
+            u = np.clip((t - late) / (BRAKE_OFF - BRAKE_ON - 2 * late), 0, 1)
+            e = (4 * u * (1 - u)) ** 1.2 + (0.3 / k ** 1.1) * ss(0.45, 0.85, t) * 3.9
+            y += k ** -0.8 * body * np.sin(k * ph + rng().uniform(0, 6.3)) * e * boiled(n, 0.2, 1.0, 2.0)
+        l, r = pan(y, side)
+        L, R = L + l, R + r
+    g = T.loudest((L + R) / 2) + 1e-9
+    x = T.unit(bn(n, 22, 70)) * F * 0.55
+    stop_out(L / g + x, R / g + x, -13.0, 0.4)
+
+
+def stop_hull():
+    """Metal taking load: a great steel body under strain, no blow on it. Its modes out of line, the low ones first and the high ones only near the peak, every one sagging in pitch as the load comes on and creeping back as it goes, each on its own slow swell; a dark ringing of the same steel under them."""
+    d, n, dg, t, F, v = stop_clock(0.1)
+    r = np.random.default_rng(7301)
+    L, R = np.zeros(n), np.zeros(n)
+    load = gaussian_filter1d(F, n_of(0.05))
+    for i, f in enumerate(np.sort(52.0 + 1400.0 * r.random(46) ** 1.8)):
+        th = 0.62 * (i / 45) ** 0.8
+        e = ss(th, th + 0.34, F) * boiled(n, 0.5, 3.0, 3.0) * (f / 52.0) ** -0.62 * r.lognormal(0.0, 0.4)
+        e = e + (f / 52.0) ** -1.6 * ss(0.15, 0.5, t) * np.exp(-np.maximum(t - 0.55, 0) / 0.26) * 0.12    # (the lowest of it staying on a little)
+        sag = 1 - (0.1 if f < 130.0 else 0.06) * load * r.uniform(0.8, 1.2)
+        ph = 2 * np.pi * np.cumsum(f * sag * (1 + 0.0025 * PB.slow_random(n, 0.3, 1.5))) / SR + r.uniform(0, 6)
+        y = np.sin(ph) * e
+        q = r.uniform(-0.2, 0.2)
+        L, R = L + y * (0.5 - q), R + y * (0.5 + q)
+    g = T.loudest((L + R) / 2) + 1e-9
+    IR = steel(1.2, 44.0, 1500.0, 220, 0.5, 7303, -2.2)
+    y = T.unit(ring(bp(noise(n), 40, 700) * F ** 1.4, IR)[:n])
+    q_, r_ = wide(y, np.roll(y, 977), 0.7)
+    x = T.unit(bn(n, 20, 60)) * F * 0.6
+    k, m_ = hold_on(d, 0.6 - t[0])
+    stop_out(L / g + q_ * 0.22 + x + k, R / g + r_ * 0.22 + x + m_, -13.8, 0.34)
+
+
+def stop_subdrop():
+    """All of it under the floor: one pure sub falling with the speed, from a low note to an octave under the hold, swelling with the force, hitting nothing and arriving nowhere: the hold's hum simply comes up an octave over where it stopped. A breath of dark air on it and nothing else."""
+    d, n, dg, t, F, v = stop_clock()
+    f = HOLD_HUM / 2 + 118.0 * v ** 1.5
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    y = np.sin(ph) + 0.3 * np.tanh(2.5 * np.sin(ph)) + 0.22 * np.sin(2 * ph + 1.0) + 0.1 * np.sin(3 * ph + 2.0)
+    e = np.sqrt(F ** 1.6 + (0.5 * ss(0.5, 0.95, t) * np.exp(-np.maximum(t - 0.95, 0) / 0.4)) ** 2)
+    a, b = wide(T.unit(bn(n, 55, 260)), T.unit(bn(n, 55, 260)), 0.7)
+    k, m_ = hold_on(d, 0.68 - t[0])
+    L = y * e * 1.2 + a * F ** 1.4 * 0.16 + k
+    R = y * e * 1.2 + b * F ** 1.4 * 0.16 + m_
+    stop_out(L, R, -12.5, 0.22, heard=-3.0)
+
+
+STOPS = {"piston": stop_piston, "servo": stop_servo, "swell": stop_swell, "hull": stop_hull, "subdrop": stop_subdrop}
+STOP_PICK = "servo"                                   # which of `STOPS` is the one in the game
+
+
+def wobble():
+    STOPS[STOP_PICK]()
 
 
 def air():
@@ -1096,70 +1266,247 @@ def score():
 
 
 # the machine's two voices, tick and tock: the same great mechanism, so a listener hears one thing going round (Hz, Q, gain)
-TICK = ((34, 3, 1.1), (49, 4, 1.2), (71, 5, 1.1), (104, 5, 1.0))
-TOCK = ((29, 3, 1.1), (43, 4, 1.2), (62, 5, 1.1), (91, 5, 1.0))
-CLANK = ((143, 7, 1.0), (211, 9, 0.9), (317, 9, 0.8), (457, 8, 0.5), (689, 7, 0.28))
-CLUNK = ((127, 7, 1.0), (187, 9, 0.95), (283, 9, 0.75), (409, 8, 0.45), (613, 7, 0.24))
+# Round 9's tries at what goes off as the horizon curls up to the tube. None ships (`BOOM_PICK`): the user kept `groan`'s thuds, and they land on the curl's own motion (`curl_beats`), biggest where it's going fastest.
+CURL = ((20.0, 0.0), (21.0, 1.0), (22.0, 5.0), (23.0, 10.0), (23.5, 14.0), (24.0, 18.0), (24.5, 22.0), (25.0, 27.0), (26.0, 34.0), (27.0, 44.0), (28.0, 55.0), (29.0, 63.0), (30.0, 69.0), (31.0, 73.0), (31.5, 73.0))    # (the picture's S-curve, fold_warp's fw_up on fold-open: the land's end's elevation in degrees, creeping 20 to 22, fastest 26 to 28, slowing into the tube to 31.5)
+GROUND2 = ((19, 2.5, 1.0), (27, 3, 1.1), (39, 3, 1.1), (56, 3, 1.0), (82, 3, 0.8), (118, 3, 0.55))
 
 
-def clack(size, tock, big):
-    """One detent of the land going over: a pawl lifting, 80 ms of nothing much, the whole weight dropping into the next notch, and a small bounce on it. Heavy metal and rock, a body with a few
-    short modes that stop, nothing that rings, no bright edge. The modes wander a hair each time. Mono, 1.2 s, the drop 0.1 s in."""
-    m = n_of(1.2)
-    s = times(m)
-    t0 = 0.1
-    q = np.maximum(s - t0, 0)
-    on = s >= t0
-    jit = lambda modes: tuple((f * rng().uniform(0.97, 1.03), Q, a) for f, Q, a in modes)
-    low, mid = (TOCK, CLUNK) if tock else (TICK, CLANK)
-    x = struck(m, t0, 0.012 + 0.012 * big, jit(low), 16, 0.4) * 1.0
-    x = x + struck(m, t0, 0.008, jit(mid), 10, 0.5) * (0.8 + 0.2 * big) * np.exp(-q / (0.09 + 0.05 * big))
-    x = x + rough(m, t0, 0.006, 8, 220, 1500, 0.004) * 0.22
-    x = x + bn(m, 40, 210) * (1 - np.exp(-q / 0.002)) * np.exp(-q / (0.06 + 0.05 * big)) * on * 0.5
-    x = x + bn(m, 90, 420) * (1 - np.exp(-q / 0.01)) * np.exp(-q / 0.05) * on * 0.1        # (the air out of the notch)
-    P.put(x, struck(n_of(0.3), 0.0, 0.004, jit(mid[:3]), 6, 0.5) * 0.3, t0 - 0.082)       # (the pawl lifting)
-    P.put(x, struck(n_of(0.3), 0.0, 0.004, jit(mid[:3]), 6, 0.5) * 0.26, t0 + 0.068)      # (and bouncing)
-    return x * size
+def curl_of(t):
+    """How far the horizon has curled, 0 to 1, at `t` s."""
+    return np.interp(t, [a for a, _ in CURL], [b / CURL[-1][1] for _, b in CURL])
 
 
-def unravel():
-    """The land bending as a machine turns: `CLACKS`, a great mechanism going over one detent at a time, tick and tock, deep and heavy and dead regular, each heave of the land (`RINGS`) a bigger
-    one with the weight of a ring going over it, closer together as the land comes round, the last on the world's stopping. Each goes off the land still standing, a long way out and back. All made
-    here: no film's sound in it, only the idea of scale. From 26 s the sky shuts, and what's left of it comes through the ground."""
-    dur = SEAL - FOLD
-    d = dur + 1.0
-    n = n_of(d)
+def curl_beats(count, lo=0.4):
+    """`count` even steps of the curl, so they crowd where it's fastest and spread out at the ends: (s, size), size 1 at its fastest and `lo` at the ends."""
+    ts = np.linspace(CURL[0][0], CURL[-1][0], 5001)
+    p = curl_of(ts)
+    v = gaussian_filter1d(np.gradient(p, ts), 300)              # (a table's steps smoothed: about 0.75 s)
+    v = v / v.max()
+    return [(float(a), float(lo + (1 - lo) * np.interp(a, ts, v) ** 1.6)) for a in np.interp((np.arange(count) + 0.5) / count, p + ts * 1e-9, ts)]
+
+
+def boom_beats(count, lo=0.45, last=0.55):
+    """The hits of a take: the land's first heave and the creep, `count` even steps of the curl, and the last as the world stops closing."""
+    return [(19.15, 0.4), (20.7, 0.42)] + curl_beats(count, lo) + [(HOLD, last)]
+
+
+def boom_finish(L, R, db_, peak=-2.5):
+    """A take out as `unravel`: the ground's dark breath on each heave of the land under it, what's left of it shut in as the sky goes from 26 s, the lows alike."""
+    n = len(L)
     t = times(n)
-    L, R = np.zeros(n), np.zeros(n)
-    eL, eR = np.zeros(n), np.zeros(n)                          # (what goes out to the land still standing)
-    for k, (at, big) in enumerate(CLACKS):
-        v = k / (len(CLACKS) - 1)
-        size = (1.0 if big else 0.56 + 0.14 * (k % 2)) * (0.72 + 0.28 * v) * rng().uniform(0.95, 1.05)
-        x = clack(size, k % 2 == 1, big)
-        p = (-1) ** k * 0.14
-        l, r = pan(x, p)
-        P.put(L, l, at - FOLD - 0.1)
-        P.put(R, r, at - FOLD - 0.1)
-        P.put(eL, x * (0.5 - p), at - FOLD - 0.1)
-        P.put(eR, x * (0.5 + p), at - FOLD - 0.1)
-    # (the ring's own weight going over on each heave: the ground's dark breath, heavier as they come)
     for k, r in enumerate(RINGS):
         a, b = sheer(n, r - FOLD + 0.03, rng().uniform(1.0, 1.4), 0.1 + 0.015 * k)
-        L += a
-        R += b
-    # (the land still standing: a long way out, dark, one side then the other)
-    for at, dull, g, pn in ((0.31, 520, 0.2, -0.5), (0.52, 380, 0.13, 0.55), (0.93, 260, 0.08, -0.2)):
-        x = bp(eL + eR, None, dull) * g
-        l, r = pan(x, pn)
-        P.put(L, l, at)
-        P.put(R, r, at)
-    L, R = verb(L, R, 0.1, length=3.0, darken=(1300, 240), decay=1.0)
-    # (the sky going: from 26 s it closes overhead, and all that's left of it is heard through the ground)
+        L, R = L + a, R + b
     w = ss(CLOSING - FOLD, HOLD - FOLD, t)
     L, R = muffle(L, w ** 0.7 * 0.8, 700.0) * (1 - 0.3 * w), muffle(R, w ** 0.7 * 0.8, 700.0) * (1 - 0.3 * w)
     L, R = lows_heard(L, 70, 420, -6.0), lows_heard(R, 70, 420, -6.0)
     L, R = low_mono(L, R, 170.0)
-    out("unravel", L, R, -12.5, tail=1.0, peak=10 ** (-3.0 / 20))
+    out("unravel", L, R, db_, tail=1.0, peak=10 ** (peak / 20))
+
+
+def nwaves(m, span, count, lo, hi, thin=0.12):
+    """A crack with weight in it, as thunder has: the pressure jumps of a long tear reaching you one after another, each up and through and down over `lo` to `hi` s, big ones first, thinning out over `span`. No noise burst on it: its top is only what
+    steep edges leave. Mono, peak 1."""
+    x = np.zeros(m)
+    for k in range(count):
+        at = span * rng().random() ** 2.2 if k else 0.0
+        q = n_of(float(np.exp(rng().uniform(np.log(lo), np.log(hi)))))
+        a = (1.0 if not k else min(rng().pareto(2.0) * 0.4 + 0.15, 1.2)) * np.exp(-at / thin) * rng().choice([-1.0, 1.0], p=(0.2, 0.8))
+        P.put(x, np.linspace(a, -a, q), at)
+    return x / (np.abs(x).max() + 1e-9)
+
+
+_steels = {}
+
+
+def hull(seed):
+    """A body the size of the land, stone and metal, its partials out of line and all low down, short: what a crack goes through to be heavy."""
+    if seed not in _steels:
+        _steels[seed] = steel(1.4, 62.0, 1700.0, 170, 0.11, 7300 + seed)
+    return _steels[seed]
+
+
+def sub_hit(s):
+    """A long low blow: the land's whole weight shifting, no note: air shoved out under 60 Hz, the ground's low modes taking it, gone to a low roll in about a second, so the next one is a new blow and not more of a wall. Mono."""
+    m = n_of(6.0)
+    u = times(m)
+    pr = bp(T.friedlander(m, 0.0, 0.24, 1.3), 11, 60)
+    x = pr / (np.abs(pr).max() + 1e-9) * 1.3 + struck(m, 0.0, 0.07, GROUND2, 30) * 1.0 + np.pad(whole(0.3, 0.14, 0.004, 0.42), (0, m))[:m]
+    tail = bn(m, 15, 60) * (1 - np.exp(-u / 0.05)) * (np.exp(-u / 0.24) + 0.16 * np.exp(-u / 1.5)) * 0.8
+    return (x + tail) * s
+
+
+def boom_sub():
+    """Huge sub booms with long tails: `sub_hit` on the curl, rolling off round the land after each. Hardly any top: it's all weight."""
+    n = n_of(SEAL - FOLD + 1.0)
+    L, R = np.zeros(n), np.zeros(n)
+    for at, size in boom_beats(7):
+        x = sub_hit(size)
+        P.put(L, x, at - FOLD)
+        P.put(R, x, at - FOLD)
+        a, b = rolls(n_of(6.0), 0.0, 9, 3.0)
+        P.put(L, a * size * 0.3, at - FOLD)
+        P.put(R, b * size * 0.3, at - FOLD)
+    L, R = verb(L, R, 0.13, length=4.0, darken=(900, 120), decay=1.2)
+    boom_finish(L, R, -10.0)
+
+
+def clap(s, seed, span=0.28):
+    """A tearing crack with a cannon in it: the tear's pressure jumps through a body of stone and metal, the blast's one great push and suck under them. Mono."""
+    m = n_of(4.0)
+    tear = nwaves(m, span, 46, 0.004, 0.03)
+    body = bp(ring(tear, hull(seed)), 60, 2600)
+    body = body / (np.abs(body).max() + 1e-9)
+    can = bp(T.friedlander(m, 0.004, 0.11, 1.3), 14, 240)
+    can = can / (np.abs(can).max() + 1e-9)
+    x = body * 1.35 + bp(tear, 40, 1400) * 0.32 + can * 1.15 + struck(m, 0.004, 0.05, GROUND, 24) * 0.7
+    u = times(m)
+    x = x + bn(m, 40, 300) * (1 - np.exp(-u / 0.01)) * np.exp(-u / 0.22) * 0.32        # (its dark breath)
+    return x * s
+
+
+def boom_crack():
+    """The tearing crack: heavy, wide-open cracks, each a long tear through stone and metal over a cannon's body, thrown back by the land still standing. Rich down low, no noise on the front, nothing over about 2.6 kHz."""
+    n = n_of(SEAL - FOLD + 1.0)
+    L, R = np.zeros(n), np.zeros(n)
+    eL = np.zeros(n)
+    for k, (at, size) in enumerate(boom_beats(7, 0.45, 0.6)):
+        x = clap(size, k % 4, 0.2 + 0.16 * size)
+        l, r = pan(x, 0.12 * (-1) ** k)
+        P.put(L, l, at - FOLD)
+        P.put(R, r, at - FOLD)
+        P.put(eL, x, at - FOLD)
+    for dt, dull, g, pn in ((0.34, 620, 0.26, -0.55), (0.71, 420, 0.17, 0.6), (1.3, 280, 0.1, -0.2)):         # (it comes back off the land, darker each time)
+        l, r = pan(bp(eL, None, dull) * g, pn)
+        P.put(L, l, dt)
+        P.put(R, r, dt)
+    L, R = verb(L, R, 0.2, length=4.0, darken=(1300, 160), decay=1.7)
+    boom_finish(L, R, -10.5)
+
+
+def boom_guns():
+    """Slow artillery a long way off: one report at a time with the air between in it (`through_air`), coming in from 4 km as the curl gets going, nearest at its fastest, going away again, each with its echo round the land and a smaller far gun answering."""
+    n = n_of(SEAL - FOLD + 1.0)
+    L, R = np.zeros(n), np.zeros(n)
+    for k, (at, size) in enumerate([(19.2, 0.5)] + curl_beats(6, 0.5) + [(HOLD, 0.45)]):
+        q = 650.0 + 3400.0 * ((at - 26.5) / 7.0) ** 2
+        for dt, g, q_, pn in ((0.0, 1.0, q, 0.3 * (-1) ** k), (rng().uniform(0.5, 0.72), 0.3, q * 1.9, -0.55 * (-1) ** k)):
+            m = n_of(5.0)
+            c = bp(T.friedlander(m, 0.0, 0.1, 1.3), 16, 1500)
+            x = c / (np.abs(c).max() + 1e-9) * 1.2 + struck(m, 0.0, 0.03, GROUND, 20) * 0.7
+            x = x + np.pad(whole(0.42, 0.6, 0.002, 0.5), (0, m))[:m]
+            x = through_air(x, np.full(m, q_), 650.0, 0.55, 1.0) * g
+            x = land(x, 3.5, 0.38, (1000, 130), 1.1, 22.0, 40 + k)
+            l, r = pan(x, pn)
+            P.put(L, l, at - FOLD + dt)
+            P.put(R, r, at - FOLD + dt)
+    L, R = verb(L, R, 0.08, length=3.0, darken=(800, 140), decay=1.2)
+    boom_finish(L, R, -11.0)
+
+
+def horn(f0, dur, s, voices=7):
+    """A low brass blast, all made here: a section of `voices` lips each driven harder the louder it plays, so it blares as it swells and darkens as it dies, each coming in a hair apart and scooping up to its pitch, through a bell. Mono."""
+    m = n_of(dur + 1.2)
+    u = times(m)
+    y = np.zeros(m)
+    for k in range(voices):
+        st = rng().uniform(0.0, 0.05)
+        e = (1 - np.exp(-np.maximum(u - st, 0) / 0.04)) ** 2 * (0.62 + 0.38 * np.exp(-u / 0.3)) * (1 - ss(dur * 0.45, dur, u))
+        fr = f0 * (1 + rng().normal(0.0, 0.0045)) * (1 - 0.04 * np.exp(-np.maximum(u - st, 0) / 0.05)) * (1 + 0.0025 * PB.slow_random(m, 0.4, 3.0))
+        ph = 2 * np.pi * np.cumsum(fr) / SR + rng().uniform(0, 6)
+        y += np.tanh((1.2 + 9.0 * e * s) * (np.sin(ph) + 0.45 * np.sin(2 * ph + 0.4))) * e
+    y = y / voices
+    y = bp(y, None, 3400.0)
+    g = np.sqrt(np.mean(y ** 2))
+    return y * 0.55 + sum(T.unit(bp(y, f / 1.4, f * 1.4)) * g * a for f, a in ((150, 0.5), (330, 1.0), (620, 1.2), (1200, 0.55)))
+
+
+def blast(s, floor=0.42):
+    """One blast: the low brass on the touch's note, its octave and its twelfth, an edge of weight under it (`floor`). Mono."""
+    x = horn(NOTE, 0.9 + 0.7 * s, 0.55 + 0.45 * s) * 1.0
+    P.put(x, horn(NOTE * 2.0, 0.8 + 0.7 * s, 0.5 + 0.5 * s, 6)[:len(x)] * 0.8, 0.012)
+    P.put(x, horn(NOTE * 3.0, 0.7 + 0.6 * s, 0.4 + 0.6 * s, 5)[:len(x)] * 0.4, 0.02)
+    x = x / (np.abs(x).max() + 1e-9) * 0.9
+    m = len(x)
+    if floor:
+        P.put(x, sub_hit(1.0)[:m] * floor, 0.0)
+    return x * (0.55 + 0.45 * s)
+
+
+def boom_brass():
+    """A brass blast on the curl, one note held to: the section swells, blares and dies, heavier towards the middle, and the land gives it back."""
+    n = n_of(SEAL - FOLD + 1.0)
+    L, R = np.zeros(n), np.zeros(n)
+    for at, size in boom_beats(6, 0.45, 0.6):
+        x = blast(size)
+        P.put(L, x, at - FOLD)
+        P.put(R, x, at - FOLD)
+    L, R = verb(L, R, 0.2, length=3.5, darken=(1500, 200), decay=1.1)
+    boom_finish(L, R, -11.0)
+
+
+def wave_past(at, size, n, L, R):
+    """One wave of pressure going over: it comes up out of nothing, the ear filling, the air's top opening as it arrives on `at`, and leaves as a cold rush, no front on it at all. On (L, R)."""
+    pre, post = 0.85, 2.6
+    d = pre + post
+    m = n_of(d)
+    u = times(m) - pre
+    rise = ss(-pre, 0.0, u) ** 2.4
+    fall = np.exp(-np.maximum(u, 0) / 0.55)
+    low = bn(m, 16, 70) * np.where(u < 0, rise, fall) * 2.4
+    q = 180.0 + 2300.0 * np.minimum(np.abs(u) / 1.2, 1.0) ** 1.2
+    cold = through_air(eddies(d, 220, 5200, 2.5, -3.5, 14.0, 3.5), q, 180.0, 0.8, 3.0) * np.where(u < 0, rise ** 0.7, np.exp(-np.maximum(u, 0) / 0.9)) * 0.7
+    cl = np.roll(cold, 389)
+    a, b = wide(cold, cl, 0.82)
+    x = bp(T.friedlander(m, pre, 0.34, 1.0), 11, 60)
+    x = x / (np.abs(x).max() + 1e-9) * 1.3 + struck(m, pre, 0.14, GROUND2, 26) * 0.45
+    P.put(L, (low + x + a) * size, at - pre - FOLD)
+    P.put(R, (low + x + b) * size, at - pre - FOLD)
+
+
+def boom_pressure():
+    """Pressure waves and a cold rush: nothing strikes. Each comes up out of nothing to the curl's beat, fills the ears and goes over, cold air streaming off it. The softest of them, and the one with no hit in it at all."""
+    n = n_of(SEAL - FOLD + 1.0)
+    L, R = np.zeros(n), np.zeros(n)
+    for at, size in boom_beats(5, 0.45, 0.6):
+        wave_past(at, size, n, L, R)
+    L, R = verb(L, R, 0.16, length=3.5, darken=(1100, 200), decay=1.6)
+    boom_finish(L, R, -11.0)
+
+
+def boom_blend():
+    """All of it in one: the crack on the front, the sub's long tail after it, the brass a long way under: a hit with a top, a middle and a floor, each doing one job."""
+    n = n_of(SEAL - FOLD + 1.0)
+    L, R = np.zeros(n), np.zeros(n)
+    eL = np.zeros(n)
+    for k, (at, size) in enumerate(boom_beats(7, 0.45, 0.6)):
+        c = clap(size, k % 4, 0.2 + 0.16 * size)
+        y = sub_hit(size) * 0.6
+        b = blast(size, 0) * 0.36
+        l, r = pan(c * 0.85, 0.12 * (-1) ** k)
+        for ch, q in ((L, l), (R, r)):
+            P.put(ch, q, at - FOLD)
+            P.put(ch, y, at - FOLD)
+            P.put(ch, b, at - FOLD + 0.02)
+        P.put(eL, c, at - FOLD)
+        a_, b_ = rolls(n_of(6.0), 0.0, 9, 3.0)
+        P.put(L, a_ * size * 0.25, at - FOLD)
+        P.put(R, b_ * size * 0.25, at - FOLD)
+    for dt, dull, g, pn in ((0.36, 520, 0.2, -0.55), (0.77, 360, 0.13, 0.6)):
+        l, r = pan(bp(eL, None, dull) * g, pn)
+        P.put(L, l, dt)
+        P.put(R, r, dt)
+    L, R = verb(L, R, 0.14, length=4.0, darken=(1100, 150), decay=1.3)
+    boom_finish(L, R, -10.0)
+
+
+BOOM_PICK = None                                      # which of `BOOMS` is the one in the game: none (the user's round 9: `groan`'s thuds are the main ones, and no `unravel` ships)
+BOOMS = {"sub": boom_sub, "crack": boom_crack, "guns": boom_guns, "brass": boom_brass, "pressure": boom_pressure, "blend": boom_blend}
+
+
+def unravel():
+    if BOOM_PICK:
+        BOOMS[BOOM_PICK]()
 
 
 # =======================================================================================================  the land closing
@@ -1194,7 +1541,24 @@ def moan(n, at, dur, f0, f1, wob=0.05):
     return o
 
 
-BANG_UP = 10 ** (19.0 / 20)                                    # (how far the bangs are over what they were on the page's round 4)
+BANG_UP = 10 ** (26 / 20)                                      # (the thuds against round 4; the user's round 9, on these: "keep these as the main ones but more bassier and maybe louder". So they carry the curl, on their own)
+THUD_TOP = 0.8                                                 # (`T.thud`, the thud they heard, against the low weight under it)
+THUD_EVEN = 0.6                                                # (under 1: the early ones up, nearer the last: they're what the curl is now)
+BED_FROM, BED_RISE = 0.3, 0.9                                  # (what `groan` starts from and how it builds: it was 0.06 and 1.7, under the clacks, and with those gone that was nothing at all till 28 s)
+THUD_FLOOR = 1.0                                               # (the floor of the moan's lows against what they were)
+
+
+THUD_TRIM = ((19.0, 1.5), (26.0, 1.5), (28.0, -3.0), (29.5, -7.0), (31.5, -9.0))
+THUD_MORE = ((19.1, 2.6, 0.9), (26.35, 2.4, 1.15), (27.29, 2.5, 1.2), (31.5, 2.8, 1.1))    # (on the same beat: nothing started the curl, the thuds left 2.8 s empty at its fastest, and nothing landed on the world's stopping)
+BED_UP = ((0.0, 20.0), (1.5, 18.0), (3.0, 12.0), (5.0, 11.0), (8.0, 15.0), (9.5, 11.0), (11.0, 3.0), (12.0, 0.0))    # (dB on what's left, seconds into `groan`: it went on under the clacks, and on its own it's 40 dB down till 28 s; to about -27 rising to its -17)
+
+def thud_weight(size):
+    """What a thud has under it now: the low weight `bang` gives a ring. The air shoved out from under it, one long push and suck under 60 Hz with no note in it; a blow of low noise; the ground's own low modes. Mono, 1.8 s, nothing sine."""
+    m = n_of(1.8)
+    pr = bp(T.friedlander(m, 0.0, 0.15 + 0.035 * size, 1.4), 12, 62)
+    y = pr / (np.abs(pr).max() + 1e-9) * 1.5
+    P.put(y, bare_blow(size, 17, 62, 0.012, 0.075) * 1.1, 0.0)
+    return y + struck(m, 0.0, 0.05, GROUND[:4], 30, 0.3) * 0.6
 
 
 def groan():
@@ -1203,7 +1567,7 @@ def groan():
     d = end
     n = n_of(d)
     t = times(n)
-    build = (0.06 + 0.94 * ss(1.0, seal - 0.5, t) ** 1.7) * (1 - ss(seal - 0.1, seal + 0.7, t))
+    build = (BED_FROM + (1 - BED_FROM) * ss(0.6, seal - 0.5, t) ** BED_RISE) * (1 - ss(seal - 0.1, seal + 0.7, t))
     heave = np.clip(1 + 0.42 * PB.slow_random(n, 0.1, 0.8), 0.25, None)
     strain = np.clip(0.42 + 0.85 * PB.slow_random(n, 0.1, 0.5), 0.12, None) ** 1.5     # (it comes and goes: never a wall)
     bed_ = bn(n, 19, 58) * heave * build * 0.8
@@ -1211,7 +1575,9 @@ def groan():
     drift = 1 + 0.03 * PB.slow_random(n, 0.1, 0.7)
     ph = 2 * np.pi * np.cumsum(31.0 * drift) / SR
     ph2 = 2 * np.pi * np.cumsum(32.1 * drift) / SR
-    sub = (np.sin(ph) + np.sin(ph2) + 0.3 * np.sin(2 * ph + 0.7)) * np.clip(0.75 + 0.4 * PB.slow_random(n, 0.15, 1.0), 0.05, None) * build * 0.45
+    with PB.seeded(SEEDS["groan"] + 1):                        # (the two low tones it had here were a sine under every thud: the same low place, in noise)
+        floor_ = (T.unit(bn(n, 24, 34)) + T.unit(bn(n, 34, 46)) * 0.7) * THUD_FLOOR
+    sub = floor_ * np.clip(0.75 + 0.4 * PB.slow_random(n, 0.15, 1.0), 0.05, None) * build * 0.45
     rate = (7.0 + 14.0 * ss(0, 15, t)) * np.clip(1 + 0.4 * PB.slow_random(n, 0.2, 1.4), 0.4, None)
     hull = bank(stick(n, rate, 0.4, 0.22, 0.012, 0.004), ((37, 7, 1.2), (58, 8, 1.0), (91, 8, 0.8), (139, 8, 0.55), (211, 7, 0.32), (333, 6, 0.16)))
     hull = T.unit(hull) * strain * build * 0.8
@@ -1225,17 +1591,31 @@ def groan():
         t1 += rng().uniform(0.8, 2.3) * (1.15 - 0.6 * v)
     M = bed_ + sub + hull + T.unit(tones) * (0.2 + 0.8 * strain) * build * 1.1
     # (the far land lifting: a slow heave of the whole horizon, up from 20.1 s, no note in it)
-    M = M + eddies(d, 24, 320, 2.5, -5.0, 13.0, 6.0) * np.exp(-0.5 * ((t - (LIFT - FOLD)) / 1.5) ** 2) * ss(1.0, 2.5, t) * 0.5
+    M = M + eddies(d, 24, 320, 2.5, -5.0, 13.0, 6.0) * np.exp(-0.5 * ((t - (LIFT - FOLD)) / 1.5) ** 2) * ss(1.0, 2.5, t) * 0.9
     L, R = M.copy(), M.copy()
     # (the bangs: great lumps of it going, on the mechanism's beat or halfway to it, so they push it along and don't fight it)
     beat = np.sort(np.r_[[c[0] for c in CLACKS], [(x[0] + y[0]) / 2 for x, y in zip(CLACKS, CLACKS[1:])]]) - FOLD
     B, B2 = np.zeros(n), np.zeros(n)
     for t1 in P.poisson_times(0.5, seal, lambda s: 0.5 + s / d):
-        x = T.thud(n_of(1.0), rng().uniform(1.6, 3.0)) * rng().uniform(0.8, 1.8) * (0.3 + 0.7 * t1 / d)
+        size = rng().uniform(1.6, 3.0)
+        x = T.thud(n_of(1.0), size)
+        gain = (rng().uniform(0.8, 1.8) * (0.3 + 0.7 * t1 / d)) ** THUD_EVEN
+        with PB.seeded(int(t1 * 1009) + 31):
+            w = thud_weight(size)
+        P.put(w, x * THUD_TOP, 0.0)
+        x = w * gain
         l, r = pan(x, rng().uniform(-0.7, 0.7))
         t1 = float(beat[np.argmin(np.abs(beat - t1))])
-        P.put(B, l, t1)
-        P.put(B2, r, t1)
+        x = 10 ** (np.interp(t1 + FOLD, *zip(*THUD_TRIM)) / 20)  # (the hollow it closes into gives the late ones its own lows: they're held back by that much)
+        P.put(B, l * x, t1)
+        P.put(B2, r * x, t1)
+    with PB.seeded(SEEDS["groan"] + 2):
+        for at, size, gain in THUD_MORE:
+            w = thud_weight(size)
+            P.put(w, T.thud(n_of(1.0), size) * THUD_TOP, 0.0)
+            l, r = pan(w * gain * 10 ** (np.interp(at, *zip(*THUD_TRIM)) / 20), rng().uniform(-0.4, 0.4))
+            P.put(B, l, at - FOLD)
+            P.put(B2, r, at - FOLD)
 
     def space(L, R):
         L, R = verb(L, R, 0.3, length=3.4, darken=(1500, 240), decay=1.5)
@@ -1249,14 +1629,16 @@ def groan():
 
     L, R = space(L, R)
     bl, br = space(B * BANG_UP, B2 * BANG_UP)
+    up = 10 ** (np.interp(t, *zip(*BED_UP)) / 20)
+    L, R = L * up, R * up
     # (the air in it)
     room = ss(close + 2.0, seal, t) * (1 - ss(end - 0.7, end - 0.1, t))
     a, b = wide(hollow(n), hollow(n, (61.0, 103.0, 149.0, 211.0, 293.0)), 0.5)
     L += a * room * 0.36
     R += b * room * 0.36
     L, R = low_mono(L, R, 190.0)
-    bl, br = low_mono(bl, br, 190.0)
-    out("groan", L + bl, R + br, -15.6, tail=0.6, peak=10 ** (-4.0 / 20), ref=(L, R))    # (its level taken without the bangs: what's round them stays where it was)
+    bl, br = low_mono(lows_heard(bl, 60, 360, -7.0), lows_heard(br, 60, 360, -7.0), 190.0)
+    out("groan", L + bl, R + br, -15.6, tail=0.6, peak=10 ** (-2.0 / 20), ref=(L, R))    # (its level taken without the thuds: what's round them stays where it was)
 
 
 # ===========================================================================================================  the fold down
@@ -1541,29 +1923,104 @@ def drip_tank():
     drip_out(L, R, -14.0, -8.0)
 
 
+def let_thrown(n, t, t1):
+    """(Round 8's.) The pinch throws the hum off its pitch: the neck, a low plop and a soft blow."""
+    x = neck(n, 0.0, t1, 0.2) + pinch(n, t1) * 0.3
+    p = np.zeros(n)
+    P.put(p, plink(130.0, 430.0, 0.11), t1)
+    P.put(x, bare_blow(3.4, 20, 95, 0.03, 0.12) * 0.5, t1)
+    return dict(x=x + p * 0.5)
+
+
+def let_thread(n, t, t1):
+    """The thread going: what a drip really does, made huge. The neck thins and its pitch climbs, the last of it pulls out into one fast rising blip as it parts, and the stump snaps back up with a deep wet recoil a tenth of a second on. Dry of any blow."""
+    x = neck(n, 0.0, t1, 0.34)
+    P.put(x, plink(120.0, 1250.0, 0.075, 1.0) * 0.8, t1 - 0.012)
+    P.put(x, plop(56.0, 170.0, 0.85, 0.15), t1 + 0.1)
+    P.put(x, settle(0.42), t1 + 0.24)
+    return dict(x=x, throw=0.35)
+
+
+def let_cork(n, t, t1):
+    """The roof letting go of a vacuum: the pressure held behind the neck builds, low, to the pinch, and comes out as one great hollow pop, the tube's own air ringing on it, a breath of air rushing in behind."""
+    build = bn(n, 22, 90) * ss(t1 - 0.55, t1, t) ** 2.2 * (1 - ss(t1, t1 + 0.006, t)) * 0.55
+    x = neck(n, 0.0, t1, 0.14) + build
+    a_ = np.maximum(t - t1, 0)
+    pop = np.zeros(n)
+    P.put(pop, plop(64.0, 205.0, 1.0, 0.06, 3.0), t1)
+    hol = sum(T.unit(reso(pop, f, q)) * g for f, q, g in ((91, 9, 1.0), (147, 11, 0.8), (239, 11, 0.5)))
+    rush = eddies(n / SR, 260, 1500, 2.5, -4.0, 14.0, 3.0) * (1 - np.exp(-a_ / 0.03)) * np.exp(-a_ / 0.2) * (t >= t1) * 0.18
+    return dict(x=x + pop * 0.6 + hol * np.max(np.abs(pop)) * 0.16 + rush, throw=0.5)
+
+
+def let_roof(n, t, t1):
+    """The whole roof rings as the weight comes off it: a great steel body struck from inside, far up, its low partials blooming a moment after, and sinking on into the fall."""
+    IR = steel(1.5, 52.0, 1700.0, 260, 0.36, 7211, -2.8)
+    p = np.zeros(n)
+    P.put(p, plink(100.0, 300.0, 0.1), t1)
+    y = ring(p * 0.6 + knock(t1, n, 2.6), IR)
+    return dict(x=neck(n, 0.0, t1, 0.16) + pinch(n, t1) * 0.2 + y * 0.9, throw=0.3)
+
+
+def let_tear(n, t, t1):
+    """The neck yields and tears: a thick stretching strain up to the pinch, then a heavy wet tear through the steel, short and rich, and the stump slopping back. The closest to a crack."""
+    v = ss(t1 - 0.55, t1, t)
+    fc = 95.0 * (1 + 2.0 * v ** 1.5)
+    st = (T.unit(P.glide_band((n + 0.5) / SR, fc, 0.5)) + 0.5 * T.unit(P.glide_band((n + 0.5) / SR, fc * 2.1, 0.4))) * v ** 2 * (1 - ss(t1, t1 + 0.01, t)) * 0.3
+    m = n_of(1.0)
+    tr = nwaves(m, 0.11, 22, 0.002, 0.012)
+    tr = bp(ring(tr, hull(1)), 90, 2400)
+    tr = tr / (np.abs(tr).max() + 1e-9)
+    x = st.copy()
+    P.put(x, tr * 0.8, t1)
+    P.put(x, plop(50.0, 128.0, 0.9, 0.2), t1 + 0.05)
+    P.put(x, settle(0.4), t1 + 0.22)
+    return dict(x=x, throw=0.25)
+
+
+def let_release(n, t, t1):
+    """The field lets it go: the hum that caught the drop at the start takes up its weight here too, tightening as the neck thins, its pitch climbing to the pinch; then it gives way and swoops down into the fall, the one long line, with only a small wet part in it. It's the catch turned round."""
+    x = neck(n, 0.0, t1, 0.1) + pinch(n, t1) * 0.3
+    P.put(x, plink(130.0, 520.0, 0.06, 0.6), t1)
+    P.put(x, bare_blow(3.0, 18, 70, 0.04, 0.16) * 0.7, t1)
+    pre = NOTE * 1.5 * (1 + 2.0 * ss(0.05, t1, t) ** 1.8)
+    return dict(x=x, throw=2.0, tau=0.13, pre=pre, pre_lv=ss(0.02, t1, t) ** 1.5 * 10 ** (1.0 / 20))
+
+
+PINCHES = {"thrown": let_thrown, "thread": let_thread, "cork": let_cork, "roof": let_roof, "tear": let_tear, "release": let_release}
+PINCH_PICK = "thread"                                # which of `PINCHES` is the start of the drop's fall
+
+
 def drip_hum():
     """`wobble`'s field goes down with it. Whatever held the drop up there is thrown by the pinch, as it was at the catch, and it doesn't stop: it follows the drop down, a thick heavy hum sinking a fifth and swinging a little with the
-    drop's wobble, its top opening as it comes, and it arrives on the note the touch is on, so the note that opens at the touch is the same one."""
+    drop's wobble, its top opening as it comes, and it arrives on the note the touch is on, so the note that opens at the touch is the same one. The way it starts is `PINCHES`. It's far up at first, as `descent` is: nearly one sound, most of it what the tube gives back, its lows only as it nears."""
     n, t, st, u, c = drip_frame()
     d = n / SR
     t1 = BOIL["pinch"] - BOIL["neck"]
     a_ = np.maximum(t - t1, 0)
     swing = np.exp(-a_ / 1.6) * np.sin(2 * np.pi * WOB * a_)
-    f = NOTE * 1.5 ** (1 - u ** 0.8) * (1 + 0.9 * np.exp(-a_ / 0.05) * (t >= t1) + 0.022 * swing)
+    go = PINCHES[PINCH_PICK](n, t, t1)
+    f = NOTE * 1.5 ** (1 - u ** 0.8) * (1 + go.get("throw", 0.9) * np.exp(-a_ / go.get("tau", 0.05)) * (t >= t1) + 0.022 * swing)
+    if "pre" in go:
+        f = np.where(t < t1, go["pre"], f)
     a, b = field(d, f, 700.0 + 2400.0 * c ** 1.3)
-    a, b = (bp(y, None, 170.0) * 0.4 + (y - bp(y, None, 170.0)) * 1.7 for y in (a, b))     # (its weight is the boil's already: this is the hum's mids)
-    lv = ss(t1 - 0.01, t1 + 0.05, t) * 10 ** (np.interp(t - t1, (0.0, 0.14, 0.5, d - t1), (-2.0, -5.0, -13.0, 0.0)) / 20) * (1 + 0.16 * swing)
-    x = neck(n, 0.0, t1, 0.2) + pinch(n, t1) * 0.3
-    p = np.zeros(n)
-    P.put(p, plink(130.0, 430.0, 0.11), t1)
-    P.put(x, bare_blow(3.4, 20, 95, 0.03, 0.12) * 0.5, t1)
+    low = 0.14 + 0.26 * c                                       # (its weight is the boil's already, and it's a long way off: this is the hum's mids)
+    a, b = (bp(y, None, 170.0) * low + (y - bp(y, None, 170.0)) * 1.7 for y in (a, b))
+    lv = ss(t1 - 0.01, t1 + 0.05, t) * 10 ** (np.interp(t - t1, (0.0, 0.14, 0.5, d - t1), (-2.0, -6.0, -19.0, 0.0)) / 20) * (1 + 0.16 * swing)
+    if "pre_lv" in go:
+        lv = np.where(t < t1, go["pre_lv"], lv)
     sheen = np.zeros(n)
     for k in range(3, 44, 2):
         sheen += P.glide_band((n + 0.5) / SR, np.maximum(f * k, 60.0), 0.012)
     sheen = T.unit(bp(sheen, 260, 3600))
     e = ss(t1, t1 + 0.04, t) * (np.exp(-a_ / 0.26) * 0.5 + (0.12 + 0.6 * c ** 1.4)) * boiled(n, 0.4, 1.8, 3.0)
-    q, r_ = wide(sheen, np.roll(sheen, 613), 0.5)
-    L, R = far(x + p * 0.5 + a * lv * 0.8 + q * e * 0.5, x + p * 0.5 + b * lv * 0.8 + r_ * e * 0.5, c, 0.4)
+    q, r_ = wide(sheen, np.roll(sheen, 613), 0.9)
+    k = 0.5 + 0.5 * ss(0.55, 1.0, c)                           # (the two ears alike till it's near: it's one thing up there)
+    a, b = a * k + (a + b) * 0.5 * (1 - k), b * k + (a + b) * 0.5 * (1 - k)
+    x = go["x"]
+    L, R = far(x + a * lv * 0.8 + q * e * 0.5, x + b * lv * 0.8 + r_ * e * 0.5, c, 0.4)
+    m, s_ = (L + R) / 2, (L - R) / 2
+    L, R = m + s_ * (0.25 + 0.75 * c ** 2), m - s_ * (0.25 + 0.75 * c ** 2)
     drip_out(L, R, -13.5)
 
 
@@ -2375,12 +2832,13 @@ def landings(n, table, sizes):
 def sink():
     """The crater going in, on the picture's clock, panel by panel (`panels`): 0.2 s of nothing moving, then each kite shears off its
     neighbours, ring after ring from the middle out to 2.4 s; while they fall the walls of the pit grind and the air goes down
-    after them; from 2.15 s they land (`landings`), each ring one great deep blow, the last of the deep edge of ring 3 at 4.3; what they threw rattles down
+    after them; from 2.1 s they land (`landings`), each ring one great deep blow, the last of the deep edge of ring 3 at 4.2; what they threw rattles down
     after them; it all rolls off round the land. A staged collapse, not a roar with a fade: every event here is a panel."""
     d = 9.0
     n = n_of(d)
     t = times(n)
     table = panels()
+    each = (32 / len(table)) ** 0.5                            # (the pattern was 32 panels when this was set: as many again by area, so each has less to say and the whole stays where it was)
     falling = np.zeros(n)                                      # (how much land is in the air, by the panels' areas)
     landing = np.zeros(n)                                      # (how hard the land is coming down: what the debris follows)
     SIZE = (0.72, 0.86, 1.0, 1.22)                             # (ring 0's a slab, ring 3's a county: but the small ones land nearer the ear of it)
@@ -2399,8 +2857,8 @@ def sink():
     for ring, late, first, last in table:
         s = SIZE[ring]
         # (it lets go: a shear through the rock along the crease, a dull break with its weight under it, no bright edge)
-        y = bp(rock_crack(1.4, 0.8 + 0.7 * s, 0.6), None, 1300) * 0.3 * s * rng().uniform(0.75, 1.1)
-        P.put(y, bare_blow(1.2 + s, 28, 120, 0.02, 0.09) * 0.32 * s, 0.0)
+        y = bp(rock_crack(1.4, 0.8 + 0.7 * s, 0.6), None, 1300) * 0.3 * s * rng().uniform(0.75, 1.1) * each
+        P.put(y, bare_blow(1.2 + s, 28, 120, 0.02, 0.09) * 0.32 * s * each, 0.0)
         P.put(x, y, max(late - 0.02, 0.0))
         # (it lands: a contact, the ground taking it, the rock of it breaking, over however long its span takes to come down)
         span = last - first
@@ -2417,7 +2875,7 @@ def sink():
             q0 = times(k)
             y = y + rocks(k / SR, 160.0 * ss(0.0, 0.2, q0) * (1 - ss(c - 0.1, c + 0.05, q0)) + 1e-3, 90, 900, (0.5, 1.0, 1.8), (0.5, 0.36, 0.14)) * 0.12 + \
                 bn(k, 26, 140) * ss(0.0, c, q0) * (1 - ss(c, c + 0.25, q0)) * 0.14
-        P.put(was, y * g * 0.8, first)
+        P.put(was, y * g * 0.8 * each, first)
         # (the debris it threw: starting a moment after it lands, a thing of the same size as the panel)
         landing += s * (1 - np.exp(-np.maximum(t - last - 0.3, 0) / 0.12)) * np.exp(-np.maximum(t - last - 0.3, 0) / (0.8 + 0.4 * s)) * (t > last + 0.3)
     landing /= landing.max()
@@ -2437,7 +2895,7 @@ def sink():
     rng().bit_generator.state = st
     Lr, Rr = verb(L + hl, R + hr, 0.16, length=3.0, darken=(1300, 200), decay=0.9)
     rl, rr = rolls(n, 2.8, 22, 5.2)
-    g = T.loudest(x + was) * 0.16 / (T.loudest((rl + rr) / 2) + 1e-9)
+    g = T.loudest(x + was) * 0.16 / each / (T.loudest((rl + rr) / 2) + 1e-9)
     L, R = Lr + rl * g, Rr + rr * g
     ol, orr = ol + rl * g, orr + rr * g
     L, R = lows_heard(L, 70, 420, -4.0), lows_heard(R, 70, 420, -4.0)
@@ -2509,11 +2967,13 @@ def comedown():
     out("comedown", L, R, -19.0, tail=1.2)
 
 
-BUILD = {"descent": descent, "wobble": wobble, "air": air, "meld": meld, "ripple": ripple, "score": score, "unravel": unravel,
+BUILD = {"descent": descent, "wobble": wobble, "air": air, "meld": meld, "ripple": ripple, "score": score,
          "groan": groan, "boil": boil, "ding": ding, "reverse": reverse, "bang1": bang1, "bang2": bang2,
          "bang3": bang3, "bang4": bang4, "fall": fall, "slam": slam, "comedown": comedown, "letgo": letgo, "sink": sink, "underfoot": underfoot, "drip": drip}
-GONE = ("foldown", "stop", "tear", "creak", "crush", "bloom", "thud", "drone", "bounce1", "bounce2", "bounce3", "bounce4")
-SEEDS = {name: 171000 + 7 * k for k, name in enumerate(BUILD)}          # (a new stem goes on the end, so no other's take changes)
+GONE = ("unravel", "foldown", "stop", "tear", "creak", "crush", "bloom", "thud", "drone", "bounce1", "bounce2", "bounce3", "bounce4")
+SEED_ORDER = list(BUILD)
+SEED_ORDER.insert(SEED_ORDER.index("groan"), "unravel")                 # (gone, but it held this place: every stem after it keeps its take)
+SEEDS = {name: 171000 + 7 * k for k, name in enumerate(SEED_ORDER)}     # (a new stem goes on the end, so no other's take changes)
 
 
 # ==============================================================================================================  listening
@@ -2570,10 +3030,10 @@ def full_mix():
     """The whole strike's timeline, as stereo files. The game sums each file to mono."""
     clips = {nm: decoded(nm) for nm in BUILD}
     end = max(max(at + len(clips[f]) / SR / p for at, f, _, p in EVENTS) + 0.5, LEN)
-    mix = np.zeros((n_of(end), 2))
+    mix = np.zeros((n_of(end + PRE), 2))                      # (its first sample is -PRE on the strike's clock)
     for at, f, vol, p in EVENTS:
         c = N.pitched(clips[f], p) * vol
-        k = n_of(at)
+        k = n_of(at + PRE)
         mix[k:k + len(c)] += c
     return mix
 
@@ -2617,46 +3077,74 @@ def listen(out_dir):
     print(f"\nthe mix: peak {db(np.abs(mix).max()):.2f} dBFS stereo, summed {db(np.abs(mono).max()):.2f} dBFS, {lufs:.1f} LUFS, {tp:.1f} dBTP")
     print(f"{'section':10s} {'from':>6s} {'to':>6s} {'stereo':>7s} {'peak':>7s} {'rms':>7s} {'loudest':>8s}")
     for nm, a, b in SECTIONS:
-        s = mono[n_of(a):n_of(b)]
+        s = mono[n_of(a + PRE):n_of(b + PRE)]
         s = s if len(s) else np.zeros(1)
-        print(f"{nm:10s} {a:6.1f} {b:6.1f} {db(np.abs(mix[n_of(a):n_of(b)]).max()):7.1f} {db(np.abs(s).max()):7.1f} {db(np.sqrt(np.mean(s ** 2))):7.1f} {db(T.loudest(s)) if len(s) > n_of(0.5) else float('nan'):8.1f}")
+        print(f"{nm:10s} {a:6.1f} {b:6.1f} {db(np.abs(mix[n_of(a + PRE):n_of(b + PRE)]).max()):7.1f} {db(np.abs(s).max()):7.1f} {db(np.sqrt(np.mean(s ** 2))):7.1f} {db(T.loudest(s)) if len(s) > n_of(0.5) else float('nan'):8.1f}")
 
     print("\nthe hard edges:")
-    for nm, want in (("descent", STOP), ("reverse", FLAT - REL)):
+    for nm, want in (("descent", PRE + BRAKE_OFF), ("reverse", FLAT - REL)):
         x = decoded(nm)
         print(f"  {nm:8s} {len(x)} samples ({len(x) / SR:.4f} s, wanted {want}); last 10 ms {db(np.sqrt(np.mean(x[-n_of(0.01):] ** 2))):.1f} dB, the 50 ms before {db(np.sqrt(np.mean(x[-n_of(0.06):-n_of(0.01)] ** 2))):.1f} dB")
-    for a, b, what in ((STOP, STOP + 0.05, "after the stop"), (39.6, DING, "before the ding")):
-        print(f"  {what}: {a:.2f} to {b:.2f} s peak {db(np.abs(mix[n_of(a):n_of(b)]).max()):.1f} dB")
+    for a, b, what in ((BRAKE_ON, HANG, "the stop"), (39.6, DING, "before the ding")):
+        print(f"  {what}: {a:.2f} to {b:.2f} s peak {db(np.abs(mix[n_of(a + PRE):n_of(b + PRE)]).max()):.1f} dB")
 
 
-def context(d, tag, items, a, b):
-    """`items` ((at, stereo clip), ...) on the strike's clock, `a` to `b` s of it as tag.mp3 and tag.png in `d`. Its sum, for the levels."""
-    mix = np.zeros((n_of(b + 4.0), 2))
+def context(d, tag, items, a, b, pre=0.0, as_game=False):
+    """`items` ((at, stereo clip), ...) on the strike's clock, `a` to `b` s of it as tag.mp3 and tag.png in `d`. Its sum, for the levels, its first sample `-pre` on the clock. `as_game`: the clip summed to mono, as the game does, and its WAV kept."""
+    mix = np.zeros((n_of(b + pre + 4.0), 2))
     for at, c in items:
-        i = n_of(at)
+        i = n_of(at + pre)
         mix[i:i + len(c)] += c[:len(mix) - i]
-    w = mix[n_of(a):n_of(b)].copy()
+    w = mix[n_of(a + pre):n_of(b + pre)].copy()
     w[-n_of(0.15):] *= np.linspace(1, 0, n_of(0.15))[:, None]
-    mp3(w, d / f"{tag}.mp3").unlink()
+    wav = mp3(np.repeat(w.mean(axis=1, keepdims=True), 2, axis=1) if as_game else w, d / f"{tag}.mp3")
+    if not as_game:
+        wav.unlink()
     picture(w.mean(axis=1), d / f"{tag}.png", 900, 300, 120)
     return mix.mean(axis=1)
+
+
+def take_of(d, name, table, k):
+    """Take `k` of `table` as the stem `name`, built aside in `d`: decoded."""
+    real = soundlib.OUT
+    soundlib.init(d / "stems" / k)
+    with PB.seeded(SEEDS[name]):
+        _kernels.clear()
+        table[k]()
+    c = decoded(name)
+    soundlib.OUT = real
+    return c
+
+
+def stop_levels(m, c0=2.5, c1=6.0, w=0.1):
+    """The sum `m` (first sample at -PRE) a `w` s RMS at a time, dB: (times, all of it, over 150 Hz, what a speaker's left with)."""
+    hi = bp(m, 150.0, None, 2)
+    ts = np.arange(c0, c1, w)
+    rms = lambda x: np.array([db(np.sqrt(np.mean(x[n_of(c + PRE):n_of(c + PRE + w)] ** 2))) for c in ts])
+    return ts, rms(m), rms(hi)
+
+
+def stops(out_dir):
+    """Every stop in what's round it, the 12 s from -4 to 8 on the clock: the fall, `air`, `letgo`, `meld` and `ripple` as they stand. MP3s, pictures, and how each holds its level over the brake."""
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    around = [(-PRE, decoded("descent")), (STOP + AIR_LATE, decoded("air")), (HANG, decoded("letgo")), (TOUCH - MELD_LEAD, decoded("meld")), (RIPPLE, decoded("ripple"))]
+    for k in STOPS:
+        c = take_of(d, "wobble", STOPS, k)
+        m = context(d, f"stop_{k}", (*around, (STOP - STOP_LEAD, c)), -PRE, 8.0, PRE, as_game=True)
+        ts, a, h = stop_levels(m)
+        w = (ts >= BRAKE_ON - 0.2) & (ts < HANG + 0.2)
+        print(f"{k:8s} peak {db(np.abs(m).max()):5.1f}  loudest stem {db(T.loudest(c.mean(axis=1))):5.1f}  lowest over the stop {a[w].min():5.1f} ({h[w].min():5.1f} over 150 Hz)")
+        print("         all " + " ".join(f"{v:4.0f}" for v in a[::2]))
+        print("        >150 " + " ".join(f"{v:4.0f}" for v in h[::2]))
 
 
 def takes(out_dir):
     """Every way of the drop in what leads into it and out of it, 34.5 to 41.7 s, and every way of the touch, 37.2 to 43.3 s, on the pick of the other. MP3s, pictures and the levels."""
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
-    real = soundlib.OUT
     boil_, touch, back, drop = decoded("boil"), decoded("ding"), decoded("reverse"), decoded("drip")
-
-    def stem(name, table, k):
-        soundlib.init(d / "stems" / k)
-        with PB.seeded(SEEDS[name]):
-            _kernels.clear()
-            table[k]()
-        c = decoded(name)
-        soundlib.OUT = real
-        return c
+    stem = lambda name, table, k: take_of(d, name, table, k)
 
     for k in DRIPS:
         c = stem("drip", DRIPS, k)
@@ -2676,6 +3164,7 @@ def main():
     ap.add_argument("--out", default=str(ROOT / "orbital-sounds"))
     ap.add_argument("--listen", help="also write MP3s, the whole strike's mix and the level checks here")
     ap.add_argument("--takes", help="also write every way of the drop and of the touch here, in its context (after the stems)")
+    ap.add_argument("--stops", help="also write every way of the stop here, in its context, -4 to 8 on the clock (after the stems)")
     a = ap.parse_args()
     soundlib.init(a.out)
     for name in a.only if a.only is not None else BUILD:
@@ -2694,6 +3183,8 @@ def main():
         listen(a.listen)
     if a.takes:
         takes(a.takes)
+    if a.stops:
+        stops(a.stops)
 
 
 if __name__ == "__main__":

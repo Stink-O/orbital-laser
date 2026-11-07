@@ -2035,15 +2035,6 @@
     ],
     "subtitle": "subtitles.orbital.fold.air"
   },
-  "fold.unravel": {
-    "sounds": [
-      {
-        "name": "orbital:fold/unravel",
-        "stream": true
-      }
-    ],
-    "subtitle": "subtitles.orbital.fold.unravel"
-  },
   "fold.ding": {
     "sounds": [
       {
