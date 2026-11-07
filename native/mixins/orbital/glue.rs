@@ -23,6 +23,8 @@ const VERSION: &str = "0.5.10";
 const CONSOLE_LEVEL: u8 = 4;
 const WORK: &str = "orbital:work";
 const ANSWER: &str = "orbital:answer";
+/// `smp.rs`'s wire format: one shared strike per dimension, relayed through the server half.
+const SMP: &str = "orbital:smp1";
 /// A message's bytes at most (the channel's 30 000, less room for its header).
 const MESSAGE: usize = 28_000;
 /// Columns a read or a height query asks in one message (8 bytes each); the answers are split by their own size.
@@ -62,6 +64,9 @@ struct Client {
     /// (`client_level_unload`): the mod's outputs then stay on the window.
     level: Option<String>,
     leaving: bool,
+    /// Sent the server half a `Packet::Hello` on `SMP` since the level was (re)loaded: it
+    /// answers with a `Start` of whatever strike is already running there, for a late joiner.
+    smp_hello: bool,
 }
 
 /// A column read coming back in pieces.
@@ -302,6 +307,21 @@ fn show_output(game: &mut Game<'_>) {
     let out_opened = out.iter().any(|o| *o == host::Output::Screen { open: true });
     let leaving = CLIENT.with(|c| c.borrow().leaving);
     for output in out {
+        // an observer plays the same seeded sound/visual timeline as the firing client, but
+        // must never touch the world itself (smp.rs's doc comment): drop the block edits and
+        // the carry/push that would come with them, keep only the sounds that go with it
+        if orbital_laser::smp::observer() {
+            match &output {
+                host::Output::Commands { commands } => {
+                    for event in commands.iter().filter_map(|c| c.strip_prefix("stopsound @s * ")) {
+                        game.audio.stop_sounds(Some(event.trim()), None);
+                    }
+                    continue;
+                }
+                host::Output::Edit { .. } | host::Output::Push { .. } | host::Output::Carry { .. } => continue,
+                _ => {}
+            }
+        }
         match output {
             host::Output::Sound { event, at, volume, pitch } => {
                 // (as the fork's `show_mod_output`: at a point, or with none, relative to the listener without
@@ -585,6 +605,20 @@ fn send_columns(tag: u32, columns: &[(i32, i32)], h: u8, below: u32, above: u32)
 /// The client half: the work waiting goes to the server half, as much as the channel takes this tick, the requests
 /// packed into as few messages as they fit (a message, kind 9: requests, each its length then its bytes).
 fn flush_work(game: &mut Game<'_>) {
+    // a Hello once a level: catches up on a strike already running there (relay_strike's
+    // answer to Hello), for whoever didn't see its Start
+    if !CLIENT.with(|c| c.borrow().smp_hello) {
+        if game.native_net_send_to_server(SMP, b"\"Hello\"").is_ok() {
+            CLIENT.with(|c| c.borrow_mut().smp_hello = true);
+        }
+    }
+    for packet in orbital_laser::smp::outgoing() {
+        if let Ok(data) = serde_json::to_vec(&packet) {
+            if let Err(error) = game.native_net_send_to_server(SMP, &data) {
+                log::warn!("Orbital sync: {error}");
+            }
+        }
+    }
     CLIENT.with(|c| {
         let mut c = c.borrow_mut();
         while !c.out.is_empty() {
@@ -612,6 +646,10 @@ fn flush_work(game: &mut Game<'_>) {
 
 /// The `net_from_server` hook: answers from the server half.
 pub(super) fn from_server(game: &mut Game<'_>, channel: &str, data: &[u8]) {
+    if channel == SMP && running(game) {
+        orbital_laser::smp::receive(data);
+        return;
+    }
     if channel != ANSWER || !game.native_window() {
         return;
     }
@@ -717,6 +755,10 @@ struct Server {
 
 /// The `net_from_client` hook: a player's request, kept for the tick of their level.
 pub(super) fn from_client(game: &mut Game<'_>, player: u128, channel: &str, data: &[u8]) {
+    if channel == SMP && !game.native_window() && game.native_on(ID) {
+        relay_strike(game, player, data);
+        return;
+    }
     if channel != WORK || game.native_window() || !game.native_on(ID) {
         return;
     }
@@ -1049,6 +1091,23 @@ fn run_command(game: &mut Game<'_>, line: &str) {
         Ok(None) => {}
         Err(t) => chat(game, Text::literal(t).with_color(text::RED)),
     }
+    // An observer may still request their own Designator. Keep their strike
+    // playback read-only, allowing only the explicit local give's output.
+    if orbital_laser::smp::observer() && args.split_whitespace().next() == Some("give") {
+        let commands = host::with(|s| {
+            let mut own = Vec::new();
+            s.out.retain(|o| {
+                if let host::Output::Commands { commands } = o {
+                    own.extend(commands.iter().cloned());
+                    false
+                } else {
+                    true
+                }
+            });
+            own
+        });
+        send_commands(&commands);
+    }
     show_output(game);
 }
 
@@ -1279,6 +1338,7 @@ pub(super) fn client_level_unload(game: &mut Game<'_>, dimension: &str) {
             c.out.clear();
             c.surface.clear();
             c.columns.clear();
+            c.smp_hello = false;
         });
         horizon_client::orbital_carry::reset();
     }
@@ -1336,4 +1396,71 @@ fn warn_no_content(game: &mut Game<'_>) {
     }
     WARNED.with(|w| w.set(true));
     chat(game, Text::literal(NO_CONTENT).with_color(text::RED));
+}
+
+// One shared strike per dimension. Only OP4 may start/stop it; late joiners
+// receive its seed/target and elapsed time. Visual observers never edit blocks.
+fn relay_strike(game: &mut Game<'_>, player: u128, data: &[u8]) {
+    use orbital_laser::smp::{Launch, Packet};
+    use std::time::Instant;
+    type Active = BTreeMap<String, (u128, Launch, Instant)>;
+    static ACTIVE: std::sync::OnceLock<Mutex<Active>> = std::sync::OnceLock::new();
+    let Some(packet) = orbital_laser::smp::decode(data) else { return };
+    let players = game.native_server_players();
+    let Some(sender) = players.iter().find(|p| p.uuid == player) else { return };
+    let dimension = sender.dimension.clone();
+    let permission = sender.permission;
+    let mut active = ACTIVE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    active.retain(|_, (_, launch, start)| start.elapsed().as_secs_f32() + launch.elapsed < launch.duration());
+    let send = |game: &mut Game<'_>, id, packet: &Packet| {
+        if let Ok(data) = serde_json::to_vec(packet) {
+            let _ = game.native_net_send_to_player(id, SMP, &data);
+        }
+    };
+    match packet {
+        Packet::Hello => {
+            if let Some((owner, launch, start)) = active.get(&dimension) {
+                if *owner != player {
+                    let mut launch = launch.clone();
+                    launch.elapsed += start.elapsed().as_secs_f32();
+                    send(game, player, &Packet::Start(launch));
+                }
+            }
+        }
+        Packet::Start(mut launch) if permission >= CONSOLE_LEVEL => {
+            if active.get(&dimension).is_some_and(|(owner, _, _)| *owner != player) {
+                send(game, player, &Packet::Denied);
+                return;
+            }
+            launch.dimension = dimension.clone();
+            active.insert(dimension.clone(), (player, launch.clone(), Instant::now()));
+            for recipient in &players {
+                if recipient.uuid != player && recipient.dimension == dimension {
+                    send(game, recipient.uuid, &Packet::Start(launch.clone()));
+                }
+            }
+            log::info!("Orbital SMP: strike {} from {} in {}", launch.laser, uuid(player), dimension);
+        }
+        Packet::Stop if active.get(&dimension).is_some_and(|(owner, _, _)| *owner == player) => {
+            active.remove(&dimension);
+            for recipient in &players {
+                if recipient.uuid != player && recipient.dimension == dimension {
+                    send(game, recipient.uuid, &Packet::Stop);
+                }
+            }
+        }
+        // a heartbeat from whoever owns the active strike: refreshes the elapsed a late
+        // Hello catches up to, and passed straight on so the others' drift correction sees it
+        Packet::Sync(mut launch) if active.get(&dimension).is_some_and(|(owner, _, _)| *owner == player) => {
+            launch.dimension = dimension.clone();
+            active.insert(dimension.clone(), (player, launch.clone(), Instant::now()));
+            for recipient in &players {
+                if recipient.uuid != player && recipient.dimension == dimension {
+                    send(game, recipient.uuid, &Packet::Sync(launch.clone()));
+                }
+            }
+        }
+        Packet::Start(_) => send(game, player, &Packet::Denied),
+        _ => {}
+    }
 }
