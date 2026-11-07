@@ -2,13 +2,12 @@
 // this file and volcano_mount.wgsl. Validate with tools/check-shader.sh.
 
 // ---- laser 14: the supervolcano ----
-// A hairline beam, the tremor, the land cracking in a ring and steam, then one soft volume: a density falling off through a
-// surface bulged by lumps on lumps (`vc_sdf`, sphere-traced only to skip empty air), shaded by looks towards the light. The
-// blast (`vc_col`) and the shock over it (`vc_shells`, `vc_dust`), a spray of rock (`vc_spray`); fire low in the
-// trunk (`vc_heat`); lava bombs on ropes of smoke (`vc_bombs_smoke`); the umbrella across the whole sky, lightning through
-// it (`vc_umb`, `vc_flash`, `vc_bolts`); the sky dark at noon (`vc_dim`). The column falls back (`VC_COLLAPSE`), feeding a
-// wall of ash over the land (`vc_flow`) that engulfs the player and lifts into a ceiling; then a dim world, ending on a
-// blood-red sun as the ash thins, all of it gone by VC_LEN.
+// A hairline beam, the tremor, the ring cracking and steam, then one soft volume: a density falling off through a surface
+// bulged by lumps on lumps (`vc_sdf`, sphere-traced only over empty air), lit by looks towards the light. The blast
+// (`vc_col`), the shock (`vc_shells`, `vc_dust`), rock (`vc_spray`); fire in the trunk (`vc_heat`); bombs on ropes of
+// smoke (`vc_bombs_smoke`); the umbrella over the sky, lightning in it (`vc_umb`, `vc_flash`, `vc_bolts`); noon gone dark
+// (`vc_dim`). The column falls back (`VC_COLLAPSE`) into a wall of ash (`vc_flow`) that engulfs the player and lifts into
+// a ceiling; then a dim world and a blood-red sun as the ash thins, gone by VC_LEN.
 // strike/volcano.rs keeps its VC_* in step with these, and gives the table: the bombs, the land's height.
 const VC_LEN: f32 = 88.0;
 const VC_HIT: f32 = 2.0;           // the beam hits and cuts out
@@ -110,6 +109,7 @@ struct VcS {
     dRb: f32,    // how fast the blast is spreading
     Ru: f32,     // the umbrella's radius
     dRu: f32,    // how fast it is spreading
+    hu: f32,     // its middle: spreading out of the head under its top, rising to VC_HU
     rf: f32,     // the wall of ash's radius
     rfm: f32,    // and past it nothing
     dRf: f32,    // how fast it comes on
@@ -149,6 +149,7 @@ fn vc_set_state(time: f32) {
     let u = max(time - VC_SPREAD, 0.0);
     s.Ru = 620.0 * smoothstep(0.0, 3.0, u) + 130.0 * pow(u, 1.28);
     s.dRu = 166.0 * pow(max(u, 0.01), 0.28);
+    s.hu = VC_HU - 420.0 * (1.0 - smoothstep(VC_SPREAD - 1.0, VC_SPREAD + 7.0, time));
     s.rf = vc_front(max(s.c, 0.0));
     s.dRf = 25.0 + 35.0 * exp(-max(s.c, 0.0) / 14.0);
     s.rfm = s.rf + 230.0;
@@ -223,8 +224,11 @@ fn vc_col(q: vec3<f32>, rho: f32, ang: f32, land: f32) -> f32 {
         let lobe = 0.17 * sin(3.0 * ang + hy * 0.0016 + 1.0) + 0.11 * sin(5.0 * ang - hy * 0.0021 + 2.2);
         let Rs0 = (540.0 + 200.0 * smoothstep(820.0, 1500.0, hy) * smoothstep(1000.0, 1500.0, H)) * (1.0 + lobe);
         let hd = (hy - (H - 0.72 * vs.Rt)) / (0.62 * vs.Rt);
-        let Rs = (Rs0 + 0.2 * vs.Rt * exp(-hd * hd) * (1.0 - smoothstep(1200.0, 1600.0, H))) * (1.0 - 0.3 * smoothstep(0.0, 11.0, c));
-        let dome = 0.5 * vs.Rt * min(rho * rho / (vs.Rt * vs.Rt), 1.6);
+        // (born narrow out of the blast's top, widening as it climbs: never a wide skirt at once)
+        let gw = 0.3 + 0.7 * smoothstep(4.0, 10.0, vs.a);
+        let Rs = (Rs0 + 0.2 * vs.Rt * exp(-hd * hd) * (1.0 - smoothstep(1200.0, 1600.0, H))) * (1.0 - 0.3 * smoothstep(0.0, 11.0, c)) * gw;
+        let Rd = vs.Rt * gw;
+        let dome = 0.5 * Rd * min(rho * rho / (Rd * Rd), 1.6);
         var top = hy - (min(H, vs.Hb + 60.0) - dome);
         if (c > 0.0) {
             // (the top of what is left, rounded)
@@ -260,10 +264,12 @@ fn vc_umb(q: vec3<f32>, r0: f32) -> f32 {
     let prof = sqrt(e * (2.0 - e));
     let core = exp(-r * r / (1200.0 * 1200.0));
     let nose = exp(-pow((vs.Ru - r - 300.0) / 280.0, 2.0));
-    let th = (210.0 + 240.0 * core + 120.0 * nose) * prof;
-    let hm = VC_HU + 30.0 * (1.0 - prof);
-    let bot = hm - 0.9 * th - 230.0 * exp(-r * r / (800.0 * 800.0));
-    let tp = hm + 2.2 * vc_ripple(r) + 0.9 * th + 140.0 * core;
+    // (thin while young: it spreads out of the head, under its top, not over it)
+    let g = saturate(vs.Ru / 1300.0);
+    let th = (210.0 + 240.0 * core + 120.0 * nose) * prof * g;
+    let hm = vs.hu + 30.0 * (1.0 - prof);
+    let bot = hm - 0.9 * th - 230.0 * exp(-r * r / (800.0 * 800.0)) * g;
+    let tp = hm + 2.2 * vc_ripple(r) + 0.9 * th + 140.0 * core * g;
     return vc_smax(vc_smax(hy - tp, bot - hy, 60.0) * 0.8, (r - vs.Ru) * 0.8, 120.0);
 }
 // The wall of ash and what it leaves: over the land (`land`), behind its front; .x the distance, .y how far behind the
@@ -347,15 +353,15 @@ fn vc_base(q: vec3<f32>) -> VcB {
 fn vc_dist(q: vec3<f32>) -> f32 {
     return vc_base(q).d;
 }
-// How far the ray may go from here with none of the smooth bodies nearer than the lumps can reach: the umbrella's sheet
-// and the flows' layer are flat, so a ray at a low angle is carried straight to them, not crept up on.
+// How far the ray may go with no smooth body nearer than the lumps reach: the sheet and the flows' layer are flat, so a
+// low ray is carried straight to them, not crept up on.
 fn vc_skip(q: vec3<f32>, rd: vec3<f32>, b: ptr<function, VcB>) -> f32 {
     let dm = VC_DM + 10.0;
     var s = (*b).dc - dm;
     // (the umbrella's layer)
     if (vs.Ru > 10.0) {
-        let lo = VC_HU - 720.0 - dm;
-        let hi = VC_HU + 680.0 + dm;
+        let lo = vs.hu - 720.0 - dm;
+        let hi = vs.hu + 680.0 + dm;
         var su = 1.0e6;
         if (q.y < lo) {
             su = select(1.0e6, (lo - q.y) / rd.y, rd.y > 1.0e-4);
@@ -399,9 +405,9 @@ const VC_R1: mat3x3<f32> = mat3x3<f32>(-0.0014, 0.9977, -0.0674, -0.2224, -0.066
 const VC_R2: mat3x3<f32> = mat3x3<f32>(-0.6616, 0.1124, 0.7414, -0.4826, -0.8205, -0.3063, 0.5739, -0.5605, 0.5971);
 const VC_R3: mat3x3<f32> = mat3x3<f32>(-0.9891, -0.1223, 0.0816, 0.0968, -0.9594, -0.2651, 0.1107, -0.2543, 0.9608);
 
-// What carries the lumps at q: .xyz blocks a second, .w the rate at which all of it swells out from the axis (the blast and
-// the sheet spreading, applied as a stretch, which can't fold over on itself as a speed would). They are carried for a
-// while and let go (`vc_lump`), so this is only ever the flow here and now, and nothing winds up into streaks.
+// What carries the lumps at q: .xyz blocks a second, .w the rate all of it swells out from the axis (the blast and sheet
+// spreading, as a stretch, which can't fold over as a speed would). Carried a while and let go (`vc_lump`): only ever the
+// flow here and now, so nothing winds up into streaks.
 fn vc_vel(q: vec3<f32>, rho: f32, wc: f32, wu: f32, wf: f32) -> vec4<f32> {
     let hy = q.y;
     let r = max(rho, 1.0);
@@ -409,9 +415,10 @@ fn vc_vel(q: vec3<f32>, rho: f32, wc: f32, wu: f32, wf: f32) -> vec4<f32> {
     var vy = 0.0;
     var gr = 0.0;
     if (wc > 0.0) {
-        // (up the trunk, slowing under the head, which spreads out over its own top)
+        // (up the trunk, slowing under the head, which spreads over its own top; the blast's top its head till the trunk
+        // climbs out, let go slowly, or every lump jumps)
         var uy = 10.0 + 66.0 * (1.0 - smoothstep(900.0, 1750.0, hy));
-        let hh = saturate((hy - (vs.H - 460.0)) / 460.0);
+        let hh = max(saturate((hy - (vs.H - 460.0)) / 460.0), saturate((hy - (vs.Hd - 460.0)) / 460.0) * (1.0 - smoothstep(4.0, 14.0, vs.a)));
         var ur = 52.0 * hh * smoothstep(0.0, 0.8 * vs.Rt, r);
         // (and the blast rolling round a ring inside its edge: up its inside, out over its top, down its front, in under
         // it; carried out as it spreads)
@@ -510,7 +517,7 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     sy = 1.0 + 0.28 * wf;
     if (wu > 0.0) {
         let nose = exp(-max(vs.Ru - rho, 0.0) / 520.0);
-        let under = 1.0 - smoothstep(VC_HU - 260.0, VC_HU - 40.0, q.y);
+        let under = 1.0 - smoothstep(vs.hu - 260.0, vs.hu - 40.0, q.y);
         let core = exp(-rho * rho / (1800.0 * 1800.0));
         gain = gain + wu * (0.3 + 0.4 * core + 0.55 * nose + 0.85 * under);
         sy = sy + wu * mix(0.8, 0.25, under);
@@ -592,7 +599,7 @@ fn vc_sun_t(q: vec3<f32>, L: vec3<f32>) -> f32 {
     if (vs.cov <= 0.0 || L.y < 0.01) {
         return 1.0;
     }
-    let up = VC_HU - 120.0 - q.y;
+    let up = vs.hu - 120.0 - q.y;
     if (up < 0.0) {
         return 1.0;
     }
@@ -605,7 +612,7 @@ fn vc_sky_t(q: vec3<f32>) -> f32 {
     if (vs.cov <= 0.0) {
         return 1.0;
     }
-    let d = max(VC_HU - q.y, 60.0);
+    let d = max(vs.hu - q.y, 60.0);
     let r = length(q.xz);
     let l = max(vs.Ru - r, 0.0);
     return 1.0 - vs.cov * (1.0 - d / sqrt(d * d + l * l)) * 0.97;
@@ -625,18 +632,16 @@ fn vc_dim(c: vec3<f32>, q: vec3<f32>, L: vec3<f32>, sun_up: f32) -> vec3<f32> {
     return mix(c, vec3<f32>(g) * vec3<f32>(1.12, 0.92, 0.74), 0.9 * vs.cov * (1.0 - glow)) * k;
 }
 
-// ---- the lightning: the Hurricane's (hurricane.wgsl's hu_flashes), a slot a tenth of a second or so, a few alive at once.
-// When and where each flash is, and how strong (0x901 to 0x906, 0x908), vc_sound.rs's `flashes` copies for its thunder:
-// keep them in step. What a flash is, is by another hash (about one in three a bolt to the land, most where the player
-// can see them, a third a channel out of the cloud, the rest in the cloud alone); its strokes as the Hurricane's: the
-// cloud's a few flickers over a third of a second, the bolt's leader, return stroke and a re-stroke or two.
-// (a third of those in the cloud hardly show: a flash a slot at most would be five a second, the Hurricane's peak four)
+// ---- the lightning, as the Hurricane's hu_flashes: a slot of 0.13 s, a few alive at once. When, where and how strong
+// (0x901 to 0x906, 0x908) vc_sound.rs's `flashes` copies for its thunder: keep them in step. Another hash says what: a
+// third bolts to the land (most where the player sees them), a third channels out of the cloud, the rest in it (a third
+// of those faint); strokes as the Hurricane's: a cloud's flickers over 0.3 s, a bolt's leader, return stroke, re-strokes.
 const VC_BOLTS_AHEAD: f32 = 0.5;
 const VC_BOLTS_ASIDE: f32 = 0.13;
 const VC_CHANNELS: f32 = 0.76;     // (and up to here of the same hash, a channel out of the cloud)
 const VC_LEAD: f32 = 0.075;
 const VC_FL_END: f32 = 0.39;       // (three slots' worth: a flash is gone by the time its slot is dropped)
-// (this cloud's bolts run ten times the Hurricane's: a thicker column and channel, larger kinks, a wider pool on the land)
+// (ten times the Hurricane's bolts: thicker, kinkier, a wider pool on the land)
 const VC_BEAM_R: f32 = 13.0;
 const VC_CHAN_W: f32 = 4.0;
 const VC_KINK_LEN: f32 = 260.0;
@@ -666,9 +671,8 @@ fn vc_strokes(a: f32, n: u32) -> f32 {
     }
     return (s + 0.08 * exp(-a / 0.25)) * (1.0 - smoothstep(0.3, VC_FL_END, a));
 }
-// A bolt's own timing (hu_beam_k, hu_lead_k): a thin jagged leader flickering for the first ~75 ms, its shape new every two
-// frames; the return stroke, a thick column of light from the cloud to the land; from 0.17 s it draws up off the land
-// into the cloud, gone by 0.27 s; then a thin jagged re-stroke or two, a frame or two each.
+// A bolt's timing (hu_beam_k, hu_lead_k): a jagged leader flickering ~75 ms, new every two frames; the return stroke, drawn
+// up off the land from 0.17 s, gone by 0.27; then a re-stroke or two, a frame or two each.
 fn vc_flick(a: f32, n: u32, k: u32) -> f32 {
     return f32(pcg(n * 31u + k * 7u + u32(max(a, 0.0) * 30.0)) & 1023u) / 1023.0;
 }
@@ -1154,7 +1158,7 @@ fn vc_bolts(fl: VcFlashes, C: vec3<f32>, seed: u32, near: f32, ct: f32, ca: f32,
         if (f.kind == 2u && f.ring > 0.5) {
             // (along under the sheet, out of the cloud: its underside as vc_umb has it)
             let r = length(f.p.xz);
-            root.y = VC_HU - 0.9 * (210.0 + 240.0 * exp(-r * r / 1.44e6)) - 230.0 * exp(-r * r / 6.4e5) - 30.0;
+            root.y = vs.hu - 0.9 * (210.0 + 240.0 * exp(-r * r / 1.44e6)) - 230.0 * exp(-r * r / 6.4e5) - 30.0;
         }
         let a = f.a;
         let n = f.n;
@@ -1360,8 +1364,8 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     let gw = vc_flash_way(gl, l.seed);
     let gw2 = max(dot(gw, gw), 1.0);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
-    // (two runs of one loop with the look at the light between them: a GPU's group of pixels pays for a branch at every
-    // step any of them takes it, and lasts as long as its slowest, so skipping pixels saves nothing. Out here it looks once)
+    // (two runs of one loop, the look at the light between them: a GPU's group pays for a branch at any step any of its
+    // pixels takes it, and lasts as long as its slowest. Out here it looks once)
     var i = 0;
     var lq = vec3<f32>(0.0);
     var lb: VcB;
@@ -1464,14 +1468,15 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             // ---- its colour: charcoal and umber, pale steam over the blast, paler on the umbrella's top and the flows ---
             let wc = saturate(1.0 + (min(b.du, b.df) - b.dc) / 70.0);
             let wf = saturate(1.0 + (min(b.dc, b.du) - b.df) / 70.0);
-            let wu = saturate(1.0 + (min(b.dc, b.df) - b.du) / 70.0);
+            // (the sheet takes on its own colours as it spreads, out of the column's)
+            let wu = saturate(1.0 + (min(b.dc, b.df) - b.du) / 70.0) * smoothstep(VC_SPREAD + 1.0, VC_SPREAD + 6.0, time);
             let mott = vc_gn3(q * (1.0 / 380.0) + vec3<f32>(3.0, -0.03 * time, 1.0));
             var alb = mix(vec3<f32>(0.075, 0.066, 0.06), vec3<f32>(0.2, 0.172, 0.15), smoothstep(0.3, 0.72, mott));
             // (a head of steam and pale ash riding the top of what is rising, going dark as it climbs and mixes)
             let crown = smoothstep(0.55 * vs.H - 40.0, 0.92 * vs.H, hy) * (1.0 - smoothstep(9.0, 23.0, vs.a)) * smoothstep(0.34, 0.6, mott + 0.3 * sd.y);
-            alb = mix(alb, vec3<f32>(0.5, 0.48, 0.46), crown * wc * step(0.0, vs.a));
+            alb = mix(alb, vec3<f32>(0.5, 0.48, 0.46), crown * step(0.0, vs.a));
             // (the sheet's sunlit top pale, as ash spread thin; its underside as dark as the column)
-            alb = mix(alb, mix(vec3<f32>(0.115, 0.1, 0.09), vec3<f32>(0.25, 0.225, 0.2), smoothstep(VC_HU - 40.0, VC_HU + 180.0, hy)) * (0.8 + 0.4 * mott), wu);
+            alb = mix(alb, mix(vec3<f32>(0.115, 0.1, 0.09), vec3<f32>(0.25, 0.225, 0.2), smoothstep(vs.hu - 40.0, vs.hu + 180.0, hy)) * (0.8 + 0.4 * mott), wu);
             alb = mix(alb, vec3<f32>(0.115, 0.1, 0.092) * (0.72 + 0.56 * mott), wf);
             alb = mix(alb, vec3<f32>(0.75, 0.74, 0.72), steam);
             alb = alb * mix(1.0, 0.42, wc * (1.0 - smoothstep(0.35 * vs.H, 0.8 * vs.H, hy)) * (1.0 - crown));
@@ -1511,7 +1516,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
                 fire = fire + vec3<f32>(1.0, 0.2, 0.03) * ember * crease * 1.6 * wf;
             }
             // (the sheet's underside: the fire's dull red on it round the column, its pouches catching it)
-            if (wu > 0.0 && hy < VC_HU) {
+            if (wu > 0.0 && hy < vs.hu) {
                 let gl = exp(-b.rho / 1100.0) * (0.15 + 0.85 * sd.y * sd.y) * (1.0 - smoothstep(VC_COLLAPSE + 2.0, VC_LIFT, time));
                 fire = fire + vec3<f32>(0.2, 0.045, 0.01) * gl * smoothstep(0.0, 6.0, vs.a) * wu;
             }
@@ -1555,7 +1560,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             let o1 = saturate(0.5 - f1 / 40.0);
             let o2 = saturate(0.5 - f2 / 74.0);
             // (the sheet's underside, in its own shadow, needs no looks at the bulk: most of what fills the sky)
-            let under = b.du < min(b.dc, b.df) && hy < VC_HU && st0 < 0.3;
+            let under = b.du < min(b.dc, b.df) && hy < vs.hu && st0 < 0.3;
             var s3 = 0.0;
             var s4 = 0.0;
             if (!under) {
@@ -1587,8 +1592,8 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     }
     // (out of steps under the sheet, rising to it: it is met, so far off it is the haze. Else bands where steps ran out)
     let qe = rd * t - C;
-    if (vs.Ru > 10.0 && i >= 132 && o.tr > 0.05 && rd.y > 0.0 && qe.y < VC_HU - 190.0) {
-        let th = t + (VC_HU - 190.0 - qe.y) / rd.y;
+    if (vs.Ru > 10.0 && i >= 132 && o.tr > 0.05 && rd.y > 0.0 && qe.y < vs.hu - 190.0) {
+        let th = t + (vs.hu - 190.0 - qe.y) / rd.y;
         let k = o.tr * (1.0 - smoothstep(0.75 * vs.Ru, vs.Ru, length((rd * th - C).xz))) * (1.0 - smoothstep(0.7 * t_end, t_end, th));
         o.c = o.c + k * vc_haze(rd, l) * 0.75;
         tmid = tmid + k * th;
@@ -1944,7 +1949,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let tP = dot(P2, rd);
         let hp2 = rd * max(tP, 0.0) - C;
         var dr2 = length(vec2<f32>(length(hp2.xz) - VC_RING, hp2.y - 30.0));
-        // (or how far over the ring where it crosses it: the blaze all along it, not two blobs; its core hidden by the land)
+        // (or how far over the ring where it crosses it: a blaze all along it, its core hidden by the land)
         var dc = select(1.0e5, dr2, tP < scene_len + 60.0);
         let a2 = dot(rd.xz, rd.xz);
         let b2 = dot(rd.xz, C.xz);
