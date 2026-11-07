@@ -9,6 +9,7 @@ What each release of Orbital Laser added, newest first. The current release is i
   to the target, and it all comes back, ring by ring, each bang showing its ring's real damage as the old land crumbles inward. Then the crater falls in and fire runs out over the land.
   Three crease patterns: the wheel's FOLD row or `/orbital foldpattern a|b|c`.
 - The fork's release `orbital-mod-api-11` is needed: `render.set-warp` and `world_fragment`, `render.hold-world`, and `render.hold-world-within`.
+- The native version stays at 0.5.10, without the Fold: regular Horizon doesn't have those renderer changes yet. The release carries the same 0.5.10 `orbital.hnmod`.
 
 ## 0.5.10
 

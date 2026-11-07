@@ -45,6 +45,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > `orbital-mod-api-11` or newer), with a ready-built Linux download on its
 > [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
 > Edition 26.3: nothing from Minecraft is in this repository or the downloads.
+>
+> **The Fold is fork-only for now.** It needs changes to the game's renderer that regular Horizon doesn't have yet, so
+> the native version stays at 0.5.10, with fifteen lasers and no Fold. Its file is in each release until it catches up.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
@@ -59,7 +62,8 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 1. Install the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) and set up an instance from your own
    Minecraft Java Edition 26.3.
-2. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
+2. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest). This is
+   still 0.5.10, without the Fold.
 3. Close the game. On the launcher's Instances page press **Open folder**, and put `orbital.hnmod` in the
    **`horizon-native-mods`** folder (make it if it isn't there).
 4. On the launcher's **Mods** page, check Orbital Laser is on.
@@ -82,6 +86,9 @@ and how to remove it.
 A new laser, **The Fold**: a drop of liquid metal falls out of the sky and the land folds up round you like paper, into a tube
 with the whole world on its walls. Then it all comes back, ring by ring, broken, and the fire runs out over what is left.
 It's on the wheel's fourth page and `/orbital fold`. It needs the fork's release `orbital-mod-api-11`. See [The lasers](#the-lasers).
+
+**The Fold isn't in the native version yet.** It bends the world's real geometry, which takes changes to the game's renderer that
+regular Horizon doesn't have. The native `orbital.hnmod` in this release is the same 0.5.10 file as before, with fifteen lasers.
 
 For the native version there's a server safety fix: on a server or LAN host, a strike's world changes now need operator
 level 4, and a guest's `/orbital` no longer changes the host's game. It's also built on a newer Horizon, so land a strike
@@ -166,7 +173,7 @@ Sixteen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
-- **The Fold** (page four). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
+- **The Fold** (page four, fork version only for now). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
   seven seconds on a rope of smoke. Right over the target it brakes over a second, the fire and the smoke pouring on past it, hangs, and is let
   go. It goes into the land like a stone into water. Rings run out, sharpen into twelve creases and five rings, one pattern, and the sheet
   folds along them: the land lifts ring by ring, the horizon curls up over you and you are in a tube with the whole world on its walls. The

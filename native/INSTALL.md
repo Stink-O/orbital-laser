@@ -1,5 +1,7 @@
 # Orbital Laser 0.5.10 on native Horizon: install
 
+(The native version stays at 0.5.10: the Fold, in 0.5.11, needs changes to the renderer that regular Horizon doesn't have yet. This folder doesn't build from this commit: its last good source is the tag `v0.5.10`.)
+
 Orbital Laser 0.5.10 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
 the game. Its code runs with full access to your computer, like any native mod, so only install it if you trust it.
 
