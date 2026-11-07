@@ -1081,7 +1081,7 @@ def stop_subdrop():
 
 
 STOPS = {"piston": stop_piston, "servo": stop_servo, "swell": stop_swell, "hull": stop_hull, "subdrop": stop_subdrop}
-STOP_PICK = "servo"                                   # which of `STOPS` is the one in the game
+STOP_PICK = "swell"                                   # which of `STOPS` is the one in the game
 
 
 def wobble():
