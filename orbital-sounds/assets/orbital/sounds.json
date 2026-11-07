@@ -2151,5 +2151,14 @@
       }
     ],
     "subtitle": "subtitles.orbital.fold.drip"
+  },
+  "fold.erupt": {
+    "sounds": [
+      {
+        "name": "orbital:fold/erupt",
+        "stream": true
+      }
+    ],
+    "subtitle": "subtitles.orbital.fold.erupt"
   }
 }
