@@ -1098,8 +1098,8 @@ fn fw_late(w: CpW, i: i32) -> f32 {
     return 0.2 + 1.0 * f32(i) + 0.6 * fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
 }
 // The eruption's fire, run out over the land itself from the middle to the edges: where its front is `e` after FW_ERUPT (fold.wgsl's fde_front).
-const FW_FIRE_LEN: f32 = 3.6;
-fn fw_fire_front(e: f32) -> f32 { return 14.0 + 560.0 * (1.0 - exp(-e / 1.05)); }
+const FW_FIRE_LEN: f32 = 4.4;
+fn fw_fire_front(e: f32) -> f32 { return 14.0 + 560.0 * (1.0 - exp(-e / 1.5)); }
 fn fw_vn(p: vec2<f32>) -> f32 {
     let i = floor(p);
     let u = fract(p);
@@ -1641,16 +1641,18 @@ fn world_fragment(f: Fragment) -> Painted {
     if (fe > 0.0 && fe < FW_FIRE_LEN) {
         let n = 0.65 * fw_vn(Q.xz * 0.035 + vec2<f32>(fe * 0.7, -fe * 0.4)) + 0.35 * fw_vn(Q.xz * 0.11 - vec2<f32>(fe * 1.3));
         let x = (r - fw_fire_front(fe) + (n - 0.5) * 70.0) / (16.0 + 26.0 * fe);
-        let left = (1.0 - fw_ss(2.0, FW_FIRE_LEN, fe)) * fw_ss(560.0, 420.0, r);
+        let left = (1.0 - fw_ss(2.6, FW_FIRE_LEN, fe)) * fw_ss(560.0, 420.0, r);
         col = col * (1.0 - 0.6 * fw_ss(-0.2, -1.0, x) * fw_ss(-7.0, -2.5, x) * left);
         // (each block its own flicker, as the land is blocks)
         let lick = 0.65 + 0.35 * fw_hash(floor(f.home.xz + globals.warp[0].xz) * 0.37 + floor(fe * 12.0));
-        let heat = fw_ss(1.0, 0.1, x) * fw_ss(-2.4, -0.3, x) * left * lick;
+        // (patches of it, torn by the land's own noise: all of it at once is a white sheet)
+        let torn = 0.3 + 0.95 * fw_ss(0.28, 0.72, fw_vn(Q.xz * 0.19 + vec2<f32>(fe * 2.1, fe * 1.4)) * 0.6 + n * 0.4);
+        let heat = fw_ss(1.0, 0.1, x) * fw_ss(-2.4, -0.3, x) * left * lick * torn;
         if (heat > 0.0) {
-            var fc = mix(vec3<f32>(0.6, 0.09, 0.015), vec3<f32>(1.15, 0.46, 0.08), fw_ss(0.15, 0.55, heat));
-            fc = mix(fc, vec3<f32>(1.45, 1.2, 0.72), fw_ss(0.6, 0.95, heat));
-            col = mix(col, fc, clamp(heat * 1.5, 0.0, 1.0));
-            fog = fog * (1.0 - clamp(heat * 1.5, 0.0, 1.0));
+            var fc = mix(vec3<f32>(0.42, 0.06, 0.01), vec3<f32>(0.95, 0.34, 0.05), fw_ss(0.15, 0.6, heat));
+            fc = mix(fc, vec3<f32>(1.0, 0.72, 0.28), fw_ss(0.75, 1.1, heat));
+            col = mix(col, fc, clamp(heat * 1.25, 0.0, 1.0));
+            fog = fog * (1.0 - clamp(heat * 1.25, 0.0, 1.0));
         }
     }
     // ---- the land overhead goes off in a thin haze: it has to read as land, right up to the torn edge of the hole -----------------

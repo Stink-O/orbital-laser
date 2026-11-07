@@ -1054,11 +1054,11 @@ fn fdb_density(p: vec3<f32>, a: f32) -> f32 {
 // ---- the eruption: all that was pent up, let go along the ground. No column and no cloud: fire running out from the middle to the edges over the land as it lies, in the land itself
 // (fold_warp.wgsl's own burn, the same front) and here the flames standing off it. Each pixel looks down the picture for the land under it, by the depth, so they follow every slope and
 // stand on every ridge. `a`: seconds since FD_ERUPT.
-const FDE_LEN: f32 = 3.6;
+const FDE_LEN: f32 = 4.4;
 const FDE_OUT: f32 = 560.0;
 const FDE_HIGH: f32 = 46.0;
 const FDE_STEPS: i32 = 14;
-fn fde_front(a: f32) -> f32 { return 14.0 + FDE_OUT * (1.0 - exp(-a / 1.05)); }
+fn fde_front(a: f32) -> f32 { return 14.0 + FDE_OUT * (1.0 - exp(-a / 1.5)); }
 fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32, uv: vec2<f32>) -> vec3<f32> {
     var col = colIn;
     // (the first instant, on everything)
@@ -1107,7 +1107,7 @@ fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
             continue;
         }
         let nf = gnoise3(vec3<f32>(G.xz * 0.09, h * 0.035 - a * 3.2));
-        let tall = FDE_HIGH * band * (0.3 + 1.15 * nf) * (1.0 - fd_ss(1.6, FDE_LEN, a)) * fd_ss(560.0, 420.0, r);
+        let tall = FDE_HIGH * band * (0.3 + 1.15 * nf) * (1.0 - fd_ss(2.2, FDE_LEN, a)) * fd_ss(560.0, 420.0, r);
         let e = h / max(tall, 0.1);
         if (e >= 1.0) {
             continue;
@@ -1120,9 +1120,9 @@ fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
     }
     if (best > 0.0) {
         // (white at its foot, yellow, orange, dull red at its tips)
-        var fc = mix(vec3<f32>(0.72, 0.12, 0.02), vec3<f32>(1.25, 0.52, 0.09), fd_ss(0.9, 0.5, at));
-        fc = mix(fc, vec3<f32>(1.5, 1.3, 0.9), fd_ss(0.4, 0.05, at));
-        col = mix(col, fc, saturate(best * 1.8));
+        var fc = mix(vec3<f32>(0.5, 0.07, 0.012), vec3<f32>(1.0, 0.38, 0.06), fd_ss(0.9, 0.45, at));
+        fc = mix(fc, vec3<f32>(1.05, 0.78, 0.34), fd_ss(0.3, 0.02, at));
+        col = mix(col, fc, saturate(best * 1.6));
     }
     return col;
 }
