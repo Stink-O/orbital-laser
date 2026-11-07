@@ -206,7 +206,6 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     p.csound(FD_TOUCH - 0.4, "meld", 10.0, 1.0);
     p.csound(FD_TOUCH + 1.5, "ripple", 10.0, 1.0);
     p.csound(FD_SCORE, "score", 10.0, 1.0);
-    p.csound(FD_FOLD, "unravel", 10.0, 1.0);
     p.csound(FD_FOLD, "groan", 10.0, 1.0);
     // (the hole shutting and boiling into metal, the strain building right into the touch; the one drop's pinch and fall; the touch, its lead-in on the front of its file; everything going
     // back, till the first ring lands)
