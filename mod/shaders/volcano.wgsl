@@ -208,7 +208,8 @@ fn vc_col(q: vec3<f32>, rho: f32, ang: f32, land: f32) -> f32 {
     let e = vec2<f32>(rho / Rb, hy / Hd);
     let k0 = length(e);
     let k1 = max(length(vec2<f32>(rho / (Rb * Rb), hy / (Hd * Hd))), 1.0e-5);
-    var d = k0 * (k0 - 1.0) / k1;
+    // (bounded at its rim: squashed flat, the estimate is the height over all the land, and lumps stood dark puffs on it)
+    var d = max(k0 * (k0 - 1.0) / k1, (rho - Rb) * 0.8);
     // (its foot running on ahead of it: the base surge, gone as the column falls)
     if (c < 9.0) {
         let sr = 1.22 * Rb;
@@ -447,9 +448,8 @@ fn vc_vel(q: vec3<f32>, rho: f32, wc: f32, wu: f32, wf: f32) -> vec4<f32> {
     }
     return vec4<f32>(q.x / r * vr, vy, q.z / r * vr, gr);
 }
-// The small lumps at q: each size faded in by how near the surface is (`rest` how far off, less the big lumps) and how
-// much of a pixel it would be, for a size that simply starts somewhere draws a contour there. What the last vc_lump left
-// in vc_lw and vc_lsy is used. .x how far they stand out, .y what they make of a dome, .z the fray.
+// The small lumps at q: each size faded in by how near the surface is (`rest`, less the big lumps) and its size in pixels:
+// a size that simply starts draws a contour. Uses vc_lump's vc_lw, vc_lsy. .x how far out, .y of a dome, .z the fray.
 var<private> vc_lw: vec4<f32>;
 var<private> vc_cq: vec4<f32>;
 var<private> vc_cb: vec4<f32>;
@@ -483,9 +483,9 @@ fn vc_fine(q: vec3<f32>, rest: f32, foot: f32) -> vec3<f32> {
     }
     return o;
 }
-// The lumps on the bodies, lumps on lumps: rough convective cauliflower, its big lumps carried by the flow two sets at a
-// time, half a turn apart, each fading in as the other goes (as the Nuke's roll), the small ones drifting over them.
-// `d1` how far off the body is: the small lumps only looked up close to the surface. `fine` false: the light's look.
+// The lumps on the bodies, lumps on lumps: rough cauliflower, its big lumps carried by the flow two sets at a time, half a
+// turn apart, each fading in as the other goes (the Nuke's roll), the small ones drifting over them. `d1` how far off the
+// body is (small lumps only close to it). `fine` false: the light's look.
 // .x how far it stands out, .y how far up a dome (1 a crown, 0 a crease), .z unused, .w the fray.
 fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) -> vec4<f32> {
     let dc = (*b).dc;
@@ -1031,9 +1031,8 @@ fn vc_channel(px: vec2<f32>, sa: vec2<f32>, sb: vec2<f32>, s: f32, w: f32, pin: 
     let g = 1.0 / (1.0 + pow(dg / (w * 9.0), 2.0));
     return vec3<f32>(exp(-pow(d / w, 2.0)), g * g, u);
 }
-// How much is seen of what is `dm` off along the ray: hidden by the land and what stands in front of it (`near`), and by
-// the cloud in front of it (`ct` how far off the cloud is, `ca` how much of what is behind it shows through), but for a
-// little of it through the ash just under the cloud's face.
+// How much is seen of what is `dm` off along the ray: hidden by the land (`near`) and the cloud (`ct` its distance, `ca`
+// what shows through it), but a little through the ash just under the cloud's face.
 fn vc_seen(dm: f32, near: f32, ct: f32, ca: f32) -> f32 {
     if (near < dm - 3.0) {
         return 0.0;
