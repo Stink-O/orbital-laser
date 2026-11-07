@@ -1409,9 +1409,9 @@ fn fw_hurt(r: f32, w: CpW, i: i32, d: f32, t: f32, px: f32) -> FwHurt {
     let c = min(i, 4);
     let a = t - fw_hit(c);
     let inner = c < 4;
-    var burn = 0.46 * fw_step(fw_hit(c), t);
+    var burn = 0.52 * fw_step(fw_hit(c), t);
     for (var n = 0; n < c; n += 1) {
-        burn += 0.46 / f32(c) * fw_step(fw_hit(n), t);
+        burn += 0.44 / f32(c) * fw_step(fw_hit(n), t);
     }
     // (past the crater the burn goes off to the char's own edge, by the rays)
     if (!inner) {
@@ -1635,7 +1635,7 @@ fn world_fragment(f: Fragment) -> Painted {
             hurt = FwHurt(hurt.soot * go, hurt.crack * go, hurt.ember * go);
         }
         let g = dot(col, vec3<f32>(0.3, 0.5, 0.2));
-        let burnt = vec3<f32>(0.075, 0.066, 0.07) + vec3<f32>(0.33, 0.3, 0.3) * g;
+        let burnt = vec3<f32>(0.062, 0.056, 0.058) + vec3<f32>(0.25, 0.225, 0.225) * g;
         col = mix(col, burnt, clamp(hurt.soot, 0.0, 1.0));
         col = col * (1.0 - 0.92 * clamp(hurt.crack, 0.0, 1.0));
         // (on what faces up, as the lines are)
