@@ -125,7 +125,8 @@ const FD_PER_CHUNK: f64 = 30.0;
 /// edits are too much to carry for half a minute).
 const FD_AHEAD: f32 = 30.0;
 /// The most runs of edits worked out and not due yet: they wait in the mod's memory, 64 MiB with the land's square in it, and hold the wave back past this.
-const FD_HELD: usize = 860_000;
+/// (32 bytes each. Past what UMBRELLA's land needs by WATERBOMB's extra 65,000: held to less the last of its wave can't catch up and goes in late.)
+const FD_HELD: usize = 925_000;
 /// Strike seconds past which a column still not loaded is left out (logged): the forceload is given back at FD_LEN - 1.
 const FD_LAND_BY: f32 = FD_LEN - 4.0;
 /// How long, once the crater's land is in, it waits for more of the rest to come.
