@@ -183,7 +183,7 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
-| ![The laser wheel: Plasma and Godly segments round a terrain-damage switch](docs/05-wheel.jpg) | ![A plasma beam with forked lightning, a shockwave ring and a molten crater](docs/02-impact.jpg) | ![A quartz and gold crater with a golden sigil, quartz pillars and floating islands of rock](docs/07-godly-aftermath.jpg) |
+| ![The laser wheel on its third page of four, the Rod from God's row under it and the seed, knockback and quality switches round it](docs/05-wheel.jpg) | ![A plasma beam with forked lightning, a shockwave ring and a molten crater](docs/02-impact.jpg) | ![A quartz and gold crater with a golden sigil, quartz pillars and floating islands of rock](docs/07-godly-aftermath.jpg) |
 
 | Meteor Storm | The extinction impact | What it leaves |
 |---|---|---|
@@ -225,7 +225,9 @@ Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Superc
 |---|---|---|---|
 | ![A dark wall of water rising over the hills, its white crest climbing away, jets of spray blown up where it hits the land](docs/45-tsunami-horizon.jpg) | ![The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land](docs/46-tsunami-wall.jpg) | ![Green water, logs and pieces of a house going by](docs/47-tsunami-underwater.jpg) | ![The land scoured to mud and gravel in streaks along the flow, the wet swath running to the horizon](docs/48-tsunami-aftermath.jpg) |
 
-<!-- FOLD STILLS GO HERE: docs/49-fold-*.jpg, a gallery row like the ones above -->
+| The Fold | The tube | The fire | What it leaves |
+|---|---|---|---|
+| ![The land creased white and folding up round the target, its middle burning red](docs/49-fold-creases.jpg) | ![The whole world on the walls of a tube, a hole of stars in its roof](docs/50-fold-tube.jpg) | ![A ring of flames running out over the broken land from the middle](docs/52-fold-fire.jpg) | ![A crater of broken coloured panels on a twelve-fold pattern, black rock heaped round it](docs/53-fold-crater.jpg) |
 
 ## Getting started
 
