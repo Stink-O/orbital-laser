@@ -11,9 +11,8 @@ of the hit itself comes last through the air, d / 340 s late. Distance is the ch
 
 As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
 
-  descent   0 s, exactly 3.4 s: a body of fire coming down, with the Payload's way of falling in it: a roar with low resonances wandering in it, a thin tearing whine bending up
-            a little, torn air sweeping up under it, a few dull pops for the fire, no crackle; swelling as it nears and ending at full force on its last sample, no tail.
-  wobble    3.49 s, to 4.6: something catches it: a push of pressure, a heavy hum thrown off its pitch and settling back on the picture's wobble, then only the hum, low and still.
+  descent   0 s, exactly 3.4 s: something in the top of the sky coming down, the Payload's way (`through_air`, `sky`, `range_of`): a far boom, a thin whine, a dark roar in a sky of its own echo, 3 km up; its top and its sub only as it arrives; ending at full force on its last sample, no tail.
+  wobble    3.49 s, to 4.6: `STOP_PICK`, one of `STOPS`, each a different idea of how it stops, all ending on the low hum holding it still (`hold_on`), where `letgo` takes it.
   air       ~3.9 s (late by the distance, 0.5 s at 170 blocks): the air that kept going: a soft shove, the fire's roar carried
             past and away with a few embers, a gust thinning over the ground, gone by ~6.9 s.
   letgo     4.5 s, to contact at 6.0: the hum falling out from under it, and the fall: air split by a great body, its loudness the speed squared, cut on contact.
@@ -21,13 +20,11 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
             and the last small drop falling back; then only the land's heave.
   ripple    7.5 s: the land moving like water: nine slow seas on the picture's pulses and swell, bands of chaos, no note and nothing ringing.
   score     12 s: the first of the creases: ice, one pew and a stone skipping off, and no more cracks; only a dark breath of ground parting under the tears, 15.2 to 19.
-  unravel   19 s: the land bending as a machine turns: `CLACKS`, a great mechanism going over one detent at a time, tick and tock, each heave of the land a bigger one, closing up
-            as it comes round, the last on the world's stopping at 31.5, each going off the land still standing. From 26 s it comes through the ground.
-  groan     19 s: the land bending, a hull's stress, moans with no note, the bangs (`BANG_UP`, on or halfway to the clacks), the far land's slow lift to 23.5, closing overhead from 26 s:
-            the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
+  unravel   19 s: `BOOM_PICK`, one of `BOOMS`, each a different idea of what goes off as the horizon curls up to the tube, all on the picture's curve (`CURL`, `curl_beats`): crowding and biggest where it's fastest, 26 to 28 s, the last on the world's stopping at 31.5. From 26 s it comes through the ground.
+  groan     19 s: the land bending, a hull's stress, moans with no note, the far land's slow lift to 23.5, closing overhead from 26 s: the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5. (Its thuds are out: `BANG_UP`.)
   boil      32.5 s, exactly 7.5 s: the hole shutting and turning to metal (`BOIL`): an intake, the mouth's note sinking, wet metal crawling in in surges, a thick seethe of bubbles of every size to the join, the skin slumping as one,
             the heave and roll, six great slow bubbles swelling and bursting (`BUBBLES`), the slow flow to the middle; a low strain (`strain`) building in slow uneven pulses under it and on through the drop's fall, at its heaviest on its last sample, the touch.
-  drip      37.72 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 38.35, and the one drop falling all the way down, far off and coming, cut on the touch.
+  drip      37.72 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 38.35 (for `hum`, `PINCH_PICK`, one of `PINCHES`), and the one drop falling all the way down, far off and coming, cut on the touch.
   ding      37.8 s, the touch on 40.0: `DING_PICK`, one of `DINGS`, each a different idea of that moment and all of them holding up to it: it has its lead-in on the front of it and the
             held strain (`held`) on it to the let-go at 40.95; the blends have the drop's own impact (`arrival`) on their front.
   reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.5, the rim back on the tube at 42.25,
@@ -964,7 +961,7 @@ def stop_spool():
     t = times(n)
     e_wob = np.exp(-5.5 * t) * np.sin(14.0 * t + 0.25)
     f = HOLD_HUM * (1 + 3.4 * np.exp(-t / 0.17) + 0.16 * e_wob)
-    a, b = field(d, f, 340.0 + 3400.0 * np.exp(-t / 0.26))
+    a, b = field(d, f, 340.0 + 2400.0 * np.exp(-t / 0.26))
     lv = 10 ** (np.interp(t, (0.0, 0.015, 0.16, 0.5, 0.85, d - 0.14, d), (-10.0, 0.0, -1.0, -8.0, -17.0, -22.0, -22.0)) / 20)
     x = bare_blow(3.2, 20, 95, 0.02, 0.11)[:n] * 1.3
     M = np.zeros(n)
@@ -972,37 +969,63 @@ def stop_spool():
     sheen = np.zeros(n)
     for k in range(3, 40, 2):
         sheen += P.glide_band((n + 0.5) / SR, np.maximum(f * k, 60.0), 0.012)
-    sheen = T.unit(bp(sheen, 240, 3400)) * ss(0.0, 0.02, t) * np.exp(-t / 0.3) * 0.7
+    sheen = T.unit(bp(sheen, 240, 2600)) * ss(0.0, 0.02, t) * np.exp(-t / 0.3) * 0.42
     q, r_ = wide(sheen, np.roll(sheen, 613), 0.7)
     stop_out(a * lv + M + q, b * lv + M + r_, -14.0)
 
 
-def stop_freeze():
-    """The roar frozen: nothing strikes. The last instant of `descent` is caught as it is and held, every partial of it hanging in the air, and it drains away, the top first, sinking a little, into the holding note. Time stops and the sound stops with it."""
-    d = HANG - STOP - 0.09 + 0.12
-    n = n_of(d)
+def frozen(n, sinks, hold=None):
+    """The last instant of `descent` caught and hung in the air, every partial of it: dying away at its own rate, or level till `hold` s, and sliding by `sinks` (one value a sample). (L, R), peak about 1."""
     t = times(n)
     tail = decoded("descent").mean(axis=1)[-n_of(0.19):]
     Z = np.abs(np.fft.rfft(tail * np.hanning(len(tail))))
     f_ = np.fft.rfftfreq(len(tail), 1 / SR)
     pk = np.nonzero((Z[1:-1] > Z[:-2]) & (Z[1:-1] > Z[2:]) & (f_[1:-1] > 60.0) & (f_[1:-1] < 5200.0))[0] + 1
     pk = pk[np.argsort(Z[pk])[-90:]]
-    sink = 1 - 0.13 * ss(0.05, 1.0, t)
     L, R = np.zeros(n), np.zeros(n)
     for i in pk:
         tau = 0.62 * (max(f_[i], 90.0) / 200.0) ** -0.55 * rng().uniform(0.8, 1.2)
-        e = np.exp(-t / tau) * Z[i]
-        ph = 2 * np.pi * np.cumsum(f_[i] * sink * (1 + 0.0016 * PB.slow_random(n, 0.3, 2.0))) / SR + rng().uniform(0, 6)
+        e = (1 - ss(hold - 0.004, hold + 0.012, t)) * Z[i] if hold else np.exp(-t / tau) * Z[i]
+        ph = 2 * np.pi * np.cumsum(f_[i] * sinks * (1 + 0.0016 * PB.slow_random(n, 0.3, 2.0))) / SR + rng().uniform(0, 6)
         y = np.sin(ph) * e
         p_ = rng().uniform(-0.25, 0.25)
         L += y * (0.5 - p_)
         R += y * (0.5 + p_)
     g = 1 / (np.abs(L + R).max() / 2 + 1e-9)
+    return L * g, R * g
+
+
+def stop_freeze():
+    """The roar frozen: nothing strikes. The last instant of `descent` is caught as it is and held, and it drains away, the top first, sinking a little, into the holding note: what was on the drop goes on past and what's left of its sound hangs there. For the fire pouring past it."""
+    d = HANG - STOP - 0.09 + 0.12
+    n = n_of(d)
+    t = times(n)
+    L, R = frozen(n, 1 - 0.13 * ss(0.05, 1.0, t))
     a, b = hold_on(d, 0.4, -21.0)
     x = np.zeros(n)
     P.put(x, bare_blow(3.0, 18, 70, 0.015, 0.1)[:n] * 0.5, 0.0)
     fade = ss(0.0, 0.004, t)
-    stop_out(L * g * fade * 0.8 + a + x, R * g * fade * 0.8 + b + x, -13.5, 0.3)
+    stop_out(L * fade * 0.8 + a + x, R * fade * 0.8 + b + x, -13.5, 0.3)
+
+
+def stop_stutter():
+    """Time stops for a moment: for the picture's time stutter. The roar hangs in the air, level, nothing moving in it, to 3.7 s; then it lets go at once: one blow, the air moving again, and the field winding down from high to the holding note, as `stop_spool`'s."""
+    d = HANG - STOP - 0.09 + 0.12
+    n = n_of(d)
+    t = times(n)
+    go = 3.7 - STOP - 0.09
+    a_ = np.maximum(t - go, 0)
+    on = t >= go
+    L, R = frozen(n, np.ones(n), go)
+    fade = ss(0.0, 0.004, t)
+    f = HOLD_HUM * (1 + 3.4 * np.exp(-a_ / 0.15))
+    a, b = field(d, f, 340.0 + 2400.0 * np.exp(-a_ / 0.22))
+    lv = on * 10 ** (np.interp(a_, (0.0, 0.012, 0.14, 0.4, 0.7, 0.92), (-10.0, 0.0, -1.0, -9.0, -18.0, -22.0)) / 20)
+    x = np.zeros(n)
+    P.put(x, bare_blow(3.2, 20, 95, 0.012, 0.11)[:n] * 1.3, go)
+    c = bp(T.friedlander(n, go, 0.14, 1.3), 14, 300)
+    x = x + c / (np.abs(c).max() + 1e-9) * 0.9
+    stop_out(L * fade * 0.55 + a * lv + x, R * fade * 0.55 + b * lv + x, -13.0, 0.2)
 
 
 def stop_shock():
@@ -1021,16 +1044,16 @@ def stop_shock():
 
 
 def stop_cable():
-    """A steel line through the sky taking the load: a heavy cable snapped taut, its partials out of line, every one of them swinging with the picture's wobble and settling; no chirp and nothing laser about it, only long steel under strain."""
+    """A steel line through the sky taking the load: a heavy cable snapped taut, its partials out of line, every one of them swinging with the picture's slow heavy recoil and settling; no chirp and nothing laser about it, only long steel under strain."""
     d = HANG - STOP - 0.09 + 0.12
     n = n_of(d)
     t = times(n)
-    swing = 1 + 0.035 * np.exp(-5.5 * t) * np.sin(14.0 * t + 0.25) - 0.03 * np.exp(-t / 0.05)
+    swing = 1 + 0.04 * np.exp(-1.9 * t) * np.sin(2 * np.pi * 1.2 * t + 0.25) - 0.03 * np.exp(-t / 0.05)        # (the heavy squash's two slow swings: tall about 3.9, squashed again about 4.3)
     r = np.random.default_rng(7227)
     L, R = np.zeros(n), np.zeros(n)
     for f in 58.0 + 1500.0 * np.sort(r.random(70)) ** 1.5:
         a = (f / 58.0) ** -0.6 * r.lognormal(0.0, 0.45)
-        tau = 0.55 * (f / 58.0) ** -0.5 * r.uniform(0.7, 1.3)
+        tau = 0.75 * (f / 58.0) ** -0.5 * r.uniform(0.7, 1.3)
         ph = 2 * np.pi * np.cumsum(f * swing) / SR + r.uniform(0, 6)
         y = np.sin(ph) * np.exp(-t / tau) * a * (1 - np.exp(-t / 0.0015))
         p_ = r.uniform(-0.2, 0.2)
@@ -1044,16 +1067,16 @@ def stop_cable():
 
 
 def stop_hammer():
-    """The drop's own weight: the metal inside keeps going. A dead, wet, enormous blow as a tonne of mercury hits its own front, and then you hear it slop, deep inside, on the picture's wobble, two or three thick swings dying away."""
+    """The drop's own weight: the metal inside keeps going. A dead, wet, enormous blow as a tonne of mercury hits its own front, and then you hear it slop, deep inside, on the picture's heavy squash: two slow thick swings, the second smaller."""
     d = HANG - STOP - 0.09 + 0.12
     n = n_of(d)
     t = times(n)
     M = np.zeros(n)
     P.put(M, bare_blow(3.2, 22, 110, 0.006, 0.09)[:n] * 1.1, 0.0)
     P.put(M, plop(48.0, 150.0, 0.9, 0.13, 3.0), 0.012)
-    for at, g in ((0.2, 0.62), (0.43, 0.36), (0.66, 0.2)):
+    for at, g in ((0.41, 0.6), (0.81, 0.34)):                  # (the heavy squash: the tall peak about 3.9, squashed again about 4.3)
         P.put(M, settle(g), at)
-    swing = np.abs(np.sin(2 * np.pi * WOB * t + 0.3)) ** 2.4 * np.exp(-t / 0.42)
+    swing = np.abs(np.sin(2 * np.pi * 1.25 * t + 0.3)) ** 2.0 * np.exp(-t / 0.6)
     wet = eddies(d, 110, 1100, 2.5, -5.0, 12.0, 4.0) * swing * 0.3
     a, b = hold_on(d, 0.5)
     stop_out(M + wet + a, M + np.roll(wet, 211) * 0.9 + b, -13.5, 0.14)
@@ -1077,8 +1100,8 @@ def stop_bell():
     stop_out(q * 0.5 + x + a, r_ * 0.5 + x + b, -13.5, 0.3)
 
 
-STOPS = {"catch": stop_catch, "spool": stop_spool, "freeze": stop_freeze, "shock": stop_shock, "cable": stop_cable, "hammer": stop_hammer, "bell": stop_bell}
-STOP_PICK = "catch"                                   # which of `STOPS` is the one in the game
+STOPS = {"catch": stop_catch, "spool": stop_spool, "stutter": stop_stutter, "freeze": stop_freeze, "shock": stop_shock, "cable": stop_cable, "hammer": stop_hammer, "bell": stop_bell}
+STOP_PICK = "spool"                                   # which of `STOPS` is the one in the game
 
 
 def wobble():
@@ -2031,9 +2054,9 @@ def drip_hum():
     if "pre" in go:
         f = np.where(t < t1, go["pre"], f)
     a, b = field(d, f, 700.0 + 2400.0 * c ** 1.3)
-    low = 0.22 + 0.18 * c                                       # (its weight is the boil's already, and it's a long way off: this is the hum's mids)
+    low = 0.14 + 0.26 * c                                       # (its weight is the boil's already, and it's a long way off: this is the hum's mids)
     a, b = (bp(y, None, 170.0) * low + (y - bp(y, None, 170.0)) * 1.7 for y in (a, b))
-    lv = ss(t1 - 0.01, t1 + 0.05, t) * 10 ** (np.interp(t - t1, (0.0, 0.14, 0.5, d - t1), (-2.0, -5.0, -15.0, 0.0)) / 20) * (1 + 0.16 * swing)
+    lv = ss(t1 - 0.01, t1 + 0.05, t) * 10 ** (np.interp(t - t1, (0.0, 0.14, 0.5, d - t1), (-2.0, -6.0, -19.0, 0.0)) / 20) * (1 + 0.16 * swing)
     if "pre_lv" in go:
         lv = np.where(t < t1, go["pre_lv"], lv)
     sheen = np.zeros(n)
