@@ -838,7 +838,7 @@ fn fb_metal(qIn: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbMetal {
     let r = max(length(q), 0.01);
     let dirq = q / r;
     let jn = fw_ss(FB_JOIN, FB_JOIN + 0.16, t);
-    let k = 13.0 + 20.0 * jn;
+    let k = 13.0 + 11.0 * jn;
     // ---- the rim, growing in, unevenly ------------------------------------------------------------------------------------------
     let late = fb_late(dirq, S);
     let g0 = fw_ss(FB_MELT + 0.32 * late, FB_MELT + 1.3 + 0.5 * late, t);
@@ -869,14 +869,14 @@ fn fb_metal(qIn: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> FbMetal {
         let s = clamp(dot(qa, ba) / max(dot(ba, ba), 1.0), 0.0, 1.0);
         let e = qa - ba * s;
         let el = max(length(e), 0.01);
-        let wd = (30.0 + 40.0 * h2) * (0.55 + 0.45 * p) * (1.0 + 0.55 * (1.0 - s)) * (1.0 + 0.3 * jn + 0.9 * fw_ss(FB_JOIN, FB_SEAL, t));
+        let wd = (30.0 + 40.0 * h2) * (0.55 + 0.45 * p) * (1.0 + 0.55 * (1.0 - s)) * (1.0 + 0.2 * jn + 0.06 * fw_ss(FB_JOIN + 0.1, FB_SEAL, t));
         let di = el - wd;
         let w = exp(clamp(-di / k, -40.0, 40.0));
         sum += w;
         gs += w * e / el;
     }
     // (what's left of the stars closes on its own, by FB_SEAL)
-    let fill = 90.0 * fw_ss(FB_SEAL - 0.32, FB_SEAL, t);
+    let fill = 70.0 * fw_ss(FB_SEAL - 0.1, FB_SEAL + 0.02, t);
     return FbMetal(-k * log(max(sum, 1.0e-30)) - fill, gs / max(sum, 1.0e-30));
 }
 // The big slow bubbles: each swells where it is and bursts, a ring running off it. Their slope.
