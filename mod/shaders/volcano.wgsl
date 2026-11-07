@@ -512,8 +512,8 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     } else {
     let rho = (*b).rho;
     let v = vc_vel(q, rho, wc, wu, wf);
-    // (the sheet's lumps broad and flat, its underside hanging in pouches, its nose the roughest)
-    gain = (wc + 0.62 * wf) * mix(0.13, 1.0, smoothstep(0.0, 0.5, vs.a));
+    // (the sheet's lumps broad and flat, pouches under it, roughest at its nose; the wall's hug its face, not run ahead)
+    gain = (wc + 0.62 * wf * smoothstep(-110.0, 10.0, (*b).e)) * mix(0.13, 1.0, smoothstep(0.0, 0.5, vs.a));
     sy = 1.0 + 0.28 * wf;
     if (wu > 0.0) {
         let nose = exp(-max(vs.Ru - rho, 0.0) / 520.0);
@@ -1424,13 +1424,14 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             let hb = q.y - b.land;
             let qb = vec3<f32>(q.x - dir.x * vs.rf * 1.6, hb * 1.25 - 26.0 * time, q.z - dir.y * vs.rf * 1.6);
             let bank = 0.62 * vc_gn3(qb * (1.0 / 150.0) + vec3<f32>(0.0, 0.0, 0.11 * time)) + 0.38 * vc_gn3(VC_R2 * qb * (1.0 / 58.0));
-            wb = smoothstep(-5.0, 35.0, b.e);
+            // (its head solid to the land; torn into banks, lifted off it, only behind)
+            wb = smoothstep(40.0, 200.0, b.e);
             // (the ash lifting clear: the air under it empties, the land shows, a rolling ceiling over it)
             let lf = smoothstep(VC_LIFT - 8.0, VC_LIFT + 6.0, time) * smoothstep(150.0, 520.0, b.e);
             let base = lf * (250.0 + 340.0 * (bank - 0.5));
             let lifted = lf * smoothstep(180.0, 420.0, hb);
             let th = mix(mix(0.36, 0.56, smoothstep(40.0, 560.0, b.e)), 0.36, lifted);
-            torn = smoothstep(base - 40.0, base + 110.0, hb) * mix(1.0, smoothstep(th - 0.08, th + 0.2, bank), wb);
+            torn = smoothstep(base - 40.0, base + 110.0, hb + 150.0 * (1.0 - wb)) * mix(1.0, smoothstep(th - 0.08, th + 0.2, bank), wb);
             ext = mix(0.15, 0.05, wb);
             // (the air the wall has emptied)
             if (torn <= 0.0) {
@@ -1672,8 +1673,8 @@ fn vc_dust(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight) 
     }
     return col;
 }
-// The shock seen for a moment: a thin torn veil of condensation at the pressure ring's speed, two fainter behind it, its
-// amount along the ray from where it passes closest, so no line runs round it.
+// The shock seen for a moment: a torn veil of condensation at the pressure ring's speed, two fainter behind, its amount
+// from where the ray passes closest, so no line runs round it.
 fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight) -> vec3<f32> {
     var col = col0;
     let sy = 1.16;
