@@ -1100,10 +1100,8 @@ fn fw_late(w: CpW, i: i32) -> f32 {
 // Whether the land really changes: the terrain on (lib.rs's `flags_of`; with it off the old land is all there is).
 fn fw_real_land() -> bool { return fract(globals.warp[3].w) > 0.1; }
 // When the real land of the chunk at Q takes its place: as its ring lands, outermost first, the land under the player with the last. By the middle of the chunk, as the game lets it go
-// (strike/fold.rs's fd_hold_areas: the same circles), the warp's two sides of a chunk's edge the only thing that can disagree, and that lies in the step up to the ring still standing.
-fn fw_freed_at(Q: vec3<f32>, c: FwClock) -> f32 {
-    let at = globals.warp[0].xz;
-    let S = (floor((at + Q.xz) / 16.0) + 0.5) * 16.0 - at;
+// (strike/fold.rs's fd_hold_areas: the same circles). `S`: the middle of the chunk from the target.
+fn fw_freed_at(S: vec2<f32>, c: FwClock) -> f32 {
     if (!fw_real_land() || length(S - (c.me - c.tgt).xz) < FW_ISLE) {
         return FW_SLAM4;
     }
@@ -1149,7 +1147,8 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         out.tint = vec3<f32>(-1.0);
         return out;
     }
-    let freed = t > 44.0 && fw_real_land() && t >= fw_freed_at(Q, c) + 0.01;
+    // (by the section the vertex is of: on an edge between one that has changed and one that hasn't, its position alone would stretch a block up the height of the lift)
+    let freed = t > 44.0 && fw_real_land() && t >= fw_freed_at(warp_section.xz + vec2<f32>(8.0) - c.tgt.xz, c) + 0.01;
     if (freed && t < FW_SLAM4 + FW_SUNK) {
         Q.y += fw_sunk(Q, r, a, t, c.me - c.tgt);
     } else if (!freed && t > FW_FLAT && t < FW_SLAM4 + 3.0 && r < 310.0) {
@@ -1611,7 +1610,8 @@ fn world_fragment(f: Fragment) -> Painted {
     if (t > FW_BEAT && r < FW_LEN * 1.2 && fade > 0.0) {
         var hurt = fw_hurt(r, wedge, cell, hit.big, t, max(0.05, dist * 0.00095));
         // (the crater comes up out of the soot as it falls; what lay past it clears at once)
-        let s = t - select(FW_SLAM4, fw_freed_at(Q, c), t > 44.0);
+        let at = globals.warp[0].xz;
+        let s = t - select(FW_SLAM4, fw_freed_at((floor((at + Q.xz) / 16.0) + 0.5) * 16.0 - at, c), t > 44.0);
         if (s > 0.0) {
             let go = select(1.0 - fw_ss(0.0, 1.0, s), 1.0 - fw_ss(0.0, 2.0, s - fw_late(wedge, ring)), cell < 4);
             hurt = FwHurt(hurt.soot * go, hurt.crack * go, hurt.ember * go);

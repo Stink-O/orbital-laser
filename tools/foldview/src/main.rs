@@ -155,6 +155,7 @@ fn main() {
     pollster::block_on(run(warp, out, &groups));
 }
 const HEAD: &str = r#"
+var<private> warp_section: vec3<f32>;
 struct G { fog_color: vec4<f32>, sky_color: vec4<f32>, sun: vec4<f32>, fog: vec4<f32>, warp: array<vec4<f32>, 6> }
 @group(0) @binding(0) var<uniform> globals: G;
 @group(0) @binding(1) var<uniform> vp: mat4x4<f32>;
