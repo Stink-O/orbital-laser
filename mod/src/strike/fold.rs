@@ -249,6 +249,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         p.csound(FD_SLAM[4] + (66.0 * (1.0 - u * u * u).powf(0.75) / 18.0).sqrt(), "underfoot", 10.0, 1.0);
     }
     p.csound(FD_SLAM[4] + 4.6, "comedown", 10.0, 1.0);
+    p.csound(FD_ERUPT, "erupt", 10.0, 1.0);
     p.shake(FD_ERUPT, 1.0 * super::falloff(dist * 0.4), 2.6);
     p.ev.push((FD_ERUPT + (dist as f32 / 700.0).min(0.6), Act::Shove { from: [cx, f64::from(by), cz], out: 0.9, up: 0.6, reach: 700.0 }));
 
