@@ -11,7 +11,7 @@
 //! field to type one in. Drawn by the game from the
 //! shapes built here; GUI pixels, from the centre of the screen.
 use crate::lasers::{LASERS, Laser, is_ship};
-use crate::strike::{APPROACHES, ARRIVALS, COLOUR_RGB, COLOURS, Choice};
+use crate::strike::{APPROACHES, ARRIVALS, COLOUR_RGB, COLOURS, Choice, FD_PATTERNS};
 use horizon_mod_sdk::ui::{Draw, Point, Rect};
 use std::f32::consts::{PI, TAU};
 
@@ -69,6 +69,14 @@ const IMPACT_FX: [&str; 4] = ["OFF", "KANADA", "BLACK FLASH", "CINEMATIC"];
 /// The impact frames' row: its label, then a button a look (and OFF), each as wide as its name.
 const IMPACT_LABEL_W: f32 = 58.0;
 const IMPACT_W: [f32; 4] = [30.0, 46.0, 68.0, 60.0];
+/// The Fold's crease pattern's row: its label, then a button a pattern (strike::FD_PATTERNS), as wide as its name.
+const CREASE_LABEL_W: f32 = 34.0;
+const CREASE_W: [f32; 3] = [58.0, 62.0, 58.0];
+fn crease_button(k: usize) -> Rect {
+    let w = CREASE_LABEL_W + CREASE_W.iter().sum::<f32>() + BTN_GAP * 2.0;
+    let x = -w / 2.0 + CREASE_LABEL_W + CREASE_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
+    Rect { x, y: ROW_Y, w: CREASE_W[k], h: BTN_H }
+}
 fn impact_button(k: usize) -> Rect {
     let w = IMPACT_LABEL_W + IMPACT_W.iter().sum::<f32>() + BTN_GAP * 3.0;
     let x = -w / 2.0 + IMPACT_LABEL_W + IMPACT_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
@@ -94,6 +102,8 @@ pub enum Spot {
     Quality,
     /// The Rod's impact frames' row: 0 on, 1 off.
     Impact(usize),
+    /// The Fold's crease pattern's row: which.
+    Crease(usize),
     /// The knockback's switch, and the follow camera's.
     Knock,
     Follow,
@@ -124,6 +134,7 @@ pub enum Rows {
     Ship,
     Sound,
     Impact,
+    Crease,
 }
 impl Rows {
     /// The rows laser `i` has (if any).
@@ -132,6 +143,7 @@ impl Rows {
             Some(l) if is_ship(l) => Rows::Ship,
             Some(l) if sound_of(l.key).is_some() => Rows::Sound,
             Some(l) if l.key == "rod" => Rows::Impact,
+            Some(l) if l.key == "fold" => Rows::Crease,
             _ => Rows::None,
         }
     }
@@ -322,6 +334,13 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
             }
         }
     }
+    if rows == Rows::Crease {
+        for k in 0..FD_PATTERNS.len() {
+            if inside(&crease_button(k), x, y) {
+                return Some(Spot::Crease(k));
+            }
+        }
+    }
     if rows == Rows::Ship {
         for (r, items) in ROWS.iter().enumerate() {
             for k in 0..items.len() {
@@ -452,7 +471,7 @@ impl Wheel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draws(&self, selected: usize, terrain: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: usize, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
+    pub fn draws(&self, selected: usize, terrain: bool, hud: bool, approach: usize, arrival: usize, colours: &[usize], blast_alt: &[bool], fast: bool, impact: usize, pattern: usize, knock: bool, follow: bool, locked: bool, seed: Option<u32>) -> Vec<Draw> {
         let mut out = Vec::new();
         // the world dims behind the wheel
         out.push(Draw::Fill((Rect { x: -4000.0, y: -4000.0, w: 8000.0, h: 8000.0 }, 0x8C05070A)));
@@ -580,6 +599,22 @@ impl Wheel {
                 text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
             }
         }
+        // (the Fold's: which crease pattern, the next strike's)
+        if let Some(rl) = row.filter(|&i| LASERS[i].key == "fold") {
+            let ms = LASERS[rl];
+            let b0 = crease_button(0);
+            text(&mut out, "FOLD", b0.x - CREASE_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
+            for (k, p) in FD_PATTERNS.iter().enumerate() {
+                let b = crease_button(k);
+                let chosen = k == pattern;
+                let hovered = self.hover == Some(Spot::Crease(k));
+                out.push(Draw::Fill((b, if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 })));
+                let rim = if chosen { 2.0 } else { 1.0 };
+                let rim_c = if chosen { argb(0xFF, ms.rgb) } else { argb(0x90, shade(ms.rgb, 0.6)) };
+                out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - rim, w: b.w, h: rim }, rim_c)));
+                text(&mut out, p.1, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
+            }
+        }
         if let Some(rl) = row.filter(|&i| is_ship(LASERS[i])) {
             let ms = LASERS[rl];
             for (r, items) in ROWS.iter().enumerate() {
@@ -622,6 +657,7 @@ impl Wheel {
             Some(Spot::Impact(1)) => ("Kanada: silhouettes, thick lines, a gold negative".to_string(), 0x8C93A0),
             Some(Spot::Impact(2)) => ("Black Flash: red and black, black lightning".to_string(), 0x8C93A0),
             Some(Spot::Impact(_)) => ("Cinematic: a white-out and a shockwave ring".to_string(), 0x8C93A0),
+            Some(Spot::Crease(k)) => (FD_PATTERNS[k.min(2)].2.to_string(), 0x8C93A0),
             Some(Spot::Knock) => ("The Nuke's and the Rod's push on you on or off".to_string(), 0x8C93A0),
             Some(Spot::Follow) => ("Camera chases the Nuke's or Payload's bomb down".to_string(), 0x8C93A0),
             Some(Spot::SeedField) => (
@@ -732,6 +768,14 @@ mod tests {
     fn ship(key: &str) -> usize {
         LASERS.iter().position(|l| l.key == key).unwrap()
     }
+    #[test]
+    fn the_fold_has_a_fourth_page_to_itself() {
+        assert_eq!(pages(), 4);
+        let fold = LASERS.iter().position(|l| l.key == "fold").expect("the Fold");
+        assert_eq!(page_of(fold), 3);
+        assert_eq!(tab(3).x + tab(3).w, -tab(0).x, "the four tabs centred over the ring");
+    }
+
     #[test]
     fn spots() {
         assert_eq!(spot(0.0, 0.0, false, 0), Some(Spot::Centre));
@@ -943,7 +987,7 @@ mod tests {
             assert_eq!(w.hover, Some(Spot::Sound(1)));
             assert_eq!(w.rows(other), Rows::Sound);
             // (its own hint under the ring)
-            let hint = w.draws(other, true, true, 0, 0, &[0; 16], &[false; 2], true, 1, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
+            let hint = w.draws(other, true, true, 0, 0, &[0; 16], &[false; 2], true, 1, 0, true, false, false, None).into_iter().any(|d| matches!(d, Draw::Text((t, ..)) if t == SOUND_HINTS[si][1]));
             assert!(hint, "{key}");
             // (and where a ship's buttons would be, nothing of theirs)
             let b = button(1, 0);
@@ -953,7 +997,7 @@ mod tests {
             assert_eq!(Wheel::on_page(0, 1.0).rows(pl), Rows::Sound);
             let lit = |alt: [bool; 2]| -> Vec<u32> {
                 Wheel::on_page(0, 1.0)
-                    .draws(pl, true, true, 0, 0, &[0; 16], &alt, true, 1, true, false, false, None)
+                    .draws(pl, true, true, 0, 0, &[0; 16], &alt, true, 1, 0, true, false, false, None)
                     .into_iter()
                     .filter_map(|d| if let Draw::Text((t, _, c, _)) = d { (t == "MAIN" || t == "ALT").then_some(c) } else { None })
                     .collect()
@@ -1014,7 +1058,7 @@ mod layout_dump {
             let i = idx(laser);
             let mut w = Wheel::on_page(page_of(i), 3.5);
             w.striking = striking;
-            let draws = w.draws(i, true, false, 0, 0, &[0; 16], &[false; 2], true, 1, false, true, false, Some(288));
+            let draws = w.draws(i, true, false, 0, 0, &[0; 16], &[false; 2], true, 1, 0, false, true, false, Some(288));
             let mut out = String::new();
             for d in draws {
                 match d {

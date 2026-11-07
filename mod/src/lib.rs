@@ -71,6 +71,9 @@ fn tsunami_pass(fast: bool) -> &'static str {
     PASS_TSUNAMI[usize::from(fast)]
 }
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
+/// The Fold's world warp: the world's own vertices bent (the fork's `render.set-warp`).
+const FOLD_WARP: &str = include_str!("../shaders/fold_warp.wgsl");
+
 fn pass_of(l: &lasers::Laser) -> usize {
     match l.key {
         "downfall" => 1,
@@ -82,7 +85,8 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "rod" => 7,
         "supercell" => 8,
         "hurricane" => 9,
-        // (10 and 11 are spare)
+        "fold" => 10,
+        // (11 is spare)
         "tsunami" => 12,
         _ => 0,
     }
@@ -179,6 +183,8 @@ struct Strike {
     length: f32,
     /// What the post pass reads; [3] is the strike clock, set each frame.
     params: [f32; 16],
+    /// The Fold's question about the land round the target, until it is answered (its tag, the target's block).
+    level: Option<(u32, [i32; 3])>,
     /// Stages due that wait for a tick of their own (`tick_strike` works out one a tick).
     waiting: std::collections::VecDeque<strike::Stage>,
     /// Those that go before them (`Act::Soon`), in order.
@@ -188,6 +194,9 @@ struct Strike {
     data_sent: bool,
     /// Started this far in (`/orbital skip`): commands, sounds and jolts due before then are left out.
     skipped: f32,
+    /// Ticks still to go before the clock reaches 0, which it starts this far under (the Fold's FD_LEAD): only a plan's events
+    /// before 0 are due while it runs down.
+    wait: u32,
     /// The sounds it has played, to cut them short if it is stopped.
     sounds: std::collections::BTreeSet<String>,
     /// Its laser, and the game's textures as they were when its table packed them (`atlas.resources-version`: the
@@ -242,6 +251,10 @@ impl Strike {
         meter::spend(STAGE_COST.saturating_sub(own));
     }
     /// When what falls due next does: the plan's next act or a stage's.
+    /// The strike's clock, seconds: under 0 while `wait` runs down.
+    fn clock(&self) -> f32 {
+        (self.ticks as f32 - self.wait as f32) * 0.05
+    }
     fn next_due(&self) -> Option<f32> {
         match (self.plan.get(self.next).map(|e| e.0), self.more.peek().map(|g| g.t)) {
             (Some(a), Some(b)) => Some(a.min(b)),
@@ -284,6 +297,7 @@ struct Settings {
     follow_distance: f64,
     seed_lock: Option<u32>,
     impact_style: u8,
+    fold_pattern: usize,
     carry_turn: bool,
 }
 
@@ -294,7 +308,7 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 12 the tsunami's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 12 the tsunami's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
     passes: [&'static str; 13],
     compiled: Option<usize>,
@@ -333,6 +347,12 @@ struct Orbital {
     /// Whether each of wheel::SOUND_LASERS plays its alternative blast (`/orbital payloadsound`, `/orbital nukesound`;
     /// the Payload's thump through the ground swaps with it).
     blast_alt: [bool; 2],
+    /// Which crease pattern the next Fold folds on (strike::FD_PATTERNS; `/orbital foldpattern`, the wheel's FOLD row).
+    fold_pattern: usize,
+    /// How the Fold's droplet stops (fold.wgsl's fd_stop; `/orbital foldstop N`, a dev command for trying them, not kept).
+    fold_stop: usize,
+    /// While the Fold's sphere is shut round the player (`strike::FD_STAY`): their flight kept to vanilla's at most.
+    fly_held: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
@@ -371,6 +391,8 @@ struct Orbital {
     aiming: Option<u32>,
     /// Seconds the next strike starts in at (`/orbital skip`, for looking at one moment of it; terrain off only).
     skip: f32,
+    /// A strike's clock held at this second (`/orbital hold SECONDS`, 0 lets it go): for looking at one moment from anywhere.
+    hold: f32,
     /// The Payload's and the Nuke's cloud shadows on the land left out (`/orbital shadow off`: for looking at them
     /// side by side; not kept).
     shadow_off: bool,
@@ -416,9 +438,9 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_OWN[0], PASS_OWN[0], tsunami_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, PASS_OWN[0], tsunami_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -439,10 +461,13 @@ impl Orbital {
             page,
             colours,
             fly,
+            fly_held: false,
             blast_alt,
             fast,
             impact,
             impact_style,
+            fold_pattern,
+            fold_stop: 4,
             knock,
             follow,
             following: None,
@@ -456,6 +481,7 @@ impl Orbital {
             fired: false,
             aiming: None,
             skip: 0.0,
+            hold: 0.0,
             shadow_off: false,
             cleanup: Default::default(),
             strike: None,
@@ -475,7 +501,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nfoldpattern={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.hud),
@@ -487,6 +513,7 @@ impl Orbital {
             if self.blast_alt[1] { "alt" } else { "main" },
             if self.fast { "fast" } else { "full" },
             if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" },
+            strike::FD_PATTERNS[self.fold_pattern.min(2)].0,
             if self.knock { "on" } else { "off" },
             if self.carry_turn { "turn" } else { "still" },
             if self.follow { "on" } else { "off" },
@@ -534,6 +561,7 @@ impl Orbital {
         let mut fast = true;
         let mut impact = true;
         let mut impact_style = 1u8;
+        let mut fold_pattern = 0;
         let mut knock = true;
         let mut carry_turn = true;
         let mut follow = false;
@@ -559,6 +587,7 @@ impl Orbital {
                         impact_style = i as u8;
                     }
                 }
+                Some(("foldpattern", v)) => fold_pattern = strike::FD_PATTERNS.iter().position(|p| p.0 == v).unwrap_or(0),
                 Some(("knockback", v)) => knock = v != "off",
                 Some(("carryview", v)) => carry_turn = v != "still",
                 Some(("follow", v)) => follow = v == "on",
@@ -574,7 +603,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn }
     }
 
     /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
@@ -590,7 +619,8 @@ impl Orbital {
     /// Hands the game the flying speed (vanilla's at 1x). The game keeps it through respawns and worlds until it is
     /// changed, so this is needed only when it changes and as the mod starts.
     fn apply_fly(&self) {
-        let speed = ((self.fly - 1.0).abs() > 1e-4).then_some(VANILLA_FLY * self.fly);
+        let m = if self.fly_held { self.fly.min(1.0) } else { self.fly };
+        let speed = ((m - 1.0).abs() > 1e-4).then_some(VANILLA_FLY * m);
         world::set_flying_speed(speed);
     }
     fn set_fly(&mut self, m: f32) {
@@ -656,7 +686,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
+            ui::show(&w.draws(self.laser, self.terrain, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.fold_pattern, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
         }
     }
     fn open_wheel(&mut self) {
@@ -786,6 +816,12 @@ impl Orbital {
                 }
                 self.set_impact(k > 0);
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
+            Some(wheel::Spot::Crease(k)) => {
+                self.fold_pattern = k.min(strike::FD_PATTERNS.len() - 1);
+                self.save();
+                world::play_sound("minecraft:ui.button.click", None, 0.6, 1.3);
                 self.show_wheel();
             }
             Some(wheel::Spot::Knock) => {
@@ -941,6 +977,9 @@ impl Orbital {
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
     /// shadow off`), and for the Rod from God 2 more if its impact frames are.
     fn flags_of(&self, index: u32) -> f32 {
+        if LASERS.iter().any(|l| l.index == index && l.key == "fold") {
+            return self.fold_stop as f32;
+        }
         f32::from(u8::from(self.shadow_off)) + if index == 11 { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
@@ -973,10 +1012,16 @@ impl Orbital {
         if self.strike.is_none() {
             if self.warming {
                 render::clear_post();
+                render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
                 self.warming = false;
             } else if self.compiled != Some(want) && self.ticks >= WARM_AFTER {
                 self.hand_post(want);
                 render::set_params(&[0.0; 16]);
+                // (the Fold's world warp is built the same way, with its pass)
+                if LASERS[self.laser].key == "fold" {
+                    render::set_warp(FOLD_WARP);
+                    render::warp_on(true, 0.0, 0.0, 0.0, 0, 0.0);
+                }
                 self.warming = true;
             }
         } else {
@@ -1021,8 +1066,14 @@ impl Orbital {
         ground::clear();
         columns::clear();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
-        let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
+        let option = if laser.key == "fold" { self.fold_pattern } else { wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s])) };
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
+        // (the Fold asks how low the land lies round the target; `tick` takes the answer in)
+        let level_tag = (laser.key == "fold").then(|| {
+            let tag = ground::new_tag();
+            ground::ask(tag, strike::fd_survey(target.block));
+            tag
+        });
         meter::spend(FIRE_COST);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
@@ -1033,6 +1084,9 @@ impl Orbital {
         params[8] = seed;
         params[9] = 1.0;
         params[11] = hit.block_y as f32;
+        if laser.key == "fold" {
+            params[10] = strike::fd_lie(0.0, strike::fd_pin(target.point, me, seed), self.fold_pattern);
+        }
         if is_ship(laser) {
             params[12] = self.approach as f32;
             params[13] = self.arrival as f32;
@@ -1045,19 +1099,32 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
+            // (the Fold's warp lifts the real land only if there is any: fold_warp.wgsl's fw_real_land)
+            if laser.key == "fold" && self.terrain {
+                params[15] += 0.25;
+            }
         }
         self.hand_post(pass_of(laser));
         render::set_params(&params);
+        if laser.key == "fold" {
+            // (the world's own vertices go through the warp: shaders/fold_warp.wgsl)
+            render::set_warp(FOLD_WARP);
+            // (on only from strike::FD_WARP_START: the droplet's seconds keep the game's own culling: `frame`)
+            // (the pass is built by the game as the first frame draws it; "a mod's post pass did not compile" in its log
+            // means it was skipped: this line says the mod handed it over)
+            log::write(log::Level::Info, &format!("fold: pass {} handed over, intensity {}", pass_of(laser), params[9]));
+        }
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
         // the pass's tables due before then are worked out on the first ticks, as the pass needs them, what they give
         // that was due before then left out too)
         let ticks = (self.skip.min(laser.length - 1.0) * 20.0) as u32;
-        let skipped = ticks as f32 * 0.05;
+        let wait = if ticks == 0 && laser.key == "fold" { (strike::FD_LEAD * 20.0) as u32 } else { 0 };
+        let skipped = if wait > 0 { -strike::FD_LEAD } else { ticks as f32 * 0.05 };
         let mut plan = plan;
         plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Cleanup(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. }));
         let next = 0;
@@ -1066,8 +1133,8 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
-        self.hold_forceloads(&dimension, clock, laser.length);
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
+        self.hold_forceloads(&dimension, clock, laser.length + wait as f32 * 0.05);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the Tsunami's surge carrying the player along once the water has them, with the knockback on)
@@ -1082,10 +1149,45 @@ impl Orbital {
         }
     }
     /// One tick of the strike: everything due by now, in one batch.
+    /// While the Fold's sphere is shut round the player: flight kept to vanilla's at most, whatever they had set, and if
+    /// they get too far from where they fired, brought back (nothing shows of it: fold_warp's fw_stay takes all of it off by
+    /// then) so that the land on its walls stays loaded. All of it let go as it opens, the strike stops or they leave.
+    fn fold_stay(&mut self) {
+        let at = self.strike.as_ref().filter(|s| s.key == "fold").map(|s| (s.ticks as f32 * 0.05, [s.params[12], s.params[13], s.params[14]]));
+        let held = at.is_some_and(|(t, _)| strike::FD_STAY.contains(&t));
+        if held != self.fly_held {
+            self.fly_held = held;
+            self.apply_fly();
+        }
+        let Some((t, me)) = at else { return };
+        if !held || t < strike::FD_TETHER_ON {
+            return;
+        }
+        let Some(p) = game::get_player() else { return };
+        let (dx, dy, dz) = (p.x - f64::from(me[0]), p.y - f64::from(me[1]), p.z - f64::from(me[2]));
+        let far = (dx * dx + dy * dy + dz * dz).sqrt();
+        if far > strike::FD_TETHER {
+            let k = (strike::FD_TETHER - 8.0) / far;
+            let at = [f64::from(me[0]) + dx * k, f64::from(me[1]) + dy * k, f64::from(me[2]) + dz * k];
+            world::run_commands(&[format!("tp @s {:.2} {:.2} {:.2}", at[0], at[1], at[2])]);
+        }
+    }
+
     fn tick_strike(&mut self) {
+        self.fold_stay();
         // (the world's answers to the ground asked for, before the stages that read them)
         ground::poll();
         columns::poll();
+        if let Some(s) = &mut self.strike
+            && let Some((tag, block)) = s.level
+            && ground::ready(tag)
+        {
+            let tops: Vec<Option<i32>> = strike::fd_survey(block).iter().map(|&(x, z)| ground::at(x, z).map(|g| g + ground::water(x, z).unwrap_or(0))).collect();
+            let level = strike::fd_level(block[1], &tops);
+            s.params[10] += level;
+            s.level = None;
+            log::write(log::Level::Info, &format!("fold: the land's level {level} from the target"));
+        }
         trace("polled");
         let carved = self.carve(CARVE_CMDS);
         trace("carved");
@@ -1106,8 +1208,12 @@ impl Orbital {
             self.edit();
             return;
         };
-        s.ticks += 1;
-        let now = s.ticks as f32 * 0.05;
+        if s.wait > 0 {
+            s.wait -= 1;
+        } else if self.hold <= 0.0 || (s.ticks as f32) * 0.05 < self.hold {
+            s.ticks += 1;
+        }
+        let now = s.clock();
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
@@ -1244,6 +1350,7 @@ impl Orbital {
         self.carrying = None;
         self.surging = None;
         render::clear_post();
+        render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
         self.strike = None;
         ground::clear();
         columns::clear();
@@ -1371,6 +1478,9 @@ impl Orbital {
         self.place = place;
         self.away = 0.0;
         if clock.is_none() || elsewhere {
+            if self.strike.is_some() {
+                log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?}", self.clock));
+            }
             self.left_world();
         }
         // (joined: this world's first tick, or another's after a tick out of one)
@@ -1640,6 +1750,7 @@ impl Mod for Orbital {
                         "payload" | "nuke" | "rod" => "DESIGNATING",
                         "hurricane" => "TRACKING STORM",
                         "tsunami" => "READING THE SEA",
+                        "fold" => "ATTUNING",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -1671,8 +1782,22 @@ impl Mod for Orbital {
         self.warm();
         if let Some(s) = &mut self.strike {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
-            s.params[3] = s.ticks as f32 * 0.05;
+            s.params[3] = s.clock();
             render::set_params(&s.params);
+            // (the warp on for its span only: before and after it the frame keeps its culling)
+            self.pace.hidden = s.key == "fold" && strike::FD_HIDDEN.contains(&s.params[3]);
+            if s.key == "fold" {
+                let on = (strike::FD_WARP_START..strike::FD_WARP_END).contains(&s.params[3]);
+                let p = &s.params;
+                let copies = if strike::FD_COPY_ON.contains(&p[3]) { strike::FD_COPIES } else { 0 };
+                render::warp_on(on, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]), copies, strike::FD_COPY_R);
+                // (the crater made behind what is on screen, and all shown on one frame; the terrain off, nothing to hold)
+                render::hold_world(self.pace.hidden && self.terrain);
+                if self.pace.hidden && self.terrain {
+                    let (p, t) = (&s.params, s.params[3]);
+                    render::hold_world_within(&strike::fd_hold_areas(t, [f64::from(p[0]), f64::from(p[2])], [f64::from(p[12]), f64::from(p[14])]));
+                }
+            }
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
             && w.hover_at(c.x, c.y, self.laser)
@@ -1749,6 +1874,10 @@ impl Mod for Orbital {
                 }
                 self.skip = t.max(0.0);
                 Ok(Some(format!("The next strike starts {t} s in")))
+            }
+            (Some("hold"), Some(v)) => {
+                self.hold = v.parse().map_err(|_| "/orbital hold SECONDS (0 lets it go)".to_string())?;
+                Ok(Some(format!("Strikes held at {} s", self.hold)))
             }
             (Some("flyspeed"), Some("reset")) => {
                 self.set_fly(1.0);
@@ -1849,6 +1978,28 @@ impl Mod for Orbital {
                     Some(_) => Err(format!("/orbital {c} main or alt")),
                 }
             }
+            (Some("foldpattern"), v) => {
+                let names = |k: usize| strike::FD_PATTERNS[k].1.to_lowercase();
+                match v.and_then(|v| strike::FD_PATTERNS.iter().position(|p| p.0 == v || p.1.to_lowercase() == v)) {
+                    Some(k) => {
+                        self.fold_pattern = k;
+                        self.save();
+                        Ok(Some(format!("Fold pattern: {} (the next strike's)", names(k))))
+                    }
+                    None if v.is_none() => Ok(Some(format!("Fold pattern: {} (/orbital foldpattern a, b or c)", names(self.fold_pattern)))),
+                    None => Err("/orbital foldpattern a|b|c (umbrella, waterbomb, diagonal)".to_string()),
+                }
+            }
+            (Some("foldstop"), v) => {
+                const STOPS: [&str; 7] = ["the wake", "air pond", "shock", "squash", "overrun", "mushroom", "stutter"];
+                match v.and_then(|v| v.parse::<usize>().ok()).filter(|&n| n < STOPS.len()) {
+                    Some(n) => {
+                        self.fold_stop = n;
+                        Ok(Some(format!("Fold stop {n}: {} (the next strike's)", STOPS[n])))
+                    }
+                    None => Ok(Some(format!("Fold stop {}: {} (/orbital foldstop 0 to 6)", self.fold_stop, STOPS[self.fold_stop]))),
+                }
+            }
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
                 Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's, the Nuke's and the Rod's smoke at half size" } else { "full: every pixel" })))
@@ -1863,7 +2014,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | foldpattern a|b|c | foldstop 0-6 | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -2283,7 +2434,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -2788,7 +2939,7 @@ mod stress {
         };
         let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
         plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
-        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, sounds: Default::default(), key: "", sprites: 0 });
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], level: None, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, wait: 0, sounds: Default::default(), key: "", sprites: 0 });
         let mut worst = 0;
         let mut ticks = 0;
         while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {

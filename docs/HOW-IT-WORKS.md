@@ -420,6 +420,7 @@ going in while the falling wave still hides them.
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
+| `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
 | `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
@@ -458,7 +459,7 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
 `orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
 `orbital-mod-api-10`) are needed too: a fork build without them won't start the mod, so 0.5.8 needs
-`orbital-mod-api-10` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+`orbital-mod-api-11` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.
 
@@ -864,3 +865,47 @@ horizon-ctl launch --world MyWorld --creative --wait
 python3 strike.py --doctor              # says what's missing and how to fix it
 python3 strike.py --daemon              # hold the designator (slot 9) to fire; the remote (slot 8) picks the laser
 ```
+
+## The Fold (laser 16)
+
+Reality folded like paper, the mandala its crease pattern, the crater the scar. About 64 s, its clock starting at -4 (`strike/fold.rs` the plan and sounds,
+`strike/fold_land.rs` the land, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`, `tools/sounds_fold.py`). There is no beam. After
+the droplet, nothing is a picture of the world: every terrain vertex, the far terrain's tiles included, and every entity goes
+through the fork's world warp (`render.set-warp`), and every terrain pixel through its `world_fragment`, which knows where the
+pixel really is however far it has been thrown, so everything is anchored to the land.
+
+- **The fall** (-4 to 3 s). A bead of liquid metal falls from 3,600 blocks up, 7.4 s in all, so there is time to look up: a star, a plasma sheath, fire, a smoke rope. The sound is far off in the sky at first.
+- **The brake** (2.9-3.9 s). About a second, the force rising and falling smoothly (`fd_brake_t`), the drop squashing a little under it. The fire and the smoke carry on past it to the land.
+- **The hang and the touch** (3.9-6.2 s). It hangs, is let go at 4.5 s, falls under gravity and goes into the land at 6 s. Its smoke comes apart where it hangs, all of it together, from the stop to 15 s (`FD_GONE`).
+- **Ripples** (from 6.6 s; the warp, and its cost, begin at 5.5 s). Five rings run out, each bigger than the last.
+- **Scoring** (12 s). The rings sharpen into creases racing over the land: one crease pattern, twelve straight creases 30 degrees
+  apart, mountain and valley in turn, and five rings (FD_RINGS, 44 to 480 blocks), every line a real kink of the sheet. Across each
+  panel, by the wheel's FOLD row or `/orbital foldpattern a|b|c` (kept, the next strike's): nothing (UMBRELLA, the default), an X with
+  its middle up or down (WATERBOMB), or one diagonal, in diamonds (DIAGONAL). `tools/foldview/pattern.py` writes the tables.
+- **Folding** (19-35 s). The land lifts ring by ring and the far land curls up, slowly, faster, slowly again, into a tube round the player, the rings lying back to a mound.
+- **The boil and the drop** (32.5-40 s). The hole in the roof closes in metal: tongues crawl in from the rim, seethe as they near each other, bridge from 35.8 s and seal at about 36.85 s. A bead forms on a neck, pinches at 38.35 s and one drop falls the length of the tube to the target at 40 s: a tiny light, a small hit and a ding.
+- **The unwrap** (40.5-48.7 s). The metal lets go and the hole opens; the tube gives at 42.2 s, catches and lets go. The rings fall outermost first, banging down at 44.1, 45.2, 46.3, 47.4 and 48.7 s.
+- **The damage** (from 40 s). Nothing appears from nowhere. From the touch a wound runs out along the creases, and each bang sinks its ring, burns it and cracks it (`fw_sag`, `fw_hurt`). From each bang the old land crumbles away inward across the ring that has just landed, chunk by chunk, the real land taking its place (`fd_hold_areas`, `fw_front`), held up at the land's level.
+- **The crater falls in** (from 48.9 s). Panel by panel from the middle out, about 6 s (`fw_sunk`), the one under the player first, at the player's own speed.
+- **The fire** (49.9 s). One flash, the biggest shock through the land, debris thrown, a knockback, and fire running out from the middle to the edges: in the land itself, through the warp's pixels, with flames standing off it found by the depth, so it follows every slope (`fd_erupt`). The dust wall follows it out.
+- **The comedown.** The creases fade; the warp ends at 56.7 s, the strike at 59.7 s.
+
+Along the way, each a constant in `fold_warp.wgsl` or `fold_land.rs`: block faces near the creases show smaller copies of
+themselves, 2 by 2 to 8 by 8 (`FW_FRACTAL`); cards of
+the land are dealt along the creases (`FW_CARDS`, the warp's `copies`); hundreds of real blocks peel off the creases and fall
+upward (`FD_PEEL`); hue drifts slowly over the land like oil on water, up to about 36 degrees, strongest on the creases and the
+petals (`FW_IRID`, its strength); mobs and items ride the land through the warp.
+
+The land is a thin sheet, or it would look like the fold's caves: what lies under it is cut at the pixel (faces with next to no
+sky light, and anything under the land's cut), and doesn't swing out on a lever (its height from the land is pressed in). The
+sheet's underside is painted as rock.
+
+What stays is a scar, about 530 blocks across (`strike/fold_land.rs`): the twelve-fold terraced mandala in
+glazed terracotta and concrete, smashed: tilted, dropped and burnt plates, cracks, fissures and arcs along the creases past a
+ragged heaped rim, a shaft to bedrock, blackened land out to about 400, felled trees, ejecta rays, rubble, blocks thrown as each ring lands, fires. It reads every column to its real top and goes in as one wave
+from the middle out behind the game's hold on the terrain (`render.hold-world`, `FD_HIDDEN`): the land on screen stays as it was and each chunk is edited once. It takes its
+place a chunk at a time as the old land crumbles (`render.hold-world-within`), the last of it on the frame the last slam lands (`FD_REVEAL`). The chunks under the player go in half a
+second before that, so the ground goes from under them with the slam; a moment's resistance takes the fall.
+
+**Photosensitivity:** the Fold bends the whole world round the player for half a minute, with
+one bright flash as the fire goes out, and fast jolts as the rings land. It is a strongly distorting effect: skip it if you are sensitive to those.

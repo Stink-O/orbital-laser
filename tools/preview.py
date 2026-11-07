@@ -27,7 +27,7 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
 INDEX = {"supercell": 12, "hurricane": 13, "tsunami": 16}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
@@ -213,6 +213,30 @@ VIEWS = {
     "tstop": "cx=30 cy=480 cz=240 lx=0.5 ly=65 lz=-80 hills=30 trees=1 fov=62 reach=300",
     "tsdrain": "cx=0 cy=125 cz=300 lx=0.5 ly=62 lz=-100 hills=30 trees=1 fov=70 reach=300",
     "tsdrainlow": "cx=0 cy=69 cz=300 lx=0.5 ly=60 lz=120 hills=30 trees=1 fov=70 reach=300",
+    # the fold (over flat land; its pass is mostly the view, so most of these are the player's: 60 off, looking at the
+    # target; then looking up at the sky, and from the aerial view and a closer one of the mandala crater, built from
+    # the plan's own blocks (fl_dump_land: vox=1))
+    "flplayer": "cx=0 cy=67 cz=70 lx=0.5 ly=72 lz=0.5 flat=1 trees=1 fov=75 reach=70",
+    "flsky": "cx=0 cy=67 cz=70 lx=0.5 ly=140 lz=-40 flat=1 fov=80 reach=70",
+    "fllow": "cx=0 cy=66 cz=70 lx=0 ly=68 lz=-60 flat=1 trees=1 fov=90 reach=70",
+    "flfar": "cx=0 cy=75 cz=300 lx=0.5 ly=80 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "flaerial": "cx=0 cy=260 cz=150 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
+    "fltop": "cx=0.5 cy=330 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
+    "flhill": "cx=0 cy=75 cz=130 lx=0.5 ly=70 lz=0.5 hills=22 trees=1 fov=75 reach=130",
+    "flhigh": "cx=60 cy=140 cz=220 lx=0.5 ly=60 lz=0.5 hills=18 trees=1 fov=70 reach=220",
+    # the droplet from 170 off, as a player sees it, close up on it (a long lens) and whole with its wake and the dust
+    "flzoom": "cx=0 cy=72 cz=170 lx=0.5 ly=95 lz=0.5 hills=8 trees=1 fov=16 reach=170",
+    "flsee": "cx=0 cy=72 cz=170 lx=0.5 ly=120 lz=0.5 hills=8 trees=1 fov=70 reach=170",
+    "flup": "cx=0 cy=72 cz=170 lx=0.5 ly=420 lz=0.5 hills=8 fov=70 reach=170",
+    # the brake and the stream going past it, and the whole fall as it looks to someone 170 off who has looked up
+    "flbrake": "cx=0 cy=72 cz=170 lx=0.5 ly=165 lz=0.5 hills=8 trees=1 fov=38 reach=170",
+    "flhalf": "cx=0 cy=72 cz=170 lx=0.5 ly=1000 lz=0.5 hills=8 fov=75 reach=170",
+    "flrim": "cx=0 cy=75 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=75 reach=110",
+    # the scar whole (fl_dump_land): from straight over it, from high off to one side, from its rim, and down on its floor
+    "fdtop": "cx=0.5 cy=620 cz=1 lx=0.5 ly=60 lz=0.5 flat=1 vox=2 fov=60 reach=70",
+    "fdhigh": "cx=0 cy=300 cz=420 lx=0.5 ly=30 lz=20 flat=1 vox=2 fov=55 reach=70",
+    "fdrim": "cx=40 cy=95 cz=205 lx=0.5 ly=35 lz=0 flat=1 vox=2 fov=75 reach=110",
+    "fdfloor": "cx=70 cy=62 cz=110 lx=-20 ly=10 lz=0 flat=1 vox=2 fov=75 reach=110",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -220,7 +244,8 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "rod": "rdplayer,rdmid,rdfar",
                  "supercell": "scplayer,scunder,scfar",
                  "hurricane": "huplayer,hufar,huunder,huaerial",
-                 "tsunami": "tsplayer,tsside,tsaerial"}
+                 "tsunami": "tsplayer,tsside,tsaerial",
+                 "fold": "flhill,flhigh"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -229,7 +254,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold"):
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
                              input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{laser}.wgsl").read_text()
@@ -240,6 +265,10 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
         rdif = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("rdif=")), None)
         if rdif is not None:
             own = re.sub(r"const RD_IF_STYLE: i32 = \d+;", f"const RD_IF_STYLE: i32 = {int(rdif)};", own)
+        if laser == "fold":
+            # (what of the warp the pass has too: mod/src/passbuild.rs's warp_shared)
+            warp = (SHADERS / "fold_warp.wgsl").read_text()
+            own = "".join(re.findall(r"^// \[post pass too\].*?\n(.*?)^// \[end post pass too\]", warp, re.S | re.M)) + own
         path.write_text(pre + own)
     else:
         path.write_text(strike)
@@ -328,6 +357,12 @@ def main() -> int:
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
     common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
+    if a.laser == "fold":
+        # (the pass's history, the frames before each moment: trails; and the mandala's blocks for the aerial views)
+        common += ["hist=8", "hdt=0.05", "mode=0", "style=65"]
+        vox = ROOT / "dist" / "preview" / "fold_land.txt"
+        if vox.exists():
+            env_vox = str(vox)
     if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
@@ -340,6 +375,8 @@ def main() -> int:
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
     env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami") else None
     env = dict(env or os.environ)
+    if a.laser == "fold" and (ROOT / "dist" / "preview" / "fold_land.txt").exists():
+        env["PREVIEW_VOXELS"] = str(ROOT / "dist" / "preview" / "fold_land.txt")
     if ATLAS:
         env["PREVIEW_ATLAS"] = str(ATLAS / "atlas.raw")
     if a.whole:

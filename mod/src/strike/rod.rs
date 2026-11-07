@@ -325,7 +325,7 @@ enum Kind {
     Ground,
 }
 const WOODS: [&str; 9] = ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak"];
-const LOG_X: [&str; 9] = [
+pub(super) const LOG_X: [&str; 9] = [
     "minecraft:oak_log[axis=x]",
     "minecraft:spruce_log[axis=x]",
     "minecraft:birch_log[axis=x]",
@@ -336,7 +336,7 @@ const LOG_X: [&str; 9] = [
     "minecraft:cherry_log[axis=x]",
     "minecraft:pale_oak_log[axis=x]",
 ];
-const LOG_Z: [&str; 9] = [
+pub(super) const LOG_Z: [&str; 9] = [
     "minecraft:oak_log[axis=z]",
     "minecraft:spruce_log[axis=z]",
     "minecraft:birch_log[axis=z]",
@@ -347,7 +347,7 @@ const LOG_Z: [&str; 9] = [
     "minecraft:cherry_log[axis=z]",
     "minecraft:pale_oak_log[axis=z]",
 ];
-const LOG_Y: [&str; 9] = [
+pub(super) const LOG_Y: [&str; 9] = [
     "minecraft:oak_log",
     "minecraft:spruce_log",
     "minecraft:birch_log",
@@ -358,7 +358,7 @@ const LOG_Y: [&str; 9] = [
     "minecraft:cherry_log",
     "minecraft:pale_oak_log",
 ];
-const LEAF_NAMES: [&str; 9] = [
+pub(super) const LEAF_NAMES: [&str; 9] = [
     "minecraft:oak_leaves",
     "minecraft:spruce_leaves",
     "minecraft:birch_leaves",
@@ -369,7 +369,7 @@ const LEAF_NAMES: [&str; 9] = [
     "minecraft:cherry_leaves",
     "minecraft:pale_oak_leaves",
 ];
-const LEAVES: [&str; 9] = [
+pub(super) const LEAVES: [&str; 9] = [
     "minecraft:oak_leaves[persistent=true]",
     "minecraft:spruce_leaves[persistent=true]",
     "minecraft:birch_leaves[persistent=true]",
@@ -414,29 +414,29 @@ fn kind(name: &str) -> (Kind, u8) {
 /// trunk standing on it (its height and wood), the leaves over it, what its ground is (1 grass, 2 dirt), and whether
 /// water or lava is there (left alone).
 #[derive(Clone, Copy, Debug, Default)]
-struct Column {
-    known: bool,
-    fluid: bool,
+pub(super) struct Column {
+    pub(super) known: bool,
+    pub(super) fluid: bool,
     /// The fluid is lava (kept apart, sealed as ever).
-    lava: bool,
+    pub(super) lava: bool,
     /// The water's own surface here (not what hangs over it).
-    wtop: i32,
-    g: i32,
-    top: i32,
-    trunk: u8,
-    wood: u8,
-    leaves: u8,
-    ground: u8,
+    pub(super) wtop: i32,
+    pub(super) g: i32,
+    pub(super) top: i32,
+    pub(super) trunk: u8,
+    pub(super) wood: u8,
+    pub(super) leaves: u8,
+    pub(super) ground: u8,
 }
 
-struct Land {
-    cols: Vec<Column>,
+pub(super) struct Land {
+    pub(super) cols: Vec<Column>,
     /// The columns of each ring (part) of the read the world had not loaded when it answered, asked again till it has.
-    missing: Vec<Vec<(i32, i32)>>,
+    pub(super) missing: Vec<Vec<(i32, i32)>>,
     /// How many trunks of each wood stand on it (the commonest is the one strewn and thrown).
-    woods: [u32; 9],
+    pub(super) woods: [u32; 9],
     /// Every part taken in (the stages that use it wait for it).
-    done: bool,
+    pub(super) done: bool,
 }
 
 fn at(land: &Land, bx: i32, bz: i32, x: i32, z: i32) -> Option<&Column> {
@@ -457,6 +457,10 @@ fn read_reach(part: i32) -> f64 {
 fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
     let r1 = read_reach(part).min(f64::from(RD_READ));
     let q0 = if part == 0 { -1.0 } else { read_reach(part - 1).powi(2) };
+    ring_columns(bx, bz, q0, r1)
+}
+/// The columns of the ring from squared radius `q0` (exclusive) out to radius `r1` round (bx, bz).
+pub(super) fn ring_columns(bx: i32, bz: i32, q0: f64, r1: f64) -> Vec<(i32, i32)> {
     let q1 = r1 * r1;
     let n = r1.ceil() as i32;
     let mut out = Vec::new();
@@ -487,6 +491,12 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
 /// One answer for ring `part` taken in: each column's ground, what stands on it and over it (those not loaded kept to
 /// be asked again).
 fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: usize) {
+    take_in_grid(land, a, bx, bz, part, RD_READ, false);
+}
+/// The same for a land's square reaching `read` columns round (bx, bz). `tall`: a column with no ground within the read
+/// but something solid on it (a very tall tree, a wall of a mountain) is kept too, the bottom of the read as its ground.
+pub(super) fn take_in_grid(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: usize, read: i32, tall: bool) {
+    let gw = 2 * read + 1;
     let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
     let lavas: Vec<bool> = a.palette.iter().map(|n| n.contains("lava")).collect();
     crate::meter::spend(2_000 + 4_000 * a.palette.len() as u64);
@@ -531,10 +541,11 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: 
                 }
             }
         }
-        let Some(gj) = g else {
-            // (no ground within reach: a very tall tree, or over the void; left alone)
+        // (no ground within reach: a very tall tree, or over the void; left alone unless asked for)
+        if g.is_none() && !(tall && top.is_some() && !c.fluid) {
             continue;
-        };
+        }
+        let gj = g.unwrap_or(0);
         c.g = base + gj as i32;
         c.top = top.unwrap_or(c.g);
         let mut n = 0;
@@ -551,9 +562,9 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32, part: 
         if c.trunk > 0 {
             land.woods[c.wood as usize] += 1;
         }
-        let (ii, kk) = (x - bx + RD_READ, z - bz + RD_READ);
-        if (0..RD_GW).contains(&ii) && (0..RD_GW).contains(&kk) {
-            land.cols[(kk * RD_GW + ii) as usize] = c;
+        let (ii, kk) = (x - bx + read, z - bz + read);
+        if (0..gw).contains(&ii) && (0..gw).contains(&kk) {
+            land.cols[(kk * gw + ii) as usize] = c;
         }
     }
 }
@@ -888,14 +899,14 @@ impl Wave {
 }
 /// A part of a ring: radii r0..r1 from the target's middle, its angles a0 to a0 + da.
 #[derive(Clone, Copy, Debug)]
-struct Sector {
-    r0: f64,
-    r1: f64,
-    a0: f64,
-    da: f64,
+pub(super) struct Sector {
+    pub(super) r0: f64,
+    pub(super) r1: f64,
+    pub(super) a0: f64,
+    pub(super) da: f64,
     /// How far through its ring's parts it is (0 the first): its edits go in that far between the wave reaching the
     /// ring's inner edge and its outer, so a ring's parts go in over the ticks between, not all in one.
-    frac: f64,
+    pub(super) frac: f64,
 }
 impl Sector {
     fn when(&self, wave: &Wave) -> f32 {
@@ -904,7 +915,7 @@ impl Sector {
     }
 }
 impl Sector {
-    fn holds(&self, dx: f64, dz: f64) -> bool {
+    pub(super) fn holds(&self, dx: f64, dz: f64) -> bool {
         let q = dx * dx + dz * dz;
         if q < self.r0 * self.r0 || q >= self.r1 * self.r1 {
             return false;
@@ -912,7 +923,7 @@ impl Sector {
         self.da >= TAU - 1e-9 || (dz.atan2(dx) - self.a0).rem_euclid(TAU) < self.da
     }
     /// The block columns whose middles lie in it, round (cx, cz); and the box they lie in.
-    fn cells(&self, cx: f64, cz: f64) -> (Vec<(i32, i32)>, [i32; 4]) {
+    pub(super) fn cells(&self, cx: f64, cz: f64) -> (Vec<(i32, i32)>, [i32; 4]) {
         // (its box: the corners and wherever it crosses an axis)
         let (mut x0, mut z0, mut x1, mut z1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
         let mut add = |a: f64, r: f64| {
@@ -1196,12 +1207,12 @@ fn rd_heave(dx: i32, dz: i32, seed: u32) -> Option<(i32, i32)> {
 
 /// Edits sorted into the ticks they go in at.
 #[derive(Default)]
-struct Due(std::collections::BTreeMap<i32, Blocks>);
+pub(super) struct Due(pub(super) std::collections::BTreeMap<i32, Blocks>);
 impl Due {
-    fn get(&mut self, t: f32) -> &mut Blocks {
+    pub(super) fn get(&mut self, t: f32) -> &mut Blocks {
         self.0.entry((t / 0.05).ceil() as i32).or_default()
     }
-    fn push(self, q: &mut Plan) {
+    pub(super) fn push(self, q: &mut Plan) {
         for (k, b) in self.0 {
             if !b.runs.is_empty() {
                 q.ev.push((k as f32 * 0.05, Act::Blocks(Box::new(b))));
@@ -1306,7 +1317,7 @@ fn rd_blast_part(q: &mut Plan, land: &Land, s: &Shape, used: &mut Used, cache: &
 /// The trees standing on `cells` felled, lying on the land pointing away from the blast (their leaves crushed round
 /// their crowns, stripped off near it), each put in once the wave has swept the land it lies on.
 // (a cheap hash: the standard one costs far more fuel a lookup)
-type Used = crate::ground::FxSet<(i32, i32)>;
+pub(super) type Used = crate::ground::FxSet<(i32, i32)>;
 fn rd_fell(due: &mut Due, land: &Land, s: &Shape, used: &mut Used, wave: &Wave, bx: i32, bz: i32, cells: &[(i32, i32)]) {
     // (a column a log may lie on: flattened, not the crater or its rim, dry, its ground near the last one's)
     let lie = |x: i32, z: i32, gy: i32| -> Option<i32> {

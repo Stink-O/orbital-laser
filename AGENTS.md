@@ -210,6 +210,9 @@ laser, command, capability and timing). This file is the short, factual version 
   `thunder_mid` to 320, `thunder_far` past it, `rumble` for a flash in the cloud, late by the distance); `--listen DIR`
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
+- **The Fold** (`strike/fold.rs`, `strike/fold_land.rs`, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`; about 64 s, its clock starting at -4, `Strike::wait`; reaches 1000 blocks; needs the
+  fork's `render.set-warp`, `render.hold-world` and `render.hold-world-within`, release `orbital-mod-api-11`): a crater about 530 across on the crease pattern (corners out to ~353), a shaft to bedrock, the land charred
+  to ~400 and rubble to ~404, every mob and item within 360 killed and the ~2,000 chunks within 410 force-loaded; its land goes in from 27 s, behind the hold, and is done by the first bang at 44.1 s.
 - **The Tsunami** (`strike/tsunami.rs`, `strike/ts_sounds.rs`, `surge.rs`, `shaders/tsunami.wgsl`; 42 s, reaches 1000
   blocks) digs no crater: it sweeps a swath. A wave (320 high out at sea, ~145 over the target's ground at the land, a
   closed-form model, `TsGeo`, kept in step with the pass) crosses the land, and under its water a swath about 700 blocks
@@ -405,6 +408,33 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   loaded, jobs, rings) each time a stage asks what's ready: keep it O(what's due). The Nuke's land waits for columns
   not loaded, asking again a ring at a time, and goes in late as they come; it leaves out what never loads (logged
   `nuke: N columns of the land never loaded`).
+- **The Fold has three crease patterns on one set of tables** (`tools/foldview/pattern.py` writes them into fold_warp.wgsl and strike/fold.rs: change them there): twelve creases, five rings, and across a panel nothing, an X or a diagonal (`cp_mode`, the wheel's FOLD row, `/orbital foldpattern a|b|c`, kept, read at the fire). params[10] carries it: under the level, 1024ths, 100 pattern + the player's panel + 1 (`fd_lie`, `cp_code`). The crater breaks along it (`facet`), and `fw_sag`, `fw_hurt` and `fw_sunk` go by the same nodes and lines, so the crater lands on what the bangs have already done.
+- **The Fold's look is not in its pass.** The land's vertices and pixels go through the fork's `render.set-warp`
+  (`shaders/fold_warp.wgsl`, API 11, built into terrain.wgsl and entity.wgsl by the fork's `gfx/warp.rs`; what follows its
+  `// [fragments]` line is `world_fragment`, terrain pixels only), so `tools/preview.py` shows only `fold.wgsl`'s droplet, void and
+  flash, and voxels of the crater (`fl_dump_land`; views fdtop, fdhigh, fdrim, fdfloor): judge the bending in the game. The warp
+  is on only from FD_WARP_START to FD_WARP_END, and nothing is culled while it is (about 20 ms a frame in VillageNuke on an
+  RTX 4070 Super, against 10 without). The land is a thin sheet: never let what is under it move on a lever
+  (the old rings threw caves and the far tiles' columns into the sky). `fw_chain` must stay continuous in r and in the bearing: the
+  far tiles' merged faces can't be cut by a tear. Only the player's island is a real break, its faces cut at the pixel.
+  The beats and rings are kept in step by `the_warp_keeps_the_beats`. Falling blocks aren't entities to `@e`: `kill` misses them,
+  and a no-gravity one is timed out through its `Time`, as `fd_peel`'s are.
+- **The Fold's crater is made behind `render.hold-world`** (the fork's `gfx/hold.rs`, API 11): from `FD_HIDDEN.start` the terrain on
+  screen stays as it was and the world changes under it. From the first bang the hold shrinks a tick at a time (`render.hold-world-within`, `fd_hold_areas`), the old land crumbling inward;
+  fold_warp.wgsl's `fw_front` and `fw_freed_at` must keep to the same `FD_CRUMBLE`, and the warp goes by each vertex's own section (`warp_section`): by position alone, a vertex on a chunk's edge stretches a block up the height of the lift. The land has to be in by a second before its bang (`fold_land_goes_in_on_time_anywhere`). The rest goes on the frame at `FD_REVEAL`. The hold ends by itself after 30 s, past 1 GiB and on clear-post, a stop, another
+  dimension. Every chunk is edited once, on its one tick (`fd_tick`): a second edit of a chunk is a second resend, nine light jobs
+  and its meshes again, and that was the 12-30 fps after the last slam. The rubble and fires gathered in `late` are handed over behind
+  the parts of the chunks they lie on (`flush`), and only once the crater's cuts are cached: an uncached heap went to 91% of a tick's fuel.
+- **The Fold's crater is the crease pattern** (`fold_land.rs`): its outline the fourth ring's chords (`Shape::edge`, 228-353 out), a kite of the
+  pattern a panel (`kite_drop`), the mandala laid on the kites. It swaps in held up by the warp at the land's level (`fw_sunk`, `FD_BOWL` =
+  `FW_BOWL`) and falls in over ~3 s; the hold lets go 0.03 s before the warp lifts, or the old land shows a one-frame dome. **The mod has 64 MiB**
+  (`runtime.rs`'s MEMORY): the land's square is ~19 MiB and worked-out edits wait in memory, so `FD_HELD` caps them and `FD_IN_FLIGHT` the reads
+  (answers pile up otherwise: `rust_oom` on real land). The log gives the peak: `the mod's memory N MiB of 64`.
+- **Scripted input doesn't reset the game's AFK limit** (60 s without real input: 30 fps; 10 minutes: 10 fps): a strike fired by
+  script is capped part way through, in `horizon-ctl bench` and in recordings. `horizon-ctl options-set inactivityFpsLimit minimized`
+  before a measurement, `afk` after it. Real play fires with a click, and the longest strikes end before 60 s.
+- **A plan must be in time order**: playback stops at the first entry not due. `strike::plan` sorts nothing for the lasers with
+  plans of their own, so each sorts its `ev` (the Fold's didn't, and its crater waited for its 49 s forceload remove).
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many

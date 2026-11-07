@@ -1,6 +1,14 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0510); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0511); each release's notes are in [docs/releases](releases).
+
+## 0.5.11
+
+- **The Fold**, the sixteenth laser, on the wheel's fourth page and `/orbital fold`. No beam: a drop of liquid metal falls from high in the sky, brakes
+  over the target and goes into the land, and the land folds along twelve creases and five rings into a tube round you. The hole boils shut, one drop falls
+  to the target, and it all comes back, ring by ring, each bang showing its ring's real damage as the old land crumbles inward. Then the crater falls in and fire runs out over the land.
+  Three crease patterns: the wheel's FOLD row or `/orbital foldpattern a|b|c`.
+- The fork's release `orbital-mod-api-11` is needed: `render.set-warp` and `world_fragment`, `render.hold-world`, and `render.hold-world-within`.
 
 ## 0.5.10
 

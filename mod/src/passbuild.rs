@@ -27,6 +27,25 @@ pub fn own_pass(shader: &str, own: &str) -> String {
     out
 }
 
+/// What of the Fold's world warp its post pass has too: what lies between fold_warp.wgsl's `[post pass too]` marks.
+pub fn warp_shared(warp: &str) -> String {
+    let mut out = String::new();
+    let mut on = false;
+    for line in warp.lines() {
+        if line.starts_with("// [end post pass too]") {
+            on = false;
+        }
+        if on {
+            out.push_str(line);
+            out.push('\n');
+        }
+        if line.starts_with("// [post pass too]") {
+            on = true;
+        }
+    }
+    out
+}
+
 /// A pass with a half-size stage (payload.wgsl, nuke.wgsl), at QUALITY FAST (its `[half stage]` kept: the smoke drawn
 /// at half the width and height, on a game with mod passes' half-size stage; a game without it draws the pass's
 /// `fs_main`, at full size) or FULL (left out).

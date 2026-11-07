@@ -6,6 +6,9 @@ use std::f64::consts::PI;
 
 mod crystal;
 mod hu_blocks;
+mod fold;
+mod fold_land;
+pub use fold::{FD_COPIES, FD_COPY_ON, FD_COPY_R, FD_HIDDEN, FD_LEAD, fd_hold_areas, FD_STAY, FD_TETHER, FD_TETHER_ON, FD_WARP_END, FD_WARP_START, FD_PATTERNS, fd_level, fd_lie, fd_pin, fd_survey};
 mod hurricane;
 mod nuke;
 mod rod;
@@ -173,7 +176,14 @@ impl Blocks {
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
         }
-        out.into_iter().map(|(k, b)| (k as f32 * 0.05, b)).collect()
+        // (they wait in the plan, and a list grown a run at a time holds up to twice its room: a big land's edits are tens of megabytes of the mod's 64)
+        out.into_iter()
+            .map(|(k, mut b)| {
+                b.runs.shrink_to_fit();
+                b.palette.shrink_to_fit();
+                (k as f32 * 0.05, b)
+            })
+            .collect()
     }
     /// The runs as the fills they stand for (for the tests and the profilers).
     #[cfg(test)]
@@ -641,6 +651,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "supercell" {
         return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "fold" {
+        return fold::fold_plan(laser, target, terrain, dimension, shader_seed, me, approach);
     }
     if laser.key == "hurricane" {
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4416,7 +4429,7 @@ mod tests {
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
             // (nor the tsunami: it sweeps what stands on the land it read, under its water; strike/tsunami.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
