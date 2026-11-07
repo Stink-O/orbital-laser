@@ -18,6 +18,7 @@ mod lasers;
 mod meter;
 mod pace;
 mod sdk;
+pub mod smp;
 mod strike;
 mod surge;
 mod wheel;
@@ -1002,15 +1003,34 @@ impl Orbital {
     }
 
     // ---- the strike ----
+    fn network_start(&mut self, start: smp::Launch) {
+        smp::set_observer(true);
+        self.stop_strike();
+        let saved=(self.laser,self.seed_lock,self.approach,self.arrival,self.colours.clone(),self.skip,self.follow,self.terrain,self.blast_alt);
+        self.laser=start.laser;
+        self.seed_lock=Some(start.seed);
+        self.approach=start.approach;
+        self.arrival=start.arrival;
+        self.colours[self.laser]=start.colour;
+        self.skip=start.elapsed;
+        self.follow=false;
+        self.terrain=false;
+        if let Some(i)=wheel::sound_of(LASERS[self.laser].key) { self.blast_alt[i]=start.option != 0; }
+        smp::set_remote(start);
+        self.fire();
+        (self.laser,self.seed_lock,self.approach,self.arrival,self.colours,self.skip,self.follow,self.terrain,self.blast_alt)=saved;
+    }
     fn fire(&mut self) {
+        let remote=smp::take_remote();
+        if remote.is_none() { smp::set_observer(false); }
         let laser = LASERS[self.laser];
-        let Some(hit) = world::raycast(laser.range) else {
+        let Some(hit) = remote.as_ref().map(|s| world::Hit { block_x:s.block[0],block_y:s.block[1],block_z:s.block[2],x:s.point[0],y:s.point[1],z:s.point[2],block:String::new() }).or_else(|| world::raycast(laser.range)) else {
             Self::actionbar("NO TARGET IN RANGE", "gray");
             return;
         };
         let player = game::get_player();
         let dimension = player.as_ref().map_or("minecraft:overworld".to_string(), |p| p.dimension.clone());
-        let me = player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]);
+        let me = remote.as_ref().map(|s| s.origin).unwrap_or_else(|| player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]));
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         // a fresh look every strike, unless one is held (`/orbital seed`)
@@ -1022,7 +1042,12 @@ impl Orbital {
         columns::clear();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
         let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
-        let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
+        if remote.is_none() {
+            smp::emit(smp::Packet::Start(smp::Launch { laser:self.laser,block:target.block,point:target.point,origin:me,
+                seed:seed as u32,approach:self.approach,arrival:self.arrival,colour:self.colours[self.laser],option,
+                elapsed:self.skip,dimension:dimension.clone() }));
+        }
+        let plan = strike::plan(laser, &target, self.terrain && remote.is_none(), &dimension, seed, me, option);
         meter::spend(FIRE_COST);
         let mut params = [0.0f32; 16];
         params[..3].copy_from_slice(&[hit.x as f32, hit.y as f32, hit.z as f32]);
@@ -1067,7 +1092,7 @@ impl Orbital {
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
         self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
-        self.hold_forceloads(&dimension, clock, laser.length);
+        if remote.is_none() { self.hold_forceloads(&dimension, clock, laser.length); }
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the Tsunami's surge carrying the player along once the water has them, with the knockback on)
@@ -1255,6 +1280,7 @@ impl Orbital {
     /// Stop the strike under way: the rest of its plan and the world changes still waiting are dropped and its sounds
     /// cut short, but the chunks it force-loaded are let go (what it has already done to the world stays).
     fn stop_strike(&mut self) {
+        if self.strike.is_some() && !smp::observer() { smp::emit(smp::Packet::Stop); }
         let Some(s) = &mut self.strike else { return };
         let mut cmds: Vec<String> = s.sounds.iter().map(|e| format!("stopsound @s * {e}")).collect();
         let more = std::mem::take(&mut s.more).into_vec().into_iter().map(|g| (g.t, g.act));
