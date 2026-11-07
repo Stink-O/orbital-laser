@@ -25,11 +25,12 @@ As strike/fold.rs plays them (strike seconds; `EVENTS` below has volumes):
             as it comes round, the last on the world's stopping at 31.5, each going off the land still standing. From 26 s it comes through the ground.
   groan     19 s: the land bending, a hull's stress, moans with no note, the bangs (`BANG_UP`, on or halfway to the clacks), the far land's slow lift to 23.5, closing overhead from 26 s:
             the sky's air goes; at 31.5 the world stops closing and it stops with it, leaving a stillness and the air in the tube to 34.5.
-  foldown   34.5 s, exactly 5.5 s: the reach, one gesture on the picture's speed (`REACH`): an intake, the rim's weight going and its mouth shutting, the catch at 37.02, a second pull, the long creep; all land,
-            only the tip turning to metal; a low strain (`strain`) building in slow uneven pulses, at its heaviest on its last sample, the touch.
+  boil      34.5 s, exactly 5.5 s: the hole shutting and turning to metal (`BOIL`): an intake, the mouth's note sinking, tongues of metal crawling in from the rim, the skin slumping as one at the join, the surface running to the
+            middle with six great slow bubbles swelling and bursting (`BUBBLES`); a low strain (`strain`) building in slow uneven pulses under it and on through the drop's fall, at its heaviest on its last sample, the touch.
+  drip      36.95 s, to the touch on 40.0: `DRIP_PICK`, one of `DRIPS`, each a different idea of it: the bead on its neck, the pinch at 37.5, and the one drop falling all the way down, far off and coming, cut on the touch.
   ding      37.8 s, the touch on 40.0: `DING_PICK`, one of `DINGS`, each a different idea of that moment and all of them holding up to it: it has its lead-in on the front of it and the
-            held strain (`held`) on it to the let-go at 40.95.
-  reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the let-go at 40.95, the tip snapping up, fastest 41.3 to 41.85, the rim back on the tube at 42.25,
+            held strain (`held`) on it to the let-go at 40.95; the blends have the drop's own impact (`arrival`) on their front.
+  reverse   40.5 s, exactly 3.6 s: the run back on the picture's clock (`TAU`): low under the held strain, the metal tearing at 40.95 and running out to the rim and back through the plate by 41.5, the rim back on the tube at 42.25,
             the tube's lurch to 42.55, the hang, the last let-go at 42.88, the walls' fastest at 43.1 with the sky's air coming in, the far land going at the end. Forward sounds: nothing played backwards, nothing climbing in pitch.
   bang1-4   44.1, 45.2, 46.3, 47.4 less 0.8 s: a ring of land falling for 0.8 s and stopping dead: its own fall, its own bang, no stones after it.
             bang1 the far land, a long hit rolling away round the horizon; bang2 a broken ring, two deep blows with the air under the ring shoved out; bang3 the nearest and hardest, the same deep push, nothing after it; bang4 short, hollow and dead.
@@ -72,11 +73,13 @@ PEAK = 10 ** (-1.2 / 20)              # every file's decoded peak at most
 STOP, HANG, TOUCH, CLOSED, RIPPLE, SCORE, TEAR, FOLD, CLOSING, SEAL = 3.4, 4.5, 6.0, 6.2, 7.5, 12.0, 16.0, 19.0, 26.0, 35.0
 HOLD, GATHER, TUBE = 31.5, 34.5, 42.88                 # the world stops closing; the hole opens a hair, an intake; on the way back the tube lets go for good
 LIFT = 23.5                                           # the far land's slow lift (20.1 s on) at its height
-# the reach, one gesture (fold_warp.wgsl, fold-visuals d0f5161): (strike time, blocks a second)
-REACH = ((34.5, 0.0), (34.95, 8.0), (35.4, 300.0), (35.9, 640.0), (36.3, 380.0), (36.7, 150.0), (37.02, 25.0), (37.1, 40.0), (37.2, 0.0), (37.6, 170.0), (38.1, 70.0), (38.2, 46.0), (40.0, 7.0))
-PULL, SHUT, CATCH, PULL2, CREEP = 34.95, 36.3, (37.02, 37.2), (37.2, 38.1), 38.2      # the rim's weight goes; its mouth shuts; it stops and gives back; a second, shorter pull; the long creep
-METAL_ON = (36.9, 38.9)                               # only the last ~46 blocks of the form turn into the droplet's metal: a small sound at the tip, the land sounds on
-LETGO, DROP_UP, SNAP, RIM_BACK = 40.95, 41.2, (41.3, 41.85), 42.25       # held and straining to the first; the drop gone by the second; the tip's fastest; the rim back on the tube
+# The boil and the drop (fold.wgsl's `the boil`, on fold-boil): every time they use is here, so a retime is this one table. (fold-boil afa0658: FB_*, FW_LETGO; offscreen numbers, not yet seen in the game. fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"].)
+BOIL = dict(close=34.5, clear=34.8, join=35.6, joined=35.76, sealed=36.05, pooled=36.2, neck=36.95, pinch=37.5, torn=40.95, gone=41.5)   # the land's end starts to melt; the tongues clear of the rim; they join, all at once, to `joined`; the last of the stars gone; the streaks run in; the bead draws out on its neck; it lets go; on the way back the metal tears from the middle; run out to the rim and back through the plate
+BUBBLES = ((36.1, 0.8, 46.0), (36.3, 0.85, 62.0), (36.42, 0.65, 38.0), (36.7, 0.85, 54.0), (36.86, 0.7, 42.0), (37.02, 0.8, 34.0))   # fold.wgsl's fb_bubbles: (starts swelling, how long till it bursts, its radius in blocks)
+DROP_V0, DROP_G = 34.0, 217.0                         # the drop's fall from the pinch to the touch, blocks a second and a second squared: 576 a second at the end
+WOB = 2.2                                             # the drop's wobble, long and round and long, Hz
+BOIL_STRAIN = -4.5                                    # (the strain in `boil` against the boil's loudest, dB)
+LETGO, SNAP, RIM_BACK = 40.95, (41.3, 41.85), 42.25   # held and straining to the first; the run back's first fast stretch; the rim back on the tube
 GIVES, WALLS = (42.2, 42.55), 43.1                    # the tube gives, a lurch, and catches and hangs to TUBE; the walls' fastest
 TAU = ((40.5, 40.0), (40.7, 39.86), (40.9, 39.46), (41.1, 38.87), (41.3, 38.14), (41.5, 37.32), (41.7, 36.47), (41.9, 35.66), (42.1, 34.92), (42.3, 34.10), (42.5, 32.44), (42.7, 31.27),
        (42.9, 31.07), (43.1, 29.96), (43.3, 28.38), (43.5, 26.90), (43.7, 25.08), (43.9, 22.82), (44.1, 20.00))     # (fw_tau, strike time : the fold's clock, on the way back)
@@ -98,6 +101,8 @@ LATE0, LATE1, LATE2, CAVE, BOWL = 0.2, 0.62, 0.5, 18.0, 66.0
 COMEDOWN = SLAM + 4.6                 # comedown starts here: the last panel is down at slam + 4.3 (`panels`)
 DING_LEAD = 2.2                       # ding.ogg starts this long before the touch, for what leads into it (fold.rs's FD_DING_LEAD)
 DING_PICK = "blend_even"              # which of `DINGS` is the one in the game
+DRIP_PICK = "hum"                     # which of `DRIPS` is the one in the game (fold.rs's FD_DRIP_LEAD is DING - BOIL["neck"])
+ARRIVAL = 1.6                         # (the drop's impact on the touch, against the mercury's peak)
 SITE = 170.0                          # where the mix has the player (fold.rs uses the real distance for `underfoot`)
 RIM = 300.0                           # the crater's edge: `underfoot` is for a player inside it
 
@@ -110,13 +115,14 @@ def underfoot_at(dist=SITE):
 # (time, file, volume, pitch), as fold_plan plays them
 EVENTS = [(0.0, "descent", 1.0, 1.0), (STOP + 0.09, "wobble", 1.0, 1.0), (STOP + AIR_LATE, "air", 1.0, 1.0), (HANG, "letgo", 1.0, 1.0),
           (TOUCH - MELD_LEAD, "meld", 1.0, 1.0), (RIPPLE, "ripple", 1.0, 1.0), (SCORE, "score", 1.0, 1.0),
-          (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (GATHER, "foldown", 1.0, 1.0),
+          (FOLD, "unravel", 1.0, 1.0), (FOLD, "groan", 1.0, 1.0), (BOIL["close"], "boil", 1.0, 1.0),
+          (BOIL["neck"], "drip", 1.0, 1.0),
           (DING - DING_LEAD, "ding", 1.0, 1.0), (REL, "reverse", 1.0, 1.0),
           *[(t - FALL, f"bang{k + 1}", 1.0, 1.0) for k, t in enumerate(SLAMS[:4])],
           (SLAM - FALL, "fall", 1.0, 1.0), (SLAM, "slam", 1.0, 1.0), (SLAM, "sink", 1.0, 1.0), (SLAM + underfoot_at(), "underfoot", 1.0, 1.0),
           (COMEDOWN, "comedown", 1.0, 1.0)]
 SECTIONS = [("descent", 0.0, 3.4), ("hush", 3.4, 3.9), ("air", 3.9, 4.9), ("drop", 4.9, 6.0), ("hit", 6.0, 6.5), ("sink", 6.5, 7.5), ("ripple", 7.5, 12.0),
-            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 32.2, 34.5), ("reach", 34.5, 38.2), ("creep", 38.2, 40.0),
+            ("score", 12.0, 16.0), ("tear", 16.0, 19.0), ("unravel", 19.0, 26.0), ("close", 26.0, 31.5), ("still", 32.2, 34.5), ("seethe", 34.5, 35.6), ("join", 35.6, 36.7), ("neck", 36.7, 37.2), ("pinch", 37.2, 37.7), ("drop", 37.7, 39.0), ("nearing", 39.0, 40.0),
             ("touch", 40.0, 40.95), ("back", 40.95, 42.55), ("hangs", 42.55, 42.88), ("open", 42.88, 43.3), ("farland", 43.3, 44.1), ("bang1", 44.1, 45.2), ("bang2", 45.2, 46.3),
             ("bang3", 46.3, 47.4), ("bang4", 47.4, 47.9), ("fall", 47.9, 48.7), ("slam", 48.7, 49.1), ("letgo", 49.1, 51.0), ("land", 51.0, 53.1), ("debris", 53.1, 56.0), ("comedown", 56.0, 59.7)]
 
@@ -1265,8 +1271,8 @@ def pulses(t, at, floor):
 
 
 def strain(d, touch):
-    """A very great weight held off the ground on something thin, and all of it bending: what's under the stalactite as it comes down and what
-    the last of it is, building to its heaviest at `touch` s, `d` s long, nothing climbing in pitch. The hull's stress getting closer together, the
+    """A very great weight held off the ground on something thin, and all of it bending: all that's over the shut hole with one drop leaving it,
+    building to its heaviest at `touch` s, `d` s long, nothing climbing in pitch. The hull's stress getting closer together, the
     land's moans under load, a pressure in the tube, the flex of the whole thing swelling on and off slower than the breath, the tube's air
     thickening, the drop's small weight on the end of it. Its loudest about 1. (L, R), the top of it wide, the lows alike."""
     n = n_of(d)
@@ -1304,56 +1310,332 @@ def settle(size=1.0):
     return x / (np.abs(x).max() + 1e-9) * size
 
 
-def foldown():
-    """The reach, one gesture, on the picture's own speed (`REACH`): the hole opens a hair, an intake; the rim's weight goes and its mouth shuts, all of the land coming down at once, heaviest about 35.9; the
-    tip still falling, slowing; at 37.02 the catch, the one hard stop, and it gives back; a second, shorter pull; then from 38.2 the long creep that doesn't stop. It stays land: rock and earth sound to
-    the end, and only the tip, the last ~46 blocks, turns to the droplet's metal (`METAL_ON`), a small sound of its own. Under it a low strain (`strain`) builds and takes over, in slow uneven pulses,
-    at its heaviest on the last sample, the touch. What comes after is the ding's."""
-    d = DING - GATHER
+def steel(length, low, top, count, tau, seed, tilt=-2.2):
+    """A body of steel, a great tank of it: `count` partials in no line between `low` and `top` Hz, closer together low down, the high ones dying first: what makes a thing sound like
+    metal is that its partials are out of line, and what makes it heavy is that there are a lot of them low down. An impulse response, unit energy."""
+    r = np.random.default_rng(seed)
+    n = n_of(length)
+    t = times(n)
+    y = np.zeros(n)
+    for f in low + (top - low) * np.sort(r.random(count)) ** 1.35:
+        y += (f / low) ** (tilt / 6.0) * r.lognormal(0.0, 0.5) * np.sin(2 * np.pi * f * t + r.uniform(0, 6.3)) * np.exp(-t / (tau * (f / low) ** -0.6 * r.uniform(0.7, 1.3)))
+    y *= 1 - np.exp(-t / 0.002)
+    return y / np.sqrt(np.sum(y ** 2))
+
+
+def ring(x, ir):
+    """`x` through a body."""
+    return fftconvolve(x, ir)[:len(x)]
+
+
+def bead(f, rise, fall, amp):
+    """One bubble of something thick swelling, thinning and slumping back: a swell of a wide, soft resonance and not a blip of a tone: it's the rise that makes it thick. Mono."""
+    d = rise + fall * 6
+    m = n_of(d)
+    s = times(m)
+    e = ss(0.0, rise, s) ** 1.6 * np.exp(-np.maximum(s - rise, 0) / fall)
+    y = reso(noise(m) * e, f, 5.0)
+    y = y / (np.abs(y).max() + 1e-9)
+    ph = 2 * np.pi * np.cumsum(f * (0.92 + 0.14 * ss(0.0, rise, s))) / SR
+    return (y + np.sin(ph + rng().uniform(0, 6.3)) * e * 0.6) * amp
+
+
+def seethe(n, a, b, rate, flo, fhi, rise, fall, level):
+    """Beads between `a` and `b` s of a sound `n` long, `rate` (Hz at a time) a second each its own, so no two bands ever go together; `level` their size at a time. Mono."""
+    x = np.zeros(n)
+    for t1 in P.poisson_times(a, b, rate):
+        f = float(np.exp(rng().uniform(np.log(flo(t1)), np.log(fhi(t1)))))
+        size = min(rng().pareto(2.4) * 0.45 + 0.35, 2.4)
+        P.put(x, bead(f, rng().uniform(*rise), rng().uniform(*fall) * size ** 0.5, size * level(t1) * (flo(t1) / f) ** 0.5), t1)
+    return x
+
+
+def boil():
+    """The hole shutting and turning to metal, 34.5 to the touch (`BOIL`): an intake, the mouth's own low note sinking as it narrows; the land's end melting, tongues of heavy metal crawling in from the rim, each its own slow swell; they
+    join all at once, a slump of the whole skin; the last of the stars sealing; then the thick surface running to the middle with six great slow bubbles on it (`BUBBLES`), each a dome swelling and a heavy burst, its weight gathering low;
+    and under it from the join a low strain (`strain`) in slow uneven pulses, on at the end through the drop's fall, at its heaviest on the last sample, the touch. Nothing over 2.4 kHz; no small bubbles: it's flow, not a fizz.
+    The drop itself is `drip`'s."""
+    d = DING - BOIL["close"]
     n = n_of(d)
     t = times(n)
-    st = GATHER + t
-    speed = np.interp(st, *zip(*REACH))
-    move = gaussian_filter1d(0.14 * ss(GATHER, PULL + 0.3, st) * (1 - 0.3 * ss(CREEP, DING, st)) + 0.86 * np.clip(speed / 640.0, 0, 1) ** 0.6, n_of(0.03))
-    metal = ss(*METAL_ON, st)
-    # (earth and rock: the land's weight sliding, a dull rattle, rock dragged under load)
-    earth = eddies(d, 40, 2600, 3.0, -5.0, 11.0, 6.0, np.clip(move * 2.0, 0.2, 2.0), 1.2, 260.0) * move * 0.3
-    earth = earth + rocks(d, (16.0 + 170.0 * move ** 1.4) + 1e-3, 120, 1300, (0.3, 0.7, 1.4), (0.5, 0.36, 0.14)) * move ** 0.6 * 0.26
-    for at, ln, f0, g in ((PULL - GATHER, 2.4, 58, 0.4), (PULL2[0] - GATHER, 1.6, 50, 0.3), (CREEP - GATHER, 3.2, 62, 0.24)):
-        earth = earth + moan(n, at, ln, f0, f0 * 0.78) * g
-    low = bn(n, 22, 100) * boiled(n, 0.3, 2.0, 4.0) * move * 0.6
-    # (the tip, only the tip: wobble's dark band, small, its skin dragging against itself very faintly)
+    st = BOIL["close"] + t
+    K, J, H, E = BOIL["clear"], BOIL["join"], BOIL["pooled"], DING
+    # (the mouth: a cavity's note falls as its neck narrows: a wide band sinking, no sine; air drawn in with it)
+    shut = ss(BOIL["close"], BOIL["sealed"], st)
     ex = (n + 0.5) / SR
-    ooze = (P.glide_band(ex, 84.0 - 30.0 * ss(METAL_ON[0] - GATHER, 5.0, t), 0.42) + P.glide_band(ex, 190.0 - 70.0 * ss(METAL_ON[0] - GATHER, 5.0, t), 0.6) * 0.34) * boiled(n, 0.3, 1.6, 3.5) * metal * 0.07
-    a, b = wide(bn(n, 420, 1300), bn(n, 420, 1300), 0.6)
-    drag = boiled(n, 0.5, 3.0, 5.0) * metal * 0.008
-    M = earth + ooze + low
-    # (the intake: the tube's air drawn in at the hole, a breath of it, the first of the weight shifting a long way off)
-    P.put(M, bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.55, 0.0)
-    M = M + eddies(d, 90, 1400, 2.5, -4.0, 12.0, 5.0) * ss(0.0, PULL - GATHER, t) ** 2 * (1 - ss(PULL - GATHER, PULL - GATHER + 0.08, t)) * 0.2
-    L, R = M + a * drag, M + b * drag
-    # (the weights of it: what the rim lets go, the mouth shutting, the catch, the hardest, and what it gives back, the second pull taken up and let down; the sheet's own voice on the big ones)
-    for at, size, span, sheet, fc, dist in ((PULL, 0.8, 0.14, 0.34, "slab", 240), (SHUT, 0.7, 0.1, 0.0, "", 0), (CATCH[0], 1.0, 0.05, 0.42, "thick", 190), (CATCH[0] + 0.1, 0.28, 0.03, 0.0, "", 0),
-                                         (PULL2[0], 0.34, 0.1, 0.0, "", 0), (PULL2[1], 0.42, 0.06, 0.0, "", 0)):
-        m = n_of(1.6)
-        y = struck(m, 0.0, span, GROUND[1:], 26, 0.4) * 0.9 + struck(m, 0.0, span * 0.7, RUBBLE, 16, 0.5) * 0.5
-        P.put(y, bare_blow(2.2, 22, 110, 0.05, 0.16) * 0.5, 0.0)
-        if span <= 0.05 and size == 1.0:                      # (the catch: a hard stop, an edge on it, rock jarring)
-            P.put(y, whole(0.5, 0.4, 0.003, 0.2, 0.008), 0.0)
-        y = y * size
-        P.put(L, y, at - GATHER)
-        P.put(R, y, at - GATHER)
-        if sheet:
-            pew(L, R, at - GATHER + 0.02, dist, THICK[fc], sheet, rng().uniform(-0.25, 0.25), 2)
-    # (it hangs in the land round it)
-    wl, wr = inside(L, R, 1 - 0.4 * metal, 0.3, 90.0)
+    mouth = T.unit(P.glide_band(ex, 88.0 * (34.0 / 88.0) ** shut, 0.55)) * boiled(n, 0.3, 1.6, 3.0) * 10 ** (np.interp(st, (34.5, 35.0, H, E), (-30.0, -18.0, -14.0, -20.0)) / 20)
+    M = mouth * 0.7
+    P.put(M, bare_blow(4.0, 20, 90, 0.26, 0.14) * 0.42, 0.0)
+    M = M + eddies(d, 90, 1200, 2.5, -4.5, 12.0, 5.0) * (1 - shut) ** 2 * ss(0.0, 0.5, t) * 0.09
+    # (the skin: a thick slow churn, its bands each on their own, swelling till the join, a step up on it, thicker and lower after)
+    churn = eddies(d, 44, 1000, 3.0, -6.5, 14.0, 6.0)
+    Q = BOIL["pinch"]
+    M = M + churn * 10 ** (np.interp(st, (34.5, K, J - 0.05, J + 0.05, H, Q, E), (-48.0, -32.0, -20.0, -13.0, -11.0, -11.0, -12.0)) / 20)
+    body = steel(1.6, 74.0, 1500.0, 70, 0.34, 7101)                       # (it's metal: a pan of it, all of it ringing that faintly)
+    # (the tongues, crawling in from the rim one after another, the first from one side: each a thick band sinking as it slows, on a swell of its own, nothing short)
+    fl = np.zeros(n)
+    for k, (at, ln, f0) in enumerate(((34.55, 1.5, 300), (34.68, 1.4, 215), (34.8, 1.3, 390), (34.92, 1.2, 180), (35.03, 1.1, 265), (35.14, 1.0, 340), (35.24, 0.9, 150), (35.33, 0.8, 235), (35.42, 0.7, 195))):
+        m = n_of(ln)
+        v = times(m) / ln
+        y = T.unit(P.glide_band((m + 0.5) / SR, f0 * 0.68 ** v, 0.55)) * boiled(m, 0.4, 2.2, 3.0) * np.sin(np.pi * v ** 0.7) ** 1.5
+        P.put(fl, y * (0.5 + 0.5 * k / 8), at - BOIL["close"])
+    fl = fl + ring(fl, body) * 0.2
+    fl = fl * 10 ** (np.interp(st, (34.5, J, BOIL["joined"], E), (-24.0, -15.0, -15.0, -15.0)) / 20) * 0.9
+    # (the six great bubbles: a dome swelling, its band tightening a little as it thins, and the burst, a heavy wet slump in the same steel; bigger is lower; those after the pinch step back with the rest)
+    bb = np.zeros(n)
+    for a_, ln, r_ in BUBBLES:
+        b_ = a_ + ln
+        size = r_ / 62.0
+        f = 62.0 * size ** -0.7
+        m = n_of(ln + 0.02)
+        v = np.clip(times(m) / ln, 0, 1)
+        y = T.unit(P.glide_band((m + 0.5) / SR, f * 2.0 * (1 + 0.5 * v ** 2), 0.42)) * v ** 1.8 * (1 - ss(ln - 0.008, ln + 0.008, times(m))) * 0.2 * size
+        P.put(bb, y, a_ - BOIL["close"])
+        P.put(bb, plop(f, f * 2.3, 0.9 * size ** 0.6, 0.13 + 0.08 * size), b_ - BOIL["close"])
+        P.put(bb, settle(0.42 * size), b_ - BOIL["close"] + 0.12)
+    bb = bb + ring(bb, body) * 0.3
+    L, R = M + fl + bb, M + fl + bb
+    # (the join: the whole skin slumping as one: no edge on it, a push from under it and the steel taking it)
+    m = n_of(1.8)
+    y = struck(m, 0.0, 0.16, GROUND[1:], 26, 0.3) * 0.8
+    P.put(y, bare_blow(3.0, 22, 120, 0.05, 0.2) * 0.8, 0.0)
+    l, r = plop(44, 118, 0.8, 0.24), None
+    P.put(y, l, 0.03)
+    y = bp(y + ring(y, body) * 0.2, None, 1500)
+    P.put(L, y, J - BOIL["close"])
+    P.put(R, y, J - BOIL["close"])
+    # (running to the middle: a band of its weight sliding down from the skin to under it)
+    run = ss(J, H + 0.4, st)
+    ctr = 420.0 * (96.0 / 420.0) ** run
+    pool = T.unit(P.glide_band(ex, ctr, 0.8)) * boiled(n, 0.5, 2.6, 4.0) * ss(J, J + 0.2, st) * 10 ** (np.interp(st, (J, H, E), (-14.0, -10.0, -12.0)) / 20)
+    L, R = L + pool, R + pool
+    # (it hangs in the hollow)
+    wl, wr = inside(L, R, 1.0, 0.3, 90.0)
     L, R = L + wl, R + wr
     L, R = lows_heard(L, 70, 360, -6.0), lows_heard(R, 70, 360, -6.0)
+    L, R = bp(L, None, 2400), bp(R, None, 2400)
+    w = 10 ** (-7.0 * ss(BOIL["pinch"] - 0.1, BOIL["pinch"] + 0.4, st) / 20)  # (the boil steps back under the drop in its mids, not its lows)
+    L, R = (bp(x, None, 200.0) + (x - bp(x, None, 200.0)) * w for x in (L, R))
     ref = low_mono(L, R, 170.0)
-    # (the strain, on a level of its own: its loudest by this far from the reach's loudest)
     sl, sr = strain(d, d)
-    A = T.loudest((ref[0] + ref[1]) / 2) * 10 ** (1.0 / 20)
-    out("foldown", ref[0] + sl[:n] * A, ref[1] + sr[:n] * A, -14.0, tail=0.012, peak=10 ** (-3.0 / 20), ref=ref)
+    w = ss(BOIL["pinch"] - 0.2, BOIL["pinch"] + 0.3, st)                  # (from the pinch the mids are the drop's: the tension goes low)
+    sl, sr = (muffle(x, w, 240.0) for x in (sl[:n], sr[:n]))
+    A = T.loudest((ref[0] + ref[1]) / 2) * 10 ** (BOIL_STRAIN / 20)
+    out("boil", ref[0] + sl * A, ref[1] + sr * A, -15.0, tail=0.012, peak=10 ** (-5.5 / 20), ref=ref)
+
+
+# ===========================================================================================================  the drop
+NOTE = 41.2                                                           # (the note the bowed touch is on)
+
+
+def drip_frame():
+    """(n, t, st, u, c): the stem's samples, the strike's clock, how far down the drop is (`fall_of`, 0 to 1), how close it is (0 at the hole, 1 on the touch: its loudness and its top go with this)."""
+    d = DING - BOIL["neck"]
+    n = n_of(d)
+    t = times(n)
+    st = BOIL["neck"] + t
+    u = fall_of(st)
+    return n, t, st, u, np.minimum(u / 0.82, 1.0) ** 1.4
+
+
+def fall_of(st):
+    """How far down it is at `st`: 0 at the pinch, 1 on the touch: constant acceleration (`DROP_V0`, `DROP_G`), about 763 blocks."""
+    s_ = np.clip(st - BOIL["pinch"], 0, DING - BOIL["pinch"])
+    return (DROP_V0 * s_ + 0.5 * DROP_G * s_ ** 2) / (DROP_V0 * (DING - BOIL["pinch"]) + 0.5 * DROP_G * (DING - BOIL["pinch"]) ** 2)
+
+
+def speed_of(st):
+    """How fast it's going at `st`: 0 before the pinch, 1 on the touch."""
+    s_ = np.clip(st - BOIL["pinch"], 0, DING - BOIL["pinch"])
+    return (st > BOIL["pinch"]) * (DROP_V0 + DROP_G * s_) / (DROP_V0 + DROP_G * (DING - BOIL["pinch"]))
+
+
+def neck(n, t0, t1, top=1.0):
+    """The bead on its neck, stretching: thick bands taking up and tightening as the neck thins, cut dead by the pinch at `t1` (s). Mono."""
+    t = times(n)
+    ex = (n + 0.5) / SR
+    f = 170.0 * (1 + 0.9 * ss(t0, t1, t) ** 2)
+    y = T.unit(P.glide_band(ex, f * 0.5, 0.3)) + 0.8 * T.unit(P.glide_band(ex, f, 0.24)) + 0.4 * T.unit(P.glide_band(ex, f * 2.07, 0.22))
+    return y * ss(t0 - 0.02, t1, t) ** 1.6 * (1 - ss(t1 - 0.004, t1 + 0.004, t)) * top
+
+
+def plink(f0=150.0, f1=540.0, tau=0.1, amp=1.0):
+    """What a drop's sound is, an octave or two down and very heavy: the fast climb of its pitch as it parts, a wet band on the same pitch with it, and a driven copy for its edges. Most of what says "drop" is here, in the mids. Mono, peak `amp`."""
+    return plop(f0, f1, amp, tau, 3.2)
+
+
+def knock(t1, n, size=1.0):
+    """A soft mallet's worth of contact for a steel body to ring on, 4 ms, no note of its own. Mono."""
+    x = np.zeros(n)
+    m = n_of(0.006)
+    P.put(x, bp(noise(m), None, 3600.0) * np.exp(-times(m) / 0.0016) * size, t1)
+    return x
+
+
+def pinch(n, t1, f0=50.0, f1=128.0, tau=0.2):
+    """It lets go: a deep plop from the roof as the neck parts, the same water as `meld`'s and the touch's, the stump snapping back up in 0.15 s, and the bulge bouncing once at the picture's 1.2 Hz. Mono."""
+    x = np.zeros(n)
+    P.put(x, plop(f0, f1, 1.0, tau), t1)
+    for at, g in ((0.15, 0.5), (0.98, 0.26)):
+        P.put(x, settle(g), t1 + at)
+    return x
+
+
+def far(L, R, c, wet=0.9, lo=220.0):
+    """(L, R) from a long way up and coming down: the air takes its top while it's far (`c`, 0 far, 1 here), most of it heard off the hollow, and more and more of it direct."""
+    c = np.clip(c, 0, 1)
+    L, R = [bp(x, None, 1100.0, 1) * (1 - c) ** 1.5 + bp(x, None, 6000.0, 1) * (1 - (1 - c) ** 1.5) for x in (L, R)]
+    wl, wr = inside(L, R, 1 - 0.55 * c, wet, lo)
+    d = 0.5 + 0.5 * c
+    return L * d + wl, R * d + wr
+
+
+def drip_out(L, R, db_, top=-6.0):
+    """Out as `drip`: on the touch's last sample, as the boil is; the lows alike, and what a laptop needs to imply them. `top` its peak, dBFS: the boil and the touch's lead are on it there, and the game sums them."""
+    L, R = lows_heard(L, 70, 420, -5.0), lows_heard(R, 70, 420, -5.0)
+    L, R = low_mono(L, R, 170.0)
+    out("drip", L, R, db_, tail=0.008, length=n_of(DING - BOIL["neck"]), peak=10 ** (top / 20))
+
+
+def drip_tank():
+    """A drop in a steel tank. The pinch is a heavy plink ringing a very great tank, a long way up; the ripple it left up there goes round and comes back, and back, sooner and nearer each time, as the drop comes down, the
+    whole tank answering each, the last of them almost on the touch."""
+    n, t, st, u, c = drip_frame()
+    d = n / SR
+    t1 = BOIL["pinch"] - BOIL["neck"]
+    IR = steel(2.4, 66.0, 3400.0, 220, 0.75, 7203)
+    x = neck(n, 0.0, t1, 0.16) + pinch(n, t1) * 0.3
+    p = np.zeros(n)
+    P.put(p, plink(150.0, 520.0, 0.09), t1)
+    x = x + p * 0.4
+    y = ring(p + knock(t1, n, 1.6), IR) * 1.1
+    # (it comes back, the gaps closing: a thick soft knock, the tank ringing, bigger each time)
+    ex = np.zeros(n)
+    at, g = t1 + 0.5, 0.42
+    while at < d - 0.04:
+        v = (at - t1) / (d - t1)
+        P.put(ex, plink(rng().uniform(130.0, 170.0), rng().uniform(330.0, 400.0) * (1 + 0.5 * v), 0.05 + 0.03 * v, (0.42 + 0.58 * v ** 1.4) * rng().uniform(0.85, 1.1)), at)
+        at += g
+        g = max(g * 0.8, 0.085)
+    y = y + ring(ex + bp(ex, 900.0, None) * 2.0, IR) * 0.8 + ex * 0.8
+    a, b = wide(y, np.roll(y, 811), 0.6)
+    L, R = far(x + a, x + b, c, 0.22)
+    drip_out(L, R, -14.0, -8.0)
+
+
+def drip_hum():
+    """`wobble`'s field goes down with it. Whatever held the drop up there is thrown by the pinch, as it was at the catch, and it doesn't stop: it follows the drop down, a thick heavy hum sinking a fifth and swinging a little with the
+    drop's wobble, its top opening as it comes, and it arrives on the note the touch is on, so the note that opens at the touch is the same one."""
+    n, t, st, u, c = drip_frame()
+    d = n / SR
+    t1 = BOIL["pinch"] - BOIL["neck"]
+    a_ = np.maximum(t - t1, 0)
+    swing = np.exp(-a_ / 1.6) * np.sin(2 * np.pi * WOB * a_)
+    f = NOTE * 1.5 ** (1 - u ** 0.8) * (1 + 0.9 * np.exp(-a_ / 0.05) * (t >= t1) + 0.022 * swing)
+    a, b = field(d, f, 700.0 + 2400.0 * c ** 1.3)
+    a, b = (bp(y, None, 170.0) * 0.4 + (y - bp(y, None, 170.0)) * 1.7 for y in (a, b))     # (its weight is the boil's already: this is the hum's mids)
+    lv = ss(t1 - 0.01, t1 + 0.05, t) * 10 ** (np.interp(t - t1, (0.0, 0.14, 0.5, d - t1), (-2.0, -5.0, -13.0, 0.0)) / 20) * (1 + 0.16 * swing)
+    x = neck(n, 0.0, t1, 0.2) + pinch(n, t1) * 0.3
+    p = np.zeros(n)
+    P.put(p, plink(130.0, 430.0, 0.11), t1)
+    P.put(x, bare_blow(3.4, 20, 95, 0.03, 0.12) * 0.5, t1)
+    sheen = np.zeros(n)
+    for k in range(3, 44, 2):
+        sheen += P.glide_band((n + 0.5) / SR, np.maximum(f * k, 60.0), 0.012)
+    sheen = T.unit(bp(sheen, 260, 3600))
+    e = ss(t1, t1 + 0.04, t) * (np.exp(-a_ / 0.26) * 0.5 + (0.12 + 0.6 * c ** 1.4)) * boiled(n, 0.4, 1.8, 3.0)
+    q, r_ = wide(sheen, np.roll(sheen, 613), 0.5)
+    L, R = far(x + p * 0.5 + a * lv * 0.8 + q * e * 0.5, x + p * 0.5 + b * lv * 0.8 + r_ * e * 0.5, c, 0.4)
+    drip_out(L, R, -13.5)
+
+
+def drip_gong():
+    """A bowed gong, falling. The pinch strikes a chord of metal out of nothing, out of line, the way a tam-tam's partials are, and it's kept going like a bow on the rim, each partial swelling on its own, high ones opening
+    late; as it comes, every partial slides, slowly, onto a harmonic of the touch's note, so what's a clang up at the hole lands as the bowed note: the metal in tune on the very last sample."""
+    n, t, st, u, c = drip_frame()
+    d = n / SR
+    t1 = BOIL["pinch"] - BOIL["neck"]
+    a_ = t - t1
+    L, R = np.zeros(n), np.zeros(n)
+    r = np.random.default_rng(7301)
+    for k in range(2, 62):
+        fk = NOTE * k
+        off = 1.09 * (1 + r.uniform(-0.09, 0.09))                         # (out of line, and a touch sharp, up at the hole)
+        f = fk * off ** (1 - u ** 1.5) * (1 + 0.0012 * PB.slow_random(n, 0.2, 1.0))
+        body = 0.25 + sum(g * np.exp(-0.5 * (np.log2(fk / fm) / 0.32) ** 2) for fm, g in BOWED[2:])
+        late = float(np.interp(np.log2(fk), np.log2((80.0, 285.0, 650.0, 1800.0)), (0.0, 0.05, 0.25, 0.55)))
+        e = ss(late, late + 0.3, a_) * (0.5 + 0.5 * c ** 1.1)
+        y = k ** -0.55 * body * np.sin(2 * np.pi * np.cumsum(f) / SR + r.uniform(0, 6.3)) * e * boiled(n, 0.2, 1.0, 2.5)
+        l, r_ = pan(y, r.uniform(-0.3, 0.3))
+        L, R = L + l, R + r_
+    g = T.loudest((L + R) / 2) + 1e-9
+    L, R = L / g, R / g
+    IR = steel(3.0, 66.0, 3000.0, 170, 1.3, 7303)
+    y = ring(knock(t1, n, 1.2), IR) * 0.7
+    p = np.zeros(n)
+    P.put(p, plink(120.0, 360.0, 0.1), t1)
+    x = neck(n, 0.0, t1, 0.16) + pinch(n, t1) * 0.25 + p * 0.4 + ring(p, IR) * 0.5
+    L, R = far(L * 0.9 + y + x, R * 0.9 + y + x, c, 0.4)
+    drip_out(L, R, -13.5, -6.5)
+
+
+def drip_slosh():
+    """Its own body: a tonne of mercury in the air, going long and round and long. What it's heard as is a great sheet of metal being flexed: dense partials all bending together with the wobble, the top of them
+    opening on each swing, `settle`'s dense surge under each; the swings you can count, nearer and heavier as it comes."""
+    n, t, st, u, c = drip_frame()
+    d = n / SR
+    t1 = BOIL["pinch"] - BOIL["neck"]
+    a_ = np.maximum(t - t1, 0)
+    r = np.random.default_rng(7401)
+    w = np.sin(2 * np.pi * WOB * a_ + 0.3) * (t >= t1)
+    on = ss(t1, t1 + 0.06, t)
+    L, R = np.zeros(n), np.zeros(n)
+    for k in range(110):
+        o = k / 109.0
+        f0 = 60.0 * (2600.0 / 60.0) ** o * r.uniform(0.96, 1.04)
+        bend = 1 + (0.03 + 0.07 * o) * w * r.uniform(0.7, 1.1)
+        e = (1 - o) ** 1.5 * 0.25 + (0.5 + 0.5 * w) ** (1 + 3 * o) * (0.55 + 0.45 * c) * (0.2 + 0.8 * o ** 0.5)
+        y = (f0 / 60.0) ** -0.2 * np.sin(2 * np.pi * np.cumsum(f0 * bend) / SR + r.uniform(0, 6.3)) * e * boiled(n, 0.3, 1.4, 3.0) * on
+        l, r_ = pan(y, r.uniform(-0.35, 0.35))
+        L, R = L + l, R + r_
+    g = T.loudest((L + R) / 2) + 1e-9
+    lv = 10 ** (np.interp(t - t1, (0.0, 0.3, d - t1), (-5.0, -10.0, 0.0)) / 20)
+    L, R = L / g * lv, R / g * lv
+    x = neck(n, 0.0, t1, 0.18) + pinch(n, t1, 50.0, 124.0, 0.2) * 0.3
+    P.put(x, plink(140.0, 420.0, 0.1, 0.5), t1)
+    at = t1 + 1 / (WOB * 2)
+    while at < d - 0.2:                                                   # (the mass in it, one surge a swing)
+        P.put(x, settle(0.2 + 0.26 * float(fall_of(at + BOIL["neck"]))), at)
+        at += 1 / WOB
+    L, R = far(L * 0.9 + x, R * 0.9 + x, c, 0.4)
+    drip_out(L, R, -14.0, -7.0)
+
+
+def drip_pipe():
+    """The air it parts, in a steel pipe: `letgo`'s fall, small and dense: air split by a heavy thing, its loudness the speed squared, going through the tube's own out-of-line resonances, so the air sings like wind across
+    steel, opening as it comes and cut on the touch. The pinch a heavy plink far up, the only thing that's water."""
+    n, t, st, u, c = drip_frame()
+    d = n / SR
+    t1 = BOIL["pinch"] - BOIL["neck"]
+    sp = speed_of(st)
+    air = eddies(d, 90, 3000, 3.0, -2.6, 12.0, 5.5)
+    modes = ((167, 26, 0.7), (241, 28, 0.9), (337, 30, 1.0), (463, 32, 1.0), (659, 32, 0.9), (887, 30, 0.75), (1243, 28, 0.55), (1733, 26, 0.35), (2411, 24, 0.2))
+    sing = T.unit(bank(air, modes))
+    M = (sing * 0.9 + air * 0.3) * (0.2 * ss(0.0, 0.1, t - t1) * (t > t1) + 0.8 * sp ** 2)
+    a, b = wide(M, np.roll(M, 977), 0.7)
+    IR = steel(3.2, 70.0, 2600.0, 150, 1.4, 7503)
+    p = np.zeros(n)
+    P.put(p, plink(150.0, 480.0, 0.1), t1)
+    x = neck(n, 0.0, t1, 0.18) + pinch(n, t1, 50.0, 132.0, 0.2) * 0.3 + p * 0.5 + ring(p + knock(t1, n, 0.8), IR) * 0.7
+    L, R = far(x + a, x + b, c, 0.4)
+    drip_out(L, R, -13.5, -7.0)
+
+
+DRIPS = {"tank": drip_tank, "hum": drip_hum, "gong": drip_gong, "slosh": drip_slosh, "pipe": drip_pipe}
+
+
+def drip():
+    DRIPS[DRIP_PICK]()
 
 
 def held(n, t0):
@@ -1424,7 +1706,7 @@ def mercury(n, t0):
     u = np.maximum(t - t0, 0)
     on = t >= t0
     ex = (n + 0.5) / SR
-    neck = (P.glide_band(ex, 96.0 + 0 * t, 0.24) + 0.5 * P.glide_band(ex, 190.0 + 0 * t, 0.22)) * ss(t0 - 0.9, t0, t) ** 2 * (1 - on) * 0.2
+    neck = (P.glide_band(ex, 96.0 + 0 * t, 0.24) + 0.5 * P.glide_band(ex, 190.0 + 0 * t, 0.22)) * ss(t0 - 0.9, t0, t) ** 2 * (1 - on) * 0.0
     knock = struck(n, t0, 0.02, ((46, 3, 1.0), (68, 4, 1.0), (101, 4, 0.9), (151, 3, 0.7), (226, 3, 0.5)), 16, 0.3)
     bn(n, 260, 1300)                                          # (spent: a 35 ms burst of noise on the knock, the snare again)
     L = neck + knock * 0.8
@@ -1452,8 +1734,18 @@ def ding_mercury():
     ding_finish(L + al * 0.2, R + ar * 0.2, -11.5, 0.3, 60.0)
 
 
+def arrival(n, t0):
+    """The drop landing, at all the speed it fell: the plink it parted from the roof with, its own voice, now heavy and close, in the same steel, on the ground's own low modes, no edge of noise on it. Mono, peak 1."""
+    IR = steel(1.8, 66.0, 3000.0, 150, 0.6, 7607)
+    p = np.zeros(n)
+    P.put(p, plink(96.0, 340.0, 0.13), t0)
+    x = struck(n, t0, 0.05, GROUND, 40, 0.3) * 1.0 + p * 0.5 + ring(p, IR) * 0.5
+    P.put(x, bare_blow(3.6, 20, 100, 0.012, 0.16) * 0.8, t0)
+    return x / (np.abs(x).max() + 1e-9)
+
+
 def blended(note_db, opens, level):
-    """`mercury` and `bowed` as one thing: the drop goes in, and the land it goes into speaks. `note_db` the note against the mercury, `opens` how much later than the touch it wakes."""
+    """`mercury` and `bowed` as one thing: the drop goes in, and the land it goes into speaks. `arrival` on its front, so the touch is the drop's impact. `note_db` the note against the mercury, `opens` how much later than the touch it wakes."""
     d = DING_LEAD + 3.0
     n = n_of(d)
     t0 = DING_LEAD
@@ -1461,22 +1753,23 @@ def blended(note_db, opens, level):
     a, b = bowed(n, t0, opens)
     g = T.loudest((L + R) / 2) * 10 ** (note_db / 20)
     al, ar = after_touch(n, t0, 1.5)
-    ding_finish(L + a * g + al * 0.2, R + b * g + ar * 0.2, level, 0.3, 60.0, 0.0, (1.3, 2.8))
+    h = arrival(n, t0) * np.abs(L + R).max() / 2 * ARRIVAL
+    ding_finish(L + h + a * g + al * 0.2, R + h + b * g + ar * 0.2, level, 0.3, 60.0, 0.0, (1.3, 2.8), -19.0)
 
 
 def ding_blend_under():
     """The mercury first: the drop goes in on its own, and the note wakes under the first plop, a good way down."""
-    blended(-9.0, 0.45, -12.2)
+    blended(-9.0, 0.75, -9.8)
 
 
 def ding_blend_even():
     """The two as equals: the note is already opening as the drop lands, and they peak together."""
-    blended(-4.0, 0.0, -11.0)
+    blended(-4.0, 0.3, -9.4)
 
 
 def ding_blend_over():
     """The note carrying it: it's up before the touch, and the mercury lands inside it."""
-    blended(1.0, -0.45, -12.0)
+    blended(1.0, -0.15, -10.6)
 
 
 def ding_inbreath():
@@ -1708,7 +2001,7 @@ def back_at(tau):
 
 def reverse():
     """The whole fold going back, 3.6 s of it, on the picture's clock: a very great weight let go, not a tape rewound. Every sound here goes forward, with forward attacks. It starts low under the touch's
-    held strain; on 40.95 it lets go and the tip snaps up, fastest 41.3 to 41.85, all that land going back up the way it came, the drop gone by 41.2; the rim lands back on the tube at 42.25, a blow and a small
+    held strain; on 40.95 the metal lets go, tearing from the middle, and runs out to the rim and back through the plate, gone by 41.5 (`BOIL`); the rim lands back on the tube at 42.25, a blow and a small
     overshoot, and the tube gives, a lurch to 42.55; it catches and hangs, nearly still; on 42.88 it lets go for good, the walls fastest at 43.1, the sky's air coming in, and the far land going at the end.
     Its loudness is the picture's speed; nothing climbs in pitch."""
     dur = FLAT - REL
@@ -1741,16 +2034,24 @@ def reverse():
         f0 = rng().uniform(40, 86)
         tones += moan(n, at, ln, f0, f0 * rng().choice([0.72, 0.84, 1.18])) * rng().uniform(0.6, 1.0)
     M = sub_ + bed_ + roll + hull + T.unit(tones) * lv ** 0.5 * (0.3 + 0.7 * strain_) * 0.55
-    # (the land going back up: earth and rock in the air the way it came, by the speed)
-    run = ss(LETGO, SNAP[0], st) * (1 - ss(SNAP[1], RIM_BACK, st))
-    M = M + eddies(dur, 60, 1800, 3.0, -4.5, 11.0, 6.0, 0.6 + 1.2 * run, 1.2, 280.0) * run * lv * 0.9
-    M = M + rocks(dur, 10.0 + 150.0 * run + 1e-3, 120, 1100, (0.3, 0.7, 1.4), (0.5, 0.36, 0.14)) * run * lv ** 0.6 * 0.22
+    # (the metal going: it tears open from the middle and runs out to the rim and back through the plate, thick, not a rain of it: the boil's own skin and a few slow heavy gouts)
+    torn, gone = BOIL["torn"], BOIL["gone"]
+    run = ss(torn, torn + 0.12, st) * (1 - ss(gone - 0.3, gone + 0.05, st))
+    M = M + eddies(dur, 50, 1100, 3.0, -5.5, 14.0, 6.0) * run * 10 ** (np.interp(st, (torn, SNAP[0], gone), (-13.0, -10.0, -15.0)) / 20)
+    bi = seethe(n, torn - REL, gone - REL, lambda u: float(np.interp(u + REL, (torn, torn + 0.15, gone), (14.0, 8.0, 5.0))), lambda u: 62.0,
+                lambda u: 260.0, (0.05, 0.1), (0.1, 0.22), lambda u: float(np.interp(u + REL, (torn, gone), (0.7, 0.35))))
+    body = steel(1.6, 74.0, 1500.0, 70, 0.34, 7101)                       # (`boil`'s)
+    M = M + bi + ring(bi, body) * 0.3
+    # (the plate going back, steel on steel, as the last of it runs off the rim; home on `gone`)
+    plate = steel(1.2, 90.0, 2600.0, 120, 0.3, 7131)
+    slide = bn(n, 80, 1200) * ss(gone - 0.55, gone - 0.2, st) * (1 - ss(gone - 0.02, gone + 0.02, st)) * boiled(n, 0.8, 4.0, 3.0)
+    M = M + bp(ring(slide, plate), None, 2400) * 0.3
     # (the lurch: the tube giving, all of it grinding round at once)
     lurch = ss(GIVES[0] - 0.02, GIVES[0] + 0.1, st) * (1 - ss(GIVES[1] - 0.12, GIVES[1], st))
     M = M + eddies(dur, 36, 900, 2.5, -5.0, 11.0, 6.0) * lurch * 0.42 * lv ** 0.5
     L, R = M.copy(), M.copy()
     # (the weights: it lets go, a dull break and the tip's small metal surge; the rim landing back, and its overshoot; the tube catching)
-    for at, size, tip in ((LETGO, 0.72, 0.5), (RIM_BACK, 1.0, 0.0), (RIM_BACK + 0.16, 0.3, 0.0), (GIVES[1], 0.5, 0.0)):
+    for at, size, tip in ((torn, 0.72, 0.5), (gone, 0.4, 0.0), (RIM_BACK, 1.0, 0.0), (RIM_BACK + 0.16, 0.3, 0.0), (GIVES[1], 0.5, 0.0)):
         m = n_of(0.8)
         s_ = times(m)
         y = (struck(m, 0.0, 0.05, GROUND[1:], 14, 0.4) * 0.8 + struck(m, 0.0, 0.04, RUBBLE, 10, 0.5) * 0.4) * size * 0.46
@@ -1760,8 +2061,10 @@ def reverse():
         l, r = pan(y, rng().uniform(-0.3, 0.3))
         P.put(L, l, at - REL)
         P.put(R, r, at - REL)
-    # (the drop going back up into the tip, gone by 41.2: the thin swell it came with)
-    y = P.glide_band((n + 0.5) / SR, 106.0 + 0 * t, 0.3) * ss(LETGO, LETGO + 0.08, st) * (1 - ss(DROP_UP - 0.1, DROP_UP, st)) * 0.06
+    # (it tears: the drop's own plink, heavy, in the plate's steel, the skin giving way from the middle)
+    y = np.zeros(n)
+    P.put(y, plink(92.0, 300.0, 0.12, 0.6), torn - REL)
+    y = y + ring(y, plate) * 0.4
     L += y
     R += y
     # (it lets go for good: the land's weight going off it, no blow to it; then the walls tearing free one at a time)
@@ -2189,9 +2492,9 @@ def comedown():
 
 
 BUILD = {"descent": descent, "wobble": wobble, "air": air, "meld": meld, "ripple": ripple, "score": score, "unravel": unravel,
-         "groan": groan, "foldown": foldown, "ding": ding, "reverse": reverse, "bang1": bang1, "bang2": bang2,
-         "bang3": bang3, "bang4": bang4, "fall": fall, "slam": slam, "comedown": comedown, "letgo": letgo, "sink": sink, "underfoot": underfoot}
-GONE = ("stop", "tear", "creak", "crush", "bloom", "thud", "drone", "bounce1", "bounce2", "bounce3", "bounce4")
+         "groan": groan, "boil": boil, "ding": ding, "reverse": reverse, "bang1": bang1, "bang2": bang2,
+         "bang3": bang3, "bang4": bang4, "fall": fall, "slam": slam, "comedown": comedown, "letgo": letgo, "sink": sink, "underfoot": underfoot, "drip": drip}
+GONE = ("foldown", "stop", "tear", "creak", "crush", "bloom", "thud", "drone", "bounce1", "bounce2", "bounce3", "bounce4")
 SEEDS = {name: 171000 + 7 * k for k, name in enumerate(BUILD)}          # (a new stem goes on the end, so no other's take changes)
 
 
@@ -2308,32 +2611,45 @@ def listen(out_dir):
         print(f"  {what}: {a:.2f} to {b:.2f} s peak {db(np.abs(mix[n_of(a):n_of(b)]).max()):.1f} dB")
 
 
-def dings(out_dir):
-    """Every way of the touch, in what leads into it and out of it: `foldown`, the option, `reverse`, 37.6 to 43.3 s. MP3s, pictures and the levels."""
+def context(d, tag, items, a, b):
+    """`items` ((at, stereo clip), ...) on the strike's clock, `a` to `b` s of it as tag.mp3 and tag.png in `d`. Its sum, for the levels."""
+    mix = np.zeros((n_of(b + 4.0), 2))
+    for at, c in items:
+        i = n_of(at)
+        mix[i:i + len(c)] += c[:len(mix) - i]
+    w = mix[n_of(a):n_of(b)].copy()
+    w[-n_of(0.15):] *= np.linspace(1, 0, n_of(0.15))[:, None]
+    mp3(w, d / f"{tag}.mp3").unlink()
+    picture(w.mean(axis=1), d / f"{tag}.png", 900, 300, 120)
+    return mix.mean(axis=1)
+
+
+def takes(out_dir):
+    """Every way of the drop in what leads into it and out of it, 34.5 to 41.7 s, and every way of the touch, 37.2 to 43.3 s, on the pick of the other. MP3s, pictures and the levels."""
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
     real = soundlib.OUT
-    fold, back = decoded("foldown"), decoded("reverse")
-    a, b = 37.6, 43.3
-    for k, f in DINGS.items():
+    boil_, touch, back, drop = decoded("boil"), decoded("ding"), decoded("reverse"), decoded("drip")
+
+    def stem(name, table, k):
         soundlib.init(d / "stems" / k)
-        with PB.seeded(SEEDS["ding"]):
+        with PB.seeded(SEEDS[name]):
             _kernels.clear()
-            f()
-        clip = decoded("ding")
+            table[k]()
+        c = decoded(name)
         soundlib.OUT = real
-        mix = np.zeros((n_of(46.0), 2))
-        for at, c in ((GATHER, fold), (DING - DING_LEAD, clip), (REL, back)):
-            i = n_of(at)
-            mix[i:i + len(c)] += c[:len(mix) - i]
-        w = mix[n_of(a):n_of(b)]
-        w[-n_of(0.15):] *= np.linspace(1, 0, n_of(0.15))[:, None]
-        wav = mp3(w, d / f"ding_{k}.mp3")
-        wav.unlink()
-        picture(w.mean(axis=1), d / f"ding_{k}.png", 900, 300, 120)
-        m = mix.mean(axis=1)
+        return c
+
+    for k in DRIPS:
+        c = stem("drip", DRIPS, k)
+        m = context(d, f"drip_{k}", ((GATHER, boil_), (BOIL["neck"], c), (DING - DING_LEAD, touch), (REL, back)), GATHER, 41.7)
+        lev = " ".join(f"{db(np.sqrt(np.mean(m[n_of(t):n_of(t + 0.5)] ** 2))):5.0f}" for t in np.arange(36.5, 41.5, 0.5))
+        print(f"{k:10s} peak {db(np.abs(m).max()):5.1f}  {lev}")
+    for k in DINGS:
+        c = stem("ding", DINGS, k)
+        m = context(d, f"ding_{k}", ((GATHER, boil_), (BOIL["neck"], drop), (DING - DING_LEAD, c), (REL, back)), 37.2, 43.3)
         lev = " ".join(f"{db(np.sqrt(np.mean(m[n_of(t):n_of(t + 0.25)] ** 2))):5.0f}" for t in np.arange(38.5, 42.5, 0.25))
-        print(f"{k:10s} peak {db(np.abs(mix).max()):5.1f}  {lev}")
+        print(f"{k:10s} peak {db(np.abs(m).max()):5.1f}  {lev}")
 
 
 def main():
@@ -2341,7 +2657,7 @@ def main():
     ap.add_argument("--only", nargs="*", choices=list(BUILD))
     ap.add_argument("--out", default=str(ROOT / "orbital-sounds"))
     ap.add_argument("--listen", help="also write MP3s, the whole strike's mix and the level checks here")
-    ap.add_argument("--dings", help="also write every way of the touch here, in its context (after the stems)")
+    ap.add_argument("--takes", help="also write every way of the drop and of the touch here, in its context (after the stems)")
     a = ap.parse_args()
     soundlib.init(a.out)
     for name in a.only if a.only is not None else BUILD:
@@ -2358,8 +2674,8 @@ def main():
     path.write_text(json.dumps(sounds, indent=2))
     if a.listen:
         listen(a.listen)
-    if a.dings:
-        dings(a.dings)
+    if a.takes:
+        takes(a.takes)
 
 
 if __name__ == "__main__":
