@@ -909,3 +909,40 @@ second before that, so the ground goes from under them with the slam; a moment's
 
 **Photosensitivity:** the Fold bends the whole world round the player for half a minute, with
 one bright flash as the fire goes out, and fast jolts as the rings land. It is a strongly distorting effect: skip it if you are sensitive to those.
+
+### Making the Fold
+
+The Fold took more work than any laser before it. Over four days it went through about 190 commits on 25 working branches,
+with 11 rounds of sound review, and almost every part of it was built more than once.
+
+- **The fall** started as a 3.4 second drop that stopped dead in one frame. It's now a 7.4 second fall you hear high in the
+  sky before you see it, with a smooth one-second brake. Seven ways of stopping were tried before that one.
+- **The fold** first closed the land into a sphere, then a reaching arm. Both were replaced by the tube with the whole world
+  on its walls. The creases started as one pattern, became three, and were tuned until the land stopped running through itself.
+- **The hole closing** was rebuilt as liquid metal boiling shut, then slowed and reworked until it bubbled and joined the way
+  it should, ending in one drop falling the length of the tube.
+- **The ending** first showed all the damage on a single frame. Now each bang shows its own ring's damage as the old land
+  crumbles away inward, which took two new pieces of the game's renderer. The finale went from a mushroom cloud to a low wall
+  of fire that follows the terrain.
+- **The sound** is all synthesised, nothing sampled. It went through 11 rounds of listening, each cue picked from several
+  different takes.
+
+Much of that iterating was done by measuring rather than by eye:
+
+- **The fold, offscreen.** `tools/foldview` runs the real world warp over real land read out of a save, from cameras anywhere,
+  and scores each version: how much the sheet stretches, where faces flip over, and where the land passes through itself. A
+  change to the creases had to bring those numbers down before it went into the game. The peak the land climbed to on the way
+  back was measured the same way and lowered until it stopped looking too tall.
+- **Contact sheets.** `tools/preview.py` renders any moments of the strike from any views in one run, and recordings of the
+  game were cut into grids of frames, so a round of changes could be seen side by side, not watched end to end. That's how a
+  smoke trail cut off at exactly 10 seconds was found, and why the fire on the land showed up as a flat sheet before it was tonguing.
+- **Every tick weighed.** The game stops a mod that uses too much of a tick, so each version was played headless through the
+  fork's `mod_soak`, which reports the worst tick (the release's is about 42% of the limit), and the mod's memory was watched
+  against its 64 MiB. A test checks that every ring's real land is in place at least a second before its bang, on six kinds
+  of land.
+- **Sound by numbers.** Cues were measured for loudness and where their energy sits. The first ending had about 60% of its
+  energy under 80 Hz, so it nearly vanished on headphones and laptop speakers. The release's has about 20% there and 65%
+  between 100 and 800 Hz. Each take's level was checked against the sounds around it, so nothing dips before a big moment.
+
+In all, the Fold is about 10,000 lines of shaders, plan, land and sound code, plus a world warp and a terrain hold added to
+the Horizon fork for it.

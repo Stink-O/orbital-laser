@@ -165,6 +165,7 @@ Sixteen lasers, five to a page of the wheel.
   about 530 across on the crease pattern, a shaft to bedrock, the land past it charred out to about 400, mobs dead out to 360. The wheel's
   **FOLD** row or `/orbital foldpattern a|b|c` picks the pattern. Chests and the like go with the land. **Photosensitivity:** it bends the whole
   world round you for half a minute, then one bright flash and hard jolts at the end. It is strongly distorting: skip it if you are sensitive to those.
+  It took four days, about 190 commits and 11 rounds of sound review to get right: [how it was made](docs/HOW-IT-WORKS.md#making-the-fold).
 
 - **Tsunami** (page three). The horizon stands up: over three seconds a line, a swell, then a dark wall 320 blocks high and over five kilometres
   wide lies across the whole of it, spray blowing off its top, and the sky goes grey. It comes in at about 100 blocks a
