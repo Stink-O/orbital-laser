@@ -1088,6 +1088,10 @@ fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
             continue;
         }
         let off = world_offset(uk, dk);
+        // (the clouds are in the depth too: that isn't land to burn)
+        if (abs(off.y + frame.camera_position.y - CLOUD_Y - 2.0) < 6.0) {
+            continue;
+        }
         let G = off + ro;
         let r = length(G.xz);
         if (abs(r - f) > 3.0 * w + 40.0) {
