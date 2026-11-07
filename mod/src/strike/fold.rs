@@ -200,7 +200,7 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
     // ---- sound (tools/sounds_fold.py) ------------------------------------------------------------------------------
     // (the fall, a roar cut dead on the stop; whatever catches it, holding it; the air arriving late by the distance)
     p.csound(-FD_LEAD, "descent", 10.0, 1.0);
-    p.csound(FD_STOP + 0.09, "wobble", 10.0, 1.0);
+    p.csound(FD_STOP - 0.6, "wobble", 10.0, 1.0);
     p.csound(FD_STOP + (dist as f32 / 343.0).clamp(0.2, 1.0), "air", 10.0, 1.0);
     // (let go, the air over it as it falls; it lands at full speed, the land shutting over it; then the land like water, then ice:
     // the creases as stones skipped over a frozen lake)
