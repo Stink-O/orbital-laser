@@ -61,6 +61,7 @@ fn fd_slam(i: i32) -> f32 {
 const FD_V: f32 = 280.0;           // how fast it is going as it stops, blocks a second
 const FD_B: f32 = 177.16;          // its braking: (FD_FALL - FD_V * FD_STOP) / FD_STOP^2
 const FD_SLIP: f32 = 0.3;          // how soon what moved with it loses its speed, seconds
+const FD_BRAKE: f32 = 0.15;        // OVERRUN's stop: it starts braking this long before FD_STOP and comes smoothly to rest as long after it, about (fd_brake_t)
 const FD_TIP: f32 = 1.72;          // the tip, in radii over the centre
 const FD_PIV: f32 = -0.3;          // the point it squashes about, in radii over the centre: low, the tip does the moving
 struct FdDrop { R: f32, stop_h: f32, h: f32, sx: f32, sy: f32, piv: f32, rip: f32, ph: f32, sway: vec2<f32>, pool: f32, pw: f32 }
@@ -140,6 +141,10 @@ fn fd_foot(a: f32, h: f32, R: f32) -> vec2<f32> {
     let top = land + 0.02 * R * fd_ss(0.0, 0.2, a) + FD_FOOT * R - (land + 0.4 * R) * fd_ss(0.12, 0.26, a);
     return vec2<f32>(max(top, 0.0), rho + 0.12 * R);
 }
+// How long OVERRUN's brake takes: from the speed it has at FD_STOP - FD_BRAKE down to nothing, evenly, over what is left of its fall, so the speed never jumps.
+fn fd_brake_t() -> f32 {
+    return 2.0 * fd_fall(FD_BRAKE) / (FD_V + 2.0 * FD_B * FD_BRAKE);
+}
 // `side`: across the view, what its tip sways along.
 fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     let R = clamp(dist * 0.05, 5.0, 15.0);
@@ -152,13 +157,19 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     var ph = 0.0;
     var sway = vec2<f32>(0.0);
     var foot = vec2<f32>(0.0, 1.0);
-    if (t < FD_STOP) {
+    // (OVERRUN: a hard, quick, smooth brake, no dead stop)
+    let brake_t = select(0.0, fd_brake_t(), fd_stop() == 4);
+    let at_rest = FD_STOP - FD_BRAKE + brake_t;
+    if (brake_t > 0.0 && t >= FD_STOP - FD_BRAKE && t < at_rest) {
+        let left = at_rest - t;
+        h = stop_h + fd_fall(FD_BRAKE) * (left * left) / (brake_t * brake_t);
+    } else if (t < FD_STOP) {
         h = stop_h + fd_fall(FD_STOP - t);
     } else if (t < FD_TOUCH) {
         // (its centre stops, its surface doesn't: from no change at all in the first frame, one heavy settle and a smaller one
         // back, 2.2 Hz, its volume kept, all gone in half a second; a little ripple up it to the tip, and the tip left swaying a
         // little; then perfectly still, a good half second before it is let go)
-        let a = t - FD_STOP;
+        let a = t - max(FD_STOP, select(FD_STOP, at_rest, brake_t > 0.0));
         let e = exp(-a * 5.5) * (1.0 - fd_ss(0.25, 0.5, a));
         sy = 1.0 - 0.055 * e * sin(a * 14.0);
         sx = 1.0 / sqrt(sy);
@@ -651,7 +662,7 @@ fn fd_sparks(colIn: vec3<f32>, v: vec3<f32>, S: vec3<f32>, way: vec2<f32>, t: f3
 //   1 AIR POND   the air takes it as water takes a drop: rings run out across a plane at its foot, seen by what they bend behind them, and the fire and the smoke flatten on it
 //   2 SHOCK      all that speed goes into the air at once: a white bubble of condensation and the ring of its shock front leave it and run out, bending the sky as they go
 //   3 SQUASH     it takes the stop itself: flattens hard, comes back tall, and rocks slowly to rest, heavy
-//   4 OVERRUN    the fire and the wake overrun it: they pour on past and round it, and it is left standing in the stream
+//   4 OVERRUN    the one the game uses. It brakes hard but smoothly (FD_BRAKE), and the fire and the wake overrun it: they pour on past and round it, and it is left standing in the stream
 //   5 MUSHROOM   the column behind it has nowhere to go: it stacks up over it and rolls out in one thick smoke ring
 //   6 STUTTER    time catches: the fire and the smoke hang frozen for a beat with the world drained, the drop's echoes running on under it, and everything lets go
 fn fd_stop() -> i32 { return clamp(i32(frame.mod_params[3].w + 0.5), 0, 6); }

@@ -451,7 +451,7 @@ impl Orbital {
             impact,
             impact_style,
             fold_pattern,
-            fold_stop: 0,
+            fold_stop: 4,
             knock,
             follow,
             following: None,
