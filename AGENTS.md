@@ -281,7 +281,7 @@ box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.pol
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
 `game.player-flying`, `render.set-data` or the `atlas` capability, won't start the mod.
 The wheel's left column has the strike options: SEED (a field: the last strike's seed, or one typed) and LOCK SEED
-at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
+at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,

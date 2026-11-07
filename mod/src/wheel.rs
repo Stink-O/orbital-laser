@@ -291,13 +291,13 @@ fn segment_angle(k: usize) -> f32 {
     PI + k as f32 * TAU / PAGE as f32
 }
 
-/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's, the Rod's and the
+/// The left column's switches laser `i` has, stacked under the seed's rows: the knockback (the Nuke's, the Rod's, the Fold's and the
 /// Hurricane's carry) and the follow camera (the Nuke's and the Payload's).
 pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -835,6 +835,7 @@ mod tests {
         assert_eq!(at(ship("nuke")), vec![(KNOCK.y, Spot::Knock), (FOLLOW.y, Spot::Follow)]);
         assert_eq!(at(ship("rod")), vec![(KNOCK.y, Spot::Knock)]);
         assert_eq!(at(ship("hurricane")), vec![(KNOCK.y, Spot::Knock)]);
+        assert_eq!(at(ship("fold")), vec![(KNOCK.y, Spot::Knock)]);
         assert_eq!(at(ship("payload")), vec![(KNOCK.y, Spot::Follow)]);
         assert!(at(ship("plasma")).is_empty());
         assert_eq!(toggle_spot(KNOCK.x + 5.0, KNOCK.y + 5.0, ship("payload")), Some(Spot::Follow));
