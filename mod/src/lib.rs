@@ -110,6 +110,12 @@ fn holding_designator() -> bool {
 /// Game ticks (of the world's clock) a reopened world may be off from where it was left and still be taken for the
 /// same play (`tick`): a pause, or a save and quit, keeps the clock where it was; another world's is elsewhere.
 const SAME_PLAY: u64 = 40;
+/// A jump of the world's clock is another world only if the game was somewhere else meanwhile (`in_world`): more than
+/// AWAY seconds of frames since the last tick, each frame counting at most AWAY_FRAME (one stalled frame is no time
+/// away), or the player over AWAY_ROOM blocks from where they were a tick ago.
+const AWAY: f32 = 0.75;
+const AWAY_FRAME: f32 = 0.25;
+const AWAY_ROOM: f64 = 16.0;
 /// Ticks of play (in a world, not paused) before the loaded laser's pass is given to the game to build ahead of its
 /// first strike (`warm`): not as the game starts, so a pass the game can't build stops nothing but that laser.
 const WARM_AFTER: u64 = 60;
@@ -293,6 +299,8 @@ struct Orbital {
     passes: [&'static str; 11],
     compiled: Option<usize>,
     warming: bool,
+    /// A pick has left the wheel up while its pass is built (`close_picked`).
+    closing: bool,
     /// Frames since a pass new to the game was handed to it, while the storage says it is being built (`hand_post`).
     building: Option<u8>,
     /// The laser whose pass the game stopped building last time, to tell the player of once they are in a world
@@ -385,6 +393,9 @@ struct Orbital {
     ticks: u64,
     /// The world's clock (game time) at the last tick in a world, none while out of one (`tick`).
     clock: Option<u64>,
+    /// Where the player was last tick, and the seconds of frames since it (`AWAY_FRAME`): `in_world`.
+    place: Option<[f64; 3]>,
+    away: f32,
     /// The forceload removes in storage are the strike under way's (`FORCELOADS`): deleted once it and the world
     /// changes it left waiting are done.
     owes: bool,
@@ -416,6 +427,7 @@ impl Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD],
             compiled: None,
             warming: false,
+            closing: false,
             building: None,
             broke: None,
             carving: std::collections::VecDeque::new(),
@@ -462,6 +474,8 @@ impl Orbital {
             meter_log: None,
             ticks: 0,
             clock: None,
+            place: None,
+            away: 0.0,
             owes: false,
             hint: None,
             knows: None,
@@ -668,6 +682,21 @@ impl Orbital {
         self.show_wheel();
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
+    /// A pick closes the wheel. If the picked laser's pass isn't the one the game holds, the wheel stays up for the two
+    /// frames it takes to build it (`warm`), saying so: the build stops the game's frames for up to seconds the first
+    /// time and some 60 ms after, and over the wheel that reads as the pick being taken, not as the world hitching.
+    fn close_picked(&mut self) {
+        if self.compiled == Some(pass_of(LASERS[self.laser])) || self.strike.is_some() || self.ticks < WARM_AFTER {
+            ui::close();
+            self.wheel = None;
+            return;
+        }
+        self.closing = true;
+        if let Some(w) = &mut self.wheel {
+            w.loading = Some(self.laser);
+        }
+        self.show_wheel();
+    }
     fn turn_page(&mut self, k: usize) {
         let Some(w) = &mut self.wheel else { return };
         w.turn(k);
@@ -677,6 +706,9 @@ impl Orbital {
         self.save();
     }
     fn wheel_click(&mut self, x: f32, y: f32) {
+        if self.closing {
+            return;
+        }
         let (row, page) = self.wheel.as_ref().map_or((None, self.page), |w| (w.row_laser(self.laser), w.page));
         let spot = wheel::spot(x, y, wheel::Rows::of(row), page).or_else(|| wheel::toggle_spot(x, y, row.unwrap_or(self.laser)));
         // a click anywhere but the field takes the keyboard from it, leaving the speed as it was
@@ -708,8 +740,7 @@ impl Orbital {
             Some(wheel::Spot::Laser(i)) => {
                 self.laser = i;
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Page(k)) => self.turn_page(k),
@@ -718,16 +749,14 @@ impl Orbital {
                 self.approach = a;
                 self.laser = row.unwrap_or(self.laser);
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Arrival(a)) => {
                 self.arrival = a;
                 self.laser = row.unwrap_or(self.laser);
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Colour(c)) => {
@@ -735,8 +764,7 @@ impl Orbital {
                 self.colours[i] = c;
                 self.laser = i;
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Sound(k)) => {
@@ -746,8 +774,7 @@ impl Orbital {
                     self.blast_alt[s] = k == 1;
                 }
                 self.save();
-                ui::close();
-                self.wheel = None;
+                self.close_picked();
                 world::play_sound("minecraft:block.beacon.activate", None, 0.5, 1.6);
             }
             Some(wheel::Spot::Centre) => {
@@ -950,6 +977,12 @@ impl Orbital {
             }
         } else {
             self.warming = false;
+        }
+        // (the wheel a pick left up: its pass built by now, `close_picked`)
+        if self.closing && !self.warming {
+            self.closing = false;
+            ui::close();
+            self.wheel = None;
         }
     }
     /// Pass `pass` given to the game. One it doesn't hold yet is built as the frame is drawn (about a second the first
@@ -1370,8 +1403,21 @@ impl Orbital {
     /// was is another world (a pause, or this world saved and opened again, keeps it where it was). Either way a strike
     /// under way ends there (`left_world`).
     fn in_world(&mut self) -> bool {
-        let clock = game::get_player().and(game::get_clock()).map(|c| c.game_time);
-        let elsewhere = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
+        let player = game::get_player();
+        let clock = player.as_ref().and(game::get_clock()).map(|c| c.game_time);
+        let place = player.map(|p| [p.x, p.y, p.z]);
+        let jumped = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_PLAY < was || now > was + SAME_PLAY);
+        // (a stall jumps the clock too, either way: the game's frames stop while the world runs on, and it catches up.
+        // Nothing but a stalled frame has passed since the last tick and the player is where they were, so it is this
+        // world. Between worlds the frames run on with no ticks, and the fork has no tick with no player to say so.)
+        let moved = matches!((self.place, place), (Some(a), Some(b)) if (a[0] - b[0]).hypot(a[2] - b[2]).hypot(a[1] - b[1]) > AWAY_ROOM);
+        let elsewhere = jumped && (self.away > AWAY || moved);
+        if jumped && self.strike.is_some() {
+            let said = if elsewhere { "another world" } else { "a stall: the strike goes on" };
+            log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?} ({:.2} s of frames, moved: {moved}): {said}", self.clock, self.away));
+        }
+        self.place = place;
+        self.away = 0.0;
         if clock.is_none() || elsewhere {
             if self.strike.is_some() {
                 log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?}", self.clock));
@@ -1384,6 +1430,10 @@ impl Orbital {
         }
         self.clock = clock;
         clock.is_some()
+    }
+    /// A frame's part in telling time away from a stall (`in_world`).
+    fn count_frame(&mut self, seconds: f32) {
+        self.away += seconds.min(AWAY_FRAME);
     }
     /// The first line on joining a world (`HINT`), a second in, until the player knows how to get the Designator: they
     /// ran `/orbital give` or hold one (`KNOWS`).
@@ -1616,7 +1666,10 @@ impl Mod for Orbital {
                 Event::KeyDown(k) if k == "wheel" && input::held().is_some_and(|h| h.id == DESIGNATOR) => self.open_wheel(),
                 Event::ScreenClick(c) if c.button == 0 => self.wheel_click(c.x, c.y),
                 Event::ScreenClick(c) if c.button == 1 => self.turn_page(self.page + 1),
-                Event::ScreenClosed => self.wheel = None,
+                Event::ScreenClosed => {
+                    self.wheel = None;
+                    self.closing = false;
+                }
                 _ => {}
             }
         }
@@ -1663,6 +1716,7 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         meter::reset();
+        self.count_frame(seconds);
         self.pace.frame(seconds);
         self.warm();
         if let Some(s) = &mut self.strike {
@@ -1705,6 +1759,7 @@ impl Mod for Orbital {
             (Some("left-world"), _) => {
                 self.left_world();
                 self.clock = None;
+                self.place = None;
                 Ok(None)
             }
             (Some("approach"), Some(k)) if APPROACHES.iter().any(|a| a.key == k) => {
@@ -2473,6 +2528,67 @@ mod stress {
         fake::with(|w| w.holding = false);
         assert_eq!(hints(&mut held, None, 5) + hints(&mut held, Some(40000), 60), 0, "and after");
     }
+    /// A stall is not another world: the frames stop, the world runs on and the clock jumps (forwards, or back by what the
+    /// client had run ahead), the player where they were, and the strike goes on. Another world's jump has seconds of
+    /// frames before it, or the player somewhere else, and ends it.
+    #[test]
+    fn a_stall_is_not_another_world() {
+        let player = Player { x: 0.5, y: 100.0, z: 400.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        let start = |o: &mut Orbital| {
+            fake::with(|w| {
+                *w = fake::Fake::default();
+                w.hit = Some(Hit { block_x: 0, block_y: 64, block_z: 0, x: 0.5, y: 65.0, z: 0.5, block: "minecraft:grass_block".into() });
+                w.player = Some(player.clone());
+                w.clock = 5000;
+            });
+            assert!(o.in_world());
+            o.fire();
+            assert!(o.strike.is_some(), "no strike");
+        };
+        let tick = |o: &mut Orbital, clock: u64, z: f64| {
+            fake::with(|w| {
+                w.clock = clock;
+                if let Some(p) = w.player.as_mut() {
+                    p.z = z;
+                }
+            });
+            o.in_world()
+        };
+        for jump in [5000 + 25 * 20, 5000 + 75 * 20, 5000 + 3600 * 20, 4929] {
+            let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+            start(&mut o);
+            o.count_frame(0.016);
+            o.count_frame(70.0);
+            assert!(tick(&mut o, jump, 400.5) && o.strike.is_some(), "a jump to {jump} ended it");
+            assert!(tick(&mut o, jump + 1, 400.5) && o.strike.is_some());
+        }
+        // (the title screen's frames, then a world with a clock of its own, forwards or back)
+        for jump in [9000, 1000] {
+            let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+            start(&mut o);
+            for _ in 0..120 {
+                o.count_frame(0.016);
+            }
+            assert!(tick(&mut o, jump, 400.5));
+            assert!(o.strike.is_none(), "a world at {jump} left it going");
+        }
+        // (no frames seen, but the player somewhere else)
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+        start(&mut o);
+        assert!(tick(&mut o, 9000, 2400.5));
+        assert!(o.strike.is_none());
+        // (a jump within the same play is nothing; a tick with no player still ends it)
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=nuke\n"));
+        start(&mut o);
+        for _ in 0..120 {
+            o.count_frame(0.016);
+        }
+        assert!(tick(&mut o, 5030, 400.5) && o.strike.is_some());
+        fake::with(|w| w.player = None);
+        assert!(!o.in_world());
+        assert!(o.strike.is_none());
+    }
+
     /// Leaving the world mid-strike ends it there (nothing of it goes on into the next world), and its forceloads are
     /// let go the next time that world is played, not in another one; a strike that runs its course leaves none kept.
     #[test]
