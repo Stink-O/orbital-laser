@@ -830,8 +830,8 @@ fn fw_h(a: vec3<f32>, b: vec3<f32>, t: f32) -> f32 {
 const FW_SHUT: f32 = 0.15;
 const FW_LETGO: f32 = 40.95;
 fn fw_shut(t: f32) -> f32 {
-    if (t < 34.5 || t > 42.3) { return 0.0; }
-    if (t < 36.4) { return fw_h(vec3<f32>(34.5, 0.0, 0.0), vec3<f32>(36.4, FW_SHUT, 0.0), t); }
+    if (t < 32.5 || t > 42.3) { return 0.0; }
+    if (t < 36.4) { return fw_h(vec3<f32>(32.5, 0.0, 0.0), vec3<f32>(36.4, FW_SHUT, 0.0), t); }
     if (t < FW_LETGO) { return FW_SHUT; }
     if (t < 41.5) { return fw_h(vec3<f32>(FW_LETGO, FW_SHUT, 0.0), vec3<f32>(41.5, -0.03, 0.0), t); }
     return fw_h(vec3<f32>(41.5, -0.03, 0.0), vec3<f32>(42.3, 0.0, 0.0), t);
