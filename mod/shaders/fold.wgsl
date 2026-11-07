@@ -18,6 +18,7 @@ const FD_BEAT: f32 = 40.0;         // the tip touches the target
 const FD_REL: f32 = 40.5;          // it all runs backwards
 const FD_SLAM0: f32 = 44.1;         // the first ring lands
 const FD_SLAM4: f32 = 48.7;        // the last slam
+const FD_ERUPT: f32 = 49.9;        // what was pent up bursts out (strike/fold.rs's FD_ERUPT)
 const FD_FALL: f32 = 3600.0;       // how high it starts over the target
 
 fn fd_ss(a: f32, b: f32, x: f32) -> f32 { return smoothstep(a, b, x); }
@@ -687,7 +688,8 @@ fn fd_sparks(colIn: vec3<f32>, v: vec3<f32>, S: vec3<f32>, way: vec2<f32>, t: f3
 //   4 OVERRUN    the one the game uses. It brakes over about a second (FD_BRAKE), the force rising and falling smoothly, and the fire and the wake overrun it: they pour on past and round it, and it is left standing in the stream
 //   5 MUSHROOM   the column behind it has nowhere to go: it stacks up over it and rolls out in one thick smoke ring
 //   6 STUTTER    time catches: the fire and the smoke hang frozen for a beat with the world drained, the drop's echoes running on under it, and everything lets go
-fn fd_stop() -> i32 { return clamp(i32(frame.mod_params[3].w + 0.5), 0, 6); }
+// (a quarter on it says the terrain is on: fold_warp.wgsl's fw_real_land)
+fn fd_stop() -> i32 { return clamp(i32(frame.mod_params[3].w + 0.25), 0, 6); }
 // (how much of the wake goes on past it, how long the fire lasts, and how long the fire's skin)
 fn fd_stopk(mode: i32) -> vec3<f32> {
     switch mode {
@@ -1049,6 +1051,82 @@ fn fdb_density(p: vec3<f32>, a: f32) -> f32 {
     return d * fd_ss(0.3, 0.72, n);
 }
 /// The picture behind `col` seen through the dust, along `v` from `ro` (from the target), up to `far`.
+// ---- the eruption: all that was pent up, out of the shaft. A column of fire going up as high as the tube was long, rolling out at its head, white in its throat, burning down to
+// dark smoke from the top; the first instant lights everything it can see. `a`: seconds since FD_ERUPT.
+const FDE_LEN: f32 = 8.0;
+const FDE_HIGH: f32 = 680.0;
+const FDE_WIDE: f32 = 190.0;
+const FDE_STEPS: i32 = 22;
+fn fde_density(p: vec3<f32>, a: f32) -> vec2<f32> {
+    let H = FDE_HIGH * (1.0 - exp(-a / 1.1));
+    let u = (p.y + 30.0) / max(H, 1.0);
+    if (u < 0.0 || u > 1.3) {
+        return vec2<f32>(0.0);
+    }
+    let q = p * 0.012 + vec3<f32>(0.0, -a * 0.75, 0.0);
+    let n2 = gnoise3(q * 5.2 + 7.3);
+    let n = 0.52 * gnoise3(q) + 0.3 * gnoise3(q * 2.3 + 3.1) + 0.18 * n2;
+    let R = (20.0 + 26.0 * sqrt(a)) * (1.0 + 3.2 * fd_ss(0.62, 1.0, u)) * (1.0 + 0.5 * fd_ss(0.0, 0.14, 0.14 - u));
+    let r = length(p.xz) + (n - 0.5) * R * 1.1;
+    let body = fd_ss(R, R * 0.45, r) * fd_ss(1.22, 0.9, u + (n - 0.5) * 0.3) * fd_ss(0.3, 0.55, n + 0.25 * (1.0 - fd_ss(0.0, 0.7, u)));
+    // (how hot: a white throat, fire above it, and the fire going out from the top down and the outside in)
+    // (torn: dark smoke rolling over it in lumps, the fire showing through between)
+    let heat = fd_ss(R * 0.9, 0.05 * R, r) * exp(-a / 1.7) * (1.0 - 0.7 * u) * fd_ss(0.34, 0.66, n + 0.3 * (n2 - 0.5)) * 1.5;
+    return vec2<f32>(body * (1.0 - fd_ss(4.5, FDE_LEN, a)), heat);
+}
+fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32) -> vec3<f32> {
+    var col = colIn;
+    // (the first instant, on everything)
+    col = col + (col * 1.6 + vec3<f32>(0.34, 0.22, 0.12)) * exp(-a / 0.2) * fd_ss(0.0, 0.03, a);
+    if (a > FDE_LEN) {
+        return col;
+    }
+    let b = dot(ro.xz, v.xz);
+    let aa = max(dot(v.xz, v.xz), 1.0e-5);
+    let c = dot(ro.xz, ro.xz) - FDE_WIDE * FDE_WIDE * (0.2 + 0.8 * fd_ss(0.0, 2.0, a));
+    let disc = b * b - aa * c;
+    if (disc <= 0.0) {
+        return col;
+    }
+    let sq = sqrt(disc);
+    var s0 = max((-b - sq) / aa, 0.0);
+    var s1 = min((-b + sq) / aa, far);
+    let top = FDE_HIGH * 1.3;
+    if (abs(v.y) > 1.0e-4) {
+        let ya = (-30.0 - ro.y) / v.y;
+        let yb = (top - ro.y) / v.y;
+        s0 = max(s0, min(ya, yb));
+        s1 = min(s1, max(ya, yb));
+    }
+    if (s1 <= s0) {
+        return col;
+    }
+    let sun = normalize(frame.sun.xyz);
+    let day = fd_ss(-0.12, 0.25, sun.y);
+    let step = (s1 - s0) / f32(FDE_STEPS);
+    var seen = 1.0;
+    var light = vec3<f32>(0.0);
+    for (var i = 0; i < FDE_STEPS; i += 1) {
+        let p = ro + v * (s0 + (f32(i) + jit) * step);
+        let d = fde_density(p, a);
+        if (d.x <= 0.002) {
+            continue;
+        }
+        let lit = fde_density(p + sun * 26.0, a).x;
+        var c = mix(vec3<f32>(0.07, 0.06, 0.055), vec3<f32>(0.3, 0.26, 0.23), 0.6 * exp(-lit * 2.2)) * (0.3 + 0.7 * day);
+        let h = saturate(d.y * 1.5);
+        var fc = mix(vec3<f32>(0.75, 0.13, 0.02), vec3<f32>(1.25, 0.56, 0.1), fd_ss(0.1, 0.5, h));
+        fc = mix(fc, vec3<f32>(1.5, 1.32, 0.95), fd_ss(0.5, 0.95, h));
+        c = mix(c, fc, fd_ss(0.05, 0.3, h));
+        let f = 1.0 - exp(-d.x * step * 0.16);
+        light += c * f * seen;
+        seen *= 1.0 - f;
+        if (seen < 0.02) {
+            break;
+        }
+    }
+    return col * seen + light;
+}
 fn fd_blast(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit: f32) -> vec3<f32> {
     let reach = fdb_front(a) + 90.0 + 30.0 * a;
     let top = fdb_high(a) * 1.15;
@@ -2093,8 +2171,9 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         }
     }
     // ---- the dust the last slam drove out of the ground -------------------------------------------------------------------
-    let fdb_a = t - FD_SLAM4;
+    let fdb_a = t - FD_ERUPT;
     if (fdb_a > 0.0 && fdb_a < FDB_LEN) {
+        col = fd_erupt(col, -gq, v, far, fdb_a, hash21(uv * res));
         col = fd_blast(col, -gq, v, far, fdb_a, hash21(uv * res));
     }
     return vec4<f32>(linear_to_srgb(max(col, vec3<f32>(0.0))), 1.0);

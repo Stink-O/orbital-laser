@@ -1061,6 +1061,10 @@ impl Orbital {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
+            // (the Fold's warp lifts the real land only if there is any: fold_warp.wgsl's fw_real_land)
+            if laser.key == "fold" && self.terrain {
+                params[15] += 0.25;
+            }
         }
         self.hand_post(pass_of(laser));
         render::set_params(&params);
@@ -1742,6 +1746,10 @@ impl Mod for Orbital {
                 render::warp_on(on, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]), copies, strike::FD_COPY_R);
                 // (the crater made behind what is on screen, and all shown on one frame; the terrain off, nothing to hold)
                 render::hold_world(self.pace.hidden && self.terrain);
+                if self.pace.hidden && self.terrain {
+                    let (p, t) = (&s.params, s.params[3]);
+                    render::hold_world_within(&strike::fd_hold_areas(t, [f64::from(p[0]), f64::from(p[2])], [f64::from(p[12]), f64::from(p[14])]));
+                }
             }
         }
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())

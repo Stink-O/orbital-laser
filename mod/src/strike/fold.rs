@@ -19,9 +19,9 @@
 //!                     FD_BEAT it hits the target: a tiny light, a small hit and a ding
 //!   FD_RELEASE        going back, not a rewind: at 40.95 the metal lets go and the hole opens; the tube gives at 42.2, catches at 42.55-42.88, and lets go
 //!                     (fw_tau): the sphere opens, the bud stands again with every ring up
-//!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each
-//!   FD_SLAM[4]        the last ring lands, breaking the land along its creases: the crater goes in held up at the land's level (FD_REVEAL), and
-//!                     falls in over about 3 s, kite by kite, from the middle out (fold_warp.wgsl's fw_sunk)
+//!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each, and each shows the real damage of its ring, held up at the land's level (fd_hold_areas)
+//!   FD_SLAM[4]        the last ring lands: all the crater is in (FD_REVEAL), and it falls in over about 6 s, kite by kite, from the middle out (fold_warp.wgsl's fw_sunk)
+//!   FD_ERUPT          what was pent up bursts out of the middle: a column of fire, the biggest shock, the dust and the debris
 //!   FD_SLAM[4]-FD_LEN the comedown: the creases fade, the void seals
 //!
 use super::{Act, Plan, Rng, Target, fold_land};
@@ -51,6 +51,8 @@ pub(super) const FD_SEAL: f32 = 35.0;
 pub(super) const FD_CRUSH: f32 = 35.0;
 pub(super) const FD_BEAT: f32 = 40.0;
 pub(super) const FD_RELEASE: f32 = 40.5;
+/// What was pent up bursts out of the middle: a column of fire, the biggest shock, the dust and the debris (fold.wgsl's fd_erupt, fold_warp.wgsl's fw_shock).
+pub(super) const FD_ERUPT: f32 = 49.9;
 /// When each of the branch's six stages starts (the last ends at 39.0, the tip a few blocks short of the target: there it
 /// creeps and waits, and closes the last of it in the 0.3 s up to FD_BEAT): shorter and shorter, slower and slower.
 /// When each ring bangs down, outermost first (ring 4 at FD_SLAM[0], with the far land, ring 0 last): the last shows the
@@ -68,7 +70,20 @@ pub(super) const FD_FALL: f32 = 0.8;
 pub const FD_REVEAL: f32 = FD_SLAM[4];
 /// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time. The hold lets go a
 /// frame ahead of the reveal: the swap shows the frame after it is asked for, and the warp lifting the old land for that frame is a dome.
-pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 4.5..FD_REVEAL - 0.03;
+pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 8.0..FD_REVEAL - 0.03;
+/// How far from the target the land stays held once each of the first four rings has landed, the real land outside it taking its place: each bang shows
+/// its own ring's damage (`render.hold-world-within`). fold_warp.wgsl's fw_freed_at the same. Past the first of these is what the crater doesn't reach.
+const FD_HELD_TO: [f64; 4] = [306.3, 176.3, 104.3, 44.3];
+/// The land round the player, left for the last slam (fold_land.rs's FD_ISLE + 11.4; fold_warp.wgsl's FW_ISLE).
+pub(super) const FD_ISLE_HELD: f64 = 41.4;
+/// What of the land is still held at strike second `t`: none, all of it (`render.hold-world-within`). The hold on a ring lets go a frame ahead of its bang, as the last does (FD_HIDDEN).
+pub fn fd_hold_areas(t: f32, at: [f64; 2], me: [f64; 2]) -> Vec<(f64, f64, f64)> {
+    let landed = FD_SLAM[..4].iter().filter(|s| t >= **s - 0.03).count();
+    if landed == 0 {
+        return Vec::new();
+    }
+    vec![(at[0], at[1], FD_HELD_TO[landed - 1]), (me[0], me[1], FD_ISLE_HELD)]
+}
 /// The world closed round the player, from the walls coming in to their opening again: the sphere goes with them (fold_warp's
 /// fw_stay), so they can't leave it or see its outside, and lib.rs keeps their flight to vanilla's and them from going too far.
 pub const FD_STAY: std::ops::Range<f32> = 27.0..43.5;
@@ -234,6 +249,8 @@ pub(super) fn fold_plan(laser: &'static Laser, target: &Target, terrain: bool, d
         p.csound(FD_SLAM[4] + (66.0 * (1.0 - u * u * u).powf(0.75) / 18.0).sqrt(), "underfoot", 10.0, 1.0);
     }
     p.csound(FD_SLAM[4] + 4.6, "comedown", 10.0, 1.0);
+    p.shake(FD_ERUPT, 1.0 * super::falloff(dist * 0.4), 2.6);
+    p.ev.push((FD_ERUPT + (dist as f32 / 700.0).min(0.6), Act::Shove { from: [cx, f64::from(by), cz], out: 0.9, up: 0.6, reach: 700.0 }));
 
     if !terrain {
         p.ev.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -378,7 +395,7 @@ mod tests {
     #[test]
     fn without_terrain_the_fold_is_light_and_sound() {
         let ev = plan(the_laser(), &target(), false, "minecraft:overworld", 37.0, [0.5, 66.0, 300.5], 0);
-        assert!(ev.iter().all(|e| matches!(e.1, Act::Sound { .. } | Act::Shake { .. })), "only sounds and a jolt");
+        assert!(ev.iter().all(|e| matches!(e.1, Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. })), "only sounds, jolts and the eruption's push");
         assert!(ev.iter().any(|e| matches!(&e.1, Act::Sound { event, .. } if event == "orbital:fold.slam")));
     }
 

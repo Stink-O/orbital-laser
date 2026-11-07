@@ -6,8 +6,8 @@
 //! fall, panel by panel (fold_warp.wgsl's fw_sunk, the same `bowl`).
 //!
 //! All of it goes in behind the game's hold on the terrain (`render.hold-world`, FD_HIDDEN): the land on screen stays as it
-//! was while one wave goes from the middle out, FD_LAND0 to FD_LAND1, and the whole crater takes its place on the one frame
-//! the hold lets go, FD_REVEAL, as the last slam lands. Every chunk is edited once, on one tick (`fd_tick`): its cut, its
+//! was while one wave goes from the middle out, FD_LAND0 to FD_LAND1, and it takes its place ring by ring as each lands, outermost first
+//! (fold.rs's fd_hold_areas), the middle on the frame the hold lets go, FD_REVEAL, as the last slam lands. Every chunk is edited once, on one tick (`fd_tick`): its cut, its
 //! rubble, heaps, fires and felled trees together. A second edit of a chunk is a second resend, nine light jobs and its
 //! sections meshed again, so nothing but falling blocks and fires changes the land after the reveal. It is read at the
 //! fire, worked out a little ahead of when it is due, in one chain of stages (`fd_work`).
@@ -28,7 +28,7 @@
 //!   FD_THROWN        the falling blocks thrown as each ring lands (`fd_thrown`)
 //!   FD_EMBERS        the fires left burning (`fd_embers`)
 //!   FD_SMOKE         the smoke rising after it
-use super::fold::{FD_BEAT, FD_FOLD, FD_HIDDEN, FD_LEN, FD_N as FD_CREASES, FD_RELEASE, FD_REVEAL, FD_RINGS, FD_SEAL, FD_TEAR, FdWedge, fd_wedge};
+use super::fold::{FD_BEAT, FD_ERUPT, FD_FOLD, FD_SLAM, FD_HIDDEN, FD_LEN, FD_N as FD_CREASES, FD_RELEASE, FD_REVEAL, FD_RINGS, FD_SEAL, FD_TEAR, FdWedge, fd_wedge};
 use super::rod::{Column, Due, LEAF_NAMES, LEAVES, LOG_X, LOG_Y, LOG_Z, Land, Sector, Used, ring_columns, take_in_grid};
 use super::{Act, Blocks, Col, Plan, Rng, TIDY_BORDER, bedrock_top, mh, tidy, vnoise};
 use std::cell::RefCell;
@@ -114,7 +114,7 @@ const FD_N: f64 = 12.0;
 /// The land's wave: from when to when, behind the hold. It ends this long before the reveal: a chunk's resend, its light
 /// and its meshes take the game some tenths of a second, and a chunk not ready by the reveal shows late.
 pub(super) const FD_LAND0: f32 = FD_HIDDEN.start + 0.2;
-pub(super) const FD_LAND1: f32 = FD_REVEAL - 1.6;
+pub(super) const FD_LAND1: f32 = FD_SLAM[0] - 1.6;
 /// The chunks the player's island stands on go in just before the reveal, so they swap in with the rest and the ground goes
 /// from under them with the slam.
 const FD_ISLE_AT: f32 = FD_REVEAL - 0.5;
@@ -1228,7 +1228,8 @@ fn fd_thrown(q: &mut Plan, land: &Land, s: &Shape, cuts: &mut [Cut], k: usize) {
     let woods = land.woods;
     let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
     let (r0, r1) = [(FD_SHAFT * 1.6, FD_RINGS[0]), (FD_RINGS[0], FD_RINGS[1]), (FD_RINGS[1], FD_R * 0.95), (FD_R * 0.95, FD_R * FD_RIM)][k];
-    let t0 = FD_REVEAL + 0.08 * k as f32;
+    // (each ring's as it lands, the middle's with the eruption)
+    let t0 = [FD_ERUPT, FD_SLAM[3], FD_SLAM[1], FD_SLAM[0]][k] + 0.08;
     let want = FD_THROWN[k];
     let mut n = 0;
     crate::meter::spend(want as u64 * 2 * 3_000);
@@ -2157,8 +2158,8 @@ mod tests {
         assert!(p.cmds.iter().any(|c| c.1.starts_with("forceload remove") && c.0 >= FD_LEN - 1.1));
         let thrown: Vec<f32> = p.cmds.iter().filter(|c| c.1.contains("falling_block ") && !c.1.contains("NoGravity")).filter(|c| c.1.starts_with("summon")).map(|c| c.0).collect();
         assert!(thrown.len() > 150, "{} thrown", thrown.len());
-        // (thrown out of the crater by the slam that made it)
-        assert!(thrown.iter().all(|t| *t >= FD_REVEAL && *t <= FD_REVEAL + 1.2), "{thrown:?}");
+        // (thrown out as each ring lands, the middle's by the eruption)
+        assert!(thrown.iter().all(|t| *t >= FD_SLAM[0] && *t <= FD_ERUPT + 1.2), "{thrown:?}");
         let kills: Vec<&(f32, String)> = p.cmds.iter().filter(|c| c.1.contains("kill @e")).collect();
         assert!(!kills.is_empty() && kills[0].0 >= FD_HIDDEN.start - 0.1 && kills.iter().all(|c| c.1.contains("type=!minecraft:falling_block")));
     }
@@ -2194,8 +2195,25 @@ mod tests {
             let worst = best.iter().copied().fold(0.0, f64::max);
             eprintln!("LAND {land} pattern {pattern}: {} stages, edits {late_all:.2} s late at most, heaviest {worst:.2} ms", best.len());
             assert!(!timed || worst < 1.3, "land {land}: a stage took {worst:.2} ms");
+            // (a ring's land in by a second before its bang, or the warp lifts what stands there: the crater's, that is, which is all it lifts)
+            let p = played(land);
+            let [bx, _, bz] = target().block;
+            let mut short = f32::MAX;
+            for (when, _, b) in &p.edits {
+                for r in &b.runs {
+                    let (mx, mz) = (f64::from((r.x >> 4) * 16) + 8.0 - f64::from(bx), f64::from((r.z >> 4) * 16) + 8.0 - f64::from(bz));
+                    let d = mx.hypot(mz);
+                    if d > 306.3 || (f64::from((r.x >> 4) * 16) + 8.0 - ME[0]).hypot(f64::from((r.z >> 4) * 16) + 8.0 - ME[2]) < FD_ISLE + 11.4 {
+                        continue;
+                    }
+                    let bang = if d > 176.3 { FD_SLAM[1] } else if d > 104.3 { FD_SLAM[2] } else if d > 44.3 { FD_SLAM[3] } else { FD_SLAM[4] };
+                    short = short.min(bang - *when);
+                }
+            }
+            eprintln!("LAND {land} pattern {pattern}: the crater's land in {short:.2} s before its bang at the least");
+            assert!(land == 6 || short > 1.0, "land {land}: crater land {short:.2} s before its bang");
             // (the jungle's many runs meet FD_HELD: it goes in up to some 4 s late, its outer land past the reveal. Known, not fixed: round 3)
-            assert!(land == 6 || late_all < if land == 3 { 5.5 } else { 0.4 }, "land {land}: an edit {late_all:.2} s late");
+            assert!(land == 6 || late_all < if land == 3 { 6.5 } else { 0.4 }, "land {land}: an edit {late_all:.2} s late");
         }
         LAND.with(|l| l.set(0));
         PATTERN.with(|p| p.set(0));

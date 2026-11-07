@@ -42,7 +42,10 @@ const FW_FEET: f32 = 15.0;         // how far from the player the land is all th
 const FW_EYE: f32 = 1.62;          // their eye over their feet
 const FW_LAND_R: f32 = 480.0;      // from FD_LAND on the crater is in the land within this: nothing is cut under it
 const FW_BOWL: f32 = 66.0;         // how deep the crater's bowl is (strike/fold_land.rs's FD_BOWL)
-const FW_SUNK: f32 = 5.6;          // the crater has fallen in by this long after the last slam
+const FW_SUNK: f32 = 6.6;          // the crater has fallen in by this long after the last slam
+const FW_ERUPT: f32 = 49.9;         // what was pent up bursts out (strike/fold.rs's FD_ERUPT)
+const FW_ISLE: f32 = 41.4;          // the land round the player, chunk by chunk, left for the last slam (strike/fold_land.rs's FD_ISLE + 11.4)
+const FW_CAVE_SLOW: f32 = 10.0;     // the panels fall slower than the player's own, which has them on it
 const FW_CAVE: f32 = 18.0;         // half the panels' fall's acceleration, blocks a second squared: a little more than what the player falls with
 
 // ---- what can be taken out: 0 turns each off -----------------------------------------------------------------------
@@ -166,6 +169,13 @@ fn fw_shock(r: f32, t: f32) -> f32 {
             let body = exp(-x * x * select(0.28, 1.0, x > 0.0)) * cos(x * 2.3);
             y += fw_wave_a(i) * body * exp(-0.55 * age) * sqrt((from_ + 120.0) / (at + 120.0)) * fw_ss(0.0, 0.05, age) * (1.0 - fw_ss(2.4, FW_WAVE_LIFE, age)) * fw_ss(from_ - 30.0, from_, r);
         }
+    }
+    // (the eruption's: the biggest of them, out from the rim)
+    let e = t - FW_ERUPT;
+    if (e > 0.0 && e < FW_WAVE_LIFE + 1.0) {
+        let at = FW_LAND_R + 420.0 * e * (1.0 - 0.09 * e);
+        let x = (r - at) / (26.0 + 30.0 * e);
+        y += 17.0 * exp(-x * x * select(0.28, 1.0, x > 0.0)) * cos(x * 2.3) * exp(-0.5 * e) * sqrt((FW_LAND_R + 120.0) / (at + 120.0)) * fw_ss(0.0, 0.05, e) * (1.0 - fw_ss(3.0, FW_WAVE_LIFE + 1.0, e));
     }
     // (the crater goes in on the last bang: the waves are past it by then, and nothing of them is on it)
     return y * select(1.0, fw_ss(FW_LAND_R - 10.0, FW_LAND_R + 30.0, r), t >= FW_SLAM4);
@@ -1085,7 +1095,20 @@ fn fw_sag(w: CpW, i: i32, kt: CpKite, tr: CpTri, t: f32) -> f32 {
 }
 // When panel (w, i) lets go of the land's level, after the last slam: from the middle out.
 fn fw_late(w: CpW, i: i32) -> f32 {
-    return 0.2 + 0.62 * f32(i) + 0.5 * fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
+    return 0.2 + 1.0 * f32(i) + 0.6 * fw_hash(vec2<f32>(f32(w.k) * 13.0 + 3.0, f32(i) * 7.0 + 1.0));
+}
+// Whether the land really changes: the terrain on (lib.rs's `flags_of`; with it off the old land is all there is).
+fn fw_real_land() -> bool { return fract(globals.warp[3].w) > 0.1; }
+// When the real land of the chunk at Q takes its place: as its ring lands, outermost first, the land under the player with the last. By the middle of the chunk, as the game lets it go
+// (strike/fold.rs's fd_hold_areas: the same circles), the warp's two sides of a chunk's edge the only thing that can disagree, and that lies in the step up to the ring still standing.
+fn fw_freed_at(Q: vec3<f32>, c: FwClock) -> f32 {
+    let at = globals.warp[0].xz;
+    let S = (floor((at + Q.xz) / 16.0) + 0.5) * 16.0 - at;
+    if (!fw_real_land() || length(S - (c.me - c.tgt).xz) < FW_ISLE) {
+        return FW_SLAM4;
+    }
+    let d = length(S);
+    return select(select(select(select(fw_hit(0), fw_hit(1), d > 44.3), fw_hit(2), d > 104.3), fw_hit(3), d > 176.3), fw_hit(4), d > 306.3);
 }
 // The crater goes in held up where the land had sunk to: the last slam breaks the land along its creases, and each panel of the pattern lets go on
 // its own time, from the middle out, the one under the player first, and falls to where it really lies (strike/fold_land.rs's `bowl`:
@@ -1099,11 +1122,12 @@ fn fw_sunk(Q: vec3<f32>, r: f32, a: f32, t: f32, mq: vec3<f32>) -> f32 {
     let i = cp_cell(w, r);
     let mr = length(mq.xz);
     let mw = cp_wedge(atan2(mq.z, mq.x), mq.xz, mr);
-    let late = select(fw_late(w, i), 0.0, w.k == mw.k && i == cp_cell(mw, mr));
+    let own = w.k == mw.k && i == cp_cell(mw, mr);
+    let late = select(fw_late(w, i), 0.0, own);
     let s = max(t - FW_SLAM4 - late, 0.0);
     let kt = cp_kite(w, i);
     let sag = fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - mq.xz));
-    return max(FW_BOWL * pow(1.0 - u * u * u, 0.75) - sag - FW_CAVE * s * s, 0.0);
+    return max(FW_BOWL * pow(1.0 - u * u * u, 0.75) - sag - select(FW_CAVE_SLOW, FW_CAVE, own) * s * s, 0.0);
 }
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     var out = Warped(pos, vec3<f32>(1.0));
@@ -1125,21 +1149,22 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         out.tint = vec3<f32>(-1.0);
         return out;
     }
-    if (t >= FW_SLAM4 + 0.01 && t < FW_SLAM4 + FW_SUNK) {
+    let freed = t > 44.0 && fw_real_land() && t >= fw_freed_at(Q, c) + 0.01;
+    if (freed && t < FW_SLAM4 + FW_SUNK) {
         Q.y += fw_sunk(Q, r, a, t, c.me - c.tgt);
-    } else if (t > FW_FLAT && t < FW_SLAM4 + 0.01 && r < 310.0) {
+    } else if (!freed && t > FW_FLAT && t < FW_SLAM4 + 3.0 && r < 310.0) {
         // (each ring sunk a little as it lands)
         let w = cp_wedge(a, Q.xz, r);
         let i = cp_cell(w, r);
         if (i < 4) {
             let kt = cp_kite(w, i);
-            Q.y -= fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - (c.me - c.tgt).xz));
+            Q.y -= fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - (c.me - c.tgt).xz)) * (1.0 - fw_ss(0.0, 3.0, t - FW_SLAM4));
         }
     }
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
     let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
     var rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, a, t, dropR);
-    if (t > FW_FLAT && t < FW_SLAM4 + FW_WAVE_LIFE) {
+    if (t > FW_FLAT && t < FW_ERUPT + FW_WAVE_LIFE + 1.0) {
         rip += fw_shock(r, t) - fw_shock(length(c.tgt.xz), t);
     }
     if (t < FW_TOUCH + 4.3) {
@@ -1554,7 +1579,7 @@ fn world_fragment(f: Fragment) -> Painted {
         col = fw_wet(col, Q, r, t, f.at, clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0), up);
     }
     // ---- the bangs' waves: seen by the light across them, long before their height is ---------------------------------------
-    if (t > FW_FLAT && t < FW_SLAM4 + FW_WAVE_LIFE) {
+    if (t > FW_FLAT && t < FW_ERUPT + FW_WAVE_LIFE + 1.0) {
         let e = 4.0;
         let slope = (fw_shock(r + e, t) - fw_shock(max(r - e, 0.0), t)) / (2.0 * e);
         let D = Q.xz / max(r, 0.5);
@@ -1586,7 +1611,7 @@ fn world_fragment(f: Fragment) -> Painted {
     if (t > FW_BEAT && r < FW_LEN * 1.2 && fade > 0.0) {
         var hurt = fw_hurt(r, wedge, cell, hit.big, t, max(0.05, dist * 0.00095));
         // (the crater comes up out of the soot as it falls; what lay past it clears at once)
-        let s = t - FW_SLAM4;
+        let s = t - select(FW_SLAM4, fw_freed_at(Q, c), t > 44.0);
         if (s > 0.0) {
             let go = select(1.0 - fw_ss(0.0, 1.0, s), 1.0 - fw_ss(0.0, 2.0, s - fw_late(wedge, ring)), cell < 4);
             hurt = FwHurt(hurt.soot * go, hurt.crack * go, hurt.ember * go);
