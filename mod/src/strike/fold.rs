@@ -21,7 +21,7 @@
 //!                     (fw_tau): the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each, and each shows the real damage of its ring, held up at the land's level (fd_hold_areas)
 //!   FD_SLAM[4]        the last ring lands: all the crater is in (FD_REVEAL), and it falls in over about 6 s, kite by kite, from the middle out (fold_warp.wgsl's fw_sunk)
-//!   FD_ERUPT          what was pent up bursts out of the middle: a column of fire, the biggest shock, the dust and the debris
+//!   FD_ERUPT          what was pent up is let go along the ground: a low wall of fire racing out, the biggest shock, the dust and the debris
 //!   FD_SLAM[4]-FD_LEN the comedown: the creases fade, the void seals
 //!
 use super::{Act, Plan, Rng, Target, fold_land};
@@ -51,7 +51,7 @@ pub(super) const FD_SEAL: f32 = 35.0;
 pub(super) const FD_CRUSH: f32 = 35.0;
 pub(super) const FD_BEAT: f32 = 40.0;
 pub(super) const FD_RELEASE: f32 = 40.5;
-/// What was pent up bursts out of the middle: a column of fire, the biggest shock, the dust and the debris (fold.wgsl's fd_erupt, fold_warp.wgsl's fw_shock).
+/// What was pent up is let go along the ground: a low wall of fire racing out, the biggest shock, the dust and the debris. No column and no cloud (fold.wgsl's fd_erupt, fold_warp.wgsl's fw_shock).
 pub(super) const FD_ERUPT: f32 = 49.9;
 /// When each of the branch's six stages starts (the last ends at 39.0, the tip a few blocks short of the target: there it
 /// creeps and waits, and closes the last of it in the 0.3 s up to FD_BEAT): shorter and shorter, slower and slower.
