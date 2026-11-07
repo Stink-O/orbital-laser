@@ -940,9 +940,9 @@ fn fb_bubbles(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> vec2<f32> {
 // much seethe here, thins them out. Out: height, slope.
 fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
     var o = vec3<f32>(0.0);
-    let CELL = array<f32, 3>(290.0, 118.0, 58.0);
+    let CELL = array<f32, 3>(205.0, 92.0, 50.0);
     let PER = array<f32, 3>(2.3, 1.35, 0.8);
-    let RAD = array<f32, 3>(92.0, 46.0, 22.0);
+    let RAD = array<f32, 3>(82.0, 38.0, 20.0);
     let SL = array<f32, 3>(1.0, 0.6, 0.3);
     let EDGE_K = array<f32, 3>(1.0e4, 110.0, 40.0);
     let ROT = array<vec2<f32>, 3>(vec2<f32>(0.8, 0.6), vec2<f32>(0.28, -0.96), vec2<f32>(-0.6, 0.8));
@@ -968,7 +968,7 @@ fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
             let life = fract(cl);
             let sz = RAD[k] * (0.5 + 0.5 * h2 * h2);
             let wt = fw_ss(0.0, 0.16, amt - h) * keep;
-            let e0 = (u - (c + vec2<f32>(0.5) + (vec2<f32>(h2, h3) - 0.5) * max(0.5 - 1.5 * sz / CELL[k], 0.0))) * CELL[k];
+            let e0 = (u - (c + vec2<f32>(0.5) + (vec2<f32>(h2, h3) - 0.5) * max(0.5 - 1.5 * sz / CELL[k], 0.14))) * CELL[k];
             // (none of them round: each squashed its own way, and leaning)
             let an = h3 * 6.2831853;
             let ca = cos(an);
@@ -990,6 +990,16 @@ fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
                     o = o + wt * vec3<f32>(A * f * f * f, -dir * 6.0 * A * w * f * f / R * SL[k]);
                 }
             } else if (k == 0) {
+                // (it goes down fast, not at once)
+                {
+                    let a0 = (life - 0.74) * PER[k];
+                    let w = el / sz;
+                    if (w < 1.0) {
+                        let A = 0.3 * sz * exp(-a0 / (0.05 * PER[k]));
+                        let f = 1.0 - w * w;
+                        o = o + wt * vec3<f32>(A * f * f * f, -dir * 6.0 * A * w * f * f / sz * SL[k]);
+                    }
+                }
                 // (a big one leaves a ring, thick, gone soon)
                 let a = (life - 0.74) * PER[k];
                 let front = sz * (1.0 + 0.4 * (1.0 - exp(-a / (0.14 * PER[k]))));
@@ -1002,6 +1012,12 @@ fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
                 o = o + wt * vec3<f32>(A * f - 0.55 * sz * gone, -dir * 2.0 * A * x2 * f / wd);
             } else {
                 let a = (life - 0.74) * PER[k];
+                let w = el / sz;
+                if (w < 1.0) {
+                    let A = 0.3 * sz * exp(-a / (0.05 * PER[k]));
+                    let f = 1.0 - w * w;
+                    o = o + wt * vec3<f32>(A * f * f * f, -dir * 6.0 * A * w * f * f / sz * SL[k]);
+                }
                 o.x = o.x - wt * 0.6 * sz * exp(-(el * el) / (sz * sz * 0.5)) * exp(-a / (0.13 * PER[k]));
             }
         }
@@ -1333,8 +1349,9 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             let S = S0;
             let ps = px * s;
             let th = atan2(q.y, q.x);
-            let wn0p = q * 0.013 + vec2<f32>(4.0, 1.0);
-            let wn0 = 0.55 * vnoise(wn0p) + 0.3 * vnoise(wn0p * 2.03 + 17.3) + 0.15 * vnoise(wn0p * 4.1 + 9.1) - 0.5;
+            // (not vnoise: its cells don't quite meet on some drivers, which on an edge this clean shows as square cuts)
+            let wn0p = q * 0.0135 + vec2<f32>(4.0, 1.0);
+            let wn0 = 0.3 * sin(wn0p.x + 1.4 * sin(wn0p.y * 0.9 + 1.0)) + 0.2 * sin(wn0p.y * 1.7 - 1.2 * sin(wn0p.x * 1.3 + 2.0));
             // (thick, so its edge wanders in lobes, with no fray to it)
             let wp = q * 0.041 + vec2<f32>(0.35 * t + 0.5 * fb_ramp(34.5, 36.0, t), -0.27 * t);
             let wn1 = 0.3 * sin(wp.x + 1.6 * sin(wp.y * 1.3)) + 0.2 * sin(wp.y * 1.9 - 1.3 * sin(wp.x * 1.5 + 1.0));
@@ -1345,11 +1362,11 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             var soft = max(ps, 3.0);
             // (the seethe: at the fronts and round the pockets, in a band that widens as they close. It lifts the edge itself)
             var se = vec3<f32>(0.0);
-            let bu = fw_ss(33.6, 35.5, t) * (1.0 - fw_ss(FB_SEAL - 0.1, 37.5, t));
-            let wide = 90.0 + 170.0 * fw_ss(35.0, 36.2, t);
+            let bu = fw_ss(33.4, 35.2, t) * (1.0 - fw_ss(FB_SEAL - 0.05, 37.5, t));
+            let wide = 130.0 + 190.0 * fw_ss(34.8, 36.1, t);
             // (and it comes in knots, not evenly)
             let knot = fw_ss(-0.35, 0.75, sin(q.x * 0.0127 + 0.2 * t + 2.0 * sin(q.y * 0.0091)) + 0.7 * sin(q.y * 0.0173 - 0.15 * t + 1.0));
-            let am = bu * fw_ss(-90.0, -20.0, edge) * (1.0 - fw_ss(0.5 * wide, wide, edge)) * (0.45 + 0.55 * knot);
+            let am = bu * fw_ss(-90.0, -20.0, edge) * (1.0 - fw_ss(0.5 * wide, wide, edge)) * (0.5 + 0.5 * knot);
             if (am > 0.002) {
                 se = fb_seethe(q, t, am * (0.55 + 0.75 * fw_ss(34.5, 35.9, t)), edge);
                 edge = edge + 2.0 * se.x * fw_ss(150.0, 40.0, edge);
