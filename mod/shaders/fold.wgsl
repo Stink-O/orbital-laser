@@ -63,6 +63,7 @@ const FD_LEAD: f32 = 4.0;          // the clock starts this far before 0: its fa
 const FD_B: f32 = 27.88;           // its braking: (FD_FALL - FD_V * T) / T^2, T being FD_LEAD + FD_STOP
 const FD_SLIP: f32 = 0.3;          // how soon what moved with it loses its speed, seconds
 const FD_BRAKE: f32 = 0.5;         // OVERRUN's stop: it starts braking this long before FD_STOP and comes to rest about as long after it (fd_brake_t), the force rising and falling smoothly
+const FD_GONE: f32 = 15.0;         // the last of the smoke has faded
 const FD_OVER: f32 = 1.6;          // OVERRUN: how soon the air it brakes out of loses its speed, seconds
 const FD_TIP: f32 = 1.72;          // the tip, in radii over the centre
 const FD_PIV: f32 = -0.3;          // the point it squashes about, in radii over the centre: low, the tip does the moving
@@ -452,23 +453,29 @@ fn fd_trail(v: vec3<f32>, C: vec3<f32>, d: FdDrop, way: vec2<f32>, t: f32, px: f
     let rr = hx / rw;
     let prof = exp(-rr * rr * 1.4) * fd_ss(2.3, 1.5, rr);
     let gin = 1.0 / max(sn, 0.5);
-    // (it doesn't go anywhere: it comes apart where it hangs, the thin between its lumps opening until only wisps are left, and those go. Its old high end first)
-    let thr = mix(0.32, 0.12, smk) + 0.38 * fd_ss(1.5, 18.0, age) + 0.5 * fd_ss(2.0, 14.0, t - FD_STOP);
+    // (the thin between its lumps opening a little as it goes: all of it at once, from when the drop has stopped, `FD_GONE` below)
+    let thr = mix(0.32, 0.12, smk) + 0.2 * fd_ss(0.5, 11.0, t - FD_STOP);
     let mm = (puff - thr) * 3.2 + 0.3 * exp(-age / 0.8);
     let sl = 3.2 * 0.14 * sqrt(0.384 * (1.0 - w1 * w1) + 0.09 * (1.0 - w2 * w2) + 0.0064 * (1.0 - w3 * w3)) + 1.0e-3;
     // (a soft max(mm, 0): past 30 its exp would run out, and it is mm)
     let mz = mm / sl;
     let dens = saturate(select(sl * log(1.0 + exp(max(mz, -30.0))), mm, mz > 30.0));
     // (dense where it is laid and thinning slowly; right behind the flame nearly solid, the fire going out into dark smoke)
-    let sig = (0.3 * exp(-age / 4.5) + 0.5 * exp(-age / 0.6) * dive) * mix(0.6, 1.15, smk);
-    let life = (1.0 - fd_ss(13.0, 18.5, t)) * fd_ss(0.1 - FD_LEAD, 0.9 - FD_LEAD, t);
+    let sig = (0.24 + 0.5 * exp(-age / 0.6) * dive) * mix(0.6, 1.15, smk);
+    let life = fd_ss(0.1 - FD_LEAD, 0.9 - FD_LEAD, t);
     var dtau = sig * prof * dens * 1.6 * rad * gin * on * life;
+    // (the whole of it fading together, top to bottom, on one clock from when the drop has stopped. On how much it hides, not its thickness: thinned, a thick column would stay solid
+    // nearly to the end and then go all at once)
+    let left = 1.0 - fd_ss(FD_STOP + 0.5, FD_GONE, t);
+    if (left < 1.0) {
+        dtau = -log(max(1.0 - (1.0 - exp(-dtau)) * left, 1.0e-4));
+    }
     let nrm = normalize(vec3<f32>(off.x, 0.0, off.y) - v * (0.6 * rad) + vec3<f32>(0.0, 1.0e-4, 0.0));
     let ln = 0.5 + w1 * (n1 - 0.5);
     let lit = (0.35 + 0.65 * saturate(dot(nrm, li.L) * 0.5 + 0.5)) * (0.6 + 0.8 * ln * ln);
     // (white vapour high up, soot-dark low down, paling as it spreads thin)
     var alb = mix(vec3<f32>(0.74, 0.74, 0.76), vec3<f32>(0.115, 0.1, 0.09), smk);
-    alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), fd_ss(3.0, 16.0, age));
+    alb = mix(alb, alb * 1.35 + vec3<f32>(0.03), fd_ss(FD_STOP, FD_GONE, t));
     var c = alb * (li.sunc * lit * 0.85 + li.amb * (0.6 + 0.4 * ln));
     // (just behind the fire the smoke is lit by it, dying back at once)
     c = c + vec3<f32>(1.2, 0.42, 0.09) * exp(-age / 0.1) * dive * (0.4 + 0.6 * ln);
@@ -910,7 +917,7 @@ fn fd_droplet(colIn: vec3<f32>, t: f32, v: vec3<f32>, G: vec3<f32>, C: vec3<f32>
     }
     // ---- the wake, hung in the sky -----------------------------------------------------------------------------------------
     var wake = FdMist(vec3<f32>(0.0), 0.0, vec3<f32>(0.0), vec4<f32>(0.0));
-    if (t < 18.5) {
+    if (t < FD_GONE) {
         let m = fd_trail(v, C, d, way, tx, px, li, far);
         wake = m;
         if (m.tau > 0.0) {
@@ -2011,8 +2018,8 @@ fn fs_main(in: StageIn) -> @location(0) vec4<f32> {
         }
     }
 
-    // ---- the droplet -------------------------------------------------------------------------------------------------------
-    if (t < 10.0) {
+    // ---- the droplet, and its smoke for as long as that lasts ---------------------------------------------------------------
+    if (t < FD_GONE) {
         let side = normalize(vec2<f32>(-gq.z, gq.x) + vec2<f32>(0.0, 1.0e-4));
         let d = fd_drop(t, dist, side);
         let li = fd_light();
