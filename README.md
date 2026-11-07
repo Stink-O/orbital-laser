@@ -39,8 +39,8 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: the launcher
-> compiles it into the game. The [fork version](#getting-started) is a WebAssembly mod for the Orbital Laser build of
+> **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: install it from
+> the launcher's Mods page and the launcher compiles it into the game. The [fork version](#getting-started) is a WebAssembly mod for the Orbital Laser build of
 > Horizon ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), release
 > `orbital-mod-api-11` or newer), with a ready-built Linux download on its
 > [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
@@ -62,22 +62,23 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 1. Install the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) and set up an instance from your own
    Minecraft Java Edition 26.3.
-2. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest). This is
-   still 0.5.10, without the Fold.
-3. Close the game. On the launcher's Instances page press **Open folder**, and put `orbital.hnmod` in the
-   **`horizon-native-mods`** folder (make it if it isn't there).
-4. On the launcher's **Mods** page, check Orbital Laser is on.
-5. On the **Native build** row pick **Release build**, press **Build**, and choose **I trust these mods: build**. The
+2. Close the game. On the launcher's **Mods** page, search **orbital** and press **Install** on Orbital Laser. This is
+   0.5.10, without the Fold.
+3. On the **Native build** row pick **Release build**, press **Build**, and choose **I trust these mods: build**. The
    first build takes 20 to 30 minutes.
-6. Press Play, open a creative world and type **`/orbital give`**. Hold the Designator and press **R** to pick a
+4. Press Play, open a creative world and type **`/orbital give`**. Hold the Designator and press **R** to pick a
    laser, then hold right-click on a target to fire.
+
+**Installing by hand instead:** download **`orbital.hnmod`** from the
+[latest release](https://github.com/Stink-O/orbital-laser/releases/latest), put it in the **`horizon-native-mods`**
+folder of your instance (Instances page → **Open folder**; make the folder if it isn't there), check Orbital Laser is on
+on the **Mods** page, then build as in step 3.
 
 **What each system needs first.** Linux: a C compiler, `pkg-config` and the ALSA and libudev development files (the
 launcher gives you the command). Windows: nothing. macOS on Apple Silicon: `xcode-select --install`. Intel Macs can't
 build native mods. It's played and tested on Linux; on Windows and Apple Silicon it builds but hasn't been played yet.
 
-A native mod isn't sandboxed: its code runs with full access to your computer, so only build it if you trust it. A
-listing in the launcher's Mods browser is in review. The
+A native mod isn't sandboxed: its code runs with full access to your computer, so only build it if you trust it. The
 [install guide](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) has the known issues
 and how to remove it.
 
