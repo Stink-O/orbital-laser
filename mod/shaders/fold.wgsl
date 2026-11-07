@@ -175,7 +175,7 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         // (the integral of 1 - smoothstep(u); and it squashes with the force on it, its foot held back, and the settle below takes it from there)
         let u = (t - (FD_STOP - FD_BRAKE)) / brake_t;
         h = stop_h + fd_fall(FD_BRAKE) * (1.0 - 2.0 * (u - u * u * u + 0.5 * u * u * u * u));
-        sy = 1.0 - 0.16 * 4.0 * u * (1.0 - u);
+        sy = 1.0 - 0.06 * 4.0 * u * (1.0 - u);
         sx = 1.0 / sqrt(sy);
         piv = -1.0;
     } else if (t < FD_STOP) {
@@ -186,11 +186,13 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
         // little; then perfectly still, a good half second before it is let go)
         let a = t - max(FD_STOP, select(FD_STOP, at_rest, brake_t > 0.0));
         let e = exp(-a * 5.5) * (1.0 - fd_ss(0.25, 0.5, a));
-        sy = 1.0 - 0.055 * e * sin(a * 14.0);
+        // (OVERRUN: the brake has taken all that up, so only the faintest settle is left)
+        let wob = select(1.0, 0.15, fd_stop() == 4);
+        sy = 1.0 - 0.055 * wob * e * sin(a * 14.0);
         sx = 1.0 / sqrt(sy);
-        rip = 0.015 * e * (1.0 - exp(-a * 30.0));
+        rip = 0.015 * wob * e * (1.0 - exp(-a * 30.0));
         ph = a * 24.0;
-        sway = side * 0.035 * e * sin(a * 10.0);
+        sway = side * 0.035 * wob * e * sin(a * 10.0);
         if (fd_stop() == 3) {
             // (SQUASH: it takes it all itself, its foot held and the rest coming down on it, and rocks back slowly, heavy)
             let sq = fd_ss(0.0, 0.12, a) * exp(-a * 1.9) * cos(7.85 * (a - 0.12)) * (1.0 - fd_ss(0.85, 1.05, a));
