@@ -1646,13 +1646,13 @@ fn world_fragment(f: Fragment) -> Painted {
         // (each block its own flicker, as the land is blocks)
         let lick = 0.65 + 0.35 * fw_hash(floor(f.home.xz + globals.warp[0].xz) * 0.37 + floor(fe * 12.0));
         // (patches of it, torn by the land's own noise: all of it at once is a white sheet)
-        let torn = 0.3 + 0.95 * fw_ss(0.28, 0.72, fw_vn(Q.xz * 0.19 + vec2<f32>(fe * 2.1, fe * 1.4)) * 0.6 + n * 0.4);
+        let torn = 0.12 + 1.05 * fw_ss(0.34, 0.68, fw_vn(Q.xz * 0.19 + vec2<f32>(fe * 2.1, fe * 1.4)) * 0.6 + n * 0.4);
         let heat = fw_ss(1.0, 0.1, x) * fw_ss(-2.4, -0.3, x) * left * lick * torn;
         if (heat > 0.0) {
             var fc = mix(vec3<f32>(0.42, 0.06, 0.01), vec3<f32>(0.95, 0.34, 0.05), fw_ss(0.15, 0.6, heat));
             fc = mix(fc, vec3<f32>(1.0, 0.72, 0.28), fw_ss(0.75, 1.1, heat));
-            col = mix(col, fc, clamp(heat * 1.25, 0.0, 1.0));
-            fog = fog * (1.0 - clamp(heat * 1.25, 0.0, 1.0));
+            col = mix(col, fc, clamp(heat * 2.0, 0.0, 1.0));
+            fog = fog * (1.0 - clamp(heat * 2.0, 0.0, 1.0));
         }
     }
     // ---- the land overhead goes off in a thin haze: it has to read as land, right up to the torn edge of the hole -----------------

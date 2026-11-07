@@ -1078,7 +1078,6 @@ fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
     let dv = q1.xy - q0.xy;
     let aa = max(dot(v.xz, v.xz), 1.0e-5);
     var best = 0.0;
-    var at = 1.0;
     for (var k = 0; k < FDE_STEPS; k += 1) {
         let uk = uv - dv * (f32(k) + jit) / f32(FDE_STEPS);
         if (uk.x < 0.0 || uk.x > 1.0 || uk.y < 0.0 || uk.y > 1.0) {
@@ -1107,22 +1106,20 @@ fn fd_erupt(colIn: vec3<f32>, ro: vec3<f32>, v: vec3<f32>, far: f32, a: f32, jit
             continue;
         }
         let nf = gnoise3(vec3<f32>(G.xz * 0.09, h * 0.035 - a * 3.2));
-        let tall = FDE_HIGH * band * (0.3 + 1.15 * nf) * (1.0 - fd_ss(2.2, FDE_LEN, a)) * fd_ss(560.0, 420.0, r);
+        // (tongues, with the land's own fire showing between them)
+        let tall = FDE_HIGH * band * fd_ss(0.38, 0.72, nf) * (1.0 - fd_ss(2.2, FDE_LEN, a)) * fd_ss(560.0, 420.0, r);
         let e = h / max(tall, 0.1);
         if (e >= 1.0) {
             continue;
         }
-        let dens = (1.0 - e) * fd_ss(7.0, 1.0, length(v.xz * s - off.xz));
-        if (dens > best) {
-            best = dens;
-            at = e;
-        }
+        let dens = (1.0 - e) * fd_ss(7.0, 1.0, length(v.xz * s - off.xz)) * (0.3 + 1.0 * gnoise3(vec3<f32>(G.xz * 0.2, a * 3.5 + h * 0.06)));
+        best = max(best, dens);
     }
     if (best > 0.0) {
         // (white at its foot, yellow, orange, dull red at its tips)
-        var fc = mix(vec3<f32>(0.5, 0.07, 0.012), vec3<f32>(1.0, 0.38, 0.06), fd_ss(0.9, 0.45, at));
-        fc = mix(fc, vec3<f32>(1.05, 0.78, 0.34), fd_ss(0.3, 0.02, at));
-        col = mix(col, fc, saturate(best * 1.6));
+        var fc = mix(vec3<f32>(0.34, 0.05, 0.01), vec3<f32>(0.98, 0.34, 0.05), fd_ss(0.18, 0.5, best));
+        fc = mix(fc, vec3<f32>(1.05, 0.76, 0.3), fd_ss(0.62, 0.95, best));
+        col = mix(col, fc, fd_ss(0.1, 0.34, best));
     }
     return col;
 }
