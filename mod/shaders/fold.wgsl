@@ -1030,7 +1030,7 @@ fn fb_ramp(a: f32, b: f32, t: f32) -> f32 {
     return (b - a) * u * u * u * (1.0 - 0.5 * u) + max(t - b, 0.0);
 }
 // How far the metal has been drawn, in blocks at the speed of the field below: nothing until the surface has settled, then it comes up slowly.
-const FB_DRAW: f32 = 34.0;         // blocks a second, as it runs in full, where the field is 1
+const FB_DRAW: f32 = 30.0;         // blocks a second, as it runs in full, where the field is 1
 fn fb_drawn(t: f32) -> f32 {
     return FB_DRAW * fb_ramp(FB_RUN, FB_FLOWN, t);
 }
@@ -1046,8 +1046,8 @@ fn fb_field(q: vec2<f32>, x: f32) -> FbField {
     let rh = q / r;
     let e = exp(-r / 170.0);
     let gate = fw_ss(3.0, 30.0, r);
-    let S = (0.62 + 0.95 * e) * gate;
-    let dS = -0.95 / 170.0 * e * gate;
+    let S = (0.5 + 1.0 * e) * gate;
+    let dS = -1.0 / 170.0 * e * gate;
     var v = -rh * S;
     // (-S rh: along rh its gradient is -dS, across it -S / r)
     let a = -dS;
@@ -1056,7 +1056,7 @@ fn fb_field(q: vec2<f32>, x: f32) -> FbField {
     let K = array<vec2<f32>, 4>(vec2<f32>(0.0143, 0.0041), vec2<f32>(-0.0086, 0.0207), vec2<f32>(0.0238, -0.0167), vec2<f32>(-0.0301, -0.0223));
     let Pp = array<f32, 4>(0.7, 2.9, 4.6, 1.3);
     let Om = array<f32, 4>(0.0031, -0.0043, 0.0058, -0.0071);
-    let Sp = array<f32, 4>(0.62, 0.52, 0.42, 0.3);
+    let Sp = array<f32, 4>(0.82, 0.7, 0.56, 0.4);
     let Tw = array<vec2<f32>, 4>(vec2<f32>(0.94, 0.3), vec2<f32>(-0.88, 0.45), vec2<f32>(0.75, -0.6), vec2<f32>(0.97, 0.2));
     for (var i = 0; i < 4; i += 1) {
         let k = K[i];
@@ -1082,14 +1082,14 @@ fn fb_heave(q: vec2<f32>, t: f32) -> vec2<f32> {
     var g = vec2<f32>(0.0);
     // (rocking)
     let K = array<vec2<f32>, 3>(vec2<f32>(0.0121, 0.0072), vec2<f32>(-0.0083, 0.0144), vec2<f32>(0.0176, -0.0101));
-    let W = array<vec3<f32>, 3>(vec3<f32>(2.3, 1.1, 9.0), vec3<f32>(1.7, 3.7, 11.0), vec3<f32>(2.9, 0.4, 6.0));
+    let W = array<vec3<f32>, 3>(vec3<f32>(1.5, 1.1, 9.0), vec3<f32>(1.1, 3.7, 11.0), vec3<f32>(1.9, 0.4, 6.0));
     for (var i = 0; i < 3; i += 1) {
         let w = W[i];
         g = g + K[i] * w.z * cos(dot(K[i], q) + 0.8 * sin(0.9 * t + w.y)) * sin(w.x * t + w.y);
     }
     // (rolling: long fronts coming through, curved, each from its own side and at its own speed)
     let C = array<vec2<f32>, 4>(vec2<f32>(-900.0, 300.0), vec2<f32>(700.0, 800.0), vec2<f32>(300.0, -1000.0), vec2<f32>(-500.0, -800.0));
-    let T = array<vec3<f32>, 4>(vec3<f32>(36.1, 95.0, 9.0), vec3<f32>(36.9, 70.0, 7.5), vec3<f32>(37.7, 120.0, 6.0), vec3<f32>(38.6, 85.0, 7.0));
+    let T = array<vec3<f32>, 4>(vec3<f32>(36.1, 76.0, 9.0), vec3<f32>(36.9, 58.0, 7.5), vec3<f32>(37.7, 92.0, 6.0), vec3<f32>(38.6, 68.0, 7.0));
     for (var i = 0; i < 4; i += 1) {
         let w = T[i];
         let e = q - C[i];
@@ -1104,7 +1104,7 @@ fn fb_heave(q: vec2<f32>, t: f32) -> vec2<f32> {
 // The metal's own forms: broad rolling ones and, drawn out, narrow ones, plane waves at angles that never line up, each sliding over the metal at its own rate. Their slope, in the coordinates they are carried in.
 fn fb_lumps(a: vec2<f32>, t: f32) -> vec2<f32> {
     let K = array<vec3<f32>, 5>(vec3<f32>(0.0191, 0.0072, 0.115), vec3<f32>(-0.0103, 0.0247, 0.1), vec3<f32>(0.0086, -0.0129, 0.11), vec3<f32>(-0.0313, -0.0141, 0.085), vec3<f32>(0.0292, 0.0303, 0.06));
-    let W = array<vec2<f32>, 5>(vec2<f32>(0.33, 0.6), vec2<f32>(-0.52, 2.4), vec2<f32>(0.21, 4.4), vec2<f32>(0.71, 1.1), vec2<f32>(-0.93, 5.6));
+    let W = array<vec2<f32>, 5>(vec2<f32>(0.24, 0.6), vec2<f32>(-0.37, 2.4), vec2<f32>(0.15, 4.4), vec2<f32>(0.5, 1.1), vec2<f32>(-0.64, 5.6));
     var g = vec2<f32>(0.0);
     for (var i = 0; i < 5; i += 1) {
         let k = K[i];
@@ -1359,6 +1359,9 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             // (its edge wanders, a skin of it thin at the very edge)
             let wr = fw_ss(34.2, 35.8, t) * (1.0 - fw_ss(FB_SEAL, FB_SEAL + 0.3, t));
             var edge = -mt.d + 44.0 * wn0 + (24.0 + 30.0 * wr) * wn1;
+            // (and it doesn't start as a ring: it comes up over the land's end from one side, round to the other)
+            let la = fb_late(q / max(r, 1.0), S);
+            edge = edge - 80.0 * (1.0 - fw_ss(FB_MELT + 1.1 * la, FB_MELT + 1.1 + 1.5 * la, t));
             var soft = max(ps, 3.0);
             // (the seethe: at the fronts and round the pockets, in a band that widens as they close. It lifts the edge itself)
             var se = vec3<f32>(0.0);
