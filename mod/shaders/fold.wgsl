@@ -1263,7 +1263,7 @@ fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>, seen: f32)
     }
     if (there > 0.0) {
         let l = fd_sample(ro.xy);
-        c = mix(c, l * (0.55 + 1.1 * luminance(l)) * 1.3 + c * 0.25, 0.85 * there);
+        c = mix(c, l * (0.32 + 1.5 * luminance(l)) * 1.15 + c * 0.25, 0.85 * there);
     }
     let k1 = max(dot(r, normalize(vec3<f32>(0.5, -0.62, 0.3))), 0.0);
     let k2 = max(dot(r, normalize(vec3<f32>(-0.7, -0.5, -0.45))), 0.0);
