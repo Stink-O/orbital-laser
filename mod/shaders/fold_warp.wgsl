@@ -1139,7 +1139,7 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
     let dropR = clamp(length(c.me.xz - c.tgt.xz) * 0.05, 5.0, 15.0);
     var rip = fw_ripple(r, t) - fw_ripple(length(c.tgt.xz), t) + fw_neck(r, a, t, dropR);
-    if (t > FW_FLAT) {
+    if (t > FW_FLAT && t < FW_SLAM4 + FW_WAVE_LIFE) {
         rip += fw_shock(r, t) - fw_shock(length(c.tgt.xz), t);
     }
     if (t < FW_TOUCH + 4.3) {

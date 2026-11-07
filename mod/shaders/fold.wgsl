@@ -660,7 +660,8 @@ fn fd_stopk(mode: i32) -> vec3<f32> {
     switch mode {
         case 1: { return vec3<f32>(0.0, 0.03, 0.04); }
         case 2: { return vec3<f32>(0.6, 0.04, 0.05); }
-        case 4: { return vec3<f32>(1.5, 0.3, 0.22); }
+        case 3: { return vec3<f32>(0.35, 0.04, 0.035); }
+        case 4: { return vec3<f32>(1.5, 0.3, 0.05); }
         case 5: { return vec3<f32>(0.0, 0.04, 0.05); }
         default: { return vec3<f32>(1.0, 0.05, 0.09); }
     }
