@@ -12,6 +12,12 @@ crate-type = ["cdylib"]
 # The Horizon mod SDK with the input, ui, render and world interfaces (Horizon's
 # roadmap capabilities, from the Stink-O/horizon fork until they are upstream).
 horizon-mod-sdk = { git = "https://github.com/Stink-O/horizon", branch = "mod-api-input-ui-render-world" }
+# The wire format for `smp` (src/smp.rs): small, versioned strike events shared
+# between players. Whatever delivers the bytes (see smp.rs's doc comment on
+# `receive`) just needs a byte slice in and out, so this is the only new
+# dependency the multiplayer sync needs.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 opt-level = "s"

@@ -1020,6 +1020,23 @@ impl Orbital {
         self.fire();
         (self.laser,self.seed_lock,self.approach,self.arrival,self.colours,self.skip,self.follow,self.terrain,self.blast_alt)=saved;
     }
+    /// A later heartbeat for the strike we are already replaying (or missed the
+    /// `Start` of): catch up on a large drift, otherwise leave the running replay
+    /// alone so a healthy connection never visibly snaps.
+    fn network_sync(&mut self, sync: smp::Launch) {
+        let dimension = game::get_player().as_ref().map_or_else(|| sync.dimension.clone(), |p| p.dimension.clone());
+        let same_strike = self.strike.is_some() && smp::observer() && self.laser == sync.laser && dimension == sync.dimension;
+        if !same_strike {
+            self.network_start(sync);
+            return;
+        }
+        if let Some(s) = &mut self.strike {
+            let ours = s.ticks as f32 * 0.05;
+            if (ours - sync.elapsed).abs() > 1.0 {
+                s.ticks = (sync.elapsed * 20.0) as u32;
+            }
+        }
+    }
     fn fire(&mut self) {
         let remote=smp::take_remote();
         if remote.is_none() { smp::set_observer(false); }
@@ -1043,9 +1060,11 @@ impl Orbital {
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
         let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
         if remote.is_none() {
-            smp::emit(smp::Packet::Start(smp::Launch { laser:self.laser,block:target.block,point:target.point,origin:me,
+            let launch = smp::Launch { laser:self.laser,block:target.block,point:target.point,origin:me,
                 seed:seed as u32,approach:self.approach,arrival:self.arrival,colour:self.colours[self.laser],option,
-                elapsed:self.skip,dimension:dimension.clone() }));
+                elapsed:self.skip,dimension:dimension.clone() };
+            smp::set_own(launch.clone());
+            smp::emit(smp::Packet::Start(launch));
         }
         let plan = strike::plan(laser, &target, self.terrain && remote.is_none(), &dimension, seed, me, option);
         meter::spend(FIRE_COST);
@@ -1133,6 +1152,12 @@ impl Orbital {
         };
         s.ticks += 1;
         let now = s.ticks as f32 * 0.05;
+        // a heartbeat every 3s while it is ours to fire: lets an observer who missed
+        // the `Start` (dropped packet, or joined mid-strike) catch up, and keeps a
+        // long strike from drifting apart on nothing but that first packet
+        if s.ticks % 60 == 0 {
+            smp::heartbeat(now);
+        }
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
@@ -1265,6 +1290,9 @@ impl Orbital {
     }
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
+        // reached the end on its own, with nothing left to heartbeat (stop_strike
+        // already cleared it for a manual stop; harmless to call again here)
+        smp::clear_own();
         self.unfollow();
         self.carrying = None;
         self.surging = None;
@@ -1280,7 +1308,10 @@ impl Orbital {
     /// Stop the strike under way: the rest of its plan and the world changes still waiting are dropped and its sounds
     /// cut short, but the chunks it force-loaded are let go (what it has already done to the world stays).
     fn stop_strike(&mut self) {
-        if self.strike.is_some() && !smp::observer() { smp::emit(smp::Packet::Stop); }
+        if self.strike.is_some() && !smp::observer() {
+            smp::emit(smp::Packet::Stop);
+            smp::clear_own();
+        }
         let Some(s) = &mut self.strike else { return };
         let mut cmds: Vec<String> = s.sounds.iter().map(|e| format!("stopsound @s * {e}")).collect();
         let more = std::mem::take(&mut s.more).into_vec().into_iter().map(|g| (g.t, g.act));
@@ -1611,6 +1642,21 @@ impl Mod for Orbital {
     fn tick(&mut self, _tick: u64) {
         meter::reset();
         self.ticks += 1;
+        // whatever `smp::receive` queued since the last tick: `receive` itself has
+        // no way to reach a live `&mut Orbital` (the host calls it from outside
+        // `Mod`'s own methods), so it only decodes and queues; this is where it is
+        // actually acted on
+        for packet in smp::incoming() {
+            match packet {
+                smp::Packet::Start(s) => self.network_start(s),
+                smp::Packet::Sync(s) => self.network_sync(s),
+                smp::Packet::Stop | smp::Packet::Denied => {
+                    smp::set_observer(true);
+                    self.stop_strike();
+                }
+                smp::Packet::Hello => {}
+            }
+        }
         if !self.in_world() {
             return;
         }

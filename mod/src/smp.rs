@@ -22,6 +22,11 @@ pub struct Launch {
 pub enum Packet {
     Hello,
     Start(Launch),
+    /// A periodic heartbeat from the firing client while its strike runs: the same
+    /// `Launch` with `elapsed` brought up to date. Lets an observer who missed the
+    /// `Start` (a dropped packet, or one that arrived before they loaded in) catch
+    /// up, and corrects drift on a long strike instead of only setting it up once.
+    Sync(Launch),
     Stop,
     Denied,
 }
@@ -45,13 +50,21 @@ impl Launch {
 pub fn decode(data: &[u8]) -> Option<Packet> {
     if data.len() > 4096 { return None }
     let packet: Packet = serde_json::from_slice(data).ok()?;
-    match &packet { Packet::Start(s) if !s.valid() => None, _ => Some(packet) }
+    match &packet { Packet::Start(s) | Packet::Sync(s) if !s.valid() => None, _ => Some(packet) }
 }
 
 thread_local! {
     static REMOTE: RefCell<Option<Launch>> = const { RefCell::new(None) };
     static OBSERVER: Cell<bool> = const { Cell::new(false) };
     static OUT: RefCell<Vec<Packet>> = const { RefCell::new(Vec::new()) };
+    /// The strike this client itself is firing right now, kept around only to fill in
+    /// a fresh `elapsed` on each heartbeat; `None` once it is stopped or finishes.
+    static OWN: RefCell<Option<Launch>> = const { RefCell::new(None) };
+    /// Packets decoded off the wire but not yet handed to the running `Orbital`:
+    /// `receive` has no way to reach it (it runs outside `Mod`'s own methods, wherever
+    /// the host delivers network data), so it queues here for `tick` to drain, the
+    /// same way `OUT` queues what `tick` has to send.
+    static IN: RefCell<Vec<Packet>> = const { RefCell::new(Vec::new()) };
 }
 pub fn observer() -> bool { OBSERVER.with(Cell::get) }
 pub(crate) fn set_observer(v: bool) { OBSERVER.with(|x| x.set(v)); }
@@ -59,16 +72,31 @@ pub(crate) fn take_remote() -> Option<Launch> { REMOTE.with(|x| x.borrow_mut().t
 pub(crate) fn set_remote(v: Launch) { REMOTE.with(|x| *x.borrow_mut() = Some(v)); }
 pub(crate) fn emit(v: Packet) { OUT.with(|x| x.borrow_mut().push(v)); }
 pub fn outgoing() -> Vec<Packet> { OUT.with(|x| std::mem::take(&mut *x.borrow_mut())) }
+/// Remember the strike just started locally, so later ticks can heartbeat it.
+pub(crate) fn set_own(v: Launch) { OWN.with(|x| *x.borrow_mut() = Some(v)); }
+/// Stop heartbeating: the local strike was stopped or ran out.
+pub(crate) fn clear_own() { OWN.with(|x| x.borrow_mut().take()); }
+/// Called every so often (not every tick: that would be one packet a tick for no
+/// gain) while a locally-fired strike runs. A no-op for observers, who never set `OWN`.
+pub(crate) fn heartbeat(elapsed: f32) {
+    OWN.with(|x| {
+        if let Some(launch) = x.borrow_mut().as_mut() {
+            launch.elapsed = elapsed;
+            emit(Packet::Sync(launch.clone()));
+        }
+    });
+}
+/// Decode one message off the wire. However the host delivers `orbital:smp1`
+/// bytes (a native-mod network hook today; a future `Mod` capability for a
+/// plain wasm build), call this with the payload: it only decodes and queues,
+/// since this has no way to reach a live `&mut Orbital` itself; the result is
+/// picked up and acted on from `Orbital::tick`, which drains `incoming()`.
 pub fn receive(data: &[u8]) {
-    match decode(data) {
-        Some(Packet::Start(s)) => crate::__mod_with(|m| m.network_start(s)),
-        Some(Packet::Stop | Packet::Denied) => crate::__mod_with(|m| {
-            set_observer(true);
-            m.stop_strike();
-        }),
-        _ => {}
+    if let Some(packet) = decode(data) {
+        IN.with(|x| x.borrow_mut().push(packet));
     }
 }
+pub(crate) fn incoming() -> Vec<Packet> { IN.with(|x| std::mem::take(&mut *x.borrow_mut())) }
 
 #[cfg(test)]
 mod tests {
@@ -90,5 +118,34 @@ mod tests {
     }
     #[test] fn queues_are_drained_once() {
         outgoing(); emit(Packet::Hello); assert_eq!(outgoing().len(),1); assert!(outgoing().is_empty());
+    }
+    #[test] fn heartbeat_is_a_noop_without_an_own_strike() {
+        outgoing();
+        heartbeat(5.0);
+        assert!(outgoing().is_empty());
+    }
+    #[test] fn heartbeat_updates_elapsed_on_the_own_launch() {
+        outgoing();
+        set_own(launch());
+        heartbeat(3.5);
+        match outgoing().as_slice() {
+            [Packet::Sync(s)] => assert_eq!(s.elapsed, 3.5),
+            other => panic!("expected one Sync packet, got {other:?}"),
+        }
+        clear_own();
+        outgoing();
+        heartbeat(9.0);
+        assert!(outgoing().is_empty());
+    }
+    #[test] fn receive_queues_valid_packets_for_tick_to_drain() {
+        incoming();
+        receive(&serde_json::to_vec(&Packet::Start(launch())).unwrap());
+        receive(b"garbage");
+        receive(&serde_json::to_vec(&Packet::Stop).unwrap());
+        let drained = incoming();
+        assert_eq!(drained.len(), 2);
+        assert!(matches!(drained[0], Packet::Start(_)));
+        assert!(matches!(drained[1], Packet::Stop));
+        assert!(incoming().is_empty());
     }
 }
