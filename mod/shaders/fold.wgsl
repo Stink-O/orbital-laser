@@ -940,14 +940,16 @@ fn fb_bubbles(q: vec2<f32>, t: f32, S: vec2<f32>, rd: f32) -> vec2<f32> {
 // much seethe here, thins them out. Out: height, slope.
 fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
     var o = vec3<f32>(0.0);
-    let CELL = array<f32, 3>(205.0, 96.0, 44.0);
+    let CELL = array<f32, 3>(290.0, 118.0, 58.0);
     let PER = array<f32, 3>(2.3, 1.35, 0.8);
-    let RAD = array<f32, 3>(72.0, 34.0, 15.0);
+    let RAD = array<f32, 3>(92.0, 46.0, 22.0);
     let SL = array<f32, 3>(1.0, 0.6, 0.3);
+    let EDGE_K = array<f32, 3>(1.0e4, 110.0, 40.0);
     let ROT = array<vec2<f32>, 3>(vec2<f32>(0.8, 0.6), vec2<f32>(0.28, -0.96), vec2<f32>(-0.6, 0.8));
     for (var k = 0; k < 3; k += 1) {
         // (the small ones only right at the front: further in, only the big)
-        if (k == 2 && edge > 34.0 || k == 1 && edge > 95.0) {
+        let keep = fw_ss(EDGE_K[k], 0.6 * EDGE_K[k], edge);
+        if (keep <= 0.0) {
             continue;
         }
         let u = vec2<f32>(q.x * ROT[k].x - q.y * ROT[k].y, q.x * ROT[k].y + q.y * ROT[k].x) / CELL[k] + vec2<f32>(f32(k) * 3.7, 11.0);
@@ -965,8 +967,8 @@ fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
             let h3 = fract(h2 * 47.3);
             let life = fract(cl);
             let sz = RAD[k] * (0.5 + 0.5 * h2 * h2);
-            let wt = fw_ss(0.0, 0.16, amt - h);
-            let e0 = (u - (c + vec2<f32>(0.5) + (vec2<f32>(h2, h3) - 0.5) * (0.5 - 1.5 * sz / CELL[k]))) * CELL[k];
+            let wt = fw_ss(0.0, 0.16, amt - h) * keep;
+            let e0 = (u - (c + vec2<f32>(0.5) + (vec2<f32>(h2, h3) - 0.5) * max(0.5 - 1.5 * sz / CELL[k], 0.0))) * CELL[k];
             // (none of them round: each squashed its own way, and leaning)
             let an = h3 * 6.2831853;
             let ca = cos(an);
@@ -988,14 +990,19 @@ fn fb_seethe(q: vec2<f32>, t: f32, amt: f32, edge: f32) -> vec3<f32> {
                     o = o + wt * vec3<f32>(A * f * f * f, -dir * 6.0 * A * w * f * f / R * SL[k]);
                 }
             } else if (k == 0) {
-                // (only a big one leaves a ring, thick, gone soon)
+                // (a big one leaves a ring, thick, gone soon)
                 let a = (life - 0.74) * PER[k];
                 let front = sz * (1.0 + 0.4 * (1.0 - exp(-a / (0.14 * PER[k]))));
                 let wd = 0.35 * sz + 2.0;
                 let x2 = (el - front) / wd;
                 let A = 0.13 * sz * exp(-a / (0.1 * PER[k]));
                 let f = exp(-x2 * x2);
-                o = o + wt * vec3<f32>(A * f, -dir * 2.0 * A * x2 * f / wd);
+                // (where the metal is thin it bursts right through: stars for a moment)
+                let gone = exp(-(el * el) / (sz * sz * 0.5)) * exp(-a / (0.13 * PER[k]));
+                o = o + wt * vec3<f32>(A * f - 0.55 * sz * gone, -dir * 2.0 * A * x2 * f / wd);
+            } else {
+                let a = (life - 0.74) * PER[k];
+                o.x = o.x - wt * 0.6 * sz * exp(-(el * el) / (sz * sz * 0.5)) * exp(-a / (0.13 * PER[k]));
             }
         }
     }
@@ -1221,7 +1228,7 @@ fn fd_smin(a: f32, b: f32, k: f32) -> f32 {
     return mix(b, a, h) - k * h * (1.0 - h);
 }
 // The metal's look: the droplet's chrome, the picture of the tube under it (fd_round), and a hard light off the rim of the world to catch the beads on.
-fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>) -> vec3<f32> {
+fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>, seen: f32) -> vec3<f32> {
     var c = fd_chrome(v, S, n, gq, 0.0);
     let r = reflect(v, n);
     // (over it is the metal's own roof, not the sky)
@@ -1230,7 +1237,7 @@ fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>) -> vec3<f3
     // metal takes the land's own colours, bent by every lump in it)
     let side = vec3<f32>(r.x * 3.2, 0.3 + 0.5 * abs(r.y), r.z * 3.2) + 0.65 * v;
     let ro = project_rel(normalize(side) * 600.0);
-    var there = select(0.0, fd_ss(0.0, 0.14, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))), ro.z > 0.0);
+    var there = seen * select(0.0, fd_ss(0.0, 0.14, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))), ro.z > 0.0);
     // (the land only: the picture still has the day's sky in the hole)
     if (there > 0.0 && is_sky(depth_at(ro.xy))) {
         there = 0.0;
@@ -1278,7 +1285,7 @@ fn fb_on_land(colIn: vec3<f32>, v: vec3<f32>, q: vec2<f32>, rho: f32, far: f32, 
     let w = fw_ss(-40.0, 6.0, c.y + 40.0 * (0.22 - lum));
     if (w > 0.0) {
         let n = normalize(fd_returned(normalize(vec3<f32>(-fl.y * 0.6, -1.0, -fl.z * 0.6)), g, at));
-        col = col * (1.0 - 0.4 * w) + fb_chrome(v, v * far, n, gq) * 0.2 * w;
+        col = col * (1.0 - 0.4 * w) + fb_chrome(v, v * far, n, gq, 1.0) * 0.2 * w;
     }
     // ---- the metal, thinning to nothing: it ends in smears and thin runs. Long thin ones along the way it is going, and it keeps to the low ground (lum) ------
     let run = fbm(rh * 30.0 + vec2<f32>(rho * 0.0045, -rho * 0.0031)) - 0.5;
@@ -1290,7 +1297,7 @@ fn fb_on_land(colIn: vec3<f32>, v: vec3<f32>, q: vec2<f32>, rho: f32, far: f32, 
     let gr = fl.yz * (2.2 - 1.4 * thick) + rh * 0.6 * (1.0 - thick) * sin(f * 0.17 + 0.03 * (q.x - q.y));
     if (a > 0.0) {
         let n = normalize(fd_returned(normalize(vec3<f32>(-gr.x, -1.0, -gr.y)), g, at));
-        let ch = fb_chrome(v, v * far, n, gq);
+        let ch = fb_chrome(v, v * far, n, gq, 1.0);
         // (thin, it is a film on the land: the land's own colours in it)
         col = mix(col, mix(col * 0.75 + ch * (0.22 + 1.1 * col), ch, thick), a);
     }
@@ -1326,8 +1333,8 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             let wn0p = q * 0.013 + vec2<f32>(4.0, 1.0);
             let wn0 = 0.55 * vnoise(wn0p) + 0.3 * vnoise(wn0p * 2.03 + 17.3) + 0.15 * vnoise(wn0p * 4.1 + 9.1) - 0.5;
             // (thick, so its edge wanders in lobes, with no fray to it)
-            let wp = q * 0.05 + vec2<f32>(t * 0.4 + 0.5 * fb_ramp(34.5, 36.0, t), 8.0);
-            let wn1 = 0.62 * vnoise(wp) + 0.38 * vnoise(wp * 2.1 + 3.0 - 0.3 * t) - 0.5;
+            let wp = q * 0.041 + vec2<f32>(0.35 * t + 0.5 * fb_ramp(34.5, 36.0, t), -0.27 * t);
+            let wn1 = 0.3 * sin(wp.x + 1.6 * sin(wp.y * 1.3)) + 0.2 * sin(wp.y * 1.9 - 1.3 * sin(wp.x * 1.5 + 1.0));
             let mt = fb_metal(q, t, S, rd);
             // (its edge wanders, a skin of it thin at the very edge)
             let wr = fw_ss(34.2, 35.8, t) * (1.0 - fw_ss(FB_SEAL, FB_SEAL + 0.3, t));
@@ -1339,10 +1346,10 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             let wide = 90.0 + 170.0 * fw_ss(35.0, 36.2, t);
             // (and it comes in knots, not evenly)
             let knot = fw_ss(-0.35, 0.75, sin(q.x * 0.0127 + 0.2 * t + 2.0 * sin(q.y * 0.0091)) + 0.7 * sin(q.y * 0.0173 - 0.15 * t + 1.0));
-            let am = bu * fw_ss(-45.0, 0.0, edge) * (1.0 - fw_ss(0.5 * wide, wide, edge)) * (0.45 + 0.55 * knot);
+            let am = bu * fw_ss(-90.0, -20.0, edge) * (1.0 - fw_ss(0.5 * wide, wide, edge)) * (0.45 + 0.55 * knot);
             if (am > 0.002) {
                 se = fb_seethe(q, t, am * (0.55 + 0.75 * fw_ss(34.5, 35.9, t)), edge);
-                edge = edge + 2.0 * se.x;
+                edge = edge + 2.0 * se.x * fw_ss(150.0, 40.0, edge);
             }
             if (t > FW_LETGO) {
                 // (it tears: a ragged edge that wanders, runs and grain in it, thin metal first)
@@ -1359,7 +1366,8 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 let ex = exp(-m / FB_EDGE);
                 let gr = mt.g * (-FB_THICK / FB_EDGE * ex) + fl.yz * (1.0 - 0.75 * ex) * 0.8 + fb_bubbles(q, t, S, rd) + se.yz;
                 let n = normalize(fd_returned(normalize(vec3<f32>(-gr.x, -1.0, -gr.y)), g, at));
-                col = mix(col, fb_chrome(v, v * s, n, gq), cov);
+                // (the lip is too steep to see the land in: it would only be its grain)
+                col = mix(col, fb_chrome(v, v * s, n, gq, 1.0 - ex), cov);
             }
         }
     }
@@ -1405,7 +1413,7 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
                 let keep = fw_ss(-12.0, -2.0, q.y - y0);
                 let n = normalize(fd_returned(normalize(n0 - vec3<f32>(fl.y, 0.0, fl.z) * 0.8 * keep), g, at));
                 // (only what really hangs: the rest is the surface's, drawn above)
-                col = mix(col, fb_chrome(v, v * sb, n, gq), cov * fw_ss(-0.4, -3.5, q.y - y0));
+                col = mix(col, fb_chrome(v, v * sb, n, gq, 1.0), cov * fw_ss(-0.4, -3.5, q.y - y0));
             }
         }
     }
@@ -1451,7 +1459,7 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             let cov = saturate(1.0 - best);
             if (cov > 0.0 && sb < far + 0.4) {
                 let n = normalize(fd_returned(fd_bead_n(o + d * sb - c, D), g, at));
-                col = mix(col, fb_chrome(v, v * sb, n, gq), cov);
+                col = mix(col, fb_chrome(v, v * sb, n, gq, 1.0), cov);
             }
         }
     }
