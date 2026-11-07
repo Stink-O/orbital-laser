@@ -89,7 +89,7 @@ GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # by a long way; the column under them, so the climax has headroom.
 LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -13.0, "column_far": -12.0,
-         "whistle": -16.0, "thud": -11.0, "spatter": -20.0, "thud_far": -18.0,
+         "whistle": -16.0, "thud": -9.5, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
