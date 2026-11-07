@@ -14,8 +14,9 @@
 //!   FD_TEAR           every crease and ring drawn, the sheet folding along them
 //!   FD_FOLD-FD_SEAL   the land lifts ring by ring; the far land rolls up round the player, holding as a tube, the rings lying back to a mound
 //!   FD_SEAL           the player is inside a tube, the whole land on its walls, the land's end the hole in its roof
-//!   34.5-FD_BEAT      the hole closes on a mesh of metal and the metal boils up through it, joins, runs in to the middle, hangs on a neck and lets one drop go, which
-//!                     falls the length of the tube (fold.wgsl's the boil); FD_BEAT it hits the target: a tiny light, a small hit and a ding
+//!   32.5-FD_BEAT      the hole closes in metal, slowly: tongues crawl in from the rim, seethe as they near each other, bridge from 35.8 and seal about 36.85; the surface heaves and
+//!                     settles, the flow to the drip grows out of that from 37.2, a bead on a neck, a pinch at 38.35, and one drop falls the length of the tube (fold.wgsl's the boil);
+//!                     FD_BEAT it hits the target: a tiny light, a small hit and a ding
 //!   FD_RELEASE        going back, not a rewind: at 40.95 the metal lets go and the hole opens; the tube gives at 42.2, catches at 42.55-42.88, and lets go
 //!                     (fw_tau): the sphere opens, the bud stands again with every ring up
 //!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each

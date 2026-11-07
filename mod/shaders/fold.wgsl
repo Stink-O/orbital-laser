@@ -815,7 +815,7 @@ const FB_JOIN: f32 = 35.8;         // the tongues start to bridge
 const FB_SEAL: f32 = 36.85;        // the last of the stars has gone
 const FB_RUN: f32 = 37.2;         // the flow begins to grow out of the settling surface
 const FB_FLOWN: f32 = 38.7;        // by here it is flowing in full
-const FB_PIN: f32 = 38.55;          // the pinch: the drop is let go
+const FB_PIN: f32 = 38.35;          // the pinch: the drop is let go
 const FB_UP: f32 = 4.0;            // the surface over the land's end, so what is left of the land goes in front of it
 const FB_FIT: f32 = 1.2;           // past the hole's rim it goes on, behind the land
 const FB_LONG: f32 = 78.0;         // how far the bead hangs under the surface as it lets go
@@ -1092,7 +1092,7 @@ fn fb_lumps(a: vec2<f32>, t: f32) -> vec2<f32> {
     var g = vec2<f32>(0.0);
     for (var i = 0; i < 5; i += 1) {
         let k = K[i];
-        let ph = k.x * a.x + k.y * a.y + W[i].y + W[i].x * t + 0.9 * sin(0.0083 * a.y - 0.0061 * a.x + W[i].y);
+        let ph = k.x * a.x + k.y * a.y + W[i].y + W[i].x * t + 1.7 * sin(0.0083 * a.y - 0.0061 * a.x + W[i].y) + 1.2 * sin(0.0057 * a.x + 0.0121 * a.y + 2.1 * W[i].y);
         g = g + normalize(k.xy) * k.z * cos(ph);
     }
     return g;
@@ -1135,15 +1135,18 @@ fn fb_flow(q: vec2<f32>, t: f32, ps: f32) -> vec3<f32> {
     let ga = fb_lumps(pa, t);
     // (how hard it has been squeezed: what is squeezed thin goes under, or it crowds to a hair)
     let cc = dot(Ja, Ja);
-    var g = vec2<f32>(Ja.x * ga.x + Ja.z * ga.y, Ja.y * ga.x + Ja.w * ga.y) * 2.3 / (1.0 + 0.1 * max(cc - 2.0, 0.0));
+    // (the drip: as the bead comes the middle goes smooth, a long clean funnel with nothing on it, so that the eye goes there and the bead can be seen)
+    let well = fw_ss(FB_PIN - 1.3, FB_PIN - 0.5, t) * (1.0 - fw_ss(FB_PIN + 0.9, FB_PIN + 2.0, t));
+    let calm = 1.0 - well * (1.0 - fw_ss(45.0, 190.0, r));
+    var g = vec2<f32>(Ja.x * ga.x + Ja.z * ga.y, Ja.y * ga.x + Ja.w * ga.y) * 2.3 * calm / (1.0 + 0.1 * max(cc - 2.0, 0.0));
     // ---- the narrow forms, which the flow draws out to the streaks ----
     let c2 = dot(J, J);
-    let on = (0.3 + 1.1 * fw_ss(6.0, 70.0, X)) * fw_ss(4.0, 30.0, r) / (1.0 + 0.05 * max(c2 - 2.0, 0.0) + 0.04 * c2 * ps * ps);
+    let on = (0.3 + 1.1 * fw_ss(6.0, 70.0, X)) * fw_ss(4.0, 30.0, r) * calm / (1.0 + 0.05 * max(c2 - 2.0, 0.0) + 0.04 * c2 * ps * ps);
     if (on > 0.01) {
         let gb = fb_fine(p * (1.0 + out), t);
         g = g + vec2<f32>(J.x * gb.x + J.z * gb.y, J.y * gb.x + J.w * gb.y) * on;
     }
-    g = g + fb_heave(q, t);
+    g = g + fb_heave(q, t) * calm + rh * well * 0.7 * (r / 85.0) * exp(0.5 - 0.5 * r * r / (85.0 * 85.0));
     // (rings running out of the middle from the pinch)
     let xp = t - FB_PIN;
     if (xp > 0.0 && xp < 1.6) {
@@ -1164,7 +1167,7 @@ fn fb_opened(t: f32, rd: f32) -> f32 {
 // the bead's centre is under the surface, R its radius, n the neck's radius, and top how far up the neck goes: past the pinch, what is left of it going back up.
 struct FbPool { a: f32, w: f32, d: f32, L: f32, R: f32, n: f32, top: f32 }
 fn fb_R(dist: f32) -> f32 {
-    return clamp(dist * 0.05, 5.0, 15.0);
+    return clamp(dist * 0.085, 9.0, 22.0);
 }
 fn fb_pool(t: f32, Rd: f32) -> FbPool {
     let x = t - FB_PIN;
@@ -1232,7 +1235,7 @@ fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>, seen: f32)
     var c = fd_chrome(v, S, n, gq, 0.0);
     let r = reflect(v, n);
     // (over it is the metal's own roof, not the sky)
-    c = mix(c, fd_round(r.xzy) * 1.6 + vec3<f32>(0.05, 0.055, 0.06), fd_ss(-0.1, 0.2, r.y));
+    c = mix(c, fd_round(vec3<f32>(r.x, r.z * 0.42, r.y)) * 1.6 + vec3<f32>(0.05, 0.055, 0.06), fd_ss(-0.1, 0.2, r.y));
     // (the world in it. What a mirror overhead really shows is the floor behind the eye, which isn't on the picture: this bends its rays out to the walls round the hole, which are, and the
     // metal takes the land's own colours, bent by every lump in it)
     let side = vec3<f32>(r.x * 3.2, 0.3 + 0.5 * abs(r.y), r.z * 3.2) + 0.65 * v;
