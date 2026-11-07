@@ -1047,7 +1047,11 @@ fn fb_chrome(v: vec3<f32>, S: vec3<f32>, n: vec3<f32>, gq: vec3<f32>) -> vec3<f3
     // metal takes the land's own colours, bent by every lump in it)
     let side = vec3<f32>(r.x * 3.2, 0.3 + 0.5 * abs(r.y), r.z * 3.2) + 0.65 * v;
     let ro = project_rel(normalize(side) * 600.0);
-    let there = select(0.0, fd_ss(0.0, 0.14, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))), ro.z > 0.0);
+    var there = select(0.0, fd_ss(0.0, 0.14, min(min(ro.x, 1.0 - ro.x), min(ro.y, 1.0 - ro.y))), ro.z > 0.0);
+    // (the land only: the picture still has the day's sky in the hole)
+    if (there > 0.0 && is_sky(depth_at(ro.xy))) {
+        there = 0.0;
+    }
     if (there > 0.0) {
         let l = fd_sample(ro.xy);
         c = mix(c, l * (0.55 + 1.1 * luminance(l)) * 1.3 + c * 0.25, 0.85 * there);
