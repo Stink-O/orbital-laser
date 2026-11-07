@@ -517,7 +517,7 @@ fn vc_lump(q: vec3<f32>, b: ptr<function, VcB>, d1: f32, foot: f32, fine: bool) 
     sy = 1.0 + 0.28 * wf;
     if (wu > 0.0) {
         let nose = exp(-max(vs.Ru - rho, 0.0) / 520.0);
-        let under = 1.0 - smoothstep(vs.hu - 260.0, vs.hu - 40.0, q.y);
+        let under = 1.0 - smoothstep(VC_HU - 260.0, VC_HU - 40.0, q.y);
         let core = exp(-rho * rho / (1800.0 * 1800.0));
         gain = gain + wu * (0.3 + 0.4 * core + 0.55 * nose + 0.85 * under);
         sy = sy + wu * mix(0.8, 0.25, under);
@@ -599,7 +599,7 @@ fn vc_sun_t(q: vec3<f32>, L: vec3<f32>) -> f32 {
     if (vs.cov <= 0.0 || L.y < 0.01) {
         return 1.0;
     }
-    let up = vs.hu - 120.0 - q.y;
+    let up = VC_HU - 120.0 - q.y;
     if (up < 0.0) {
         return 1.0;
     }
@@ -612,7 +612,7 @@ fn vc_sky_t(q: vec3<f32>) -> f32 {
     if (vs.cov <= 0.0) {
         return 1.0;
     }
-    let d = max(vs.hu - q.y, 60.0);
+    let d = max(VC_HU - q.y, 60.0);
     let r = length(q.xz);
     let l = max(vs.Ru - r, 0.0);
     return 1.0 - vs.cov * (1.0 - d / sqrt(d * d + l * l)) * 0.97;
@@ -1158,7 +1158,7 @@ fn vc_bolts(fl: VcFlashes, C: vec3<f32>, seed: u32, near: f32, ct: f32, ca: f32,
         if (f.kind == 2u && f.ring > 0.5) {
             // (along under the sheet, out of the cloud: its underside as vc_umb has it)
             let r = length(f.p.xz);
-            root.y = vs.hu - 0.9 * (210.0 + 240.0 * exp(-r * r / 1.44e6)) - 230.0 * exp(-r * r / 6.4e5) - 30.0;
+            root.y = VC_HU - 0.9 * (210.0 + 240.0 * exp(-r * r / 1.44e6)) - 230.0 * exp(-r * r / 6.4e5) - 30.0;
         }
         let a = f.a;
         let n = f.n;
@@ -1476,7 +1476,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             let crown = smoothstep(0.55 * vs.H - 40.0, 0.92 * vs.H, hy) * (1.0 - smoothstep(9.0, 23.0, vs.a)) * smoothstep(0.34, 0.6, mott + 0.3 * sd.y);
             alb = mix(alb, vec3<f32>(0.5, 0.48, 0.46), crown * step(0.0, vs.a));
             // (the sheet's sunlit top pale, as ash spread thin; its underside as dark as the column)
-            alb = mix(alb, mix(vec3<f32>(0.115, 0.1, 0.09), vec3<f32>(0.25, 0.225, 0.2), smoothstep(vs.hu - 40.0, vs.hu + 180.0, hy)) * (0.8 + 0.4 * mott), wu);
+            alb = mix(alb, mix(vec3<f32>(0.115, 0.1, 0.09), vec3<f32>(0.25, 0.225, 0.2), smoothstep(VC_HU - 40.0, VC_HU + 180.0, hy)) * (0.8 + 0.4 * mott), wu);
             alb = mix(alb, vec3<f32>(0.115, 0.1, 0.092) * (0.72 + 0.56 * mott), wf);
             alb = mix(alb, vec3<f32>(0.75, 0.74, 0.72), steam);
             alb = alb * mix(1.0, 0.42, wc * (1.0 - smoothstep(0.35 * vs.H, 0.8 * vs.H, hy)) * (1.0 - crown));
@@ -1516,7 +1516,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
                 fire = fire + vec3<f32>(1.0, 0.2, 0.03) * ember * crease * 1.6 * wf;
             }
             // (the sheet's underside: the fire's dull red on it round the column, its pouches catching it)
-            if (wu > 0.0 && hy < vs.hu) {
+            if (wu > 0.0 && hy < VC_HU) {
                 let gl = exp(-b.rho / 1100.0) * (0.15 + 0.85 * sd.y * sd.y) * (1.0 - smoothstep(VC_COLLAPSE + 2.0, VC_LIFT, time));
                 fire = fire + vec3<f32>(0.2, 0.045, 0.01) * gl * smoothstep(0.0, 6.0, vs.a) * wu;
             }
@@ -1560,7 +1560,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             let o1 = saturate(0.5 - f1 / 40.0);
             let o2 = saturate(0.5 - f2 / 74.0);
             // (the sheet's underside, in its own shadow, needs no looks at the bulk: most of what fills the sky)
-            let under = b.du < min(b.dc, b.df) && hy < vs.hu && st0 < 0.3;
+            let under = b.du < min(b.dc, b.df) && hy < VC_HU && st0 < 0.3;
             var s3 = 0.0;
             var s4 = 0.0;
             if (!under) {
@@ -1592,8 +1592,8 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     }
     // (out of steps under the sheet, rising to it: it is met, so far off it is the haze. Else bands where steps ran out)
     let qe = rd * t - C;
-    if (vs.Ru > 10.0 && i >= 132 && o.tr > 0.05 && rd.y > 0.0 && qe.y < vs.hu - 190.0) {
-        let th = t + (vs.hu - 190.0 - qe.y) / rd.y;
+    if (vs.Ru > 10.0 && i >= 132 && o.tr > 0.05 && rd.y > 0.0 && qe.y < VC_HU - 190.0) {
+        let th = t + (VC_HU - 190.0 - qe.y) / rd.y;
         let k = o.tr * (1.0 - smoothstep(0.75 * vs.Ru, vs.Ru, length((rd * th - C).xz))) * (1.0 - smoothstep(0.7 * t_end, t_end, th));
         o.c = o.c + k * vc_haze(rd, l) * 0.75;
         tmid = tmid + k * th;
