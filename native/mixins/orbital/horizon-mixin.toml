@@ -1,6 +1,6 @@
 [mod]
 id = "orbital"
-version = "0.5.10"
+version = "0.5.11"
 priority = 100
 
 [compatibility]
@@ -297,4 +297,25 @@ helper = "content_find.rs"
 bindings = [
   { name = "dir", ty = "&Path", value = "dir" },
   { name = "found", ty = "Vec<PathBuf>", value = "$value" },
+]
+
+# The Fold's world warp (render.set-warp, warp-on): handed to the game's world warp each frame (post.rs).
+[[injection]]
+id = "world_warp"
+hook = "world_warp"
+hook_version = 1
+kind = "HEAD"
+helper = "world_warp.rs"
+bindings = [{ name = "warp", ty = "&mut crate::gfx::native_render::WorldWarp", value = "&mut *warp" }]
+
+# The Fold's held world (render.hold-world, hold-world-within): asked by the game each frame (glue.rs `world_hold`).
+[[injection]]
+id = "world_hold"
+hook = "world_hold"
+hook_version = 1
+kind = "HEAD"
+helper = "world_hold.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "hold", ty = "&mut horizon_client::mod_api::WorldHold", value = "&mut *hold" },
 ]

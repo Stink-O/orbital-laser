@@ -258,6 +258,9 @@ pub mod render {
             s.post_source = None;
             s.post_params = None;
             s.post_data = None;
+            // (clearing the pass ends a hold, as the fork's clear-post does)
+            s.hold = false;
+            s.hold_areas.clear();
         });
     }
     pub fn set_data(words: &[u32]) {
@@ -271,6 +274,43 @@ pub mod render {
             }
             let version = s.post_data.as_ref().map_or(1, |(_, v)| v + 1);
             s.post_data = Some((Arc::from(words), version));
+        });
+    }
+    /// `render.set-warp`: the world warp's WGSL (empty: none); built by the game the first time it is turned on.
+    pub fn set_warp(wgsl: &str) {
+        if wgsl.len() > super::__host::POST_SOURCE {
+            ::log::warn!("world warp over {} KiB, ignored", super::__host::POST_SOURCE >> 10);
+            return;
+        }
+        super::__host::with(|s| {
+            if wgsl.is_empty() {
+                s.warp_source = None;
+            } else if s.warp_source.as_deref() != Some(wgsl) {
+                s.warp_source = Some(Arc::from(wgsl));
+            }
+        });
+    }
+    /// `render.warp-on`: the warp on or off. `copies` and `radius` (the solid sections near a point drawn again) are
+    /// kept for the mod's sake; the native build draws no copies.
+    pub fn warp_on(on: bool, x: f64, y: f64, z: f64, copies: u32, radius: f32) {
+        super::__host::with(|s| {
+            s.warp = on.then_some(super::__host::Warp { at: [x, y, z], copies: copies.min(8), radius });
+        });
+    }
+    /// `render.hold-world`: the terrain kept on screen as it is drawn while the world changes under it.
+    pub fn hold_world(on: bool) {
+        super::__host::with(|s| {
+            if !on {
+                s.hold_areas.clear();
+            }
+            s.hold = on;
+        });
+    }
+    /// `render.hold-world-within`: while held, only the sections whose middles lie in these circles (x, z, radius)
+    /// go on waiting; empty: all of them.
+    pub fn hold_world_within(areas: &[(f64, f64, f64)]) {
+        super::__host::with(|s| {
+            s.hold_areas = areas.iter().copied().filter(|(x, z, r)| x.is_finite() && z.is_finite() && r.is_finite()).collect();
         });
     }
     pub fn shake(strength: f32, seconds: f32) {
@@ -638,6 +678,14 @@ pub mod __host {
         Carry { delta: [f32; 3], turn: f32 },
     }
 
+    /// `render.warp-on`'s arguments while the warp is on.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct Warp {
+        pub at: [f64; 3],
+        pub copies: u32,
+        pub radius: f32,
+    }
+
     #[derive(Default)]
     pub struct State {
         pub name: String,
@@ -659,6 +707,10 @@ pub mod __host {
         pub columns: Vec<world::ColumnBlocks>,
         pub flying_speed: Option<f32>,
         pub atlas: Option<Atlas>,
+        pub warp_source: Option<Arc<str>>,
+        pub warp: Option<Warp>,
+        pub hold: bool,
+        pub hold_areas: Vec<(f64, f64, f64)>,
     }
 
     thread_local! {

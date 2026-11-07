@@ -18,7 +18,7 @@ use std::sync::Mutex;
 
 pub(super) const ID: &str = "orbital";
 const NAME: &str = "Orbital Laser";
-const VERSION: &str = "0.5.10";
+const VERSION: &str = "0.5.11";
 /// The operator level of the console, which the server half runs a client's world work at (`native_run_command`).
 const CONSOLE_LEVEL: u8 = 4;
 const WORK: &str = "orbital:work";
@@ -62,6 +62,8 @@ struct Client {
     /// (`client_level_unload`): the mod's outputs then stay on the window.
     level: Option<String>,
     leaving: bool,
+    /// The mod's world warp as it gave it, and on this game's contract (`orbital_post::native_warp_source`).
+    warp: Option<(std::sync::Arc<str>, std::sync::Arc<str>)>,
 }
 
 /// A column read coming back in pieces.
@@ -387,6 +389,22 @@ fn show_output(game: &mut Game<'_>) {
         _ => None,
     };
     horizon_client_render::orbital_post::set(pass);
+    // (the Fold's world warp: its source put on this game's contract once a source, `post.rs`)
+    let (warp_source, warp_on) = host::with(|s| (s.warp_source.clone(), s.warp.is_some()));
+    let warp = warp_source.map(|fork| {
+        CLIENT.with(|c| {
+            let mut c = c.borrow_mut();
+            match &c.warp {
+                Some((from, native)) if std::sync::Arc::ptr_eq(from, &fork) => native.clone(),
+                _ => {
+                    let native: std::sync::Arc<str> = std::sync::Arc::from(horizon_client_render::orbital_post::native_warp_source(&fork));
+                    c.warp = Some((fork, native.clone()));
+                    native
+                }
+            }
+        })
+    });
+    horizon_client_render::orbital_post::set_warp(warp.map(|w| (w, warp_on)));
 }
 
 /// The fork's `world.set-flying-speed`: asked of the server half when it changed, or again while the window's
@@ -1234,6 +1252,10 @@ const USAGES: &[&str] = &[
     "orbital supercell",
     "orbital hurricane",
     "orbital tsunami",
+    "orbital fold",
+    "orbital foldpattern a",
+    "orbital foldpattern b",
+    "orbital foldpattern c",
 ];
 
 /// The `register_commands` hook: `/orbital` and its usages in the server's command tree.
@@ -1336,4 +1358,23 @@ fn warn_no_content(game: &mut Game<'_>) {
     }
     WARNED.with(|w| w.set(true));
     chat(game, Text::literal(NO_CONTENT).with_color(text::RED));
+}
+
+/// `native_world_hold`: the mod's `render.hold-world` and `hold-world-within`. The fork's circles narrow the hold
+/// (only the sections in them go on waiting; none given: all of them), so the game is asked for exactly those.
+pub(super) fn world_hold(game: &Game<'_>, hold: &mut horizon_client::mod_api::WorldHold) {
+    if !game.native_window() {
+        return;
+    }
+    let (on, areas) = host::with(|s| (s.hold, s.hold_areas.clone()));
+    if !on {
+        return;
+    }
+    if areas.is_empty() {
+        hold.hold();
+    } else {
+        for (x, z, r) in areas {
+            hold.hold_within(x, z, r);
+        }
+    }
 }
