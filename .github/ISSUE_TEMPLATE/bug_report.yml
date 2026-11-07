@@ -1,0 +1,74 @@
+name: Bug report
+description: Something broke, didn't start, or a strike looks or sounds wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Check [If something goes wrong](https://github.com/Stink-O/orbital-laser#if-something-goes-wrong) and the [known issues](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) first, since a few common problems have a quick fix there.
+
+        **Lasers fire but show no effects on the native build?** Remove the mod, put `orbital.hnmod` back in `horizon-native-mods` and build again from scratch in the launcher. A clean rebuild has fixed this before.
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Native, orbital.hnmod through the Horizon launcher
+        - Fork build, the release zip and play.sh
+        - Windows test build (orbital-laser-windows-test.zip)
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Orbital Laser version, Horizon launcher version (native) or fork release (fork, e.g. orbital-mod-api-11)
+      placeholder: Orbital Laser 0.5.10, launcher 0.2.37
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system, GPU and graphics driver
+      placeholder: Windows 11, RTX 3060, driver 560.94
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw or heard instead.
+    validations:
+      required: true
+  - type: input
+    id: laser
+    attributes:
+      label: Which laser, and when in the strike
+      description: Or "all of them". Say whether terrain damage was on.
+      placeholder: The Nuke, right at the blast, terrain damage on
+  - type: dropdown
+    id: shaders
+    attributes:
+      label: Shader pack
+      options:
+        - None
+        - Yes (name it below)
+  - type: textarea
+    id: mods
+    attributes:
+      label: What Options → Mods says
+      description: Orbital Laser's row on Options → Mods in the game. If the mod stopped, it says why.
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Game log
+      description: |
+        Drag `latest.log` in here. It's in the `logs` folder of your game folder (launcher: Instances → Open folder; fork on Linux: `~/.local/share/horizon/logs`). For a crash, the crash report too.
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or clip
+      description: Of the moment it goes wrong, if you can.
