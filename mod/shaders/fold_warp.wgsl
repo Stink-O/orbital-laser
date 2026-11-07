@@ -177,7 +177,7 @@ fn fw_shock(r: f32, t: f32) -> f32 {
 // bearing, so a wedge never leaves its sector of the circle and no two wedges can meet; along a bearing the sheet is one line going one way: nothing over anything.
 const CP_K: f32 = 0.75;            // the big creases' fold: a panel's slope, per radian of cp_rise
 const CP_N: i32 = 12;              // the creases (the tables are CP_N * 5 long)
-const CP_V: f32 = 0.12;            // WATERBOMB: a panel's middle off it, of its width
+const CP_V: f32 = 0.12;            // WATERBOMB: a panel's middle off it, of its width (a third of that round the target, where the land stands close)
 const CP_DIA: f32 = 0.05;          // DIAGONAL: how far up or down a node stands, of its radius, in turn
 const CP_PRE: f32 = 0.62;          // how far the folds go before the land lifts: all of it by FW_FOLD + 5
 const CP_REST: f32 = 0.5;          // how much of them is left in the sphere's walls
@@ -571,7 +571,7 @@ fn cp_sheet(w: CpW, i: i32, kt: CpKite, tr: CpTri, r: f32, hh: f32, tau: f32, t:
             let up = cross(C - A, B - D);
             let nv = up / max(length(up), 0.001);
             let f = fw_ss(0.0, 1.3, t - CP_CH[w.k * 5 + i] - 0.6) * select(1.0, g.ps[i], t >= FW_REL && lifts);
-            V += nv * kt.up * CP_V * min(length(C - B), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w)) * f * amount;
+            V += nv * kt.up * CP_V * select(1.0, 0.3, i == 0) * min(length(C - B), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w)) * f * amount;
         }
         var c = array<vec3<f32>, 4>(A, B, C, D);
         let X = c[tr.j];
@@ -616,7 +616,7 @@ fn cp_lying(w: CpW, i: i32, kt: CpKite, tr: CpTri, t: f32, pin: vec2<i32>) -> ve
     }
     var zv = mix(mix(za, zb, kt.m.x), mix(zd, zc, kt.m.y), kt.m.z);
     if (cp_mode() == 1 && (w.k != pin.x || i != pin.y)) {
-        zv += kt.up * CP_V * min(length(kt.c - kt.b), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w));
+        zv += kt.up * CP_V * select(1.0, 0.3, i == 0) * min(length(kt.c - kt.b), 0.7 * (kt.bq.x - kt.bq.z + kt.bq.y - kt.bq.w));
     }
     var z = array<f32, 4>(za, zb, zc, zd);
     var c = array<vec2<f32>, 4>(kt.a, kt.b, kt.c, kt.d);
