@@ -90,7 +90,9 @@ It's on the wheel's fourth page and `/orbital fold`. It needs the fork's release
 **The Fold isn't in the native version yet.** It bends the world's real geometry, which takes changes to the game's renderer that
 regular Horizon doesn't have. The native `orbital.hnmod` in this release is the same 0.5.10 file as before, with fifteen lasers.
 
-For the native version there's a server safety fix: on a server or LAN host, a strike's world changes now need operator
+## New in 0.5.10
+
+A new laser, the **Tsunami**, on the wheel's third page and `/orbital tsunami`. For the native version there's a server safety fix: on a server or LAN host, a strike's world changes now need operator
 level 4, and a guest's `/orbital` no longer changes the host's game. It's also built on a newer Horizon, so land a strike
 changes out of your view now shows in far terrain, and your hand draws during the Hurricane.
 
