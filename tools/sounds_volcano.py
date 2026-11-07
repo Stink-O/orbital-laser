@@ -17,9 +17,14 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   rockfall1-3 8.5-16.9 rock coming off the mount's flanks, a long way off: dark, sliding, no clatter
   fountain    7        the lava fountains, as far as they carry: a low chugging roar; stops dead at 17 s
   steam       6        the cracks' steam: a hiss (only within ~900 blocks); stops dead at 17 s
-                       (17-18 s: nothing at all. Every file above ends by 17 s, whatever the distance)
-  seism       18 + d/1715 the burst through the ground: one sub thump, only just there
-  report      18 + late one enormous concussive report, a physical thump more than a bang, rolling off the land for 20 s
+                       (every file above ends by 17 s, whatever the distance: the mount stops dead with the picture)
+  hush        17       on the strike's clock, on the tremor's last sample: the busy rolling gone at once, in its place a
+                       deep pressure swelling (a sub climbing, the rock's groan drawn on up, the ground straining), never
+                       silent, nothing quick in it; cut by the report (a stopsound), long enough for one from 3,000 blocks
+  seism       18 + d/1715 the burst through the ground: a deep jolt under the feet with a body, then the ground going on
+                       shaking under the hush, building; cut by the report with the hush
+  report      18 + late one enormous report rolling off the land for 20 s; its front a blow (`impact`, `slam`: a sub
+                       falling in pitch, the chest's punch, a dull crack of the air, what follows let down just after it)
   report_far  the same moment, cross-faded in by distance
   report_sub  the same moment: the push alone, under it (and at pitch 0.8 with the land dropping, in the collapse)
   column      18 + late behind the report the rolling wall of fire and the land going up (for 19-27 s), handing over to
@@ -29,11 +34,11 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   column_far  the same moment, cross-faded in by distance: darker, the crackle a dull tearing
   whistle1-3  a bomb coming down close: a tumbling tearing rush, no pitch in it; its distance sets its level, its top, its
                        Doppler and the comb off the ground; cut on its landing
-  thud1-4     a bomb landing close (positional): a small explosion of earth on the ground's blow
+  thud1-4     a bomb landing close (positional): a small explosion of earth on the ground's blow, its front slammed
   spatter1-3  the rock and earth it threw coming down round it, within ~120 blocks of the player (positional)
   thud_far1-3 a bomb landing off on the land: a dull thump, late by the distance
   (lightning)          the Hurricane's own thunder events, played as its plan plays them (vc_sound.rs's `thunder`)
-  collapse    50 + late a colossal deep groan of the ground going, the land mass dropping (a slow enormous blow 3 s in),
+  collapse    50 + late a colossal deep groan of the ground going, the land mass dropping (a deep slammed blow 3 s in),
                        then the land going down in four waves, slabs landing in a rolling slide of rock (`falling`)
   collapse_far the same moment, cross-faded in by distance
   flow_rise1-3 ending on the flow's arrival: the ground first, a low roar, the rush, the wind ahead of it and last the
@@ -41,8 +46,8 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   flow_far    the flow heard from beyond where it stops: a dark rush swelling and ebbing, no hit
   splinter1-3 trees going, the Hurricane's breaks in the flow's air, heard only with the front within ~140 blocks (positional)
   grind1-2    rock grinding along the front, the same
-  flow_hit    the front reaching the player: a wall of wind and rock (an octave table, gusting), low shoves, the top
-                       shutting down to nothing above a few hundred Hz
+  flow_hit    the front reaching the player: a slammed blow, then a wall of wind and rock (an octave table, gusting),
+                       low shoves, the top shutting down to nothing above a few hundred Hz
   flow_in1-3  inside the flow (14, 9 and 5 s): a dense muffled roar for 4 s, opening to the murk by 8.5 s (the pass's
                        near-black), ash hiss and embers; the shorter takes the same squeezed, for a wall that comes late
   after       66.3     a long fading rumble, far thunder in it, the wind thinning to a low empty moan, gone by 87.8 s
@@ -75,7 +80,7 @@ TH = "supervolcano"
 ROOT = Path(__file__).resolve().parent.parent
 VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3,
             "flow_rise": 3, "flow_in": 3, "splinter": 3, "grind": 2}
-SINGLE = ["beam", "tick", "tremor", "fountain", "steam", "seism", "report", "report_far", "report_sub", "column", "column_far",
+SINGLE = ["beam", "tick", "tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "report_sub", "column", "column_far",
           "collapse", "collapse_far", "flow_far", "flow_hit", "after", "patter"]
 NAMES = SINGLE + list(VARIANTS)
 # (the plan's old events, taken out of sounds.json and their files deleted when it's rebuilt: the lightning is the Hurricane's)
@@ -83,11 +88,13 @@ GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
 LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
-         "seism": -33.0, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -13.0, "column_far": -12.0,
-         "whistle": -15.0, "thud": -12.0, "spatter": -20.0, "thud_far": -18.0,
+         "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -13.0, "column_far": -12.0,
+         "whistle": -16.0, "thud": -11.0, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
+REPORT_SLAM = 0.0          # (the report's front laid on, dB against its loudest 400 ms: `slam`)
+COLLAPSE_GIVE = 1.0        # (how far the collapse's groan comes down to make room for the drop's blow, dB)
 SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)
 TREMOR_D = HUSH - 2.0      # (`tremor`, which starts at 2 s, ends on the hush: vc_sound.rs's plays it on the strike's clock)
 GROUND_LAG = 0.6           # (the land's lurches, late by what the ground takes to bring them 1,000 blocks: GROUND_V)
@@ -99,6 +106,7 @@ RISES = (6.0, 11.0, 17.0)  # (flow_rise's lengths: vc_sound.rs's VC_RISES)
 INS = (14.0, 9.0, 5.0)     # (flow_in's lengths: vc_sound.rs's VC_INS)
 ROCKFALLS = (3.2, 4.0, 4.8)  # (rockfall's lengths: vc_sound.rs's VC_ROCKFALLS)
 AFTER_D, PATTER_D = 21.5, 17.5  # (`after`'s and `patter`'s lengths: each ends at 87.8 s, vc_sound.rs's VC_AFTER_AT, VC_PATTER_AT)
+HUSH_D, SEISM_D = 12.0, 10.0    # (`hush`'s and `seism`'s lengths: both cut by the report, vc_sound.rs's VC_HUSH_LEN, VC_SEISM_LEN)
 
 
 def rng():
@@ -253,6 +261,31 @@ def earth_ring(x, length=2.0, wet=0.8, darken=(620, 60), decay=0.55, seed=0):
     """`x` as it comes on through the ground from a blow in rock: the blow, then the ground's own long dark ringing, thick
     with scattered arrivals, the top going first."""
     return x + conv(x, T.outdoor_ir(length, seed, density=160.0, darken=darken, decay=decay)) * wet
+
+
+def impact(n, t0, sub=(72.0, 40.0, 30.0), drop=0.07, body=(45.0, 230.0), body_fall=0.07, crack=(350.0, 2400.0),
+           crack_fall=0.012, mix=(1.0, 0.9, 0.3)):
+    """The front of a big hit, what makes it slap: a sub blow falling in pitch (`sub` Hz: from, to in `drop` s, on to),
+    rising in 2 ms, with its harmonics so a laptop hears its weight; a low-mid punch of noise (`body`, its decay
+    `body_fall`), the chest's part of it; and a short crack of rock and air (`crack`, `crack_fall`), its top set by how
+    far it has come. `mix` the three's levels. Causal, so nothing rings ahead of the hit."""
+    t = np.arange(n) / SR
+    u = np.maximum(t - t0, 0)
+    on = t >= t0
+    k = S.blow(n, t0, sub[0], sub[1], sub[2], drop, 0.002, ((0.65, 0.09), (0.35, 0.3)), drive=2.5, octv=0.3, h3=0.12, harm=0.5)
+    k = k / (np.abs(k).max() + 1e-9)
+    b = T.unit(F.cband(rng().standard_normal(n), body[0], body[1], 2)) * (1 - np.exp(-u / 0.0015)) * np.exp(-u / body_fall) * on
+    c = T.unit(F.cband(rng().standard_normal(n), crack[0], crack[1], 2)) * (1 - np.exp(-u / 0.0004)) * np.exp(-u / crack_fall) * on
+    return k * mix[0] + b * 0.33 * mix[1] + c * 0.33 * mix[2]
+
+
+def slam(x, t0, hit, db=1.0, duck=-4.0, gap=(0.05, 0.3, 0.7)):
+    """`x` with `hit` (`impact`'s) laid on at `t0`, `db` against `x`'s loudest 400 ms, and `x` itself let down by `duck`
+    dB just after the front (from `gap[0]`, deepest by `gap[1]`, back by `gap[2]` s), as a big blast's mids drop away
+    after its crack: the front stands out of what follows, so it's a blow, not a loud noise starting."""
+    t = np.arange(len(x)) / SR - t0
+    g = db_curve(t, [(-1.0, 0.0), (gap[0], 0.0), (gap[1], duck), (gap[2], 0.0), (1e9, 0.0)])
+    return x * g + hit / (T.loudest(hit) + 1e-12) * T.loudest(x) * 10 ** (db / 20)
 
 
 def bare_blow(size, lo=26.0, hi=120.0, rise=0.012, fall=0.11):
@@ -475,16 +508,66 @@ def build_fountain():
     write("fountain", PB.causal_lowcut(x, 30.0) * T.fade(n, 0.6, 0.001))
 
 
-def build_seism():
-    """The burst, through the ground: it gets here before the air does. One sub thump in the silence, only just there."""
-    d = 2.2
+def held(y, sec=0.4):
+    """A narrow band of noise with its own beating taken out (its level over `sec` divided away), unit RMS: a drone held
+    steady, its tone and its slow wander kept, none of the deep dips a narrow band of noise falls into now and then."""
+    return T.unit(y / (np.sqrt(ease(y ** 2, sec)) + 1e-9 * np.sqrt(np.mean(y ** 2))))
+
+
+def build_hush():
+    """The hush (17 s, on the strike's clock, the moment the tremor stops dead, until the report, which cuts it: vc_sound.rs's
+    stopsound): the land's rolling, its lurches and its cracks gone at once, and in their place a deep pressure held under
+    everything and swelling, so the wait is tension and never silence. A sub climbing slowly, the rock's groan under load
+    drawn on up past where the tremor left it, the ground straining under it. Every movement in it slow: nothing grainy,
+    nothing quick, no hiss. It starts well under where the tremor stopped (the cut-off still reads), and long enough for a
+    report heard from 3,000 blocks."""
+    d = HUSH_D
     n = n_of(d)
     t = times(d)
+    with PB.seeded(61481):
+        # (the sub climbing, and its octave, so a laptop hears it rise)
+        sub = held(T.glide_noise(d, 23.0, 44.0, 0.32, curve=0.75)) * np.clip(1 + 0.18 * PB.slow_random(n, 0.1, 0.5), 0.5, None)
+        sub2 = held(T.glide_noise(d, 46.0, 88.0, 0.28, curve=0.75)) * np.clip(1 + 0.3 * PB.slow_random(n, 0.15, 0.7), 0.3, None)
+        press = T.unit(band(white(d), 14, 38, 3)) * boiled(n, 0.08, 0.5, 1.5)
+        # (the groan: the tremor's (43, 69, 104 and 151 Hz, there climbed a fourth) climbing on, narrower as the load comes on)
+        res = sum(held(T.glide_noise(d, f * 1.36, f * 1.75, w, curve=0.8)) * a for f, w, a in ((43.0, 0.2, 1.0), (69.0, 0.22, 0.85), (104.0, 0.25, 0.7), (151.0, 0.3, 0.45)))
+        groan = T.unit(res) * np.clip(0.8 + 0.35 * PB.slow_random(n, 0.15, 0.7), 0.25, None)
+        strain = T.unit(band(white(d), 28, 105, 2)) * boiled(n, 0.2, 1.2, 1.5)
+        x = (sub * db_curve(t, [(0, -7), (0.5, -5), (2.5, -2.5), (5, 0), (d, 1)])
+             + sub2 * db_curve(t, [(0, -18), (0.8, -13), (3, -9), (6, -7), (d, -6)])
+             + press * db_curve(t, [(0, -10), (1.5, -8), (5, -6), (d, -5)])
+             + groan * db_curve(t, [(0, -9), (0.4, -5), (2.0, -1), (4.0, 1.5), (7, 2.5), (d, 3)])
+             + strain * db_curve(t, [(0, -18), (0.8, -13), (3, -9), (6, -7), (d, -6)]))
+        # (a held pressure, climbing: its level over time set outright (a slow leveller over its noise's lumps), so no one
+        # swell of its own stands out of the climb, and it is never further under its peak than this at the cut)
+        lvl = np.sqrt(ease(x ** 2, 0.7))
+        x = x / (lvl + 1e-9 * lvl.max()) * db_curve(t, [(0, -7), (0.5, -6), (2.0, -4.5), (4.0, -2), (7.0, -0.5), (d, 0)])
+        x = lows_heard(x, 50, 260, -7.0)
+        x = PB.causal_lowcut(x, 13.0) * T.fade(n, 0.03, 2.5)
+    write("hush", x)
+
+
+def build_seism():
+    """The burst, through the ground: it gets here before the air does (18 s + d / 1715). A deep heavy jolt under the feet,
+    the eruption felt before it's heard, then the ground going on shaking under the hush, building, until the report cuts
+    it (vc_sound.rs's stopsound): the land's lurch has a body, the roll after it no grain. Long enough for a report heard
+    from 3,000 blocks."""
+    d = SEISM_D
+    n = n_of(d)
+    t = times(d)
+    t0 = LEAD
+    u = np.maximum(t - t0, 0)
     with PB.seeded(61471):
-        x = S.blow(n, 0.03, 31.0, 23.0, 17.0, 0.2, 0.05, ((0.7, 0.35), (0.3, 0.9)), drive=1.0, octv=0.25, h3=0.0, harm=0.0)
-        x = x + T.unit(band(white(d), 28, 70, 2)) * (1 - np.exp(-t / 0.08)) * np.exp(-t / 0.5) * 0.09
-        x = lows_heard(x, 45, 200, -10.0)
-    write("seism", PB.causal_lowcut(x * T.fade(n, 0.01, 0.8), 13.0))
+        jolt = S.blow(n, t0, 52.0, 30.0, 24.0, 0.16, 0.004, ((0.6, 0.22), (0.4, 0.75)), drive=2.0, octv=0.3, h3=0.1, harm=0.4)
+        P.put(jolt, bare_blow(2.2, 24, 120, 0.004, 0.09) * 0.9, t0)
+        # (the ground rolling on after it, building towards the report, in slow heaves)
+        roll = T.unit(band(white(d), 24, 95, 2)) * boil(n, 0.25, 1.4, 3.5)
+        groan = T.unit(T.glide_noise(d, 58.0, 82.0, 0.3, curve=0.7)) * boil(n, 0.2, 0.9, 2.5)
+        on = (1 - np.exp(-u / 0.25)) * (t >= t0)
+        x = (jolt + T.unit(roll) * on * T.loudest(jolt) * db_curve(t, [(0, -14), (0.6, -13), (2.0, -10), (4.0, -7), (d, -6)])
+             + groan * on * T.loudest(jolt) * db_curve(t, [(0, -30), (1.0, -22), (3.0, -15), (d, -12)]))
+        x = lows_heard(x, 45, 220, -7.0)
+    write("seism", PB.causal_lowcut(x * T.fade(n, 0.0005, 2.0), 13.0), knee=0.6)
 
 
 # ===========================================================================================================  the report
@@ -568,10 +651,18 @@ def build_report():
     c = T.loudest(lo) * 10 ** (3.0 / 20)
     x = x - lo + PB.soft_clip(lo[:, None], c, 0.5)[:, 0]
     # (the blow alone at the top of it: what rolls off after sits under it, so it is a thump and not a long loud noise)
-    x = x * db_curve(np.arange(len(x)) / SR, [(0, 0), (0.9, 0), (2.2, -3), (5, -5), (26, -5)])
+    x = x * db_curve(np.arange(len(x)) / SR, [(0, 0), (0.9, 0), (2.2, -1.5), (5, -3.5), (26, -3.5)])
+    # (and its front made a blow: a sub falling in pitch, a punch in the chest's range and a dull crack of the air, what
+    # follows let down a little just after it, so the report hits rather than starts)
+    with PB.seeded(61504):
+        hit = impact(len(x), LEAD, (80.0, 42.0, 31.0), 0.07, (45.0, 240.0), 0.1, (280.0, 2200.0), 0.016, (1.0, 1.2, 0.6))
+    x = slam(x, LEAD, hit, REPORT_SLAM, -3.0, (0.08, 0.32, 0.75))
     write("report", x, knee=0.5)
     with PB.seeded(61502):
-        y = far_of(x, 26.0, seed=31)
+        y = far_of(x, 26.0, seed=31, soften=0.012)
+        # (from further off the land's long echo fills in behind the front: its own blow again on it, darker)
+        hit = impact(len(y), LEAD, (74.0, 40.0, 30.0), 0.08, (40.0, 200.0), 0.09, (200.0, 900.0), 0.02, (1.0, 0.9, 0.3))
+        y = slam(y, LEAD, hit, REPORT_SLAM, -3.5, (0.07, 0.35, 0.9))
     write("report_far", y * T.fade(len(y), 0.0005, 3.0), knee=0.5)
 
 
@@ -793,7 +884,13 @@ def build_thud(v):
         x = land(x, 2.4, 0.3, (2000, 170), 0.9, seed=140 + v)
         x = lows_heard(x, 70, 320, -6.0)
         L, R = N.overdrive(x, x, t0)
-    write(f"thud{v}", PB.causal_lowcut((L + R) / 2, 20.0) * T.fade(n, 0.0005, 0.9), kind="thud", knee=0.6)
+        # (its front a blow you feel: the sub falling in pitch, the chest's punch, the rock's crack, what follows let down
+        # just after it; the bigger, the deeper)
+        f0 = 76.0 - 10.0 * size
+        hit = impact(n, t0, (f0, f0 * 0.56, f0 * 0.45), 0.05 + 0.02 * size, (48.0, 300.0), 0.05 + 0.02 * size,
+                     (450.0, 3800.0), 0.009, (1.0, 1.0, 0.55))
+        x = slam((L + R) / 2, t0, hit, 0.0, -4.5, (0.05, 0.25, 0.6))
+    write(f"thud{v}", PB.causal_lowcut(x, 20.0) * T.fade(n, 0.0005, 0.9), kind="thud", knee=0.6)
 
 
 def build_spatter(v):
@@ -953,8 +1050,8 @@ def falling(d, Td, ref):
         x = slide * 0.34 + rattle * 0.16
         for dt, size in SLABS:
             k = n_of(5.0)
-            y = S.blow(k, 0.0, 44.0 - 6 * size, 29.0, 22.0, 0.22, 0.05, ((0.6, 0.4 + 0.35 * size), (0.4, 1.2 + 0.8 * size)), drive=2.5) * 0.8
-            P.put(y, bare_blow(2.2 + size, 24, 130, 0.03, 0.2) * 1.3, 0.0)
+            y = S.blow(k, 0.0, 52.0 - 6 * size, 29.0, 22.0, 0.16, 0.008, ((0.6, 0.4 + 0.35 * size), (0.4, 1.2 + 0.8 * size)), drive=2.5) * 0.8
+            P.put(y, bare_blow(2.2 + size, 24, 150, 0.006, 0.2) * 1.3, 0.0)
             q = np.arange(k) / SR
             # (the rock of it breaking: a burst of blows, no edge of its own)
             y = y + rocks(5.0, 420.0 * (1 - np.exp(-q / 0.05)) * np.exp(-q / (0.16 + 0.22 * size)) + 1e-3, 90, 620, (0.5, 1.0, 1.8), (0.5, 0.36, 0.14)) * (1 - np.exp(-q / 0.05)) * np.exp(-q / (0.3 + 0.3 * size)) * 0.55
@@ -981,10 +1078,19 @@ def build_collapse():
     # (the blow stays the loudest thing in it, so the file's level, and so its opening, stay exactly where they were)
     for _ in range(3):
         x = x * (1 - (1 - min(T.loudest(first) / T.loudest(x), 1.0)) * np.clip((t - a + 0.1) / 0.5, 0, 1))
-    write("collapse", x, knee=0.5)
+    # (the drop made a blow: the land mass landing, a deep sub falling in pitch, the chest's punch, a dull crack of rock,
+    # what follows let down a moment, so it stands well out of the groan before it. The groan itself kept where it was:
+    # the file's level is raised by what the blow adds, less COLLAPSE_GIVE dB)
+    with PB.seeded(62203):
+        hit = impact(len(x), DROP, (64.0, 34.0, 26.0), 0.12, (36.0, 220.0), 0.12, (180.0, 1200.0), 0.022, (1.0, 1.0, 0.32))
+    y = slam(x, DROP, hit, 0.5, -4.0, (0.08, 0.4, 1.0))
+    keep = 20 * np.log10(T.loudest(y) / T.loudest(x)) - COLLAPSE_GIVE
+    S.write("collapse", y, LEVEL["collapse"] + keep, knee=0.5)
     with PB.seeded(62202):
-        y = far_of(x, 24.0, lo_gain=0.9, seed=33, soften=0.0001)
-    write("collapse_far", y * T.fade(len(y), 0.6, 3.0), knee=0.5)
+        z = far_of(y, 24.0, lo_gain=0.9, seed=33, soften=0.0001)
+        hit = impact(len(z), DROP, (60.0, 32.0, 25.0), 0.13, (34.0, 190.0), 0.13, (160.0, 800.0), 0.03, (1.0, 0.9, 0.25))
+        z = slam(z, DROP, hit, 0.0, -3.0, (0.09, 0.45, 1.1))
+    S.write("collapse_far", z * T.fade(len(z), 0.6, 3.0), LEVEL["collapse_far"] + keep, knee=0.5)
 
 
 # ==============================================================================================================  the flow
@@ -1046,7 +1152,7 @@ def build_splinter(v):
     x = y[n_of(a):n_of(b)]
     n = len(x)
     with PB.seeded(62510 + v):
-        x = T.unit(F.cband(x, 70, 3400, 2)) + T.unit(F.cband(x, 3400, None, 1)) * 0.05
+        x = T.unit(F.cband(x, 70, 2800, 2)) + T.unit(F.cband(x, 2800, None, 1)) * 0.02
         P.put(x, T.thud(n_of(0.8), rng().uniform(1.5, 2.2)) * 0.5, rng().uniform(0.01, 0.05))
         x = land(x, 1.0, 0.12, (1800, 260), 0.35, seed=160 + v)
     write(f"splinter{v}", PB.causal_lowcut(x, 40.0) * T.fade(n, 0.002, 0.45), kind="splinter")
@@ -1109,7 +1215,11 @@ def build_flow_hit():
         x = lows_heard(x, 70, 360, -5.0)
         L, R = N.glue(x, x)
         L, R = N.overdrive(L, R, t0)
-    write("flow_hit", PB.causal_lowcut((L + R) / 2 * on, 16.0) * T.fade(n, 0.0005, 1.6), knee=0.5)
+        # (the wall's blow, felt: a deep sub falling in pitch, the chest's punch, the crack of the rock in it striking,
+        # the wind just after it let down a moment, so it lands as a blow and then swallows the player)
+        hit = impact(n, t0, (66.0, 36.0, 28.0), 0.09, (40.0, 260.0), 0.1, (300.0, 2600.0), 0.02, (1.0, 1.0, 0.45))
+        x = slam((L + R) / 2, t0, hit, 0.5, -4.0, (0.07, 0.35, 0.9))
+    write("flow_hit", PB.causal_lowcut(x * on, 16.0) * T.fade(n, 0.0005, 1.6), knee=0.5)
 
 
 def build_flow_in(v):
@@ -1189,11 +1299,12 @@ def build_patter():
             tc += rng().exponential(0.9) + 0.1
         x = T.unit(tap) * 0.3 + st * 0.2 + ash * 0.16 * np.clip(fall * 1.6, 0, 1) ** 0.6
         x = land(x, 1.0, 0.1, (2600, 500), 0.35, seed=170)
-    write("patter", PB.causal_lowcut(x, 120.0) * T.fade(n, 1.6, 2.2))
+    # (its top taken down further: no tap may stand out of the wash as a bright tick)
+    write("patter", F.cband(PB.causal_lowcut(x, 120.0), None, 2600, 2) * T.fade(n, 1.6, 2.2))
 
 
 BUILD = {
-    "beam": build_beam, "tick": build_tick, "tremor": build_tremor, "fountain": build_fountain, "steam": build_steam, "seism": build_seism, "report": build_report,
+    "beam": build_beam, "tick": build_tick, "tremor": build_tremor, "fountain": build_fountain, "steam": build_steam, "hush": build_hush, "seism": build_seism, "report": build_report,
     "report_far": lambda: None, "report_sub": build_report_sub, "column": build_column, "column_far": lambda: None, "collapse": build_collapse,
     "collapse_far": lambda: None, "flow_far": build_flow_far, "flow_hit": build_flow_hit, "after": build_after,
     "patter": build_patter,
@@ -1312,6 +1423,11 @@ def listen_mix(tag, me, out):
     t_report = next((float(l[0]) for l in lines if l[1].endswith((".report", ".report_far"))), 20.9)
     print(f"  hush 17.1-{t_seism:.2f} s: {at(17.1, t_seism):.1f} dB (peak {20 * np.log10(np.abs(m[n_of(17.1):n_of(t_seism)]).max() + 1e-12):.1f}); last 400 ms before it {db[int(16.6 * 10):int(16.8 * 10)].max():.1f} dB;"
           f" the seism {at(t_seism, t_seism + 1.0):.1f} dB; the wait {t_seism + 1.2:.1f}-{t_report:.2f} s: {at(t_seism + 1.2, t_report):.1f} dB")
+    # (the wait never silent: its quietest and loudest 100 ms from the tremor's end to the report, and how far the report's
+    # first 400 ms stands over the wait's last)
+    wait = fine[int(17.05 * 20):int((t_report - 0.05) * 20)]
+    print(f"  the wait 17.05-{t_report:.2f} s: quietest 100 ms {wait.min():.1f} dB, loudest {wait.max():.1f} dB; its last 400 ms"
+          f" {db[int((t_report - 0.45) * 10)]:.1f} dB, the report's first {db[int(t_report * 10)]:.1f} dB")
     # (the last of it: nothing cut off, quiet by 88 s)
     tail = band_db(m, None, None, 0.2, 0.1)
     print(f"  at 84 s {tail[840]:.1f} dB, at 86 s {tail[860]:.1f} dB, at 87 s {tail[870]:.1f} dB, after 88 s {tail[880:].max():.1f} dB")

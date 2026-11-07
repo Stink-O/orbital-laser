@@ -1,7 +1,8 @@
 //! The Supervolcano's sounds: what plays when, as tools/sounds_volcano.py builds them (its notes say what each is).
 //! Everything from the vent is late by the distance (343 blocks a second); what comes through the ground, five times
 //! sooner. The one exception is the mount (2 to 17 s): all of it stops dead at the hush with the picture, wherever the
-//! player is, so what plays then is on the strike's clock and ends by 17 s. The player may well fly in a strike this
+//! player is, so what plays then is on the strike's clock and ends by 17 s; the hush's own swell starts on that same
+//! tick, and it and the jolt through the ground hold the wait until the report cuts them. The player may well fly in a strike this
 //! long, so the plan asks where they are as each part comes due (the mount, the eruption, each bomb, the collapse),
 //! rather than once as it fires. They are at least 1,000 blocks off as it fires; they can fly closer, so nothing here
 //! breaks at any distance.
@@ -41,6 +42,8 @@ const VC_INS: [f32; 3] = [14.0, 9.0, 5.0];
 const VC_FAR: f32 = 22.0;
 /// The silence at the start of the report's and the hit's files.
 const VC_LEAD: f32 = 0.02;
+/// The report cuts `hush` and `seism` this long after it comes, under its front.
+const VC_CUT: f32 = 0.05;
 /// The land mass dropping, into `collapse`.
 const VC_DROP: f32 = 3.0;
 /// When `after` and `patter` start: both end at 87.8 s.
@@ -388,7 +391,7 @@ fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32) -> Option
         n += 1;
     }
     // (under the collapse's thunder it needn't be as much: the two would be all the game's limiter heard)
-    play(p, hit - VC_LEAD, "flow_hit", spent * (0.5 + 0.15 * smooth(6.0, 14.0, f64::from(hit - drop))), 1.0);
+    play(p, hit - VC_LEAD, "flow_hit", spent * (0.85 + 0.15 * smooth(6.0, 14.0, f64::from(hit - drop))), 1.0);
     // (the hit is the loudest thing there is for a moment: under it the jet's top goes, so nothing but the inside is left)
     for name in ["column", "column_far"] {
         p.ev.push((hit + 0.05, Act::Cmd(format!("stopsound @s * {}", ev(name)))));
@@ -411,17 +414,26 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         }
         mount(q, s, d);
     });
-    // ---- the hush: every sound of ours ends here of itself (`mount`), and whatever the game had playing goes with them
-    p.later(VC_HUSH - 0.1, |q| q.ev.push((VC_HUSH - 0.05, Act::Cmd("stopsound @s music".into()))));
-    // ---- the eruption: first only a thump through the ground, the air's report and the column long after it, one moment
-    // late by the distance; the bombs and the lightning on it
+    // ---- the hush: every sound of the mount ends here of itself (`mount`), and whatever the game had playing goes with
+    // them; in their place, on the same tick, the deep pressure swelling under the wait (`hush`), so it never goes silent
+    p.later(VC_HUSH - 0.1, move |q| {
+        q.ev.push((VC_HUSH - 0.05, Act::Cmd("stopsound @s music".into())));
+        let (_, d) = sound_from(vent, live(me));
+        play(q, VC_HUSH, "hush", (1500.0 / d.max(1500.0)).sqrt(), 1.0);
+    });
+    // ---- the eruption: first a jolt through the ground and the ground shaking on under the hush, the air's report and
+    // the column long after it, one moment late by the distance, cutting the wait's sounds; the bombs and the lightning
+    // on it
     p.later(VC_ERUPT - 0.1, move |q| {
         let me = live(me);
         let (late, d) = sound_from(vent, me);
         play(q, VC_ERUPT + (d / GROUND_V) as f32, "seism", (1500.0 / d.max(1500.0)).powf(0.7), 1.0);
         let report = VC_ERUPT + late;
+        for name in ["hush", "seism"] {
+            q.ev.push((report + VC_CUT, Act::Cmd(format!("stopsound @s * {}", ev(name)))));
+        }
         near_far(q, report - VC_LEAD, "report", d);
-        play(q, report - VC_LEAD, "report_sub", 0.85 * air(d), 1.0);
+        play(q, report - VC_LEAD, "report_sub", 0.55 * air(d), 1.0);
         near_far(q, report, "column", d);
         land_bombs(q, s, vent, me, report, &bombs);
         thunder(q, s, vent, me, (VC_LIGHT - 2.0, VC_COLLAPSE), (0.0, VC_COLLAPSE), (0.0, 0.0), 1.0);
@@ -441,7 +453,7 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         h1.set(hit);
         // (the land's drop, unless the flow's hit is on it: the two would be all the game's limiter heard)
         if hit.is_none_or(|h| (h - drop).abs() > 0.8) {
-            play(q, drop, "report_sub", 0.75 * air(d), 0.8);
+            play(q, drop, "report_sub", 0.6 * air(d), 0.8);
         }
     });
     // (the lightning goes on in the ash: from inside the flow, under its near-black, nothing of it gets through
@@ -507,6 +519,11 @@ mod tests {
         out
     }
 
+    /// `hush`'s and `seism`'s lengths (tools/sounds_volcano.py's HUSH_D, SEISM_D): long enough for a report heard from
+    /// 3,000 blocks, which cuts both.
+    const VC_HUSH_LEN: f32 = 12.0;
+    const VC_SEISM_LEN: f32 = 10.0;
+
     /// How long each file lasts at pitch 1, for the checks on what ends when.
     fn len_of(name: &str) -> f32 {
         let take = |n: &str, list: &[f32]| n.parse::<usize>().ok().and_then(|k| list.get(k.wrapping_sub(1))).copied();
@@ -515,6 +532,8 @@ mod tests {
             "fountain" => VC_HUSH - VC_SWELL,
             "steam" => VC_HUSH - VC_CRACK,
             "tick" => 1.6,
+            "hush" => VC_HUSH_LEN,
+            "seism" => VC_SEISM_LEN,
             "after" => 21.5,
             "patter" => 17.5,
             "flow_far" => VC_FAR,
@@ -536,15 +555,36 @@ mod tests {
             assert!((t - (VC_ERUPT + late - VC_LEAD)).abs() < 0.01, "{z}: {t}");
             let c = h.iter().find(|e| e.1.contains(".collapse")).expect("the collapse").0;
             assert!((c - (VC_COLLAPSE + late)).abs() < 0.01, "{z}: {c}");
-            // (the thump through the ground and nothing else in the wait: the burst is watched in silence)
+            // (in the wait only the hush and the jolt through the ground, and the report cuts both)
             let s = h.iter().find(|e| e.1.contains(".seism")).expect("the seism").0;
             assert!((s - (VC_ERUPT + (z / GROUND_V) as f32)).abs() < 0.01, "{z}: {s}");
-            assert!(!h.iter().any(|e| e.0 > VC_HUSH && e.0 < t - 0.05 && !e.1.contains(".seism") && !e.1.starts_with("stop")), "{z}: something plays in the wait");
+            let other = |e: &&(f32, String, f32, f32, bool)| !e.1.contains(".seism") && !e.1.contains(".hush") && !e.1.starts_with("stop");
+            assert!(!h.iter().filter(other).any(|e| e.0 > VC_HUSH && e.0 < t - 0.05), "{z}: something else plays in the wait");
+            for name in ["hush", "seism"] {
+                let stop = format!("stop orbital:supervolcano.{name}");
+                let cut = h.iter().find(|e| e.1 == stop).unwrap_or_else(|| panic!("{z}: {name} isn't cut")).0;
+                assert!((cut - (t + VC_LEAD + VC_CUT)).abs() < 0.01, "{z}: {name} cut at {cut}");
+            }
+        }
+    }
+
+    /// The wait between the mount's stopping and the report is never silent: the hush starts on the tremor's last sample,
+    /// on the strike's clock, and it and the seism last until the report cuts them, however far off the player is.
+    #[test]
+    fn vc_sound_the_wait_is_filled_until_the_report() {
+        for z in [500.0, 1000.0, 1400.0, 2000.0, 3000.0] {
+            let h = heard(z);
+            let hush = h.iter().find(|e| e.1.ends_with(".hush")).expect("the hush");
+            assert!((hush.0 - VC_HUSH).abs() < 1e-4 && hush.2 > 0.5, "{z}: the hush at {} at {}", hush.0, hush.2);
+            let t = h.iter().find(|e| e.1.ends_with(".report") || e.1.ends_with(".report_far")).expect("the report").0;
+            let s = h.iter().find(|e| e.1.ends_with(".seism")).expect("the seism").0;
+            assert!(VC_HUSH + VC_HUSH_LEN > t + VC_LEAD + VC_CUT + 0.2, "{z}: the hush ends before the report");
+            assert!(s + VC_SEISM_LEN > t + VC_LEAD + VC_CUT + 0.2, "{z}: the seism ends before the report");
         }
     }
 
     #[test]
-    fn vc_sound_the_hush_is_silent_at_any_distance() {
+    fn vc_sound_the_mount_stops_dead_at_the_hush() {
         for z in [300.0, 600.0, 1000.0, 1400.0, 2000.0, 3000.0] {
             for (t, event, _, pitch, _) in heard(z) {
                 if let Some(name) = event.strip_prefix("orbital:supervolcano.") {

@@ -2430,5 +2430,14 @@
       }
     ],
     "subtitle": "subtitles.orbital.supervolcano.flow_in"
+  },
+  "supervolcano.hush": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/hush",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.hush"
   }
 }
