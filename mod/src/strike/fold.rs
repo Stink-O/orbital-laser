@@ -19,7 +19,7 @@
 //!                     FD_BEAT it hits the target: a tiny light, a small hit and a ding
 //!   FD_RELEASE        going back, not a rewind: at 40.95 the metal lets go and the hole opens; the tube gives at 42.2, catches at 42.55-42.88, and lets go
 //!                     (fw_tau): the sphere opens, the bud stands again with every ring up
-//!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each, and each shows the real damage of its ring, held up at the land's level (fd_hold_areas)
+//!   FD_SLAM           ring by ring, outermost first, each falls and bangs down, a pause and a shock to each, and from each the old land crumbles away inward, the real damage of that ring showing, held up at the land's level (fd_hold_areas)
 //!   FD_SLAM[4]        the last ring lands: all the crater is in (FD_REVEAL), and it falls in over about 6 s, kite by kite, from the middle out (fold_warp.wgsl's fw_sunk)
 //!   FD_ERUPT          what was pent up is let go along the ground: a low wall of fire racing out, the biggest shock, the dust and the debris
 //!   FD_SLAM[4]-FD_LEN the comedown: the creases fade, the void seals
@@ -71,18 +71,24 @@ pub const FD_REVEAL: f32 = FD_SLAM[4];
 /// The terrain on screen held as it stands, the land's edits going in behind it, not paced by the frame time. The hold lets go a
 /// frame ahead of the reveal: the swap shows the frame after it is asked for, and the warp lifting the old land for that frame is a dome.
 pub const FD_HIDDEN: std::ops::Range<f32> = FD_SEAL - 8.0..FD_REVEAL - 0.03;
-/// How far from the target the land stays held once each of the first four rings has landed, the real land outside it taking its place: each bang shows
-/// its own ring's damage (`render.hold-world-within`). fold_warp.wgsl's fw_freed_at the same. Past the first of these is what the crater doesn't reach.
-const FD_HELD_TO: [f64; 4] = [306.3, 176.3, 104.3, 44.3];
+/// The old land doesn't wait whole for its bang: from each it crumbles away inward across the ring that has just landed: from when to when, from how far from the target to how far
+/// (`render.hold-world-within`; fold_warp.wgsl's fw_front and fw_freed_at the same). Past the first ring is what the crater doesn't reach.
+const FD_CRUMBLE: [(f32, f32, f32, f32); 4] = [(44.1, 45.1, 560.0, 306.3), (45.2, 46.2, 306.3, 176.3), (46.3, 47.3, 176.3, 104.3), (47.4, 48.6, 104.3, 44.3)];
+/// How far from the target the old land still reaches at strike second `t`.
+fn fd_front(t: f32) -> Option<f32> {
+    let mut front = None;
+    for (t0, t1, r0, r1) in FD_CRUMBLE {
+        if t >= t0 {
+            front = Some(r0 + (r1 - r0) * ((t - t0) / (t1 - t0)).clamp(0.0, 1.0));
+        }
+    }
+    front
+}
 /// The land round the player, left for the last slam (fold_land.rs's FD_ISLE + 11.4; fold_warp.wgsl's FW_ISLE).
 pub(super) const FD_ISLE_HELD: f64 = 41.4;
-/// What of the land is still held at strike second `t`: none, all of it (`render.hold-world-within`). The hold on a ring lets go a frame ahead of its bang, as the last does (FD_HIDDEN).
+/// What of the land is still held at strike second `t`: none, all of it (`render.hold-world-within`).
 pub fn fd_hold_areas(t: f32, at: [f64; 2], me: [f64; 2]) -> Vec<(f64, f64, f64)> {
-    let landed = FD_SLAM[..4].iter().filter(|s| t >= **s - 0.03).count();
-    if landed == 0 {
-        return Vec::new();
-    }
-    vec![(at[0], at[1], FD_HELD_TO[landed - 1]), (me[0], me[1], FD_ISLE_HELD)]
+    fd_front(t).map_or_else(Vec::new, |r| vec![(at[0], at[1], f64::from(r)), (me[0], me[1], FD_ISLE_HELD)])
 }
 /// The world closed round the player, from the walls coming in to their opening again: the sphere goes with them (fold_warp's
 /// fw_stay), so they can't leave it or see its outside, and lib.rs keeps their flight to vanilla's and them from going too far.

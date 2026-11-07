@@ -1072,12 +1072,12 @@ fn fw_gone(n: i32, t: f32) -> f32 {
 }
 // How far down node (k, n) ends up: the rim not at all.
 fn fw_sag_node(k: i32, n: i32) -> f32 {
-    var d = 20.0;
+    var d = 36.0;
     if (n >= 3) {
         return 0.0;
     }
     if (n >= 0) {
-        d = select(select(8.0, 13.0, n == 1), 18.0, n == 0) * (0.75 + 0.5 * fw_hash(vec2<f32>(f32(k) * 5.0 + 2.0, f32(n) * 9.0 + 4.0)));
+        d = select(select(14.0, 24.0, n == 1), 32.0, n == 0) * (0.65 + 0.7 * fw_hash(vec2<f32>(f32(k) * 5.0 + 2.0, f32(n) * 9.0 + 4.0)));
     }
     return d;
 }
@@ -1108,14 +1108,34 @@ fn fw_vn(p: vec2<f32>) -> f32 {
 }
 // Whether the land really changes: the terrain on (lib.rs's `flags_of`; with it off the old land is all there is).
 fn fw_real_land() -> bool { return fract(globals.warp[3].w) > 0.1; }
-// When the real land of the chunk at Q takes its place: as its ring lands, outermost first, the land under the player with the last. By the middle of the chunk, as the game lets it go
-// (strike/fold.rs's fd_hold_areas: the same circles). `S`: the middle of the chunk from the target.
+// How far from the target the old land still reaches at t: it doesn't wait whole for its bang but crumbles away inward from each, across the ring that has just landed (strike/fold.rs's fd_front).
+fn fw_crumble(t: f32, t0: f32, t1: f32, r0: f32, r1: f32) -> f32 { return mix(r0, r1, clamp((t - t0) / (t1 - t0), 0.0, 1.0)); }
+fn fw_front(t: f32) -> f32 {
+    if (t < 44.1) { return 1.0e6; }
+    if (t < 45.2) { return fw_crumble(t, 44.1, 45.1, 560.0, 306.3); }
+    if (t < 46.3) { return fw_crumble(t, 45.2, 46.2, 306.3, 176.3); }
+    if (t < 47.4) { return fw_crumble(t, 46.3, 47.3, 176.3, 104.3); }
+    if (t < FW_SLAM4) { return fw_crumble(t, 47.4, 48.6, 104.3, 44.3); }
+    return 0.0;
+}
+// When the real land of the chunk at Q takes its place: as the front crumbles past it, the land under the player with the last, on the tick the game lets it go. By the middle of the chunk, as the
+// game does (strike/fold.rs's fd_hold_areas: the same circles). `S`: the middle of the chunk from the target.
 fn fw_freed_at(S: vec2<f32>, c: FwClock) -> f32 {
     if (!fw_real_land() || length(S - (c.me - c.tgt).xz) < FW_ISLE) {
         return FW_SLAM4;
     }
     let d = length(S);
-    return select(select(select(select(fw_hit(0), fw_hit(1), d > 44.3), fw_hit(2), d > 104.3), fw_hit(3), d > 176.3), fw_hit(4), d > 306.3);
+    var at = FW_SLAM4;
+    if (d > 306.3) {
+        at = 44.1 + clamp((560.0 - d) / 253.7, 0.0, 1.0);
+    } else if (d > 176.3) {
+        at = 45.2 + (306.3 - d) / 130.0;
+    } else if (d > 104.3) {
+        at = 46.3 + (176.3 - d) / 72.0;
+    } else if (d > 44.3) {
+        at = 47.4 + 1.2 * (104.3 - d) / 60.0;
+    }
+    return ceil(at * 20.0 - 0.001) / 20.0;
 }
 // The crater goes in held up where the land had sunk to: the last slam breaks the land along its creases, and each panel of the pattern lets go on
 // its own time, from the middle out, the one under the player first, and falls to where it really lies (strike/fold_land.rs's `bowl`:
@@ -1166,7 +1186,9 @@ fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {
         let i = cp_cell(w, r);
         if (i < 4) {
             let kt = cp_kite(w, i);
-            Q.y -= fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - (c.me - c.tgt).xz)) * (1.0 - fw_ss(0.0, 3.0, t - FW_SLAM4));
+            // (and what is left of it pulled down at the edge that is going, so that it lies under the rubble round it and never over it)
+            let edge = select(0.0, 14.0 * fw_ss(44.0, 0.0, fw_front(t) - r), fw_real_land() && t > 44.1);
+            Q.y -= (fw_sag(w, i, kt, cp_tri(kt, (w.u * w.e0 + w.v * w.e1) * r, false), t) + edge) * fw_ss(FW_FEET, FW_FEET + 40.0, length(Q.xz - (c.me - c.tgt).xz)) * (1.0 - fw_ss(0.0, 3.0, t - FW_SLAM4));
         }
     }
     // (the player rides it: what is under them is taken off everything, as though they rose and fell with the land)
@@ -1407,6 +1429,12 @@ fn fw_hurt(r: f32, w: CpW, i: i32, d: f32, t: f32, px: f32) -> FwHurt {
         let run = fw_ss(0.0, 34.0, a * 480.0 - (out_ - r));
         o.crack = max(o.crack, (1.0 - fw_ss(0.5, 1.4 + px, d - 0.5 * fw_ss(0.0, 0.5, a))) * run);
         o.ember = max(o.ember, (1.0 - fw_ss(0.05, 0.6 + px, d)) * run * (0.3 + 0.7 * exp(-a * 1.8)));
+    }
+    // (what hasn't landed cracks all the same, wider with every bang round it: the last of the old land is breaking up, not waiting)
+    if (a <= 0.0 && t > FW_FLAT) {
+        let wide = 0.9 * clamp(t - FW_FLAT, 0.0, 4.6);
+        o.crack = max(o.crack, 1.0 - fw_ss(0.5, 1.4 + wide + px, d));
+        o.ember = max(o.ember, (1.0 - fw_ss(0.1, 0.5 + 0.3 * wide + px, d)) * 0.55);
     }
     return o;
 }
