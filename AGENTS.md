@@ -363,6 +363,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   loaded, jobs, rings) each time a stage asks what's ready: keep it O(what's due). The Nuke's land waits for columns
   not loaded, asking again a ring at a time, and goes in late as they come; it leaves out what never loads (logged
   `nuke: N columns of the land never loaded`).
+- **The Fold has three crease patterns on one set of tables** (`tools/foldview/pattern.py` writes them into fold_warp.wgsl and strike/fold.rs: change them there): twelve creases, five rings, and across a panel nothing, an X or a diagonal (`cp_mode`, the wheel's FOLD row, `/orbital foldpattern a|b|c`, kept, read at the fire). params[10] carries it: under the level, 1024ths, 100 pattern + the player's panel + 1 (`fd_lie`, `cp_code`). The crater breaks along it (`facet`), and `fw_sag`, `fw_hurt` and `fw_sunk` go by the same nodes and lines, so the crater lands on what the bangs have already done.
 - **The Fold's look is not in its pass.** The land's vertices and pixels go through the fork's `render.set-warp`
   (`shaders/fold_warp.wgsl`, API 11, built into terrain.wgsl and entity.wgsl by the fork's `gfx/warp.rs`; what follows its
   `// [fragments]` line is `world_fragment`, terrain pixels only), so `tools/preview.py` shows only `fold.wgsl`'s droplet, void and

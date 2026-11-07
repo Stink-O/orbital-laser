@@ -13,17 +13,17 @@ TY=109
 def src(): return WARP.read_text()
 def table(name,s=None):
     s=s or src()
-    m=re.search(r'var<private> '+name+r': array<f32, 40> = array<f32, 40>\(([^)]*)\)',s)
+    m=re.search(r'var<private> '+name+r': array<f32, \d+> = array<f32, \d+>\(([^)]*)\)',s)
     return np.array([float(x) for x in m.group(1).split(',')])
-CREASES=[0.0,38.0,109.0,125.0,180.0,263.0,289.0,332.0]
+N=12
 def fd_pin(mx,mz,seed):
     """strike/fold.rs fd_pin: target at the origin"""
-    inv=table('CP_INV').reshape(8,5)
+    inv=table('CP_INV').reshape(N,5)
     r=math.hypot(mx,mz); turn=((seed*0.618034)%1.0)*360
     x=(math.degrees(math.atan2(mz,mx))-turn)%360
-    k=max(i for i,c in enumerate(CREASES) if x>=c); k1=(k+1)%8
+    k=int(x/(360/N))%N; k1=(k+1)%N
     cr=lambda a,b: math.sin(math.radians(b-a))
-    a0,a1=CREASES[k],CREASES[k1]
+    a0,a1=k*360/N,(k+1)*360/N
     u,v=cr(x,a1)/cr(a0,a1),cr(a0,x)/cr(a0,a1)
     cell=next((i for i in range(5) if r*(u*inv[k,i]+v*inv[k1,i])<1.0),5)
     return 6*k+cell
@@ -68,13 +68,13 @@ class Land:
         h.sort(); low=h[len(h)//6]
         return float(max(min(low-ty-1,0),-80))
 class Scene:
-    def __init__(s,dist=170.0,high=33.0,bearing=-90.0,seed=5.0,level=None,land=None,fog=4096.0):
-        s.fog=fog
+    def __init__(s,dist=170.0,high=33.0,bearing=-90.0,seed=5.0,level=None,land=None,fog=4096.0,pattern=0):
+        s.fog=fog; s.pattern=pattern
         a=math.radians(bearing); s.mx,s.mz=dist*math.cos(a),dist*math.sin(a); s.my=TY+high
         s.seed=seed; s.land=land
         s.level=(land.level() if land else -8.0) if level is None else level
         s.pin=fd_pin(s.mx,s.mz,seed)
-        s.lev=s.level-(s.pin+1)/64.0
+        s.lev=s.level-(100*pattern+s.pin+1)/1024.0
     def args(s):
         return [f'tx=0',f'ty={TY}','tz=0',f'seed={s.seed}',f'level={s.lev}',f'cx={s.mx}',f'cy={s.my}',f'cz={s.mz}',f'fog={s.fog}']
 SH_CACHE={}

@@ -277,6 +277,7 @@ struct Settings {
     follow_distance: f64,
     seed_lock: Option<u32>,
     impact_style: u8,
+    fold_pattern: usize,
     carry_turn: bool,
 }
 
@@ -324,6 +325,8 @@ struct Orbital {
     /// Whether each of wheel::SOUND_LASERS plays its alternative blast (`/orbital payloadsound`, `/orbital nukesound`;
     /// the Payload's thump through the ground swaps with it).
     blast_alt: [bool; 2],
+    /// Which crease pattern the next Fold folds on (strike::FD_PATTERNS; `/orbital foldpattern`, the wheel's FOLD row).
+    fold_pattern: usize,
     /// While the Fold's sphere is shut round the player (`strike::FD_STAY`): their flight kept to vanilla's at most.
     fly_held: bool,
     /// The player's flying speed, in times vanilla's (the wheel's bar and field, `/orbital flyspeed`).
@@ -406,7 +409,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD],
             compiled: None,
@@ -433,6 +436,7 @@ impl Orbital {
             fast,
             impact,
             impact_style,
+            fold_pattern,
             knock,
             follow,
             following: None,
@@ -463,7 +467,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nfoldpattern={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.hud),
@@ -475,6 +479,7 @@ impl Orbital {
             if self.blast_alt[1] { "alt" } else { "main" },
             if self.fast { "fast" } else { "full" },
             if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" },
+            strike::FD_PATTERNS[self.fold_pattern.min(2)].0,
             if self.knock { "on" } else { "off" },
             if self.carry_turn { "turn" } else { "still" },
             if self.follow { "on" } else { "off" },
@@ -522,6 +527,7 @@ impl Orbital {
         let mut fast = true;
         let mut impact = true;
         let mut impact_style = 1u8;
+        let mut fold_pattern = 0;
         let mut knock = true;
         let mut carry_turn = true;
         let mut follow = false;
@@ -547,6 +553,7 @@ impl Orbital {
                         impact_style = i as u8;
                     }
                 }
+                Some(("foldpattern", v)) => fold_pattern = strike::FD_PATTERNS.iter().position(|p| p.0 == v).unwrap_or(0),
                 Some(("knockback", v)) => knock = v != "off",
                 Some(("carryview", v)) => carry_turn = v != "still",
                 Some(("follow", v)) => follow = v == "on",
@@ -562,7 +569,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn }
     }
 
     /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
@@ -645,7 +652,7 @@ impl Orbital {
     // ---- the wheel ----
     fn show_wheel(&self) {
         if let Some(w) = &self.wheel {
-            ui::show(&w.draws(self.laser, self.terrain, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
+            ui::show(&w.draws(self.laser, self.terrain, self.hud, self.approach, self.arrival, &self.colours, &self.blast_alt, self.fast, if self.impact { 1 + usize::from(IMPACT_ORDER.iter().position(|&s| s == self.impact_style).unwrap_or(0) as u8) } else { 0 }, self.fold_pattern, self.knock, self.follow, self.seed_lock.is_some(), self.seed_lock.or(self.fired.then_some(self.last_seed))));
         }
     }
     fn open_wheel(&mut self) {
@@ -762,6 +769,12 @@ impl Orbital {
                 }
                 self.set_impact(k > 0);
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
+            Some(wheel::Spot::Crease(k)) => {
+                self.fold_pattern = k.min(strike::FD_PATTERNS.len() - 1);
+                self.save();
+                world::play_sound("minecraft:ui.button.click", None, 0.6, 1.3);
                 self.show_wheel();
             }
             Some(wheel::Spot::Knock) => {
@@ -965,7 +978,7 @@ impl Orbital {
         ground::clear();
         columns::clear();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
-        let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
+        let option = if laser.key == "fold" { self.fold_pattern } else { wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s])) };
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
         // (the Fold asks how low the land lies round the target; `tick` takes the answer in)
         let level_tag = (laser.key == "fold").then(|| {
@@ -984,7 +997,7 @@ impl Orbital {
         params[9] = 1.0;
         params[11] = hit.block_y as f32;
         if laser.key == "fold" {
-            params[10] = strike::fd_lie(0.0, strike::fd_pin(target.point, me, seed));
+            params[10] = strike::fd_lie(0.0, strike::fd_pin(target.point, me, seed), self.fold_pattern);
         }
         if is_ship(laser) {
             params[12] = self.approach as f32;
@@ -1839,6 +1852,18 @@ impl Mod for Orbital {
                     Some(_) => Err(format!("/orbital {c} main or alt")),
                 }
             }
+            (Some("foldpattern"), v) => {
+                let names = |k: usize| strike::FD_PATTERNS[k].1.to_lowercase();
+                match v.and_then(|v| strike::FD_PATTERNS.iter().position(|p| p.0 == v || p.1.to_lowercase() == v)) {
+                    Some(k) => {
+                        self.fold_pattern = k;
+                        self.save();
+                        Ok(Some(format!("Fold pattern: {} (the next strike's)", names(k))))
+                    }
+                    None if v.is_none() => Ok(Some(format!("Fold pattern: {} (/orbital foldpattern a, b or c)", names(self.fold_pattern)))),
+                    None => Err("/orbital foldpattern a|b|c (umbrella, waterbomb, diagonal)".to_string()),
+                }
+            }
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
                 Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's, the Nuke's and the Rod's smoke at half size" } else { "full: every pixel" })))
@@ -1853,7 +1878,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | foldpattern a|b|c | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
