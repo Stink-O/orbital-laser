@@ -1323,12 +1323,15 @@ fn fb_boil(colIn: vec3<f32>, v: vec3<f32>, far: f32, t: f32, mq: vec3<f32>, gq: 
             let S = S0;
             let ps = px * s;
             let th = atan2(q.y, q.x);
-            let wn0 = fbm(q * 0.013 + vec2<f32>(4.0, 1.0)) - 0.5;
-            let wn1 = fbm(q * 0.05 + vec2<f32>(t * 0.4 + 0.5 * fb_ramp(34.5, 36.0, t), 8.0)) - 0.5;
+            let wn0p = q * 0.013 + vec2<f32>(4.0, 1.0);
+            let wn0 = 0.55 * vnoise(wn0p) + 0.3 * vnoise(wn0p * 2.03 + 17.3) + 0.15 * vnoise(wn0p * 4.1 + 9.1) - 0.5;
+            // (thick, so its edge wanders in lobes, with no fray to it)
+            let wp = q * 0.05 + vec2<f32>(t * 0.4 + 0.5 * fb_ramp(34.5, 36.0, t), 8.0);
+            let wn1 = 0.62 * vnoise(wp) + 0.38 * vnoise(wp * 2.1 + 3.0 - 0.3 * t) - 0.5;
             let mt = fb_metal(q, t, S, rd);
             // (its edge wanders, a skin of it thin at the very edge)
             let wr = fw_ss(34.2, 35.8, t) * (1.0 - fw_ss(FB_SEAL, FB_SEAL + 0.3, t));
-            var edge = -mt.d + 44.0 * wn0 + (22.0 + 26.0 * wr) * wn1;
+            var edge = -mt.d + 44.0 * wn0 + (24.0 + 30.0 * wr) * wn1;
             var soft = max(ps, 3.0);
             // (the seethe: at the fronts and round the pockets, in a band that widens as they close. It lifts the edge itself)
             var se = vec3<f32>(0.0);
