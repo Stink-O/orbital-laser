@@ -10,7 +10,7 @@
 //   FW_WRAP0   the roll's ring comes in to the target and its tube down, as the swell lies down onto its floor and the land comes back to
 //              its own size; by FW_HOLD it has stopped closing (fw_tb), a tube: the player on its floor, the whole of the land round them to
 //              the far land's end, the hole in the roof that end, one round line
-//   FW_CRUSH   the hole closes a little (fw_shut) and fold.wgsl's boil takes it from there: metal wells up through a mesh over the hole, gathers, and one drop falls to the target
+//   FW_CRUSH   from 32.5 the hole closes a little (fw_shut) and fold.wgsl's boil takes it: tongues of metal crawl in over it, join, heave, flow to the drip, and one drop falls to the target
 //   FW_BEAT    the drop touches the target
 //   FW_REL     it goes back, not as it came: the metal lets go and the hole opens (fw_shut, fold.wgsl's fd_opened); the tube gives, catches itself and lets go (fw_tau),
 //              and the bud stands again, every ring up; then
