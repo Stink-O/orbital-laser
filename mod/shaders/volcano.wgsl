@@ -2,13 +2,13 @@
 // this file and volcano_mount.wgsl. Validate with tools/check-shader.sh.
 
 // ---- laser 14: the supervolcano ----
-// A satellite's beam melting a hole (`vc_opening`), the tremor, the mount rising round it, then one soft volume: a density falling off through a surface
-// bulged by lumps on lumps (`vc_sdf`, sphere-traced only over empty air), lit by looks towards the light. The blast
+// A satellite's beam melting a hole (`vc_opening`), the tremor, the mount rising round it (volcano_mount.wgsl), then one
+// soft volume: a density falling off through a surface bulged by lumps on lumps (`vc_sdf`, sphere-traced only over empty air), lit by looks towards the light. The blast
 // (`vc_col`), the shock (`vc_shells`, `vc_dust`), rock (`vc_spray`); fire in the trunk (`vc_heat`); bombs on ropes of
 // smoke (`vc_bombs_smoke`); the umbrella over the sky, lightning in it (`vc_umb`, `vc_flash`, `vc_bolts`); noon gone dark
 // (`vc_dim`). The column falls back (`VC_COLLAPSE`) into a wall of ash (`vc_flow`) that engulfs the player and lifts into
 // a ceiling; then a dim world and a blood-red sun as the ash thins, gone by VC_LEN.
-// strike/volcano.rs keeps its VC_* in step with these, and gives the table: the bombs, the land's height.
+// Keep the VC_* beats in step with strike/volcano.rs's, which gives the table: the bombs, the land's height.
 const VC_LEN: f32 = 88.0;
 const VC_HIT: f32 = 4.5;           // the satellite's beam fires (the opening: vc_opening)
 const VC_CRACK: f32 = 6.0;         // the ring cracks through
@@ -1775,7 +1775,7 @@ fn vc_sat_dir() -> vec2<f32> {
 // From the vent, parked (drifting slowly along its orbit); and how far it is from there: falling in down a steep slant
 // from 1,900 higher, 1,000 along its orbit and 1,500 nearer the player (from below, seen falling down their sky), steadily to
 // VC_IGN, then braking, hardest late, to a soft stop at VC_ARRIVE, sagging 40 past its station and back; gone straight
-// back up from VC_BURN. (tools/vc_sat_motion.py's `offset`: keep them in step.)
+// back up from VC_BURN.
 fn vc_sat0() -> vec3<f32> {
     let d = vc_sat_dir();
     let s = -1600.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - VC_HIT);
@@ -2294,7 +2294,8 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
     return c;
 }
 
-// ---- the jolt on the picture (as the Nuke's pl_jolt): the tremor building, the eruption's front, the wall arriving -
+// ---- the jolt on the picture (as the Nuke's pl_jolt): the tremor building, the eruption's front (the rest is the game's
+// shake, volcano.rs) ----
 fn vc_jolt(in: StageIn) -> StageIn {
     vc_px = in.position.xy;
     let t = now();
