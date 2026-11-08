@@ -58,11 +58,11 @@ const HU_YHI: f32 = 480.0;
 @group(0) @binding(8) var block_sprites: texture_2d_array<f32>;
 @group(0) @binding(9) var block_sampler: sampler;
 
+// (the index clamped rather than an early return: NVIDIA's OpenGL compiler refuses the guarded read once it is inlined,
+// "lvalue in array access too complex")
 fn hu_u(i: u32) -> u32 {
-    if (i >= arrayLength(&mod_data)) {
-        return 0u;
-    }
-    return mod_data[i];
+    let n = arrayLength(&mod_data);
+    return select(0u, mod_data[min(i, n - 1u)], i < n);
 }
 fn hu_w(i: u32) -> f32 {
     return bitcast<f32>(hu_u(i));
@@ -1895,10 +1895,11 @@ fn hurricane(in: StageIn, stage: u32, hj: HuJoin) -> PlOut {
         let full = vec2<i32>(frame.resolution.xy);
         let q = vec2<i32>(floor(in.position.xy)) * 2;
         let q1 = min(q + vec2<i32>(1), full - vec2<i32>(1));
-        let d0 = textureLoad(scene_depth, q, 0);
-        let d1 = textureLoad(scene_depth, vec2<i32>(q1.x, q.y), 0);
-        let d2 = textureLoad(scene_depth, vec2<i32>(q.x, q1.y), 0);
-        let d3 = textureLoad(scene_depth, q1, 0);
+        // (through depth_at at each pixel's middle, not textureLoad: OpenGL can't load from a depth texture)
+        let d0 = depth_at((vec2<f32>(q) + 0.5) * frame.resolution.zw);
+        let d1 = depth_at((vec2<f32>(f32(q1.x), f32(q.y)) + 0.5) * frame.resolution.zw);
+        let d2 = depth_at((vec2<f32>(f32(q.x), f32(q1.y)) + 0.5) * frame.resolution.zw);
+        let d3 = depth_at((vec2<f32>(q1) + 0.5) * frame.resolution.zw);
         let hq = vec2<i32>(floor(in.position.xy));
         d = select(min(min(d0, d1), min(d2, d3)), max(max(d0, d1), max(d2, d3)), ((hq.x + hq.y) & 1) == 0);
         uv = (vec2<f32>(q) + 1.0) * frame.resolution.zw;
