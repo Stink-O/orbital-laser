@@ -2,7 +2,8 @@
 //! Everything from the vent is late by the distance (343 blocks a second); what comes through the ground, five times
 //! sooner. The one exception is the mount (2 to 17 s): all of it stops dead at the hush with the picture, wherever the
 //! player is, so what plays then is on the strike's clock and ends by 17 s; the hush's own swell starts on that same
-//! tick, and it and the jolt through the ground hold the wait until the report cuts them. The player may well fly in a strike this
+//! tick, and it and the jolt through the ground hold the wait until the report cuts them, the blast's front (`front`)
+//! swelling over them into the report. The player may well fly in a strike this
 //! long, so the plan asks where they are as each part comes due (the mount, the eruption, each bomb, the collapse),
 //! rather than once as it fires. They are at least 1,000 blocks off as it fires; they can fly closer, so nothing here
 //! breaks at any distance.
@@ -44,6 +45,10 @@ const VC_FAR: f32 = 22.0;
 const VC_LEAD: f32 = 0.02;
 /// The report cuts `hush` and `seism` this long after it comes, under its front.
 const VC_CUT: f32 = 0.05;
+/// front1-4's runs to the report (each file this long and then `VC_FRONT_TAIL`, going under the report's front): the
+/// longest that starts no sooner than the seism is played (tools/sounds_volcano.py's FRONTS, FRONT_TAIL).
+const VC_FRONTS: [f32; 4] = [1.6, 2.3, 3.2, 4.5];
+const VC_FRONT_TAIL: f32 = 0.1;
 /// The land mass dropping, into `collapse`.
 const VC_DROP: f32 = 3.0;
 /// When `after` and `patter` start: both end at 87.8 s.
@@ -413,6 +418,13 @@ fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32) -> Option
     Some(hit)
 }
 
+/// Which of front1-4 runs from the ground's answer at `ground` to the report at `report`: the longest that starts no
+/// sooner than the seism (so it fades in under its thump, or after it under its roll), or for a player so close that
+/// none does, the shortest, so long as it starts after the hush.
+fn front_take(ground: f32, report: f32) -> Option<usize> {
+    (0..VC_FRONTS.len()).rev().find(|&k| report - VC_FRONTS[k] >= ground - 0.01).or_else(|| (report - VC_FRONTS[0] >= VC_HUSH + 0.05).then_some(0))
+}
+
 /// The Supervolcano's sounds, on plan `p`: the vent at `vent`, the player at `me` as it fires, `s` the pass's seed (the
 /// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land, `sat` which
 /// of the satellite's takes plays (1 to SAT_TAKES).
@@ -438,14 +450,18 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         let (_, d) = sound_from(vent, live(me));
         play(q, VC_HUSH, "hush", (1500.0 / d.max(1500.0)).sqrt(), 1.0);
     });
-    // ---- the eruption: first a jolt through the ground and the ground shaking on under the hush, the air's report and
-    // the column long after it, one moment late by the distance, cutting the wait's sounds; the bombs and the lightning
-    // on it
+    // ---- the eruption: first a jolt through the ground and the ground rolling on under the hush, then the blast's front
+    // coming over the land and swelling into the air's report and the column, one moment late by the distance, cutting
+    // the wait's sounds; the bombs and the lightning on it
     p.later(VC_ERUPT - 0.1, move |q| {
         let me = live(me);
         let (late, d) = sound_from(vent, me);
-        play(q, VC_ERUPT + (d / GROUND_V) as f32, "seism", (1500.0 / d.max(1500.0)).powf(0.7), 1.0);
+        let ground = VC_ERUPT + (d / GROUND_V) as f32;
+        play(q, ground, "seism", (1500.0 / d.max(1500.0)).powf(0.7), 1.0);
         let report = VC_ERUPT + late;
+        if let Some(k) = front_take(ground, report) {
+            play(q, report - VC_FRONTS[k], &format!("front{}", k + 1), (1000.0 / d.max(1000.0)).sqrt(), 1.0);
+        }
         for name in ["hush", "seism"] {
             q.ev.push((report + VC_CUT, Act::Cmd(format!("stopsound @s * {}", ev(name)))));
         }
@@ -560,6 +576,7 @@ mod tests {
             "boom" | "boom_far" => VC_BOOM_LEN,
             "hush" => VC_HUSH_LEN,
             "seism" => VC_SEISM_LEN,
+            n if n.starts_with("front") => take(&n[5..], &VC_FRONTS).unwrap() + VC_FRONT_TAIL,
             "after" => 21.5,
             "patter" => 17.5,
             "flow_far" => VC_FAR,
@@ -581,10 +598,11 @@ mod tests {
             assert!((t - (VC_ERUPT + late - VC_LEAD)).abs() < 0.01, "{z}: {t}");
             let c = h.iter().find(|e| e.1.contains(".collapse")).expect("the collapse").0;
             assert!((c - (VC_COLLAPSE + late)).abs() < 0.01, "{z}: {c}");
-            // (in the wait only the hush and the jolt through the ground, and the report cuts both)
+            // (in the wait only the hush, the jolt through the ground and the blast's front coming, and the report cuts the
+            // first two)
             let s = h.iter().find(|e| e.1.contains(".seism")).expect("the seism").0;
             assert!((s - (VC_ERUPT + (z / GROUND_V) as f32)).abs() < 0.01, "{z}: {s}");
-            let other = |e: &&(f32, String, f32, f32, bool)| !e.1.contains(".seism") && !e.1.contains(".hush") && !e.1.starts_with("stop");
+            let other = |e: &&(f32, String, f32, f32, bool)| !e.1.contains(".seism") && !e.1.contains(".hush") && !e.1.contains(".front") && !e.1.starts_with("stop");
             assert!(!h.iter().filter(other).any(|e| e.0 > VC_HUSH && e.0 < t - 0.05), "{z}: something else plays in the wait");
             for name in ["hush", "seism"] {
                 let stop = format!("stop orbital:supervolcano.{name}");
@@ -606,6 +624,27 @@ mod tests {
             let s = h.iter().find(|e| e.1.ends_with(".seism")).expect("the seism").0;
             assert!(VC_HUSH + VC_HUSH_LEN > t + VC_LEAD + VC_CUT + 0.2, "{z}: the hush ends before the report");
             assert!(s + VC_SEISM_LEN > t + VC_LEAD + VC_CUT + 0.2, "{z}: the seism ends before the report");
+        }
+    }
+
+    /// The blast's front ends on the report, from no sooner than the seism (but for a player so close the gap is shorter
+    /// than its shortest take), never before the hush, and it fills the gap between them: what starts after the seism
+    /// leaves at most the seism's first stretch, which is all thump and roll, before it.
+    #[test]
+    fn vc_sound_the_front_runs_into_the_report() {
+        for z in [500.0, 800.0, 1000.0, 1400.0, 2000.0, 3000.0] {
+            let h = heard(z);
+            let f = h.iter().find(|e| e.1.contains(".front")).unwrap_or_else(|| panic!("{z}: no front"));
+            let k: usize = f.1.rsplit("front").next().unwrap().parse().unwrap();
+            let report = h.iter().find(|e| e.1.ends_with(".report") || e.1.ends_with(".report_far")).expect("the report").0 + VC_LEAD;
+            let s = h.iter().find(|e| e.1.ends_with(".seism")).expect("the seism").0;
+            assert!((f.0 + VC_FRONTS[k - 1] - report).abs() < 1e-3, "{z}: front{k} at {} doesn't end on the report at {report}", f.0);
+            assert!(f.0 >= VC_HUSH, "{z}: front{k} before the hush");
+            if report - s >= VC_FRONTS[0] {
+                assert!(f.0 >= s - 0.011, "{z}: front{k} at {} before the seism at {s}", f.0);
+                assert!(f.0 - s < 2.6, "{z}: front{k} at {} leaves the seism alone too long", f.0);
+            }
+            assert!(f.2 > 0.5, "{z}: front at {}", f.2);
         }
     }
 
