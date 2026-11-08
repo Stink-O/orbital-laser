@@ -314,6 +314,15 @@ pub mod render {
             s.hold_areas = areas.iter().copied().filter(|(x, z, r)| x.is_finite() && z.is_finite() && r.is_finite()).collect();
         });
     }
+    /// `render.set-hand-tint` (the fork's API 12): the first-person hand and held item multiplied by (r, g, b), kept
+    /// until changed, 1, 1, 1 changing nothing. Kept here as the fork keeps it (each clamped to 0..8, not a number: 1),
+    /// but nothing draws it yet: upstream's renderer has no hand tint, so the hand stays as the game draws it. It is
+    /// only the light on the hand (the Supervolcano's), so it isn't in `native_build::UNSUPPORTED` and no laser waits
+    /// for it. To draw it later: upstream's `hand_drawn` hook (API 364) hands over the hand's quads once drawn.
+    pub fn set_hand_tint(r: f32, g: f32, b: f32) {
+        let c = |v: f32| if v.is_finite() { v.clamp(0.0, 8.0) } else { 1.0 };
+        super::__host::with(|s| s.hand_tint = Some([c(r), c(g), c(b)]));
+    }
     pub fn shake(strength: f32, seconds: f32) {
         if strength.is_finite() && seconds.is_finite() && strength > 0.0 && seconds > 0.0 {
             super::__host::with(|s| {
@@ -769,6 +778,8 @@ pub mod __host {
         pub warp: Option<Warp>,
         pub hold: bool,
         pub hold_areas: Vec<(f64, f64, f64)>,
+        /// `render.set-hand-tint`'s last colour (none: never set). Kept, not drawn (see `render::set_hand_tint`).
+        pub hand_tint: Option<[f32; 3]>,
     }
 
     thread_local! {
