@@ -55,6 +55,8 @@ const VC_ROLL: f32 = 8.0;
 const VC_WHISTLES: [f32; 3] = [3.2, 4.2, 2.6];
 const VC_ROCKFALLS: [f32; 3] = [3.2, 4.0, 4.8];
 const VC_CRACK_LEN: f32 = 2.2;
+/// `tick`'s length (tools/sounds_volcano.py's TICK_D).
+const VC_TICK_LEN: f32 = 6.5;
 const VC_CREAK_LEN: f32 = 2.4;
 
 const GROUND_V: f64 = 1715.0;
@@ -109,7 +111,7 @@ pub(super) fn plate_down(p: &mut Plan, t: f32, at: [f64; 3], me: [f64; 3], size:
     let (late, d) = sound_from(at, m);
     let big = (size / 22_000.0).clamp(0.4, 1.0);
     let k = (1.0 - d / 1800.0).clamp(0.15, 1.0);
-    play(p, t + late, "report_sub", 0.6 * big * k, 0.6 + 0.12 * (1.0 - big as f32));
+    play(p, t + late, "plate_sub", 0.6 * big * k, 0.6 + 0.12 * (1.0 - big as f32));
     play(p, t + late, "thud_far1", 0.9 * k, 0.55 + 0.15 * (1.0 - big as f32));
     p.shake(t + late, (0.75 * big * (1.0 - d / 1100.0)).clamp(0.0, 0.8) as f32, 1.5);
 }
@@ -392,6 +394,9 @@ fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32) -> Option
     }
     // (under the collapse's thunder it needn't be as much: the two would be all the game's limiter heard)
     play(p, hit - VC_LEAD, "flow_hit", spent * (0.85 + 0.15 * smooth(6.0, 14.0, f64::from(hit - drop))), 1.0);
+    // (the land's drop's sub holds for seconds: it goes as the hit lands (a stopsound is heard a tick late), so the two
+    // never stack under the game's limiter; the report's own is long over by then)
+    p.ev.push((hit - VC_LEAD - 0.05, Act::Cmd(format!("stopsound @s * {}", ev("report_sub")))));
     // (the hit is the loudest thing there is for a moment: under it the jet's top goes, so nothing but the inside is left)
     for name in ["column", "column_far"] {
         p.ev.push((hit + 0.05, Act::Cmd(format!("stopsound @s * {}", ev(name)))));
@@ -410,8 +415,9 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
     play(p, 0.0, "beam", 1.0, 1.0);
     p.later(VC_HIT - 0.1, move |q| {
         let (late, d) = sound_from(vent, live(me));
-        if d < 1500.0 {
-            play(q, VC_HIT + late, "tick", (700.0 / d.max(700.0)).powf(2.5), 1.0);
+        // (the shot carries: heard however far off, so long as it's over by the hush, as everything of the mount is)
+        if VC_HIT + late + VC_TICK_LEN < VC_HUSH - 0.05 {
+            play(q, VC_HIT + late, "tick", (1000.0 / d.max(1000.0)).powf(1.3), 1.0);
         }
         mount(q, s, d);
     });
@@ -452,9 +458,10 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         let drop = VC_COLLAPSE + late + VC_DROP - VC_LEAD;
         let hit = flow(q, s, vent, me, drop);
         h1.set(hit);
-        // (the land's drop, unless the flow's hit is on it: the two would be all the game's limiter heard)
+        // (the land's drop, unless the flow's hit is on it: the two would be all the game's limiter heard; a little under
+        // the report's, since its pressure holds on for seconds under the land falling and the flow closing)
         if hit.is_none_or(|h| (h - drop).abs() > 0.8) {
-            play(q, drop, "report_sub", 0.6 * air(d), 0.8);
+            play(q, drop, "report_sub", 0.5 * air(d), 0.8);
         }
     });
     // (the lightning goes on in the ash: from inside the flow, under its near-black, nothing of it gets through
@@ -532,7 +539,7 @@ mod tests {
             "tremor" => VC_HUSH - VC_HIT,
             "fountain" => VC_HUSH - VC_SWELL,
             "steam" => VC_HUSH - VC_CRACK,
-            "tick" => 4.4,
+            "tick" => VC_TICK_LEN,
             "hush" => VC_HUSH_LEN,
             "seism" => VC_SEISM_LEN,
             "after" => 21.5,

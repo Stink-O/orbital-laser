@@ -2439,5 +2439,14 @@
       }
     ],
     "subtitle": "subtitles.orbital.supervolcano.hush"
+  },
+  "supervolcano.plate_sub": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/plate_sub",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.plate_sub"
   }
 }
