@@ -4,7 +4,7 @@ version = "0.5.11"
 priority = 100
 
 [compatibility]
-horizon_revision = "e57b1d34bb0dcf6bf081c19fe6d2e7f69b60cdf4"
+horizon_revision = "c98a51a664c8ce8ec166ecedd85bb47b3687b336"
 
 # The mod's code, unchanged, on a native build of its SDK (engine/src/horizon_sdk.rs).
 [[crate]]

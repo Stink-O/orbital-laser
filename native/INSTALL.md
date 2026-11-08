@@ -1,7 +1,5 @@
 # Orbital Laser 0.5.10 on native Horizon: install
 
-(The native version stays at 0.5.10: the Fold, in 0.5.11, needs changes to the renderer that regular Horizon doesn't have yet. This folder doesn't build from this commit: its last good source is the tag `v0.5.10`.)
-
 Orbital Laser 0.5.10 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
 the game. Its code runs with full access to your computer, like any native mod, so only install it if you trust it.
 
@@ -9,7 +7,7 @@ the game. Its code runs with full access to your computer, like any native mod, 
 
 - The Horizon launcher, 0.2.37 or newer ([playhorizon.dev](https://playhorizon.dev)), and a Horizon instance of its
   own (not the Orbital Laser build's game folder). Any installed release or Nightly will do: the mod is pinned to
-  upstream Horizon `e57b1d34bb0dcf6bf081c19fe6d2e7f69b60cdf4`, and the launcher builds it on that commit.
+  upstream Horizon `c98a51a664c8ce8ec166ecedd85bb47b3687b336`, and the launcher builds it on that commit.
 - The first native build downloads the launcher's own Rust (1.99.1) and takes 20 to 30 minutes. Later builds are
   quicker. You don't need Rust installed yourself.
 
