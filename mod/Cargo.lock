@@ -44,7 +44,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "horizon-mod-sdk"
 version = "0.1.0"
-source = "git+https://github.com/Stink-O/horizon?branch=mod-api-input-ui-render-world#cee8008021060f5982905bf0e4d1a96cc1e2bea0"
+source = "git+https://github.com/Stink-O/horizon?branch=mod-api-input-ui-render-world#dbcb034b5eda14e5dd52e24ea65d4928457cf3c1"
 dependencies = [
  "wit-bindgen",
 ]

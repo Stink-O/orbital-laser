@@ -16,6 +16,10 @@ What each release of Orbital Laser added, newest first. The current release is i
 - The fork's release `orbital-mod-api-12` is needed: `render.set-hand-tint` (a mod may tint the hand; the Supervolcano's
   tint is off for now, it went far too dark), and the chat now knows a mod's commands, so `/orbital` is no longer marked
   unknown and its words fill in as you type.
+- **No more freeze and crash mid-strike on NVIDIA while the screen is captured** (the fork, Linux): during a heavy strike
+  such as the Supervolcano, with OBS or another program capturing the screen, the game could freeze for a few seconds
+  and crash (`Xid 109 CTX SWITCH TIMEOUT`). It made the graphics card wait for the screen to hand back its image; it now
+  waits for the image without holding up the card. That's in `orbital-mod-api-12`.
 - **The effects build on OpenGL and DirectX 12, not only Vulkan** ([#12](https://github.com/Stink-O/orbital-laser/issues/12)).
   The passes no longer read the depth in a way OpenGL refuses, or write vectors at a run-time index, which DirectX 12's
   compiler can't unroll. On the native version they draw on DirectX 12, all but the Downfall's, which that compiler still

@@ -97,6 +97,9 @@ crust and lava. It's on the wheel's fourth page and `/orbital supervolcano`, and
 - **The native version catches up**: 0.5.12 with the Fold and the Supervolcano, on a newer Horizon.
 - **The fork's chat knows `/orbital`**: it's no longer marked as an unknown command, and it fills in its words as you type
   (the fork's `orbital-mod-api-12`; the native version already did).
+- **No more freeze and crash mid-strike on NVIDIA while the screen is captured** (the fork, Linux): the game could freeze
+  and crash (`Xid 109`) during a heavy strike while OBS was capturing the screen. It no longer makes the graphics card
+  wait for the screen's image (the fork's `orbital-mod-api-12`).
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
