@@ -212,7 +212,7 @@ laser, command, capability and timing). This file is the short, factual version 
   for it is `TRACKING STORM …`.
 - **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 80 s, reaches 1000, the vent moved
   to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): a small orbital laser satellite over the
-  vent (`vc_opening`, `vc_sat`: 3,200 up, 2,600 beyond the vent from the player, table words 2-3, drawn up to 3 times its size far off: `vc_sat_k`) aims a solid red
+  vent (`vc_opening`, `vc_sat`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 4 times its size far off: `vc_sat_k`) aims a solid red
   targeting beam (0.6 s, locked at 1.5) and fires at 2 s (`VC_HIT`), a white-hot beam melting a round glowing hole
   (`vc_open_land`, light only) cut at 4.6 s (`VC_OFF`), the mount rising round the hole; the
   tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a

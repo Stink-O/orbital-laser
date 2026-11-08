@@ -55,8 +55,16 @@ const VC_ROLL: f32 = 8.0;
 const VC_WHISTLES: [f32; 3] = [3.2, 4.2, 2.6];
 const VC_ROCKFALLS: [f32; 3] = [3.2, 4.0, 4.8];
 const VC_CRACK_LEN: f32 = 2.2;
-/// `tick`'s length (tools/sounds_volcano.py's TICK_D).
-const VC_TICK_LEN: f32 = 6.5;
+/// The satellite's sounds are the lasers' own (strike.rs's plasma): `beam` the last of the plasma's charge, ending on the
+/// shot; the lock-on this long before it; `fire` the plasma's fire, faded out over the beam's cut (tools/sounds_volcano.py's
+/// FIRE_D); then the plasma's shutdown.
+const VC_LOCKON: f32 = 0.6;
+const VC_FIRE_LEN: f32 = 3.0;
+const VC_SHUTDOWN: f32 = 4.5;
+/// The plasma's `rumble`'s length: the shot's blow on the ground, late by the distance.
+const VC_RUMBLE_LEN: f32 = 4.72;
+/// `boom`'s length (the eruption's weight under the report: tools/sounds_volcano.py's BOOM_D).
+const VC_BOOM_LEN: f32 = 24.0;
 const VC_CREAK_LEN: f32 = 2.4;
 
 const GROUND_V: f64 = 1715.0;
@@ -410,14 +418,19 @@ fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32) -> Option
 /// The Supervolcano's sounds, on plan `p`: the vent at `vent`, the player at `me` as it fires, `s` the pass's seed (the
 /// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land.
 pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>) {
-    // ---- the satellite: its aim and charge on the strike's clock (`beam`, cut on the shot), the shot and the crust
-    // seething under it late by the distance (`tick`), then the mount
+    // ---- the satellite, a laser like the others and heard as they are, on the strike's clock: its charge (`beam`), the
+    // lock-on, the shot (`fire`) and the shutdown as its beam is cut; the shot's blow on the ground late by the distance
+    // (the plasma's `rumble`); then the mount
     play(p, 0.0, "beam", 1.0, 1.0);
+    p.ev.push((VC_HIT - VC_LOCKON, Act::Sound { event: "orbital:lockon".into(), at: None, volume: 0.8, pitch: 1.0 }));
+    play(p, VC_HIT, "fire", 1.0, 1.0);
+    p.ev.push((VC_SHUTDOWN, Act::Sound { event: "orbital:shutdown".into(), at: None, volume: 0.85, pitch: 1.0 }));
     p.later(VC_HIT - 0.1, move |q| {
         let (late, d) = sound_from(vent, live(me));
-        // (the shot carries: heard however far off, so long as it's over by the hush, as everything of the mount is)
-        if VC_HIT + late + VC_TICK_LEN < VC_HUSH - 0.05 {
-            play(q, VC_HIT + late, "tick", (1000.0 / d.max(1000.0)).powf(1.3), 1.0);
+        // (so long as it's over by the hush, as everything of the mount is)
+        if VC_HIT + late + VC_RUMBLE_LEN < VC_HUSH - 0.05 {
+            let v = (1000.0 / d.max(1000.0)).powf(0.7) as f32;
+            q.ev.push((VC_HIT + late, Act::Sound { event: "orbital:rumble".into(), at: None, volume: 0.9 * v, pitch: 0.85 }));
         }
         mount(q, s, d);
     });
@@ -440,6 +453,8 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
             q.ev.push((report + VC_CUT, Act::Cmd(format!("stopsound @s * {}", ev(name)))));
         }
         near_far(q, report - VC_LEAD, "report", d);
+        // (and its weight: the Nuke's ALT blast slowed, deep and holding for seconds, so the burst is as big as it looks)
+        near_far(q, report - VC_LEAD, "boom", d);
         play(q, report - VC_LEAD, "report_sub", 0.55 * air(d), 1.0);
         near_far(q, report, "column", d);
         land_bombs(q, s, vent, me, report, &bombs);
@@ -539,7 +554,8 @@ mod tests {
             "tremor" => VC_HUSH - VC_HIT,
             "fountain" => VC_HUSH - VC_SWELL,
             "steam" => VC_HUSH - VC_CRACK,
-            "tick" => VC_TICK_LEN,
+            "fire" => VC_FIRE_LEN,
+            "boom" | "boom_far" => VC_BOOM_LEN,
             "hush" => VC_HUSH_LEN,
             "seism" => VC_SEISM_LEN,
             "after" => 21.5,

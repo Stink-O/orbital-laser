@@ -1748,8 +1748,8 @@ fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight
 }
 
 // ---- the opening: a small orbital laser over the vent, its targeting beam, the beam, the hole it melts ----
-// The satellite hangs in orbit, 3,200 up and 2,600 beyond the vent from where the player fired (table words 2 and 3: the
-// way to them), some 40 degrees up their sky over the vent, drifting along its orbit; drawn bigger the further off it is
+// The satellite hangs in orbit, 7,000 up and 1,600 beyond the vent from where the player fired (table words 2 and 3: the
+// way to them), some 70 degrees up their sky, high over the vent, drifting along its orbit; drawn bigger the further off it is
 // seen (`vc_sat_k`), so it reads as a machine from wherever they are. It aims a thin opaque red beam (VC_AIM), its spot
 // wandering onto the vent and locking (VC_LOCK); its emitter charges and fires (VC_HIT): a white-hot beam that melts a
 // clean round hole (VC_HR) down through the crust, cut at VC_OFF; the hole glows on, its rim cooling to crust, steam off
@@ -1764,12 +1764,12 @@ fn vc_sat() -> vec3<f32> {
     if (dot(d, d) < 0.5) {
         d = normalize(vc_me() + vec2<f32>(1.0e-3, 0.0));
     }
-    let s = -2600.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
-    return vec3<f32>(s.x, 3200.0, s.y);
+    let s = -1600.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
+    return vec3<f32>(s.x, 7000.0, s.y);
 }
-// How much bigger than itself it is drawn, seen from `P` off: as big as it would look from 2,400.
+// How much bigger than itself it is drawn, seen from `P` off: as big as it would look from 2,400 (from 1,900 at the most).
 fn vc_sat_k(P: vec3<f32>) -> f32 {
-    return clamp(length(P) / 2400.0, 1.0, 3.0);
+    return clamp(length(P) / 2400.0, 1.0, 4.0);
 }
 // Where the targeting spot is (level, from the vent): wandering in to the vent and still from VC_LOCK.
 fn vc_spot() -> vec2<f32> {

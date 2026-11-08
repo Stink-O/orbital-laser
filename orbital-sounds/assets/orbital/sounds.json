@@ -1972,15 +1972,6 @@
     ],
     "subtitle": "subtitles.orbital.supervolcano.beam"
   },
-  "supervolcano.tick": {
-    "sounds": [
-      {
-        "name": "orbital:supervolcano/tick",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.supervolcano.tick"
-  },
   "supervolcano.tremor": {
     "sounds": [
       {
@@ -2448,5 +2439,32 @@
       }
     ],
     "subtitle": "subtitles.orbital.supervolcano.plate_sub"
+  },
+  "supervolcano.fire": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/fire",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.fire"
+  },
+  "supervolcano.boom": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/boom",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.boom"
+  },
+  "supervolcano.boom_far": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/boom_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.boom_far"
   }
 }

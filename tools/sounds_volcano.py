@@ -1,15 +1,15 @@
-"""The Supervolcano's sounds, synthesised here from noise, pulses and filters (nothing sampled), the trees' from the
-Hurricane's and the lightning played on the Hurricane's own thunder. Every file is mono: Horizon sums each sound file to
+"""The Supervolcano's sounds, synthesised here from noise, pulses and filters, but for the satellite's (the plasma's
+own) and the eruption's `boom` (the Nuke's and the Payload's ALT blasts, slowed); the trees' from the Hurricane's and the
+lightning played on the Hurricane's own thunder. Every file is mono: Horizon sums each sound file to
 mono anyway, so a stereo tail would only cost size.
 
 Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the player's distance from the vent / 343,
 2.9 s at the 1,000 blocks that is the least it fires at, 5 s at 1,700):
 
-  beam        0        the satellite's aim and shot: from 0.6 s the targeting beam's low energised roar on a heavy clamp,
-                       two latches as its spot locks (1.5 s), the emitter spooling up like the plasma's charge, then at
-                       2 s a hard discharge that cuts the charge dead and rings off into the sky
-  tick        2 + late the shot from far off (when it's over by 17 s): the beam's blow dark and smeared, a thunderous
-                       roar for its 2.6 s with the crust boiling under it, then the cut and the hole's steam roaring off
+  beam        0        the satellite's charge: the lasers' own (the plasma's charge.ogg), its last 2 s, topping out on the
+                       shot; the plasma's lock-on at 1.4 s (orbital:lockon, played from vc_sound.rs)
+  fire        2        the shot: the plasma's fire.ogg, faded out with the beam's cut at 4.6 s; then the plasma's shutdown
+                       at 4.5 (orbital:shutdown) and its rumble at 2 + late (orbital:rumble), both from vc_sound.rs
   tremor      2        the mount (2-17 s): under hearing, then the ground rolling, a heavy groan of rock under load rising
                        with it, the land's lurches baked in where the picture has them (`mount_height`, late by what the
                        ground takes to carry them), each bigger and sooner than the last; 15 s long and it stops dead on
@@ -34,6 +34,8 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
                        the microphone (`overload`, `crunch`: the boom growls and breaks up); then the land rolling it
                        back for 20 s
   report_far  the same moment, cross-faded in by distance: darker, the growl kept in the low mids
+  boom(_far)  the same moment, under the report: its weight, the Nuke's ALT blast slowed to 0.74 and the Payload's ALT
+                       blast's front, holding loud some ten seconds (sampled from the mod's own files, as `beam` and `fire`)
   report_sub  the same moment: the push alone, under it, the report's boom's fall and then a deep pressure holding for
                        seconds and fading slowly, 9 s (and at pitch 0.8 with the land dropping, in the collapse)
   plate_sub   a big plate coming down (vc_lodge.rs, pitched by its size): a short push of the sub
@@ -93,21 +95,20 @@ TH = "supervolcano"
 ROOT = Path(__file__).resolve().parent.parent
 VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3,
             "flow_rise": 3, "flow_in": 3, "splinter": 3, "grind": 2}
-SINGLE = ["beam", "tick", "tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "report_sub", "plate_sub", "column", "column_far",
+SINGLE = ["beam", "fire", "tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "boom", "boom_far", "report_sub", "plate_sub", "column", "column_far",
           "collapse", "collapse_far", "flow_far", "flow_hit", "after", "patter"]
 NAMES = SINGLE + list(VARIANTS)
 # (the plan's old events, taken out of sounds.json and their files deleted when it's rebuilt: the lightning is the Hurricane's)
-GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
+GONE = ["tick"] + [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
-LEVEL = {"beam": -16.0, "tick": -15.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
-         "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "report_sub": -10.0, "column": -13.0, "column_far": -12.0,
+LEVEL = {"tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
+         "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "boom": -4.5, "boom_far": -5.5, "report_sub": -10.0, "column": -13.0, "column_far": -12.0,
          "whistle": -16.0, "thud": -9.5, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
 HIT_AT = 2.0               # (the satellite's shot, into `beam`: vc_sound.rs's VC_HIT)
-TICK_D = 6.5               # (`tick`'s length: vc_sound.rs's len_of)
 REPORT_SLAM = 2.0          # (the report's front laid on over its drive, dB against its loudest 400 ms: `slam`)
 COLLAPSE_GIVE = 1.0        # (how far the collapse's groan comes down to make room for the drop's blow, dB)
 SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)
@@ -312,114 +313,65 @@ def bare_blow(size, lo=26.0, hi=120.0, rise=0.012, fall=0.11):
 
 
 # =============================================================================================================  the beam
-def latch(n, t0, size=1.0):
-    """A heavy clamp closing (the plasma's lock-on, darker and without its ring): a low blow falling in pitch, a short
-    burst of the housing's body round it and a dull edge of metal on metal, nothing that rings."""
-    t = np.arange(n) / SR
-    u = np.maximum(t - t0, 0)
-    on = t >= t0
-    x = soundlib.thump(n, t0, 105 * size ** -0.3, 42, 0.07 + 0.05 * size, 16.0) * (1 - np.exp(-u / 0.0015))
-    x += T.unit(F.cband(rng().standard_normal(n), 70, 520, 2)) * (1 - np.exp(-u / 0.001)) * np.exp(-u / (0.025 + 0.02 * size)) * on * 0.55
-    x += T.unit(F.cband(rng().standard_normal(n), 900, 4200, 2)) * (1 - np.exp(-u / 0.0004)) * np.exp(-u / 0.0035) * on * 0.22
-    return x * size
+SOUNDS = ROOT / "orbital-sounds" / "assets" / "orbital" / "sounds"
+CHARGE_FROM = 2.0          # (into the plasma's charge.ogg: strike.rs plays it 4 s ahead of its fire, this one 2 s)
+FIRE_D = 3.0               # (`fire`'s length: the plasma's fire faded out over the beam's cut, VC_OFF 4.6; vc_sound.rs's VC_FIRE_LEN)
+BOOM_D = 24.0              # (`boom`'s length: vc_sound.rs's VC_BOOM_LEN)
+BOOM_SPEED = 0.74          # (the Nuke's ALT blast slowed to this: a fourth deeper and a third longer)
+BOOM_FRONT_SPEED = 0.6     # (the Payload's ALT blast, for the front, slowed further)
+
+
+def sampled(rel, speed=1.0):
+    """One of the mod's own files (`rel` under its sounds), as the game plays it (summed to mono), at `speed` (the game's
+    pitch: a change of speed)."""
+    y = decoded_ogg(SOUNDS / rel)
+    if abs(speed - 1) > 1e-4:
+        pos = np.arange(0, len(y) - 1, speed)
+        i0 = pos.astype(int)
+        y = y[i0] * (1 - (pos - i0)) + y[i0 + 1] * (pos - i0)
+    return y
+
+
+def as_loud_as(rel_or_x):
+    """The loudest 400 ms of a file or array, in dB: a copy keeps its original's level."""
+    x = sampled(rel_or_x) if isinstance(rel_or_x, str) else rel_or_x
+    return 20 * np.log10(T.loudest(x) + 1e-12)
 
 
 def build_beam():
-    """The satellite's aim and its shot (strike clock): from 0.6 s the targeting beam coming on with a heavy clamp, its low
-    energised roar under everything (noise driven by the emitter's mains, no tone in it); the spot locking at 1.5 s, two
-    heavy latches; the emitter spooling up from 1 s, a turbine climbing through a widening roar with the air and the sub
-    rising under it (the plasma's charge, faster and heavier); then at 2 s the shot, a hard discharge (a crack of the
-    air, a falling blow, a short blast of body) that cuts the charge dead and rings off into the sky."""
-    d = 3.0
-    n = n_of(d)
-    t = times(d)
-    T0, AIM, LOCK = HIT_AT, 0.6, 1.5
-    with PB.seeded(61001):
-        # (the aiming beam: a low energised roar, the emitter's mains driving the noise (no tone of its own))
-        on = np.clip((t - AIM) / 0.08, 0, 1) * (t < T0)
-        mains = 1 + 0.55 * np.sin(2 * np.pi * np.cumsum(47.0 * (1 + 0.01 * PB.slow_random(n, 2.0, 9.0))) / SR)
-        hum = (T.unit(F.cband(white(d), 45, 220, 2)) * 0.9 + T.unit(F.cband(white(d), 220, 900, 2)) * 0.4
-               + T.unit(F.cband(white(d), 900, 3200, 2)) * 0.1) * mains * boil(n, 1.5, 7.0, 2.0)
-        hum = hum * on * db_curve(t, [(0, -17), (AIM + 0.1, -14), (1.4, -12), (T0, -8)])
-        clamps = latch(n, AIM, 1.2) * 0.9 + latch(n, LOCK, 1.0) * 0.8 + latch(n, LOCK + 0.12, 0.75) * 0.6
-        # (the charge: a turbine spooling up, its cutoff following its speed, the air and the sub rising with it)
-        p = np.clip((t - 0.95) / (T0 - 0.95), 0, 1)
-        f0 = 38 + 330 * p ** 2.0
-        ph = np.cumsum(f0 * (1 + 0.01 * PB.slow_random(n, 6.0, 30.0))) / SR
-        saw = F.cband(2 * (ph % 1) - 1, 30, None, 2)
-        cut = 140 + 4200 * p ** 1.6
-        turb = sum(F.cband(saw, lo * 0.5, lo * 2, 2) * np.clip((cut - lo) / lo, 0, 1) for lo in (150, 400, 1000, 2500))
-        roar = T.unit(F.cband(white(d), 60, 600, 2)) * boil(n, 3.0, 14.0, 3.0)
-        air_ = T.unit(F.cband(white(d), 350, 4500, 2)) * (1 + 0.25 * PB.slow_random(n, 5.0, 20.0))
-        top = T.unit(F.cband(white(d), 2500, 9000, 2)) * np.clip((p - 0.55) / 0.45, 0, 1) ** 2
-        sub = T.unit(F.cband(white(d), 24, 70, 2)) + 0.8 * np.sin(2 * np.pi * np.cumsum(30 + 24 * p) / SR)
-        charge = (T.unit(turb) * (0.15 + 0.9 * p) * 0.55 + roar * p ** 1.6 * 0.9 + air_ * (0.05 + p ** 2.4) * 0.5 + top * 0.25
-                  + sub * p ** 1.8 * 0.7) * (p > 0) * (t < T0)
-        # (cut dead on the shot)
-        dead = np.clip((T0 - t) / 0.004, 0, 1)
-        x = (hum + charge) * dead + clamps
-        # ---- the shot: the air cracking, a falling blow, a short blast of body and air, rung off into the sky
-        u = np.maximum(t - T0, 0)
-        fire = t >= T0
-        crack = (T.unit(F.cband(white(d), 600, 9000, 2)) * (1 - np.exp(-u / 0.0003)) * np.exp(-u / 0.012) * 1.6
-                 + T.unit(F.cband(white(d), 120, 1200, 2)) * (1 - np.exp(-u / 0.0005)) * np.exp(-u / 0.05) * 1.1) * fire
-        blow = S.blow(n, T0, 88.0, 38.0, 27.0, 0.09, 0.002, ((0.6, 0.18), (0.4, 0.6)), drive=3.5, octv=0.3, h3=0.18, harm=0.5)
-        push = band(T.friedlander(n, T0, 0.22, 1.4), 15, 160, 2)
-        blast = T.unit(F.cband(white(d), 60, 900, 2)) * (1 - np.exp(-u / 0.003)) * np.exp(-u / 0.32) * fire * boil(n, 4.0, 18.0, 2.5)
-        whoosh = T.unit(F.cband(white(d), 400, 5000, 2)) * (1 - np.exp(-u / 0.002)) * np.exp(-u / 0.13) * fire
-        shot = crack * 0.9 + blow / (np.abs(blow).max() + 1e-9) * 2.2 + push / (np.abs(push).max() + 1e-9) * 1.4 + blast * 1.3 + whoosh * 0.6
-        lvl = np.sqrt(np.mean(charge[n_of(T0 - 0.4):n_of(T0)] ** 2))
-        x = x + shot / (T.loudest(shot) + 1e-9) * lvl * 4.0
-        x = land(x, 3.0, 0.35, (3200, 260), 0.9, 40.0, seed=61)
-        x = lows_heard(x, 60, 320, -8.0)
-    write("beam", PB.causal_lowcut(x, 22.0) * T.fade(n, 0.001, 0.4))
+    """The satellite's charge: the lasers' own (the plasma's charge.ogg, which the other lasers all open with), its last
+    2 s, so it reaches its top on the shot at 2 s (vc_sound.rs plays the lock-on, the fire and the shutdown, the plasma's
+    too, round it)."""
+    y = sampled("charge.ogg")
+    y = S.fades(y[n_of(CHARGE_FROM):n_of(CHARGE_FROM + HIT_AT + 0.08)], 0.35, 0.06)
+    S.write("beam", y, as_loud_as(y))
 
 
-def build_tick():
-    """The shot, heard from a kilometre and more: the beam's blow coming in dark and smeared off the land, then the beam
-    itself, a thunderous roar driven by the emitter (its mains rough in it), and under it the crust boiling, uneven heavy
-    surges growing as the hole opens, for as long as it burns (2.6 s: volcano.wgsl's VC_OFF); the beam cut, the air it
-    held slumping back, and the hole's steam roaring off dark, the boil settling."""
-    d = TICK_D
-    n = n_of(d)
-    t = times(d)
-    BURN = 2.6
-    with PB.seeded(61002):
-        t0 = LEAD
-        u = np.maximum(t - t0, 0)
-        on = t >= t0
-        # ---- the arrival: a far blow, its front softened by the distance
-        blow = S.blow(n, t0, 70.0, 34.0, 26.0, 0.12, 0.008, ((0.6, 0.25), (0.4, 0.9)), drive=3.0, octv=0.32, h3=0.18, harm=0.5)
-        blow = blow / (np.abs(blow).max() + 1e-9)
-        body = T.unit(F.cband(white(d), 40, 320, 2)) * (1 - np.exp(-u / 0.01)) * np.exp(-u / 0.35) * on
-        edge = T.unit(F.cband(white(d), 300, 1600, 2)) * (1 - np.exp(-u / 0.012)) * np.exp(-u / 0.07) * on
-        push = band(T.friedlander(n, t0, 0.3, 1.4), 14, 120, 2)
-        arrive = blow * 0.9 + body * 0.55 + edge * 0.22 + push / (np.abs(push).max() + 1e-9) * 0.6
-        # ---- the beam: a heavy roar at every scale, the emitter's mains in it, darkened by the distance
-        burn = np.clip(u / 0.06, 0, 1) * np.clip((BURN - u) / 0.1, 0, 1) * on
-        mains = 1 + 0.35 * np.sin(2 * np.pi * np.cumsum(47.0 * (1 + 0.012 * PB.slow_random(n, 1.0, 6.0))) / SR)
-        roar = eddies(d, 40, 2600, 3.0, -3.0, 10.0, 5.0) * mains
-        roar = F.cband(roar, None, 2200, 2) * burn * db_curve(u, [(0, -16), (0.12, -9), (0.45, -2), (1.4, 0), (BURN, 1.0)])
-        # ---- the crust boiling under it: uneven heavy surges (molten rock heaving, gas bursting out of it), growing as
-        # the hole opens, and settling after the cut
-        surge = np.maximum(heaves(d, 0.3, 0.55, 0.05, 0.2, 0.55, 0.25), 0.0)
-        grow = np.interp(u, [0, 0.3, 1.2, BURN, BURN + 0.6, BURN + 2.5, d], [0.0, 0.12, 0.6, 1.0, 0.7, 0.25, 0.08])
-        boil_ = (T.unit(F.cband(white(d), 70, 260, 2)) + T.unit(F.cband(white(d), 260, 700, 2)) * 0.6) * surge ** 1.2 * grow * on
-        seethe = T.unit(F.cband(white(d), 500, 2200, 2)) * boiled(n, 2.0, 10.0, 3.0) * grow * on
-        # ---- the cut: the air the beam held slumping back, then the hole's steam roaring off, dark
-        cut = t0 + BURN
-        slump = np.zeros(n)
-        P.put(slump, bare_blow(2.0, 26, 140, 0.03, 0.12), cut)
-        uc = np.maximum(t - cut, 0)
-        steam = (T.unit(F.cband(white(d), 300, 2600, 2)) + T.unit(F.cband(white(d), 120, 400, 2)) * 0.5) * boiled(n, 0.8, 5.0, 3.0)
-        steam = steam * (1 - np.exp(-uc / 0.2)) * np.exp(-uc / 1.5) * (t > cut)
-        x = arrive * 3.0 + roar * 0.7 + boil_ * 0.55 + seethe * 0.14 + slump * 0.4 + steam * 0.3
-        x = land(x, 3.6, 0.45, (1500, 170), 1.7, 35.0, seed=62)
-        x = lows_heard(x, 60, 300, -6.0)
-    write("tick", PB.causal_lowcut(x, 20.0) * T.fade(n, 0.001, 0.8))
+def build_fire():
+    """The satellite's shot: the plasma's fire.ogg, faded out with the beam's cut at 4.6 s (2.6 s in), the shutdown
+    taking over."""
+    y = sampled("fire.ogg")[:n_of(FIRE_D)]
+    S.write("fire", S.fades(y, 0.0, 0.9), as_loud_as(y))
 
 
-# ===========================================================================================================  the tremor
+def build_boom():
+    """The eruption's weight, under the report: the Nuke's ALT blast (approved) slowed to BOOM_SPEED, deeper and holding
+    loud for some ten seconds, the Payload's ALT blast slowed further for its front, both on the report's front (LEAD);
+    faded out from 12 s under the column. boom_far the same from their far files."""
+    for name, a, b in (("boom", "nuke/blast_alt.ogg", "payload/blast_alt.ogg"),
+                       ("boom_far", "nuke/blast_alt_far.ogg", "payload/blast_alt_far.ogg")):
+        x = np.zeros(n_of(BOOM_D))
+        y = sampled(a, BOOM_SPEED)
+        z = sampled(b, BOOM_FRONT_SPEED)
+        on = np.argmax(np.abs(z) > 0.25 * np.abs(z).max())
+        z = z[max(on - n_of(0.004), 0):]
+        for v, g in ((y, 1.0), (z, 0.7)):
+            m = min(len(v), len(x) - n_of(LEAD))
+            x[n_of(LEAD):n_of(LEAD) + m] += v[:m] * g
+        x = x * db_curve(np.arange(len(x)) / SR, [(0, 0), (12.0, 0), (18.0, -8), (BOOM_D - 0.5, -40), (BOOM_D, -90)])
+        write(name, x, knee=0.8)
+
+
 def mount_height(t, ph=0.0):
     """How high the mount stands at strike time `t` (volcano_mount.wgsl's vm_hgt): slow, then frightening, in lurches."""
     s = np.clip(t - SWELL, 0.0, HUSH - SWELL)
@@ -1627,8 +1579,8 @@ def build_patter():
 
 
 BUILD = {
-    "beam": build_beam, "tick": build_tick, "tremor": build_tremor, "fountain": build_fountain, "steam": build_steam, "hush": build_hush, "seism": build_seism, "report": build_report,
-    "report_far": lambda: None, "report_sub": build_report_sub, "plate_sub": build_plate_sub, "column": build_column, "column_far": lambda: None, "collapse": build_collapse,
+    "beam": build_beam, "fire": build_fire, "tremor": build_tremor, "fountain": build_fountain, "steam": build_steam, "hush": build_hush, "seism": build_seism, "report": build_report,
+    "report_far": lambda: None, "boom": build_boom, "boom_far": lambda: None, "report_sub": build_report_sub, "plate_sub": build_plate_sub, "column": build_column, "column_far": lambda: None, "collapse": build_collapse,
     "collapse_far": lambda: None, "flow_far": build_flow_far, "flow_hit": build_flow_hit, "after": build_after,
     "patter": build_patter,
     "creak": lambda: [build_creak(v + 1) for v in range(VARIANTS["creak"])],
@@ -1690,9 +1642,12 @@ def game_mix(lines, ogg_of, d):
 
 
 def event_ogg(ev):
-    """The file of an event `orbital:<laser>.<name>`, as sounds.json has it."""
-    laser, name = ev.split(":", 1)[1].split(".", 1)
-    return ROOT / "orbital-sounds" / "assets" / "orbital" / "sounds" / laser / f"{name}.ogg"
+    """The file of an event `orbital:<laser>.<name>`, as sounds.json has it (`orbital:<name>`: the plasma's)."""
+    e = ev.split(":", 1)[1]
+    if "." not in e:
+        return SOUNDS / f"{e}.ogg"
+    laser, name = e.split(".", 1)
+    return SOUNDS / laser / f"{name}.ogg"
 
 
 def timeline(tl, me):

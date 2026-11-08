@@ -225,9 +225,10 @@ VIEWS = {
     "vc1kh": "cx=0 cy=87 cz=1000 lx=0.5 ly=160 lz=0.5 flat=1 trees=1 fov=70 reach=1000",
     "vc1kr": "cx=0 cy=81 cz=1000 lx=0.5 ly=170 lz=0.5 hills=30 flush=1 trees=1 fov=70 reach=1000",
     # the opening: down on the hole the beam melts from the air close by, and the satellite through a long lens from the
-    # player's 1,000 off (it hangs 2,600 beyond the vent, 3,200 up)
+    # player's 1,000 off (it hangs 1,600 beyond the vent, 7,000 up), and as the player sees it looking up the beam
     "vcopen": "cx=25 cy=125 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 fov=55 reach=1000",
-    "vcsat": "cx=0 cy=67 cz=1000 lx=-40 ly=3265 lz=-2600 flat=1 fov=12 reach=1000",
+    "vcsat": "cx=0 cy=67 cz=1000 lx=-40 ly=7065 lz=-1600 flat=1 fov=12 reach=1000",
+    "vcsky": "cx=0 cy=67 cz=1000 lx=-20 ly=3000 lz=-500 flat=1 trees=1 fov=80 reach=1000",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
