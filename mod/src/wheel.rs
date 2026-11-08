@@ -140,6 +140,7 @@ impl Rows {
     /// The rows laser `i` has (if any).
     pub fn of(i: Option<usize>) -> Self {
         match i.map(|i| LASERS[i]) {
+            Some(l) if crate::unavailable(l.key).is_some() => Rows::None,
             Some(l) if is_ship(l) => Rows::Ship,
             Some(l) if sound_of(l.key).is_some() => Rows::Sound,
             Some(l) if l.key == "rod" => Rows::Impact,
@@ -489,6 +490,14 @@ impl Wheel {
                 continue;
             };
             let hovered = self.hover == Some(Spot::Laser(i));
+            if crate::unavailable(laser.key).is_some() {
+                // a laser this game can't play: greyed out, its icon faint under a veil, its note under the ring
+                sector(&mut out, a0, a1, R_IN + 4.0, R_OUT, if hovered { 0xE0202328 } else { 0xC80C0E12 });
+                sector(&mut out, a0, a1, R_OUT - 1.5, R_OUT, 0x70808894);
+                segment_label(&mut out, laser, mid, true);
+                sector(&mut out, a0, a1, R_IN + 4.0, R_OUT - 1.5, if hovered { 0x9010131A } else { 0xB00C0E12 });
+                continue;
+            }
             let body = if hovered { argb(0xE6, shade(laser.rgb, 0.42)) } else { 0xE0101318 };
             sector(&mut out, a0, a1, R_IN + 4.0, R_OUT, body);
             // the accent rim: full on the loaded laser, a hairline on the others
@@ -645,6 +654,7 @@ impl Wheel {
         // few words what a click does
         let (info, rgb) = match self.hover {
             _ if self.loading.is_some() => self.loading.map_or((String::new(), 0), |i| (format!("LOADING {}", LASERS[i].title), LASERS[i].rgb)),
+            Some(Spot::Laser(i)) if crate::unavailable(LASERS[i].key).is_some() => (LASERS[i].title.to_string(), 0x8C93A0),
             Some(Spot::Laser(i)) => (LASERS[i].title.to_string(), LASERS[i].rgb),
             _ if self.typing.is_some() && self.seed_typing => ("Type a seed, 1 to 997  ·  Enter to set it".to_string(), 0x8C93A0),
             _ if self.typing.is_some() => ("Type a speed  ·  Enter to set it".to_string(), 0x8C93A0),
@@ -677,6 +687,10 @@ impl Wheel {
         };
         text(&mut out, &info, 0.0, INFO_Y, rgb);
         if let (Some(Spot::Laser(i)), None) = (self.hover, row) {
+            if let Some(note) = crate::unavailable(LASERS[i].key) {
+                text(&mut out, note, 0.0, INFO_Y + 11.0, 0xE8B04A);
+                return out;
+            }
             for (k, line) in wrap(LASERS[i].blurb, BLURB_CHARS).iter().take(BLURB_LINES).enumerate() {
                 text(&mut out, line, 0.0, INFO_Y + 11.0 + k as f32 * 10.0, 0xC9CED8);
             }
