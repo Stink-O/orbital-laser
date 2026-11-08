@@ -18,7 +18,7 @@ Setup, once
 Play
   Double-click play.bat. It opens a creative world called OrbitalTest.
   Type /orbital give for the Designator. Press R with it in hand for the laser wheel, click a laser, then aim
-  and hold right-click to fire. The Fold is on page 4 of the wheel. The middle of the wheel turns terrain damage off.
+  and hold right-click to fire. The Fold and the Supervolcano are on page 4 of the wheel. The middle of the wheel turns terrain damage off.
 
 If something goes wrong
   Options > Mods says why the mod stopped, if it did. The game's log is
@@ -26,5 +26,6 @@ If something goes wrong
 
 Please tell us
   - whether prepare.bat worked
-  - whether the Fold ran to the end, and whether the land folded and the crater appeared
-  - your frame rate during the fold
+  - whether the Fold and the Supervolcano ran to the end, and whether their craters appeared
+  - whether the effects draw with Options > Graphics > Advanced > Graphics API on DirectX 12, and on Vulkan
+  - your frame rate during the fold and the eruption

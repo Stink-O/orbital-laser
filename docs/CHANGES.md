@@ -1,6 +1,27 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0511); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0512); each release's notes are in [docs/releases](releases).
+
+## 0.5.12
+
+- **Supervolcano**, the seventeenth laser, on the wheel's fourth page and `/orbital supervolcano`. A small laser satellite
+  comes down on its jets, melts a hole through the crust and lifts away; the land swells round the hole for ten seconds,
+  then opens in a ring 560 across and a column climbs to some 1,800 blocks, blotting out the sun, its umbrella across the
+  whole sky with lightning in it. The column falls back, the ground inside the ring drops and a wall of ash rolls out over
+  the land and over you, near black, the ground shaking. It ends on a blood-red sun over a caldera about 560 across and 90
+  deep, a floor of cracked black crust and lava, its ten biggest thrown plates lodged in the land as real blocks. Its vent
+  is at least 1,000 blocks in front of you and it lasts 88 seconds. The first-person hand darkens under the ash and is lit by
+  the eruption and the lightning. **Photosensitivity:** a white-out of under a second at 18 seconds, and lightning in the
+  cloud and over the land from about 26 to 80 seconds.
+- The fork's release `orbital-mod-api-12` is needed: `render.set-hand-tint`, the hand tinted by a mod.
+- **The effects build on OpenGL and DirectX 12, not only Vulkan** ([#12](https://github.com/Stink-O/orbital-laser/issues/12)).
+  The passes no longer read the depth in a way OpenGL refuses, or write vectors at a run-time index, which DirectX 12's
+  compiler can't unroll. On the native version they draw on DirectX 12, all but the Downfall's, which that compiler still
+  can't build; on OpenGL the game's frame can't be copied yet, so the native version skips its effects there with a
+  warning in the log instead of ending the game.
+- **The native version catches up to 0.5.12**, on upstream Horizon `fdc87ae` (the 2026-11-08 Nightly): the Supervolcano
+  plays, without the darkened hand. The Fold shows greyed out in the wheel ("Not on the native build yet") until upstream
+  numbers the hook points it needs; the native build greys out any laser it can't play.
 
 ## 0.5.11
 

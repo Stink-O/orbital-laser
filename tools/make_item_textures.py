@@ -64,12 +64,12 @@ K = {  # palette
     "P": (96, 120, 150, 255),     # the rain
     "X": (230, 236, 244, 255),    # the hurricane's bright cloud tops
     "D": (150, 164, 182, 255),    # its grey bands
-    "e": (32, 28, 27, 255),       # the supervolcano's charcoal ash
-    "E": (64, 54, 48, 255),       # its umber ash
-    "G": (112, 96, 84, 255),      # its sunlit billows
-    "o": (255, 106, 31, 255),     # its ember orange
-    "O": (255, 214, 96, 255),     # the fire in its ring
-    "u": (140, 34, 14, 255),      # its dull red
+    "#": (32, 28, 27, 255),       # the supervolcano's charcoal ash
+    "%": (64, 54, 48, 255),       # its umber ash
+    "&": (112, 96, 84, 255),      # its sunlit billows
+    "*": (255, 106, 31, 255),     # its ember orange
+    "+": (255, 214, 96, 255),     # the fire in its ring
+    "=": (140, 34, 14, 255),      # its dull red
     "1": (24, 78, 92, 255),       # the tsunami's deep water
     "2": (42, 128, 142, 255),     # its sunlit water
     "3": (92, 178, 184, 255),     # its thin crest
@@ -387,20 +387,20 @@ HURRICANE_ICON = [       # the hurricane from above: spiral bands wound round a 
 
 SUPERVOLCANO_ICON = [    # a flat ash umbrella over a dark rough column on a ring of fire, a lava bomb arcing off it
     "................",
-    ".EEGGEGGGGGEGEE.",
-    "EEeeEEGGGEEEeeEE",
-    ".eee.eEEGEEe.ee.",
-    ".....eeEEEee..o.",
-    ".....EeeEeeE....",
-    "....eEEeeEEe..o.",
-    "....eeEeeeEee...",
-    "...eeeEeeEeee.u.",
-    "...EeeeeEeeEe...",
-    "..eeeEe.eeEeee..",
-    "..uoe.u.u.eoou..",
-    ".uoOou.ooo.uOou.",
-    "ouOOOoooOoooOOuo",
-    "LLuooLLLLLLLoouL",
+    ".%%&&%&&&&&%&%%.",
+    "%%##%%&&&%%%##%%",
+    ".###.#%%&%%#.##.",
+    ".....##%%%##..*.",
+    ".....%##%##%....",
+    "....#%%##%%#..*.",
+    "....##%###%##...",
+    "...###%##%###.=.",
+    "...%####%##%#...",
+    "..###%#.##%###..",
+    "..=*#.=.=.#**=..",
+    ".=*+*=.***.=+*=.",
+    "*=+++***+***++=*",
+    "LL=**LLLLLLL**=L",
     "LLLLLLLLLLLLLLLL",
 ]
 
