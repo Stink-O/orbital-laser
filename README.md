@@ -250,11 +250,9 @@ Supervolcano reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detai
 |---|---|---|---|
 | ![The land creased white and folding up round the target, its middle burning red](docs/49-fold-creases.jpg) | ![The whole world on the walls of a tube, a hole of stars in its roof](docs/50-fold-tube.jpg) | ![A ring of flames running out over the broken land from the middle](docs/52-fold-fire.jpg) | ![A crater of broken coloured panels on a twelve-fold pattern, black rock heaped round it](docs/53-fold-crater.jpg) |
 
-<!-- TODO before release: the Supervolcano's stills (docs/54-57), captured in the game, as the other lasers' are:
 | Supervolcano | The column | The wall of ash | What it leaves |
 |---|---|---|---|
-| ![...](docs/54-supervolcano-satellite.jpg) | ![...](docs/55-supervolcano-column.jpg) | ![...](docs/56-supervolcano-ash.jpg) | ![...](docs/57-supervolcano-caldera.jpg) |
--->
+| ![The mount bursting open, fountains of lava and sparks thrown up off its broken peaks](docs/54-supervolcano-burst.jpg) | ![The column at sunset, lightning down through it and plates of crust hanging in the air](docs/55-supervolcano-column.jpg) | ![The wall of ash rolling over the savanna, its front lit, a tree black against it](docs/56-supervolcano-ash.jpg) | ![The caldera at dusk, a floor of cracked dark crust with pools of lava, a jagged rim against the red sun](docs/57-supervolcano-caldera.jpg) |
 
 ## Getting started
 
