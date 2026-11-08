@@ -1750,9 +1750,9 @@ fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight
 // ---- the opening: an orbital laser over the vent, its targeting beam, the beam, the hole it melts ----
 // The satellite parks 7,000 up and 1,600 beyond the vent from the player (table words 2 and 3: the way to them), about
 // 70 degrees up their sky, drawn bigger far off (`vc_sat_k`). Built of blocks (`vc_sat_hit`): seen from the ground nearly
-// down its barrel, a dark cross with a glowing eye. It comes in nose first along its orbit on retro jets, pitches over
-// onto the vent (`vc_sat_tip`), aims (VC_AIM), locks (VC_LOCK), its coils charge outside in and it fires (VC_HIT),
-// melting a round hole (VC_HR); cut at VC_OFF, it pitches back up and burns off along its orbit (VC_BURN), dwindling
+// down its barrel, a dark cross with a glowing eye. It comes straight down from 3,000 higher, braking on four jets fired
+// down, settles over the vent (`vc_sat_tip`), unrolls its arrays (`vc_sat_wing`), aims (VC_AIM), locks (VC_LOCK), its coils charge outside in and it fires (VC_HIT),
+// melting a round hole (VC_HR); cut at VC_OFF, it rolls its arrays back in and lifts straight up on its jets (VC_BURN), dwindling
 // into the haze. Steam surges off the hole (`vc_plume`) and the mount rises round it (vm_rest) until the eruption.
 const VC_AIM: f32 = 0.6;
 const VC_LOCK: f32 = 1.5;
@@ -1773,27 +1773,33 @@ fn vc_sat_dir() -> vec2<f32> {
 fn vc_sat_brake() -> f32 {
     return 1.0 - saturate(vs.t / VC_ARRIVE);
 }
-// From the vent, parked (drifting slowly along its orbit); and how far it is from there: coming in from 2,600 back,
-// gone on along its orbit (and up) from VC_BURN.
+// From the vent, parked (drifting slowly along its orbit); and how far it is from there: coming down from 3,000 higher,
+// braking, and gone straight back up from VC_BURN.
 fn vc_sat0() -> vec3<f32> {
     let d = vc_sat_dir();
     let s = -1600.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
     return vec3<f32>(s.x, 7000.0, s.y);
 }
 fn vc_sat_go() -> vec3<f32> {
-    let d = vc_sat_dir();
     let b = vc_sat_brake();
     let g = 2000.0 * pow(max(vs.t - VC_BURN, 0.0), 2.5);
-    return vec3<f32>(-d.y, 0.3, d.x) * g - vec3<f32>(-d.y, 0.0, d.x) * 2600.0 * b * b * b;
+    return vec3<f32>(0.0, 3000.0 * b * b * b + g, 0.0);
 }
-// How far it is turned off the vent towards the way it goes (radians): nose first coming in, over onto the vent by about
-// 1.1 s (eased, a touch past and back), back up along its orbit from 4.9 for the burn.
+// How far it is tilted off the vent (radians): swaying a little as it brakes onto its station, settled (eased, a touch
+// past and back) by about 1.1 s; its barrel on the vent from then on, up and away included.
 fn vc_sat_tip() -> f32 {
     let x = max(vs.t - 0.1, 0.0);
-    let y = max(vs.t - 4.9, 0.0) * 0.85;
-    let e = exp(-5.0 * x) * (cos(4.0 * x) + 1.25 * sin(4.0 * x));
-    let f = exp(-5.0 * y) * (cos(4.0 * y) + 1.25 * sin(4.0 * y));
-    return 1.5708 * (1.0 + e - f);
+    return 0.2 * exp(-5.0 * x) * (cos(4.0 * x) + 1.25 * sin(4.0 * x));
+}
+// How far a wing (`sd` its side) is unrolled: rolled up as it comes in, out once it has stopped (one side a little ahead of
+// the other, eased to a soft stop), rolled back in before it burns off.
+const VC_WING_OUT: f32 = 0.95;
+const VC_WING_IN: f32 = 5.0;
+fn vc_sat_wing(sd: f32) -> f32 {
+    let lag = 0.08 * (sd + 1.0);
+    let o = saturate((vs.t - VC_WING_OUT - lag) / 0.9);
+    let i = saturate((vs.t - VC_WING_IN - lag) / 0.8);
+    return (1.0 - pow(1.0 - o, 3.0)) * (1.0 - i * i * (3.0 - 2.0 * i));
 }
 // Its axes (columns): along its wings, across, down its barrel.
 fn vc_sat_m(S: vec3<f32>) -> mat3x3<f32> {
@@ -1862,13 +1868,24 @@ fn vc_sat_hit(o: vec3<f32>, d: vec3<f32>, Ns: vec3<f32>) -> VcSh {
         let q = select(vec2<f32>(0.0, 20.0), vec2<f32>(20.0, 0.0), (i & 1) == 0) * select(1.0, -1.0, i > 1);
         vc_sb(&h, o - vec3<f32>(q, 0.0), d, 108.0, vec3<f32>(3.5, 3.5, 12.0), 2);
     }
-    // (the wings: one plate turned to the sun about the truss, gaps between its panels)
+    // (the wings: roll-out arrays, each a plate turned to the sun about the truss, gaps between its panels, unrolled
+    // from a drum at the collar's side out to its tip (`vc_sat_wing`); rolled up, only the drums)
     let b = cross(Ns, vec3<f32>(1.0, 0.0, 0.0));
     let ow = o + vec3<f32>(0.0, 0.0, 16.0);
-    let w = vc_box(vec3<f32>(ow.x, dot(ow, b), dot(ow, Ns)), vec3<f32>(d.x, dot(d, b), dot(d, Ns)), vec3<f32>(175.0, 30.0, 0.7));
-    let x = abs(ow.x + d.x * w.x) - 36.0;
-    if (w.x > 0.0 && w.x < h.t && x > 0.0 && fract(x / 46.33) < 0.92) {
-        h = VcSh(w.x, vec3<f32>(w.y, 0.0, 0.0) + b * w.z + Ns * w.w, 3);
+    let lo = vec3<f32>(ow.x, dot(ow, b), dot(ow, Ns));
+    let ld = vec3<f32>(d.x, dot(d, b), dot(d, Ns));
+    for (var sd = -1.0; sd < 2.0; sd = sd + 2.0) {
+        let L = 139.0 * vc_sat_wing(sd);
+        let c = sd * (36.0 + 0.5 * L);
+        let w = vc_box(lo - vec3<f32>(c, 0.0, 0.0), ld, vec3<f32>(0.5 * L + 0.01, 30.0, 0.7));
+        let x = abs(lo.x + ld.x * w.x) - 36.0;
+        if (L > 0.5 && w.x > 0.0 && w.x < h.t && fract(x / 46.33) < 0.92) {
+            h = VcSh(w.x, vec3<f32>(w.y, 0.0, 0.0) + b * w.z + Ns * w.w, 3);
+        }
+        let r = vc_box(lo - vec3<f32>(sd * (38.0 + L), 0.0, 0.0), ld, vec3<f32>(3.2, 32.0, 3.2));
+        if (r.x > 0.0 && r.x < h.t) {
+            h = VcSh(r.x, vec3<f32>(r.y, 0.0, 0.0) + b * r.z + Ns * r.w, 1);
+        }
     }
     return h;
 }
@@ -2154,18 +2171,18 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
         let gl = exp(-pow((t - 0.45) / 0.14, 2.0));
         let star = 1.0 / (1.0 + r2 / 3.0) + 0.3 * (exp(-abs(dd.x) / 1.0) + exp(-abs(dd.y) / 1.0)) * exp(-sqrt(r2) / 22.0);
         c = c + vec3<f32>(2.0, 1.9, 1.7) * gl * star * show;
-        // (retro jets fired ahead off the collar's corners, dying as it stops; its engine as it goes)
+        // (four jets off the collar's corners fired down: braking it as it comes down, dying as it stops; lifting it away,
+        // a bright kick and then a long burn, as it goes)
         let br = vc_sat_brake();
-        if (br > 0.0) {
-            let d2 = vc_sat_dir();
-            let fw = vec3<f32>(-d2.y, 0.0, d2.x);
+        let go = smoothstep(VC_BURN, VC_BURN + 0.3, t);
+        let kj = br + go * (1.0 + 2.0 * exp(-(t - VC_BURN) * 5.0)) * (1.0 - 0.6 * hz);
+        if (kj > 0.0) {
             for (var j = 0; j < 4; j = j + 1) {
                 let q = vec2<f32>(f32(j & 1), f32(j >> 1u)) * 2.0 - 1.0;
-                c = c + vc_jet(uv, P + (M * vec3<f32>(q * 30.0, -10.0)) * sk, normalize(fw + 0.15 * (M[0] * q.x + M[1] * q.y)), (30.0 + 170.0 * br) * sk, 2.5 * sk, br * show, vec3<f32>(1.3, 1.6, 2.4));
+                let dn = normalize(vec3<f32>(0.0, -1.0, 0.0) + 0.12 * (M[0] * q.x + M[1] * q.y));
+                c = c + vc_jet(uv, P + (M * vec3<f32>(q * 30.0, -10.0)) * sk, dn, (30.0 + 170.0 * br + 260.0 * go) * sk, (2.5 + 3.0 * go) * sk, kj * show, vec3<f32>(1.3, 1.6, 2.4));
             }
         }
-        let go = smoothstep(VC_BURN, VC_BURN + 0.3, t);
-        c = c + vc_jet(uv, P - M[2] * 79.0 * sk, -M[2], (60.0 + 320.0 * go) * sk, 9.0 * sk, go * (1.0 + 2.0 * exp(-(t - VC_BURN) * 5.0)) * show * (1.0 - 0.6 * hz), vec3<f32>(1.6, 1.9, 2.8));
         let em = charge * 1.2 + fire * (1.6 + 0.4 * sin(t * 47.0));
         let flare = 1.0 / (1.0 + r2 / (5.0 + 18.0 * fire)) + 0.04 / (1.0 + r2 / 700.0) + 0.25 * exp(-abs(dd.y) / 1.5) * exp(-abs(dd.x) / (25.0 + 35.0 * fire));
         c = c + vec3<f32>(3.0, 2.1, 1.3) * em * flare * k;
