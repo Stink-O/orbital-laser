@@ -217,7 +217,8 @@ laser, command, capability and timing). This file is the short, factual version 
   gold-foiled bus and engine, white radiators, a gold collar, roll-out solar arrays on a truss turned to the sun
   (`vc_sat_wing`: rolled up as it comes, out from 0.95 s, back in from 5.0), an octagonal barrel
   ringed by four coils stepping in to the emitter, four prongs; from the ground, nearly down its barrel, a dark cross with
-  a glowing eye) comes straight down from 3,000 higher, braking on four jets fired down, settled over the vent by ~1.1 s
+  a glowing eye) comes straight down from 3,000 higher like a booster landing, tilted well off the vertical, its four jets (fired down
+  its barrel, swinging with it) and puffs off its sides righting it in shrinking swings, settled over the vent by ~1.8 s
   (`vc_sat_go`, `vc_sat_tip`), aims a solid red targeting beam (0.6 s, locked at 1.5; its coils lit red), its coils charge
   outside in and it fires at 2 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
   cut at 4.6 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 6.1 (`VC_BURN`) and lifts straight up and away,
