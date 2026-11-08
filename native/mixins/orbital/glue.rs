@@ -1234,6 +1234,7 @@ const USAGES: &[&str] = &[
     "orbital supercell",
     "orbital hurricane",
     "orbital tsunami",
+    "orbital supervolcano",
 ];
 
 /// The `register_commands` hook: `/orbital` and its usages in the server's command tree.
