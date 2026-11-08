@@ -4,7 +4,7 @@ version = "0.5.12"
 priority = 100
 
 [compatibility]
-horizon_revision = "fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca"
+horizon_revision = "c98a51a664c8ce8ec166ecedd85bb47b3687b336"
 
 # The mod's code, unchanged, on a native build of its SDK (engine/src/horizon_sdk.rs).
 [[crate]]
@@ -297,4 +297,25 @@ helper = "content_find.rs"
 bindings = [
   { name = "dir", ty = "&Path", value = "dir" },
   { name = "found", ty = "Vec<PathBuf>", value = "$value" },
+]
+
+# The Fold's world warp (render.set-warp, warp-on): handed to the game's world warp each frame (post.rs).
+[[injection]]
+id = "world_warp"
+hook = "world_warp"
+hook_version = 1
+kind = "HEAD"
+helper = "world_warp.rs"
+bindings = [{ name = "warp", ty = "&mut crate::gfx::native_render::WorldWarp", value = "&mut *warp" }]
+
+# The Fold's held world (render.hold-world, hold-world-within): asked by the game each frame (glue.rs `world_hold`).
+[[injection]]
+id = "world_hold"
+hook = "world_hold"
+hook_version = 1
+kind = "HEAD"
+helper = "world_hold.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "hold", ty = "&mut horizon_client::mod_api::WorldHold", value = "&mut *hold" },
 ]

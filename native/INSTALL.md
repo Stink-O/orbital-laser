@@ -7,8 +7,7 @@ the game. Its code runs with full access to your computer, like any native mod, 
 
 - The Horizon launcher, 0.2.37 or newer ([playhorizon.dev](https://playhorizon.dev)), and a Horizon instance of its
   own (not the Orbital Laser build's game folder). Any installed release or Nightly will do: the mod is pinned to
-  upstream Horizon `fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca` (the Nightly of 2026-11-08), and the launcher builds it on
-  that commit.
+  upstream Horizon `c98a51a664c8ce8ec166ecedd85bb47b3687b336`, and the launcher builds it on that commit.
 - The first native build downloads the launcher's own Rust (1.99.1) and takes 20 to 30 minutes. Later builds are
   quicker. You don't need Rust installed yourself.
 
@@ -64,9 +63,6 @@ the old ones build or load beside it.
 
 ## Known issues
 
-- **The Fold is greyed out in the wheel.** It bends the world's real geometry through two hook points Horizon has
-  merged but not given numbers yet, so a native build can't use them. It comes to the native version once they're
-  numbered. Every other laser plays.
 - **The Supervolcano doesn't darken your hand.** On the fork version the first-person hand darkens under the ash and is lit
   by the eruption and the lightning; regular Horizon has no way to tint the hand yet, so here it stays as the game draws it.
   The strike itself is the same.

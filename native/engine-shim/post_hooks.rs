@@ -232,3 +232,49 @@ pub fn draw(world: &mut crate::gfx::native_render::WorldDrawn<'_>) {
         world.color_view,
     );
 }
+
+// ---- The Fold's world warp on the game's `native_world_warp` --------------------------------------------------------
+//
+// The mod's warp is written for the fork's contract (`render.set-warp`): `fn world_warp(pos, copy: u32)`, the private
+// `warp_section`, and `globals.warp`, six vec4s: the sixteen parameters, the camera (w the partial tick) and what its
+// f32 leaves out. This game's contract (docs/native-mods.md, "World warps") is `fn world_warp(pos, section)` and the
+// uniform `warp { params, camera, camera_rest }`, so the source is put on it here, unchanged otherwise.
+
+/// The warp to draw from the next frame on (this game's source) and whether it is on.
+static WARP: Mutex<Option<(Arc<str>, bool)>> = Mutex::new(None);
+
+/// The game thread: the warp (already in this game's contract) and whether it is on, or none.
+pub fn set_warp(warp: Option<(Arc<str>, bool)>) {
+    if let Ok(mut w) = WARP.lock() {
+        *w = warp;
+    }
+}
+
+/// The fork's warp source on this game's contract.
+pub fn native_warp_source(fork: &str) -> String {
+    const ON_NATIVE: &str = "\
+// (the fork's warp contract on this game's: globals.warp, world_warp(pos, copy) and warp_section)
+var<private> warp_section: vec3<f32>;
+fn fork_warp_globals() -> array<vec4<f32>, 6> {
+    return array<vec4<f32>, 6>(warp.params[0], warp.params[1], warp.params[2], warp.params[3], warp.camera, warp.camera_rest);
+}
+fn world_warp(pos: vec3<f32>, section: vec3<f32>) -> Warped {
+    warp_section = section;
+    return fork_world_warp(pos, 0u);
+}
+";
+    let body = fork.replace("globals.warp", "fork_warp_globals()").replacen("fn world_warp(", "fn fork_world_warp(", 1);
+    format!("{ON_NATIVE}{body}")
+}
+
+/// `native_world_warp`: the mod's warp, with the post pass's parameters (the fork's warp read the same sixteen).
+pub fn world_warp(warp: &mut crate::gfx::native_render::WorldWarp) {
+    let Some((source, on)) = WARP.lock().ok().and_then(|w| w.clone()) else {
+        return;
+    };
+    warp.source = Some(source);
+    warp.on = on;
+    if let Some(params) = PASS.lock().ok().and_then(|p| p.as_ref().map(|p| p.params)) {
+        warp.params = params;
+    }
+}

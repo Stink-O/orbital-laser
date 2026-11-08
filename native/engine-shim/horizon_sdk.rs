@@ -276,9 +276,7 @@ pub mod render {
             s.post_data = Some((Arc::from(words), version));
         });
     }
-    // The world warp and the held world (the Fold's): kept as the fork keeps them, so the mod builds, but nothing here
-    // draws them yet (`native_build::UNSUPPORTED`): the lasers that need them are greyed out in the wheel.
-    /// `render.set-warp`: the world warp's WGSL (empty: none).
+    /// `render.set-warp`: the world warp's WGSL (empty: none); built by the game the first time it is turned on.
     pub fn set_warp(wgsl: &str) {
         if wgsl.len() > super::__host::POST_SOURCE {
             ::log::warn!("world warp over {} KiB, ignored", super::__host::POST_SOURCE >> 10);
@@ -292,7 +290,8 @@ pub mod render {
             }
         });
     }
-    /// `render.warp-on`: the warp on or off, round a point, with `copies` of the solid sections within `radius` of it.
+    /// `render.warp-on`: the warp on or off. `copies` and `radius` (the solid sections near a point drawn again) are
+    /// kept for the mod's sake; the native build draws no copies.
     pub fn warp_on(on: bool, x: f64, y: f64, z: f64, copies: u32, radius: f32) {
         super::__host::with(|s| {
             s.warp = on.then_some(super::__host::Warp { at: [x, y, z], copies: copies.min(8), radius });
@@ -541,12 +540,7 @@ pub mod atlas {
 pub mod native_build {
     /// The fork's calls this build has, so the mod builds, but doesn't carry out yet. Take one out when the glue does.
     pub const UNSUPPORTED: &[&str] = &[
-        // (upstream's world warp, ludovic111/horizon#11955, and the glue drawing it: the fold-native branch)
-        "render.set-warp",
-        "render.warp-on",
-        // (upstream's held world, ludovic111/horizon#11956, merged; the glue holding it: the fold-native branch)
-        "render.hold-world",
-        "render.hold-world-within",
+        // (none: the Fold's world warp and held world are drawn since upstream's #11955 and #11956)
     ];
     /// The fork's calls a laser's strike can't do without (by its key in lasers.rs), for the lasers that need one this
     /// build may lack: a laser with a call in UNSUPPORTED is unavailable. A new laser that needs a call this build
@@ -564,9 +558,13 @@ pub mod native_build {
     }
     /// Why the laser `key` can't be played on this build (`NOT_YET`), or none.
     pub fn unavailable(key: &str) -> Option<&'static str> {
+        unavailable_without(key, UNSUPPORTED)
+    }
+    /// Why the laser `key` can't be played on a build lacking the calls `unsupported`, or none.
+    fn unavailable_without(key: &str, unsupported: &[&str]) -> Option<&'static str> {
         NEEDS
             .iter()
-            .any(|(k, calls)| *k == key && calls.iter().any(|c| !supports(c)))
+            .any(|(k, calls)| *k == key && calls.iter().any(|c| unsupported.contains(c)))
             .then_some(NOT_YET)
     }
 
@@ -574,12 +572,17 @@ pub mod native_build {
     mod tests {
         use super::*;
         #[test]
-        fn the_fold_waits_for_the_world_warp() {
-            assert_eq!(unavailable("fold"), Some(NOT_YET));
-            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "moonfall", "skybreak"] {
+        fn every_laser_plays_on_this_build() {
+            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "moonfall", "skybreak"] {
                 assert_eq!(unavailable(key), None, "{key}");
             }
-            assert!(!supports("render.set-warp") && supports("render.set-post"));
+            assert!(supports("render.set-warp") && supports("render.hold-world-within") && supports("render.set-post"));
+        }
+        #[test]
+        fn a_laser_waits_for_a_call_the_build_lacks() {
+            assert_eq!(unavailable_without("fold", &["render.set-warp"]), Some(NOT_YET));
+            assert_eq!(unavailable_without("fold", &["render.set-post"]), None);
+            assert_eq!(unavailable_without("nuke", &["render.set-warp"]), None);
         }
         #[test]
         fn every_call_is_named_as_the_fork_names_it() {
