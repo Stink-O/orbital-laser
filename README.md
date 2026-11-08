@@ -19,6 +19,8 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
   <a href="#getting-started"><b>Fork version</b></a>
   &nbsp;·&nbsp;
   <a href="docs/HOW-IT-WORKS.md"><b>How it works</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://ko-fi.com/stinkoh"><b>Support it</b></a>
 </p>
 
 <p align="center">
@@ -27,6 +29,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
   <img alt="Tested on Linux" src="https://img.shields.io/badge/tested%20on-Linux-informational">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-WebAssembly-b7410e?logo=rust&logoColor=white">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://ko-fi.com/stinkoh"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -450,6 +453,11 @@ Orbital Laser → Settings**).
   the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
 
 To build the mod from source or change it, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Support it
+
+Orbital Laser is free and always will be. If you've enjoyed it and want more strikes, you can buy me a coffee on
+[Ko-fi](https://ko-fi.com/stinkoh). It goes straight into the hours behind the next one.
 
 ## Credits and licence
 
