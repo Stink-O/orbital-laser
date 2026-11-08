@@ -19,9 +19,9 @@ What each release of Orbital Laser added, newest first. The current release is i
   compiler can't unroll. On the native version they draw on DirectX 12, all but the Downfall's, which that compiler still
   can't build; on OpenGL the game's frame can't be copied yet, so the native version skips its effects there with a
   warning in the log instead of ending the game.
-- **The native version catches up to 0.5.12**, on upstream Horizon `fdc87ae` (the 2026-11-08 Nightly): the Supervolcano
-  plays, without the darkened hand. The Fold shows greyed out in the wheel ("Not on the native build yet") until upstream
-  numbers the hook points it needs; the native build greys out any laser it can't play.
+- **The native version catches up to 0.5.12**, on upstream Horizon `PIN_AFTER_STAMP`: the Fold plays on upstream's world warp and
+  held world (horizon-rust/horizon#11955, #11956), and the Supervolcano, without the darkened hand. The native build greys
+  out any laser it can't play.
 
 ## 0.5.11
 

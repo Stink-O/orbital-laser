@@ -49,8 +49,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
 > Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 >
-> **The Fold is fork-only for now.** It needs two hook points regular Horizon has merged but not numbered yet, so on the
-> native version it shows greyed out in the wheel. Every other laser, the Supervolcano included, plays on both.
+> **Every laser plays on both**, the Fold included: regular Horizon now has the world warp and the held world it needs.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
@@ -65,8 +64,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 1. Install the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) and set up an instance from your own
    Minecraft Java Edition 26.3.
-2. Close the game. On the launcher's **Mods** page, search **orbital** and press **Install** on Orbital Laser. On
-   the native version the Fold shows greyed out for now.
+2. Close the game. On the launcher's **Mods** page, search **orbital** and press **Install** on Orbital Laser.
 3. On the **Native build** row pick **Release build**, press **Build**, and choose **I trust these mods: build**. The
    first build takes 20 to 30 minutes.
 4. Press Play, open a creative world and type **`/orbital give`**. Hold the Designator and press **R** to pick a
@@ -96,8 +94,7 @@ crust and lava. It's on the wheel's fourth page and `/orbital supervolcano`, and
 - **The effects draw on DirectX 12 too**, not only Vulkan, all but the Downfall's
   ([#12](https://github.com/Stink-O/orbital-laser/issues/12)). On OpenGL they build now, but the native version can't draw
   them there yet (the game's frame can't be copied), so it skips them with a warning in the log: use Vulkan or DirectX 12.
-- **The native version catches up**: 0.5.12 with the Supervolcano, on a newer Horizon. The Fold shows greyed out there
-  until regular Horizon numbers the hook points it needs.
+- **The native version catches up**: 0.5.12 with the Fold and the Supervolcano, on a newer Horizon.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -175,7 +172,7 @@ Seventeen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
-- **The Fold** (page four, fork version only for now). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
+- **The Fold** (page four). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
   seven seconds on a rope of smoke. Right over the target it brakes over a second, the fire and the smoke pouring on past it, hangs, and is let
   go. It goes into the land like a stone into water. Rings run out, sharpen into twelve creases and five rings, one pattern, and the sheet
   folds along them: the land lifts ring by ring, the horizon curls up over you and you are in a tube with the whole world on its walls. The
@@ -462,8 +459,8 @@ Orbital Laser → Settings**).
 
 ## Known gaps
 
-- **The fork version needs a Horizon fork**. Its ready-built download is for Linux x86-64, with a Windows test build that hasn't been run on real Windows yet. The native version runs on regular Horizon; the Fold is greyed out there
-  until regular Horizon numbers the hook points it needs, and the Supervolcano doesn't darken your hand there.
+- **The fork version needs a Horizon fork**. Its ready-built download is for Linux x86-64, with a Windows test build that hasn't been run on real Windows yet. The native version runs on regular Horizon; the Supervolcano doesn't darken
+  your hand there.
 - **On the fork version, a strike's sounds can run on over the title screen** after Save and Quit to Title, until they end: the game doesn't stop them. It needs a fix in Horizon itself.
 - **Tested on Linux.** Reported working on Windows 11 by a user (the fork built from source, `--features mods`).
 - **macOS (Apple Silicon): the Downfall's effects may not draw.** Apple's Metal shader compiler fails on its effects

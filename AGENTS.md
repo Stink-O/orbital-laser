@@ -496,8 +496,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   `engine-shim/horizon_sdk.rs`, the SDK on native helpers; `package.py` makes the one-file `orbital.hnmod`;
   `mixins/orbital/horizon-mixin.toml` its hook points and the upstream commit it is pinned to). A fork call the native
   build lacks gets a stand-in in the shim so the mod builds: `native_build::UNSUPPORTED` lists the ones a laser can't do
-  without and `NEEDS` which laser needs them, and such a laser is greyed out in the wheel (the Fold, until upstream stamps
-  its `world_warp` and `world_hold` hooks). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
+  without and `NEEDS` which laser needs them, and such a laser is greyed out in the wheel (none at the moment: the Fold's
+  `world_warp` and `world_hold` hooks are stamped upstream). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
   no hand tint), so on native the Supervolcano plays with the hand as the game draws it. Check a bundle with
   `horizon-mixins apply` and `cargo check -p horizon-client` on its pin and on the newest Nightly (the registry's check).
   The native prelude (`engine-shim/mod_post.wgsl`) binds the depth as a float texture: read it through `depth_at`, never
