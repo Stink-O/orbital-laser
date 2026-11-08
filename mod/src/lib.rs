@@ -196,6 +196,8 @@ struct Strike {
     sprites: u64,
 }
 
+/// The Supervolcano's satellite sound takes, as `/orbital satsound` names them (tools/sounds_volcano.py's build_sat1-3).
+const SAT_TAKE_NAMES: [&str; strike::SAT_TAKES as usize] = ["the sky splits: thunder", "the sky sings: a horn", "the beam comes down: a rush and a slam"];
 /// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
 const IMPACT_STYLES: [&str; 3] = ["blackflash", "kanada", "cinematic"];
 const IMPACT_ORDER: [u8; 3] = [1, 0, 2];
@@ -285,6 +287,7 @@ struct Settings {
     seed_lock: Option<u32>,
     impact_style: u8,
     carry_turn: bool,
+    sat_take: u8,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -357,6 +360,9 @@ struct Orbital {
     /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
     /// (`/orbital carryview turn|still`; turn, the default).
     carry_turn: bool,
+    /// Which of the Supervolcano's satellite sound takes plays (`/orbital satsound 1|2|3`, kept; 1 the default):
+    /// strike/vc_sound.rs's SAT_TAKES.
+    sat_take: u8,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
@@ -411,7 +417,7 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn, sat_take } = settings;
         Orbital {
             passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), volcano_pass(fast)],
             compiled: None,
@@ -444,6 +450,7 @@ impl Orbital {
             carrying: None,
             carry_held: true,
             carry_turn,
+            sat_take,
             follow_distance,
             seed_lock,
             last_seed: 1,
@@ -467,7 +474,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\nsatsound={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.hud),
@@ -483,7 +490,8 @@ impl Orbital {
             if self.carry_turn { "turn" } else { "still" },
             if self.follow { "on" } else { "off" },
             self.follow_distance,
-            self.seed_lock.map_or("random".to_string(), |s| s.to_string())
+            self.seed_lock.map_or("random".to_string(), |s| s.to_string()),
+            self.sat_take
         );
         let mut text = text;
         for (i, l) in LASERS.iter().enumerate() {
@@ -528,6 +536,7 @@ impl Orbital {
         let mut impact_style = 1u8;
         let mut knock = true;
         let mut carry_turn = true;
+        let mut sat_take = 1u8;
         let mut follow = false;
         let mut follow_distance = follow::DISTANCE;
         let mut seed_lock = None;
@@ -553,6 +562,7 @@ impl Orbital {
                 }
                 Some(("knockback", v)) => knock = v != "off",
                 Some(("carryview", v)) => carry_turn = v != "still",
+                Some(("satsound", v)) => sat_take = v.parse::<u8>().ok().filter(|k| (1..=strike::SAT_TAKES).contains(k)).unwrap_or(1),
                 Some(("follow", v)) => follow = v == "on",
                 Some(("followdistance", v)) => {
                     follow_distance = v.parse::<f64>().ok().filter(|d| d.is_finite()).map_or(follow::DISTANCE, |d| d.clamp(follow::DISTANCE_MIN, follow::DISTANCE_MAX));
@@ -566,7 +576,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, carry_turn, sat_take }
     }
 
     /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
@@ -972,7 +982,12 @@ impl Orbital {
         columns::clear();
         mem::reset_peak();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
-        let option = wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]));
+        // (the Supervolcano which take of its satellite's sounds it plays)
+        let option = if laser.key == "supervolcano" {
+            usize::from(self.sat_take)
+        } else {
+            wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s]))
+        };
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
         meter::spend(FIRE_COST);
         let mut params = [0.0f32; 16];
@@ -1767,6 +1782,21 @@ impl Mod for Orbital {
                 Ok(Some(format!("Carry view: {v} (the Hurricane's carry {} your view)", if self.carry_turn { "turns and sways" } else { "leaves alone" })))
             }
             (Some("carryview"), None) => Ok(Some(format!("Carry view: {} (/orbital carryview turn or still)", if self.carry_turn { "turn" } else { "still" }))),
+            (Some("satsound"), Some(v)) => match v.parse::<u8>().ok().filter(|k| (1..=strike::SAT_TAKES).contains(k)) {
+                Some(k) => {
+                    self.sat_take = k;
+                    self.save();
+                    Ok(Some(format!("Supervolcano satellite sound: take {k} ({})", SAT_TAKE_NAMES[usize::from(k) - 1])))
+                }
+                None => Err(format!("/orbital satsound 1 to {}", strike::SAT_TAKES)),
+            },
+            (Some("satsound"), None) => Ok(Some(format!(
+                "Supervolcano satellite sound: take {} ({}) (/orbital satsound 1 to {}: {})",
+                self.sat_take,
+                SAT_TAKE_NAMES[usize::from(self.sat_take) - 1],
+                strike::SAT_TAKES,
+                SAT_TAKE_NAMES.iter().enumerate().map(|(i, n)| format!("{} {n}", i + 1)).collect::<Vec<_>>().join(", ")
+            ))),
             (Some("follow"), Some(v @ ("on" | "off"))) => {
                 self.set_follow(v == "on");
                 Ok(Some(format!("Follow camera {v} (an orbit round the Nuke's or the Payload's bomb as it comes in, the mouse turning it; then the fireball and the cloud)")))
@@ -1821,7 +1851,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | satsound 1|2|3 | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -2604,6 +2634,7 @@ mod stress {
         assert!(!kept.knock && kept.follow && kept.follow_distance == 90.0);
         let plain = Orbital::parse("followdistance=nonsense");
         assert_eq!(Orbital::parse("seed=412").seed_lock, Some(412));
+        assert_eq!((Orbital::parse("").sat_take, Orbital::parse("satsound=3").sat_take, Orbital::parse("satsound=7").sat_take), (1, 3, 1));
         let o = Orbital::new(Orbital::parse("impactframes=cinematic"));
         assert!(o.impact && o.impact_style == 2 && o.flags_of(11) == 12.0);
         let o = Orbital::new(Orbital::parse("impactframes=off"));
