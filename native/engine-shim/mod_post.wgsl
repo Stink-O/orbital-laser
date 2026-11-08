@@ -47,7 +47,10 @@ struct Frame {
     camera_rest: vec4<f32>,
 }
 @group(0) @binding(0) var scene_color: texture_2d<f32>;
-@group(0) @binding(1) var scene_depth: texture_depth_2d;
+// The depth as a plain float texture (its value in .r), not texture_depth_2d: naga's GLSL for OpenGL has no textureLoad
+// from a depth texture, and turns textureSampleLevel on one into a shadow lookup the driver refuses. Read it through
+// depth_at.
+@group(0) @binding(1) var scene_depth: texture_2d<f32>;
 @group(0) @binding(2) var linear_sampler: sampler;
 @group(0) @binding(3) var nearest_sampler: sampler;
 @group(0) @binding(4) var<uniform> frame: Frame;
@@ -70,7 +73,7 @@ struct StageIn {
 
 // The depth at `uv`, as the renderer stores it.
 fn depth_at(uv: vec2<f32>) -> f32 {
-    return textureSampleLevel(scene_depth, nearest_sampler, uv, 0);
+    return textureSampleLevel(scene_depth, nearest_sampler, uv, 0.0).r;
 }
 fn is_sky(depth: f32) -> bool {
     return depth <= 0.0;

@@ -245,7 +245,9 @@ impl ModPost {
         };
         let entries = [
             texture(0, wgpu::TextureSampleType::Float { filterable: true }),
-            texture(1, wgpu::TextureSampleType::Depth),
+            // (the Depth32Float depth bound as an unfilterable float texture, as mod_post.wgsl declares it: OpenGL can't
+            // build a pass that reads a texture_depth_2d)
+            texture(1, wgpu::TextureSampleType::Float { filterable: false }),
             fragment(
                 2,
                 wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),

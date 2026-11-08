@@ -180,6 +180,19 @@ fn sc_den(q: vec3<f32>, t: f32, fine: bool) -> vec2<f32> {
 struct ScFlash {
     p: array<vec4<f32>, 3>,
 }
+// Keeps the flash `fp` in place of the dimmest held if it is brighter. Each slot is written at its own index: FXC,
+// DirectX 12's compiler, can't write an array at a run-time index inside a loop without unrolling it, and the bolts'
+// loop can't be.
+fn sc_keep(fl: ptr<function, ScFlash>, fp: vec4<f32>) {
+    var lo = 0;
+    if ((*fl).p[1].w < (*fl).p[lo].w) { lo = 1; }
+    if ((*fl).p[2].w < (*fl).p[lo].w) { lo = 2; }
+    if (fp.w > (*fl).p[lo].w) {
+        (*fl).p[0] = select((*fl).p[0], fp, lo == 0);
+        (*fl).p[1] = select((*fl).p[1], fp, lo == 1);
+        (*fl).p[2] = select((*fl).p[2], fp, lo == 2);
+    }
+}
 
 // ---- the bolts ------------------------------------------------------------------------------------------------------
 // As lightning is: a faint stepped leader, a dim branching tree, creeping down from the cloud in a few frames
@@ -858,10 +871,11 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
         let full = vec2<i32>(frame.resolution.xy);
         let q = vec2<i32>(floor(in.position.xy)) * 2;
         let q1 = min(q + vec2<i32>(1), full - vec2<i32>(1));
-        let d0 = textureLoad(scene_depth, q, 0);
-        let d1 = textureLoad(scene_depth, vec2<i32>(q1.x, q.y), 0);
-        let d2 = textureLoad(scene_depth, vec2<i32>(q.x, q1.y), 0);
-        let d3 = textureLoad(scene_depth, q1, 0);
+        // (through depth_at at each pixel's middle, not textureLoad: OpenGL can't load from a depth texture)
+        let d0 = depth_at((vec2<f32>(q) + 0.5) * frame.resolution.zw);
+        let d1 = depth_at((vec2<f32>(f32(q1.x), f32(q.y)) + 0.5) * frame.resolution.zw);
+        let d2 = depth_at((vec2<f32>(f32(q.x), f32(q1.y)) + 0.5) * frame.resolution.zw);
+        let d3 = depth_at((vec2<f32>(q1) + 0.5) * frame.resolution.zw);
         let hq = vec2<i32>(floor(in.position.xy));
         d = select(min(min(d0, d1), min(d2, d3)), max(max(d0, d1), max(d2, d3)), ((hq.x + hq.y) & 1) == 0);
         uv = (vec2<f32>(q) + 1.0) * frame.resolution.zw;
@@ -915,10 +929,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             let foot = C + b.xyz;
             let fp = vec4<f32>(root + vec3<f32>(0.0, 20.0, 0.0), I * 2.5);
             // (kept if brighter than the dimmest held)
-            var lo = 0;
-            if (fl.p[1].w < fl.p[lo].w) { lo = 1; }
-            if (fl.p[2].w < fl.p[lo].w) { lo = 2; }
-            if (fp.w > fl.p[lo].w) { fl.p[lo] = fp; }
+            sc_keep(&fl, fp);
             if (stage != 1u && !sky) {
                 let dl = length(rel - foot);
                 gflash = gflash + vec3<f32>(0.8, 0.85, 1.1) * I * 5.0 / (1.0 + dl * dl / 300.0);
@@ -936,10 +947,7 @@ fn supercell(in: StageIn, stage: u32, up: vec4<f32>) -> PlOut {
             let I = (exp(-a / 0.06) + 0.7 * exp(-max(a - 0.14, 0.0) / 0.05) * step(0.14, a) + 0.5 * exp(-max(a - 0.33, 0.0) / 0.06) * step(0.33, a)) * 1.6 * (1.0 - sc_hush(time));
             let p = C + vec3<f32>(sc_w(o + 1u), SC_BASE + 40.0 + 60.0 * mh(i, seed, 0x61u), sc_w(o + 2u));
             let fp = vec4<f32>(p, I);
-            var lo = 0;
-            if (fl.p[1].w < fl.p[lo].w) { lo = 1; }
-            if (fl.p[2].w < fl.p[lo].w) { lo = 2; }
-            if (fp.w > fl.p[lo].w) { fl.p[lo] = fp; }
+            sc_keep(&fl, fp);
             sky_flash = sky_flash + I * 0.12 / (1.0 + length(p) / 300.0);
         }
     }
