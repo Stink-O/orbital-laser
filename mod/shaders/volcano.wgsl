@@ -1749,7 +1749,8 @@ fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight
 
 // ---- the opening: a small orbital laser over the vent, its targeting beam, the beam, the hole it melts ----
 // The satellite hangs in orbit, 7,000 up and 1,600 beyond the vent from where the player fired (table words 2 and 3: the
-// way to them), some 70 degrees up their sky, high over the vent, drifting along its orbit; drawn bigger the further off it is
+// way to them), some 70 degrees up their sky, high over the vent, drifting along its orbit. It never just appears: it
+// comes in along its orbit from 2,200 blocks back, braking (eased) on its retro thrusters, still by VC_ARRIVE (the lock); drawn bigger the further off it is
 // seen (`vc_sat_k`), so it reads as a machine from wherever they are. It aims a thin opaque red beam (VC_AIM), its spot
 // wandering onto the vent and locking (VC_LOCK); its emitter charges and fires (VC_HIT): a white-hot beam that melts a
 // clean round hole (VC_HR) down through the crust, cut at VC_OFF; the hole glows on, its rim cooling to crust, steam off
@@ -1759,12 +1760,23 @@ const VC_LOCK: f32 = 1.5;
 const VC_OFF: f32 = 4.6;
 const VC_HR: f32 = 14.0;
 const VC_SAT_END: f32 = 9.5;
-fn vc_sat() -> vec3<f32> {
-    var d = vec2<f32>(vc_w(2u), vc_w(3u));
+const VC_ARRIVE: f32 = 1.5;
+// The way to the player, level.
+fn vc_sat_dir() -> vec2<f32> {
+    let d = vec2<f32>(vc_w(2u), vc_w(3u));
     if (dot(d, d) < 0.5) {
-        d = normalize(vc_me() + vec2<f32>(1.0e-3, 0.0));
+        return normalize(vc_me() + vec2<f32>(1.0e-3, 0.0));
     }
-    let s = -1600.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
+    return d;
+}
+// How hard it is braking (1 as it comes into view, 0 once still).
+fn vc_sat_brake() -> f32 {
+    return 1.0 - saturate(vs.t / VC_ARRIVE);
+}
+fn vc_sat() -> vec3<f32> {
+    let d = vc_sat_dir();
+    let b = vc_sat_brake();
+    let s = -1600.0 * d + vec2<f32>(-d.y, d.x) * (16.0 * (vs.t - 3.0) - 2200.0 * b * b * b);
     return vec3<f32>(s.x, 7000.0, s.y);
 }
 // How much bigger than itself it is drawn, seen from `P` off: as big as it would look from 2,400 (from 1,900 at the most).
@@ -1906,7 +1918,7 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
     let P = S + C;
     let sk = vc_sat_k(P);
     let E = P + ax * 55.0 * sk;
-    let show = smoothstep(0.0, 0.35, t) * (1.0 - smoothstep(VC_SAT_END - 2.0, VC_SAT_END, t));
+    let show = smoothstep(0.0, 0.6, t) * (1.0 - smoothstep(VC_SAT_END - 2.0, VC_SAT_END, t));
     let charge = smoothstep(VC_LOCK + 0.1, VC_HIT, t) * (1.0 - smoothstep(VC_HIT, VC_HIT + 0.1, t));
     let tp = dot(P, rd);
     if (tp > 0.0 && length(P - rd * tp) < 180.0 * sk && tp < len) {
@@ -1988,6 +2000,30 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
         let gl = exp(-pow((t - 0.45) / 0.14, 2.0));
         let star = 1.0 / (1.0 + r2 / 3.0) + 0.3 * (exp(-abs(dd.x) / 1.0) + exp(-abs(dd.y) / 1.0)) * exp(-sqrt(r2) / 22.0);
         c = c + vec3<f32>(2.0, 1.9, 1.7) * gl * star * show;
+        // (its retro thrusters as it comes in: two jets fired ahead along its orbit, longest and brightest at first,
+        // dying away as it comes to a stop)
+        let br = vc_sat_brake();
+        if (br > 0.0) {
+            let dd2 = vc_sat_dir();
+            let fw = vec3<f32>(-dd2.y, 0.0, dd2.x);
+            for (var j = -1.0; j < 2.0; j = j + 2.0) {
+                // (each off the body's front, clear of the panels, a cone along the screen: its nozzle bright, widening and
+                // fading out ahead)
+                let base = P + (fw * 12.0 + sv * 27.0 * j) * sk;
+                let pa = project_rel(base);
+                let pb = project_rel(base + fw * sk * (40.0 + 200.0 * br));
+                if (pa.z > 0.0 && pb.z > 0.0) {
+                    let a2 = pa.xy * res;
+                    let ab = pb.xy * res - a2;
+                    let ap = uv * res - a2;
+                    let f = saturate(dot(ap, ab) / max(dot(ab, ab), 1.0e-4));
+                    let e = length(ap - ab * f);
+                    let w = 1.2 + 4.0 * f * br + 0.02 * length(ab) * f;
+                    let core = 1.0 / (1.0 + e * e / (w * w));
+                    c = c + vec3<f32>(1.3, 1.6, 2.4) * pow(1.0 - f, 1.6) * br * show * (0.9 * core + 0.6 / (1.0 + dot(ap, ap) / 6.0));
+                }
+            }
+        }
         let em = charge * 1.2 + fire * (1.6 + 0.4 * sin(t * 47.0));
         let flare = 1.0 / (1.0 + r2 / (5.0 + 18.0 * fire)) + 0.04 / (1.0 + r2 / 700.0) + 0.25 * exp(-abs(dd.y) / 1.5) * exp(-abs(dd.x) / (25.0 + 35.0 * fire));
         c = c + vec3<f32>(3.0, 2.1, 1.3) * em * flare * k;
