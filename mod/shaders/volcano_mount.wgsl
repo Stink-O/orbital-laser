@@ -33,7 +33,7 @@ const VM_W1: u32 = 131809u;        // VM_W0 + VM_COLS
 const VM_W2: u32 = 189890u;        // VM_W1 + VM_COLS
 const VM_RAD: f32 = 400.0;         // the dome's radius, on average
 const VM_H: f32 = 285.0;           // and how high it gets
-const VM_SWELL: f32 = 7.0;         // BEATS.md
+const VM_SWELL: f32 = 7.0;         // volcano.rs's VC_SWELL, VC_HUSH, VC_ERUPT
 const VM_HUSH: f32 = 17.0;
 const VM_ERUPT: f32 = 18.0;
 const VM_GONE: f32 = 19.0;         // nothing of the mount itself is left under the white-out
@@ -911,7 +911,6 @@ struct VmHit {
     t: f32,
     id: f32,    // what of the thrown it is: 0 none, 1 on a plate's number and one, 101 on a shard's
 }
-var<private> vm_seed: f32 = -1.0;  // fs_join's start, from the half-size stage (under 0: from the eye)
 var<private> vm_got: f32 = -2.0;   // the hit fs_join found (-2: not looked yet)
 var<private> vm_plc: vec3<f32>;    // a thrown plate at this pixel, shown through the fire: land and fire lift as one sheet
 var<private> vm_plk: f32 = 0.0;

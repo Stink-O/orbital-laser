@@ -319,7 +319,7 @@ fn march(w: &Vox, o: [f64; 3], d: [f64; 3], tmax: f64) -> Option<(f64, [i32; 3],
 }
 fn shade(w: &Vox, m: &[Mat], o: [f64; 3], d: [f64; 3], tmax: f64, depth: u32) -> [f32; 3] {
     let sky = [0.42f32, 0.6, 0.95];
-    let Some((t, c, id, axis)) = march(w, o, d, tmax) else { return sky };
+    let Some((t, _, id, axis)) = march(w, o, d, tmax) else { return sky };
     let mm = &m[id as usize];
     let up = axis == 1 && d[1] < 0.0;
     let base = if up { mm.top } else { mm.side };

@@ -194,7 +194,7 @@ VIEWS = {
     # high over the land, off to one side at the umbrella's height, and on wooded hills
     "vcplayer": "cx=0 cy=67 cz=560 lx=0.5 ly=260 lz=0.5 flat=1 trees=1 fov=75 reach=560",
     "vcup": "cx=0 cy=67 cz=560 lx=0.5 ly=1300 lz=0.5 flat=1 trees=1 fov=85 reach=560",
-    "vcmid": "cx=0 cy=80 cz=1100 lx=0.5 ly=420 lz=0.5 flat=1 trees=1 fov=70 reach=1100",
+    "vc1100": "cx=0 cy=80 cz=1100 lx=0.5 ly=420 lz=0.5 flat=1 trees=1 fov=70 reach=1100",
     "vcfar": "cx=300 cy=120 cz=2500 lx=0.5 ly=800 lz=0.5 flat=1 fov=60 reach=2500",
     "vcaerial": "cx=0 cy=2600 cz=3600 lx=0.5 ly=300 lz=0.5 flat=1 fov=55 reach=3000",
     "vcside": "cx=-3200 cy=1700 cz=900 lx=0.5 ly=1200 lz=0.5 flat=1 fov=60 reach=3000",

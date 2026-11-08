@@ -42,8 +42,6 @@ const VL_FALL: f64 = 1.25;
 const VL_UP: f64 = 0.62;
 const VL_TS: usize = 8;
 const VL_TALL: f64 = 44.0;
-/// A plate's thickness at the least.
-const VL_THICK: f64 = 30.0;
 /// How far round a site its chunks are force-loaded.
 pub(super) const VL_PATCH: f64 = 160.0;
 /// How far from the vent the sites lie: past the deposit and the felled trees, or the land's work buries them.
@@ -220,7 +218,6 @@ pub(super) struct Slab {
     pub rock_id: usize,
     pub site: Site,
     pub hit: f64,
-    pub near_rank: usize,
     tilt: f64,
     roll: f64,
     /// The way it lies, its low end first: near the way it came down.
@@ -250,9 +247,7 @@ pub(super) struct Slab {
     bh: usize,
     b0: (i32, i32),
     bits: Vec<u64>,
-    /// Its land's top over the plane: from, to, and the mean; its length along `long`, from the rest's middle.
-    tlo: f64,
-    thi: f64,
+    /// Its land's top over the plane, on average; its length along `long`, from the rest's middle.
     tmean: f64,
     long: [f64; 3],
     s0: f64,
@@ -289,7 +284,7 @@ struct Spall {
     top: &'static str,
 }
 impl Slab {
-    pub fn new(rock: &Rock, site: Site, hit: f64, near_rank: usize, seed: u32, g: f64) -> Slab {
+    pub fn new(rock: &Rock, site: Site, hit: f64, seed: u32, g: f64) -> Slab {
         let (mut i0, mut k0, mut i1, mut k1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
         for c in &rock.cols {
             i0 = i0.min(c.i);
@@ -307,7 +302,7 @@ impl Slab {
         let mut t = vec![f32::MAX; n];
         let mut mat = vec![0u8; n];
         let mut cr = vec![255u8; n];
-        let (mut tlo, mut thi, mut sum) = (f64::MAX, f64::MIN, 0.0);
+        let mut sum = 0.0;
         let (mut xx, mut xz, mut zz) = (0.0, 0.0, 0.0);
         for c in &rock.cols {
             let j = (c.k - k0) as usize * gw + (c.i - i0) as usize;
@@ -316,8 +311,6 @@ impl Slab {
             t[j] = v as f32;
             mat[j] = c.m | c.kind << 6;
             cr[j] = (c.d2 * 8.0).min(255.0) as u8;
-            tlo = tlo.min(v);
-            thi = thi.max(v);
             sum += v;
             xx += dx * dx;
             xz += dx * dz;
@@ -392,7 +385,6 @@ impl Slab {
             rock_id: rock.id,
             site,
             hit,
-            near_rank,
             tilt,
             roll,
             lay,
@@ -417,8 +409,6 @@ impl Slab {
             bh: 0,
             b0: (0, 0),
             bits: Vec::new(),
-            tlo,
-            thi,
             tmean,
             long,
             s0,
@@ -731,6 +721,7 @@ impl Slab {
         (m & 63, m >> 6, self.cr[v * self.gw + u])
     }
     /// One column of the plate, blocks from the world's `base` up. `floor`: the lowest worth laying (none: all of it).
+    #[allow(clippy::too_many_arguments)]
     fn plate_col(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, floor: Option<i32>, sp: &mut Vec<Stretch>) {
         self.spans(wx, wz, sp);
         for s in sp.iter() {
@@ -860,6 +851,7 @@ impl Slab {
     }
     /// A column's ground: heaped or dug, the trees on it gone, its cracks, its rubble: the world's Y its ground is at
     /// afterwards. `col`: what the read said stands there.
+    #[allow(clippy::too_many_arguments)]
     fn ground_col(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, col: Option<&Col>, seed: u32, near_ones: &Near) -> Option<i32> {
         let (dx, dz) = self.lay;
         let (ox, oz) = (wx - self.foot[0], wz - self.foot[2]);
@@ -956,6 +948,7 @@ impl Slab {
     }
     /// What lies under it where it stands clear of the ground: the land it came down on, crushed and shoved up under it,
     /// so nothing of it is held up by air. `sp`: its stretches in this column, `g` the ground's top as `ground_col` left it.
+    #[allow(clippy::too_many_arguments)]
     fn under(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, g: i32, c: &Col, sp: &[Stretch], seed: u32) {
         let Some(low) = sp.iter().map(|s| s.y0).reduce(f64::min) else { return };
         let y = (low + f64::from(gy) - 0.5).ceil() as i32 - 1;
@@ -1005,7 +998,7 @@ impl Slab {
                 }
             }
         }
-        let (d1, d2) = ((VL_FALL * st) as f32, (VL_FALL * st * 1.4142) as f32);
+        let (d1, d2) = ((VL_FALL * st) as f32, (VL_FALL * st * std::f64::consts::SQRT_2) as f32);
         let mut pass = |k: usize, i: usize, rel: [(i32, i32, f32); 4]| {
             for (a, b, d) in rel {
                 let (ii, kk) = (i as i32 + a, k as i32 + b);
@@ -1031,6 +1024,7 @@ impl Slab {
         self.fall = Fall { o: (ox, oz), n, m, t };
     }
     /// A column beside it: the earth it shoved up, heaped against its edge so no wall of it stands sheer.
+    #[allow(clippy::too_many_arguments)]
     fn talus(&self, b: &mut Blocks, x: i32, z: i32, wx: f64, wz: f64, gy: i32, g: i32, c: &Col, seed: u32) {
         let (st, f) = (VL_TS as f64, &self.fall);
         let (u, v) = ((wx - f.o.0) / st, (wz - f.o.1) / st);
@@ -1063,6 +1057,7 @@ impl Slab {
     }
     /// The edits of the chunk with corner (x0, z0): its ground, then the plate. `read`: what stands on each of its columns
     /// (x then z), none where the world has not said.
+    #[allow(clippy::too_many_arguments)]
     pub fn chunk(&self, x0: i32, z0: i32, bx: i32, bz: i32, gy: i32, seed: u32, read: Option<&[Option<Col>]>) -> Blocks {
         let (cx, cz) = (f64::from(bx) + 0.5, f64::from(bz) + 0.5);
         let mut b = Blocks::default();

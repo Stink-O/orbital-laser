@@ -210,8 +210,10 @@ laser, command, capability and timing). This file is the short, factual version 
   `thunder_mid` to 320, `thunder_far` past it, `rumble` for a flash in the cloud, late by the distance); `--listen DIR`
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
-- **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 80 s, reaches 1000, the vent moved
-  to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): an orbital laser satellite over the
+- **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 88 s, reaches 1000, the vent moved
+  to at least 1,000 blocks in front of the player by `vc_vent` (`VC_NEAR`), `fire` in lib.rs; its beats `VC_*` in
+  volcano.rs, which vc_sound.rs and vc_mount.rs take theirs from: keep volcano.wgsl's, volcano_mount.wgsl's `VM_SWELL`,
+  `VM_HUSH`, `VM_ERUPT` and tools/sounds_volcano.py's in step): an orbital laser satellite over the
   vent (`vc_opening`, `vc_sat0`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 3.4 times its
   size far off, scaled from where it parks so it shrinks as it leaves: `vc_sat_k`; built of blocks in `vc_sat_hit`: a
   gold-foiled bus and engine, white radiators, a gold collar, roll-out solar arrays on a truss turned to the sun
@@ -234,20 +236,47 @@ laser, command, capability and timing). This file is the short, factual version 
   (`vc_plume`, `vc_feed`), until the eruption: clear just over the hole (too hot to condense), each puff a domed cap (what
   was let go together lies on a dome, not a level slice, which drew flat plates), its folds sharp while young and softening
   as it spreads, lit through itself (the sun's chord across the column: a shaded side, a bright rim); the mount rising round the hole; the
-  tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a
+  tremor, the ring cracking at 6 s (`VC_CRACK`) with wisps of steam, the mount swelling from 7 s (`VC_SWELL`,
+  vc_mount.rs, volcano_mount.wgsl) and stopping dead at 17 (`VC_HUSH`), the eruption at 18 s (`VC_ERUPT`, the mount's
+  white-out for under a second, a flash along the ring and a
   pressure ring at the speed of sound), a ring of vents 560 across feeding a column to about 1,800 (`vc_col`: the
   ring's foot follows the land, `vc_land`, a heightfield of 128 x 128 cells; lumps on lumps, `vc_lump_col`, drawn out and
-  rushing low down by the height they are looked up at), 64 lava bombs from 13 s (`vc_bombs`, solved against the land,
+  rushing low down by the height they are looked up at), 64 lava bombs from 19 s to 36 (`vc_bombs`, solved against the land,
   their smoke at half size, their heads sharp; each landing leaves a small real crater, counted from each column's
-  ground so it needs no read), lightning from 20 s (`vc_flash`, a slot of 0.13 s, in the plume, then in rings through
-  the sheet; `vc_bolts`), the umbrella spreading from 23 s (`vc_umb`, out past the horizon, Hunga Tonga's ripple
-  `vc_ripple`), the sky dark by 40 s (`vc_dim`: land and sky darkened by what the sheet shuts out, `vc_sun_t`,
-  `vc_sky_t`, what glows left glowing; the game's clock and weather never touched), the collapse at 44 s (the lumps slow,
+  ground so it needs no read), lightning from 26 s (`VC_LIGHT`, `vc_flash`, a slot of 0.13 s, in the plume, then in rings
+  through the sheet from about 36, thinning out from 60 and gone by 80; `vc_bolts`), the umbrella spreading from 28 s
+  (`VC_SPREAD`, `vc_umb`, out past the horizon, Hunga Tonga's ripple `vc_ripple`), the sky dark by about 44 s (`vc_dim`:
+  land and sky darkened by what the sheet shuts out, `vc_sun_t`, `vc_sky_t`, what glows left glowing; the game's clock
+  and weather never touched), the collapse at 50 s (`VC_COLLAPSE`; the lumps slow,
   stop and fall back, `up`, the top of what stands falling, `Hb`), the wall of ash from the ring (`vc_flow`, `vc_front`:
-  60 blocks a second slowing to 25, at 500 by about 48 s, looked up round the vent so its lumps travel with it without
-  smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting off the land behind it into new
-  clouds from 60 s), the player engulfed (near black, embers, `vc_specks`), then a dim world under falling ash, the sheet
-  thinning from 69 s to a blood-red sun, all gone by 80 (`thin`). FAST's half stage holds the cloud and the bombs' smoke.
+  60 blocks a second slowing to 25, at 500 from the vent by about 54 s and 1,000 by about 66, looked up round the vent
+  so its lumps travel with it without smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting
+  off the land behind it into new clouds from 66 s, `VC_LIFT`), the player engulfed (near black, embers, `vc_specks`),
+  then a dim world under falling ash, the sheet thinning from 80 s (`VC_RED`) to a blood-red sun, all gone by 88
+  (`thin`). FAST's half stage holds the cloud and the bombs' smoke.
+  **The shaking** (volcano.rs, the game's `render.shake`; the pass's `vc_jolt` adds the tremor and the eruption's front on
+  the picture): a tremor from the shot building to the hush, nothing in the held breath; through the ground at
+  18 + d/1715 s a hard jolt and a bigger heave 0.4 s on; the report's arrival; small jolts under the column to the
+  collapse; the collapse; then the ash flow, building over its last 8 s as it comes, the blow as its lobes reach the
+  player (`vc_sound::front_at`, so the picture, the sound and the shake agree), and 14 s of ragged shaking inside it with
+  heavier gusts, easing as it thins; with KNOCKBACK on, the wall's shove (`Act::Shove`, 0.7 out and 0.4 up, none past
+  1,500 from the vent).
+  **Its sounds** (`strike/vc_sound.rs`, `tools/sounds_volcano.py`, whose docstring is the timeline; everything from the
+  vent late by the distance, through the ground five times sooner; where the player is asked again as each part comes
+  due): the satellite on the strike's clock from 0 (`sat_sky`, "the sky sings": a vast low horn, a second voice beating
+  beside it from the aim pulled into one at the lock, the shot a driven braam with a sub blow, sagging a tone at the cut)
+  and the shot's blow off the land late by the distance (`sat_land`); the mount from 4.5 s (the tremor, cracks through the
+  ground, rock grinding underfoot within ~900, rockfalls, the fountains, the steam), all of it on the strike's clock and
+  stopped dead at 17 s with the picture; then `hush` (a deep pressure swelling, never silent) and `seism` (the burst
+  through the ground) until the report cuts them, the blast's front (`front1-4`, the longest that starts no sooner than
+  the seism) swelling into the report (`report`/`report_far` cross-faded by distance), `boom` under it (the Nuke's ALT
+  blast slowed with the Payload's ALT front: its weight), `report_sub`, the column's roar; the bombs (a whistle, a real
+  impact and the stones it throws only near the player, `NEAR`; a dull thump further off); the lightning's thunder
+  (`lt_crack` within 500, `lt_clap` to 1,800, `lt_roll` past it, `lt_rumble` for a flash in the cloud: the Hurricane's
+  thunder files made louder, falling 2.5 dB a doubling of the distance, claps within 0.2 s one, none heard for 8 s after
+  the flow hits); the collapse and the land's drop 3 s on; the flow rising to its hit (`flow_rise1-3`, trees and rock in
+  its front within ~140), `flow_hit`, then inside it (`flow_in1-3`), or `flow_far` if it stops short; `after` and
+  `patter` to the end. Every file ends by 88 s; `vc_sound_*` tests hold it to that and to sounds.json.
   **Its cloud's cost:** a GPU works on pixels in groups and a group lasts as long as its slowest, so `vc_march`'s time
   goes with the worst ray of a group and with what its lanes branch into at different steps. The look at the light is out
   of the loop for that (once a ray), and skipping pixels saves nothing (a chequerboard of pixels or of 2x2 blocks was
@@ -411,8 +440,11 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - The Supercell: `src/strike/storm.rs` its plan (bolts, pits, finale crater, fire sweeps, `sc_table`),
   `src/strike/vortex.rs` its funnels as reusable pieces for a tornado (`Funnel`, `wander`, `vx_words`, `scour`, `roar`),
   `shaders/supercell.wgsl` its pass (the vortex section `vx_*`; FAST's `[half stage]` as the Payload's).
-- The Supervolcano: `src/strike/volcano.rs` its plan (the bombs, the land's height), `src/strike/vc_land.rs` its land,
-  `shaders/volcano.wgsl` its pass (preview views `vc*`).
+- The Supervolcano: `src/strike/volcano.rs` its plan (the beats, the bombs, the land's height, the shaking),
+  `src/strike/vc_mount.rs` the mount, `src/strike/vc_lodge.rs` the plates that stay, `src/strike/vc_land.rs` its land
+  (`vc_land_view.rs` its offscreen pictures), `src/strike/vc_sound.rs` its sounds (`tools/sounds_volcano.py` builds
+  them), `shaders/volcano.wgsl` its pass and `shaders/volcano_mount.wgsl` the mount's (preview views `vc*`, `vm*`;
+  `tools/vc_sat_motion.py` writes the satellite's `VC_SAT_TAB`).
 - The Hurricane: `src/strike/hurricane.rs` its plan (the land's read and edits, the trees, the rings' colours, the mobs,
   the landings: `tree_landing`, `hu_landings`), `src/carry.rs` the player's carry, `shaders/hurricane.wgsl` its pass (`hu_debris`, `hu_trees`,
   `hu_volume`; FAST's `[half stage]`). Preview views `hu*` (`hustrip=1` takes the preview's trees away as the front
@@ -494,8 +526,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 ## Verifying work
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
-Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's and the
-Hurricane's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
+Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's, the
+Hurricane's and the Supervolcano's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)
