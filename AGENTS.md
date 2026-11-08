@@ -210,6 +210,148 @@ laser, command, capability and timing). This file is the short, factual version 
   `thunder_mid` to 320, `thunder_far` past it, `rumble` for a flash in the cloud, late by the distance); `--listen DIR`
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
+- **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 88 s, reaches 1000, the vent moved
+  to at least 1,000 blocks in front of the player by `vc_vent` (`VC_NEAR`), `fire` in lib.rs; its beats `VC_*` in
+  volcano.rs, which vc_sound.rs and vc_mount.rs take theirs from: keep volcano.wgsl's, volcano_mount.wgsl's `VM_SWELL`,
+  `VM_HUSH`, `VM_ERUPT` and tools/sounds_volcano.py's in step): an orbital laser satellite over the
+  vent (`vc_opening`, `vc_sat0`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 3.4 times its
+  size far off, scaled from where it parks so it shrinks as it leaves: `vc_sat_k`; built of blocks in `vc_sat_hit`: a
+  gold-foiled bus and engine, white radiators, a gold collar, roll-out solar arrays on a truss turned to the sun
+  (`vc_sat_wing`: rolled up as it comes, out from 3.2 s, back in from 7.5), an octagonal barrel
+  ringed by four coils stepping in to the emitter, four prongs; from the ground, nearly down its barrel, a dark cross with
+  a glowing eye) falls in down a slant from 1,900 higher, 1,000 along its orbit and 1,500 nearer the player (so it is seen
+  coming down their sky), steadily to 1.3 s (`VC_IGN`), then brakes on its four jets (fired down its barrel), hardest
+  late, to a soft stop at 3.4 s (`VC_ARRIVE`), sagging past its station and back (`vc_sat_go`, `vc_sat_thr`). Its tilt
+  is flown by a control loop, never a sine (`vc_sat_att`: `VC_SAT_TAB`, written by `tools/vc_sat_motion.py`, a rigid body
+  pushed only by its actuators, through lag, with the ignition's kick, a thrust misalignment and slosh pushing back): it
+  comes in 26 degrees off and turning further, its top-corner thrusters stop that and swing it round as it falls; the
+  jets, gimballed by what the loop turns it with (they swing a tenth of a second before the body follows), heave it over
+  unevenly as they brake it; as the burn dies its thrusters trim it onto the vent in discrete pulses (a tenth of a second
+  each, sized to the push) while its arrays unroll; its wheels hold it still from 3.8, settled by the lock. It aims a solid
+  red targeting beam (3.3 s, locked at 4.0; its coils lit red), its coils charge
+  outside in and it fires at 4.5 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
+  cut at 7.1 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 8.6 (`VC_BURN`) and lifts straight up and away,
+  into the haze by 12 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
+  uneven surges (noise, never a beat), red from under (`vc_plume`, `vc_feed`), until the eruption: as steam off a real
+  vent, never a cone or a funnel. A tube round a path (`vc_path`: rising, slowing, taken up by a 34-a-second wind, so
+  straight up off the hole and then leant over and carried off), a point taking the age of the nearest point on it; clear
+  just over the hole, a puff a surge and necked in the lulls (merging as it spreads, or they draw stacked slabs), each puff
+  a rounded cap (what was let go together lies on a dome), wandering, mixing away by age to ragged lumps and then nothing.
+  Its lumps are domes on domes (`vc_dome`) riding it: across it from its middle, along it by how far along it was a moment
+  ago on a fixed slant (a turning axis swings the lattice into streaks; world position over a growing scale smears it),
+  the moment let go of now and then (two such half a cycle apart). Lit through a ball round it as thick as what lies the
+  sun's way along it (the cap of a surge under thin vapour lit), creases darker. Preview views `vcsteam`, `vcmid`,
+  `vcopen`, `vcsky` and `vcplume` (the whole of it level from 1,000 off); the mount rising round the hole; the
+  tremor, the ring cracking at 6 s (`VC_CRACK`) with wisps of steam, the mount swelling from 7 s (`VC_SWELL`,
+  vc_mount.rs, volcano_mount.wgsl) and stopping dead at 17 (`VC_HUSH`), the eruption at 18 s (`VC_ERUPT`, the mount's
+  white-out for under a second, a flash along the ring and a
+  pressure ring at the speed of sound), a ring of vents 560 across feeding a column to about 1,800 (`vc_col`: the
+  ring's foot follows the land, `vc_land`, a heightfield of 128 x 128 cells; lumps on lumps, `vc_lump_col`, drawn out and
+  rushing low down by the height they are looked up at), 64 lava bombs from 19 s to 36 (`vc_bombs`, solved against the land,
+  their smoke at half size, their heads sharp; each landing leaves a small real crater, counted from each column's
+  ground so it needs no read), lightning from 26 s (`VC_LIGHT`, `vc_flash`, a slot of 0.13 s, in the plume, then in rings
+  through the sheet from about 36, thinning out from 60 and gone by 80; `vc_bolts`), the umbrella spreading from 28 s
+  (`VC_SPREAD`, `vc_umb`, out past the horizon, Hunga Tonga's ripple `vc_ripple`), the sky dark by about 44 s (`vc_dim`:
+  land and sky darkened by what the sheet shuts out, `vc_sun_t`, `vc_sky_t`, what glows left glowing; the game's clock
+  and weather never touched; the player's hand and held item, which the game draws after the post pass, darkened and
+  browned with the land where they stand, near black in the wall of ash, lit by the white-out, the eruption's flash and
+  the lightning near them: `strike/vc_hand.rs`, a `HandLight` its plan gives as `Act::Hand`, mirroring `vc_dim`,
+  `vc_flow`'s depth past the front and `vc_sound::flash`, worked out a tick at a time and eased each frame by lib.rs's
+  `hand_frame` through the fork's `render.set-hand-tint`, given back as 1, 1, 1 when the strike ends, is stopped or the
+  player leaves; keep it in step with the pass), the collapse at 50 s (`VC_COLLAPSE`; the lumps slow,
+  stop and fall back, `up`, the top of what stands falling, `Hb`), the wall of ash from the ring (`vc_flow`, `vc_front`:
+  60 blocks a second slowing to 25, at 500 from the vent by about 54 s and 1,000 by about 66, looked up round the vent
+  so its lumps travel with it without smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting
+  off the land behind it into new clouds from 66 s, `VC_LIFT`), the player engulfed (near black, embers, `vc_specks`),
+  then a dim world under falling ash, the sheet thinning from 80 s (`VC_RED`) to a blood-red sun, all gone by 88
+  (`thin`). FAST's half stage holds the cloud and the bombs' smoke.
+  **The shaking** (volcano.rs, the game's `render.shake`; the pass's `vc_jolt` adds the tremor and the eruption's front on
+  the picture): a tremor from the shot building to the hush, nothing in the held breath; through the ground at
+  18 + d/1715 s a hard jolt and a bigger heave 0.4 s on; the report's arrival; small jolts under the column to the
+  collapse; the collapse; then the ash flow, building over its last 8 s as it comes, the blow as its lobes reach the
+  player (`vc_sound::front_at`, so the picture, the sound and the shake agree), and 14 s of ragged shaking inside it with
+  heavier gusts, easing as it thins; with KNOCKBACK on, the wall's shove (`Act::Shove`, 0.7 out and 0.4 up, none past
+  1,500 from the vent).
+  **Its sounds** (`strike/vc_sound.rs`, `tools/sounds_volcano.py`, whose docstring is the timeline; everything from the
+  vent late by the distance, through the ground five times sooner; where the player is asked again as each part comes
+  due): the satellite on the strike's clock from 0 (`sat_sky`, "the sky sings": a vast low horn, a second voice beating
+  beside it from the aim pulled into one at the lock, the shot a driven braam with a sub blow, sagging a tone at the cut)
+  and the shot's blow off the land late by the distance (`sat_land`); the mount from 4.5 s (the tremor, cracks through the
+  ground, rock grinding underfoot within ~900, rockfalls, the fountains, the steam), all of it on the strike's clock and
+  stopped dead at 17 s with the picture; then `hush` (a deep pressure swelling, never silent) and `seism` (the burst
+  through the ground) until the report cuts them, the blast's front (`front1-4`, the longest that starts no sooner than
+  the seism) swelling into the report (`report`/`report_far` cross-faded by distance), `boom` under it (the Nuke's ALT
+  blast slowed with the Payload's ALT front: its weight), `report_sub`, the column's roar; the bombs (a whistle, a real
+  impact and the stones it throws only near the player, `NEAR`; a dull thump further off); the lightning's thunder
+  (`lt_crack` within 500, `lt_clap` to 1,800, `lt_roll` past it, `lt_rumble` for a flash in the cloud: the Hurricane's
+  thunder files made louder, falling 2.5 dB a doubling of the distance, claps within 0.2 s one, none heard for 8 s after
+  the flow hits); the collapse and the land's drop 3 s on; the flow rising to its hit (`flow_rise1-3`, trees and rock in
+  its front within ~140), `flow_hit`, then inside it (`flow_in1-3`), or `flow_far` if it stops short; `after` and
+  `patter` to the end. Every file ends by 88 s; `vc_sound_*` tests hold it to that and to sounds.json.
+  **Its cloud's cost:** a GPU works on pixels in groups and a group lasts as long as its slowest, so `vc_march`'s time
+  goes with the worst ray of a group and with what its lanes branch into at different steps. The look at the light is out
+  of the loop for that (once a ray), and skipping pixels saves nothing (a chequerboard of pixels or of 2x2 blocks was
+  tried). `vc_gn3` is gnoise3 with a hash a corner; `VC_HOLD` keeps the big lumps longer far from the surface; the air
+  the wall has emptied is crossed without looking up lumps (`VC_ST_AIR`).
+  **The blast** (`vc_col`) is lobed round a low base surge (the surge only till the collapse, bounded at its rim: past it a
+  flat ellipsoid's distance is about the height over the land everywhere, and the lumps stand a dark sheet on all of it).
+  The shock is a thin torn veil at the pressure ring's speed (`vc_shells`, worked out from the ray's closest approach so no
+  line runs round it) and a low haze of dust behind it (`vc_dust`). **The pass is close to the game's 256 KiB**, comments
+  included (`tools/check-shader.sh` says): new code here wants something taken out.
+  **A chain of stages takes the strike's clock** (`now.max(clock())`, in `vc_work` and `vl_tick`): counting its own time it
+  runs at half speed beside another chain, and what's due last never goes in.
+  **Thin walls show the land through:** the ring's wall must stay thicker than the lumps cut (`vc_ww`, the gain in
+  `vc_lump_col`). Its land (terrain on only, `vc_land.rs`): a caldera about 560 across and 90 deep, a lake of dark crust
+  (`lake_edit`: big plates warped irregular, broken further in places, veins of lava towards the ring's vents `Hot`,
+  dimming to magma and dark seams away from them, a few open pools, lava some 6-8% of it), seven huge blocks of the land
+  dropped whole into it (`Drop`, their beds in them); its walls (`relief`) a scarp, slumped blocks each dropped and turned
+  back on its own, rubble fans at the foot, faced in dark beds carried down with them (`beds_edit`, a bed's run at a
+  time: per-block rock here was most of its runs); the rim (`Ctx::rim`) tilted slabs on the ring's apron of ash
+  (`apron`, the land rising to the crater), a crown of wedges where it burst hardest; one deposit to about 440
+  (`out_edit`: one tone with a fine grain, wet streaks along the flows, `ring_noise`, ponded in the low ground, a skin on
+  the ridges so the land shows through, lobes down the valleys), water under it filled to a dark wet plain; past it dust
+  thinning through patches (`dust_cover`), pumice on the water, on to the odd patch by `VC_FAR` (1050) wherever the world
+  has chunks loaded (`vc_far_chunk`, no read, counted from each column's ground); the trees graded by `fate`, `stand_edit`
+  and `vc_fell`: charred trunks lying pointing away and burnt stumps to `VC_FELLED`, bare black trunks to `VC_BARE`,
+  scorched to `VC_SCORCH`, leaves browning (mangrove roots and the poplars' red and orange leaves) to `VC_GREEN`; mobs and
+  items killed as the wall passes, never the player; water and lava the walls cut into sealed; the ~4,000 chunks within
+  `VC_LOAD` (576) force-loaded: it has to be that wide or the fade stops at a straight chunk edge on the side away from
+  the player. It goes a chunk at a time in order of when each is due (`vc_due`: past the ring with the wall, inside it
+  from the edge in at `VC_RATE`, done by about 72 s), each chunk's edits on one tick; the caldera needs no read, the rest
+  reads rings of columns from `VC_READ0` to `VC_READ`, packed a 32-bit word each. **Its limits:** a mod has 64 MB
+  (below). `VC_FLIGHT` bounds the parts of the read out at once: one asked a tick and never more than that many unanswered, or
+  the answers pile up in the mod and the reads fall behind the server thread. Chunks not loaded are listed as chunks
+  (`Missing`), never as columns. `VC_QUEUE` caps the runs waiting and `VC_HOLD` stops new chunks while the mod holds
+  that much (the edits behind slow frames); a column is as few runs as it can be. A chunk's real fuel is 2 to 3 times its
+  count (runs are cheap going out, some 90 fuel; it's the noise and the runs' making): `VC_TICK` allows for it. Anything a
+  stage does thousands of times that isn't a chunk wants counting too: `hypot` and `vc_due` are dear (`DueTable`, `far_chunks`),
+  and the mount's tables go in stages (`PlateSums`). `mod_soak` with `SOAK_FULL=1 SOAK_LASERS=supervolcano SOAK_REPORT=8` plays
+  it whole. `VC_VIEW_OUT=DIR [VC_VIEWS=map,air570,...]
+  [VC_LAND_SEED=N] cargo test --release vc_land_picture -- --ignored --nocapture` (strike/vc_land_view.rs) makes the real
+  edits on a synthetic land in a voxel grid and writes a top-down map and ray-traced views as PPMs, in seconds: look there
+  before the game. **The far terrain doesn't see these edits:** see `docs/HOW-IT-WORKS.md`.
+- **The Supervolcano's plates that stay** (`strike/vc_lodge.rs`; the pass's `VL_*`, `vl_*` and `vm_plates` in
+  `shaders/volcano_mount.wgsl`): the ten biggest whole plates the mount throws come down as real land, terrain on only,
+  and stay. Their sites are worked out as the strike fires (`vl_sites`: five on the player's side, 310-460 from them,
+  the rest round the mount, all 570-860 from the vent), their chunks force-loaded from then (`vl_patch`, 160 round each);
+  the plates are picked at the end of the mount's tables (`vl_pick`) and aimed, their flight's words rewritten (`vl_one`,
+  `Slab::fly`). From 19.5 s the ground where each meets it is asked (a small `world.surface-height` query) and its pose
+  settled (`Pose`, `set_pose`: lying low, `VL_LOW` to `VL_STEEP` degrees, turned up to 42 degrees off the way it came and
+  rolled up to 15, on a plane fitted to the ground under the whole plate, `Slab::bed`, at most `VL_BANK` steep, so a bank or a
+  shore by its foot doesn't leave it stood on a stack of earth; its low end in the ground, what it lifts packed under with crushed
+  earth, `under`, and that earth heaped most of the way up its edges (`VL_UP`) and falling away from them, `make_fall`, `talus`, so nothing is held up by air or a sheer wall;
+  `Lodge`'s words at `VL_BASE`) before its last 3.5 s, in which the pass slerps its tumble into that pose and slides it
+  in (`vl_add`, `vl_slerp`). From the moment it hits its chunks are read (`Lot`, `vl_tick`) and made (`Slab::chunk`: the
+  plate a world column at a time, `spans`, so it has no holes; soil, rock and a burnt underside as strata by depth; its
+  ground's lip, cracks of tuff and rubble round its foot), each chunk one edit through the paced queue, none worked out
+  before it's needed, so nothing is held. The pass holds the drawn plate where it lies until every edit is in
+  (`Blocks::sent`, then the plate's word `gone`) and fades it out over `VL_FADE`; past `VL_SEEN` (470, about the render
+  distance: the game doesn't show the land's changes further) it goes on drawing it until `VL_END`. Land not answered,
+  or the player in the way: it stays drawn and goes on into the ground (`Step::Failed`). Terrain off: the same flight, no
+  blocks. A stop finishes the plates under way, nothing else (`vl_finish`, a far-future `Act::Cleanup`), and the land's
+  work leaves their columns alone (`Lodge::covers`). `vc_plate_picture` (ignored; `VC_VIEW_OUT=DIR
+  VC_VIEWS=p0g,p0h,p0f,p0a,p0m`) makes their real edits on the synthetic land. Keep `vl_thk` in step with the pass. Stages
+  wait their turn (one a tick): `strike::set_clock`'s clock is the true one, a stage's own count falls behind it.
 - **The Fold** (`strike/fold.rs`, `strike/fold_land.rs`, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`; about 64 s, its clock starting at -4, `Strike::wait`; reaches 1000 blocks; needs the
   fork's `render.set-warp`, `render.hold-world` and `render.hold-world-within`, release `orbital-mod-api-11`): a crater about 530 across on the crease pattern (corners out to ~353), a shaft to bedrock, the land charred
   to ~400 and rubble to ~404, every mob and item within 360 killed and the ~2,000 chunks within 410 force-loaded; its land goes in from 27 s, behind the hold, and is done by the first bang at 44.1 s.
@@ -232,7 +374,12 @@ laser, command, capability and timing). This file is the short, factual version 
   flash over the whole picture, about a fifth of a second.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-10` or newer (it adds
+- **Stock Horizon can't run the mod.** This branch needs `render.set-hand-tint` (the hand and held item tinted each
+  frame, which the Supervolcano dims with the land; any laser's plan can feed it a `HandLight`), which is in no fork
+  release yet: until it is (`orbital-mod-api-12`), run the fork's branch `mod-api-hand-tint` built from source
+  (`~/.cache/horizon-api10`, `cargo build --release -p horizon-client --features mods`), and build the mod against it
+  with the uncommitted `mod/.cargo/config.toml` `[patch]`. Otherwise it needs the fork's build, release
+  `orbital-mod-api-10` or newer (it adds
   the `atlas` capability, the game's block textures in a post pass, which the Hurricane draws its flying blocks with;
   `world.carry-player`, the Hurricane's carry; and `game.player-flying`; `orbital-mod-api-9` skips a post pass the
   driver can't build instead of crashing; `orbital-mod-api-8` added `world.push-player`, the Nuke's knockback;
@@ -274,17 +421,20 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` or `supervolcano`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's and the Supervolcano's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell and the Hurricane on the third. Its FLY
 In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane` or `tsunami`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's and the Rod's push, the Hurricane's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
 The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
-`game.player-flying`, `render.set-data` or the `atlas` capability, won't start the mod.
+`game.player-flying`, `render.set-data`, `render.set-hand-tint` or the `atlas` capability, won't start the mod.
 The wheel's left column has the strike options: SEED (a field: the last strike's seed, or one typed) and LOCK SEED
 at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,
+`DESIGNATING …`, the Hurricane's `TRACKING STORM …`, the Supervolcano's `BREACHING CRUST …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
 `DESIGNATING …`, the Hurricane's `TRACKING STORM …`, the Tsunami's `READING THE SEA …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
 the strikes have no messages; firing during a strike only clicks). With the Rod loaded or pointed at, an IMPACT FX row under the ring (OFF, KANADA, BLACK FLASH,
 CINEMATIC). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
@@ -333,6 +483,11 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - The Supercell: `src/strike/storm.rs` its plan (bolts, pits, finale crater, fire sweeps, `sc_table`),
   `src/strike/vortex.rs` its funnels as reusable pieces for a tornado (`Funnel`, `wander`, `vx_words`, `scour`, `roar`),
   `shaders/supercell.wgsl` its pass (the vortex section `vx_*`; FAST's `[half stage]` as the Payload's).
+- The Supervolcano: `src/strike/volcano.rs` its plan (the beats, the bombs, the land's height, the shaking),
+  `src/strike/vc_mount.rs` the mount, `src/strike/vc_lodge.rs` the plates that stay, `src/strike/vc_land.rs` its land
+  (`vc_land_view.rs` its offscreen pictures), `src/strike/vc_sound.rs` its sounds (`tools/sounds_volcano.py` builds
+  them), `shaders/volcano.wgsl` its pass and `shaders/volcano_mount.wgsl` the mount's (preview views `vc*`, `vm*`;
+  `tools/vc_sat_motion.py` writes the satellite's `VC_SAT_TAB`).
 - The Hurricane: `src/strike/hurricane.rs` its plan (the land's read and edits, the trees, the rings' colours, the mobs,
   the landings: `tree_landing`, `hu_landings`), `src/carry.rs` the player's carry, `shaders/hurricane.wgsl` its pass (`hu_debris`, `hu_trees`,
   `hu_volume`; FAST's `[half stage]`). Preview views `hu*` (`hustrip=1` takes the preview's trees away as the front
@@ -351,7 +506,10 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **The game keeps its saves and options in the folder it starts in** when started with `--game`: `play.sh` starts it in
   the game folder for that reason. Starting it elsewhere makes a fresh, empty game folder there.
 - **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
-  is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
+  is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`. A laser's own
+  pass is strike.wgsl up to its fs_main less `[lasers pass only]` and the Mothership's ship (`[mothership]`, ~36 KB),
+  which only an own file saying `// [uses the mothership]` (the Downfall's) keeps: passbuild.rs, check-shader.sh and
+  preview.py all build it so.
 - **The mod's post pass reads `mod_data`** (`render.set-data`, binding 5 of the prelude): the Crystal Bloom's pieces'
   rest heights (word `i * 16 + k * 2 + half`) and from `CB_TAB` (1024) its spires and pieces, worked out once by
   `cb_table` in `strike/crystal.rs`; keep that layout in step with the pass's `CB_*` offsets. `tools/preview` binds it from `$PREVIEW_DATA` (`index value` lines) and
@@ -408,6 +566,14 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   loaded, jobs, rings) each time a stage asks what's ready: keep it O(what's due). The Nuke's land waits for columns
   not loaded, asking again a ring at a time, and goes in late as they come; it leaves out what never loads (logged
   `nuke: N columns of the land never loaded`).
+- **A mod has 64 MB of linear memory, and it never shrinks**: past it an allocation fails and the game stops the mod
+  ("it crashed (a panic)", in `cabi_realloc` as often as not). `mod/src/mem.rs` counts what's held; the log says
+  `memory: strike's peak ...` as a strike ends and `memory: heap ...` as the heap grows, a warning past 48 MB (which
+  `tools/game_check.py` fails). What the world answers lands in the mod's memory all at once, so bound what's asked
+  before it's taken in; `a_supervolcano_stays_in_its_memory` holds the Supervolcano to it.
+- **Single player's clock is the server thread's**: the client counts on by itself between the server's `SetTime`, so
+  a server running behind puts the client's clock back when its word comes (and a client that hung sees it jump on).
+  `in_world` allows for that (`SAME_WORLD`, a minute); it isn't a sign of having left. The log says the clock moved.
 - **The Fold has three crease patterns on one set of tables** (`tools/foldview/pattern.py` writes them into fold_warp.wgsl and strike/fold.rs: change them there): twelve creases, five rings, and across a panel nothing, an X or a diagonal (`cp_mode`, the wheel's FOLD row, `/orbital foldpattern a|b|c`, kept, read at the fire). params[10] carries it: under the level, 1024ths, 100 pattern + the player's panel + 1 (`fd_lie`, `cp_code`). The crater breaks along it (`facet`), and `fw_sag`, `fw_hurt` and `fw_sunk` go by the same nodes and lines, so the crater lands on what the bangs have already done.
 - **The Fold's look is not in its pass.** The land's vertices and pixels go through the fork's `render.set-warp`
   (`shaders/fold_warp.wgsl`, API 11, built into terrain.wgsl and entity.wgsl by the fork's `gfx/warp.rs`; what follows its
@@ -452,7 +618,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
 Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's, the
-Hurricane's and the Tsunami's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
+Hurricane's, the Tsunami's and the Supervolcano's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)

@@ -4,22 +4,24 @@
 #![allow(dead_code)]
 
 /// A laser's own pass: strike.wgsl (`shader`) up to its fs_main, less the other lasers' own functions (marked
-/// `[lasers pass only]`), then `own` (see shaders/downfall.wgsl, shaders/planetkiller.wgsl ...).
+/// `[lasers pass only]`) and the Mothership's ship (`[mothership]`, kept for an `own` that says `// [uses the mothership]`),
+/// then `own` (see shaders/downfall.wgsl, shaders/planetkiller.wgsl ...).
 pub fn own_pass(shader: &str, own: &str) -> String {
     let mut out = String::with_capacity(shader.len() + own.len());
+    let ship = own.contains("// [uses the mothership]");
     let mut skip = false;
     for line in shader.lines() {
         if line.starts_with("@fragment") {
             break;
         }
-        if line.starts_with("// [lasers pass only]") {
+        if line.starts_with("// [lasers pass only]") || (!ship && line.starts_with("// [mothership]")) {
             skip = true;
         }
         if !skip {
             out.push_str(line);
             out.push('\n');
         }
-        if line.starts_with("// [end lasers pass only]") {
+        if line.starts_with("// [end lasers pass only]") || line.starts_with("// [end mothership]") {
             skip = false;
         }
     }

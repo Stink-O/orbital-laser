@@ -2208,6 +2208,690 @@
     ],
     "subtitle": "subtitles.orbital.hurricane.rumble"
   },
+  "supervolcano.tremor": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/tremor",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.tremor"
+  },
+  "supervolcano.steam": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/steam",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.steam"
+  },
+  "supervolcano.report": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/report",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.report"
+  },
+  "supervolcano.report_far": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/report_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.report_far"
+  },
+  "supervolcano.column": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/column",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.column"
+  },
+  "supervolcano.column_far": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/column_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.column_far"
+  },
+  "supervolcano.collapse": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/collapse",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.collapse"
+  },
+  "supervolcano.collapse_far": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/collapse_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.collapse_far"
+  },
+  "supervolcano.flow_far": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_far"
+  },
+  "supervolcano.flow_hit": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_hit",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_hit"
+  },
+  "supervolcano.after": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/after",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.after"
+  },
+  "supervolcano.patter": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/patter",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.patter"
+  },
+  "supervolcano.creak1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/creak1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.creak"
+  },
+  "supervolcano.creak2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/creak2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.creak"
+  },
+  "supervolcano.creak3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/creak3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.creak"
+  },
+  "supervolcano.creak4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/creak4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.creak"
+  },
+  "supervolcano.crack1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/crack1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.crack"
+  },
+  "supervolcano.crack2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/crack2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.crack"
+  },
+  "supervolcano.crack3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/crack3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.crack"
+  },
+  "supervolcano.crack4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/crack4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.crack"
+  },
+  "supervolcano.whistle1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/whistle1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.whistle"
+  },
+  "supervolcano.whistle2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/whistle2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.whistle"
+  },
+  "supervolcano.whistle3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/whistle3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.whistle"
+  },
+  "supervolcano.thud1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud"
+  },
+  "supervolcano.thud2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud"
+  },
+  "supervolcano.thud3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud"
+  },
+  "supervolcano.thud4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud"
+  },
+  "supervolcano.thud_far1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud_far1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud_far"
+  },
+  "supervolcano.thud_far2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud_far2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud_far"
+  },
+  "supervolcano.thud_far3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/thud_far3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.thud_far"
+  },
+  "supervolcano.flow_rise1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_rise1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_rise"
+  },
+  "supervolcano.flow_rise2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_rise2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_rise"
+  },
+  "supervolcano.flow_rise3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_rise3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_rise"
+  },
+  "supervolcano.flow_in1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_in1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_in"
+  },
+  "supervolcano.flow_in2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_in2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_in"
+  },
+  "supervolcano.splinter1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/splinter1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.splinter"
+  },
+  "supervolcano.splinter2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/splinter2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.splinter"
+  },
+  "supervolcano.splinter3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/splinter3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.splinter"
+  },
+  "supervolcano.grind1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/grind1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.grind"
+  },
+  "supervolcano.grind2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/grind2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.grind"
+  },
+  "supervolcano.report_sub": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/report_sub",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.report_sub"
+  },
+  "supervolcano.fountain": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/fountain",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.fountain"
+  },
+  "supervolcano.seism": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/seism",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.seism"
+  },
+  "supervolcano.rockfall1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/rockfall1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.rockfall"
+  },
+  "supervolcano.rockfall2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/rockfall2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.rockfall"
+  },
+  "supervolcano.rockfall3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/rockfall3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.rockfall"
+  },
+  "supervolcano.spatter1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/spatter1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.spatter"
+  },
+  "supervolcano.spatter2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/spatter2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.spatter"
+  },
+  "supervolcano.spatter3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/spatter3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.spatter"
+  },
+  "supervolcano.flow_in3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/flow_in3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.flow_in"
+  },
+  "supervolcano.hush": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/hush",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.hush"
+  },
+  "supervolcano.plate_sub": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/plate_sub",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.plate_sub"
+  },
+  "supervolcano.boom": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/boom",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.boom"
+  },
+  "supervolcano.boom_far": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/boom_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.boom_far"
+  },
+  "supervolcano.sat_sky": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/sat_sky",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.sat_sky"
+  },
+  "supervolcano.sat_land": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/sat_land",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.sat_land"
+  },
+  "supervolcano.front1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.front2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.front3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.front4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.lt_crack1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_crack1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_crack"
+  },
+  "supervolcano.lt_crack2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_crack2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_crack"
+  },
+  "supervolcano.lt_crack3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_crack3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_crack"
+  },
+  "supervolcano.lt_crack4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_crack4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_crack"
+  },
+  "supervolcano.lt_clap1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_clap1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_clap"
+  },
+  "supervolcano.lt_clap2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_clap2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_clap"
+  },
+  "supervolcano.lt_clap3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_clap3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_clap"
+  },
+  "supervolcano.lt_clap4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_clap4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_clap"
+  },
+  "supervolcano.lt_roll1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_roll1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_roll"
+  },
+  "supervolcano.lt_roll2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_roll2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_roll"
+  },
+  "supervolcano.lt_roll3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_roll3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_roll"
+  },
+  "supervolcano.lt_roll4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_roll4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_roll"
+  },
+  "supervolcano.lt_rumble1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_rumble1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_rumble"
+  },
+  "supervolcano.lt_rumble2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_rumble2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_rumble"
+  },
+  "supervolcano.lt_rumble3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_rumble3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_rumble"
+  },
+  "supervolcano.lt_rumble4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/lt_rumble4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.lt_rumble"
+  },
   "fold.comedown": {
     "sounds": [
       {

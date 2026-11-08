@@ -15,6 +15,7 @@ mod columns;
 mod follow;
 mod ground;
 mod lasers;
+mod mem;
 mod meter;
 mod pace;
 mod sdk;
@@ -66,6 +67,11 @@ fn supercell_pass(fast: bool) -> &'static str {
 fn hurricane_pass(fast: bool) -> &'static str {
     PASS_HURRICANE[usize::from(fast)]
 }
+/// The Supervolcano's, the same way (volcano.wgsl's `[half stage]`: its cloud at half size, the bolts and the lava
+/// bombs' heads drawn sharp at full size).
+fn volcano_pass(fast: bool) -> &'static str {
+    PASS_VOLCANO[usize::from(fast)]
+}
 /// The Tsunami's, the same way (tsunami.wgsl's `[half stage]`, if it has one).
 fn tsunami_pass(fast: bool) -> &'static str {
     PASS_TSUNAMI[usize::from(fast)]
@@ -86,7 +92,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "supercell" => 8,
         "hurricane" => 9,
         "fold" => 10,
-        // (11 is spare)
+        "supervolcano" => 11,
         "tsunami" => 12,
         _ => 0,
     }
@@ -121,6 +127,9 @@ const SAME_PLAY: u64 = 40;
 /// AWAY seconds of frames since the last tick, each frame counting at most AWAY_FRAME (one stalled frame is no time
 /// away), or the player over AWAY_ROOM blocks from where they were a tick ago.
 const AWAY: f32 = 0.75;
+/// How far the clock may move from one tick to the next and still be the same world, however it moved: single player's
+/// server thread running behind puts the clock back as far as it fell behind, a client that hung sees it jump on.
+const SAME_WORLD: u64 = 1_200;
 const AWAY_FRAME: f32 = 0.25;
 const AWAY_ROOM: f64 = 16.0;
 /// Ticks of play (in a world, not paused) before the loaded laser's pass is given to the game to build ahead of its
@@ -139,6 +148,8 @@ pub(crate) const CARVE_CMDS: usize = 400;
 const CMD_COST: u64 = 3_000;
 /// What a stage of a plan costs at the least (`meter`): what it counts of itself, if more, instead.
 const STAGE_COST: u64 = 2_000_000;
+/// How quickly the light on the player's hand follows its strike's steady part (seconds: `hand_frame`).
+const HAND_EASE: f32 = 0.15;
 /// What working out a strike's plan as it fires costs (`meter`), about.
 const FIRE_COST: u64 = 8_000_000;
 /// What an edit costs the mod to hand over (`meter`): its runs copied and written out for the game, roughly.
@@ -203,6 +214,9 @@ struct Strike {
     /// Hurricane's blocks drawn with them are packed again when it changes).
     key: &'static str,
     sprites: u64,
+    /// The light on the player's hand its plan gave (`Act::Hand`), and the seconds of frames since the last tick.
+    hand: Option<Box<dyn strike::HandLight>>,
+    hand_t: f32,
 }
 
 /// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
@@ -308,7 +322,7 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 12 the tsunami's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
     passes: [&'static str; 13],
     compiled: Option<usize>,
@@ -332,6 +346,8 @@ struct Orbital {
     edited: bool,
     edit_ticks: u64,
     edits_late: u64,
+    /// How far the linear memory had grown when that was last logged (`tick`).
+    heap_logged: usize,
     pace: pace::Pace,
     laser: usize,
     terrain: bool,
@@ -399,6 +415,10 @@ struct Orbital {
     /// What a stopped strike still has to do (`Act::Cleanup`), a stage a tick, its edits queued with the rest.
     cleanup: std::collections::VecDeque<strike::Stage>,
     strike: Option<Strike>,
+    /// The light on the player's hand (`hand_frame`): its steady part as eased so far, and the tint last sent (none: the
+    /// hand as the game draws it).
+    hand: [f32; 3],
+    hand_sent: Option<[f32; 3]>,
     wheel: Option<wheel::Wheel>,
     /// The HUD panel last sent.
     panel: Vec<(String, u32)>,
@@ -412,6 +432,8 @@ struct Orbital {
     /// Where the player was last tick, and the seconds of frames since it (`AWAY_FRAME`): `in_world`.
     place: Option<[f64; 3]>,
     away: f32,
+    /// The longest frame since the last tick: a far jump of the clock with one is a stall, with none another world.
+    stalled: f32,
     /// The forceload removes in storage are the strike under way's (`FORCELOADS`): deleted once it and the world
     /// changes it left waiting are done.
     owes: bool,
@@ -440,7 +462,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, PASS_OWN[0], tsunami_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -452,6 +474,7 @@ impl Orbital {
             edited: false,
             edit_ticks: 0,
             edits_late: 0,
+            heap_logged: 0,
             pace: pace::Pace::default(),
             laser,
             terrain,
@@ -485,6 +508,8 @@ impl Orbital {
             shadow_off: false,
             cleanup: Default::default(),
             strike: None,
+            hand: [1.0; 3],
+            hand_sent: None,
             wheel: None,
             panel: Vec::new(),
             panel_left: false,
@@ -493,6 +518,7 @@ impl Orbital {
             clock: None,
             place: None,
             away: 0.0,
+            stalled: 0.0,
             owes: false,
             hint: None,
             knows: None,
@@ -873,6 +899,7 @@ impl Orbital {
         self.rebuild("rod", rod_pass(fast));
         self.rebuild("supercell", supercell_pass(fast));
         self.rebuild("hurricane", hurricane_pass(fast));
+        self.rebuild("supervolcano", volcano_pass(fast));
         self.rebuild("tsunami", tsunami_pass(fast));
         self.update_panel();
     }
@@ -1049,13 +1076,21 @@ impl Orbital {
     // ---- the strike ----
     fn fire(&mut self) {
         let laser = LASERS[self.laser];
-        let Some(hit) = world::raycast(laser.range) else {
+        let Some(mut hit) = world::raycast(laser.range) else {
             Self::actionbar("NO TARGET IN RANGE", "gray");
             return;
         };
         let player = game::get_player();
         let dimension = player.as_ref().map_or("minecraft:overworld".to_string(), |p| p.dimension.clone());
         let me = player.as_ref().map_or([hit.x, hit.y, hit.z + 1.0], |p| [p.x, p.y, p.z]);
+        // (the Supervolcano's vent at least so far in front of the player, along the way they aimed)
+        if laser.key == "supervolcano" {
+            let [dx, dz] = strike::vc_vent([hit.x, hit.y, hit.z], me);
+            hit.x += dx;
+            hit.z += dz;
+            hit.block_x = hit.x.floor() as i32;
+            hit.block_z = hit.z.floor() as i32;
+        }
         let target = Target { block: [hit.block_x, hit.block_y, hit.block_z], point: [hit.x, hit.y, hit.z] };
         let clock = game::get_clock().map_or(0, |c| c.game_time);
         // a fresh look every strike, unless one is held (`/orbital seed`)
@@ -1065,6 +1100,7 @@ impl Orbital {
         let seed = seed as f32;
         ground::clear();
         columns::clear();
+        mem::reset_peak();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
         let option = if laser.key == "fold" { self.fold_pattern } else { wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s])) };
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
@@ -1099,7 +1135,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -1126,14 +1162,14 @@ impl Orbital {
         let wait = if ticks == 0 && laser.key == "fold" { (strike::FD_LEAD * 20.0) as u32 } else { 0 };
         let skipped = if wait > 0 { -strike::FD_LEAD } else { ticks as f32 * 0.05 };
         let mut plan = plan;
-        plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Cleanup(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. }));
+        plan.retain(|e| e.0 >= skipped || matches!(e.1, Act::Later(_) | Act::Soon(_) | Act::Cleanup(_) | Act::Table(_) | Act::Words { .. } | Act::Data { .. } | Act::Survey { .. } | Act::Hand(_)));
         let next = 0;
         self.skip = 0.0;
         // (the crystal bloom's spires and pieces, worked out once for the pass: strike::cb_table)
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 } });
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 }, hand: None, hand_t: 0.0 });
         self.hold_forceloads(&dimension, clock, laser.length + wait as f32 * 0.05);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
@@ -1197,9 +1233,14 @@ impl Orbital {
         {
             let before = meter::spent();
             for (_, a) in job() {
-                if let Act::Blocks(b) = a {
-                    meter::spend(60 * b.runs.len() as u64);
-                    self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b));
+                match a {
+                    Act::Blocks(b) => {
+                        meter::spend(60 * b.runs.len() as u64);
+                        self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b));
+                    }
+                    // (more of what has to be finished, a stage a tick)
+                    Act::Cleanup(next) => self.cleanup.push_back(next),
+                    _ => {}
                 }
             }
             meter::spend(STAGE_COST.saturating_sub(meter::spent().saturating_sub(before)));
@@ -1214,6 +1255,7 @@ impl Orbital {
             s.ticks += 1;
         }
         let now = s.clock();
+        strike::set_clock(now);
         let mut cmds = Vec::new();
         let mut jolts: Vec<(f32, f32)> = Vec::new();
         // one stage worked out a tick at most (each is a tick's worth of work, and a tick has a fuel limit): when more
@@ -1237,7 +1279,7 @@ impl Orbital {
             }
             meter::spend(300);
             let Some((t, act)) = s.take_due() else { break };
-            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Spare(_) | Act::Blocks(_) | Act::Read { .. }) {
+            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Spare(_) | Act::Blocks(_)) {
                 continue;
             }
             match act {
@@ -1299,6 +1341,7 @@ impl Orbital {
                     s.data[i] = value.to_bits();
                     s.data_sent = false;
                 }
+                Act::Hand(h) => s.hand = Some(h),
                 Act::Soon(job) if worked_out || meter::full() => s.urgent.push_back(job),
                 Act::Later(job) | Act::Cleanup(job) if worked_out || meter::full() => s.waiting.push_back(job),
                 Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => {
@@ -1332,6 +1375,13 @@ impl Orbital {
             render::set_data(&s.data);
             s.data_sent = true;
         }
+        // (the light on the player's hand: what is dear in it a tick at a time, `hand_frame` the rest)
+        s.hand_t = 0.0;
+        if let Some(h) = &mut s.hand
+            && let Some(p) = game::get_player()
+        {
+            h.tick(now, [p.x, p.y, p.z]);
+        }
         if !jolts.is_empty() {
             // the jolts due this tick as one (the game adds jolts up the same way, and takes only so many a call)
             let strength = jolts.iter().map(|j| j.0 * j.0).sum::<f32>().sqrt().min(1.0);
@@ -1344,16 +1394,51 @@ impl Orbital {
         self.carve(CARVE_CMDS.saturating_sub(carved));
         trace("end");
     }
+    /// Each frame: the light on the player's hand (`render.set-hand-tint`; the game draws the hand after the post pass)
+    /// as the strike's `HandLight` has it: its steady part eased (`HAND_EASE`), its quick part on top. Sent only when it
+    /// changes; none of it, the hand as it was.
+    fn hand_frame(&mut self, seconds: f32) {
+        let Some((steady, quick)) = self.strike.as_mut().and_then(|s| {
+            s.hand_t = (s.hand_t + seconds).min(0.05);
+            let t = s.ticks as f32 * 0.05 + s.hand_t;
+            s.hand.as_ref().map(|h| h.frame(t))
+        }) else {
+            self.hand_reset();
+            return;
+        };
+        let a = seconds.clamp(0.0, 0.25) / (seconds.clamp(0.0, 0.25) + HAND_EASE);
+        let mut tint = [1.0; 3];
+        for i in 0..3 {
+            self.hand[i] += (steady[i] - self.hand[i]) * a;
+            tint[i] = (self.hand[i] * quick[i]).clamp(0.0, 8.0);
+        }
+        if self.hand_sent.is_none_or(|s| (0..3).any(|i| (s[i] - tint[i]).abs() > 0.002 * s[i].max(0.05))) {
+            render::set_hand_tint(tint[0], tint[1], tint[2]);
+            self.hand_sent = Some(tint);
+        }
+    }
+    /// The hand back as the game draws it (1, 1, 1), if a strike tinted it.
+    fn hand_reset(&mut self) {
+        self.hand = [1.0; 3];
+        if self.hand_sent.take().is_some() {
+            render::set_hand_tint(1.0, 1.0, 1.0);
+        }
+    }
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
         self.unfollow();
         self.carrying = None;
         self.surging = None;
         render::clear_post();
+        self.hand_reset();
+        let had = self.strike.is_some();
         render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
         self.strike = None;
         ground::clear();
         columns::clear();
+        if had {
+            log::write(log::Level::Info, &format!("memory: strike's peak {:.1} MB, {:.1} MB held after it, heap {:.1} MB", mem::mb(mem::peak()), mem::mb(mem::live()), mem::mb(mem::heap())));
+        }
         if let Some(w) = &mut self.wheel {
             w.striking = false;
             self.show_wheel();
@@ -1470,13 +1555,16 @@ impl Orbital {
         // Nothing but a stalled frame has passed since the last tick and the player is where they were, so it is this
         // world. Between worlds the frames run on with no ticks, and the fork has no tick with no player to say so.)
         let moved = matches!((self.place, place), (Some(a), Some(b)) if (a[0] - b[0]).hypot(a[2] - b[2]).hypot(a[1] - b[1]) > AWAY_ROOM);
-        let elsewhere = jumped && (self.away > AWAY || moved);
+        // (and a clock off by more than `SAME_WORLD` with no stalled frame to explain it is another world)
+        let far = matches!((self.clock, clock), (Some(was), Some(now)) if now + SAME_WORLD < was || now > was + SAME_WORLD);
+        let elsewhere = (far && self.stalled < AWAY_FRAME) || (jumped && (self.away > AWAY || moved));
         if jumped && self.strike.is_some() {
             let said = if elsewhere { "another world" } else { "a stall: the strike goes on" };
             log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?} ({:.2} s of frames, moved: {moved}): {said}", self.clock, self.away));
         }
         self.place = place;
         self.away = 0.0;
+        self.stalled = 0.0;
         if clock.is_none() || elsewhere {
             if self.strike.is_some() {
                 log::write(log::Level::Info, &format!("the world's clock went from {:?} to {clock:?}", self.clock));
@@ -1493,6 +1581,7 @@ impl Orbital {
     /// A frame's part in telling time away from a stall (`in_world`).
     fn count_frame(&mut self, seconds: f32) {
         self.away += seconds.min(AWAY_FRAME);
+        self.stalled = self.stalled.max(seconds);
     }
     /// The first line on joining a world (`HINT`), a second in, until the player knows how to get the Designator: they
     /// ran `/orbital give` or hold one (`KNOWS`).
@@ -1571,6 +1660,9 @@ impl Orbital {
                 Some(p) => world::edit_blocks(&b.edit_clear_of([p.x, p.y, p.z])),
                 None => world::edit_blocks(&b.edit()),
             }
+            if let Some(c) = &b.sent {
+                c.set(c.get() + 1);
+            }
             m += 1;
         }
         self.edits.drain(..m);
@@ -1641,10 +1733,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1751,6 +1843,7 @@ impl Mod for Orbital {
                         "hurricane" => "TRACKING STORM",
                         "tsunami" => "READING THE SEA",
                         "fold" => "ATTUNING",
+                        "supervolcano" => "BREACHING CRUST",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -1766,6 +1859,13 @@ impl Mod for Orbital {
         self.paid();
         self.release_held();
         meter::end(self.ticks);
+        // (the linear memory only grows: each 4 MB of it logged, with what's held then)
+        if mem::heap() >= self.heap_logged + (4 << 20) {
+            self.heap_logged = mem::heap();
+            // (a warning past 48 of the 64 MB: `tools/game_check.py` fails on one)
+            let level = if self.heap_logged >= 48 << 20 { log::Level::Warn } else { log::Level::Info };
+            log::write(level, &format!("memory: heap {:.1} MB, {:.1} MB held, tick {} of the strike", mem::mb(mem::heap()), mem::mb(mem::live()), self.strike.as_ref().map_or(0, |s| s.ticks)));
+        }
         if let Some(n) = self.meter_log
             && meter::spent() >= n
         {
@@ -1779,6 +1879,9 @@ impl Mod for Orbital {
         meter::reset();
         self.count_frame(seconds);
         self.pace.frame(seconds);
+        if seconds > 0.5 && self.strike.is_some() {
+            log::write(log::Level::Info, &format!("a frame of {seconds:.2} s, {:.1} s into the strike", self.strike.as_ref().map_or(0.0, |s| s.ticks as f32 * 0.05)));
+        }
         self.warm();
         if let Some(s) = &mut self.strike {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
@@ -1799,6 +1902,7 @@ impl Mod for Orbital {
                 }
             }
         }
+        self.hand_frame(seconds);
         if let (Some(w), Some(c)) = (&mut self.wheel, ui::cursor())
             && w.hover_at(c.x, c.y, self.laser)
         {
@@ -2434,7 +2538,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -2550,6 +2654,113 @@ mod stress {
                 assert!(slow > 4 || !left, "the land came but was left out");
             }
         }
+    }
+
+    /// What a Supervolcano holds in memory (a mod has 64 MB): its peak well under it however late or bunched the world's
+    /// answers, however slow the frames (the edits piling up behind them), all of it let go when it ends or is stopped,
+    /// and one strike after another the same.
+    #[test]
+    fn a_supervolcano_stays_in_its_memory() {
+        let sv = LASERS.iter().position(|l| l.key == "supervolcano").expect("the supervolcano");
+        for (answers, slow, frame, stop) in [(Answers::Next, 1, 0.016, 0), (Answers::Bunched(40), 1, 0.016, 0), (Answers::Late(60), 4, 0.2, 0), (Answers::Next, 1, 0.2, 0), (Answers::Next, 1, 0.016, 180), (Answers::Bunched(16), 0, 0.016, 60)] {
+            let mut s = Soak::new(9);
+            s.answers = answers;
+            let base = mem::live();
+            for round in 0..3 {
+                s.loaded = Loaded { me: (1000, -3000), view: 12, forced: Default::default(), slow, now: s.tick };
+                mem::reset_peak();
+                s.fire(sv, (1000, -2000));
+                let mut ticks = 0;
+                let mut most = 0;
+                while s.o.strike.is_some() {
+                    // (the frames going slow once the edits begin: before then they are what the machine is like)
+                    s.frame = if ticks < 1060 { 0.016 } else { frame };
+                    s.step("memory");
+                    most = most.max(s.o.edits.len());
+                    ticks += 1;
+                    assert!(ticks < 2000, "it never ended");
+                    if stop > 0 && ticks == stop {
+                        s.stop();
+                    }
+                }
+                // (its edits still waiting go on in after it)
+                s.frame = 0.016;
+                while !s.o.edits.is_empty() {
+                    s.step("memory");
+                }
+                let peak = mem::peak();
+                s.reads.clear();
+                s.surveys.clear();
+                fake::with(|w| {
+                    w.columns.clear();
+                    w.heights.clear();
+                });
+                eprintln!("{answers:?} chunks x{slow} frames {frame}: round {round}, peak {:.1} MB, held after {:.1} MB, {most} edits waiting at most", mem::mb(peak), mem::mb(mem::live().saturating_sub(base)));
+                assert!(peak < 30 << 20, "a peak of {:.1} MB", mem::mb(peak));
+                assert!(mem::live() < base + (2 << 20), "{:.1} MB held after it", mem::mb(mem::live() - base));
+            }
+        }
+    }
+
+    /// The Supervolcano's ten big plates (strike/vc_lodge.rs): on land that loads they go in as blocks and only then does
+    /// the pass let them go; stopped with one half built, it is finished, and no other starts.
+    #[test]
+    fn the_plates_that_stay_go_in_whole() {
+        let sv = LASERS.iter().position(|l| l.key == "supervolcano").expect("the supervolcano");
+        let gone = |s: &Soak| (0..10).map(|i| s.o.strike.as_ref().map_or(0.0, |k| k.data.get(strike::vl_gone_word(i)).map_or(0.0, |w| f32::from_bits(*w)))).collect::<Vec<f32>>();
+        // (all of it, to the end)
+        let mut s = Soak::new(5);
+        s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
+        s.fire(sv, (1000, -2000));
+        let mut ticks = 0;
+        while ticks < 1300 {
+            s.step("plates");
+            ticks += 1;
+        }
+        let g = gone(&s);
+        assert!(g.iter().filter(|t| **t > 29.0 && **t < 65.0).count() >= 8, "{g:?}");
+        // (stopped just after the first has struck)
+        let mut s = Soak::new(6);
+        s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
+        s.fire(sv, (1000, -2000));
+        let mut ticks = 0;
+        while ticks < 700 {
+            s.step("plates");
+            ticks += 1;
+        }
+        assert!(gone(&s).iter().all(|t| *t == 0.0), "{:?}", gone(&s));
+        s.stop();
+        let before = fake::with(|w| w.edits);
+        let mut left = 0;
+        while (!s.o.cleanup.is_empty() || !s.o.edits.is_empty()) && left < 2000 {
+            s.step("plates");
+            left += 1;
+        }
+        let after = fake::with(|w| w.edits);
+        assert!(left < 2000, "it never finished");
+        assert!((60..1800).contains(&(after - before)), "{} edits to finish it", after - before);
+    }
+
+    /// The Supervolcano's caldera is dug to its middle before the strike is over, the plates' work going on beside it:
+    /// its land's stages wait their turn with theirs, and the strike's clock doesn't.
+    #[test]
+    fn the_caldera_is_dug_to_its_middle() {
+        let sv = LASERS.iter().position(|l| l.key == "supervolcano").expect("the supervolcano");
+        let mut s = Soak::new(5);
+        s.loaded = Loaded { me: (1000, -3000), view: 40, forced: Default::default(), slow: 1, now: s.tick };
+        fake::with(|w| w.keep_chunks = true);
+        s.fire(sv, (1000, -2000));
+        for tick in 0..1900 {
+            fake::with(|w| w.tick = tick);
+            s.step("caldera");
+        }
+        let (cx, cz) = (1000_i32 >> 4, -2000_i32 >> 4);
+        let chunks = fake::with(|w| std::mem::take(&mut w.chunks));
+        let inner: Vec<_> = (-14..=14).flat_map(|z| (-14..=14).map(move |x| (x, z))).filter(|(x, z)| x * x + z * z <= 14 * 14).collect();
+        let left: Vec<_> = inner.iter().filter(|(x, z)| !chunks.contains_key(&(cx + x, cz + z))).collect();
+        assert!(left.is_empty(), "{} of {} chunks of the caldera never dug: {:?}", left.len(), inner.len(), &left[..left.len().min(12)]);
+        let last = inner.iter().map(|(x, z)| chunks[&(cx + x, cz + z)]).max().unwrap_or(0);
+        assert!(last < 84 * 20, "the caldera's last chunk went in at {} s", last as f32 / 20.0);
     }
 
     /// The follow camera: a Nuke fired with it on moves the player by kicks to their velocity once the bomb comes
@@ -2684,6 +2895,109 @@ mod stress {
 
     /// Leaving the world mid-strike ends it there (nothing of it goes on into the next world), and its forceloads are
     /// let go the next time that world is played, not in another one; a strike that runs its course leaves none kept.
+    /// Single player's clock is put back by the server thread running behind, or thrown on by the client hanging: the
+    /// world is the same, and the strike goes on. A clock far off is another world; a tick with no player has left.
+    #[test]
+    fn the_server_running_behind_does_not_end_a_strike() {
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=plasma\n"));
+        let player = Player { x: 0.5, y: 100.0, z: 400.5, yaw: 180.0, pitch: 15.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        let mut into = |clock: Option<u64>| {
+            fake::with(|w| {
+                w.player = clock.map(|_| player.clone());
+                w.clock = clock.unwrap_or(0);
+            });
+            o.in_world();
+            let on = o.strike.is_some();
+            if !on {
+                fake::with(|w| w.player = Some(player.clone()));
+                o.fire();
+            }
+            on
+        };
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.hit = Some(Hit { block_x: 0, block_y: 64, block_z: 0, x: 0.5, y: 65.0, z: 0.5, block: "minecraft:grass_block".into() });
+        });
+        into(Some(50_000));
+        for clock in [50_100, 49_900, 49_970, 50_400, 50_401] {
+            assert!(into(Some(clock)), "ended at clock {clock}");
+        }
+        assert!(!into(Some(60_000)), "another world");
+        assert!(into(Some(60_001)));
+        assert!(!into(None), "out of the world");
+    }
+
+    /// The light on the player's hand (`hand_frame`, `render.set-hand-tint`): left alone before a Supervolcano, dark under
+    /// its sheet, near black in its wall of ash, lit up now and then by its lightning, and given back whole as it ends, is
+    /// stopped or the player leaves the world.
+    #[test]
+    fn the_hand_goes_dark_under_the_supervolcano_and_comes_back() {
+        let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=supervolcano\n"));
+        let player = Player { x: 0.5, y: 70.0, z: 0.5, yaw: 180.0, pitch: 0.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.hit = Some(Hit { block_x: 0, block_y: 64, block_z: -1000, x: 0.5, y: 65.0, z: -999.5, block: "minecraft:grass_block".into() });
+            w.player = Some(player.clone());
+            w.clock = 5000;
+        });
+        let tint = || fake::with(|w| w.hand_tint);
+        let lum = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        for _ in 0..10 {
+            o.hand_frame(0.016);
+        }
+        assert_eq!(tint(), None, "left alone before a strike");
+        o.fire();
+        assert!(o.strike.is_some());
+        let (mut sheet, mut wall, mut jump, mut last) = (1.0f32, 1.0f32, 1.0f32, 1.0f32);
+        while let Some(t) = o.strike.as_ref().map(|s| s.ticks as f32 * 0.05) {
+            fake::with(|w| w.clock += 1);
+            meter::reset();
+            o.tick_strike();
+            for _ in 0..3 {
+                o.hand_frame(0.0167);
+                let l = tint().map_or(1.0, lum);
+                if (44.0..50.0).contains(&t) {
+                    sheet = sheet.min(l);
+                }
+                if (60.0..75.0).contains(&t) {
+                    wall = wall.min(l);
+                }
+                if (26.0..75.0).contains(&t) {
+                    jump = jump.max(l / last.max(1.0e-4));
+                }
+                last = l;
+            }
+        }
+        assert!(sheet < 0.12, "dark under the sheet: {sheet}");
+        assert!(wall < 0.4 * sheet, "near black in the wall: {wall} (under the sheet {sheet})");
+        assert!(jump > 1.15, "lit up by the lightning: {jump}");
+        assert_eq!(tint(), Some([1.0; 3]), "given back as it ends");
+        // (stopped part way: given back)
+        o.fire();
+        for _ in 0..900 {
+            fake::with(|w| w.clock += 1);
+            meter::reset();
+            o.tick_strike();
+            o.hand_frame(0.05);
+        }
+        assert!(tint().is_some_and(|c| lum(c) < 0.2), "dark by 45 s: {:?}", tint());
+        o.stop_strike();
+        assert_eq!(tint(), Some([1.0; 3]), "given back when stopped");
+        let sent = fake::with(|w| w.hand_tints);
+        o.hand_frame(0.016);
+        assert_eq!(fake::with(|w| w.hand_tints), sent, "and not sent again");
+        // (left the world part way: given back)
+        o.fire();
+        for _ in 0..900 {
+            fake::with(|w| w.clock += 1);
+            meter::reset();
+            o.tick_strike();
+            o.hand_frame(0.05);
+        }
+        assert!(tint().is_some_and(|c| lum(c) < 0.2), "dark again: {:?}", tint());
+        o.left_world();
+        assert_eq!(tint(), Some([1.0; 3]), "given back on leaving the world");
+    }
     #[test]
     fn leaving_mid_strike_ends_it_and_lets_its_forceloads_go_later() {
         let mut o = Orbital::new(Orbital::parse("terrain=1\nlaser=nuke\n"));
@@ -2939,7 +3253,7 @@ mod stress {
         };
         let mut plan: Vec<(f32, Act)> = (0..60).map(|k| (0.05, Act::Later(heavy(k)))).collect();
         plan.extend((0..3000).map(|i| (0.05, Act::Cmd(format!("setblock {i} 1 1 minecraft:stone")))));
-        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], level: None, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, wait: 0, sounds: Default::default(), key: "", sprites: 0 });
+        o.strike = Some(Strike { plan, next: 0, more: Default::default(), given: 0, ticks: 0, length: 1000.0, params: [0.0; 16], level: None, waiting: Default::default(), urgent: Default::default(), data: Vec::new(), data_sent: true, skipped: 0.0, wait: 0, sounds: Default::default(), key: "", sprites: 0, hand: None, hand_t: 0.0 });
         let mut worst = 0;
         let mut ticks = 0;
         while o.strike.as_ref().is_some_and(|s| s.next < s.plan.len() || !s.more.is_empty() || !s.waiting.is_empty()) || !o.carving.is_empty() {
