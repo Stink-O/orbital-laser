@@ -23,9 +23,12 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
                        silent, nothing quick in it; cut by the report (a stopsound), long enough for one from 3,000 blocks
   seism       18 + d/1715 the burst through the ground: a deep jolt under the feet with a body, then the ground going on
                        shaking under the hush, building; cut by the report with the hush
-  report      18 + late one enormous report rolling off the land for 20 s; its front a blow (`impact`, `slam`: a sub
-                       falling in pitch, the chest's punch, a dull crack of the air, what follows let down just after it)
-  report_far  the same moment, cross-faded in by distance
+  report      18 + late one enormous report, the Payload's blasts' big brother: its front a blow that slams (`impact`,
+                       `slam`, the air sucked back after it: `gapped`), a deep boom falling from the 80s into the 20s
+                       and lasting, the vent heaving behind it, a heavy roar holding for seconds, all of it overloading
+                       the microphone (`overload`, `crunch`: the boom growls and breaks up); then the land rolling it
+                       back for 20 s
+  report_far  the same moment, cross-faded in by distance: darker, the growl kept in the low mids
   report_sub  the same moment: the push alone, under it (and at pitch 0.8 with the land dropping, in the collapse)
   column      18 + late behind the report the rolling wall of fire and the land going up (for 19-27 s), handing over to
                        the Plinian column (`plinian`): an enormous turbulent roar in uneven surges, each opening upward,
@@ -93,7 +96,7 @@ LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rock
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
-REPORT_SLAM = 0.0          # (the report's front laid on, dB against its loudest 400 ms: `slam`)
+REPORT_SLAM = 2.0          # (the report's front laid on over its drive, dB against its loudest 400 ms: `slam`)
 COLLAPSE_GIVE = 1.0        # (how far the collapse's groan comes down to make room for the drop's blow, dB)
 SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)
 TREMOR_D = HUSH - 2.0      # (`tremor`, which starts at 2 s, ends on the hush: vc_sound.rs's plays it on the strike's clock)
@@ -584,9 +587,67 @@ def far_of(x, d, lo_gain=0.9, seed=0, soften=0.05):
     return lows_heard(y, 70, 420, -6.0)
 
 
+# The report, in the Payload's blasts' family (sounds_payload.py's `blast`, `blast_alt`), scaled up past them: what makes
+# those hit, measured on their files, is a front that is broad and dense (its 63 Hz-1 kHz all within a few dB of each
+# other in the first 50 ms, driven into a soft clip: the overloaded microphone), the mids dropping away after it while
+# the sub swells on, a boom round 50-70 Hz falling to the 30s, and a roar that holds near its loudest for seconds with
+# its 100-800 Hz as strong as its sub (the body's own harmonics: it is heard on any speaker). This is bigger: a deeper
+# boom falling further and lasting longer, the vent heaving behind it, and the overload made a part of the sound, not
+# hidden in it: the body driven hard and a fuzzed copy of the lows laid under it, so the boom growls and breaks up the
+# way a recording of something too big for the microphone does.
+REPORT_DRIVE = 16.0        # (the body's drive at its strongest, dB: held REPORT_HOLD s, then easing off over REPORT_EASE)
+REPORT_HOLD, REPORT_EASE = 0.9, 2.6
+REPORT_CRUNCH = -1.0       # (the fuzzed copy of the lows, dB against the 100-800 Hz the drive leaves while the boom peaks)
+REPORT_FRONT_CLIP = 7.5    # (its first 0.3 s soft-clipped this far over the boom after it, dB: dense, the microphone overloaded)
+REPORT_REST_CLIP = 4.0     # (and the roar after it, to 6 s, this far over it: its own peaks never reach the front's)
+
+
+def overload(x, t0, drive_db, hold, ease, split=(70.0, 600.0), bias=0.22, makeup=0.55):
+    """`x` driven as a blast far too big for the microphone: split at `split` (zero-phase, the bands summing back); the
+    sub under it left clean; the body driven into a lopsided tanh (odd and even harmonics: crunch in the low mids, the boom
+    heard on small speakers), its output kept to 30-2600 Hz so nothing new lands in the sub or as fizz; the top through a
+    gentler tanh at half the drive, its grit. The drive `drive_db` from `t0` for `hold` s, then its dB easing away over
+    `ease`; small signals pass at unity, so it thickens the loud part only, made up by `makeup` of the drive."""
+    n = len(x)
+    u = np.maximum(np.arange(n) / SR - t0, 0)
+    gdb = drive_db * np.where(u < hold, 1.0, np.exp(-np.maximum(u - hold, 0) / ease))
+    g = 10 ** (gdb / 20)
+    sub = band(x, None, split[0], 2)
+    rest = x - sub
+    body = band(rest, None, split[1], 2)
+    top = rest - body
+    ref = np.percentile(np.abs(body), 99.9) + 1e-12
+    z = g * body / ref
+    sat = (np.tanh(z + bias) - np.tanh(bias)) / (1 - np.tanh(bias) ** 2)
+    body_d = band(sat * ref / g, 30, 2600, 2)
+    gt = np.sqrt(g)
+    tref = np.percentile(np.abs(top), 99.9) + 1e-12
+    top_d = np.tanh(gt * top / tref) * tref / gt
+    return sub + body_d * g ** makeup + top_d * gt ** 0.5
+
+
+def crunch(x, t0, lo=22.0, hi=150.0, out=(80.0, 1500.0), bias=0.3, hold=1.5, ease=2.5):
+    """The lows of `x` fuzzed: hard-clipped nearly square (a little lopsided), only what the clip made new kept (`out`
+    Hz: their 3rd, 5th, 7th..., and the even ones from the lopsidedness), at the lows' own level moment to moment, so it
+    growls with the boom's pitch and falls with it, and is gone where they are quiet. Unit level over its loudest 400 ms
+    times how much of it there is: full for `hold` s from `t0`, easing off over `ease` (the overload goes with the blow)."""
+    n = len(x)
+    u = np.maximum(np.arange(n) / SR - t0, 0)
+    lb = band(x, lo, hi, 3)
+    lev = np.sqrt(np.maximum(band(lb ** 2, None, 40.0, 2), 0)) + 1e-12
+    v = lb / lev
+    y = np.clip(v * 4.0 + bias, -1.0, 1.0) - np.clip(bias, -1.0, 1.0)
+    y = F.cband(y * lev, out[0], out[1], 3)
+    y = y * np.where(u < hold, 1.0, np.exp(-np.maximum(u - hold, 0) / ease)) * (u > 0)
+    return y / (T.loudest(y) + 1e-12)
+
+
 def report_body():
-    """The report (see the module's notes): one long pressure pulse with a boom riding it, the ground's answer and a second
-    heave of the vent behind it, a dark short roar, then the land giving it back for twenty seconds."""
+    """The report (see the module's notes and REPORT_DRIVE's): the front a blow that slams (the pressure jump, a sub
+    falling in pitch, the chest's punch and a broad dull crack of the air), the mids dropping out after it while a deep
+    boom swells on under them, falling from the 80s into the 20s and lasting; the vent's next heaves and the land's far
+    side behind it; a heavy roar rolling in over it and holding for seconds; all of it driven into the overloaded
+    microphone and growling with it; then the land giving it back for twenty seconds."""
     d = 26.0
     n = n_of(d)
     t = times(d)
@@ -594,54 +655,121 @@ def report_body():
     u = np.maximum(t - t0, 0)
     on = t >= t0
     with PB.seeded(61501):
-        push = band(T.friedlander(n, t0, 0.28, 1.5), 13, 150, 2)
+        # ---- the push and the boom: one long pressure pulse, a deep boom falling on it, and three more blows of the vent
+        # and of the land's far side (800 blocks across: its blow comes in seconds after the near side's)
+        push = band(T.friedlander(n, t0, 0.34, 1.4), 13, 150, 2)
         push = push / (np.abs(push).max() + 1e-9)
-        boom = S.blow(n, t0, 64.0, 37.0, 29.0, 0.10, 0.006, ((0.62, 0.22), (0.32, 0.7), (0.06, 2.0)), drive=3.5, octv=0.34, h3=0.2, harm=0.5)
-        boom2 = S.blow(n, t0 + 0.34, 48.0, 33.0, 27.0, 0.10, 0.018, ((0.7, 0.26), (0.3, 0.8)), drive=3.0) * 0.5
-        boom3 = S.blow(n, t0 + 1.02, 41.0, 30.0, 25.0, 0.10, 0.04, ((0.7, 0.3), (0.3, 0.9)), drive=2.5) * 0.36
-        # (the land is 800 blocks across: its far side's blow comes in two seconds after its near side's)
-        boom4 = S.blow(n, t0 + 1.74, 37.0, 28.0, 23.0, 0.12, 0.07, ((0.7, 0.34), (0.3, 1.0)), drive=2.5) * 0.24
-        low = push * 1.3 + boom + boom2 + boom3 + boom4
+        boom = S.blow(n, t0, 84.0, 36.0, 25.0, 0.13, 0.004, ((0.5, 0.3), (0.34, 1.1), (0.16, 3.2)), drive=4.0, octv=0.38, h3=0.24, harm=0.6)
+        boom2 = S.blow(n, t0 + 0.38, 56.0, 32.0, 24.0, 0.12, 0.014, ((0.6, 0.3), (0.4, 1.0)), drive=3.5) * 0.62
+        boom3 = S.blow(n, t0 + 1.06, 46.0, 29.0, 23.0, 0.12, 0.03, ((0.6, 0.34), (0.4, 1.2)), drive=3.0) * 0.46
+        boom4 = S.blow(n, t0 + 1.8, 40.0, 27.0, 22.0, 0.14, 0.06, ((0.6, 0.4), (0.4, 1.4)), drive=3.0) * 0.32
+        low = push * 1.4 + boom + boom2 + boom3 + boom4
+        # (a body of low noise riding the booms, so they are a blast's and not a synth's: no clean sine left in it)
         benv = np.maximum(band(np.abs(low), None, 10, 1), 0)
-        body = T.unit(band(white(d), 42, 125, 3)) * benv * 0.55
-        # (the front: a dull knock, not a crack; the air's edge only)
-        knock = T.unit(band(white(d), 130, 520, 2)) * (1 - np.exp(-u / 0.0015)) * np.exp(-u / 0.035) * on
-        edge = T.unit(band(white(d), 520, 3200, 2)) * (1 - np.exp(-u / 0.0006)) * np.exp(-u / 0.009) * on
+        body = (T.unit(band(white(d), 30, 90, 3)) * 0.5 + T.unit(band(white(d), 80, 240, 2)) * 0.45) * benv * boil(n, 2.0, 12.0, 2.0)
         ref = np.sqrt(np.mean(low[n_of(t0):n_of(t0 + 0.4)] ** 2))
-        hit = knock * ref * 0.9 + edge * ref * 0.28
-        # (the dark roar it drags with it, handing over to the column's)
-        renv = (1 - np.exp(-np.maximum(u - 0.03, 0) / 0.09)) * (0.65 * np.exp(-u / 0.8) + 0.35 * np.exp(-u / 3.0)) * on
-        roar = T.unit(band(white(d), 55, 760, 1)) * boil(n, 1.5, 10.0, 3.0) * renv * ref * 0.35
-        x = low + body + hit + roar
-        # (the land giving it back: echoes darker each time, rolls, a heaving sub bed)
+        # ---- the front: `impact`'s blow (a sub falling from 90 Hz, a punch of 45-300 Hz, a broad crack of 220 Hz-2.6 kHz,
+        # its top as a kilometre of air leaves it), on the pressure jump
+        with PB.seeded(61504):
+            hit = impact(n, t0, (92.0, 44.0, 31.0), 0.06, (45.0, 300.0), 0.08, (220.0, 2600.0), 0.022, (1.0, 1.35, 1.0))
+        hit = hit / (T.loudest(hit) + 1e-12) * ref * 0.8
+        # ---- the roar: turbulence at every scale (`eddies`), low and broad, rolling in after the gap a little over itself
+        # and holding near the top for two seconds, then going down under the column
+        surge = heaves(d, 0.9, 0.5, 0.06, 0.45, 0.5, 0.1)
+        roar = eddies(d, 40, 2200, 2.5, -2.2, 10.0, 5.0, surge, 1.2, 250.0)
+        renv = db_curve(t, [(0, -80), (t0 + 0.05, -40), (t0 + 0.12, -6), (t0 + 0.2, 1.0), (t0 + 0.4, 0.0), (t0 + 2.0, -1.0),
+                            (t0 + 3.2, -3.5), (t0 + 5.0, -8.0), (t0 + 8.0, -14.0), (t0 + 12.0, -21.0), (t0 + 18.0, -30.0), (d, -48.0)])
+        roar = roar * renv * (0.8 + 0.2 * surge) * ref * 0.5 * on
+        # (the gap: what is over 350 Hz of everything but the front dropping away 25-110 ms in, as a blast's mids do after
+        # its crack, while the sub swells on: the front stands out of what follows)
+        rest = low + body + roar
+        gap = db_curve(u, [(0, 0), (0.025, 0), (0.045, -12), (0.09, -12), (0.13, 1.5), (0.2, 0), (1e9, 0)])
+        hi_ = band(rest, 350, None, 2)
+        x = (rest - hi_ + hi_ * gap + hit) * on
+        # ---- the overload: the body driven hard, and the lows' fuzz laid under it, following the boom
+        clean = x
+        x = overload(x, t0, REPORT_DRIVE, REPORT_HOLD, REPORT_EASE) * on
+        fz = crunch(x, t0)
+        w0, w1 = n_of(t0 + 0.05), n_of(t0 + 0.6)
+        have = np.sqrt(np.mean(band(x, 100, 800, 2)[w0:w1] ** 2))
+        got = np.sqrt(np.mean(band(fz, 100, 800, 2)[w0:w1] ** 2)) + 1e-12
+        x = x + fz * have / got * 10 ** (REPORT_CRUNCH / 20)
+        # (how much of what is heard is the overload: its 100-800 Hz against the clean sound's, each against its 25-90 Hz)
+        mid_lo = lambda y, a, b: 20 * np.log10(np.sqrt(np.mean(band(y, 100, 800, 2)[n_of(t0 + a):n_of(t0 + b)] ** 2))
+                                               / np.sqrt(np.mean(band(y, 25, 90, 2)[n_of(t0 + a):n_of(t0 + b)] ** 2)))
+        print("report: the overload's 100-800 Hz against the lows, clean -> driven: "
+              + ", ".join(f"{a}-{b} s {mid_lo(clean, a, b):+.1f} -> {mid_lo(x, a, b):+.1f} dB" for a, b in ((0.05, 0.6), (0.6, 2.0), (2.0, 5.0))))
+        # (and the front laid on again over the drive, so the blow stands out of the roar it starts: a fresh `impact`,
+        # what follows let down just after it; the front clip later rounds it into the overloaded microphone)
+        with PB.seeded(61505):
+            hit2 = impact(n, t0, (90.0, 42.0, 30.0), 0.06, (45.0, 320.0), 0.09, (220.0, 2400.0), 0.02, (1.0, 1.3, 0.9))
+        x = slam(x, t0, hit2, REPORT_SLAM, -6.5, (0.045, 0.12, 0.38))
+        # ---- the land giving it back: echoes darker each time, rolls, a heaving sub bed
         src = band(x, None, 700, 2)
-        for dt, g, hi in ((1.35, 0.26, 900), (2.6, 0.2, 640), (4.1, 0.16, 450), (6.2, 0.13, 320), (8.9, 0.1, 230), (12.4, 0.07, 170), (16.3, 0.04, 130)):
+        for dt, g, hi in ((1.35, 0.3, 900), (2.6, 0.24, 640), (4.1, 0.19, 450), (6.2, 0.15, 320), (8.9, 0.12, 230), (12.4, 0.08, 170), (16.3, 0.05, 130)):
             e = band(src, 22, hi, 2)
             ir = rng().standard_normal(n_of(0.5)) * np.exp(-np.arange(n_of(0.5)) / (0.14 * SR))
             P.put(x, conv(e, ir / np.sqrt(np.sum(ir ** 2))) * g, dt)
-        rl, rr = PB.thunder_rolls(d, t0 + 0.9, count=20, length=17.0)
+        rl, rr = PB.thunder_rolls(d, t0 + 0.9, count=22, length=17.0)
         rolls = (rl + rr) / 2
-        x += rolls / (T.loudest(rolls) + 1e-9) * ref * 0.3
-        bed = T.unit(band(white(d), 17, 62, 3)) * boil(n, 0.1, 0.9, 3.0) * db_curve(t, [(0, -60), (0.8, -22), (3, -21), (8, -25), (15, -33), (22, -44), (26, -70)])
+        x += rolls / (T.loudest(rolls) + 1e-9) * ref * 0.34
+        bed = T.unit(band(white(d), 17, 62, 3)) * boil(n, 0.1, 0.9, 3.0) * db_curve(t, [(0, -60), (0.8, -21), (3, -20), (8, -24), (15, -32), (22, -44), (26, -70)])
         x += bed * ref * 3.2
-        x = land(x, 3.0, 0.14, (2200, 200), 1.2, seed=3)
-        x = lows_heard(x, 70, 420, -4.0)
-        L, R = N.glue(x, x)
-        L, R = N.overdrive(L * on, R * on, t0)
+        x = land(x, 3.0, 0.16, (2200, 200), 1.2, seed=3)
+        L, R = N.glue(x, x, 2.0, 0.01, 0.4, 6.0)
         x = PB.causal_lowcut((L + R) / 2 * on * T.fade(n, 0.0005, 3.5), 15.0)
     return x
 
 
 def build_report_sub():
     """The push itself, played with the report and again with the land's drop (pitched down): only the sub, the part of
-    the report that's felt. A file of its own, so together they go past what one file can."""
+    the report that's felt, the report's own boom's fall (from the 50s into the 20s) clean. A file of its own, so together
+    they go past what one file can."""
     d = 2.6
     n = n_of(d)
     with PB.seeded(61503):
-        x = S.blow(n, LEAD, 47.0, 30.0, 24.0, 0.09, 0.006, ((0.72, 0.2), (0.28, 0.62)), drive=1.0, octv=0.0, h3=0.0, harm=0.0)
-        push = band(T.friedlander(n, LEAD, 0.3, 1.5), 13, 90, 2)
-        x = x + push / (np.abs(push).max() + 1e-9) * 0.7
+        x = S.blow(n, LEAD, 52.0, 31.0, 24.0, 0.11, 0.005, ((0.62, 0.24), (0.38, 0.8)), drive=1.0, octv=0.0, h3=0.0, harm=0.0)
+        push = band(T.friedlander(n, LEAD, 0.34, 1.4), 13, 90, 2)
+        x = x + push / (np.abs(push).max() + 1e-9) * 0.75
     write("report_sub", PB.causal_lowcut(band(x, None, 110, 2) * T.fade(n, 0.0005, 0.9), 14.0), knee=0.6)
+
+
+def report_far_of(x, seed=31):
+    """The report from further off: the same blast, its lows and its growl kept (the overload's crunch is in the low mids,
+    and they carry), what is over 700 Hz going and its front smeared a little, all of it in the land's long dark reverb."""
+    n = len(x)
+    u = np.arange(n) / SR - LEAD
+    soft_on = np.clip(u / 0.014, 0, 1) ** 2
+    lo = band(x, None, 160, 2)
+    mid = band(x, 160, 700, 2)
+    up = band(x, 700, 1600, 2)
+    hi = band(x, 1600, None, 2)
+    y = lo * 0.95 + mid * np.sqrt(soft_on) * 0.85 + up * soft_on * 0.38 + P.air(hi, 2600) * soft_on * 0.06
+    y = land(y, 7.0, 0.5, (1000, 140), 3.0, 30.0, seed=seed)
+    return lows_heard(y, 60, 420, -6.0)
+
+
+def front_clip(x, db, rest_db=REPORT_REST_CLIP):
+    """The first 0.3 s of `x` soft-clipped `db` over the level of the boom after it (0.15-1 s in): dense, as the start of
+    a recording of a blast too big for the microphone is; what follows rounded off lower, `rest_db` over it (the overload
+    going on through the roar), so the front is what reaches the file's peak, standing out of what follows, and the
+    game's limiter has nothing left to ride."""
+    u = np.arange(len(x)) / SR - LEAD
+    ref = np.sqrt(np.mean(x[n_of(LEAD + 0.15):n_of(LEAD + 1.0)] ** 2))
+    over = 10 ** (np.interp(u, [0.0, 0.3, 0.45, 6.0, 8.0], [db, db, rest_db, rest_db, rest_db + 30.0]) / 20)
+    knee = np.interp(u, [0.0, 0.3, 0.45], [0.4, 0.4, 0.6])
+    return PB.soft_clip(x, ref * over, knee)
+
+
+def gapped(x, deep=-10.0, sub=-6.0):
+    """`x` with the instant after its front let down (`deep` dB, its lows under 80 Hz only `sub`) 40-125 ms in, coming
+    back a little over itself by 0.19 s: a blast's negative phase, the air sucked back after the blow, so the front
+    stands out of the roar it starts (the Payload's blasts drop 6-20 dB there)."""
+    u = np.arange(len(x)) / SR - LEAD
+    g_hi = db_curve(u, [(-1.0, 0.0), (0.04, 0.0), (0.06, deep), (0.125, deep), (0.19, 0.8), (0.28, 0.0), (1e9, 0.0)])
+    g_lo = db_curve(u, [(-1.0, 0.0), (0.04, 0.0), (0.06, sub), (0.125, sub), (0.19, 0.0), (1e9, 0.0)])
+    lo = band(x, None, 80, 3)
+    return lo * g_lo + (x - lo) * g_hi
 
 
 def build_report():
@@ -650,20 +778,15 @@ def build_report():
     lo = band(x, None, 130, 3)
     c = T.loudest(lo) * 10 ** (3.0 / 20)
     x = x - lo + PB.soft_clip(lo[:, None], c, 0.5)[:, 0]
-    # (the blow alone at the top of it: what rolls off after sits under it, so it is a thump and not a long loud noise)
-    x = x * db_curve(np.arange(len(x)) / SR, [(0, 0), (0.9, 0), (2.2, -1.5), (5, -3.5), (26, -3.5)])
-    # (and its front made a blow: a sub falling in pitch, a punch in the chest's range and a dull crack of the air, what
-    # follows let down a little just after it, so the report hits rather than starts)
-    with PB.seeded(61504):
-        hit = impact(len(x), LEAD, (80.0, 42.0, 31.0), 0.07, (45.0, 240.0), 0.1, (280.0, 2200.0), 0.016, (1.0, 1.2, 0.6))
-    x = slam(x, LEAD, hit, REPORT_SLAM, -3.0, (0.08, 0.32, 0.75))
-    write("report", x, knee=0.5)
+    # (the blow at the top, the boom and the roar it starts 3 dB under it so it slams, what rolls off after it under them)
+    x = x * db_curve(np.arange(len(x)) / SR - LEAD, [(-1, 0), (0.12, 0), (0.3, -3.0), (2.4, -3.0), (4.0, -4.0), (7, -5.5), (26, -5.5)])
+    write("report", front_clip(gapped(x), REPORT_FRONT_CLIP), knee=0.8)
     with PB.seeded(61502):
-        y = far_of(x, 26.0, seed=31, soften=0.012)
-        # (from further off the land's long echo fills in behind the front: its own blow again on it, darker)
-        hit = impact(len(y), LEAD, (74.0, 40.0, 30.0), 0.08, (40.0, 200.0), 0.09, (200.0, 900.0), 0.02, (1.0, 0.9, 0.3))
-        y = slam(y, LEAD, hit, REPORT_SLAM, -3.5, (0.07, 0.35, 0.9))
-    write("report_far", y * T.fade(len(y), 0.0005, 3.0), knee=0.5)
+        y = report_far_of(x, seed=31)
+        # (from further off its front is a darker blow, laid on again so the land's long echo doesn't blunt it)
+        hit = impact(len(y), LEAD, (80.0, 40.0, 29.0), 0.08, (40.0, 220.0), 0.09, (180.0, 1000.0), 0.024, (1.0, 1.0, 0.45))
+        y = slam(y, LEAD, hit, REPORT_SLAM - 1.0, -6.0, (0.06, 0.16, 0.5))
+    write("report_far", front_clip(gapped(y, -8.0, -4.5), REPORT_FRONT_CLIP) * T.fade(len(y), 0.0005, 3.0), knee=0.8)
 
 
 # ===========================================================================================================  the column
