@@ -234,6 +234,8 @@ VIEWS = {
     # the steam off the hole from 450 off
     "vcmid": "cx=0 cy=90 cz=450 lx=0.5 ly=230 lz=0.5 mx=0 mz=1000 flat=1 trees=1 fov=60 reach=1000",
     "vcsteam": "cx=170 cy=240 cz=560 lx=0 ly=230 lz=0 mx=0 mz=1000 flat=1 fov=55 reach=1000",
+    # and the whole of it from the player's 1,000 off, level
+    "vcplume": "cx=0 cy=67 cz=1000 lx=150 ly=330 lz=0 flat=1 trees=1 fov=55 reach=1000",
     "vcflyb": "cx=-420 cy=6820 cz=-1250 lx=0 ly=7010 lz=-1600 mx=0 mz=1000 flat=1 fov=50 reach=1000",
     # the satellite coming down onto its station and righting itself, seen from the side (its whole way down)
     "vcland": "cx=1300 cy=7700 cz=380 lx=-400 ly=7750 lz=-1050 mx=0 mz=1000 flat=1 fov=50 reach=1000",

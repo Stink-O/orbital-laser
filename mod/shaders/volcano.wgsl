@@ -1947,24 +1947,24 @@ fn vc_jet(uv: vec2<f32>, A: vec3<f32>, D: vec3<f32>, L: f32, w: f32, k: f32, col
     let side = saturate(length(ab) / (10.0 * wp));
     return col * k * pow(1.0 - f, 1.6) * (0.9 / (1.0 + e * e / (wp * wp)) + (0.15 + 0.45 * side) / (1.0 + dot(ap, ap) / (6.0 * wp * wp)));
 }
-// ---- the steam off the hole: vapour while the beam melts it, a surge as it is cut, then fed unevenly (`vc_feed`):
-// rising, slowing, swelling and thinning, bending with the wind, red from under. What is let go is VC_PH (1 - e^(-a /
-// VC_PT)) up `a` seconds on, so its age is known from its height and its noise rides it. Clear just over the hole (too
-// hot to condense), white a little higher; lit through itself (the sun's way through the column: a shaded side, a
-// bright rim), its edge boiled out in folds, never a rope or a beat.
-const VC_PH: f32 = 900.0;
-const VC_PT: f32 = 10.0;
-fn vc_feed(s: f32) -> f32 {
+// ---- the steam off the hole: vapour while the beam melts it, a surge as it is cut, then fed unevenly (`vc_feed`: .x as
+// let go, .y its mean). As off a real vent: a narrow stem, clear just over the hole; a column growing in lumps, a puff a
+// surge, necked in the lulls; leant over by the wind and carried off, mixing away to ragged lumps; never a cone. What was
+// let go `a` s ago is at vc_path(a); a point takes the age of the nearest point on it, so its lumps ride it.
+const VC_PH: f32 = 760.0;
+const VC_PT: f32 = 8.0;
+fn vc_feed(s: f32) -> vec2<f32> {
     let on = smoothstep(VC_HIT + 0.2, VC_HIT + 0.6, s) * 0.2;
-    let a = max(s - VC_OFF, 0.0);
-    let pulse = 0.15 + 0.85 * smoothstep(0.3, 0.72, vc_gn3(vec3<f32>(s * 0.9, 1.7, 4.2)));
-    let surge = smoothstep(VC_OFF - 0.05, VC_OFF + 0.1, s) * mix(0.7 * pulse, 1.0, exp(-a / 0.7));
-    return max(on, surge) * (1.0 - smoothstep(VC_ERUPT - 4.0, VC_ERUPT - 0.5, s));
+    let c = smoothstep(VC_OFF - 0.1, VC_OFF + 0.35, s);
+    let p = 0.1 + 0.6 * smoothstep(0.3, 0.72, vc_gn3(vec3<f32>(s * 0.9, 1.7, 4.2)));
+    return vec2<f32>(max(on, c * mix(p, 1.0, exp((VC_OFF - max(s, VC_OFF)) / 0.7))), max(on, c * 0.55)) * (1.0 - smoothstep(VC_ERUPT - 4.0, VC_ERUPT - 0.5, s));
 }
-// How far downwind its middle is `h` up, and its slope.
-fn vc_bend(h: f32) -> vec2<f32> {
-    let x = h / VC_PH;
-    return vec2<f32>(420.0 * pow(x, 1.7), 0.79 * pow(x, 0.7));
+// Where and how fast: rising VC_PH (1 - e^(-a / VC_PT)), taken up by a wind of 34 a second.
+fn vc_path(a: f32) -> mat2x3<f32> {
+    let e = VC_PH * exp(-a / VC_PT);
+    let g = exp(-a / 1.8);
+    let w = vec3<f32>(32.3, 0.0, 10.5);
+    return mat2x3<f32>(w * (a - 1.8 + 1.8 * g) + vec3<f32>(0.0, VC_PH - e, 0.0), w * (1.0 - g) + vec3<f32>(0.0, e / VC_PT, 0.0));
 }
 fn vc_plume(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, l: VcLight, fire: f32, jit: f32) -> vec3<f32> {
     let t = vs.t;
@@ -1974,13 +1974,11 @@ fn vc_plume(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, l: Vc
         return c0;
     }
     let B = C + vec3<f32>(0.0, select(0.0, vm_height(vec2<f32>(0.0)), vm.on), 0.0);
-    let wd = vec3<f32>(0.95, 0.0, 0.31);
-    let hm = VC_PH * (1.0 - exp(-age / VC_PT));
-    let rm = 50.0 + 40.0 * sqrt(age);
-    let X = wd * vc_bend(hm).x;
+    let H = vc_path(age)[0];
+    let rm = 40.0 + 0.55 * H.y + 20.0 * age;
     let inv = 1.0 / select(rd, vec3<f32>(1.0e-5), abs(rd) < vec3<f32>(1.0e-5));
-    let t0 = (B + min(X, vec3<f32>(0.0)) - vec3<f32>(rm, 4.0, rm)) * inv;
-    let t1 = (B + max(X, vec3<f32>(0.0)) + vec3<f32>(rm, hm + 0.5 * rm, rm)) * inv;
+    let t0 = (B + min(H, vec3<f32>(0.0)) - vec3<f32>(rm, 4.0, rm)) * inv;
+    let t1 = (B + max(H, vec3<f32>(0.0)) + rm) * inv;
     let tn = min(t0, t1);
     let tf = max(t0, t1);
     let ta = max(max(tn.x, max(tn.y, tn.z)), 0.0);
@@ -1989,50 +1987,70 @@ fn vc_plume(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, l: Vc
         return c0;
     }
     let hg = 1.2 * fire + 0.45 - 0.3 * smoothstep(VC_OFF, VC_OFF + 5.0, t) + 0.35 * smoothstep(VC_CRACK, VC_ERUPT, t);
-    // (the sun's way across the column, level: how far it goes through it from a point)
-    let Lh = l.L.xz;
-    let la = max(dot(Lh, Lh), 0.02);
-    let dt = (tb - ta) / 24.0;
-    var s = ta + dt * jit;
+    var s = ta;
     var acc = vec3<f32>(0.0);
     var T = 1.0;
     for (var i = 0; i < 24; i = i + 1) {
+        if (s > tb) {
+            break;
+        }
         let q = rd * s - B;
-        s = s + dt;
-        if (q.y < 0.0 || q.y >= hm) {
+        // (the nearest point on the path: from the height, then Gauss-Newton)
+        var a = clamp(-VC_PT * log(max(1.0 - q.y / VC_PH, 0.01)), 0.0, age);
+        for (var k = 0; k < 3; k = k + 1) {
+            let m = vc_path(a);
+            a = clamp(a + dot(q - m[0], m[1]) / dot(m[1], m[1]), 0.0, age);
+        }
+        let m = vc_path(a);
+        let sp = length(m[1]);
+        let s0 = t - a;
+        // (each part let go drifting its own way: the column wanders)
+        let d = q - m[0] - a * vec3<f32>(2.5 * sin(s0 * 0.7), 1.5 * sin(s0 * 0.9 + 2.0), 2.5 * sin(s0 * 0.6 + 4.0));
+        let rb = 12.0 + 0.2 * m[0].y + 5.2 * a;
+        let rho = length(d);
+        let ds = clamp(0.3 * rb, 2.0, 40.0);
+        if (rho > 2.7 * rb) {
+            // (on towards it, jittered afresh each time it comes back)
+            s = s + max(0.8 * rho - 2.1 * rb, 0.2 * rb) + jit * ds;
             continue;
         }
-        // (what was let go together lies on a dome, not a level slice: its middle risen highest, so each puff is a cap)
-        let a0 = -VC_PT * log(1.0 - q.y / VC_PH);
-        let r0 = 10.0 + 36.0 * sqrt(a0) + 0.06 * q.y;
-        let x0 = length(q.xz - wd.xz * vc_bend(q.y).x) / r0;
-        let a = -VC_PT * log(1.0 - max(q.y - 0.6 * r0 * max(1.0 - x0 * x0, 0.0), 0.0) / VC_PH);
-        let sr = t - a;
-        let f = vc_feed(sr);
-        let bd = vc_bend(q.y);
-        let r = q.xz - wd.xz * bd.x;
-        let rr = (10.0 + 36.0 * sqrt(a) + 0.06 * q.y) * (1.0 + 0.25 * exp(-max(sr - VC_OFF, 0.0) / 1.2) * step(VC_OFF - 0.05, sr));
-        let x = length(r) / (sqrt(1.0 + bd.y * bd.y) * rr);
-        if (f < 0.01 || x > 1.8) {
+        s = s + ds * (1.0 + select(0.0, jit, i == 0));
+        // (what was let go together lies on a dome, so each puff is a rounded cap; surges and lulls merge as it spreads)
+        let sr = s0 + min(0.9 * rb / sp, 1.6) * max(1.0 - rho * rho / (2.2 * rb * rb), 0.0);
+        let F = vc_feed(sr);
+        let f = mix(F.x, F.y, 1.0 - exp(-a / 5.0));
+        let w = max(sr - VC_OFF + 0.3, 0.0);
+        let rr = rb * (0.3 + 0.8 * sqrt(f)) * (1.0 + 0.3 * w * exp(1.0 - w - a / 6.0));
+        if (f < 0.01 || rho > 1.75 * rr) {
             continue;
         }
-        // (folds: warped noise riding what was let go together, growing as it swells, slowly turning over)
-        let rl = r / sqrt(rr * 24.0);
-        let n1 = vc_gn3(vec3<f32>(rl * 1.5, sr * 2.6));
-        let n2 = vc_gn3(vec3<f32>(rl * 2.2 + 0.9 * vec2<f32>(n1, -n1), sr * 4.0 + a * 0.35 + 11.0));
-        // (its folds sharp while young, softening as it spreads and thins)
-        let xe = x + (0.9 * (0.26 - abs(2.0 * n1 - 1.0)) + 0.35 * (n2 - 0.5)) * (0.45 + 0.55 * exp(-a / 4.0));
-        let den = (1.0 - smoothstep(0.15, 1.0 + 0.04 * a, xe)) * f * (0.3 + 0.7 * exp(-a / 6.0)) * smoothstep(4.0, 30.0, q.y + 18.0 * (n2 - 0.5));
+        // (cauliflower, lumps on lumps: across it from its middle, along it by how far it was a moment ago, on a fixed
+        // slant (a turning one swings the lattice); the moment let go of now and then, two such half a cycle apart)
+        var b1 = 0.0;
+        var b2 = 0.0;
+        for (var p = 0; p < 2; p = p + 1) {
+            let ph = t / 1.6 + 0.5 * f32(p);
+            let wp = 1.0 - abs(2.0 * fract(ph) - 1.0);
+            let c = d * (1.3 / rb) + vec3<f32>(3.2, 3.4, 1.05) * log(1.0 + max(a - fract(ph) * 1.6, 0.0) / 2.1) + vec3<f32>(17.0, 5.0, 9.0) * floor(ph);
+            b1 = b1 + wp * vc_dome(VC_R1 * c);
+            b2 = b2 + wp * vc_dome(VC_R2 * c * 2.6);
+        }
+        // (mixing away as it ages: its edge loosening, its biggest lumps left, then nothing)
+        let fl = exp(-a / (4.0 + 4.0 * f));
+        let th = 0.55 - 0.55 * fl;
+        let k = (0.35 + 0.65 * f) * (0.5 + 0.5 * fl) * smoothstep(0.05, 0.35, fl) * mix(0.45, 1.0, smoothstep(VC_OFF - 0.1, VC_OFF + 0.5, sr));
+        let den = smoothstep(th, th + 0.65 - 0.15 * fl - 0.3 * f, 0.525 - rho / rr + 0.7 * b1 + 0.25 * b2) * k * smoothstep(20.0, 50.0, q.y + 30.0 * b2);
         if (den < 0.003) {
             continue;
         }
-        let al = 1.0 - exp(-den * dt * 0.24);
-        let R = rr * sqrt(1.0 + bd.y * bd.y);
-        let b2 = dot(r, Lh);
-        let sun = exp(-0.06 * f * clamp((-b2 + sqrt(max(b2 * b2 - la * (dot(r, r) - R * R), 0.0))) / la, 0.0, 3.0 * R));
-        let lit = (0.15 + 0.85 * sun) * (0.75 + 0.25 * n2);
-        let alb = mix(vec3<f32>(0.5, 0.48, 0.46), vec3<f32>(0.9, 0.9, 0.9), smoothstep(10.0, 140.0, q.y));
-        let col = alb * (l.skyl * (0.35 + 0.3 * min(x, 1.0) + 0.2 * n2) + l.sunc * l.sun_up * 1.15 * lit) + vec3<f32>(2.4, 0.6, 0.12) * hg * exp(-q.y / 60.0) * (0.8 - 0.5 * sun);
+        let al = 1.0 - exp(-den * ds * 0.5);
+        // (the sun's way out through a ball round it, as thick as what lies that way along it, so a surge's cap under
+        // thin vapour is lit; the creases between the lumps get less of the sky and the sun)
+        let bb = dot(d, l.L);
+        let ks = mix(0.25, 1.0, smoothstep(VC_OFF - 0.1, VC_OFF + 0.5, sr - dot(l.L, m[1]) * 1.6 * rb / (sp * sp))) * (0.5 + 0.5 * fl);
+        let sun = exp(-0.05 * ks * max(sqrt(max(bb * bb - dot(d, d) + 2.56 * rb * rb, 0.0)) - bb, 0.0));
+        let cr = saturate(0.3 + 0.3 * b1 + 0.3 * b1 * b2);
+        let col = mix(vec3<f32>(0.5, 0.48, 0.46), vec3<f32>(0.9), smoothstep(10.0, 140.0, q.y)) * (l.skyl * (0.4 + 0.45 * cr) + l.sunc * l.sun_up * (0.13 + 0.77 * sun) * cr) + vec3<f32>(2.4, 0.6, 0.12) * hg * exp(-q.y / 60.0) * (0.8 - 0.5 * sun);
         acc = acc + T * al * col;
         T = T * (1.0 - al);
         if (T < 0.02) {

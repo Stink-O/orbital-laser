@@ -232,10 +232,16 @@ laser, command, capability and timing). This file is the short, factual version 
   outside in and it fires at 4.5 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
   cut at 7.1 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 8.6 (`VC_BURN`) and lifts straight up and away,
   into the haze by 12 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
-  uneven surges (noise, never a beat), puffs rising, slowing, swelling and bending with the wind, red from under
-  (`vc_plume`, `vc_feed`), until the eruption: clear just over the hole (too hot to condense), each puff a domed cap (what
-  was let go together lies on a dome, not a level slice, which drew flat plates), its folds sharp while young and softening
-  as it spreads, lit through itself (the sun's chord across the column: a shaded side, a bright rim); the mount rising round the hole; the
+  uneven surges (noise, never a beat), red from under (`vc_plume`, `vc_feed`), until the eruption: as steam off a real
+  vent, never a cone or a funnel. A tube round a path (`vc_path`: rising, slowing, taken up by a 34-a-second wind, so
+  straight up off the hole and then leant over and carried off), a point taking the age of the nearest point on it; clear
+  just over the hole, a puff a surge and necked in the lulls (merging as it spreads, or they draw stacked slabs), each puff
+  a rounded cap (what was let go together lies on a dome), wandering, mixing away by age to ragged lumps and then nothing.
+  Its lumps are domes on domes (`vc_dome`) riding it: across it from its middle, along it by how far along it was a moment
+  ago on a fixed slant (a turning axis swings the lattice into streaks; world position over a growing scale smears it),
+  the moment let go of now and then (two such half a cycle apart). Lit through a ball round it as thick as what lies the
+  sun's way along it (the cap of a surge under thin vapour lit), creases darker. Preview views `vcsteam`, `vcmid`,
+  `vcopen`, `vcsky` and `vcplume` (the whole of it level from 1,000 off); the mount rising round the hole; the
   tremor, the ring cracking at 6 s (`VC_CRACK`) with wisps of steam, the mount swelling from 7 s (`VC_SWELL`,
   vc_mount.rs, volcano_mount.wgsl) and stopping dead at 17 (`VC_HUSH`), the eruption at 18 s (`VC_ERUPT`, the mount's
   white-out for under a second, a flash along the ring and a
