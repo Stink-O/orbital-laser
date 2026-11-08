@@ -17,7 +17,6 @@ mod vc_land;
 mod vc_lodge;
 mod vc_mount;
 mod vc_sound;
-pub(crate) use vc_sound::SAT_TAKES;
 mod volcano;
 mod vortex;
 
@@ -632,8 +631,7 @@ pub fn bomb_path(key: &str, target: &Target, shader_seed: f32, me: [f64; 3]) -> 
 /// Everything a strike of `laser` at `target` does. `dimension` picks the
 /// bedrock floor; `shader_seed` is the shader's, for what the two must agree on;
 /// `me` is where the player stands (the meteor storm's sounds reach them late);
-/// `approach` is the way the mothership comes in (APPROACHES); the Payload's and the Nuke's blast (1 the alternative); the
-/// Supervolcano's satellite sound take (1-3).
+/// `approach` is the way the mothership comes in (APPROACHES).
 pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &str, shader_seed: f32, me: [f64; 3], approach: usize) -> Vec<(f32, Act)> {
     if laser.key == "meteor" {
         return meteor_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -666,8 +664,7 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "supervolcano" {
-        // (`approach` is the satellite's sound take here: `/orbital satsound`)
-        return volcano::volcano_plan(laser, target, terrain, dimension, shader_seed, me, approach.min(255) as u8);
+        return volcano::volcano_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);

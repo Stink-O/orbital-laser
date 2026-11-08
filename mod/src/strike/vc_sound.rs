@@ -60,10 +60,9 @@ const VC_ROLL: f32 = 8.0;
 const VC_WHISTLES: [f32; 3] = [3.2, 4.2, 2.6];
 const VC_ROCKFALLS: [f32; 3] = [3.2, 4.0, 4.8];
 const VC_CRACK_LEN: f32 = 2.2;
-/// The satellite's takes (`/orbital satsound 1|2|3`, tools/sounds_volcano.py's `build_sat1-3`): each `satN_sky` on the
-/// strike's clock from 0, the satellite's whole opening, and `satN_land` the shot's blow on the land, late by the distance
-/// (through the ground for the third). Their lengths (the script's SAT_SKY_D, SAT_LAND_D).
-pub(crate) const SAT_TAKES: u8 = 3;
+/// The satellite's sounds (tools/sounds_volcano.py's `build_sat`, "the sky sings", the take the user picked of three):
+/// `sat_sky` on the strike's clock from 0, the satellite's whole opening, and `sat_land` the shot's blow on the land, late
+/// by the distance. Their lengths (the script's SAT_SKY_D, SAT_LAND_D).
 const SAT_SKY_LEN: f32 = 10.0;
 const SAT_LAND_LEN: f32 = 6.0;
 /// `boom`'s length (the eruption's weight under the report: tools/sounds_volcano.py's BOOM_D).
@@ -426,20 +425,18 @@ fn front_take(ground: f32, report: f32) -> Option<usize> {
 }
 
 /// The Supervolcano's sounds, on plan `p`: the vent at `vent`, the player at `me` as it fires, `s` the pass's seed (the
-/// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land, `sat` which
-/// of the satellite's takes plays (1 to SAT_TAKES).
-pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>, sat: u8) {
+/// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land.
+pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>) {
     // ---- the satellite, 7,000 up and nearly overhead, on the strike's clock: its coming, the aim, the lock, the shot, the
-    // cut and its fading, all in its take's `sky`; the shot's blow on the land at the vent late by the distance (`land`:
-    // the first two takes' by the air, the third's through the ground); then the mount
-    let k = sat.clamp(1, SAT_TAKES);
-    play(p, 0.0, &format!("sat{k}_sky"), 1.0, 1.0);
+    // cut and its fading, all in `sat_sky`; the shot's blow on the land at the vent late by the distance (`sat_land`);
+    // then the mount
+    play(p, 0.0, "sat_sky", 1.0, 1.0);
     p.later(VC_HIT - 0.1, move |q| {
         let (late, d) = sound_from(vent, live(me));
-        let at = VC_HIT + if k == 3 { (d / GROUND_V) as f32 } else { late };
+        let at = VC_HIT + late;
         // (so long as it's over by the hush, as everything of the mount is)
         if at + SAT_LAND_LEN < VC_HUSH - 0.05 {
-            play(q, at, &format!("sat{k}_land"), (1000.0 / d.max(1000.0)).powf(0.7), 1.0);
+            play(q, at, "sat_land", (1000.0 / d.max(1000.0)).powf(0.7), 1.0);
         }
         mount(q, s, d);
     });
@@ -531,13 +528,9 @@ mod tests {
     }
 
     fn heard(z: f64) -> Vec<(f32, String, f32, f32, bool)> {
-        heard_take(z, 1)
-    }
-    /// What's heard `z` blocks from the vent with the satellite's take `sat`.
-    fn heard_take(z: f64, sat: u8) -> Vec<(f32, String, f32, f32, bool)> {
         let me = [0.5, 66.0, 0.5 + z];
         let mut p = plan_for_test();
-        vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]), sat);
+        vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]));
         let mut ev = std::mem::take(&mut p.ev);
         let mut out = Vec::new();
         // (in time order, as the game plays them: a stage may use what an earlier one worked out)
@@ -650,12 +643,12 @@ mod tests {
 
     #[test]
     fn vc_sound_the_mount_stops_dead_at_the_hush() {
-        for (z, sat) in [300.0, 600.0, 1000.0, 1400.0, 2000.0, 3000.0, 3500.0].into_iter().flat_map(|z| (1..=SAT_TAKES).map(move |k| (z, k))) {
-            for (t, event, _, pitch, _) in heard_take(z, sat) {
+        for z in [300.0, 600.0, 1000.0, 1400.0, 2000.0, 3000.0, 3500.0] {
+            for (t, event, _, pitch, _) in heard(z) {
                 if let Some(name) = event.strip_prefix("orbital:supervolcano.") {
                     if t < VC_HUSH {
                         let end = t + len_of(name) / pitch;
-                        assert!(end <= VC_HUSH + 0.01, "{z}, take {sat}: {name} at {t} rings on to {end}");
+                        assert!(end <= VC_HUSH + 0.01, "{z}: {name} at {t} rings on to {end}");
                     }
                 }
             }
@@ -686,7 +679,7 @@ mod tests {
         for z in [1000.0, 1400.0, 1700.0, 2500.0] {
             let me = [0.5, 66.0, 0.5 + z];
             let mut p = plan_for_test();
-            vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]), 1);
+            vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]));
             let mut ev = std::mem::take(&mut p.ev);
             while let Some((t, a)) = ev.pop() {
                 match a {
@@ -723,8 +716,8 @@ mod tests {
     fn vc_sound_every_event_has_its_file_and_ends_in_time() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../orbital-sounds/assets/orbital");
         let events = std::fs::read_to_string(root.join("sounds.json")).unwrap();
-        for (z, sat) in [500.0, 800.0, 1000.0, 1200.0, 1400.0, 1500.0, 1700.0, 2000.0, 2500.0].into_iter().flat_map(|z| (1..=SAT_TAKES).map(move |k| (z, k))) {
-            for (t, event, v, pitch, _) in heard_take(z, sat) {
+        for z in [500.0, 800.0, 1000.0, 1200.0, 1400.0, 1500.0, 1700.0, 2000.0, 2500.0] {
+            for (t, event, v, pitch, _) in heard(z) {
                 if let Some((laser, name)) = event.strip_prefix("orbital:").and_then(|e| e.split_once('.')) {
                     assert!(events.contains(&format!("\"{laser}.{name}\"")), "{event} not in sounds.json");
                     assert!(root.join(format!("sounds/{laser}/{name}.ogg")).exists(), "{event} has no file");
@@ -736,25 +729,18 @@ mod tests {
         }
     }
 
-    /// Each of the satellite's takes plays its own sky on the strike's clock from 0 and its own blow off the land, late by
-    /// the distance (the third's through the ground, sooner); none of another take's, and none of the plasma's.
+    /// The satellite plays its sky on the strike's clock from 0 and its blow off the land late by the distance, and
+    /// nothing of the plasma's.
     #[test]
-    fn vc_sound_each_satellite_take_is_its_own() {
-        for sat in 1..=SAT_TAKES {
-            let h = heard_take(1000.0, sat);
-            let sky = h.iter().find(|e| e.1.ends_with("_sky")).expect("the sky");
-            assert!(sky.0 == 0.0 && sky.1 == format!("orbital:supervolcano.sat{sat}_sky"), "{sat}: {sky:?}");
-            let land = h.iter().find(|e| e.1.ends_with("_land")).expect("the land");
-            assert_eq!(land.1, format!("orbital:supervolcano.sat{sat}_land"));
-            let (late, d) = sound_from([0.5, 65.0, 0.5], [0.5, 66.0, 1000.5]);
-            let want = VC_HIT + if sat == 3 { (d / GROUND_V) as f32 } else { late };
-            assert!((land.0 - want).abs() < 0.01, "{sat}: the land at {}", land.0);
-            assert_eq!(h.iter().filter(|e| e.1.contains(".sat")).count(), 2, "{sat}");
-            assert!(!h.iter().any(|e| ["orbital:lockon", "orbital:shutdown", "orbital:rumble", "orbital:fire"].contains(&e.1.as_str())));
-        }
-        // (an unknown take plays the first or the last, never nothing)
-        assert!(heard_take(1000.0, 0).iter().any(|e| e.1.ends_with("sat1_sky")));
-        assert!(heard_take(1000.0, 9).iter().any(|e| e.1.ends_with(&format!("sat{SAT_TAKES}_sky"))));
+    fn vc_sound_the_satellite_is_heard() {
+        let h = heard(1000.0);
+        let sky = h.iter().find(|e| e.1.ends_with("_sky")).expect("the sky");
+        assert!(sky.0 == 0.0 && sky.1 == "orbital:supervolcano.sat_sky", "{sky:?}");
+        let land = h.iter().find(|e| e.1.ends_with("_land")).expect("the land");
+        assert_eq!(land.1, "orbital:supervolcano.sat_land");
+        let (late, _) = sound_from([0.5, 65.0, 0.5], [0.5, 66.0, 1000.5]);
+        assert!((land.0 - VC_HIT - late).abs() < 0.01, "the land at {}", land.0);
+        assert!(!h.iter().any(|e| ["orbital:lockon", "orbital:shutdown", "orbital:rumble", "orbital:fire"].contains(&e.1.as_str())));
     }
 
     /// The lightning is heard with the Hurricane's thunder, by kind for the distance, late by it; none of ours.
@@ -772,14 +758,13 @@ mod tests {
     }
 
     /// The plan's sounds as a timeline for tools/sounds_volcano.py's mixes: `t event volume pitch` a line, `t stop event` for
-    /// a stopsound; VC_ME the player's distance from the vent, VC_SAT the satellite's take (1), VC_OUT the file.
+    /// a stopsound; VC_ME the player's distance from the vent, VC_OUT the file.
     #[test]
     #[ignore]
     fn vc_write_sounds() {
         let z: f64 = std::env::var("VC_ME").map_or(1000.0, |v| v.parse().unwrap());
-        let sat: u8 = std::env::var("VC_SAT").map_or(1, |v| v.parse().unwrap());
         let mut out = String::new();
-        for (t, event, v, pitch, _) in heard_take(z, sat) {
+        for (t, event, v, pitch, _) in heard(z) {
             match event.strip_prefix("stop ") {
                 Some(e) => out += &format!("{t:.3} stop {e}\n"),
                 None => out += &format!("{t:.3} {event} {v:.3} {pitch:.3}\n"),

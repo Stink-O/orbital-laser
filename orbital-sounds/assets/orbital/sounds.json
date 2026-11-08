@@ -2449,55 +2449,19 @@
     ],
     "subtitle": "subtitles.orbital.supervolcano.boom_far"
   },
-  "supervolcano.sat1_sky": {
+  "supervolcano.sat_sky": {
     "sounds": [
       {
-        "name": "orbital:supervolcano/sat1_sky",
+        "name": "orbital:supervolcano/sat_sky",
         "attenuation_distance": 256
       }
     ],
     "subtitle": "subtitles.orbital.supervolcano.sat_sky"
   },
-  "supervolcano.sat1_land": {
+  "supervolcano.sat_land": {
     "sounds": [
       {
-        "name": "orbital:supervolcano/sat1_land",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.supervolcano.sat_land"
-  },
-  "supervolcano.sat2_sky": {
-    "sounds": [
-      {
-        "name": "orbital:supervolcano/sat2_sky",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.supervolcano.sat_sky"
-  },
-  "supervolcano.sat2_land": {
-    "sounds": [
-      {
-        "name": "orbital:supervolcano/sat2_land",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.supervolcano.sat_land"
-  },
-  "supervolcano.sat3_sky": {
-    "sounds": [
-      {
-        "name": "orbital:supervolcano/sat3_sky",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.supervolcano.sat_sky"
-  },
-  "supervolcano.sat3_land": {
-    "sounds": [
-      {
-        "name": "orbital:supervolcano/sat3_land",
+        "name": "orbital:supervolcano/sat_land",
         "attenuation_distance": 256
       }
     ],

@@ -219,8 +219,7 @@ fn vc_wall_at(dist: f64) -> f32 {
     super::vc_land::vc_due(dist.max(280.0))
 }
 
-/// `sat`: which of the satellite's sound takes plays (`/orbital satsound`, vc_sound.rs's SAT_TAKES).
-pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3], sat: u8) -> Vec<(f32, Act)> {
+pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool, _dimension: &str, shader_seed: f32, me: [f64; 3]) -> Vec<(f32, Act)> {
     let [bx, by, bz] = target.block;
     let seed = (bx as i64).wrapping_mul(73_856_093) ^ (bz as i64).wrapping_mul(19_349_663) ^ by as i64;
     let mut p = Plan { laser, ev: Vec::new(), rng: Rng::new(seed as u64), bx, by, bz };
@@ -275,7 +274,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
                 (b.tl as f32, b.p0[0] + b.v[0] * c, b.p0[2] + b.v[2] * c)
             })
             .collect();
-        vc_sound::vc_sounds(&mut p, shader_seed as u32, [cx, gy, cz], me, bombs, sat);
+        vc_sound::vc_sounds(&mut p, shader_seed as u32, [cx, gy, cz], me, bombs);
     }
 
     // ---- the ground shaking: a tremor building from the hit, faster and harder, the eruption's jolt late by the distance,
