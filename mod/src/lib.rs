@@ -240,6 +240,51 @@ struct Strike {
 
 /// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
 const IMPACT_STYLES: [&str; 3] = ["blackflash", "kanada", "cinematic"];
+/// `/orbital`'s words, as paths after it ("orbital give", "orbital terrain on"): a fork from orbital-mod-api-12 offers
+/// them as the chat fills in (a registered command with spaces in it is a path under its first word); the command
+/// itself is still `/orbital`, which gets the whole line.
+fn command_paths() -> Vec<String> {
+    let mut p: Vec<String> = Vec::new();
+    let mut add = |words: &[&str]| p.push(format!("orbital {}", words.join(" ")));
+    for w in ["give", "wheel", "stop", "skip", "hold", "meter", "foldpattern", "foldstop"] {
+        add(&[w]);
+    }
+    for w in ["terrain", "hud", "knockback", "follow", "shadow", "impactframes"] {
+        add(&[w, "on"]);
+        add(&[w, "off"]);
+    }
+    for s in IMPACT_STYLES {
+        add(&["impactframes", s]);
+    }
+    add(&["follow", "distance"]);
+    for v in ["full", "fast"] {
+        add(&["quality", v]);
+    }
+    for v in ["random", "lock"] {
+        add(&["seed", v]);
+    }
+    add(&["flyspeed", "reset"]);
+    for v in ["turn", "still"] {
+        add(&["carryview", v]);
+    }
+    for a in strike::APPROACHES.iter() {
+        add(&["approach", a.key]);
+    }
+    for a in strike::ARRIVALS.iter() {
+        add(&["arrival", a.key]);
+    }
+    for c in strike::COLOURS.iter() {
+        add(&["colour", c.key]);
+    }
+    for s in wheel::SOUND_LASERS {
+        add(&[s.1, "main"]);
+        add(&[s.1, "alt"]);
+    }
+    for l in LASERS.iter() {
+        add(&[l.key]);
+    }
+    p
+}
 const IMPACT_ORDER: [u8; 3] = [1, 0, 2];
 
 /// How many looks a strike's seed picks from (1 to SEEDS).
@@ -1808,7 +1853,11 @@ impl Mod for Orbital {
         }
         // the game keeps the flying speed from here on, in every world
         state.apply_fly();
-        Ok((state, Registration::new().command("orbital").on_tick().on_frame()))
+        let mut reg = Registration::new().command("orbital");
+        for path in command_paths() {
+            reg = reg.command(&path);
+        }
+        Ok((state, reg.on_tick().on_frame()))
     }
 
     fn tick(&mut self, _tick: u64) {
