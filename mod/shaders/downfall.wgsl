@@ -2,6 +2,7 @@
 // (the helpers, the Mothership's hull and the Black Hole's lens, which this reuses) followed by this file, and sets it
 // for a downfall strike only: one pass with every laser in it would be much bigger for the GPU's compiler to fit, and
 // slower for all of them. Validate with tools/check-shader.sh.
+// [uses the mothership]
 
 // ---- laser 5: the downfall ----------------------------------------------------------------------------------------
 // The mothership's last stand. It drops in exactly as the Mothership does and charges, but the charge is cut and the

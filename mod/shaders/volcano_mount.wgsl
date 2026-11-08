@@ -1318,9 +1318,7 @@ fn vl_burst(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lb: u32, age: f32, l: VcLigh
         }
         let up = saturate((q.y - P.y + R) / (1.6 * R));
         let sc = dust * (0.3 + 0.8 * up) * (0.75 + 0.5 * n) + vec3<f32>(0.1, 0.08, 0.065) * vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0));
-        *c = *c + *tr * al * sc;
-        *tr = *tr * (1.0 - al);
-        *tm = min(*tm, t0);
+        vc_lay(c, tr, tm, al, sc, t0);
     }
     if (age < 5.0) {
         for (var k = 0u; k < 14u; k = k + 1u) {
@@ -1341,9 +1339,7 @@ fn vl_burst(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lb: u32, age: f32, l: VcLigh
             let w = max(1.6 + 2.2 * h0, g.z * vs.px * 1.3);
             let al = exp(-g.x / (w * w)) * min((1.6 + 2.2 * h0) / w, 1.0);
             if (al > 0.01 && g.z < tmax) {
-                *c = *c + *tr * al * vec3<f32>(0.012, 0.011, 0.01);
-                *tr = *tr * (1.0 - al);
-                *tm = min(*tm, g.z);
+                vc_lay(c, tr, tm, al, vec3<f32>(0.012, 0.011, 0.01), g.z);
             }
         }
     }
@@ -1419,9 +1415,7 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
                 let al = 0.6 * exp(-gb.x / (wv * wv) * (1.4 - n)) * (w / wv) * smoothstep(1.0, 0.72, gb.w + 0.25 * (n - 0.5)) * (1.0 - smoothstep(0.0, 4.0, vm.t - te)) * smoothstep(0.1, 0.5, te - VM_BRK);
                 if (al > 0.004 && gb.z < tmax + wv) {
                     let sc = vec3<f32>(0.06, 0.047, 0.038) * lit + vec3<f32>(0.1, 0.082, 0.07) * vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0));
-                    c = c + tr * al * sc;
-                    tr = tr * (1.0 - al);
-                    *tm = min(*tm, gb.z);
+                    vc_lay(&c, &tr, tm, al, sc, gb.z);
                 }
             }
         }
@@ -1448,9 +1442,7 @@ fn vm_trails(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, tm: ptr<functio
                     let al = (1.0 - exp(-(t1 - t0) / Rd * 1.7)) * smoothstep(0.3, 0.75, (t1 - t0) / (2.0 * Rd) * sqrt(A) + 1.4 * (n - 0.5)) * (1.0 - smoothstep(1.2, 5.5, age));
                     let up = saturate((q.y - head.y) / (0.6 * Rd));
                     let sc = vec3<f32>(0.3, 0.255, 0.205) * ((0.25 + 0.45 * up) * (0.4 + 0.6 * l.day) * mix(vec3<f32>(1.0), l.sunc * 0.75, 0.3 * l.sun_up) + vm_firelit(q, vec3<f32>(0.0, -1.0, 0.0)));
-                    c = c + tr * al * sc;
-                    tr = tr * (1.0 - al);
-                    *tm = min(*tm, t0);
+                    vc_lay(&c, &tr, tm, al, sc, t0);
                 }
             }
         }
@@ -1642,9 +1634,7 @@ fn vm_wakes(C: vec3<f32>, rd: vec3<f32>, tmax: f32, lit: vec3<f32>, c: ptr<funct
             let w = max(0.45 * rk.size, g.z * vs.px * 1.5);
             let al = 0.5 * exp(-g.x / (w * w)) * (0.45 * rk.size / w) * (1.0 - g.y * g.y) * fade;
             if (al > 0.01 && g.z < tmax) {
-                *c = *c + *tr * al * vec3<f32>(0.05, 0.04, 0.033) * lit;
-                *tr = *tr * (1.0 - al);
-                *tm = min(*tm, g.z);
+                vc_lay(c, tr, tm, al, vec3<f32>(0.05, 0.04, 0.033) * lit, g.z);
             }
         }
     }

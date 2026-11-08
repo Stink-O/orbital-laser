@@ -786,6 +786,29 @@ fn vc_tube(X: vec3<f32>, ax: vec3<f32>, rd: vec3<f32>, L: vec3<f32>, w: f32, age
     let n = normalize(r / w + -rd * sqrt(max(1.0 - x * x, 0.05)) + 0.8 * vec3<f32>(n1 - 0.5, n2 - 0.5, n1 - n2));
     return vec2<f32>(cov, saturate(0.5 + 0.5 * dot(n, L)));
 }
+// Smoke `al` of colour `sc` at `t` laid under the cloud: hidden as much as the cloud in front hides it (vc_ctr, from where
+// the march's light fell past 0.9, 0.6, 0.3, 0.1: vc_tk), hiding the part of the cloud behind it (vc_cm).
+var<private> vc_tk: vec4<f32>;
+var<private> vc_tx: vec2<f32>;
+var<private> vc_cm: f32;
+fn vc_ctr(t: f32) -> f32 {
+    let k = vc_tk;
+    var r = mix(1.0, 0.9, saturate((t - k.x) / 24.0 + 1.0));
+    r = mix(r, 0.6, saturate((t - k.x) / max(k.y - k.x, 1.0)));
+    r = mix(r, 0.3, saturate((t - k.y) / max(k.z - k.y, 1.0)));
+    r = mix(r, 0.1, saturate((t - k.z) / max(k.w - k.z, 1.0)));
+    r = mix(r, 0.0, saturate((t - k.w) / 16.0));
+    return max(1.0 - (1.0 - saturate((r - 0.051) / 0.949)) * vc_tx.x, vc_tx.y);
+}
+fn vc_lay(c: ptr<function, vec3<f32>>, tr: ptr<function, f32>, tm: ptr<function, f32>, al: f32, sc: vec3<f32>, t: f32) {
+    let v = vc_ctr(t);
+    *c = *c + *tr * al * v * sc;
+    *tr = *tr * (1.0 - al);
+    vc_cm = vc_cm * (1.0 - al * saturate((v - vc_tx.y) / max(1.0 - vc_tx.y, 1.0e-3)));
+    if (v > 0.5) {
+        *tm = min(*tm, t);
+    }
+}
 // Their smoke (half size): .rgb what it adds (premultiplied), .a what it leaves; `tm` how far off the nearest is.
 fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3<f32>, tm: ptr<function, f32>) -> vec4<f32> {
     let n = u32(vc_w(1u));
@@ -855,9 +878,7 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3
                         let hot = exp(-age / 0.22) * f.x;
                         let sun = l.sunc * vc_sun_t(q, l.L) * f.y * f.y * 1.1;
                         let sc = brown * (amb * (0.5 + 0.6 * f.y) + sun) + vec3<f32>(1.3, 0.34, 0.05) * hot * hot * hot;
-                        c = c + tr * al * sc;
-                        tr = tr * (1.0 - al);
-                        *tm = min(*tm, tc);
+                        vc_lay(&c, &tr, tm, al, sc, tc);
                     }
                 }
             }
@@ -877,17 +898,16 @@ fn vc_bombs_smoke(C: vec3<f32>, rd: vec3<f32>, tmax: f32, l: VcLight, amb0: vec3
                 if (al > 0.003) {
                     let sun = l.sunc * vc_sun_t(q, l.L) * f.y * f.y * 0.5;
                     let sc = vec3<f32>(0.036, 0.032, 0.03) * (amb * (0.4 + 0.6 * f.y) + sun) + vec3<f32>(0.9, 0.2, 0.03) * exp(-late / 0.35) * (1.0 - sg.z);
-                    c = c + tr * al * sc;
-                    tr = tr * (1.0 - al);
-                    *tm = min(*tm, sg.y);
+                    vc_lay(&c, &tr, tm, al, sc, sg.y);
                 }
             }
         }
     }
     return vec4<f32>(c, tr);
 }
-// Their glowing heads (sharp, at full size): what they add at this pixel.
-fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
+// Their glowing heads (sharp, at full size): what they add at this pixel. Behind the cloud (`ct`, `ca` what it leaves) a
+// soft glow through it, dimmer the deeper.
+fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32, ct: f32, ca: f32) -> vec3<f32> {
     let n = u32(vc_w(1u));
     let time = vs.t;
     var c = vec3<f32>(0.0);
@@ -914,7 +934,9 @@ fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
         let ppx = sg.x * focal / max(t, 1.0);
         let sz = (1.0 + 1.6 * mh(i, 3u, 0x31u)) * focal / max(t, 1.0);
         let rpx = clamp(sz, 0.9, 3.2);
-        if (ppx > 14.0 * rpx + 4.0) {
+        let occ = smoothstep(ct + 10.0, ct + 50.0, t) * (1.0 - ca);
+        let hr = max(4.0 * rpx, 22.0 * focal / max(t, 1.0));
+        if (ppx > select(14.0 * rpx + 4.0, 5.0 * hr, occ > 0.0)) {
             continue;
         }
         let cool = saturate((time - b.t0) / 12.0);
@@ -925,7 +947,7 @@ fn vc_bombs_heads(C: vec3<f32>, rd: vec3<f32>, tmax: f32) -> vec3<f32> {
         if (time > b.tl) {
             land = 2.0 * (1.0 - (time - b.tl) / 0.5);
         }
-        c = c + hc * (core * 1.6 + glow) * land;
+        c = c + hc * ((core * 1.6 + glow) * (1.0 - occ) + occ * 0.1 * exp(-max(t - ct, 0.0) / 150.0) / (1.0 + pow(ppx / hr, 2.0))) * land;
     }
     return c;
 }
@@ -1335,6 +1357,9 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     o.c = vec3<f32>(0.0);
     o.tr = 1.0;
     o.t = 1.0e9;
+    vc_tk = vec4<f32>(1.0e9);
+    vc_tx = vec2<f32>(1.0);
+    vc_cm = 1.0;
     let t_end = min(tmax, 32000.0);
     let time = vs.t;
     if (time < VC_ERUPT + 0.9) {
@@ -1533,6 +1558,7 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             tmid = tmid + o.tr * al * t;
             wmid = wmid + o.tr * al;
             o.tr = o.tr * (1.0 - al);
+            vc_tk = min(vc_tk, select(vec4<f32>(1.0e9), vec4<f32>(t), vec4<f32>(o.tr) < vec4<f32>(0.9, 0.6, 0.3, 0.1)));
         }
         t = t + select(st, max(0.65 * sd.x, st * (0.5 + 0.03 * f32(i))), sd.x > 0.0);
     }
@@ -1609,7 +1635,9 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
         let x = 1.0 - smoothstep(0.0, 1.0, vs.thin * 1.2 + 0.55 * (g - 0.5) - 0.1);
         o.c = mix(o.c, vec3<f32>(0.1, 0.04, 0.026) * (1.0 - o.tr) * (0.2 + 0.8 * l.sun_up), 0.75 * vs.thin) * x;
         o.tr = 1.0 - (1.0 - o.tr) * x;
+        vc_tx.x = x;
     }
+    vc_tx.y = o.tr;
     if (o.tr < 0.999) {
         let dist = tmid / max(wmid, 1.0e-4);
         if (o.tr < 0.6) {
@@ -1884,10 +1912,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         let sb = vc_bombs_smoke(C, rd, min(scene_len, 9000.0), l, l.skyl * vc_sky_t(-C), &tb);
         let st = vm_trails(C, rd, min(scene_len, 9000.0), l, &tb);
         let sm = vec4<f32>(st.rgb + sb.rgb * st.a, sb.a * st.a);
-        var ac = m.c + sm.rgb * m.tr;
-        if (tb < cloud_t) {
-            ac = sm.rgb + m.c * sm.a;
-        }
+        var ac = sm.rgb + m.c * vc_cm;
         let at0 = m.tr * sm.a;
         cloud_t = min(cloud_t, tb);
         // (the mount's steam and dust, in front of it all)
@@ -2019,7 +2044,7 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         col = col * sp.a + sp.rgb * k;
     }
     if (time > VC_ERUPT + 1.0 && time < VC_COLLAPSE + 2.0) {
-        col = col + vc_bombs_heads(C, rd, min(scene_len, cloud_t + 40.0)) * k;
+        col = col + vc_bombs_heads(C, rd, scene_len, cloud_t, tr_here) * k;
     }
     if (time > VC_LIGHT - 2.0 && time < VC_RED) {
         let kb = k * (1.0 - 0.8 * smoothstep(VC_HU - 200.0, VC_HU + 100.0, -C.y));

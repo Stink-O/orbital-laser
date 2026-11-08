@@ -1521,6 +1521,8 @@ fn meteor_storm(in: StageIn) -> vec4<f32> {
 }
 // [end lasers pass only]
 
+const CLOUD_Y: f32 = 192.0;        // the vanilla cloud layer
+// [mothership] (the Mothership's ship: only in the lasers' pass and an own pass that says `// [uses the mothership]`)
 // ---- laser 4: the mothership --------------------------------------------------------------------------------------
 // A ship a kilometre long, a slab of dark metal with a blunted, tapering bow, drops out of hyperspace over the target:
 // it bursts out of a point and unfolds to its full size as it rushes in along its heading from far off (the approach
@@ -1562,7 +1564,6 @@ const MS_TIER_C: f32 = 56.0;
 const MS_TOP: f32 = 150.0;
 const MS_HANGAR: vec4<f32> = vec4<f32>(-290.0, 0.0, 90.0, 100.0);   // the hangar bay: middle (x, z), half-length, half-width
 const MS_HANGAR_UP: f32 = 115.0;   // its ceiling, over the belly
-const CLOUD_Y: f32 = 192.0;        // the vanilla cloud layer
 
 // How far along the trench the beam is at `t`, 0 to 1, and when it is `u` of the way (strike.rs's ms_sweep, ms_when).
 fn ms_sweep(t: f32) -> f32 {
@@ -2177,6 +2178,7 @@ fn ms_charge_fx(f: MsFrame, cam: vec3<f32>, rdb: vec3<f32>, focus: vec3<f32>, sk
     return ship_tint(add);
 }
 
+// [end mothership]
 // [lasers pass only]
 fn mothership(in: StageIn) -> vec4<f32> {
     let uv = in.uv;

@@ -405,7 +405,10 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **The game keeps its saves and options in the folder it starts in** when started with `--game`: `play.sh` starts it in
   the game folder for that reason. Starting it elsewhere makes a fresh, empty game folder there.
 - **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
-  is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
+  is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`. A laser's own
+  pass is strike.wgsl up to its fs_main less `[lasers pass only]` and the Mothership's ship (`[mothership]`, ~36 KB),
+  which only an own file saying `// [uses the mothership]` (the Downfall's) keeps: passbuild.rs, check-shader.sh and
+  preview.py all build it so.
 - **The mod's post pass reads `mod_data`** (`render.set-data`, binding 5 of the prelude): the Crystal Bloom's pieces'
   rest heights (word `i * 16 + k * 2 + half`) and from `CB_TAB` (1024) its spires and pieces, worked out once by
   `cb_table` in `strike/crystal.rs`; keep that layout in step with the pass's `CB_*` offsets. `tools/preview` binds it from `$PREVIEW_DATA` (`index value` lines) and

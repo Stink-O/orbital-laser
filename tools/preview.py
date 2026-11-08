@@ -241,9 +241,11 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
     if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "supervolcano"):
-        pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
-                             input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
+        # (less the Mothership's ship unless the laser's own says it uses it: mod/src/passbuild.rs)
+        ship = [] if "// [uses the mothership]" in own else ["-e", r"/^\/\/ \[mothership\]/,/^\/\/ \[end mothership\]/d"]
+        pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", *ship, "-e", "/^@fragment/,$d"],
+                             input=strike, capture_output=True, text=True, check=True).stdout
         if laser == "supervolcano":
             own += (SHADERS / "volcano_mount.wgsl").read_text()
         if not fast:
