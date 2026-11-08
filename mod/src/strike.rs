@@ -14,6 +14,7 @@ mod sh_land;
 mod sinkhole;
 mod storm;
 mod vc_land;
+mod vc_hand;
 mod vc_lodge;
 mod vc_mount;
 mod vc_sound;
@@ -108,6 +109,20 @@ pub enum Act {
     Data { index: u32, value: f32 },
     /// All of what the pass reads, from word 0 (the words past it kept): a table worked out after the strike starts.
     Table(Vec<u32>),
+    /// The light on the player's hand from now on (`HandLight`).
+    Hand(Box<dyn HandLight>),
+}
+
+/// What a strike does to the light on the player's own hand and what it holds (`render.set-hand-tint`: the game draws
+/// them after the post pass, so no pass reaches them). A plan that darkens, browns or flashes the land where the player
+/// stands gives one (`Act::Hand`) so the hand goes with it; lib.rs's `hand_frame` eases `steady` (no flicker), multiplies
+/// `quick` in on top, and puts the hand back to 1, 1, 1 as the strike ends however it ends.
+pub trait HandLight {
+    /// Each tick: whatever is dear, at strike second `t`, the player at `at` (in the world).
+    fn tick(&mut self, t: f32, at: [f64; 3]);
+    /// Each frame, at strike second `t` (between ticks): what the hand's colour is multiplied by, the steady part and the
+    /// quick part (a flash, lightning). A few hundred instructions at most: it runs every frame.
+    fn frame(&self, t: f32) -> ([f32; 3], [f32; 3]);
 }
 
 /// Blocks changed at once (`world.edit-blocks`): runs up columns, each block its own if need be.
@@ -4417,7 +4432,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
+                Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) | Act::Hand(_) => {}
                 Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
             }
         }

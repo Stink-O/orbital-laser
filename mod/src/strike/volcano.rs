@@ -273,6 +273,9 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         p.ev.push((laser.length - 1.0, Act::Spare(format!("forceload remove {x0} {z0} {x1} {z1}"))));
     }
 
+    // ---- the light on the player's hand: strike/vc_hand.rs ----------------------------------------------------------------
+    p.ev.push((0.0, Act::Hand(Box::new(super::vc_hand::VcHand::new(shader_seed as u32, [cx, gy, cz], me, hf.clone())))));
+
     // ---- the sounds: strike/vc_sound.rs ----------------------------------------------------------------------------------
     {
         let bombs: Vec<(f32, f64, f64)> = vc_bombs(shader_seed, rel, &|_, _| 0.0)

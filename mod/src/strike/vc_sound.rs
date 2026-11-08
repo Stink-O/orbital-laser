@@ -123,7 +123,7 @@ fn live_rel(me: [f64; 3], at: [f64; 3]) -> [f64; 3] {
 }
 /// How far the wall of ash has come from the middle at time `t` (volcano.wgsl's vc_front): 60 blocks a second at the
 /// ring, slowing to 25.
-fn front_r(t: f32) -> f64 {
+pub(super) fn front_r(t: f32) -> f64 {
     let c = f64::from(t - VC_COLLAPSE).max(0.0);
     VC_RING + 25.0 * c + 490.0 * (1.0 - (-c / 14.0).exp())
 }
@@ -136,7 +136,7 @@ fn n1(x: f64, per: u32, k: u32) -> f64 {
     let (a, b) = (f64::from(pcg(n ^ k) & 0xffff) / 65535.0, f64::from(pcg(((n + 1) % per) ^ k) & 0xffff) / 65535.0);
     a + (b - a) * u
 }
-fn lobes(ang: f64, rho: f64) -> f64 {
+pub(super) fn lobes(ang: f64, rho: f64) -> f64 {
     let u = (ang + std::f64::consts::PI + 0.00022 * rho + 0.2 * (rho * 0.0031).sin()) / std::f64::consts::TAU + 1.0;
     let n = 0.6 * n1(u * 9.0, 9, 0x71) + 0.28 * n1(u * 23.0, 23, 0x72) + 0.12 * n1(u * 61.0, 61, 0x73);
     let cl = n1(u * 17.0, 17, 0x74);
@@ -168,7 +168,7 @@ fn take(last: &mut u32, count: u32, h: f64) -> u32 {
     k
 }
 
-fn smooth(a: f64, b: f64, x: f64) -> f64 {
+pub(super) fn smooth(a: f64, b: f64, x: f64) -> f64 {
     let u = ((x - a) / (b - a)).clamp(0.0, 1.0);
     u * u * (3.0 - 2.0 * u)
 }
@@ -176,38 +176,42 @@ fn smooth(a: f64, b: f64, x: f64) -> f64 {
 /// vent, how bright, in the cloud's sheet). In the plume to begin with, out through the umbrella's rings, kilometres off,
 /// from about 36 s.
 fn flashes(s: u32, from: f32, to: f32) -> Vec<(f32, [f64; 3], f64, bool)> {
-    const DT: f64 = 0.13;
-    let (light, dark, collapse) = (f64::from(VC_LIGHT), f64::from(VC_DARK), f64::from(VC_COLLAPSE));
     let mut out = Vec::new();
-    let mut slot = (f64::from(from) / DT).ceil() as u32;
-    while slot as f64 * DT < f64::from(to) {
-        let t = slot as f64 * DT;
-        let k = slot;
+    let mut slot = (f64::from(from) / FLASH_DT).ceil() as u32;
+    while slot as f64 * FLASH_DT < f64::from(to) {
+        out.extend(flash(s, slot));
         slot += 1;
-        let on = smooth(light - 2.0, light + 8.0, t) * (1.0 - smooth(collapse + 10.0, f64::from(VC_RED), t));
-        if mh(k, s, 0x901) > 0.62 * on + if t >= light { 0.03 * on } else { 0.0 } {
-            continue;
-        }
-        let th = std::f64::consts::TAU * mh(k, s, 0x902);
-        let cloud = mh(k, s, 0x903) < smooth(dark - 4.0, dark + 4.0, t);
-        let p = if cloud {
-            let u = (t - VC_SPREAD).max(0.0);
-            let ru = 620.0 * smooth(0.0, 3.0, u) + 130.0 * u.powf(1.28);
-            let r = (0.3 + 0.28 * (mh(k, s, 0x904) * 3.0).floor()) * ru.min(5200.0);
-            [th.cos() * r, VC_HU - 90.0, th.sin() * r]
-        } else {
-            let hy = 380.0 + 1100.0 * mh(k, s, 0x905);
-            let rr = VC_RING - 155.0 * smooth(0.0, 190.0, hy);
-            let ww = 76.0 + 0.52 * hy.min(190.0) + 0.13 * (hy - 190.0).clamp(0.0, 330.0) + 0.24 * (hy - 520.0).max(0.0);
-            let r = (rr + ww) * (0.75 + 0.2 * mh(k, s, 0x906));
-            let a = (t - f64::from(VC_ERUPT)).max(0.0);
-            let h = 130.0 + 270.0 * (1.0 - (-a / 3.0).exp()) + 1560.0 * (1.0 - (-(a - 4.0).max(0.0) / 7.5).exp());
-            let c = (t - collapse).max(0.0);
-            [th.cos() * r, hy.min((h - 13.0 * c * c - 8.0 * c).max(60.0)), th.sin() * r]
-        };
-        out.push((t as f32, p, 0.5 + 0.8 * mh(k, s, 0x908), cloud));
     }
     out
+}
+/// The lightning's slots (volcano.wgsl's vc_flash: 0.13 s).
+pub(super) const FLASH_DT: f64 = 0.13;
+/// Slot `k`'s flash, if it has one (`flashes`): when, where off the vent, how bright, in the cloud's sheet.
+pub(super) fn flash(s: u32, k: u32) -> Option<(f32, [f64; 3], f64, bool)> {
+    let (light, dark, collapse) = (f64::from(VC_LIGHT), f64::from(VC_DARK), f64::from(VC_COLLAPSE));
+    let t = f64::from(k) * FLASH_DT;
+    let on = smooth(light - 2.0, light + 8.0, t) * (1.0 - smooth(collapse + 10.0, f64::from(VC_RED), t));
+    if mh(k, s, 0x901) > 0.62 * on + if t >= light { 0.03 * on } else { 0.0 } {
+        return None;
+    }
+    let th = std::f64::consts::TAU * mh(k, s, 0x902);
+    let cloud = mh(k, s, 0x903) < smooth(dark - 4.0, dark + 4.0, t);
+    let p = if cloud {
+        let u = (t - VC_SPREAD).max(0.0);
+        let ru = 620.0 * smooth(0.0, 3.0, u) + 130.0 * u.powf(1.28);
+        let r = (0.3 + 0.28 * (mh(k, s, 0x904) * 3.0).floor()) * ru.min(5200.0);
+        [th.cos() * r, VC_HU - 90.0, th.sin() * r]
+    } else {
+        let hy = 380.0 + 1100.0 * mh(k, s, 0x905);
+        let rr = VC_RING - 155.0 * smooth(0.0, 190.0, hy);
+        let ww = 76.0 + 0.52 * hy.min(190.0) + 0.13 * (hy - 190.0).clamp(0.0, 330.0) + 0.24 * (hy - 520.0).max(0.0);
+        let r = (rr + ww) * (0.75 + 0.2 * mh(k, s, 0x906));
+        let a = (t - f64::from(VC_ERUPT)).max(0.0);
+        let h = 130.0 + 270.0 * (1.0 - (-a / 3.0).exp()) + 1560.0 * (1.0 - (-(a - 4.0).max(0.0) / 7.5).exp());
+        let c = (t - collapse).max(0.0);
+        [th.cos() * r, hy.min((h - 13.0 * c * c - 8.0 * c).max(60.0)), th.sin() * r]
+    };
+    Some((t as f32, p, 0.5 + 0.8 * mh(k, s, 0x908), cloud))
 }
 
 /// A bolt's thunder `d` blocks off as a file's loudest 400 ms in dB: 2.5 dB down each time the distance doubles (the

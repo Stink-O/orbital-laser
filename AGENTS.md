@@ -253,7 +253,12 @@ laser, command, capability and timing). This file is the short, factual version 
   through the sheet from about 36, thinning out from 60 and gone by 80; `vc_bolts`), the umbrella spreading from 28 s
   (`VC_SPREAD`, `vc_umb`, out past the horizon, Hunga Tonga's ripple `vc_ripple`), the sky dark by about 44 s (`vc_dim`:
   land and sky darkened by what the sheet shuts out, `vc_sun_t`, `vc_sky_t`, what glows left glowing; the game's clock
-  and weather never touched), the collapse at 50 s (`VC_COLLAPSE`; the lumps slow,
+  and weather never touched; the player's hand and held item, which the game draws after the post pass, darkened and
+  browned with the land where they stand, near black in the wall of ash, lit by the white-out, the eruption's flash and
+  the lightning near them: `strike/vc_hand.rs`, a `HandLight` its plan gives as `Act::Hand`, mirroring `vc_dim`,
+  `vc_flow`'s depth past the front and `vc_sound::flash`, worked out a tick at a time and eased each frame by lib.rs's
+  `hand_frame` through the fork's `render.set-hand-tint`, given back as 1, 1, 1 when the strike ends, is stopped or the
+  player leaves; keep it in step with the pass), the collapse at 50 s (`VC_COLLAPSE`; the lumps slow,
   stop and fall back, `up`, the top of what stands falling, `Hb`), the wall of ash from the ring (`vc_flow`, `vc_front`:
   60 blocks a second slowing to 25, at 500 from the vent by about 54 s and 1,000 by about 66, looked up round the vent
   so its lumps travel with it without smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting
@@ -349,7 +354,12 @@ laser, command, capability and timing). This file is the short, factual version 
   wait their turn (one a tick): `strike::set_clock`'s clock is the true one, a stage's own count falls behind it.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
-- **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-10` or newer (it adds
+- **Stock Horizon can't run the mod.** This branch needs `render.set-hand-tint` (the hand and held item tinted each
+  frame, which the Supervolcano dims with the land; any laser's plan can feed it a `HandLight`), which is in no fork
+  release yet: until it is (`orbital-mod-api-12`), run the fork's branch `mod-api-hand-tint` built from source
+  (`~/.cache/horizon-api10`, `cargo build --release -p horizon-client --features mods`), and build the mod against it
+  with the uncommitted `mod/.cargo/config.toml` `[patch]`. Otherwise it needs the fork's build, release
+  `orbital-mod-api-10` or newer (it adds
   the `atlas` capability, the game's block textures in a post pass, which the Hurricane draws its flying blocks with;
   `world.carry-player`, the Hurricane's carry; and `game.player-flying`; `orbital-mod-api-9` skips a post pass the
   driver can't build instead of crashing; `orbital-mod-api-8` added `world.push-player`, the Nuke's knockback;
@@ -396,7 +406,7 @@ The wheel has pages of five (its arrows, its tabs or a right-click turn them); t
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
-`game.player-flying`, `render.set-data` or the `atlas` capability, won't start the mod.
+`game.player-flying`, `render.set-data`, `render.set-hand-tint` or the `atlas` capability, won't start the mod.
 The wheel's left column has the strike options: SEED (a field: the last strike's seed, or one typed) and LOCK SEED
 at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is

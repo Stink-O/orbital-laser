@@ -42,6 +42,9 @@ pub mod fake {
         pub holding: bool,
         /// The mod's storage (`storage`), key to value.
         pub stored: std::collections::HashMap<String, Vec<u8>>,
+        /// The hand's tint last set (`render.set-hand-tint`; none: never), and how many times it was.
+        pub hand_tint: Option<[f32; 3]>,
+        pub hand_tints: u64,
     }
     thread_local! {
         pub static FAKE: RefCell<Fake> = RefCell::new(Fake::default());
@@ -98,6 +101,12 @@ pub mod fake {
         pub fn clear_post() {}
         pub fn set_data(_words: &[u32]) {}
         pub fn shake(_strength: f32, _seconds: f32) {}
+        pub fn set_hand_tint(r: f32, g: f32, b: f32) {
+            super::with(|w| {
+                w.hand_tints += 1;
+                w.hand_tint = Some([r, g, b]);
+            });
+        }
     }
     /// The block sprites, as tools/hu_atlas.py describes them from the player's prepared resources (`HU_ATLAS_JSON`:
     /// for each block its sides' faces), so the tests and the preview's table use real layers; none without it.
