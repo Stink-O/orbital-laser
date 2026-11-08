@@ -97,6 +97,25 @@ fn pass_of(l: &lasers::Laser) -> usize {
         _ => 0,
     }
 }
+/// Why laser `key` can't be played on this game, or none. On the fork every laser plays; the native build's SDK names
+/// the lasers whose calls it can't make yet (native/engine-shim/horizon_sdk.rs's `native_build`, which
+/// native/assemble.sh puts in place of `native_unavailable`). Such a laser shows greyed out in the wheel with the note,
+/// and can't be loaded or fired; `/orbital <laser>` answers the note.
+pub fn unavailable(key: &str) -> Option<&'static str> {
+    #[cfg(test)]
+    if UNAVAILABLE.with(|u| u.borrow().contains(&key)) {
+        return Some("Not on the native build yet");
+    }
+    native_unavailable(key)
+}
+fn native_unavailable(_key: &str) -> Option<&'static str> {
+    None
+}
+#[cfg(test)]
+thread_local! {
+    /// The lasers a test plays as a build that can't (`unavailable`).
+    static UNAVAILABLE: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+}
 const SETTINGS: &str = "settings";
 /// The storage key that says which pass the game is building while it builds one (`Orbital::hand_post`).
 const BUILDING: &str = "building";
@@ -596,7 +615,7 @@ impl Orbital {
         let mut colours: Vec<usize> = (0..LASERS.len()).map(default_colour).collect();
         for line in text.lines() {
             match line.split_once('=') {
-                Some(("laser", k)) => laser = LASERS.iter().position(|l| l.key == k).unwrap_or(0),
+                Some(("laser", k)) => laser = LASERS.iter().position(|l| l.key == k && unavailable(k).is_none()).unwrap_or(0),
                 Some(("terrain", v)) => terrain = v != "0",
                 Some(("hud", v)) => hud = v != "0",
                 Some(("approach", k)) => approach = APPROACHES.iter().position(|a| a.key == k).unwrap_or(0),
@@ -779,6 +798,10 @@ impl Orbital {
                 }
                 world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
                 self.show_wheel();
+            }
+            // (a laser this game can't play stays greyed out, its note under the ring: `unavailable`)
+            Some(wheel::Spot::Laser(i)) if unavailable(LASERS[i].key).is_some() => {
+                world::play_sound("minecraft:ui.button.click", None, 0.6, 0.6);
             }
             Some(wheel::Spot::Laser(i)) => {
                 self.laser = i;
@@ -1076,6 +1099,10 @@ impl Orbital {
     // ---- the strike ----
     fn fire(&mut self) {
         let laser = LASERS[self.laser];
+        if let Some(note) = unavailable(laser.key) {
+            Self::actionbar(&note.to_uppercase(), "gray");
+            return;
+        }
         let Some(mut hit) = world::raycast(laser.range) else {
             Self::actionbar("NO TARGET IN RANGE", "gray");
             return;
@@ -2112,6 +2139,10 @@ impl Mod for Orbital {
                 "Quality: {} (/orbital quality full or fast)",
                 if self.fast { "fast" } else { "full" }
             ))),
+            (Some(key), None) if unavailable(key).is_some() => {
+                let title = LASERS.iter().find(|l| l.key == key).map_or(key, |l| l.title);
+                Ok(Some(format!("{title}: {}", unavailable(key).unwrap_or_default())))
+            }
             (Some(key), None) if LASERS.iter().any(|l| l.key == key) => {
                 self.laser = LASERS.iter().position(|l| l.key == key).unwrap_or(0);
                 self.save();
@@ -2788,6 +2819,67 @@ mod stress {
         let ran = fake::with(|w| std::mem::take(&mut w.ran));
         assert_eq!(ran, vec![r#"title @s actionbar {"text":"NO TARGET IN RANGE","color":"gray","bold":true}"#.to_string()]);
         assert!(o.strike.is_none());
+    }
+    /// A laser the game can't play (the native build's, `unavailable`) is shown greyed out in the wheel with its note,
+    /// and can't be loaded (a click, `/orbital <laser>`, the settings file) or fired; the others are as ever.
+    #[test]
+    fn a_laser_the_game_cannot_play_is_greyed_out_and_never_fires() {
+        let fold = LASERS.iter().position(|l| l.key == "fold").expect("the Fold");
+        let plasma = LASERS.iter().position(|l| l.key == "plasma").expect("the plasma");
+        // (on the fork, every laser plays; on the native build, as its SDK says)
+        let fork_build = native_unavailable("fold").is_none();
+        assert!(!fork_build || LASERS.iter().all(|l| unavailable(l.key).is_none()));
+        let fork = wheel::Wheel::on_page(wheel::page_of(fold), 1.0);
+        let plain = fork.draws(plasma, true, true, 0, 0, &[0; 32], &[false; 2], true, 0, 0, true, false, false, None);
+        UNAVAILABLE.with(|u| *u.borrow_mut() = vec!["fold"]);
+        assert_eq!(unavailable("fold"), Some("Not on the native build yet"));
+        assert!(unavailable("rod").is_none());
+        // the settings file's laser: the first instead
+        assert_eq!(Orbital::parse("laser=fold\n").laser, 0);
+        assert_eq!(Orbital::parse("laser=rod\n").laser, LASERS.iter().position(|l| l.key == "rod").unwrap());
+        // the wheel: greyed out, its note under the ring while pointed at, no rows of its own
+        let greyed = fork.draws(plasma, true, true, 0, 0, &[0; 32], &[false; 2], true, 0, 0, true, false, false, None);
+        assert!(!fork_build || format!("{plain:?}") != format!("{greyed:?}"));
+        assert_eq!(wheel::Rows::of(Some(fold)), wheel::Rows::None);
+        let mut w = wheel::Wheel::on_page(wheel::page_of(fold), 1.0);
+        w.hover = Some(wheel::Spot::Laser(fold));
+        let said: Vec<String> = w
+            .draws(plasma, true, true, 0, 0, &[0; 32], &[false; 2], true, 0, 0, true, false, false, None)
+            .into_iter()
+            .filter_map(|d| if let horizon_mod_sdk::ui::Draw::Text((t, ..)) = d { Some(t) } else { None })
+            .collect();
+        assert!(said.iter().any(|t| t == "Not on the native build yet"), "{said:?}");
+        assert!(!said.iter().any(|t| t.contains(&LASERS[fold].blurb[..20])), "{said:?}");
+        // a click on it, and the command: not loaded
+        let mut o = Orbital::new(Orbital::parse(""));
+        fake::with(|w| {
+            *w = fake::Fake::default();
+            w.keep_commands = true;
+        });
+        o.laser = plasma;
+        o.wheel = Some(wheel::Wheel::on_page(wheel::page_of(fold), 1.0));
+        let (x, y) = (1..64)
+            .flat_map(|r| (0..64).map(move |a| ((a as f32 / 64.0 * 6.3).cos() * r as f32, (a as f32 / 64.0 * 6.3).sin() * r as f32)))
+            .find(|&(x, y)| wheel::spot(x, y, wheel::Rows::None, wheel::page_of(fold)) == Some(wheel::Spot::Laser(fold)))
+            .expect("the Fold's segment");
+        o.wheel_click(x, y);
+        assert_eq!(o.laser, plasma);
+        assert!(o.wheel.is_some(), "the wheel stays up");
+        assert_eq!(o.command("orbital", "fold"), Ok(Some(format!("{}: Not on the native build yet", LASERS[fold].title))));
+        assert_eq!(o.laser, plasma);
+        assert_eq!(o.command("orbital", "rod"), Ok(Some(format!("{} loaded", LASERS.iter().find(|l| l.key == "rod").unwrap().title))));
+        // and if it were loaded all the same, the Designator says so and nothing fires
+        o.laser = fold;
+        fake::with(|w| {
+            w.ran.clear();
+            w.hit = Some(horizon_mod_sdk::world::Hit { block_x: 0, block_y: 64, block_z: 0, x: 0.5, y: 65.0, z: 0.5, block: "minecraft:stone".into() });
+        });
+        o.fire();
+        assert!(o.strike.is_none());
+        let ran = fake::with(|w| std::mem::take(&mut w.ran));
+        assert_eq!(ran, vec![r#"title @s actionbar {"text":"NOT ON THE NATIVE BUILD YET","color":"gray","bold":true}"#.to_string()]);
+        UNAVAILABLE.with(|u| u.borrow_mut().clear());
+        assert_eq!(unavailable("fold").is_none(), fork_build);
     }
     /// The join hint is the first line in each world joined, once a join, until the player runs `/orbital give` (or
     /// holds a Designator): then never again, the game restarted or not (`KNOWS` in storage).

@@ -27,7 +27,8 @@ rm -rf "$tmp"
 # shaders and the built passes move under engine/data/, and what includes them follows.
 mkdir -p "$E/data/gen"; mv "$E/shaders" "$E/data/shaders"; mv "$E"/gen/*.wgsl "$E/data/gen/"
 sed -i -E -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' -e 's|include_str!\("(pass_[a-z_]+\.wgsl)"|include_str!("../data/gen/\1"|g' "$E/gen/passes.rs"
-sed -i 's|include_str!("../../shaders/|include_str!("../../data/shaders/|' "$E/src/strike/crystal.rs" "$E/src/strike/rod.rs"
+# (the mod's own shader includes: strike/*.rs two folders up, lib.rs one)
+find "$E/src" -name '*.rs' -exec sed -i -E -e 's|include_str!\("\.\./\.\./shaders/|include_str!("../../data/shaders/|g' -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' {} +
 if grep -rnE 'include_str!\("[^"]*\.wgsl"' "$E/src" "$E/gen" | grep -v '/data/'; then echo "a shader include left outside data/" >&2; exit 1; fi
 cp "$B/engine-shim/horizon_sdk.rs" "$E/src/horizon_sdk.rs"
 # After lib.rs's leading //! doc comment: the SDK at the crate root, named as the WebAssembly SDK was.
@@ -38,7 +39,12 @@ i = 0
 while i < len(lines) and (lines[i].startswith('//!') or lines[i].strip() == ''):
     i += 1
 shim = ['#![allow(unused_mut, dead_code, hidden_glob_reexports)]', 'extern crate self as horizon_mod_sdk;', 'pub mod horizon_sdk;', 'pub use horizon_sdk::*;', '']
-open(p, 'w').write('\n'.join(lines[:i] + shim + lines[i:]))
+src = '\n'.join(lines[:i] + shim + lines[i:])
+# Which lasers this build can't play: the SDK's answer (horizon_sdk.rs's `native_build`) in place of the fork's (none).
+old = "fn native_unavailable(_key: &str) -> Option<&'static str> {\n    None\n}"
+assert src.count(old) == 1, "lib.rs's native_unavailable not found"
+src = src.replace(old, "use horizon_sdk::native_build::unavailable as native_unavailable;")
+open(p, 'w').write(src)
 PY
 cat > "$E/Cargo.toml" <<'TOML'
 [package]
