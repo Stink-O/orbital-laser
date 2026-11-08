@@ -1748,8 +1748,9 @@ fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight
 }
 
 // ---- the opening: a small orbital laser over the vent, its targeting beam, the beam, the hole it melts ----
-// The satellite hangs 1,400 up and 1,100 beyond the vent from where the player fired (table words 2 and 3: the way to
-// them), drifting along its orbit, so it is in the sky they look at. It aims a thin opaque red beam (VC_AIM), its spot
+// The satellite hangs in orbit, 3,200 up and 2,600 beyond the vent from where the player fired (table words 2 and 3: the
+// way to them), some 40 degrees up their sky over the vent, drifting along its orbit; drawn bigger the further off it is
+// seen (`vc_sat_k`), so it reads as a machine from wherever they are. It aims a thin opaque red beam (VC_AIM), its spot
 // wandering onto the vent and locking (VC_LOCK); its emitter charges and fires (VC_HIT): a white-hot beam that melts a
 // clean round hole (VC_HR) down through the crust, cut at VC_OFF; the hole glows on, its rim cooling to crust, steam off
 // it, and the mount rises round it (its land spread by vm_rest) until the eruption comes out of it.
@@ -1763,8 +1764,12 @@ fn vc_sat() -> vec3<f32> {
     if (dot(d, d) < 0.5) {
         d = normalize(vc_me() + vec2<f32>(1.0e-3, 0.0));
     }
-    let s = -1100.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
-    return vec3<f32>(s.x, 1400.0, s.y);
+    let s = -2600.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
+    return vec3<f32>(s.x, 3200.0, s.y);
+}
+// How much bigger than itself it is drawn, seen from `P` off: as big as it would look from 2,400.
+fn vc_sat_k(P: vec3<f32>) -> f32 {
+    return clamp(length(P) / 2400.0, 1.0, 3.0);
 }
 // Where the targeting spot is (level, from the vent): wandering in to the vent and still from VC_LOCK.
 fn vc_spot() -> vec2<f32> {
@@ -1899,11 +1904,12 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
     let su = normalize(cross(ax, vec3<f32>(0.0, 1.0, 0.0)));
     let sv = cross(su, ax);
     let P = S + C;
-    let E = P + ax * 55.0;
+    let sk = vc_sat_k(P);
+    let E = P + ax * 55.0 * sk;
     let show = smoothstep(0.0, 0.35, t) * (1.0 - smoothstep(VC_SAT_END - 2.0, VC_SAT_END, t));
     let charge = smoothstep(VC_LOCK + 0.1, VC_HIT, t) * (1.0 - smoothstep(VC_HIT, VC_HIT + 0.1, t));
     let tp = dot(P, rd);
-    if (tp > 0.0 && length(P - rd * tp) < 180.0 && tp < len) {
+    if (tp > 0.0 && length(P - rd * tp) < 180.0 * sk && tp < len) {
         let tu = normalize(cross(rd, vec3<f32>(0.0, 1.0, 0.0)));
         let tv = cross(tu, rd);
         // (the panels turning slowly on their arms, a glint off them as they catch the sun)
@@ -1915,7 +1921,7 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
         for (var i = 0; i < 4; i = i + 1) {
             let off = (vec2<f32>(f32(i & 1), f32(i >> 1u)) - 0.5) * 0.5;
             let r = normalize(rd + (tu * off.x + tv * off.y) * vs.px);
-            let o = vec3<f32>(dot(-P, su), dot(-P, sv), dot(-P, ax));
+            let o = vec3<f32>(dot(-P, su), dot(-P, sv), dot(-P, ax)) / sk;
             let d = vec3<f32>(dot(r, su), dot(r, sv), dot(r, ax));
             var best = vec4<f32>(1.0e9, 0.0, 0.0, 0.0);
             var m = -1;
@@ -1974,7 +1980,7 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
         let dd = (uv - pe.xy) * res;
         let r2 = dot(dd, dd);
         for (var s = -1.0; s < 2.0; s = s + 2.0) {
-            let pn = project_rel(P + su * 139.0 * s);
+            let pn = project_rel(P + su * 139.0 * sk * s);
             let dn = dot((uv - pn.xy) * res, (uv - pn.xy) * res);
             let bl = step(0.75, fract(t * 1.1 + 0.5 * s));
             c = c + select(vec3<f32>(0.1, 2.0, 0.3), vec3<f32>(2.0, 0.1, 0.05), s < 0.0) * bl * show / (1.0 + dn / 1.5);
