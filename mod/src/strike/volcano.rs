@@ -282,7 +282,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
                 (b.tl as f32, b.p0[0] + b.v[0] * c, b.p0[2] + b.v[2] * c)
             })
             .collect();
-        vc_sound::vc_sounds(&mut p, shader_seed as u32, [cx, gy, cz], me, bombs);
+        vc_sound::vc_sounds(&mut p, shader_seed as u32, [cx, gy, cz], me, bombs, hf.clone());
     }
 
     // ---- the ground shaking: a tremor building from the hit, faster and harder, the eruption's jolt late by the distance,
@@ -308,29 +308,37 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         ts += p.rng.uniform(0.8, 1.6) as f32;
     }
     p.shake(VC_COLLAPSE + late, 0.8 * fo, 3.5);
-    // (where the wall's lobes bring it to the player: the picture's and the sound's hit; softer the later it comes)
-    let wall = vc_sound::front_at(dist, rel[2].atan2(rel[0])).unwrap_or(vc_wall_at(dist));
-    if dist < 1700.0 {
-        // (the ground going as it comes, building over its last 8 s; then the blow; then inside it the ground and the
-        // air never still, hard and ragged at first with heavier gusts in it, easing as it thins over 14 s)
-        let mut ts = (wall - 8.0).max(VC_COLLAPSE + late + 3.5);
-        while ts < wall - 0.3 {
-            let u = 1.0 - (wall - ts) / 8.0;
-            let j = p.rng.uniform(0.8, 1.15) as f32;
-            p.shake(ts, (0.08 + 0.42 * u * u) * j, 0.9);
-            ts += 0.55 - 0.25 * u;
+    // (where the wall's lobes bring it to the player, high land holding it back: the picture's and the sound's hit; softer
+    // the later it comes. Worked out as the collapse comes, where the player is then, on the land as read, as the sound's)
+    let h4 = hf.clone();
+    p.later(VC_COLLAPSE - 0.5, move |p| {
+        let m = vc_sound::live(me);
+        let (rx, rz) = (m[0] - cx, m[2] - cz);
+        let dist = rx.hypot(rz);
+        let land = h4.borrow().at(rx, rz);
+        let wall = vc_sound::front_at(dist, rz.atan2(rx), land).unwrap_or(vc_wall_at(dist));
+        if dist < 1700.0 && m[1] - gy < 300.0 {
+            // (the ground going as it comes, building over its last 8 s; then the blow; then inside it the ground and the
+            // air never still, hard and ragged at first with heavier gusts in it, easing as it thins over 14 s)
+            let mut ts = (wall - 8.0).max(VC_COLLAPSE + late + 3.5);
+            while ts < wall - 0.3 {
+                let u = 1.0 - (wall - ts) / 8.0;
+                let j = p.rng.uniform(0.8, 1.15) as f32;
+                p.shake(ts, (0.08 + 0.42 * u * u) * j, 0.9);
+                ts += 0.55 - 0.25 * u;
+            }
+            p.shake(wall, (1.0 - (wall - 68.0) / 14.0).clamp(0.6, 1.0), 2.5);
+            let mut ts = wall + 0.8;
+            while ts < (wall + 14.0).min(87.0) {
+                let u = (ts - wall) / 14.0;
+                let gust = if p.rng.uniform(0.0, 1.0) < 0.18 { 1.45 } else { 1.0 };
+                let j = p.rng.uniform(0.75, 1.1) as f32;
+                p.shake(ts, ((0.62 - 0.38 * u) * gust * j).min(0.88), 0.9);
+                ts += p.rng.uniform(0.3, 0.55) as f32;
+            }
+            p.ev.push((wall, Act::Shove { from: [cx, gy, cz], out: VC_KNOCK_OUT, up: VC_KNOCK_UP, reach: VC_KNOCK_REACH }));
         }
-        p.shake(wall, (1.0 - (wall - 68.0) / 14.0).clamp(0.6, 1.0), 2.5);
-        let mut ts = wall + 0.8;
-        while ts < (wall + 14.0).min(87.0) {
-            let u = (ts - wall) / 14.0;
-            let gust = if p.rng.uniform(0.0, 1.0) < 0.18 { 1.45 } else { 1.0 };
-            let j = p.rng.uniform(0.75, 1.1) as f32;
-            p.shake(ts, ((0.62 - 0.38 * u) * gust * j).min(0.88), 0.9);
-            ts += p.rng.uniform(0.3, 0.55) as f32;
-        }
-        p.ev.push((wall, Act::Shove { from: [cx, gy, cz], out: VC_KNOCK_OUT, up: VC_KNOCK_UP, reach: VC_KNOCK_REACH }));
-    }
+    });
 
     if terrain {
         super::vc_land::vc_land_plan(&mut p, laser, shader_seed as u32, hf.clone(), lodge.clone());

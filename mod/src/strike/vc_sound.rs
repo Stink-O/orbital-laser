@@ -82,7 +82,7 @@ fn play_at(p: &mut Plan, t: f32, name: &str, at: [f64; 3], volume: f64, pitch: f
 }
 
 /// Where the player is now, or was if the game can't say.
-fn live(me: [f64; 3]) -> [f64; 3] {
+pub(super) fn live(me: [f64; 3]) -> [f64; 3] {
     crate::sdk::game::get_player().map_or(me, |p| [p.x, p.y, p.z])
 }
 
@@ -143,13 +143,14 @@ fn lobes(ang: f64, rho: f64) -> f64 {
     let c = ((cl - 0.5).abs() / 0.16).clamp(0.0, 1.0);
     n - 0.5 - 0.3 * (1.0 - c * c * (3.0 - 2.0 * c))
 }
-/// When the wall reaches a place at `rho` from the vent, bearing `ang`, if it does with time left to play it.
-pub(super) fn front_at(rho: f64, ang: f64) -> Option<f32> {
+/// When the wall reaches a place at `rho` from the vent, bearing `ang`, the land there `land` over the vent's ground, if it
+/// does with time left to play it. As the pass's vc_flow: high land holds it back.
+pub(super) fn front_at(rho: f64, ang: f64, land: f64) -> Option<f32> {
     let lob = lobes(ang, rho);
     let mut t = VC_COLLAPSE + 0.05;
     while t <= VC_LEN - VC_INS[2] - 0.2 {
         let rf = front_r(t);
-        if rf - rho - (4.0 * (rf - VC_RING) + 30.0).min(520.0) * lob > 0.0 {
+        if rf - rho - (4.0 * (rf - VC_RING) + 30.0).min(520.0) * lob - 2.6 * land.max(0.0) > 0.0 {
             return Some(t);
         }
         t += 0.05;
@@ -359,10 +360,10 @@ fn land_bombs(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], report: f32, b
 
 /// The flow, for the player `me`: when it hits them if it does, else the rush of it past where it stops, or below them.
 /// The wall reaches 1,000 blocks at about 67 s and goes on spending itself: the later it comes, the less of a blow.
-fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32) -> Option<f32> {
+fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32, land: f64) -> Option<f32> {
     let (dx, dz) = (me[0] - vent[0], me[2] - vent[2]);
     let d = dx.hypot(dz);
-    let hit = if me[1] - vent[1] < VC_WALL { front_at(d, dz.atan2(dx)) } else { None };
+    let hit = if me[1] - vent[1] < VC_WALL { front_at(d, dz.atan2(dx), land) } else { None };
     let Some(hit) = hit else {
         // (a dark rush coming and ebbing away, no hit)
         let at = (VC_FOOT + ((d - 1000.0).max(0.0) / 343.0) as f32).min(VC_LEN - VC_FAR);
@@ -420,7 +421,7 @@ fn front_take(ground: f32, report: f32) -> Option<usize> {
 
 /// The Supervolcano's sounds, on plan `p`: the vent at `vent`, the player at `me` as it fires, `s` the pass's seed (the
 /// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land.
-pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>) {
+pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>, hf: Rc<std::cell::RefCell<super::volcano::Hf>>) {
     // ---- the satellite, 7,000 up and some 70 degrees up the player's sky, on the strike's clock: its coming down, the
     // aim, the lock, the shot, the cut and its going, all in `sat_sky`; the shot's blow on the land at the vent late by the distance (`sat_land`);
     // then the mount
@@ -475,7 +476,8 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
         let (late, d) = sound_from(vent, me);
         near_far(q, VC_COLLAPSE + late, "collapse", d);
         let drop = VC_COLLAPSE + late + VC_DROP - VC_LEAD;
-        let hit = flow(q, s, vent, me, drop);
+        let land = hf.borrow().at(me[0] - vent[0], me[2] - vent[2]);
+        let hit = flow(q, s, vent, me, drop, land);
         h1.set(hit);
         // (the land's drop, unless the flow's hit is on it: the two would be all the game's limiter heard; a little under
         // the report's, since its pressure holds on for seconds under the land falling and the flow closing)
@@ -524,7 +526,7 @@ mod tests {
     fn heard(z: f64) -> Vec<(f32, String, f32, f32, bool)> {
         let me = [0.5, 66.0, 0.5 + z];
         let mut p = plan_for_test();
-        vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]));
+        vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]), Default::default());
         let mut ev = std::mem::take(&mut p.ev);
         let mut out = Vec::new();
         // (in time order, as the game plays them: a stage may use what an earlier one worked out)
@@ -649,6 +651,15 @@ mod tests {
         }
     }
 
+    /// High land holds the wall back, as in the pass: its hit (sound and shake) comes later on a hill, never before it shows.
+    #[test]
+    fn vc_sound_high_land_holds_the_wall_back() {
+        let flat = front_at(1000.0, 0.7, 0.0).expect("on the flat");
+        let hill = front_at(1000.0, 0.7, 40.0).expect("on a 40-block hill");
+        assert!(hill > flat + 1.5, "{flat} {hill}");
+        assert_eq!(front_at(1000.0, 0.7, -30.0), Some(flat), "low land doesn't speed it up");
+    }
+
     #[test]
     fn vc_sound_flow_is_heard_by_the_distance() {
         assert!((front_r(VC_COLLAPSE + 4.0) - 500.0).abs() < 8.0, "{}", front_r(VC_COLLAPSE + 4.0));
@@ -673,7 +684,7 @@ mod tests {
         for z in [1000.0, 1400.0, 1700.0, 2500.0] {
             let me = [0.5, 66.0, 0.5 + z];
             let mut p = plan_for_test();
-            vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]));
+            vc_sounds(&mut p, 37, [0.5, 65.0, 0.5], me, bombs(37, [0.0, 1.0, z]), Default::default());
             let mut ev = std::mem::take(&mut p.ev);
             while let Some((t, a)) = ev.pop() {
                 match a {
