@@ -288,6 +288,10 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         p.shake(ts, (0.05 + 0.4 * u * u) * fo, (0.5 + 0.5 * u).min(VC_HUSH - ts));
         ts += 0.9 - 0.6 * u;
     }
+    // (the burst through the ground first, long before the air's: a hard jolt and a bigger heave after it, as the seism's)
+    let seism = VC_ERUPT + (dist / 1715.0) as f32;
+    p.shake(seism, 0.5 * fo, 0.45);
+    p.shake(seism + 0.4, 0.65 * fo, 1.4);
     let arrive = VC_ERUPT + late;
     p.shake(arrive, fo, 2.5);
     let mut ts = arrive + 1.5;
