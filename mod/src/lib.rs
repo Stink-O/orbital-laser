@@ -239,6 +239,9 @@ struct Strike {
 }
 
 /// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
+/// Whether a strike tints the first-person hand (`render.set-hand-tint`). Off for now: under the Supervolcano it went
+/// far too dark in the game. The hand stays as the game draws it.
+const HAND_TINT: bool = false;
 const IMPACT_STYLES: [&str; 3] = ["blackflash", "kanada", "cinematic"];
 /// `/orbital`'s words, as paths after it ("orbital give", "orbital terrain on"): a fork from orbital-mod-api-12 offers
 /// them as the chat fills in (a registered command with spaces in it is a path under its first word); the command
@@ -1473,6 +1476,10 @@ impl Orbital {
     /// as the strike's `HandLight` has it: its steady part eased (`HAND_EASE`), its quick part on top. Sent only when it
     /// changes; none of it, the hand as it was.
     fn hand_frame(&mut self, seconds: f32) {
+        if !HAND_TINT {
+            self.hand_reset();
+            return;
+        }
         let Some((steady, quick)) = self.strike.as_mut().and_then(|s| {
             s.hand_t = (s.hand_t + seconds).min(0.05);
             let t = s.ticks as f32 * 0.05 + s.hand_t;
@@ -3075,6 +3082,7 @@ mod stress {
     /// its sheet, near black in its wall of ash, lit up now and then by its lightning, and given back whole as it ends, is
     /// stopped or the player leaves the world.
     #[test]
+    #[ignore = "the hand tint is off for now (HAND_TINT): it went far too dark in the game"]
     fn the_hand_goes_dark_under_the_supervolcano_and_comes_back() {
         let mut o = Orbital::new(Orbital::parse("terrain=0\nlaser=supervolcano\n"));
         let player = Player { x: 0.5, y: 70.0, z: 0.5, yaw: 180.0, pitch: 0.0, health: 20.0, food: 20, dimension: "minecraft:overworld".into() };
