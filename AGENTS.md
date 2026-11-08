@@ -211,10 +211,18 @@ laser, command, capability and timing). This file is the short, factual version 
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
 - **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 80 s, reaches 1000, the vent moved
-  to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): a small orbital laser satellite over the
-  vent (`vc_opening`, `vc_sat`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 4 times its size far off: `vc_sat_k`) aims a solid red
-  targeting beam (0.6 s, locked at 1.5) and fires at 2 s (`VC_HIT`), a white-hot beam melting a round glowing hole
-  (`vc_open_land`, light only) cut at 4.6 s (`VC_OFF`), the mount rising round the hole; the
+  to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): an orbital laser satellite over the
+  vent (`vc_opening`, `vc_sat0`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 5.5 times its
+  size far off, scaled from where it parks so it shrinks as it leaves: `vc_sat_k`; built of blocks in `vc_sat_hit`: a
+  gold-foiled bus and engine, white radiators, a gold collar, solar wings on a truss turned to the sun, an octagonal barrel
+  ringed by four coils stepping in to the emitter, four prongs; from the ground, nearly down its barrel, a dark cross with
+  a glowing eye) comes in nose first along its orbit on retro jets and pitches over onto the vent by ~1.1 s
+  (`vc_sat_go`, `vc_sat_tip`), aims a solid red targeting beam (0.6 s, locked at 1.5; its coils lit red), its coils charge
+  outside in and it fires at 2 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
+  cut at 4.6 s (`VC_OFF`); it pitches back along its orbit from 4.9, lights its engine at 6.1 (`VC_BURN`) and burns off,
+  climbing, into the haze by 9.5 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
+  pulses, puffs rising, slowing, swelling and bending with the wind, red from under (`vc_plume`, `vc_feed`), until the
+  eruption; the mount rising round the hole; the
   tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a
   pressure ring at the speed of sound), a ring of vents 560 across feeding a column to about 1,800 (`vc_col`: the
   ring's foot follows the land, `vc_land`, a heightfield of 128 x 128 cells; lumps on lumps, `vc_lump_col`, drawn out and
