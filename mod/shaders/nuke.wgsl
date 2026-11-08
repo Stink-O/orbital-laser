@@ -219,13 +219,12 @@ fn pl_land(q: vec2<f32>, gref: f32) -> vec2<f32> {
     let fc = clamp((q + R) / step, vec2<f32>(0.0), vec2<f32>(nf - 1.001));
     let i0 = vec2<u32>(floor(fc));
     let t = fc - floor(fc);
-    var hv = vec4<f32>(0.0);
-    var sv = vec4<f32>(0.0);
-    for (var j = 0u; j < 4u; j = j + 1u) {
-        let c = mod_data[PL_HF + 8u + (i0.y + (j >> 1u)) * n + i0.x + (j & 1u)];
-        hv[j] = f32(c & 0xffffu) / 8.0 - 512.0;
-        sv[j] = f32((c >> 16u) & 0xffu) / 255.0;
-    }
+    // (the four corners read one by one, not written into a vector at a run-time index in a loop: FXC, DirectX 12's
+    // compiler, can't do that without unrolling the loops round it, and fails on the dust's and the cloud's)
+    let b = PL_HF + 8u + i0.y * n + i0.x;
+    let c = vec4<u32>(mod_data[b], mod_data[b + 1u], mod_data[b + n], mod_data[b + n + 1u]);
+    let hv = vec4<f32>(c & vec4<u32>(0xffffu)) / 8.0 - 512.0;
+    let sv = vec4<f32>((c >> vec4<u32>(16u)) & vec4<u32>(0xffu)) / 255.0;
     // (past its edge, the edge's ground carried on: not `gref`, which rises to wherever the player stood, up a tower
     // or in the air)
     let g = mix(mix(hv.x, hv.y, t.x), mix(hv.z, hv.w, t.x), t.y);
@@ -640,10 +639,11 @@ fn nuke(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec3<f32>) -> PlOut {
         let full = vec2<i32>(frame.resolution.xy);
         let q = vec2<i32>(floor(in.position.xy)) * 2;
         let q1 = min(q + vec2<i32>(1), full - vec2<i32>(1));
-        let d0 = textureLoad(scene_depth, q, 0);
-        let d1 = textureLoad(scene_depth, vec2<i32>(q1.x, q.y), 0);
-        let d2 = textureLoad(scene_depth, vec2<i32>(q.x, q1.y), 0);
-        let d3 = textureLoad(scene_depth, q1, 0);
+        // (through depth_at at each pixel's middle, not textureLoad: OpenGL can't load from a depth texture)
+        let d0 = depth_at((vec2<f32>(q) + 0.5) * frame.resolution.zw);
+        let d1 = depth_at((vec2<f32>(f32(q1.x), f32(q.y)) + 0.5) * frame.resolution.zw);
+        let d2 = depth_at((vec2<f32>(f32(q.x), f32(q1.y)) + 0.5) * frame.resolution.zw);
+        let d3 = depth_at((vec2<f32>(q1) + 0.5) * frame.resolution.zw);
         let hq = vec2<i32>(floor(in.position.xy));
         d = select(min(min(d0, d1), min(d2, d3)), max(max(d0, d1), max(d2, d3)), ((hq.x + hq.y) & 1) == 0);
         uv = (vec2<f32>(q) + 1.0) * frame.resolution.zw;

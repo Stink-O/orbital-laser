@@ -101,6 +101,16 @@ pub fn draw(world: &mut crate::gfx::native_render::WorldDrawn<'_>) {
     if frame.title {
         return;
     }
+    if !world.color.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+        // (OpenGL's swapchain can't be copied from, and the pass reads a copy of the world's picture: copying it anyway
+        // is a validation error outside any error scope, which ends the game. Upstream Horizon draws such a frame into
+        // a texture of its own only for a screenshot; until a mod can ask for that, no pass there)
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            log::warn!("[mod orbital] the frame's picture can't be copied (OpenGL): no post pass; use Vulkan or DirectX 12")
+        });
+        return;
+    }
     let Ok(mut drawer) = DRAWER.lock() else {
         return;
     };
