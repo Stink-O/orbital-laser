@@ -229,6 +229,12 @@ VIEWS = {
     "vcopen": "cx=25 cy=125 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 fov=55 reach=1000",
     "vcsat": "cx=0 cy=67 cz=1000 lx=-40 ly=7065 lz=-1600 flat=1 fov=12 reach=1000",
     "vcsky": "cx=0 cy=67 cz=1000 lx=-20 ly=3000 lz=-500 flat=1 trees=1 fov=80 reach=1000",
+    # flying by the satellite, close (it is drawn its own size here), and through a long lens from the player's spot
+    "vcfly": "cx=330 cy=7240 cz=-1080 lx=-10 ly=7000 lz=-1600 mx=0 mz=1000 flat=1 fov=42 reach=1000",
+    # the steam off the hole from 450 off
+    "vcmid": "cx=0 cy=90 cz=450 lx=0.5 ly=230 lz=0.5 mx=0 mz=1000 flat=1 trees=1 fov=60 reach=1000",
+    "vcsteam": "cx=170 cy=240 cz=560 lx=0 ly=230 lz=0 mx=0 mz=1000 flat=1 fov=55 reach=1000",
+    "vcflyb": "cx=-420 cy=6820 cz=-1250 lx=0 ly=7010 lz=-1600 mx=0 mz=1000 flat=1 fov=50 reach=1000",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
