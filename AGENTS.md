@@ -211,7 +211,10 @@ laser, command, capability and timing). This file is the short, factual version 
   mixes it as the game does at 60, 150 and 500 blocks and carried (`hu_write_sounds`). The designator's countdown
   for it is `TRACKING STORM …`.
 - **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 80 s, reaches 1000, the vent moved
-  to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): a hairline beam (hits at 2 s), the
+  to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): a small orbital laser satellite over the
+  vent (`vc_opening`, `vc_sat`: 1,400 up, 1,100 beyond the vent from the player, table words 2-3) aims a solid red
+  targeting beam (0.6 s, locked at 1.5) and fires at 2 s (`VC_HIT`), a white-hot beam melting a round glowing hole
+  (`vc_open_land`, light only) cut at 4.6 s (`VC_OFF`), the mount rising round the hole; the
   tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a
   pressure ring at the speed of sound), a ring of vents 560 across feeding a column to about 1,800 (`vc_col`: the
   ring's foot follows the land, `vc_land`, a heightfield of 128 x 128 cells; lumps on lumps, `vc_lump_col`, drawn out and
@@ -405,7 +408,10 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **The game keeps its saves and options in the folder it starts in** when started with `--game`: `play.sh` starts it in
   the game folder for that reason. Starting it elsewhere makes a fresh, empty game folder there.
 - **The mod's post pass is plain WGSL after the fork's mod pass prelude** (`tools/wgslcheck/prelude.wgsl` is a copy). A compile error
-  is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`.
+  is logged ("a mod's post pass did not compile") and the pass is skipped. Validate with `tools/wgslcheck`. A laser's own
+  pass is strike.wgsl up to its fs_main less `[lasers pass only]` and the Mothership's ship (`[mothership]`, ~36 KB),
+  which only an own file saying `// [uses the mothership]` (the Downfall's) keeps: passbuild.rs, check-shader.sh and
+  preview.py all build it so.
 - **The mod's post pass reads `mod_data`** (`render.set-data`, binding 5 of the prelude): the Crystal Bloom's pieces'
   rest heights (word `i * 16 + k * 2 + half`) and from `CB_TAB` (1024) its spires and pieces, worked out once by
   `cb_table` in `strike/crystal.rs`; keep that layout in step with the pass's `CB_*` offsets. `tools/preview` binds it from `$PREVIEW_DATA` (`index value` lines) and

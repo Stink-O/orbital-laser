@@ -5,8 +5,9 @@ mono anyway, so a stereo tail would only cost size.
 Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the player's distance from the vent / 343,
 2.9 s at the 1,000 blocks that is the least it fires at, 5 s at 1,700):
 
-  beam        0        a thin high pressure over the beam, cut on the hit; almost nothing
-  tick        2 + late the hit, a far dull tock, then nothing at all
+  beam        0        the satellite's aim: from 0.6 s the designator's thin tone, two soft beats as its spot settles
+                       (1.5 s), the emitter's charge climbing; cut on the shot at 2 s
+  tick        2 + late the shot: a dull blow, the crust seething under the beam for its 2.6 s, then the steam's hiss
   tremor      2        the mount (2-17 s): under hearing, then the ground rolling, a heavy groan of rock under load rising
                        with it, the land's lurches baked in where the picture has them (`mount_height`, late by what the
                        ground takes to carry them), each bigger and sooner than the last; 15 s long and it stops dead on
@@ -90,7 +91,7 @@ NAMES = SINGLE + list(VARIANTS)
 GONE = [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
-LEVEL = {"beam": -33.0, "tick": -32.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
+LEVEL = {"beam": -28.0, "tick": -24.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "report_sub": -8.5, "column": -13.0, "column_far": -12.0,
          "whistle": -16.0, "thud": -9.5, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
@@ -300,29 +301,44 @@ def bare_blow(size, lo=26.0, hi=120.0, rise=0.012, fall=0.11):
 
 # =============================================================================================================  the beam
 def build_beam():
-    """The beam coming down: a thin high pressure, more felt in the ears than heard, cut on the hit."""
+    """The satellite's aim (strike clock, cut on the fire): from 0.6 s the designator's thin steady tone, two soft beats
+    as its spot settles (1.5 s), then the emitter charging, a whine climbing under a high pressure, cut on the shot."""
     d = 2.08
     n = n_of(d)
     t = times(d)
     with PB.seeded(61001):
-        a = P.glide_band(d, np.linspace(7100, 7700, n), 0.035)
-        b = P.glide_band(d, np.linspace(10800, 11900, n), 0.03)
-        c = P.glide_band(d, np.linspace(4800, 5000, n), 0.05)
-        x = a + 0.5 * b + 0.25 * c
-        x *= np.clip(t / 1.7, 0, 1) ** 1.4 * boil(n, 2.0, 9.0, 1.2)
-        x *= np.clip((d - 0.012 - t) / 0.03, 0, 1)
+        on = np.clip((t - 0.6) / 0.06, 0, 1)
+        hum = (np.sin(2 * np.pi * 1175 * t) + 0.5 * np.sin(2 * np.pi * 1181 * t) + 0.18 * np.sin(2 * np.pi * 2350 * t)) * on
+        hum *= 0.8 + 0.2 * np.sin(2 * np.pi * 6.5 * t)
+        lock = np.zeros(n)
+        for t0 in (1.5, 1.62):
+            u = t - t0
+            lock += np.sin(2 * np.pi * 1760 * t) * np.exp(-np.maximum(u, 0) / 0.035) * (u >= 0) * np.clip(u / 0.003, 0, 1)
+        ch = np.clip((t - 1.55) / 0.5, 0, 1)
+        whine = np.sin(2 * np.pi * np.cumsum(500 + 2600 * ch ** 1.6) / SR) * ch ** 2
+        press = P.glide_band(d, np.linspace(6800, 8200, n), 0.035) * ch ** 2.5
+        x = 0.5 * hum + 0.7 * lock + 0.6 * whine + 0.25 * press
+        x *= np.clip((d - 0.012 - t) / 0.01, 0, 1)
     write("beam", x)
 
 
 def build_tick():
-    """The hit, a kilometre off: one tiny dull tock, the top gone, a faint answer off the land."""
-    d = 1.6
+    """The shot, heard from a kilometre off: a dull blow as it strikes, then the crust seething under it for as long as it
+    burns (2.6 s: volcano.wgsl's VC_OFF), a low roar in it; cut, and the steam's hiss thinning away."""
+    d = 4.4
     n = n_of(d)
+    t = times(d)
     with PB.seeded(61002):
-        x = soundlib.click(n, 0.01, 1.0, 700, 2400, 0.0026)
-        x += soundlib.click(n, 0.013, 0.7, 200, 900, 0.008)
-        x += band(soundlib.click(n, 0.52, 0.05, 200, 900, 0.03), None, 700, 2)
-    write("tick", x * T.fade(n, 0.001, 0.4))
+        u = t - LEAD
+        blow = band(white(d), 30, 260, 2) * np.exp(-np.maximum(u, 0) / 0.28) * (u >= 0) * np.clip(u / 0.004, 0, 1)
+        blow += soundlib.click(n, LEAD, 0.6, 200, 900, 0.012)
+        burn = np.clip(u / 0.05, 0, 1) * np.clip((2.62 - u) / 0.08, 0, 1)
+        seethe = T.unit(band(white(d), 380, 2600, 2)) * boil(n, 3.0, 18.0, 4.0) * burn
+        roar = T.unit(band(white(d), 45, 220, 2)) * boil(n, 0.8, 4.0, 2.5) * burn
+        hiss = T.unit(band(white(d), 1500, 5200, 2)) * np.exp(-np.maximum(u - 2.6, 0) / 0.7) * (u > 2.6) * np.clip((u - 2.6) / 0.05, 0, 1)
+        x = 2.2 * T.unit(blow) * np.exp(-np.maximum(u, 0) / 0.5) + 0.45 * seethe + 0.7 * roar + 0.25 * hiss
+        x = band(x, None, 3200, 2)
+    write("tick", x * T.fade(n, 0.001, 0.3))
 
 
 # ===========================================================================================================  the tremor

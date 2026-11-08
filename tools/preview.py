@@ -224,6 +224,10 @@ VIEWS = {
     "vc1kl": "cx=0 cy=67 cz=1000 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=1000",
     "vc1kh": "cx=0 cy=87 cz=1000 lx=0.5 ly=160 lz=0.5 flat=1 trees=1 fov=70 reach=1000",
     "vc1kr": "cx=0 cy=81 cz=1000 lx=0.5 ly=170 lz=0.5 hills=30 flush=1 trees=1 fov=70 reach=1000",
+    # the opening: down on the hole the beam melts from the air close by, and the satellite through a long lens from the
+    # player's 1,000 off (it hangs 1,100 beyond the vent, 1,400 up)
+    "vcopen": "cx=25 cy=125 cz=110 lx=0.5 ly=60 lz=0.5 flat=1 fov=55 reach=1000",
+    "vcsat": "cx=0 cy=67 cz=1000 lx=-40 ly=1465 lz=-1100 flat=1 fov=7 reach=1000",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -241,9 +245,11 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
     if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "supervolcano"):
-        pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", "-e", "/^@fragment/,$d"],
-                             input=strike, capture_output=True, text=True, check=True).stdout
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
+        # (less the Mothership's ship unless the laser's own says it uses it: mod/src/passbuild.rs)
+        ship = [] if "// [uses the mothership]" in own else ["-e", r"/^\/\/ \[mothership\]/,/^\/\/ \[end mothership\]/d"]
+        pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", *ship, "-e", "/^@fragment/,$d"],
+                             input=strike, capture_output=True, text=True, check=True).stdout
         if laser == "supervolcano":
             own += (SHADERS / "volcano_mount.wgsl").read_text()
         if not fast:
