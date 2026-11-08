@@ -1378,14 +1378,14 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
     var wmid = 0.0;
     var tmid = 0.0;
     // (the brightest flash lights the cloud: one, so the march keeps little in hand)
-    var gl = fls.f[0];
-    if (fls.f[1].k > gl.k) {
-        gl = fls.f[1];
+    var glw = fls.f[0];
+    if (fls.f[1].k > glw.k) {
+        glw = fls.f[1];
     }
-    if (fls.f[2].k > gl.k) {
-        gl = fls.f[2];
+    if (fls.f[2].k > glw.k) {
+        glw = fls.f[2];
     }
-    let gw = vc_flash_way(gl, l.seed);
+    let gw = vc_flash_way(glw, l.seed);
     let gw2 = max(dot(gw, gw), 1.0);
     let ph = 0.75 + (0.45 + 1.3 * l.warm) * pow(saturate(dot(rd, l.L)), 5.0);
     // (two runs of one loop, the look at the light between them: a GPU's group pays for a branch at any step any of its
@@ -1542,15 +1542,15 @@ fn vc_march(C: vec3<f32>, rd: vec3<f32>, tmax: f32, j: f32, l: VcLight, fls: VcF
             }
             // (the sheet's underside: the fire's dull red on it round the column, its pouches catching it)
             if (wu > 0.0 && hy < VC_HU) {
-                let gl = exp(-b.rho / 1100.0) * (0.15 + 0.85 * sd.y * sd.y) * (1.0 - smoothstep(VC_COLLAPSE + 2.0, VC_LIFT, time));
-                fire = fire + vec3<f32>(0.2, 0.045, 0.01) * gl * smoothstep(0.0, 6.0, vs.a) * wu;
+                let glw = exp(-b.rho / 1100.0) * (0.15 + 0.85 * sd.y * sd.y) * (1.0 - smoothstep(VC_COLLAPSE + 2.0, VC_LIFT, time));
+                fire = fire + vec3<f32>(0.2, 0.045, 0.01) * glw * smoothstep(0.0, 6.0, vs.a) * wu;
             }
             c = c + fire;
             // (the lightning in it: along its channel, lighting the cloud a long way round)
             var lg = 0.0;
-            if (gl.k > 0.02) {
-                let dd = q - gl.p - gw * saturate(dot(q - gl.p, gw) / gw2);
-                lg = gl.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
+            if (glw.k > 0.02) {
+                let dd = q - glw.p - gw * saturate(dot(q - glw.p, gw) / gw2);
+                lg = glw.k / (1.0 + dot(dd, dd) / (340.0 * 340.0));
             }
             c = c + (min(alb, vec3<f32>(0.2)) * 3.4 + 0.012) * vec3<f32>(0.72, 0.72, 1.0) * lg * 2.4;
             let al = 1.0 - exp(-den * ext * st);
@@ -2241,9 +2241,9 @@ fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv:
             let bl = step(0.75, fract(t * 1.1 + 0.5 * s));
             c = c + select(vec3<f32>(0.1, 2.0, 0.3), vec3<f32>(2.0, 0.1, 0.05), s < 0.0) * bl * show * (1.0 - hz) / (1.0 + dn / 1.5);
         }
-        let gl = exp(-pow((t - 0.45) / 0.14, 2.0));
+        let glw = exp(-pow((t - 0.45) / 0.14, 2.0));
         let star = 1.0 / (1.0 + r2 / 3.0) + 0.3 * (exp(-abs(dd.x) / 1.0) + exp(-abs(dd.y) / 1.0)) * exp(-sqrt(r2) / 22.0);
-        c = c + vec3<f32>(2.0, 1.9, 1.7) * gl * star * show;
+        c = c + vec3<f32>(2.0, 1.9, 1.7) * glw * star * show;
         // (four jets off the collar's corners fired down its barrel: dark as it falls, lit at VC_IGN with a kick, as hard
         // as it brakes, each gimballed by what the loop is turning it with (`vc_sat_att`'s .zw: they swing a tenth before
         // the body follows), out as it stops; lifting it away, a bright kick and then a long burn. The thrusters on the
