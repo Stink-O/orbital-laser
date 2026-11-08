@@ -1,6 +1,6 @@
 //! The Supervolcano's sounds: what plays when, as tools/sounds_volcano.py builds them (its notes say what each is).
 //! Everything from the vent is late by the distance (343 blocks a second); what comes through the ground, five times
-//! sooner. The one exception is the mount (2 to 17 s): all of it stops dead at the hush with the picture, wherever the
+//! sooner. The one exception is the mount (4.5 to 17 s): all of it stops dead at the hush with the picture, wherever the
 //! player is, so what plays then is on the strike's clock and ends by 17 s; the hush's own swell starts on that same
 //! tick, and it and the jolt through the ground hold the wait until the report cuts them, the blast's front (`front`)
 //! swelling over them into the report. The player may well fly in a strike this
@@ -11,24 +11,13 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use super::volcano::{VC_COLLAPSE, VC_CRACK, VC_DARK, VC_ERUPT, VC_HIT, VC_HUSH, VC_LEN, VC_LIFT, VC_LIGHT, VC_RED, VC_RING, VC_SWELL};
 use super::{Act, Plan, mh, pcg, sound_from};
 
-// ---- the beats (BEATS.md, volcano.rs's): keep in step ------------------------------------------------------------------
-const VC_HIT: f32 = 4.5;           // the satellite's beam fires (volcano.wgsl's vc_opening)
-const VC_CRACK: f32 = 6.0;
-const VC_SWELL: f32 = 7.0;
-const VC_HUSH: f32 = 17.0;
-const VC_ERUPT: f32 = 18.0;
-const VC_LIGHT: f32 = 26.0;
-const VC_DARK: f32 = 36.0;
-const VC_COLLAPSE: f32 = 50.0;
+// ---- the beats are volcano.rs's; these are the sounds' own -------------------------------------------------------------
 /// The flow comes out of the umbrella's foot about now.
 const VC_FOOT: f32 = 56.0;
-const VC_LIFT: f32 = 66.0;
-const VC_RED: f32 = 80.0;
-const VC_LEN: f32 = 88.0;
-/// Where the flow sets off from, and how high over the land its wall stands (volcano.wgsl's nose, a little more).
-const VC_RING: f64 = 280.0;
+/// How high over the land the flow's wall stands (volcano.wgsl's nose, a little more).
 const VC_WALL: f64 = 300.0;
 /// volcano.wgsl's VC_SPREAD, VC_HU.
 const VC_SPREAD: f64 = 28.0;
@@ -48,24 +37,27 @@ const VC_CUT: f32 = 0.05;
 /// front1-4's runs to the report (each file this long and then `VC_FRONT_TAIL`, going under the report's front): the
 /// longest that starts no sooner than the seism is played (tools/sounds_volcano.py's FRONTS, FRONT_TAIL).
 const VC_FRONTS: [f32; 4] = [1.6, 2.3, 3.2, 4.5];
+#[cfg(test)]
 const VC_FRONT_TAIL: f32 = 0.1;
 /// The land mass dropping, into `collapse`.
 const VC_DROP: f32 = 3.0;
 /// When `after` and `patter` start: both end at 87.8 s.
 const VC_AFTER_AT: f32 = 66.3;
 const VC_PATTER_AT: f32 = 70.3;
-/// The longest of the Hurricane's thunder files this plays (its rolls run 8 s), whistle1-3's, rockfall1-3's; crack's and
-/// the longest creak's.
+/// The longest of the lightning's files (lt_roll's and lt_rumble's 8 s), whistle1-3's, rockfall1-3's; crack's and the
+/// longest creak's.
 const VC_ROLL: f32 = 8.0;
 const VC_WHISTLES: [f32; 3] = [3.2, 4.2, 2.6];
 const VC_ROCKFALLS: [f32; 3] = [3.2, 4.0, 4.8];
 const VC_CRACK_LEN: f32 = 2.2;
-/// The satellite's sounds (tools/sounds_volcano.py's `build_sat`, "the sky sings", the take the user picked of three):
-/// `sat_sky` on the strike's clock from 0, the satellite's whole opening, and `sat_land` the shot's blow on the land, late
-/// by the distance. Their lengths (the script's SAT_SKY_D, SAT_LAND_D).
+/// The satellite's sounds (tools/sounds_volcano.py's `build_sat`, "the sky sings"): `sat_sky` on the strike's clock from
+/// 0, the satellite's whole opening, and `sat_land` the shot's blow on the land, late by the distance. Their lengths (the
+/// script's SAT_SKY_D, SAT_LAND_D).
+#[cfg(test)]
 const SAT_SKY_LEN: f32 = 12.5;
 const SAT_LAND_LEN: f32 = 6.0;
 /// `boom`'s length (the eruption's weight under the report: tools/sounds_volcano.py's BOOM_D).
+#[cfg(test)]
 const VC_BOOM_LEN: f32 = 24.0;
 const VC_CREAK_LEN: f32 = 2.4;
 
@@ -283,7 +275,7 @@ fn thunder(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], (from, to): (f32,
     }
 }
 
-/// The mount, 2 to 17 s. Most of it comes through the ground, so reaches a player a long way off: the tremor (with the
+/// The mount, from the shot to the hush (4.5 to 17 s). Most of it comes through the ground, so reaches a player a long way off: the tremor (with the
 /// land's lurches in it), and cracks, dull knocks by the time they get here. Falls of rock off its flanks and the lava
 /// fountains come by the air, dark and low; stone creaking under the feet and the steam's hiss only for one who has
 /// flown close. All of it on the strike's clock and over by the hush: not a thing rings on into it, whatever the distance.
@@ -429,8 +421,8 @@ fn front_take(ground: f32, report: f32) -> Option<usize> {
 /// The Supervolcano's sounds, on plan `p`: the vent at `vent`, the player at `me` as it fires, `s` the pass's seed (the
 /// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land.
 pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>) {
-    // ---- the satellite, 7,000 up and nearly overhead, on the strike's clock: its coming, the aim, the lock, the shot, the
-    // cut and its fading, all in `sat_sky`; the shot's blow on the land at the vent late by the distance (`sat_land`);
+    // ---- the satellite, 7,000 up and some 70 degrees up the player's sky, on the strike's clock: its coming down, the
+    // aim, the lock, the shot, the cut and its going, all in `sat_sky`; the shot's blow on the land at the vent late by the distance (`sat_land`);
     // then the mount
     play(p, 0.0, "sat_sky", 1.0, 1.0);
     p.later(VC_HIT - 0.1, move |q| {
@@ -566,8 +558,8 @@ mod tests {
             "tremor" => VC_HUSH - VC_HIT,
             "fountain" => VC_HUSH - VC_SWELL,
             "steam" => VC_HUSH - VC_CRACK,
-            n if n.starts_with("sat") && n.ends_with("_sky") => SAT_SKY_LEN,
-            n if n.starts_with("sat") && n.ends_with("_land") => SAT_LAND_LEN,
+            "sat_sky" => SAT_SKY_LEN,
+            "sat_land" => SAT_LAND_LEN,
             "boom" | "boom_far" => VC_BOOM_LEN,
             "hush" => VC_HUSH_LEN,
             "seism" => VC_SEISM_LEN,
@@ -745,7 +737,7 @@ mod tests {
         assert!(!h.iter().any(|e| ["orbital:lockon", "orbital:shutdown", "orbital:rumble", "orbital:fire"].contains(&e.1.as_str())));
     }
 
-    /// The lightning is heard with its own louder thunder (the Hurricane's), by kind for the distance, late by it.
+    /// The lightning is heard with its own thunder (the Hurricane's made louder), by kind for the distance, late by it.
     #[test]
     fn vc_sound_lightning_carries() {
         let h = heard(1000.0);

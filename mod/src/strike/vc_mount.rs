@@ -13,7 +13,7 @@
 //! What the pass reads (render.set-data, keep in step with volcano_mount.wgsl's VM_*): everything from VM_BASE, none of it
 //! the table's or the land's (volcano.rs). The columns run from the vent's less VM_HALF, every VM_STEP, x then z.
 use super::sh_land::{self, Class, MATS};
-use super::vc_lodge::{self, Lodge, Rock, RockCol, Slab, VL_BASE, VL_MAP};
+use super::vc_lodge::{self, Rock, RockCol, Slab, VL_BASE, VL_MAP};
 use super::volcano::Hf;
 use super::*;
 use std::cell::RefCell;
@@ -42,6 +42,7 @@ pub(super) const VM_BOULDS: usize = 40;
 const VM_BW: usize = 16;
 pub(super) const VM_PLATE: usize = VM_BASE + 3500;
 pub(super) const VM_PW: usize = 16;
+#[cfg(test)]
 pub(super) const VM_PLATES: usize = 164;
 /// The plates thrown at the burst: those of the rings on the dome (the others lie out on the land).
 pub(super) const VM_FLY: usize = 95;
@@ -57,9 +58,9 @@ pub(super) const VM_W2: usize = VM_W1 + VM_COLS;
 const VM_RAD: f64 = 400.0;
 /// How high it gets (the pass's vm_hgt, before the last heave).
 const VM_H: f64 = 285.0;
-/// The beats (BEATS.md).
-const VC_SWELL: f64 = 7.0;
-const VC_HUSH: f64 = 17.0;
+/// The beats (volcano.rs's).
+const VC_SWELL: f64 = super::volcano::VC_SWELL as f64;
+const VC_HUSH: f64 = super::volcano::VC_HUSH as f64;
 /// How much of each column's stack is read, the columns worked out a tick, rows to a query.
 const READ_BELOW: u32 = 12;
 const READ_ABOVE: u32 = 1;
@@ -1123,7 +1124,7 @@ fn vl_one(n: usize, m: &mut Make) -> Slab {
         plane: m.sums.plane(k),
         cols,
     };
-    let mut s = Slab::new(&rock, site, hit, n, wb.geo.seed, 0.0);
+    let mut s = Slab::new(&rock, site, hit, wb.geo.seed, 0.0);
     drop(wb);
     let gs = m.hf.borrow().at(site.x, site.z);
     let v = s.fly(gs);
@@ -1228,10 +1229,10 @@ pub(in crate::strike) mod table {
         let flights = t.iter().find(|e| e.0 == VM_FLT).unwrap().1.clone();
         o.extend(t);
         let words = (o.iter().find(|e| e.0 == VM_W0).unwrap().1.clone(), o.iter().find(|e| e.0 == VM_W2).unwrap().1.clone());
-        let lodge: vc_lodge::Shared = Rc::new(RefCell::new(Lodge::new(vc_lodge::vl_sites(seed, me), seed, true, me, [0.5, 65.0, 0.5])));
+        let lodge: vc_lodge::Shared = Rc::new(RefCell::new(vc_lodge::Lodge::new(vc_lodge::vl_sites(seed, me), seed, true, me, [0.5, 65.0, 0.5])));
         let picks = vl_pick(&w, &sums, &lodge.borrow().sites);
         let mut hf = Hf::default();
-        let cells = (super::super::volcano::VC_HN * super::super::volcano::VC_HN) as usize;
+        let cells = super::super::volcano::VC_HN * super::super::volcano::VC_HN;
         let reach = 1500.0;
         let n = super::super::volcano::VC_HN;
         hf.set(&(0..cells).map(|c| { let st = 2.0 * reach / (n - 1) as f64; Some(land(st * (c % n) as f64 - reach, st * (c / n) as f64 - reach)) }).collect::<Vec<_>>(), reach);
@@ -1470,7 +1471,7 @@ mod tests {
         [a[0] / l, a[1] / l, a[2] / l]
     }
     fn dir(k: u32) -> [f32; 3] {
-        let (a, y) = (hash01(k + 1) * 6.283, hash01(k + 101) * 1.98 - 0.99);
+        let (a, y) = (hash01(k + 1) * std::f32::consts::TAU, hash01(k + 101) * 1.98 - 0.99);
         let q = (1.0 - y * y).sqrt();
         [q * a.cos(), y, q * a.sin()]
     }

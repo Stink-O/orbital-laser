@@ -1,15 +1,16 @@
-//! The Supervolcano's plan. A small orbital laser over the vent aims a thin red beam at it and fires (VC_HIT): a
-//! white-hot beam melts a round hole through the crust and cuts out, the hole glowing on (the pass's `vc_opening`, light
-//! and sound only); then a tremor building and the mount rising round the hole. At VC_CRACK the land splits in a ring 560 across, steam jetting off it. At
-//! VC_ERUPT the ring opens: a ring of vents feeds a column that climbs to about 1,800 blocks (a dark jet low down, rough
-//! convective cauliflower higher up, overshooting at its top), lava bombs arc off it on ballistic paths (VC_BOMBS), its
-//! lightning starts (VC_LIGHT), its umbrella spreads flat across the whole sky (VC_DARK), a ripple running out through
-//! it, until the sky is dark at noon. At VC_COLLAPSE the column loses its buoyancy and falls back on itself, the land
-//! inside the ring drops, and the fall feeds a wall of ash rolling out over the land in lobes and clefts (60 blocks a
-//! second at the ring, slowing to 25: `vc_front`), which reaches a player 500 off at about 48 s. Behind it the ash lifts
-//! off the land in new clouds (VC_LIFT), ash falling out of them, until the sky thins round a blood-red sun (VC_RED) and
-//! everything is gone by VC_LEN. The story's times are in BEATS.md of the team notes; shaders/volcano.wgsl keeps its
-//! VC_* in step with these.
+//! The Supervolcano's plan. A small orbital laser satellite comes down over the vent on its jets, aims a thin red beam at
+//! it and fires (VC_HIT): a white-hot beam melts a round hole through the crust and cuts out, the hole glowing on and
+//! steaming, and the satellite lifts away (the pass's `vc_opening`, light and sound only); then a tremor building. At
+//! VC_CRACK the land splits in a ring 560 across, steam jetting off it, and from VC_SWELL the mount rises round the hole
+//! (strike/vc_mount.rs) until it stops dead at VC_HUSH. At VC_ERUPT the ring opens: a ring of vents feeds a column that
+//! climbs to about 1,800 blocks (a dark jet low down, rough convective cauliflower higher up, overshooting at its top),
+//! lava bombs arc off it on ballistic paths (VC_BOMBS), its lightning starts (VC_LIGHT), its umbrella spreads flat across
+//! the whole sky (VC_DARK), a ripple running out through it, until the sky is dark at noon. At VC_COLLAPSE the column
+//! loses its buoyancy and falls back on itself, the land inside the ring drops, and the fall feeds a wall of ash rolling
+//! out over the land in lobes and clefts (60 blocks a second at the ring, slowing to 25: `vc_front`), which reaches 500
+//! from the vent at about 54 s and a player 1,000 off at about 66 s. Behind it the ash lifts off the land in new clouds
+//! (VC_LIFT), ash falling out of them, until the sky thins round a blood-red sun (VC_RED) and everything is gone by
+//! VC_LEN.
 //!
 //! The pass reads (render.set-data, `mod_data`): the table (`vc_table`: the lava bombs from VC_BOMB, each with where it
 //! lands, solved against the land) and the land's height (from VC_HF, as the Nuke's heightfield: the flows hug it).
@@ -18,20 +19,29 @@ use super::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// The story's times (strike seconds). Keep in step with shaders/volcano.wgsl.
+/// The story's times (strike seconds), the one place they are set on the Rust side: vc_sound.rs and vc_mount.rs take
+/// theirs from here. Keep shaders/volcano.wgsl's VC_*, volcano_mount.wgsl's VM_SWELL, VM_HUSH and VM_ERUPT, and
+/// tools/sounds_volcano.py's in step with them.
 pub(super) const VC_HIT: f32 = 4.5;
 pub(super) const VC_CRACK: f32 = 6.0;
+pub(super) const VC_SWELL: f32 = 7.0;
 pub(super) const VC_HUSH: f32 = 17.0;
 pub(super) const VC_ERUPT: f32 = 18.0;
 pub(super) const VC_BOMBS: f32 = 19.0;
 pub(super) const VC_BOMBS_END: f32 = 36.0;
 pub(super) const VC_LIGHT: f32 = 26.0;
+pub(super) const VC_DARK: f32 = 36.0;
 pub(super) const VC_COLLAPSE: f32 = 50.0;
+pub(super) const VC_LIFT: f32 = 66.0;
+pub(super) const VC_RED: f32 = 80.0;
+/// The strike's length (lasers.rs's SUPERVOLCANO.length).
+pub(super) const VC_LEN: f32 = 88.0;
 /// The ring of vents' radius.
 pub(super) const VC_RING: f64 = 280.0;
 /// The vent is at least this far in front of the player, along the way they aimed.
 const VC_NEAR: f64 = 1000.0;
-/// The share of the bombs thrown to come down within 150 blocks of the player, as long as they are within this of the vent.
+/// The share of the bombs thrown to come down within 150 blocks of the player, as long as they are within
+/// VC_BOMBS_REACH of the vent.
 const VC_BOMBS_NEAR: f64 = 0.46;
 /// (those thrown before this: the player is not left under a veil of old trails as the sky goes dark)
 const VC_BOMBS_NEAR_END: f64 = 31.0;
@@ -40,8 +50,6 @@ const VC_BOMBS_REACH: f64 = 2400.0;
 const VC_KNOCK_OUT: f32 = 0.7;
 const VC_KNOCK_UP: f32 = 0.4;
 const VC_KNOCK_REACH: f32 = 1500.0;
-/// The speed of sound, blocks a second (the eruption's sound and its pressure ring).
-const VC_V: f64 = 343.0;
 
 /// The table: the bombs from VC_BOMB, VC_BW words each (when thrown, from x y z, its velocity, when it lands), sorted by
 /// when they are thrown; the land from VC_HF.
@@ -164,7 +172,7 @@ pub(super) fn vc_bombs(seed: f32, me: [f64; 3], land: &dyn Fn(f64, f64) -> f64) 
             let vy = 120.0 + 140.0 * mh(k, s, 0xb6);
             let sway = th + 0.5 * (mh(k, s, 0xb7) - 0.5);
             let mut v = [vo * sway.cos(), vy, vo * sway.sin()];
-            // (a third of them thrown at the player, wherever they stand within reach of it, coming down round them)
+            // (VC_BOMBS_NEAR of them thrown at the player, wherever they stand within reach of it, coming down round them)
             if mh(k, s, 0xb8) < VC_BOMBS_NEAR && t0 < VC_BOMBS_NEAR_END && reach > 1.0 && reach < VC_BOMBS_REACH {
                 let (a, r) = (2.0 * PI * mh(k, s, 0xb9), 35.0 + 115.0 * mh(k, s, 0xba).sqrt());
                 let (x, z) = (me[0] + r * a.cos(), me[2] + r * a.sin());
@@ -227,7 +235,7 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     let gy = f64::from(by) + 1.0;
     let rel = [me[0] - cx, me[1] - gy, me[2] - cz];
     let dist = rel[0].hypot(rel[2]);
-    let (late, sdist) = sound_from([cx, gy, cz], me);
+    let (late, _) = sound_from([cx, gy, cz], me);
     let hf: Rc<RefCell<Hf>> = Default::default();
 
     // the pass's table, on the tick after it fires
@@ -323,7 +331,6 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
         }
         p.ev.push((wall, Act::Shove { from: [cx, gy, cz], out: VC_KNOCK_OUT, up: VC_KNOCK_UP, reach: VC_KNOCK_REACH }));
     }
-    let _ = sdist;
 
     if terrain {
         super::vc_land::vc_land_plan(&mut p, laser, shader_seed as u32, hf.clone(), lodge.clone());
@@ -414,7 +421,11 @@ mod tests {
         assert!(((3.0 + e[0]).hypot(4.0 + e[1]) - VC_NEAR).abs() < 1e-6);
     }
     #[test]
-    fn its_front_reaches_500_at_about_48_s() {
+    fn its_length_is_the_lasers() {
+        assert_eq!(VC_LEN, crate::lasers::SUPERVOLCANO.length);
+    }
+    #[test]
+    fn its_front_reaches_500_four_seconds_after_the_collapse() {
         let c = 4.0;
         assert!((vc_front(c) - 500.0).abs() < 16.0, "{}", vc_front(c));
         let v0 = vc_front(0.01) - vc_front(0.0);

@@ -525,6 +525,7 @@ fn rock(kind: u8, h: f64) -> &'static str {
 }
 /// A column's face in beds from y0 up to y1: its rock `shift` blocks down from where it lay (a slumped or tilted block
 /// carries its beds down with it), the beds leaning (`lean`), their edges never straight, a bed one block over its height.
+#[allow(clippy::too_many_arguments)]
 fn beds_edit(b: &mut Blocks, s: &Shape, x: i32, z: i32, y0: i32, y1: i32, shift: i32, lean: f64) {
     let hc = pick(x * 13 + z * 7, s.seed ^ 0xc9);
     let d0 = s.gy + 30 - shift + (lean + 2.4 * hc) as i32;
@@ -936,7 +937,7 @@ fn lake_edit(b: &mut Blocks, ctx: &Ctx, x: i32, z: i32) {
     // a plate
     let big = pcg(id1 ^ 0x11);
     let small = pcg(id2 ^ 0x12);
-    let off = (big % 5) as i32 / 2 - 1 + if heat > 0.2 { (small % 3) as i32 - 1 } else { i32::from(small % 4 == 0) - i32::from(small % 5 == 0) };
+    let off = (big % 5) as i32 / 2 - 1 + if heat > 0.2 { (small % 3) as i32 - 1 } else { i32::from(small.is_multiple_of(4)) - i32::from(small.is_multiple_of(5)) };
     let top = f + off;
     let h = pick(x * 31 + z * 57, id1);
     let tone = (big >> 8) % 8;
@@ -1663,7 +1664,7 @@ mod tests {
     /// Column (x, z)'s runs on land at 64: the lowest block and the highest, and where the air over it starts.
     fn column(x: i32, z: i32) -> (i32, i32, i32) {
         let s = Shape::new(0.5, 0.5, 37, 65);
-        let mut w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false, lodge: None };
+        let w = Work { s, hf: Default::default(), cols: vec![Col { g: 64, top: 64, ..Default::default() }.pack(); (VC_GW * VC_GW) as usize], tags: Vec::new(), asked: 0, taken: 0, missing: Missing::default(), retry: None, chunks: Vec::new(), next: 0, far_tag: 0, far: Vec::new(), far_next: 0, queue: Default::default(), queued: 0, said: false, lodge: None };
         w.hf.borrow_mut().set(&vec![Some(0.0); crate::strike::volcano::VC_HN * crate::strike::volcano::VC_HN], 1500.0);
         let mut p = Plan { laser: &crate::lasers::SUPERVOLCANO, ev: Vec::new(), rng: Rng::new(7), bx: 0, by: 64, bz: 0 };
         vc_chunk(&mut p, &w, 50.0, x.div_euclid(16) * 16, z.div_euclid(16) * 16);
