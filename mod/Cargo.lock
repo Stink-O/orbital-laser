@@ -44,7 +44,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "horizon-mod-sdk"
 version = "0.1.0"
-source = "git+https://github.com/Stink-O/horizon?branch=mod-api-input-ui-render-world#50583ab5f816f21580a6102b7b1365a3667bb15a"
+source = "git+https://github.com/Stink-O/horizon?branch=mod-api-input-ui-render-world#3d7457bb08f3c1f01ee704ba501b010ede1c8246"
 dependencies = [
  "wit-bindgen",
 ]
@@ -93,7 +93,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "orbital-laser"
-version = "0.5.10"
+version = "0.5.12"
 dependencies = [
  "horizon-mod-sdk",
 ]

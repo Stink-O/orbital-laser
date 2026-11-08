@@ -24,7 +24,7 @@ body:
     attributes:
       label: Versions
       description: Orbital Laser version, Horizon launcher version (native) or fork release (fork, e.g. orbital-mod-api-11)
-      placeholder: Orbital Laser 0.5.10, launcher 0.2.37
+      placeholder: Orbital Laser 0.5.12, launcher 0.2.50
     validations:
       required: true
   - type: input

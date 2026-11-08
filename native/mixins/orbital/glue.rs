@@ -18,7 +18,7 @@ use std::sync::Mutex;
 
 pub(super) const ID: &str = "orbital";
 const NAME: &str = "Orbital Laser";
-const VERSION: &str = "0.5.10";
+const VERSION: &str = "0.5.12";
 /// The operator level of the console, which the server half runs a client's world work at (`native_run_command`).
 const CONSOLE_LEVEL: u8 = 4;
 const WORK: &str = "orbital:work";
