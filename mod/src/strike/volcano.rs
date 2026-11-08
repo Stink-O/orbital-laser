@@ -1,5 +1,6 @@
-//! The Supervolcano's plan. A hairline beam touches the land (VC_BEAM to VC_HIT) and cuts out; for ten seconds almost
-//! nothing happens but a tremor building. At VC_CRACK the land splits in a ring 560 across, steam jetting off it. At
+//! The Supervolcano's plan. A small orbital laser over the vent aims a thin red beam at it and fires (VC_HIT): a
+//! white-hot beam melts a round hole through the crust and cuts out, the hole glowing on (the pass's `vc_opening`, light
+//! and sound only); then a tremor building and the mount rising round the hole. At VC_CRACK the land splits in a ring 560 across, steam jetting off it. At
 //! VC_ERUPT the ring opens: a ring of vents feeds a column that climbs to about 1,800 blocks (a dark jet low down, rough
 //! convective cauliflower higher up, overshooting at its top), lava bombs arc off it on ballistic paths (VC_BOMBS), its
 //! lightning starts (VC_LIGHT), its umbrella spreads flat across the whole sky (VC_DARK), a ripple running out through
@@ -199,11 +200,15 @@ fn vc_bomb_words(bombs: &[Bomb]) -> Vec<u32> {
 }
 
 /// What the pass reads (see VC_BOMB): worked out on the tick after it fires, the bombs over flat land until the land's
-/// height is in.
+/// height is in; words 2 and 3 the way to the player, level (`me` from the vent).
 pub(super) fn vc_table(seed: f32, me: [f64; 3]) -> Vec<u32> {
     let mut w = vec![0u32; VC_HF];
     w[0] = 1f32.to_bits();
     w[1] = (VC_BOMBS_N as f32).to_bits();
+    // (the way to the player as it fires, level: the satellite hangs on the far side of the vent, `vc_sat`)
+    let d = me[0].hypot(me[2]).max(1.0e-3);
+    w[2] = ((me[0] / d) as f32).to_bits();
+    w[3] = ((me[2] / d) as f32).to_bits();
     let b = vc_bomb_words(&vc_bombs(seed, me, &|_, _| 0.0));
     w[VC_BOMB..VC_BOMB + b.len()].copy_from_slice(&b);
     w

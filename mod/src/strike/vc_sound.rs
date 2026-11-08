@@ -13,7 +13,7 @@ use std::rc::Rc;
 use super::{Act, Plan, mh, pcg, sound_from};
 
 // ---- the beats (BEATS.md, volcano.rs's): keep in step ------------------------------------------------------------------
-const VC_HIT: f32 = 2.0;
+const VC_HIT: f32 = 2.0;           // the satellite's beam fires (volcano.wgsl's vc_opening)
 const VC_CRACK: f32 = 6.0;
 const VC_SWELL: f32 = 7.0;
 const VC_HUSH: f32 = 17.0;
@@ -405,7 +405,8 @@ fn flow(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], drop: f32) -> Option
 /// The Supervolcano's sounds, on plan `p`: the vent at `vent`, the player at `me` as it fires, `s` the pass's seed (the
 /// lightning is the pass's own, `flashes`), `bombs` when and where (off the vent) the pass's lava bombs land.
 pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bombs: Vec<(f32, f64, f64)>) {
-    // ---- the beam: almost nothing, the tick at the hit late by the distance, then the mount
+    // ---- the satellite: its aim and charge on the strike's clock (`beam`, cut on the shot), the shot and the crust
+    // seething under it late by the distance (`tick`), then the mount
     play(p, 0.0, "beam", 1.0, 1.0);
     p.later(VC_HIT - 0.1, move |q| {
         let (late, d) = sound_from(vent, live(me));
@@ -531,7 +532,7 @@ mod tests {
             "tremor" => VC_HUSH - VC_HIT,
             "fountain" => VC_HUSH - VC_SWELL,
             "steam" => VC_HUSH - VC_CRACK,
-            "tick" => 1.6,
+            "tick" => 4.4,
             "hush" => VC_HUSH_LEN,
             "seism" => VC_SEISM_LEN,
             "after" => 21.5,

@@ -2,7 +2,7 @@
 // this file and volcano_mount.wgsl. Validate with tools/check-shader.sh.
 
 // ---- laser 14: the supervolcano ----
-// A hairline beam, the tremor, the ring cracking and steam, then one soft volume: a density falling off through a surface
+// A satellite's beam melting a hole (`vc_opening`), the tremor, the mount rising round it, then one soft volume: a density falling off through a surface
 // bulged by lumps on lumps (`vc_sdf`, sphere-traced only over empty air), lit by looks towards the light. The blast
 // (`vc_col`), the shock (`vc_shells`, `vc_dust`), rock (`vc_spray`); fire in the trunk (`vc_heat`); bombs on ropes of
 // smoke (`vc_bombs_smoke`); the umbrella over the sky, lightning in it (`vc_umb`, `vc_flash`, `vc_bolts`); noon gone dark
@@ -10,7 +10,7 @@
 // a ceiling; then a dim world and a blood-red sun as the ash thins, gone by VC_LEN.
 // strike/volcano.rs keeps its VC_* in step with these, and gives the table: the bombs, the land's height.
 const VC_LEN: f32 = 88.0;
-const VC_HIT: f32 = 2.0;           // the beam hits and cuts out
+const VC_HIT: f32 = 2.0;           // the satellite's beam fires (the opening: vc_opening)
 const VC_CRACK: f32 = 6.0;         // the ring cracks through
 const VC_ERUPT: f32 = 18.0;        // the eruption
 const VC_LIGHT: f32 = 26.0;        // the plume's lightning
@@ -1747,6 +1747,286 @@ fn vc_shells(C: vec3<f32>, rd: vec3<f32>, tend: f32, col0: vec3<f32>, l: VcLight
     return col;
 }
 
+// ---- the opening: a small orbital laser over the vent, its targeting beam, the beam, the hole it melts ----
+// The satellite hangs 1,400 up and 1,100 beyond the vent from where the player fired (table words 2 and 3: the way to
+// them), drifting along its orbit, so it is in the sky they look at. It aims a thin opaque red beam (VC_AIM), its spot
+// wandering onto the vent and locking (VC_LOCK); its emitter charges and fires (VC_HIT): a white-hot beam that melts a
+// clean round hole (VC_HR) down through the crust, cut at VC_OFF; the hole glows on, its rim cooling to crust, steam off
+// it, and the mount rises round it (its land spread by vm_rest) until the eruption comes out of it.
+const VC_AIM: f32 = 0.6;
+const VC_LOCK: f32 = 1.5;
+const VC_OFF: f32 = 4.6;
+const VC_HR: f32 = 14.0;
+const VC_SAT_END: f32 = 9.5;
+fn vc_sat() -> vec3<f32> {
+    var d = vec2<f32>(vc_w(2u), vc_w(3u));
+    if (dot(d, d) < 0.5) {
+        d = normalize(vc_me() + vec2<f32>(1.0e-3, 0.0));
+    }
+    let s = -1100.0 * d + vec2<f32>(-d.y, d.x) * 16.0 * (vs.t - 3.0);
+    return vec3<f32>(s.x, 1400.0, s.y);
+}
+// Where the targeting spot is (level, from the vent): wandering in to the vent and still from VC_LOCK.
+fn vc_spot() -> vec2<f32> {
+    let w = pow(1.0 - smoothstep(VC_AIM, VC_LOCK, vs.t), 1.5);
+    let t = vs.t;
+    return vec2<f32>(sin(t * 3.1 + 0.4) + 0.6 * sin(t * 7.3), cos(t * 2.7 + 1.3) + 0.5 * sin(t * 6.1 + 2.0)) * 26.0 * w;
+}
+// The hole's radius now, in the land's own (rest) frame, and how hot it is (1 while the beam is on, the rim cooling after).
+fn vc_hole_r() -> f32 {
+    return VC_HR * pow(smoothstep(VC_HIT, VC_HIT + 1.6, vs.t), 0.6);
+}
+// A box `h` (half sizes) round the origin of a frame, the ray o + d s in it: .x where it is met (under 0: missed), .yzw
+// the face's normal.
+fn vc_box(o: vec3<f32>, d: vec3<f32>, h: vec3<f32>) -> vec4<f32> {
+    let iv = 1.0 / select(d, vec3<f32>(1.0e-6), abs(d) < vec3<f32>(1.0e-6));
+    let t0 = (-h - o) * iv;
+    let t1 = (h - o) * iv;
+    let tn = min(t0, t1);
+    let tf = max(t0, t1);
+    let a = max(max(tn.x, tn.y), tn.z);
+    if (a > min(min(tf.x, tf.y), tf.z) || a < 0.0) {
+        return vec4<f32>(-1.0);
+    }
+    return vec4<f32>(a, -sign(d) * step(tn.yzx, tn) * step(tn.zxy, tn));
+}
+// The land, under its light: the targeting spot and its reticle, the hole (its far wall seen down it, white-hot deep in
+// it), its molten rim cooling to crust, the land round it scorched and lit by it. `q` where the ray meets the land, `o`
+// the eye (both from the vent).
+fn vc_open_land(c0: vec3<f32>, q: vec3<f32>, rd: vec3<f32>, o: vec3<f32>) -> vec3<f32> {
+    let t = vs.t;
+    var c = c0;
+    if (t < VC_AIM || t > VC_ERUPT + 0.5 || abs(q.y) > 600.0) {
+        return c;
+    }
+    if (t < VC_HIT) {
+        let e = length(q.xz - vc_spot());
+        let on = smoothstep(VC_AIM + 0.1, VC_AIM + 0.2, t);
+        if (e > 13.0) {
+            return c + c0 * vec3<f32>(1.0, 0.1, 0.05) * 1.2 * on / (1.0 + e * e / 30.0);
+        }
+        let lk = smoothstep(VC_LOCK - 0.1, VC_LOCK + 0.15, t);
+        let ring = mix(11.0, 5.5, lk);
+        let ang = atan2(q.z, q.x) + t * mix(1.5, 0.0, lk);
+        let ticks = step(0.7, fract(ang * 4.0 / TAU + 0.35)) * (1.0 - lk) + lk;
+        let blink = mix(1.0, 0.6 + 0.4 * step(0.5, fract(t * 7.0)), lk);
+        let red = vec3<f32>(1.6, 0.08, 0.04);
+        c = mix(c, red, (1.0 - smoothstep(1.4, 2.2, e)) * on);
+        c = mix(c, red, (1.0 - smoothstep(0.35, 0.8, abs(e - ring))) * ticks * on * blink);
+        c = c + c0 * vec3<f32>(1.0, 0.1, 0.05) * 1.2 * on / (1.0 + e * e / 30.0);
+        return c;
+    }
+    // (in the land's own frame: the mount spreads it as it grows)
+    var rq = q.xz;
+    if (vm.on) {
+        rq = vm_rest(rq);
+    }
+    let r = length(rq);
+    let R = vc_hole_r();
+    let fire = smoothstep(VC_HIT, VC_HIT + 0.05, t) * (1.0 - smoothstep(VC_OFF, VC_OFF + 0.1, t));
+    let cool = smoothstep(VC_OFF, VC_OFF + 5.0, t);
+    let wake = smoothstep(VC_CRACK, VC_ERUPT, t);
+    // (the light of it on the land round it: the beam's, then the hole's)
+    let lr = max(r - R, 0.0);
+    c = c + c0 * vec3<f32>(2.2, 0.75, 0.2) * (fire * 1.1 / (1.0 + lr * lr / 900.0) + (0.5 - 0.35 * cool + wake) / (1.0 + lr * lr / (R * R * 1.5 + 1.0)));
+    // (scorched round it)
+    c = c * (1.0 - 0.8 * (1.0 - smoothstep(R, 2.6 * R + 6.0, r)) * smoothstep(VC_HIT, VC_HIT + 1.5, t));
+    if (r > 1.5 * R + 5.0) {
+        return c;
+    }
+    if (r < R) {
+        // (down it: the far wall where the ray leaves the hole's round, how far under the rim; the floor past its depth)
+        let Rw = R * length(q.xz) / max(r, 1.0e-3);
+        let b = dot(o.xz, rd.xz);
+        let a2 = max(dot(rd.xz, rd.xz), 1.0e-6);
+        let s2 = (-b + sqrt(max(b * b - a2 * (dot(o.xz, o.xz) - Rw * Rw), 0.0))) / a2;
+        let dep = max(q.y - (o.y + rd.y * s2), 0.0);
+        let D = 6.0 + 150.0 * smoothstep(VC_HIT, VC_OFF, t);
+        let wx = o.xz + rd.xz * s2;
+        let n = vc_gn3(vec3<f32>(atan2(wx.y, wx.x) * 5.0, min(dep, D) * 0.06 - t * 0.5, 2.0));
+        // (orange at the lip, white-hot down it; the lip going dark as it cools, the depths staying hot)
+        var T = (0.32 + 0.9 * saturate(dep / (14.0 + 40.0 * cool)) - 0.3 * cool * (1.0 - smoothstep(0.0, 6.0, dep))) * (0.85 + 0.35 * n);
+        T = mix(T, 1.35, step(D, dep));
+        T = T * (1.0 - 0.15 * cool) + 0.25 * wake + 0.25 * fire;
+        c = vc_fire_c(T) + vec3<f32>(5.0, 4.2, 3.0) * saturate(T - 1.05) * 1.5;
+    } else {
+        // (the lip: molten, then a crust with the glow in its cracks)
+        let lip = 1.0 - smoothstep(R, 1.5 * R + 3.0, r + 1.5 * vc_gn3(vec3<f32>(rq * 0.3, 7.0)));
+        let n = vc_gn3(vec3<f32>(rq * 0.35, t * 0.2));
+        let vein = 1.0 - smoothstep(0.0, 0.08, abs(n - 0.5));
+        let T = lip * mix(0.95, 0.55 * vein + 0.12, cool) * (0.75 + 0.3 * n);
+        c = mix(c, vec3<f32>(0.04, 0.035, 0.03), lip * smoothstep(VC_HIT + 0.5, VC_OFF + 2.0, t));
+        c = c + vc_fire_c(T + 0.3 * wake * lip);
+    }
+    return c;
+}
+// The rest, over the picture (sharp, full size): the steam off the hole, the satellite, its beams, their light.
+fn vc_opening(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, uv: vec2<f32>, l: VcLight, sky: bool) -> vec3<f32> {
+    let t = vs.t;
+    var c = c0;
+    if (t > VC_ERUPT + 1.0) {
+        return c;
+    }
+    let k = intensity_v();
+    let res = frame.resolution.xy;
+    let fire = smoothstep(VC_HIT, VC_HIT + 0.05, t) * (1.0 - smoothstep(VC_OFF, VC_OFF + 0.08, t));
+    // ---- the steam off the hole: rising, leaning off with the wind, lit red from under ----
+    let age = t - VC_HIT - 0.2;
+    let H = min(30.0 + 60.0 * age, 620.0);
+    // (near it at all, the mount's height under it counted at its most)
+    let s0 = pl_ray_seg(rd, C, C + vec3<f32>(0.3 * H, H + vm.H * 1.5, 0.1 * H), 0.0, 1.0);
+    if (age > 0.0 && s0.x < 30.0 + 0.7 * (H + vm.H) + s0.y * vs.px * 3.0) {
+        let top = select(0.0, vm_height(vec2<f32>(0.0)), vm.on);
+        let base = C + vec3<f32>(0.0, top, 0.0);
+        let sg = pl_ray_seg(rd, base, base + vec3<f32>(0.3 * H, H, 0.1 * H), 0.0, 1.0);
+        let h = H * sg.z;
+        let w = max(12.0 + 0.32 * h, sg.y * vs.px * 1.5);
+        if (sg.x < 1.9 * w && sg.y < len + w) {
+            let q = rd * sg.y - C;
+            let f = vc_tube(q, base - C + vec3<f32>(0.3, 1.0, 0.1) * h, rd, l.L, w, age, 40.0);
+            let a = f.x * 0.75 * smoothstep(0.0, 1.0, age) * (1.0 - smoothstep(0.55, 1.0, sg.z)) * saturate((len - sg.y + w) / w) * (1.0 - smoothstep(VC_ERUPT - 0.5, VC_ERUPT + 0.6, t));
+            let glow = vec3<f32>(1.6, 0.45, 0.1) * exp(-h / 40.0) * (0.8 * fire + 0.3 + 0.5 * smoothstep(VC_CRACK, VC_ERUPT, t));
+            let sc = mix(vec3<f32>(0.8, 0.79, 0.78), vec3<f32>(0.3, 0.28, 0.26), smoothstep(0.1, 0.8, sg.z)) * (l.skyl * 0.5 + l.sunc * f.y * 0.7) + glow;
+            c = mix(c, sc, a * tr);
+        }
+    }
+    if (t > VC_SAT_END) {
+        return c;
+    }
+    // ---- the satellite ----
+    let S = vc_sat();
+    let ax = normalize(-S);
+    let su = normalize(cross(ax, vec3<f32>(0.0, 1.0, 0.0)));
+    let sv = cross(su, ax);
+    let P = S + C;
+    let E = P + ax * 55.0;
+    let show = smoothstep(0.0, 0.35, t) * (1.0 - smoothstep(VC_SAT_END - 2.0, VC_SAT_END, t));
+    let charge = smoothstep(VC_LOCK + 0.1, VC_HIT, t) * (1.0 - smoothstep(VC_HIT, VC_HIT + 0.1, t));
+    let tp = dot(P, rd);
+    if (tp > 0.0 && length(P - rd * tp) < 180.0 && tp < len) {
+        let tu = normalize(cross(rd, vec3<f32>(0.0, 1.0, 0.0)));
+        let tv = cross(tu, rd);
+        // (the panels turning slowly on their arms, a glint off them as they catch the sun)
+        let th = 0.5 + 0.08 * t;
+        let cs = cos(th);
+        let sn = sin(th);
+        var acc = vec3<f32>(0.0);
+        var cov = 0.0;
+        for (var i = 0; i < 4; i = i + 1) {
+            let off = (vec2<f32>(f32(i & 1), f32(i >> 1u)) - 0.5) * 0.5;
+            let r = normalize(rd + (tu * off.x + tv * off.y) * vs.px);
+            let o = vec3<f32>(dot(-P, su), dot(-P, sv), dot(-P, ax));
+            let d = vec3<f32>(dot(r, su), dot(r, sv), dot(r, ax));
+            var best = vec4<f32>(1.0e9, 0.0, 0.0, 0.0);
+            var m = -1;
+            var lp = vec3<f32>(0.0);
+            let hb = vc_box(o, d, vec3<f32>(15.0, 15.0, 33.0));
+            if (hb.x > 0.0) {
+                best = hb;
+                m = 0;
+            }
+            let he = vc_box(o - vec3<f32>(0.0, 0.0, 43.0), d, vec3<f32>(9.0, 9.0, 11.0));
+            if (he.x > 0.0 && he.x < best.x) {
+                best = he;
+                m = 2;
+            }
+            let ht = vc_box(o, d, vec3<f32>(24.0, 1.7, 1.7));
+            if (ht.x > 0.0 && ht.x < best.x) {
+                best = ht;
+                m = 0;
+            }
+            // (the panels, in their own frame, turned about the arms)
+            let rot = mat3x3<f32>(1.0, 0.0, 0.0, 0.0, cs, -sn, 0.0, sn, cs);
+            for (var s = -1.0; s < 2.0; s = s + 2.0) {
+                let hp = vc_box(rot * (o - vec3<f32>(81.0 * s, 0.0, 0.0)), rot * d, vec3<f32>(58.0, 20.0, 1.1));
+                if (hp.x > 0.0 && hp.x < best.x) {
+                    best = vec4<f32>(hp.x, transpose(rot) * hp.yzw);
+                    m = 1;
+                    lp = rot * (o + d * hp.x - vec3<f32>(81.0 * s, 0.0, 0.0));
+                }
+            }
+            if (m >= 0) {
+                let n = su * best.y + sv * best.z + ax * best.w;
+                let lo = o + d * best.x;
+                var alb = vec3<f32>(0.62, 0.46, 0.2) * (0.7 + 0.6 * hash31(floor(lo * 0.4)));
+                var sp = 1.2;
+                var glow = vec3<f32>(0.0);
+                if (m == 1) {
+                    let g = step(0.9, fract(lp.x / 5.0)) + step(0.88, fract(lp.y / 7.0));
+                    alb = mix(vec3<f32>(0.02, 0.035, 0.09), vec3<f32>(0.3), saturate(g));
+                    sp = 9.0;
+                } else if (m == 2) {
+                    alb = vec3<f32>(0.08, 0.08, 0.09);
+                    if (best.w > 0.5) {
+                        glow = mix(vec3<f32>(1.5, 0.05, 0.03) * smoothstep(VC_AIM - 0.2, VC_AIM, t), vec3<f32>(8.0, 6.0, 4.0), max(charge, fire)) * (1.0 - smoothstep(VC_OFF, VC_OFF + 0.6, t));
+                    }
+                }
+                let lit = l.skyl * 0.3 + l.sunc * max(dot(n, l.L), 0.0) + l.sunc * sp * pow(max(dot(reflect(r, n), l.L), 0.0), 40.0);
+                acc = acc + alb * lit + glow;
+                cov = cov + 0.25;
+            }
+        }
+        c = mix(c, acc / max(cov * 4.0, 1.0e-3), cov * show);
+    }
+    // (its lights, the glint as it comes into view, the emitter charging and firing)
+    let pe = project_rel(E);
+    if (pe.z > 0.0) {
+        let dd = (uv - pe.xy) * res;
+        let r2 = dot(dd, dd);
+        for (var s = -1.0; s < 2.0; s = s + 2.0) {
+            let pn = project_rel(P + su * 139.0 * s);
+            let dn = dot((uv - pn.xy) * res, (uv - pn.xy) * res);
+            let bl = step(0.75, fract(t * 1.1 + 0.5 * s));
+            c = c + select(vec3<f32>(0.1, 2.0, 0.3), vec3<f32>(2.0, 0.1, 0.05), s < 0.0) * bl * show / (1.0 + dn / 1.5);
+        }
+        let gl = exp(-pow((t - 0.45) / 0.14, 2.0));
+        let star = 1.0 / (1.0 + r2 / 3.0) + 0.3 * (exp(-abs(dd.x) / 1.0) + exp(-abs(dd.y) / 1.0)) * exp(-sqrt(r2) / 22.0);
+        c = c + vec3<f32>(2.0, 1.9, 1.7) * gl * star * show;
+        let em = charge * 1.2 + fire * (1.6 + 0.4 * sin(t * 47.0));
+        let flare = 1.0 / (1.0 + r2 / (5.0 + 18.0 * fire)) + 0.04 / (1.0 + r2 / 700.0) + 0.25 * exp(-abs(dd.y) / 1.5) * exp(-abs(dd.x) / (25.0 + 35.0 * fire));
+        c = c + vec3<f32>(3.0, 2.1, 1.3) * em * flare * k;
+    }
+    // ---- the targeting beam: thin, solid, red, lit as the thing it is ----
+    let sp = vc_spot();
+    let G = C + vec3<f32>(sp.x, vc_land(sp), sp.y);
+    if (t > VC_AIM && t < VC_HIT) {
+        let B = mix(E, G, smoothstep(VC_AIM, VC_AIM + 0.18, t));
+        let sg = pl_ray_seg(rd, E, B, 0.0, 1.0);
+        let pw = sg.y * vs.px;
+        let wv = max(1.1, 0.55 * pw);
+        if (sg.y < len + 2.0 && sg.x < wv + pw) {
+            let side = normalize(rd * sg.y - mix(E, B, sg.z) + vec3<f32>(1.0e-4));
+            let shade = 0.25 + 0.9 * max(dot(side, l.L), 0.0) * l.sun_up + 0.35;
+            let cv = saturate((wv - sg.x) / pw + 0.5) * max(1.1 / wv, 0.9);
+            c = mix(c, vec3<f32>(0.85, 0.035, 0.02) * shade, cv * tr);
+        }
+    }
+    // ---- the beam: a white-hot core in an orange sheath, coming down from the emitter in an instant, pulsing ----
+    if (fire > 0.0) {
+        let head = smoothstep(VC_HIT, VC_HIT + 0.1, t);
+        let sg = pl_ray_seg(rd, E, mix(E, C, head), 0.0, 1.0);
+        let pw = sg.y * vs.px;
+        if (sg.y < len + 1.0) {
+            let f = 0.8 + 0.35 * sin(t * 31.0 - sg.z * 40.0) * sin(t * 13.0 + sg.z * 17.0);
+            let r0 = 2.8 * (1.0 + 0.5 * exp(-(t - VC_HIT) * 4.0));
+            let rc = max(r0, 0.45 * pw);
+            let core = exp(-pow(sg.x / rc, 2.0)) * min(r0 / rc, 1.0);
+            let sheath = exp(-pow(sg.x / (rc * 2.6), 2.0)) * min(r0 / rc, 1.0);
+            let halo = 1.0 / (1.0 + pow(sg.x / 30.0, 2.0));
+            c = c + (vec3<f32>(6.0, 4.9, 3.4) * core + vec3<f32>(3.0, 0.85, 0.13) * sheath * f + vec3<f32>(0.8, 0.22, 0.04) * halo * 0.15) * fire * k;
+        }
+    }
+    // ---- the hit's light: a bloom round where it melts in, seen over what stands in front of it ----
+    let ph = project_rel(C);
+    if (ph.z > 0.0 && t > VC_HIT && t < VC_OFF + 6.0) {
+        let dd = (uv - ph.xy) * vec2<f32>(res.x / res.y, 1.0);
+        let r2 = dot(dd, dd);
+        let hot = fire * (1.0 + 0.2 * sin(t * 29.0)) + 0.06 * (1.0 - smoothstep(VC_OFF, VC_OFF + 6.0, t));
+        c = c + vec3<f32>(2.2, 0.9, 0.3) * hot * (0.5 / (1.0 + r2 * 3000.0) + 0.07 / (1.0 + r2 * 160.0) + 0.35 * exp(-abs(dd.y) * 300.0) * exp(-abs(dd.x) * 10.0) * fire) * k;
+    }
+    return c;
+}
+
 // ---- the jolt on the picture (as the Nuke's pl_jolt): the tremor building, the eruption's front, the wall arriving -
 fn vc_jolt(in: StageIn) -> StageIn {
     vc_px = in.position.xy;
@@ -1868,6 +2148,8 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
         col = vc_dim(col, qg, L, sun_up);
         // (a bolt's foot lighting the land round it)
         col = col * (1.0 + 1.6 * vc_flash_land(fl, qg, seed));
+        // (the targeting spot, the hole the beam melts)
+        col = vc_open_land(col, qg, rd, -C);
         // (the cracks, the ring's glow on the land)
         let rg = length(qg.xz);
         let vent = smoothstep(VC_CRACK, VC_ERUPT, time);
@@ -1929,18 +2211,8 @@ fn volcano(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> VcOut {
     if (stage == 1u) {
         return VcOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(cloud_t, 1.0e6), vm_chunk_near(C, rd, scene_len), vmh.id));
     }
-    // ---- the needle beam: a hairline down out of the sky, a spark where it touches ----
-    if (time < VC_HIT + 0.3) {
-        let cut = 1.0 - smoothstep(VC_HIT, VC_HIT + 0.06, time);
-        let g = vc_land(vec2<f32>(0.0));
-        let a = C + vec3<f32>(0.0, g, 0.0);
-        let sg = pl_ray_seg(rd, a, a + vec3<f32>(0.0, 30000.0, 0.0), 0.0, 1.0);
-        let w = max(sg.y * vs.px * 1.1, 0.05);
-        if (sg.y < scene_len + 4.0) {
-            let line = exp(-pow(sg.x / w, 2.0)) * smoothstep(0.0, 0.5, time) * cut;
-            col = col + vec3<f32>(2.4, 1.3, 0.8) * line * 1.8 * k;
-        }
-    }
+    // ---- the opening: the satellite, its beams, the steam off the hole ----
+    col = vc_opening(col, C, rd, scene_len, tr_here, uv, l, sky);
     // ---- the eruption: a hard ring of light round the land, the pressure ring out from it at the speed of sound ----
     if (vs.a > -0.02 && vs.a < 7.0) {
         let Rs = VC_V * vs.a + VC_RING;

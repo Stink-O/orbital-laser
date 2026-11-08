@@ -500,7 +500,7 @@ pub const HURRICANE: Laser = Laser {
 };
 
 /// The supervolcano, planned in `strike::volcano_plan` (strike/volcano.rs and vc_land.rs; the pass shaders/volcano.wgsl):
-/// a hairline beam, ten seconds of almost nothing, then the land opens in a ring, a column climbs until it blots out the
+/// a satellite's beam melting a hole, ten seconds of the land swelling round it, then the land opens in a ring, a column climbs until it blots out the
 /// sun and falls back, the ground inside the ring drops and a wall of ash rolls out over the player. The crater fields
 /// below are only what the shared tests read: what it does to the land is planned there. Its index becomes 15 once
 /// the Fold (14) is merged: keep that one line.
