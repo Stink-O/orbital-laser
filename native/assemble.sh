@@ -49,7 +49,7 @@ PY
 cat > "$E/Cargo.toml" <<'TOML'
 [package]
 name = "orbital-laser"
-version = "0.5.10"
+version = "0.5.11"
 edition = "2024"
 description = "Orbital Laser's engine for the native build: the mod's code, unchanged, on a native Horizon mod SDK."
 license = "MIT"
