@@ -238,11 +238,14 @@ struct Strike {
     hand_t: f32,
 }
 
-/// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
 /// Whether a strike tints the first-person hand (`render.set-hand-tint`). Off for now: under the Supervolcano it went
 /// far too dark in the game. The hand stays as the game draws it.
 const HAND_TINT: bool = false;
+
+/// The Rod's impact frames' looks, by rod.wgsl's RD_IF_STYLE number, and the order the wheel shows them in.
 const IMPACT_STYLES: [&str; 3] = ["blackflash", "kanada", "cinematic"];
+const IMPACT_ORDER: [u8; 3] = [1, 0, 2];
+
 /// `/orbital`'s words, as paths after it ("orbital give", "orbital terrain on"): a fork from orbital-mod-api-12 offers
 /// them as the chat fills in (a registered command with spaces in it is a path under its first word); the command
 /// itself is still `/orbital`, which gets the whole line.
@@ -288,7 +291,6 @@ fn command_paths() -> Vec<String> {
     }
     p
 }
-const IMPACT_ORDER: [u8; 3] = [1, 0, 2];
 
 /// How many looks a strike's seed picks from (1 to SEEDS).
 const SEEDS: u32 = 997;
