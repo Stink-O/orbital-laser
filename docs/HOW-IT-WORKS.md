@@ -202,6 +202,26 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   more as the bolts draw in. From 32.5 s the rain stops and the storm dies away; it ends at 42 s. It reaches 1000
   blocks.
 
+- **Supervolcano** (page four, `/orbital supervolcano`, 88 s, reaches 1000, the vent at least 1,000 blocks in front of
+  you). While the designator is held its countdown reads `BREACHING CRUST`. A small orbital laser satellite, built of
+  blocks (a gold-foiled body, white radiators, an octagonal barrel ringed by coils, roll-out solar arrays), comes down
+  a steep slant out of the sky to its station 7,000 blocks up over the vent, braking on four jets and righted by its
+  thrusters in uneven corrections (its tilt flown by a control loop, `tools/vc_sat_motion.py`), stopping at 3.4 s. It
+  unrolls its arrays, aims a red targeting beam (3.3 s, locked at 4), its coils charge and it fires at 4.5 s: a
+  white-hot beam melts a glowing hole in the crust and is cut at 7.1 s; it rolls its arrays in and lifts straight up and
+  away on its jets from 8.6 s, gone by 12. Steam rises off the hole until the eruption. The ring cracks through with
+  steam at 6 s, the mount swells round the hole from 7 s with the tremor building under it, and at 17 s it all stops
+  dead for a held breath. The eruption at 18 s: a white-out of under a second, the column up to some 1,800 by about
+  36 s, lava bombs from 19 s, lightning from 26 s, the umbrella out across the sky from 28 s and the sky dark by about
+  44 s, the collapse at 50 s, the wall of ash at 500 blocks from the vent by about 54 s and 1,000 by about 66 (60 blocks
+  a second at the ring, slowing to 25), new clouds rising off it from 66 s, the ash thinning to a blood-red sun from 80 s,
+  all gone by 88. The camera shakes with the tremor, jolts as the burst comes through the ground and again as the
+  report arrives, and shakes harder and harder as the wall of ash comes, then on and on inside it, easing as it thins;
+  with KNOCKBACK on the wall shoves you. The pass is [`mod/shaders/volcano.wgsl`](../mod/shaders/volcano.wgsl) with
+  the mount's [`volcano_mount.wgsl`](../mod/shaders/volcano_mount.wgsl); it never touches the game's time or weather.
+  Your first-person hand and what you hold, which the game draws after the pass, darken and brown with the land where
+  you stand, near black in the wall of ash, lit by the white-out and the lightning near you (the fork's
+  `render.set-hand-tint`; the native build has no hand tint yet, so there the hand stays as the game draws it).
 - **Hurricane** (page three, `/orbital hurricane`). A hurricane spun up over the target, no beam, some 3,500 blocks
   across and 450 high. While the designator is held its countdown reads `TRACKING STORM`. Over the first six seconds
   a ragged mass of towering storms gathers over the target; to about 16 s it is drawn into three trailing rain bands
@@ -372,6 +392,8 @@ and every fire within 150 blocks twice as it ends (the finale's too); those edit
 is stopped (`Act::Cleanup`). It keeps the chunks within 154 loaded while it works. All of it
 goes in through `world.edit-blocks`.
 
+The **Supervolcano** ([`strike/vc_land.rs`](../mod/src/strike/vc_land.rs)) leaves a caldera about 560 across and 90 deep: a lake of dark crust in irregular plates, thin veins of lava towards the ring's vents and a few open pools, huge blocks of the land standing in it, slumped walls in dark beds with rubble at their foot, and a jagged rim of tilted slabs on an apron of ash. Round it one sheet of ignimbrite to about 440, ponded in the low ground, thin on the ridges, streaked along the flows, with the water under it choked; past it the land fades through patches of dust to the odd patch by about 1,050, as far as the world has chunks loaded, pumice floating on the water. Trees lie charred pointing away near the sheet, then stand bare and black, then scorched and browning, then only their leaves turn. A small crater marks where each lava bomb landed. It goes in a chunk at a time behind the wall of ash, the caldera from its edge in. It force-loads the ~4,000 chunks within 576 blocks. The game's far terrain doesn't take in block changes past the render distance: from further than that the land looks untouched until you fly closer or load the world again.
+
 The **Hurricane** digs no crater: it strips the land round its eyewall, block by block as it was read
 (`world.read-columns`, out to 180), as its wind's front reaches each chunk, from 15 s in to 32 blocks and out to 150 by
 35 s. It takes the trees (logs, wood, stems, leaves, mushroom caps) and the light things people put up (fences,
@@ -412,7 +434,7 @@ going in while the falling wave still hides them.
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -420,18 +442,20 @@ going in while the falling wave still hides them.
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
+| `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's and the Supervolcano's knockback (`Act::Shove`), the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm and the Supervolcano's cloud are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
 | `/orbital colour green\|red\|amber\|blue\|violet\|white` (or `color`) | the colour the loaded ship laser's ship is lit in, kept for each (Mothership green, Downfall red by default); also the swatches beside the arrival row |
 
 To rebind **R**: **Options → Controls → Key Binds**, the *Orbital Laser* section at the bottom (or type "laser" in the
-search box).
+search box). On a native build of Horizon the key is on the mod's own page instead, as upstream keeps native mods'
+keys: **Options → Mods → Orbital Laser → Settings** (saved in `horizon-mods.txt`).
 
 ## The mod
 
@@ -456,8 +480,9 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`,
 `world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
 `orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
-`orbital-mod-api-10`) are needed too: a fork build without them won't start the mod, so 0.5.8 needs
-`orbital-mod-api-10` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+`orbital-mod-api-10`, `render.set-warp`, `render.hold-world` and `render.hold-world-within`, the Fold's, from
+`orbital-mod-api-11`, and `render.set-hand-tint`, the Supervolcano's light on the hand, from `orbital-mod-api-12`) are
+needed too: a fork build without them won't start the mod, so 0.5.12 needs `orbital-mod-api-12` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.
 
@@ -656,6 +681,22 @@ eyewall's lightning has its thunder, timed to the pass's flashes and late by the
 within about 110 blocks, a duller clap with a longer roll to 320, mostly roll further off, and a roll up in the cloud
 for a flash that strikes nothing. `--listen DIR` mixes it as the game plays it at 60, 150 and 500 blocks and carried.
 
+The Supervolcano's ([`tools/sounds_volcano.py`](../tools/sounds_volcano.py), played by
+[`strike/vc_sound.rs`](../mod/src/strike/vc_sound.rs)) come from the vent late by the distance, and what comes through
+the ground five times sooner; where you are is asked again as each part comes due, since you may fly a long way in a
+strike this long. The satellite is heard on the strike's clock from the start, as the sky singing: a vast low horn
+settling as it comes down, a second voice beating beside it from the aim and pulled into one at the lock, the shot a
+driven chord with a deep blow under it, sagging a tone as the beam is cut; the shot's blow comes back off the land late
+by the distance. Then the mount: the tremor, cracks deep in the land, rock grinding underfoot close in, rockfalls off
+its flanks, the lava fountains and the steam, all of it stopping dead at 17 s with the picture. In the wait a deep
+pressure swells, never silent; the burst comes through the ground first as a hard thump and a heave, then the blast's
+front swells over the land into one enormous report, with the Nuke's ALT blast slowed under it for weight and the
+column's roar behind it. Lava bombs whistle in and land round you if they come down close, and thump further off. The
+lightning has its own thunder, the Hurricane's made louder so it carries from kilometres off: a crack within 500 blocks,
+a clap to 1,800, a roll past that, a rumble up in the cloud. The collapse groans and the land drops with a blow; the ash
+flow rises to its hit, with trees and rock going in its front as it gets close, then a muffled roar inside it, or a far
+rush if it stops short of you; a long fading rumble and falling ash end it. `--listen DIR` mixes it as the game plays it
+from 1,000, 1,400 and 2,000 blocks and flown in to 800.
 The Tsunami's ([`tools/sounds_tsunami.py`](../tools/sounds_tsunami.py)) are 23 mono files, 2 MB, all synthesised, with no resonators in the water at all: thirty third-octave bands of independent noise, each with its own chaotic gain in decibels (slow eddies, heavy-tailed regional surges, splashes), broadband blows in which every band rises at once, and debris as noise bursts buried in the roar (Horizon
 decodes every file to mono and plays a global sound dead centre, so nothing is built stereo). A rupture and a long rumble
 from the first second; a roar in three layers that overlap into one rising wall, `roar_far` from 2.5 s, `roar_mid` 9 s
@@ -863,3 +904,84 @@ horizon-ctl launch --world MyWorld --creative --wait
 python3 strike.py --doctor              # says what's missing and how to fix it
 python3 strike.py --daemon              # hold the designator (slot 9) to fire; the remote (slot 8) picks the laser
 ```
+
+## The Fold (laser 16)
+
+Reality folded like paper, the mandala its crease pattern, the crater the scar. About 64 s, its clock starting at -4 (`strike/fold.rs` the plan and sounds,
+`strike/fold_land.rs` the land, `shaders/fold_warp.wgsl`, `shaders/fold.wgsl`, `tools/sounds_fold.py`). There is no beam. After
+the droplet, nothing is a picture of the world: every terrain vertex, the far terrain's tiles included, and every entity goes
+through the fork's world warp (`render.set-warp`), and every terrain pixel through its `world_fragment`, which knows where the
+pixel really is however far it has been thrown, so everything is anchored to the land.
+
+- **The fall** (-4 to 3 s). A bead of liquid metal falls from 3,600 blocks up, 7.4 s in all, so there is time to look up: a star, a plasma sheath, fire, a smoke rope. The sound is far off in the sky at first.
+- **The brake** (2.9-3.9 s). About a second, the force rising and falling smoothly (`fd_brake_t`), the drop squashing a little under it. The fire and the smoke carry on past it to the land.
+- **The hang and the touch** (3.9-6.2 s). It hangs, is let go at 4.5 s, falls under gravity and goes into the land at 6 s. Its smoke comes apart where it hangs, all of it together, from the stop to 15 s (`FD_GONE`).
+- **Ripples** (from 6.6 s; the warp, and its cost, begin at 5.5 s). Five rings run out, each bigger than the last.
+- **Scoring** (12 s). The rings sharpen into creases racing over the land: one crease pattern, twelve straight creases 30 degrees
+  apart, mountain and valley in turn, and five rings (FD_RINGS, 44 to 480 blocks), every line a real kink of the sheet. Across each
+  panel, by the wheel's FOLD row or `/orbital foldpattern a|b|c` (kept, the next strike's): nothing (UMBRELLA, the default), an X with
+  its middle up or down (WATERBOMB), or one diagonal, in diamonds (DIAGONAL). `tools/foldview/pattern.py` writes the tables.
+- **Folding** (19-35 s). The land lifts ring by ring and the far land curls up, slowly, faster, slowly again, into a tube round the player, the rings lying back to a mound.
+- **The boil and the drop** (32.5-40 s). The hole in the roof closes in metal: tongues crawl in from the rim, seethe as they near each other, bridge from 35.8 s and seal at about 36.85 s. A bead forms on a neck, pinches at 38.35 s and one drop falls the length of the tube to the target at 40 s: a tiny light, a small hit and a ding.
+- **The unwrap** (40.5-48.7 s). The metal lets go and the hole opens; the tube gives at 42.2 s, catches and lets go. The rings fall outermost first, banging down at 44.1, 45.2, 46.3, 47.4 and 48.7 s.
+- **The damage** (from 40 s). Nothing appears from nowhere. From the touch a wound runs out along the creases, and each bang sinks its ring, burns it and cracks it (`fw_sag`, `fw_hurt`). From each bang the old land crumbles away inward across the ring that has just landed, chunk by chunk, the real land taking its place (`fd_hold_areas`, `fw_front`), held up at the land's level.
+- **The crater falls in** (from 48.9 s). Panel by panel from the middle out, about 6 s (`fw_sunk`), the one under the player first, at the player's own speed.
+- **The fire** (49.9 s). One flash, the biggest shock through the land, debris thrown, a knockback, and fire running out from the middle to the edges: in the land itself, through the warp's pixels, with flames standing off it found by the depth, so it follows every slope (`fd_erupt`). The dust wall follows it out.
+- **The comedown.** The creases fade; the warp ends at 56.7 s, the strike at 59.7 s.
+
+Along the way, each a constant in `fold_warp.wgsl` or `fold_land.rs`: block faces near the creases show smaller copies of
+themselves, 2 by 2 to 8 by 8 (`FW_FRACTAL`); cards of
+the land are dealt along the creases (`FW_CARDS`, the warp's `copies`); hundreds of real blocks peel off the creases and fall
+upward (`FD_PEEL`); hue drifts slowly over the land like oil on water, up to about 36 degrees, strongest on the creases and the
+petals (`FW_IRID`, its strength); mobs and items ride the land through the warp.
+
+The land is a thin sheet, or it would look like the fold's caves: what lies under it is cut at the pixel (faces with next to no
+sky light, and anything under the land's cut), and doesn't swing out on a lever (its height from the land is pressed in). The
+sheet's underside is painted as rock.
+
+What stays is a scar, about 530 blocks across (`strike/fold_land.rs`): the twelve-fold terraced mandala in
+glazed terracotta and concrete, smashed: tilted, dropped and burnt plates, cracks, fissures and arcs along the creases past a
+ragged heaped rim, a shaft to bedrock, blackened land out to about 400, felled trees, ejecta rays, rubble, blocks thrown as each ring lands, fires. It reads every column to its real top and goes in as one wave
+from the middle out behind the game's hold on the terrain (`render.hold-world`, `FD_HIDDEN`): the land on screen stays as it was and each chunk is edited once. It takes its
+place a chunk at a time as the old land crumbles (`render.hold-world-within`), the last of it on the frame the last slam lands (`FD_REVEAL`). The chunks under the player go in half a
+second before that, so the ground goes from under them with the slam; a moment's resistance takes the fall.
+
+**Photosensitivity:** the Fold bends the whole world round the player for half a minute, with
+one bright flash as the fire goes out, and fast jolts as the rings land. It is a strongly distorting effect: skip it if you are sensitive to those.
+
+### Making the Fold
+
+The Fold took more work than any laser before it. Over four days it went through about 190 commits on 25 working branches,
+with 11 rounds of sound review, and almost every part of it was built more than once.
+
+- **The fall** started as a 3.4 second drop that stopped dead in one frame. It's now a 7.4 second fall you hear high in the
+  sky before you see it, with a smooth one-second brake. Seven ways of stopping were tried before that one.
+- **The fold** first closed the land into a sphere, then a reaching arm. Both were replaced by the tube with the whole world
+  on its walls. The creases started as one pattern, became three, and were tuned until the land stopped running through itself.
+- **The hole closing** was rebuilt as liquid metal boiling shut, then slowed and reworked until it bubbled and joined the way
+  it should, ending in one drop falling the length of the tube.
+- **The ending** first showed all the damage on a single frame. Now each bang shows its own ring's damage as the old land
+  crumbles away inward, which took two new pieces of the game's renderer. The finale went from a mushroom cloud to a low wall
+  of fire that follows the terrain.
+- **The sound** is all synthesised, nothing sampled. It went through 11 rounds of listening, each cue picked from several
+  different takes.
+
+Much of that iterating was done by measuring rather than by eye:
+
+- **The fold, offscreen.** `tools/foldview` runs the real world warp over real land read out of a save, from cameras anywhere,
+  and scores each version: how much the sheet stretches, where faces flip over, and where the land passes through itself. A
+  change to the creases had to bring those numbers down before it went into the game. The peak the land climbed to on the way
+  back was measured the same way and lowered until it stopped looking too tall.
+- **Contact sheets.** `tools/preview.py` renders any moments of the strike from any views in one run, and recordings of the
+  game were cut into grids of frames, so a round of changes could be seen side by side, not watched end to end. That's how a
+  smoke trail cut off at exactly 10 seconds was found, and why the fire on the land showed up as a flat sheet before it was tonguing.
+- **Every tick weighed.** The game stops a mod that uses too much of a tick, so each version was played headless through the
+  fork's `mod_soak`, which reports the worst tick (the release's is about 42% of the limit), and the mod's memory was watched
+  against its 64 MiB. A test checks that every ring's real land is in place at least a second before its bang, on six kinds
+  of land.
+- **Sound by numbers.** Cues were measured for loudness and where their energy sits. The first ending had about 60% of its
+  energy under 80 Hz, so it nearly vanished on headphones and laptop speakers. The release's has about 20% there and 65%
+  between 100 and 800 Hz. Each take's level was checked against the sounds around it, so nothing dips before a big moment.
+
+In all, the Fold is about 10,000 lines of shaders, plan, land and sound code, plus a world warp and a terrain hold added to
+the Horizon fork for it.

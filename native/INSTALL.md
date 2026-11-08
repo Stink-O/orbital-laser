@@ -1,13 +1,14 @@
-# Orbital Laser 0.5.10 on native Horizon: install
+# Orbital Laser 0.5.12 on native Horizon: install
 
-Orbital Laser 0.5.10 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
+Orbital Laser 0.5.12 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
 the game. Its code runs with full access to your computer, like any native mod, so only install it if you trust it.
 
 ## What you need
 
 - The Horizon launcher, 0.2.37 or newer ([playhorizon.dev](https://playhorizon.dev)), and a Horizon instance of its
   own (not the Orbital Laser build's game folder). Any installed release or Nightly will do: the mod is pinned to
-  upstream Horizon `e57b1d34bb0dcf6bf081c19fe6d2e7f69b60cdf4`, and the launcher builds it on that commit.
+  upstream Horizon `fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca` (the Nightly of 2026-11-08), and the launcher builds it on
+  that commit.
 - The first native build downloads the launcher's own Rust (1.99.1) and takes 20 to 30 minutes. Later builds are
   quicker. You don't need Rust installed yourself.
 
@@ -40,7 +41,7 @@ the old ones build or load beside it.
    **Native build** row pick **Release build** (`horizon-launcher settings native-profile release`): it builds more
    slowly, but the game runs noticeably faster than with the default Performance build.
 4. **The trust step (yours to run).** In the Mods page, the **Native build of {instance}** row shows **Not built** or
-   **Needs rebuild**. Press **Build**, read the red warning naming `orbital 0.5.10`, and choose
+   **Needs rebuild**. Press **Build**, read the red warning naming `orbital 0.5.12`, and choose
    **I trust these mods: build**. From a terminal, the same step is:
 
    ```bash
@@ -55,7 +56,7 @@ the old ones build or load beside it.
 
 ## Checking it worked
 
-- Options > Mods lists Orbital Laser 0.5.10.
+- Options > Mods lists Orbital Laser 0.5.12.
 - `/orbital` answers in chat, is white once typed and completes with Tab, and the wheel opens with R while you hold
   the Designator.
 - Fire one strike with terrain off first (`/orbital terrain off`). Strikes with terrain on are permanent, so only
@@ -63,6 +64,12 @@ the old ones build or load beside it.
 
 ## Known issues
 
+- **The Fold is greyed out in the wheel.** It bends the world's real geometry through two hook points Horizon has
+  merged but not given numbers yet, so a native build can't use them. It comes to the native version once they're
+  numbered. Every other laser plays.
+- **The Supervolcano doesn't darken your hand.** On the fork version the first-person hand darkens under the ash and is lit
+  by the eruption and the lightning; regular Horizon has no way to tint the hand yet, so here it stays as the game draws it.
+  The strike itself is the same.
 - **On Macs the Downfall's effects don't draw.** Apple's Metal compiler fails on its pass (the same on the Orbital
   Laser build of Horizon, [#3](https://github.com/Stink-O/orbital-laser/issues/3)): you get its land and sound, not its
   visuals. The Crystal Bloom and the Planet Killer are the next biggest passes, so the likeliest to follow.

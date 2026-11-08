@@ -422,7 +422,7 @@ fn nk_hf_step(q: &mut Plan, tag: u32, columns: Rc<Vec<(i32, i32)>>, reach: f64, 
 /// What a block is to the blast: nothing, water or lava (left alone), leaves, a log, something standing on the ground
 /// (plants, snow, fences, a shed), or the ground itself.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Kind {
+pub(super) enum Kind {
     Air,
     Fluid,
     Leaves,
@@ -431,7 +431,7 @@ enum Kind {
     Ground,
 }
 const WOODS: [&str; 9] = ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak"];
-const LOG_X: [&str; 9] = [
+pub(super) const LOG_X: [&str; 9] = [
     "minecraft:oak_log[axis=x]",
     "minecraft:spruce_log[axis=x]",
     "minecraft:birch_log[axis=x]",
@@ -442,7 +442,7 @@ const LOG_X: [&str; 9] = [
     "minecraft:cherry_log[axis=x]",
     "minecraft:pale_oak_log[axis=x]",
 ];
-const LOG_Z: [&str; 9] = [
+pub(super) const LOG_Z: [&str; 9] = [
     "minecraft:oak_log[axis=z]",
     "minecraft:spruce_log[axis=z]",
     "minecraft:birch_log[axis=z]",
@@ -490,7 +490,7 @@ fn wood_of(name: &str, suffix: &str) -> u8 {
     let n = name.strip_prefix("minecraft:").unwrap_or(name);
     n.strip_suffix(suffix).and_then(|w| WOODS.iter().position(|x| *x == w)).map_or(0, |i| i as u8)
 }
-fn kind(name: &str) -> (Kind, u8) {
+pub(super) fn kind(name: &str) -> (Kind, u8) {
     let n = name.strip_prefix("minecraft:").unwrap_or(name);
     if n.ends_with("air") {
         return (Kind::Air, 0);

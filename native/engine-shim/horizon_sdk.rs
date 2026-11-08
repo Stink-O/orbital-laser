@@ -258,6 +258,9 @@ pub mod render {
             s.post_source = None;
             s.post_params = None;
             s.post_data = None;
+            // (clearing the pass ends a hold, as the fork's clear-post does)
+            s.hold = false;
+            s.hold_areas.clear();
         });
     }
     pub fn set_data(words: &[u32]) {
@@ -272,6 +275,53 @@ pub mod render {
             let version = s.post_data.as_ref().map_or(1, |(_, v)| v + 1);
             s.post_data = Some((Arc::from(words), version));
         });
+    }
+    // The world warp and the held world (the Fold's): kept as the fork keeps them, so the mod builds, but nothing here
+    // draws them yet (`native_build::UNSUPPORTED`): the lasers that need them are greyed out in the wheel.
+    /// `render.set-warp`: the world warp's WGSL (empty: none).
+    pub fn set_warp(wgsl: &str) {
+        if wgsl.len() > super::__host::POST_SOURCE {
+            ::log::warn!("world warp over {} KiB, ignored", super::__host::POST_SOURCE >> 10);
+            return;
+        }
+        super::__host::with(|s| {
+            if wgsl.is_empty() {
+                s.warp_source = None;
+            } else if s.warp_source.as_deref() != Some(wgsl) {
+                s.warp_source = Some(Arc::from(wgsl));
+            }
+        });
+    }
+    /// `render.warp-on`: the warp on or off, round a point, with `copies` of the solid sections within `radius` of it.
+    pub fn warp_on(on: bool, x: f64, y: f64, z: f64, copies: u32, radius: f32) {
+        super::__host::with(|s| {
+            s.warp = on.then_some(super::__host::Warp { at: [x, y, z], copies: copies.min(8), radius });
+        });
+    }
+    /// `render.hold-world`: the terrain kept on screen as it is drawn while the world changes under it.
+    pub fn hold_world(on: bool) {
+        super::__host::with(|s| {
+            if !on {
+                s.hold_areas.clear();
+            }
+            s.hold = on;
+        });
+    }
+    /// `render.hold-world-within`: while held, only the sections whose middles lie in these circles (x, z, radius)
+    /// go on waiting; empty: all of them.
+    pub fn hold_world_within(areas: &[(f64, f64, f64)]) {
+        super::__host::with(|s| {
+            s.hold_areas = areas.iter().copied().filter(|(x, z, r)| x.is_finite() && z.is_finite() && r.is_finite()).collect();
+        });
+    }
+    /// `render.set-hand-tint` (the fork's API 12): the first-person hand and held item multiplied by (r, g, b), kept
+    /// until changed, 1, 1, 1 changing nothing. Kept here as the fork keeps it (each clamped to 0..8, not a number: 1),
+    /// but nothing draws it yet: upstream's renderer has no hand tint, so the hand stays as the game draws it. It is
+    /// only the light on the hand (the Supervolcano's), so it isn't in `native_build::UNSUPPORTED` and no laser waits
+    /// for it. To draw it later: upstream's `hand_drawn` hook (API 364) hands over the hand's quads once drawn.
+    pub fn set_hand_tint(r: f32, g: f32, b: f32) {
+        let c = |v: f32| if v.is_finite() { v.clamp(0.0, 8.0) } else { 1.0 };
+        super::__host::with(|s| s.hand_tint = Some([c(r), c(g), c(b)]));
     }
     pub fn shake(strength: f32, seconds: f32) {
         if strength.is_finite() && seconds.is_finite() && strength > 0.0 && seconds > 0.0 {
@@ -485,6 +535,63 @@ pub mod atlas {
     }
 }
 
+/// What this build can't do of the fork's SDK yet, and so which lasers it can't play. The mod asks `unavailable`
+/// (native/assemble.sh puts it in place of lib.rs's `native_unavailable`): the wheel shows those lasers greyed out with
+/// `NOT_YET`, they can't be loaded or fired, and `/orbital <laser>` answers `NOT_YET`. On the fork every laser plays.
+pub mod native_build {
+    /// The fork's calls this build has, so the mod builds, but doesn't carry out yet. Take one out when the glue does.
+    pub const UNSUPPORTED: &[&str] = &[
+        // (upstream's world warp, ludovic111/horizon#11955, and the glue drawing it: the fold-native branch)
+        "render.set-warp",
+        "render.warp-on",
+        // (upstream's held world, ludovic111/horizon#11956, merged; the glue holding it: the fold-native branch)
+        "render.hold-world",
+        "render.hold-world-within",
+    ];
+    /// The fork's calls a laser's strike can't do without (by its key in lasers.rs), for the lasers that need one this
+    /// build may lack: a laser with a call in UNSUPPORTED is unavailable. A new laser that needs a call this build
+    /// doesn't make: add it here with that call (and a new call to UNSUPPORTED too, with a stand-in for it above so the
+    /// mod builds).
+    pub const NEEDS: &[(&str, &[&str])] = &[
+        // the Fold: the land bent through the world warp, the crater made behind the held world
+        ("fold", &["render.set-warp", "render.warp-on", "render.hold-world", "render.hold-world-within"]),
+    ];
+    /// What the wheel, the Designator and `/orbital <laser>` say of an unavailable laser.
+    pub const NOT_YET: &str = "Not on the native build yet";
+    /// Whether this build carries out the fork's call `call` (as the fork names it: `render.set-warp`).
+    pub fn supports(call: &str) -> bool {
+        !UNSUPPORTED.contains(&call)
+    }
+    /// Why the laser `key` can't be played on this build (`NOT_YET`), or none.
+    pub fn unavailable(key: &str) -> Option<&'static str> {
+        NEEDS
+            .iter()
+            .any(|(k, calls)| *k == key && calls.iter().any(|c| !supports(c)))
+            .then_some(NOT_YET)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        #[test]
+        fn the_fold_waits_for_the_world_warp() {
+            assert_eq!(unavailable("fold"), Some(NOT_YET));
+            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "moonfall", "skybreak"] {
+                assert_eq!(unavailable(key), None, "{key}");
+            }
+            assert!(!supports("render.set-warp") && supports("render.set-post"));
+        }
+        #[test]
+        fn every_call_is_named_as_the_fork_names_it() {
+            for (key, calls) in NEEDS {
+                for c in *calls {
+                    assert!(c.split_once('.').is_some_and(|(i, f)| !i.is_empty() && !f.is_empty() && !f.contains('_')), "{key}: {c}");
+                }
+            }
+        }
+    }
+}
+
 /// `events.registration`.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Registration {
@@ -638,6 +745,14 @@ pub mod __host {
         Carry { delta: [f32; 3], turn: f32 },
     }
 
+    /// `render.warp-on`'s arguments while the warp is on.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct Warp {
+        pub at: [f64; 3],
+        pub copies: u32,
+        pub radius: f32,
+    }
+
     #[derive(Default)]
     pub struct State {
         pub name: String,
@@ -659,6 +774,12 @@ pub mod __host {
         pub columns: Vec<world::ColumnBlocks>,
         pub flying_speed: Option<f32>,
         pub atlas: Option<Atlas>,
+        pub warp_source: Option<Arc<str>>,
+        pub warp: Option<Warp>,
+        pub hold: bool,
+        pub hold_areas: Vec<(f64, f64, f64)>,
+        /// `render.set-hand-tint`'s last colour (none: never set). Kept, not drawn (see `render::set_hand_tint`).
+        pub hand_tint: Option<[f32; 3]>,
     }
 
     thread_local! {

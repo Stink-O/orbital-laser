@@ -1,6 +1,37 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0510); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0512); each release's notes are in [docs/releases](releases).
+
+## 0.5.12
+
+- **Supervolcano**, the seventeenth laser, on the wheel's fourth page and `/orbital supervolcano`. A small laser satellite
+  comes down on its jets, melts a hole through the crust and lifts away; the land swells round the hole for ten seconds,
+  then opens in a ring 560 across and a column climbs to some 1,800 blocks, blotting out the sun, its umbrella across the
+  whole sky with lightning in it. The column falls back, the ground inside the ring drops and a wall of ash rolls out over
+  the land and over you, near black, the ground shaking. It ends on a blood-red sun over a caldera about 560 across and 90
+  deep, a floor of cracked black crust and lava, its ten biggest thrown plates lodged in the land as real blocks. Its vent
+  is at least 1,000 blocks in front of you and it lasts 88 seconds. The first-person hand darkens under the ash and is lit by
+  the eruption and the lightning. **Photosensitivity:** a white-out of under a second at 18 seconds, and lightning in the
+  cloud and over the land from about 26 to 80 seconds.
+- The fork's release `orbital-mod-api-12` is needed: `render.set-hand-tint`, the hand tinted by a mod.
+- **The effects build on OpenGL and DirectX 12, not only Vulkan** ([#12](https://github.com/Stink-O/orbital-laser/issues/12)).
+  The passes no longer read the depth in a way OpenGL refuses, or write vectors at a run-time index, which DirectX 12's
+  compiler can't unroll. On the native version they draw on DirectX 12, all but the Downfall's, which that compiler still
+  can't build; on OpenGL the game's frame can't be copied yet, so the native version skips its effects there with a
+  warning in the log instead of ending the game.
+- **The native version catches up to 0.5.12**, on upstream Horizon `fdc87ae` (the 2026-11-08 Nightly): the Supervolcano
+  plays, without the darkened hand. The Fold shows greyed out in the wheel ("Not on the native build yet") until upstream
+  numbers the hook points it needs; the native build greys out any laser it can't play.
+
+## 0.5.11
+
+- **The Fold**, the sixteenth laser, on the wheel's fourth page and `/orbital fold`. No beam: a drop of liquid metal falls from high in the sky, brakes
+  over the target and goes into the land, and the land folds along twelve creases and five rings into a tube round you. The hole boils shut, one drop falls
+  to the target, and it all comes back, ring by ring, each bang showing its ring's real damage as the old land crumbles inward. Then the crater falls in and fire runs out over the land.
+  Three crease patterns: the wheel's FOLD row or `/orbital foldpattern a|b|c`.
+- The fork's release `orbital-mod-api-11` is needed: `render.set-warp` and `world_fragment`, `render.hold-world`, and `render.hold-world-within`.
+- A Windows test build of the fork version, game and mod in one zip, so far only run under Wine.
+- The native version stays at 0.5.10, without the Fold: regular Horizon doesn't have those renderer changes yet. The release carries the same 0.5.10 `orbital.hnmod`.
 
 ## 0.5.10
 
@@ -14,10 +45,11 @@ What each release of Orbital Laser added, newest first. The current release is i
   the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland and ponds left in the
   hollows. Every mob and dropped item in the swath dies; chests and the like stay. It has its own sounds and lasts 42
   seconds. **Photosensitivity:** the blow is one white flash over the whole picture, about a fifth of a second.
-- **Switching lasers doesn't hitch the game.** A laser's effects have to be built when you pick it, which can stop the
+- **Switching lasers is smoother.** A laser's effects have to be built when you pick it, which can stop the
   game for a moment, up to a few seconds the first time. On the wheel that now happens with the wheel still up, saying
   LOADING, and on the native version it happens in the background while the game keeps running, and going back to a laser is
-  instant.
+  instant. On the Orbital Laser build the pause is still there behind the wheel, and `/orbital <laser>` still stops the
+  game for it.
 - **A long stall no longer ends a strike.** If the game stopped drawing for a while (the window hidden, the machine busy)
   the mod took the jump in the world's clock for another world and ended the strike. Leaving the world still ends it.
 - **Native: world changes need operator level 4.** On a server or LAN host, a strike's world changes run at the console's

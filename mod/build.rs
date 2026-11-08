@@ -52,9 +52,16 @@ fn main() {
     let h: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_hurricane_{f}.wgsl"), passbuild::split_pass(&shader, &hu, f))).collect();
     writeln!(rs, "/// The Hurricane's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_HURRICANE: [&str; 2] = [{}];", h.join(", ")).unwrap();
+    let vc = read("volcano.wgsl") + &read("volcano_mount.wgsl");
+    let v: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_volcano_{f}.wgsl"), passbuild::split_pass(&shader, &vc, f))).collect();
+    writeln!(rs, "/// The Supervolcano's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_VOLCANO: [&str; 2] = [{}];", v.join(", ")).unwrap();
     let ts = read("tsunami.wgsl");
     let t: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_tsunami_{f}.wgsl"), passbuild::split_pass(&shader, &ts, f))).collect();
     writeln!(rs, "/// The Tsunami's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_TSUNAMI: [&str; 2] = [{}];", t.join(", ")).unwrap();
+    let fold = write("pass_fold.wgsl".into(), passbuild::own_pass(&shader, &(passbuild::warp_shared(&read("fold_warp.wgsl")) + &read("fold.wgsl"))));
+    writeln!(rs, "/// The Fold's (no half-size stage: its cost is the warp, drawn whole).").unwrap();
+    writeln!(rs, "const PASS_FOLD: &str = {fold};").unwrap();
     std::fs::write(out.join("passes.rs"), rs).unwrap();
 }

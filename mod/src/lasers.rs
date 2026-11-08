@@ -526,7 +526,60 @@ pub const TSUNAMI: Laser = Laser {
     particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 15] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI];
+/// The fold, planned in `strike::fold_plan` (strike/fold.rs; shaders/fold_warp.wgsl bends the world, shaders/fold.wgsl draws
+/// what is not the world). No beam: a liquid-metal droplet stops dead over the target and melds into the land, the land
+/// is scored, torn and folded like paper into a globe, crushed to a point, and slams back open round a mandala scar.
+pub const FOLD: Laser = Laser {
+    key: "fold",
+    index: 14,
+    title: "THE FOLD",
+    rgb: 0xC060E8,
+    blurb: "Reality folded like paper: land torn, closed to a globe, crushed, slammed back open.",
+    icon_model: "orbital:fold_icon",
+    length: 59.7,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:magenta_concrete", 1.0)],
+    bowl_floor: ("minecraft:magenta_glazed_terracotta", 0.0, "minecraft:purple_concrete"),
+    bottom: &[],
+    particle_a: "particle minecraft:end_rod {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:glow {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+/// The supervolcano, planned in `strike::volcano_plan` (strike/volcano.rs and vc_land.rs; the pass shaders/volcano.wgsl):
+/// a satellite's beam melting a hole, ten seconds of the land swelling round it, then the land opens in a ring, a column climbs until it blots out the
+/// sun and falls back, the ground inside the ring drops and a wall of ash rolls out over the player. The crater fields
+/// below are only what the shared tests read: what it does to the land is planned there.
+pub const SUPERVOLCANO: Laser = Laser {
+    key: "supervolcano",
+    index: 15,
+    title: "SUPERVOLCANO",
+    rgb: 0xFF6A1F,
+    blurb: "The crust breached: a ring of fire, a column that blots out the sun, then the wall of ash.",
+    icon_model: "orbital:supervolcano_icon",
+    length: 88.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:blackstone", 1.0)],
+    bowl_floor: ("minecraft:basalt", 0.0, "minecraft:blackstone"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:lava {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 17] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

@@ -1,0 +1,12 @@
+[package]
+name = "warpview"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+wgpu = "30.0.1"
+pollster = "0.4"
+bytemuck = { version = "1.25", features = ["derive"] }
+png = "0.18"
+[profile.release]
+opt-level = 3
+[workspace]

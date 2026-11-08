@@ -6,6 +6,9 @@ use std::f64::consts::PI;
 
 mod crystal;
 mod hu_blocks;
+mod fold;
+mod fold_land;
+pub use fold::{FD_COPIES, FD_COPY_ON, FD_COPY_R, FD_HIDDEN, FD_LEAD, fd_hold_areas, FD_STAY, FD_TETHER, FD_TETHER_ON, FD_WARP_END, FD_WARP_START, FD_PATTERNS, fd_level, fd_lie, fd_pin, fd_survey};
 mod hurricane;
 mod nuke;
 mod rod;
@@ -15,11 +18,19 @@ mod sinkhole;
 mod storm;
 mod ts_sounds;
 mod tsunami;
+mod vc_land;
+mod vc_hand;
+mod vc_lodge;
+mod vc_mount;
+mod vc_sound;
+mod volcano;
 mod vortex;
 
 /// The Hurricane's wind, for its carry of the player (carry.rs).
 pub(crate) use tsunami::{TS_DRAIN, TS_HOLD, TS_LEN, TsGeo};
 pub(crate) use hurricane::{HU_FLING, HU_R_EYE, front_t as hu_front_t, hu_repack, omega as hu_omega, spin as hu_spin};
+/// Where a Supervolcano's vent goes for a designated point (at least VC_NEAR in front of the player).
+pub(crate) use volcano::vc_vent;
 /// A number from 0 to 1 for `k`, the same every time (the carry's choice of sounds).
 pub(crate) fn hash01(k: u32) -> f64 {
     mh(k, 0x51ed, 0x77)
@@ -55,6 +66,18 @@ fn debris_big(i: usize, seed: f32) -> bool {
 
 /// Part of a plan, worked out when it is due (`Act::Later`).
 pub type Stage = Box<dyn FnOnce() -> Vec<(f32, Act)>>;
+thread_local! {
+    static CLOCK: std::cell::Cell<f32> = const { std::cell::Cell::new(0.0) };
+}
+/// The strike's clock as a tick begins (lib.rs): a stage waits its turn, so one that counts its own time falls behind it.
+pub fn set_clock(t: f32) {
+    CLOCK.with(|c| c.set(t));
+}
+fn clock() -> f32 {
+    CLOCK.with(std::cell::Cell::get)
+}
+#[cfg(test)]
+pub(crate) use vc_lodge::vl_gone_word;
 
 pub enum Act {
     Cmd(String),
@@ -92,6 +115,20 @@ pub enum Act {
     Data { index: u32, value: f32 },
     /// All of what the pass reads, from word 0 (the words past it kept): a table worked out after the strike starts.
     Table(Vec<u32>),
+    /// The light on the player's hand from now on (`HandLight`).
+    Hand(Box<dyn HandLight>),
+}
+
+/// What a strike does to the light on the player's own hand and what it holds (`render.set-hand-tint`: the game draws
+/// them after the post pass, so no pass reaches them). A plan that darkens, browns or flashes the land where the player
+/// stands gives one (`Act::Hand`) so the hand goes with it; lib.rs's `hand_frame` eases `steady` (no flicker), multiplies
+/// `quick` in on top, and puts the hand back to 1, 1, 1 as the strike ends however it ends.
+pub trait HandLight {
+    /// Each tick: whatever is dear, at strike second `t`, the player at `at` (in the world).
+    fn tick(&mut self, t: f32, at: [f64; 3]);
+    /// Each frame, at strike second `t` (between ticks): what the hand's colour is multiplied by, the steady part and the
+    /// quick part (a flash, lightning). A few hundred instructions at most: it runs every frame.
+    fn frame(&self, t: f32) -> ([f32; 3], [f32; 3]);
 }
 
 /// Blocks changed at once (`world.edit-blocks`): runs up columns, each block its own if need be.
@@ -108,6 +145,8 @@ pub struct Blocks {
     /// Blocks laid down (landing rubble, a landed tree): none goes in where the player is as it is made (lib.rs's
     /// `edit` leaves out the runs that would fill their body or the block over their head).
     pub clear_of_player: bool,
+    /// Counted as it goes in (a plate that comes down waits for all of its to be in the world before the pass lets it go).
+    pub sent: Option<std::rc::Rc<std::cell::Cell<u32>>>,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -173,7 +212,14 @@ impl Blocks {
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
         }
-        out.into_iter().map(|(k, b)| (k as f32 * 0.05, b)).collect()
+        // (they wait in the plan, and a list grown a run at a time holds up to twice its room: a big land's edits are tens of megabytes of the mod's 64)
+        out.into_iter()
+            .map(|(k, mut b)| {
+                b.runs.shrink_to_fit();
+                b.palette.shrink_to_fit();
+                (k as f32 * 0.05, b)
+            })
+            .collect()
     }
     /// The runs as the fills they stand for (for the tests and the profilers).
     #[cfg(test)]
@@ -642,11 +688,17 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     if laser.key == "supercell" {
         return storm::supercell_plan(laser, target, terrain, dimension, shader_seed, me);
     }
+    if laser.key == "fold" {
+        return fold::fold_plan(laser, target, terrain, dimension, shader_seed, me, approach);
+    }
     if laser.key == "hurricane" {
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "tsunami" {
         return tsunami::tsunami_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "supervolcano" {
+        return volcano::volcano_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "sinkhole" {
         return sinkhole::sinkhole_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4399,7 +4451,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) => {}
+                Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) | Act::Hand(_) => {}
                 Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
             }
         }
@@ -4416,7 +4468,7 @@ mod tests {
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
             // (nor the tsunami: it sweeps what stands on the land it read, under its water; strike/tsunami.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {

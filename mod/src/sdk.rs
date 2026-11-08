@@ -25,6 +25,10 @@ pub mod fake {
         /// Edits made (and their runs), commands run.
         pub edits: u64,
         pub runs: u64,
+        /// The chunks edits went into and the tick of the last, while a test asks for them (`keep_chunks`).
+        pub keep_chunks: bool,
+        pub tick: u64,
+        pub chunks: std::collections::HashMap<(i32, i32), u64>,
         pub commands: u64,
         /// The forceload commands run (the stress test loads the chunks they name a while later).
         pub forceloads: Vec<String>,
@@ -38,6 +42,9 @@ pub mod fake {
         pub holding: bool,
         /// The mod's storage (`storage`), key to value.
         pub stored: std::collections::HashMap<String, Vec<u8>>,
+        /// The hand's tint last set (`render.set-hand-tint`; none: never), and how many times it was.
+        pub hand_tint: Option<[f32; 3]>,
+        pub hand_tints: u64,
     }
     thread_local! {
         pub static FAKE: RefCell<Fake> = RefCell::new(Fake::default());
@@ -91,9 +98,20 @@ pub mod fake {
         pub use horizon_mod_sdk::render::*;
         pub fn set_post(_wgsl: &str) {}
         pub fn set_params(_params: &[f32]) {}
+        pub fn set_warp(_wgsl: &str) {}
+        pub fn warp_on(_on: bool, _x: f64, _y: f64, _z: f64, _copies: u32, _radius: f32) {}
+        pub fn hold_world(_on: bool) {}
+        pub fn hold_world_within(_areas: &[(f64, f64, f64)]) {}
         pub fn clear_post() {}
+        pub fn set_history(_on: bool) {}
         pub fn set_data(_words: &[u32]) {}
         pub fn shake(_strength: f32, _seconds: f32) {}
+        pub fn set_hand_tint(r: f32, g: f32, b: f32) {
+            super::with(|w| {
+                w.hand_tints += 1;
+                w.hand_tint = Some([r, g, b]);
+            });
+        }
     }
     /// The block sprites, as tools/hu_atlas.py describes them from the player's prepared resources (`HU_ATLAS_JSON`:
     /// for each block its sides' faces), so the tests and the preview's table use real layers; none without it.
@@ -169,6 +187,7 @@ pub mod fake {
             });
         }
         pub fn play_sound(_event: &str, _at: Option<(f64, f64, f64)>, _volume: f32, _pitch: f32) {}
+        pub fn set_flying_speed(_speed: Option<f32>) {}
         pub fn push_player(_x: f32, _y: f32, _z: f32) {
             super::with(|w| w.pushes += 1);
         }
@@ -180,6 +199,12 @@ pub mod fake {
             super::with(|w| {
                 w.edits += 1;
                 w.runs += edit.runs.len() as u64;
+                if w.keep_chunks {
+                    let tick = w.tick;
+                    for r in &edit.runs {
+                        w.chunks.insert((r.x >> 4, r.z >> 4), tick);
+                    }
+                }
             });
         }
         pub fn surface_height(tag: u32, columns: &[(i32, i32)], _heightmap: Heightmap) {

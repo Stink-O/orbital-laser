@@ -73,6 +73,10 @@ struct Shot {
     depth: Vec<f32>,
     u: Vec<f32>,
     frames: u32,
+    /// `hist=N`: the N frames before this one (every `hdt` seconds of strike time, the camera still) drawn first, each
+    /// the history of the next, for a pass with a history (the fork's `render.set-history`: binding 17)
+    hist: u32,
+    hdt: f32,
 }
 
 fn main() {
@@ -164,6 +168,15 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             }
         }
     }
+    // (`vox=2`: the land is dug where the blocks are: each column's ground is just under its highest block, the mandala
+    // crater of strike/fold.rs's fl_dump_land)
+    let mut tops: HashMap<(i32, i32), i32> = Default::default();
+    if g("vox", 0.0) > 1.5 {
+        for k in vox.keys() {
+            let e = tops.entry((k.0, k.2)).or_insert(i32::MIN);
+            *e = (*e).max(k.1);
+        }
+    }
     let (mut vlo, mut vhi) = ([i32::MAX; 3], [i32::MIN; 3]);
     for k in vox.keys() {
         let k = [k.0, k.1, k.2];
@@ -212,6 +225,9 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     // and carved deepslate, iron banded in gold and carved quartz)
     let rdpit = g("rdpit", 0.0) > 0.5 && time > 7.1;
     let ground = |x: f32, z: f32, crater: bool| {
+        if let Some(t) = tops.get(&(x.floor() as i32, z.floor() as i32)) {
+            return *t as f32 - 2.0;
+        }
         if rdpit {
             let (dx, dz) = (x - tgt[0], z - tgt[2]);
             let (fx, fz) = ((x.floor() - tgt[0].floor()), (z.floor() - tgt[2].floor()));
@@ -455,9 +471,13 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
     u.extend_from_slice(&[g("mode", 0.0), g("style", 0.0), g("reach", reach), g("colour", 0.0)]);
     // (camera_rest: none, the camera near the origin)
     u.extend_from_slice(&[0.0; 4]);
+    // (the previous frame's camera: the same, the history valid)
+    u.extend_from_slice(&view);
+    u.extend_from_slice(&proj);
+    u.extend_from_slice(&[cam[0], cam[1], cam[2], 1.0]);
 
     let _ = nk;
-    Shot { w, h, color, depth, u, frames }
+    Shot { w, h, color, depth, u, frames, hist: g("hist", 0.0) as u32, hdt: g("hdt", 0.05) }
 }
 
 async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
@@ -469,7 +489,7 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let (device, queue) = adapter
         // (as many texture layers as the GPU takes: the game's block sprite arrays hold every block texture)
         .request_device(&wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::TIMESTAMP_QUERY,
+            required_features: wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::CLEAR_TEXTURE,
             required_limits: wgpu::Limits { max_texture_array_layers: adapter.limits().max_texture_array_layers, ..Default::default() },
             ..Default::default()
         })
@@ -488,6 +508,8 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let dsrc = mk(wgpu::TextureFormat::R32Float, wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST);
     let dtex = mk(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT);
     let target = mk(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC);
+    let hist = mk(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST);
+    let hview = hist.create_view(&Default::default());
 
     // depth: written from the R32 texture through frag_depth
     let dshader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -556,6 +578,8 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
             tex_entry(6, wgpu::TextureSampleType::Float { filterable: true }),
             tex_entry(7, wgpu::TextureSampleType::Float { filterable: true }),
         ];
+    // (the history, binding 17 of a pass that asked for it: the previous frame's picture)
+    let history_entry = tex_entry(17, wgpu::TextureSampleType::Float { filterable: true });
     // (the game's block sprite arrays, as a mod with the atlas capability has them at bindings 8 and 9 (the fork's API
     // 10): $PREVIEW_ATLAS, tools/hu_atlas.py's stand-in made from the player's own resources, or one white layer)
     let atlas_entries = [
@@ -567,8 +591,8 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         },
         wgpu::BindGroupLayoutEntry { binding: 9, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
     ];
-    let main_entries: Vec<wgpu::BindGroupLayoutEntry> = entries[..6].iter().chain(&atlas_entries).cloned().collect();
-    let join_entries: Vec<wgpu::BindGroupLayoutEntry> = entries.iter().chain(&atlas_entries).cloned().collect();
+    let main_entries: Vec<wgpu::BindGroupLayoutEntry> = entries[..6].iter().chain(&atlas_entries).chain(std::iter::once(&history_entry)).cloned().collect();
+    let join_entries: Vec<wgpu::BindGroupLayoutEntry> = entries.iter().chain(&atlas_entries).chain(std::iter::once(&history_entry)).cloned().collect();
     let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &main_entries });
     let bgl_join = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &join_entries });
     let (atlas_w, atlas_layers, atlas_levels, atlas_bytes) = match std::env::var("PREVIEW_ATLAS") {
@@ -658,6 +682,7 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         wgpu::BindGroupEntry { binding: 5, resource: dbuf.as_entire_binding() },
         wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&atlas_view) },
         wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::Sampler(&atlas_sampler) },
+        wgpu::BindGroupEntry { binding: 17, resource: wgpu::BindingResource::TextureView(&hview) },
     ];
     let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl, entries: &bentries });
     bentries.push(wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&halves[0]) });
@@ -718,6 +743,31 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
         queue.submit([enc.finish()]);
     }
 
+    // (the history: the frames before this one, each drawn with the one before it as its history; the first has none)
+    if sh.hist > 0 {
+        let mut u = sh.u.clone();
+        let clock = u[91];
+        // (a clear history)
+        let mut enc = device.create_command_encoder(&Default::default());
+        enc.clear_texture(&hist, &Default::default());
+        queue.submit([enc.finish()]);
+        for k in (1..=sh.hist).rev() {
+            u[91] = clock - k as f32 * sh.hdt;
+            u[143] = if k == sh.hist { 0.0 } else { 1.0 };
+            queue.write_buffer(&ubuf, 0, bytemuck::cast_slice(&u));
+            let mut enc = device.create_command_encoder(&Default::default());
+            {
+                let at = Some(wgpu::RenderPassColorAttachment { view: &tview, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } });
+                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor { label: None, color_attachments: &[at], ..Default::default() });
+                pass.set_pipeline(&pipe);
+                pass.set_bind_group(0, &bg, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            enc.copy_texture_to_texture(target.as_image_copy(), hist.as_image_copy(), size);
+            queue.submit([enc.finish()]);
+        }
+        queue.write_buffer(&ubuf, 0, bytemuck::cast_slice(&sh.u));
+    }
     let mut times = Vec::new();
     // (timing: the GPU's clocks brought up first, so the first shot's numbers are not a cold card's)
     let draws = sh.frames.max(1) + if warm { 40 } else { 0 };
