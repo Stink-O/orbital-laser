@@ -98,6 +98,8 @@ crust and lava. It's on the wheel's fourth page and `/orbital supervolcano`, and
   them there yet (the game's frame can't be copied), so it skips them with a warning in the log: use Vulkan or DirectX 12.
 - **The native version catches up**: 0.5.12 with the Supervolcano, on a newer Horizon. The Fold shows greyed out there
   until regular Horizon numbers the hook points it needs.
+- **The fork's chat knows `/orbital`**: it's no longer marked as an unknown command, and it fills in its words as you type
+  (the fork's `orbital-mod-api-12`; the native version already did).
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -463,7 +465,10 @@ Orbital Laser → Settings**).
 ## Known gaps
 
 - **The fork version needs a Horizon fork**. Its ready-built download is for Linux x86-64, with a Windows test build that hasn't been run on real Windows yet. The native version runs on regular Horizon; the Fold is greyed out there
-  until regular Horizon numbers the hook points it needs, and the Supervolcano doesn't darken your hand there.
+  until regular Horizon numbers the hook points it needs.
+- **QUALITY FULL is heavy during the Supervolcano**: about 50 ms a frame at 1080p, against about 17 ms on FAST (the default).
+- **On the fork version, picking a laser can stop the game for a moment** while its effects are built (up to a few seconds
+  the first time, behind the wheel's LOADING). The native version builds them in the background.
 - **On the fork version, a strike's sounds can run on over the title screen** after Save and Quit to Title, until they end: the game doesn't stop them. It needs a fix in Horizon itself.
 - **Tested on Linux.** Reported working on Windows 11 by a user (the fork built from source, `--features mods`).
 - **macOS (Apple Silicon): the Downfall's effects may not draw.** Apple's Metal shader compiler fails on its effects

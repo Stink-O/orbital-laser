@@ -219,9 +219,9 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   report arrives, and shakes harder and harder as the wall of ash comes, then on and on inside it, easing as it thins;
   with KNOCKBACK on the wall shoves you. The pass is [`mod/shaders/volcano.wgsl`](../mod/shaders/volcano.wgsl) with
   the mount's [`volcano_mount.wgsl`](../mod/shaders/volcano_mount.wgsl); it never touches the game's time or weather.
-  Your first-person hand and what you hold, which the game draws after the pass, darken and brown with the land where
-  you stand, near black in the wall of ash, lit by the white-out and the lightning near you (the fork's
-  `render.set-hand-tint`; the native build has no hand tint yet, so there the hand stays as the game draws it).
+  The hand tint that darkened your first-person hand with the land (the fork's `render.set-hand-tint`, `HAND_TINT` in
+  lib.rs) is off for now: it went far too dark in the game, so the hand stays as the game draws it on both builds.
+  QUALITY FULL costs about 50 ms a frame at 1080p during it, FAST about 17.
 - **Hurricane** (page three, `/orbital hurricane`). A hurricane spun up over the target, no beam, some 3,500 blocks
   across and 450 high. While the designator is held its countdown reads `TRACKING STORM`. Over the first six seconds
   a ragged mass of towering storms gathers over the target; to about 16 s it is drawn into three trailing rain bands
@@ -481,7 +481,7 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
 `orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
 `orbital-mod-api-10`, `render.set-warp`, `render.hold-world` and `render.hold-world-within`, the Fold's, from
-`orbital-mod-api-11`, and `render.set-hand-tint`, the Supervolcano's light on the hand, from `orbital-mod-api-12`) are
+`orbital-mod-api-11`, and `render.set-hand-tint` and the chat's tree of mod commands from `orbital-mod-api-12`) are
 needed too: a fork build without them won't start the mod, so 0.5.12 needs `orbital-mod-api-12` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.

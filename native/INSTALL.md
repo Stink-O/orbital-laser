@@ -67,9 +67,6 @@ the old ones build or load beside it.
 - **The Fold is greyed out in the wheel.** It bends the world's real geometry through two hook points Horizon has
   merged but not given numbers yet, so a native build can't use them. It comes to the native version once they're
   numbered. Every other laser plays.
-- **The Supervolcano doesn't darken your hand.** On the fork version the first-person hand darkens under the ash and is lit
-  by the eruption and the lightning; regular Horizon has no way to tint the hand yet, so here it stays as the game draws it.
-  The strike itself is the same.
 - **On Macs the Downfall's effects don't draw.** Apple's Metal compiler fails on its pass (the same on the Orbital
   Laser build of Horizon, [#3](https://github.com/Stink-O/orbital-laser/issues/3)): you get its land and sound, not its
   visuals. The Crystal Bloom and the Planet Killer are the next biggest passes, so the likeliest to follow.
