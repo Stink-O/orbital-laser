@@ -258,7 +258,8 @@ laser, command, capability and timing). This file is the short, factual version 
   the lightning near them: `strike/vc_hand.rs`, a `HandLight` its plan gives as `Act::Hand`, mirroring `vc_dim`,
   `vc_flow`'s depth past the front and `vc_sound::flash`, worked out a tick at a time and eased each frame by lib.rs's
   `hand_frame` through the fork's `render.set-hand-tint`, given back as 1, 1, 1 when the strike ends, is stopped or the
-  player leaves; keep it in step with the pass), the collapse at 50 s (`VC_COLLAPSE`; the lumps slow,
+  player leaves; keep it in step with the pass; OFF for now, `HAND_TINT = false` in lib.rs, as it went far too dark in
+  the game, its test ignored), the collapse at 50 s (`VC_COLLAPSE`; the lumps slow,
   stop and fall back, `up`, the top of what stands falling, `Hb`), the wall of ash from the ring (`vc_flow`, `vc_front`:
   60 blocks a second slowing to 25, at 500 from the vent by about 54 s and 1,000 by about 66, looked up round the vent
   so its lumps travel with it without smearing, `vc_lump_flow`, the lattice wrapped round the circle; its base lifting
@@ -375,8 +376,9 @@ laser, command, capability and timing). This file is the short, factual version 
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-12` or newer (it adds
-  `render.set-hand-tint`, the hand and held item tinted each frame, which the Supervolcano dims with the land; any
-  laser's plan can feed it a `HandLight`; `orbital-mod-api-11` added `render.set-warp`, `render.hold-world` and
+  `render.set-hand-tint`, the hand and held item tinted each frame, which the Supervolcano dims with the land when
+  `HAND_TINT` is on (off for now); any laser's plan can feed it a `HandLight`; and the chat's tree of mod commands, a
+  registered name with spaces a path of words: `command_paths` in lib.rs registers `/orbital`'s; `orbital-mod-api-11` added `render.set-warp`, `render.hold-world` and
   `render.hold-world-within`, the Fold's; `orbital-mod-api-10` the `atlas` capability, the game's block textures in a
   post pass, which the Hurricane draws its flying blocks with;
   `world.carry-player`, the Hurricane's carry; and `game.player-flying`; `orbital-mod-api-9` skips a post pass the
@@ -498,7 +500,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   build lacks gets a stand-in in the shim so the mod builds: `native_build::UNSUPPORTED` lists the ones a laser can't do
   without and `NEEDS` which laser needs them, and such a laser is greyed out in the wheel (none at the moment: the Fold's
   `world_warp` and `world_hold` hooks are stamped upstream). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
-  no hand tint), so on native the Supervolcano plays with the hand as the game draws it. Check a bundle with
+  no hand tint). The glue ignores the mod's `Registration` (its command paths included): it runs every line starting
+  with `/orbital` and puts only its own `USAGES` in the server's command tree. Check a bundle with
   `horizon-mixins apply` and `cargo check -p horizon-client` on its pin and on the newest Nightly (the registry's check).
   The native prelude (`engine-shim/mod_post.wgsl`) binds the depth as a float texture: read it through `depth_at`, never
   `textureLoad`, and never name a WGSL local `gl` twice (naga's GLSL makes the second `gl_1`, a name OpenGL reserves).
