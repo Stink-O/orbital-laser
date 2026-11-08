@@ -23,11 +23,18 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   steam       6        the cracks' steam: a hiss (only within ~900 blocks); stops dead at 17 s
                        (every file above ends by 17 s, whatever the distance: the mount stops dead with the picture)
   hush        17       on the strike's clock, on the tremor's last sample: the busy rolling gone at once, in its place a
-                       deep pressure swelling (a sub climbing, the rock's groan drawn on up, the ground straining), never
+                       deep pressure swelling (a sub climbing, the rock's groan drawn on up, the ground straining) to its
+                       height as the ground's answer comes, then easing back a little under it and the front; never
                        silent, nothing quick in it; cut by the report (a stopsound), long enough for one from 3,000 blocks
-  seism       18 + d/1715 the burst through the ground, the Payload's `ground` made bigger: a deep thump under the feet,
-                       the ground shuddering, and the air all round shaken with it, a dark boom rolling off round the land;
-                       then the ground going on shaking under the hush, building; cut by the report with the hush
+  seism       18 + d/1715 the burst through the ground, the Payload's `ground` made far heavier: a deep hard thump under
+                       the feet with a punch in the low mids, the shear's bigger heave 0.4 s on with the ground shuddering,
+                       the air all round shaken with it (a dark boom rolling off round the land), then the surface waves
+                       rolling on under the feet in slow swells; cut by the report with the hush
+  front1-4    ending on the report, from no sooner than the seism (the longest of 1.6, 2.3, 3.2, 4.5 s that fits): the
+                       blast's front coming over the land, heard before it, all the land between booming up as the ground
+                       carries the burst out: a deep roll rising, the pressure's sub climbing, a dark roar opening up from
+                       the 400s to over a kilohertz and a half, the air ahead of the front rushing in its last half second,
+                       its top drawn in for the last tenth under the sub, and the report slams in; the longer takes darker
   report      18 + late one enormous report, the Payload's blasts' big brother: its front a blow that slams (`impact`,
                        `slam`, the air sucked back after it: `gapped`), a deep boom falling from the 80s into the 20s
                        and lasting, the vent heaving behind it, a heavy roar holding for seconds, all of it overloading
@@ -93,7 +100,7 @@ import hu_foley as F
 
 TH = "supervolcano"
 ROOT = Path(__file__).resolve().parent.parent
-VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3,
+VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3, "front": 4,
             "flow_rise": 3, "flow_in": 3, "splinter": 3, "grind": 2}
 SINGLE = ["beam", "fire", "tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "boom", "boom_far", "report_sub", "plate_sub", "column", "column_far",
           "collapse", "collapse_far", "flow_far", "flow_hit", "after", "patter"]
@@ -103,7 +110,7 @@ GONE = ["tick"] + [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in r
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
 LEVEL = {"tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
-         "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "boom": -4.5, "boom_far": -5.5, "report_sub": -10.0, "column": -13.0, "column_far": -12.0,
+         "hush": -15.5, "seism": -9.0, "front": -8.5, "report": -5.0, "report_far": -5.0, "boom": -4.5, "boom_far": -5.5, "report_sub": -10.0, "column": -13.0, "column_far": -12.0,
          "whistle": -16.0, "thud": -9.5, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
@@ -123,6 +130,8 @@ INS = (14.0, 9.0, 5.0)     # (flow_in's lengths: vc_sound.rs's VC_INS)
 ROCKFALLS = (3.2, 4.0, 4.8)  # (rockfall's lengths: vc_sound.rs's VC_ROCKFALLS)
 AFTER_D, PATTER_D = 21.5, 17.5  # (`after`'s and `patter`'s lengths: each ends at 87.8 s, vc_sound.rs's VC_AFTER_AT, VC_PATTER_AT)
 HUSH_D, SEISM_D = 12.0, 10.0    # (`hush`'s and `seism`'s lengths: both cut by the report, vc_sound.rs's VC_HUSH_LEN, VC_SEISM_LEN)
+FRONTS = (1.6, 2.3, 3.2, 4.5)   # (front1-4's runs to the report: vc_sound.rs's VC_FRONTS)
+FRONT_TAIL = 0.1                # (and what's left of each after it, going under the report's front: VC_FRONT_TAIL)
 REPORT_SUB_D = 9.0         # (`report_sub`'s length: nothing cuts it, here or at the collapse, where it's played at 0.8)
 
 
@@ -600,7 +609,9 @@ def held(y, sec=0.4):
 def build_hush():
     """The hush (17 s, on the strike's clock, the moment the tremor stops dead, until the report, which cuts it: vc_sound.rs's
     stopsound): the land's rolling, its lurches and its cracks gone at once, and in their place a deep pressure held under
-    everything and swelling, so the wait is tension and never silence. A sub climbing slowly, the rock's groan under load
+    everything and swelling to the ground's answer (1.5-2.6 s in, as the seism comes from 800 to 1,500 blocks), then easing
+    back a few dB under it and the blast's front (`front`), which take the climb on, so the wait is tension and never
+    silence. A sub climbing slowly, the rock's groan under load
     drawn on up past where the tremor left it, the ground straining under it. Every movement in it slow: nothing grainy,
     nothing quick, no hiss. It starts well under where the tremor stopped (the cut-off still reads), and long enough for a
     report heard from 3,000 blocks."""
@@ -621,62 +632,142 @@ def build_hush():
              + press * db_curve(t, [(0, -10), (1.5, -8), (5, -6), (d, -5)])
              + groan * db_curve(t, [(0, -9), (0.4, -5), (2.0, -1), (4.0, 1.5), (7, 2.5), (d, 3)])
              + strain * db_curve(t, [(0, -18), (0.8, -13), (3, -9), (6, -7), (d, -6)]))
-        # (a held pressure, climbing: its level over time set outright (a slow leveller over its noise's lumps), so no one
-        # swell of its own stands out of the climb, and it is never further under its peak than this at the cut)
+        # (a held pressure: its level over time set outright (a slow leveller over its noise's lumps), so no one swell of its
+        # own stands out; at its height as the seism comes, then let back 2-3 dB so the front's swell is the climb heard)
         lvl = np.sqrt(ease(x ** 2, 0.7))
-        x = x / (lvl + 1e-9 * lvl.max()) * db_curve(t, [(0, -7), (0.5, -6), (2.0, -4.5), (4.0, -2), (7.0, -0.5), (d, 0)])
+        x = x / (lvl + 1e-9 * lvl.max()) * db_curve(t, [(0, -1.5), (0.6, -1), (1.5, 0), (2.6, 0), (4.0, -2), (7.0, -3), (d, -3)])
         x = lows_heard(x, 50, 260, -7.0)
         x = PB.causal_lowcut(x, 13.0) * T.fade(n, 0.03, 2.5)
     write("hush", x)
 
 
+def lowpass_by(x, fc_of):
+    """`x` through a lowpass whose cutoff at each moment is `fc_of(seconds)` Hz (frame by frame, overlap-added)."""
+    n = len(x)
+    size, hop = 4096, 1024
+    win = np.hanning(size)
+    out = np.zeros(n + size)
+    norm = np.zeros(n + size)
+    xp = np.concatenate([x, np.zeros(size)])
+    freqs = np.fft.rfftfreq(size, 1 / SR)
+    for start in range(0, n, hop):
+        g = 1 / (1 + (freqs / fc_of((start + size / 2) / SR)) ** 4)
+        out[start:start + size] += np.fft.irfft(np.fft.rfft(xp[start:start + size] * win) * g, size) * win
+        norm[start:start + size] += win ** 2
+    return out[:n] / np.maximum(norm[:n], 1e-3)
+
+
+def driven(x, db):
+    """`x` driven `db` dB into a soft clip and brought back to its own loudness: its peaks rounded, its harmonics up, so
+    a blow is heavy on any speaker. Light: a little grit for power, never fuzz."""
+    c = np.percentile(np.abs(x), 99.5) + 1e-12
+    y = np.tanh(x / c * 10 ** (db / 20)) * c
+    return y * (T.loudest(x) / (T.loudest(y) + 1e-12))
+
+
 def build_seism():
-    """The burst, through the ground: it gets here before the air does (18 s + d / 1715). Built as the Payload's `ground`
-    is (its thump through the land, coupled with the air it shakes), only bigger and longer: a deep thump under the feet
-    rising over a few tens of ms (felt more than heard, its 30 Hz as heavy as its 60), a little body over it, the ground
-    shuddering as the surface wave goes under (twice, the second smaller), a low-mid rumble lingering; and with it the
-    air all round shaken by the land, a broad dark boom coming up out of the ground and rolling off round the land in a
-    long reverberation, low rolls in it. Then the ground going on shaking under the hush, building, until the report
-    cuts it (vc_sound.rs's stopsound). Long enough for a report heard from 3,000 blocks."""
+    """The burst, through the ground: it gets here before the air does (18 s + d / 1715), and it is a supervolcano going
+    off under the land. The Payload's `ground` (its thump through the earth, felt more than heard, with a jolt) made far
+    heavier and longer, with a body: the first wave a deep hard thump under the feet (a falling low tone and a burst of
+    low noise rising in 20 ms, its 30 Hz as heavy as its 60, a punch at 80-400 Hz for the chest and a dull blow of the
+    ground's face over it, all of it driven a little, so its weight is heard on any speaker); the second wave (the
+    shear, 0.42 s on) a bigger heave, the ground lurching, a low-mid shudder rattling through it; then the surface
+    waves rolling under the feet in slow swells, each crest shuddering, rolling on and on. With it the air all round
+    shaken by the land: a broad dark boom coming up out of the ground and rolling off round the land, long, low rolls in
+    it. The roll holds on under the hush and the blast's front (`front`) until the report cuts it (vc_sound.rs's
+    stopsound), never falling away. Long enough for a report heard from 3,000 blocks."""
     d = SEISM_D
     n = n_of(d)
     t = times(d)
     t0 = LEAD
     u = np.maximum(t - t0, 0)
     on = t >= t0
-    with PB.seeded(61472):
-        # ---- through the ground: the thump (a falling low tone dying in a few swings, low noise on it, the sub under it)
-        th = soundlib.thump(n, t0, 50.0, 23.0, 0.2, 5.0) * (1 - np.exp(-u / 0.025)) * on
-        th += T.unit(F.cband(white(d), 20, 100, 2)) * (1 - np.exp(-u / 0.02)) * np.exp(-u / 0.13) * on * 0.5
-        th += T.unit(F.cband(white(d), 16, 42, 2)) * (1 - np.exp(-u / 0.018)) * np.exp(-u / 0.26) * on * 0.55
-        body = T.unit(F.cband(white(d), 90, 350, 2)) * (1 - np.exp(-u / 0.01)) * np.exp(-u / 0.1) * on
-        # (the ground shuddering as the surface wave goes under: a dull low-mid flutter, twice)
-        shud = np.zeros(n)
-        for t2, g in ((t0 + 0.38, 1.0), (t0 + 1.05, 0.5)):
-            env = np.exp(-0.5 * ((t - t2 - 0.08) / 0.09) ** 2)
-            flut = np.clip(1 + 0.8 * PB.slow_random(n, 9.0, 22.0), 0.1, None)
-            shud += T.unit(F.cband(white(d), 80, 650, 2)) * env * flut * g
-        lm = T.unit(F.cband(white(d), 60, 300, 2)) * (1 - np.exp(-u / 0.03)) * np.exp(-u / 0.5) * on * boil(n, 2.0, 9.0, 2.0)
-        ground = th + body * 0.25 + shud * 0.2 + lm * 0.18
+    with PB.seeded(61473):
+        # ---- the first wave: the thump (a falling low tone dying in a few swings, low noise on it, the sub under it), the
+        # punch of it in the chest and the ground's face struck, dull, over it
+        th = soundlib.thump(n, t0, 60.0, 24.0, 0.3, 4.5) * (1 - np.exp(-u / 0.02)) * on
+        th += T.unit(F.cband(white(d), 20, 100, 2)) * (1 - np.exp(-u / 0.018)) * np.exp(-u / 0.2) * on * 0.6
+        th += T.unit(F.cband(white(d), 16, 42, 2)) * (1 - np.exp(-u / 0.016)) * np.exp(-u / 0.4) * on * 0.7
+        punch = T.unit(F.cband(white(d), 80, 400, 2)) * (1 - np.exp(-u / 0.006)) * np.exp(-u / 0.11) * on
+        face = T.unit(F.cband(white(d), 300, 950, 2)) * (1 - np.exp(-u / 0.004)) * np.exp(-u / 0.05) * on
+        first = th + punch * 0.55 + face * 0.12
+        # ---- the second wave, the shear: a bigger heave, the ground lurching, rattling with a low-mid shudder
+        t2 = t0 + 0.42
+        u2 = np.maximum(t - t2, 0)
+        on2 = t >= t2
+        hv = soundlib.thump(n, t2, 48.0, 21.0, 0.45, 3.5) * (1 - np.exp(-u2 / 0.04)) * on2
+        hv += T.unit(F.cband(white(d), 18, 90, 2)) * (1 - np.exp(-u2 / 0.035)) * np.exp(-u2 / 0.42) * on2 * 0.75
+        hv += T.unit(F.cband(white(d), 70, 320, 2)) * (1 - np.exp(-u2 / 0.02)) * np.exp(-u2 / 0.22) * on2 * 0.4
+        flut = np.clip(1 + 0.75 * PB.slow_random(n, 8.0, 20.0), 0.1, None)
+        shud = T.unit(F.cband(white(d), 80, 700, 2)) * flut * np.exp(-0.5 * ((t - t2 - 0.12) / 0.14) ** 2) * 0.32
+        second = hv * 1.15 + shud
+        ground = driven(first + second, 5.0)
         ref = T.loudest(ground)
+        # ---- the surface waves: the land rolling under the feet in slow swells (a little under a second apart, uneven),
+        # each crest shuddering in the low mids, from 0.6 s on and holding, rolling on under the wait
+        sw = heaves(d, 0.85, 0.35, 0.18, 0.5, tail=0.35, t0=t0 + 0.65)
+        swell = np.clip(sw / (np.percentile(sw, 95) + 1e-9), 0, 1.6)
+        roll = T.unit(F.cband(white(d), 18, 75, 2)) * (0.6 + 0.7 * swell) * boiled(n, 0.3, 1.5, 2.0)
+        body = eddies(d, 60.0, 420.0, per_oct=2.0, slope=-3.0, turns=30.0, depth=2.5) * (0.4 + 0.8 * swell)
+        crest = T.unit(F.cband(white(d), 90, 650, 2)) * np.clip(1 + 0.7 * PB.slow_random(n, 7.0, 18.0), 0.1, None) * swell ** 2
+        rolling = (roll + body * 0.55 + crest * 0.18) * np.clip((u - 0.5) / 0.6, 0, 1) * on
+        rolling = rolling / (np.sqrt(np.mean(rolling[n_of(1.5):n_of(4.0)] ** 2)) + 1e-12) * ref * db_curve(t, [(0, -7.5), (1.5, -7.5), (4.0, -7), (d, -6.5)])
         # ---- in the air: the land shaking the air all round, a broad dark boom coming up out of the ground and rolling
         # off round the land
-        src = (T.unit(F.cband(white(d), 45, 1200, 2)) * (1 - np.exp(-u / 0.035)) * np.exp(-u / 0.16) * on
-               + F.cband(th, None, 140, 2) / (np.abs(th).max() + 1e-9) * 0.8)
-        air_ = conv(src, T.outdoor_ir(4.5, 47, density=30.0, darken=(1600, 140), decay=1.6))
-        air_ = air_ * (1 - np.exp(-u / 0.12))
-        rl, rr = PB.thunder_rolls(d, t0 + 0.2, count=8, length=4.0)
+        src = (T.unit(F.cband(white(d), 40, 1100, 2)) * (1 - np.exp(-u / 0.03)) * np.exp(-u / 0.2) * on
+               + F.cband(th + hv, None, 160, 2) / (np.abs(th + hv).max() + 1e-9) * 0.9)
+        air_ = conv(src, T.outdoor_ir(4.5, 47, density=30.0, darken=(1400, 130), decay=1.1))
+        air_ = air_ * (1 - np.exp(-u / 0.1))
+        rl, rr = PB.thunder_rolls(d, t0 + 0.25, count=10, length=5.0)
         rolls = (rl + rr) / 2
-        boom = air_ / (np.sqrt(np.mean(air_[n_of(t0):n_of(t0 + 1.0)] ** 2)) + 1e-12) * ref * db_of(-7.0)
+        boom = air_ / (np.sqrt(np.mean(air_[n_of(t0):n_of(t0 + 1.0)] ** 2)) + 1e-12) * ref * db_of(-4.0)
         boom += rolls / (T.loudest(rolls) + 1e-12) * ref * db_of(-14.0)
-        # ---- the ground going on shaking under the hush, building towards the report, in slow heaves
-        roll = T.unit(F.cband(white(d), 24, 95, 2)) * boil(n, 0.25, 1.4, 3.5)
-        groan = T.unit(T.glide_noise(d, 58.0, 82.0, 0.3, curve=0.7)) * boil(n, 0.2, 0.9, 2.5)
-        late_on = np.clip((u - 0.6) / 1.2, 0, 1) * on
-        x = (ground + boom + roll * late_on * ref * db_curve(t, [(0, -16), (2.0, -13), (4.0, -9), (d, -7)])
-             + groan * late_on * ref * db_curve(t, [(0, -30), (2.0, -22), (4.0, -16), (d, -13)]))
-        x = lows_heard(x, 45, 220, -7.0)
-    write("seism", PB.causal_lowcut(x * T.fade(n, 0.0005, 2.0), 13.0), knee=0.6)
+        x = ground + boom + rolling
+        x = lows_heard(x, 45, 260, -5.0)
+        # (nothing of the air's top in it: the ground's answer is all under a couple of kilohertz)
+        x = F.cband(x, None, 2200, 4)
+    write("seism", PB.causal_lowcut(x * T.fade(n, 0.0005, 2.0), 14.0), knee=0.55)
+
+
+def build_front(v):
+    """The blast's front coming over the land, heard before it (vc_sound.rs plays it to end on the report, from no sooner
+    than the seism): what comes between the ground's answer and the air's. The ground has carried the burst out ahead of
+    the air, and all the land between the player and the vent is shaking and booming up into the air; what is heard of
+    it comes from ever nearer the vent, where the ground heaves hardest, so the roar swells and opens up until the
+    report itself is on it. A deep roll of the land rising; the pressure coming, a sub climbing; a dark roar opening up
+    from the 200s to a kilohertz and more; the air ahead of the front rushing in its last half second; and for the last
+    tenth the roar's top drawn in under the sub, the breath before the blow, which the report slams in on. Every take
+    the same run to the report, counted back from it, the longer ones (for a player further off) only starting further
+    back and darker, as the air takes the top first. It fades in from nothing under the seism and goes under the
+    report's front in a few hundredths. Smooth: no grain, no flicker, nothing countable."""
+    L = FRONTS[v - 1]
+    d = L + FRONT_TAIL
+    n = n_of(d)
+    t = times(d)
+    w = L - t                                   # (seconds before the report)
+    back = lambda pts: db_curve(-w, [(-a, b) for a, b in pts] + [(FRONT_TAIL, pts[-1][1])])
+    dark = (v - 1) / (len(FRONTS) - 1)          # (0 the nearest take, 1 the furthest)
+    with PB.seeded(61490 + v):
+        ground = T.unit(F.cband(white(d), 18, 70, 2)) * boiled(n, 0.3, 1.6, 2.5)
+        sub = held(T.glide_noise(d, 26.0 * 2 ** (-L / 6), 40.0, 0.3, curve=2.2))
+        roar = eddies(d, 45.0, 1400.0, per_oct=2.0, slope=-2.0, turns=32.0, depth=2.5)
+        rush = eddies(d, 160.0, 3200.0, per_oct=2.0, slope=-2.0, turns=40.0, depth=2.0)
+        # (the roar opening up as it nears: its top from the 400s to over a kilohertz and a half in its last two and a half
+        # seconds; the rush's from 800 Hz to nearly 3 kHz in its last second; both a little darker in the furthest takes)
+        top = lambda a, b, span: (lambda s: a * (b / a) ** np.clip(1 - (L - s) / span, 0, 1) ** 1.2)
+        roar = lowpass_by(roar, top(420.0, 1600.0 * (1 - 0.3 * dark), 2.5))
+        rush = lowpass_by(rush, top(800.0, 2800.0 * (1 - 0.35 * dark), 1.2))
+        x = (ground * back([(4.5, -19), (2.5, -20), (1.0, -17), (0.3, -12), (0, -10)])
+             + sub * back([(4.5, -27), (2.0, -25), (1.0, -19), (0.4, -11), (0.1, -7), (0, -6)])
+             + roar * back([(4.5, -21), (2.5, -21), (1.5, -18), (1.0, -14), (0.5, -6), (0.25, -1), (0.1, -2), (0, -5)])
+             + rush * back([(4.5, -58), (1.5, -34), (0.6, -15), (0.15, -3), (0.06, -6), (0, -11)]))
+        x = land(x, 2.4, 0.18, (1200, 160), 0.9, seed=190 + v)
+        x = lows_heard(x, 45, 280, -6.0)
+        # (from nothing, under the seism; gone under the report's front)
+        x *= np.clip(t / min(0.35, 0.25 * L), 0, 1) ** 2
+        x *= np.clip(1 - (t - L) / 0.06, 0, 1) ** 2
+        x = PB.causal_lowcut(x, 14.0)
+    write(f"front{v}", x * T.fade(n, 0.01, 0.002), knee=0.6, kind="front")
 
 
 # ===========================================================================================================  the report
@@ -1594,6 +1685,7 @@ BUILD = {
     "flow_in": lambda: [build_flow_in(v + 1) for v in range(VARIANTS["flow_in"])],
     "splinter": lambda: [build_splinter(v + 1) for v in range(VARIANTS["splinter"])],
     "grind": lambda: [build_grind(v + 1) for v in range(VARIANTS["grind"])],
+    "front": lambda: [build_front(v + 1) for v in range(VARIANTS["front"])],
 }
 
 

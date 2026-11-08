@@ -2466,5 +2466,41 @@
       }
     ],
     "subtitle": "subtitles.orbital.supervolcano.boom_far"
+  },
+  "supervolcano.front1": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.front2": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.front3": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
+  },
+  "supervolcano.front4": {
+    "sounds": [
+      {
+        "name": "orbital:supervolcano/front4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.supervolcano.front"
   }
 }
