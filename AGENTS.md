@@ -212,17 +212,17 @@ laser, command, capability and timing). This file is the short, factual version 
   for it is `TRACKING STORM …`.
 - **The Supervolcano** (`strike/volcano.rs`, `strike/vc_land.rs`, `shaders/volcano.wgsl`; 80 s, reaches 1000, the vent moved
   to at least 500 blocks in front of the player by `vc_vent`, `fire` in lib.rs): an orbital laser satellite over the
-  vent (`vc_opening`, `vc_sat0`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 5.5 times its
+  vent (`vc_opening`, `vc_sat0`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 3.4 times its
   size far off, scaled from where it parks so it shrinks as it leaves: `vc_sat_k`; built of blocks in `vc_sat_hit`: a
   gold-foiled bus and engine, white radiators, a gold collar, roll-out solar arrays on a truss turned to the sun
-  (`vc_sat_wing`: rolled up as it comes, out from 0.95 s, back in from 5.0), an octagonal barrel
+  (`vc_sat_wing`: rolled up as it comes, out from 1.95 s, back in from 6.0), an octagonal barrel
   ringed by four coils stepping in to the emitter, four prongs; from the ground, nearly down its barrel, a dark cross with
-  a glowing eye) comes straight down from 3,000 higher like a booster landing, tilted well off the vertical, its four jets (fired down
-  its barrel, swinging with it) and puffs off its sides righting it in shrinking swings, settled over the vent by ~1.8 s
-  (`vc_sat_go`, `vc_sat_tip`), aims a solid red targeting beam (0.6 s, locked at 1.5; its coils lit red), its coils charge
-  outside in and it fires at 2 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
-  cut at 4.6 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 6.1 (`VC_BURN`) and lifts straight up and away,
-  into the haze by 9.5 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
+  a glowing eye) comes down a steep slant from 6,000 higher over 2.5 s like a booster landing, tilted well off the vertical, its four jets (fired down
+  its barrel, swinging with it) and monopropellant puffs off its top corners righting it in shrinking swings, settled over the vent by ~2.8 s
+  (`vc_sat_go`, `vc_sat_tip`), aims a solid red targeting beam (1.6 s, locked at 2.5; its coils lit red), its coils charge
+  outside in and it fires at 3 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
+  cut at 5.6 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 7.1 (`VC_BURN`) and lifts straight up and away,
+  into the haze by 10.5 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
   pulses, puffs rising, slowing, swelling and bending with the wind, red from under (`vc_plume`, `vc_feed`), until the
   eruption; the mount rising round the hole; the
   tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a

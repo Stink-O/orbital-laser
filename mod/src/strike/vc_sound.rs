@@ -14,7 +14,7 @@ use std::rc::Rc;
 use super::{Act, Plan, mh, pcg, sound_from};
 
 // ---- the beats (BEATS.md, volcano.rs's): keep in step ------------------------------------------------------------------
-const VC_HIT: f32 = 2.0;           // the satellite's beam fires (volcano.wgsl's vc_opening)
+const VC_HIT: f32 = 3.0;           // the satellite's beam fires (volcano.wgsl's vc_opening)
 const VC_CRACK: f32 = 6.0;
 const VC_SWELL: f32 = 7.0;
 const VC_HUSH: f32 = 17.0;
@@ -63,7 +63,7 @@ const VC_CRACK_LEN: f32 = 2.2;
 /// The satellite's sounds (tools/sounds_volcano.py's `build_sat`, "the sky sings", the take the user picked of three):
 /// `sat_sky` on the strike's clock from 0, the satellite's whole opening, and `sat_land` the shot's blow on the land, late
 /// by the distance. Their lengths (the script's SAT_SKY_D, SAT_LAND_D).
-const SAT_SKY_LEN: f32 = 10.0;
+const SAT_SKY_LEN: f32 = 11.0;
 const SAT_LAND_LEN: f32 = 6.0;
 /// `boom`'s length (the eruption's weight under the report: tools/sounds_volcano.py's BOOM_D).
 const VC_BOOM_LEN: f32 = 24.0;

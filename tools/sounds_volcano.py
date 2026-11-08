@@ -7,16 +7,16 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
 2.9 s at the 1,000 blocks that is the least it fires at, 5 s at 1,700):
 
   sat_sky     0        the satellite, 7,000 up and ~70 degrees over the player, on the strike's clock: it comes into view
-                       (0-1.4), the targeting beam comes on (0.6) and locks (1.5), the shot (2), the cut (4.6), gone by 9.5.
+                       (0-2.5), the targeting beam comes on (1.6) and locks (2.5), the shot (3), the cut (5.6), gone by 10.5.
                        The sky sings (the user's pick of three takes): a vast low horn (G1) falling into its pitch as it
                        comes, a second voice beating slowly beside it from the aim and pulled into one at the lock; the
                        shot the braam (the octave under, the fifth and the octave over, driven until it growls, a sub blow
                        under it), held as it burns, sagging a whole tone at the cut (Inception's horns; the Fold's swell)
-  sat_land    2 + late the shot's blow on the land at the vent (when it's over by 17 s): a blow and the note coming back off
+  sat_land    3 + late the shot's blow on the land at the vent (when it's over by 17 s): a blow and the note coming back off
                        the land
-  tremor      2        the mount (2-17 s): under hearing, then the ground rolling, a heavy groan of rock under load rising
+  tremor      3        the mount (3-17 s): under hearing, then the ground rolling, a heavy groan of rock under load rising
                        with it, the land's lurches baked in where the picture has them (`mount_height`, late by what the
-                       ground takes to carry them), each bigger and sooner than the last; 15 s long and it stops dead on
+                       ground takes to carry them), each bigger and sooner than the last; 14 s long and it stops dead on
                        the file's last sample, at 17 s, as the picture does: played on the strike's clock, not late
   crack1-4    6-14.5   a crack deep in the land, come through the ground: it runs, a few dull blows, then the ground
                        ringing on, long and dark; nothing of the air in it but crack4's slight snap at its start
@@ -125,7 +125,7 @@ LEAD = 0.02                # (the report's and the hit's silence at the start of
 REPORT_SLAM = 2.0          # (the report's front laid on over its drive, dB against its loudest 400 ms: `slam`)
 COLLAPSE_GIVE = 1.0        # (how far the collapse's groan comes down to make room for the drop's blow, dB)
 SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)
-TREMOR_D = HUSH - 2.0      # (`tremor`, which starts at 2 s, ends on the hush: vc_sound.rs's plays it on the strike's clock)
+TREMOR_D = HUSH - 3.0      # (`tremor`, which starts at 3 s, ends on the hush: vc_sound.rs's plays it on the strike's clock)
 GROUND_LAG = 0.6           # (the land's lurches, late by what the ground takes to bring them 1,000 blocks: GROUND_V)
 FALTER = 32.0              # (the collapse, into `column`, which starts at 18 s: keep vc_sound.rs's beats in step)
 DROP = 3.0                 # (the land mass dropping, into `collapse`)
@@ -354,7 +354,7 @@ def as_loud_as(rel_or_x):
 # =========================================================================================================  the satellite
 # Three takes of the opening (`/orbital satsound 1|2|3`, vc_sound.rs's SAT_TAKES), each a different idea of what an orbital
 # laser 7,000 up and 70 degrees over the player sounds like, on the same beats: it comes into view along its orbit (0-1.4),
-# the red targeting beam comes on (0.6) and its spot locks (1.5), the shot (2.0) melts the hole, the beam is cut (4.6), the
+# the red targeting beam comes on (1.6) and its spot locks (2.5), the shot (3.0) melts the hole, the beam is cut (5.6), the
 # hole glows and the satellite fades by 9.5. Each take is two files: `satN_sky`, on the strike's clock from 0 (a sound
 # from orbit can't be late by the distance and still be on its picture: films play it on the picture too), and
 # `satN_land`, the shot's blow on the land at the vent come to the player late by the distance (by the air for 1 and 2,
@@ -365,9 +365,9 @@ def as_loud_as(rel_or_x):
 # dark and long (`sky_echo`). The weight comes with the shot: a sub blow and the 100-800 Hz body with it, so the low end
 # is heard on a laptop too (`lows_heard`). Nothing beeps, rings or chimes; the aim and the lock are changes in what is
 # already sounding.
-SAT_SKY_D = 10.0           # (`satN_sky`'s length: vc_sound.rs's SAT_SKY_LEN)
+SAT_SKY_D = 11.0           # (`satN_sky`'s length: vc_sound.rs's SAT_SKY_LEN)
 SAT_LAND_D = 6.0           # (`satN_land`'s: SAT_LAND_LEN)
-SAT_AIM, SAT_LOCK, SAT_HIT, SAT_CUT, SAT_GONE = 0.6, 1.5, 2.0, 4.6, 9.5
+SAT_AIM, SAT_LOCK, SAT_HIT, SAT_CUT, SAT_GONE = 1.6, 2.5, 3.0, 5.6, 10.5
 
 
 def ss(a, b, x):
@@ -456,7 +456,7 @@ def build_sat():
     with PB.seeded(61201):
         f = SAT_ROOT * 2 ** ((0.4 * np.exp(-t / 0.55) - 2.0 * ss(SAT_CUT, SAT_CUT + 2.2, t)) / 12)
         # (its colour: closed as it comes, opening a little at the lock, thrown open on the shot, closing as it burns)
-        fm = np.interp(t, [0, 1.4, SAT_LOCK, SAT_LOCK + 0.2, SAT_HIT - 0.02, SAT_HIT + 0.07, 3.2, SAT_CUT, SAT_CUT + 1.5, d],
+        fm = np.interp(t, [0, 2.4, SAT_LOCK, SAT_LOCK + 0.2, SAT_HIT - 0.02, SAT_HIT + 0.07, 4.2, SAT_CUT, SAT_CUT + 1.5, d],
                        [150, 210, 230, 330, 470, 1050, 900, 720, 260, 160])
         fm = ease(fm, 0.04)
         a = horn(t, f, fm, 1.4)
@@ -464,12 +464,12 @@ def build_sat():
         off = (0.0045 + 0.0035 * PB.slow_random(n, 0.2, 0.9)) * (1 - ss(SAT_LOCK - 0.25, SAT_LOCK + 0.05, t))
         # (its overtones only up to the 16th, so the two beat slowly, never a flutter up top)
         b = horn(t, f * (1 + off), fm * 0.95, 1.3, nh=16) * ss(SAT_AIM, SAT_AIM + 0.5, t)
-        lead = (a + 0.85 * b) * db_curve(t, [(0, -75), (0.3, -40), (1.0, -30), (SAT_LOCK, -27), (SAT_LOCK + 0.2, -24.5),
-                                             (SAT_HIT - 0.05, -18), (SAT_HIT + 0.08, -16), (2.6, -20), (SAT_CUT, -21),
-                                             (SAT_CUT + 0.4, -21), (6.5, -28), (SAT_GONE, -48), (d, -80)])
+        lead = (a + 0.85 * b) * db_curve(t, [(0, -75), (0.4, -40), (1.8, -30), (SAT_LOCK, -27), (SAT_LOCK + 0.2, -24.5),
+                                             (SAT_HIT - 0.05, -18), (SAT_HIT + 0.08, -16), (3.6, -20), (SAT_CUT, -21),
+                                             (SAT_CUT + 0.4, -21), (7.5, -28), (SAT_GONE, -48), (d, -80)])
         # ---- the braam: the octave under, the fifth and the octave over, in at once, driven till it growls
         on = ss(SAT_HIT - 0.01, SAT_HIT + 0.06, t)
-        held = db_curve(t, [(0, 5.0), (SAT_HIT + 0.15, 5.0), (2.8, 0), (3.4, -1.0), (SAT_CUT, -2.0), (SAT_CUT + 0.35, -8), (6.5, -19), (SAT_GONE, -45), (d, -80)])
+        held = db_curve(t, [(0, 5.0), (SAT_HIT + 0.15, 5.0), (3.8, 0), (4.4, -1.0), (SAT_CUT, -2.0), (SAT_CUT + 0.35, -8), (7.5, -19), (SAT_GONE, -45), (d, -80)])
         under = horn(t, f / 2, fm * 0.8, 1.6, nh=60)
         fifth = horn(t, f * 1.4983, fm, 1.3)
         over = horn(t, f * 2.0, fm * 1.05, 1.2)
@@ -574,7 +574,7 @@ def build_tremor():
     n = n_of(d)
     t = times(d)
     with PB.seeded(61101):
-        h = mount_height(t + 2.0 - GROUND_LAG)
+        h = mount_height(t + (HUSH - TREMOR_D) - GROUND_LAG)
         rate = np.clip(np.gradient(h) * SR, 0.0, None)
         rate = ease(rate / rate.max(), 0.14)
         rise = np.interp(t, [0, 5, 15], [0.35, 0.5, 1.0]) * rate ** 0.45 + 0.4         # (0.4 to 1.4: the bed breathing with it)
@@ -599,7 +599,7 @@ def build_tremor():
         ts = lurch_times()
         for k, tk in enumerate(ts):
             u = k / (len(ts) - 1)
-            tl = tk + GROUND_LAG - 2.0 if k < len(ts) - 1 else d - 0.17
+            tl = tk + GROUND_LAG - (HUSH - TREMOR_D) if k < len(ts) - 1 else d - 0.17
             P.put(x, lurch(0.6 + 1.0 * u) * 10 ** ((-36.0 + 22.0 * u ** 0.8) / 20), tl)
         # (and the land's last cracks, which the separate takes would ring on past the hush)
         for k, (tc, size) in enumerate(((13.15, 1.0), (13.9, 1.2), (14.35, 0.9), (14.62, 1.4))):
