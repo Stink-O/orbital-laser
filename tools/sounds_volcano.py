@@ -62,7 +62,8 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
   thud1-4     a bomb landing close (positional): a small explosion of earth on the ground's blow, its front slammed
   spatter1-3  the rock and earth it threw coming down round it, within ~120 blocks of the player (positional)
   thud_far1-3 a bomb landing off on the land: a dull thump, late by the distance
-  (lightning)          the Hurricane's own thunder events, played as its plan plays them (vc_sound.rs's `thunder`)
+  lt_crack1-4, lt_clap1-4, lt_roll1-4, lt_rumble1-4  the lightning's thunder (vc_sound.rs's `thunder`): the Hurricane's
+                       approved thunder files made louder, so they carry over the column from kilometres off
   collapse    50 + late a colossal deep groan of the ground going, the land mass dropping (a blow of the ground 3 s in,
                        `ground_blow`),
                        then the land going down in four waves, slabs landing in a rolling slide of rock (`falling`)
@@ -105,7 +106,7 @@ import hu_foley as F
 
 TH = "supervolcano"
 ROOT = Path(__file__).resolve().parent.parent
-VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3, "front": 4,
+VARIANTS = {"lt_crack": 4, "lt_clap": 4, "lt_roll": 4, "lt_rumble": 4, "creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3, "front": 4,
             "flow_rise": 3, "flow_in": 3, "splinter": 3, "grind": 2}
 SAT = ["sat_sky", "sat_land"]
 SINGLE = SAT + ["tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "boom", "boom_far", "report_sub", "plate_sub", "column", "column_far",
@@ -115,7 +116,7 @@ NAMES = SINGLE + list(VARIANTS)
 GONE = ["tick", "beam", "fire"] + [f"sat{k}_{part}" for k in (1, 2, 3) for part in ("sky", "land")] + [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
-LEVEL = {"sat_sky": -8.0, "sat_land": -15.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
+LEVEL = {"lt_crack": -9.0, "lt_clap": -10.5, "lt_roll": -12.5, "lt_rumble": -12.5, "sat_sky": -8.0, "sat_land": -15.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "hush": -15.5, "seism": -9.0, "front": -8.5, "report": -5.0, "report_far": -5.0, "boom": -4.5, "boom_far": -5.5, "report_sub": -10.0, "column": -13.0, "column_far": -12.0,
          "whistle": -16.0, "thud": -9.5, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
@@ -498,6 +499,17 @@ def build_sat():
         x = land(x, 4.0, 0.55, (800, 100), 2.2, 30.0, seed=122)
         x = lows_heard(x, 55, 300, -8.0)
     sat_write("sat_land", x, d)
+
+
+# The lightning's thunder: the Hurricane's approved thunder, its files as they are but louder, so a volcano's lightning
+# carries over the column from kilometres off (vc_sound.rs's `thunder`): crack (`thunder`), clap (`thunder_mid`), roll
+# (`thunder_far`), rumble (a flash in the cloud).
+LIGHTNING = {"lt_crack": "thunder", "lt_clap": "thunder_mid", "lt_roll": "thunder_far", "lt_rumble": "rumble"}
+
+
+def build_lightning(name):
+    for v in range(1, VARIANTS[name] + 1):
+        write(f"{name}{v}", sampled(f"hurricane/{LIGHTNING[name]}{v}.ogg"), knee=0.8, kind=name)
 
 
 def build_boom():
@@ -1823,6 +1835,7 @@ BUILD = {
     "flow_in": lambda: [build_flow_in(v + 1) for v in range(VARIANTS["flow_in"])],
     "splinter": lambda: [build_splinter(v + 1) for v in range(VARIANTS["splinter"])],
     "grind": lambda: [build_grind(v + 1) for v in range(VARIANTS["grind"])],
+    **{k: (lambda k=k: build_lightning(k)) for k in LIGHTNING},
     "front": lambda: [build_front(v + 1) for v in range(VARIANTS["front"])],
 }
 

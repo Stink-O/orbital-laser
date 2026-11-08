@@ -217,25 +217,27 @@ fn flashes(s: u32, from: f32, to: f32) -> Vec<(f32, [f64; 3], f64, bool)> {
     out
 }
 
-/// A bolt's thunder `d` blocks off as a file's loudest 400 ms in dB: strike/hurricane.rs's hu_thunder_db, 4 dB down each
-/// time the distance doubles, 11 dB over it. This lightning is far bigger than an eyewall's, and is heard from a kilometre.
+/// A bolt's thunder `d` blocks off as a file's loudest 400 ms in dB: 2.5 dB down each time the distance doubles (the
+/// Hurricane's falls 4). This lightning is far bigger than an eyewall's, and is the show from kilometres off.
 fn thunder_db(d: f64) -> f64 {
-    -4.0 - 4.0 * (d.max(60.0) / 60.0).log2()
+    // (a volcano's lightning is the show from where the player has to stand, kilometres off: it carries, falling 2.5 dB
+    // a doubling where the Hurricane's falls 4)
+    -2.5 * (d.max(60.0) / 60.0).log2()
 }
 
-/// The lightning from `from` s up to `to` as heard at `me`, with the Hurricane's own thunder (its events, its files, and
-/// the way strike/hurricane.rs's hu_thunder plays them: keep in step): a stroke in the plume by its distance, a crack
-/// within 110 blocks, a duller clap to 320, mostly roll past it; a flash in the cloud's sheet a roll up in the cloud, half
-/// of those unheard. Late by the distance; two within 0.2 s of each other are one clap (their power added, the nearer's
+/// The lightning from `from` s up to `to` as heard at `me`, with the Hurricane's thunder made louder (`lt_*`, played the
+/// way strike/hurricane.rs's hu_thunder plays its own): a stroke in the plume by its distance, a crack within 500
+/// blocks, a clap to 1,800, mostly roll past it; a flash in the cloud's sheet a roll up in the cloud, a quarter of those
+/// unheard. Late by the distance; two within 0.2 s of each other are one clap (their power added, the nearer's
 /// take); one while louder still rolls is let down a little; a kind's take is never one of its last two. Only what's
 /// heard in `when` plays, and none of it between `mute`'s two times; `quiet` lets all of it down.
 #[allow(clippy::too_many_arguments)]
 fn thunder(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], (from, to): (f32, f32), when: (f32, f32), mute: (f32, f32), quiet: f64) {
-    let power = |d: f64, cloud: bool, k: f64| 10f64.powf((thunder_db(d) - if cloud { 6.0 } else { 0.0 }) / 10.0) * (quiet * k.min(1.0)).powi(2);
+    let power = |d: f64, cloud: bool, k: f64| 10f64.powf((thunder_db(d) - if cloud { 3.0 } else { 0.0 }) / 10.0) * (quiet * k.min(1.0)).powi(2);
     let mut heard: Vec<(f32, f64, bool, f64, u32)> = flashes(s, from, to)
         .iter()
         .enumerate()
-        .filter(|(i, f)| !f.3 || mh(*i as u32, s, 0xc1) >= 0.5)
+        .filter(|(i, f)| !f.3 || mh(*i as u32, s, 0xc1) >= 0.25)
         .map(|(i, (t, o, k, cloud))| {
             let (late, d) = sound_from([vent[0] + o[0], vent[1] + o[1], vent[2] + o[2]], me);
             (*t + late, d, *cloud, *k, i as u32)
@@ -260,12 +262,12 @@ fn thunder(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], (from, to): (f32,
     let mut recent: Vec<(&'static str, u32)> = Vec::new();
     let mut rolling: Vec<(f32, f64)> = Vec::new();
     for (at, d, cloud, i, pw, _) in claps {
-        // (tools/sounds_hurricane.py's LEVEL for each kind)
+        // (tools/sounds_volcano.py's LEVEL for each kind: the Hurricane's thunder made louder)
         let (kind, level) = match (cloud, d) {
-            (true, _) => ("rumble", -25.5),
-            (false, d) if d < 110.0 => ("thunder", -14.0),
-            (false, d) if d < 320.0 => ("thunder_mid", -17.5),
-            (false, _) => ("thunder_far", -21.0),
+            (true, _) => ("lt_rumble", -12.5),
+            (false, d) if d < 500.0 => ("lt_crack", -9.0),
+            (false, d) if d < 1800.0 => ("lt_clap", -10.5),
+            (false, _) => ("lt_roll", -12.5),
         };
         let db = 10.0 * pw.log10();
         let loud = 10f64.powf(db / 20.0);
@@ -277,7 +279,7 @@ fn thunder(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], (from, to): (f32,
         let take = free[((mh(i, s, 0xc9) * free.len() as f64) as usize).min(free.len() - 1)];
         recent.push((kind, take));
         let volume = (10f64.powf((db - level) / 20.0).min(1.0) * duck) as f32;
-        p.ev.push((at, Act::Sound { event: format!("orbital:hurricane.{kind}{take}"), at: None, volume, pitch: 0.9 + 0.16 * mh(i, s, 0xc7) as f32 }));
+        p.ev.push((at, Act::Sound { event: ev(&format!("{kind}{take}")), at: None, volume, pitch: 0.9 + 0.16 * mh(i, s, 0xc7) as f32 }));
     }
 }
 
@@ -494,14 +496,14 @@ pub(super) fn vc_sounds(p: &mut Plan, s: u32, vent: [f64; 3], me: [f64; 3], bomb
     p.later(VC_COLLAPSE - 0.4, move |q| {
         crate::meter::spend(8_000_000);
         let mute = h2.get().map_or((0.0, 0.0), |h| (h, h + 8.0));
-        thunder(q, s, vent, live(me), (VC_LIGHT - 2.0, VC_LIFT), (VC_COLLAPSE, VC_LEN), mute, 0.8);
+        thunder(q, s, vent, live(me), (VC_LIGHT - 2.0, VC_LIFT), (VC_COLLAPSE, VC_LEN), mute, 0.95);
     });
     p.later(VC_COLLAPSE - 0.2, move |q| {
         crate::meter::spend(8_000_000);
         let me = live(me);
         let (_, d) = sound_from(vent, me);
         let mute = heard.get().map_or((0.0, 0.0), |h| (h, h + 8.0));
-        thunder(q, s, vent, me, (VC_LIFT, VC_LEN), (VC_COLLAPSE, VC_LEN), mute, 0.45);
+        thunder(q, s, vent, me, (VC_LIFT, VC_LEN), (VC_COLLAPSE, VC_LEN), mute, 0.7);
         play(q, VC_AFTER_AT, "after", 0.75 + 0.25 * air(d), 1.0);
         play(q, VC_PATTER_AT, "patter", (1800.0 / d.max(1800.0)).powf(2.0), 1.0);
     });
@@ -577,7 +579,7 @@ mod tests {
             n if n.starts_with("creak") => VC_CREAK_LEN,
             n if n.starts_with("rockfall") => take(&n[8..], &VC_ROCKFALLS).unwrap(),
             n if n.starts_with("flow_in") => take(&n[7..], &VC_INS).unwrap(),
-            n if n.starts_with("rumble") || n.starts_with("thunder") => VC_ROLL,
+            n if n.starts_with("lt_") => VC_ROLL,
             _ => 0.0,
         }
     }
@@ -667,7 +669,7 @@ mod tests {
         assert!(near.iter().any(|e| e.1.contains("flow_in")), "inside it");
         assert!(near.iter().any(|e| e.1.contains("flow_rise") && t - e.0 > 5.0), "it closes for a long stretch");
         assert!(near.iter().any(|e| e.1.starts_with("stop") && e.1.contains("column")), "the jet's top goes in the hit");
-        assert!(!near.iter().any(|e| e.0 > t + 0.2 && e.0 < t + 8.0 && e.1.contains("hurricane.")), "no lightning heard from inside");
+        assert!(!near.iter().any(|e| e.0 > t + 0.2 && e.0 < t + 8.0 && e.1.contains(".lt_")), "no lightning heard from inside");
         assert!(hit(&far).is_none(), "not this far out");
         assert!(far.iter().any(|e| e.1.contains("flow_far")), "the rush");
     }
@@ -743,14 +745,15 @@ mod tests {
         assert!(!h.iter().any(|e| ["orbital:lockon", "orbital:shutdown", "orbital:rumble", "orbital:fire"].contains(&e.1.as_str())));
     }
 
-    /// The lightning is heard with the Hurricane's thunder, by kind for the distance, late by it; none of ours.
+    /// The lightning is heard with its own louder thunder (the Hurricane's), by kind for the distance, late by it.
     #[test]
-    fn vc_sound_lightning_is_the_hurricanes() {
+    fn vc_sound_lightning_carries() {
         let h = heard(1000.0);
-        let claps: Vec<_> = h.iter().filter(|e| e.1.starts_with("orbital:hurricane.")).collect();
+        let claps: Vec<_> = h.iter().filter(|e| e.1.starts_with("orbital:supervolcano.lt_")).collect();
         assert!(claps.len() >= 20, "{} claps", claps.len());
-        assert!(claps.iter().all(|e| e.1.contains(".thunder_far") || e.1.contains(".rumble")), "a kilometre off: rolls");
-        assert!(claps.iter().any(|e| e.1.contains(".rumble")) && claps.iter().any(|e| e.1.contains(".thunder_far")));
+        assert!(claps.iter().all(|e| e.1.contains(".lt_clap") || e.1.contains(".lt_rumble")), "a kilometre off: claps and rumbles");
+        assert!(claps.iter().any(|e| e.1.contains(".lt_rumble")) && claps.iter().any(|e| e.1.contains(".lt_clap")));
+        assert!(!h.iter().any(|e| e.1.starts_with("orbital:hurricane.")));
         let (late, _) = sound_from([0.5, 65.0, 0.5], [0.5, 66.0, 1000.5]);
         assert!(claps[0].0 >= VC_LIGHT - 2.0 + late, "{}", claps[0].0);
         assert!(!h.iter().any(|e| e.1.contains(".bolt")));
