@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// The story's times (strike seconds). Keep in step with shaders/volcano.wgsl.
-pub(super) const VC_HIT: f32 = 3.0;
+pub(super) const VC_HIT: f32 = 4.5;
 pub(super) const VC_CRACK: f32 = 6.0;
 pub(super) const VC_HUSH: f32 = 17.0;
 pub(super) const VC_ERUPT: f32 = 18.0;

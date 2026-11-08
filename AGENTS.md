@@ -215,14 +215,21 @@ laser, command, capability and timing). This file is the short, factual version 
   vent (`vc_opening`, `vc_sat0`: 7,000 up, 1,600 beyond the vent from the player, table words 2-3, drawn up to 3.4 times its
   size far off, scaled from where it parks so it shrinks as it leaves: `vc_sat_k`; built of blocks in `vc_sat_hit`: a
   gold-foiled bus and engine, white radiators, a gold collar, roll-out solar arrays on a truss turned to the sun
-  (`vc_sat_wing`: rolled up as it comes, out from 1.95 s, back in from 6.0), an octagonal barrel
+  (`vc_sat_wing`: rolled up as it comes, out from 3.2 s, back in from 7.5), an octagonal barrel
   ringed by four coils stepping in to the emitter, four prongs; from the ground, nearly down its barrel, a dark cross with
-  a glowing eye) comes down a steep slant from 6,000 higher over 2.5 s like a booster landing, tilted well off the vertical, its four jets (fired down
-  its barrel, swinging with it) and monopropellant puffs off its top corners righting it in shrinking swings, settled over the vent by ~2.8 s
-  (`vc_sat_go`, `vc_sat_tip`), aims a solid red targeting beam (1.6 s, locked at 2.5; its coils lit red), its coils charge
-  outside in and it fires at 3 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
-  cut at 5.6 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 7.1 (`VC_BURN`) and lifts straight up and away,
-  into the haze by 10.5 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
+  a glowing eye) falls in down a slant from 1,900 higher, 1,000 along its orbit and 1,500 nearer the player (so it is seen
+  coming down their sky), steadily to 1.3 s (`VC_IGN`), then brakes on its four jets (fired down its barrel), hardest
+  late, to a soft stop at 3.4 s (`VC_ARRIVE`), sagging past its station and back (`vc_sat_go`, `vc_sat_thr`). Its tilt
+  is flown by a control loop, never a sine (`vc_sat_att`: `VC_SAT_TAB`, written by `tools/vc_sat_motion.py`, a rigid body
+  pushed only by its actuators, through lag, with the ignition's kick, a thrust misalignment and slosh pushing back): it
+  comes in 26 degrees off and turning further, its top-corner thrusters stop that and swing it round as it falls; the
+  jets, gimballed by what the loop turns it with (they swing a tenth of a second before the body follows), heave it over
+  unevenly as they brake it; as the burn dies its thrusters trim it onto the vent in discrete pulses (a tenth of a second
+  each, sized to the push) while its arrays unroll; its wheels hold it still from 3.8, settled by the lock. It aims a solid
+  red targeting beam (3.3 s, locked at 4.0; its coils lit red), its coils charge
+  outside in and it fires at 4.5 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
+  cut at 7.1 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 8.6 (`VC_BURN`) and lifts straight up and away,
+  into the haze by 12 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
   pulses, puffs rising, slowing, swelling and bending with the wind, red from under (`vc_plume`, `vc_feed`), until the
   eruption; the mount rising round the hole; the
   tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a
