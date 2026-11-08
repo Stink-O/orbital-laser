@@ -53,7 +53,9 @@ unsafe impl GlobalAlloc for Counted {
         q
     }
 }
-#[global_allocator]
+// (the fork's WebAssembly mod and the tests only: the native build is compiled into the game, which has its own global
+// allocator, so there it counts nothing and `live` and `peak` stay 0)
+#[cfg_attr(any(target_arch = "wasm32", test), global_allocator)]
 static COUNTED: Counted = Counted;
 
 /// Bytes held now.
