@@ -1,14 +1,14 @@
 """The Supervolcano's sounds, synthesised here from noise, pulses and filters, but for the eruption's `boom` (the Nuke's
-and the Payload's ALT blasts, slowed); the trees' from the Hurricane's, the lightning played on the Hurricane's own
-thunder, and the satellite's first take laid over the Hurricane's thunder, slowed. Every file is mono: Horizon sums each sound file to
-mono anyway, so a stereo tail would only cost size.
+and the Payload's ALT blasts, slowed), the trees' (the Hurricane's breaks) and the lightning's (the Hurricane's thunder
+files made louder). Every file is mono: Horizon sums each sound file to mono anyway, so a stereo tail would only cost
+size.
 
 Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the player's distance from the vent / 343,
 2.9 s at the 1,000 blocks that is the least it fires at, 5 s at 1,700):
 
-  sat_sky     0        the satellite, 7,000 up and ~70 degrees over the player, on the strike's clock: it comes into view
-                       (0-3.4), the targeting beam comes on (3.3) and locks (4), the shot (4.5), the cut (7.1), gone by 12.
-                       The sky sings (the user's pick of three takes): a vast low horn (G1) falling into its pitch as it
+  sat_sky     0        the satellite, 7,000 up and ~70 degrees over the player, on the strike's clock: it comes down into
+                       view (0-3.4), the targeting beam comes on (3.3) and locks (4), the shot (4.5), the cut (7.1), it
+                       lifts away (8.6), gone by 12. The sky sings: a vast low horn (G1) falling into its pitch as it
                        comes, a second voice beating slowly beside it from the aim and pulled into one at the lock; the
                        shot the braam (the octave under, the fifth and the octave over, driven until it growls, a sub blow
                        under it), held as it burns, sagging a whole tone at the cut (Inception's horns; the Fold's swell)
@@ -20,7 +20,7 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
                        the file's last sample, at 17 s, as the picture does: played on the strike's clock, not late
   crack1-4    6-14.5   a crack deep in the land, come through the ground: it runs, a few dull blows, then the ground
                        ringing on, long and dark; nothing of the air in it but crack4's slight snap at its start
-  creak1-4    3.5-16   rock under strain under the player (only within ~900 blocks of the vent): a deep grinding pressure,
+  creak1-4    6-14     rock under strain under the player (only within ~900 blocks of the vent): a deep grinding pressure,
                        the stone crazing in dense dark crunches as the load climbs, a heavy dull lurch where it gives
   rockfall1-3 8.5-16.9 rock coming off the mount's flanks, a long way off: dark, sliding, no clatter
   fountain    7        the lava fountains, as far as they carry: a low chugging roar; stops dead at 17 s
@@ -46,7 +46,7 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
                        back for 20 s
   report_far  the same moment, cross-faded in by distance: darker, the growl kept in the low mids
   boom(_far)  the same moment, under the report: its weight, the Nuke's ALT blast slowed to 0.74 and the Payload's ALT
-                       blast's front, holding loud some ten seconds (sampled from the mod's own files, as `beam` and `fire`)
+                       blast's front, holding loud some ten seconds (sampled from the mod's own files)
   report_sub  the same moment: the push alone, under it, the report's boom's fall and then a deep pressure holding for
                        seconds and fading slowly, 9 s (and at pitch 0.8 with the land dropping, in the collapse)
   plate_sub   a big plate coming down (vc_lodge.rs, pitched by its size): a short push of the sub
@@ -112,7 +112,8 @@ SAT = ["sat_sky", "sat_land"]
 SINGLE = SAT + ["tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "boom", "boom_far", "report_sub", "plate_sub", "column", "column_far",
           "collapse", "collapse_far", "flow_far", "flow_hit", "after", "patter"]
 NAMES = SINGLE + list(VARIANTS)
-# (the plan's old events, taken out of sounds.json and their files deleted when it's rebuilt: the lightning is the Hurricane's)
+# (the plan's old events, taken out of sounds.json and their files deleted when it's rebuilt: the old opening's, the
+# satellite's other takes, and the lightning's own bolts before it took the Hurricane's thunder)
 GONE = ["tick", "beam", "fire"] + [f"sat{k}_{part}" for k in (1, 2, 3) for part in ("sky", "land")] + [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
@@ -124,7 +125,7 @@ LEVEL = {"lt_crack": -9.0, "lt_clap": -10.5, "lt_roll": -12.5, "lt_rumble": -12.
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
 REPORT_SLAM = 2.0          # (the report's front laid on over its drive, dB against its loudest 400 ms: `slam`)
 COLLAPSE_GIVE = 1.0        # (how far the collapse's groan comes down to make room for the drop's blow, dB)
-SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)
+SWELL, HUSH = 7.0, 17.0    # (volcano.rs's VC_SWELL, VC_HUSH: the mount starts to rise; it stops)
 TREMOR_D = HUSH - 4.5      # (`tremor`, which starts at 4.5 s, ends on the hush: vc_sound.rs's plays it on the strike's clock)
 GROUND_LAG = 0.6           # (the land's lurches, late by what the ground takes to bring them 1,000 blocks: GROUND_V)
 FALTER = 32.0              # (the collapse, into `column`, which starts at 18 s: keep vc_sound.rs's beats in step)
@@ -345,49 +346,26 @@ def sampled(rel, speed=1.0):
     return y
 
 
-def as_loud_as(rel_or_x):
-    """The loudest 400 ms of a file or array, in dB: a copy keeps its original's level."""
-    x = sampled(rel_or_x) if isinstance(rel_or_x, str) else rel_or_x
-    return 20 * np.log10(T.loudest(x) + 1e-12)
-
-
 # =========================================================================================================  the satellite
-# Three takes of the opening (`/orbital satsound 1|2|3`, vc_sound.rs's SAT_TAKES), each a different idea of what an orbital
-# laser 7,000 up and 70 degrees over the player sounds like, on the same beats: it comes down into view (0-3.4),
-# the red targeting beam comes on (3.3) and its spot locks (4.0), the shot (4.5) melts the hole, the beam is cut (7.1), the
-# hole glows and the satellite is gone by 12. Each take is two files: `satN_sky`, on the strike's clock from 0 (a sound
-# from orbit can't be late by the distance and still be on its picture: films play it on the picture too), and
-# `satN_land`, the shot's blow on the land at the vent come to the player late by the distance (by the air for 1 and 2,
-# 343 a second; through the ground for 3, five times sooner).
-# What makes them read as high in the sky and not at the ear (the Payload's fall is the model): no top over a few kHz
+# The opening, as an orbital laser 7,000 up and 70 degrees over the player: it comes down into view (0-3.4), the red
+# targeting beam comes on (3.3) and its spot locks (4.0), the shot (4.5) melts the hole, the beam is cut (7.1), the hole
+# glows and the satellite lifts away (8.6), gone by 12. Two files: `sat_sky`, on the strike's clock from 0 (a sound from
+# orbit can't be late by the distance and still be on its picture: films play it on the picture too), and `sat_land`, the
+# shot's blow on the land at the vent come to the player late by the distance (by the air, 343 a second).
+# What makes it read as high in the sky and not at the ear (the Payload's fall is the model): no top over a few kHz
 # (7 km of air takes it), nothing quick (every level and colour moves slowly, bands on their own: no shared flutter), soft
 # fronts (a blow's onset in milliseconds, never a burst of noise: that's a snare), and the land answering it, late,
 # dark and long (`sky_echo`). The weight comes with the shot: a sub blow and the 100-800 Hz body with it, so the low end
 # is heard on a laptop too (`lows_heard`). Nothing beeps, rings or chimes; the aim and the lock are changes in what is
 # already sounding.
-SAT_SKY_D = 12.5           # (`satN_sky`'s length: vc_sound.rs's SAT_SKY_LEN)
-SAT_LAND_D = 6.0           # (`satN_land`'s: SAT_LAND_LEN)
+SAT_SKY_D = 12.5           # (`sat_sky`'s length: vc_sound.rs's SAT_SKY_LEN)
+SAT_LAND_D = 6.0           # (`sat_land`'s: SAT_LAND_LEN)
 SAT_AIM, SAT_LOCK, SAT_HIT, SAT_CUT, SAT_GONE = 3.3, 4.0, 4.5, 7.1, 12.0
 
 
 def ss(a, b, x):
     u = np.clip((np.asarray(x, float) - a) / (b - a), 0, 1)
     return u * u * (3 - 2 * u)
-
-
-def lowpass_curve(x, fc, size=4096, hop=1024):
-    """`x` through a lowpass (24 dB an octave) whose cutoff follows `fc` (Hz, one value a sample), frame by frame."""
-    n = len(x)
-    win = np.hanning(size)
-    out = np.zeros(n + size)
-    norm = np.zeros(n + size)
-    xp = np.concatenate([x, np.zeros(size)])
-    f = np.fft.rfftfreq(size, 1 / SR)
-    for a in range(0, n, hop):
-        c = fc[min(a + size // 2, n - 1)]
-        out[a:a + size] += np.fft.irfft(np.fft.rfft(xp[a:a + size] * win) / (1 + (f / c) ** 4), size) * win
-        norm[a:a + size] += win ** 2
-    return out[:n] / np.maximum(norm[:n], 1e-3)
 
 
 def sky_echo(x, length=6.0, wet=0.55, darken=(1500, 140), decay=2.2, pre=0.18, seed=0):
@@ -422,7 +400,7 @@ def sat_write(name, x, d):
     write(name, x[:n_of(d)], knee=None if land_ else 0.8, kind="sat_land" if land_ else "sat_sky")
 
 
-# ---- the satellite: the sky sings (the user's pick of three takes) (Inception's horns, "massive low-end musical tones, sounding like distant horns"; the Fold's
+# ---- the satellite: the sky sings (Inception's horns, "massive low-end musical tones, sounding like distant horns"; the Fold's
 # approved `swell`, one huge bowed note)
 SAT_ROOT = 49.0           # G1: the note the satellite is
 
@@ -1450,8 +1428,6 @@ def collapse_body(falling=None):
     t = times(d)
     Td = DROP
     with PB.seeded(62201):
-        u = np.maximum(t - Td, 0)
-        on = t >= Td
         # ---- the groan
         g_d = Td + 1.6
         gn = n_of(g_d)
@@ -1989,7 +1965,7 @@ def main():
             path.write_text(json.dumps(sounds, indent=2))
     if a.listen:
         os.makedirs(a.listen, exist_ok=True)
-        # (the strike fires at 1,000 at the least: the flow is on them at about 67 s, at 1,400 about 80 and past 1,700 never;
+        # (the strike fires at 1,000 at the least: the flow is on them at about 66 s, at 1,400 about 78 and past 1,700 never;
         # "caught" has flown in to 800, where it's on them with most of the flow still to come)
         worst = max(listen_mix(tag, me, a.listen)[0] for tag, me in (("1000", 1000), ("1400", 1400), ("2000", 2000), ("caught", 800)))
         print(f"worst true peak over the mixes: {worst:.2f} dBTP")
