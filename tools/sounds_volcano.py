@@ -1,15 +1,28 @@
-"""The Supervolcano's sounds, synthesised here from noise, pulses and filters, but for the satellite's (the plasma's
-own) and the eruption's `boom` (the Nuke's and the Payload's ALT blasts, slowed); the trees' from the Hurricane's and the
-lightning played on the Hurricane's own thunder. Every file is mono: Horizon sums each sound file to
+"""The Supervolcano's sounds, synthesised here from noise, pulses and filters, but for the eruption's `boom` (the Nuke's
+and the Payload's ALT blasts, slowed); the trees' from the Hurricane's, the lightning played on the Hurricane's own
+thunder, and the satellite's first take laid over the Hurricane's thunder, slowed. Every file is mono: Horizon sums each sound file to
 mono anyway, so a stereo tail would only cost size.
 
 Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the player's distance from the vent / 343,
 2.9 s at the 1,000 blocks that is the least it fires at, 5 s at 1,700):
 
-  beam        0        the satellite's charge: the lasers' own (the plasma's charge.ogg), its last 2 s, topping out on the
-                       shot; the plasma's lock-on at 1.4 s (orbital:lockon, played from vc_sound.rs)
-  fire        2        the shot: the plasma's fire.ogg, faded out with the beam's cut at 4.6 s; then the plasma's shutdown
-                       at 4.5 (orbital:shutdown) and its rumble at 2 + late (orbital:rumble), both from vc_sound.rs
+  satN_sky    0        the satellite, 7,000 up and ~70 degrees over the player, on the strike's clock: it comes into view
+                       (0-1.4), the targeting beam comes on (0.6) and locks (1.5), the shot (2), the cut (4.6), gone by 9.5.
+                       Three takes, one played (`/orbital satsound 1|2|3`, 1 the default; `build_sat1-3` say more):
+                       1  the sky splits: weather, no machine. A high wind aloft, the column ionising under it, a grumble
+                          of thunder far up at the lock; the shot a deep thunderclap overhead with no crack, the beam
+                          rolling up its 7,000 blocks as lightning's channel does over a deep burn; the cut the air slamming
+                          back, rolling off round the land (real thunder heard from kilometres; the Hurricane's thunder)
+                       2  the sky sings: a vast low horn (G1) falling into its pitch as it comes, a second voice beating
+                          slowly beside it from the aim and pulled into one at the lock; the shot the braam (the octave
+                          under, the fifth and the octave over, driven until it growls, a sub blow under it), held as it
+                          burns, sagging a whole tone at the cut (Inception's horns; the Fold's swell)
+                       3  the beam comes down: a far rushing overhead as it comes (the Payload's fall), a slow low throb from
+                          the aim settling into one pressure at the lock, a rush boring down through the air from 1.1 s to
+                          a slam at 2, the beam's torn-air roar overhead while it burns, drawing off upward at the cut
+                          (the kinetic strikes from orbit: CoD Ghosts' ODIN, G.I. Joe Retaliation's rods)
+  satN_land   2 + late the shot's blow on the land at the vent (when it's over by 17 s): 1 its thunder rolling in, 2 a blow
+                       and the note coming back off the land, 3 through the ground (2 + d/1715), a jolt and the ground ringing
   tremor      2        the mount (2-17 s): under hearing, then the ground rolling, a heavy groan of rock under load rising
                        with it, the land's lurches baked in where the picture has them (`mount_height`, late by what the
                        ground takes to carry them), each bigger and sooner than the last; 15 s long and it stops dead on
@@ -74,7 +87,8 @@ Timeline, as mod/src/strike/vc_sound.rs plays them (strike seconds; `late` = the
                                                     # each pair is built together)
     python3 tools/sounds_volcano.py --listen DIR    # and the whole strike heard from 1,000, 1,400 and 2,000 blocks and
                                                     # flown in to 800, as the game mixes it, with a spectrogram and levels of
-                                                    # each, the hush's among them
+                                                    # each, the hush's among them (VC_SAT=2 or 3 in the environment:
+                                                    # with that take of the satellite; satN_sky builds take N's two files)
 """
 import argparse, json, os, subprocess, sys, wave
 from pathlib import Path
@@ -95,20 +109,20 @@ TH = "supervolcano"
 ROOT = Path(__file__).resolve().parent.parent
 VARIANTS = {"creak": 4, "crack": 4, "rockfall": 3, "whistle": 3, "thud": 4, "spatter": 3, "thud_far": 3,
             "flow_rise": 3, "flow_in": 3, "splinter": 3, "grind": 2}
-SINGLE = ["beam", "fire", "tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "boom", "boom_far", "report_sub", "plate_sub", "column", "column_far",
+SAT = [f"sat{k}_{part}" for k in (1, 2, 3) for part in ("sky", "land")]
+SINGLE = SAT + ["tremor", "fountain", "steam", "hush", "seism", "report", "report_far", "boom", "boom_far", "report_sub", "plate_sub", "column", "column_far",
           "collapse", "collapse_far", "flow_far", "flow_hit", "after", "patter"]
 NAMES = SINGLE + list(VARIANTS)
 # (the plan's old events, taken out of sounds.json and their files deleted when it's rebuilt: the lightning is the Hurricane's)
-GONE = ["tick"] + [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
+GONE = ["tick", "beam", "fire"] + [f"bolt{v}" for v in range(1, 5)] + [f"bolt_far{v}" for v in range(1, 5)]
 # Each file's loudest 400 ms (dB, as the game plays it before its 0.596). The report and the collapse the loudest moments
 # by a long way; the column under them, so the climax has headroom.
-LEVEL = {"tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
+LEVEL = {"sat_sky": -8.0, "sat_land": -15.0, "tremor": -12.0, "fountain": -27.0, "rockfall": -22.0, "creak": -21.0, "crack": -17.0, "steam": -28.0,
          "hush": -15.0, "seism": -17.5, "report": -5.0, "report_far": -5.0, "boom": -4.5, "boom_far": -5.5, "report_sub": -10.0, "column": -13.0, "column_far": -12.0,
          "whistle": -16.0, "thud": -9.5, "spatter": -20.0, "thud_far": -18.0,
          "collapse": -7.0, "collapse_far": -7.5, "flow_rise": -12.0, "flow_far": -19.0, "flow_hit": -8.5, "flow_in": -13.0,
          "splinter": -19.0, "grind": -20.0, "after": -18.5, "patter": -28.0}
 LEAD = 0.02                # (the report's and the hit's silence at the start of their files)
-HIT_AT = 2.0               # (the satellite's shot, into `beam`: vc_sound.rs's VC_HIT)
 REPORT_SLAM = 2.0          # (the report's front laid on over its drive, dB against its loudest 400 ms: `slam`)
 COLLAPSE_GIVE = 1.0        # (how far the collapse's groan comes down to make room for the drop's blow, dB)
 SWELL, HUSH = 7.0, 17.0    # (BEATS.md: the mount starts to rise; it stops)
@@ -312,10 +326,8 @@ def bare_blow(size, lo=26.0, hi=120.0, rise=0.012, fall=0.11):
     return T.unit(F.cband(rng().standard_normal(m), lo, hi, 2)) * (1 - np.exp(-s / rise)) * np.exp(-s / (fall * size))
 
 
-# =============================================================================================================  the beam
+# =====================================================================================================  sampled files
 SOUNDS = ROOT / "orbital-sounds" / "assets" / "orbital" / "sounds"
-CHARGE_FROM = 2.0          # (into the plasma's charge.ogg: strike.rs plays it 4 s ahead of its fire, this one 2 s)
-FIRE_D = 3.0               # (`fire`'s length: the plasma's fire faded out over the beam's cut, VC_OFF 4.6; vc_sound.rs's VC_FIRE_LEN)
 BOOM_D = 24.0              # (`boom`'s length: vc_sound.rs's VC_BOOM_LEN)
 BOOM_SPEED = 0.74          # (the Nuke's ALT blast slowed to this: a fourth deeper and a third longer)
 BOOM_FRONT_SPEED = 0.6     # (the Payload's ALT blast, for the front, slowed further)
@@ -338,20 +350,294 @@ def as_loud_as(rel_or_x):
     return 20 * np.log10(T.loudest(x) + 1e-12)
 
 
-def build_beam():
-    """The satellite's charge: the lasers' own (the plasma's charge.ogg, which the other lasers all open with), its last
-    2 s, so it reaches its top on the shot at 2 s (vc_sound.rs plays the lock-on, the fire and the shutdown, the plasma's
-    too, round it)."""
-    y = sampled("charge.ogg")
-    y = S.fades(y[n_of(CHARGE_FROM):n_of(CHARGE_FROM + HIT_AT + 0.08)], 0.35, 0.06)
-    S.write("beam", y, as_loud_as(y))
+# =========================================================================================================  the satellite
+# Three takes of the opening (`/orbital satsound 1|2|3`, vc_sound.rs's SAT_TAKES), each a different idea of what an orbital
+# laser 7,000 up and 70 degrees over the player sounds like, on the same beats: it comes into view along its orbit (0-1.4),
+# the red targeting beam comes on (0.6) and its spot locks (1.5), the shot (2.0) melts the hole, the beam is cut (4.6), the
+# hole glows and the satellite fades by 9.5. Each take is two files: `satN_sky`, on the strike's clock from 0 (a sound
+# from orbit can't be late by the distance and still be on its picture: films play it on the picture too), and
+# `satN_land`, the shot's blow on the land at the vent come to the player late by the distance (by the air for 1 and 2,
+# 343 a second; through the ground for 3, five times sooner).
+# What makes them read as high in the sky and not at the ear (the Payload's fall is the model): no top over a few kHz
+# (7 km of air takes it), nothing quick (every level and colour moves slowly, bands on their own: no shared flutter), soft
+# fronts (a blow's onset in milliseconds, never a burst of noise: that's a snare), and the land answering it, late,
+# dark and long (`sky_echo`). The weight comes with the shot: a sub blow and the 100-800 Hz body with it, so the low end
+# is heard on a laptop too (`lows_heard`). Nothing beeps, rings or chimes; the aim and the lock are changes in what is
+# already sounding.
+SAT_SKY_D = 10.0           # (`satN_sky`'s length: vc_sound.rs's SAT_SKY_LEN)
+SAT_LAND_D = 6.0           # (`satN_land`'s: SAT_LAND_LEN)
+SAT_AIM, SAT_LOCK, SAT_HIT, SAT_CUT, SAT_GONE = 0.6, 1.5, 2.0, 4.6, 9.5
 
 
-def build_fire():
-    """The satellite's shot: the plasma's fire.ogg, faded out with the beam's cut at 4.6 s (2.6 s in), the shutdown
-    taking over."""
-    y = sampled("fire.ogg")[:n_of(FIRE_D)]
-    S.write("fire", S.fades(y, 0.0, 0.9), as_loud_as(y))
+def ss(a, b, x):
+    u = np.clip((np.asarray(x, float) - a) / (b - a), 0, 1)
+    return u * u * (3 - 2 * u)
+
+
+def lowpass_curve(x, fc, size=4096, hop=1024):
+    """`x` through a lowpass (24 dB an octave) whose cutoff follows `fc` (Hz, one value a sample), frame by frame."""
+    n = len(x)
+    win = np.hanning(size)
+    out = np.zeros(n + size)
+    norm = np.zeros(n + size)
+    xp = np.concatenate([x, np.zeros(size)])
+    f = np.fft.rfftfreq(size, 1 / SR)
+    for a in range(0, n, hop):
+        c = fc[min(a + size // 2, n - 1)]
+        out[a:a + size] += np.fft.irfft(np.fft.rfft(xp[a:a + size] * win) / (1 + (f / c) ** 4), size) * win
+        norm[a:a + size] += win ** 2
+    return out[:n] / np.maximum(norm[:n], 1e-3)
+
+
+def sky_echo(x, length=6.0, wet=0.55, darken=(1500, 140), decay=2.2, pre=0.18, seed=0):
+    """`x` as the land round the player answers a sound high overhead: nothing for `pre` s (the nearest land is that far
+    off), then clumps of dark echoes off hills and trees for seconds, each later one duller."""
+    ir = T.outdoor_ir(length, seed, density=28.0, darken=darken, decay=decay)
+    ir = np.concatenate([np.zeros(n_of(pre)), ir])
+    # (the echo `wet` of the sound itself, whatever its colour: an IR this dark, scaled to unit energy, would otherwise
+    # carry the lows several times over and smear every blow into the next)
+    e = conv(x, ir)
+    return x + e * wet * np.sqrt(np.mean(x ** 2) / (np.mean(e ** 2) + 1e-20))
+
+
+def blow_at(n, t0, f_hi, f_lo, f_end, drop, rise, decs, drive=3.0):
+    """S.blow, peak 1."""
+    b = S.blow(n, t0, f_hi, f_lo, f_end, drop, rise, decs, drive=drive, octv=0.3, h3=0.15, harm=0.5)
+    return b / (np.abs(b).max() + 1e-9)
+
+
+def soft_body(n, t0, lo, hi, rise, fall):
+    """A short body of low noise, its front rising over `rise` s (no burst on it), dying over `fall`; unit RMS before its
+    envelope."""
+    t = np.arange(n) / SR
+    u = np.maximum(t - t0, 0)
+    return T.unit(F.cband(rng().standard_normal(n), lo, hi, 2)) * (1 - np.exp(-u / rise)) * np.exp(-u / fall) * (t >= t0)
+
+
+def sat_write(name, x, d):
+    x = PB.causal_lowcut(x, 20.0) * T.fade(n_of(d), 0.002, 0.6)
+    land_ = name.endswith("_land")
+    # (the sky's blows rounded off a little rather than limited, so the shot keeps its weight under the true-peak cap)
+    write(name, x[:n_of(d)], knee=None if land_ else 0.8, kind="sat_land" if land_ else "sat_sky")
+
+
+# ---- take 1: the sky splits (lightning and thunder heard from kilometres off; the Hurricane's own thunder, approved)
+def build_sat1():
+    """No machine at all: weather. Its coming is a high wind aloft, a roar far up in the sky brightening as it comes along
+    its orbit; the targeting beam a pressure in the air under it as the column ionises; the lock one deep grumble of
+    thunder far up (the Hurricane's `rumble`, slowed). The shot is a thunderclap overhead with no crack in it, a deep blow,
+    and the beam then rolls as lightning's channel does, heard from its foot first and then further and further up it (each
+    stretch of a 7,000-block column late by its own distance, the times drawn in four-fold), over a deep roaring burn; the
+    cut, the air slamming back into the channel, a second blow and the Hurricane's far thunder slowed, rolling off round
+    the land until the satellite is gone."""
+    d = SAT_SKY_D
+    n, t = n_of(d), times(d)
+    with PB.seeded(61101):
+        # (high wind aloft: brightening as it comes, never a flutter)
+        aloft = eddies(d, 70, 3200, 2.5, -3.5, 16.0, 2.5)
+        aloft = lowpass_curve(aloft, 700 + 1900 * ss(0.0, 1.8, t) - 900 * ss(SAT_CUT, SAT_GONE, t))
+        aloft *= db_curve(t, [(0, -70), (0.25, -40), (0.9, -29), (1.5, -25), (1.95, -22), (2.3, -25), (SAT_CUT, -24), (6.5, -32), (SAT_GONE, -60), (d, -80)])
+        # (the column ionising under the targeting beam: a low pressure swelling, felt more than heard)
+        ion = eddies(d, 30, 320, 3.0, -2.5, 10.0, 2.0) * ss(SAT_AIM, SAT_AIM + 0.7, t) * (1 - ss(SAT_CUT, SAT_CUT + 1.2, t))
+        ion *= db_curve(t, [(0, -26), (SAT_LOCK, -22), (SAT_HIT, -18), (SAT_HIT + 0.6, -26), (d, -30)])
+        # (the lock: one deep grumble far up)
+        grumble = np.zeros(n)
+        g = F.cband(sampled("hurricane/rumble3.ogg", 0.72), None, 900, 2)[:n_of(1.6)]
+        g = S.fades(g, 0.02, 0.9)
+        P.put(grumble, g / (T.loudest(g) + 1e-9) * db_of(-24), SAT_LOCK - 0.03)
+        # ---- the shot: a clap overhead, no crack: a deep blow and its body rising in milliseconds
+        clap = blow_at(n, SAT_HIT, 78.0, 34.0, 25.0, 0.12, 0.004, ((0.6, 0.3), (0.4, 1.3)), drive=3.2) * 2.4
+        clap += soft_body(n, SAT_HIT, 45, 420, 0.006, 0.55) * 0.9
+        clap += soft_body(n, SAT_HIT, 120, 800, 0.008, 0.3) * 0.45
+        clap += soft_body(n, SAT_HIT, 300, 1500, 0.012, 0.25) * 0.12
+        th = F.cband(sampled("hurricane/thunder_far2.ogg", 0.7), None, 1600, 2)
+        P.put(clap, th / (T.loudest(th) + 1e-9) * 0.35, SAT_HIT)
+        # (the channel rolling: each stretch of the column heard late by its own distance, 1,000 off to 7,070 up, drawn in)
+        roll = np.zeros(n)
+        hs = np.sort(7000.0 * rng().random(80) ** 0.8)
+        for h in hs:
+            r = np.hypot(1000.0, h)
+            at = SAT_HIT + 0.05 + (r - 1000.0) / 343.0 / 4.0
+            if at > d - 1.0:
+                continue
+            b = bare_blow(rng().uniform(1.2, 2.6), 24, 160 + 420 * (1000.0 / r), 0.02, 0.09)
+            P.put(roll, b * (1000.0 / r) ** 0.6 * min(rng().pareto(3.0) * 0.5 + 0.5, 2.5), at)
+        roll = roll / (np.sqrt(np.mean(roll[n_of(SAT_HIT):n_of(SAT_CUT)] ** 2)) + 1e-9) * 0.22 * ss(SAT_HIT + 0.1, SAT_HIT + 0.6, t)
+        roll *= 1 - 0.7 * ss(SAT_CUT - 0.05, SAT_CUT + 0.3, t)
+        # (the burn under it: a deep roar, slow heaves, top kept dark)
+        burn = eddies(d, 30, 900, 3.0, -5.0, 10.0, 4.0) * heaves(d, 0.45, 0.6, 0.06, 0.35, 0.5, SAT_HIT)
+        burn = burn * ss(SAT_HIT + 0.05, SAT_HIT + 0.5, t) * (1 - ss(SAT_CUT - 0.05, SAT_CUT + 0.25, t)) * 0.15
+        # ---- the cut: the air slamming back into the channel, rolling off round the land
+        slam_ = blow_at(n, SAT_CUT, 62.0, 30.0, 24.0, 0.15, 0.015, ((0.6, 0.35), (0.4, 1.5)), drive=2.5) * 1.5
+        slam_ += soft_body(n, SAT_CUT, 35, 300, 0.012, 0.7) * 0.55
+        th2 = F.cband(sampled("hurricane/thunder_far4.ogg", 0.62), None, 1100, 2)
+        P.put(slam_, th2 / (T.loudest(th2) + 1e-9) * 0.42, SAT_CUT + 0.02)
+        shot = (clap + roll + burn + slam_) * db_of(-9)
+        x = aloft + ion + grumble + shot
+        x = sky_echo(x, 6.0, 0.45, (1300, 120), 2.4, 0.22, seed=111)
+        x = lows_heard(x, 60, 360, -7.0)
+        x = F.cband(x, None, 4200, 2)
+        x *= db_curve(t, [(0, 0), (8.6, 0), (SAT_GONE, -10), (d, -60)])
+    sat_write("sat1_sky", x, d)
+    # the land's answer: the beam's foot, a kilometre and more off, its thunder rolling in late over the land
+    d = SAT_LAND_D
+    n, t = n_of(d), times(d)
+    with PB.seeded(61102):
+        x = blow_at(n, LEAD, 58.0, 30.0, 24.0, 0.2, 0.025, ((0.6, 0.4), (0.4, 1.6)), drive=2.2) * 1.2
+        x += soft_body(n, LEAD, 30, 260, 0.03, 0.9) * 0.5
+        th = F.cband(sampled("hurricane/thunder_far1.ogg", 0.66), None, 900, 2)
+        P.put(x, th / (T.loudest(th) + 1e-9) * 0.7, LEAD)
+        x = land(x, 4.0, 0.5, (900, 110), 2.0, 30.0, seed=112)
+        x = lows_heard(x, 55, 300, -8.0)
+    sat_write("sat1_land", x, d)
+
+
+# ---- take 2: the sky sings (Inception's horns, "massive low-end musical tones, sounding like distant horns"; the Fold's
+# approved `swell`, one huge bowed note)
+SAT2_ROOT = 49.0           # G1: the note the satellite is
+
+
+def horn(t, f0, fm, width, nh=48, jitter=0.0015):
+    """A brass-like voice: harmonics of `f0` (Hz, a curve) under a formant centred at `fm` Hz (a curve) `width` octaves
+    wide, each partial a little off and swelling slowly on its own (`boiled`), nothing above 3.5 kHz. Unit RMS."""
+    n = len(t)
+    ph = 2 * np.pi * np.cumsum(f0 * (1 + jitter * PB.slow_random(n, 0.1, 0.8))) / SR
+    lfm = np.log2(np.maximum(fm, 20.0))
+    y = np.zeros(n)
+    for k in range(1, nh + 1):
+        if np.min(f0) * k > 3500:
+            break
+        lf = np.log2(f0 * k)
+        w = 0.08 + np.exp(-0.5 * ((lf - lfm) / (width / 2.355)) ** 2) + 0.25 * (lf < lfm)
+        y += k ** -0.7 * w * np.sin(k * ph * (1 + 0.0004 * (k - 1)) + rng().uniform(0, 6.3)) * boiled(n, 0.15, 0.9, 1.6)
+    return T.unit(y)
+
+
+def build_sat2():
+    """The satellite is a note. It comes into view as a vast low horn far up (G1, its overtones closed), falling into its
+    pitch as it settles on its orbit; the targeting beam a second voice beside it, a little off, the two beating slowly and
+    unevenly as the spot wanders; the lock the two pulling into one (the beating stops, the note firms and opens a
+    little). It swells to the shot, which is the braam: the octave under it, the fifth and the octave over come in at once,
+    the formant thrown open, driven until it growls, a sub blow and a deep body under its front; it holds while the beam
+    burns, slowly closing, and at the cut it sags a whole tone and closes to its bottom, ringing off the land until it is
+    gone."""
+    d = SAT_SKY_D
+    n, t = n_of(d), times(d)
+    with PB.seeded(61201):
+        f = SAT2_ROOT * 2 ** ((0.4 * np.exp(-t / 0.55) - 2.0 * ss(SAT_CUT, SAT_CUT + 2.2, t)) / 12)
+        # (its colour: closed as it comes, opening a little at the lock, thrown open on the shot, closing as it burns)
+        fm = np.interp(t, [0, 1.4, SAT_LOCK, SAT_LOCK + 0.2, SAT_HIT - 0.02, SAT_HIT + 0.07, 3.2, SAT_CUT, SAT_CUT + 1.5, d],
+                       [150, 210, 230, 330, 470, 1050, 900, 720, 260, 160])
+        fm = ease(fm, 0.04)
+        a = horn(t, f, fm, 1.4)
+        # (the second voice: on at the aim, its pitch off by a wandering few tenths of a percent, pulled in at the lock)
+        off = (0.0045 + 0.0035 * PB.slow_random(n, 0.2, 0.9)) * (1 - ss(SAT_LOCK - 0.25, SAT_LOCK + 0.05, t))
+        # (its overtones only up to the 16th, so the two beat slowly, never a flutter up top)
+        b = horn(t, f * (1 + off), fm * 0.95, 1.3, nh=16) * ss(SAT_AIM, SAT_AIM + 0.5, t)
+        lead = (a + 0.85 * b) * db_curve(t, [(0, -75), (0.3, -40), (1.0, -30), (SAT_LOCK, -27), (SAT_LOCK + 0.2, -24.5),
+                                             (SAT_HIT - 0.05, -18), (SAT_HIT + 0.08, -16), (2.6, -20), (SAT_CUT, -21),
+                                             (SAT_CUT + 0.4, -21), (6.5, -28), (SAT_GONE, -48), (d, -80)])
+        # ---- the braam: the octave under, the fifth and the octave over, in at once, driven till it growls
+        on = ss(SAT_HIT - 0.01, SAT_HIT + 0.06, t)
+        held = db_curve(t, [(0, 5.0), (SAT_HIT + 0.15, 5.0), (2.8, 0), (3.4, -1.0), (SAT_CUT, -2.0), (SAT_CUT + 0.35, -8), (6.5, -19), (SAT_GONE, -45), (d, -80)])
+        under = horn(t, f / 2, fm * 0.8, 1.6, nh=60)
+        fifth = horn(t, f * 1.4983, fm, 1.3)
+        over = horn(t, f * 2.0, fm * 1.05, 1.2)
+        braam = (under * 1.0 + fifth * 0.55 + over * 0.45 + a * 0.6) * on
+        drive = 2.6 * on * (1 - 0.5 * ss(SAT_CUT, SAT_CUT + 1.0, t)) + 0.3
+        braam = np.tanh(braam * drive) / np.tanh(drive)
+        braam = F.cband(braam * held, None, 3000, 2) * db_of(-12)
+        # (a sub under the root, the note an octave lower again, there only with the braam)
+        sub = np.sin(2 * np.pi * np.cumsum(f / 2) / SR) * on * held * db_of(-13)
+        # (the front's weight: a sub blow and a deep body, rising in milliseconds)
+        hit = blow_at(n, SAT_HIT, 66.0, 32.0, 24.5, 0.1, 0.004, ((0.6, 0.3), (0.4, 1.1)), drive=3.0) * db_of(-6)
+        hit += soft_body(n, SAT_HIT, 40, 360, 0.008, 0.45) * db_of(-16)
+        x = lead + braam + sub + hit
+        x = sky_echo(x, 6.5, 0.5, (1600, 140), 2.4, 0.2, seed=121)
+        x = lows_heard(x, 60, 360, -9.0)
+        x = F.cband(x, None, 4000, 2)
+    sat_write("sat2_sky", x, d)
+    # the land's answer: the shot's blow at the vent, and the note coming back off the land with it, dark
+    d = SAT_LAND_D
+    n, t = n_of(d), times(d)
+    with PB.seeded(61202):
+        u = np.maximum(t - LEAD, 0)
+        x = blow_at(n, LEAD, 56.0, 29.0, 24.5, 0.2, 0.025, ((0.6, 0.4), (0.4, 1.5)), drive=2.2)
+        x += soft_body(n, LEAD, 30, 240, 0.03, 0.8) * 0.4
+        note = horn(t, SAT2_ROOT * 2 ** (-2.0 * ss(0.0, 2.5, t) / 12) / 2, np.interp(t, [0, 0.1, 2.5, d], [180, 380, 180, 120]), 1.4)
+        x += note * (1 - np.exp(-u / 0.06)) * np.exp(-u / 1.3) * 0.5
+        x = land(x, 4.0, 0.55, (800, 100), 2.2, 30.0, seed=122)
+        x = lows_heard(x, 55, 300, -8.0)
+    sat_write("sat2_land", x, d)
+
+
+# ---- take 3: the beam comes down (the kinetic strikes from orbit: Call of Duty Ghosts' ODIN, G.I. Joe Retaliation's
+# Zeus rods; the Payload's approved fall, high up and not at the ear)
+def build_sat3():
+    """The shot heard as energy coming down out of orbit. It comes into view as a far rushing high overhead (the Payload's
+    fall from kilometres up: a roar with its own slow resonances, one sound overhead); the targeting beam a low slow throb
+    under it, a few pulses a second, wandering as its spot does; the lock the throb settling into one held pressure with a
+    soft push. From 1.1 s the beam bores down through the air: a rush sweeping up and growing, the sub bearing down under
+    it, to the shot, a slam (a sub blow falling, the chest's punch, the air shoved), then the beam's torn-air roar standing
+    overhead while it burns. At the cut the roar draws off upward (its rush falling away, its top closing) after a whump of
+    the air closing behind it, and the hole's low roar dies off with the satellite."""
+    d = SAT_SKY_D
+    n, t = n_of(d), times(d)
+    with PB.seeded(61301):
+        # (far rushing overhead, its own slow resonances wandering in it)
+        far = eddies(d, 90, 4000, 2.5, -3.0, 16.0, 2.0)
+        far = far + 0.5 * P.glide_band(d, 640 * (1 + 0.06 * PB.slow_random(n, 0.1, 0.5)), 0.45) + 0.35 * P.glide_band(d, 1350 * (1 + 0.05 * PB.slow_random(n, 0.1, 0.5)), 0.4)
+        far = lowpass_curve(far, 1200 + 1800 * ss(0.0, 2.0, t))
+        far *= db_curve(t, [(0, -72), (0.3, -42), (1.0, -32), (1.6, -29), (SAT_HIT, -27), (SAT_HIT + 0.3, -40), (d, -80)])
+        # (the targeting beam: a low throb, a few slow pulses a second, its pace wandering; at the lock a held pressure)
+        rate = 2.6 + 0.8 * PB.slow_random(n, 0.3, 1.2)
+        pulse = 0.5 + 0.5 * np.cos(2 * np.pi * np.cumsum(rate) / SR)
+        depth = 0.75 * (1 - ss(SAT_LOCK - 0.05, SAT_LOCK + 0.15, t))
+        throb = eddies(d, 30, 220, 3.0, -3.0, 10.0, 1.5) * (1 - depth + depth * pulse ** 2)
+        throb *= ss(SAT_AIM, SAT_AIM + 0.35, t) * db_curve(t, [(0, -24), (SAT_LOCK, -20), (SAT_HIT, -16), (SAT_HIT + 0.3, -30), (d, -60)])
+        push = np.zeros(n)
+        P.put(push, bare_blow(1.4, 24, 110, 0.02, 0.12) * db_of(-21), SAT_LOCK)
+        # (the beam boring down through the air: a rush sweeping up and growing, the sub under it)
+        u = ss(1.05, SAT_HIT, t)
+        rush = P.glide_band(d, 260 * (1500 / 260) ** (u ** 1.7), 0.9 + 0.3 * u) * np.exp(1.5 * PB.slow_random(n, 0.4, 2.0) / 8.686)
+        rush *= db_curve(t, [(0, -80), (1.05, -60), (1.4, -38), (1.8, -26), (SAT_HIT - 0.01, -19), (SAT_HIT + 0.04, -30), (d, -80)])
+        bear = T.unit(F.cband(white(d), 24, 75, 2)) * db_curve(t, [(0, -70), (1.1, -45), (1.7, -30), (SAT_HIT, -21), (SAT_HIT + 0.2, -40), (d, -80)])
+        # ---- the slam
+        slam_ = impact(n, SAT_HIT, sub=(74.0, 36.0, 27.0), drop=0.08, body=(45.0, 300.0), body_fall=0.12, crack=(300.0, 1200.0), crack_fall=0.02, mix=(1.0, 1.0, 0.0))
+        push2 = band(T.friedlander(n, SAT_HIT, 0.25, 1.4), 15, 160, 2)
+        slam_ = slam_ / (np.abs(slam_).max() + 1e-9) * 1.6 + push2 / (np.abs(push2).max() + 1e-9) * 0.9
+        slam_ += soft_body(n, SAT_HIT, 60, 700, 0.01, 0.35) * 0.3
+        # (the beam's roar overhead while it burns: torn air at every scale, heaving, its top dark)
+        burn = eddies(d, 40, 3200, 3.0, -3.5, 14.0, 3.5, drive=heaves(d, 0.5, 0.6, 0.08, 0.4, 0.45, SAT_HIT), lift=1.5)
+        rise = ss(SAT_HIT - 0.02, SAT_HIT + 0.1, t)
+        burn = lowpass_curve(burn, 2800 - 2300 * ss(SAT_CUT, SAT_CUT + 1.8, t)) * rise
+        burn *= db_curve(t, [(0, 0), (SAT_HIT + 0.2, 0), (3.5, 0.5), (SAT_CUT, 1.0), (SAT_CUT + 0.6, -6), (6.5, -18), (8.0, -32), (d, -70)])
+        low = eddies(d, 28, 260, 3.0, -2.0, 10.0, 3.0) * rise * db_curve(t, [(0, 0), (SAT_CUT, 0), (SAT_CUT + 0.4, -4), (7.0, -14), (SAT_GONE, -34), (d, -70)])
+        # (drawing off upward: the rush falling away after the cut)
+        v = ss(SAT_CUT, SAT_CUT + 2.2, t)
+        away = P.glide_band(d, 1300 * (180 / 1300) ** v, 0.9) * ss(SAT_CUT - 0.1, SAT_CUT + 0.1, t) * db_curve(t, [(0, -80), (SAT_CUT, -30), (5.4, -31), (7.0, -40), (8.5, -60), (d, -80)])
+        whump = np.zeros(n)
+        P.put(whump, bare_blow(2.2, 24, 150, 0.02, 0.13), SAT_CUT + 0.02)
+        x = far + throb + push + rush + bear + (slam_ * 1.9 + burn * 0.26 + low * 0.26 + whump * 0.6) * db_of(-9) + away
+        x = sky_echo(x, 5.0, 0.5, (1500, 150), 2.0, 0.16, seed=131)
+        x = lows_heard(x, 60, 380, -7.0)
+        x = F.cband(x, None, 4500, 2)
+    sat_write("sat3_sky", x, d)
+    # the land's answer, through the ground: the slam come under the feet, the ground ringing on with it
+    d = SAT_LAND_D
+    n, t = n_of(d), times(d)
+    with PB.seeded(61302):
+        x = blow_at(n, LEAD, 52.0, 28.0, 22.0, 0.18, 0.012, ((0.6, 0.3), (0.4, 1.2)), drive=2.0)
+        x += soft_body(n, LEAD, 25, 180, 0.015, 0.6) * 0.45
+        x = earth_ring(x, 4.0, 0.7, (500, 55), 1.1, seed=132)
+        x = lows_heard(x, 50, 260, -8.0)
+    sat_write("sat3_land", x, d)
+
+
+def build_sat():
+    build_sat1()
+    build_sat2()
+    build_sat3()
 
 
 def build_boom():
@@ -1579,7 +1865,9 @@ def build_patter():
 
 
 BUILD = {
-    "beam": build_beam, "fire": build_fire, "tremor": build_tremor, "fountain": build_fountain, "steam": build_steam, "hush": build_hush, "seism": build_seism, "report": build_report,
+    **{k: (build_sat1, build_sat2, build_sat3)[int(k[3]) - 1] for k in SAT if k.endswith("_sky")},
+    **{k: (lambda: None) for k in SAT if k.endswith("_land")},
+    "tremor": build_tremor, "fountain": build_fountain, "steam": build_steam, "hush": build_hush, "seism": build_seism, "report": build_report,
     "report_far": lambda: None, "boom": build_boom, "boom_far": lambda: None, "report_sub": build_report_sub, "plate_sub": build_plate_sub, "column": build_column, "column_far": lambda: None, "collapse": build_collapse,
     "collapse_far": lambda: None, "flow_far": build_flow_far, "flow_hit": build_flow_hit, "after": build_after,
     "patter": build_patter,
@@ -1732,7 +2020,9 @@ def main():
             sounds = json.loads(path.read_text())
             for name in SINGLE:
                 ev = f"{TH}.{name}"
-                sounds[ev] = {"sounds": [{"name": f"orbital:{TH}/{name}", "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{ev}"}
+                # (the satellite's takes share their subtitles: `sat_sky`, `sat_land`)
+                sub = f"{TH}.sat_{name.split('_', 1)[1]}" if name in SAT else ev
+                sounds[ev] = {"sounds": [{"name": f"orbital:{TH}/{name}", "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{sub}"}
             for name, k in VARIANTS.items():
                 for v in range(1, k + 1):
                     sounds[f"{TH}.{name}{v}"] = {"sounds": [{"name": f"orbital:{TH}/{name}{v}", "attenuation_distance": 256}], "subtitle": f"subtitles.orbital.{TH}.{name}"}
