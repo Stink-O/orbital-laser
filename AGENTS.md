@@ -230,8 +230,10 @@ laser, command, capability and timing). This file is the short, factual version 
   outside in and it fires at 4.5 s (`VC_HIT`), a white-hot beam melting a round glowing hole (`vc_open_land`, light only)
   cut at 7.1 s (`VC_OFF`); it rolls its arrays in, kicks its jets at 8.6 (`VC_BURN`) and lifts straight up and away,
   into the haze by 12 (never a fade on the spot). Steam surges off the hole as the beam is cut and is fed in
-  pulses, puffs rising, slowing, swelling and bending with the wind, red from under (`vc_plume`, `vc_feed`), until the
-  eruption; the mount rising round the hole; the
+  uneven surges (noise, never a beat), puffs rising, slowing, swelling and bending with the wind, red from under
+  (`vc_plume`, `vc_feed`), until the eruption: clear just over the hole (too hot to condense), each puff a domed cap (what
+  was let go together lies on a dome, not a level slice, which drew flat plates), its folds sharp while young and softening
+  as it spreads, lit through itself (the sun's chord across the column: a shaded side, a bright rim); the mount rising round the hole; the
   tremor, the ring cracking at 8 s with wisps of steam, the eruption at 12 s (`VC_ERUPT`, a flash along the ring and a
   pressure ring at the speed of sound), a ring of vents 560 across feeding a column to about 1,800 (`vc_col`: the
   ring's foot follows the land, `vc_land`, a heightfield of 128 x 128 cells; lumps on lumps, `vc_lump_col`, drawn out and

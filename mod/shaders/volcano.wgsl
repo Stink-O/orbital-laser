@@ -1947,15 +1947,17 @@ fn vc_jet(uv: vec2<f32>, A: vec3<f32>, D: vec3<f32>, L: f32, w: f32, k: f32, col
     let side = saturate(length(ab) / (10.0 * wp));
     return col * k * pow(1.0 - f, 1.6) * (0.9 / (1.0 + e * e / (wp * wp)) + (0.15 + 0.45 * side) / (1.0 + dot(ap, ap) / (6.0 * wp * wp)));
 }
-// ---- the steam off the hole: vapour while the beam melts it, a surge as it is cut, then fed in pulses (`vc_feed`):
-// puffs that rise, slow, swell and thin, bending with the wind, red from under. What is let go is VC_PH (1 - e^(-a /
-// VC_PT)) up `a` seconds on, so its age is known from its height and its noise rides it.
+// ---- the steam off the hole: vapour while the beam melts it, a surge as it is cut, then fed unevenly (`vc_feed`):
+// rising, slowing, swelling and thinning, bending with the wind, red from under. What is let go is VC_PH (1 - e^(-a /
+// VC_PT)) up `a` seconds on, so its age is known from its height and its noise rides it. Clear just over the hole (too
+// hot to condense), white a little higher; lit through itself (the sun's way through the column: a shaded side, a
+// bright rim), its edge boiled out in folds, never a rope or a beat.
 const VC_PH: f32 = 900.0;
 const VC_PT: f32 = 10.0;
 fn vc_feed(s: f32) -> f32 {
     let on = smoothstep(VC_HIT + 0.2, VC_HIT + 0.6, s) * 0.2;
     let a = max(s - VC_OFF, 0.0);
-    let pulse = 0.12 + 0.88 * smoothstep(0.35, 0.9, 0.5 + 0.5 * sin(s * 5.3 + 2.0 * sin(s * 1.3)));
+    let pulse = 0.15 + 0.85 * smoothstep(0.3, 0.72, vc_gn3(vec3<f32>(s * 0.9, 1.7, 4.2)));
     let surge = smoothstep(VC_OFF - 0.05, VC_OFF + 0.1, s) * mix(0.7 * pulse, 1.0, exp(-a / 0.7));
     return max(on, surge) * (1.0 - smoothstep(VC_ERUPT - 4.0, VC_ERUPT - 0.5, s));
 }
@@ -1974,7 +1976,7 @@ fn vc_plume(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, l: Vc
     let B = C + vec3<f32>(0.0, select(0.0, vm_height(vec2<f32>(0.0)), vm.on), 0.0);
     let wd = vec3<f32>(0.95, 0.0, 0.31);
     let hm = VC_PH * (1.0 - exp(-age / VC_PT));
-    let rm = 40.0 + 30.0 * sqrt(age);
+    let rm = 50.0 + 40.0 * sqrt(age);
     let X = wd * vc_bend(hm).x;
     let inv = 1.0 / select(rd, vec3<f32>(1.0e-5), abs(rd) < vec3<f32>(1.0e-5));
     let t0 = (B + min(X, vec3<f32>(0.0)) - vec3<f32>(rm, 4.0, rm)) * inv;
@@ -1987,6 +1989,9 @@ fn vc_plume(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, l: Vc
         return c0;
     }
     let hg = 1.2 * fire + 0.45 - 0.3 * smoothstep(VC_OFF, VC_OFF + 5.0, t) + 0.35 * smoothstep(VC_CRACK, VC_ERUPT, t);
+    // (the sun's way across the column, level: how far it goes through it from a point)
+    let Lh = l.L.xz;
+    let la = max(dot(Lh, Lh), 0.02);
     let dt = (tb - ta) / 24.0;
     var s = ta + dt * jit;
     var acc = vec3<f32>(0.0);
@@ -1997,30 +2002,37 @@ fn vc_plume(c0: vec3<f32>, C: vec3<f32>, rd: vec3<f32>, len: f32, tr: f32, l: Vc
         if (q.y < 0.0 || q.y >= hm) {
             continue;
         }
-        let a = -VC_PT * log(1.0 - q.y / VC_PH);
+        // (what was let go together lies on a dome, not a level slice: its middle risen highest, so each puff is a cap)
+        let a0 = -VC_PT * log(1.0 - q.y / VC_PH);
+        let r0 = 10.0 + 36.0 * sqrt(a0) + 0.06 * q.y;
+        let x0 = length(q.xz - wd.xz * vc_bend(q.y).x) / r0;
+        let a = -VC_PT * log(1.0 - max(q.y - 0.6 * r0 * max(1.0 - x0 * x0, 0.0), 0.0) / VC_PH);
         let sr = t - a;
         let f = vc_feed(sr);
         let bd = vc_bend(q.y);
         let r = q.xz - wd.xz * bd.x;
-        let rr = (9.0 + 30.0 * sqrt(a)) * (1.0 + 0.5 * exp(-max(sr - VC_OFF, 0.0) / 0.6) * step(VC_OFF - 0.05, sr));
+        let rr = (10.0 + 36.0 * sqrt(a) + 0.06 * q.y) * (1.0 + 0.25 * exp(-max(sr - VC_OFF, 0.0) / 1.2) * step(VC_OFF - 0.05, sr));
         let x = length(r) / (sqrt(1.0 + bd.y * bd.y) * rr);
-        if (f < 0.01 || x > 1.7) {
+        if (f < 0.01 || x > 1.8) {
             continue;
         }
-        let an = a * 0.35;
-        let rl = vec2<f32>(r.x * cos(an) - r.y * sin(an), r.x * sin(an) + r.y * cos(an)) / sqrt(rr * 24.0);
-        let n1 = vc_gn3(vec3<f32>(rl * 1.6, sr * 4.0));
-        let n2 = vc_gn3(vec3<f32>(rl * 4.1, sr * 10.0 + 11.0));
-        let xe = x + 0.85 * (0.26 - abs(2.0 * n1 - 1.0)) + 0.38 * (n2 - 0.5);
-        let den = (1.0 - smoothstep(0.25, 0.85, xe)) * f * (0.35 + 0.65 * exp(-a / 7.0));
+        // (folds: warped noise riding what was let go together, growing as it swells, slowly turning over)
+        let rl = r / sqrt(rr * 24.0);
+        let n1 = vc_gn3(vec3<f32>(rl * 1.5, sr * 2.6));
+        let n2 = vc_gn3(vec3<f32>(rl * 2.2 + 0.9 * vec2<f32>(n1, -n1), sr * 4.0 + a * 0.35 + 11.0));
+        // (its folds sharp while young, softening as it spreads and thins)
+        let xe = x + (0.9 * (0.26 - abs(2.0 * n1 - 1.0)) + 0.35 * (n2 - 0.5)) * (0.45 + 0.55 * exp(-a / 4.0));
+        let den = (1.0 - smoothstep(0.15, 1.0 + 0.04 * a, xe)) * f * (0.3 + 0.7 * exp(-a / 6.0)) * smoothstep(4.0, 30.0, q.y + 18.0 * (n2 - 0.5));
         if (den < 0.003) {
             continue;
         }
-        let al = 1.0 - exp(-den * dt * 0.16);
-        let nr = normalize(vec3<f32>(r.x / rr, 0.45, r.y / rr) + 0.7 * vec3<f32>(n1 - 0.5, n2 - 0.5, n1 - n2));
-        let lit = saturate(0.5 + 0.5 * dot(nr, l.L)) * (0.6 + 0.4 * min(x, 1.0));
-        let alb = mix(vec3<f32>(0.42, 0.39, 0.36), vec3<f32>(0.86, 0.85, 0.84), smoothstep(10.0, 120.0, q.y));
-        let col = alb * (l.skyl * (0.35 + 0.4 * lit) + l.sunc * l.sun_up * 0.9 * lit) + vec3<f32>(2.4, 0.6, 0.12) * hg * exp(-q.y / 70.0) * saturate(0.8 - 0.5 * nr.y);
+        let al = 1.0 - exp(-den * dt * 0.24);
+        let R = rr * sqrt(1.0 + bd.y * bd.y);
+        let b2 = dot(r, Lh);
+        let sun = exp(-0.06 * f * clamp((-b2 + sqrt(max(b2 * b2 - la * (dot(r, r) - R * R), 0.0))) / la, 0.0, 3.0 * R));
+        let lit = (0.15 + 0.85 * sun) * (0.75 + 0.25 * n2);
+        let alb = mix(vec3<f32>(0.5, 0.48, 0.46), vec3<f32>(0.9, 0.9, 0.9), smoothstep(10.0, 140.0, q.y));
+        let col = alb * (l.skyl * (0.35 + 0.3 * min(x, 1.0) + 0.2 * n2) + l.sunc * l.sun_up * 1.15 * lit) + vec3<f32>(2.4, 0.6, 0.12) * hg * exp(-q.y / 60.0) * (0.8 - 0.5 * sun);
         acc = acc + T * al * col;
         T = T * (1.0 - al);
         if (T < 0.02) {
