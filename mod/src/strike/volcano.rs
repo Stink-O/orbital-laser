@@ -299,11 +299,23 @@ pub(super) fn volcano_plan(laser: &'static Laser, target: &Target, terrain: bool
     // (where the wall's lobes bring it to the player: the picture's and the sound's hit; softer the later it comes)
     let wall = vc_sound::front_at(dist, rel[2].atan2(rel[0])).unwrap_or(vc_wall_at(dist));
     if dist < 1700.0 {
-        p.shake(wall, (1.0 - (wall - 68.0) / 14.0).clamp(0.0, 1.0), 2.0);
-        let mut ts = wall + 1.0;
-        while ts < wall + 10.0 {
-            p.shake(ts, 0.3, 1.0);
-            ts += 0.7;
+        // (the ground going as it comes, building over its last 8 s; then the blow; then inside it the ground and the
+        // air never still, hard and ragged at first with heavier gusts in it, easing as it thins over 14 s)
+        let mut ts = (wall - 8.0).max(VC_COLLAPSE + late + 3.5);
+        while ts < wall - 0.3 {
+            let u = 1.0 - (wall - ts) / 8.0;
+            let j = p.rng.uniform(0.8, 1.15) as f32;
+            p.shake(ts, (0.08 + 0.42 * u * u) * j, 0.9);
+            ts += 0.55 - 0.25 * u;
+        }
+        p.shake(wall, (1.0 - (wall - 68.0) / 14.0).clamp(0.6, 1.0), 2.5);
+        let mut ts = wall + 0.8;
+        while ts < (wall + 14.0).min(87.0) {
+            let u = (ts - wall) / 14.0;
+            let gust = if p.rng.uniform(0.0, 1.0) < 0.18 { 1.45 } else { 1.0 };
+            let j = p.rng.uniform(0.75, 1.1) as f32;
+            p.shake(ts, ((0.62 - 0.38 * u) * gust * j).min(0.88), 0.9);
+            ts += p.rng.uniform(0.3, 0.55) as f32;
         }
         p.ev.push((wall, Act::Shove { from: [cx, gy, cz], out: VC_KNOCK_OUT, up: VC_KNOCK_UP, reach: VC_KNOCK_REACH }));
     }
