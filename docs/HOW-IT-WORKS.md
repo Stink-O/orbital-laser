@@ -202,7 +202,7 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   more as the bolts draw in. From 32.5 s the rain stops and the storm dies away; it ends at 42 s. It reaches 1000
   blocks.
 
-- **Supervolcano** (page three, `/orbital supervolcano`, 88 s, reaches 1000, the vent at least 1,000 blocks in front of
+- **Supervolcano** (page four, `/orbital supervolcano`, 88 s, reaches 1000, the vent at least 1,000 blocks in front of
   you). While the designator is held its countdown reads `BREACHING CRUST`. A small orbital laser satellite, built of
   blocks (a gold-foiled body, white radiators, an octagonal barrel ringed by coils, roll-out solar arrays), comes down
   a steep slant out of the sky to its station 7,000 blocks up over the vent, braking on four jets and righted by its
@@ -219,6 +219,9 @@ finish, every command, and how the mod, its effects and its sounds are made. For
   report arrives, and shakes harder and harder as the wall of ash comes, then on and on inside it, easing as it thins;
   with KNOCKBACK on the wall shoves you. The pass is [`mod/shaders/volcano.wgsl`](../mod/shaders/volcano.wgsl) with
   the mount's [`volcano_mount.wgsl`](../mod/shaders/volcano_mount.wgsl); it never touches the game's time or weather.
+  Your first-person hand and what you hold, which the game draws after the pass, darken and brown with the land where
+  you stand, near black in the wall of ash, lit by the white-out and the lightning near you (the fork's
+  `render.set-hand-tint`; the native build has no hand tint yet, so there the hand stays as the game draws it).
 - **Hurricane** (page three, `/orbital hurricane`). A hurricane spun up over the target, no beam, some 3,500 blocks
   across and 450 high. While the designator is held its countdown reads `TRACKING STORM`. Over the first six seconds
   a ragged mass of towering storms gathers over the target; to about 16 s it is drawn into three trailing rain bands
@@ -431,7 +434,7 @@ going in while the falling wave still hides them.
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -441,11 +444,10 @@ going in while the falling wave still hides them.
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
 | `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's and the Supervolcano's knockback (`Act::Shove`) and the Hurricane's carry on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod, the Hurricane or the Supervolcano is pointed at or loaded |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's and the Rod's knockback (`Act::Shove`) the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's and the Supervolcano's knockback (`Act::Shove`), the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke and the Supercell's storm are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm and the Supervolcano's cloud are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -478,8 +480,9 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `world.edit-blocks`, `world.surface-height` and `render.set-data` from the release `orbital-mod-api-5`,
 `world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
 `orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
-`orbital-mod-api-10`) are needed too: a fork build without them won't start the mod, so 0.5.8 needs
-`orbital-mod-api-11` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+`orbital-mod-api-10`, `render.set-warp`, `render.hold-world` and `render.hold-world-within`, the Fold's, from
+`orbital-mod-api-11`, and `render.set-hand-tint`, the Supervolcano's light on the hand, from `orbital-mod-api-12`) are
+needed too: a fork build without them won't start the mod, so 0.5.12 needs `orbital-mod-api-12` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.
 
