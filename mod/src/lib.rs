@@ -793,10 +793,8 @@ impl Orbital {
         world::play_sound("minecraft:ui.button.click", None, 0.5, 1.4);
     }
     /// A pick closes the wheel. If the picked laser's pass isn't the one the game holds, the wheel stays up for the two
-    /// frames it takes to build it (`warm`), saying so: on forks up to `orbital-mod-api-12` the build stops the game's
-    /// frames for up to seconds the first time and some 60 ms after, and over the wheel that reads as the pick being
-    /// taken, not as the world hitching. Later forks build it on a thread of its own and keep every pass they
-    /// built, so the frames go on and going back to a laser costs nothing.
+    /// frames it takes to build it (`warm`), saying so: the build stops the game's frames for up to seconds the first
+    /// time and some 60 ms after, and over the wheel that reads as the pick being taken, not as the world hitching.
     fn close_picked(&mut self) {
         if self.compiled == Some(pass_of(LASERS[self.laser])) || self.strike.is_some() || self.ticks < WARM_AFTER {
             ui::close();
@@ -1105,8 +1103,7 @@ impl Orbital {
             }
         }
         // Compile the loaded laser's pass ahead of its first strike (that costs about a second): set for one frame, all
-        // but invisible (no strike clock, the lowest intensity; its parameters all zero, so on forks after api-12 the frame
-        // doesn't wait for the build, which goes on on a thread of its own), then cleared; the game keeps the last one compiled for
+        // but invisible (no strike clock, the lowest intensity), then cleared; the game keeps the last one compiled for
         // the strikes after. Only a few seconds into play, never as the game starts, and only the one that is needed:
         // loading a laser that needs another compiles that one the same way, there and then rather than as it fires.
         let want = pass_of(LASERS[self.laser]);
