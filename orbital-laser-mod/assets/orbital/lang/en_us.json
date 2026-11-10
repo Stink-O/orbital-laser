@@ -151,5 +151,13 @@
   "subtitles.orbital.skybreak.slam": "A pane of sky slams down",
   "subtitles.orbital.skybreak.flare": "The eye flares",
   "subtitles.orbital.skybreak.descend": "A vast hand comes down",
-  "subtitles.orbital.skybreak.shudder": "The last of the sky shakes loose"
+  "subtitles.orbital.skybreak.shudder": "The last of the sky shakes loose",
+  "subtitles.orbital.carpetbomb.whistle1": "Bomb whistles down",
+  "subtitles.orbital.carpetbomb.whistle2": "Bomb whistles down",
+  "subtitles.orbital.carpetbomb.whistle3": "Bomb whistles down",
+  "subtitles.orbital.carpetbomb.crump1": "Bomb explodes",
+  "subtitles.orbital.carpetbomb.crump2": "Bomb explodes",
+  "subtitles.orbital.carpetbomb.crump3": "Bomb explodes",
+  "subtitles.orbital.carpetbomb.crump_far1": "Bomb explodes in the distance",
+  "subtitles.orbital.carpetbomb.crump_far2": "Bomb explodes in the distance"
 }

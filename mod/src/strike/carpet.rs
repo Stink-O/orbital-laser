@@ -667,52 +667,54 @@ fn cue(p: &mut Plan, t: f32, event: &str, volume: f64, pitch: f64) {
 
 /// The ground carries a blow five times as fast as the air (payload.rs's PL_GROUND_V).
 const GROUND_V: f64 = payload::PL_GROUND_V;
-/// The fall's sound (payload.dive) is cut this far in: started this long before the bomb it falls with strikes.
-const DIVE_CUT: f32 = 3.0;
+/// The whistles' lengths (tools/sounds_carpetbomb.py's WHISTLES): each is started its length before its bomb strikes
+/// and ends dead on it.
+pub(super) const WHISTLES: [f32; 3] = [2.0, 2.3, 2.6];
 
-/// The bombs' sounds, all the approved ones of other lasers (the taste guide's): the Payload's fall and its alternative
-/// blast set, the Meteor Storm's impacts, the Nuke's alternative blast under the last. Each bomb's thump through the
-/// ground first (d/1715), its blast through the air (d/343), the blasts taking turns between the Payload's and the
-/// Meteor's so no two in a row are the same, each a little lower or higher; the last the fullest, with the rush, the
-/// Nuke's under it and the long tail.
+/// How much of a blast is its far crump at `d` blocks: none within 220, all past 480.
+fn crump_far(d: f64) -> f64 {
+    let u = ((d - 220.0) / 260.0).clamp(0.0, 1.0);
+    u * u * (3.0 - 2.0 * u)
+}
+
+/// The bombs' sounds, made for a stick of bombs (tools/sounds_carpetbomb.py, every one reshaped from a sound the owner
+/// approved): each bomb's whistle coming down, cut dead as it strikes; its thump through the ground first (d/1715);
+/// then through the air (d/343) a short, punchy crump, duller from the far end of the line, louder and nearer as the
+/// line walks in, gone before the next so the rhythm is heard. Only the last, biggest one gets the Payload's whole
+/// alternative blast, its rush and its tail, and the Nuke's alternative blast under it.
 fn cp_sounds(p: &mut Plan, geo: &CpGeo, at: [f64; 3], me: [f64; 3]) {
     let last = CP_N - 1;
-    // (up there, the stick's fall: on the picture, from the first seconds, so it never starts in silence)
-    cue(p, 0.15, "payload.drift", 0.55, 0.97);
+    let d_last = sound_from([at[0] + geo.bombs[last].x, at[1], at[2] + geo.bombs[last].z], me).1.max(1.0);
     for (b, bomb) in geo.bombs.iter().enumerate() {
         let w = [at[0] + bomb.x, at[1], at[2] + bomb.z];
         let (late, d) = sound_from(w, me);
         let h = |k: u32| mh(b as u32, geo.seed, 0xe10 + k);
-        let near = 1.0 / (1.0 + d / 200.0);
         let big = b == last;
-        if b == 0 || b == 3 || b == 6 || big {
-            cue(p, bomb.t - DIVE_CUT, "payload.dive", if big { 1.0 } else { 0.55 + 0.15 * h(0) }, if big { 0.94 } else { 0.97 + 0.06 * h(1) });
-        }
+        // (its whistle, in the sky and on the picture: louder as the stick comes over)
+        let k = if big { 2 } else { b % 3 };
+        let rank = b as f64 / last as f64;
+        cue(p, bomb.t - WHISTLES[k], &format!("carpetbomb.whistle{}", k + 1), if big { 0.95 } else { 0.32 + 0.3 * rank }, if big { 0.97 } else { 0.97 + 0.06 * h(1) });
         // (the thump through the ground, well ahead of the air's blast; let down where the blast lands on top of it)
+        let near = 1.0 / (1.0 + d / 200.0);
         let tg = bomb.t + (d / GROUND_V) as f32;
         let gap = f64::from(bomb.t + late - tg);
         let gv = (0.45 + 0.55 * near) * ((gap - 0.05) / 0.9).clamp(0.3, 1.0).powf(1.2);
-        cue(p, tg - 0.02, "payload.ground_alt", if big { gv.max(0.7) } else { gv * 0.85 }, if big { 0.9 } else { 0.95 + 0.12 * h(2) });
+        cue(p, tg - 0.02, "payload.ground_alt", if big { gv.max(0.7) } else { gv * 0.45 }, if big { 0.9 } else { 0.95 + 0.12 * h(2) });
         let arrive = bomb.t + late;
-        let far = payload::pl_far(d);
-        let v = if big { 1.0 } else { (0.5 + 0.45 * near).min(0.92) };
-        if big || b % 2 == 0 {
-            let pitch = if big { 0.92 } else { 0.9 + 0.12 * h(3) };
-            cue(p, arrive - 0.02, "payload.blast_alt", v * f64::from(1.0 - far), pitch);
-            cue(p, arrive - 0.02, "payload.blast_alt_far", v * f64::from(far), pitch);
-        } else {
-            // (the Meteor Storm's: its big and its middling impact, its far takes for a blast well off)
-            let which = if b % 4 == 1 { 3 } else { 2 };
-            let name = if d > 140.0 { format!("meteor.hit_far{which}") } else { format!("meteor.hit{which}") };
-            cue(p, arrive, &name, v, 0.94 + 0.08 * h(4));
-        }
         if big {
+            let far = f64::from(payload::pl_far(d));
+            cue(p, arrive - 0.02, "payload.blast_alt", 1.0 - far, 0.92);
+            cue(p, arrive - 0.02, "payload.blast_alt_far", far, 0.92);
             cue(p, arrive - 0.02, "nuke.blast_alt", 0.55, 1.0);
             cue(p, arrive - 0.15, "payload.rush", 1.0, 1.0);
             cue(p, arrive + 2.4, "payload.tail", 1.0, 1.0);
-        } else if b == last - 4 {
-            // (the line's rolling wall of dust going over, half way along)
-            cue(p, arrive - 0.15, "payload.rush", 0.45, 1.05);
+        } else {
+            // (the crump: its boom 0.1 s in, as the Payload's blast has it)
+            let v = 0.3 + 0.6 * (d_last / d).min(1.0).powf(1.3);
+            let fs = crump_far(d);
+            let pitch = 0.92 + 0.12 * h(3);
+            cue(p, arrive - 0.02, &format!("carpetbomb.crump{}", 1 + b % 3), v * (1.0 - fs), pitch);
+            cue(p, arrive - 0.02, &format!("carpetbomb.crump_far{}", 1 + b % 2), v * fs, pitch);
         }
     }
 }
@@ -1099,7 +1101,12 @@ mod tests {
     /// of it; never two blasts in a row the same; the last the loudest.
     #[test]
     fn carpet_sounds_are_the_approved_ones_timed_by_distance() {
-        let approved = ["payload.drift", "payload.dive", "payload.ground_alt", "payload.blast_alt", "payload.blast_alt_far", "payload.rush", "payload.tail", "nuke.blast_alt", "meteor.hit2", "meteor.hit3", "meteor.hit_far2", "meteor.hit_far3"];
+        // (the carpet bomb's own, reshaped from approved ones by tools/sounds_carpetbomb.py, and approved ones as they are)
+        let approved = [
+            "carpetbomb.whistle1", "carpetbomb.whistle2", "carpetbomb.whistle3", "carpetbomb.crump1", "carpetbomb.crump2", "carpetbomb.crump3",
+            "carpetbomb.crump_far1", "carpetbomb.crump_far2", "payload.ground_alt", "payload.blast_alt", "payload.blast_alt_far", "payload.rush",
+            "payload.tail", "nuke.blast_alt",
+        ];
         let events = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../orbital-sounds/assets/orbital/sounds.json")).unwrap();
         for d in [70.0, 150.0, 600.0, 1400.0] {
             let me = me_at(d, 0.7);
@@ -1112,7 +1119,20 @@ mod tests {
                 assert!(events.contains(&format!("\"{k}\"")), "{k} not in sounds.json");
                 assert!(*t >= 0.0 && *v > 0.0 && *v <= 1.0 && (0.85..=1.1).contains(pitch), "{k} at {t}: {v} {pitch}");
             }
-            let blasts: Vec<&(f32, String, f32, f32)> = c.iter().filter(|e| e.1.contains("blast_alt") && !e.1.contains("nuke") || e.1.contains("meteor.hit")).collect();
+            let blasts: Vec<&(f32, String, f32, f32)> = c.iter().filter(|e| e.1.contains("payload.blast_alt") || e.1.contains("crump")).collect();
+            // (each whistle ends dead on its bomb's strike; only the last bomb gets the whole blast)
+            for (n, b) in g.bombs.iter().enumerate() {
+                let w = c.iter().find(|e| e.1.contains("whistle") && (e.0 + len_of(&e.1) - b.t).abs() < 0.03);
+                assert!(w.is_some(), "{d}: bomb {n}'s whistle doesn't end on it");
+            }
+            let lb = g.bombs[CP_N - 1];
+            let heard_last = lb.t + sound_from([10.5 + lb.x, 65.0, -2.5 + lb.z], me).0;
+            for e in c.iter().filter(|e| e.1.contains("payload.blast_alt") || e.1.contains("nuke.") || e.1.contains("rush") || e.1.contains("tail")) {
+                assert!(e.0 > heard_last - 0.2, "{d}: {} at {} before the last bomb's blast", e.1, e.0);
+            }
+            for e in c.iter().filter(|e| e.1.contains("crump")) {
+                assert!(len_of(&e.1) < 3.0, "{} is long", e.1);
+            }
             for (n, b) in g.bombs.iter().enumerate() {
                 let (late, _) = sound_from([10.5 + b.x, 65.0, -2.5 + b.z], me);
                 let heard: Vec<_> = blasts.iter().filter(|e| (e.0 - (b.t + late)).abs() < 0.05).collect();
@@ -1124,9 +1144,28 @@ mod tests {
             for n in 0..CP_N - 1 {
                 assert!(loud(n) < loud(CP_N - 1), "{d}: bomb {n} as loud as the last");
             }
-            // (and the opening is never silent: the fall's from the start)
-            assert!(c.first().is_some_and(|e| e.0 < 0.5));
+            // (the first whistle comes in before the first bomb, well ahead of it)
+            assert!(c.first().is_some_and(|e| e.0 < CP_T0 - 1.5 && e.1.contains("whistle")));
         }
+    }
+
+    /// A sound file's length in seconds, from its last Ogg page's granule position (44.1 kHz).
+    fn len_of(event: &str) -> f32 {
+        let file = event.strip_prefix("orbital:").unwrap_or(event).replacen('.', "/", 1);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../orbital-sounds/assets/orbital/sounds/{file}.ogg"));
+        let b = std::fs::read(&path).unwrap_or_else(|_| panic!("{event} has no file"));
+        let i = (0..b.len() - 14).rev().find(|&i| &b[i..i + 4] == b"OggS").expect("an Ogg page");
+        u64::from_le_bytes(b[i + 6..i + 14].try_into().unwrap()) as f32 / 44_100.0
+    }
+
+    /// `CP_ME=300 CP_OUT=path cargo test --release cp_write_cues -- --ignored`: the strike's sounds as the player CP_ME
+    /// blocks from the target hears them, `t event volume pitch` a line, for tools/sounds_carpetbomb.py's `--mix`.
+    #[test]
+    #[ignore]
+    fn cp_write_cues() {
+        let d: f64 = std::env::var("CP_ME").map_or(300.0, |v| v.parse().unwrap());
+        let out: String = cues(me_at(d, 0.7)).iter().map(|(t, e, v, p)| format!("{t:.3} {e} {v:.3} {p:.3}\n")).collect();
+        std::fs::write(std::env::var("CP_OUT").unwrap(), out).unwrap();
     }
 
     /// `CB_SEED=37 CB_OUT=path PL_ME=x,y,z cargo test --release cp_write_table -- --ignored`: the table the pass reads,

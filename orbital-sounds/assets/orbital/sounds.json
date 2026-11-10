@@ -3323,5 +3323,77 @@
       }
     ],
     "subtitle": "subtitles.orbital.skybreak.shudder"
+  },
+  "carpetbomb.whistle1": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/whistle1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.whistle1"
+  },
+  "carpetbomb.whistle2": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/whistle2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.whistle2"
+  },
+  "carpetbomb.whistle3": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/whistle3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.whistle3"
+  },
+  "carpetbomb.crump1": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/crump1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.crump1"
+  },
+  "carpetbomb.crump2": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/crump2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.crump2"
+  },
+  "carpetbomb.crump3": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/crump3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.crump3"
+  },
+  "carpetbomb.crump_far1": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/crump_far1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.crump_far1"
+  },
+  "carpetbomb.crump_far2": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/crump_far2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.crump_far2"
   }
 }
