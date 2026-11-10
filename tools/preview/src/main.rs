@@ -185,6 +185,19 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             vhi[j] = vhi[j].max(k[j] + 1);
         }
     }
+    // (`holet=T`: from T on, the columns in $PREVIEW_HOLE (a line `x z y` each) dug down to y: a strike's hole, as the
+    // Sky Breaks' island leaves it, strike/sb_lift.rs's lf_preview)
+    let mut hole: HashMap<(i32, i32), f32> = Default::default();
+    if let (Some(ht), Ok(path)) = (kv.get("holet"), std::env::var("PREVIEW_HOLE")) {
+        if time >= *ht {
+            for l in std::fs::read_to_string(path).unwrap_or_default().lines() {
+                let v: Vec<f32> = l.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+                if v.len() == 3 {
+                    hole.insert((v[0] as i32, v[1] as i32), v[2]);
+                }
+            }
+        }
+    }
     let hills = g("hills", 0.0);
     let flush = g("flush", 0.0) > 0.5;
     let pit = g("pit", 0.0) > 0.5;
@@ -228,6 +241,9 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
         if let Some(t) = tops.get(&(x.floor() as i32, z.floor() as i32)) {
             return *t as f32 - 2.0;
         }
+        if let Some(y) = hole.get(&(x.floor() as i32, z.floor() as i32)) {
+            return *y;
+        }
         if rdpit {
             let (dx, dz) = (x - tgt[0], z - tgt[2]);
             let (fx, fz) = ((x.floor() - tgt[0].floor()), (z.floor() - tgt[2].floor()));
@@ -253,7 +269,7 @@ fn shot(kv: &HashMap<String, f32>) -> Shot {
             crater_h(x, z, crater)
         }
     };
-    let ground = |x: f32, z: f32, crater: bool| ground(x, z, crater) + tree_h(x, z).map_or(0.0, |h| h.floor());
+    let ground = |x: f32, z: f32, crater: bool| ground(x, z, crater) + if hole.contains_key(&(x.floor() as i32, z.floor() as i32)) { 0.0 } else { tree_h(x, z).map_or(0.0, |h| h.floor()) };
     let night = g("night", 0.0) > 0.5;
     // (sunel=DEGREES: the sun that high (below the horizon if negative), sunaz=DEGREES round from +x towards +z: the
     // sky reddens towards it near the horizon and darkens as it sets)
@@ -484,7 +500,17 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let (w, h) = (shots[0].w, shots[0].h);
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::VULKAN, ..wgpu::InstanceDescriptor::new_without_display_handle() });
     let adapters = instance.enumerate_adapters(wgpu::Backends::VULKAN).await;
-    let adapter = adapters.into_iter().find(|a| a.get_info().name.contains(gpu) && a.get_info().device_type != wgpu::DeviceType::Cpu).expect("no such gpu");
+    // (`gpu=cpu`: the CPU's own (lavapipe; with VK_ICD_FILENAMES on its icd alone the real GPU is never touched), for
+    // previews while the game has the GPU; otherwise a real GPU if there is one, else, as with VK_ICD_FILENAMES set to
+    // lavapipe's while the game has the GPU, the CPU's)
+    let cpu = gpu == "cpu";
+    let pick = |soft: bool| {
+        adapters
+            .iter()
+            .find(|a| if cpu { a.get_info().device_type == wgpu::DeviceType::Cpu } else { a.get_info().name.contains(gpu) && (soft || a.get_info().device_type != wgpu::DeviceType::Cpu) })
+            .cloned()
+    };
+    let adapter = pick(false).or_else(|| pick(true)).expect("no such gpu");
     eprintln!("adapter: {}", adapter.get_info().name);
     let (device, queue) = adapter
         // (as many texture layers as the GPU takes: the game's block sprite arrays hold every block texture)

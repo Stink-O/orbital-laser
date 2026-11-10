@@ -1,6 +1,6 @@
 id = "orbital"
 name = "Orbital Laser"
-version = "0.5.12"
+version = "0.5.13"
 description = "Call down an orbital strike that drills a crater to bedrock. Hold the Orbital Laser Designator on a target to fire; press R with it in hand (rebindable in Controls) for the laser wheel. /orbital give hands you the designator."
 authors = ["Stink-O"]
 api = "0.2"

@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16}
+INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17}
 # the shader's file where it is not the laser's name
 SHADER = {"supervolcano": "volcano"}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
@@ -288,6 +288,96 @@ VIEWS = {
     "fdhigh": "cx=0 cy=300 cz=420 lx=0.5 ly=30 lz=20 flat=1 vox=2 fov=55 reach=70",
     "fdrim": "cx=40 cy=95 cz=205 lx=0.5 ly=35 lz=0 flat=1 vox=2 fov=75 reach=110",
     "fdfloor": "cx=70 cy=62 cz=110 lx=-20 ly=10 lz=0 flat=1 vox=2 fov=75 reach=110",
+    # the sky breaks: from the player's place (300 blocks south) looking up at it, straight up, from 1,000 blocks off,
+    # from high off to one side, across the land at the panes come down, and close on one of them lying there (seed 37's
+    # pane 2; `--set vox=1` with SB_VOX for the blocks they leave)
+    "sbplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=330 lz=0.5 flat=1 trees=1 fov=75 reach=300",
+    "sbup": "cx=0 cy=67 cz=300 lx=0.5 ly=640 lz=60 flat=1 fov=85 reach=300",
+    # the player looking at the target as they fire, the sky a band over the land
+    "sbfwd": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=75 reach=300",
+    "sbfar": "cx=0 cy=100 cz=1000 lx=0.5 ly=230 lz=0.5 flat=1 trees=1 fov=60 reach=1000",
+    "sbaerial": "cx=-380 cy=360 cz=520 lx=0.5 ly=40 lz=0.5 flat=1 fov=65 reach=300",
+    "sbland": "cx=0 cy=72 cz=300 lx=0.5 ly=90 lz=0.5 flat=1 fov=70 reach=300",
+    "sbclose": "cx=0 cy=72 cz=300 lx=0.5 ly=70 lz=0.5 flat=1 fov=50 reach=300",
+    # the first pane (seed 37's, from the cell over -49 -218) as it sags, falls and lands; and the middle's fragments
+    "sbpane": "cx=0 cy=67 cz=300 lx=-49 ly=430 lz=-225 flat=1 fov=50 reach=300",
+    "sbmid": "cx=0 cy=67 cz=300 lx=0.5 ly=420 lz=0.5 flat=1 fov=40 reach=300",
+    # the same pane close, from the land 230 off to one side of where it comes down
+    "sbfall": "cx=150 cy=70 cz=-60 lx=-46 ly=330 lz=-205 flat=1 trees=1 fov=65 reach=300",
+    "sbside": "cx=900 cy=150 cz=300 lx=0 ly=120 lz=100 flat=1 fov=60 reach=300",
+    # straight up into the hole from right under it (the eye through the middle)
+    "sbabove": "cx=0 cy=900 cz=520 lx=0.5 ly=65 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "sbabovelow": "cx=0 cy=640 cz=420 lx=0.5 ly=300 lz=0.5 flat=1 trees=1 fov=75 reach=300",
+    "sbhole": "cx=0 cy=67 cz=300 lx=0.5 ly=625 lz=0.5 flat=1 fov=17 reach=300",
+    # round 4's hand: close on the fist under the glass, and on the hand coming down on the target (from the player
+    # 300 off, from the side, from above), and its print from over it and beside it (with vox=2: its real blocks)
+    # round 4's remodelled hand: the punch from off to the side, level with it, and close under it; the slam from the
+    # land near where it comes down, and from further off level with it
+    "hdpside": "cx=520 cy=430 cz=60 lx=0.5 ly=470 lz=0.5 flat=1 fov=60 reach=300",
+    "hdpunder": "cx=60 cy=260 cz=180 lx=0.5 ly=520 lz=0.5 flat=1 fov=50 reach=300",
+    # the hole and the arm in it: from straight under it, and side on at the sky's height (the glass edge on)
+    "hdholeup": "cx=170 cy=190 cz=230 lx=0.5 ly=560 lz=0.5 flat=1 fov=40 reach=300",
+    "hdskyside": "cx=620 cy=560 cz=260 lx=0.5 ly=500 lz=0.5 flat=1 fov=62 reach=300",
+    "hdlabfist": "cx=0 cy=250 cz=330 lx=0.5 ly=245 lz=0.5 flat=1 fov=40 reach=300",
+    "hdlab": "cx=0 cy=240 cz=470 lx=0.5 ly=195 lz=0.5 flat=1 fov=62 reach=300",
+    "hdopt": "cx=0 cy=235 cz=520 lx=0.5 ly=235 lz=0.5 flat=1 fov=38 reach=300",
+    "hdoptz": "cx=0 cy=240 cz=520 lx=0.5 ly=240 lz=0.5 flat=1 fov=25 reach=300",
+    "hdform": "cx=0 cy=262 cz=520 lx=0.5 ly=262 lz=0.5 flat=1 fov=29 reach=300",
+    "hdfistz": "cx=0 cy=262 cz=520 lx=0.5 ly=262 lz=0.5 flat=1 fov=13 reach=300",
+    "hdoptfar": "cx=0 cy=67 cz=620 lx=0.5 ly=300 lz=0.5 flat=1 trees=1 fov=75 reach=300",
+    "hdpclose": "cx=150 cy=380 cz=170 lx=0.5 ly=500 lz=0.5 flat=1 fov=45 reach=300",
+    "hdslam": "cx=-155 cy=90 cz=189 lx=0 ly=200 lz=0 flat=1 trees=1 fov=78 reach=300",
+    "hdslamclose": "cx=-90 cy=95 cz=94 lx=0 ly=75 lz=0 flat=1 trees=1 fov=55 reach=300",
+    "hdslamfar": "cx=-465 cy=150 cz=379 lx=-25 ly=290 lz=9 flat=1 trees=1 fov=62 reach=300",
+    # its crater (on the target; with vox=2 its real blocks): from over the target's side, from its rim, from above
+    "hdcrater": "cx=-80 cy=150 cz=77 lx=5 ly=35 lz=-3 flat=1 vox=2 fov=62 reach=300",
+    "hdcraterrim": "cx=105 cy=95 cz=-61 lx=0 ly=38 lz=0 flat=1 vox=2 fov=72 reach=300",
+    "hdcraterfloor": "cx=-45 cy=95 cz=34 lx=3 ly=30 lz=-3 flat=1 vox=2 fov=62 reach=300",
+    # (the same on a hill (hills=40), and by a lake over lava (with `--set sbland=1`))
+    "hdcraterhill": "cx=-85 cy=175 cz=79 lx=3 ly=45 lz=-3 hills=40 vox=2 fov=62 reach=300",
+    "hdcraterlake": "cx=-125 cy=190 cz=119 lx=25 ly=35 lz=-16 flat=1 vox=2 fov=66 reach=300",
+    "hdcratertop": "cx=0 cy=330 cz=1 lx=0 ly=40 lz=0 flat=1 vox=2 fov=42 reach=300",
+    "hdwrist": "cx=0 cy=67 cz=300 lx=0.5 ly=545 lz=0.5 flat=1 fov=4 reach=300",
+    "hdfist": "cx=0 cy=67 cz=300 lx=0.5 ly=545 lz=0.5 flat=1 fov=12 reach=300",
+    "hdland": "cx=-85 cy=67 cz=349 lx=-25 ly=150 lz=19 flat=1 trees=1 fov=75 reach=300",
+    "hdside": "cx=115 cy=80 cz=169 lx=-15 ly=110 lz=14 flat=1 trees=1 fov=75 reach=300",
+    # (the punch from where the player stands, looking closer; and from beside it under the sky)
+    "hdpzoom": "cx=0 cy=67 cz=300 lx=0.5 ly=455 lz=0.5 flat=1 trees=1 fov=40 reach=300",
+    "hdpside": "cx=430 cy=400 cz=80 lx=0.5 ly=450 lz=0.5 flat=1 fov=50 reach=300",
+    "hdtop": "cx=-5 cy=210 cz=39 lx=-1 ly=60 lz=11 flat=1 vox=2 fov=65 reach=300",
+    "hdprint": "cx=-55 cy=190 cz=149 lx=-1 ly=56 lz=11 flat=1 vox=2 fov=70 reach=300",
+    "hdprintlow": "cx=-45 cy=80 cz=89 lx=5 ly=58 lz=7 flat=1 vox=2 fov=75 reach=300",
+    "sbholeup": "cx=40 cy=70 cz=60 lx=0.5 ly=625 lz=0.5 flat=1 fov=26 reach=300",
+    "sbhit": "cx=150 cy=125 cz=-30 lx=-43 ly=70 lz=-192 flat=1 trees=1 fov=62 reach=300",
+    "sbhitfar": "cx=0 cy=69 cz=300 lx=-43 ly=110 lz=-192 flat=1 trees=1 fov=45 reach=300",
+    "sbeye": "cx=40 cy=70 cz=60 lx=0.5 ly=625 lz=0.5 flat=1 fov=70 reach=300",
+    # the eye, close, from where the player fired (sbhole) and from a second place 240 west of it (sbeyeb: the ball rolls
+    # to follow them, the lids, the cornea and the socket seen from another side), and that place's own view up
+    "sbeyeb": "cx=-240 cy=67 cz=110 lx=0.5 ly=600 lz=0.5 flat=1 fov=20 reach=300",
+    "sbplayerb": "cx=-240 cy=67 cz=110 lx=0.5 ly=420 lz=0.5 flat=1 trees=1 fov=75 reach=300",
+    # and a third place 200 east (clear of the panes' dust as it blinks)
+    "sbeyec": "cx=200 cy=67 cz=180 lx=0.5 ly=600 lz=0.5 flat=1 fov=20 reach=300",
+    # and close on the eye from where they fired (its ball's middle, with the preview's player 300 south)
+    "sbeyez": "cx=0 cy=67 cz=300 lx=0.5 ly=640 lz=-50 flat=1 fov=9 reach=300",
+    # close on seed 37's first pane lying where it landed (its foot at -43 65 -192), and from above it
+    "sblie": "cx=-137 cy=88 cz=-98 lx=-43 ly=70 lz=-192 flat=1 fov=60 reach=300",
+    "sblietop": "cx=-43 cy=260 cz=-68 lx=-43 ly=65 lz=-192 flat=1 fov=60 reach=300",
+    # the opening (strike/sb_lift.rs): close by the target (48 off) as the land cracks and tears free; from the side,
+    # nearer; from the player's place (300 off) looking up after it; from under it; up at the sky over the target from
+    # the player's place (where it goes in, the rings, the star crack, the hand); and from 1,000 off
+    "lfnear": "cx=0 cy=69 cz=48 lx=0.5 ly=76 lz=0.5 flat=1 fov=70",
+    "lfside": "cx=40 cy=71 cz=22 lx=0.5 ly=73 lz=0.5 flat=1 fov=60",
+    "lfplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=240 lz=0.5 flat=1 trees=1 fov=80",
+    "lfunder": "cx=16 cy=66 cz=20 lx=0.5 ly=420 lz=0.5 flat=1 fov=85",
+    "lfsky": "cx=0 cy=67 cz=300 lx=0.5 ly=560 lz=0.5 flat=1 fov=42",
+    "lffar": "cx=0 cy=100 cz=1000 lx=0.5 ly=290 lz=0.5 flat=1 trees=1 fov=60",
+    # the land they leave, as real blocks (strike/sb_lodge.rs's voxels): beside the first pane, from above all of them,
+    # and from the player's place
+    "sbruin": "cx=-122 cy=80 cz=-118 lx=-43 ly=68 lz=-192 flat=1 vox=2 fov=70 reach=300",
+    "sbruinair": "cx=-60 cy=330 cz=380 lx=20 ly=60 lz=-10 flat=1 vox=2 fov=60 reach=300",
+    "sbruinme": "cx=0 cy=69 cz=300 lx=0.5 ly=72 lz=0.5 flat=1 vox=2 fov=70 reach=300",
+    "sbruinend": "cx=43 cy=78 cz=-233 lx=-52 ly=72 lz=-188 flat=1 vox=2 fov=70 reach=300",
+    "sbruinside": "cx=-72 cy=76 cz=-113 lx=-47 ly=70 lz=-198 flat=1 vox=2 fov=75 reach=300",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -297,7 +387,8 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "hurricane": "huplayer,hufar,huunder,huaerial",
                  "supervolcano": "vc1k,vc2k,vcair",
                  "tsunami": "tsplayer,tsside,tsaerial",
-                 "fold": "flhill,flhigh"}
+                 "fold": "flhill,flhigh",
+                 "skybreak": "sbplayer,sbfar,sbaerial"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -306,7 +397,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak"):
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
         # (less the Mothership's ship unless the laser's own says it uses it: mod/src/passbuild.rs)
         ship = [] if "// [uses the mothership]" in own else ["-e", r"/^\/\/ \[mothership\]/,/^\/\/ \[end mothership\]/d"]
@@ -321,6 +412,31 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
         rdif = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("rdif=")), None)
         if rdif is not None:
             own = re.sub(r"const RD_IF_STYLE: i32 = \d+;", f"const RD_IF_STYLE: i32 = {int(rdif)};", own)
+        # (the Sky Breaks' hand alone, for its shape: `--set hdlab=1`)
+        if "hdlab=1" in sets:
+            own = own.replace("const HD_LAB: bool = false;", "const HD_LAB: bool = true;")
+        # (the hand as plain grey clay under one hard light: `--set hdclay=1`)
+        if "hdclay=1" in sets:
+            own = own.replace("const HD_CLAY: bool = false;", "const HD_CLAY: bool = true;")
+        # (the sculpted hand's pieces each in a colour of its own, in clay: `--set hdtint=1`)
+        if "hdtint=1" in sets:
+            a = "c = vec3<f32>(0.62) * (saturate(dot(n, Ls))"
+            assert a in own
+            own = own.replace(a, "let tw = hd_surf_b(p).w * 2.4; c = (vec3<f32>(0.5) + 0.3 * vec3<f32>(sin(tw), sin(tw + 2.1), sin(tw + 4.2))) * (saturate(dot(n, Ls))")
+        # (the hand of rounded shapes instead of the sculpted one: `--set hdbake=0`)
+        if "hdbake=0" in sets:
+            own = own.replace("const HD_BAKE: bool = true;", "const HD_BAKE: bool = false;")
+        # (how much of the dark there is in the hand's skin: `--set hddm=N`)
+        hdd = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hddm=")), None)
+        if hdd is not None:
+            own = re.sub(r"const HD_DM: f32 = [\d.]+;", f"const HD_DM: f32 = {float(hdd)};", own)
+        # (the lab's hand in a given pose: `--set hdpose=I,M,R,L,THUMB,SPREAD,TURN,TIP`)
+        hdp = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hdpose=")), None)
+        if hdp is not None:
+            v = [float(x) for x in hdp.split(",")]
+            own = own.replace("const HD_LP: bool = false;", "const HD_LP: bool = true;")
+            own = own.replace("const HD_LP_FL: vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 0.0);", f"const HD_LP_FL: vec4<f32> = vec4<f32>({v[0]}, {v[1]}, {v[2]}, {v[3]});")
+            own = own.replace("const HD_LP_TS: vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 0.0);", f"const HD_LP_TS: vec4<f32> = vec4<f32>({v[4]}, {v[5]}, {v[6]}, {v[7]});")
         if laser == "fold":
             # (what of the warp the pass has too: mod/src/passbuild.rs's warp_shared)
             warp = (SHADERS / "fold_warp.wgsl").read_text()
@@ -336,7 +452,7 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
-    if laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano"):
+    if laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
@@ -345,9 +461,31 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
         if laser in ("hurricane", "tsunami") and ATLAS:
             # (the blocks' sprites as the fake atlas has them, matching the stand-in arrays the preview binds)
             env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
-        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table", "supervolcano": "vc_write_table", "tsunami": "ts_write_table"}.get(laser, "pl_write_table")
+        if laser == "skybreak" and "vox=2" in sets:
+            # (the land the panes leave, as voxels: strike/sb_lodge.rs's `voxels`)
+            env["SB_VOX"] = str((out / "vox.txt").resolve())
+            env["SB_GONE"] = "1"
+        if laser == "skybreak":
+            # (the hole the opening's island leaves: strike/sb_lift.rs's lf_preview)
+            env["SB_HOLE"] = str((out / "hole.txt").resolve())
+            if ATLAS:
+                env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
+        if laser == "skybreak" and "sbland=1" in sets:
+            # (the hand's crater by a lake, over a pocket of lava: strike/sb_hand.rs's land_of)
+            env["SB_LAND"] = "1"
+        if laser == "skybreak" and "terrain=0" in sets:
+            # (light and sound only: the panes stay drawn, never laid)
+            env["SB_TERRAIN"] = "0"
+        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table", "supervolcano": "vc_write_table", "tsunami": "ts_write_table", "skybreak": "sb_write_table"}.get(laser, "pl_write_table")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+        if laser == "skybreak":
+            extra = {"PREVIEW_HOLE": env["SB_HOLE"]}
+            if "SB_VOX" in env:
+                extra["PREVIEW_VOXELS"] = env["SB_VOX"]
+            return dict(os.environ, PREVIEW_DATA=str(path), **extra)
+        if "SB_VOX" in env:
+            return dict(os.environ, PREVIEW_DATA=str(path), PREVIEW_VOXELS=env["SB_VOX"])
         return dict(os.environ, PREVIEW_DATA=str(path))
     seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
     path = (out / "data.txt").resolve()
@@ -408,20 +546,23 @@ def main() -> int:
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
-    if a.laser in ("hurricane", "tsunami") and not a.notex:
+    if a.laser in ("hurricane", "tsunami", "skybreak") and not a.notex:
         atlas(out)
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
-    common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *a.set]
+    common = [f"laser={INDEX.get(a.laser, LASERS.index(a.laser))}", "clouds=0", f"w={w}", f"h={h}", f"frames={9 if a.bench else 1}", *(kv for kv in a.set if not kv.startswith("hdpose="))]
     if a.laser == "fold":
         # (the pass's history, the frames before each moment: trails; and the mandala's blocks for the aerial views)
         common += ["hist=8", "hdt=0.05", "mode=0", "style=65"]
         vox = ROOT / "dist" / "preview" / "fold_land.txt"
         if vox.exists():
             env_vox = str(vox)
-    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
+    if a.laser == "skybreak":
+        # (the hole the island leaves, dug into the scene from when its blocks are taken out: sb_lift.rs's LF_CUT)
+        common += ["holet=0.55"]
     shots = []
     for t in a.times:
         for v in views:
@@ -429,7 +570,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=")] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak") else None
     env = dict(env or os.environ)
     if a.laser == "fold" and (ROOT / "dist" / "preview" / "fold_land.txt").exists():
         env["PREVIEW_VOXELS"] = str(ROOT / "dist" / "preview" / "fold_land.txt")
@@ -443,7 +584,9 @@ def main() -> int:
         qout = out / q if len(qualities) > 1 else out
         qout.mkdir(parents=True, exist_ok=True)
         shader = build_pass(a.laser, out, q == "fast", a.set)
-        r = subprocess.run([str(exe), str(shader), str(qout), *common, *shots], capture_output=True, text=True, env=env)
+        # (`PREVIEW_LOCK=FILE`: only the drawing itself under that lock, for a GPU shared with other jobs)
+        lock = ["flock", os.environ["PREVIEW_LOCK"]] if os.environ.get("PREVIEW_LOCK") else []
+        r = subprocess.run([*lock, str(exe), str(shader), str(qout), *common, *shots], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             print(r.stderr, file=sys.stderr)
             return 1

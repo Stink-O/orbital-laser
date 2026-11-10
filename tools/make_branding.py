@@ -36,8 +36,8 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    # (the Supervolcano's burst: the crust thrown up in plates over a band of fire, the sunset behind)
-    shot = Image.open(ROOT / "docs" / "branding" / "supervolcano-card.jpg").convert("RGB")
+    # (the Sky Breaks' eye: flaring in the hole in the broken sky, the slam's dust rising below)
+    shot = Image.open(ROOT / "docs" / "branding" / "skybreak-card.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H / shot.height), H), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width, 0))
@@ -58,7 +58,7 @@ def social_preview():
     d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM · MOTHERSHIP", font=names, fill="#FF9A2E")
     d.text((80, 140 + logo.height + 166), "DOWNFALL · PLANET KILLER · CRYSTAL BLOOM · SINKHOLE · PAYLOAD", font=names, fill="#FF9A2E")
     d.text((80, 140 + logo.height + 196), "NUKE · ROD FROM GOD · SUPERCELL · HURRICANE · TSUNAMI", font=names, fill="#FF9A2E")
-    d.text((80, 140 + logo.height + 226), "THE FOLD · SUPERVOLCANO", font=names, fill="#FF9A2E")
+    d.text((80, 140 + logo.height + 226), "THE FOLD · SUPERVOLCANO · THE SKY BREAKS", font=names, fill="#FF9A2E")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 

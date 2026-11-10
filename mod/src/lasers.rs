@@ -579,7 +579,34 @@ pub const SUPERVOLCANO: Laser = Laser {
     particle_b: "particle minecraft:lava {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 17] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO];
+/// The sky breaks, planned in `strike::skybreak_plan` (strike/skybreak.rs, its panes' blocks strike/sb_lodge.rs; the pass
+/// shaders/skybreak.wgsl). No beam: the sky cracks like glass from a point high over the target, its shattered middle
+/// falls out, something vast and dark looks through, and huge panes of sky break free, fall and wedge into the land round
+/// the target, where they stay as real blocks. The crater fields below are only what the shared tests read.
+pub const SKYBREAK: Laser = Laser {
+    key: "skybreak",
+    index: 17,
+    title: "THE SKY BREAKS",
+    rgb: 0x8CC8FF,
+    blurb: "The sky cracks like glass. Huge panes of it fall and wedge into the land.",
+    icon_model: "orbital:skybreak_icon",
+    length: 49.5,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:packed_ice", 1.0)],
+    bowl_floor: ("minecraft:blue_ice", 0.0, "minecraft:packed_ice"),
+    bottom: &[],
+    particle_a: "particle minecraft:end_rod {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:snowflake {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 18] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

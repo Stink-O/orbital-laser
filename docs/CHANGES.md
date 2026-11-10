@@ -1,6 +1,23 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0512); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0513); each release's notes are in [docs/releases](releases).
+
+## 0.5.13
+
+- **The Sky Breaks**, the eighteenth laser, on the wheel's fourth page and `/orbital skybreak`. No beam: a disc of land
+  tears free round the target, rises into the sky and sinks into it; the sky rings, a vast hand presses on it from behind
+  and at 9 seconds its fist punches through, cracks racing out across the whole sky. An eye slides into the hole and finds
+  you. Up to seven panes of sky break free one by one and wedge into the land round the target as real blocks of ice, snow
+  and obsidian. The eye flares and turns away, the fist is thrown back down through the hole and slams the land on the
+  target, leaving a crater about 140 across and 20 deep with its knuckle prints in the bottom, and the sky heals over. A
+  shockwave and a wall of dust run out from the slam, and the camera jolts and muck lands on the lens as they reach you.
+  It reaches 1000 blocks and lasts 49.5 seconds. QUALITY FAST draws its dust at half size. Its sounds are its own, all
+  synthesised but for the glass of the shudder after the slam, which is slices of four CC0 recordings of glass breaking
+  (credited in `NOTICE`); the slam plays the Payload's ALT blast. **Photosensitivity:** a blinding flash at the punch, the
+  whole picture's light jumping for a fraction of a second; a brief brightening at each pane's impact; the eye's flare at
+  about 35 seconds; and a grey-out of under a second as the slam's shockwave passes you.
+- It runs on the fork's `orbital-mod-api-12`, as 0.5.12 did: no new fork release.
+- The native version stays at 0.5.12, without the Sky Breaks.
 
 ## 0.5.12
 

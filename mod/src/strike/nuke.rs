@@ -475,7 +475,7 @@ const LEAF_NAMES: [&str; 9] = [
     "minecraft:cherry_leaves",
     "minecraft:pale_oak_leaves",
 ];
-const LEAVES: [&str; 9] = [
+pub(super) const LEAVES: [&str; 9] = [
     "minecraft:oak_leaves[persistent=true]",
     "minecraft:spruce_leaves[persistent=true]",
     "minecraft:birch_leaves[persistent=true]",

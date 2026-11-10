@@ -1047,7 +1047,7 @@ fn pl_thrown(q: &mut Plan, land: &Land, s: &Shape) {
 /// The shockwave's jolt reaching the player at `t`, `fo` as hard (see payload_plan): as in the clips, a hard hit and
 /// strong quick swings for over half a second (sharp aftershocks every other tick), then a shudder of smaller quick
 /// jolts fading over the next one and a half, a long faint rumble under it all.
-fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
+pub(super) fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
     p.shake(t, fo, 0.8);
     p.shake(t + 0.05, 0.45 * fo, 3.5);
     for n in 0..6 {

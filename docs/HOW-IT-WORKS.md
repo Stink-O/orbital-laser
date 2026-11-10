@@ -428,13 +428,38 @@ each 64 by 64 tile is flooded from its edges and whatever drains (priority flood
 under it counts as a drain, the tile's edge holds no water): each hollow keeps water up to 3 over its floor, the blocks
 going in while the falling wave still hides them.
 
+The **Sky Breaks** ([`strike/sb_lift.rs`](../mod/src/strike/sb_lift.rs), [`strike/sb_lodge.rs`](../mod/src/strike/sb_lodge.rs),
+[`strike/sb_hand.rs`](../mod/src/strike/sb_hand.rs)) changes the land in three places. As it fires, a disc about 14
+blocks across round the target (its edge ragged) is read and its real blocks taken out at 0.55 s, a hole up to 14 deep in
+its middle and 3 at its edge, the leaves of the trees on it out to 3.5 past its edge going with it; the fist's crater
+covers it later. Up to seven panes of sky come down round the target from about 22 s and stay as real blocks, each lying
+11 to 24 degrees on a plane fitted to the ground under it, about 38% of its length in the ground: its sky on top (blue
+ice, a paler haze of packed ice, blocky clouds of snow), packed ice through it, light blue stained glass at its broken
+edges and obsidian flecked with crying obsidian under it, packed under with crushed earth so nothing of it hangs in the
+air, the earth it ploughed up heaped against its edges, broken pieces of it stuck in the ground round it; everything
+standing within 30 of it (plus half its length) is gone and for 32 further the trees are felled, lying pointing away
+from it; 26 falling blocks are thrown out where it lands and every mob and item within 70 killed. Their sites are kept
+118 apart and clear of the player; a pane on land that never loads, or one that would come down on the player, stays
+drawn and is never laid. At 37.5 s the fist slams the land on the target: a bowl about 135 to 145 across (its edge
+ragged by a tenth) and 20 deep at its middle, falling away in broken steps (its outer steps tilted turf, its floor
+crushed stone) to the fist's own print, the four knuckles' dents with the middle one deepest, about 34 under the land,
+the flat of the fingers behind them and the row of their second joints, pressed in obsidian, blackstone and a fleck of
+crying obsidian; the earth it pushed out heaped round it out to 1.4 times its radius, cracks running out from it, and
+for 24 past that everything standing swept off and the trees laid flat pointing away. It follows a hill, digs water
+like any other block, seals the lava it bares with magma and leaves the panes' blocks alone but where the bowl digs.
+44 falling blocks of earth, blackstone and obsidian are thrown out, about half landing as blocks, and every mob and
+item within 125 is killed. It keeps the chunks within 152 of each pane's site and 145 of the target loaded from the
+moment it fires to a second before it ends. All of it goes in through `world.edit-blocks`, a chunk at a time on what
+`world.read-columns` says stands there; the crater is worked out as the fist comes down and let in from the slam, the
+middle first.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -447,7 +472,7 @@ going in while the falling wave still hides them.
 | `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's and the Supervolcano's knockback (`Act::Shove`), the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm and the Supervolcano's cloud are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud and the Sky Breaks' dust are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -482,7 +507,7 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
 `orbital-mod-api-10`, `render.set-warp`, `render.hold-world` and `render.hold-world-within`, the Fold's, from
 `orbital-mod-api-11`, and `render.set-hand-tint` and the chat's tree of mod commands from `orbital-mod-api-12`) are
-needed too: a fork build without them won't start the mod, so 0.5.12 needs `orbital-mod-api-12` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+needed too: a fork build without them won't start the mod, so 0.5.13 needs `orbital-mod-api-12` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.
 
@@ -590,8 +615,8 @@ down to the ground wherever it lies lower, and the crystals round their feet res
 
 ## The sounds
 
-The sounds ([`tools/synth_sounds.py`](../tools/synth_sounds.py)) have no samples in them: they are generated from noise
-and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
+The sounds ([`tools/synth_sounds.py`](../tools/synth_sounds.py)) have no samples in them, but for the Sky Breaks'
+shudder ([below](#the-sky-breaks-laser-17)): they are generated from noise and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
 ([`tools/sounds_pk_blast.py`](../tools/sounds_pk_blast.py)) are shaped to measurements of a real, very large explosion:
 its spectrum, how it rises and holds, how its bands move and how wide it sounds over time. Only the numbers were taken
 from the recording; none of its audio is used. The Crystal Bloom's ([`tools/sounds_crystal.py`](../tools/sounds_crystal.py))
@@ -985,3 +1010,117 @@ Much of that iterating was done by measuring rather than by eye:
 
 In all, the Fold is about 10,000 lines of shaders, plan, land and sound code, plus a world warp and a terrain hold added to
 the Horizon fork for it.
+
+## The Sky Breaks (laser 17)
+
+The sky breaks like glass, and something behind it reaches through. 49.5 s (`strike/skybreak.rs` the plan, the crack
+pattern, the panes and the table; `strike/sb_lift.rs` the opening; `strike/sb_hand.rs` the hand and its crater;
+`strike/sb_lodge.rs` the panes as blocks; `strike/sb_sounds.rs` the sounds' schedule; `shaders/skybreak.wgsl` the pass;
+`tools/sounds_skybreak.py` the sounds). There is no beam and no knockback. The sky is a pane 560 blocks over the
+target's ground (`SB_H`); while the designator is held its countdown reads `STRAINING THE SKY`. It is fork-only for
+now: the native version stays at 0.5.12.
+
+- **The opening** (0-5.15 s, `sb_lift.rs`). A disc of the land round the target, about 14 across with a ragged edge
+  (`LF_R`), cracks round its rim from 0.08 s; its blocks, read as it fires (`world.read-columns`, 48 under each
+  column's top, the trees on it whole), are taken out of the world at 0.55 s (`LF_CUT`) and the pass draws them as an
+  island in their real colours and the game's textures (`[lift]`, the Hurricane's `bk_words`). It tears free at 0.6 s,
+  hangs, rising slowly and turning a little, dirt and pebbles falling off its underside (the first ten as real falling
+  blocks), a ring of dust rolling out from where it tore out and bits of the rim lifting after it to circle it; from
+  about 2 s it speeds up, its top meets the sky at 4.2 s and it is through by 5.15 s (`LF_IN`), the sky closing over it.
+  A small star crack snaps out where it went in (5.3 s) and the sky rings, two or three tight stiff rings (from 5.4 s).
+  With terrain off its blocks stay where they are.
+- **The press** (6.3-9 s). A hand comes down out of the dark behind the sky, lies flat on it and leans on it from 7 s
+  (`LF_PRESS`): the sky bows down over the target, whitening with the strain, the hand's dark on it as through frosted
+  glass. It rolls up onto its knuckles, its shadow showing as the fist is drawn back (8.35 s, `LF_CURL`), and is thrown
+  at 8.75 s (`LF_PUNCH`).
+- **The punch** (9 s, `SB_CRACK`). The fist goes through: a point of light swelling where it will break, a blinding
+  flash there and a halo over the sky round it, the whole picture's light jumping for a fraction of a second. Fifteen
+  radial cracks (`SB_K`) run out across the whole sky, out to 7,000 blocks (`SB_FAR`), in a tenth of a second, forking,
+  and short slanted chords join them by 9.25 s (`SB_SPREAD`), close together near the middle and further apart out from
+  it, never lining up into rings (`Mesh`, from a study of glass broken at a point). The pieces shift out of true, each
+  catching the light its own way. The shattered middle round the fist is blown down from 9.03 s (`SB_COLLAPSE`), its
+  inner part first, a glittering rain; its outer ring hangs on. The arm withdraws through the hole, dragging shards
+  that break off its edge (the first at 10 s).
+- **The eye** (12-35.75 s). An eye some 150 blocks across (`SB_EYE_R`, 78), ray traced in a head behind the hole, slides
+  in from the side of the hole (12 to 14 s), opens at 15.2 s and looks round until it finds the player (`SB_LOCK`, its
+  gaze landing about 19.6 s, its pupil snapping tight, the picture darker a while). It blinks at 30.15 s, its pupil
+  shrinks to a point and it flares at 35.1 s (`HD_FLARE`: a glare out of the iris through the hole, fading over about a
+  second), turns away (35.55 s) and shuts (35.75 s), clear of the hole before the fist comes back.
+- **The panes** (from 16.75 s). Up to seven panes (`SB_NS`), cells of the crack pattern mostly 105 to 400 out from its
+  middle and up to 92 from their middle to a corner, still showing the sky and its clouds, sag 1.3 s (`SB_SAG`) and
+  break free one by one 1.45 s apart (`SB_FIRST`, `SB_EVERY`), drift a little towards the middle as they fall, tumble
+  down over about 5.3 s (`SB_FALL`) and strike low end first, the far end slamming down 0.34 s later (`SB_SLAM`), still
+  from 0.85 s (`SB_SETTLE`). Each impact lights the land a moment, cold white, throws dust and grit and jolts the camera.
+  Their places are worked out as it fires (`sb_shards`: at least 118 apart, and their reach plus 120 from the player),
+  the ground under each asked at once (`world.surface-height`) and its pose settled long before it breaks free
+  (`Pose`), so its path down never changes in the air. A pane whose ground hasn't answered in time is held back
+  (`SB_HOLD`), never later than 35 s (`SB_LATEST`).
+- **The slam** (35.1-42.6 s). The eye flares and turns away; at 36 s (`SB_DOWN`) the fist is thrown straight down through
+  the hole and slams the land on the target at 37.5 s (`SB_PRESS`), its back square to the way the player looks, the
+  hand on their side. A thump through the ground first, then the shockwave through the air at the speed of sound once
+  clear of the fist (`hd_shock`: grit swept off the land, torn along its top; as it passes the player the picture greys
+  over with dust for under a second), the camera jolting as the Payload's does when it reaches them (`payload::pl_jolt`)
+  and muck landing on the lens (`hd_lens`, within about 1,400 blocks and near the ground), and behind it a wall of dust
+  rolling out over the land to some 500 blocks (`hd_dust`), fading from about 4.5 s after the slam. Its shudder knocks
+  the middle's last ring loose at 37.72 s (`SB_KNOCK`). The arm lifts out of the land at 38.9 s and is gone by 42.6.
+- **The heal** (40-46.5 s, `SB_HEAL`, `SB_HEALED`). The holes close from their edges, a pale seam drawing in, and the
+  cracks fade; the strike ends at 49.5 s.
+
+What it leaves (terrain on) is in [What each strike destroys](#what-each-strike-destroys): the opening's hole, which the
+fist's crater covers, up to seven panes lodged as real blocks (`sb_lodge.rs`), and the fist's crater with its knuckle
+prints (`sb_hand.rs`). The panes' blocks go in a chunk at a time from when each hits, on what a read (30 under each
+column's top) says stands there, each chunk one edit through the paced queue; the pass keeps drawing a pane where it lies
+until every chunk of it is in, then lets it go (the real one is in the same place, block for block:
+`a_lodged_pane_is_where_the_pass_draws_it`). The crater's chunks are read (40 under each column's top) and made from
+32.8 s, as the fist comes down, and let in from the slam, the middle first. A chunk that hasn't loaded by the time it's
+wanted is asked again until near the end, then left out and logged. Its chunks are force-loaded from the moment it fires
+(`sb_load_rows`): within 152 of each pane's site (`SB_PATCH`), within 145 of the target and round the opening's disc.
+
+The pass ([`mod/shaders/skybreak.wgsl`](../mod/shaders/skybreak.wgsl), pass 13) draws the cracks, the void and the eye
+through the holes, the panes as they fall, the island (`[lift]`), the hand and arm (`[hand]`), the dust and the
+shockwaves. The hand is a sculpted arm (MakeHuman's base mesh, CC0) cut at its joints into rigid pieces, each baked
+into a small grid of distances by `tools/bake_hand.py` (into `mod/assets/sb_hand.bin` and the pass's `[bake table]`:
+rerun it, don't edit that block), posed by the mod a thirtieth of a second apart (`Arm`: the punch's poses from 6.3 s,
+the slam's from 33.8 s), the arm moving as a chain hung from its shoulder and kept inside the hole. The table
+(`render.set-data`): `sb_table`'s words from 0 (the header, each sector's radial, fork and chords from `SB_SEC`, the
+radials from `SB_RAD`, each cell's pane or fragment from `SB_CELL`, the panes from `SB_SH`, the middle's fragments from
+`SB_FR`, the land's heights round the target from `SB_HF`), the opening's from `SB_LF` (12288), the hand's from
+`SB_HD` (24576) with its poses from `SB_HP`, the baked grids from `SB_HB` (65536). Keep the `SB_*`, `LF_*` and `HD_*`
+in the mod and the pass in step. QUALITY FAST (the default) draws the dust at half size; the cracks, the void and the
+panes stay sharp.
+
+Its sounds ([`tools/sounds_skybreak.py`](../tools/sounds_skybreak.py), 26 mono files, scheduled by
+[`strike/sb_sounds.rs`](../mod/src/strike/sb_sounds.rs) and, for each pane, `sb_pane_events`) are built from how glass
+breaks: every piece a small plate ringing in its own modes, a break thousands of pieces each knocking as it is born and
+hits its neighbours, the sky one pane with its own low modes that booms when struck and sings under load, the whole
+glass about two octaves under a window's. Everything in the sky is heard on the picture wherever the player is; what
+happens on the land comes late by the distance, the ground's thump first. The tear (`tear`, `tear_far` far off) as the
+land rips free, `rise`, `sink`, `ripple`, `pressure` building into the punch without a dip, the `crack`, `withdraw`,
+`strain`, the shattered middle's `collapse`, the eye's `gaze` (two deep notes a semitone apart, cut dead as it finds the
+player) and `void`; for each pane `release`, its `fall` cut dead on the impact, `ground`, `impact` (`impact_far` far
+off) and `slam`; `rumble`, the eye's `flare` and the fist's `descend`, cut on the slam. The slam itself plays the
+Payload's ALT blast (`payload.ground_alt`, `blast_alt` or `blast_alt_far` by the distance, `rush`, `tail`). Then
+`shudder`, the middle's last ring letting go: the one sound in the mod with recorded audio in it, slices of four CC0
+recordings of glass breaking from Freesound (`tools/sound_sources/skybreak/`, its README and `NOTICE` credit them) over
+a synthesised body, sub, air and echo; and `heal`. `--only --listen DIR` mixes the whole strike as the game plays it
+from 30, 300 and 800 blocks.
+
+**Photosensitivity:** the punch at 9 s is a blinding flash where the sky breaks, with the whole picture's light
+jumping for a fraction of a second; each pane's impact brightens the picture a moment; the eye's flare at 35.1 s is a
+glare through the hole, fading over about a second; and as the slam's shockwave passes the player the picture greys
+over with dust for under a second.
+
+Offscreen: `tools/preview.py skybreak T --views sbplayer,sbfar,sbaerial` (the default), the eye `sbeye`, `sbeyez`,
+`sbhole`, the panes falling and lying `sbfall`, `sbhit`, `sblie`, the opening `lfnear`, `lfside`, `lfplayer`, `lfsky`,
+the hand `hdslam`, `hdslamclose`, `hdslamfar`, `hdland`, and the blocks it leaves (`vox=2`: the panes' `sbruin`,
+`sbruinair`, `sbruinme`, the crater's `hdcrater`, `hdcratertop`, `hdprint`); `sbland=1` puts the crater by a lake over
+lava, `terrain=0` leaves the panes drawn. `sb_write_table` (ignored) writes its table for the preview. Tests: the panes
+(`a_lodged_pane_is_where_the_pass_draws_it`, `they_lie_low_and_keep_off_the_player`, `the_trees_round_it_are_felled`,
+`felled_trees_are_whole_across_chunk_edges`, `a_chunk_of_a_pane_is_cheap`), the opening (`the_island_is_the_land_it_took`,
+`its_way_up_meets_the_sky_on_time`, `the_lift_plans_light`), the hand (`the_fist_leaves_its_crater`,
+`sb_the_fist_comes_down_on_the_target`, `sb_the_slam_arm_never_jumps`, `the_arm_keeps_to_the_hole`,
+`the_arm_keeps_to_a_mans_ranges`, `the_arm_never_jerks`, `the_crater_follows_a_hill`,
+`the_crater_digs_water_and_seals_lava`, `the_crater_leaves_the_panes`, `sb_the_crater_covers_the_islands_hole`,
+`a_chunk_of_the_print_is_cheap`), the sounds (`sb_sounds_every_cue_has_its_file`, `sb_sounds_the_build_never_goes_quiet`,
+`sb_sounds_the_slam_comes_late_by_distance`), and lib.rs's `a_sky_breaks_on_far_unloaded_land_stays_light` (the player
+800 blocks off, the land coming slowly or never: no tick overworks, every pane laid or left drawn and logged).

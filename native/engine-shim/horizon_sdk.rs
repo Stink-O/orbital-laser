@@ -576,7 +576,7 @@ pub mod native_build {
         #[test]
         fn the_fold_waits_for_the_world_warp() {
             assert_eq!(unavailable("fold"), Some(NOT_YET));
-            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "moonfall", "skybreak"] {
+            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak"] {
                 assert_eq!(unavailable(key), None, "{key}");
             }
             assert!(!supports("render.set-warp") && supports("render.set-post"));

@@ -11,7 +11,9 @@ Original material
 
 orbital-laser-shader/   Written for this project.
 orbital-sounds/         All the sounds are synthesized from noise and tones by the scripts in tools/ (synth_sounds.py,
-                        soundlib.py and the sounds_*.py files). They contain no samples from any recording.
+                        soundlib.py and the sounds_*.py files). They contain no samples from any recording, but for
+                        one: the Sky Breaks' shudder (orbital-sounds/assets/orbital/sounds/skybreak/shudder.ogg), whose
+                        glass is slices of the CC0 recordings listed below.
 docs/branding/          The logo, icon and social preview are drawn as vector paths by tools/make_branding.py.
 docs/*.jpg              Screenshots taken in Horizon with this shader pack. They show Minecraft terrain rendered by
                         Horizon; they are included to show the shader's output.
@@ -27,3 +29,16 @@ tools/wgslcheck
   A small program that links naga (MIT or Apache-2.0, https://github.com/gfx-rs/wgpu) to validate shaders the way
   Horizon does. naga is downloaded by cargo when you build the tool; it is not included. tools/wgslcheck/prelude.wgsl
   reproduces the stage prelude Horizon prepends to every shader pack, so that a shader can be checked offline.
+
+tools/sound_sources/skybreak/  (details: tools/sound_sources/skybreak/README.md)
+  Four recordings of glass breaking from Freesound, each dedicated to the public domain (CC0 1.0) by its author:
+  "LargeGlassHobSplashSheildSmashedByHammer01" by butt.chiara17 (https://freesound.org/s/721363/),
+  "R28-12-Glass Windows Break.wav" by craigsmith (https://freesound.org/s/487138/),
+  "BROKEN CAR WINDOW.wav" by thecommondanger (https://freesound.org/s/587928/) and
+  "S41-12 Large pane of glass breaks; dull; sweetener.wav" by craigsmith (https://freesound.org/s/675853/).
+  tools/sounds_skybreak.py slices their breaks into the Sky Breaks' shudder.
+
+tools/bake_hand.py's source mesh
+  The Sky Breaks' arm and hand are sculpted from MakeHuman's base mesh (base.obj, default.mhskel, default_weights.mhw),
+  dedicated to the public domain (CC0 1.0) by the MakeHuman team (http://www.makehumancommunity.org). The mesh itself is
+  not included: tools/bake_hand.py reads it and bakes its right arm into the grids the mod carries.

@@ -76,6 +76,11 @@ fn volcano_pass(fast: bool) -> &'static str {
 fn tsunami_pass(fast: bool) -> &'static str {
     PASS_TSUNAMI[usize::from(fast)]
 }
+/// The Sky Breaks', the same way (skybreak.wgsl's `[half stage]`: its dust at half size, the cracks, the void and the
+/// panes sharp at full size).
+fn skybreak_pass(fast: bool) -> &'static str {
+    PASS_SKYBREAK[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 /// The Fold's world warp: the world's own vertices bent (the fork's `render.set-warp`).
 const FOLD_WARP: &str = include_str!("../shaders/fold_warp.wgsl");
@@ -94,6 +99,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "fold" => 10,
         "supervolcano" => 11,
         "tsunami" => 12,
+        "skybreak" => 13,
         _ => 0,
     }
 }
@@ -391,9 +397,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks'), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 13],
+    passes: [&'static str; 14],
     compiled: Option<usize>,
     warming: bool,
     /// A pick has left the wheel up while its pass is built (`close_picked`).
@@ -531,7 +537,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -974,6 +980,7 @@ impl Orbital {
         self.rebuild("hurricane", hurricane_pass(fast));
         self.rebuild("supervolcano", volcano_pass(fast));
         self.rebuild("tsunami", tsunami_pass(fast));
+        self.rebuild("skybreak", skybreak_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -1212,7 +1219,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -1814,7 +1821,7 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
             if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" {
@@ -1929,6 +1936,7 @@ impl Mod for Orbital {
                         "tsunami" => "READING THE SEA",
                         "fold" => "ATTUNING",
                         "supervolcano" => "BREACHING CRUST",
+                        "skybreak" => "STRAINING THE SKY",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -2276,6 +2284,10 @@ mod tests {
             let t = super::tsunami_pass(fast);
             assert_eq!(t.matches("@fragment").count(), 1);
             assert!(t.len() <= 256 << 10 && t.contains("fn tsunami(") && t.contains("fn ts_under(") && !t.contains("fn hurricane("));
+            let k = super::skybreak_pass(fast);
+            assert_eq!(k.matches("@fragment").count(), if fast { 3 } else { 1 });
+            assert!(k.len() <= 256 << 10 && k.contains("fn skybreak(") && !k.contains("fn tsunami("));
+            assert_eq!(k.contains("half_picture"), fast);
         }
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
@@ -2627,7 +2639,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
@@ -3368,6 +3380,41 @@ mod stress {
             }
             let pushes = fake::with(|w| w.pushes);
             assert_eq!(pushes > 100, knock, "{pushes} pushes with the knockback {knock}");
+        }
+    }
+
+    /// The Sky Breaks called in on land far off (the player 800 blocks away, the panes' sites force-loaded as it fires and
+    /// coming slowly, or never): no tick overworks, the panes whose land came are laid (thousands of edits) and said so,
+    /// those whose land never came stay drawn and are said so; and close by, on land that is there, every pane is laid.
+    #[test]
+    fn a_sky_breaks_on_far_unloaded_land_stays_light() {
+        let sb = LASERS.iter().position(|l| l.key == "skybreak").expect("the sky breaks");
+        for (slow, me) in [(4, (1800, -2000)), (20, (1800, -2000)), (0, (1800, -2000)), (1, (1000, -1700))] {
+            let mut s = Soak::new(11);
+            s.loaded = Loaded { me, view: 8, forced: Default::default(), slow, now: 0 };
+            fake::with(|w| w.logs.clear());
+            s.fire(sb, (1000, -2000));
+            let mut ticks = 0;
+            while s.o.strike.is_some() {
+                s.step("far");
+                ticks += 1;
+                assert!(ticks < 1200, "it never ended");
+            }
+            let (edits, logs) = fake::with(|w| (w.edits, w.logs.clone()));
+            let laid = logs.iter().filter(|l| l.contains("in the world")).count();
+            let drawn = logs.iter().filter(|l| l.contains("stays drawn")).count();
+            eprintln!("chunks x{slow}: worst tick {:.2}M ({}), {edits} edits, {laid} panes laid, {drawn} left drawn, {ticks} ticks", s.worst.0 as f64 / 1e6, s.worst.1);
+            for l in logs.iter().filter(|l| l.contains("skybreak") || l.contains("strike")) { eprintln!("  {l}"); }
+            assert!(s.worst.0 <= CAP, "a tick of {:.2}M: {}", s.worst.0 as f64 / 1e6, s.worst.1);
+            if slow == 0 {
+                assert!(laid == 0 && drawn > 0, "the land never loaded: {laid} laid, {drawn} drawn");
+            } else if slow <= 4 {
+                assert!(edits > 500 && laid > 0, "no pane went in ({edits} edits, {laid} laid)");
+            }
+            assert!(laid + drawn > 0, "nothing said of the panes");
+            if slow == 1 {
+                assert_eq!(drawn, 0, "on land that is there every pane is laid: {logs:?}");
+            }
         }
     }
 
