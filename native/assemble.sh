@@ -10,11 +10,13 @@ rm -rf "$E"; mkdir -p "$E/src"
 tmp=$(mktemp -d)
 if [ -n "${MODDIR:-}" ]; then
     # (a mod tree as it is on disk, uncommitted work included: for trying the bundle on work in progress)
-    mkdir -p "$tmp/mod"; cp -r "$MODDIR/mod/src" "$MODDIR/mod/shaders" "$MODDIR/mod/build.rs" "$tmp/mod/"
+    mkdir -p "$tmp/mod"; cp -r "$MODDIR/mod/src" "$MODDIR/mod/shaders" "$MODDIR/mod/build.rs" "$MODDIR/mod/assets" "$tmp/mod/"
 else
-    git -C "$REPO" archive "$REF" mod/src mod/shaders mod/build.rs | tar -x -C "$tmp"
+    git -C "$REPO" archive "$REF" mod/src mod/shaders mod/build.rs mod/assets | tar -x -C "$tmp"
 fi
 cp -r "$tmp/mod/src/." "$E/src/"; cp -r "$tmp/mod/shaders" "$E/shaders"
+# (its binary data: the Sky Breaks' baked hand, sb_hand.bin; under data/ as the shaders are, below)
+mkdir -p "$E/data/assets"; cp -r "$tmp/mod/assets/." "$E/data/assets/"
 # The mod's build.rs builds the post passes into OUT_DIR; a bundle crate has no build script, so it runs here, into
 # engine/gen, and lib.rs and passes.rs name the files relative to themselves.
 mkdir -p "$E/gen"
@@ -29,6 +31,8 @@ mkdir -p "$E/data/gen"; mv "$E/shaders" "$E/data/shaders"; mv "$E"/gen/*.wgsl "$
 sed -i -E -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' -e 's|include_str!\("(pass_[a-z_]+\.wgsl)"|include_str!("../data/gen/\1"|g' "$E/gen/passes.rs"
 # (the mod's own shader includes: strike/*.rs two folders up, lib.rs one)
 find "$E/src" -name '*.rs' -exec sed -i -E -e 's|include_str!\("\.\./\.\./shaders/|include_str!("../../data/shaders/|g' -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' {} +
+find "$E/src" -name '*.rs' -exec sed -i -E -e 's|include_bytes!\("\.\./\.\./assets/|include_bytes!("../../data/assets/|g' {} +
+if grep -rnE 'include_bytes!\("[^"]*"' "$E/src" | grep -v '/data/'; then echo "a binary include left outside data/" >&2; exit 1; fi
 if grep -rnE 'include_str!\("[^"]*\.wgsl"' "$E/src" "$E/gen" | grep -v '/data/'; then echo "a shader include left outside data/" >&2; exit 1; fi
 cp "$B/engine-shim/horizon_sdk.rs" "$E/src/horizon_sdk.rs"
 # After lib.rs's leading //! doc comment: the SDK at the crate root, named as the WebAssembly SDK was.
