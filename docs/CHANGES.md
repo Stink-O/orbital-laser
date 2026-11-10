@@ -1,6 +1,30 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0512); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0514); each release's notes are in [docs/releases](releases).
+
+## 0.5.14
+
+- **The native version catches up**: the Fold and the Sky Breaks now play on regular Horizon too, so every laser plays on
+  both versions. The native build is pinned to upstream Horizon `89f236e3e`, which numbers the world warp and the held
+  world the Fold needs (horizon-rust/horizon#11955, #11956, stamped in #12794). Nothing changes on the fork version: 0.5.14
+  is the same mod as 0.5.13 there.
+
+## 0.5.13
+
+- **The Sky Breaks**, the eighteenth laser, on the wheel's fourth page and `/orbital skybreak`. No beam: a disc of land
+  tears free round the target, rises into the sky and sinks into it; the sky rings, a vast hand presses on it from behind
+  and at 9 seconds its fist punches through, cracks racing out across the whole sky. An eye slides into the hole and finds
+  you. Up to seven panes of sky break free one by one and wedge into the land round the target as real blocks of ice, snow
+  and obsidian. The eye flares and turns away, the fist is thrown back down through the hole and slams the land on the
+  target, leaving a crater about 140 across and 20 deep with its knuckle prints in the bottom, and the sky heals over. A
+  shockwave and a wall of dust run out from the slam, and the camera jolts and muck lands on the lens as they reach you.
+  It reaches 1000 blocks and lasts 49.5 seconds. QUALITY FAST draws its dust at half size. Its sounds are its own, all
+  synthesised but for the glass of the shudder after the slam, which is slices of four CC0 recordings of glass breaking
+  (credited in `NOTICE`); the slam plays the Payload's ALT blast. **Photosensitivity:** a blinding flash at the punch, the
+  whole picture's light jumping for a fraction of a second; a brief brightening at each pane's impact; the eye's flare at
+  about 35 seconds; and a grey-out of under a second as the slam's shockwave passes you.
+- It runs on the fork's `orbital-mod-api-12`, as 0.5.12 did: no new fork release.
+- The native version stays at 0.5.12, without the Sky Breaks.
 
 ## 0.5.12
 
@@ -25,9 +49,9 @@ What each release of Orbital Laser added, newest first. The current release is i
   compiler can't unroll. On the native version they draw on DirectX 12, all but the Downfall's, which that compiler still
   can't build; on OpenGL the game's frame can't be copied yet, so the native version skips its effects there with a
   warning in the log instead of ending the game.
-- **The native version catches up to 0.5.12**, on upstream Horizon `PIN_AFTER_STAMP`: the Fold plays on upstream's world warp and
-  held world (horizon-rust/horizon#11955, #11956), and the Supervolcano. The native build greys
-  out any laser it can't play.
+- **The native version catches up to 0.5.12**, on upstream Horizon `fdc87ae` (the 2026-11-08 Nightly): the Supervolcano
+  plays. The Fold shows greyed out in the wheel ("Not on the native build yet") until upstream
+  numbers the hook points it needs; the native build greys out any laser it can't play.
 
 ## 0.5.11
 

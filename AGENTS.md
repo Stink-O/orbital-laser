@@ -373,6 +373,38 @@ laser, command, capability and timing). This file is the short, factual version 
   wreck, with a small throw (`Surge::set_down`, `world.push-player` while carried) that keeps the game from putting a
   creative player back into flight, unless they were flying when it took them; sneak held half a second breaks free. **Photosensitivity:** the blow as the water takes the player is one white
   flash over the whole picture, about a fifth of a second.
+- **The Sky Breaks** (`strike/skybreak.rs` the plan, the crack pattern, the panes and the table, `strike/sb_lift.rs` the
+  opening, `strike/sb_hand.rs` the hand, `strike/sb_lodge.rs` the panes as blocks, `strike/sb_sounds.rs` the sounds'
+  schedule, `shaders/skybreak.wgsl`; 49.5 s, reaches 1000 blocks; laser index 17, pass 13, the wheel's fourth page;
+  on the native version too from 0.5.14). No beam and no knockback. A disc of the land round the target
+  (`LF_R`, 7, its edge ragged) cracks round its rim and tears free: its real blocks are read (`world.read-columns`) and
+  taken out of the world at 0.55 s (`LF_CUT`, `world.edit-blocks`: a hole up to 14 deep in its middle, 3 at its edge;
+  terrain off, they stay) and the pass draws them as an island in the game's textures, rising into the sky (its pane 560
+  over the target's ground, `SB_H`) and sinking into it by 5.15 s (`LF_IN`); the sky rings, a hand presses on it from
+  behind (`LF_PRESS`, 7 s) and its fist punches through at 9 s (`SB_CRACK` = `SB_LEAD` + 0.25): `SB_K` (15) radial
+  cracks across the whole sky in a tenth of a second, forks and short chords between them (`Mesh`), the shattered
+  middle blown down. An eye (`SB_EYE_R`, 78) slides into the hole (12-14 s), opens, finds the player (`SB_LOCK` + 0.45),
+  blinks at 30.15, flares at 35.1 (`SB_FLARE`, `HD_FLARE`), turns away and shuts. From 16.75 s (`SB_FIRST`) up to
+  `SB_NS` (7) panes break free 1.45 s apart, each falling ~5.3 s (`SB_FALL`) and lodging as real blocks (`sb_lodge.rs`,
+  terrain on: lying low, `SB_LOW` to `SB_STEEP` degrees, `SB_BURY` of its length in the ground, its sky on top in blue
+  ice, packed ice and snow, obsidian under; everything standing within 30 of it plus half its length gone and the trees
+  felled for `SB_FELL` (32) more; 26 falling blocks thrown and mobs and items within 70 killed at each), their sites at
+  least 118 apart and 120 plus their reach from the player; one on land that never loads, or that would come down on
+  the player, stays drawn. The fist is thrown down through the hole at 36 s (`SB_DOWN`) and slams the land on the target
+  at 37.5 (`SB_PRESS`): a bowl about 135-145 across (`SB_BOWL` 24 by 25.5 times `SB_SC` 2.8, ragged by a tenth) and 20
+  deep (`SB_BOWL_DEEP`), falling in broken steps to the fist's print (the knuckles' dents, the middle one about 34 under
+  the land: keep `HD_KNUCKLES` in step with the pass's `hd_knuckle`), the print obsidian, blackstone and crying obsidian,
+  the earth heaped round it out to 1.4 radii (`SB_RIM`), everything standing swept off and the trees laid flat for
+  `SB_BAND` (24) more; water dug like any block, the lava it bares sealed to magma; 44 falling blocks thrown, mobs and
+  items within 125 killed. Its chunks are read and made from 32.8 s and let in from the slam, the middle first, paced
+  (pace.rs). The slam's shockwave and dust wall run out over the land; as the front reaches the player the camera jolts
+  as the Payload's does (`payload::pl_jolt`) and muck lands on the lens (`hd_lens`). The middle's last ring is knocked
+  loose at 37.72 (`SB_KNOCK`), the arm lifts at 38.9 and is gone by 42.6, the sky heals over 40-46.5 (`SB_HEAL`,
+  `SB_HEALED`). Force-loads the chunks within 152 of each pane's site (`SB_PATCH`) and 145 of the target from the
+  moment it fires (`sb_load_rows`), let go a second before the end. **Photosensitivity:** the punch at 9 s is a
+  blinding flash where the sky breaks and the whole picture's light jumping for a fraction of a second; each pane's
+  impact brightens the picture a moment; the eye's flare at 35.1 s is a glare through the hole fading over about a
+  second; and as the slam's front passes the player the picture greys over with dust for under a second.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-12` or newer (it adds
@@ -407,6 +439,10 @@ RD_VOX_OUT=/tmp/h.vox cargo test --release rod_heaves_the_floor_round_its_foot  
 PREVIEW_VOXELS=/tmp/h.vox tools/preview.py rod 40 --views rdfoot,rdfootup --set vox=1
 RD_CAVE_OUT=/tmp/c.txt cargo test --release rd_cave_order -- --ignored --nocapture  # the crater dug, then lined, by tick
 python3 tools/sounds_rod.py --listen DIR             # the Rod's sounds (and listening mixdowns from 200 and 600 blocks)
+tools/preview.py skybreak 3 9.05 20 37.6 --views sbplayer,sbeye,hdslam  # the Sky Breaks offscreen (views sb*, the opening lf*, the hand hd*)
+tools/preview.py skybreak 49 --views sbruin,hdcrater  # the blocks its panes and its fist leave (those views' vox=2)
+python3 tools/sounds_skybreak.py --only --listen DIR  # the Sky Breaks' sounds mixed as the game does from 30, 300 and 800 blocks
+python3 -I tools/bake_hand.py MESH_DIR               # the hand's sculpted shape baked into mod/assets/sb_hand.bin and the pass's [bake table]
 tools/world_snapshot.py save|restore|reset WORLD [NAME]  # snapshot a world and put it back (refuses while it's open; reset leaves, restores, rejoins)
 ```
 
@@ -421,8 +457,8 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold` or `supervolcano`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's, the Fold's and the Supervolcano's push, the Hurricane's and the Tsunami's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third, the Fold and the Supervolcano on the fourth. Its FLY
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano` or `skybreak`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's, the Fold's and the Supervolcano's push, the Hurricane's and the Tsunami's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third, the Fold, the Supervolcano and the Sky Breaks on the fourth. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
@@ -494,6 +530,13 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   `src/strike/ts_sounds.rs` its sounds' schedule, `src/surge.rs` the player carried in the water,
   `shaders/tsunami.wgsl` its pass (no half-size stage), `tools/sounds_tsunami.py` its sounds. Preview views `ts*`;
   `ts_write_table` (ignored) writes its table.
+- The Sky Breaks: `src/strike/skybreak.rs` its plan (`Mesh` the cracks, `sb_shards` the panes, `sb_table` the pass's
+  table, `sb_pane_events`), `src/strike/sb_lift.rs` the opening (the island, its words from `SB_LF`),
+  `src/strike/sb_hand.rs` the hand (`Print` its crater, `Arm` its poses, its words from `SB_HD`), `src/strike/sb_lodge.rs`
+  the panes as real blocks, `src/strike/sb_sounds.rs` its sounds' schedule (`tools/sounds_skybreak.py` builds them; the
+  shudder's glass from `tools/sound_sources/skybreak/`), `shaders/skybreak.wgsl` its pass (`[lift]`, `[hand]`, the
+  `[bake table]` that `tools/bake_hand.py` writes with `mod/assets/sb_hand.bin`; FAST's `[half stage]` the dust).
+  Preview views `sb*`, `lf*` and `hd*` (`vox=2` the blocks it leaves); `sb_write_table` (ignored) writes its table.
 - `native/`: the native build for upstream Horizon (`assemble.sh` builds the mod's source unchanged against
   `engine-shim/horizon_sdk.rs`, the SDK on native helpers; `package.py` makes the one-file `orbital.hnmod`;
   `mixins/orbital/horizon-mixin.toml` its hook points and the upstream commit it is pinned to). A fork call the native
@@ -627,7 +670,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
 Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's, the
-Hurricane's, the Tsunami's and the Supervolcano's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
+Hurricane's, the Tsunami's, the Supervolcano's and the Sky Breaks', each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)

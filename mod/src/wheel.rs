@@ -783,10 +783,12 @@ mod tests {
         LASERS.iter().position(|l| l.key == key).unwrap()
     }
     #[test]
-    fn the_fold_has_a_fourth_page_to_itself() {
+    fn the_fold_and_the_sky_breaks_are_on_the_fourth_page() {
         assert_eq!(pages(), 4);
         let fold = LASERS.iter().position(|l| l.key == "fold").expect("the Fold");
         assert_eq!(page_of(fold), 3);
+        let sb = LASERS.iter().position(|l| l.key == "skybreak").expect("the Sky Breaks");
+        assert_eq!(page_of(sb), 3);
         assert_eq!(tab(3).x + tab(3).w, -tab(0).x, "the four tabs centred over the ring");
     }
 

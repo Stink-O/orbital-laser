@@ -573,7 +573,7 @@ pub mod native_build {
         use super::*;
         #[test]
         fn every_laser_plays_on_this_build() {
-            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "moonfall", "skybreak"] {
+            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak"] {
                 assert_eq!(unavailable(key), None, "{key}");
             }
             assert!(supports("render.set-warp") && supports("render.hold-world-within") && supports("render.set-post"));

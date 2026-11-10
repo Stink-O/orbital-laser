@@ -3089,5 +3089,239 @@
       }
     ],
     "subtitle": "subtitles.orbital.fold.erupt"
+  },
+  "skybreak.tear": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/tear",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.tear"
+  },
+  "skybreak.tear_far": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/tear_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.tear_far"
+  },
+  "skybreak.rise": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/rise",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.rise"
+  },
+  "skybreak.sink": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/sink",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.sink"
+  },
+  "skybreak.ripple": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/ripple",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.ripple"
+  },
+  "skybreak.pressure": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/pressure",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.pressure"
+  },
+  "skybreak.crack": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/crack",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.crack"
+  },
+  "skybreak.withdraw": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/withdraw",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.withdraw"
+  },
+  "skybreak.strain": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/strain",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.strain"
+  },
+  "skybreak.collapse": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/collapse",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.collapse"
+  },
+  "skybreak.release": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/release",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.release"
+  },
+  "skybreak.release2": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/release2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.release2"
+  },
+  "skybreak.fall": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/fall",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.fall"
+  },
+  "skybreak.ground": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/ground",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.ground"
+  },
+  "skybreak.impact": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/impact",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.impact"
+  },
+  "skybreak.impact2": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/impact2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.impact2"
+  },
+  "skybreak.impact3": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/impact3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.impact3"
+  },
+  "skybreak.impact_far": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/impact_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.impact_far"
+  },
+  "skybreak.void": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/void",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.void"
+  },
+  "skybreak.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.rumble"
+  },
+  "skybreak.heal": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/heal",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.heal"
+  },
+  "skybreak.gaze": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/gaze",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.gaze"
+  },
+  "skybreak.slam": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/slam",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.slam"
+  },
+  "skybreak.flare": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/flare",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.flare"
+  },
+  "skybreak.descend": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/descend",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.descend"
+  },
+  "skybreak.shudder": {
+    "sounds": [
+      {
+        "name": "orbital:skybreak/shudder",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.skybreak.shudder"
   }
 }

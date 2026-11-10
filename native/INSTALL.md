@@ -1,6 +1,6 @@
-# Orbital Laser 0.5.12 on native Horizon: install
+# Orbital Laser 0.5.14 on native Horizon: install
 
-Orbital Laser 0.5.12 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
+Orbital Laser 0.5.14 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
 the game. Its code runs with full access to your computer, like any native mod, so only install it if you trust it.
 
 ## What you need
@@ -40,7 +40,7 @@ the old ones build or load beside it.
    **Native build** row pick **Release build** (`horizon-launcher settings native-profile release`): it builds more
    slowly, but the game runs noticeably faster than with the default Performance build.
 4. **The trust step (yours to run).** In the Mods page, the **Native build of {instance}** row shows **Not built** or
-   **Needs rebuild**. Press **Build**, read the red warning naming `orbital 0.5.12`, and choose
+   **Needs rebuild**. Press **Build**, read the red warning naming `orbital 0.5.14`, and choose
    **I trust these mods: build**. From a terminal, the same step is:
 
    ```bash
@@ -55,7 +55,7 @@ the old ones build or load beside it.
 
 ## Checking it worked
 
-- Options > Mods lists Orbital Laser 0.5.12.
+- Options > Mods lists Orbital Laser 0.5.14.
 - `/orbital` answers in chat, is white once typed and completes with Tab, and the wheel opens with R while you hold
   the Designator.
 - Fire one strike with terrain off first (`/orbital terrain off`). Strikes with terrain on are permanent, so only

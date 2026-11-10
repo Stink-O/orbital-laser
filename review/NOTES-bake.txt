@@ -1,0 +1,236 @@
+THE SKY BREAKS' HAND, A TRIAL: a sculpted hand and arm baked into per-bone distance grids
+branch sb-bake (base 4d811af), worktree ~/.cache/orbital-sb-bake. Not pushed, not merged, not installed, never run in the game.
+
+Sheets: review/bake-compare.jpg (clay, his own hand / sculpted / rounded shapes, six poses and views)
+        review/bake-strike-views.jpg (the strike's own views hdpclose, hdslam, hdslamclose at 9.3, 44.5, 46.2 s, both hands)
+
+
+1. WHAT IT IS
+
+MakeHuman's base mesh (CC0), its right arm, subdivided twice (Catmull-Clark), fitted to the skeleton hd_set already poses
+(its knuckles, its fingers' lengths, the thumb's root), cut at the joints into 18 rigid pieces. Each piece is a small grid
+of distances in its own bone's frame, ten bits a sample, three samples a word. The pass reads a piece's grid where its
+bone is now, so the one pose (hd_set, unchanged) drives the sculpted hand and the hand of rounded shapes alike.
+HD_BAKE (skybreak.wgsl) picks the sculpted one; with the grids missing from mod_data the pass draws the rounded one.
+
+
+2. THE PIPELINE, AND HOW TO RUN IT AGAIN
+
+    python3 -I tools/bake_hand.py ~/.cache/orbital-handmesh/src [--look DIR]        (about a minute, numpy only)
+
+writes  mod/assets/sb_hand.bin     the grids (389,212 bytes; include_bytes! in mod/src/strike/sb_hand.rs)
+        mod/shaders/skybreak.wgsl  the block between `// [bake table]` and `// [end bake table]`: hb_piece (each grid's
+                                   offset, samples, first sample, spacing), HB_WORDS, HB_RAD, HB_PLO/HB_PHI, HB_RF/HB_RU,
+                                   HB_UZ, HB_FZ. The two go together: bake, then rebuild.
+Nothing runs at build time. `-I` because the mesh folder is data, not code. Then:
+
+    tools/check-shader.sh
+    cd mod && cargo test --release sb_
+    tools/preview.py skybreak 9.3 44.5 --views hdpclose,hdslam --set hdclay=1            (the sculpted one)
+    ... --set hdbake=0     the hand of rounded shapes          ... --set hdtint=1     each piece in its own colour
+    ... --set hdlab=1 hdpose=I,M,R,L,THUMB,SPREAD,TURN,TIP     a fixed pose in the lab
+
+Steps inside the bake (tools/bake_hand.py): load, arm_faces (the body's faces weighted over half to the arm's bones),
+catmull_clark twice, Fit (a similarity fit of the mesh's joints to the shader's, then a warp so every joint lands on the
+shader's own), Sdf (exact distance to the triangles, signed), Pieces (the cuts, below), build, pack, main.
+
+Source files (in ~/.cache/orbital-handmesh/src, put there by the main session; I downloaded nothing), sha256:
+    base.obj             8e761e6624b8f54536409135d1636da63b32486a90d4897f84e121d144f6fb4c
+    default.mhskel       99f179bce0aa850b45d4191a1d0d234c5851f881c057439470ded3bddf729a24
+    default_weights.mhw  0f3641d651ae3d00ad6b4ccee43142edb109d3bd909d27d9e4139ef1beed8625
+    LICENSE.md           edd99571ca62698f78c943fd4fffb159a413c315fa0d4819d3cec5cadaf8b4f1
+
+
+3. THE PIECES AND THEIR GRIDS
+
+ id  piece                samples (x,y,z)  spacing (hand units)  words
+  0  index, root bone     17 18 40         0.6                    4,320
+  1  index, middle        18 17 31         0.55                   3,162
+  2  index, end           18 18 27         0.45                   2,916
+  3  middle, root         18 19 45         0.6                    5,130
+  4  middle, middle       18 17 35         0.55                   3,570
+  5  middle, end          19 18 29         0.45                   3,654
+  6  ring, root           18 18 42         0.6                    4,536
+  7  ring, middle         17 15 32         0.55                   2,880
+  8  ring, end            18 18 29         0.45                   3,132
+  9  little, root         16 16 34         0.6                    3,264
+ 10  little, middle       17 15 28         0.55                   2,520
+ 11  little, end          17 16 24         0.45                   2,304
+ 12  thumb, first bone    25 24 46         0.75                   9,936
+ 13  thumb, second        21 19 37         0.6                    4,921
+ 14  thumb, end           18 18 30         0.5                    3,240
+ 15  palm                 40 28 59         0.9                   23,128   from (-16.4, -15.4, -37.2), the hand's frame
+ 16  forearm              26 21 54         1.6, 1.6, 2.4         10,206   from (-13.2, -16.4, -117.2), the wrist's frame
+ 17  upper arm            23 20 28         2, 2, 3                4,480   from (-20, -20, -60), the elbow's frame
+                                                        in all  97,303 words with the heading's four (389,212 bytes)
+
+A sample holds -5 to 7 hand units in ten bits (HB_LO, HB_STEP = 0.01173); a hand unit is 2.8 blocks (HD_SC).
+The forearm's grid is 96 long whatever the pose's forearm: the pass draws it out to the pose's length.
+
+
+4. THE MOD'S DATA: LAYOUT AND OFFSETS            (for the merge with sb-anim)
+
+    word 24,576  SB_HD   (shader HD)        the hand's 16 words (SB_HDW)                              unchanged
+    word 24,592  SB_HP   (shader HD_HP)     the pose table: on this branch 22 words a pose (SB_HP_W),
+                                            136 poses from 8.4 s then 277 from 40.8 s = 9,086 words,
+                                            ending at word 33,678                                     unchanged
+    word 65,536  SB_HB   (shader HB)        the grids: [0x53424844, 1, 18 pieces, 97,303 words in all], then the grids;
+                                            ends at word 162,839                                      NEW
+
+THE GRIDS' OFFSETS DO NOT DEPEND ON THE POSE TABLE'S LENGTH. SB_HB is a fixed word, and every grid's offset in hb_piece
+is counted from HB, not from the table's end. The one condition: the pose table must end below word 65,536.
+sb-anim's table (199 + 277 = 476 poses of 26 words = 12,376 words) ends at word 36,968: fine as it is, nothing of mine
+to change. There is room for 1,574 poses of 26 words before the two would meet; nothing checks that today (a const
+assert `SB_HP + poses * SB_HP_W <= SB_HB` in sb_hand.rs would).
+Where it is set: sb_hand.rs `SB_HB`, `SB_HAND_BIN`, `sb_hand_grids()`, and in `sb_hand_plan` one
+`Act::Words { index: SB_HB, .. }` at 0.07 s; skybreak.rs `sb_write_table` (the preview's data) resizes to SB_HB and
+appends the grids; skybreak.wgsl `HB`, `HB_WORDS`.
+The pass draws the sculpted hand only if arrayLength(&mod_data) >= HB + HB_WORDS and the heading's mark and length match
+(hd_set, hd_trace); otherwise the hand of rounded shapes, as before.
+The fork takes at most 262,144 words in one render.set-data (POST_DATA_WORDS): 162,839 fits. The mod sends the whole
+array each time a word of it changes (lib.rs), so each such send is now 651 KB where it was about 135 KB.
+
+KEEP hd_set FILLING hd_fb AND hd_kn. It does, for both hands, as before: hd_kn in the loop over the fingers (about line
+2529), hd_fb for all 15 bones. The sculpted hand reads hd_fb itself (hb_bone); sb-anim's hd_shade can go on reading both.
+
+Every place the pose is read (skybreak.wgsl):
+    hd_pose, hd_hpv, hd_hpf, hd_py     the table at HD_HP (HD_HP_W words a pose); hd_lab the lab's fixed pose
+    hd_set                             the one place curls become joint angles: fills hd_h, hd_fb[15], hd_kn[4], hd_uh,
+                                       hd_fc[4] and hd_tc (balls round each finger and the thumb, for culling), hd_ad,
+                                       hd_lf, hd_x0, hd_x1, hd_r0, hd_r1, hd_ue, hd_cv, hd_bc/hd_bh (the hand's box),
+                                       hb_on. New in it for the sculpted hand: the thumb's roll shared along its three
+                                       bones, the box from HB_PLO/HB_PHI, hd_fc/hd_tc from HB_RAD.
+    rounded hand                       hd_hand_a, hd_finger_a, hd_bone_a, hd_arm_a (hd_fb, hd_kn, hd_uh, hd_h.*)
+    sculpted hand                      hd_hand_b (hd_fb through hb_bone, hd_fc, hd_tc, hd_cv, hd_h.fl, hd_h.th),
+                                       hd_arm_b (hd_h.w/el/sh/side/sc, hd_ad, hd_lf, hd_x0, hd_ue),
+                                       hd_map_b (hd_h.p/ax/ay/az/side/sc, hd_bc, hd_bh), hd_surf_b
+    both                               hd_map, hd_ne, hd_crease, hd_nail, hd_trace (its bounds on the ray: hd_h.p, the
+                                       arm's two lines with HB_RF + 1 and HB_RU + 1; `in_arm = lp.z < -24`)
+sb_hand.rs is untouched but for SB_HB and the grids: Hand::pose, the table, the fist's footprint and the tests are as
+they were.
+
+
+5. THE JOINTS, AND WHAT WAS DONE AT EACH
+
+The suggested way was to cut by bone weight and smooth-union the pieces. Cut by weight the pieces' ends were ragged and
+the bent joints opened into gaps or stood out as balls, so:
+  - Cuts are by geometry: planes through the webs between the fingers (a column a finger), a sleeve and a ball round the
+    thumb, the wrist, the elbow. Pieces overlap, so the rest pose is the sculpt itself, with no seam to hide.
+  - A piece's end is its own section there swept round the joint's axis (`hinged`), so a bent joint stays as thick as the
+    finger is. Knuckles: a low mound on the back of each (PALM_MOUND, FINGER_MOUND) and a saddle between two fingers
+    (SADDLE), not balls.
+  - A finger's root is clipped round along it and to a ball behind its knuckle: the mesh's finger carries the palm's pad
+    a third of the way up, and bent that stood out of the fist as a block.
+  - Fingers: a finger's own three pieces smooth-union with each other, its root with the palm; never a finger with its
+    neighbour or the thumb. Shut, a finger's end smooth-unions with its own root and the palm (the coil, filled).
+  - Thumb: the palm and the thumb's first piece both hold the ball of the thumb, and the palm keeps the whole back of the
+    hand and the web down to WEB_FLOOR (a shell there was a fin once the thumb swung into the fist). Union radius
+    0.4 + 1.8 * thumb's curl.
+  - Palm: closing, its back arches with the knuckles hd_set sinks (hd_cv), on the ring's and the little finger's side.
+  - Wrist: not a union but a cross-fade between the forearm's grid and the palm's, over z -33 to -21 (both hold that
+    stretch of the sculpt), so the wrist is one skin.
+  - Elbow: forearm and upper arm smooth-union (1.2 units). Past their grids' ends both run on as they are there.
+  - Outside a grid, a bound that is never more than the truth (hb_grid's `mrg`); under the hand's box, down the arm, the
+    hand is worked out exactly within 8 units (the light and the shadow ask for distances well off the skin; a bound
+    there drew a dark line round the wrist).
+  - Normals: the taps widened to the grids' spacing (hd_ne), or the skin shows the samples.
+
+
+6. COST
+
+NOT MEASURED ON THE GPU. The game was running for all of the close-out but one short window (one frame drawn), and the
+rule is no GPU work while it is. To measure, with the game closed, one job at a time under flock ~/.cache/orbital-gpu.lock:
+    tools/preview.py skybreak 9.3 10.6 42.6 43.2 44.5 46.2 --views sbplayer,hdpclose,hdslam,hdslamfar,hdslamclose \
+        --size 1920x1080 --bench                        and the same with --set hdbake=0
+(the rounded hand's figures on sb-hand3, same method: worst about 2.8 ms at 46.2 s hdslam, 2.57 ms at 9.3 s hdpclose).
+
+What there is: the whole pass on the CPU renderer (lavapipe), 480x270, clay, median of 9, ms. A ratio at best: a GPU
+pays differently for the grids' reads than a CPU does.
+                              sculpted   rounded
+     9.3 s  hdpclose            35.8       38.6
+     9.3 s  hdslam              30.2       30.2
+    44.5 s  hdpclose            18.4       18.7
+    44.5 s  hdslam              24.9       25.1
+    44.5 s  hdslamclose         41.7       45.2
+    46.2 s  hdpclose            21.1       22.3
+    46.2 s  hdslam              59.1       54.3
+    46.2 s  hdslamclose         65.1       64.9      (no hand in view: the noise is about this much)
+So on the CPU the sculpted hand costs the pass about what the rounded one does: 9% more at worst (46.2 s hdslam), 8%
+less at best. Whether a GPU agrees is the open question.
+
+By count: a grid sample is 8 words read (four rows, two words each) and three mixes. One hd_map near the hand reads the
+palm, the forearm, the upper arm, the thumb's three and each finger whose ball the point is near: 6 grids at least, 18 at
+most, 48 to 144 words read. Away from the hand's ball only the two arm grids (16 words); the ray is clipped to the hand's
+ball and the arm's two capsules first.
+The mod: mod.wasm 6,577 KB (the grids are 389 KB of it). sb_hand_grids runs once a strike at 0.07 s and counts 12 a word
+with the meter (1.17 M of a tick's 50 M). mod_data grows to 162,839 words (651 KB), sent whole on each change.
+
+
+7. THE OUTLINE AGAINST THE TESTS' SIZES           (the tests are unchanged, and pass)
+
+`the_arm_keeps_to_the_hole` and the fist's footprint (`Print`) are worked out from the rounded hand's sizes. The sculpted
+one, measured from the grids (hand units; times 2.8 for blocks):
+    forearm      reaches 9.4 to 17.6 from its line; the test takes 13.5 to 22.0: thinner by 2.5 to 7.3 everywhere
+    upper arm    reaches 16 to 20.3; the test takes 13.5 to 15.5: WIDER by 2.5 to 5 (7 to 14 blocks)
+    elbow        21.9 at 3 units past it; the test's ball is 14: WIDER by about 8 (about 22 blocks). The reach is from the
+                 bone's line, and the sculpted arm is not centred on it.
+    palm         x -13.7 to 16.9, y -11.8 to 6.2: inside the test's three balls of 17. The fist's footprint was not
+                 measured against `Print`.
+So the forearm keeps to the hole with room to spare; the upper arm and the elbow may not, by up to about 22 blocks at the
+elbow, wherever they pass the rim. Not checked against the hole in a render.
+
+
+8. WHAT IS STILL WRONG                             (bluntly; the sheets show all of it)
+
+  - The fist from the side: a dark cavity in the coil of the fingers and a muddled thumb across it. The rounded hand is
+    cleaner from there. It shows in the strike too: 9.3 s hdpclose has a dimple by the thumb on the punching fist.
+  - (Fixed, see 11.) The elbow, close (44.5 and 46.2 s hdpclose): a ridge where the forearm's and the upper arm's pieces
+    met, and a bulge on the upper arm just over it.
+  - The arm reads thinner than the rounded one's (44.5 s hdslam): a slim wrist and forearm under a big hand. It is the
+    sculpt's own proportion; whether that suits a giant's arm is a matter of taste.
+  - The knuckle row, close: low mounds and saddles instead of balls, which is the point, but still lumpier than his own
+    fist, with faint lines where the pieces' caps meet and the little finger's knuckle a doubled lump.
+  - The open hand's fingers show their joints as rings (the caps' mounds), more than a real hand does.
+  - Not looked at: a bent wrist held still, the palm's faceting at 0.9 spacing in a grazing light, the skin (creases,
+    nails, colour: only clay was judged), the far view from the player, the hand in the game.
+  - No bake of the left hand: it is the right hand mirrored (hd_h.side), as the rounded one is.
+  - review/work/motion.py in this worktree is not mine and is not committed.
+
+Fixed in the close-out: the square line on the back of the hand (the palm's grid stopped short of the wrist and the
+hand's edge: d_palm's floor in the bake), and the dark line round the wrist (hd_map_b's bound under the hand's box).
+
+
+9. RESULTS AS RUN (2026-11-10, after the last bake and shader change)
+
+    tools/check-shader.sh                              OK
+    cd mod && cargo test --release sb_hand             8 passed, 0 failed, 1 ignored
+    cd mod && cargo test --release sb_                 19 passed, 0 failed, 5 ignored
+    python3 tools/build_mod.py --cargo-horizon-mod ~/.cache/orbital-release-0512-work/fork12-target/release/cargo-horizon-mod
+                                                       built dist/orbital (mod.wasm 6,577 KB); not installed
+
+
+10. MERGED WITH THE ANIMATION (branch sb-hand4 = sb-anim e6eccde + sb-bake cb86bc6, 2026-11-10)
+
+  - The merge was clean; hd_set carries both sb-anim's knuckle lead (hd_hk) and the sculpted thumb's roll.
+  - The pose table is now 26 words a pose, 199 + 277 poses, ending at word 36,968: sb_hand.rs asserts at compile time
+    that it ends below SB_HB and that the grids fit one render.set-data.
+  - THE PASS IS AT THE GAME'S 256 KiB: 262,000 of 262,144 bytes after shortening the hand's heading comment and the
+    bake table's numbers (bake_hand.py writes them without trailing zeros now; the grids are byte for byte the same).
+    Anything more in the pass (the skin, creases) wants something taken out first: the hand of rounded shapes
+    (hd_hand_a, hd_finger_a, hd_bone_a, hd_arm_a) is the obvious thing, once the sculpted one is chosen.
+  - `the_arm_keeps_to_the_hole` now takes the sculpted arm's widest (elbow 21.9, upper arm 20.3 from the bones' line)
+    and passes: the elbow is 75 blocks out of the hole's 80 at its widest, at 44.32 s.
+  - The shadow on the sky before the punch (hd_shade) is still drawn from the rounded bones, on the same pose.
+
+
+11. THE ELBOW AND THE SKIN                         (review/hand4-skin.jpg)
+
+  - The elbow's knob: each arm piece carried the start of the other at the mesh's own bend (46.8 degrees), which stood
+    out as a knob at any other bend. bake_hand.py now holds both pieces near the elbow to a radius about one fixed
+    centre (ELBOW_F, ELBOW_U: 13 and 14, widening away from the joint) and domes them about it. The grids are 95,133
+    words (were 97,303). Clay at 44.5 and 46.2 s hdpclose: a slight swell, no knob.
+  - The skin (hd_trace): the eye's lids' mottle on it (it was a flat grey glove), its veins soft bands thinning to
+    nothing instead of pen lines, none on the palm; the dark takes it through the terminator and in its hollows, the
+    lit side keeps its skin; a firmer sheen and a wider cold rim so its form and outline hold. Constants only.
+  - Still there: the joints' rings on the open fingers, the little finger's knuckle, the slim forearm. Not run on the
+    GPU or in the game; the pass has 296 bytes to spare.
