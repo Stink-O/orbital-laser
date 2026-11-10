@@ -18,6 +18,7 @@ listening file.
 
     python3 tools/sounds_carpetbomb.py                     # writes orbital-sounds/assets/orbital/sounds/carpetbomb/
     python3 tools/sounds_carpetbomb.py --mix cues.txt out.ogg
+    python3 tools/sounds_carpetbomb.py --variants review/variants   # the review's falls (F1-3) and blasts (B1-3)
 """
 import os
 import subprocess
@@ -178,9 +179,136 @@ def mix(cues: str, out: str) -> None:
     print("wrote", out)
 
 
+# ---- review variants (`--variants DIR`): the falling sound and the smaller blasts, a few ways, for Kyle to pick -------
+def pitched(x: np.ndarray, p: float) -> np.ndarray:
+    """Played `p` times as fast (higher and shorter, as the game plays a pitch)."""
+    if abs(p - 1.0) < 1e-3:
+        return x
+    pos = np.arange(0, len(x) - 1, p)
+    i = pos.astype(int)
+    fr = (pos - i)[:, None]
+    return x[i] * (1 - fr) + x[i + 1] * fr
+
+
+def trimmed(x: np.ndarray, hold: float, end: float) -> np.ndarray:
+    """Its first `end` seconds, whole up to `hold`, let go smoothly after."""
+    n = int(end * SR)
+    t = np.arange(n) / SR
+    u = np.clip((t - hold) / (end - hold), 0, 1)
+    return x[:n] * (0.5 + 0.5 * np.cos(np.pi * u))[:, None]
+
+
+def place(acc: np.ndarray, t: float, x: np.ndarray, vol: float) -> None:
+    i0 = int(round(t * SR))
+    j0 = max(0, -i0)
+    n = min(len(x) - j0, len(acc) - max(i0, 0))
+    if n > 0:
+        acc[max(i0, 0):max(i0, 0) + n] += x[j0:j0 + n] * vol
+
+
+def lufs_write(acc: np.ndarray, out: str, target: float = -16.0) -> None:
+    """Loudness matched (integrated, EBU R128) to `target`, the loudest instants limited under -1 dBFS."""
+    tmp = out + ".wav"
+
+    def wav(x):
+        with wave.open(tmp, "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
+
+    def loud(x):
+        wav(x)
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", tmp, "-af", "ebur128", "-f", "null", "-"], capture_output=True, text=True).stderr
+        return float([l for l in r.splitlines() if l.strip().startswith("I:")][-1].split()[1])
+
+    x = acc / (np.abs(acc).max() + 1e-9) * 0.5
+    for _ in range(3):
+        x = x * 10 ** ((target - loud(x)) / 20)
+        a = np.abs(x)
+        x = np.where(a > 0.8, np.sign(x) * (0.8 + 0.09 * np.tanh((a - 0.8) / 0.09)), x)
+    wav(x)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-c:a", "libvorbis", "-q:a", "7", out], check=True)
+    print(f"wrote {out}  {loud(x):.1f} LUFS  peak {20 * np.log10(np.abs(x).max()):.1f} dBFS  {len(x) / SR:.1f} s")
+    os.remove(tmp)
+
+
+def variants(outdir: str) -> None:
+    os.makedirs(outdir, exist_ok=True)
+    drift, dive = load("payload/drift"), load("payload/dive")
+    alt, ground = load("payload/blast_alt"), load("payload/ground_alt")
+    # (B3's blast, used under the falls too so only the fall differs between them: the Payload's alternative blast's
+    # first 1.9 s, its body and low end whole to 1.2 s, played a little lower for weight)
+    blast = pitched(trimmed(alt, 1.2, 1.9), 0.92)
+
+    def bomb(acc, t, d, b, vol):
+        """A bomb striking at `t`, `d` blocks off: the ground's thump first, then its blast through the air."""
+        place(acc, t + d / 1715.0 - 0.02, pitched(ground, 0.94), 0.5 * vol)
+        place(acc, t + d / 343.0 - 0.02, b, vol)
+
+    # ---- the falls: a stick of three, 300 blocks off, walking in (26 blocks apart, 0.9 s apart) -------------------
+    stick = [(300.0, 0.0), (274.0, 0.9), (248.0, 1.8)]
+    near = lambda d: (200.0 / d) ** 0.7
+    # F1: no falling sound, only the blasts
+    acc = np.zeros((int(9.0 * SR), 2))
+    for d, dt in stick:
+        bomb(acc, 1.0 + dt, d, blast, near(d))
+    lufs_write(acc, f"{outdir}/F1.ogg")
+    # F2: the Payload's approved fall as it is (drift, then dive 7.9 s on, as the Payload plays them: the dive's dead
+    # cut 3.0 s into it), quieter, its cut on the first blast
+    t0 = 11.0
+    acc = np.zeros((int((t0 + 8.0) * SR), 2))
+    place(acc, t0 - 10.9, drift, 0.45)
+    place(acc, t0 - 3.0, dive, 0.45)
+    for d, dt in stick:
+        bomb(acc, t0 + dt, d, blast, near(d))
+    lufs_write(acc, f"{outdir}/F2.ogg")
+    # F3: a fall a bomb, cut from that fall's drift (its strongest stretch, from different places), as it is but a
+    # breath in and the faintest pitch apart, each cut dead on its own blast
+    t0 = 3.2
+    acc = np.zeros((int((t0 + 8.0) * SR), 2))
+    for k, (d, dt) in enumerate(stick):
+        a0 = [3.6, 4.1, 4.5][k]
+        y = pitched(drift[int(a0 * SR):int((a0 + 2.5) * SR)], [1.0, 1.03, 0.97][k]).copy()
+        n = len(y)
+        y *= np.minimum(np.arange(n) / (0.5 * SR), 1.0)[:, None]
+        y[-int(0.008 * SR):] *= np.linspace(1, 0, int(0.008 * SR))[:, None]
+        place(acc, t0 + dt - n / SR, y, 0.55)
+        bomb(acc, t0 + dt, d, blast, near(d))
+    lufs_write(acc, f"{outdir}/F3.ogg")
+
+    # ---- the smaller blasts: four walking in, from 600, 450, 300 and 200 blocks, heard 0.9 s apart, then silence ----
+    walk = [600.0, 450.0, 300.0, 200.0]
+    heard = [1.8 + 0.9 * k for k in range(4)]
+    length = heard[-1] + 7.0
+
+    def blasts(files):
+        acc = np.zeros((int(length * SR), 2))
+        for k, d in enumerate(walk):
+            x = files(k, d)
+            t = heard[k] - d / 343.0
+            if x is blast:
+                bomb(acc, t, d, x, near(d))
+            else:
+                place(acc, heard[k] - 0.02, x, near(d))
+        acc[-int(1.0 * SR):] *= np.linspace(1, 0, int(1.0 * SR))[:, None] ** 2
+        return acc
+
+    met = {n: load(f"meteor/{n}") for n in ("hit2", "hit3", "hit_far2", "hit_far3")}
+    # B1: the Meteor Storm's impacts as they are (its big and middling ones, its far takes past 90 blocks as it plays them)
+    lufs_write(blasts(lambda k, d: met[("hit_far" if d > 90 else "hit") + ("3" if k % 2 == 0 else "2")]), f"{outdir}/B1.ogg")
+    # B2: the Planet Killer's impacts as they are: the land's burst and the cutoff's, in turn
+    pk = [load("planetkiller/fire"), load("planetkiller/cutoff")]
+    lufs_write(blasts(lambda k, d: pk[k % 2]), f"{outdir}/B2.ogg")
+    # B3: the Payload's alternative blast trimmed to 1.9 s, played a little lower, with its ground's thump
+    lufs_write(blasts(lambda k, d: blast), f"{outdir}/B3.ogg")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--mix":
         mix(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--variants":
+        variants(sys.argv[2])
     else:
         whistles()
         crumps()
