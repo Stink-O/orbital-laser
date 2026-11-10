@@ -3333,33 +3333,6 @@
     ],
     "subtitle": "subtitles.orbital.carpetbomb.drone"
   },
-  "carpetbomb.fall1": {
-    "sounds": [
-      {
-        "name": "orbital:carpetbomb/fall1",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.carpetbomb.fall1"
-  },
-  "carpetbomb.fall2": {
-    "sounds": [
-      {
-        "name": "orbital:carpetbomb/fall2",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.carpetbomb.fall2"
-  },
-  "carpetbomb.fall3": {
-    "sounds": [
-      {
-        "name": "orbital:carpetbomb/fall3",
-        "attenuation_distance": 256
-      }
-    ],
-    "subtitle": "subtitles.orbital.carpetbomb.fall3"
-  },
   "carpetbomb.blast1": {
     "sounds": [
       {
@@ -3387,6 +3360,15 @@
     ],
     "subtitle": "subtitles.orbital.carpetbomb.blast3"
   },
+  "carpetbomb.blast4": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/blast4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.blast4"
+  },
   "carpetbomb.blast_far1": {
     "sounds": [
       {
@@ -3404,5 +3386,14 @@
       }
     ],
     "subtitle": "subtitles.orbital.carpetbomb.blast_far2"
+  },
+  "carpetbomb.blast_far3": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/blast_far3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.blast_far3"
   }
 }

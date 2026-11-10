@@ -21,11 +21,11 @@ const TAU: f64 = 2.0 * PI;
 
 /// The bombs in the stick, the first one's blast (strike time), the time between them (the last one's a breath
 /// longer), the ground between them (blocks), how big the last is (the others about 1).
-pub(super) const CP_N: usize = 10;
-pub(super) const CP_T0: f32 = 5.0;
-const CP_GAP: f32 = 0.9;
-const CP_LAST_GAP: f32 = 1.3;
-const CP_SPACING: f64 = 26.0;
+pub(super) const CP_N: usize = 13;
+pub(super) const CP_T0: f32 = 3.6;
+const CP_GAP: f32 = 0.6;
+const CP_LAST_GAP: f32 = 1.0;
+const CP_SPACING: f64 = 22.0;
 pub(super) const CP_BIG: f64 = 1.55;
 /// The last bomb comes down at least this far (level) from where the player stood: the line is drawn back if they
 /// aimed closer.
@@ -34,7 +34,7 @@ pub(super) const CP_MIN_ME: f64 = 80.0;
 /// starts as its ends): each bomb works on the land the one before left.
 const CP_LEAD: f32 = 2.6;
 /// The stages a bomb's blast takes (rows of its square), then its tidy, its felled trees, its rubble and thrown blocks.
-const CP_PARTS: i32 = 5;
+const CP_PARTS: i32 = 4;
 /// A crater's rim heap reaches this far (in its radii).
 const CP_RIM: f64 = 1.6;
 /// The land read in this many parts (each a query and a stage).
@@ -92,7 +92,7 @@ impl CpGeo {
         let base = [-u[0] * back, -u[1] * back];
         let mut along = vec![0.0; CP_N];
         for b in (0..CP_N - 1).rev() {
-            along[b] = along[b + 1] - (CP_SPACING + 6.0 * (r(b as u32, 0) - 0.5));
+            along[b] = along[b + 1] - (CP_SPACING + 5.0 * (r(b as u32, 0) - 0.5));
         }
         let mut t = CP_T0;
         let ph = TAU * r(0, 9);
@@ -100,7 +100,7 @@ impl CpGeo {
             .map(|b| {
                 let last = b == CP_N - 1;
                 if b > 0 {
-                    t += if last { CP_LAST_GAP } else { CP_GAP + 0.2 * (r(b as u32, 1) as f32 - 0.5) };
+                    t += if last { CP_LAST_GAP } else { CP_GAP + 0.16 * (r(b as u32, 1) as f32 - 0.5) };
                 }
                 // (a stick falls nearly in a line: it wanders a few blocks across it)
                 let lat = if last { 0.0 } else { 3.0 * (0.8 * b as f64 + ph).sin() + 2.0 * (r(b as u32, 2) - 0.5) };
@@ -671,22 +671,18 @@ fn cue(p: &mut Plan, t: f32, event: &str, volume: f64, pitch: f64) {
 
 /// The ground carries a blow five times as fast as the air (payload.rs's PL_GROUND_V).
 const GROUND_V: f64 = payload::PL_GROUND_V;
-/// The falls' lengths (tools/sounds_carpetbomb.py's FALLS): each is started its length before its bomb strikes and
-/// ends dead on it.
-pub(super) const FALLS: [f32; 3] = [2.4, 2.7, 3.0];
-
 /// How much of a blast is its far take at `d` blocks: none within 220, all past 480.
 fn blast_far(d: f64) -> f64 {
     let u = ((d - 220.0) / 260.0).clamp(0.0, 1.0);
     u * u * (3.0 - 2.0 * u)
 }
 
-/// The bombs' sounds (tools/sounds_carpetbomb.py, made for a stick of bombs in the manner of the approved ones): a
-/// bomber droning high and far off under the first seconds; each bomb's fall, torn air rising as it nears, cut dead as
-/// it strikes; its thump through the ground first (d/1715); then through the air (d/343) its blast, a medium bomb's
-/// crack and deep thump, duller and echoing from the far end of the line, louder and nearer as the line walks in, short
-/// so the rhythm is heard. Only the last, biggest one gets the Payload's whole alternative blast, its rush and its
-/// tail, and the Nuke's alternative blast under it.
+/// The bombs' sounds (tools/sounds_carpetbomb.py, round 4, after Kyle's reference: a carpet bombing run as filmed): the
+/// aircraft droning over the first seconds; no falling sound; each bomb heard through the air (d/343) as a soft-fronted,
+/// low, rolling blast whose rumble rolls on for seconds, so a stick landing every half second rolls into one wall of
+/// sound, duller and later from the far end of the line, louder and nearer as it walks in; more far off from other
+/// sticks between them. Only the last, biggest one gets the Payload's whole alternative blast, its rush and its tail,
+/// and the Nuke's alternative blast under it, and the ground's thump ahead of it.
 fn cp_sounds(p: &mut Plan, geo: &CpGeo, at: [f64; 3], me: [f64; 3]) {
     cue(p, 0.1, "carpetbomb.drone", 0.8, 1.0);
     let last = CP_N - 1;
@@ -695,19 +691,13 @@ fn cp_sounds(p: &mut Plan, geo: &CpGeo, at: [f64; 3], me: [f64; 3]) {
         let w = [at[0] + bomb.x, at[1], at[2] + bomb.z];
         let (late, d) = sound_from(w, me);
         let h = |k: u32| mh(b as u32, geo.seed, 0xe10 + k);
-        let big = b == last;
-        // (its fall, in the sky and on the picture: louder as the stick comes over)
-        let k = if big { 2 } else { b % 3 };
-        let rank = b as f64 / last as f64;
-        cue(p, bomb.t - FALLS[k], &format!("carpetbomb.fall{}", k + 1), if big { 0.95 } else { 0.45 + 0.35 * rank }, if big { 0.97 } else { 0.96 + 0.08 * h(1) });
-        // (the thump through the ground, well ahead of the air's blast; let down where the blast lands on top of it)
-        let near = 1.0 / (1.0 + d / 200.0);
-        let tg = bomb.t + (d / GROUND_V) as f32;
-        let gap = f64::from(bomb.t + late - tg);
-        let gv = (0.45 + 0.55 * near) * ((gap - 0.05) / 0.9).clamp(0.3, 1.0).powf(1.2);
-        cue(p, tg - 0.02, "payload.ground_alt", if big { gv.max(0.7) } else { gv * 0.45 }, if big { 0.9 } else { 0.95 + 0.12 * h(2) });
         let arrive = bomb.t + late;
-        if big {
+        if b == last {
+            // (the ground's thump ahead of the air's blast; let down where the blast lands on top of it)
+            let tg = bomb.t + (d / GROUND_V) as f32;
+            let gap = f64::from(arrive - tg);
+            let gv = (0.45 + 0.55 / (1.0 + d / 200.0)) * ((gap - 0.05) / 0.9).clamp(0.3, 1.0).powf(1.2);
+            cue(p, tg - 0.02, "payload.ground_alt", gv.max(0.7), 0.9);
             let far = f64::from(payload::pl_far(d));
             cue(p, arrive - 0.02, "payload.blast_alt", 1.0 - far, 0.92);
             cue(p, arrive - 0.02, "payload.blast_alt_far", far, 0.92);
@@ -717,13 +707,21 @@ fn cp_sounds(p: &mut Plan, geo: &CpGeo, at: [f64; 3], me: [f64; 3]) {
             cue(p, arrive - 0.15, "payload.rush", 1.0, 1.0);
             cue(p, arrive + 2.4, "payload.tail", 1.0, 1.0);
         } else {
-            // (its blast: the crack 0.02 s into its file)
+            // (its blast: its soft front 0.03 s into its file)
             let v = 0.35 + 0.6 * (d_last / d).min(1.0).powf(1.3);
             let fs = blast_far(d);
             let pitch = 0.94 + 0.1 * h(3);
-            cue(p, arrive - 0.02, &format!("carpetbomb.blast{}", 1 + b % 3), v * (1.0 - fs), pitch);
-            cue(p, arrive - 0.02, &format!("carpetbomb.blast_far{}", 1 + b % 2), v * fs, pitch);
+            cue(p, arrive - 0.03, &format!("carpetbomb.blast{}", 1 + b % 4), v * (1.0 - fs), pitch);
+            cue(p, arrive - 0.03, &format!("carpetbomb.blast_far{}", 1 + b % 3), v * fs, pitch);
         }
+    }
+    // (more of the run further off, other sticks coming down out on the land: far blasts between the line's)
+    let span = geo.bombs[last - 1].t - geo.bombs[0].t;
+    let extra = 9u32;
+    for k in 0..extra {
+        let h = |j: u32| mh(k, geo.seed, 0xe80 + j);
+        let t = geo.bombs[0].t + 0.25 + (span + 0.6) * (k as f32 + 0.3 + 0.4 * h(0) as f32) / extra as f32 + (650.0 + 250.0 * h(1)) as f32 / 343.0 - 0.6;
+        cue(p, t, &format!("carpetbomb.blast_far{}", 1 + k % 3), 0.22 + 0.15 * h(2), 0.9 + 0.08 * h(3));
     }
 }
 
@@ -855,7 +853,7 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
                 p.later(t0 + 0.05 * k as f32, move |q| cp_blast_rows(q, &mut l.borrow_mut(), &b, n8, k0, k1));
                 k += 1;
             }
-            let tparts = if b.big { 4 } else { 2 };
+            let tparts = if b.big { 4 } else { 1 };
             for j in 0..tparts {
                 let l = land.clone();
                 let (k0, k1) = (j * rows / tparts, (j + 1) * rows / tparts);
@@ -928,10 +926,10 @@ mod tests {
                 let dme = |b: &Bomb| (rel[0] - b.x).hypot(rel[2] - b.z);
                 for w in g.bombs.windows(2) {
                     // in order along the line, each nearer the player, a little under a second apart
-                    assert!(w[1].along > w[0].along + 18.0 && w[1].along < w[0].along + 34.0, "{d} {a}: {:?}", g.bombs);
+                    assert!(w[1].along > w[0].along + 15.0 && w[1].along < w[0].along + 30.0, "{d} {a}: {:?}", g.bombs);
                     assert!(dme(&w[1]) < dme(&w[0]), "{d} {a}");
                     let gap = w[1].t - w[0].t;
-                    assert!((0.75..=1.35).contains(&gap), "{gap}");
+                    assert!((0.5..=1.05).contains(&gap), "{gap}");
                 }
                 let lastb = g.bombs[CP_N - 1];
                 // the last the biggest and nearest, on the target unless that was too close, never on the player
@@ -1035,7 +1033,7 @@ mod tests {
         }
         // thrown blocks, out of each crater as it strikes, and never killed in the air
         let thrown: Vec<&(f32, String)> = p.cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")).collect();
-        assert!(thrown.len() > 150 && thrown.len() <= 9 * 16 + 80, "{}", thrown.len());
+        assert!(thrown.len() > 180 && thrown.len() <= (CP_N - 1) * 16 + 80, "{}", thrown.len());
         assert!(p.cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block") && c.contains("type=!minecraft:player")));
     }
 
@@ -1120,9 +1118,9 @@ mod tests {
     fn carpet_sounds_are_the_approved_ones_timed_by_distance() {
         // (the carpet bomb's own, tools/sounds_carpetbomb.py's, and for the last bomb approved ones as they are)
         let approved = [
-            "carpetbomb.drone", "carpetbomb.fall1", "carpetbomb.fall2", "carpetbomb.fall3", "carpetbomb.blast1", "carpetbomb.blast2",
-            "carpetbomb.blast3", "carpetbomb.blast_far1", "carpetbomb.blast_far2", "payload.ground_alt", "payload.blast_alt", "payload.blast_alt_far",
-            "payload.rush", "payload.tail", "nuke.blast_alt",
+            "carpetbomb.drone", "carpetbomb.blast1", "carpetbomb.blast2", "carpetbomb.blast3", "carpetbomb.blast4", "carpetbomb.blast_far1",
+            "carpetbomb.blast_far2", "carpetbomb.blast_far3", "payload.ground_alt", "payload.blast_alt", "payload.blast_alt_far", "payload.rush",
+            "payload.tail", "nuke.blast_alt",
         ];
         let events = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../orbital-sounds/assets/orbital/sounds.json")).unwrap();
         for d in [70.0, 150.0, 600.0, 1400.0] {
@@ -1137,33 +1135,31 @@ mod tests {
                 assert!(*t >= 0.0 && *v > 0.0 && *v <= 1.0 && (0.78..=1.1).contains(pitch), "{k} at {t}: {v} {pitch}");
             }
             let blasts: Vec<&(f32, String, f32, f32)> = c.iter().filter(|e| e.1.contains("payload.blast_alt") || e.1.contains("carpetbomb.blast")).collect();
-            // (each fall ends dead on its bomb's strike; only the last bomb gets the whole blast)
-            for (n, b) in g.bombs.iter().enumerate() {
-                let w = c.iter().find(|e| e.1.contains("fall") && (e.0 + len_of(&e.1) - b.t).abs() < 0.03);
-                assert!(w.is_some(), "{d}: bomb {n}'s fall doesn't end on it");
-            }
+            // (no falling sound; only the last bomb gets the whole blast)
+            assert!(!c.iter().any(|e| e.1.contains("fall") || e.1.contains("whistle")));
             let lb = g.bombs[CP_N - 1];
             let heard_last = lb.t + sound_from([10.5 + lb.x, 65.0, -2.5 + lb.z], me).0;
             for e in c.iter().filter(|e| e.1.contains("payload.blast_alt") || e.1.contains("nuke.") || e.1.contains("rush") || e.1.contains("tail")) {
                 assert!(e.0 > heard_last - 0.2, "{d}: {} at {} before the last bomb's blast", e.1, e.0);
             }
             for e in c.iter().filter(|e| e.1.contains("carpetbomb.blast")) {
-                assert!(len_of(&e.1) < 4.5, "{} is long", e.1);
+                assert!(len_of(&e.1) < 6.5, "{} is long", e.1);
             }
             for (n, b) in g.bombs.iter().enumerate() {
                 let (late, _) = sound_from([10.5 + b.x, 65.0, -2.5 + b.z], me);
                 let heard: Vec<_> = blasts.iter().filter(|e| (e.0 - (b.t + late)).abs() < 0.05).collect();
                 assert!(!heard.is_empty(), "{d}: bomb {n}'s blast at {}", b.t + late);
-                let thump = c.iter().filter(|e| e.1.ends_with("ground_alt")).map(|e| e.0).filter(|t| *t > b.t - 0.05 && *t < b.t + late + 0.01).count();
-                assert!(thump >= 1, "{d}: bomb {n}'s thump");
+                if n == CP_N - 1 {
+                    let thump = c.iter().filter(|e| e.1.ends_with("ground_alt")).map(|e| e.0).filter(|t| *t > b.t - 0.05 && *t < b.t + late + 0.01).count();
+                    assert!(thump >= 1, "{d}: the last bomb's thump");
+                }
             }
-            let loud = |n: usize| blasts.iter().filter(|e| (e.0 - (g.bombs[n].t + sound_from([10.5 + g.bombs[n].x, 65.0, -2.5 + g.bombs[n].z], me).0)).abs() < 0.05).map(|e| e.2).sum::<f32>();
+            let loud = |n: usize| blasts.iter().filter(|e| (e.0 - (g.bombs[n].t + sound_from([10.5 + g.bombs[n].x, 65.0, -2.5 + g.bombs[n].z], me).0)).abs() < 0.035).map(|e| e.2).fold(0.0, f32::max);
             for n in 0..CP_N - 1 {
                 assert!(loud(n) < loud(CP_N - 1), "{d}: bomb {n} as loud as the last");
             }
-            // (the opening never silent: the bomber's drone from the start, the first fall well ahead of the first bomb)
+            // (the opening never silent: the aircraft's drone from the start)
             assert!(c.first().is_some_and(|e| e.0 < 0.5 && e.1.contains("drone")));
-            assert!(c.iter().any(|e| e.0 < CP_T0 - 1.5 && e.1.contains("fall")));
         }
     }
 

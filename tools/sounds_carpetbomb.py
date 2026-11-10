@@ -426,6 +426,124 @@ def falls(take):
 FALL_TAKE = "C"
 
 
+# ---- round 4: the bombing run as Kyle's reference has it (measured only: none of its audio is used) -----------------
+# Its bombing section's third-octave levels (dB under its loudest band, 25 Hz-8 kHz) and its pre-roll's (the aircraft
+# and the wind before the bombs, dB under the same): what the blasts and the drone are shaped to.
+RUN_FC = [25, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150,
+          4000, 5000, 6300, 8000]
+RUN_DB = [-4.0, -1.6, -3.4, -1.8, 0.0, -0.3, -0.5, -3.9, -6.0, -7.9, -9.5, -12.0, -13.7, -16.0, -17.3, -19.5, -21.1,
+          -22.2, -22.6, -23.3, -23.1, -24.7, -27.0, -28.7, -30.0, -31.6]
+PRE_DB = [-49.1, -45.8, -46.3, -41.8, -39.8, -37.6, -38.3, -33.9, -33.4, -33.0, -34.5, -33.9, -34.7, -33.7, -32.7,
+          -30.1, -35.6, -36.0, -35.9, -37.1, -37.3, -38.1, -36.9, -35.5, -39.7, -41.2]
+
+
+def third_band(n, fc):
+    """Unit-RMS noise in the third octave round `fc`."""
+    return noise(n, fc / 2 ** (1 / 6), min(fc * 2 ** (1 / 6), SR * 0.45), 3)
+
+
+def drone2(seed=7111, d=6.5):
+    """The aircraft before the bombs (round 4): broad noise with the reference's pre-roll balance (its mids round 800 Hz
+    the strongest), a little of engines beating in it, swelling slowly, fading out as the bombs begin."""
+    with PB.seeded(seed):
+        n = int(d * SR)
+        t = np.arange(n) / SR
+        f = np.fft.rfftfreq(n, 1 / SR)
+        lf = np.log2(np.maximum(f, 1.0))
+        g_db = np.interp(lf, np.log2(RUN_FC), PRE_DB, left=-60, right=-60)
+        g = 10 ** (g_db / 20) / np.maximum(f / 1000.0, 0.02) ** 0.5    # (third-octave levels to a spectral density)
+        out = []
+        common = rng().standard_normal(n)
+        for c in range(2):
+            z = 0.8 * common + 0.6 * rng().standard_normal(n)
+            out.append(unit(np.fft.irfft(np.fft.rfft(z) * g, n)))
+        eng = glide(n, np.full(n, 98.0), 0.05) + 0.6 * glide(n, np.full(n, 196.5), 0.05)
+        beat = 1 + 0.35 * np.sin(2 * np.pi * 1.7 * t)
+        sw = np.exp((2.0 * PB.slow_random(n, 0.15, 0.8)) / 8.686)
+        env = np.clip(t / 1.2, 0, 1) ** 1.3 * np.clip((d - t) / 2.0, 0, 1) ** 1.2 * sw
+        L = (out[0] + 0.25 * unit(eng) * beat) * env
+        R = (out[1] + 0.25 * unit(eng) * beat) * env
+        return to_level(L, R, -24.0)
+
+
+def blast_run(k, far):
+    """A bomb of the run going off a few hundred blocks off (round 4, after the reference): a soft onset, a deep low
+    boom, its low end rolling on for seconds (each third octave its own decay, the lows longest, their gains wandering as
+    the rumble rolls round the land), a few crackling bursts of debris in it; the whole balance the reference's, so
+    blasts every half second overlap into one rolling wall. Far: softer onset, duller, more of the land's echo."""
+    with PB.seeded(8100 + 37 * k + (500 if far else 0)):
+        d = 6.0 if far else 5.2
+        t0 = 0.03
+        n = int(d * SR)
+        t = np.arange(n) / SR
+        u = np.maximum(t - t0, 0)
+        on = (t >= t0).astype(float)
+        var = [1.0, 0.92, 1.08, 0.97][k % 4]
+        rise_t = (0.075 if far else 0.03) * var
+        rise = (0.5 - 0.5 * np.cos(np.pi * np.clip(u / rise_t, 0, 1))) * on
+        roll_lo = PB.slow_random(n, 0.4, 3.0)
+        L = np.zeros(n)
+        R = np.zeros(n)
+        for fc, db in zip(RUN_FC, RUN_DB):
+            if far and fc > 5000:
+                continue
+            tau = 1.9 * var * (max(fc, 60) / 80.0) ** -0.3 * (1.15 if far else 1.0)
+            # (a moment brighter as it goes off, the top dying first)
+            bright = 1 + (1.4 if not far else 0.6) * np.exp(-u / 0.12) * (1 if fc >= 250 else 0)
+            roll = np.exp((3.5 * (0.7 * roll_lo + 0.3 * PB.slow_random(n, 0.4, 3.0)) if fc < 300 else 3.0 * PB.slow_random(n, 1.0, 6.0)) / 8.686)
+            # (its top a little stronger than the run's own measure: the run is heard as a mix of many, the tops of each
+            # dying fast; matched by measuring the mix against the reference's)
+            lift = float(np.clip(4.5 * np.log2(fc / 400.0), 0.0, 15.0))
+            env = rise * np.exp(-u / tau) * roll * bright * 10 ** ((db + lift + 2.0 * rng().standard_normal()) / 20)
+            common = third_band(n, fc)
+            corr = 0.92 if fc < 250 else 0.6
+            L += common * env
+            R += (corr * common + np.sqrt(1 - corr ** 2) * third_band(n, fc)) * env
+        # (the boom: a deep blow under the rumble, swelling over its soft onset)
+        boom = blow(n, u, rise_t * 1.2, 46.0 * var, rise_t * 0.6, 0.22 * var, sweep=0.25, body=0.7) * on
+        bm = unit(boom) * np.sqrt(np.mean(((L + R) / 2)[: int(0.5 * SR)] ** 2)) * 0.6
+        L += bm
+        R += bm
+        # (debris crackling in it now and then: short bursts of 400 Hz-3 kHz)
+        for _ in range(rng().integers(4, 9)):
+            tb = t0 + rng().uniform(0.1, 2.2)
+            ln = rng().uniform(0.03, 0.14)
+            e = np.exp(-0.5 * ((t - tb) / ln) ** 2)
+            cr = noise(n, 400, 2500 if far else 4000) * e * rng().uniform(0.05, 0.14)
+            p_ = rng().uniform(-0.6, 0.6)
+            L += cr * (1 - p_)
+            R += cr * (1 + p_)
+        # (the dust and grit of it hissing through the air for a second, 1-4 kHz)
+        hs = np.exp(-u / 0.9) * rise * 0.05
+        L += noise(n, 900, 4500) * hs
+        R += noise(n, 900, 4500) * hs
+        M = (L + R) / 2
+        hm = harmonics(M, np.clip((u - 0.02) / 0.05, 0, 1), -6.0)
+        L, R = L + hm, R + hm
+        if far:
+            L, R = band(L, None, 2200, 1), band(R, None, 2200, 1)
+        x = room(stereo([L, R]), 0.4 if far else 0.25, 2.4 if far else 1.6, 51 + k)[:n]
+        x[:, 0], x[:, 1] = PB.causal_lowcut(x[:, 0], 20.0), PB.causal_lowcut(x[:, 1], 20.0)
+        L, R = to_level(x[:, 0], x[:, 1], -10.0 if far else -9.0)
+        m = int(0.5 * SR)
+        fade = np.linspace(1, 0, m) ** 2
+        L[-m:] *= fade
+        R[-m:] *= fade
+        return L, R
+
+
+def make_run():
+    """Round 4's files, written to the mod's sounds: the aircraft drone, four blasts and three far ones (no falls)."""
+    out = {"drone": drone2()}
+    for k in range(4):
+        out[f"blast{k + 1}"] = blast_run(k, False)
+    for k in range(3):
+        out[f"blast_far{k + 1}"] = blast_run(k, True)
+    for name, (L, R) in out.items():
+        write(name, stereo([L, R]), fade=0.0)
+    return out
+
+
 def make(take="A", outdir=None):
     """Every file of a take, written to the mod's sounds (take A, its falls FALL_TAKE's) or to `outdir`."""
     out = {}
@@ -592,5 +710,7 @@ if __name__ == "__main__":
         # (only the falls rewritten: the blasts' files left as they are)
         for name, (L, R) in falls(FALL_TAKE).items():
             write(name, stereo([L, R]), fade=0.0)
+    elif len(sys.argv) == 2 and sys.argv[1] == "--run":
+        make_run()
     else:
-        make("A")
+        make_run()
