@@ -26,7 +26,7 @@ pub(super) const PL_HIT: f32 = 13.6;
 const PL_DIVE_SND: f32 = 3.0;
 /// How fast the ground carries the strike's shock (blocks a second): five times the air's, so it is felt well before
 /// the blast is heard (tools/sounds_payload.py's `ground`).
-const PL_GROUND_V: f64 = 5.0 * 343.0;
+pub(super) const PL_GROUND_V: f64 = 5.0 * 343.0;
 /// The path's samples (the trail is drawn through them), from PL_SEEN to PL_HIT.
 pub(super) const PL_N: usize = 128;
 /// The column's billows.
@@ -62,8 +62,8 @@ const PL_BAND: f64 = 24.0;
 /// The land read: every column out to PL_READ, PL_BELOW under its top (a tall tree's top down to its ground).
 const PL_READ: i32 = 120;
 const PL_GW: i32 = 2 * PL_READ + 1;
-const PL_BELOW: u32 = 44;
-const PL_ABOVE: u32 = 1;
+pub(super) const PL_BELOW: u32 = 44;
+pub(super) const PL_ABOVE: u32 = 1;
 const PL_PARTS: i32 = 6;
 /// The blast's edits worked out in this many bands of rows, a stage each.
 const PL_BANDS: i32 = 40;
@@ -272,7 +272,7 @@ fn pl_hf_reach(dme: f64) -> f64 {
     (dme * 1.25 + 150.0).clamp(260.0, 1150.0)
 }
 /// The columns the heightfield is read from (row by row, z then x).
-fn pl_hf_columns(bx: i32, bz: i32, reach: f64) -> Vec<(i32, i32)> {
+pub(super) fn pl_hf_columns(bx: i32, bz: i32, reach: f64) -> Vec<(i32, i32)> {
     let n = PL_HN as i32;
     let step = 2.0 * reach / f64::from(n - 1);
     let at = |i: i32| (-reach + step * f64::from(i)).round() as i32;
@@ -281,7 +281,7 @@ fn pl_hf_columns(bx: i32, bz: i32, reach: f64) -> Vec<(i32, i32)> {
 /// The heightfield's ground (from the target's), from what the world gave (the first air over each column; none where
 /// the land was not loaded, the mean of what was there: not the player's height, who may be up a tower or flying), a
 /// trunk or a pillar caught in a cell put down to the ground round it.
-fn pl_hf_ground(heights: &[Option<f64>], reach: f64, _me: [f64; 3]) -> Vec<f64> {
+pub(super) fn pl_hf_ground(heights: &[Option<f64>], reach: f64, _me: [f64; 3]) -> Vec<f64> {
     let _ = reach;
     let n = PL_HN;
     let (sum, cnt) = heights.iter().flatten().fold((0.0, 0.0), |(s, c), &h| (s + h, c + 1.0));
@@ -335,7 +335,7 @@ fn pl_hf_shelter(h: &[f64], reach: f64, k0: usize, k1: usize) -> Vec<f64> {
         .collect()
 }
 /// The heightfield's words (from PL_HF).
-fn pl_hf_pack(h: &[f64], shelter: &[f64], reach: f64) -> Vec<u32> {
+pub(super) fn pl_hf_pack(h: &[f64], shelter: &[f64], reach: f64) -> Vec<u32> {
     let (lo, hi) = h.iter().fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
     let mut w = vec![(PL_HN as f32).to_bits(), (reach as f32).to_bits(), (lo as f32).to_bits(), (hi as f32).to_bits(), 0, 0, 0, 0];
     let q = |x: f64| ((x + 512.0) * 8.0).round().clamp(0.0, 65535.0) as u32;
@@ -392,7 +392,7 @@ enum Kind {
     Ground,
 }
 const WOODS: [&str; 9] = ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak"];
-const LOG_X: [&str; 9] = [
+pub(super) const LOG_X: [&str; 9] = [
     "minecraft:oak_log[axis=x]",
     "minecraft:spruce_log[axis=x]",
     "minecraft:birch_log[axis=x]",
@@ -403,7 +403,7 @@ const LOG_X: [&str; 9] = [
     "minecraft:cherry_log[axis=x]",
     "minecraft:pale_oak_log[axis=x]",
 ];
-const LOG_Z: [&str; 9] = [
+pub(super) const LOG_Z: [&str; 9] = [
     "minecraft:oak_log[axis=z]",
     "minecraft:spruce_log[axis=z]",
     "minecraft:birch_log[axis=z]",
@@ -414,7 +414,7 @@ const LOG_Z: [&str; 9] = [
     "minecraft:cherry_log[axis=z]",
     "minecraft:pale_oak_log[axis=z]",
 ];
-const LOG_Y: [&str; 9] = [
+pub(super) const LOG_Y: [&str; 9] = [
     "minecraft:oak_log",
     "minecraft:spruce_log",
     "minecraft:birch_log",
@@ -425,7 +425,7 @@ const LOG_Y: [&str; 9] = [
     "minecraft:cherry_log",
     "minecraft:pale_oak_log",
 ];
-const LEAF_NAMES: [&str; 9] = [
+pub(super) const LEAF_NAMES: [&str; 9] = [
     "minecraft:oak_leaves",
     "minecraft:spruce_leaves",
     "minecraft:birch_leaves",
@@ -436,7 +436,7 @@ const LEAF_NAMES: [&str; 9] = [
     "minecraft:cherry_leaves",
     "minecraft:pale_oak_leaves",
 ];
-const LEAVES: [&str; 9] = [
+pub(super) const LEAVES: [&str; 9] = [
     "minecraft:oak_leaves[persistent=true]",
     "minecraft:spruce_leaves[persistent=true]",
     "minecraft:birch_leaves[persistent=true]",
@@ -481,19 +481,19 @@ fn kind(name: &str) -> (Kind, u8) {
 /// trunk standing on it (its height and wood), the leaves over it, what its ground is (1 grass, 2 dirt), and whether
 /// water or lava is there (left alone).
 #[derive(Clone, Copy, Debug, Default)]
-struct Column {
-    known: bool,
-    fluid: bool,
+pub(super) struct Column {
+    pub known: bool,
+    pub fluid: bool,
     /// The fluid is lava (kept apart, sealed as ever).
-    lava: bool,
+    pub lava: bool,
     /// The water's own surface here (not what hangs over it).
-    wtop: i32,
-    g: i32,
-    top: i32,
-    trunk: u8,
-    wood: u8,
-    leaves: u8,
-    ground: u8,
+    pub wtop: i32,
+    pub g: i32,
+    pub top: i32,
+    pub trunk: u8,
+    pub wood: u8,
+    pub leaves: u8,
+    pub ground: u8,
 }
 
 struct Land {
@@ -525,13 +525,14 @@ fn read_columns(bx: i32, bz: i32, part: i32) -> Vec<(i32, i32)> {
     out
 }
 
-/// One answer taken in: each column's ground, what stands on it and over it.
-fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
+/// One answer taken in: each column's ground, what stands on it and over it (`put`), and the columns not loaded yet
+/// (`missing`). The Carpet Bomb's land takes it in the same way (strike/carpet.rs).
+pub(super) fn take_in_each(a: &crate::columns::Answer, mut put: impl FnMut(i32, i32, Column), mut missing: impl FnMut(i32, i32)) {
     let kinds: Vec<(Kind, u8)> = a.palette.iter().map(|n| kind(n)).collect();
     let lavas: Vec<bool> = a.palette.iter().map(|n| n.contains("lava")).collect();
     for (i, &(x, z)) in a.columns.iter().enumerate() {
         let Some((surface, blocks)) = a.column(i) else {
-            land.missing.push((x, z));
+            missing(x, z);
             continue;
         };
         let base = surface - a.below;
@@ -584,11 +585,22 @@ fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
             }
         }
         c.trunk = n.min(40) as u8;
-        let (ii, kk) = (x - bx + PL_READ, z - bz + PL_READ);
-        if (0..PL_GW).contains(&ii) && (0..PL_GW).contains(&kk) {
-            land.cols[(kk * PL_GW + ii) as usize] = c;
-        }
+        put(x, z, c);
     }
+}
+fn take_in(land: &mut Land, a: &crate::columns::Answer, bx: i32, bz: i32) {
+    let mut missing = Vec::new();
+    take_in_each(
+        a,
+        |x, z, c| {
+            let (ii, kk) = (x - bx + PL_READ, z - bz + PL_READ);
+            if (0..PL_GW).contains(&ii) && (0..PL_GW).contains(&kk) {
+                land.cols[(kk * PL_GW + ii) as usize] = c;
+            }
+        },
+        |x, z| missing.push((x, z)),
+    );
+    land.missing.extend(missing);
 }
 
 /// The land's parts taken in a stage each, as they are answered (and the columns not loaded yet asked again, once).
@@ -649,7 +661,7 @@ fn heap(u: f64) -> f64 {
     if u < 1.0 || u > PL_RIM { 0.0 } else { 3.4 * (-(u - 1.12).powi(2) / 0.06).exp() + 0.6 * (1.0 - (u - 1.0) / (PL_RIM - 1.0)) }
 }
 /// The scorched ground of the crater's floor and walls: broad patches of one or another.
-fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
+pub(super) fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
     let n = vnoise(f64::from(x) + f64::from(y) * 0.37, f64::from(z), 4.5, seed ^ 0x51);
     let m = vnoise(f64::from(x), f64::from(z) - f64::from(y) * 0.5, 2.2, seed ^ 0x52);
     if u < 0.55 && n > 0.62 {
@@ -667,7 +679,7 @@ fn scorched(x: i32, y: i32, z: i32, u: f64, seed: u32) -> &'static str {
     }
 }
 /// The rim's heap: earth and broken rock thrown out of the crater.
-fn ejecta(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
+pub(super) fn ejecta(x: i32, y: i32, z: i32, seed: u32) -> &'static str {
     let n = vnoise(f64::from(x) * 1.3 + f64::from(y) * 0.71, f64::from(z) * 1.3, 3.0, seed ^ 0x61);
     if n > 0.74 {
         "minecraft:cobblestone"
@@ -1061,7 +1073,7 @@ pub(super) fn pl_jolt(p: &mut Plan, t: f32, fo: f32) {
 
 /// How much of the blast is heard through a long stretch of air (`blast_far`), `dist` blocks off: none within 500,
 /// all of it past 1,500 (a smooth step between).
-fn pl_far(dist: f64) -> f32 {
+pub(super) fn pl_far(dist: f64) -> f32 {
     let u = ((dist - 500.0) / 1000.0).clamp(0.0, 1.0);
     (u * u * (3.0 - 2.0 * u)) as f32
 }

@@ -606,7 +606,34 @@ pub const SKYBREAK: Laser = Laser {
     particle_b: "particle minecraft:snowflake {x} {y} {z} {r} 2 {r} 0.2 20 force",
 };
 
-pub const LASERS: [&Laser; 18] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK];
+/// The carpet bomb, planned in `strike::carpet_plan` (strike/carpet.rs, built on the Payload's; the pass
+/// shaders/carpetbomb.wgsl). No beam: a bomber's stick of ten bombs, unseen but for its contrail, walks a line of blasts
+/// across the land towards the player, the last the biggest, close in front of them, and leaves a row of craters. The
+/// crater fields below are only what the shared tests read: its craters are planned there.
+pub const CARPET_BOMB: Laser = Laser {
+    key: "carpetbomb",
+    index: 18,
+    title: "CARPET BOMB",
+    rgb: 0xD8A048,
+    blurb: "A stick of ten bombs walks its blasts across the land to you. Leaves a row of craters.",
+    icon_model: "orbital:carpetbomb_icon",
+    length: 34.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:blackstone", 1.0)],
+    bowl_floor: ("minecraft:coarse_dirt", 0.0, "minecraft:blackstone"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:explosion {x} {y} {z} {r} 2 {r} 0.2 4 force",
+};
+
+pub const LASERS: [&Laser; 19] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {
