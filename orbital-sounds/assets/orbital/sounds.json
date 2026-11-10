@@ -3324,76 +3324,85 @@
     ],
     "subtitle": "subtitles.orbital.skybreak.shudder"
   },
-  "carpetbomb.whistle1": {
+  "carpetbomb.drone": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/whistle1",
+        "name": "orbital:carpetbomb/drone",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.whistle1"
+    "subtitle": "subtitles.orbital.carpetbomb.drone"
   },
-  "carpetbomb.whistle2": {
+  "carpetbomb.fall1": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/whistle2",
+        "name": "orbital:carpetbomb/fall1",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.whistle2"
+    "subtitle": "subtitles.orbital.carpetbomb.fall1"
   },
-  "carpetbomb.whistle3": {
+  "carpetbomb.fall2": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/whistle3",
+        "name": "orbital:carpetbomb/fall2",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.whistle3"
+    "subtitle": "subtitles.orbital.carpetbomb.fall2"
   },
-  "carpetbomb.crump1": {
+  "carpetbomb.fall3": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/crump1",
+        "name": "orbital:carpetbomb/fall3",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.crump1"
+    "subtitle": "subtitles.orbital.carpetbomb.fall3"
   },
-  "carpetbomb.crump2": {
+  "carpetbomb.blast1": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/crump2",
+        "name": "orbital:carpetbomb/blast1",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.crump2"
+    "subtitle": "subtitles.orbital.carpetbomb.blast1"
   },
-  "carpetbomb.crump3": {
+  "carpetbomb.blast2": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/crump3",
+        "name": "orbital:carpetbomb/blast2",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.crump3"
+    "subtitle": "subtitles.orbital.carpetbomb.blast2"
   },
-  "carpetbomb.crump_far1": {
+  "carpetbomb.blast3": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/crump_far1",
+        "name": "orbital:carpetbomb/blast3",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.crump_far1"
+    "subtitle": "subtitles.orbital.carpetbomb.blast3"
   },
-  "carpetbomb.crump_far2": {
+  "carpetbomb.blast_far1": {
     "sounds": [
       {
-        "name": "orbital:carpetbomb/crump_far2",
+        "name": "orbital:carpetbomb/blast_far1",
         "attenuation_distance": 256
       }
     ],
-    "subtitle": "subtitles.orbital.carpetbomb.crump_far2"
+    "subtitle": "subtitles.orbital.carpetbomb.blast_far1"
+  },
+  "carpetbomb.blast_far2": {
+    "sounds": [
+      {
+        "name": "orbital:carpetbomb/blast_far2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.carpetbomb.blast_far2"
   }
 }

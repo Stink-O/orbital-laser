@@ -152,12 +152,13 @@
   "subtitles.orbital.skybreak.flare": "The eye flares",
   "subtitles.orbital.skybreak.descend": "A vast hand comes down",
   "subtitles.orbital.skybreak.shudder": "The last of the sky shakes loose",
-  "subtitles.orbital.carpetbomb.whistle1": "Bomb whistles down",
-  "subtitles.orbital.carpetbomb.whistle2": "Bomb whistles down",
-  "subtitles.orbital.carpetbomb.whistle3": "Bomb whistles down",
-  "subtitles.orbital.carpetbomb.crump1": "Bomb explodes",
-  "subtitles.orbital.carpetbomb.crump2": "Bomb explodes",
-  "subtitles.orbital.carpetbomb.crump3": "Bomb explodes",
-  "subtitles.orbital.carpetbomb.crump_far1": "Bomb explodes in the distance",
-  "subtitles.orbital.carpetbomb.crump_far2": "Bomb explodes in the distance"
+  "subtitles.orbital.carpetbomb.drone": "Bomber drones high overhead",
+  "subtitles.orbital.carpetbomb.fall1": "Bomb tears down through the air",
+  "subtitles.orbital.carpetbomb.fall2": "Bomb tears down through the air",
+  "subtitles.orbital.carpetbomb.fall3": "Bomb tears down through the air",
+  "subtitles.orbital.carpetbomb.blast1": "Bomb explodes",
+  "subtitles.orbital.carpetbomb.blast2": "Bomb explodes",
+  "subtitles.orbital.carpetbomb.blast3": "Bomb explodes",
+  "subtitles.orbital.carpetbomb.blast_far1": "Bomb explodes in the distance",
+  "subtitles.orbital.carpetbomb.blast_far2": "Bomb explodes in the distance"
 }
