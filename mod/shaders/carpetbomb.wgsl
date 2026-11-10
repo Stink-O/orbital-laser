@@ -131,65 +131,131 @@ fn cp_land(q: vec2<f32>) -> f32 {
 var<private> cp_cap: f32 = 1.0e9;
 fn cp_body_dim(a: f32, s: f32) -> vec3<f32> {
     if (s > 1.4) {
-        // (the last: two to three times the others' across. Its dome's reach (short of where the player stood), its
-        // height (bursting up fast, then climbing slowly on, as the Payload's), how far its plume leans downwind)
-        let Rb = min(38.0 * s * (0.2 + 0.8 * (1.0 - exp(-a / 0.35))) * (1.0 + 0.012 * a), cp_cap);
-        let Hb = s * (30.0 + 26.0 * (1.0 - exp(-a / 1.0)) + 1.6 * min(a, 24.0));
-        return vec3<f32>(Rb, Hb, s * (3.0 + 2.6 * min(a, 24.0)));
+        // (the last: how far across its billows may reach (short of where the player stood), the height its head climbs
+        // to (CP_FH), how far its plume leans downwind)
+        return vec3<f32>(min(CP_FR * s * 1.5, cp_cap), CP_FH * s * (1.0 + 0.008 * min(a, 25.0)) + CP_FR * s * 0.7, s * (3.0 + 2.6 * min(a, 24.0)));
     }
     let R = 26.0 * s * (0.25 + 0.75 * (1.0 - exp(-a / 0.3))) * (1.0 + 0.02 * a);
     let H = s * (11.0 + 16.0 * (1.0 - exp(-a / 0.7)) + 0.35 * min(a, 25.0));
     return vec3<f32>(R, H, s * (3.0 * min(a, 2.0) + 0.15 * a));
 }
-// The smooth body of blast B (its middle on the ground, camera-relative, and its age in .w; its size and its weight in
-// S.xy) at p: a squat dome, wider than tall, with a few billows on it and a low skirt spreading over the ground.
-// The last blast's smoke (its own shape, moving as the Payload's column does): billows launched out of it, each eased up
-// and swelled over time, fast at first and slowing; a broad, squat, boiling dome over a wide dust skirt, its upper
-// billows sheared off downwind into a leaning plume, its foot staying put.
-fn cp_final_d(p: vec3<f32>, B: vec4<f32>, S: vec2<f32>, hsh: u32) -> f32 {
-    let a = B.w;
-    let s = S.x;
-    let dm = cp_body_dim(a, s);
-    let R = dm.x;
-    let H = dm.y;
+// ---- the last blast's cloud, formed as the Payload's column is (payload.wgsl's pl_puff, pl_column, pl_col_base) ------
+// Billows launched out of the crater one after another, the head's first, then the body's, then a stream of the stem's
+// over five seconds: each emerges low over the crater and climbs to its own height (fast at first, slowing), swelling as
+// it goes, drawn in on the axis low down and spreading out wider the higher it climbs, the wind leaning the head while
+// the foot stays put; a trunk joining the ground to the stem's highest billow, a skirt spreading over the ground on its
+// own. Its own shape, not the Payload's column: squat and broad (its head climbing a third as high, its billows spread
+// twice as wide), its head sheared off downwind into a leaning plume. Worked out once a pixel (`cp_final_prep`), as
+// the Payload's column is, not at every step of the march.
+const CP_NF: i32 = 18;
+const CP_FH: f32 = 58.0;           // the head's height a size (the last's 1.55: some 90 blocks, the Payload's 235)
+const CP_FR: f32 = 30.0;           // the head's billows' reach a size
+var<private> cp_fq: array<vec4<f32>, 18>;   // the billows this frame, from the blast's middle: centre and radius
+var<private> cp_ft0: vec4<f32>;             // the trunk's foot and its radius
+var<private> cp_ft1: vec4<f32>;             // its top (the stem's highest billow) and radius
+var<private> cp_fsk: vec4<f32>;             // the skirt: its middle and its reach across, (.y its height)
+fn cp_final_prep(a: f32, s: f32, hsh: u32) {
     var wd = cp_wind();
     wd = select(vec3<f32>(1.0, 0.0, 0.0), wd / max(length(wd), 1.0e-4), length(wd) > 0.05);
-    let q = p - B.xyz;
-    let grow = 1.0 + 0.01 * max(a - 4.0, 0.0);
-    // (the skirt: wide and low, the dust it threw out rolling over the land)
-    let sh = 7.0 * s + 0.08 * H;
-    var d = cp_ellipsoid(q - wd * (0.15 * dm.z), vec3<f32>(R * 1.3, sh, R * 1.3));
-    // (the dome: broad and squat)
-    d = cp_smin(d, cp_ellipsoid(q - vec3<f32>(0.0, 0.1 * H, 0.0), vec3<f32>(R * 0.95, 0.5 * H, R * 0.95)), 10.0 * s);
-    for (var i = 0u; i < 14u; i = i + 1u) {
-        let h0 = mh(i, hsh, 0x81u);
-        let dome = i < 8u;
-        let sg = a - select(0.1 + 0.5 * h0, 0.02 + 0.2 * h0, dome);
+    let H = CP_FH * s * (1.0 + 0.008 * min(a, 25.0));
+    let lean = s * (3.0 + 2.6 * min(a, 24.0));
+    let grow = 1.0 + 0.012 * max(a - 6.0, 0.0);
+    // (all of it kept short of where the player stood)
+    let fit = min(1.0, cp_cap / (CP_FR * s * 1.5));
+    cp_ft1 = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    for (var i = 0; i < CP_NF; i = i + 1) {
+        let iu = u32(i);
+        let h = mh(iu, hsh, 0x5f0u);
+        let h1 = mh(iu, hsh, 0x5f1u);
+        let h2 = mh(iu, hsh, 0x5f2u);
+        var t0 = 0.0;
+        var hf = 0.0;
+        var rad = 0.0;
+        var off = 0.0;
+        var tau = 0.0;
+        if (i < 5) {
+            // (the head: launched first, climbing to the top, broad and spread wide)
+            t0 = 0.25 * h;
+            hf = 0.75 + 0.3 * (f32(i) / 5.0) + 0.05 * h1;
+            rad = CP_FR * s * (0.55 + 0.2 * h2);
+            off = CP_FR * s * (0.35 + 0.65 * h1);
+            tau = 0.55 + 0.35 * h2;
+        } else if (i < 11) {
+            // (the body: over the next second and a half, half way up, spread)
+            t0 = 0.2 + 1.3 * h;
+            hf = 0.38 + 0.3 * (f32(i - 5) / 6.0) + 0.06 * h1;
+            rad = CP_FR * s * (0.45 + 0.15 * h2);
+            off = CP_FR * s * (0.3 + 0.6 * h1);
+            tau = 0.8 + 0.5 * h2;
+        } else {
+            // (the stem: a stream of them pushed up out of the crater over five seconds, low and close in, lifting
+            // through the mass)
+            t0 = 0.5 + 4.6 * (f32(i - 11) + h) / 7.0;
+            hf = 0.08 + 0.42 * h1;
+            rad = CP_FR * s * (0.3 + 0.14 * h2);
+            off = CP_FR * s * (0.1 + 0.35 * h2);
+            tau = 1.0 + 0.9 * h;
+        }
+        let sg = a - t0;
         if (sg <= 0.0) {
+            cp_fq[i] = vec4<f32>(0.0, -1.0e4, 0.0, 0.0);
             continue;
         }
-        let tau = 0.55 + 0.75 * mh(i, hsh, 0x82u);
         let rise = 1.0 - exp(-sg / tau);
-        let h2 = mh(i, hsh, 0x83u);
-        let hf = select(0.55 + 0.45 * (f32(i - 8u) / 5.0) + 0.08 * h2, 0.12 + 0.42 * h2, dome);
-        let off = R * select(0.22 * mh(i, hsh, 0x84u), 0.25 + 0.6 * mh(i, hsh, 0x84u), dome);
-        let rad = R * select(0.3 + 0.12 * mh(i, hsh, 0x85u), 0.33 + 0.14 * mh(i, hsh, 0x85u), dome);
-        let hgt = hf * H * rise;
-        let ang = TAU * mh(i, hsh, 0x86u);
-        let spread = 0.35 + 0.65 * rise;
-        // (sheared off downwind the higher it climbs, its foot staying put)
-        let c = vec3<f32>(cos(ang) * off * spread, hgt, sin(ang) * off * spread) + wd * (dm.z * pow(saturate(hgt / H), 1.5));
-        let r = rad * (0.25 + 0.75 * (1.0 - exp(-sg / (0.45 * tau)))) * grow * select(0.85, 1.0, dome);
-        d = cp_smin(d, length(q - c) - r, 12.0 * s);
+        let r = rad * (0.22 + 0.78 * (1.0 - exp(-sg / (0.45 * tau)))) * grow * fit;
+        let hh = 5.0 + hf * H * rise;
+        let foot = saturate((hh - 5.0) / (0.45 * H));
+        let spread = (0.35 + 0.65 * rise) * (0.15 + 0.85 * foot * foot) * fit;
+        let ang = TAU * mh(iu, hsh, 0x5f3u);
+        var c = vec3<f32>(cos(ang) * off * spread, hh, sin(ang) * off * spread) + wd * (lean * pow(saturate(hh / H), 1.6));
+        // (the lowest sunk into the crater, so none sits on the ground as a ball; the stem's smaller, its trunk carries it)
+        c.y = c.y - 12.0 * (1.0 - smoothstep(10.0, 70.0, c.y));
+        let rr = r * select(1.0, 0.8, i >= 11);
+        cp_fq[i] = vec4<f32>(c, rr);
+        if (i >= 11 && c.y >= cp_ft1.y) {
+            cp_ft1 = vec4<f32>(c, rr);
+        }
     }
-    return d + (1.0 - S.y) * 0.6 * R;
+    // (the trunk: wide at its dusty foot, sunk under the crater's floor, narrowing to the stem's highest billow)
+    cp_ft0 = vec4<f32>(0.0, -12.0, 0.0, min(max(cp_ft1.w, 1.0) * 1.3, (8.0 + 34.0 * saturate(a / 1.2)) * s * 0.8 * fit));
+    cp_ft1.w = cp_ft1.w * 0.8;
+    // (the skirt: spreading low over the ground on its own)
+    let skr = min((12.0 + 52.0 * saturate(a / 1.8)) * s * (1.0 + 0.01 * max(a - 2.0, 0.0)), cp_cap * 1.25);
+    cp_fsk = vec4<f32>(0.0, 9.0 * s, 0.0, skr);
 }
+// Its smooth body at p (camera-relative; B its middle on the ground), from what cp_final_prep worked out: the billows'
+// union, the low ones squat and wide over the ground, the skirt and the trunk melted in.
+fn cp_final_d(p: vec3<f32>, B: vec4<f32>, S: vec2<f32>) -> f32 {
+    let q = p - B.xyz;
+    var d = 1.0e6;
+    for (var i = 0; i < CP_NF; i = i + 1) {
+        let fq = cp_fq[i];
+        if (fq.w <= 0.0) {
+            continue;
+        }
+        let low = 1.0 - smoothstep(0.0, 60.0, fq.y);
+        let e = (q - fq.xyz) * vec3<f32>(1.0 - 0.25 * low, 1.0 + 0.6 * low, 1.0 - 0.25 * low);
+        d = cp_smin(d, (length(e) - fq.w) / (1.0 + 0.6 * low), 18.0);
+    }
+    if (cp_fsk.w > 0.0) {
+        d = cp_smin(d, cp_ellipsoid(q - vec3<f32>(0.0, -4.0, 0.0), vec3<f32>(cp_fsk.w, cp_fsk.y + 4.0, cp_fsk.w)), 16.0);
+    }
+    if (cp_ft1.w > 0.0) {
+        let ab = cp_ft1.xyz - cp_ft0.xyz;
+        let u = saturate(dot(q - cp_ft0.xyz, ab) / max(dot(ab, ab), 1.0));
+        d = cp_smin(d, length(q - cp_ft0.xyz - ab * u) - mix(cp_ft0.w, cp_ft1.w, u), 14.0);
+    }
+    return d + (1.0 - S.y) * 30.0;
+}
+// The smooth body of blast B (its middle on the ground, camera-relative, and its age in .w; its size and its weight in
+// S.xy) at p: a squat dome, wider than tall, with a few billows on it and a low skirt spreading over the ground (the
+// last's its own: cp_final_d).
 fn cp_body_d(p: vec3<f32>, B: vec4<f32>, S: vec2<f32>, hsh: u32) -> f32 {
     if (S.y <= 0.0) {
         return 1.0e6;
     }
     if (S.x > 1.4) {
-        return cp_final_d(p, B, S, hsh);
+        return cp_final_d(p, B, S);
     }
     let dm = cp_body_dim(B.w, S.x);
     let q = p - B.xyz - cp_wind() * (0.4 * B.w);
@@ -808,6 +874,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
             let dm = cp_body_dim(a, s);
             var iv = cp_sphere(rd, Bv.xyz + cp_wind() * (0.4 * a) + vec3<f32>(0.0, 0.4 * dm.y, 0.0), max(dm.x * 1.45, dm.y * 1.2 + dm.z) + 16.0);
             if (b == lastb) {
+                cp_final_prep(a, s, hv);
                 let wl = cp_wind();
                 let wdir = select(vec3<f32>(1.0, 0.0, 0.0), wl / max(length(wl), 1.0e-4), length(wl) > 0.05);
                 iv = cp_sphere(rd, Bv.xyz + vec3<f32>(0.0, 0.45 * dm.y, 0.0) + wdir * (0.5 * dm.z), max(dm.x * 1.6, 0.65 * dm.y) + 0.6 * dm.z + 30.0);
