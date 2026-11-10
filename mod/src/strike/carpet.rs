@@ -29,16 +29,16 @@ const CP_SPACING: f64 = 22.0;
 pub(super) const CP_BIG: f64 = 1.55;
 /// The last bomb comes down at least this far (level) from where the player stood: the line is drawn back if they
 /// aimed closer.
-pub(super) const CP_MIN_ME: f64 = 80.0;
+pub(super) const CP_MIN_ME: f64 = 100.0;
 /// A bomb's land worked out over the stages from this long before it strikes, in a window of its own (the next bomb's
 /// starts as its ends): each bomb works on the land the one before left.
-const CP_LEAD: f32 = 2.6;
+const CP_LEAD: f32 = 2.0;
 /// The stages a bomb's blast takes (rows of its square), then its tidy, its felled trees, its rubble and thrown blocks.
-const CP_PARTS: i32 = 4;
+const CP_PARTS: i32 = 6;
 /// A crater's rim heap reaches this far (in its radii).
 const CP_RIM: f64 = 1.6;
 /// The land read in this many parts (each a query and a stage).
-const CP_READS: usize = 6;
+const CP_READS: usize = 16;
 
 /// The table (render.set-data): words 0..16 the header (the bombs' count, the line's way (level, from the far end
 /// towards the player), the wind, the bomber's speed along the line, the first bomb's place along it, the last's), from
@@ -161,7 +161,7 @@ pub(super) fn cp_debris_words(g: &CpGeo) -> Vec<u32> {
             let big = h(3);
             // (the last's pieces thrown harder and further, bigger)
             let s = bomb.s * if last { 1.6 } else { 1.0 };
-            let r0 = (3.0 + 14.0 * h(6).sqrt()) * s;
+            let r0 = (4.0 + 19.0 * h(6).sqrt()) * s;
             let far = h(7) < 0.2;
             let el = if far { 0.5 + 0.35 * h(2) } else { 0.45 + 0.75 * h(2) };
             let sp = (if far { 45.0 + 25.0 * h(4) } else { 20.0 + 30.0 * h(4).powf(0.7) }) * (1.0 - 0.25 * big) * s.sqrt();
@@ -189,27 +189,30 @@ struct Blast {
     big: bool,
 }
 impl Blast {
+    // (a bomb's crater about 25 across and 8 deep, the next ones' overlapping it into a ragged trench; the land flattened
+    // to 35, the trees felled to 50, charred to 55. The last's about 65 across and 16 deep, terraced, flattened to 110,
+    // felled to 150, charred to 170; all with a size of about 1, the last's 1.55)
     fn crater_r(&self) -> f64 {
-        self.s * if self.big { 12.0 } else { 8.5 }
+        self.s * if self.big { 21.0 } else { 12.5 }
     }
     fn crater_d(&self) -> f64 {
-        self.s * if self.big { 6.2 } else { 4.5 }
+        self.s * if self.big { 10.6 } else { 8.0 }
     }
     fn flat_r(&self) -> f64 {
-        self.s * if self.big { 34.0 } else { 24.0 }
+        self.s * if self.big { 71.0 } else { 35.0 }
     }
     fn char_r(&self) -> f64 {
-        self.s * if self.big { 48.0 } else { 32.0 }
+        self.s * if self.big { 110.0 } else { 55.0 }
     }
     fn band_w(&self) -> f64 {
-        self.s * if self.big { 13.0 } else { 9.0 }
+        self.s * if self.big { 26.0 } else { 15.0 }
     }
     /// How far round it its land work reaches.
     fn reach(&self) -> f64 {
         (self.flat_r() * 1.13 + self.band_w()).max(self.char_r()) + 2.0
     }
     fn kill_r(&self) -> f64 {
-        self.s * if self.big { 40.0 } else { 28.0 }
+        self.s * if self.big { 80.0 } else { 40.0 }
     }
     fn wob(&self, a: f64) -> f64 {
         1.0 + 0.1 * (3.0 * a + self.ph[0]).sin() + 0.06 * (5.0 * a + self.ph[1]).sin() + 0.035 * (9.0 * a + self.ph[2]).sin()
@@ -226,19 +229,31 @@ impl Blast {
         self.flat_r() * (1.0 + 0.1 * (2.0 * a + self.ph[2]).sin() + 0.06 * (7.0 * a + self.ph[0]).sin())
     }
     fn bowl(&self, u: f64) -> f64 {
-        if u < 1.0 { self.crater_d() * (1.0 - u * u).powf(0.75) } else { 0.0 }
+        if u >= 1.0 {
+            return 0.0;
+        }
+        let d = self.crater_d() * (1.0 - u * u).powf(0.75);
+        if !self.big {
+            return d;
+        }
+        // (the last's walls stepped down in terraces three deep, each lip rounded)
+        let k = d / 3.0;
+        (k.floor() + (((k.fract() - 0.7) / 0.3).clamp(0.0, 1.0)).powi(2)) * 3.0
     }
     fn heap(&self, u: f64) -> f64 {
-        if !(1.0..=CP_RIM).contains(&u) { 0.0 } else { self.s * (2.8 * (-(u - 1.12).powi(2) / 0.05).exp() + 0.5 * (1.0 - (u - 1.0) / (CP_RIM - 1.0))) }
+        if !(1.0..=CP_RIM).contains(&u) {
+            return 0.0;
+        }
+        self.s * if self.big { 2.2 } else { 1.3 } * (2.8 * (-(u - 1.12).powi(2) / 0.05).exp() + 0.5 * (1.0 - (u - 1.0) / (CP_RIM - 1.0)))
     }
-    /// How hard it still hits column (x, z) in the band past its flattened land: 1 at its inner edge to 0 at its outer.
-    fn band(&self, x: i32, z: i32) -> Option<f64> {
-        let (r, a, _) = self.at(x, z);
+    /// How hard it still hits the column at distance r and bearing a in the band past its flattened land: 1 at its inner
+    /// edge to 0 at its outer.
+    fn band_ra(&self, r: f64, a: f64) -> Option<f64> {
         let e = r - self.flat(a);
         (0.0..self.band_w()).contains(&e).then(|| 1.0 - e / self.band_w())
     }
-    fn knocked(&self, c: &Column, x: i32, z: i32) -> bool {
-        c.trunk >= 3 && !c.fluid && self.band(x, z).is_some_and(|p| mh((x.wrapping_mul(92_821) ^ z.wrapping_mul(68_917)) as u32, self.seed, 0x91) < 0.55 * p.powf(1.3))
+    fn knocked_ra(&self, c: &Column, x: i32, z: i32, r: f64, a: f64) -> bool {
+        c.trunk >= 3 && !c.fluid && self.band_ra(r, a).is_some_and(|p| mh((x.wrapping_mul(92_821) ^ z.wrapping_mul(68_917)) as u32, self.seed, 0x91) < 0.55 * p.powf(1.3))
     }
     /// When its front reaches column (x, z): its edits go in from the middle out.
     fn wave_at(&self, x: i32, z: i32) -> f32 {
@@ -388,18 +403,22 @@ fn cp_blast_rows(q: &mut Plan, land: &mut Land, b: &Blast, n: u8, k0: i32, k1: i
     let rr = b.reach().ceil() as i32;
     let (ix, iz) = (b.cx.floor() as i32, b.cz.floor() as i32);
     let mut out = Blocks::default();
-    crate::meter::spend(600 * ((k1 - k0) * (2 * rr + 1)) as u64);
+    crate::meter::spend(2_500 * ((k1 - k0) * (2 * rr + 1)) as u64);
+    let reach2 = b.reach() * b.reach();
     for z in iz - rr + k0..iz - rr + k1 {
+        let dz = f64::from(z) + 0.5 - b.cz;
         for x in ix - rr..=ix + rr {
+            // (out of its reach: nothing worked out at all)
+            let dx = f64::from(x) + 0.5 - b.cx;
+            if dx * dx + dz * dz > reach2 {
+                continue;
+            }
             let Some(i) = land.known(x, z) else { continue };
             let c = land.cols[i];
             if c.lava {
                 continue;
             }
             let (r, ang, u) = b.at(x, z);
-            if r > b.reach() {
-                continue;
-            }
             let (gc, tc, fl) = (land.g[i], land.top[i], land.flag[i]);
             if u < 1.0 {
                 // the crater: dug (deeper where an earlier one was), everything over it gone, its new face scorched, the
@@ -439,7 +458,8 @@ fn cp_blast_rows(q: &mut Plan, land: &mut Land, b: &Blast, n: u8, k0: i32, k1: i
             if c.fluid {
                 continue;
             }
-            if r < b.flat(ang) || (fl & (FELLED | DUG | HEAPED) == 0 && b.knocked(&c, x, z)) {
+            let band = b.band_ra(r, ang);
+            if r < b.flat(ang) || (fl & (FELLED | DUG | HEAPED) == 0 && b.knocked_ra(&c, x, z, r, ang)) {
                 // flattened: what stands on the land swept off (a felled tree's stump left, what an earlier blast laid
                 // left lying), the grass charred
                 let keep = if fl & (FELLED | LAID | DUG | HEAPED) != 0 {
@@ -456,7 +476,7 @@ fn cp_blast_rows(q: &mut Plan, land: &mut Land, b: &Blast, n: u8, k0: i32, k1: i
                     land.flag[i] |= FELLED | FELL_NOW;
                 }
             } else if fl & (FELLED | LAID) == 0
-                && let Some(p) = b.band(x, z)
+                && let Some(p) = band
                 && c.leaves != 255
                 && tc > gc + 1
                 && vnoise(f64::from(x), f64::from(z), 5.0, b.seed ^ 0x93) < 0.25 + 0.75 * p
@@ -497,12 +517,12 @@ fn cp_tidy(q: &mut Plan, land: &Land, b: &Blast, n: u8, k0: i32, k1: i32) {
 
 /// The trees blast `n` felled, lying on the land pointing away from it (their crowns crushed round their ends further
 /// out), each down once its front has swept where it lies.
-fn cp_felled(q: &mut Plan, land: &mut Land, b: &Blast) {
+fn cp_felled(q: &mut Plan, land: &mut Land, b: &Blast, k0: i32, k1: i32) {
     let rr = b.reach().ceil() as i32;
     let (ix, iz) = (b.cx.floor() as i32, b.cz.floor() as i32);
     let mut out = Blocks { clear_of_player: true, ..Default::default() };
-    crate::meter::spend(300 * ((2 * rr + 1) * (2 * rr + 1)) as u64);
-    for z in iz - rr..=iz + rr {
+    crate::meter::spend(300 * ((k1 - k0) * (2 * rr + 1)) as u64);
+    for z in iz - rr + k0..iz - rr + k1 {
         for x in ix - rr..=ix + rr {
             let Some(i) = land.known(x, z) else { continue };
             if land.flag[i] & FELL_NOW == 0 {
@@ -565,8 +585,8 @@ fn cp_rubble_and_thrown(q: &mut Plan, land: &mut Land, b: &Blast, big: bool) {
         "minecraft:tuff",
         "minecraft:andesite",
     ];
-    let reach = b.flat_r() * 1.25;
-    for _ in 0..if big { 150 } else { 34 } {
+    let reach = b.flat_r() * 1.3;
+    for _ in 0..if big { 320 } else { 60 } {
         let r = b.crater_r() * 1.05 + (reach - b.crater_r() * 1.05) * rng.next().powf(1.6);
         let a = rng.uniform(0.0, TAU);
         let (x, z) = ((b.cx + a.cos() * r).floor() as i32, (b.cz + a.sin() * r).floor() as i32);
@@ -584,6 +604,34 @@ fn cp_rubble_and_thrown(q: &mut Plan, land: &mut Land, b: &Blast, big: bool) {
             q.ev.push((b.t + 1.4 + 0.9 * k as f32, Act::Blocks(Box::new(w))));
         }
     }
+    // (the last's few fires left burning on its rim: on netherrack, out in the heaped earth, nothing that burns within
+    // two blocks of them, so they burn on and spread to nothing)
+    if big {
+        let mut fires = Blocks { clear_of_player: true, ..Default::default() };
+        let mut lit = 0;
+        for _ in 0..80 {
+            if lit >= 8 {
+                break;
+            }
+            let a = rng.uniform(0.0, TAU);
+            let r = b.crater_r() * rng.uniform(1.08, 1.28);
+            let (x, z) = ((b.cx + a.cos() * r).floor() as i32, (b.cz + a.sin() * r).floor() as i32);
+            let Some(i) = land.known(x, z) else { continue };
+            let safe = (-2..=2).all(|dz| (-2..=2).all(|dx| land.known(x + dx, z + dz).is_some_and(|j| land.flag[j] & (DUG | HEAPED) != 0 && land.flag[j] & LAID == 0 && !land.cols[j].fluid)));
+            if !safe || land.flag[i] & HEAPED == 0 || land.top[i] != land.g[i] {
+                continue;
+            }
+            let g = land.g[i];
+            fires.run(x, z, g, g, "minecraft:netherrack");
+            fires.run(x, z, g + 1, g + 1, "minecraft:fire");
+            land.top[i] = g + 1;
+            land.flag[i] |= LAID;
+            lit += 1;
+        }
+        if !fires.runs.is_empty() {
+            q.ev.push((b.t + 2.2, Act::Blocks(Box::new(fires))));
+        }
+    }
     // (thrown: the ground that was there, a log of the wood round about now and then)
     let mut woods = [0u32; 9];
     let rr = b.crater_r().ceil() as i32 * 3;
@@ -597,7 +645,7 @@ fn cp_rubble_and_thrown(q: &mut Plan, land: &mut Land, b: &Blast, big: bool) {
         }
     }
     let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
-    let want = if big { 80 } else { 16 };
+    let want = if big { 120 } else { 24 };
     let mut n = 0;
     for _ in 0..want * 3 {
         if n >= want {
@@ -623,7 +671,8 @@ fn cp_rubble_and_thrown(q: &mut Plan, land: &mut Land, b: &Blast, big: bool) {
             _ => "minecraft:tuff",
         };
         let ang = if r > 1.0 { a } else { rng.uniform(0.0, TAU) };
-        let k = b.s.sqrt();
+        // (thrown out of a crater this big further and higher)
+        let k = b.s.sqrt() * if big { 1.5 } else { 1.25 };
         let hs = (0.3 + 1.3 * rng.next().powf(1.4)) * k;
         let vy = (0.6 + 1.0 * rng.next()) * k;
         let (vx, vz) = (ang.cos() * hs, ang.sin() * hs);
@@ -819,32 +868,36 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
         let land: Shared = Rc::new(RefCell::new(Land::new(&blasts)));
         // the land read as it starts (a query and a stage a part), taken in a stage a part
         let tags: Rc<Vec<u32>> = Rc::new((0..CP_READS).map(|_| crate::columns::new_tag()).collect());
-        for part in 0..CP_READS {
+        // (asked four parts a stage: working out which columns is cheap, taking the answers in is the work)
+        for batch in 0..CP_READS.div_ceil(4) {
             let (tags, blasts, land) = (tags.clone(), blasts.clone(), land.clone());
-            let t = 0.1 + 0.05 * part as f32;
+            let t = 0.1 + 0.05 * batch as f32;
             p.later(t, move |q| {
                 let (x0, z0, w, h) = {
                     let l = land.borrow();
                     (l.x0, l.z0, l.w, l.h)
                 };
-                let columns = cp_read_columns(&blasts, x0, z0, w, h, part);
-                q.ev.push((t, Act::Read { tag: tags[part], columns, below: PL_BELOW, above: PL_ABOVE }));
+                for part in batch * 4..(batch * 4 + 4).min(CP_READS) {
+                    let columns = cp_read_columns(&blasts, x0, z0, w, h, part);
+                    q.ev.push((t, Act::Read { tag: tags[part], columns, below: PL_BELOW, above: PL_ABOVE }));
+                }
             });
         }
         {
             let land = land.clone();
             let until = geo.bombs[last].t - CP_LEAD - 0.5;
-            p.later(0.5, move |q| cp_land_step(q, land, tags, 0, 0.5, until, 0));
+            p.later(0.35, move |q| cp_land_step(q, land, tags, 0, 0.35, until, 0));
         }
         // each bomb's work in a window of its own before it strikes, in order: its blast a band of rows a stage, what it
         // leaves hanging, its felled trees, its rubble and thrown blocks
         for (n, b) in blasts.iter().enumerate() {
             let b = *b;
             let n8 = n as u8;
-            let t0 = b.t - CP_LEAD;
+            // (the last's work in a longer window of its own, from just after the one before it is done)
+            let t0 = b.t - if b.big { CP_LEAD + 0.6 } else { CP_LEAD };
             let rows = 2 * b.reach().ceil() as i32 + 1;
             // (the last's land in more, smaller stages: nothing waits after it)
-            let parts = if b.big { 10 } else { CP_PARTS };
+            let parts = if b.big { 40 } else { CP_PARTS };
             let per = (rows + parts - 1) / parts;
             let mut k = 0;
             for j in 0..parts {
@@ -853,16 +906,20 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
                 p.later(t0 + 0.05 * k as f32, move |q| cp_blast_rows(q, &mut l.borrow_mut(), &b, n8, k0, k1));
                 k += 1;
             }
-            let tparts = if b.big { 4 } else { 1 };
+            let tparts = if b.big { 8 } else { 1 };
             for j in 0..tparts {
                 let l = land.clone();
                 let (k0, k1) = (j * rows / tparts, (j + 1) * rows / tparts);
                 p.later(t0 + 0.05 * k as f32, move |q| cp_tidy(q, &l.borrow(), &b, n8, k0, k1));
                 k += 1;
             }
-            let l = land.clone();
-            p.later(t0 + 0.05 * k as f32, move |q| cp_felled(q, &mut l.borrow_mut(), &b));
-            k += 1;
+            let fparts = if b.big { 8 } else { 1 };
+            for j in 0..fparts {
+                let l = land.clone();
+                let (k0, k1) = (j * rows / fparts, (j + 1) * rows / fparts);
+                p.later(t0 + 0.05 * k as f32, move |q| cp_felled(q, &mut l.borrow_mut(), &b, k0, k1));
+                k += 1;
+            }
             let l = land.clone();
             let big = n == last;
             p.later(t0 + 0.05 * k as f32, move |q| cp_rubble_and_thrown(q, &mut l.borrow_mut(), &b, big));
@@ -1001,7 +1058,7 @@ mod tests {
         let fills: Vec<String> = p.edits.iter().flat_map(|(_, _, b)| b.as_fills()).collect();
         assert!(!fills.is_empty());
         for f in &fills {
-            for bad in ["lava ", "water ", "fire", "magma", "sand ", "concrete_powder"] {
+            for bad in ["lava ", "water ", "magma", "sand ", "concrete_powder"] {
                 assert!(!f.contains(&format!(" minecraft:{bad}")) || f.contains(" replace "), "{f}");
             }
         }
@@ -1010,11 +1067,47 @@ mod tests {
             let (x, z) = ((10.5 + b.x).floor() as i32, (-2.5 + b.z).floor() as i32);
             let dug = fills.iter().filter(|f| f.starts_with(&format!("fill {x} ")) && f.contains(&format!(" {z} {x} ")) && f.contains("minecraft:air")).map(|f| words(f)[1]).min().expect("the middle dug");
             let depth = ground_h(x, z) - (dug - 1);
-            let want = b.s * if b.s > 1.4 { 6.2 } else { 4.5 };
-            assert!((f64::from(depth) - want).abs() <= 1.5, "bomb at {x} {z}: {depth} deep, not {want:.1}");
+            let want = b.s * if b.s > 1.4 { 10.6 } else { 8.0 };
+            assert!((f64::from(depth) - want).abs() <= 2.0, "bomb at {x} {z}: {depth} deep, not {want:.1}");
             assert!(!fills.iter().any(|f| f.starts_with(&format!("fill {x} ")) && f.contains(&format!(" {z} {x} ")) && (f.contains("dirt") || f.contains("cobble") || f.contains("stone")) && !f.contains("replace") && words(f)[1] > ground_h(x, z) - 1), "the middle at {x} {z} heaped over");
         }
-        // trees felled, lying along x or z
+        // the last's few fires, each on netherrack, nothing else set alight
+        let fires: Vec<&String> = fills.iter().filter(|f| f.contains(" minecraft:fire")).collect();
+        assert!(!fires.is_empty() && fires.len() <= 8, "{} fires", fires.len());
+        for f in &fires {
+            let w = words(f);
+            assert!(fills.iter().any(|n| n.contains("minecraft:netherrack") && words(n) == vec![w[0], w[1] - 1, w[2]]), "{f} not on netherrack");
+        }
+        // the craters: the last's about 65 across (dug two or more under the land), and the small ones' run into one
+        // trench (the ground half way between each two dug)
+        let lb = g.bombs[CP_N - 1];
+        let (lx, lz) = (10.5 + lb.x, -2.5 + lb.z);
+        let mut dug = std::collections::HashSet::new();
+        for f in fills.iter().filter(|f| f.contains("minecraft:air") && !f.contains("replace")) {
+            let w = words(f);
+            if w[1] <= ground_h(w[0], w[2]) - 1 {
+                dug.insert((w[0], w[2]));
+            }
+        }
+        let big = dug.iter().filter(|(x, z)| (f64::from(*x) + 0.5 - lx).hypot(f64::from(*z) + 0.5 - lz) < 45.0).count();
+        let want = std::f64::consts::PI * (21.0 * lb.s).powi(2);
+        assert!((big as f64) > 0.7 * want && (big as f64) < 1.4 * want, "the last's crater {big} columns, not about {want:.0}");
+        let mut joined = 0;
+        for w in g.bombs[..CP_N - 1].windows(2) {
+            let (mx, mz) = ((10.5 + 0.5 * (w[0].x + w[1].x)).floor() as i32, (-2.5 + 0.5 * (w[0].z + w[1].z)).floor() as i32);
+            joined += usize::from(dug.contains(&(mx, mz)));
+        }
+        assert!(joined >= CP_N - 4, "only {joined} of the small craters run into the next");
+        // trees felled, lying along x or z (some out past 120 blocks from the last)
+        let far_felled = fills
+            .iter()
+            .filter(|f| f.contains("_log[axis="))
+            .filter(|f| {
+                let w = words(f);
+                (f64::from(w[0]) + 0.5 - lx).hypot(f64::from(w[2]) + 0.5 - lz) > 120.0
+            })
+            .count();
+        assert!(far_felled > 3, "{far_felled} trees felled past 120");
         let lying = fills.iter().filter(|f| f.contains("_log[axis=")).count();
         assert!(lying > 30, "{lying}");
         // nothing laid where the player stands
@@ -1033,7 +1126,7 @@ mod tests {
         }
         // thrown blocks, out of each crater as it strikes, and never killed in the air
         let thrown: Vec<&(f32, String)> = p.cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")).collect();
-        assert!(thrown.len() > 180 && thrown.len() <= (CP_N - 1) * 16 + 80, "{}", thrown.len());
+        assert!(thrown.len() > 250 && thrown.len() <= (CP_N - 1) * 24 + 120, "{}", thrown.len());
         assert!(p.cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block") && c.contains("type=!minecraft:player")));
     }
 

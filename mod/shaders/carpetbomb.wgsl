@@ -24,7 +24,7 @@ const CP_NMAX: i32 = 14;
 const CP_FALL: f32 = 3.0;          // a bomb is seen falling this long, out of the haze under the bomber
 const CP_VY: f32 = 230.0;          // how fast it comes down as it strikes, blocks a second
 const CP_G: f32 = 14.0;            // and how fast it was gathering speed
-const CP_HB: f32 = 640.0;          // the bomber's height over the land
+const CP_HB: f32 = 632.0;            // the bomber's height over the land (the bombs leave its belly)
 
 fn cp_w(i: u32) -> f32 {
     if (i >= arrayLength(&mod_data)) {
@@ -55,6 +55,13 @@ fn cp_fall(b: i32, tau: f32) -> vec3<f32> {
     let p = cp_bomb(b).xyz;
     let d = cp_dir() * (cp_w(5u) * tau);
     return p + vec3<f32>(-d.x, CP_VY * tau - 0.5 * CP_G * tau * tau, -d.y);
+}
+// An ellipsoid's distance (radii r) at e = its offset, as the Payload's skirt has it: a close bound, not the smallest
+// radius's, which reads far too near beside a flat one and lets the lumps swell it out over everything near.
+fn cp_ellipsoid(e: vec3<f32>, r: vec3<f32>) -> f32 {
+    let k0 = length(e / r);
+    let k1 = length(e / (r * r));
+    return k0 * (k0 - 1.0) / max(k1, 1.0e-4);
 }
 fn cp_smin(a: f32, b: f32, k: f32) -> f32 {
     let h = saturate(0.5 + 0.5 * (b - a) / k);
@@ -113,10 +120,11 @@ fn cp_land(q: vec2<f32>) -> f32 {
 var<private> cp_cap: f32 = 1.0e9;
 fn cp_body_dim(a: f32, s: f32) -> vec3<f32> {
     if (s > 1.4) {
-        // (the last: a fireball two to three times the others' across, rising on into a tall column)
+        // (the last: two to three times the others' across. Its dome's reach (short of where the player stood), its
+        // height (bursting up fast, then climbing slowly on, as the Payload's), how far its plume leans downwind)
         let Rb = min(38.0 * s * (0.2 + 0.8 * (1.0 - exp(-a / 0.35))) * (1.0 + 0.012 * a), cp_cap);
-        let Hb = s * (20.0 + 30.0 * (1.0 - exp(-a / 0.9)) + 3.0 * min(a, 20.0));
-        return vec3<f32>(Rb, Hb, s * (5.0 * min(a, 2.5) + 0.8 * min(a, 20.0)));
+        let Hb = s * (30.0 + 26.0 * (1.0 - exp(-a / 1.0)) + 1.6 * min(a, 24.0));
+        return vec3<f32>(Rb, Hb, s * (3.0 + 2.6 * min(a, 24.0)));
     }
     let R = 26.0 * s * (0.25 + 0.75 * (1.0 - exp(-a / 0.3))) * (1.0 + 0.02 * a);
     let H = s * (11.0 + 16.0 * (1.0 - exp(-a / 0.7)) + 0.35 * min(a, 25.0));
@@ -124,20 +132,61 @@ fn cp_body_dim(a: f32, s: f32) -> vec3<f32> {
 }
 // The smooth body of blast B (its middle on the ground, camera-relative, and its age in .w; its size and its weight in
 // S.xy) at p: a squat dome, wider than tall, with a few billows on it and a low skirt spreading over the ground.
+// The last blast's smoke (its own shape, moving as the Payload's column does): billows launched out of it, each eased up
+// and swelled over time, fast at first and slowing; a broad, squat, boiling dome over a wide dust skirt, its upper
+// billows sheared off downwind into a leaning plume, its foot staying put.
+fn cp_final_d(p: vec3<f32>, B: vec4<f32>, S: vec2<f32>, hsh: u32) -> f32 {
+    let a = B.w;
+    let s = S.x;
+    let dm = cp_body_dim(a, s);
+    let R = dm.x;
+    let H = dm.y;
+    var wd = cp_wind();
+    wd = select(vec3<f32>(1.0, 0.0, 0.0), wd / max(length(wd), 1.0e-4), length(wd) > 0.05);
+    let q = p - B.xyz;
+    let grow = 1.0 + 0.01 * max(a - 4.0, 0.0);
+    // (the skirt: wide and low, the dust it threw out rolling over the land)
+    let sh = 7.0 * s + 0.08 * H;
+    var d = cp_ellipsoid(q - wd * (0.15 * dm.z), vec3<f32>(R * 1.3, sh, R * 1.3));
+    // (the dome: broad and squat)
+    d = cp_smin(d, cp_ellipsoid(q - vec3<f32>(0.0, 0.1 * H, 0.0), vec3<f32>(R * 0.95, 0.5 * H, R * 0.95)), 10.0 * s);
+    for (var i = 0u; i < 14u; i = i + 1u) {
+        let h0 = mh(i, hsh, 0x81u);
+        let dome = i < 8u;
+        let sg = a - select(0.1 + 0.5 * h0, 0.02 + 0.2 * h0, dome);
+        if (sg <= 0.0) {
+            continue;
+        }
+        let tau = 0.55 + 0.75 * mh(i, hsh, 0x82u);
+        let rise = 1.0 - exp(-sg / tau);
+        let h2 = mh(i, hsh, 0x83u);
+        let hf = select(0.55 + 0.45 * (f32(i - 8u) / 5.0) + 0.08 * h2, 0.12 + 0.42 * h2, dome);
+        let off = R * select(0.22 * mh(i, hsh, 0x84u), 0.25 + 0.6 * mh(i, hsh, 0x84u), dome);
+        let rad = R * select(0.3 + 0.12 * mh(i, hsh, 0x85u), 0.33 + 0.14 * mh(i, hsh, 0x85u), dome);
+        let hgt = hf * H * rise;
+        let ang = TAU * mh(i, hsh, 0x86u);
+        let spread = 0.35 + 0.65 * rise;
+        // (sheared off downwind the higher it climbs, its foot staying put)
+        let c = vec3<f32>(cos(ang) * off * spread, hgt, sin(ang) * off * spread) + wd * (dm.z * pow(saturate(hgt / H), 1.5));
+        let r = rad * (0.25 + 0.75 * (1.0 - exp(-sg / (0.45 * tau)))) * grow * select(0.85, 1.0, dome);
+        d = cp_smin(d, length(q - c) - r, 12.0 * s);
+    }
+    return d + (1.0 - S.y) * 0.6 * R;
+}
 fn cp_body_d(p: vec3<f32>, B: vec4<f32>, S: vec2<f32>, hsh: u32) -> f32 {
     if (S.y <= 0.0) {
         return 1.0e6;
     }
+    if (S.x > 1.4) {
+        return cp_final_d(p, B, S, hsh);
+    }
     let dm = cp_body_dim(B.w, S.x);
     let q = p - B.xyz - cp_wind() * (0.4 * B.w);
     // (the dome: its middle a little over the ground, its foot sunk into the crater)
-    let e = (q - vec3<f32>(0.0, 0.3 * dm.y, 0.0)) / vec3<f32>(dm.x * 0.8, dm.y, dm.x * 0.8);
-    let k0 = length(e);
-    var d = (k0 - 1.0) * min(dm.x * 0.8, dm.y);
+    var d = cp_ellipsoid(q - vec3<f32>(0.0, 0.3 * dm.y, 0.0), vec3<f32>(dm.x * 0.8, dm.y, dm.x * 0.8));
     // (the skirt: wide and low)
     let sk = dm.x * select(1.25, 1.05, S.x > 1.4);
-    let e2 = q / vec3<f32>(sk, 0.35 * dm.y + 2.0, sk);
-    d = cp_smin(d, (length(e2) - 1.0) * min(sk, 0.35 * dm.y + 2.0), 6.0 * S.x);
+    d = cp_smin(d, cp_ellipsoid(q, vec3<f32>(sk, 0.35 * dm.y + 2.0, sk)), 6.0 * S.x);
     // (four billows rolling up off its top and sides as it lifts)
     for (var k = 0u; k < 4u; k = k + 1u) {
         let ang = TAU * mh(k, hsh, 0x61u);
@@ -170,12 +219,17 @@ fn cp_bodies(p: vec3<f32>, B0: vec4<f32>, S0: vec2<f32>, h0: u32, B1: vec4<f32>,
 // Its surface's lumps at p (camera-relative; `a` the nearest's age): lumps on lumps, a fine fray at the edge. In .y how
 // far up a dome it lies, in .z the fray.
 fn cp_lumps(p: vec3<f32>, d0: f32, a: f32, fine: bool, sc: f32) -> vec3<f32> {
-    let q = (p + frame.camera_position.xyz - vec3<f32>(0.0, 1.6 * min(a, 6.0) + 0.3 * a, 0.0) - cp_wind() * (0.5 * a)) / sc;
+    // (carried up with the rising mass and along with the wind, as the Payload's: its lumps churn as it climbs; the
+    // last's faster up front, then slowly)
+    let up = select(1.6 * min(a, 6.0) + 0.3 * a, 2.2 * a + 10.0 * min(a, 1.5), sc > 1.5);
+    let q = (p + frame.camera_position.xyz - vec3<f32>(0.0, up, 0.0) - cp_wind() * (0.5 * a)) / sc;
     let w = gnoise3(cp_rot(1, q * (1.0 / 26.0)));
     let w2 = gnoise3(cp_rot(2, q * (1.0 / 11.0) + vec3<f32>(9.2, -0.1 * a, 4.4)));
     let b1 = cp_dome(cp_rot(0, q * (1.0 / 15.0) + 0.3 * vec3<f32>(w2 - 0.5)));
     let b2 = cp_dome(cp_rot(1, q * (1.0 / 6.5) + vec3<f32>(0.0, -0.3 * a, 1.3)));
-    var d = d0 - (10.0 * (b1 - 0.45) + 4.0 * (b2 - 0.45) + 8.0 * (w - 0.5) + 4.0 * (w2 - 0.5)) * sc;
+    // (as it settles, the last's billows melt away into a softer mass)
+    let crisp = 1.0 - 0.7 * smoothstep(14.0, 26.0, a) * step(1.5, sc);
+    var d = d0 - (10.0 * (b1 - 0.45) * crisp + 4.0 * (b2 - 0.45) * crisp + 8.0 * (w - 0.5) + 4.0 * (w2 - 0.5)) * sc;
     var fray = 0.5;
     if (fine && d < 6.0) {
         let b3 = cp_dome(cp_rot(2, q * (1.0 / 2.6) + vec3<f32>(1.7, -0.5 * a, -2.1)));
@@ -199,7 +253,8 @@ fn cp_dust(q: vec3<f32>, h: f32, time: f32, n: i32) -> vec2<f32> {
             continue;
         }
         let s = cp_size(b);
-        let Rd = s * (52.0 * (1.0 - exp(-a / 1.0)) + 1.0 * min(a, 15.0));
+        // (the last's kept short of where the player stood, as its fireball is: its front (cp_front) goes over them)
+        let Rd = min(s * (52.0 * (1.0 - exp(-a / 1.0)) + 1.0 * min(a, 15.0)), select(1.0e9, cp_cap * 1.35, b == n - 1));
         let r = length(q.xz - bm.xz);
         if (r > Rd + 22.0) {
             continue;
@@ -215,6 +270,102 @@ fn cp_dust(q: vec3<f32>, h: f32, time: f32, n: i32) -> vec2<f32> {
         return vec2<f32>(0.0, 0.0);
     }
     return vec2<f32>(dsum, hmax);
+}
+
+// ---- a blast's shockwave front, as the Payload's (payload.wgsl's pl_dust): a dense wall of dust a few blocks high
+// just behind a crisp, billowing front racing out at the speed of sound, thinning behind it into haze that rises and
+// hangs, all over the land's own ground. `amp` how much of it (the last's 1, the small ones' less), `hs` how high,
+// `quick` how fast it settles (the small ones' quicker), `inner` the clear middle (its smoke is there). Its density and
+// its height over the land at p.
+fn cp_front(p: vec3<f32>, C: vec3<f32>, Cf: vec3<f32>, a: f32, amp: f32, hs: f32, quick: f32, inner: f32) -> vec2<f32> {
+    let q = p - Cf;
+    let r = length(q.xz);
+    let w = p + frame.camera_position.xyz;
+    let qg = p - C;
+    let h = qg.y - cp_land(qg.xz);
+    if (h > 70.0 * hs || h < -4.0) {
+        return vec2<f32>(0.0, h);
+    }
+    let rf = CP_V * a;
+    let n1 = gnoise3(w * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a, 0.0));
+    let n2 = gnoise3(w * (1.0 / 3.5) + vec3<f32>(5.0, -2.0 * a, 1.0));
+    let sf = rf - r + (n1 - 0.5) * 14.0 + (n2 - 0.5) * 5.0 - 0.25 * max(h, 0.0);
+    if (sf < -3.0) {
+        return vec2<f32>(0.0, h);
+    }
+    let since = max(sf, 0.0) / CP_V;
+    let n3 = gnoise3(w * (1.0 / 38.0) + vec3<f32>(0.0, -0.3 * a, 9.0));
+    let rise = 1.0 + 0.8 * smoothstep(0.0, 25.0, sf) - 0.7 * smoothstep(30.0, 140.0, sf);
+    let hw = ((4.5 + 0.006 * r) * rise * (0.35 + 1.2 * n1) * (0.6 + 0.8 * n3) + 1.5 * min(since, 6.0)) * hs;
+    let up = smoothstep(hw, hw * 0.35, h) * smoothstep(-4.0, 0.0, h);
+    let lead = smoothstep(-3.0, 1.5, sf);
+    let wall = 1.6 * exp(-sf / (9.0 + 0.015 * r));
+    let haze = (0.009 * exp(-since * quick / 2.5) + 0.0025 * exp(-since * quick / 6.0)) * (0.5 + n2);
+    let mid = smoothstep(inner, inner * 3.0, r);
+    let low = 0.22 * exp(-since * quick / 3.0) * smoothstep(0.0, 30.0, sf) * exp(-max(h, 0.0) / (2.5 + 2.0 * n1)) * smoothstep(0.35, 0.7, n3);
+    return vec2<f32>(((wall * saturate(1.5 * n1 + 0.25 * n2) * (0.35 + 1.3 * n3) + haze) * up + low) * lead * mid * amp, h);
+}
+// That front marched along the ray where it crosses the shell behind it, more sparsely inside (payload.wgsl's way): its
+// colour gathered (premultiplied) and what still shows through.
+fn cp_front_march(rd: vec3<f32>, C: vec3<f32>, Cf: vec3<f32>, a: f32, amp: f32, hs: f32, quick: f32, inner: f32, t0: f32, t1: f32, j: f32, dcol: vec3<f32>, amb: vec3<f32>) -> vec4<f32> {
+    let rf = CP_V * a;
+    let a2 = max(dot(rd.xz, rd.xz), 1.0e-8);
+    let bb = -dot(rd.xz, Cf.xz);
+    let cc = dot(Cf.xz, Cf.xz);
+    let Ro = rf + 12.0;
+    let Ri = max(rf - 60.0, 0.0);
+    let dout = bb * bb - a2 * (cc - Ro * Ro);
+    let din = bb * bb - a2 * (cc - Ri * Ri);
+    var tr = 1.0;
+    var acc = vec3<f32>(0.0);
+    if (t1 <= t0 || dout <= 0.0) {
+        return vec4<f32>(acc, tr);
+    }
+    let oa = (-bb - sqrt(dout)) / a2;
+    let ob = (-bb + sqrt(dout)) / a2;
+    var seg = array<vec2<f32>, 3>(vec2<f32>(oa, ob), vec2<f32>(0.0, -1.0), vec2<f32>(0.0, -1.0));
+    var ns = array<i32, 3>(14, 0, 0);
+    if (din > 0.0 && Ri > 0.0) {
+        let ia = (-bb - sqrt(din)) / a2;
+        let ib = (-bb + sqrt(din)) / a2;
+        seg[0] = vec2<f32>(oa, ia);
+        seg[1] = vec2<f32>(ib, ob);
+        seg[2] = vec2<f32>(ia, ib);
+        ns = array<i32, 3>(10, 8, 5);
+    }
+    var order = array<i32, 3>(0, 2, 1);
+    for (var si = 0; si < 3; si = si + 1) {
+        let k2 = order[si];
+        let sa = max(seg[k2].x, t0);
+        let sb = min(seg[k2].y, t1);
+        let n = ns[k2];
+        if (n == 0 || sb <= sa || tr < 0.02) {
+            continue;
+        }
+        for (var i = 0; i < n; i = i + 1) {
+            let u0 = (f32(i) + j) / f32(n);
+            let u1 = (f32(i) + j + 1.0) / f32(n);
+            let t = sa + (sb - sa) * u0 * u0;
+            let dt = (sb - sa) * (u1 * u1 - u0 * u0);
+            let p = rd * t;
+            let dh = cp_front(p, C, Cf, a, amp, hs, quick, inner);
+            // (thin right round the eye: the front passing over it would fill the picture; the lens shows it instead)
+            let den = dh.x * smoothstep(2.0, 30.0, t);
+            if (den <= 0.001) {
+                continue;
+            }
+            let al = 1.0 - exp(-den * dt * 0.3);
+            let wq = p + frame.camera_position.xyz;
+            let bl = gnoise3(wq * vec3<f32>(1.0 / 9.0, 1.0 / 6.0, 1.0 / 9.0) + vec3<f32>(0.0, -1.2 * a + 0.5, 0.0));
+            let lo = (0.45 + 0.55 * saturate(dh.y / 8.0)) * (0.55 + 0.7 * bl);
+            acc = acc + tr * al * (dcol * lo + amb * 0.6 * vec3<f32>(0.62, 0.55, 0.34));
+            tr = tr * (1.0 - al);
+            if (tr < 0.02) {
+                break;
+            }
+        }
+    }
+    return vec4<f32>(acc, tr);
 }
 
 // ---- the debris: chunks and specks of earth thrown out of each crater, falling back round it --------------------------
@@ -396,7 +547,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
     let have = n > 0;
     if (have) {
         let lbm = cp_bomb(n - 1);
-        cp_cap = 0.55 * length((me - (C + lbm.xyz)).xz);
+        cp_cap = 0.45 * length((me - (C + lbm.xyz)).xz);
     }
 
     var d = 0.0;
@@ -504,8 +655,10 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                 }
                 // (the crater's floor glowing in cracks and seams, white-orange to a dull red, cooling over ten seconds)
                 let rc = length((rel - (C + bm.xyz)).xz);
-                let crr = 8.5 * s;
-                if (rc < crr * 1.1 && abs(rel.y - Pf.y + 6.0 * s) < 5.0 * s + 2.0) {
+                // (the crater as carpet.rs digs it: 12.5 across a size (the last's 21), 8 deep (10.6))
+                let crr = select(12.5, 21.0, big) * s;
+                let cdp = select(8.0, 10.6, big) * s;
+                if (rc < crr * 1.1 && abs(rel.y - (C.y + bm.y) + 0.5 * cdp) < 0.5 * cdp + 3.0) {
                     let w = rel + cam;
                     let cr = smoothstep(0.56, 0.8, gnoise3(vec3<f32>(w.xz / 1.7, f32(b) * 3.1))) + 0.35 * smoothstep(0.45, 0.75, gnoise3(vec3<f32>(w.xz / 4.0, 3.0 + f32(b))));
                     let cool = exp(-a / 3.5);
@@ -538,27 +691,57 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
         let side = vec3<f32>(-dir2.y, 0.0, dir2.x);
         var ctau = 0.0;
         var cc = vec3<f32>(0.0);
-        for (var e = 0; e < 2; e = e + 1) {
-            let o = C + vec3<f32>(cp_w(8u), CP_HB, cp_w(9u)) + side * (select(-3.5, 3.5, e == 1));
+        for (var e = 0; e < 4; e = e + 1) {
+            // (from its four engine pods, under its wings)
+            let eo = select(select(9.0, 16.0, e == 3), select(-16.0, -9.0, e == 1), e < 2);
+            let o = C + vec3<f32>(cp_w(8u), CP_HB + 1.0, cp_w(9u)) + side * eo;
             let pa = o + dir * (shead - 2600.0);
-            let pb = o + dir * (shead - 0.5 * vb);
+            let pb = o + dir * (shead - 14.0 - 0.5 * vb);
             let h = ray_seg(rd, pa, pb);
             if (h.y > scene_len) {
                 continue;
             }
             // (its age where the ray passes it: laid at the head, older back along it)
             let age = (1.0 - h.z) * 2600.0 / vb + 0.5;
-            let wdt = 1.6 + 1.0 * sqrt(age) + h.y * px_a * 0.6;
+            let wdt = 0.9 + 0.9 * sqrt(age) + h.y * px_a * 0.6;
             let sl = shead - (1.0 - h.z) * 2600.0;
             let nb = gnoise3(vec3<f32>(sl / 24.0, f32(e) * 7.0, age * 0.02));
             let brk = saturate((nb - 0.08 - 0.35 * smoothstep(8.0, 40.0, age)) * 2.5);
-            let dens = exp(-pow(h.x / wdt, 2.0)) * min((1.6 + 1.0 * sqrt(age)) / wdt, 1.0) * brk * exp(-age / 28.0) * smoothstep(0.0, 1.0, age);
-            ctau = ctau + dens * 0.5;
-            cc = cc + dens * 0.5 * (vec3<f32>(0.92, 0.93, 0.95) * (sunc * 0.8 + amb * 0.9));
+            let dens = exp(-pow(h.x / wdt, 2.0)) * min((0.9 + 0.9 * sqrt(age)) / wdt, 1.0) * brk * exp(-age / 28.0) * smoothstep(0.0, 1.0, age);
+            ctau = ctau + dens * 0.35;
+            cc = cc + dens * 0.35 * (vec3<f32>(0.92, 0.93, 0.95) * (sunc * 0.8 + amb * 0.9));
         }
         if (ctau > 0.0) {
             let al = (1.0 - exp(-ctau)) * k * fade;
             col = mix(col, mix(cc / ctau, haze_c, 0.35), al);
+        }
+        // ---- the bomber: a swept-wing heavy bomber's dark shape high over the land, flying the line, coming out of the
+        // haze before the first bomb and on steadily after the last, fading off; seen from below, against the sky ----
+        if (rd.y > 1.0e-3 && C.y + CP_HB > 0.0) {
+            let tp = (C.y + CP_HB) / rd.y;
+            if (tp < scene_len) {
+                let hp = rd * tp - (C + vec3<f32>(cp_w(8u), CP_HB, cp_w(9u)) + dir * shead);
+                let al = dot(hp.xz, dir2);
+                let ax = abs(dot(hp.xz, vec2<f32>(-dir2.y, dir2.x)));
+                // (its outline as a B-52's, 48 long and 56 across: fuselage, wings swept back to thin tips, the
+                // tailplane, four engine pods under the wings)
+                let fus = max(abs(al + 2.0) - 24.0, ax - 1.8 * (1.0 - 0.5 * smoothstep(14.0, 26.0, abs(al + 2.0))));
+                let wing = max(abs(al - (4.0 - 0.62 * ax)) - mix(9.0, 2.6, saturate(ax / 28.0)), ax - 28.0);
+                let tail = max(abs(al - (-22.0 - 0.55 * ax)) - mix(3.2, 1.2, saturate(ax / 9.0)), ax - 9.0);
+                let pod1 = length(vec2<f32>(al - (6.0 - 0.62 * 9.0), ax - 9.0) / vec2<f32>(3.2, 0.9)) - 1.0;
+                let pod2 = length(vec2<f32>(al - (6.0 - 0.62 * 16.0), ax - 16.0) / vec2<f32>(3.2, 0.9)) - 1.0;
+                let sd = min(min(fus, wing), min(tail, min(pod1, pod2) * 0.9));
+                let fpx = max(tp * px_a, 0.05);
+                let cov = saturate(0.5 - sd / fpx);
+                if (cov > 0.0) {
+                    let showb = smoothstep(0.2, 1.6, time) * (1.0 - smoothstep(cp_bomb(lastb).w + 2.0, cp_bomb(lastb).w + 7.0, time));
+                    // (dark from below, a glint of the sun off it, greyed by the air between)
+                    let glint = pow(saturate(dot(reflect(rd, vec3<f32>(0.0, -1.0, 0.0)), L)), 30.0) * 2.0;
+                    var bc = vec3<f32>(0.07, 0.075, 0.085) * (amb * 1.3 + sunc * 0.15) + sunc * glint * 0.4;
+                    bc = mix(bc, haze_c, saturate((1.0 - exp(-tp / 2600.0)) * 0.6 + 0.04));
+                    col = mix(col, bc, cov * showb * k * fade);
+                }
+            }
         }
     }
 
@@ -600,7 +783,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                 w = 1.0 - smoothstep(until - 1.6, until - 0.05, a);
             }
             // (the last one's lingers, thinning away)
-            w = w * (1.0 - smoothstep(15.0, 28.0, a));
+            w = w * (1.0 - select(smoothstep(15.0, 28.0, a), smoothstep(24.0, 34.0, a), b == lastb));
             if (w <= 0.0) {
                 continue;
             }
@@ -608,7 +791,12 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
             let Sv = vec2<f32>(s, w);
             let hv = u32(cp_w(CP_B + CP_BW * u32(b) + 6u)) + seed * 7u;
             let dm = cp_body_dim(a, s);
-            let iv = cp_sphere(rd, Bv.xyz + cp_wind() * (0.4 * a) + vec3<f32>(0.0, 0.4 * dm.y, 0.0), max(dm.x * 1.45, dm.y * 1.2 + dm.z) + 16.0);
+            var iv = cp_sphere(rd, Bv.xyz + cp_wind() * (0.4 * a) + vec3<f32>(0.0, 0.4 * dm.y, 0.0), max(dm.x * 1.45, dm.y * 1.2 + dm.z) + 16.0);
+            if (b == lastb) {
+                let wl = cp_wind();
+                let wdir = select(vec3<f32>(1.0, 0.0, 0.0), wl / max(length(wl), 1.0e-4), length(wl) > 0.05);
+                iv = cp_sphere(rd, Bv.xyz + vec3<f32>(0.0, 0.45 * dm.y, 0.0) + wdir * (0.5 * dm.z), max(dm.x * 1.6, 0.65 * dm.y) + 0.6 * dm.z + 30.0);
+            }
             if (iv.y > iv.x) {
                 lo = vec2<f32>(min(lo.x, iv.x), max(lo.y, iv.y));
             }
@@ -660,7 +848,8 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                 let lsc = select(1.0, 1.9, Sn.x > 1.4);
                 let st = max(1.6 * lsc, t * 0.006) * (0.75 + 0.5 * j);
                 let sd = cp_lumps(p, bd.x, a, true, lsc);
-                let ramp = saturate(-sd.x / (1.2 + 3.0 * smoothstep(1.0, 6.0, a)));
+                let fsoft = select(0.0, smoothstep(14.0, 26.0, a), Sn.x > 1.4);
+                let ramp = saturate(-sd.x / (1.2 + 3.0 * smoothstep(1.0, 6.0, a) + 14.0 * fsoft));
                 var den = ramp * mix(saturate(0.2 + 1.6 * sd.z), 1.0, ramp * ramp) * Sn.y;
                 if (den > 0.002) {
                     // (the sun through the rest of the bodies: two looks towards it, looked for afresh while what lies
@@ -797,6 +986,52 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
             }
         }
     }
+    // ---- the shockwave fronts: the last's as the Payload's, racing out at the speed of sound over the land and on
+    // past the player; the small ones' smaller and quicker, rippling out in turn (the two latest at most) -------------
+    if (stage != 2u && have && latest >= 0) {
+        var ylo = min(C.y, me.y) - 6.0;
+        var yhi = max(C.y, me.y) + 45.0;
+        if (cp_w(CP_HF) > 1.0) {
+            ylo = min(ylo, C.y + cp_w(CP_HF + 2u) - 6.0);
+            yhi = max(yhi, C.y + cp_w(CP_HF + 3u) + 45.0);
+        }
+        var t0 = 0.0;
+        var t1 = min(min(scene_len, col_t), 1600.0);
+        if (abs(rd.y) > 1.0e-5) {
+            let ya = ylo / rd.y;
+            let yb = yhi / rd.y;
+            t0 = max(t0, min(ya, yb));
+            t1 = min(t1, max(ya, yb));
+        } else if (ylo > 0.0 || yhi < 0.0) {
+            t1 = -1.0;
+        }
+        let jf = ign(in.position.xy + vec2<f32>(0.0, fract(time * 5.0) * 53.0));
+        let dcol = vec3<f32>(0.62, 0.55, 0.34) * sunc * 0.75;
+        for (var j = 0; j < 3; j = j + 1) {
+            let b = select(latest - j, lastb, j == 2);
+            if (b < 0 || (j < 2 && b == lastb) || (j == 2 && latest != lastb)) {
+                continue;
+            }
+            let bm = cp_bomb(b);
+            let a = time - bm.w;
+            let big = b == lastb;
+            if (a <= 0.0 || a > select(1.2, 32.0, big)) {
+                continue;
+            }
+            let s = cp_size(b);
+            let amp = select(0.55 * (1.0 - smoothstep(0.55, 1.15, a)), 1.0, big);
+            let fr = cp_front_march(rd, C, C + bm.xyz, a, amp, select(0.55 * s, 1.0, big), select(3.0, 1.0, big), select(12.0 * s, 32.0, big), t0, t1, jf, dcol, amb);
+            if (fr.w < 0.999) {
+                let kf = k * fade;
+                veil = veil * (1.0 - kf + kf * fr.w);
+                if (stage == 0u) {
+                    col = mix(col, col * fr.w + fr.rgb, kf);
+                } else {
+                    hc = vec4<f32>(hc.rgb * (1.0 - kf + kf * fr.w) + fr.rgb * kf, hc.a * (1.0 - kf + kf * fr.w));
+                }
+            }
+        }
+    }
     if (stage == 1u) {
         return CpOut(hc, vec4<f32>(min(scene_len, 6.0e4), min(col_t, 6.0e4), 0.0, 0.0));
     }
@@ -817,18 +1052,18 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
             // (a cheap look first: nothing of this one's fires near the ray)
             let mc = Cb + vec3<f32>(0.0, 4.0, 0.0);
             let tm = max(dot(mc, rd), 0.0);
-            let reach = select(30.0, 42.0, big) * s + 8.0;
+            let reach = select(45.0, 80.0, big) * s + 8.0;
             if (length(mc - rd * tm) > reach + 6.0 || tm - reach > lim) {
                 continue;
             }
             if (I > 0.0) {
-                let fr = select(10.0, 14.0, big) * s;
-                glow = glow + cp_flames(rd, Cb, fr, select(6.0 + 4.0 * s, 10.0 + 4.0 * s, big), select(4.5, 6.2, big) * s, lim, jf, time, f32(b) * 7.3, I);
+                let fr = select(13.75, 23.0, big) * s;
+                glow = glow + cp_flames(rd, Cb, fr, select(6.0 + 4.0 * s, 10.0 + 4.0 * s, big), select(8.0, 10.6, big) * s, lim, jf, time, f32(b) * 7.3, I);
                 // (spot fires out where the blast swept: brush and the trees it felled)
                 for (var f = 0u; f < 4u; f = f + 1u) {
                     let hk = u32(b) * 8u + f;
                     let ang = TAU * mh(hk, seed, 0x701u);
-                    let rr = select(24.0, 34.0, big) * s * (0.4 + 0.65 * mh(hk, seed, 0x702u));
+                    let rr = select(35.0, 71.0, big) * s * (0.4 + 0.65 * mh(hk, seed, 0x702u));
                     let off = vec2<f32>(cos(ang), sin(ang)) * rr;
                     let gq = bm.xz + off;
                     let sc = C + vec3<f32>(gq.x, cp_land(gq), gq.y);
@@ -843,7 +1078,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                     let per = 2.4 + 1.8 * mh(hk, seed, 0x711u);
                     let ea = fract((a + per * mh(hk, seed, 0x712u)) / per) * per;
                     let ang = TAU * mh(hk, seed, 0x713u);
-                    let r0 = 9.0 * s * sqrt(mh(hk, seed, 0x714u));
+                    let r0 = select(11.0, 19.0, big) * s * sqrt(mh(hk, seed, 0x714u));
                     let ph = TAU * mh(hk, seed, 0x715u);
                     let pe = Cb + vec3<f32>(cos(ang) * r0, 0.5 + ea * (2.5 + 3.0 * mh(hk, seed, 0x716u)) + 0.6 * ea * ea, sin(ang) * r0)
                         + cp_wind() * (0.8 * ea) + vec3<f32>(sin(ea * 2.1 + ph), 0.0, cos(ea * 1.7 + ph)) * 1.4 * ea;
@@ -904,7 +1139,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                 continue;
             }
             // (out of the haze under the bomber, coming clearer as it falls)
-            let show = smoothstep(CP_FALL, CP_FALL - 0.7, tau);
+            let show = smoothstep(CP_FALL, CP_FALL - 0.2, tau);
             let w = max(0.55 * s, h.y * px_a * 0.7);
             cov = max(cov, exp(-pow(h.x / w, 2.0)) * min(0.55 * s / w, 1.0) * show);
             // (the torn air behind it: a faint pale line along its last half second, thinning)
@@ -1054,10 +1289,13 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
         let s = cp_size(lastb);
         let Cf = C + bm.xyz;
         let rc = length(Cf.xz);
-        let Rd = s * (52.0 * (1.0 - exp(-a / 1.0)) + 1.0 * min(a, 15.0));
+        let Rd = min(s * (52.0 * (1.0 - exp(-a / 1.0)) + 1.0 * min(a, 15.0)), cp_cap * 1.35);
         let hc0 = -Cf.y - cp_land(-C.xz);
-        let E = smoothstep(rc - 30.0, rc + 4.0, Rd) * (0.3 + 0.7 * exp(-a / 3.0)) * (1.0 - smoothstep(9.0, 20.0, a))
-            * smoothstep(40.0, 8.0, hc0) * smoothstep(1800.0, 600.0, rc) * fade * k;
+        // (as the Payload's: from the moment its front reaches the eye, the air thick with it, clearing as it settles)
+        let tfr = a - rc / CP_V;
+        let E = max(smoothstep(-0.08, 0.05, tfr) * (0.6 * exp(-tfr / 0.8) + 0.4 * exp(-tfr / 3.5)) * smoothstep(2600.0, 900.0, rc),
+                    0.6 * smoothstep(rc - 30.0, rc + 4.0, Rd) * (1.0 - smoothstep(9.0, 20.0, a)))
+            * smoothstep(40.0, 8.0, hc0) * fade * k;
         if (E > 0.002) {
             let dust_c = vec3<f32>(0.5, 0.46, 0.4) * (sunc * 0.55 + amb * 0.8);
             let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -1071,7 +1309,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
         // (muck thrown on the lens as the front passes, far out of focus: the Payload's drops)
         let tau = a - rc / CP_V;
         // (only where its dust comes: close in front of it)
-        let vis = smoothstep(40.0, 8.0, hc0) * smoothstep(170.0, 110.0, rc) * smoothstep(30.0, 70.0, rc) * k;
+        let vis = smoothstep(40.0, 8.0, hc0) * smoothstep(2600.0, 900.0, rc) * smoothstep(40.0, 90.0, rc) * k;
         if (vis > 0.0 && tau > 0.2) {
             let pxy = in.position.xy;
             let res = frame.resolution.xy;

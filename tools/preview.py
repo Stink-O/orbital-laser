@@ -386,6 +386,10 @@ VIEWS = {
     "cpaerial": "cx=170 cy=280 cz=-300 lx=-62 ly=62 lz=-100 flat=1 trees=1 fov=60 reach=120",
     # close by the craters at the near end of the line, after the blasts: the fires, embers and glowing floors
     "cpfire": "cx=17 cy=74 cz=-109 lx=-42 ly=66 lz=-71 flat=1 fov=60 reach=120",
+    # the last blast from the side, square on to it (the target at 0.5 65 0.5; the Payload's from the same place), and
+    # the sky over the bomber's pass from where the player stands, close in (seed 37)
+    "fside": "cx=250 cy=90 cz=-60 lx=0 ly=85 lz=0 flat=1 trees=1 fov=65 reach=120",
+    "cpsky": "cx=0 cy=80 cz=120 lx=-150 ly=697 lz=-240 flat=1 trees=1 fov=22 reach=120",
     "cpfar": "cx=60 cy=95 cz=700 lx=0.5 ly=110 lz=-100 flat=1 trees=1 fov=55 reach=120",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
