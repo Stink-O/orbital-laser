@@ -999,30 +999,10 @@ pub(super) fn key(game: &mut Game<'_>, key: &str, pressed: bool) {
         }
     }
 }
-/// The audio output at the ALSA default buffer (about 100 ms, as the fork plays) instead of upstream's short 1024
-/// frames, unless HORIZON_AUDIO_BUFFER is set: with the short one a heavy strike's stalled frames ran the device dry,
-/// ALSA answered POLLERR for good and every sound stopped until the game was restarted (upstream reopens the output
-/// only when its device is gone). Once, on the first tick: the variable is set and the output reopened on its device.
-fn roomy_audio(game: &mut Game<'_>) {
-    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if DONE.swap(true, std::sync::atomic::Ordering::Relaxed) || std::env::var_os("HORIZON_AUDIO_BUFFER").is_some() {
-        return;
-    }
-    // SAFETY: set once, from the game's main thread, before the output is opened again; nothing else in the game
-    // writes the environment.
-    unsafe { std::env::set_var("HORIZON_AUDIO_BUFFER", "default") };
-    let device = game.audio.device().to_owned();
-    match game.audio.set_device(&device) {
-        Ok(()) => log::info!("[mod orbital] audio output reopened with the default buffer (HORIZON_AUDIO_BUFFER=default)"),
-        Err(e) => log::warn!("[mod orbital] audio output not reopened with the default buffer: {e}"),
-    }
-}
-
 pub(super) fn tick(game: &mut Game<'_>) {
     if !running(game) {
         return;
     }
-    roomy_audio(game);
     warn_no_content(game);
     let heard: Vec<String> = SERVER_COMMANDS.lock().map(|mut c| std::mem::take(&mut *c)).unwrap_or_default();
     for c in heard {
