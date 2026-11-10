@@ -252,21 +252,18 @@ fn cp_burn(a: f32, big: bool) -> f32 {
     let life = select(13.0, 22.0, big);
     return smoothstep(0.15, 0.8, a) * (1.0 - smoothstep(life * 0.4, life, a));
 }
-// ---- the light inside the smoke: each blast's glow blooming through it, and cook-offs: small flashes going off in it
-// for seconds after each blast and all through the last one's column. The three lights that count at this moment (the
-// two latest blasts' glow, the brightest cook-off), camera-relative, their strength in .w, their reach in `r`.
+// ---- the light inside the smoke: each blast's glow blooming through it as it goes off, fading out over about a second.
+// The two that count at this moment (the two latest blasts'), camera-relative, their strength in .w, their reach in `r`.
 struct CpLit {
     l0: vec4<f32>,
     l1: vec4<f32>,
-    l2: vec4<f32>,
-    r: vec3<f32>,
+    r: vec2<f32>,
 }
-fn cp_lights(C: vec3<f32>, time: f32, latest: i32, lastb: i32, seed: u32) -> CpLit {
+fn cp_lights(C: vec3<f32>, time: f32, latest: i32, lastb: i32) -> CpLit {
     var o: CpLit;
     o.l0 = vec4<f32>(0.0);
     o.l1 = vec4<f32>(0.0);
-    o.l2 = vec4<f32>(0.0);
-    o.r = vec3<f32>(1.0);
+    o.r = vec2<f32>(1.0);
     if (latest < 0) {
         return o;
     }
@@ -280,7 +277,7 @@ fn cp_lights(C: vec3<f32>, time: f32, latest: i32, lastb: i32, seed: u32) -> CpL
         let s = cp_size(b);
         let big = b == lastb;
         let dm = cp_body_dim(max(a, 0.05), s);
-        let g = (2.0 * exp(-a / 0.12) + 0.6 * exp(-a / 0.7) + select(0.0, 0.12 * exp(-a / 2.5), big)) * s * select(1.0, 1.4, big);
+        let g = (2.0 * exp(-a / 0.15) + 0.8 * exp(-a / 0.45)) * s * select(1.0, 1.4, big) * step(0.0, a);
         let l = vec4<f32>(C + bm.xyz + vec3<f32>(0.0, 0.35 * dm.y, 0.0), g);
         if (j == 0) {
             o.l0 = l;
@@ -290,44 +287,14 @@ fn cp_lights(C: vec3<f32>, time: f32, latest: i32, lastb: i32, seed: u32) -> CpL
             o.r.y = dm.x * 0.6;
         }
     }
-    // (the cook-offs: of the last few blasts, and the last's all through its column)
-    for (var b = max(latest - 3, 0); b <= latest; b = b + 1) {
-        let bm = cp_bomb(b);
-        let a = time - bm.w;
-        let big = b == lastb;
-        if (a < 0.5 || a > select(6.0, 17.0, big)) {
-            continue;
-        }
-        let s = cp_size(b);
-        let dm = cp_body_dim(a, s);
-        let cnt = select(7u, 26u, big);
-        for (var k = 0u; k < cnt; k = k + 1u) {
-            let hk = u32(b) * 64u + k;
-            let tk = select(0.6 + 4.6 * mh(hk, seed, 0x731u), 0.7 + 15.0 * pow(mh(hk, seed, 0x731u), 1.2), big);
-            let dur = 0.07 + 0.2 * mh(hk, seed, 0x732u);
-            let e = (a - tk) / dur;
-            if (e <= 0.0 || e >= 1.0) {
-                continue;
-            }
-            let g = sin(3.14159 * e) * (0.6 + 1.2 * mh(hk, seed, 0x733u)) * (0.7 + 0.3 * sin(time * 47.0 + f32(k))) * s * select(1.0, 1.6, big);
-            if (g > o.l2.w) {
-                let ang = TAU * mh(hk, seed, 0x734u);
-                let rr = dm.x * 0.55 * sqrt(mh(hk, seed, 0x735u));
-                o.l2 = vec4<f32>(C + bm.xyz + vec3<f32>(cos(ang) * rr, dm.y * (0.15 + 0.75 * mh(hk, seed, 0x736u)), sin(ang) * rr) + cp_wind() * (0.4 * a), g);
-                o.r.z = (7.0 + 9.0 * mh(hk, seed, 0x737u)) * s;
-            }
-        }
-    }
     return o;
 }
-// The light those three give smoke or dust at p.
+// The light those two give smoke or dust at p.
 fn cp_lit_at(lt: CpLit, p: vec3<f32>) -> vec3<f32> {
     let d0 = p - lt.l0.xyz;
     let d1 = p - lt.l1.xyz;
-    let d2 = p - lt.l2.xyz;
     let g = lt.l0.w / (1.0 + dot(d0, d0) / (lt.r.x * lt.r.x)) + lt.l1.w / (1.0 + dot(d1, d1) / (lt.r.y * lt.r.y));
-    let c = lt.l2.w / (1.0 + dot(d2, d2) / (lt.r.z * lt.r.z));
-    return vec3<f32>(2.6, 1.1, 0.3) * g + vec3<f32>(3.0, 1.6, 0.55) * c;
+    return vec3<f32>(2.6, 1.1, 0.3) * g;
 }
 
 // A field of flames in a vertical cylinder (its middle `c` on its ground, camera-relative; radius rr, flames up to hh,
@@ -603,7 +570,7 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
     var col_t = select(1.0e9, up_t, stage == 2u);
     var lit: CpLit;
     if (stage != 2u) {
-        lit = cp_lights(C, time, latest, lastb, seed);
+        lit = cp_lights(C, time, latest, lastb);
     }
     // (how much of what lies behind the smoke and the dust still shows through: the fires behind them veiled by it)
     var veil = select(1.0, up.a, stage == 2u);
@@ -717,10 +684,10 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                     let fire = exp(-a / 0.2) * exp(-max(p.y - Bn.y, 0.0) / (6.0 * Sn.x + 14.0 * a)) * core;
                     c = c * (1.0 - saturate(fire * 2.0)) + vec3<f32>(3.4, 1.3, 0.25) * (0.55 + 0.6 * sd.y) * saturate(fire * 1.7);
                     c = c + vec3<f32>(1.2, 0.4, 0.08) * exp(-a / 0.35) * exp(-max(p.y - Bn.y, 0.0) / (4.0 * Sn.x)) * 0.4;
-                    // (its base lit from under by the fires burning in the crater, flickering)
-                    // (lit from inside by the blasts' glow and the cook-offs going off in it: more in its thin fringe than deep in it)
+                    // (its base lit from under by the fires burning in the crater, steadily)
+                    // (lit from inside by the blasts' glow as they go off: more in its thin fringe than deep in it)
                     c = c + cp_lit_at(lit, p) * (0.35 + 0.65 * (1.0 - sd.y)) * 0.35;
-                    let fb = cp_burn(a, Sn.x > 1.4) * (0.8 + 0.2 * sin(time * 17.0 + p.x * 0.3));
+                    let fb = cp_burn(a, Sn.x > 1.4);
                     c = c + vec3<f32>(1.5, 0.55, 0.12) * fb * exp(-max(p.y - Bn.y, 0.0) / (2.5 * Sn.x)) * (0.3 + 0.4 * (1.0 - sd.y)) * 0.1;
                     let ext = den * 0.55 * st;
                     let al = 1.0 - exp(-ext);
