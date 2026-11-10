@@ -3693,10 +3693,11 @@ fn skybreak(in: StageIn, stage: u32, up: vec4<f32>, up_e: vec2<f32>) -> SbOut {
         let full = vec2<i32>(frame.resolution.xy);
         let q = vec2<i32>(floor(in.position.xy)) * 2;
         let q1 = min(q + vec2<i32>(1), full - vec2<i32>(1));
-        let d0 = textureLoad(scene_depth, q, 0);
-        let d1 = textureLoad(scene_depth, vec2<i32>(q1.x, q.y), 0);
-        let d2 = textureLoad(scene_depth, vec2<i32>(q.x, q1.y), 0);
-        let d3 = textureLoad(scene_depth, q1, 0);
+        // (through depth_at, not textureLoad: the native build's depth is a plain texture, OpenGL can't load from a depth one)
+        let d0 = depth_at((vec2<f32>(q) + 0.5) * frame.resolution.zw);
+        let d1 = depth_at((vec2<f32>(f32(q1.x), f32(q.y)) + 0.5) * frame.resolution.zw);
+        let d2 = depth_at((vec2<f32>(f32(q.x), f32(q1.y)) + 0.5) * frame.resolution.zw);
+        let d3 = depth_at((vec2<f32>(q1) + 0.5) * frame.resolution.zw);
         let hq = vec2<i32>(floor(in.position.xy));
         d = select(min(min(d0, d1), min(d2, d3)), max(max(d0, d1), max(d2, d3)), ((hq.x + hq.y) & 1) == 0);
         uv = (vec2<f32>(q) + 1.0) * frame.resolution.zw;

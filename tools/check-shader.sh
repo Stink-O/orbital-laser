@@ -14,15 +14,18 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 bin="$here/wgslcheck/target/release/wgslcheck"
 [ -x "$bin" ] || (cd "$here/wgslcheck" && cargo build --release --quiet)
+# (the fork's prelude; then the whole check again on the native build's, whose depth is a plain texture: a pass that
+# loads depth with textureLoad compiles on the fork and not natively)
+prelude="${PRELUDE:-$here/wgslcheck/prelude.wgsl}"
 tmp="$(mktemp -t orbital-check.XXXXXX)"
 trap 'rm -f "$tmp"' EXIT
 if [ $# -gt 0 ]; then
-    cat "$here/wgslcheck/prelude.wgsl" "$1" > "$tmp"
+    cat "$prelude" "$1" > "$tmp"
     "$bin" "$tmp"
     exit
 fi
 shaders="$here/../mod/shaders"
-cat "$here/wgslcheck/prelude.wgsl" "$shaders/strike.wgsl" > "$tmp"
+cat "$prelude" "$shaders/strike.wgsl" > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "strike.wgsl:"; echo "$out"; exit 1; }
 # (strike.wgsl up to its fs_main less the lasers' pass's own, and the Mothership's ship unless the laser's says it uses it)
 pre() {
@@ -37,7 +40,7 @@ body() {
     [ "$1" != volcano ] || cat "$shaders/volcano_mount.wgsl"
 }
 for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane tsunami fold volcano skybreak carpetbomb; do
-    { cat "$here/wgslcheck/prelude.wgsl"; pre "$own"; body "$own"; } > "$tmp"
+    { cat "$prelude"; pre "$own"; body "$own"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass (strike.wgsl up to its fs_main, then $own.wgsl):"; echo "$out"; exit 1; }
     # the game takes a pass of 256 KiB at most
     size=$(( $(pre "$own" | wc -c) + $(body "$own" | wc -c) ))
@@ -45,10 +48,13 @@ for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercel
 done
 # the payload's and the nuke's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
 for own in payload nuke rod supercell hurricane volcano skybreak carpetbomb; do
-    { cat "$here/wgslcheck/prelude.wgsl"; pre "$own"; body "$own" | sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d'; } > "$tmp"
+    { cat "$prelude"; pre "$own"; body "$own" | sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d'; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done
 # the Fold's world warp, as it goes into the game's terrain and entity shaders (their Globals' warp, and Warped)
 { printf 'var<private> warp_section: vec3<f32>;\nstruct G { fog_color: vec4<f32>, sky_color: vec4<f32>, sun: vec4<f32>, fog: vec4<f32>, warp: array<vec4<f32>, 6> }\n@group(0) @binding(0) var<uniform> globals: G;\nstruct Warped { pos: vec3<f32>, tint: vec3<f32> }\nstruct Fragment { home: vec3<f32>, at: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f32>, light: vec2<f32>, cut: f32, copy: u32, front: bool }\nstruct Painted { color: vec4<f32>, fog: f32 }\nfn sprite(uv: vec2<f32>, layer: u32) -> vec4<f32> { return vec4<f32>(uv, f32(layer), 1.0); }\n'; cat "$shaders/fold_warp.wgsl"; } > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "the Fold's world warp:"; echo "$out"; exit 1; }
+if [ -z "${PRELUDE:-}" ] && [ -f "$here/../native/engine-shim/mod_post.wgsl" ]; then
+    PRELUDE="$here/../native/engine-shim/mod_post.wgsl" "$0" > /dev/null || { echo "on the native build's prelude:"; PRELUDE="$here/../native/engine-shim/mod_post.wgsl" "$0"; exit 1; }
+fi
 echo OK
