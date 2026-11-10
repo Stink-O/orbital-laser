@@ -390,6 +390,10 @@ VIEWS = {
     # the sky over the bomber's pass from where the player stands, close in (seed 37)
     "fside": "cx=250 cy=90 cz=-60 lx=0 ly=85 lz=0 flat=1 trees=1 fov=65 reach=120",
     "cpsky": "cx=0 cy=80 cz=120 lx=-150 ly=697 lz=-240 flat=1 trees=1 fov=22 reach=120",
+    # the sky from where the player stands: wide, looking towards the target (the bomber coming in, the drop), and away
+    # from it (the bomber going) (seed 37)
+    "cpskyf": "cx=0 cy=80 cz=120 lx=-200 ly=420 lz=-300 flat=1 trees=1 fov=100 reach=120",
+    "cpskyb": "cx=0 cy=80 cz=120 lx=320 ly=420 lz=630 flat=1 trees=1 fov=100 reach=120",
     "cpfar": "cx=60 cy=95 cz=700 lx=0.5 ly=110 lz=-100 flat=1 trees=1 fov=55 reach=120",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",

@@ -22,7 +22,14 @@ const TAU: f64 = 2.0 * PI;
 /// The bombs in the stick, the first one's blast (strike time), the time between them (the last one's a breath
 /// longer), the ground between them (blocks), how big the last is (the others about 1).
 pub(super) const CP_N: usize = 13;
-pub(super) const CP_T0: f32 = 3.6;
+pub(super) const CP_T0: f32 = 7.0;
+/// The bomber: it comes out of the haze far beyond the target this soon, flies the line's way at this speed (blocks a
+/// second), lets the stick go one after another over CP_RIPPLE seconds from CP_RELEASE as it passes over the start of
+/// the line, and flies on past the player, out of sight a little after the last blast (carpetbomb.wgsl).
+pub(super) const CP_APPEAR: f32 = 0.3;
+const CP_PLANE_V: f64 = 170.0;
+pub(super) const CP_RELEASE: f32 = 4.4;
+const CP_RIPPLE: f32 = 1.8;
 const CP_GAP: f32 = 0.6;
 const CP_LAST_GAP: f32 = 1.0;
 const CP_SPACING: f64 = 22.0;
@@ -133,6 +140,13 @@ fn cp_bomb_words(g: &CpGeo, ys: &[f64]) -> Vec<u32> {
     let across = last.x * -g.dir[1] + last.z * g.dir[0];
     w[8] = (-g.dir[1] * across) as f32;
     w[9] = (g.dir[0] * across) as f32;
+    // (the bomber: its speed, the middle of its release and where it is along the line then (a little short of the
+    // first bomb's place: the stick falls on forward), when it comes out of the haze)
+    w[10] = CP_PLANE_V as f32;
+    w[11] = CP_RELEASE + 0.5 * CP_RIPPLE;
+    w[12] = CP_RIPPLE;
+    w[13] = (g.bombs[0].along - 40.0) as f32;
+    w[14] = CP_APPEAR;
     for (i, b) in g.bombs.iter().enumerate() {
         let o = CP_B + CP_BW * i;
         w[o] = b.t;
@@ -733,7 +747,10 @@ fn blast_far(d: f64) -> f64 {
 /// sticks between them. Only the last, biggest one gets the Payload's whole alternative blast, its rush and its tail,
 /// and the Nuke's alternative blast under it, and the ground's thump ahead of it.
 fn cp_sounds(p: &mut Plan, geo: &CpGeo, at: [f64; 3], me: [f64; 3]) {
-    cue(p, 0.1, "carpetbomb.drone", 0.8, 1.0);
+    // (its drone following it over: five overlapping, swelling as it passes nearest, a little lower as it goes away)
+    for (t, v, pitch) in [(0.1, 0.45, 1.04), (3.3, 0.7, 1.03), (6.2, 1.0, 1.0), (9.1, 0.7, 0.95), (12.0, 0.4, 0.92)] {
+        cue(p, t, "carpetbomb.drone", v, pitch);
+    }
     let last = CP_N - 1;
     let d_last = sound_from([at[0] + geo.bombs[last].x, at[1], at[2] + geo.bombs[last].z], me).1.max(1.0);
     for (b, bomb) in geo.bombs.iter().enumerate() {
@@ -1004,6 +1021,11 @@ mod tests {
                 }
                 // the stick's walk at the bomber's speed, about the spacing a gap
                 assert!((g.vb - CP_SPACING / f64::from(CP_GAP)).abs() < 6.0, "{}", g.vb);
+                // the bomber lets each bomb go well before it strikes, the stick over CP_RIPPLE as it comes over the line
+                for (k, b) in g.bombs.iter().enumerate() {
+                    let rel = CP_RELEASE + CP_RIPPLE * k as f32 / (CP_N - 1) as f32;
+                    assert!(rel > CP_APPEAR + 3.5 && b.t - rel > 2.0, "bomb {k} let go at {rel}, strikes at {}", b.t);
+                }
                 // and the length: the last blast's dust has time to settle
                 assert!(lastb.t < crate::lasers::CARPET_BOMB.length - 18.0);
             }

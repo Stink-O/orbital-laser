@@ -11,7 +11,7 @@
 // over them and muck on the lens. At most three blasts' smoke is drawn whole at once: each older one sinks into the
 // line's dust as the next ones come.
 // strike/carpet.rs lays the stick out in the table (cp_table, render.set-data): keep the CP_* in step.
-const CP_LEN: f32 = 34.0;          // the strike's length (lasers.rs): everything fades out over its last CP_FADE
+const CP_LEN: f32 = 37.5;          // the strike's length (lasers.rs): everything fades out over its last CP_FADE
 const CP_FADE: f32 = 7.0;
 const CP_V: f32 = 343.0;           // a blast's front, blocks a second (with its sound: carpet.rs)
 const CP_B: u32 = 16u;             // the bombs from CP_B, CP_BW words each (when, x, z, ground, size, along, hash)
@@ -21,9 +21,6 @@ const CP_DB: u32 = 10496u;         // the debris (carpet.rs's cp_debris_words), 
 const CP_DW: u32 = 10u;
 const CP_DPB: i32 = 24;
 const CP_NMAX: i32 = 14;
-const CP_FALL: f32 = 3.0;          // a bomb is seen falling this long, out of the haze under the bomber
-const CP_VY: f32 = 230.0;          // how fast it comes down as it strikes, blocks a second
-const CP_G: f32 = 14.0;            // and how fast it was gathering speed
 const CP_HB: f32 = 632.0;            // the bomber's height over the land (the bombs leave its belly)
 
 fn cp_w(i: u32) -> f32 {
@@ -49,12 +46,26 @@ fn cp_bomb(b: i32) -> vec4<f32> {
 fn cp_size(b: i32) -> f32 {
     return max(cp_w(CP_B + CP_BW * u32(b) + 4u), 0.5);
 }
-// Where bomb b is `tau` seconds before it strikes (from the target's ground point): coming down steeply on a straight
-// line along the stick's way, faster and faster.
-fn cp_fall(b: i32, tau: f32) -> vec3<f32> {
-    let p = cp_bomb(b).xyz;
-    let d = cp_dir() * (cp_w(5u) * tau);
-    return p + vec3<f32>(-d.x, CP_VY * tau - 0.5 * CP_G * tau * tau, -d.y);
+// The bomber's flight (carpet.rs's CpGeo): its speed (word 10), when it is half way through letting the stick go (11),
+// how long that takes (12), where it is along the line then (13), when it comes out of the haze (14). How far along the
+// line's way it is at strike time t (it flies the line, on past the player).
+fn cp_plane_along(t: f32) -> f32 {
+    return cp_w(13u) + cp_w(10u) * (t - cp_w(11u));
+}
+// When bomb b leaves its belly: the stick let go one after another over the ripple, the first first.
+fn cp_release(b: i32) -> f32 {
+    return cp_w(11u) + cp_w(12u) * (f32(b) / max(f32(cp_n() - 1), 1.0) - 0.5);
+}
+// Where bomb b is at strike time t (from the target's ground point), between leaving the bomber and striking: carried
+// on with it at first, falling faster and faster, steeper as it comes down.
+fn cp_fall(b: i32, t: f32) -> vec3<f32> {
+    let imp = cp_bomb(b);
+    let r0 = cp_release(b);
+    let dir = cp_dir();
+    let rel = vec3<f32>(cp_w(8u), CP_HB - 3.0, cp_w(9u)) + vec3<f32>(dir.x, 0.0, dir.y) * cp_plane_along(r0);
+    let u = saturate((t - r0) / max(imp.w - r0, 0.1));
+    let fwd = 1.0 - (1.0 - u) * (1.0 - u);
+    return vec3<f32>(mix(rel.x, imp.x, fwd), mix(rel.y, imp.y, u * u), mix(rel.z, imp.z, fwd));
 }
 // An ellipsoid's distance (radii r) at e = its offset, as the Payload's skirt has it: a close bound, not the smallest
 // radius's, which reads far too near beside a flat one and lets the lumps swell it out over everything near.
@@ -685,8 +696,10 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
     // spreading, breaking up and thinning over half a minute; the bombs come out of the haze under its head ------------
     if (stage != 1u && have) {
         let dir2 = cp_dir();
-        let vb = max(cp_w(5u), 1.0);
-        let shead = cp_w(6u) + vb * (time - cp_bomb(0).w);
+        let vb = max(cp_w(10u), 1.0);
+        let shead = cp_plane_along(time);
+        // (laid only where it has flown since it came out of the haze)
+        let sfrom = max(shead - 2600.0, cp_plane_along(cp_w(14u)));
         let dir = vec3<f32>(dir2.x, 0.0, dir2.y);
         let side = vec3<f32>(-dir2.y, 0.0, dir2.x);
         var ctau = 0.0;
@@ -695,16 +708,17 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
             // (from its four engine pods, under its wings)
             let eo = select(select(9.0, 16.0, e == 3), select(-16.0, -9.0, e == 1), e < 2);
             let o = C + vec3<f32>(cp_w(8u), CP_HB + 1.0, cp_w(9u)) + side * eo;
-            let pa = o + dir * (shead - 2600.0);
-            let pb = o + dir * (shead - 14.0 - 0.5 * vb);
+            let pa = o + dir * sfrom;
+            let pb = o + dir * max(shead - 14.0 - 0.25 * vb, sfrom + 1.0);
             let h = ray_seg(rd, pa, pb);
             if (h.y > scene_len) {
                 continue;
             }
             // (its age where the ray passes it: laid at the head, older back along it)
-            let age = (1.0 - h.z) * 2600.0 / vb + 0.5;
+            let span = max(shead - 14.0 - 0.25 * vb - sfrom, 1.0);
+            let age = (1.0 - h.z) * span / vb + 0.25;
             let wdt = 0.9 + 0.9 * sqrt(age) + h.y * px_a * 0.6;
-            let sl = shead - (1.0 - h.z) * 2600.0;
+            let sl = shead - (1.0 - h.z) * span;
             let nb = gnoise3(vec3<f32>(sl / 24.0, f32(e) * 7.0, age * 0.02));
             let brk = saturate((nb - 0.08 - 0.35 * smoothstep(8.0, 40.0, age)) * 2.5);
             let dens = exp(-pow(h.x / wdt, 2.0)) * min((0.9 + 0.9 * sqrt(age)) / wdt, 1.0) * brk * exp(-age / 28.0) * smoothstep(0.0, 1.0, age);
@@ -734,11 +748,12 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
                 let fpx = max(tp * px_a, 0.05);
                 let cov = saturate(0.5 - sd / fpx);
                 if (cov > 0.0) {
-                    let showb = smoothstep(0.2, 1.6, time) * (1.0 - smoothstep(cp_bomb(lastb).w + 2.0, cp_bomb(lastb).w + 7.0, time));
+                    // (out of the haze as it comes, into it as it goes: never popping in or out)
+                    let showb = smoothstep(cp_w(14u), cp_w(14u) + 2.0, time) * (1.0 - smoothstep(cp_bomb(lastb).w - 1.0, cp_bomb(lastb).w + 2.5, time));
                     // (dark from below, a glint of the sun off it, greyed by the air between)
                     let glint = pow(saturate(dot(reflect(rd, vec3<f32>(0.0, -1.0, 0.0)), L)), 30.0) * 2.0;
                     var bc = vec3<f32>(0.07, 0.075, 0.085) * (amb * 1.3 + sunc * 0.15) + sunc * glint * 0.4;
-                    bc = mix(bc, haze_c, saturate((1.0 - exp(-tp / 2600.0)) * 0.6 + 0.04));
+                    bc = mix(bc, haze_c, saturate((1.0 - exp(-tp / 1500.0)) * 0.85 + 0.04));
                     col = mix(col, bc, cov * showb * k * fade);
                 }
             }
@@ -1127,23 +1142,23 @@ fn carpetbomb(in: StageIn, stage: u32, up: vec4<f32>, up_t: f32) -> CpOut {
         var vap = 0.0;
         for (var b = 0; b < n; b = b + 1) {
             let bm = cp_bomb(b);
-            let tau = bm.w - time;
-            if (tau <= 0.0 || tau > CP_FALL) {
+            let since = time - cp_release(b);
+            if (since <= 0.0 || time >= bm.w) {
                 continue;
             }
             let s = cp_size(b);
-            let pa = C + cp_fall(b, tau);
-            let pb = C + cp_fall(b, tau + 0.035);
+            let pa = C + cp_fall(b, time);
+            let pb = C + cp_fall(b, time - 0.035);
             let h = ray_seg(rd, pa, pb);
             if (h.y > lim + 2.0) {
                 continue;
             }
-            // (out of the haze under the bomber, coming clearer as it falls)
-            let show = smoothstep(CP_FALL, CP_FALL - 0.2, tau);
+            // (dropping out of its belly)
+            let show = smoothstep(0.0, 0.15, since);
             let w = max(0.55 * s, h.y * px_a * 0.7);
             cov = max(cov, exp(-pow(h.x / w, 2.0)) * min(0.55 * s / w, 1.0) * show);
             // (the torn air behind it: a faint pale line along its last half second, thinning)
-            let qa = C + cp_fall(b, tau + 0.5);
+            let qa = C + cp_fall(b, max(time - 0.5, cp_release(b)));
             let hv = ray_seg(rd, pb, qa);
             if (hv.y < lim) {
                 let wv = max(0.5 + 1.2 * hv.z, hv.y * px_a * 0.7);

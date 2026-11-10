@@ -617,7 +617,7 @@ pub const CARPET_BOMB: Laser = Laser {
     rgb: 0xD8A048,
     blurb: "A stick of ten bombs walks its blasts across the land to you. Leaves a row of craters.",
     icon_model: "orbital:carpetbomb_icon",
-    length: 34.0,
+    length: 37.5,
     range: 1000.0,
     scorch: &[],
     bowl_r: 10,
