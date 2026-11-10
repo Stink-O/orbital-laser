@@ -29,7 +29,7 @@ const CP_SPACING: f64 = 26.0;
 pub(super) const CP_BIG: f64 = 1.55;
 /// The last bomb comes down at least this far (level) from where the player stood: the line is drawn back if they
 /// aimed closer.
-pub(super) const CP_MIN_ME: f64 = 58.0;
+pub(super) const CP_MIN_ME: f64 = 80.0;
 /// A bomb's land worked out over the stages from this long before it strikes, in a window of its own (the next bomb's
 /// starts as its ends): each bomb works on the land the one before left.
 const CP_LEAD: f32 = 2.6;
@@ -149,16 +149,18 @@ fn cp_bomb_words(g: &CpGeo, ys: &[f64]) -> Vec<u32> {
 /// is torn up, its speed out and up, when (after its blast), its size, e^(k t0), its spin. Keep in step with
 /// carpetbomb.wgsl's cp_chunk.
 pub(super) fn cp_debris_words(g: &CpGeo) -> Vec<u32> {
-    let n = (CP_N + 1) * CP_DPB;
+    let n = (CP_N + 2) * CP_DPB;
     let mut w = vec![0.0f32; n * CP_DW];
     for (bi, bomb) in g.bombs.iter().enumerate() {
-        let count = if bi == CP_N - 1 { 2 * CP_DPB } else { CP_DPB };
+        let last = bi == CP_N - 1;
+        let count = if last { 3 * CP_DPB } else { CP_DPB };
         for j in 0..count {
             let i = bi * CP_DPB + j;
             let h = |k: u32| mh(i as u32, g.seed, 0xd00 + k);
             let ang = h(1) * TAU;
             let big = h(3);
-            let s = bomb.s;
+            // (the last's pieces thrown harder and further, bigger)
+            let s = bomb.s * if last { 1.6 } else { 1.0 };
             let r0 = (3.0 + 14.0 * h(6).sqrt()) * s;
             let far = h(7) < 0.2;
             let el = if far { 0.5 + 0.35 * h(2) } else { 0.45 + 0.75 * h(2) };
@@ -183,29 +185,31 @@ struct Blast {
     s: f64,
     ph: [f64; 3],
     seed: u32,
+    /// The last, biggest: its crater wider and deeper, the land flattened, the trees felled and the grass charred further.
+    big: bool,
 }
 impl Blast {
     fn crater_r(&self) -> f64 {
-        8.5 * self.s
+        self.s * if self.big { 12.0 } else { 8.5 }
     }
     fn crater_d(&self) -> f64 {
-        4.5 * self.s
+        self.s * if self.big { 6.2 } else { 4.5 }
     }
     fn flat_r(&self) -> f64 {
-        24.0 * self.s
+        self.s * if self.big { 34.0 } else { 24.0 }
     }
     fn char_r(&self) -> f64 {
-        32.0 * self.s
+        self.s * if self.big { 48.0 } else { 32.0 }
     }
     fn band_w(&self) -> f64 {
-        9.0 * self.s
+        self.s * if self.big { 13.0 } else { 9.0 }
     }
     /// How far round it its land work reaches.
     fn reach(&self) -> f64 {
         (self.flat_r() * 1.13 + self.band_w()).max(self.char_r()) + 2.0
     }
     fn kill_r(&self) -> f64 {
-        28.0 * self.s
+        self.s * if self.big { 40.0 } else { 28.0 }
     }
     fn wob(&self, a: f64) -> f64 {
         1.0 + 0.1 * (3.0 * a + self.ph[0]).sin() + 0.06 * (5.0 * a + self.ph[1]).sin() + 0.035 * (9.0 * a + self.ph[2]).sin()
@@ -562,7 +566,7 @@ fn cp_rubble_and_thrown(q: &mut Plan, land: &mut Land, b: &Blast, big: bool) {
         "minecraft:andesite",
     ];
     let reach = b.flat_r() * 1.25;
-    for _ in 0..if big { 90 } else { 34 } {
+    for _ in 0..if big { 150 } else { 34 } {
         let r = b.crater_r() * 1.05 + (reach - b.crater_r() * 1.05) * rng.next().powf(1.6);
         let a = rng.uniform(0.0, TAU);
         let (x, z) = ((b.cx + a.cos() * r).floor() as i32, (b.cz + a.sin() * r).floor() as i32);
@@ -593,7 +597,7 @@ fn cp_rubble_and_thrown(q: &mut Plan, land: &mut Land, b: &Blast, big: bool) {
         }
     }
     let wood = (0..9).max_by_key(|&i| woods[i]).filter(|&i| woods[i] > 0);
-    let want = if big { 48 } else { 16 };
+    let want = if big { 80 } else { 16 };
     let mut n = 0;
     for _ in 0..want * 3 {
         if n >= want {
@@ -707,7 +711,9 @@ fn cp_sounds(p: &mut Plan, geo: &CpGeo, at: [f64; 3], me: [f64; 3]) {
             let far = f64::from(payload::pl_far(d));
             cue(p, arrive - 0.02, "payload.blast_alt", 1.0 - far, 0.92);
             cue(p, arrive - 0.02, "payload.blast_alt_far", far, 0.92);
-            cue(p, arrive - 0.02, "nuke.blast_alt", 0.55, 1.0);
+            // (the Nuke's under it, and the same again lower, for a deeper, longer low end)
+            cue(p, arrive - 0.02, "nuke.blast_alt", 0.8, 1.0);
+            cue(p, arrive - 0.02, "nuke.blast_alt", 0.5, 0.8);
             cue(p, arrive - 0.15, "payload.rush", 1.0, 1.0);
             cue(p, arrive + 2.4, "payload.tail", 1.0, 1.0);
         } else {
@@ -769,7 +775,12 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
         if arrive - tg > 0.08 {
             p.shake(tg, 0.4 * fo, 0.3);
         }
-        payload::pl_jolt(&mut p, arrive, fo);
+        if big {
+            // (the last's the Nuke's jolt: kicked again and again through the hit, a long heavy shudder after)
+            super::nuke::nk_jolt(&mut p, arrive, (2.4 / (1.0 + d / 500.0)).clamp(0.35, 1.0) as f32);
+        } else {
+            payload::pl_jolt(&mut p, arrive, fo);
+        }
         if big {
             let mut ts = arrive + 2.6;
             while ts < arrive + 7.0 {
@@ -779,10 +790,10 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
                 ts += p.rng.uniform(0.5, 1.2) as f32;
             }
             // (and the last one's front throws them back a little, if they are near enough)
-            p.ev.push((arrive, Act::Shove { from: [wx, gy, wz], out: 0.5, up: 0.38, reach: 200.0 }));
+            p.ev.push((arrive, Act::Shove { from: [wx, gy, wz], out: 0.75, up: 0.5, reach: 320.0 }));
         }
         // (what lives there killed, real smoke and grit for anyone close)
-        let kill = Blast { cx: wx, cz: wz, t: bomb.t, s: bomb.s, ph: [0.0; 3], seed: 0 }.kill_r().round() as i32;
+        let kill = Blast { cx: wx, cz: wz, t: bomb.t, s: bomb.s, ph: [0.0; 3], seed: 0, big }.kill_r().round() as i32;
         for t in if big { vec![0.1, 1.5, 4.0] } else { vec![0.1, 1.5] } {
             p.at(bomb.t + t, surf(ix, iz, &format!("kill @e[type=!minecraft:player,type=!minecraft:falling_block,distance=..{kill}]")));
         }
@@ -799,7 +810,7 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
                 .iter()
                 .map(|b| {
                     let r = |k: u32| mh(b.h, geo.seed, 0xc10 + k);
-                    Blast { cx: cx + b.x, cz: cz + b.z, t: b.t, s: b.s, ph: [TAU * r(1), TAU * r(2), TAU * r(3)], seed: b.h ^ geo.seed }
+                    Blast { cx: cx + b.x, cz: cz + b.z, t: b.t, s: b.s, ph: [TAU * r(1), TAU * r(2), TAU * r(3)], seed: b.h ^ geo.seed, big: b.s > 1.4 }
                 })
                 .collect(),
         );
@@ -834,17 +845,20 @@ pub(super) fn carpet_plan(laser: &'static Laser, target: &Target, terrain: bool,
             let n8 = n as u8;
             let t0 = b.t - CP_LEAD;
             let rows = 2 * b.reach().ceil() as i32 + 1;
-            let per = (rows + CP_PARTS - 1) / CP_PARTS;
+            // (the last's land in more, smaller stages: nothing waits after it)
+            let parts = if b.big { 10 } else { CP_PARTS };
+            let per = (rows + parts - 1) / parts;
             let mut k = 0;
-            for j in 0..CP_PARTS {
+            for j in 0..parts {
                 let l = land.clone();
                 let (k0, k1) = (j * per, ((j + 1) * per).min(rows));
                 p.later(t0 + 0.05 * k as f32, move |q| cp_blast_rows(q, &mut l.borrow_mut(), &b, n8, k0, k1));
                 k += 1;
             }
-            for j in 0..2 {
+            let tparts = if b.big { 4 } else { 2 };
+            for j in 0..tparts {
                 let l = land.clone();
-                let (k0, k1) = (j * rows / 2, (j + 1) * rows / 2);
+                let (k0, k1) = (j * rows / tparts, (j + 1) * rows / tparts);
                 p.later(t0 + 0.05 * k as f32, move |q| cp_tidy(q, &l.borrow(), &b, n8, k0, k1));
                 k += 1;
             }
@@ -998,7 +1012,8 @@ mod tests {
             let (x, z) = ((10.5 + b.x).floor() as i32, (-2.5 + b.z).floor() as i32);
             let dug = fills.iter().filter(|f| f.starts_with(&format!("fill {x} ")) && f.contains(&format!(" {z} {x} ")) && f.contains("minecraft:air")).map(|f| words(f)[1]).min().expect("the middle dug");
             let depth = ground_h(x, z) - (dug - 1);
-            assert!((f64::from(depth) - 4.5 * b.s).abs() <= 1.5, "bomb at {x} {z}: {depth} deep");
+            let want = b.s * if b.s > 1.4 { 6.2 } else { 4.5 };
+            assert!((f64::from(depth) - want).abs() <= 1.5, "bomb at {x} {z}: {depth} deep, not {want:.1}");
             assert!(!fills.iter().any(|f| f.starts_with(&format!("fill {x} ")) && f.contains(&format!(" {z} {x} ")) && (f.contains("dirt") || f.contains("cobble") || f.contains("stone")) && !f.contains("replace") && words(f)[1] > ground_h(x, z) - 1), "the middle at {x} {z} heaped over");
         }
         // trees felled, lying along x or z
@@ -1020,7 +1035,7 @@ mod tests {
         }
         // thrown blocks, out of each crater as it strikes, and never killed in the air
         let thrown: Vec<&(f32, String)> = p.cmds.iter().filter(|(_, c)| c.starts_with("summon minecraft:falling_block")).collect();
-        assert!(thrown.len() > 120 && thrown.len() <= 9 * 16 + 48, "{}", thrown.len());
+        assert!(thrown.len() > 150 && thrown.len() <= 9 * 16 + 80, "{}", thrown.len());
         assert!(p.cmds.iter().filter(|(_, c)| c.contains("kill @e")).all(|(_, c)| c.contains("type=!minecraft:falling_block") && c.contains("type=!minecraft:player")));
     }
 
@@ -1055,7 +1070,7 @@ mod tests {
     #[test]
     fn carpet_reads_every_column_within_a_blasts_reach_and_no_more() {
         let g = CpGeo::new(37.0, [140.0, 5.0, -260.0]);
-        let blasts: Vec<Blast> = g.bombs.iter().map(|b| Blast { cx: 10.5 + b.x, cz: -2.5 + b.z, t: b.t, s: b.s, ph: [0.0; 3], seed: 1 }).collect();
+        let blasts: Vec<Blast> = g.bombs.iter().map(|b| Blast { cx: 10.5 + b.x, cz: -2.5 + b.z, t: b.t, s: b.s, ph: [0.0; 3], seed: 1, big: b.s > 1.4 }).collect();
         let land = Land::new(&blasts);
         let mut got: Vec<(i32, i32)> = (0..CP_READS).flat_map(|p| cp_read_columns(&blasts, land.x0, land.z0, land.w, land.h, p)).collect();
         let mut want = Vec::new();
@@ -1119,7 +1134,7 @@ mod tests {
                 let k = e.strip_prefix("orbital:").unwrap();
                 assert!(approved.contains(&k), "{k} isn't an approved sound");
                 assert!(events.contains(&format!("\"{k}\"")), "{k} not in sounds.json");
-                assert!(*t >= 0.0 && *v > 0.0 && *v <= 1.0 && (0.85..=1.1).contains(pitch), "{k} at {t}: {v} {pitch}");
+                assert!(*t >= 0.0 && *v > 0.0 && *v <= 1.0 && (0.78..=1.1).contains(pitch), "{k} at {t}: {v} {pitch}");
             }
             let blasts: Vec<&(f32, String, f32, f32)> = c.iter().filter(|e| e.1.contains("payload.blast_alt") || e.1.contains("carpetbomb.blast")).collect();
             // (each fall ends dead on its bomb's strike; only the last bomb gets the whole blast)

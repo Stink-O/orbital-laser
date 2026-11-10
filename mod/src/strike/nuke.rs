@@ -1907,7 +1907,7 @@ fn nk_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
 /// some two seconds, kicked again and again), then a heavy shudder dying away over eight or nine. The game's shake tops
 /// out at a few degrees, so the pass knocks the picture about on top of it (nuke.wgsl's `pl_jolt`). Some 70 jolts, a
 /// few a tick: nothing the tick's work notices.
-fn nk_jolt(p: &mut Plan, t: f32, fo: f32) {
+pub(super) fn nk_jolt(p: &mut Plan, t: f32, fo: f32) {
     p.shake(t, fo, 2.6);
     // (kicked again and again through the hit: each short, hard, the camera's swing renewed)
     for n in 0..18 {

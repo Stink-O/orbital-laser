@@ -7,7 +7,9 @@ No tone anywhere: no whistles, chimes or clicks. Two takes of each (A is the one
 
   drone          a bomber high and far off: a breathy low drone of engines beating against each other, through a lot of
                  air, swelling in and fading as the stick comes down (under the strike's first seconds).
-  fall1..3       a bomb coming down: torn air, a band chopped by an irregular flutter that quickens and deepens as it
+  fall1..3       a bomb coming down. Take C (FALL_TAKE, the one the mod plays): the falling bomb's scream, noise rung in
+                a narrow band sliding down with its Doppler shift, airy rush round it, rising and cut dead on its blast.
+                Take D: a heavier roar, as the Payload's dive. Takes A, B, E: torn air, a band chopped by an irregular flutter that quickens and deepens as it
                  nears, over a rushing body opening up brighter and a low push of air in its last half second, rising
                  some 28 dB and stopping dead on its blast (carpet.rs starts it its length before the bomb strikes:
                  keep FALLS there in step). Take B lower and rougher, its flutter ripping.
@@ -171,6 +173,81 @@ def drone(seed=7101, d=7.0):
         return to_level(L, R, -24.0)
 
 
+def glide(n, fc, width):
+    """Noise rung in a narrow band (`width` octaves) round a centre that moves (`fc`, Hz, a value a sample): a breathy,
+    noisy resonance sliding about, never a pure tone (payload.py's glide_band). Unit RMS."""
+    size, hop = 2048, 512
+    win = np.hanning(size)
+    f = np.fft.rfftfreq(size, 1 / SR)
+    lf = np.log2(np.maximum(f, 1.0))
+    out = np.zeros(n + 2 * size)
+    for start in range(-size, n, hop):
+        c = fc[min(max(start + size // 2, 0), n - 1)]
+        mag = np.exp(-0.5 * ((lf - np.log2(c)) / (width / 2.355)) ** 2)
+        z = rng().standard_normal(len(f)) + 1j * rng().standard_normal(len(f))
+        a = start + size
+        out[a:a + size] += np.fft.irfft(mag * z, size) * win
+    return unit(out[size:size + n])
+
+
+def fall_scream(k, length):
+    """Take C: the falling bomb's scream, done as the real thing sounds: a shriek of air over its fins, noise rung in a
+    narrow band that slides down as it comes (its Doppler shift falling away as it drops towards the listener), a
+    fainter partial over it, airy rush round it, rising and cut dead on the blast."""
+    with PB.seeded(7600 + 31 * k):
+        n = int(length * SR)
+        t = np.arange(n) / SR
+        u = t / length
+        sh = [0.94, 1.0, 1.07][k]
+        fhi, flo = 2050.0 * sh, 760.0 * sh
+        fc = fhi * (flo / fhi) ** (u ** 0.85)
+        fc = fc * (1 + 0.006 * PB.slow_random(n, 3.0, 9.0) + 0.01 * PB.slow_random(n, 0.3, 1.5))
+        tone = glide(n, fc, 0.16) + 0.25 * glide(n, fc * 2.02, 0.2)
+        air = noise(n, 1300 * sh, 7000) * np.exp(2.0 * PB.slow_random(n, 2.0, 12.0) / 8.686)
+        body = noise(n, 250, 1200) * (0.2 + 0.8 * u)
+        lvl = 10 ** ((-34.0 + 34.0 * u ** 1.5) / 20)
+        am = np.exp((1.8 * PB.slow_random(n, 0.5, 3.0) + 0.8 * PB.slow_random(n, 6.0, 18.0)) / 8.686)
+        m = (tone * 0.9 * am + air * 0.32 + body * 0.25) * lvl
+        side = glide(n, fc * 1.004, 0.2) * 0.12 * lvl * (0.3 + 0.7 * u)
+        L, R = m + side, m - side
+        e = int(0.004 * SR)
+        L[-e:] *= np.linspace(1, 0, e)
+        R[-e:] *= np.linspace(1, 0, e)
+        L, R = to_level(L, R, -16.0, window=(length - 0.4, length))
+        return PB.soft_clip(L, 0.9, 0.6), PB.soft_clip(R, 0.9, 0.6)
+
+
+def fall_roar(k, length):
+    """Take D: a heavier rush, as the Payload's approved dive has it: a low, growing roar (noise with a few low
+    resonances wandering in it, its colour wavering), torn air over it, the push of air low down in its last half
+    second; per bomb, rising and cut dead on its blast."""
+    with PB.seeded(7700 + 31 * k):
+        n = int(length * SR)
+        t = np.arange(n) / SR
+        u = t / length
+        sh = [0.92, 1.0, 1.08][k]
+        f = np.fft.rfftfreq(n, 1 / SR)
+        g = 1 / np.sqrt(1 + (60.0 / np.maximum(f, 1)) ** 4) / np.sqrt(1 + (f / (700.0 * sh)) ** 3)
+        for f0, w, db in ((115 * sh, 12, 8.0), (142 * sh, 14, 6.0), (262 * sh, 30, 6.0)):
+            g = g * 10 ** (db / 20 * np.exp(-0.5 * ((f - f0) / w) ** 2))
+        roar = []
+        for c in range(2):
+            roar.append(unit(np.fft.irfft(np.fft.rfft(rng().standard_normal(n)) * g, n)))
+        bright = noise(n, 700 * sh, 2600 * sh) * (0.15 + 0.85 * u)
+        tear = noise(n, 1500 * sh, 5500) * chop(n, (10, 24), (24, 55), u, 0.25 + 0.35 * u * u)
+        push = noise(n, 50, 220, 3) * np.clip((u - 0.75) / 0.25, 0, 1) ** 2
+        wav = np.exp((2.2 * PB.slow_random(n, 0.4, 2.5) + 0.8 * PB.slow_random(n, 5.0, 14.0)) / 8.686)
+        lvl = 10 ** ((-30.0 + 30.0 * u ** 1.6) / 20)
+        c0 = 0.85
+        L = ((roar[0]) * wav + bright * 0.45 + tear * 0.35 + push * 1.3) * lvl
+        R = ((c0 * roar[0] + np.sqrt(1 - c0 ** 2) * roar[1]) * wav + bright * 0.45 + tear * 0.35 + push * 1.3) * lvl
+        e = int(0.004 * SR)
+        L[-e:] *= np.linspace(1, 0, e)
+        R[-e:] *= np.linspace(1, 0, e)
+        L, R = to_level(L, R, -16.0, window=(length - 0.4, length))
+        return PB.soft_clip(L, 0.9, 0.6), PB.soft_clip(R, 0.9, 0.6)
+
+
 # ---- the fall -------------------------------------------------------------------------------------------------------
 def fall(take, k, length):
     """A bomb coming down, `length` seconds to its blast: torn air rising to a dead stop (see the top)."""
@@ -184,6 +261,10 @@ def fall(take, k, length):
         if take == "A":
             tear_lo, tear_hi, body_lo, body_hi = 1600 * sh, 6500 * sh, 280 * sh, 1700 * sh
             r0, r1, dep = (9, 26), (30, 75), 0.35 + 0.6 * near
+        elif take == "E":
+            # (round 2's flutter reworked: much less of it, more rush, lower, so it has weight)
+            tear_lo, tear_hi, body_lo, body_hi = 900 * sh, 3800 * sh, 130 * sh, 1000 * sh
+            r0, r1, dep = (6, 14), (14, 30), 0.12 + 0.2 * near
         else:
             tear_lo, tear_hi, body_lo, body_hi = 900 * sh, 4200 * sh, 160 * sh, 1100 * sh
             r0, r1, dep = (14, 34), (40, 95), 0.55 + 0.45 * near
@@ -203,7 +284,11 @@ def fall(take, k, length):
                 body = body * chop(n, (6, 14), (18, 40), u, 0.25 + 0.4 * near)
             # (the air the bomb shoves ahead of it, low, in its last half second)
             low = push * np.clip((u - 0.78) / 0.22, 0, 1) ** 2.5 * (1.6 if take == "B" else 1.1)
-            x = (tear * 0.75 + body * (0.55 if take == "A" else 0.8) + low) * lvl
+            if take == "E":
+                roar = noise(n, 55, 260, 3) * (0.25 + 0.75 * u) * np.exp(2.0 * PB.slow_random(n, 0.5, 3.0) / 8.686)
+                x = (tear * 0.4 + body * 1.0 + low * 1.5 + roar * 0.8) * lvl
+            else:
+                x = (tear * 0.75 + body * (0.55 if take == "A" else 0.8) + low) * lvl
             (Ls if ch == 0 else Rs).append(x)
         L, R = Ls[0], Rs[0]
         # (dead on the blast: the last 4 ms let go)
@@ -331,11 +416,20 @@ def blast(take, k, far):
         return L, R
 
 
+def falls(take):
+    """The three falls of a take: A, B, E the torn-air ones, C the scream, D the roar."""
+    make_one = {"C": fall_scream, "D": fall_roar}.get(take, lambda k, ln: fall(take, k, ln))
+    return {f"fall{k + 1}": make_one(k, ln) for k, ln in enumerate(FALLS)}
+
+
+# The fall the mod plays (the others are review takes).
+FALL_TAKE = "C"
+
+
 def make(take="A", outdir=None):
-    """Every file of a take, written to the mod's sounds (take A) or to `outdir`."""
+    """Every file of a take, written to the mod's sounds (take A, its falls FALL_TAKE's) or to `outdir`."""
     out = {}
-    for k, ln in enumerate(FALLS):
-        out[f"fall{k + 1}"] = fall(take, k, ln)
+    out.update(falls(FALL_TAKE if outdir is None else take))
     for k in range(3):
         out[f"blast{k + 1}"] = blast(take, k, False)
     for k in range(2):
@@ -428,6 +522,38 @@ def review(outdir: str) -> None:
         lufs_write(acc, f"{outdir}/blast_{tk}.ogg")
 
 
+def review3(outdir: str) -> None:
+    """Round 3's falls (C the scream, D the roar, E the flutter reworked), each as a stick of three from 300 blocks with
+    the A blast under it, at -16 LUFS."""
+    os.makedirs(outdir, exist_ok=True)
+    blasts = make("A", outdir)
+    ground = load("payload/ground_alt")
+
+    def put(acc, t, LR, vol):
+        x = stereo(list(LR)) if isinstance(LR, tuple) else LR
+        i0 = int(round(t * SR))
+        j0 = max(0, -i0)
+        i0 = max(i0, 0)
+        m = min(len(x) - j0, len(acc) - i0)
+        if m > 0:
+            acc[i0:i0 + m] += x[j0:j0 + m] * vol
+
+    near = lambda d: 0.3 + 0.6 * min(200.0 / d, 1.0) ** 1.3
+    for tk in ("C", "D", "E"):
+        fl = falls(tk)
+        t0 = 3.4
+        acc = np.zeros((int((t0 + 7.0) * SR), 2))
+        put(acc, 0.0, blasts["drone"], 0.8)
+        for k, (d, dt) in enumerate([(300.0, 0.0), (274.0, 0.9), (248.0, 1.8)]):
+            put(acc, t0 + dt - FALLS[k], fl[f"fall{k + 1}"], 0.45 + 0.1 * k)
+            fs = float(np.clip((d - 220) / 260, 0, 1))
+            fs = fs * fs * (3 - 2 * fs)
+            put(acc, t0 + dt + d / 1715.0 - 0.02, ground, 0.3 * near(d))
+            put(acc, t0 + dt + d / 343.0 - 0.02, blasts[f"blast{k % 3 + 1}"], near(d) * (1 - fs))
+            put(acc, t0 + dt + d / 343.0 - 0.02, blasts[f"blast_far{k % 2 + 1}"], near(d) * fs)
+        lufs_write(acc, f"{outdir}/fall_{tk}.ogg")
+
+
 def lufs_write(acc: np.ndarray, out: str, target: float = -16.0) -> None:
     """Loudness matched (integrated, EBU R128) to `target`, the loudest instants limited under -1 dBFS."""
     tmp = out + ".wav"
@@ -460,5 +586,11 @@ if __name__ == "__main__":
         mix(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 3 and sys.argv[1] == "--review":
         review(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--review3":
+        review3(sys.argv[2])
+    elif len(sys.argv) == 2 and sys.argv[1] == "--falls":
+        # (only the falls rewritten: the blasts' files left as they are)
+        for name, (L, R) in falls(FALL_TAKE).items():
+            write(name, stereo([L, R]), fade=0.0)
     else:
         make("A")
