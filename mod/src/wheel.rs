@@ -298,7 +298,7 @@ pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -789,6 +789,8 @@ mod tests {
         assert_eq!(page_of(fold), 3);
         let sb = LASERS.iter().position(|l| l.key == "skybreak").expect("the Sky Breaks");
         assert_eq!(page_of(sb), 3);
+        let cp = LASERS.iter().position(|l| l.key == "carpetbomb").expect("the Carpet Bomb");
+        assert_eq!((cp, page_of(cp)), (18, 3));
         assert_eq!(tab(3).x + tab(3).w, -tab(0).x, "the four tabs centred over the ring");
     }
 

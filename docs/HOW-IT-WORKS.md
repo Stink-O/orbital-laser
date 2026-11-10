@@ -453,13 +453,31 @@ moment it fires to a second before it ends. All of it goes in through `world.edi
 `world.read-columns` says stands there; the crater is worked out as the fist comes down and let in from the slam, the
 middle first.
 
+The **Carpet Bomb** ([`strike/carpet.rs`](../mod/src/strike/carpet.rs)) changes the land along its line, each of its
+thirteen bombs on the land as the bombs before it left it. Each of the first twelve digs a crater about 25 across and 8
+deep (12.5 and 8 times its size, which is about 1; its edge ragged), its floor and walls scorched in blackstone, basalt,
+tuff, coarse dirt, gravel and cobbled deepslate, the lava it bares sealed; they are 22 blocks apart, so each runs into
+the next in a ragged trench, and no rim is ever heaped over an earlier crater. Round each the earth is heaped into a
+rim, everything standing is swept off out to about 35 (a felled tree's stump left), the trees are felled out to about 50
+lying pointing away from it, the crowns past that stripped in patches, and the grass charred out to about 55; 60 pieces
+of rubble land round it and 24 falling blocks are thrown out of its crater, about half landing as blocks, and every mob
+and item within about 40 is killed. The last bomb (size 1.55) digs a crater about 65 across and 16 deep, its walls
+falling in three-block terraces, with a heavier rim on which eight small fires are left burning (each on netherrack,
+nothing that burns within two blocks of it, so they spread to nothing); everything standing is swept off out to about
+110, the trees felled to about 150, the grass charred to about 170, 320 pieces of rubble strewn and 120 falling blocks
+thrown, and every mob and item within about 124 killed. Water is dug like any other block. It keeps the chunks within
+each blast's reach plus 4 (about 61 round each of the first twelve, about 176 round the last; some 500 chunks in all for
+a straight line) loaded from the moment it fires to a second before it ends. All of it goes in through
+`world.edit-blocks`, on what `world.read-columns` says stands there (read in 16 parts as it fires), each bomb's edits
+going in from its middle out as its front reaches them.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -469,10 +487,10 @@ middle first.
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
 | `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's and the Supervolcano's knockback (`Act::Shove`), the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's, the Supervolcano's and the Carpet Bomb's knockback (`Act::Shove`), the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud and the Sky Breaks' dust are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud, the Sky Breaks' dust and the Carpet Bomb's smoke are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp; the Carpet Bomb's smoke, dust and shockwave fronts, its bomber, bombs, fires and debris staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -1124,3 +1142,82 @@ lava, `terrain=0` leaves the panes drawn. `sb_write_table` (ignored) writes its 
 `a_chunk_of_the_print_is_cheap`), the sounds (`sb_sounds_every_cue_has_its_file`, `sb_sounds_the_build_never_goes_quiet`,
 `sb_sounds_the_slam_comes_late_by_distance`), and lib.rs's `a_sky_breaks_on_far_unloaded_land_stays_light` (the player
 800 blocks off, the land coming slowly or never: no tick overworks, every pane laid or left drawn and logged).
+
+## The Carpet Bomb (laser 18)
+
+A stick of bombs walks its blasts across the land to the player. 37.5 s (`strike/carpet.rs` the plan, the land, the
+table and the sounds' schedule; `shaders/carpetbomb.wgsl` the pass; `tools/sounds_carpetbomb.py` the sounds). There is
+no beam. While the designator is held its countdown reads `CLEARING THE RUN`. It plays on the native version
+too.
+
+- **The bomber** (0.3-17 s). A heavy swept-wing bomber, drawn as a silhouette 632 blocks up (`CP_HB`; 48 long, 56
+  across, four engine pods), flies the line's way at 170 blocks a second (`CP_PLANE_V`), so the line extended passes
+  the player well to one side. It comes out of the haze far beyond the target from 0.3 s (`CP_APPEAR`), its four
+  contrails laid behind it from there, spreading and breaking up over half a minute, a glint of the sun off it and the
+  air's haze over it by its distance. It lets its stick go one after another over 1.8 s from 4.4 s (`CP_RELEASE`,
+  `CP_RIPPLE`) as it passes over the start of the line, flies on over and past the player and fades into the haze from a
+  second before the last blast to 2.5 s after it.
+- **The stick.** Thirteen bombs (`CP_N`, `CpGeo`): twelve about size 1 and the last 1.55 (`CP_BIG`), on a line about 265
+  long coming in 32 to 40 degrees off the way the player looks (so the blasts sweep across the picture towards them),
+  22 blocks apart (`CP_SPACING`) and wandering a few blocks across it. The last comes down on the target, or drawn back
+  along the way they look to at least 100 from them (`CP_MIN_ME`). Each bomb falls from the bomber's belly on its own
+  way down to where it strikes, carried on with the bomber at first, steeper as it comes, a dark streak with a faint
+  trail of torn air.
+- **The run** (7-14 s). They strike from 7.0 s (`CP_T0`), 0.52 to 0.68 s apart (`CP_GAP`), the last 1.0 s after the
+  twelfth (`CP_LAST_GAP`, about 14.6 s). Each: a flash lighting the land and an orange glow through the smoke and dust
+  round it, fading over about a second (`cp_lights`); a low, wide fireball rolling over into dark smoke (the three
+  latest blasts' smoke raymarched together, each older one sinking into the line's dust as the next ones come); its
+  shockwave's front racing out over the land at the speed of sound as a billowing wall of dust with haze behind it, as
+  the Payload's (`cp_front`, payload.wgsl's `pl_dust`, smaller and quicker for these), and a thin ring of kicked-up
+  dust; sparks, earth and burning debris thrown out and falling back; fires left burning in its crater and round it
+  (four spot fires a blast out where it swept the land), embers lifting off them; its crater floor glowing in cracks,
+  cooling over ten seconds; the camera's jolt as its front reaches the player (`payload::pl_jolt`). The dust of all of
+  them rolls along the line into one low wall.
+- **The last** (14.6 s on). A brighter flash lighting the land round it; its cloud formed as the Payload's column is
+  (`cp_final_prep`, after payload.wgsl's `pl_puff` and `pl_column`): eighteen billows pushed up out of the crater one
+  after another (the head's first, the body's over a second and a half, a stream of the stem's over five seconds), each
+  climbing to its own height on its own rise time and swelling as it goes, drawn in on the axis low down and spreading
+  out wider the higher it climbs, a trunk joining the ground to the stem, a skirt spreading over the ground; in a shape
+  of its own, a broad, squat dome (its head a third as high as the Payload's, its billows twice as wide) leaning
+  downwind into a plume, kept short of where the player stood. Its shockwave is the Payload's at full size, a pale
+  condensation flash racing across the land with it, three times the others' burning debris thrown further; as its
+  front reaches the player the camera jolts as the Nuke's does (`nuke::nk_jolt`), it throws them back (`Act::Shove`,
+  0.75 out and 0.5 up, fading to none at 320; KNOCKBACK), the air greys with its dust and muck lands on the lens.
+
+What it leaves (terrain on) is in [What each strike destroys](#what-each-strike-destroys): a trench of craters along the
+line and the last's terraced crater with fires on its rim. Each bomb's land is worked out in a window of its own from 2
+s before it strikes (the last's from 2.6 s before), its rows in six stages (the last's forty), its tidying (leaves of a
+tree whose trunk went, plants whose ground went), its felled trees and its rubble on stages after, all on the land as
+the bombs before it left it (`Land`'s state: a crater never filled by the next one's rim, a log laid by one never swept
+off by the next), and goes in from its middle out as its front reaches each column.
+
+The pass ([`mod/shaders/carpetbomb.wgsl`](../mod/shaders/carpetbomb.wgsl), pass 14) reads the stick from the table
+(`render.set-data`: `cp_bomb_words`'s header and bombs from 0, the bomber's flight in its words 10 to 14, the debris from
+`CP_DB` (10496), the land's heightfield from 1024 as the Payload's, `payload::pl_hf_pack`): keep the `CP_*` in the mod
+and the pass in step. QUALITY FAST (the default) draws the smoke, the line's dust and the shockwave fronts at half size;
+the bomber, the bombs, the rings, the fires, the flashes and the debris stay sharp.
+
+Its sounds ([`tools/sounds_carpetbomb.py`](../tools/sounds_carpetbomb.py), scheduled by `cp_sounds`) are synthesised:
+`drone`, the bombers' engines high and far off, breathy and beating, cued five times along the bomber's pass, swelling
+as it passes nearest and a little lower as it goes away; `blast1` to `blast4` a bomb going off a few hundred blocks off,
+a soft front, a deep boom and a low rumble rolling on for seconds, its third-octave bands each dying at its own rate,
+their gains wandering, debris crackling in it and a hiss of grit, so blasts every half second roll into one wall of
+sound; `blast_far1` to `blast_far3` the same from the far end of the line, duller, softer fronted, with more of the
+land's echo. There is no falling sound. Each bomb is heard through the air (d/343), crossfaded from near to far between
+220 and 480 blocks, louder as the line walks in, and nine more far blasts from other sticks fall between them. The last
+plays the Payload's ALT blast (`payload.ground_alt` through the ground first, `blast_alt` or `blast_alt_far` by the
+distance, `rush`, `tail`) with the Nuke's ALT under it, and the same again lower. `--mix CUES OUT` mixes a strike's cues
+(`cp_write_cues`) into one file.
+
+**Photosensitivity:** each blast is a quick flash with an orange glow through the smoke and dust for about a second,
+thirteen of them half a second apart; the last one's flash is brighter and lights the land round it, and a pale
+condensation flash races across the land with its shockwave.
+
+Offscreen: `tools/preview.py carpetbomb T --views cpplayer,cpside,cpaerial` (the default), its last blast from the
+side `fside`, the fires close `cpfire`, the sky over the bomber's pass `cpsky`, `cpskyf` (towards the target) and
+`cpskyb` (away from it), far off `cpfar`. `cp_write_table` and `cp_write_cues` (ignored) write its table and its cues.
+Tests: `carpet_bombs_walk_a_line_up_to_the_player` (in a line, each nearer the player, never on them, the last the
+biggest, the bomber letting each go well before it strikes), `carpet_leaves_a_row_of_craters_and_fells_the_trees` (the
+craters' depths, the last's size, the trench, the trees felled, the fires only on netherrack, nothing laid on the
+player), `carpet_spreads_each_craters_work_over_its_own_stages`, `carpet_reads_every_column_within_a_blasts_reach_and_no_more`,
+`carpet_leaves_the_land_alone_with_the_terrain_off`, `carpet_sounds_are_the_approved_ones_timed_by_distance`.

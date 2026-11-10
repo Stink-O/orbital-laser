@@ -49,8 +49,8 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
 > Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 >
-> **Every laser plays on both**, the Fold and the Sky Breaks included: regular Horizon now has the world warp and the
-> held world the Fold needs.
+> **Every laser plays on both**, the Fold, the Sky Breaks and the Carpet Bomb included: regular Horizon now has the
+> world warp and the held world the Fold needs.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
@@ -81,36 +81,24 @@ launcher tells you the command if any are missing). Windows needs nothing extra.
 
 **To install the file by hand** (for a version that isn't on the Mods page yet):
 
-1. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
-2. On the **Instances** page, press **Open folder** on your instance. (A new instance's folder is in
-   `instances/<its name>` inside Horizon's data folder, not in the data folder itself.)
-3. Put `orbital.hnmod` in its **`horizon-native-mods`** folder. Make the folder if it isn't there yet: it only
-   appears once a native mod has been installed.
-4. On the **Mods** page, check Orbital Laser is on, then carry on from step 3 above.
-
-> [!CAUTION]
-> A native mod isn't sandboxed: its code is built into the game and runs with full access to your computer, so only
-> build it if you trust it. It's played and tested on Linux; on Windows and Apple Silicon it builds but hasn't been
-> played yet. The [install guide](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) has the
-> known issues and how to remove it.
-
 ## New in 0.5.14
 
-- **The native version catches up**: 0.5.14 brings the Fold and the Sky Breaks to regular Horizon, so every laser
-  now plays on both versions. Install or update it from the launcher's Mods page.
+A new laser, **the Carpet Bomb**. A heavy bomber comes in high out of the haze beyond the target, its four contrails
+behind it, and lets its stick of bombs go as it passes over. The bombs walk a line of blasts across the land towards you,
+half a second apart, each a flash, a low boiling cloud and a front of dust racing out over the land, the rumble rolling
+into one wall of sound, while the bomber flies on overhead and away. The last bomb is the biggest, close in front of
+you: its cloud boils up out of the crater, its shockwave washes over you and the camera jolts. It leaves a ragged trench
+of craters, the land flattened and burning. It's on the wheel's fourth page and `/orbital carpetbomb`, on the fork it needs the
+release `orbital-mod-api-12` (no new fork release), and it plays on the native version too. See [The lasers](#the-lasers).
 
-From 0.5.13, a new laser, **the Sky Breaks**. A patch of land tears free round the target, rises into the sky and sinks into it.
-The sky rings, a vast hand presses on it from behind, and its fist punches through: cracks race out
-across the whole sky like a windscreen hit by a stone. An eye slides into the hole and finds you. Panes of sky break
-free one by one, fall and wedge into the land as real blocks. Then the eye flares and turns away, the fist comes back
-down through the hole and slams the land on the target, and the sky heals over. It's on the wheel's fourth page and
-`/orbital skybreak`; on the fork it needs the release `orbital-mod-api-12`, and since 0.5.14 it plays on the native version too. See [The lasers](#the-lasers).
+- **The native version catches up**: the Fold, the Sky Breaks and the Carpet Bomb now play on regular Horizon
+  too, so every laser plays on both versions. Install or update it from the launcher's Mods page.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 ## The lasers
 
-Eighteen lasers, five to a page of the wheel.
+Nineteen lasers, five to a page of the wheel.
 
 - **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
 - **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
@@ -221,9 +209,25 @@ Eighteen lasers, five to a page of the wheel.
   pane's impact brightens the picture a moment; the eye's flare at about 35 seconds is a glare through the hole; and
   as the slam's shockwave passes you the picture greys over with dust for under a second.
 
+- **The Carpet Bomb** (page four, fork version only for now). No beam. A heavy bomber comes out of the haze far beyond
+  the target, high and steady, its four contrails trailing it, and lets a stick of thirteen bombs go one after another
+  as it passes over the start of the line. They walk a line of blasts across the land towards you from 7 seconds, about
+  half a second and 22 blocks apart: each a flash, a low boiling cloud lit from inside as it goes off, a front of dust
+  racing out over the land, fires left burning in its crater, the dust rolling along the line into one wall. The bomber
+  flies on over and past you and is gone soon after. The last bomb, at about 15 seconds, is the biggest, at least 100
+  blocks in front of you: a bigger flash, a cloud boiling up out of its crater into a broad dome over a skirt of dust,
+  its head leaning downwind, a pale flash racing across the land with its shockwave, burning debris thrown far, and as
+  the front reaches you the camera jolts hard, it throws you back (KNOCKBACK) and muck lands on the lens. It leaves a
+  ragged trench of craters about 25 across and 8 deep, the last one about 65 across and 16 deep with stepped walls and a
+  heaped rim with a few fires on it, the land flattened, the trees felled and the grass charred along the line and out
+  to about 150 round the last, and every mob within about 40 of each blast (about 125 of the last) killed.
+  **Photosensitivity:** each blast is a quick flash with an orange glow through the smoke and dust for about a second,
+  thirteen of them half a second apart; the last one's flash is brighter and lights the land round it, and a pale flash
+  races across the land with its shockwave.
+
 Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
 Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane, the Tsunami, the Fold, the
-Supervolcano and the Sky Breaks reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
+Supervolcano, the Sky Breaks and the Carpet Bomb reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
 
 | The laser wheel | Plasma | What Godly leaves behind |
 |---|---|---|
@@ -281,6 +285,10 @@ Supervolcano and the Sky Breaks reach 1000. [How it works](docs/HOW-IT-WORKS.md#
 |---|---|---|---|
 | ![The fist punching through the sky: a bright flash, white cracks racing out across the whole sky](docs/58-skybreak-punch.jpg) | ![A huge eye looking through the black hole in the cracked sky, broken panes round it, one falling](docs/59-skybreak-eye.jpg) | ![The arm coming down out of the hole into a wall of dust on the land, a pale skirt of dust round the fist](docs/60-skybreak-fist.jpg) | ![From above: the dark crater with the fist's knuckle prints, fallen panes of sky lying wedged in the land round it](docs/61-skybreak-crater.jpg) |
 
+| The Carpet Bomb | The run | The last blast | What it leaves |
+|---|---|---|---|
+| ![The bomber high over the land with its contrails, the bombs falling](docs/63-carpetbomb-bomber.jpg) | ![The blasts walking in across the land](docs/64-carpetbomb-run.jpg) | ![The final blast's cloud boiling up](docs/65-carpetbomb-finale.jpg) | ![The row of craters](docs/66-carpetbomb-craters.jpg) |
+
 ## Getting started
 
 1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-12` or newer). Download
@@ -314,7 +322,7 @@ Supervolcano and the Sky Breaks reach 1000. [How it works](docs/HOW-IT-WORKS.md#
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.13.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.14.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh
@@ -392,7 +400,7 @@ Mods), read the reason it gives first.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar counts
    down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
    `TRACKING STORM…` for the Hurricane, `READING THE SEA…` for the Tsunami, `ATTUNING…` for the Fold, `BREACHING CRUST…` for the
-   Supervolcano, `STRAINING THE SKY…` for the Sky Breaks), then the strike lands where your crosshair is. Nothing else pops up over the
+   Supervolcano, `STRAINING THE SKY…` for the Sky Breaks, `CLEARING THE RUN…` for the Carpet Bomb), then the strike lands where your crosshair is. Nothing else pops up over the
    hotbar but `NO TARGET IN RANGE`.
 4. **Caught in the Tsunami?** The water takes you once it is over your head, tumbles you along with it, hauls you to the
    surface after about six seconds, and carries you back as it falls, to be set down near where it took you, facing the
@@ -403,7 +411,7 @@ Mods), read the reason it gives first.
    of Resistance V so the landing doesn't kill them).
 
 Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Meteor Storm 38, the Sinkhole 40, the Supercell and the Tsunami 42, the Sky Breaks 49.5, the Crystal Bloom and the Rod from God 60,
+Mothership 34, the Carpet Bomb 37.5, the Meteor Storm 38, the Sinkhole 40, the Supercell and the Tsunami 42, the Sky Breaks 49.5, the Crystal Bloom and the Rod from God 60,
 the Downfall, the Hurricane and the Fold 64, the Payload 70, the Supervolcano 88 and the Nuke 90.
 
 The wheel also has:
@@ -411,14 +419,14 @@ The wheel also has:
 - **FLY SPEED** over the title, for getting round the craters: click along the bar for 1x to 40x vanilla's creative
   flight, or type any speed up to 1000x in the box beside it and press Enter.
 - Down the right, a **PANEL** switch, which hides the status panel shown at the top right while you hold the Designator,
-  and a **QUALITY** switch under it: **FAST** (the default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail, the Supercell's, the Hurricane's and the Tsunami's weather and water, the Supervolcano's ash cloud and the Sky Breaks' dust at half the
+  and a **QUALITY** switch under it: **FAST** (the default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail, the Supercell's, the Hurricane's and the Tsunami's weather and water, the Supervolcano's ash cloud, the Sky Breaks' dust and the Carpet Bomb's smoke, dust and shockwaves at half the
   width and height and lays them over the full-size picture, keeping their edges against blocks and the sky; **FULL**
   draws every pixel (about two to three times the GPU time).
 - **STOP STRIKE**, a red button under QUALITY while a strike is under way: it ends the strike there and then (what it
   has already done to the world stays), the same as `/orbital stop`.
 - Down the left, the strike options. **SEED** shows the last strike's seed, or takes one you type (1 to 997), and
   **LOCK SEED** keeps it, so a strike plays out the same way take after take (`/orbital seed`). Under them, for the
-  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold and the Supervolcano), whether the
+  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold, the Supervolcano and the Carpet Bomb), whether the
   blast pushes you, the ash wall shoves you or the wind or the water carries you,
   and **FOLLOW** (the Nuke and the Payload), the follow camera.
 - An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: **OFF**, **KANADA** (the
@@ -433,7 +441,7 @@ The wheel also has:
 |---|---|
 | `/orbital give` | gives you the Designator |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak` | loads that laser |
+| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak`, `carpetbomb` | loads that laser |
 | `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
@@ -441,10 +449,10 @@ The wheel also has:
 | `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
 | `/orbital hud on\|off` | the status panel |
 | `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
-| `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke, the Supercell's, the Hurricane's and the Tsunami's weather and water, the Supervolcano's ash cloud and the Sky Breaks' dust at full size, or at half size (faster); also the wheel's QUALITY switch |
+| `/orbital quality full\|fast` | the Payload's, the Nuke's and the Rod's smoke, the Supercell's, the Hurricane's and the Tsunami's weather and water, the Supervolcano's ash cloud, the Sky Breaks' dust and the Carpet Bomb's smoke, dust and shockwaves at full size, or at half size (faster); also the wheel's QUALITY switch |
 | `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks (Kanada is the default), or off; kept; also the wheel's IMPACT FX row |
 | `/orbital foldpattern a\|b\|c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
-| `/orbital knockback on\|off` | the Nuke's, the Rod's and the Fold's push on you as the blast reaches you, the Supervolcano's ash wall's shove (the camera's jolt stays), and whether the Hurricane's wind or the Tsunami's water carries you off; also the wheel's KNOCKBACK switch |
+| `/orbital knockback on\|off` | the Nuke's, the Rod's, the Fold's and the Carpet Bomb's last blast's push on you as the blast reaches you, the Supervolcano's ash wall's shove (the camera's jolt stays), and whether the Hurricane's wind or the Tsunami's water carries you off; also the wheel's KNOCKBACK switch |
 | `/orbital carryview turn\|still` | while the Hurricane carries you, your view turns a little with you round the storm and sways with the gusts (`turn`, the default), or stays your own (`still`); kept |
 | `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
 | `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
@@ -473,7 +481,7 @@ Orbital Laser → Settings**).
   and rebind it (on a native build, on **Options → Mods → Orbital Laser → Settings**). R only opens the wheel while you play with the designator in hand, not over another screen. With
   anything else in hand it does nothing (`/orbital wheel` opens the wheel either way).
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano and the Sky Breaks can aim, and only with
+  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Sky Breaks and the Carpet Bomb can aim, and only with
   **LOD Distance** on in Video Settings.
 - **The designator only clicks.** A strike is already under way, and one runs at a time. Wait for it to finish, or end
   it with the wheel's STOP STRIKE or `/orbital stop`.
@@ -501,7 +509,7 @@ Orbital Laser → Settings**).
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
   only for the player who fired.
 - **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
-- **Targets must be in loaded chunks.** The fourteen long-range lasers reach 1000 blocks across the distant terrain, where
+- **Targets must be in loaded chunks.** The fifteen long-range lasers reach 1000 blocks across the distant terrain, where
   the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
 
 To build the mod from source or change it, see [CONTRIBUTING.md](CONTRIBUTING.md).

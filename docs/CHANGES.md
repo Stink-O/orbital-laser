@@ -4,10 +4,27 @@ What each release of Orbital Laser added, newest first. The current release is i
 
 ## 0.5.14
 
-- **The native version catches up**: the Fold and the Sky Breaks now play on regular Horizon too, so every laser plays on
-  both versions. The native build is pinned to upstream Horizon `89f236e3e`, which numbers the world warp and the held
-  world the Fold needs (horizon-rust/horizon#11955, #11956, stamped in #12794). Nothing changes on the fork version: 0.5.14
-  is the same mod as 0.5.13 there.
+- **The Carpet Bomb**, the nineteenth laser, on the wheel's fourth page and `/orbital carpetbomb`. No beam: a heavy bomber
+  comes in high out of the haze beyond the target, its four contrails behind it, and lets a stick of thirteen bombs go as
+  it passes over the start of the line. They walk a line of blasts across the land towards you from 7 seconds, about
+  half a second apart: each a flash, a low boiling cloud lit from inside as it goes off, a front of dust racing out over
+  the land and fires left in its crater, the dust rolling along the line into one wall. The bomber flies on over and
+  past you. The last bomb, at about 15 seconds and at least 100 blocks in front of you, is the biggest: its cloud boils
+  up out of the crater into a broad dome over a skirt of dust, its head leaning downwind, a pale condensation flash
+  races across the land with its shockwave, burning debris is thrown far, and as the front reaches you the camera jolts
+  hard, it throws you back (KNOCKBACK) and muck lands on the lens. It leaves a trench of craters about 25 across and 8
+  deep along the line, the last one about 65 across and 16 deep with stepped walls and a few fires on its rim, the land
+  flattened, the trees felled and the grass charred out to about 150 round the last. It reaches 1000 blocks and lasts
+  37.5 seconds. QUALITY FAST draws its smoke, dust and shockwaves at half size. Its sounds are synthesised by
+  `tools/sounds_carpetbomb.py` (the bombers' drone, the blasts near and far, rolling into one wall of sound; no falling
+  sound); the last blast plays the Payload's ALT blast with the Nuke's ALT under it. **Photosensitivity:** each blast is
+  a quick flash with an orange glow through the smoke and dust for about a second, thirteen of them half a second apart;
+  the last one's flash is brighter and lights the land round it, and a pale flash races across the land with its
+  shockwave.
+- It runs on the fork's `orbital-mod-api-12`, as 0.5.13 did: no new fork release.
+- **The native version catches up**: the Fold, the Sky Breaks and the Carpet Bomb now play on regular Horizon too, so
+  every laser plays on both versions. The native build is pinned to upstream Horizon `89f236e3e`, which numbers the
+  world warp and the held world the Fold needs (horizon-rust/horizon#11955, #11956, stamped in #12794).
 
 ## 0.5.13
 

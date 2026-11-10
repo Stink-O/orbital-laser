@@ -81,6 +81,11 @@ fn tsunami_pass(fast: bool) -> &'static str {
 fn skybreak_pass(fast: bool) -> &'static str {
     PASS_SKYBREAK[usize::from(fast)]
 }
+/// The Carpet Bomb's, the same way (carpetbomb.wgsl's `[half stage]`: its blasts' smoke and the line's dust at half
+/// size, the bombs, the rings, the flashes and the debris sharp at full size).
+fn carpet_pass(fast: bool) -> &'static str {
+    PASS_CARPET[usize::from(fast)]
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 /// The Fold's world warp: the world's own vertices bent (the fork's `render.set-warp`).
 const FOLD_WARP: &str = include_str!("../shaders/fold_warp.wgsl");
@@ -100,6 +105,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "supervolcano" => 11,
         "tsunami" => 12,
         "skybreak" => 13,
+        "carpetbomb" => 14,
         _ => 0,
     }
 }
@@ -397,9 +403,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks'), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 14],
+    passes: [&'static str; 15],
     compiled: Option<usize>,
     warming: bool,
     /// A pick has left the wheel up while its pass is built (`close_picked`).
@@ -537,7 +543,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -981,6 +987,7 @@ impl Orbital {
         self.rebuild("supervolcano", volcano_pass(fast));
         self.rebuild("tsunami", tsunami_pass(fast));
         self.rebuild("skybreak", skybreak_pass(fast));
+        self.rebuild("carpetbomb", carpet_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -1219,7 +1226,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -1821,10 +1828,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" {
                 lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1937,6 +1944,7 @@ impl Mod for Orbital {
                         "fold" => "ATTUNING",
                         "supervolcano" => "BREACHING CRUST",
                         "skybreak" => "STRAINING THE SKY",
+                        "carpetbomb" => "CLEARING THE RUN",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -2639,7 +2647,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             .collect();
