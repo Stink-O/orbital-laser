@@ -33,7 +33,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 </p>
 
 <p align="center">
-  <img alt="The Mothership: a vast dark metal ship lit with green seams over the land, its green beam striking the ground" width="720" src="docs/11-mothership.jpg">
+  <img alt="The Sky Breaks: a huge eye flaring in a black hole punched through the cracked sky, broken panes round it, dust rising off the land below" width="720" src="docs/62-skybreak-eye-flare.jpg">
 </p>
 
 > [!WARNING]
