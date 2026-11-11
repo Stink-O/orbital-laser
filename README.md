@@ -49,9 +49,10 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
 > Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 >
-> **The Fold, the Sky Breaks and the Carpet Bomb are on the fork version for now.** On the native version they show
-> greyed out in the wheel ("On the fork now, native soon") until each has been played there. Every other laser plays
-> on both.
+> **Not in the native version yet: the Fold, the Sky Breaks and the Carpet Bomb.** They aren't playable in the native
+> file, `orbital.hnmod` (what the launcher's Mods page installs): there they show greyed out in the wheel, saying "On the
+> fork now, native soon". To play them now, use the fork version, `orbital-laser-v0.5.14.zip`, on the Orbital Laser
+> build of Horizon ([Getting started](#getting-started)). Every other laser plays on both.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
@@ -78,6 +79,9 @@ launcher tells you the command if any are missing). Windows needs nothing extra.
 6. Hold the Designator and press **R** to pick a laser, then hold right-click on a target to fire. Type
    **`/orbital terrain off`** first if you don't want the land wrecked.
 
+**Not in this version yet:** the Fold, the Sky Breaks and the Carpet Bomb show greyed out in the native wheel. They're
+in the [fork version](#getting-started) for now.
+
 **To update:** when the **Mods** page offers a newer Orbital Laser, install it, then **Build** again (step 4).
 
 **To install the file by hand** (for a version that isn't on the Mods page yet):
@@ -90,7 +94,8 @@ half a second apart, each a flash, a low boiling cloud and a front of dust racin
 into one wall of sound, while the bomber flies on overhead and away. The last bomb is the biggest, close in front of
 you: its cloud boils up out of the crater, its shockwave washes over you and the camera jolts. It leaves a ragged trench
 of craters, the land flattened and burning. It's on the wheel's fourth page and `/orbital carpetbomb`, on the fork it needs the
-release `orbital-mod-api-12` (no new fork release). On the native version it shows greyed out for now. See [The lasers](#the-lasers).
+release `orbital-mod-api-12` (no new fork release). It isn't in the native version (`orbital.hnmod`) yet: there it shows
+greyed out. See [The lasers](#the-lasers).
 
 - **The native version catches up to 0.5.14**, built on a newer Horizon. The Fold, the Sky Breaks and the Carpet Bomb
   show greyed out there for now ("On the fork now, native soon") until each has been played natively.
@@ -171,7 +176,7 @@ Nineteen lasers, five to a page of the wheel.
   in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
   43-46 seconds.
 
-- **The Fold** (page four). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
+- **The Fold** (page four, fork version only for now: greyed out in the native `orbital.hnmod`). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
   seven seconds on a rope of smoke. Right over the target it brakes over a second, the fire and the smoke pouring on past it, hangs, and is let
   go. It goes into the land like a stone into water. Rings run out, sharpen into twelve creases and five rings, one pattern, and the sheet
   folds along them: the land lifts ring by ring, the horizon curls up over you and you are in a tube with the whole world on its walls. The
@@ -195,7 +200,7 @@ Nineteen lasers, five to a page of the wheel.
   ponds left standing in the hollows. **Photosensitivity:** the blow as the water takes you is one white flash over the whole picture,
   about a fifth of a second.
 
-- **The Sky Breaks** (page four, fork version only for now). No beam. A disc of land some 14 blocks across round the target cracks
+- **The Sky Breaks** (page four, fork version only for now: greyed out in the native `orbital.hnmod`). No beam. A disc of land some 14 blocks across round the target cracks
   round its rim, tears free and rises into the sky, dirt pouring off its underside, and sinks into the sky, which rings like a
   struck pane. Something presses on the sky from behind and bows it down, and at 9 seconds a fist punches through: a
   blinding flash, cracks racing out across the whole sky, the shattered middle falling. An eye some 150 blocks across
@@ -210,7 +215,7 @@ Nineteen lasers, five to a page of the wheel.
   pane's impact brightens the picture a moment; the eye's flare at about 35 seconds is a glare through the hole; and
   as the slam's shockwave passes you the picture greys over with dust for under a second.
 
-- **The Carpet Bomb** (page four, fork version only for now). No beam. A heavy bomber comes out of the haze far beyond
+- **The Carpet Bomb** (page four, fork version only for now: greyed out in the native `orbital.hnmod`). No beam. A heavy bomber comes out of the haze far beyond
   the target, high and steady, its four contrails trailing it, and lets a stick of thirteen bombs go one after another
   as it passes over the start of the line. They walk a line of blasts across the land towards you from 7 seconds, about
   half a second and 22 blocks apart: each a flash, a low boiling cloud lit from inside as it goes off, a front of dust
