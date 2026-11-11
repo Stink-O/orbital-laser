@@ -299,17 +299,6 @@ bindings = [
   { name = "found", ty = "Vec<PathBuf>", value = "$value" },
 ]
 
-# The audio output's buffer at the ALSA default (about 100 ms) instead of 1024 frames: with the short one a heavy
-# strike's stalls left ALSA answering POLLERR and every sound stopped until a restart (audio_buffer.rs).
-[[injection]]
-id = "audio_buffer"
-target = "horizon_client_render::audio::audio_stream_config"
-kind = "RETURN"
-helper = "audio_buffer.rs"
-bindings = [
-  { name = "sc", ty = "cpal::StreamConfig", value = "$value" },
-]
-
 # The Fold's world warp (render.set-warp, warp-on): handed to the game's world warp each frame (post.rs).
 [[injection]]
 id = "world_warp"
