@@ -22,9 +22,8 @@ What each release of Orbital Laser added, newest first. The current release is i
   the last one's flash is brighter and lights the land round it, and a pale flash races across the land with its
   shockwave.
 - It runs on the fork's `orbital-mod-api-12`, as 0.5.13 did: no new fork release.
-- **The native version catches up**: the Fold, the Sky Breaks and the Carpet Bomb now play on regular Horizon too, so
-  every laser plays on both versions. The native build is pinned to upstream Horizon `89f236e3e`, which numbers the
-  world warp and the held world the Fold needs (horizon-rust/horizon#11955, #11956, stamped in #12794).
+- **The native version catches up to 0.5.14**, pinned to upstream Horizon `89f236e3e`. The Fold, the Sky Breaks and the
+  Carpet Bomb show greyed out there ("On the fork now, native soon") until each has been played natively.
 
 ## 0.5.13
 

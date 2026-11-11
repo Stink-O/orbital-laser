@@ -376,7 +376,7 @@ laser, command, capability and timing). This file is the short, factual version 
 - **The Sky Breaks** (`strike/skybreak.rs` the plan, the crack pattern, the panes and the table, `strike/sb_lift.rs` the
   opening, `strike/sb_hand.rs` the hand, `strike/sb_lodge.rs` the panes as blocks, `strike/sb_sounds.rs` the sounds'
   schedule, `shaders/skybreak.wgsl`; 49.5 s, reaches 1000 blocks; laser index 17, pass 13, the wheel's fourth page;
-  on the native version too from 0.5.14). No beam and no knockback. A disc of the land round the target
+  greyed out on the native version for now: `native_build::HELD_BACK`). No beam and no knockback. A disc of the land round the target
   (`LF_R`, 7, its edge ragged) cracks round its rim and tears free: its real blocks are read (`world.read-columns`) and
   taken out of the world at 0.55 s (`LF_CUT`, `world.edit-blocks`: a hole up to 14 deep in its middle, 3 at its edge;
   terrain off, they stay) and the pass draws them as an island in the game's textures, rising into the sky (its pane 560
@@ -407,7 +407,7 @@ laser, command, capability and timing). This file is the short, factual version 
   second; and as the slam's front passes the player the picture greys over with dust for under a second.
 - **The Carpet Bomb** (`strike/carpet.rs` the plan, the land, the table and the sounds' schedule (`cp_sounds`),
   `shaders/carpetbomb.wgsl`, `tools/sounds_carpetbomb.py` the sounds; 37.5 s, reaches 1000 blocks; laser index 18, pass
-  14, the wheel's fourth page; on the native version too). No beam. A bomber (a silhouette
+  14, the wheel's fourth page; greyed out on the native version for now: `native_build::HELD_BACK`). No beam. A bomber (a silhouette
   in the pass, flying the line's way at 170 blocks a second, `CP_PLANE_V`, 632 up, `CP_HB`) comes out of the haze from
   0.3 s (`CP_APPEAR`), lets the stick go over 1.8 s from 4.4 s (`CP_RELEASE`, `CP_RIPPLE`) and flies on past the player.
   The stick (`CpGeo`) is `CP_N` (13) bombs on a line coming in 32-40 degrees off the way the player looks, 22 blocks
@@ -577,8 +577,8 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   `engine-shim/horizon_sdk.rs`, the SDK on native helpers; `package.py` makes the one-file `orbital.hnmod`;
   `mixins/orbital/horizon-mixin.toml` its hook points and the upstream commit it is pinned to). A fork call the native
   build lacks gets a stand-in in the shim so the mod builds: `native_build::UNSUPPORTED` lists the ones a laser can't do
-  without and `NEEDS` which laser needs them, and such a laser is greyed out in the wheel (none at the moment: the Fold's
-  `world_warp` and `world_hold` hooks are stamped upstream). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
+  without and `NEEDS` which laser needs them, and such a laser is greyed out in the wheel; `HELD_BACK` greys out a laser the build can make but that hasn't been played
+  natively yet (the Fold, the Sky Breaks, the Carpet Bomb), saying `NOT_YET` ("On the fork now, native soon"). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
   no hand tint). The glue ignores the mod's `Registration` (its command paths included): it runs every line starting
   with `/orbital` and puts only its own `USAGES` in the server's command tree. Check a bundle with
   `horizon-mixins apply` and `cargo check -p horizon-client` on its pin and on the newest Nightly (the registry's check).

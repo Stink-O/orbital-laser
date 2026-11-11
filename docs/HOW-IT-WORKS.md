@@ -1035,8 +1035,8 @@ The sky breaks like glass, and something behind it reaches through. 49.5 s (`str
 pattern, the panes and the table; `strike/sb_lift.rs` the opening; `strike/sb_hand.rs` the hand and its crater;
 `strike/sb_lodge.rs` the panes as blocks; `strike/sb_sounds.rs` the sounds' schedule; `shaders/skybreak.wgsl` the pass;
 `tools/sounds_skybreak.py` the sounds). There is no beam and no knockback. The sky is a pane 560 blocks over the
-target's ground (`SB_H`); while the designator is held its countdown reads `STRAINING THE SKY`. It plays on the
-native version too from 0.5.14.
+target's ground (`SB_H`); while the designator is held its countdown reads `STRAINING THE SKY`. On the native
+version it is greyed out for now.
 
 - **The opening** (0-5.15 s, `sb_lift.rs`). A disc of the land round the target, about 14 across with a ragged edge
   (`LF_R`), cracks round its rim from 0.08 s; its blocks, read as it fires (`world.read-columns`, 48 under each
@@ -1147,8 +1147,8 @@ lava, `terrain=0` leaves the panes drawn. `sb_write_table` (ignored) writes its 
 
 A stick of bombs walks its blasts across the land to the player. 37.5 s (`strike/carpet.rs` the plan, the land, the
 table and the sounds' schedule; `shaders/carpetbomb.wgsl` the pass; `tools/sounds_carpetbomb.py` the sounds). There is
-no beam. While the designator is held its countdown reads `CLEARING THE RUN`. It plays on the native version
-too.
+no beam. While the designator is held its countdown reads `CLEARING THE RUN`. On the native version it is
+greyed out for now.
 
 - **The bomber** (0.3-17 s). A heavy swept-wing bomber, drawn as a silhouette 632 blocks up (`CP_HB`; 48 long, 56
   across, four engine pods), flies the line's way at 170 blocks a second (`CP_PLANE_V`), so the line extended passes

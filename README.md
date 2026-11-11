@@ -49,8 +49,9 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
 > Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 >
-> **Every laser plays on both**, the Fold, the Sky Breaks and the Carpet Bomb included: regular Horizon now has the
-> world warp and the held world the Fold needs.
+> **The Fold, the Sky Breaks and the Carpet Bomb are on the fork version for now.** On the native version they show
+> greyed out in the wheel ("On the fork now, native soon") until each has been played there. Every other laser plays
+> on both.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
@@ -89,10 +90,10 @@ half a second apart, each a flash, a low boiling cloud and a front of dust racin
 into one wall of sound, while the bomber flies on overhead and away. The last bomb is the biggest, close in front of
 you: its cloud boils up out of the crater, its shockwave washes over you and the camera jolts. It leaves a ragged trench
 of craters, the land flattened and burning. It's on the wheel's fourth page and `/orbital carpetbomb`, on the fork it needs the
-release `orbital-mod-api-12` (no new fork release), and it plays on the native version too. See [The lasers](#the-lasers).
+release `orbital-mod-api-12` (no new fork release). On the native version it shows greyed out for now. See [The lasers](#the-lasers).
 
-- **The native version catches up**: the Fold, the Sky Breaks and the Carpet Bomb now play on regular Horizon
-  too, so every laser plays on both versions. Install or update it from the launcher's Mods page.
+- **The native version catches up to 0.5.14**, built on a newer Horizon. The Fold, the Sky Breaks and the Carpet Bomb
+  show greyed out there for now ("On the fork now, native soon") until each has been played natively.
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
