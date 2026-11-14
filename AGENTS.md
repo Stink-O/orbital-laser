@@ -431,6 +431,43 @@ laser, command, capability and timing). This file is the short, factual version 
   orange glow through the smoke and dust for about a second (`cp_lights`), thirteen of them half a second apart; the
   last one's flash is brighter and lights the land round it, and a pale condensation flash races across the land with
   its shockwave.
+- **The World Eater** (`strike/worldeater.rs` the plan and the per-tick hand, `strike/we_path.rs` the path, `we_land.rs`
+  the land, `we_land_hunt.rs` the hunt, `we_land_catch.rs` the catch, `we_fx.rs` and `we_body.rs` the pass's tables,
+  `we_sounds.rs` the sounds' schedule; `shaders/worldeater_path.wgsl`, `worldeater_body.wgsl`, `worldeater.wgsl` and the
+  world warp `worldeater_warp.wgsl`; `tools/sounds_worldeater.py`; laser index 19, pass 15, the wheel's fourth page; the
+  native version stays at 0.5.14 and doesn't have it; it is in `native_build::HELD_BACK` for when it does). No beam: a
+  worm 68 across (`WE_R` 34) and 1836 long (`WE_LEN`) on a path that is data (a chain of arches, each with its own
+  breach hole A_i and dive hole D_i, joined by underground runs: `we_holes`, `we_runs`, `we_tunnels`). **It acts on the
+  player.** HUNT (the default, `/orbital worldeater hunt|scripted`, the wheel's TAKE row; up to 90 s, `WE_HUNT_LEN`):
+  the wormsign's run from 420 off (`WE_SIGN`) to the target, out of it at 9.0 s (`WE_BREACH`), then two or three hops
+  (the seed: `hops`; spans 130-230, `Kind::Hop`) and the big arch (spans 170-320, 230-270 high, held 2 s round its top),
+  each appended to the path 1.6 s before the arch before it comes down (`decide`), aimed at where the player is then,
+  on land that is loaded (`scout`), its run 160-600 long (`WE_RUN_MIN`, `WE_RUN_MAX`) at depth 80, every hole 110 from
+  every other (`KNOT_GAP`), at most 6 arches, the last in by 52 s. It swallows the player (`Catch`) if the jaws come down
+  within 47 of them on the last planned dive (HUNT only), or the head comes up within 42 of them on a breach (either
+  take), but only with KNOCKBACK and terrain damage both on (`decide`, `breach_catch`): they are drawn in over 1.4 s
+  (`SWALLOW`), carried along the run behind the head through the fork's `world.carry-player` (at most 64 a second,
+  `CARRY_V`; a run carrying them at most 320, `RUN_CAUGHT`), out through the mouth at the next breach and thrown
+  (`THROW`), landing clear of the hole (a breach's catch: held 26 under it for 2 s, then up and spat along an arc 64
+  out, 30 up); one more small arch (`Kind::Spit`) if the catch was on the last bite; Resistance V for a survival player
+  from the swallow; a stopped strike puts them on the land beside the hole (`WeHand`'s `drop`). SCRIPTED (46 s,
+  `WE_LEN_S`): one arch across the player's view, out of the target at 9.0, held 12.5-14.5 (`WE_BELLOW`), into the land
+  260 off (`WE_SPAN`) at 19.0 (`WE_BITE`), the tail in at 31. Knockback (`Shove`, KNOCKBACK): the first breach 0.7 out
+  and 0.5 up to 300, the others 0.5/0.4 to 220; the big bite 0.9/0.6 to 420, the others 0.55/0.4 to 230; jolts with
+  each. What it does to the world (terrain on; `we_land.rs`): each breach hole 40 in radius (`R_BREACH`) and each dive
+  hole 45 (`R_BITE`, caving to a funnel of 60, `RF_BITE`) open to bedrock, dug from the middle out over 2.6 s (`DIG_T`),
+  walls darkening downward, water and lava in them sealed; a breach heaps a rim (6 high at the first, 4.5 after) out to
+  112, fells the trees to 120 lying pointing away and throws 110 falling blocks and 5 trees (80 and 3 after); a dive
+  fells to 80; sculk creeps out round each; the land over every run (the first from the wormsign's start) bucks as the
+  head passes (`buck_run`) and, once its tail has gone in, sinks ring by ring into a trench 50 wide and 25 deep
+  (`TR_W`, `TR_D`; `watch`, `sink`), lakes and rivers left with a dam of ground beside them. Mobs and items within 110
+  (`KILL`) of each hole and along each line are killed; the chunks within 130 of each hole and 64 of each line are
+  force-loaded as each arch is planned (`LOAD_KNOT`, `LOAD_LINE`), let go at the end. The land is read
+  (`world.read-columns`) round each hole (124, `SITE_R`) and along each run, and goes in through `world.edit-blocks`
+  split by the tick it is due. At QUALITY PERFORMANCE the land's dressing (sculk, what hangs, felled logs, thrown blocks)
+  is left out and the falling blocks capped (`fallgov.rs`). **Photosensitivity:** hard jolts at each breach and bite;
+  being swallowed turns the picture black for about 0.7 s (the dark beat), then carries the view fast down a glowing
+  tunnel for several seconds and throws it out.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-12` or newer (it adds
@@ -470,6 +507,8 @@ tools/preview.py skybreak 49 --views sbruin,hdcrater  # the blocks its panes and
 python3 tools/sounds_skybreak.py --only --listen DIR  # the Sky Breaks' sounds mixed as the game does from 30, 300 and 800 blocks
 tools/preview.py carpetbomb 6 11 15 22 --views cpplayer,cpside,fside  # the Carpet Bomb offscreen (views cp*, its last blast fside, the fires cpfire, the bomber cpskyf, cpskyb)
 python3 tools/sounds_carpetbomb.py                   # the Carpet Bomb's sounds (`--mix CUES OUT` a strike's cues, from cp_write_cues, into one file)
+tools/preview.py worldeater 9.5 14 22 --views weplayer,weside,wefar  # the World Eater offscreen (the scripted show; `--set weplan=3` a three-arch chain; views we*, web* the body, wef* the fx)
+python3 tools/sounds_worldeater.py                   # the World Eater's sounds (`--review DIR` the review mixdowns; the burst's and the ground's sources: NOTICE)
 python3 -I tools/bake_hand.py MESH_DIR               # the hand's sculpted shape baked into mod/assets/sb_hand.bin and the pass's [bake table]
 tools/world_snapshot.py save|restore|reset WORLD [NAME]  # snapshot a world and put it back (refuses while it's open; reset leaves, restores, rejoins)
 ```
@@ -485,14 +524,14 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak` or `carpetbomb`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast`, `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's, the Fold's, the Supervolcano's and the Carpet Bomb's push, the Hurricane's and the Tsunami's carry; kept, the wheel's KNOCKBACK switch), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third, the Fold, the Supervolcano, the Sky Breaks and the Carpet Bomb on the fourth. Its FLY
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak`, `carpetbomb` or `worldeater`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast|performance` (PERFORMANCE: FAST with the World Eater's pass at its lightest, `we_tier`), `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's, the Fold's, the Supervolcano's, the Carpet Bomb's and the World Eater's push, the Hurricane's and the Tsunami's carry, the World Eater's swallow; kept, the wheel's KNOCKBACK switch), `/orbital worldeater hunt|scripted` (kept, the wheel's TAKE row), `/orbital wormground a|b|c|old|off` (the World Eater's sound under the land, `WORMGROUND`; this session only; default a), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`.
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb and the World Eater on the fourth. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
 `game.player-flying`, `render.set-data`, `render.set-hand-tint` or the `atlas` capability, won't start the mod.
 The wheel's left column has the strike options: SEED (a field: the last strike's seed, or one typed) and LOCK SEED
-at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold, the Supervolcano) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
+at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Carpet Bomb, the World Eater) and FOLLOW (the Nuke, the Payload) only for the lasers they apply to
 (`toggles` in wheel.rs); the right column PANEL and QUALITY, and a red STOP STRIKE under QUALITY while a strike is
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,
@@ -505,8 +544,8 @@ only picks a ready-made one, but the game holds one pipeline at a time and build
 over: some 60 ms each time, and up to 2 s (the Downfall's 7) the first time the driver sees a pass. So a wheel pick stays up for the two
 frames that takes, saying LOADING (`close_picked`). On native a pass is built on a thread of its own and kept
 (`native/engine-shim/mod_post.rs`; a strike's frame waits for its pass, and on macOS every frame, where `BUILDING` needs the build in
-the frame). The fork would need the engine to do the same. The QUALITY switch under PANEL (top right; `/orbital quality full|fast`, kept
-between sessions, default FAST) picks whether the Payload's, the Nuke's and the Rod's smoke is drawn at full size or at half size: FAST gives the
+the frame). The fork would need the engine to do the same. The QUALITY switch under PANEL (top right; `/orbital quality full|fast|performance`, kept
+between sessions, default FAST; a click moves it FULL, FAST, PERF) picks whether the Payload's, the Nuke's and the Rod's smoke is drawn at full size or at half size: FAST gives the
 game the pass with its half-size stage (`fs_half`, `fs_join`; see below), which the fork draws from release
 `orbital-mod-api-7` (an older fork would compile the same source and draw its `fs_main` at full size; FAST needs no
 import of its own).
@@ -573,6 +612,24 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   debris; FAST's `[half stage]` the smoke, the dust and the fronts), `tools/sounds_carpetbomb.py` its sounds (synthesised;
   the last blast plays the Payload's ALT set and the Nuke's ALT). Preview views `cp*` and `fside`; `cp_write_table` and
   `cp_write_cues` (ignored) write its table and its cues. Tests `carpet_*`.
+- The World Eater: `src/strike/worldeater.rs` its plan (`worldeater_plan`; `arch_events` each arch's sounds, jolts,
+  knockback, kills, forceloads and land as it is planned; `decide` the next arch; `watch` and `sink` the trenches;
+  `WeHand` the per-tick part: the player sampled, the knockback, the carry; `land_words` its words for the pass),
+  `src/strike/we_path.rs` the path (the arches, runs and knots; `we_head`, `we_point`, `we_mound`, `we_eye`; the table
+  both the mod and the pass read from word 0), `we_land.rs` the land (`dig`, `funnel`, `heap`, `felled`, `thrown`,
+  `sculk`, `trench_rings`, `buck_*`), `we_land_hunt.rs` the hunt (`Kind`, `hop_gap`, `run_want`, the picks),
+  `we_land_catch.rs` the catch (`Catch`, its track, the spit), `we_fx.rs` the fx's block table and the per-tick tables
+  (`we_pieces_words`: the pieces, the jolt and lens events, each hole's billows and clumps), `we_body.rs` the body's block
+  table, `we_sounds.rs` the sounds' schedule (`we_arch_cues`; the takes picked by its `WE_*_TAKE` constants, the other
+  takes' files kept; `WE_REVOICE` off: the re-voiced `_rv` files are unjudged and unused), `fallgov.rs` the falling-block
+  cap, `perf.rs` the `/orbital perf …` measuring switches (all off by default). The pass is
+  `shaders/worldeater_path.wgsl` (the path, `we_tier`, `we_detail`) + `worldeater_body.wgsl` (the worm: rings of block
+  cells under 12 plates, the head with six petals and three rings of teeth, the neck turning to look, the throat from
+  inside) + `worldeater.wgsl` (`fs_main`, the half stage, the dust, the pieces, the caught view, the lens), assembled by
+  `mod/build.rs`; `worldeater_warp.wgsl` the world warp (the dome's teal cracks only). Preview views `we*`, `web*` (the
+  body), `wef*` (the fx); `--set weplan=3` a three-arch chain. Tests `we_*` and the catch's and the path's
+  (`a_breach_catch_holds_them_inside_then_spits_them_clear_of_the_hole`, `three_arches_with_holes_of_their_own`, ...);
+  `we_land_profile`, `we_pieces_worst_tick` and `we_write_table` (ignored) print its busiest ticks and write its table.
 - `native/`: the native build for upstream Horizon (`assemble.sh` builds the mod's source unchanged against
   `engine-shim/horizon_sdk.rs`, the SDK on native helpers; `package.py` makes the one-file `orbital.hnmod`;
   `mixins/orbital/horizon-mixin.toml` its hook points and the upstream commit it is pinned to). A fork call the native
@@ -690,6 +747,28 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 - **A plan must be in time order**: playback stops at the first entry not due. `strike::plan` sorts nothing for the lasers with
   plans of their own, so each sorts its `ev` (the Fold's didn't, and its crater waited for its 49 s forceload remove).
 - **`mod.wasm` imports must match the manifest's capabilities**; `cargo horizon-mod build` checks this.
+- **The World Eater's pass is the biggest** (prelude + strike.wgsl up to its `fs_main` + `worldeater_path.wgsl` +
+  `worldeater_body.wgsl` + `worldeater.wgsl`): `worldeater.wgsl` starts with `// [lean pass]`, so `passbuild.rs`'s
+  `split_pass` drops every comment and blank line of the assembled pass (the FAST pass is about 225 KB of the game's 256
+  KiB; `tools/check-shader.sh` measures it lean). Comments cost nothing; code does, and every call site of a big
+  function is a whole copy for the compiler: keep one call per pipeline of `we_eye_hit_at`, `we_body_colour`,
+  `wef_tlight`. QUALITY FAST runs its half-size stage (`fs_half`: the body, the dust, the caught view, at half width and
+  height; `fs_join`: the upsample, the pieces, the lens), FULL `fs_main`; the tier (2 FULL, 1 FAST, 0 PERFORMANCE) is
+  params[15] (`we_tier`), and `we_detail` scales the steps and counts with it and the picture's height (FAST 0.75 at
+  1440 lines, PERFORMANCE half that). The first pick of it builds the pass on the render thread: the game freezes for
+  about half a minute to a minute and a half the first time on `orbital-mod-api-12`.
+- **The World Eater's `mod_data`** (`render.set-data`): the path from 0 (`we_path.rs`: header 0..16, an arch every 48
+  words from 16; arches are appended during a strike and none of the earlier words change), the body's block table from
+  512 (`WE_BODY_T`), the catch's words at 2048-2050 and the fx's block table from 3072 (`WE_FX_T` + 1024), the land's
+  words from 8192 (`WE_LAND_T`: holes, tunnels, the furrow), the eye's (the swallowed player's view: shut, let-go, the
+  track's knots) from 8704 (`WE_EYE_T`), and the per-tick tables from 20480 (`WE_PCS_T`: the live pieces, the jolt and
+  lens events, each hole's billows and clumps at this tick and the next), written whole every tick by `we_fx.rs` and
+  read by the pass between ticks. Keep the pass's `WEP_*`, `WEF_*` and `WE_*` offsets in step (`pcs_layout_in_step`,
+  `we_wgsl_in_step`). Those tables cost the tick some 6 M of real fuel every tick on top of the land's stages.
+- **The World Eater's world warp is on only while a dome is seen**: the game culls nothing while a warp is on (every
+  resident section drawn, ~8 ms at 1440p), and the warp only paints the dome's teal cracks, so lib.rs switches it on
+  only while a dome is up, within 420 of the player and in front of the camera (`we_dome_seen`); `/orbital perf
+  nowarp` keeps it off for measuring.
 - **A strike's world changes go through a budget**: at most 20,000 blocks and 400 commands a tick (`BLOCK_BUDGET`,
   `CARVE_CMDS` in lib.rs); the rest wait. Thousands of small commands in one tick hitch the game as much as too many
   blocks. `carve_queue` prints a laser's busiest ticks and commonest commands. Those count commands only: the Crystal
@@ -706,7 +785,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
 Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's, the
-Hurricane's, the Tsunami's, the Supervolcano's, the Sky Breaks' and the Carpet Bomb's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
+Hurricane's, the Tsunami's, the Supervolcano's, the Sky Breaks', the Carpet Bomb's and the World Eater's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
 bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)

@@ -58,6 +58,9 @@ struct Store {
     /// In the tests: the ground, given at once.
     #[cfg(test)]
     test: Option<fn(i32, i32) -> Option<i32>>,
+    /// In the tests: the water over the ground, given with it.
+    #[cfg(test)]
+    test_wet: Option<fn(i32, i32) -> Option<i32>>,
 }
 
 thread_local! {
@@ -192,12 +195,13 @@ pub fn clear() {
         let mut s = s.borrow_mut();
         let next = s.next;
         #[cfg(test)]
-        let test = s.test;
+        let (test, wet) = (s.test, s.test_wet);
         *s = Store::default();
         s.next = next;
         #[cfg(test)]
         {
             s.test = test;
+            s.test_wet = wet;
         }
     });
 }
@@ -213,8 +217,21 @@ pub fn test_answer(tag: u32, columns: &[(i32, i32)]) {
                 s.ground.insert(*c, f(c.0, c.1));
             }
         }
+        if let Some(f) = s.test_wet {
+            for c in columns {
+                if let Some(d) = f(c.0, c.1) {
+                    s.wet.insert(*c, d);
+                }
+            }
+        }
         s.done.insert(tag);
     });
+}
+
+/// In the tests: the water over the ground every query is answered with (none: dry everywhere). After `set_test`.
+#[cfg(test)]
+pub fn set_test_wet(f: Option<fn(i32, i32) -> Option<i32>>) {
+    STORE.with(|s| s.borrow_mut().test_wet = f);
 }
 
 /// In the tests: the ground every query is answered with at once (none: none of it, the way a world that did not say

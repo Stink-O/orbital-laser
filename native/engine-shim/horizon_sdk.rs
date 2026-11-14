@@ -549,11 +549,13 @@ pub mod native_build {
     pub const NEEDS: &[(&str, &[&str])] = &[
         // the Fold: the land bent through the world warp, the crater made behind the held world
         ("fold", &["render.set-warp", "render.warp-on", "render.hold-world", "render.hold-world-within"]),
+        // the World Eater: its wormsign bends the land through the world warp
+        ("worldeater", &["render.set-warp", "render.warp-on"]),
     ];
     /// The lasers held back on this build though it can make them (by key), greyed out until they have been played
-    /// natively: the Fold (its water drops out at some angles through the world warp), the Sky Breaks and the Carpet
-    /// Bomb (not yet played on a native build). Take one out once it has been.
-    pub const HELD_BACK: &[&str] = &["fold", "skybreak", "carpetbomb"];
+    /// natively: the Fold (its water drops out at some angles through the world warp), the Sky Breaks, the Carpet
+    /// Bomb and the World Eater (not yet played on a native build). Take one out once it has been.
+    pub const HELD_BACK: &[&str] = &["fold", "skybreak", "carpetbomb", "worldeater"];
     /// What the wheel, the Designator and `/orbital <laser>` say of an unavailable laser.
     pub const NOT_YET: &str = "On the fork now, native soon";
     /// Whether this build carries out the fork's call `call` (as the fork names it: `render.set-warp`).
@@ -583,7 +585,7 @@ pub mod native_build {
             for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano"] {
                 assert_eq!(unavailable(key), None, "{key}");
             }
-            for key in ["fold", "skybreak", "carpetbomb"] {
+            for key in ["fold", "skybreak", "carpetbomb", "worldeater"] {
                 assert_eq!(unavailable(key), Some(NOT_YET), "{key}");
             }
             assert!(supports("render.set-warp") && supports("render.hold-world-within") && supports("render.set-post"));

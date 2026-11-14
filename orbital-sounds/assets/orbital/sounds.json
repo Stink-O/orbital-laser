@@ -3395,5 +3395,2417 @@
       }
     ],
     "subtitle": "subtitles.orbital.carpetbomb.blast_far3"
+  },
+  "worldeater.sign": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sign",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sign"
+  },
+  "worldeater.sign_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sign_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sign_short"
+  },
+  "worldeater.move1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/move1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.move1"
+  },
+  "worldeater.move2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/move2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.move2"
+  },
+  "worldeater.move3": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/move3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.move3"
+  },
+  "worldeater.breach_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_a"
+  },
+  "worldeater.breach_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_a_far"
+  },
+  "worldeater.breach_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_b"
+  },
+  "worldeater.breach_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_b_far"
+  },
+  "worldeater.breach_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_c"
+  },
+  "worldeater.breach_c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_c_far"
+  },
+  "worldeater.breach_d": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_d",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_d"
+  },
+  "worldeater.breach_d_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_d_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_d_far"
+  },
+  "worldeater.breach_e": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_e",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_e"
+  },
+  "worldeater.breach_e_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_e_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_e_far"
+  },
+  "worldeater.breach_f": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_f",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_f"
+  },
+  "worldeater.breach_f_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_f_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_f_far"
+  },
+  "worldeater.breach_g": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_g",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_g"
+  },
+  "worldeater.breach_g_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_g_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_g_far"
+  },
+  "worldeater.bite_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_close"
+  },
+  "worldeater.bite_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_mid"
+  },
+  "worldeater.slump_close1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/slump_close1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.slump_close1"
+  },
+  "worldeater.slump_close2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/slump_close2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.slump_close2"
+  },
+  "worldeater.slump_close3": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/slump_close3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.slump_close3"
+  },
+  "worldeater.grind1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/grind1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.grind1"
+  },
+  "worldeater.grind2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/grind2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.grind2"
+  },
+  "worldeater.grind3": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/grind3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.grind3"
+  },
+  "worldeater.rim1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/rim1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.rim1"
+  },
+  "worldeater.rim2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/rim2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.rim2"
+  },
+  "worldeater.rim3": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/rim3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.rim3"
+  },
+  "worldeater.ride_a_start": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_a_start",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_a_start"
+  },
+  "worldeater.ride_a_loop": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_a_loop",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_a_loop"
+  },
+  "worldeater.ride_a_end": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_a_end",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_a_end"
+  },
+  "worldeater.ride_b_start": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_b_start",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_b_start"
+  },
+  "worldeater.ride_b_loop": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_b_loop",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_b_loop"
+  },
+  "worldeater.ride_b_end": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_b_end",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_b_end"
+  },
+  "worldeater.ride_c_start": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_c_start",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_c_start"
+  },
+  "worldeater.ride_c_loop": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_c_loop",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_c_loop"
+  },
+  "worldeater.ride_c_end": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ride_c_end",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ride_c_end"
+  },
+  "worldeater.tail_d": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/tail_d",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.tail_d"
+  },
+  "worldeater.settle_d": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/settle_d",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.settle_d"
+  },
+  "worldeater.gulp_d": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/gulp_d",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.gulp_d"
+  },
+  "worldeater.throat_d": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/throat_d",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.throat_d"
+  },
+  "worldeater.sign_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sign_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sign"
+  },
+  "worldeater.sign_short_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sign_short_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sign_short"
+  },
+  "worldeater.move1_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/move1_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.move1"
+  },
+  "worldeater.quake1_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/quake1_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.quake1"
+  },
+  "worldeater.rise_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/rise_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.rise"
+  },
+  "worldeater.dive_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/dive_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.dive"
+  },
+  "worldeater.body1_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/body1_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.body1"
+  },
+  "worldeater.tail_in_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/tail_in_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.tail_in"
+  },
+  "worldeater.spit_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/spit_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.spit"
+  },
+  "worldeater.bellow_a_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_a_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_a"
+  },
+  "worldeater.bite_c_rv": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_c_rv",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_c"
+  },
+  "worldeater.voice_emerge_a_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_a_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_a_close"
+  },
+  "worldeater.voice_emerge_a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_a_mid"
+  },
+  "worldeater.voice_emerge_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_a_far"
+  },
+  "worldeater.voice_emerge_b_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_b_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_b_close"
+  },
+  "worldeater.voice_emerge_b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_b_mid"
+  },
+  "worldeater.voice_emerge_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_b_far"
+  },
+  "worldeater.voice_emerge_c_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_c_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_c_close"
+  },
+  "worldeater.voice_emerge_c_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_c_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_c_mid"
+  },
+  "worldeater.voice_emerge_c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_c_far"
+  },
+  "worldeater.voice_emerge_d_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_d_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_d_close"
+  },
+  "worldeater.voice_emerge_d_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_d_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_d_mid"
+  },
+  "worldeater.voice_emerge_d_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_d_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_d_far"
+  },
+  "worldeater.voice_emerge_e_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_e_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_e_close"
+  },
+  "worldeater.voice_emerge_e_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_e_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_e_mid"
+  },
+  "worldeater.voice_emerge_e_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_emerge_e_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_emerge_e_far"
+  },
+  "worldeater.ground_travel_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_travel_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_travel_close"
+  },
+  "worldeater.ground_travel_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_travel_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_travel_mid"
+  },
+  "worldeater.ground_travel_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_travel_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_travel_far"
+  },
+  "worldeater.ground_hole_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_hole_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_hole_close"
+  },
+  "worldeater.ground_hole_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_hole_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_hole_mid"
+  },
+  "worldeater.ground_thrash_big_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_thrash_big_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_thrash_big_a"
+  },
+  "worldeater.ground_thrash_big_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_thrash_big_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_thrash_big_b"
+  },
+  "worldeater.ground_thrash_mid_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_thrash_mid_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_thrash_mid_a"
+  },
+  "worldeater.ground_thrash_mid_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_thrash_mid_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_thrash_mid_b"
+  },
+  "worldeater.ground_travel_close_out": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_travel_close_out",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_travel_close_out"
+  },
+  "worldeater.ground_travel_mid_out": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_travel_mid_out",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_travel_mid_out"
+  },
+  "worldeater.ground_travel_far_out": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_travel_far_out",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_travel_far_out"
+  },
+  "worldeater.ground_hole_close_out": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_hole_close_out",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_hole_close_out"
+  },
+  "worldeater.ground_hole_mid_out": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_hole_mid_out",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_hole_mid_out"
+  },
+  "worldeater.breach_burst_k1a_close_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_close_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_close_short"
+  },
+  "worldeater.breach_burst_k1a_mid_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_mid_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_mid_short"
+  },
+  "worldeater.breach_burst_k1a_far_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_far_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_far_short"
+  },
+  "worldeater.breach_burst_k1b_close_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_close_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_close_short"
+  },
+  "worldeater.breach_burst_k1b_mid_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_mid_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_mid_short"
+  },
+  "worldeater.breach_burst_k1b_far_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_far_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_far_short"
+  },
+  "worldeater.breach_burst_k1c_close_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_close_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_close_short"
+  },
+  "worldeater.breach_burst_k1c_mid_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_mid_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_mid_short"
+  },
+  "worldeater.breach_burst_k1c_far_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_far_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_far_short"
+  },
+  "worldeater.breach_burst_k1d_close_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_close_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_close_short"
+  },
+  "worldeater.breach_burst_k1d_mid_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_mid_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_mid_short"
+  },
+  "worldeater.breach_burst_k1d_far_short": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_far_short",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_far_short"
+  },
+  "worldeater.ground_pass_a_close_near": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_close_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_close_near"
+  },
+  "worldeater.ground_pass_a_close_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_close_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_close_far"
+  },
+  "worldeater.ground_pass_a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_mid"
+  },
+  "worldeater.ground_pass_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_far"
+  },
+  "worldeater.ground_pass_b_close_near": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_close_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_close_near"
+  },
+  "worldeater.ground_pass_b_close_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_close_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_close_far"
+  },
+  "worldeater.ground_pass_b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_mid"
+  },
+  "worldeater.ground_pass_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_far"
+  },
+  "worldeater.ground_pass_c_close_near": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_close_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_close_near"
+  },
+  "worldeater.ground_pass_c_close_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_close_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_close_far"
+  },
+  "worldeater.ground_pass_c_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_mid"
+  },
+  "worldeater.ground_pass_c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_far"
+  },
+  "worldeater.ground_lead_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_lead_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_lead_a"
+  },
+  "worldeater.ground_lead_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_lead_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_lead_b"
+  },
+  "worldeater.ground_lead_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_lead_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_lead_c"
+  },
+  "worldeater.voice_pass_a_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_close"
+  },
+  "worldeater.voice_pass_a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_mid"
+  },
+  "worldeater.voice_pass_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_far"
+  },
+  "worldeater.voice_pass_b_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_close"
+  },
+  "worldeater.voice_pass_b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_mid"
+  },
+  "worldeater.voice_pass_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_far"
+  },
+  "worldeater.voice_pass_c_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_close"
+  },
+  "worldeater.voice_pass_c_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_mid"
+  },
+  "worldeater.voice_pass_c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_far"
+  },
+  "worldeater.ground_pass_a_close_near_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_close_near_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_close_near_c1"
+  },
+  "worldeater.ground_pass_a_close_near_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_close_near_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_close_near_c2"
+  },
+  "worldeater.ground_pass_a_close_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_close_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_close_far_c1"
+  },
+  "worldeater.ground_pass_a_close_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_close_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_close_far_c2"
+  },
+  "worldeater.ground_pass_a_mid_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_mid_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_mid_c1"
+  },
+  "worldeater.ground_pass_a_mid_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_mid_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_mid_c2"
+  },
+  "worldeater.ground_pass_a_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_far_c1"
+  },
+  "worldeater.ground_pass_a_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_a_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_a_far_c2"
+  },
+  "worldeater.ground_pass_b_close_near_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_close_near_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_close_near_c1"
+  },
+  "worldeater.ground_pass_b_close_near_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_close_near_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_close_near_c2"
+  },
+  "worldeater.ground_pass_b_close_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_close_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_close_far_c1"
+  },
+  "worldeater.ground_pass_b_close_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_close_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_close_far_c2"
+  },
+  "worldeater.ground_pass_b_mid_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_mid_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_mid_c1"
+  },
+  "worldeater.ground_pass_b_mid_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_mid_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_mid_c2"
+  },
+  "worldeater.ground_pass_b_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_far_c1"
+  },
+  "worldeater.ground_pass_b_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_b_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_b_far_c2"
+  },
+  "worldeater.ground_pass_c_close_near_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_close_near_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_close_near_c1"
+  },
+  "worldeater.ground_pass_c_close_near_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_close_near_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_close_near_c2"
+  },
+  "worldeater.ground_pass_c_close_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_close_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_close_far_c1"
+  },
+  "worldeater.ground_pass_c_close_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_close_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_close_far_c2"
+  },
+  "worldeater.ground_pass_c_mid_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_mid_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_mid_c1"
+  },
+  "worldeater.ground_pass_c_mid_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_mid_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_mid_c2"
+  },
+  "worldeater.ground_pass_c_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_far_c1"
+  },
+  "worldeater.ground_pass_c_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/ground_pass_c_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.ground_pass_c_far_c2"
+  },
+  "worldeater.voice_pass_a_close_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_close_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_close_c1"
+  },
+  "worldeater.voice_pass_a_close_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_close_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_close_c2"
+  },
+  "worldeater.voice_pass_a_mid_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_mid_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_mid_c1"
+  },
+  "worldeater.voice_pass_a_mid_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_mid_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_mid_c2"
+  },
+  "worldeater.voice_pass_a_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_far_c1"
+  },
+  "worldeater.voice_pass_a_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_a_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_a_far_c2"
+  },
+  "worldeater.voice_pass_b_close_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_close_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_close_c1"
+  },
+  "worldeater.voice_pass_b_close_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_close_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_close_c2"
+  },
+  "worldeater.voice_pass_b_mid_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_mid_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_mid_c1"
+  },
+  "worldeater.voice_pass_b_mid_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_mid_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_mid_c2"
+  },
+  "worldeater.voice_pass_b_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_far_c1"
+  },
+  "worldeater.voice_pass_b_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_b_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_b_far_c2"
+  },
+  "worldeater.voice_pass_c_close_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_close_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_close_c1"
+  },
+  "worldeater.voice_pass_c_close_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_close_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_close_c2"
+  },
+  "worldeater.voice_pass_c_mid_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_mid_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_mid_c1"
+  },
+  "worldeater.voice_pass_c_mid_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_mid_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_mid_c2"
+  },
+  "worldeater.voice_pass_c_far_c1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_far_c1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_far_c1"
+  },
+  "worldeater.voice_pass_c_far_c2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_pass_c_far_c2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_pass_c_far_c2"
+  },
+  "worldeater.voice_travel_out_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_out_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_out_close"
+  },
+  "worldeater.voice_travel_out_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_out_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_out_mid"
+  },
+  "worldeater.voice_travel_out_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_out_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_out_far"
+  },
+  "worldeater.voice_travel_loop_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_loop_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_loop_close"
+  },
+  "worldeater.voice_travel_loop_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_loop_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_loop_mid"
+  },
+  "worldeater.voice_travel_loop_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_loop_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_loop_far"
+  },
+  "worldeater.voice_travel_rise_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_rise_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_rise_close"
+  },
+  "worldeater.voice_travel_rise_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_rise_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_rise_mid"
+  },
+  "worldeater.voice_travel_rise_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_travel_rise_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_travel_rise_far"
+  },
+  "worldeater.voice_bellow_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bellow_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bellow_close"
+  },
+  "worldeater.voice_bellow_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bellow_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bellow_mid"
+  },
+  "worldeater.voice_bellow_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bellow_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bellow_far"
+  },
+  "worldeater.voice_bite_a_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bite_a_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bite_a_close"
+  },
+  "worldeater.voice_bite_a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bite_a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bite_a_mid"
+  },
+  "worldeater.voice_bite_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bite_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bite_a_far"
+  },
+  "worldeater.voice_bite_b_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bite_b_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bite_b_close"
+  },
+  "worldeater.voice_bite_b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bite_b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bite_b_mid"
+  },
+  "worldeater.voice_bite_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_bite_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_bite_b_far"
+  },
+  "worldeater.voice_swallow_a_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_swallow_a_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_swallow_a_close"
+  },
+  "worldeater.voice_swallow_a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_swallow_a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_swallow_a_mid"
+  },
+  "worldeater.voice_swallow_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_swallow_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_swallow_a_far"
+  },
+  "worldeater.voice_swallow_b_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_swallow_b_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_swallow_b_close"
+  },
+  "worldeater.voice_swallow_b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_swallow_b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_swallow_b_mid"
+  },
+  "worldeater.voice_swallow_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_swallow_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_swallow_b_far"
+  },
+  "worldeater.bite_close_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_close_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_close_dk"
+  },
+  "worldeater.bite_mid_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_mid_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_mid_dk"
+  },
+  "worldeater.bite_c_far_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_c_far_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_c_far_dk"
+  },
+  "worldeater.voice_inside": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_inside",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_inside"
+  },
+  "worldeater.voice_leave_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_leave_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_leave_far"
+  },
+  "worldeater.voice_jaws_a_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_jaws_a_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_jaws_a_close"
+  },
+  "worldeater.voice_jaws_a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_jaws_a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_jaws_a_mid"
+  },
+  "worldeater.voice_jaws_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_jaws_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_jaws_a_far"
+  },
+  "worldeater.voice_jaws_b_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_jaws_b_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_jaws_b_close"
+  },
+  "worldeater.voice_jaws_b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_jaws_b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_jaws_b_mid"
+  },
+  "worldeater.voice_jaws_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_jaws_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_jaws_b_far"
+  },
+  "worldeater.voice_spit_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_spit_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_spit_close"
+  },
+  "worldeater.voice_spit_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_spit_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_spit_mid"
+  },
+  "worldeater.voice_spit_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/voice_spit_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.voice_spit_far"
+  },
+  "worldeater.breach_burst_k1a_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_close"
+  },
+  "worldeater.breach_burst_k1a_close_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_close_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_close_dk"
+  },
+  "worldeater.breach_burst_k1a_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_mid"
+  },
+  "worldeater.breach_burst_k1a_mid_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_mid_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_mid_dk"
+  },
+  "worldeater.breach_burst_k1a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1a_far"
+  },
+  "worldeater.breach_burst_k1b_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_close"
+  },
+  "worldeater.breach_burst_k1b_close_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_close_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_close_dk"
+  },
+  "worldeater.breach_burst_k1b_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_mid"
+  },
+  "worldeater.breach_burst_k1b_mid_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_mid_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_mid_dk"
+  },
+  "worldeater.breach_burst_k1b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1b_far"
+  },
+  "worldeater.breach_burst_k1c_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_close"
+  },
+  "worldeater.breach_burst_k1c_close_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_close_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_close_dk"
+  },
+  "worldeater.breach_burst_k1c_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_mid"
+  },
+  "worldeater.breach_burst_k1c_mid_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_mid_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_mid_dk"
+  },
+  "worldeater.breach_burst_k1c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1c_far"
+  },
+  "worldeater.breach_burst_k1d_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_close"
+  },
+  "worldeater.breach_burst_k1d_close_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_close_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_close_dk"
+  },
+  "worldeater.breach_burst_k1d_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_mid"
+  },
+  "worldeater.breach_burst_k1d_mid_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_mid_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_mid_dk"
+  },
+  "worldeater.breach_burst_k1d_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_k1d_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_k1d_far"
+  },
+  "worldeater.breach_burst_hop_close": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_hop_close",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_hop_close"
+  },
+  "worldeater.breach_burst_hop_close_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_hop_close_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_hop_close_dk"
+  },
+  "worldeater.breach_burst_hop_mid": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_hop_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_hop_mid"
+  },
+  "worldeater.breach_burst_hop_mid_dk": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_hop_mid_dk",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_hop_mid_dk"
+  },
+  "worldeater.breach_burst_hop_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/breach_burst_hop_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.breach_burst_hop_far"
+  },
+  "worldeater.quake1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/quake1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.quake1"
+  },
+  "worldeater.quake2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/quake2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.quake2"
+  },
+  "worldeater.rise": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/rise",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.rise"
+  },
+  "worldeater.body1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/body1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.body1"
+  },
+  "worldeater.body2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/body2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.body2"
+  },
+  "worldeater.dive": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/dive",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.dive"
+  },
+  "worldeater.bellow_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_a"
+  },
+  "worldeater.bellow_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_a_far"
+  },
+  "worldeater.bellow_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_b"
+  },
+  "worldeater.bellow_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_b_far"
+  },
+  "worldeater.bellow_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_c"
+  },
+  "worldeater.bellow_c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_c_far"
+  },
+  "worldeater.bellow_d": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_d",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_d"
+  },
+  "worldeater.bellow_d_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bellow_d_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bellow_d_far"
+  },
+  "worldeater.bite_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_a"
+  },
+  "worldeater.bite_a_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_a_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_a_far"
+  },
+  "worldeater.bite_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_b"
+  },
+  "worldeater.bite_b_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_b_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_b_far"
+  },
+  "worldeater.bite_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_c"
+  },
+  "worldeater.bite_c_far": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/bite_c_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.bite_c_far"
+  },
+  "worldeater.land1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/land1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.land1"
+  },
+  "worldeater.land2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/land2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.land2"
+  },
+  "worldeater.tail_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/tail_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.tail_a"
+  },
+  "worldeater.tail_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/tail_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.tail_b"
+  },
+  "worldeater.tail_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/tail_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.tail_c"
+  },
+  "worldeater.tail_in": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/tail_in",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.tail_in"
+  },
+  "worldeater.sink1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sink1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sink1"
+  },
+  "worldeater.sink2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sink2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sink2"
+  },
+  "worldeater.sink3": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sink3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sink3"
+  },
+  "worldeater.sink4": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sink4",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sink4"
+  },
+  "worldeater.sink5": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sink5",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sink5"
+  },
+  "worldeater.sink6": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/sink6",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.sink6"
+  },
+  "worldeater.slump1": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/slump1",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.slump1"
+  },
+  "worldeater.slump2": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/slump2",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.slump2"
+  },
+  "worldeater.slump3": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/slump3",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.slump3"
+  },
+  "worldeater.settle": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/settle",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.settle"
+  },
+  "worldeater.settle_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/settle_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.settle_b"
+  },
+  "worldeater.gulp": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/gulp",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.gulp"
+  },
+  "worldeater.gulp_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/gulp_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.gulp_b"
+  },
+  "worldeater.gulp_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/gulp_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.gulp_c"
+  },
+  "worldeater.throat_a": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/throat_a",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.throat_a"
+  },
+  "worldeater.throat_b": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/throat_b",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.throat_b"
+  },
+  "worldeater.throat_c": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/throat_c",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.throat_c"
+  },
+  "worldeater.spit": {
+    "sounds": [
+      {
+        "name": "orbital:worldeater/spit",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.worldeater.spit"
   }
 }

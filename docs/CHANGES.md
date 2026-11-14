@@ -1,6 +1,38 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0514); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0515); each release's notes are in [docs/releases](releases).
+
+## 0.5.15
+
+- **The World Eater**, the twentieth laser, on the wheel's fourth page and `/orbital worldeater`, and the first that
+  hunts the player. No beam: a rumble grows under the land as something ploughs through the ground towards the target
+  from some 420 blocks off, the land bucking over it in real blocks, trees toppling and dust bursting up along its
+  track. At 9 seconds the land over the target domes up and cracks open glowing teal, and a worm the size of a mountain
+  bursts out, throwing earth and whole trees: 68 blocks thick and over 1,800 long, built of real blocks, plated in
+  deepslate and blackstone, sculk glowing teal in its seams, a round mouth of six jaw petals round three rings of teeth,
+  its throat glowing soul-blue. It dives back in and comes after you: two or three low hops, each breaking out nearer
+  where you are, then a great arch some 250 blocks over the land with its jaws spread and a bellow, coming down mouth
+  first on you. If its mouth closes over you (or it comes up under you) it swallows you: the jaws shut round the view,
+  a moment's dark, then you're carried down its glowing throat with the land it ate tumbling past, along its tunnel,
+  and spat out over the land where it breaks out next (one more small arch to do it, if need be). It leaves a hole to
+  bedrock about 80 across with a heaped rim and felled trees where it broke out, one about 90 across caving to a funnel
+  where it bit in, sculk creeping out round them, and a trench about 50 wide and 25 deep over every stretch it
+  tunnelled, sinking once its tail has passed; every mob within about 110 of its holes and its way is killed. HUNT (the
+  default) lasts up to 90 seconds; SCRIPTED (the wheel's TAKE row, `/orbital worldeater scripted`) is the one-arch show
+  across your view, the same every time, 46 seconds. KNOCKBACK off or terrain damage off keeps it a show: it can't
+  swallow you then. QUALITY FAST draws its body and dust at half size. Its sounds are its own (`tools/sounds_worldeater.py`):
+  a croaking voice as it breaks out, bellows and bites, the burst out of the ground (built over CC0 recordings, listed
+  in NOTICE), the grinding of the land as it moves under it (`/orbital wormground a|b|c|old|off` picks the take, for
+  the session), the swallow and the wind down the throat. **Photosensitivity:** hard camera jolts as it breaks out and
+  bites in; being swallowed turns the picture dark for under a second, then rushes you down a glowing tunnel for several
+  seconds, your view carried and thrown.
+- **QUALITY PERFORMANCE**, a third QUALITY setting (`/orbital quality performance`, the wheel's QUALITY switch clicked on
+  to PERF): FAST, with the World Eater at its lightest.
+- It runs on the fork's `orbital-mod-api-12`, as 0.5.13 and 0.5.14 did: no new fork release.
+- The native version stays at 0.5.14: the World Eater isn't in it yet.
+- The README's steps for putting the native file in by hand are back (they went missing in 0.5.14's README).
+- The World Eater's land work is paced by its real cost, so no tick of the mod takes over half its fuel (the final
+  test build logged ticks at 50-57%).
 
 ## 0.5.14
 

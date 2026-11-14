@@ -12,12 +12,14 @@
 //! `registries` (the items, their textures and the sounds, in assets/ and data/).
 mod carry;
 mod columns;
+mod fallgov;
 mod follow;
 mod ground;
 mod lasers;
 mod mem;
 mod meter;
 mod pace;
+mod perf;
 mod sdk;
 mod strike;
 mod surge;
@@ -86,6 +88,41 @@ fn skybreak_pass(fast: bool) -> &'static str {
 fn carpet_pass(fast: bool) -> &'static str {
     PASS_CARPET[usize::from(fast)]
 }
+/// The World Eater's, the same way (worldeater.wgsl's `[half stage]`; the pass is worldeater_path.wgsl, with its
+/// constants from strike/we_path.rs, worldeater_body.wgsl and worldeater.wgsl, after strike.wgsl up to its fs_main).
+/// `/orbital perf nopass`: a pass that only copies the world's picture.
+const PASS_NULL: &str = "@fragment\nfn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    return textureLoad(scene_color, vec2<i32>(in.position.xy), 0);\n}\n";
+fn worldeater_pass(fast: bool) -> &'static str {
+    PASS_WORLDEATER[usize::from(fast)]
+}
+/// [World Eater, perf] Whether the dome over a breach (its middle `at`, level, from the origin `origin`; WE_DOME_R 45
+/// across its cracks) can be on screen: within 420 of the player and inside their view (generously: the widest view a
+/// player has, and the dome's own size), or close enough to stand under. No player known: yes.
+fn we_dome_seen(origin: [f32; 2], at: [f32; 2], p: Option<&game::Player>) -> bool {
+    let Some(p) = p else { return true };
+    let (dx, dz) = (f64::from(origin[0] + at[0]) - p.x, f64::from(origin[1] + at[1]) - p.z);
+    let d = dx.hypot(dz);
+    if d < 90.0 {
+        return true;
+    }
+    if d > 420.0 {
+        return false;
+    }
+    let yaw = f64::from(p.yaw).to_radians();
+    let (fx, fz) = (-yaw.sin(), yaw.cos());
+    let cos = (dx * fx + dz * fz) / d;
+    // (half the widest horizontal view, ~70 degrees at FOV 110, and the dome's own angle, and a margin)
+    let half = 70f64.to_radians() + (60.0 / d).atan() + 10f64.to_radians();
+    cos > half.min(std::f64::consts::PI).cos()
+}
+/// [World Eater, perf] the most chunk units (`pace::cost`) of its edits that aren't urgent a tick, by QUALITY tier.
+fn we_edit_cap(tier: u8) -> u32 {
+    match tier {
+        2 => 48,
+        1 => 24,
+        _ => 12,
+    }
+}
 /// Which of the post passes a laser's strike runs (`Orbital::passes`).
 /// The Fold's world warp: the world's own vertices bent (the fork's `render.set-warp`).
 const FOLD_WARP: &str = include_str!("../shaders/fold_warp.wgsl");
@@ -106,6 +143,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "tsunami" => 12,
         "skybreak" => 13,
         "carpetbomb" => 14,
+        "worldeater" => 15,
         _ => 0,
     }
 }
@@ -171,6 +209,12 @@ const VANILLA_FLY: f32 = 0.05;
 /// Blocks a tick's world changes may touch (see `strike::block_cost`): more waits for the next tick, so a big strike
 /// carves its crater over a few seconds instead of freezing the game for one.
 const BLOCK_BUDGET: u64 = 20_000;
+/// [World Eater, land] the most pace units (`pace::cost`) of urgent edits a tick, whatever the frame time; and how far
+/// behind (ticks) dressing (`Blocks::shed`) is left out.
+const URGENT_UNITS: u32 = 64;
+const SHED_LATE: u64 = 30;
+const SHED_PER_TICK: usize = 48;
+const EDIT_RUNS_TICK: usize = 16_000;
 /// At most this many world-changing commands a tick, however few blocks each changes: each is parsed and run on its
 /// own, and thousands of small ones in one tick (a planet killer's fissures, cut a column at a time, with its crater's
 /// walls) hitch the game as surely as too many blocks. Every other laser stays under it.
@@ -267,7 +311,7 @@ fn command_paths() -> Vec<String> {
     for w in ["give", "wheel", "stop", "skip", "hold", "meter", "foldpattern", "foldstop"] {
         add(&[w]);
     }
-    for w in ["terrain", "hud", "knockback", "follow", "shadow", "impactframes"] {
+    for w in ["terrain", "hud", "knockback", "follow", "shadow", "impactframes", "perf"] {
         add(&[w, "on"]);
         add(&[w, "off"]);
     }
@@ -275,15 +319,21 @@ fn command_paths() -> Vec<String> {
         add(&["impactframes", s]);
     }
     add(&["follow", "distance"]);
-    for v in ["full", "fast"] {
+    for v in ["full", "fast", "performance"] {
         add(&["quality", v]);
     }
     for v in ["random", "lock"] {
         add(&["seed", v]);
     }
     add(&["flyspeed", "reset"]);
+    for v in strike::WORMGROUND {
+        add(&["wormground", v]);
+    }
     for v in ["turn", "still"] {
         add(&["carryview", v]);
+    }
+    for v in ["hunt", "scripted"] {
+        add(&["worldeater", v]);
     }
     for a in strike::APPROACHES.iter() {
         add(&["approach", a.key]);
@@ -386,6 +436,7 @@ struct Settings {
     fly: f32,
     blast_alt: [bool; 2],
     fast: bool,
+    lite: bool,
     impact: bool,
     knock: bool,
     follow: bool,
@@ -394,6 +445,8 @@ struct Settings {
     impact_style: u8,
     fold_pattern: usize,
     carry_turn: bool,
+    /// The World Eater's take (`/orbital worldeater hunt|scripted`; HUNT, false, the default).
+    we_scripted: bool,
 }
 
 /// A ship laser's colour until one is picked (strike::COLOURS): the Mothership green, the Downfall red.
@@ -403,9 +456,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's, 15 the world eater's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 15],
+    passes: [&'static str; 16],
     compiled: Option<usize>,
     warming: bool,
     /// A pick has left the wheel up while its pass is built (`close_picked`).
@@ -427,6 +480,14 @@ struct Orbital {
     edited: bool,
     edit_ticks: u64,
     edits_late: u64,
+    /// [World Eater, land] dressing edits left out since the queue was last empty (`edit`).
+    edits_shed: usize,
+    /// [World Eater, perf] the falling blocks it summons, capped (`fallgov`).
+    falls: fallgov::FallGov,
+    /// `/orbital perf caps off`: the World Eater's falling-block and edit caps left off (to measure them; not kept).
+    we_uncapped: bool,
+    /// `/orbital perf nowarp`: the World Eater's world warp (the mound and the dome) never turned on (to measure it).
+    we_nowarp: bool,
     /// How far the linear memory had grown when that was last logged (`tick`).
     heap_logged: usize,
     pace: pace::Pace,
@@ -454,6 +515,8 @@ struct Orbital {
     fly: f32,
     /// QUALITY FAST: the Payload's smoke drawn at half size (`payload_pass`; the wheel's switch, `/orbital quality`).
     fast: bool,
+    /// QUALITY PERFORMANCE (with `fast`): the World Eater's pass at its lightest (`we_tier`); the other lasers as FAST.
+    lite: bool,
     /// The Rod from God's impact frames (`/orbital impactframes`, the wheel's IMPACT FX switch): its stark full-screen
     /// flash frames as it strikes, on (the default) or off.
     impact: bool,
@@ -476,6 +539,8 @@ struct Orbital {
     /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
     /// (`/orbital carryview turn|still`; turn, the default).
     carry_turn: bool,
+    /// The World Eater's take: the scripted one-arch show, or (false, the default) the hunt (`/orbital worldeater`).
+    we_scripted: bool,
     /// The follow camera's orbit distance (`/orbital follow distance N`).
     follow_distance: f64,
     /// A strike's look held fixed (`/orbital seed N|lock|random`, the wheel's SEED switch): the same trail, cloud and
@@ -507,6 +572,8 @@ struct Orbital {
     panel_left: bool,
     /// `/orbital meter N`: each tick whose work (`meter`) comes to N instructions or more is logged.
     meter_log: Option<u64>,
+    /// `/orbital perf`: frames drawn since the last line, and the longest (seconds).
+    perf_frames: (u32, f32),
     ticks: u64,
     /// The world's clock (game time) at the last tick in a world, none while out of one (`tick`).
     clock: Option<u64>,
@@ -541,9 +608,9 @@ pub(crate) fn trace(what: &str) {
 impl Orbital {
     /// The mod's state with these settings, nothing under way.
     fn new(settings: Settings) -> Orbital {
-        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn } = settings;
+        let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, lite, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn, we_scripted } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -555,6 +622,10 @@ impl Orbital {
             edited: false,
             edit_ticks: 0,
             edits_late: 0,
+            edits_shed: 0,
+            falls: Default::default(),
+            we_uncapped: false,
+            we_nowarp: false,
             heap_logged: 0,
             pace: pace::Pace::default(),
             laser,
@@ -568,6 +639,7 @@ impl Orbital {
             fly_held: false,
             blast_alt,
             fast,
+            lite,
             impact,
             impact_style,
             fold_pattern,
@@ -579,6 +651,7 @@ impl Orbital {
             carry_held: true,
             surging: None,
             carry_turn,
+            we_scripted,
             follow_distance,
             seed_lock,
             last_seed: 1,
@@ -595,6 +668,7 @@ impl Orbital {
             panel: Vec::new(),
             panel_left: false,
             meter_log: None,
+            perf_frames: (0, 0.0),
             ticks: 0,
             clock: None,
             place: None,
@@ -608,7 +682,7 @@ impl Orbital {
     }
     fn save(&self) {
         let text = format!(
-            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nfoldpattern={}\nknockback={}\ncarryview={}\nfollow={}\nfollowdistance={}\nseed={}\n",
+            "laser={}\nterrain={}\nhud={}\napproach={}\narrival={}\npage={}\nflyspeed={}\npayloadsound={}\nnukesound={}\nquality={}\nimpactframes={}\nfoldpattern={}\nknockback={}\ncarryview={}\nworldeater={}\nfollow={}\nfollowdistance={}\nseed={}\n",
             LASERS[self.laser].key,
             u8::from(self.terrain),
             u8::from(self.hud),
@@ -618,11 +692,12 @@ impl Orbital {
             self.fly,
             if self.blast_alt[0] { "alt" } else { "main" },
             if self.blast_alt[1] { "alt" } else { "main" },
-            if self.fast { "fast" } else { "full" },
+            if self.lite { "performance" } else if self.fast { "fast" } else { "full" },
             if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" },
             strike::FD_PATTERNS[self.fold_pattern.min(2)].0,
             if self.knock { "on" } else { "off" },
             if self.carry_turn { "turn" } else { "still" },
+            if self.we_scripted { "scripted" } else { "hunt" },
             if self.follow { "on" } else { "off" },
             self.follow_distance,
             self.seed_lock.map_or("random".to_string(), |s| s.to_string())
@@ -666,11 +741,13 @@ impl Orbital {
         let mut fly = 1.0;
         let mut blast_alt = [false; 2];
         let mut fast = true;
+        let mut lite = false;
         let mut impact = true;
         let mut impact_style = 1u8;
         let mut fold_pattern = 0;
         let mut knock = true;
         let mut carry_turn = true;
+        let mut we_scripted = false;
         let mut follow = false;
         let mut follow_distance = follow::DISTANCE;
         let mut seed_lock = None;
@@ -687,7 +764,10 @@ impl Orbital {
                 Some((k, v)) if wheel::SOUND_LASERS.iter().any(|s| s.1 == k) => {
                     blast_alt[wheel::SOUND_LASERS.iter().position(|s| s.1 == k).unwrap_or(0)] = v == "alt";
                 }
-                Some(("quality", v)) => fast = v != "full",
+                Some(("quality", v)) => {
+                    fast = v != "full";
+                    lite = v == "performance";
+                }
                 Some(("impactframes", v)) => {
                     impact = v != "off";
                     if let Some(i) = IMPACT_STYLES.iter().position(|&s| s == v) {
@@ -697,6 +777,7 @@ impl Orbital {
                 Some(("foldpattern", v)) => fold_pattern = strike::FD_PATTERNS.iter().position(|p| p.0 == v).unwrap_or(0),
                 Some(("knockback", v)) => knock = v != "off",
                 Some(("carryview", v)) => carry_turn = v != "still",
+                Some(("worldeater", v)) => we_scripted = v == "scripted",
                 Some(("follow", v)) => follow = v == "on",
                 Some(("followdistance", v)) => {
                     follow_distance = v.parse::<f64>().ok().filter(|d| d.is_finite()).map_or(follow::DISTANCE, |d| d.clamp(follow::DISTANCE_MIN, follow::DISTANCE_MAX));
@@ -710,7 +791,7 @@ impl Orbital {
                 _ => {}
             }
         }
-        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn }
+        Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, lite, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn, we_scripted }
     }
 
     /// The one message over the hotbar: the designator has nothing in range to aim at (`fire`).
@@ -798,6 +879,8 @@ impl Orbital {
     }
     fn open_wheel(&mut self) {
         let mut w = wheel::Wheel::on_page(self.page, self.fly);
+        w.worm_scripted = self.we_scripted;
+        w.lite = self.lite;
         w.striking = self.strike.is_some();
         if let Some(c) = ui::cursor() {
             w.hover_at(c.x, c.y, self.laser);
@@ -917,8 +1000,13 @@ impl Orbital {
             }
             Some(wheel::Spot::Stop) => {}
             Some(wheel::Spot::Quality) => {
-                self.set_quality(!self.fast);
-                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.fast { 1.6 } else { 1.0 });
+                let (fast, lite) = match (self.fast, self.lite) {
+                    (false, _) => (true, false),
+                    (true, false) => (true, true),
+                    (true, true) => (false, false),
+                };
+                self.set_quality_tier(fast, lite);
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.lite { 2.0 } else if self.fast { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
             Some(wheel::Spot::Impact(k)) => {
@@ -927,6 +1015,15 @@ impl Orbital {
                 }
                 self.set_impact(k > 0);
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
+            Some(wheel::Spot::Worm(k)) => {
+                self.we_scripted = k == 1;
+                if let Some(w) = &mut self.wheel {
+                    w.worm_scripted = self.we_scripted;
+                }
+                self.save();
+                world::play_sound("minecraft:ui.button.click", None, 0.6, 1.3);
                 self.show_wheel();
             }
             Some(wheel::Spot::Crease(k)) => {
@@ -974,6 +1071,22 @@ impl Orbital {
     /// QUALITY FAST or FULL: the Payload's pass built again for it, and given to the game at once if a Payload strike
     /// is drawing it (else compiled ahead of the next, as the passes are).
     fn set_quality(&mut self, fast: bool) {
+        self.set_quality_tier(fast, false);
+    }
+    /// QUALITY FULL, FAST or (`lite`) PERFORMANCE: the passes are FAST's for both of the last two; PERFORMANCE only
+    /// lowers the World Eater's DETAIL (`we_tier`), at once for a strike under way.
+    fn set_quality_tier(&mut self, fast: bool, lite: bool) {
+        let lite = lite && fast;
+        if lite != self.lite {
+            self.lite = lite;
+            if let Some(w) = &mut self.wheel {
+                w.lite = lite;
+            }
+            if fast == self.fast {
+                self.save();
+                self.update_panel();
+            }
+        }
         if fast == self.fast {
             return;
         }
@@ -988,6 +1101,7 @@ impl Orbital {
         self.rebuild("tsunami", tsunami_pass(fast));
         self.rebuild("skybreak", skybreak_pass(fast));
         self.rebuild("carpetbomb", carpet_pass(fast));
+        self.rebuild("worldeater", worldeater_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -1090,6 +1204,17 @@ impl Orbital {
     }
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
     /// shadow off`), and for the Rod from God 2 more if its impact frames are.
+    /// The World Eater's DETAIL tier, its pass's params[15] (`frame.mod_params[3].w`; worldeater_path.wgsl's `we_tier`
+    /// and `we_detail`): 2 FULL, 1 FAST, 0 PERFORMANCE.
+    fn we_tier(&self) -> f32 {
+        if !self.fast {
+            2.0
+        } else if self.lite {
+            0.0
+        } else {
+            1.0
+        }
+    }
     fn flags_of(&self, index: u32) -> f32 {
         if LASERS.iter().any(|l| l.index == index && l.key == "fold") {
             return self.fold_stop as f32;
@@ -1134,6 +1259,11 @@ impl Orbital {
                 // (the Fold's world warp is built the same way, with its pass)
                 if LASERS[self.laser].key == "fold" {
                     render::set_warp(FOLD_WARP);
+                    render::warp_on(true, 0.0, 0.0, 0.0, 0, 0.0);
+                }
+                // (and the World Eater's wormsign's: shaders/worldeater_warp.wgsl)
+                if LASERS[self.laser].key == "worldeater" {
+                    render::set_warp(PASS_WE_WARP);
                     render::warp_on(true, 0.0, 0.0, 0.0, 0, 0.0);
                 }
                 self.warming = true;
@@ -1193,8 +1323,15 @@ impl Orbital {
         columns::clear();
         mem::reset_peak();
         // (the ship lasers take their approach; the Payload and the Nuke which blast they play, 1 for the alternative)
-        let option = if laser.key == "fold" { self.fold_pattern } else { wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s])) };
+        let option = if laser.key == "fold" {
+            self.fold_pattern
+        } else if laser.key == "worldeater" {
+            // (its take and whether it may knock, carry and swallow the player)
+            (if self.we_scripted { strike::WE_OPT_SCRIPTED } else { 0 }) | (if self.knock { 0 } else { strike::WE_OPT_NO_KNOCK })
+        } else { wheel::sound_of(laser.key).map_or(self.approach, |s| usize::from(self.blast_alt[s])) };
         let plan = strike::plan(laser, &target, self.terrain, &dimension, seed, me, option);
+        // (the World Eater's length is its take's)
+        let length = if laser.key == "worldeater" { strike::we_length(option) } else { laser.length };
         // (the Fold asks how low the land lies round the target; `tick` takes the answer in)
         let level_tag = (laser.key == "fold").then(|| {
             let tag = ground::new_tag();
@@ -1226,10 +1363,13 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "worldeater" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
+            if laser.key == "worldeater" {
+                params[15] = self.we_tier();
+            }
             // (the Fold's warp lifts the real land only if there is any: fold_warp.wgsl's fw_real_land)
             if laser.key == "fold" && self.terrain {
                 params[15] += 0.25;
@@ -1244,6 +1384,10 @@ impl Orbital {
             // (the pass is built by the game as the first frame draws it; "a mod's post pass did not compile" in its log
             // means it was skipped: this line says the mod handed it over)
             log::write(log::Level::Info, &format!("fold: pass {} handed over, intensity {}", pass_of(laser), params[9]));
+        }
+        if laser.key == "worldeater" {
+            // (the wormsign bends the world's own land: shaders/worldeater_warp.wgsl, on only while it does: `frame`)
+            render::set_warp(PASS_WE_WARP);
         }
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
@@ -1260,8 +1404,8 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         render::set_data(&data);
-        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length: laser.length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 }, hand: None, hand_t: 0.0 });
-        self.hold_forceloads(&dimension, clock, laser.length + wait as f32 * 0.05);
+        self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 }, hand: None, hand_t: 0.0 });
+        self.hold_forceloads(&dimension, clock, length + wait as f32 * 0.05);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the Tsunami's surge carrying the player along once the water has them, with the knockback on)
@@ -1403,6 +1547,12 @@ impl Orbital {
                     }
                 }
                 // the rest in order, as many a tick as the frame time allows (`edit`)
+                // [World Eater, land] an urgent edit ahead of all that aren't (`edit`)
+                Act::Blocks(b) if b.urgent => {
+                    meter::spend(60 * b.runs.len() as u64);
+                    let at = self.edits.iter().take_while(|e| e.2.urgent).count();
+                    self.edits.insert(at, (pace::cost(&b.runs), self.edit_ticks, b))
+                }
                 Act::Blocks(b) => {
                     meter::spend(60 * b.runs.len() as u64);
                     self.edits.push_back((pace::cost(&b.runs), self.edit_ticks, b))
@@ -1461,6 +1611,11 @@ impl Orbital {
                 strike::hu_repack(&mut s.data);
                 s.data_sent = false;
             }
+        }
+        // (the World Eater's pieces in the air, worked out once a tick for the pass: strike/we_fx.rs)
+        if s.key == "worldeater" {
+            meter::spend(strike::we_pieces_tick(&mut s.data, now, s.params[8]));
+            s.data_sent = false;
         }
         if !s.data_sent {
             render::set_data(&s.data);
@@ -1521,6 +1676,10 @@ impl Orbital {
     }
     /// The strike is over: its pass off, what it asked of the world forgotten.
     fn end_strike(&mut self) {
+        if self.falls.made + self.falls.dropped > 0 {
+            log::write(log::Level::Info, &format!("falling blocks: {} summoned, {} left out (fallgov)", self.falls.made, self.falls.dropped));
+        }
+        self.falls = Default::default();
         self.unfollow();
         self.carrying = None;
         self.surging = None;
@@ -1674,6 +1833,32 @@ impl Orbital {
         clock.is_some()
     }
     /// A frame's part in telling time away from a stall (`in_world`).
+    /// `/orbital perf on`: a line every second of a strike (`perf.rs`).
+    fn perf_tick(&mut self) {
+        if !perf::on() {
+            return;
+        }
+        perf::tick_spent(meter::spent());
+        let Some(s) = self.strike.as_ref() else {
+            perf::take();
+            self.perf_frames = (0, 0.0);
+            return;
+        };
+        if s.ticks % 20 != 0 {
+            return;
+        }
+        let c = perf::take();
+        let (frames, worst) = std::mem::take(&mut self.perf_frames);
+        log::write(
+            log::Level::Info,
+            &format!(
+                "perf: t {:.0} edits {} runs {} blocks {} chunk_sends {} busiest_edit_chunks {} cmds {} summon {} fill {} forceload {} clone {} tp {} reads {} read_cols {} surveys {} meter_max {:.2}M queued_edits {} queued_cmds {} stages_waiting {} frames {} worst_frame_ms {:.1}",
+                s.ticks as f32 * 0.05, c.edits, c.runs, c.blocks, c.chunks, c.busiest_edit_chunks, c.cmds, c.summon, c.fill, c.forceload, c.clone, c.tp,
+                c.reads, c.read_cols, c.surveys, c.meter_max as f64 / 1e6, self.edits.len(), self.carving.len() + self.spare.len(),
+                s.waiting.len() + s.urgent.len(), frames, worst * 1000.0
+            ),
+        );
+    }
     fn count_frame(&mut self, seconds: f32) {
         self.away += seconds.min(AWAY_FRAME);
         self.stalled = self.stalled.max(seconds);
@@ -1739,14 +1924,67 @@ impl Orbital {
     /// frames are quick, at least one).
     fn edit(&mut self) {
         let budget = self.pace.tick(self.edited || !self.edits.is_empty());
-        let n = pace::Pace::release(budget, self.edits.iter().map(|e| e.0)).min(self.edits.len());
+        // [World Eater, perf] its edits' chunks a tick capped by the QUALITY tier (each is resent whole and worked out
+        // again by the client: a burst of them is a long frame), and only the urgent in the second round the swallow
+        // and the spit
+        let budget = match self.strike.as_ref().filter(|s| s.key == "worldeater" && !self.we_uncapped) {
+            Some(s) => {
+                let quiet = strike::we_quiet(&s.data, s.clock());
+                let cap = if quiet { 0 } else { we_edit_cap(self.we_tier() as u8) };
+                Some(budget.unwrap_or(u32::MAX).min(cap))
+            }
+            None => budget,
+        };
+        // [World Eater, land] the urgent edits first, whatever the budget (up to URGENT_UNITS a tick), and dressing that
+        // has fallen SHED_LATE behind left out, not counted against it
+        let (mut urgent, mut shed) = (0u32, 0usize);
+        while let Some((c, due, b)) = self.edits.front() {
+            if b.shed && !b.urgent && self.edit_ticks - due > SHED_LATE {
+                // (a dropped edit freed run by run: counted so, and no more than SHED_PER_TICK a tick; hundreds of them at
+                // once, as frames run long, were a tick's half its fuel)
+                if shed >= SHED_PER_TICK || meter::full() {
+                    break;
+                }
+                meter::spend(3_000 + 40 * b.runs.len() as u64);
+                self.edits.pop_front();
+                shed += 1;
+                continue;
+            }
+            if !b.urgent || urgent + c > URGENT_UNITS && urgent > 0 || meter::over() || meter::spent() >= meter::EDITS {
+                break;
+            }
+            let (c, due, b) = self.edits.pop_front().unwrap_or_else(|| unreachable!());
+            urgent += c;
+            self.edits_late = self.edits_late.max(self.edit_ticks - due);
+            meter::spend(edit_cost(&b));
+            world::edit_blocks(&b.edit());
+            if let Some(n) = &b.sent {
+                n.set(n.get() + 1);
+            }
+        }
+        if shed > 0 {
+            self.edits_shed += shed;
+        }
+        let budget = budget.map(|b| b.saturating_sub(urgent).max(pace::FLOOR / 2));
+        let n = pace::Pace::release(budget, self.edits.iter().take_while(|e| !(e.2.shed && self.edit_ticks - e.1 > SHED_LATE)).map(|e| e.0)).min(self.edits.len());
         // (and no more than the tick's work allows, `meter`: however long the queue, a tick hands the game only so
         // many runs; the first goes in unless the tick has already done all it should)
         let mut m = 0;
+        let mut runs = 0;
         while m < n {
-            if meter::over() || (m > 0 && meter::spent() >= meter::EDITS) {
+            if meter::over() || ((m > 0 || urgent > 0) && meter::spent() >= meter::EDITS) {
                 break;
             }
+            // (dressing too far behind waits to be dropped next tick, never made)
+            if self.edits[m].2.shed && self.edit_ticks - self.edits[m].1 > SHED_LATE {
+                break;
+            }
+            // [World Eater, land] (and no more than EDIT_RUNS_TICK runs a tick: a backlog let go at once as the frames
+            // come back quick is the game's work as much as the mod's)
+            if (m > 0 || urgent > 0) && runs + self.edits[m].2.runs.len() > EDIT_RUNS_TICK {
+                break;
+            }
+            runs += self.edits[m].2.runs.len();
             let (_, due, b) = &self.edits[m];
             self.edits_late = self.edits_late.max(self.edit_ticks - due);
             meter::spend(edit_cost(b));
@@ -1761,11 +1999,15 @@ impl Orbital {
             m += 1;
         }
         self.edits.drain(..m);
-        self.edited = m > 0;
+        self.edited = m > 0 || urgent > 0;
         self.edit_ticks += 1;
         if self.edits.is_empty() && self.edits_late > 0 {
             log::write(log::Level::Info, &format!("block edits paced: the last went in {:.2} s late", self.edits_late as f32 * 0.05));
             self.edits_late = 0;
+        }
+        if self.edits.is_empty() && self.edits_shed > 0 {
+            log::write(log::Level::Info, &format!("block edits paced: {} edits of dressing left out, too far behind", self.edits_shed));
+            self.edits_shed = 0;
         }
     }
     /// Run the waiting world changes, in order, as far as this tick's block budget goes (at least one), and no more
@@ -1776,6 +2018,9 @@ impl Orbital {
         }
         let mut spent = 0;
         let mut cmds = Vec::new();
+        // (PERFORMANCE only: in the game the falling blocks' own cost stayed small, tick_falling and entity_geometry
+        // at most ~5 ms at 370 alive, so FULL and FAST keep every one)
+        let falls = self.strike.as_ref().is_some_and(|s| s.key == "worldeater" && !self.we_uncapped && self.lite).then(|| fallgov::limits(self.we_tier() as u8, self.pace.slow()));
         while let Some((cost, _)) = self.carving.front() {
             if !cmds.is_empty() && (spent + cost > BLOCK_BUDGET || cmds.len() >= room || meter::full()) {
                 break;
@@ -1786,6 +2031,12 @@ impl Orbital {
             meter::spend(CMD_COST);
             spent += cost;
             if let Some((_, c)) = self.carving.pop_front() {
+                if let Some(l) = falls
+                    && fallgov::is_falling(&c)
+                    && !self.falls.allow(self.ticks, l)
+                {
+                    continue;
+                }
                 cmds.push(c);
             }
         }
@@ -1828,10 +2079,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" {
-                lines.push((format!("Quality: {}", if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" {
+                lines.push((format!("Quality: {}", if self.lite { "performance (the World Eater at its lightest)" } else if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" || l.key == "worldeater" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -1886,6 +2137,7 @@ impl Mod for Orbital {
     fn tick(&mut self, _tick: u64) {
         meter::reset();
         self.ticks += 1;
+        strike::we_set_tier(self.we_tier() as u8);
         if !self.in_world() {
             return;
         }
@@ -1945,6 +2197,7 @@ impl Mod for Orbital {
                         "supervolcano" => "BREACHING CRUST",
                         "skybreak" => "STRAINING THE SKY",
                         "carpetbomb" => "CLEARING THE RUN",
+                        "worldeater" => "STIRRING THE DEEP",
                         _ => "ACQUIRING TARGET",
                     };
                     Self::actionbar(&format!("{what} {}  [{}]", ".".repeat(1 + n as usize / 4), l.title), &format!("#{:06X}", l.rgb & 0xFF_FFFF));
@@ -1960,6 +2213,7 @@ impl Mod for Orbital {
         self.paid();
         self.release_held();
         meter::end(self.ticks);
+        self.perf_tick();
         // (the linear memory only grows: each 4 MB of it logged, with what's held then)
         if mem::heap() >= self.heap_logged + (4 << 20) {
             self.heap_logged = mem::heap();
@@ -1978,18 +2232,45 @@ impl Mod for Orbital {
 
     fn frame(&mut self, seconds: f32) {
         meter::reset();
+        if perf::on() {
+            self.perf_frames.0 += 1;
+            self.perf_frames.1 = self.perf_frames.1.max(seconds);
+        }
         self.count_frame(seconds);
         self.pace.frame(seconds);
         if seconds > 0.5 && self.strike.is_some() {
             log::write(log::Level::Info, &format!("a frame of {seconds:.2} s, {:.1} s into the strike", self.strike.as_ref().map_or(0.0, |s| s.ticks as f32 * 0.05)));
         }
         self.warm();
+        let we_tier = self.we_tier();
+        let nowarp = self.we_nowarp;
+        let player = if self.strike.as_ref().is_some_and(|s| s.key == "worldeater") { game::get_player() } else { None };
         if let Some(s) = &mut self.strike {
             // (whole ticks: the pass adds the frame's partial tick, the camera's own, `now` in strike.wgsl)
             s.params[3] = s.clock();
+            // (the World Eater's mound as its head runs under the land, and the dome over its next breach: the warp's params
+            // 0, 1, 2, 10, 6; strike/worldeater.rs's we_warp_params)
+            let we_warp = if s.key == "worldeater" { strike::we_warp_params(&s.data, s.params[3], s.params[6]) } else { None };
+            if s.key == "worldeater" {
+                s.params[15] = we_tier;
+                let [x, h, z, dome, a] = we_warp.unwrap_or([s.params[0], 0.0, s.params[2], 0.0, s.params[6]]);
+                (s.params[0], s.params[1], s.params[2], s.params[10], s.params[6]) = (x, h, z, dome, a);
+            }
             render::set_params(&s.params);
             // (the warp on for its span only: before and after it the frame keeps its culling)
             self.pace.hidden = s.key == "fold" && strike::FD_HIDDEN.contains(&s.params[3]);
+            self.pace.spiky = s.key == "worldeater" && !self.we_uncapped;
+            if s.key == "worldeater" {
+                // (the wormsign and the dome over the target: the land itself lifted, till the breach)
+                // [perf] while the warp is on the game culls nothing (every resident section drawn: ~8 ms at 1440p), and
+                // since round 5 the warp only paints the dome's cracks: so on only while a dome is up, near enough to
+                // be seen and in front of the camera
+                let on = we_warp.is_some_and(|w| w[3] > 0.01 && we_dome_seen([s.params[4], s.params[5]], [w[0], w[2]], player.as_ref()));
+                render::warp_on(on && !nowarp, 0.0, 0.0, 0.0, 0, 0.0);
+                if perf::on() && perf::warp_changed(on) {
+                    log::write(log::Level::Info, &format!("perf: warp {} at {:.2}", if on { "on" } else { "off" }, s.params[3]));
+                }
+            }
             if s.key == "fold" {
                 let on = (strike::FD_WARP_START..strike::FD_WARP_END).contains(&s.params[3]);
                 let p = &s.params;
@@ -2131,6 +2412,34 @@ impl Mod for Orbital {
                 Some(n) => format!("Seed: held at {n} (/orbital seed random | lock | N)"),
                 None => format!("Seed: random, the last strike's was {} (/orbital seed lock to keep it)", self.last_seed),
             })),
+            (Some("perf"), Some(v @ ("nopass" | "pass"))) => {
+                // (the World Eater's pass swapped for one that only copies the picture: what the game costs without it)
+                let pass = if v == "nopass" { PASS_NULL } else { worldeater_pass(self.fast) };
+                self.rebuild("worldeater", pass);
+                Ok(Some(format!("Perf: the World Eater's pass {}", if v == "nopass" { "replaced by a copy" } else { "back" })))
+            }
+            (Some("perf"), Some(v @ ("warp" | "nowarp"))) => {
+                self.we_nowarp = v == "nowarp";
+                Ok(Some(format!("Perf: the World Eater's world warp {}", if self.we_nowarp { "off" } else { "on" })))
+            }
+            (Some("perf"), Some(v @ ("caps" | "nocaps"))) => {
+                self.we_uncapped = v == "nocaps";
+                Ok(Some(format!("Perf: the World Eater's caps {}", if self.we_uncapped { "off" } else { "on" })))
+            }
+            (Some("perf"), Some("dump")) => {
+                // (the strike's params and mod_data as the pass has them now, for tools/preview: `perfdump:` lines)
+                let Some(s) = &self.strike else { return Err("No strike under way".into()) };
+                log::write(log::Level::Info, &format!("perfdump: clock {} params {}", s.clock(), s.params.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(" ")));
+                for (i, c) in s.data.chunks(512).enumerate() {
+                    log::write(log::Level::Info, &format!("perfdump: data {} {}", i * 512, c.iter().map(|w| format!("{w:x}")).collect::<Vec<_>>().join(" ")));
+                }
+                log::write(log::Level::Info, &format!("perfdump: end {}", s.data.len()));
+                Ok(Some("Perf: dumped".into()))
+            }
+            (Some("perf"), Some(v @ ("on" | "off"))) => {
+                perf::set(v == "on");
+                Ok(Some(format!("Perf log: {v} (a line a second of a strike: what the mod asked of the game)")))
+            }
             (Some("knockback"), Some(v @ ("on" | "off"))) => {
                 self.knock = v == "on";
                 self.save();
@@ -2141,6 +2450,11 @@ impl Mod for Orbital {
                 self.carry_turn = v == "turn";
                 self.save();
                 Ok(Some(format!("Carry view: {v} (the Hurricane's carry {} your view)", if self.carry_turn { "turns and sways" } else { "leaves alone" })))
+            }
+            (Some("worldeater"), Some(v @ ("hunt" | "scripted"))) => {
+                self.we_scripted = v == "scripted";
+                self.save();
+                Ok(Some(format!("World Eater: {} (the next strike)", if self.we_scripted { "SCRIPTED, the one-arch show" } else { "HUNT, it comes after you" })))
             }
             (Some("carryview"), None) => Ok(Some(format!("Carry view: {} (/orbital carryview turn or still)", if self.carry_turn { "turn" } else { "still" }))),
             (Some("follow"), Some(v @ ("on" | "off"))) => {
@@ -2158,6 +2472,12 @@ impl Mod for Orbital {
             },
             (Some("follow"), None) => Ok(Some(format!("Follow camera: {}, {} blocks out (/orbital follow on|off, /orbital follow distance N)", if self.follow { "on" } else { "off" }, self.follow_distance))),
             (Some("impactframes"), None) => Ok(Some(format!("Impact frames: {} (/orbital impactframes kanada, blackflash, cinematic or off)", if self.impact { IMPACT_STYLES[usize::from(self.impact_style.min(2))] } else { "off" }))),
+            // (the World Eater's ground under the land, for this session: the three pass takes, round 12's loop, none)
+            (Some("wormground"), Some(v)) if strike::WORMGROUND.contains(&v) => {
+                strike::set_wormground(strike::WORMGROUND.iter().position(|w| *w == v).unwrap_or(0) as u8);
+                Ok(Some(format!("World Eater ground: {v} (from the next strike, this session)")))
+            }
+            (Some("wormground"), _) => Ok(Some(format!("World Eater ground: {} (/orbital wormground a, b, c, old or off)", strike::WORMGROUND[usize::from(strike::wormground())]))),
             (Some("shadow"), Some(v @ ("on" | "off"))) => {
                 self.shadow_off = v == "off";
                 let flags = |o: &Self, i: f32| o.flags_of(i as u32);
@@ -2205,13 +2525,17 @@ impl Mod for Orbital {
                     None => Ok(Some(format!("Fold stop {}: {} (/orbital foldstop 0 to 6)", self.fold_stop, STOPS[self.fold_stop]))),
                 }
             }
+            (Some("quality"), Some("performance" | "perf")) => {
+                self.set_quality_tier(true, true);
+                Ok(Some("Quality performance: as fast, and the World Eater drawn at its lightest".into()))
+            }
             (Some("quality"), Some(v @ ("full" | "fast"))) => {
                 self.set_quality(v == "fast");
                 Ok(Some(format!("Quality {}", if self.fast { "fast: the Payload's, the Nuke's and the Rod's smoke at half size" } else { "full: every pixel" })))
             }
             (Some("quality"), None) => Ok(Some(format!(
-                "Quality: {} (/orbital quality full or fast)",
-                if self.fast { "fast" } else { "full" }
+                "Quality: {} (/orbital quality full, fast or performance)",
+                if self.lite { "performance" } else if self.fast { "fast" } else { "full" }
             ))),
             (Some(key), None) if unavailable(key).is_some() => {
                 let title = LASERS.iter().find(|l| l.key == key).map_or(key, |l| l.title);
@@ -2223,7 +2547,7 @@ impl Mod for Orbital {
                 Ok(Some(format!("{} loaded", LASERS[self.laser].title)))
             }
             _ => Err(format!(
-                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | foldpattern a|b|c | foldstop 0-6 | knockback on|off | carryview turn|still | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
+                "/orbital give | wheel | terrain on|off | hud on|off | quality full|fast | impactframes kanada|blackflash|cinematic|off | foldpattern a|b|c | foldstop 0-6 | knockback on|off | carryview turn|still | worldeater hunt|scripted | follow on|off|distance N | seed N|lock|random | payloadsound|nukesound main|alt | flyspeed N|reset | stop | skip SECONDS | approach {} | arrival {} | colour {} | {}",
                 APPROACHES.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 ARRIVALS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
                 COLOURS.iter().map(|a| a.key).collect::<Vec<_>>().join("|"),
@@ -2296,7 +2620,14 @@ mod tests {
             assert_eq!(k.matches("@fragment").count(), if fast { 3 } else { 1 });
             assert!(k.len() <= 256 << 10 && k.contains("fn skybreak(") && !k.contains("fn tsunami("));
             assert_eq!(k.contains("half_picture"), fast);
+            let w = super::worldeater_pass(fast);
+            assert_eq!(w.matches("@fragment").count(), if fast { 3 } else { 1 });
+            assert!(w.len() <= 256 << 10 && w.contains("fn we_body_hit(") && w.contains("fn we_head(") && !w.contains("fn carpetbomb("));
+            assert!(w.contains("const WE_LEN: f32 = 1836.0;"), "the path's constants generated from we_path.rs");
+            assert!(w.contains("const WE_STANDIN_MOUND: bool = false;") && !w.contains("const WE_STANDIN_MOUND: bool = true;"), "the stand-in mound is the preview's only");
+            assert_eq!(w.contains("half_picture"), fast);
         }
+        assert!(super::PASS_WE_WARP.contains("fn world_warp(") && super::PASS_WE_WARP.contains("const WE_SIGN: f32") && !super::PASS_WE_WARP.contains("&mod_data"));
         assert!(super::PASS_OWN[0].len() <= 256 << 10);
         assert!(!super::PASS_OWN[2].contains("fn downfall("));
         assert!(!super::PASS_OWN[3].contains("fn planet_killer("));
@@ -2647,9 +2978,11 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
+            // (`ORBITAL_SOAK_LASERS=worldeater,nuke`: only those)
+            .filter(|&i| std::env::var("ORBITAL_SOAK_LASERS").map_or(true, |v| v.split(',').any(|k| k == LASERS[i].key)))
             .collect();
         for n in 0..sequences {
             let laser = lasers[s.rng.below(lasers.len() as u64) as usize];
@@ -3431,6 +3764,47 @@ mod stress {
         let (worst, at) = soak(40, 1, 0.02);
         eprintln!("worst tick: {:.2}M ({at})", worst as f64 / 1e6);
         assert!(worst <= CAP, "a tick of {:.2}M: {at}", worst as f64 / 1e6);
+    }
+
+    #[test]
+    fn hundreds_of_edits_of_dressing_too_late_are_dropped_a_few_a_tick() {
+        // ([World Eater, land] int R11L: 433 dropped in one tick were half its fuel)
+        let mut o = Orbital::new(Orbital::parse(""));
+        for _ in 0..500 {
+            let mut b = strike::Blocks::default();
+            b.shed = true;
+            b.runs = (0..300).map(|i| horizon_mod_sdk::world::BlockRun { x: i, z: 0, y: 0, height: 1, surface: None, block: 0, only: None }).collect();
+            o.edits.push_back((1, 0, Box::new(b)));
+        }
+        o.edit_ticks = 100;
+        meter::reset();
+        o.edit();
+        assert_eq!(o.edits.len(), 500 - SHED_PER_TICK, "dropped this tick");
+        assert!(meter::spent() < 2_000_000, "{}", meter::spent());
+        let mut ticks = 1;
+        while !o.edits.is_empty() {
+            meter::reset();
+            o.edit();
+            ticks += 1;
+            assert!(ticks < 20);
+        }
+    }
+
+    /// `/orbital worldeater` still loads the World Eater; `/orbital worldeater hunt|scripted` picks its take, kept.
+    #[test]
+    fn the_world_eaters_take_is_a_setting_and_its_key_still_loads_it() {
+        fake::with(|w| *w = fake::Fake::default());
+        let mut o = Orbital::new(Orbital::parse(""));
+        assert!(!o.we_scripted, "the hunt by default");
+        let we = LASERS.iter().position(|l| l.key == "worldeater").expect("the World Eater");
+        assert_eq!(o.command("orbital", "worldeater"), Ok(Some(format!("{} loaded", LASERS[we].title))));
+        assert_eq!(o.laser, we);
+        assert!(o.command("orbital", "worldeater scripted").is_ok());
+        assert!(o.we_scripted && Orbital::load().we_scripted, "kept");
+        assert!(o.command("orbital", "worldeater hunt").is_ok());
+        assert!(!o.we_scripted && !Orbital::load().we_scripted);
+        assert_eq!(strike::we_length(strike::WE_OPT_SCRIPTED), 46.0);
+        assert_eq!(strike::we_length(0), LASERS[we].length);
     }
 
     /// `ORBITAL_SOAK=N cargo test --release thousands_of_strikes -- --ignored --nocapture`: N sequences (default 2000),

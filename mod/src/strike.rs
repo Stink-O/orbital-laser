@@ -31,6 +31,21 @@ mod vc_mount;
 mod vc_sound;
 mod volcano;
 mod vortex;
+mod we_body;
+mod we_fx;
+mod we_land;
+// (the World Eater's hunt and catch, under strike/worldeater.rs)
+mod we_land_catch;
+mod we_land_hunt;
+pub(crate) mod we_path;
+/// The World Eater's world warp is on from the strike's start to just after the breach (the wormsign and the dome).
+pub const WE_WARP_END: f32 = we_path::WE_BREACH as f32 + 0.05;
+mod we_sounds;
+pub(crate) use we_sounds::{set_wormground, wormground, WORMGROUND};
+mod worldeater;
+/// The World Eater's take (lib.rs's `option` for it) and its length for each.
+pub(crate) use worldeater::{WE_OPT_NO_KNOCK, WE_OPT_SCRIPTED, we_length, we_quiet, we_set_tier, we_warp_params};
+pub(crate) use we_fx::we_pieces_tick;
 
 /// The Hurricane's wind, for its carry of the player (carry.rs).
 pub(crate) use tsunami::{TS_DRAIN, TS_HOLD, TS_LEN, TsGeo};
@@ -153,6 +168,13 @@ pub struct Blocks {
     pub clear_of_player: bool,
     /// Counted as it goes in (a plate or a shard that comes down waits for all of its to be in the world before the pass lets it go).
     pub sent: Option<std::rc::Rc<std::cell::Cell<u32>>>,
+    // [World Eater, land] priorities in the edit queue (lib.rs's `edit`):
+    /// Goes in on time whatever the frame time (ahead of every edit that isn't, up to `URGENT_UNITS` a tick): land a
+    /// body is about to pass through (a hole it breaches out of or dives into).
+    pub urgent: bool,
+    /// Dressing: left out when it is more than `SHED_LATE` behind (the frames running long), rather than holding up what
+    /// comes after it.
+    pub shed: bool,
 }
 impl Blocks {
     fn index(list: &mut Vec<&'static str>, name: &'static str) -> u32 {
@@ -213,7 +235,7 @@ impl Blocks {
         let mut out: std::collections::BTreeMap<i32, Blocks> = Default::default();
         crate::meter::spend(200 * self.runs.len() as u64);
         for r in &self.runs {
-            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_insert_with(|| Blocks { clear_of_player: self.clear_of_player, ..Default::default() });
+            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_insert_with(|| Blocks { clear_of_player: self.clear_of_player, urgent: self.urgent, shed: self.shed, ..Default::default() });
             let block = Self::index(&mut b.palette, self.palette[r.block as usize]);
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
@@ -702,6 +724,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "carpetbomb" {
         return carpet::carpet_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "worldeater" {
+        return worldeater::worldeater_plan(laser, target, terrain, dimension, shader_seed, me, approach);
     }
     if laser.key == "skybreak" {
         return skybreak::skybreak_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4480,7 +4505,7 @@ mod tests {
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
             // (nor the tsunami: it sweeps what stands on the land it read, under its water; strike/tsunami.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "worldeater" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {

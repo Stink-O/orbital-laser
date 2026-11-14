@@ -48,10 +48,52 @@ pub fn warp_shared(warp: &str) -> String {
     out
 }
 
+/// What lies between the lines starting `// [<mark>]` and `// [end <mark>]` of `src` (worldeater_path.wgsl's `[warp
+/// too]`: what of it the World Eater's world warp has too).
+pub fn marked(src: &str, mark: &str) -> String {
+    let (open, close) = (format!("// [{mark}]"), format!("// [end {mark}]"));
+    let mut out = String::new();
+    let mut on = false;
+    for line in src.lines() {
+        if line.starts_with(&close) {
+            on = false;
+        }
+        if on {
+            out.push_str(line);
+            out.push('\n');
+        }
+        if line.starts_with(&open) {
+            on = true;
+        }
+    }
+    out
+}
+
 /// A pass with a half-size stage (payload.wgsl, nuke.wgsl), at QUALITY FAST (its `[half stage]` kept: the smoke drawn
 /// at half the width and height, on a game with mod passes' half-size stage; a game without it draws the pass's
 /// `fs_main`, at full size) or FULL (left out).
 pub fn split_pass(shader: &str, src: &str, fast: bool) -> String {
+    let lean = src.contains("// [lean pass]");
+    let pass = split_pass_full(shader, src, fast);
+    if lean { lean_pass(&pass) } else { pass }
+}
+
+/// The pass less its comment lines and blank lines (a source saying `// [lean pass]`, the World Eater's: its
+/// sections already cut, so the marks are no longer wanted), for the game's 256 KiB limit.
+pub fn lean_pass(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    for line in src.lines() {
+        let l = line.trim_start();
+        if l.is_empty() || l.starts_with("//") {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+fn split_pass_full(shader: &str, src: &str, fast: bool) -> String {
     if fast {
         return own_pass(shader, src);
     }

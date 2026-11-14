@@ -36,24 +36,34 @@ pre() {
 # (a laser's own file, with the Supervolcano's mount after its, and the Fold's with its warp's shared part before)
 body() {
     [ "$1" != fold ] || sed -n '/^\/\/ \[post pass too\]/,/^\/\/ \[end post pass too\]/p' "$shaders/fold_warp.wgsl"
+    # (the World Eater's pass is its path, its body and its own, in that order: mod/build.rs)
+    [ "$1" != worldeater ] || cat "$shaders/worldeater_path.wgsl" "$shaders/worldeater_body.wgsl"
     cat "$shaders/$1.wgsl"
     [ "$1" != volcano ] || cat "$shaders/volcano_mount.wgsl"
 }
-for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane tsunami fold volcano skybreak carpetbomb; do
+for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane tsunami fold volcano skybreak carpetbomb worldeater; do
     { cat "$prelude"; pre "$own"; body "$own"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass (strike.wgsl up to its fs_main, then $own.wgsl):"; echo "$out"; exit 1; }
     # the game takes a pass of 256 KiB at most
-    size=$(( $(pre "$own" | wc -c) + $(body "$own" | wc -c) ))
+    # (a pass whose own source says `// [lean pass]` goes in without its comment and blank lines: mod/src/passbuild.rs)
+    if body "$own" | grep -q '^// \[lean pass\]'; then
+        size=$( { pre "$own"; body "$own"; } | grep -v -e '^[[:space:]]*//' -e '^[[:space:]]*$' | wc -c)
+    else
+        size=$(( $(pre "$own" | wc -c) + $(body "$own" | wc -c) ))
+    fi
     [ "$size" -le 262144 ] || { echo "the $own pass is $size bytes, over the game's 256 KiB"; exit 1; }
 done
 # the payload's and the nuke's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
-for own in payload nuke rod supercell hurricane volcano skybreak carpetbomb; do
+for own in payload nuke rod supercell hurricane volcano skybreak carpetbomb worldeater; do
     { cat "$prelude"; pre "$own"; body "$own" | sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d'; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done
 # the Fold's world warp, as it goes into the game's terrain and entity shaders (their Globals' warp, and Warped)
 { printf 'var<private> warp_section: vec3<f32>;\nstruct G { fog_color: vec4<f32>, sky_color: vec4<f32>, sun: vec4<f32>, fog: vec4<f32>, warp: array<vec4<f32>, 6> }\n@group(0) @binding(0) var<uniform> globals: G;\nstruct Warped { pos: vec3<f32>, tint: vec3<f32> }\nstruct Fragment { home: vec3<f32>, at: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f32>, light: vec2<f32>, cut: f32, copy: u32, front: bool }\nstruct Painted { color: vec4<f32>, fog: f32 }\nfn sprite(uv: vec2<f32>, layer: u32) -> vec4<f32> { return vec4<f32>(uv, f32(layer), 1.0); }\n'; cat "$shaders/fold_warp.wgsl"; } > "$tmp"
 out=$("$bin" "$tmp" 2>&1) || { echo "the Fold's world warp:"; echo "$out"; exit 1; }
+# the World Eater's world warp: what of its path is marked [warp too], then worldeater_warp.wgsl
+{ printf 'var<private> warp_section: vec3<f32>;\nstruct G { fog_color: vec4<f32>, sky_color: vec4<f32>, sun: vec4<f32>, fog: vec4<f32>, warp: array<vec4<f32>, 6> }\n@group(0) @binding(0) var<uniform> globals: G;\nstruct Warped { pos: vec3<f32>, tint: vec3<f32> }\nstruct Fragment { home: vec3<f32>, at: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f32>, light: vec2<f32>, cut: f32, copy: u32, front: bool }\nstruct Painted { color: vec4<f32>, fog: f32 }\nfn sprite(uv: vec2<f32>, layer: u32) -> vec4<f32> { return vec4<f32>(uv, f32(layer), 1.0); }\n'; sed -n '/^\/\/ \[warp too\]/,/^\/\/ \[end warp too\]/p' "$shaders/worldeater_path.wgsl"; cat "$shaders/worldeater_warp.wgsl"; } > "$tmp"
+out=$("$bin" "$tmp" 2>&1) || { echo "the World Eater's world warp:"; echo "$out"; exit 1; }
 if [ -z "${PRELUDE:-}" ] && [ -f "$here/../native/engine-shim/mod_post.wgsl" ]; then
     PRELUDE="$here/../native/engine-shim/mod_post.wgsl" "$0" > /dev/null || { echo "on the native build's prelude:"; PRELUDE="$here/../native/engine-shim/mod_post.wgsl" "$0"; exit 1; }
 fi

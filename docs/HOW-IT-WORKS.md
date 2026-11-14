@@ -471,13 +471,33 @@ a straight line) loaded from the moment it fires to a second before it ends. All
 `world.edit-blocks`, on what `world.read-columns` says stands there (read in 16 parts as it fires), each bomb's edits
 going in from its middle out as its front reaches them.
 
+The **World Eater** ([`strike/worldeater.rs`](../mod/src/strike/worldeater.rs), its land in
+[`strike/we_land.rs`](../mod/src/strike/we_land.rs)) changes the land where it actually went, so no two hunts leave the
+same: everywhere it broke out or bit back in is a hole open to bedrock, and every stretch it tunnelled caves in. Each
+hole it breaks out of is about 80 across (radius 40), dug from the middle out over 2.6 seconds as the head comes up
+through it, its walls darkening downward (stone and tuff, then deepslate, cobbled deepslate and sculk, blackstone at the
+bottom), the water and lava in them sealed (tuff, magma); a rim of thrown earth is heaped round it out to about 112 (up
+to 6 high round the first, 4.5 round the others), the trees are felled out to about 120 lying pointing away from it, and
+110 falling blocks and 5 whole trees are thrown out of the first (80 and 3 out of the others). Each hole it dives into
+is about 90 across (radius 45) and its rim then caves in to a funnel out to about 120 across, the trees felled round it
+out to about 80. Sculk creeps a little way out from every hole. Over each run it made under the land (the first from
+the wormsign's start some 420 off, then from each dive to the next breach) the land bucks as the head passes, blocks
+thrown up and trees toppled away from the line; once its tail has gone in, the land over the run sinks ring by ring
+from one end to the other into a trench about 50 wide and 25 deep (both wandering), its floor rubble, each column
+following its own ground, the trees on it laid along its floor; lakes and rivers are left, with a dam of ground beside
+them, and lava under its floor is sealed. Every mob and item within 110 of each hole and along each of its lines is
+killed. It keeps the chunks within 130 of each hole and 64 of each line loaded from the moment that arch is planned to
+the end. All of it goes in through `world.edit-blocks` on what `world.read-columns` says stands there, each hole and
+each trench as a wave. At QUALITY PERFORMANCE the dressing (sculk, what's left hanging, felled logs, thrown blocks) is
+left out. With terrain damage off it changes nothing and kills nothing.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -487,10 +507,12 @@ going in from its middle out as its front reaches them.
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
 | `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's, the Supervolcano's and the Carpet Bomb's knockback (`Act::Shove`), the Hurricane's carry and the Tsunami's surge on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while the Nuke, the Rod or the Hurricane is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's, the Supervolcano's, the Carpet Bomb's and the World Eater's knockback (`Act::Shove`; the World Eater's `Shove`), the Hurricane's carry, the Tsunami's surge and the World Eater's swallow on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while a laser it applies to is pointed at or loaded |
+| `/orbital worldeater hunt`, `/orbital worldeater scripted` | the World Eater's take: HUNT (the default) comes after you, surfacing nearer you hop by hop and coming down on you (up to 90 s); SCRIPTED is the one-arch show across your view, the same every time (46 s), for filming; kept; also the wheel's TAKE row, under the ring while the World Eater is pointed at or loaded |
+| `/orbital wormground a`, `b`, `c`, `old`, `off` | the World Eater's sound as it moves under the land: one of three passes over each run (`a`, the default, a rockslide; `b`, the body's segments shoving; `c`, rock dragged and crumbling), the older loop (`old`) or none; for this session only (`strike::WORMGROUND`) |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
-| `/orbital quality full`, `/orbital quality fast` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud, the Sky Breaks' dust and the Carpet Bomb's smoke are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp; the Carpet Bomb's smoke, dust and shockwave fronts, its bomber, bombs, fires and debris staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; kept between sessions; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast`, `/orbital quality performance` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud, the Sky Breaks' dust, the Carpet Bomb's smoke and the World Eater are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp; the Carpet Bomb's smoke, dust and shockwave fronts, its bomber, bombs, fires and debris staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; the World Eater's body, dust and caught view at half size, its pieces, the lens and its upsample's sharp edges at full size; PERFORMANCE is FAST with the World Eater at its lightest (its detail halved again: fewer steps, pieces and dust, its land's dressing left out, at most 3 falling blocks a tick and 60 alive); kept between sessions; a click on the wheel's switch moves it FULL, FAST, PERF; also the wheel's QUALITY switch, under PANEL |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -634,7 +656,7 @@ down to the ground wherever it lies lower, and the crystals round their feet res
 ## The sounds
 
 The sounds ([`tools/synth_sounds.py`](../tools/synth_sounds.py)) have no samples in them, but for the Sky Breaks'
-shudder ([below](#the-sky-breaks-laser-17)): they are generated from noise and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
+shudder ([below](#the-sky-breaks-laser-17)) and the World Eater's burst and ground ([below](#the-world-eater-laser-19)): they are generated from noise and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
 ([`tools/sounds_pk_blast.py`](../tools/sounds_pk_blast.py)) are shaped to measurements of a real, very large explosion:
 its spectrum, how it rises and holds, how its bands move and how wide it sounds over time. Only the numbers were taken
 from the recording; none of its audio is used. The Crystal Bloom's ([`tools/sounds_crystal.py`](../tools/sounds_crystal.py))
@@ -1221,3 +1243,135 @@ biggest, the bomber letting each go well before it strikes), `carpet_leaves_a_ro
 craters' depths, the last's size, the trench, the trees felled, the fires only on netherrack, nothing laid on the
 player), `carpet_spreads_each_craters_work_over_its_own_stages`, `carpet_reads_every_column_within_a_blasts_reach_and_no_more`,
 `carpet_leaves_the_land_alone_with_the_terrain_off`, `carpet_sounds_are_the_approved_ones_timed_by_distance`.
+
+## The World Eater (laser 19)
+
+A worm the size of a mountain, and the first laser that comes after the player. 46 s for the scripted show, up to 90
+s for a hunt ([`strike/worldeater.rs`](../mod/src/strike/worldeater.rs) the plan and the per-tick part,
+[`strike/we_path.rs`](../mod/src/strike/we_path.rs) the path, `we_land.rs` the land, `we_land_hunt.rs` the hunt,
+`we_land_catch.rs` the catch, `we_fx.rs` and `we_body.rs` the pass's tables, `we_sounds.rs` the sounds' schedule; the
+pass [`shaders/worldeater_path.wgsl`](../mod/shaders/worldeater_path.wgsl), `worldeater_body.wgsl` and
+`worldeater.wgsl`, the world warp `worldeater_warp.wgsl`; [`tools/sounds_worldeater.py`](../tools/sounds_worldeater.py)
+the sounds). There is no beam. While the designator is held its countdown reads `STIRRING THE DEEP`. It isn't in the
+native version yet.
+
+**The worm.** 68 blocks thick (`WE_R` 34) and 1,836 long (`WE_LEN`), drawn in the pass out of real block cells in the
+game's own textures: rings 17 long, each under twelve armour plates of deepslate and blackstone, tuff and basalt in the
+joints between them, sculk growing in the seams with a slow teal pulse; at the front a collar, a rim and a funnel of a
+mouth, six jaw petals that close over it, open for the bellow and gape for a bite, and three rings of teeth (bone,
+calcite and dripstone) turning inside it, the throat glowing soul-blue. The rings ripple along it and sway, the body
+lags through its turns, and the head turns on its neck (the last 240 blocks) to look at the player, up to about 50
+degrees. Far rings are drawn as a plated cone. It casts its shadow on the land and is lit as the world is: sun side and
+shade side, sky light, the game's face shading and fog.
+
+**Its path is data.** A chain of arches (`we_path.rs`, the table the mod and the pass both read from word 0 of
+`mod_data`): every arch has its own hole it breaks out of (A) and its own hole it dives into (D), half an ellipse
+between them with upright ends and its own top; between a dive and the next breach the head runs under the land (down,
+level at 80 under it, `WE_RUN_DEPTH`, and up), 160 to 600 blocks (`WE_RUN_MIN`, `WE_RUN_MAX`). The head's speed along
+it is eased (no kinks), and every point of the body follows the head along the same path. The first run comes in from
+the wormsign's start some 420 off across the player's view (`WE_SIGN`) and turns up under the target.
+
+**The scripted show** (`/orbital worldeater scripted`, the wheel's TAKE row; `we_default_plan`, the same every time):
+
+- **The wormsign** (0-9 s). A deep rumble under the land, only growing, while something ploughs through the ground
+  towards the target from the side: the land over the head bucks in real blocks (clods thrown up in clusters, the
+  ground left turned, trees toppled away from the line, `buck_run`), short heavy bursts of dust kick up along its
+  track with a teal glow at their foot, and a low furrow of turned earth is left behind it.
+- **The dome** (7.5-9 s). The land over the target domes up 10 blocks over 45 (`WE_DOME_H`, `WE_DOME_R`) and cracks open,
+  glowing sculk-teal (the world warp: `worldeater_warp.wgsl` paints the cracks).
+- **The breach** (9.0 s, `WE_BREACH`). The head punches out at 140 blocks a second: a crown of real blocks and whole
+  trees thrown, a low sheet of earth and dust blasted out over the land, the camera jolting and a knockback near it.
+- **The rise and the bellow** (9-14.5 s). It climbs to stand some 250 over the land (`WE_APEX`), earth pouring off it,
+  leaning over along its way; it slows to 10 a second round its top from 12.5 to 14.5 (`WE_BELLOW`): the jaws spread,
+  the rings of teeth turn, the throat glows, its head on the player, and it bellows.
+- **The bite** (19.0 s, `WE_BITE`). It comes down mouth first 260 blocks off (`WE_SPAN`) at 153 a second, the biggest
+  jolt and the loudest sound: the land in the mouth's circle goes in and its rim caves to a funnel after it.
+- **The arch** (19-31 s). The body pours over, out of the breach and into the bite, an arch of worm across the sky;
+  the tail whips out of the breach at 27 and is gone into the bite at 31.
+- **The tunnel fails** (31-40 s). The land over the run it came in by sinks ring by ring into a trench, dust venting
+  along it; then the dust settles.
+
+**The hunt** (`/orbital worldeater hunt`, the default). The same worm, deciding where to go from where the player is.
+Its first arch comes out of the target at 9 s; each arch after it is planned and added to the path while the head is
+still in the air on the one before (`decide`, 1.6 s before it comes down), aimed at where the player is then (leading
+them a little if they move, never turning further than the worm believably could: 120 degrees for a run, 80 for an
+arch), on land the world says is loaded (`scout`, a second before). It makes two or three low hops (the seed decides:
+spans 130-230 blocks, 60-150 high, `Kind::Hop`), each breaking out some 130-170 from the player (`hop_gap`), the last
+leaving them some 250-650 ahead; then the big arch (spans 170-320, 230-270 high, held 2 s round its top for the bellow,
+`Kind::Big`) comes down on them. Its runs are a quick dash of about 200 blocks or a long stalk of 300 to 470 (`run_want`).
+Every new hole keeps 110 from every hole before (`KNOT_GAP`), no arch passes through one of its own still standing, and
+the last arch goes in by 52 s (58 with a spit arch). At most six arches.
+
+**Swallowed.** With KNOCKBACK and terrain damage both on, it swallows the player if its jaws come down within 47 of them
+on its last planned bite (the hunt only), or its head comes up within 42 of them on a breach (either take): the gulp is
+heard 0.85 s before the jaws shut; the petals close round the edge of the view, the picture fades out over 0.3 s and
+stays dark for 0.7 s; then they are inside. On a bite, the fork's `world.carry-player` draws them in over 1.4 s
+(`SWALLOW`) and carries them down the dive hole and along the run behind the head, never faster than 64 blocks a second
+(`CARRY_V`; a run carrying them is at most 320 long), up the next breach's hole and out through the mouth at 50 a
+second, thrown clear (0.8 out and 0.35 up a tick, `THROW`) to land past the hole; if that was its last bite, one more
+small arch (`Kind::Spit`, 60 high, held 4.4 s round its top) comes up just to spit them out. On a breach they are held
+26 under the hole (`DEPTH`) for 2 s while the body pours up round them, then carried up and spat along an arc 64 out and
+30 up (`SPIT_OUT`, `SPIT_UP`). Inside, the pass draws the throat from a virtual eye on the body's centreline moved by
+the frame clock (so the view never steps with the 20-a-second carry): dark ribbed walls glowing with sculk veins and
+pulses running along them, the soul-blue glow ahead, the blocks, trees and lumps of land it ate streaming past lit by
+the throat, wind streaking by; the teeth come at them from far down the throat and they are pushed out
+through the mouth. A survival player gets Resistance V from the swallow; a strike stopped while they are inside puts
+them on the land beside the hole; holding sneak half a second lets go there and then (the carry's break-free).
+
+**The knockback** (`Shove`, as each front reaches the player at 343 blocks a second; KNOCKBACK): the first breach 0.7
+out and 0.5 up, fading to none at 300; the later breaches 0.5 and 0.4 to 220; the big bite 0.9 and 0.6 to 420; the
+small bites 0.55 and 0.4 to 230. The camera jolts with each, whatever KNOCKBACK says, and none while they are inside.
+
+What it leaves (terrain on) is in [What each strike destroys](#what-each-strike-destroys): a hole to bedrock at every
+breach and bite, rims, felled trees, sculk, and a trench over every run. The land for each arch is planned as the arch
+is (`arch_events`): read round each hole (`world.read-columns`, a disc 124 across in radius, `SITE_R`) a few seconds
+before the head gets there, worked out a part a stage, and let in through `world.edit-blocks` split by the tick it is
+due, so each hole goes in from its middle out as the head goes through and each trench ring by ring after the tail.
+A site keeps what the worm did to it, so a hole it bites and later breaks out of again works on the land as the bite
+left it.
+
+The pass (pass 15) is the biggest: the prelude, `strike.wgsl` up to its `fs_main`, the path (`worldeater_path.wgsl`:
+the arches and runs read back from the table, the head and the mound, the QUALITY tier `we_tier` and `we_detail`),
+the body (`worldeater_body.wgsl`), and the fx (`worldeater.wgsl`: the dust of the breaches, bites and trenches, the
+wormsign's bursts, the pieces thrown, the swallow and the throat, the lens and the jolt), assembled by `mod/build.rs`
+with every comment and blank line dropped (`// [lean pass]`) to stay under the game's 256 KiB. QUALITY FAST (the
+default) draws the body, the dust and the caught view at half the width and height (`fs_half`) and lays them over the
+full-size picture (`fs_join`: a wide tent over the half picture weighted by depth, the body's edge from the nearest
+four), with the pieces and the lens at full size; FULL draws every pixel; PERFORMANCE is FAST with its detail halved
+again (`we_detail`: fewer steps, pieces and dust; the body's far rings sooner as cones). What the pass needs from the
+mod is in `mod_data`: the path from 0, the body's blocks from 512, the swallow's words at 2048, the fx's blocks from 3072,
+the land's words from 8192 (the holes, the tunnels and when each caves in, the furrow), the swallowed player's eye from
+8704, and from 20480 the per-tick tables (`we_fx.rs`): every live piece thrown, the camera's jolts and the lens' events,
+each hole's billows and clumps of dust, worked out once a tick by the same formulas the pass used to run for every pixel,
+the pass taking them between ticks. The world warp is on only while a dome is up, within 420 of the player and in front
+of the camera (the game culls nothing while a warp is on).
+
+Its sounds ([`tools/sounds_worldeater.py`](../tools/sounds_worldeater.py), scheduled from the path by `we_sounds.rs`,
+`we_arch_cues`) are its own: the wormsign's rumble, growing under the land and peaking 1.2 s before the breach so the
+burst lands out of a hole; under each run the ground as it passes, a rockslide-like grinding that arrives, holds and
+recedes with the head's distance (`ground_pass_*`; `/orbital wormground a|b|c|old|off` picks the take for the session),
+and a purring voice travelling with it (`voice_travel_*`); at each breach the burst out of the ground, an
+explosion-like whump that isn't a bang (`breach_burst_*`: four big takes in turn, a smaller one for the hops), with a
+croaking cry as it emerges (`voice_emerge_*`, five takes, two of them for a breach near the player); the body pouring
+out of its hole, its rim grinding and breaking (`body`, `rim`, `grind`); the bellow (`bellow_a` with the voice's call),
+the jaws opening before a dive (`voice_jaws_*`), the dive and the bite (`bite_c`, with close and mid tiers, the voice's
+bite as the jaws shut), the tail going in, the tunnel's rings slumping and the land settling. Swallowed: the gulp, the
+throat's roar and the wind rushing past on the ride (`ride_a_*`), the voice heard from inside, and the spit. Every cue
+follows the player with its distance in it (near and far takes crossfaded), late by its distance through the air (343
+blocks a second), the ground's quake sooner. The burst and the ground are built from CC0 recordings over synthesized
+layers (NOTICE lists every recording); the rest is synthesized. Other takes' files are kept beside the picked ones
+(`WE_*_TAKE`), and the re-voiced `_rv` set is off (`WE_REVOICE`).
+
+**Photosensitivity:** hard camera jolts at every breach and bite; being swallowed turns the picture black for about
+0.7 s, then carries the view fast down a glowing tunnel for several seconds and throws it out over the land.
+
+Offscreen: `tools/preview.py worldeater T --views weplayer,weside,wefar` (the scripted show), `--set weplan=3` a
+three-arch chain; views `we*`, `web*` (the body: `webthroat`, `webspit`, `webcarry1` to `webcarry5` the ride, `webjaw`,
+`webtail`, ...) and `wef*` (the fx: `wefsign`, `wefdome`, `wefnear`, `wefthroat`, ...). The hunt's per-tick tables are
+staged for every shot at its own time (`$PREVIEW_DATA_SHOTS`). `we_write_table`, `we_land_profile`,
+`we_pieces_worst_tick` and `we_catch_sweep` (ignored) write its table, print its busiest ticks and sweep the catch.
+Tests: `we_scripted_show_keeps_its_beats_and_leaves_its_land`, `we_hunts_a_player_standing_still_and_swallows_them`,
+`we_hunts_a_player_walking_away_flying_fast_and_flying_up`, `we_catches_on_the_breach_and_spits_them_clear`,
+`we_terrain_off_catches_nobody`, `we_no_catch_and_no_knockback_with_it_off`, `we_spits_never_land_in_a_hole`,
+`we_hole_goes_to_bedrock_with_a_dressed_wall_and_a_funnel`, `we_trench_sinks_ring_by_ring_and_leaves_the_pond`,
+`we_sounds_every_event_has_its_file_and_every_file_is_used`, `pcs_layout_in_step`, `we_wgsl_in_step` and the path's.

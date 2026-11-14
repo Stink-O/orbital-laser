@@ -2,7 +2,28 @@
 //! natively, where the SDK's calls into the game don't exist) a stand-in world that records what is asked of it and
 //! answers the reads when a test says (`fake`), so the tests can play strikes through lib.rs's own playback.
 #[cfg(not(test))]
-pub use horizon_mod_sdk::{atlas, chat, game, log, render, storage, world};
+pub use horizon_mod_sdk::{atlas, chat, game, log, render, storage};
+/// The game's world calls, counted for `/orbital perf` (`perf.rs`) on the way.
+#[cfg(not(test))]
+pub mod world {
+    pub use horizon_mod_sdk::world::*;
+    pub fn run_commands(commands: &[String]) {
+        crate::perf::commands(commands);
+        horizon_mod_sdk::world::run_commands(commands)
+    }
+    pub fn edit_blocks(edit: &BlockEdit) {
+        crate::perf::edit(&edit.runs);
+        horizon_mod_sdk::world::edit_blocks(edit)
+    }
+    pub fn read_columns(tag: u32, columns: &[(i32, i32)], heightmap: Heightmap, below: u32, above: u32) {
+        crate::perf::read(columns.len());
+        horizon_mod_sdk::world::read_columns(tag, columns, heightmap, below, above)
+    }
+    pub fn surface_height(tag: u32, columns: &[(i32, i32)], heightmap: Heightmap) {
+        crate::perf::survey();
+        horizon_mod_sdk::world::surface_height(tag, columns, heightmap)
+    }
+}
 #[cfg(test)]
 pub use fake::{atlas, chat, game, log, render, storage, world};
 
@@ -178,6 +199,7 @@ pub mod fake {
             super::with(|w| w.hit.clone())
         }
         pub fn run_commands(commands: &[String]) {
+            crate::perf::commands(commands);
             super::with(|w| {
                 w.commands += commands.len() as u64;
                 w.forceloads.extend(commands.iter().filter(|c| c.starts_with("forceload")).cloned());
@@ -196,6 +218,7 @@ pub mod fake {
             true
         }
         pub fn edit_blocks(edit: &BlockEdit) {
+            crate::perf::edit(&edit.runs);
             super::with(|w| {
                 w.edits += 1;
                 w.runs += edit.runs.len() as u64;

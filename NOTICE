@@ -12,8 +12,10 @@ Original material
 orbital-laser-shader/   Written for this project.
 orbital-sounds/         All the sounds are synthesized from noise and tones by the scripts in tools/ (synth_sounds.py,
                         soundlib.py and the sounds_*.py files). They contain no samples from any recording, but for
-                        one: the Sky Breaks' shudder (orbital-sounds/assets/orbital/sounds/skybreak/shudder.ogg), whose
-                        glass is slices of the CC0 recordings listed below.
+                        three: the Sky Breaks' shudder (orbital-sounds/assets/orbital/sounds/skybreak/shudder.ogg), whose
+                        glass is slices of the CC0 recordings listed below, and the World Eater's burst and ground
+                        (orbital-sounds/assets/orbital/sounds/worldeater/breach_burst_*.ogg and ground_*.ogg), built
+                        from the CC0 recordings listed below over synthesized layers.
 docs/branding/          The logo, icon and social preview are drawn as vector paths by tools/make_branding.py.
 docs/*.jpg              Screenshots taken in Horizon with this shader pack. They show Minecraft terrain rendered by
                         Horizon; they are included to show the shader's output.
@@ -37,6 +39,34 @@ tools/sound_sources/skybreak/  (details: tools/sound_sources/skybreak/README.md)
   "BROKEN CAR WINDOW.wav" by thecommondanger (https://freesound.org/s/587928/) and
   "S41-12 Large pane of glass breaks; dull; sweetener.wav" by craigsmith (https://freesound.org/s/675853/).
   tools/sounds_skybreak.py slices their breaks into the Sky Breaks' shudder.
+
+orbital-sounds/assets/orbital/sounds/worldeater/breach_burst_*.ogg
+  The World Eater's burst out of the ground holds nine recordings from Freesound, each dedicated to the public domain
+  (CC0 1.0) by its author, under synthesized layers (the low wave, the ground body, the earth roar, the sub sweep, the
+  room):
+  "Dynamite explosion in the mountain" by felix.blume (https://freesound.org/s/251401/), the whump;
+  "Earthquake **audible only with appropriate speakers**" by MBARI_MARS (https://freesound.org/s/369485/), the sub step;
+  "Rocket Launch Rumble (Geofon recording)" by felix.blume (https://freesound.org/s/613617/), the lead-in rumble;
+  "G43-04-AvalancheRockslide.wav" (https://freesound.org/s/438683/) and "G43-05-Small Rockslide.wav"
+  (https://freesound.org/s/438684/) by craigsmith, the roar under the body;
+  "Soil Slide" by NeoSpica (https://freesound.org/s/426174/), soil under the roar;
+  "Concrete demolition" by AugustSandberg (https://freesound.org/s/270300/) and "merrimack-st-demolition.aif" by
+  alienistcog (https://freesound.org/s/125937/), the heave;
+  "Extremely distant thunder" by supercell10 (https://freesound.org/s/393634/), the roll in the mid and far tiers.
+
+orbital-sounds/assets/orbital/sounds/worldeater/ground_*.ogg
+  The World Eater's ground (travelling under the land, grinding through its holes, its thrashes) holds ten
+  recordings from Freesound, each dedicated to the public domain (CC0 1.0) by its author, slowed and low-passed, over
+  a synthesized hum:
+  "demolition1.wav" by schafferdavid (https://freesound.org/s/182397/) and "bldg demolition.wav" by cognito perceptu
+  (https://freesound.org/s/35888/), the grinding;
+  "Concrete demolition" by AugustSandberg (https://freesound.org/s/270300/), the big thrashes;
+  "G43-04-AvalancheRockslide.wav" (https://freesound.org/s/438683/) and "G43-05-Small Rockslide.wav"
+  (https://freesound.org/s/438684/) by craigsmith, "RockFall1b.wav" by AlanCat (https://freesound.org/s/381645/),
+  "Rocks falling over rocks, over a steep hill, like a cliff.flac" by gfrog (https://freesound.org/s/190505/) and
+  "Soil Slide" by NeoSpica (https://freesound.org/s/426174/), the rock and soil;
+  "Rocket Launch Rumble (Geofon recording)" by felix.blume (https://freesound.org/s/613617/) and "Earthquake
+  **audible only with appropriate speakers**" by MBARI_MARS (https://freesound.org/s/369485/), the heave.
 
 tools/bake_hand.py's source mesh
   The Sky Breaks' arm and hand are sculpted from MakeHuman's base mesh (base.obj, default.mhskel, default_weights.mhw),

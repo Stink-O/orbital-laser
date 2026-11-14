@@ -633,7 +633,35 @@ pub const CARPET_BOMB: Laser = Laser {
     particle_b: "particle minecraft:explosion {x} {y} {z} {r} 2 {r} 0.2 4 force",
 };
 
-pub const LASERS: [&Laser; 19] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB];
+/// The World Eater, planned in `strike::worldeater_plan` (strike/worldeater.rs; its path strike/we_path.rs; the pass
+/// shaders/worldeater_path.wgsl, worldeater_body.wgsl and worldeater.wgsl, its wormsign the world warp
+/// shaders/worldeater_warp.wgsl). No beam: a mountain-sized worm bursts out of the land, arcs over and bites back into
+/// it. The crater fields below are only what the shared tests read: its land is planned there.
+pub const WORLD_EATER: Laser = Laser {
+    key: "worldeater",
+    index: 19,
+    title: "WORLD EATER",
+    rgb: 0x3FC8B4,
+    blurb: "A worm the size of a mountain bursts out of the land, arcs over and bites back into it.",
+    icon_model: "orbital:worldeater_icon",
+    // (a hunt's most, strike/we_land_hunt.rs's WE_HUNT_LEN; the scripted take runs 46: lib.rs, strike::we_length)
+    length: 90.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:deepslate", 1.0)],
+    bowl_floor: ("minecraft:tuff", 0.0, "minecraft:deepslate"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:sculk_soul {x} {y} {z} {r} 2 {r} 0.05 8 force",
+};
+
+pub const LASERS: [&Laser; 20] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

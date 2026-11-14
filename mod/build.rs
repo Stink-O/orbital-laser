@@ -2,6 +2,8 @@
 //! to `include!`: the game is handed a ready-made `&'static str`, so switching QUALITY costs the mod nothing.
 #[path = "src/passbuild.rs"]
 mod passbuild;
+#[path = "src/strike/we_path.rs"]
+mod we_path;
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -11,6 +13,7 @@ fn main() {
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let shaders = root.join("shaders");
     println!("cargo:rerun-if-changed=src/passbuild.rs");
+    println!("cargo:rerun-if-changed=src/strike/we_path.rs");
     println!("cargo:rerun-if-changed=shaders");
     let read = |name: &str| {
         let p = shaders.join(name);
@@ -68,6 +71,22 @@ fn main() {
     let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_carpet_{f}.wgsl"), passbuild::split_pass(&shader, &cp, f))).collect();
     writeln!(rs, "/// The Carpet Bomb's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_CARPET: [&str; 2] = [{}];", c.join(", ")).unwrap();
+    // the World Eater's: its path (its constants spliced in from strike/we_path.rs), its body, its own; and its world warp
+    // (what of the path is marked `[warp too]`, then worldeater_warp.wgsl)
+    let we_path_src = we_path::we_splice_consts(&read("worldeater_path.wgsl"));
+    // (the fx's stand-in mound is for the preview, which has no world warp: in the game the warp lifts the land itself)
+    let we_own = read("worldeater.wgsl");
+    const STANDIN: &str = "const WE_STANDIN_MOUND: bool = true;";
+    if !we_own.contains(STANDIN) {
+        println!("cargo:warning=worldeater.wgsl has no `{STANDIN}` line to turn off for the game");
+    }
+    let we = we_path_src.clone() + &read("worldeater_body.wgsl") + &we_own.replace(STANDIN, "const WE_STANDIN_MOUND: bool = false;");
+    let w: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_worldeater_{f}.wgsl"), passbuild::split_pass(&shader, &we, f))).collect();
+    writeln!(rs, "/// The World Eater's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_WORLDEATER: [&str; 2] = [{}];", w.join(", ")).unwrap();
+    let warp = write("we_warp.wgsl".into(), passbuild::marked(&we_path_src, "warp too") + &read("worldeater_warp.wgsl"));
+    writeln!(rs, "/// The World Eater's world warp (the wormsign and the dome).").unwrap();
+    writeln!(rs, "const PASS_WE_WARP: &str = {warp};").unwrap();
     let fold = write("pass_fold.wgsl".into(), passbuild::own_pass(&shader, &(passbuild::warp_shared(&read("fold_warp.wgsl")) + &read("fold.wgsl"))));
     writeln!(rs, "/// The Fold's (no half-size stage: its cost is the warp, drawn whole).").unwrap();
     writeln!(rs, "const PASS_FOLD: &str = {fold};").unwrap();

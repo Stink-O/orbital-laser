@@ -72,6 +72,16 @@ const IMPACT_W: [f32; 4] = [30.0, 46.0, 68.0, 60.0];
 /// The Fold's crease pattern's row: its label, then a button a pattern (strike::FD_PATTERNS), as wide as its name.
 const CREASE_LABEL_W: f32 = 34.0;
 const CREASE_W: [f32; 3] = [58.0, 62.0, 58.0];
+/// The World Eater's take's row: its label, then HUNT and SCRIPTED (`/orbital worldeater`), as wide as their names.
+const WORM_TAKES: [&str; 2] = ["HUNT", "SCRIPTED"];
+const WORM_LABEL_W: f32 = 34.0;
+const WORM_W: [f32; 2] = [44.0, 60.0];
+const WORM_HINTS: [&str; 2] = ["Hunt: it surfaces near you, hop by hop, then comes for you", "Scripted: the one-arch show, the same every time, for filming"];
+fn worm_button(k: usize) -> Rect {
+    let w = WORM_LABEL_W + WORM_W.iter().sum::<f32>() + BTN_GAP;
+    let x = -w / 2.0 + WORM_LABEL_W + WORM_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
+    Rect { x, y: ROW_Y, w: WORM_W[k], h: BTN_H }
+}
 fn crease_button(k: usize) -> Rect {
     let w = CREASE_LABEL_W + CREASE_W.iter().sum::<f32>() + BTN_GAP * 2.0;
     let x = -w / 2.0 + CREASE_LABEL_W + CREASE_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
@@ -104,6 +114,8 @@ pub enum Spot {
     Impact(usize),
     /// The Fold's crease pattern's row: which.
     Crease(usize),
+    /// The World Eater's take: 0 the hunt, 1 the scripted show.
+    Worm(usize),
     /// The knockback's switch, and the follow camera's.
     Knock,
     Follow,
@@ -135,6 +147,7 @@ pub enum Rows {
     Sound,
     Impact,
     Crease,
+    Worm,
 }
 impl Rows {
     /// The rows laser `i` has (if any).
@@ -145,6 +158,7 @@ impl Rows {
             Some(l) if sound_of(l.key).is_some() => Rows::Sound,
             Some(l) if l.key == "rod" => Rows::Impact,
             Some(l) if l.key == "fold" => Rows::Crease,
+            Some(l) if l.key == "worldeater" => Rows::Worm,
             _ => Rows::None,
         }
     }
@@ -196,8 +210,12 @@ pub struct Wheel {
     bar_hover: Option<f32>,
     /// A strike is under way: the stop button shows.
     pub striking: bool,
+    /// The World Eater's take shown in its row (lib.rs sets it before drawing): the scripted show, or the hunt.
+    pub worm_scripted: bool,
     /// The laser whose pass is being built as a pick closes the wheel.
     pub loading: Option<usize>,
+    /// QUALITY PERFORMANCE (with `fast`): lib.rs sets it.
+    pub lite: bool,
 }
 
 /// How many pages of lasers there are, and the page a laser is on.
@@ -298,7 +316,7 @@ pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" || key == "worldeater" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -332,6 +350,13 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
         for k in 0..IMPACT_FX.len() {
             if inside(&impact_button(k), x, y) {
                 return Some(Spot::Impact(k));
+            }
+        }
+    }
+    if rows == Rows::Worm {
+        for k in 0..WORM_TAKES.len() {
+            if inside(&worm_button(k), x, y) {
+                return Some(Spot::Worm(k));
             }
         }
     }
@@ -523,9 +548,10 @@ impl Wheel {
         // and the quality: FAST (the heavy smoke at half size) or FULL (every pixel)
         let hovered = self.hover == Some(Spot::Quality);
         out.push(Draw::Fill((QUALITY, if hovered { 0xF0262A31 } else { 0xD0101318 })));
-        out.push(Draw::Fill((Rect { x: QUALITY.x, y: QUALITY.y + QUALITY.h - 1.5, w: QUALITY.w, h: 1.5 }, if fast { 0xFF62D46A } else { 0xFFE8B04A })));
+        let lite = fast && self.lite;
+        out.push(Draw::Fill((Rect { x: QUALITY.x, y: QUALITY.y + QUALITY.h - 1.5, w: QUALITY.w, h: 1.5 }, if lite { 0xFF5AB4E8 } else if fast { 0xFF62D46A } else { 0xFFE8B04A })));
         text(&mut out, "QUALITY", QUALITY.x + 30.0, QUALITY.y + 2.0, 0xB8BEC8);
-        text(&mut out, if fast { "FAST" } else { "FULL" }, QUALITY.x + 70.0, QUALITY.y + 2.0, if fast { 0x7CE884 } else { 0xF0C060 });
+        text(&mut out, if lite { "PERF" } else if fast { "FAST" } else { "FULL" }, QUALITY.x + 70.0, QUALITY.y + 2.0, if lite { 0x7CC8F0 } else if fast { 0x7CE884 } else { 0xF0C060 });
         // and on the left, under the seed's rows, the knockback and the follow camera, for the lasers they apply to
         for (b, spot) in toggles(self.row_for.unwrap_or(selected)) {
             let (label, on) = if spot == Spot::Knock { ("KNOCKBACK", knock) } else { ("FOLLOW", follow) };
@@ -608,6 +634,22 @@ impl Wheel {
                 text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
             }
         }
+        // (the World Eater's: its take, the one picked lit in its colour)
+        if let Some(rl) = row.filter(|&i| LASERS[i].key == "worldeater") {
+            let ms = LASERS[rl];
+            let b0 = worm_button(0);
+            text(&mut out, "TAKE", b0.x - WORM_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
+            for (k, name) in WORM_TAKES.iter().enumerate() {
+                let b = worm_button(k);
+                let chosen = k == usize::from(self.worm_scripted);
+                let hovered = self.hover == Some(Spot::Worm(k));
+                out.push(Draw::Fill((b, if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 })));
+                let rim = if chosen { 2.0 } else { 1.0 };
+                let rim_c = if chosen { argb(0xFF, ms.rgb) } else { argb(0x90, shade(ms.rgb, 0.6)) };
+                out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - rim, w: b.w, h: rim }, rim_c)));
+                text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
+            }
+        }
         // (the Fold's: which crease pattern, the next strike's)
         if let Some(rl) = row.filter(|&i| LASERS[i].key == "fold") {
             let ms = LASERS[rl];
@@ -668,6 +710,7 @@ impl Wheel {
             Some(Spot::Impact(2)) => ("Black Flash: red and black, black lightning".to_string(), 0x8C93A0),
             Some(Spot::Impact(_)) => ("Cinematic: a white-out and a shockwave ring".to_string(), 0x8C93A0),
             Some(Spot::Crease(k)) => (FD_PATTERNS[k.min(2)].2.to_string(), 0x8C93A0),
+            Some(Spot::Worm(k)) => (WORM_HINTS[k.min(1)].to_string(), 0x8C93A0),
             Some(Spot::Knock) => ("The Nuke's and the Rod's push on you on or off".to_string(), 0x8C93A0),
             Some(Spot::Follow) => ("Camera chases the Nuke's or Payload's bomb down".to_string(), 0x8C93A0),
             Some(Spot::SeedField) => (
@@ -791,6 +834,8 @@ mod tests {
         assert_eq!(page_of(sb), 3);
         let cp = LASERS.iter().position(|l| l.key == "carpetbomb").expect("the Carpet Bomb");
         assert_eq!((cp, page_of(cp)), (18, 3));
+        let we = LASERS.iter().position(|l| l.key == "worldeater").expect("the World Eater");
+        assert_eq!((we, page_of(we)), (19, 3));
         assert_eq!(tab(3).x + tab(3).w, -tab(0).x, "the four tabs centred over the ring");
     }
 

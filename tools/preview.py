@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18}
+INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19}
 # the shader's file where it is not the laser's name
 SHADER = {"supervolcano": "volcano"}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
@@ -395,6 +395,68 @@ VIEWS = {
     "cpskyf": "cx=0 cy=80 cz=120 lx=-200 ly=420 lz=-300 flat=1 trees=1 fov=100 reach=120",
     "cpskyb": "cx=0 cy=80 cz=120 lx=320 ly=420 lz=630 flat=1 trees=1 fov=100 reach=120",
     "cpfar": "cx=60 cy=95 cz=700 lx=0.5 ly=110 lz=-100 flat=1 trees=1 fov=55 reach=120",
+    # the world eater (the player 300 blocks south of the target; with seed 37 its line runs east: the wormsign from
+    # W0 at -420 0, the breach on the target, the bite at D 260 0, the arch's top 250 up at 130 0): from where they stand,
+    # from 1000 off, from beyond D along the line, from high over it, into the mouth at the bellow, and by the bite
+    "weplayer": "cx=0 cy=105 cz=300 lx=-40 ly=135 lz=0.5 flat=1 trees=1 fov=80",
+    "wefar": "cx=0 cy=160 cz=1000 lx=-40 ly=130 lz=0.5 flat=1 trees=1 fov=50",
+    "weside": "cx=620 cy=130 cz=160 lx=60 ly=140 lz=0.5 flat=1 trees=1 fov=65",
+    "weaerial": "cx=200 cy=950 cz=850 lx=200 ly=65 lz=100 flat=1 trees=1 fov=60",
+    # (the three-arch test chain, `--set weplan=3`: from where the player stands, turned to its middle)
+    "we3player": "cx=0 cy=105 cz=300 lx=260 ly=135 lz=150 flat=1 trees=1 fov=80",
+    "wemouth": "cx=260 cy=318 cz=30 lx=130 ly=312 lz=0.5 flat=1 trees=1 fov=60",
+    "webite": "cx=340 cy=85 cz=130 lx=255 ly=95 lz=0.5 flat=1 trees=1 fov=70",
+    # (close by the breach, side-on; the wormsign's way from beside it; inside the body at the arch's
+    # top (the caught view's throat); standing on the bite, looking up at the mouth coming down (the jaws closing))
+    "wefnear": "cx=-30 cy=82 cz=170 lx=0 ly=95 lz=0.5 flat=1 trees=1 fov=70",
+    "wefsign": "cx=-150 cy=95 cz=180 lx=-230 ly=70 lz=0.5 flat=1 trees=1 fov=70",
+    "wefthroat": "cx=120 cy=312 cz=0.5 lx=60 ly=300 lz=6 flat=1 trees=1 fov=75",
+    "wefclose": "cx=260.5 cy=67 cz=0.5 lx=240 ly=200 lz=4 flat=1 trees=1 fov=75",
+    # (over the wormsign's way and the target, close: the mound, the dome and its cracks)
+    "wefdome": "cx=-90 cy=150 cz=110 lx=-20 ly=65 lz=0.5 flat=1 trees=1 fov=65",
+    # (from where the player stands and from 1000 off, over hills, the target's ground flush with them)
+    # (as far from the breach as from the bite, 330 each, both in view: which is bigger)
+    "wefboth": "cx=130 cy=95 cz=330 lx=130 ly=105 lz=0.5 flat=1 trees=1 fov=80",
+    # (the first approach over the trees, 250 and 600 off its track: the bursts and the glow)
+    "wefsign250": "cx=-180 cy=100 cz=250 lx=-160 ly=72 lz=0.5 flat=1 trees=1 fov=70",
+    "wefopen250": "cx=-180 cy=100 cz=250 lx=-160 ly=72 lz=0.5 flat=1 fov=70",
+    "wefside70": "cx=-170 cy=67 cz=70 lx=-170 ly=72 lz=0.5 flat=1 fov=75",
+    "weftrees": "cx=-170 cy=68 cz=110 lx=-170 ly=76 lz=0.5 flat=1 trees=1 fov=75",
+    "wefslab": "cx=90 cy=95 cz=70 lx=0 ly=150 lz=0 flat=1 trees=1 fov=75",
+    "wefsign600": "cx=-180 cy=150 cz=600 lx=-160 ly=72 lz=0.5 flat=1 trees=1 fov=55",
+    # (20 blocks from the breach, looking down at its ground: the cracks)
+    "wefcrack20": "cx=14 cy=78 cz=14 lx=-2 ly=65 lz=-2 flat=1 trees=1 fov=75",
+    "wefhills": "cx=0 cy=125 cz=300 lx=-40 ly=135 lz=0.5 hills=40 flush=1 trees=1 fov=80",
+    "wefhfar": "cx=0 cy=190 cz=1000 lx=-40 ly=130 lz=0.5 hills=40 flush=1 trees=1 fov=50",
+    # the world eater's body, close: a plate from 30 off, the snout shut as it climbs, the head from
+    # below at the bellow, the open jaws face on, the arch's top from under it (its bend's inside) and over it (outside),
+    # the tail out of the breach, and down the throat from inside
+    "webplate": "cx=4 cy=196 cz=70 lx=17 ly=190 lz=0.5 flat=1 trees=1 fov=60",
+    "websnout": "cx=90 cy=215 cz=110 lx=5 ly=200 lz=0.5 flat=1 trees=1 fov=55",
+    "webunder": "cx=160 cy=215 cz=70 lx=130 ly=312 lz=0.5 flat=1 trees=1 fov=70",
+    "webjaw": "cx=330 cy=330 cz=40 lx=150 ly=312 lz=0.5 flat=1 trees=1 fov=55",
+    "webin": "cx=130 cy=190 cz=60 lx=130 ly=290 lz=0.5 flat=1 trees=1 fov=70",
+    "webout": "cx=150 cy=430 cz=90 lx=130 ly=320 lz=0.5 flat=1 trees=1 fov=60",
+    "webtail": "cx=70 cy=120 cz=140 lx=0 ly=115 lz=0.5 flat=1 trees=1 fov=60",
+    "webthroat": "cx=130 cy=314 cz=0.5 lx=230 ly=300 lz=0.5 flat=1 trees=1 fov=75",
+    # (round 3: in the head at the bellow, looking out of the mouth as the jaws open and close; just outside it as they
+    # close over the eye)
+    "webinside": "cx=98 cy=307 cz=0.5 lx=150 ly=317 lz=0.5 flat=1 trees=1 fov=80",
+    "webover": "cx=152 cy=317 cz=6 lx=100 ly=309 lz=0.5 flat=1 trees=1 fov=80",
+    # (round 4: the spit, plan 3 with a spit at 26.4 s: in the head as it comes up out of arch 2's breach, looking up out
+    # of the mouth, and from just over the hole)
+    "webdeep": "cx=48 cy=257.5 cz=0.5 lx=80 ly=295 lz=0.5 flat=1 trees=1 fov=80",
+    "webback": "cx=48 cy=257.5 cz=0.5 lx=25.6 ly=212.6 lz=0.5 flat=1 trees=1 fov=80",
+    "webrun": "cx=221 cy=-15 cz=85 lx=285 ly=-15 lz=162 flat=1 trees=1 fov=80",
+    "webspit": "cx=646 cy=88 cz=300.5 lx=646 ly=300 lz=301 flat=1 trees=1 fov=80",
+    "webspitup": "cx=690 cy=190 cz=330 lx=646 ly=130 lz=300 flat=1 trees=1 fov=70",
+    # (the carry, plan 3, caught at arch 0's bite: on WePath::point's centreline looking along it, down the dive (about
+    # 12.3 s), the turn (14.2), the run (15.5), the rise (16.8) and up arch 1 (17.9); give the data Caught words)
+    "webcarry1": "cx=147.9 cy=85.9 cz=0.25 lx=157.7 ly=36.9 lz=0.3 flat=1 trees=1 fov=80",
+    "webcarry2": "cx=161.7 cy=6.4 cz=14.3 lx=183.7 ly=-30 lz=40.5 flat=1 trees=1 fov=80",
+    "webcarry3": "cx=212.1 cy=-15 cz=74.5 lx=244.2 ly=-15 lz=112.8 flat=1 trees=1 fov=80",
+    "webcarry4": "cx=265.7 cy=-9 cz=138.6 lx=294.9 ly=11.7 lz=173.5 flat=1 trees=1 fov=80",
+    "webcarry5": "cx=291.1 cy=59.6 cz=169 lx=291.2 ly=109.6 lz=169.1 flat=1 trees=1 fov=80",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -406,7 +468,8 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "tsunami": "tsplayer,tsside,tsaerial",
                  "fold": "flhill,flhigh",
                  "skybreak": "sbplayer,sbfar,sbaerial",
-                 "carpetbomb": "cpplayer,cpside,cpaerial"}
+                 "carpetbomb": "cpplayer,cpside,cpaerial",
+                 "worldeater": "weplayer,wefar"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -415,8 +478,12 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater"):
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
+        if laser == "worldeater":
+            # (its path (with the constants we_path.rs gives: `cargo test we_wgsl_in_step` keeps this copy right), its
+            # body, its own: mod/build.rs)
+            own = (SHADERS / "worldeater_path.wgsl").read_text() + (SHADERS / "worldeater_body.wgsl").read_text() + own
         # (less the Mothership's ship unless the laser's own says it uses it: mod/src/passbuild.rs)
         ship = [] if "// [uses the mothership]" in own else ["-e", r"/^\/\/ \[mothership\]/,/^\/\/ \[end mothership\]/d"]
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", *ship, "-e", "/^@fragment/,$d"],
@@ -426,6 +493,11 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
         if not fast:
             own = subprocess.run(["sed", "-e", r"/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d"],
                                  input=own, capture_output=True, text=True, check=True).stdout
+        # (a pass whose source says `// [lean pass]` (the World Eater's) less its comment and blank lines, after its
+        # sections are cut: mod/src/passbuild.rs's lean_pass)
+        if "// [lean pass]" in own:
+            pre = "".join(l + "\n" for l in pre.splitlines() if l.strip() and not l.lstrip().startswith("//"))
+            own = "".join(l + "\n" for l in own.splitlines() if l.strip() and not l.lstrip().startswith("//"))
         # (the Rod's impact frames in another of their looks: `--set rdif=N`)
         rdif = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("rdif=")), None)
         if rdif is not None:
@@ -470,6 +542,20 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
+    if laser == "worldeater":
+        # (the path's table, as strike/worldeater.rs gives it: `--set weplan=3` the three-arch test chain, `wedebug=1`
+        # Rust's own samples of the path for the pass to check its centreline against: worldeater.wgsl's we_debug)
+        seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
+        path = (out / "data.txt").resolve()
+        plan = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("weplan=")), "1")
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", WE_PLAN=plan,
+                   WE_DEBUG="1" if "wedebug=1" in sets else "0")
+        if ATLAS:
+            # (the body's blocks' sprites as the fake atlas has them)
+            env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "we_write_table", "--", "--ignored"],
+                       cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+        return dict(os.environ, PREVIEW_DATA=str(path))
     if laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
@@ -564,7 +650,7 @@ def main() -> int:
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
-    if a.laser in ("hurricane", "tsunami", "skybreak") and not a.notex:
+    if a.laser in ("hurricane", "tsunami", "skybreak", "worldeater") and not a.notex:
         atlas(out)
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
@@ -575,7 +661,7 @@ def main() -> int:
         vox = ROOT / "dist" / "preview" / "fold_land.txt"
         if vox.exists():
             env_vox = str(vox)
-    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     if a.laser == "skybreak":
@@ -588,10 +674,26 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater") else None
     env = dict(env or os.environ)
     if a.laser == "fold" and (ROOT / "dist" / "preview" / "fold_land.txt").exists():
         env["PREVIEW_VOXELS"] = str(ROOT / "dist" / "preview" / "fold_land.txt")
+    if a.laser == "worldeater" and env.get("PREVIEW_DATA"):
+        # (the words the mod works out every tick (strike/we_fx.rs: the pieces in the air, the holes' billows and
+        # clumps, the jolts' events) as the tick at each shot's time gives them, laid over the table shot by shot)
+        sd = (out / "ticks").resolve()
+        (sd / "t").mkdir(parents=True, exist_ok=True)
+        ts = sorted({f"{t:g}" for t in a.times})
+        seed = next((kv.split("=", 1)[1] for kv in a.set if kv.startswith("seed=")), "37")
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "we_pieces_stage", "--", "--ignored"], cwd=ROOT / "mod",
+                       env=dict(os.environ, PCS_IN=env["PREVIEW_DATA"], PCS_T=" ".join(ts), PCS_OUT=str(sd / "t"), PCS_SEED=seed),
+                       check=True, capture_output=True)
+        n = 0
+        for t in a.times:
+            for v in views:
+                (sd / f"{n:02}.txt").write_text((sd / "t" / f"{t:g}.txt").read_text())
+                n += 1
+        env["PREVIEW_DATA_SHOTS"] = str(sd)
     if ATLAS:
         env["PREVIEW_ATLAS"] = str(ATLAS / "atlas.raw")
     if a.whole:
@@ -604,7 +706,10 @@ def main() -> int:
         shader = build_pass(a.laser, out, q == "fast", a.set)
         # (`PREVIEW_LOCK=FILE`: only the drawing itself under that lock, for a GPU shared with other jobs)
         lock = ["flock", os.environ["PREVIEW_LOCK"]] if os.environ.get("PREVIEW_LOCK") else []
-        r = subprocess.run([*lock, str(exe), str(shader), str(qout), *common, *shots], capture_output=True, text=True, env=env)
+        # (the World Eater's DETAIL tier, params[15] = mod_params[3].w, worldeater_path.wgsl's we_tier: 2 FULL, 1 FAST,
+        # as the game gives it; `--set colour=0` for PERFORMANCE)
+        tier = [f"colour={2 if q == 'full' else 1}"] if a.laser == "worldeater" and not any(kv.startswith("colour=") for kv in a.set) else []
+        r = subprocess.run([*lock, str(exe), str(shader), str(qout), *common, *tier, *shots], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             print(r.stderr, file=sys.stderr)
             return 1

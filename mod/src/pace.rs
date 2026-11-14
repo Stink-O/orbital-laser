@@ -47,11 +47,15 @@ pub struct Pace {
     /// The frames ignored while this is set: a strike whose land can't be seen going in (the Fold's, while the world is a
     /// globe and a point) would rather lose those frames than have the land go in after it is seen.
     pub hidden: bool,
+    /// [World Eater, perf] judge the frames against what they have been lately, edits or not: a pass that makes every
+    /// frame long (the GPU's doing, steady) holds nothing back; a frame that jumps over the last few (the client working
+    /// out resent chunks) does.
+    pub spiky: bool,
 }
 
 impl Default for Pace {
     fn default() -> Self {
-        Self { frame: 1.0 / 60.0, calm: 1.0 / 60.0, budget: None, busy: false, hidden: false }
+        Self { frame: 1.0 / 60.0, calm: 1.0 / 60.0, budget: None, busy: false, hidden: false, spiky: false }
     }
 }
 
@@ -62,7 +66,13 @@ impl Pace {
         self.frame += (s - self.frame) * 0.15;
         if !self.busy {
             self.calm += (s - self.calm) * 0.05;
+        } else if self.spiky {
+            self.calm += (s - self.calm) * 0.02;
         }
+    }
+    /// Whether the frames run long now (as `tick` judges them).
+    pub fn slow(&self) -> bool {
+        self.frame > SLOW.max(self.calm * SLOW_OVER_CALM)
     }
     /// A tick's budget, `busy` when edits wait or went in on the tick before: `None` for no limit.
     pub fn tick(&mut self, busy: bool) -> Option<u32> {
@@ -169,6 +179,24 @@ mod tests {
             p.tick(true);
         }
         assert_eq!(p.tick(true), Some(FLOOR));
+    }
+
+    #[test]
+    fn spiky_pacing_follows_a_steady_long_frame_and_cuts_on_jumps() {
+        let mut p = Pace { spiky: true, ..Pace::default() };
+        run_frames(&mut p, 14.0, 200);
+        // (the pass makes every frame 45 ms while edits go in: nothing held back once the level is learnt)
+        for _ in 0..300 {
+            run_frames(&mut p, 45.0, 3);
+            p.tick(true);
+        }
+        assert_eq!(p.tick(true), None);
+        // (frames jumping well over that level are cut)
+        for _ in 0..10 {
+            run_frames(&mut p, 90.0, 3);
+            p.tick(true);
+        }
+        assert!(p.tick(true).is_some());
     }
 
     #[test]

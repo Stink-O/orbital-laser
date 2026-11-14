@@ -417,7 +417,8 @@ fn cp_blast_rows(q: &mut Plan, land: &mut Land, b: &Blast, n: u8, k0: i32, k1: i
     let rr = b.reach().ceil() as i32;
     let (ix, iz) = (b.cx.floor() as i32, b.cz.floor() as i32);
     let mut out = Blocks::default();
-    crate::meter::spend(2_500 * ((k1 - k0) * (2 * rr + 1)) as u64);
+    // [World Eater, land] (no rows: k1 can come in under k0, whose difference would wrap to a tick's worth of work)
+    crate::meter::spend(2_500 * ((k1 - k0).max(0) * (2 * rr + 1)) as u64);
     let reach2 = b.reach() * b.reach();
     for z in iz - rr + k0..iz - rr + k1 {
         let dz = f64::from(z) + 0.5 - b.cz;
@@ -740,7 +741,7 @@ fn blast_far(d: f64) -> f64 {
     u * u * (3.0 - 2.0 * u)
 }
 
-/// The bombs' sounds (tools/sounds_carpetbomb.py, round 4, after Kyle's reference: a carpet bombing run as filmed): the
+/// The bombs' sounds (tools/sounds_carpetbomb.py, after a reference: a carpet bombing run as filmed): the
 /// aircraft droning over the first seconds; no falling sound; each bomb heard through the air (d/343) as a soft-fronted,
 /// low, rolling blast whose rumble rolls on for seconds, so a stick landing every half second rolls into one wall of
 /// sound, duller and later from the far end of the line, louder and nearer as it walks in; more far off from other

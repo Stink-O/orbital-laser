@@ -661,7 +661,7 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     });
     // (the mod's data, as render.set-data gives it: $PREVIEW_DATA, or the one word 0 the game binds without it)
     let mut words: Vec<u32> = vec![0];
-    if let Ok(path) = std::env::var("PREVIEW_DATA") {
+    let read_words = |path: &str, words: &mut Vec<u32>| {
         for l in std::fs::read_to_string(path).unwrap().lines() {
             let mut it = l.split_whitespace();
             let (Some(i), Some(v)) = (it.next(), it.next()) else { continue };
@@ -674,10 +674,30 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
                 None => v.parse::<f32>().unwrap().to_bits(),
             };
         }
+    };
+    if let Ok(path) = std::env::var("PREVIEW_DATA") {
+        read_words(&path, &mut words);
     }
+    // (and with $PREVIEW_DATA_SHOTS a folder: shot n's own words laid over those from its NN.txt, if there is one, as
+    // a tick's words the game gives (the World Eater's pieces, strike/we_fx.rs))
+    let per_shot: Vec<Vec<u32>> = (0..shots.len())
+        .map(|n| {
+            let mut w = words.clone();
+            if let Ok(dir) = std::env::var("PREVIEW_DATA_SHOTS") {
+                let f = format!("{dir}/{n:02}.txt");
+                if std::path::Path::new(&f).exists() {
+                    read_words(&f, &mut w);
+                }
+            }
+            w
+        })
+        .collect();
+    let dlen = per_shot.iter().map(Vec::len).max().unwrap_or(1).max(words.len());
     let dbuf = {
         use wgpu::util::DeviceExt;
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&words), usage: wgpu::BufferUsages::STORAGE })
+        let mut w0 = per_shot.first().cloned().unwrap_or(words.clone());
+        w0.resize(dlen, 0);
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&w0), usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST })
     };
     let lin = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() });
     let nea = device.create_sampler(&Default::default());
@@ -746,6 +766,11 @@ async fn run(shader_path: &str, out: &str, shots: &[Shot], gpu: &str) {
     let tview = target.create_view(&Default::default());
     let mut warm = shots.iter().any(|s| s.frames > 1);
     for (n, sh) in shots.iter().enumerate() {
+    {
+        let mut w = per_shot[n].clone();
+        w.resize(dlen, 0);
+        queue.write_buffer(&dbuf, 0, bytemuck::cast_slice(&w));
+    }
     queue.write_texture(scene.as_image_copy(), &sh.color, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 4), rows_per_image: None }, size);
     queue.write_texture(dsrc.as_image_copy(), bytemuck::cast_slice(&sh.depth), wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 4), rows_per_image: None }, size);
     queue.write_buffer(&ubuf, 0, bytemuck::cast_slice(&sh.u));

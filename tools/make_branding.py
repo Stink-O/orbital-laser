@@ -36,8 +36,9 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    # (the Sky Breaks' eye: flaring in the hole in the broken sky, the slam's dust rising below)
-    shot = Image.open(ROOT / "docs" / "branding" / "skybreak-card.jpg").convert("RGB")
+    # (the World Eater risen over the player and looking down: its petals open round the teeth and the glowing throat,
+    # a frame from a recording)
+    shot = Image.open(ROOT / "docs" / "branding" / "worldeater-card.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H / shot.height), H), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width, 0))
@@ -54,11 +55,14 @@ def social_preview():
     d = ImageDraw.Draw(card)
     d.text((80, 140 + logo.height + 34), "Orbital strikes for Horizon,", font=ImageFont.truetype(str(FONT), 32), fill="#C4CBD4")
     d.text((80, 140 + logo.height + 76), "the Rust rewrite of Minecraft Java", font=ImageFont.truetype(str(FONT), 32), fill="#C4CBD4")
-    names = ImageFont.truetype(str(FONT), 19)
-    d.text((80, 140 + logo.height + 136), "PLASMA · GODLY · BLACK HOLE · METEOR STORM · MOTHERSHIP", font=names, fill="#FF9A2E")
-    d.text((80, 140 + logo.height + 166), "DOWNFALL · PLANET KILLER · CRYSTAL BLOOM · SINKHOLE · PAYLOAD", font=names, fill="#FF9A2E")
-    d.text((80, 140 + logo.height + 196), "NUKE · ROD FROM GOD · SUPERCELL · HURRICANE · TSUNAMI", font=names, fill="#FF9A2E")
-    d.text((80, 140 + logo.height + 226), "THE FOLD · SUPERVOLCANO · THE SKY BREAKS", font=names, fill="#FF9A2E")
+    # the newest laser by name, and how many more there are (the full list grew too long for the card)
+    y = 140 + logo.height + 146
+    tag = ImageFont.truetype(str(FONT), 22)
+    tw = round(d.textlength("NEW", font=tag))
+    d.rounded_rectangle((80, y, 80 + tw + 24, y + 36), radius=7, fill="#FF9A2E")
+    d.text((92, y + 5), "NEW", font=tag, fill="#07090F")
+    d.text((80 + tw + 24 + 16, y - 4), "WORLD EATER", font=ImageFont.truetype(str(FONT), 38), fill="#FF9A2E")
+    d.text((80, y + 56), "and 19 more!", font=ImageFont.truetype(str(FONT), 30), fill="#C4CBD4")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 
