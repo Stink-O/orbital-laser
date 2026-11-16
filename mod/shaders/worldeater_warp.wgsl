@@ -14,7 +14,7 @@
 //
 //   the mound    gone (it read as a pipe stretched under the land); params[1] is no longer read
 //   the dome     over a breach: only cracks opening from the middle out over its last second and a half, glowing
-//                sculk-teal from below (world_fragment); round 5: no swell, no vertex is ever moved
+//                sculk-teal from below (world_fragment); no swell: no vertex is ever moved
 //
 // worldeater.wgsl draws the same land (`wef_lift_at`, `wef_crack`: keep them in step with wew_lift and wew_crack) as a
 // stand-in for the preview, which has no warp (WE_STANDIN_MOUND; off in the game's pass).
@@ -61,7 +61,7 @@ fn wew_dome_lift(x: vec2<f32>, dh: f32, t: f32) -> f32 {
 // under the land: the sign of the head travelling is the pass's bursts and glow and the land's real blocks); only
 // a slight, quick swell over the breach in its last half second, at most three blocks (the pass's wef_lift_at).
 fn wew_lift(x: vec2<f32>, c: WewClock) -> f32 {
-    // (round 5: no displacement of the world at all, anywhere: a swell stretched the leaves near the camera)
+    // (no displacement of the world at all, anywhere: a swell stretched the leaves near the camera)
     return 0.0;
 }
 fn world_warp(pos: vec3<f32>, copy: u32) -> Warped {

@@ -8,12 +8,12 @@
 // way. The middle falls out in a glittering rain; through the hole a void, something vast in it looking down. Huge
 // panes of sky break free one by one, tumble and smash into the land, lying as real blocks (drawn here till the mod
 // lays them). Late on the sky heals from its holes' edges. strike/skybreak.rs puts the cracks and panes in the table
-// (sb_table, render.set-data), strike/sb_lodge.rs lays the panes' blocks: keep the SB_* and sb_sky in step. Round 4:
-// the crack is a hand behind the sky punching through; at the end it slams a fist into the land (`[hand]`, sb_hand.rs).
+// (sb_table, render.set-data), strike/sb_lodge.rs lays the panes' blocks: keep the SB_* and sb_sky in step.
+// The crack is a hand behind the sky punching through; at the end it slams a fist into the land (`[hand]`, sb_hand.rs).
 const SB_H: f32 = 560.0;           // the sky's pane, over the target's ground
 const SB_K: i32 = 15;              // primary radial cracks
 const SB_FAR: f32 = 7000.0;        // how far the cracks run
-const SB_LEAD: f32 = 8.75;         // round 3's timeline starts this much later (the land lifted into the sky first)
+const SB_LEAD: f32 = 8.75;         // the timeline starts this much later (the land lifted into the sky first)
 const SB_CRACK: f32 = SB_LEAD + 0.25; // the hand punches through: the first crack, every radial across the sky in 0.1 s,
 const SB_SPREAD: f32 = SB_CRACK + 0.25; // the rings joining them by here; then the pieces shift out of true
 const SB_COLLAPSE: f32 = SB_CRACK + 0.03; // the middle round the fist blown down (its outer ring at the slam, HD_KNOCK)
@@ -1648,7 +1648,7 @@ struct LfHit {
     c: vec3<f32>, // its colour, lit
     y: f32,       // its height (from the target's ground point)
 }
-// Lit as round 3's blocks, its face's world normal `n`: the sun, the sky's light, shaded as the game shades a block's
+// Lit as the island's blocks, its face's world normal `n`: the sun, the sky's light, shaded as the game shades a block's
 // faces (tops brightest, undersides darkest).
 fn lf_lit(alb: vec3<f32>, n: vec3<f32>, L: vec3<f32>, sunc: vec3<f32>, amb: vec3<f32>) -> vec3<f32> {
     // (as the game lights a block in the open: its texture's colour by day, faces shaded by which way they face, a
@@ -1888,7 +1888,7 @@ fn lf_bits(ro: vec3<f32>, rd: vec3<f32>, best0: f32, ps: LfPose, t: f32, L: vec3
     }
     return out;
 }
-// The island, what falls off and circles it, over what's drawn so far (`near`, `hit`, `pc`: round 3's).
+// The island, what falls off and circles it, over what's drawn so far (`near`, `hit`, `pc`).
 fn lf_draw(ro: vec3<f32>, rd: vec3<f32>, t: f32, scene_len: f32, L: vec3<f32>, sunc: vec3<f32>, amb: vec3<f32>, skyl: vec3<f32>, near: ptr<function, f32>, hit: ptr<function, bool>, pc: ptr<function, vec3<f32>>) {
     if (sb_w(LF_W) < 0.5 || t > LF_IN + 2.0) {
         return;

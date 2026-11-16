@@ -23,6 +23,7 @@ mod perf;
 mod sdk;
 mod strike;
 mod surge;
+mod tune;
 mod wheel;
 
 use horizon_mod_sdk::{
@@ -92,6 +93,11 @@ fn carpet_pass(fast: bool) -> &'static str {
 /// constants from strike/we_path.rs, worldeater_body.wgsl and worldeater.wgsl, after strike.wgsl up to its fs_main).
 /// `/orbital perf nopass`: a pass that only copies the world's picture.
 const PASS_NULL: &str = "@fragment\nfn fs_main(in: StageIn) -> @location(0) vec4<f32> {\n    return textureLoad(scene_color, vec2<i32>(in.position.xy), 0);\n}\n";
+/// The Convergence's, the same way (convergence.wgsl's `[half stage]`: the columns' glow and the rift at half size,
+/// the cores, the rings, the burst and the lens sharp at full size).
+fn convergence_pass(fast: bool) -> &'static str {
+    PASS_CONVERGENCE[usize::from(fast)]
+}
 fn worldeater_pass(fast: bool) -> &'static str {
     PASS_WORLDEATER[usize::from(fast)]
 }
@@ -144,6 +150,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "skybreak" => 13,
         "carpetbomb" => 14,
         "worldeater" => 15,
+        "convergence" => 16,
         _ => 0,
     }
 }
@@ -326,6 +333,7 @@ fn command_paths() -> Vec<String> {
         add(&["seed", v]);
     }
     add(&["flyspeed", "reset"]);
+    add(&["tune", "reset"]);
     for v in strike::WORMGROUND {
         add(&["wormground", v]);
     }
@@ -458,7 +466,7 @@ struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
     /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's, 15 the world eater's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 16],
+    passes: [&'static str; 17],
     compiled: Option<usize>,
     warming: bool,
     /// A pick has left the wheel up while its pass is built (`close_picked`).
@@ -610,7 +618,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, lite, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn, we_scripted } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast), convergence_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -1102,6 +1110,7 @@ impl Orbital {
         self.rebuild("skybreak", skybreak_pass(fast));
         self.rebuild("carpetbomb", carpet_pass(fast));
         self.rebuild("worldeater", worldeater_pass(fast));
+        self.rebuild("convergence", convergence_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -1219,7 +1228,9 @@ impl Orbital {
         if LASERS.iter().any(|l| l.index == index && l.key == "fold") {
             return self.fold_stop as f32;
         }
-        f32::from(u8::from(self.shadow_off)) + if index == 11 { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
+        // (the Rod's and the Convergence's impact frames: 2 off, else 4 times one more than the look picked)
+        let impact = index == 11 || LASERS.iter().any(|l| l.index == index && l.key == "convergence");
+        f32::from(u8::from(self.shadow_off)) + if impact { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
     /// ahead of the next, as the passes are).
@@ -1363,15 +1374,16 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "worldeater" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
             if laser.key == "worldeater" {
                 params[15] = self.we_tier();
             }
-            // (the Fold's warp lifts the real land only if there is any: fold_warp.wgsl's fw_real_land)
-            if laser.key == "fold" && self.terrain {
+            // (the Fold's warp lifts the real land only if there is any: fold_warp.wgsl's fw_real_land; the Convergence's
+            // pass digs its cracks' trenches itself only where the land is not cut: convergence_cracks.wgsl)
+            if (laser.key == "fold" || laser.key == "convergence") && self.terrain {
                 params[15] += 0.25;
             }
         }
@@ -1403,7 +1415,7 @@ impl Orbital {
         // (the crystal bloom's spires and pieces, worked out once for the pass: strike::cb_table)
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
-        render::set_data(&data);
+        tune::send(&data, laser.key);
         self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 }, hand: None, hand_t: 0.0 });
         self.hold_forceloads(&dimension, clock, length + wait as f32 * 0.05);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
@@ -1617,8 +1629,8 @@ impl Orbital {
             meter::spend(strike::we_pieces_tick(&mut s.data, now, s.params[8]));
             s.data_sent = false;
         }
-        if !s.data_sent {
-            render::set_data(&s.data);
+        if !s.data_sent || tune::dirty() {
+            tune::send(&s.data, s.key);
             s.data_sent = true;
         }
         // (the light on the player's hand: what is dear in it a tick at a time, `hand_frame` the rest)
@@ -2079,10 +2091,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" {
                 lines.push((format!("Quality: {}", if self.lite { "performance (the World Eater at its lightest)" } else if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" || l.key == "worldeater" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -2197,6 +2209,7 @@ impl Mod for Orbital {
                         "supervolcano" => "BREACHING CRUST",
                         "skybreak" => "STRAINING THE SKY",
                         "carpetbomb" => "CLEARING THE RUN",
+                        "convergence" => "WORLDS STIRRING",
                         "worldeater" => "STIRRING THE DEEP",
                         _ => "ACQUIRING TARGET",
                     };
@@ -2436,6 +2449,7 @@ impl Mod for Orbital {
                 log::write(log::Level::Info, &format!("perfdump: end {}", s.data.len()));
                 Ok(Some("Perf: dumped".into()))
             }
+            (Some("tune"), a) => tune::command(LASERS[self.laser].key, a, words.next()).map(Some),
             (Some("perf"), Some(v @ ("on" | "off"))) => {
                 perf::set(v == "on");
                 Ok(Some(format!("Perf log: {v} (a line a second of a strike: what the mod asked of the game)")))
@@ -2484,7 +2498,8 @@ impl Mod for Orbital {
                 if let Some(i) = self.strike.as_ref().map(|s| s.params[7]) {
                     let f = flags(self, i);
                     if let Some(s) = &mut self.strike {
-                        s.params[15] = f;
+                        // (the quarter over it is the strike's own: whether its land is real)
+                        s.params[15] = f + s.params[15].fract();
                     }
                 }
                 Ok(Some(format!("Cloud shadows {v}")))
@@ -2978,7 +2993,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             // (`ORBITAL_SOAK_LASERS=worldeater,nuke`: only those)

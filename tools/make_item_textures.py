@@ -488,13 +488,32 @@ WORLDEATER_ICON = [      # the world eater: a dark plated worm arching out of th
     "JJJJJJJJJJJJJJJJ",
 ]
 
-GRIDS = {"worldeater_icon": WORLDEATER_ICON, "carpetbomb_icon": CARPETBOMB_ICON, "supervolcano_icon": SUPERVOLCANO_ICON, "skybreak_icon": SKYBREAK_ICON, "tsunami_icon": TSUNAMI_ICON, "hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+CONVERGENCE_ICON = [     # the convergence: a gold beam down out of a rift, a red one up out of a crack, a white burst where they meet
+    "..yyyyyyyyyyyy..",
+    "....yyWWWWyy....",
+    "......yWWy......",
+    "......yWWy......",
+    ".......yy.......",
+    ".......yy.......",
+    "......fWWf......",
+    ".....fWWWWf.....",
+    "......fWWf......",
+    ".......rr.......",
+    ".......rr.......",
+    "......reer......",
+    "......reer......",
+    "tttttreEEerttttt",
+    "jjjjjjeEEejjjjjj",
+    "JJJJJJJEEJJJJJJJ",
+]
+
+GRIDS = {"convergence_icon": CONVERGENCE_ICON, "worldeater_icon": WORLDEATER_ICON, "carpetbomb_icon": CARPETBOMB_ICON, "supervolcano_icon": SUPERVOLCANO_ICON, "skybreak_icon": SKYBREAK_ICON, "tsunami_icon": TSUNAMI_ICON, "hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon", "tsunami_icon", "supervolcano_icon", "skybreak_icon", "carpetbomb_icon", "worldeater_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon", "tsunami_icon", "supervolcano_icon", "skybreak_icon", "carpetbomb_icon", "worldeater_icon", "convergence_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:

@@ -5807,5 +5807,581 @@
       }
     ],
     "subtitle": "subtitles.orbital.worldeater.spit"
+  },
+  "convergence.quake": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/quake",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.ground"
+  },
+  "convergence.nether_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/nether_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.nether"
+  },
+  "convergence.nether_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/nether_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.nether"
+  },
+  "convergence.nether_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/nether_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.nether"
+  },
+  "convergence.aether_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/aether_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.aether"
+  },
+  "convergence.aether_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/aether_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.aether"
+  },
+  "convergence.aether_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/aether_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.aether"
+  },
+  "convergence.clash_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/clash_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.clash_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/clash_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.clash_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/clash_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.fire_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/fire_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.nether"
+  },
+  "convergence.fire_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/fire_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.nether"
+  },
+  "convergence.fire_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/fire_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.nether"
+  },
+  "convergence.after_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/after_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.after"
+  },
+  "convergence.after_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/after_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.after"
+  },
+  "convergence.after_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/after_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.after"
+  },
+  "convergence.blast_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/blast_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.blast_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/blast_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.blast_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/blast_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.sunder_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/sunder_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.sunder_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/sunder_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.sunder_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/sunder_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.hell_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/hell_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.hell"
+  },
+  "convergence.hell_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/hell_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.hell"
+  },
+  "convergence.hell_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/hell_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.hell"
+  },
+  "convergence.furnace_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/furnace_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.furnace"
+  },
+  "convergence.furnace_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/furnace_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.furnace"
+  },
+  "convergence.furnace_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/furnace_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.furnace"
+  },
+  "convergence.choir_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/choir_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.choir"
+  },
+  "convergence.choir_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/choir_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.choir"
+  },
+  "convergence.choir_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/choir_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.choir"
+  },
+  "convergence.thunder_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/thunder_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.thunder"
+  },
+  "convergence.thunder_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/thunder_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.thunder"
+  },
+  "convergence.thunder_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/thunder_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.thunder"
+  },
+  "convergence.drive_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/drive_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.drawin"
+  },
+  "convergence.drive_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/drive_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.drawin"
+  },
+  "convergence.drive_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/drive_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.drawin"
+  },
+  "convergence.win_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/win_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.win"
+  },
+  "convergence.win_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/win_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.win"
+  },
+  "convergence.win_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/win_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.win"
+  },
+  "convergence.erupt_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/erupt_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.ground"
+  },
+  "convergence.erupt_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/erupt_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.ground"
+  },
+  "convergence.erupt_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/erupt_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.ground"
+  },
+  "convergence.impact_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/impact_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.impact_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/impact_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.impact_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/impact_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.blast"
+  },
+  "convergence.surge_1_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_1_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_1_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_1_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_1_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_1_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_2_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_2_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_2_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_2_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_2_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_2_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_3_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_3_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_3_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_3_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_3_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_3_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_4_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_4_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_4_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_4_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_4_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_4_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_5_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_5_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_5_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_5_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_5_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_5_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_6_near": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_6_near",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_6_mid": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_6_mid",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
+  },
+  "convergence.surge_6_far": {
+    "sounds": [
+      {
+        "name": "orbital:convergence/surge_6_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.convergence.surge"
   }
 }

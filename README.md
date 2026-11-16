@@ -43,32 +43,22 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 
 > [!IMPORTANT]
 > **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: install it from
-> the launcher's Mods page and the launcher compiles it into the game. The [fork version](#getting-started) is a WebAssembly mod for the Orbital Laser build of
-> Horizon ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), release
-> `orbital-mod-api-12` or newer), with a ready-built Linux download on its
-> [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
-> Edition 26.3: nothing from Minecraft is in this repository or the downloads.
->
-> **Not in the native version yet: the Fold, the Sky Breaks, the Carpet Bomb and the World Eater.** They aren't playable
-> in the native file, `orbital.hnmod` (what the launcher's Mods page installs): the first three show greyed out in the
-> wheel, saying "On the fork now, native soon", and the World Eater isn't in it yet. To play them now, use the fork
-> version, `orbital-laser-v0.5.15.zip`, on the Orbital Laser build of Horizon ([Getting started](#getting-started)).
-> Every other laser plays on both.
->
-> **A reliable native version is waiting on upstream Horizon.** I can't release a native build I'd call reliable until
-> Horizon merges the fixes I've sent it: the sound stopping during a heavy strike
-> ([#15875](https://github.com/horizon-rust/horizon/pull/15875)) and frames hanging on NVIDIA cards on Linux
-> ([#13885](https://github.com/horizon-rust/horizon/pull/13885)) are still open. Until they're in, new lasers come to
-> the fork first.
+> the launcher's Mods page. The [fork version](#getting-started) runs on the Orbital Laser build of Horizon and has
+> every laser; the Fold, the Sky Breaks, the Carpet Bomb, the World Eater and the Convergence are only in the fork
+> version for now. Either way you need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
+> repository or the downloads. [Setup](docs/SETUP.md) has every step and option.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
-> a user (the fork built from source); on macOS the Downfall's effects may not draw (see [Known gaps](#known-gaps)). The
-> ready-built Horizon is for Linux x86-64, with a Windows test build that has only been run under Wine so far (on macOS, build the fork from source).
+> a user (the fork built from source); on macOS the Downfall's effects may not draw. The ready-built Horizon is for
+> Linux x86-64, with a Windows test build that has only been run under Wine so far.
 
-**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.15](#new-in-0515) · [The lasers](#the-lasers) · [Fork version](#getting-started) ·
-[Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [How to play](#how-to-play) ·
-[If something goes wrong](#if-something-goes-wrong) · [Known gaps](#known-gaps) · [Credits and licence](#credits-and-licence)
+**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.16](#new-in-0516) · [Fork version](#getting-started) ·
+[How to play](#how-to-play) · [The lasers](#the-lasers) · [If something goes wrong](#if-something-goes-wrong) ·
+[Credits and licence](#credits-and-licence)
+
+**More:** [Setup](docs/SETUP.md) · [Playing](docs/PLAYING.md) · [The lasers](docs/LASERS.md) ·
+[Troubleshooting](docs/TROUBLESHOOTING.md) · [How it works](docs/HOW-IT-WORKS.md) · [Changes](docs/CHANGES.md)
 
 ## Quick install (regular Horizon)
 
@@ -86,286 +76,37 @@ launcher tells you the command if any are missing). Windows needs nothing extra.
 6. Hold the Designator and press **R** to pick a laser, then hold right-click on a target to fire. Type
    **`/orbital terrain off`** first if you don't want the land wrecked.
 
-**Not in this version yet:** the Fold, the Sky Breaks and the Carpet Bomb show greyed out in the native wheel, and the
-World Eater isn't in it yet. They're in the [fork version](#getting-started) for now.
+A native mod isn't sandboxed: its code is built into the game and runs with full access to your computer, so only build
+it if you trust it. To update, installing the file by hand and what isn't in the native version yet:
+[Setup](docs/SETUP.md#native-version-regular-horizon).
 
-**To update:** when the **Mods** page offers a newer Orbital Laser, install it, then **Build** again (step 4).
+## New in 0.5.16
 
-**To install the file by hand** (for a version that isn't on the Mods page yet):
+A new laser, **the Convergence**. The Nether breaks up out of the ground and the Aether down out of a rift in the sky,
+and a column of fire and a column of light fight over the target until the light drives the meeting point into the
+ground in one huge blast. It leaves a crater about 170 across, half Nether and half pale stone and moss with a seam of
+obsidian between them, and a few small islands of the Aether hanging in the sky over it. It's on the wheel's fifth
+page and `/orbital convergence`; on the fork it needs the release `orbital-mod-api-12` (no new fork release). It isn't
+in the native version (`orbital.hnmod`) yet. [More on the Convergence](docs/LASERS.md#the-convergence).
 
-1. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
-2. On the **Instances** page, press **Open folder** on your instance. (A new instance's folder is in
-   `instances/<its name>` inside Horizon's data folder, not in the data folder itself.)
-3. Put `orbital.hnmod` in its **`horizon-native-mods`** folder. Make the folder if it isn't there yet: it only
-   appears once a native mod has been installed.
-4. On the **Mods** page, check Orbital Laser is on, then carry on from step 3 above.
+**Photosensitivity:** its blast at 26 seconds opens with a fifth of a second of hard full-screen cuts in black, white
+and the two sides' colours, then a white flash (`/orbital impactframes off`, or OFF on the wheel's IMPACT FX row,
+leaves them out); the columns meeting at 13 seconds is a short bright flash; the camera jolts at each surge and hard
+at the blast.
 
-> [!CAUTION]
-> A native mod isn't sandboxed: its code is built into the game and runs with full access to your computer, so only
-> build it if you trust it. It's played and tested on Linux; on Windows and Apple Silicon it builds but hasn't been
-> played yet. The [install guide](https://github.com/Stink-O/orbital-laser/releases/latest/download/INSTALL.md) has the
-> known issues and how to remove it.
-
-## New in 0.5.15
-
-A new laser, **the World Eater**, and the first that comes after you. Something huge ploughs through the ground towards
-the target, the land bucking over it, and a worm the size of a mountain bursts out of the land, built of real blocks:
-plated in deepslate and blackstone, sculk glowing teal in its seams, a round mouth of jaw petals and rings of teeth. It
-hunts you. It surfaces in low hops, each one nearer you, then rears up over the land, spreads its jaws and comes down on
-you, and if its mouth closes over you it swallows you, carries you down its glowing throat under the ground and spits
-you out where it breaks out next. It leaves a hole to bedrock everywhere it broke out or bit in, and the land over its
-tunnels caves in. It's on the wheel's fourth page and `/orbital worldeater`; on the fork it needs the release
-`orbital-mod-api-12` (no new fork release). It isn't in the native version (`orbital.hnmod`) yet. It's the heaviest
-laser yet (see [Known gaps](#known-gaps)). See [The lasers](#the-lasers).
-
-- **QUALITY has a third setting, PERFORMANCE** (`/orbital quality performance`, or click the wheel's QUALITY switch on
-  round to PERF): as FAST, with the World Eater drawn at its lightest.
+- **Snow no longer hangs in the air** where a strike clears the leaves and plants it lay on (the Crystal Bloom, the
+  Sinkhole, the Payload, the Nuke, the Rod from God, the Fold, the Carpet Bomb and the Convergence; not yet the World
+  Eater).
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
-## The lasers
-
-Twenty lasers, five to a page of the wheel.
-
-- **Plasma.** A raging beam with forked lightning. The crater fuses into glass, obsidian and magma, ringed in fire.
-- **Godly.** The clouds part and a pillar of light comes down. The crater turns to quartz and gold, with flowers.
-- **Black Hole.** A singularity opens over the target and bends the light round it. It tears the ground up into orbit,
-  swallows it and drags the land into spiral arms.
-- **Meteor Storm.** 72 meteors pound the land round the target, then one the size of a hill hits it: a crater about 125
-  blocks across.
-- **Mothership.** A kilometre-long ship drops in over the target, drills a shaft to bedrock and cuts a molten trench
-  with its beam. You pick where it comes in from, how it arrives and its colour.
-- **Downfall** (page two). The Mothership again, but a meteor brings it down. It crashes into the land and buries itself,
-  and then its black hole engine ruptures and swallows the wreck.
-- **Planet Killer** (page two). Seven towers out on the horizon strike a ring in the sky with lightning, and its beam
-  leaves a crater 480 blocks across.
-- **Crystal Bloom** (page two). A forest of crystal spires bursts out of the land, hums as one and shatters into pieces
-  that land as real blocks, leaving a geode crater with a well to bedrock, broken crystal pillars and shards.
-- **Sinkhole** (page two). Nothing from the sky: the land cracks and caves in, slab by slab, each slab carrying its
-  real ground and trees as it falls, into a sheer pit about 225 blocks across and down to bedrock.
-- **Payload** (page two). A bright point high in the sky comes down on one long arc from orbit, slow at first, then fast as a fireball,
-  crackling and shedding burning chunks, its lumpy smoke trail hanging in the sky: a column of smoke boils up, a wall of dust
-  races out over the land and debris rains down, and the column slowly melts into a drifting haze. It leaves a bomb crater.
-- **Nuke** (page three). A bomb comes in from orbit, a white-hot streak across the sky, cools and
-  dives onto the target, faster and faster, then bursts over the land: a blinding white flash, a fireball
-  boiling up into a mushroom cloud hundreds of blocks tall that rolls over on itself, its shadow across the land, and a
-  shockwave racing out in a wall of dust. The boom arrives late with the distance. It leaves a terraced crater about
-  200 blocks across and 40 deep with a glassy floor (flooded where it cuts into water), the land flattened out to about
-  230 with the trees felled pointing away, the ground charred in streaks, what faces the flash scorched out to about
-  480, and every mob within 300 killed.
-- **Rod from God** (page three). A colossal rod of dark forged metal dropped from orbit, kinetic, no explosive, and
-  holy: it comes straight down onto the target, a golden-white star high overhead that grows fast, god rays streaming
-  from it and a column of light down its path, and in its last fraction of a second it slams in. It strikes: the
-  picture freezes on the hit for a fifth of a second of hard-cut impact frames (by default black-and-white
-  silhouettes with thick lines rushing into the point, a close-up in negative with gold lines, gold and umber; BLACK
-  FLASH and CINEMATIC are the other looks), then lets go with a blur, a blinding radiant burst with rays fanning out, the land rippling out in rings like
-  water, a jet of molten rock up its path, a short plume of dust spreading into a haze and a ring of dust racing out
-  over the land, then one colossal crack-boom, late with the distance. The crater is blasted out round it in a moment, then lined in white and gold from the rod out, and it leaves
-  itself standing in a hallowed crater about 120 blocks across and 50 deep, the floor round its foot heaved up in
-  broken slabs: the rod, 13 blocks thick and 130 tall over the crater's floor, its top 80 over
-  the land, polished blackstone banded in gold and capped with light; the crater lined in quartz, calcite and gold with
-  veins of glowstone, rays of white and gold over pale grass round it, rubble out to about 250, the trees felled out to
-  about 200, and every mob within 200 killed.
-  **Photosensitivity:** its impact frames are a fifth of a second of hard cuts over the whole picture;
-  `/orbital impactframes off` (or OFF on the wheel's IMPACT FX row) leaves them out.
-- **Supercell** (page three). A storm called down: the sky darkens and a turning wall cloud and an anvil-topped storm
-  cloud boil up over the target, rain pouring out of them; lightning strikes all over the land under it, faster
-  and faster, thin funnels come down and wander over the land, the bolts draw in on the target, a rapid run of them
-  lands on it, a moment's hush, then one colossal strike at 29 seconds. It leaves small
-  scorched pits, the funnels' scoured tracks and a crater about 70 across with veins of fused glass branching out
-  through the ground round it; the fires it lights are left burning, and can spread.
-- **Supervolcano** (page four). A small orbital laser satellite comes down over the vent on its jets, righting
-  itself as it brakes, unrolls its solar arrays, aims a red targeting beam and fires: a white-hot beam melts a glowing
-  hole through the crust, then it rolls its arrays back in and lifts away. For ten seconds steam rises off the hole, a
-  tremor builds and the land swells up round it. Then the land opens in a ring 560 across, a column climbs to some
-  1,800 blocks and blots out the sun, lava bombs arc off it, its umbrella spreads across the whole sky with lightning
-  running through it, and the column falls back on itself: the ground inside the ring drops and a wall of ash rolls out
-  over the land and over you, near black, embers going past, the ground shaking under you. It ends on a blood-red sun
-  as the ash thins, a caldera with a floor of cracked black crust and lava where the land was. Its vent is at least
-  1,000 blocks in front of you. KNOCKBACK decides whether the wall shoves you. **Photosensitivity:** the eruption
-  whites out the picture for under a second at 18 seconds, and its lightning flashes in the cloud and over the land
-  from about 26 to 80 seconds.
-- **Hurricane** (page three). A hurricane spun up over the target, some 3,500 blocks across: towering storms gather
-  and wind into spiral rain bands round a dense core, the eye opens into a stadium of cloud with clear sky overhead,
-  rain sweeps past you and lightning bursts in the eyewall. The wind tears the land up from the eyewall out to about
-  150 blocks: the plants and leaves first, then the trees, everything built (roofs first) and the ground's top blocks,
-  all of it rising out of the land and whirling round the eye in the game's own textures, trees uprooted, snapped or
-  breaking apart in the air. Mobs are carried round with it, and the wind picks you up too and carries you round the
-  eyewall (hold **sneak** for half a second to break free; `/orbital knockback off` leaves you standing). At 46 seconds
-  the winds drop and it flings everything out: the trees and pieces of buildings land as real blocks where they fall,
-  rubble rains down out to about 170, and you are thrown clear. Chests and the like stay where they are, with what's
-  in them. **Photosensitivity:** its lightning is bright flashes over much of the picture, in bursts at about 16-28 and
-  43-46 seconds.
-
-- **The Fold** (page four, fork version only for now: greyed out in the native `orbital.hnmod`). A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
-  seven seconds on a rope of smoke. Right over the target it brakes over a second, the fire and the smoke pouring on past it, hangs, and is let
-  go. It goes into the land like a stone into water. Rings run out, sharpen into twelve creases and five rings, one pattern, and the sheet
-  folds along them: the land lifts ring by ring, the horizon curls up over you and you are in a tube with the whole world on its walls. The
-  hole overhead boils shut in metal, a bead forms, and one drop falls the length of the tube to the target. Everything goes back. Ring by
-  ring, outermost first, the land slams down, each bang showing that ring's real damage as the old land crumbles away inward. With the last
-  the crater falls in, panel by panel, and fire runs out over the land from the middle to the edges, knocking you back. What stays is a crater
-  about 530 across on the crease pattern, a shaft to bedrock, the land past it charred out to about 400, mobs dead out to 360. The wheel's
-  **FOLD** row or `/orbital foldpattern a|b|c` picks the pattern. Chests and the like go with the land. **Photosensitivity:** it bends the whole
-  world round you for half a minute, then one bright flash and hard jolts at the end. It is strongly distorting: skip it if you are sensitive to those.
-  It took four days, about 190 commits and 11 rounds of sound review to get right: [how it was made](docs/HOW-IT-WORKS.md#making-the-fold).
-
-- **Tsunami** (page three). The horizon stands up: over three seconds a line, a swell, then a dark wall 320 blocks high and over five kilometres
-  wide lies across the whole of it, spray blowing off its top, and the sky goes grey. It comes in at about 100 blocks a
-  second, losing height over the land, a huge grey-green mass with its lip tearing and long streaks of foam drawn up its
-  face, a brown foot boiling over the ground, mist pushed ahead of it and spray thrown up where it hits things, and in its
-  foot what it has swept up, in the game's own textures. It hits the target at 9 seconds and rolls on over you: the blow
-  is a white flash and seconds of foam, then you are under it, with trees and pieces of houses going by; the water hauls
-  you up, you ride it down as it falls, and it sets you down about where it found you, looking at what it has left. It
-  sweeps a swath 700 across for real: trees snapped to stumps, houses to their footings, the soil scoured to mud and
-  gravel in streaks along the flow, channels gouged, wreck strewn, a line of drift at its limit, boats stranded inland,
-  ponds left standing in the hollows. **Photosensitivity:** the blow as the water takes you is one white flash over the whole picture,
-  about a fifth of a second.
-
-- **The Sky Breaks** (page four, fork version only for now: greyed out in the native `orbital.hnmod`). No beam. A disc of land some 14 blocks across round the target cracks
-  round its rim, tears free and rises into the sky, dirt pouring off its underside, and sinks into the sky, which rings like a
-  struck pane. Something presses on the sky from behind and bows it down, and at 9 seconds a fist punches through: a
-  blinding flash, cracks racing out across the whole sky, the shattered middle falling. An eye some 150 blocks across
-  slides into the hole, opens and looks round until it finds you. Up to seven huge panes of sky break free one by one,
-  still showing the sky and its clouds, fall for five seconds and smash into the land round the target, where they stay
-  as real blocks: ice, snow and dark obsidian, lying low and a third buried, the earth they ploughed up heaped against
-  them, the trees round them felled. The eye blinks, flares and turns away, and the fist is thrown back down through the
-  hole and slams the land on the target: a crater about 140 across and 20 deep with the fist's knuckle prints at its
-  bottom, a shockwave and a wall of dust running out over the land, a jolt and muck on the lens as it reaches you, the
-  trees laid flat round it and every mob within 125 killed. The arm lifts away and the sky heals over. **Photosensitivity:**
-  the punch at 9 seconds is a blinding flash with the whole picture's light jumping for a fraction of a second; each
-  pane's impact brightens the picture a moment; the eye's flare at about 35 seconds is a glare through the hole; and
-  as the slam's shockwave passes you the picture greys over with dust for under a second.
-
-- **The Carpet Bomb** (page four, fork version only for now: greyed out in the native `orbital.hnmod`). No beam. A heavy bomber comes out of the haze far beyond
-  the target, high and steady, its four contrails trailing it, and lets a stick of thirteen bombs go one after another
-  as it passes over the start of the line. They walk a line of blasts across the land towards you from 7 seconds, about
-  half a second and 22 blocks apart: each a flash, a low boiling cloud lit from inside as it goes off, a front of dust
-  racing out over the land, fires left burning in its crater, the dust rolling along the line into one wall. The bomber
-  flies on over and past you and is gone soon after. The last bomb, at about 15 seconds, is the biggest, at least 100
-  blocks in front of you: a bigger flash, a cloud boiling up out of its crater into a broad dome over a skirt of dust,
-  its head leaning downwind, a pale flash racing across the land with its shockwave, burning debris thrown far, and as
-  the front reaches you the camera jolts hard, it throws you back (KNOCKBACK) and muck lands on the lens. It leaves a
-  ragged trench of craters about 25 across and 8 deep, the last one about 65 across and 16 deep with stepped walls and a
-  heaped rim with a few fires on it, the land flattened, the trees felled and the grass charred along the line and out
-  to about 150 round the last, and every mob within about 40 of each blast (about 125 of the last) killed.
-  **Photosensitivity:** each blast is a quick flash with an orange glow through the smoke and dust for about a second,
-  thirteen of them half a second apart; the last one's flash is brighter and lights the land round it, and a pale flash
-  races across the land with its shockwave.
-
-- **The World Eater** (page four, fork version only for now: not in the native `orbital.hnmod` yet). No beam, and it
-  comes after you. A rumble grows under your feet as something ploughs through the ground towards the target from some
-  420 blocks off: the land bucks over it in real blocks, trees topple and dust bursts up along its track. At 9 seconds
-  the land over the target domes up and cracks open, glowing teal, and a worm the size of a mountain bursts out,
-  throwing earth and whole trees: 68 blocks thick and over 1,800 long, built of real blocks, plated in deepslate and
-  blackstone with sculk glowing teal in its seams, its round mouth six jaw petals round three rings of teeth, its throat
-  glowing soul-blue. It arcs over and dives back into the land, and the hunt is on: it runs on under the ground and
-  breaks out again nearer you, two or three low hops each aimed at where you are then, then rears up some 250 blocks
-  over the land, spreads its jaws, bellows and comes down mouth first on you. If its mouth closes over you (or it comes
-  up under you), it swallows you: the jaws shut round the view and it goes dark, then you're carried down its glowing
-  throat with the land it ate tumbling past, along its tunnel under the ground, and it spits you out over the land where
-  it breaks out next (creative players keep flying; a survival player is kept from harm). Where it broke out it leaves a
-  hole to bedrock about 80 across with a rim of thrown earth round it and the trees felled out to about 120; where it
-  bit in, a hole about 90 across caving in to a funnel; sculk creeps out round each, and once its tail has gone by, the
-  land over every stretch it tunnelled sinks into a trench about 50 wide and 25 deep. Every mob within about 110 of its
-  holes and its way is killed. The hunt lasts up to 90 seconds. The wheel's **TAKE** row (or `/orbital worldeater
-  scripted`) gives the scripted show instead: one arch across your view, the same every time, 46 seconds, made for
-  filming. To watch it without being eaten, switch KNOCKBACK off or terrain damage off: it still comes after you but
-  can't swallow you. It's the heaviest laser yet ([Known gaps](#known-gaps)); QUALITY PERFORMANCE draws it at its
-  lightest. **Photosensitivity:** the camera jolts hard each time it breaks out and bites in; being swallowed turns the
-  picture dark for under a second, then rushes you down a glowing tunnel for several seconds, your view carried and
-  thrown.
-
-Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the
-Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane, the Tsunami, the Fold, the
-Supervolcano, the Sky Breaks, the Carpet Bomb and the World Eater reach 1000. [How it works](docs/HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish.
-
-| The laser wheel | Plasma | What Godly leaves behind |
-|---|---|---|
-| ![The laser wheel on its third page of four, the Rod from God's row under it and the seed, knockback and quality switches round it](docs/05-wheel.jpg) | ![A plasma beam with forked lightning, a shockwave ring and a molten crater](docs/02-impact.jpg) | ![A quartz and gold crater with a golden sigil, quartz pillars and floating islands of rock](docs/07-godly-aftermath.jpg) |
-
-| Meteor Storm | The extinction impact | What it leaves |
-|---|---|---|
-| ![Meteors streaking down through the sky and landing across the land in flashes of light](docs/08-meteor-storm.jpg) | ![The big impact: a fireball tearing open with burning ejecta thrown out every way](docs/09-meteor-impact.jpg) | ![A huge glowing crater rimmed with fire in charred land](docs/10-meteor-crater.jpg) |
-
-| Mothership | Its underside | For scale, from 900 blocks |
-|---|---|---|
-| ![A vast dark metal ship lit with green seams hanging over the land, its green beam striking the ground](docs/11-mothership.jpg) | ![Looking up at the ship's underside: plated decks, green-lit seams, window lights and the beam's emitter](docs/12-mothership-underside.jpg) | ![The whole ship hanging over the horizon, small against the sky, its beam on the land below](docs/13-mothership-scale.jpg) |
-
-| Downfall | The crash | The black hole |
-|---|---|---|
-| ![The Downfall falling, fires burning on its roof and smoke streaming off it](docs/14-downfall-fall.jpg) | ![The burning ship ploughing into a mountain, earth flung up along its sides, smoke trailing behind](docs/15-downfall-crash.jpg) | ![The black hole tearing up what is left of the wreck](docs/16-downfall-black-hole.jpg) |
-
-| Planet Killer | The beam | The burst | The crater |
-|---|---|---|---|
-| ![The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning](docs/17-planet-killer-lightning.jpg) | ![The Planet Killer's beam hitting the land, cracks glowing across the ground round it](docs/18-planet-killer-beam.jpg) | ![The Planet Killer's burst: a fireball rising out of the crater](docs/19-planet-killer-burst.jpg) | ![The Planet Killer's crater afterwards, seen from high above at a distance](docs/20-planet-killer-crater.jpg) |
-
-| Crystal Bloom | The resonance | The shatter | What it leaves |
-|---|---|---|---|
-| ![Crystal spires blooming out of the cracked ground](docs/21-crystal-bloom-bloom.jpg) | ![Prism beams and an aurora over the crystal spires as they resonate](docs/22-crystal-bloom-prism.jpg) | ![The spires shattering into fractured pieces](docs/23-crystal-bloom-detonation.jpg) | ![The geode crater with broken crystal pillars and shards, seen from the ground](docs/24-crystal-bloom-aftermath.jpg) |
-
-| Sinkhole | The collapse | The pit | What it leaves |
-|---|---|---|---|
-| ![Cracks racing out over the land from the target](docs/25-sinkhole-cracks.jpg) | ![The land caving in, dust boiling up out of the collapse](docs/26-sinkhole-collapse.jpg) | ![The dark pit opening as the dust settles](docs/27-sinkhole-pit.jpg) | ![The finished pit, waterfalls pouring over its rim into the dark](docs/28-sinkhole-aftermath.jpg) |
-
-| Payload | The dive | The impact | The column |
-|---|---|---|---|
-| ![A bright point high in the sky trailing a lumpy smoke trail](docs/29-payload-sky.jpg) | ![The fireball diving at the land, shedding burning chunks](docs/30-payload-dive.jpg) | ![The flash and the burst of fire as it hits](docs/31-payload-impact.jpg) | ![The column of smoke rising out of the crater, the bomb's trail still hanging in the sky](docs/32-payload-column.jpg) |
-
-| Nuke | The flash | The cloud | The crater |
-|---|---|---|---|
-| ![The bomb's smoke trail arcing over into its dive](docs/33-nuke-fall.jpg) | ![The fireball bursting on the ground, the shockwave's dome racing out over a wall of dust](docs/34-nuke-flash.jpg) | ![The mushroom cloud towering over its crater](docs/35-nuke-cloud.jpg) | ![The terraced crater with its glassy floor and broken rim, the land flattened round it](docs/36-nuke-crater.jpg) |
-
-| Rod from God | The impact frames | The burst | What it leaves |
-|---|---|---|---|
-| ![The rod coming straight down onto the land, glowing white, god rays round it](docs/37-rod-fall.jpg) | ![An impact frame: the rod and the land as gold and umber silhouettes, thick lines converging on the point](docs/38-rod-impact-frames.jpg) | ![The radiant burst as it strikes, rays fanning out over the land](docs/39-rod-burst.jpg) | ![The rod standing in its crater, the land round it bleached white and gold](docs/40-rod-crater.jpg) |
-
-| Tsunami | The wall | Under the water | What it leaves |
-|---|---|---|---|
-| ![A dark wall of water rising over the hills, its white crest climbing away, jets of spray blown up where it hits the land](docs/45-tsunami-horizon.jpg) | ![The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land](docs/46-tsunami-wall.jpg) | ![Green water, logs and pieces of a house going by](docs/47-tsunami-underwater.jpg) | ![The land scoured to mud and gravel in streaks along the flow, the wet swath running to the horizon](docs/48-tsunami-aftermath.jpg) |
-
-| The Fold | The tube | The fire | What it leaves |
-|---|---|---|---|
-| ![The land creased white and folding up round the target, its middle burning red](docs/49-fold-creases.jpg) | ![The whole world on the walls of a tube, a hole of stars in its roof](docs/50-fold-tube.jpg) | ![A ring of flames running out over the broken land from the middle](docs/52-fold-fire.jpg) | ![A crater of broken coloured panels on a twelve-fold pattern, black rock heaped round it](docs/53-fold-crater.jpg) |
-
-| Supervolcano | The column | The wall of ash | What it leaves |
-|---|---|---|---|
-| ![The mount bursting open, fountains of lava and sparks thrown up off its broken peaks](docs/54-supervolcano-burst.jpg) | ![The column at sunset, lightning down through it and plates of crust hanging in the air](docs/55-supervolcano-column.jpg) | ![The wall of ash rolling over the savanna, its front lit, a tree black against it](docs/56-supervolcano-ash.jpg) | ![The caldera at dusk, a floor of cracked dark crust with pools of lava, a jagged rim against the red sun](docs/57-supervolcano-caldera.jpg) |
-
-| The Sky Breaks | The eye | The fist | What it leaves |
-|---|---|---|---|
-| ![The fist punching through the sky: a bright flash, white cracks racing out across the whole sky](docs/58-skybreak-punch.jpg) | ![A huge eye looking through the black hole in the cracked sky, broken panes round it, one falling](docs/59-skybreak-eye.jpg) | ![The arm coming down out of the hole into a wall of dust on the land, a pale skirt of dust round the fist](docs/60-skybreak-fist.jpg) | ![From above: the dark crater with the fist's knuckle prints, fallen panes of sky lying wedged in the land round it](docs/61-skybreak-crater.jpg) |
-
-| The Carpet Bomb | The run | The last blast | What it leaves |
-|---|---|---|---|
-| ![The bomber high over the land with its contrails, the bombs falling](docs/63-carpetbomb-bomber.jpg) | ![The blasts walking in across the land](docs/64-carpetbomb-run.jpg) | ![The final blast's cloud boiling up](docs/65-carpetbomb-finale.jpg) | ![The row of craters](docs/66-carpetbomb-craters.jpg) |
-
-| The World Eater | The arch | Swallowed | Spat out | What it leaves |
-|---|---|---|---|---|
-| ![The worm bursting out of the land, earth and trees thrown round it](docs/67-worldeater-breach.jpg) | ![The worm's body arched over the jungle, diving back into the land](docs/68-worldeater-arch.jpg) | ![Inside the throat: ribbed walls glowing teal, blocks tumbling past](docs/69-worldeater-throat.jpg) | ![Spat out: the rings of teeth round the glowing throat, the land beyond the jaws](docs/70-worldeater-spit.jpg) | ![From above: the holes it left and the trenches over its tunnels](docs/71-worldeater-aftermath.jpg) |
-
 ## Getting started
 
+The fork version, on the Orbital Laser build of Horizon. On Windows or macOS, see [Setup](docs/SETUP.md#fork-version).
+
 1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-12` or newer). Download
-   `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
-   and unpack it to `~/horizon-orbital`.
-
-   **On Windows**, try the test build: download `orbital-laser-windows-test.zip` from the
-   [latest release](https://github.com/Stink-O/orbital-laser/releases/latest) and follow its `README-WINDOWS.txt`. The game and the mod are both in it,
-   so skip the steps below. It has only been run under Wine, never on real Windows, so please report how it goes.
-
-   **On macOS**, or to build Windows yourself, build it from source instead: branch `mod-api-input-ui-render-world` of
-   [Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), with the mod runtime
-   switched on:
-
-   ```sh
-   cargo build --release -p horizon-client --features mods
-   ```
-
-   Without `--features mods` the mod only half-loads: its items are there, but `/orbital` is an unknown command, and
-   the game's log says `1 mod(s) not started: this build has no mod runtime (build with --features mods)`.
-
-   It needs Horizon's prepared resources, made once from your own Minecraft 26.3 (Horizon's
-   [PLAY.txt](https://github.com/horizon-rust/horizon) explains the server jar and Java 25):
+   `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases),
+   unpack it to `~/horizon-orbital` and make Horizon's prepared resources once from your own Minecraft 26.3:
 
    ```sh
    cd ~/horizon-orbital
@@ -373,75 +114,37 @@ Supervolcano, the Sky Breaks, the Carpet Bomb and the World Eater reach 1000. [H
    ./horizon-prepare sounds
    ```
 
-   If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
-   `.local/horizon-client/26.3` inside it).
-
-2. **Install the mod.** Download `orbital-laser-v0.5.15.zip` from the
-   [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
-
-   ```sh
-   python3 install.py
-   ```
-
-   It copies the mod into Horizon's game folder (`~/.local/share/horizon/horizon-mods/orbital`, or `$HORIZON_HOME`) and
-   switches it on. If 0.1's shader pack and sound pack are installed, it takes them out.
-
-3. **Play.** From the same folder, in a terminal:
-
-   ```sh
-   ./play.sh                 # a creative test world called OrbitalTest
-   ./play.sh MyWorld         # or one of yours (back it up first)
-   ```
-
-   It starts the Orbital Laser build on your normal game folder, so your worlds, settings and mods are all there.
-   Always start the game this way: Horizon's own launcher, or a stock `horizon-client`, can't run the mod. If
-   `play.sh` can't find the build it says what's missing (started without a terminal, it also writes that to
-   `play-error.txt` beside it).
-
+2. **Install the mod.** Download `orbital-laser-v0.5.16.zip` from the
+   [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run
+   `python3 install.py`.
+3. **Play.** From the same folder, run `./play.sh` (a creative test world called OrbitalTest) or `./play.sh MyWorld`
+   (back it up first). Always start the game this way: Horizon's own launcher, or a stock `horizon-client`, can't run
+   the mod.
 4. **In the game,** type `/orbital give` for the Designator.
 
 ## Set it up with an AI agent
 
-If you use a coding agent (Claude Code, Codex, Cursor and the like), paste the message below into it and it can do the
-whole setup on your computer. [AGENTS.md](AGENTS.md) has the same guidance for agents that read the repository
-themselves.
+If you use a coding agent (Claude Code, Codex, Cursor and the like), paste it this and it can do the whole setup on
+your computer. [AGENTS.md](AGENTS.md) has the same guidance for agents that read the repository themselves.
 
 ````text
-Set up Orbital Laser on this computer and get a test strike working, end to end:
-https://github.com/Stink-O/orbital-laser
+Set up Orbital Laser on this computer and get one test strike working: https://github.com/Stink-O/orbital-laser
 
-Orbital Laser is a mod for Horizon, the Rust rewrite of Minecraft Java. It runs on a Horizon fork that
-adds the mod capabilities it needs. Before doing anything, read README.md (especially "Getting started",
-"If something goes wrong" and "Known gaps") and AGENTS.md from the repository: they say which fork release,
-which Minecraft version and which commands the current release needs. Trust them over anything you
-remember, since they change with each release.
+It is a mod for Horizon, the Rust rewrite of Minecraft Java, and it runs on a Horizon fork. Read README.md,
+docs/SETUP.md and AGENTS.md in the repository first, and follow them over anything you remember: they name
+the fork release, the Minecraft version and the commands for the current release.
 
-Ground rules:
-- Minecraft is not included. Horizon's resources come from my own copy of Minecraft Java, the version the
-  README names. Don't download, fake or work around it; if I don't have it, stop and tell me.
-- Stock Horizon can't run this mod: use the fork's build the README names. Use its ready-built download
-  if there is one for my system; otherwise build it from source, and tell me before you start, since that
-  takes a while.
-- Check what my system has before installing anything, and ask me before installing tools or packages.
-- Strikes are destructive and permanent: they dig craters and kill mobs, and the biggest lasers reshape
-  hundreds of blocks of land. Only use a throwaway creative world (play.sh makes one), never one of my
-  real worlds, and ask me before the first strike with terrain damage on. Terrain damage can be turned
-  off (the README says how); test with it off first.
-- Install with the game closed. Don't change my saves or settings beyond what the installer does.
-- If you have to work around something on my system, keep the fix small and tell me exactly what you
-  changed and why.
+Rules:
+- Minecraft is not included. Use my own copy of the version the docs name; if I don't have it, stop and tell me.
+- Use the fork's build: its download if there is one for my system, and ask before building from source.
+- Ask before installing any tool or package. Install the mod with the game closed.
+- Strikes wreck the land for good. Use only the throwaway world play.sh makes, test with terrain damage off
+  first, and ask me before the first strike with it on.
+- Keep any workaround small and tell me what you changed.
 
-Steps:
-1. Get the fork's build of Horizon and its prepared resources, as the README describes.
-2. Get the latest Orbital Laser release (or clone the repository) and run its installer.
-3. Start the game in a throwaway world and give me the Designator.
-4. Test safely: open the laser wheel, then fire one strike with terrain damage off, and check it plays
-   with sound and no errors in chat. Ask me before a strike with terrain damage on.
-5. Tell me how to use it: how to open the wheel, fire, and rebind the keys.
-
-Report each step's result as you go. If a step fails, show me the exact command and message, say what you
-think is wrong, and fix it. Don't guess past a failure. If the game shows the mod as stopped (Options >
-Mods), read the reason it gives first.
+Then: install the fork's build and the mod, start the game, give me the Designator, fire one strike with
+terrain damage off, check there are no errors in chat, and tell me how to open the wheel, fire and rebind
+the keys. If a step fails, show me the command and its message before you try a fix.
 ````
 
 ## How to play
@@ -449,143 +152,55 @@ Mods), read the reason it gives first.
 1. Type **`/orbital give`** for the **Orbital Laser Designator**.
 2. **Pick a laser.** Press **R** with the designator in hand (or type `/orbital wheel`) and the laser wheel opens. Point
    at a laser to read what it does and click to load it. The arrows either side of the ring, the tabs over it or a
-   right-click turn the page. The middle switches terrain damage on or off, and Escape closes the wheel. Your choices
-   are remembered.
+   right-click turn the page. The middle switches terrain damage on or off, and Escape closes the wheel.
 3. **Fire.** Hold the designator, aim at a target and **hold right-click** for under a second. The action bar counts
-   down (`ACQUIRING TARGET…`, `SEISMIC SCAN…` for the Sinkhole, `DESIGNATING…` for the Payload, the Nuke and the Rod,
-   `TRACKING STORM…` for the Hurricane, `READING THE SEA…` for the Tsunami, `ATTUNING…` for the Fold, `BREACHING CRUST…` for the
-   Supervolcano, `STRAINING THE SKY…` for the Sky Breaks, `CLEARING THE RUN…` for the Carpet Bomb, `STIRRING THE DEEP…` for the World Eater), then the strike lands where your crosshair is. Nothing else pops up over the
-   hotbar but `NO TARGET IN RANGE`.
-4. **Caught in the Tsunami?** The water takes you once it is over your head, tumbles you along with it, hauls you to the
-   surface after about six seconds, and carries you back as it falls, to be set down near where it took you, facing the
-   way it went. Hold **sneak** for half a second to break free. `/orbital knockback off` leaves you standing in it, the picture still drowned.
-5. **Caught in the Hurricane?** Its wind picks you up and carries you round the eye. Hold **sneak** for half a second
-   to break free; while you fly it leaves you alone, but stop flying for a second while it still blows where you are
-   and it grabs you again. If it still has you at 46 seconds it throws you clear (a survival player gets a few seconds
-   of Resistance V so the landing doesn't kill them).
-6. **Swallowed by the World Eater?** It carries you inside along its tunnel and spits you out where it breaks out
-   next, some seconds later; a survival player gets Resistance V so nothing hurts them. Stopping the strike while
-   you're inside puts you on the land beside the hole. Holding **sneak** for half a second lets you go where you are,
-   underground too. With KNOCKBACK or terrain damage off it can't swallow you.
+   down, then the strike lands where your crosshair is.
+4. **Stop.** Only one strike runs at a time. The wheel's STOP STRIKE button or `/orbital stop` ends it there and then
+   (what it has already done to the world stays).
 
-Only one strike runs at a time. Plasma, Godly and the Black Hole take about 26 seconds, the Planet Killer 30.5, the
-Mothership 34, the Carpet Bomb 37.5, the Meteor Storm 38, the Sinkhole 40, the Supercell and the Tsunami 42, the Sky Breaks 49.5, the Crystal Bloom and the Rod from God 60,
-the Downfall, the Hurricane and the Fold 64, the Payload 70, the Supervolcano 88 and the Nuke 90; the World Eater's
-scripted show takes 46 and its hunt up to 90.
+`/orbital terrain off` makes strikes light and sound only. Several lasers have bright flashes or hard cuts over the
+whole picture; each laser's photosensitivity note is in [The lasers](docs/LASERS.md), and `/orbital impactframes off`
+leaves out the Rod's and the Convergence's impact frames. The wheel's other switches, being caught in the Hurricane,
+the Tsunami or the World Eater, and every command: [Playing](docs/PLAYING.md).
 
-The wheel also has:
+## The lasers
 
-- **FLY SPEED** over the title, for getting round the craters: click along the bar for 1x to 40x vanilla's creative
-  flight, or type any speed up to 1000x in the box beside it and press Enter.
-- Down the right, a **PANEL** switch, which hides the status panel shown at the top right while you hold the Designator,
-  and a **QUALITY** switch under it: **FAST** (the default) draws the Payload's, the Nuke's and the Rod's smoke, dust and trail, the Supercell's, the Hurricane's and the Tsunami's weather and water, the Supervolcano's ash cloud, the Sky Breaks' dust, the Carpet Bomb's smoke, dust and shockwaves and the World Eater's
-  body and dust at half the width and height and lays them over the full-size picture, keeping their edges against
-  blocks and the sky; **FULL** draws every pixel (about two to three times the GPU time); **PERF** (PERFORMANCE) is FAST
-  with the World Eater drawn at its lightest (less detail in its body, its dust and the pieces it throws, fewer falling
-  blocks, its land's dressing left out). A click moves it on: FULL, FAST, PERF.
-- **STOP STRIKE**, a red button under QUALITY while a strike is under way: it ends the strike there and then (what it
-  has already done to the world stays), the same as `/orbital stop`.
-- Down the left, the strike options. **SEED** shows the last strike's seed, or takes one you type (1 to 997), and
-  **LOCK SEED** keeps it, so a strike plays out the same way take after take (`/orbital seed`). Under them, for the
-  lasers they apply to: **KNOCKBACK** (the Nuke, the Rod, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Carpet Bomb and the World
-  Eater), whether the blast pushes you, the ash wall shoves you, the wind or the water carries you or the worm can
-  swallow you,
-  and **FOLLOW** (the Nuke and the Payload), the follow camera.
-- An **IMPACT FX** row under the ring while the Rod from God is pointed at or loaded: **OFF**, **KANADA** (the
-  default), **BLACK FLASH** or **CINEMATIC**, as `/orbital impactframes`.
-- A **TAKE** row while the World Eater is pointed at or loaded: **HUNT** (the default: it comes after you) or
-  **SCRIPTED** (the one-arch show, the same every time), as `/orbital worldeater hunt|scripted`.
-- A **FOLD** row while the Fold is pointed at or loaded: its crease pattern, **UMBRELLA** (the default), **WATERBOMB** or **DIAGONAL**, as `/orbital foldpattern`.
-- For the Mothership and the Downfall, rows for where the ship comes in from, how it arrives, and its colour.
-- For the Payload, a **BLAST SOUND** row: **MAIN** (deep and rolling) or **ALT** (a sharp crack and a wide roar), the
-  same choice as `/orbital payloadsound`. The Nuke has one too: **MAIN** (a hard crack, an overdriven boom) or **ALT**
-  (a rounder, bassier boom and a longer thunder roll), as `/orbital nukesound`.
+Twenty-one lasers, five to a page of the wheel. Each name links to its full description.
 
-| Command | What it does |
+| | |
 |---|---|
-| `/orbital give` | gives you the Designator |
-| `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak`, `carpetbomb`, `worldeater` | loads that laser |
-| `/orbital terrain on\|off` | terrain damage on, or off (light and sound only) |
-| `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship comes in from |
-| `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
-| `/orbital colour green\|red\|amber\|blue\|violet\|white` | the loaded ship's colour |
-| `/orbital flyspeed N\|reset` | creative flying speed, N times vanilla's (up to 1000) |
-| `/orbital hud on\|off` | the status panel |
-| `/orbital payloadsound main\|alt`, `/orbital nukesound main\|alt` | the Payload's or the Nuke's blast: the main one or the alternative; also the wheel's BLAST SOUND row |
-| `/orbital quality full\|fast\|performance` | the Payload's, the Nuke's and the Rod's smoke, the Supercell's, the Hurricane's and the Tsunami's weather and water, the Supervolcano's ash cloud, the Sky Breaks' dust, the Carpet Bomb's smoke, dust and shockwaves and the World Eater's body and dust at full size, or at half size (faster); `performance` is `fast` with the World Eater at its lightest; kept; also the wheel's QUALITY switch |
-| `/orbital impactframes kanada\|blackflash\|cinematic\|off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks (Kanada is the default), or off; kept; also the wheel's IMPACT FX row |
-| `/orbital foldpattern a\|b\|c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
-| `/orbital knockback on\|off` | the Nuke's, the Rod's, the Fold's, the Carpet Bomb's last blast's and the World Eater's push on you as the blast reaches you, the Supervolcano's ash wall's shove (the camera's jolt stays), and whether the Hurricane's wind or the Tsunami's water carries you off or the World Eater can swallow you; also the wheel's KNOCKBACK switch |
-| `/orbital worldeater hunt\|scripted` | the World Eater's take: the hunt (the default: it surfaces near you, hop by hop, then comes for you; up to 90 s) or the scripted one-arch show (46 s, the same every time, for filming); kept; also the wheel's TAKE row |
-| `/orbital wormground a\|b\|c\|old\|off` | the World Eater's sound as it moves under the ground: three takes (`a`, the default; `b`; `c`), the older loop (`old`) or none (`off`); for this session only |
-| `/orbital carryview turn\|still` | while the Hurricane carries you, your view turns a little with you round the storm and sways with the gusts (`turn`, the default), or stays your own (`still`); kept |
-| `/orbital follow on\|off` | the follow camera: an orbit round the Nuke's or the Payload's bomb as it comes in. Your mouse sets the angle (the camera sits 70 blocks back along your view), it backs off as the burst nears and orbits the fireball and the cloud, then puts you back where you stood; also the wheel's FOLLOW switch. Pairs well with the Cinematic Camera key (Options > Controls > Key Binds > Miscellaneous) |
-| `/orbital follow distance N` | the follow camera's distance from the bomb, 10 to 400 blocks (70 by default) |
-| `/orbital seed N\|lock\|random` | hold every strike's look at seed N (1 to 997), lock it at the last strike's, or go back to a fresh one each time; also the wheel's SEED field and LOCK SEED switch |
-| `/orbital stop` | ends the strike under way (also the wheel's STOP STRIKE button) |
-| `/orbital skip SECONDS` | starts the next strike that far in, to look at one moment (terrain damage off only) |
-
-[How it works](docs/HOW-IT-WORKS.md#commands) has the full details of each command. To rebind **R**: **Options →
-Controls → Key Binds**, the *Orbital Laser* section at the bottom (on a native build of Horizon: **Options → Mods →
-Orbital Laser → Settings**).
+| <img alt="A plasma beam with forked lightning, a shockwave ring and a molten crater" width="240" src="docs/02-impact.jpg"> | **[Plasma](docs/LASERS.md#plasma)**: a raging beam with forked lightning that fuses the crater into glass, obsidian and magma. |
+| <img alt="A Godly strike: a pillar of light, six pillars of light round a golden sigil, halo rings and wings in the sky" width="240" src="docs/06-godly.jpg"> | **[Godly](docs/LASERS.md#godly)**: the clouds part, a pillar of light comes down and the crater turns to quartz and gold. |
+| | **[Black Hole](docs/LASERS.md#black-hole)**: a singularity opens over the target, tears the ground up into orbit and drags the land into spiral arms. |
+| <img alt="The big impact: a fireball tearing open with burning ejecta thrown out every way" width="240" src="docs/09-meteor-impact.jpg"> | **[Meteor Storm](docs/LASERS.md#meteor-storm)**: 72 meteors pound the land round the target, then one the size of a hill hits it. |
+| <img alt="A vast dark metal ship lit with green seams hanging over the land, its green beam striking the ground" width="240" src="docs/11-mothership.jpg"> | **[Mothership](docs/LASERS.md#mothership)**: a kilometre-long ship drills a shaft to bedrock and cuts a molten trench with its beam. |
+| <img alt="The burning ship ploughing into a mountain, earth flung up along its sides, smoke trailing behind" width="240" src="docs/15-downfall-crash.jpg"> | **[Downfall](docs/LASERS.md#downfall)**: a meteor brings the Mothership down; it buries itself and its black hole engine swallows the wreck. |
+| <img alt="The Planet Killer's towers on the horizon striking the ring of light in the sky with bolts of lightning" width="240" src="docs/17-planet-killer-lightning.jpg"> | **[Planet Killer](docs/LASERS.md#planet-killer)**: seven towers strike a ring in the sky, and its beam leaves a crater 480 blocks across. |
+| <img alt="Prism beams and an aurora over the crystal spires as they resonate" width="240" src="docs/22-crystal-bloom-prism.jpg"> | **[Crystal Bloom](docs/LASERS.md#crystal-bloom)**: crystal spires burst out of the land and shatter, leaving a geode crater. |
+| <img alt="The finished pit, waterfalls pouring over its rim into the dark" width="240" src="docs/28-sinkhole-aftermath.jpg"> | **[Sinkhole](docs/LASERS.md#sinkhole)**: the land caves in, slab by slab, into a pit about 225 blocks across and down to bedrock. |
+| <img alt="The column of smoke rising out of the crater, the bomb's trail still hanging in the sky" width="240" src="docs/32-payload-column.jpg"> | **[Payload](docs/LASERS.md#payload)**: a fireball comes down from orbit on one long arc and leaves a bomb crater. |
+| <img alt="The mushroom cloud towering over its crater" width="240" src="docs/35-nuke-cloud.jpg"> | **[Nuke](docs/LASERS.md#nuke)**: a bomb from orbit bursts into a mushroom cloud and flattens the land out to about 230 blocks. |
+| <img alt="The radiant burst as it strikes, rays fanning out over the land" width="240" src="docs/39-rod-burst.jpg"> | **[Rod from God](docs/LASERS.md#rod-from-god)**: a colossal rod dropped from orbit, left standing in a crater lined in white and gold. |
+| <img alt="The final strike hitting the target, the land round it lit up" width="240" src="docs/43-supercell-strike.jpg"> | **[Supercell](docs/LASERS.md#supercell)**: a storm called down, lightning all over the land, then one colossal strike. |
+| <img alt="The hurricane's eyewall towering over the land, lightning in it and debris whirling round" width="240" src="docs/branding/hurricane-card.jpg"> | **[Hurricane](docs/LASERS.md#hurricane)**: a hurricane some 3,500 blocks across tears up the land round its eye and carries you round with it. |
+| <img alt="The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land" width="240" src="docs/46-tsunami-wall.jpg"> | **[Tsunami](docs/LASERS.md#tsunami)**: a wall of water 320 blocks high comes in over the land and rolls over you. |
+| <img alt="The whole world on the walls of a tube, a hole of stars in its roof" width="240" src="docs/50-fold-tube.jpg"> | **[The Fold](docs/LASERS.md#the-fold)** (fork only): a drop of liquid metal goes into the land and folds the world up round you. |
+| <img alt="The column at sunset, lightning down through it and plates of crust hanging in the air" width="240" src="docs/55-supervolcano-column.jpg"> | **[Supervolcano](docs/LASERS.md#supervolcano)**: the land erupts and falls into a caldera about 560 across. |
+| <img alt="A huge eye looking through the black hole in the cracked sky, broken panes round it, one falling" width="240" src="docs/59-skybreak-eye.jpg"> | **[The Sky Breaks](docs/LASERS.md#the-sky-breaks)** (fork only): a fist punches through the sky, an eye looks through, and panes of sky fall into the land. |
+| <img alt="The blasts walking in across the land" width="240" src="docs/64-carpetbomb-run.jpg"> | **[The Carpet Bomb](docs/LASERS.md#the-carpet-bomb)** (fork only): a bomber walks a line of thirteen blasts across the land towards you. |
+| <img alt="The worm's body arched over the jungle, diving back into the land" width="240" src="docs/68-worldeater-arch.jpg"> | **[The World Eater](docs/LASERS.md#the-world-eater)** (fork only): a worm the size of a mountain bursts out of the land and comes after you. |
+| <img alt="The column of fire and the column of light meeting in the air over the target" width="240" src="docs/73-convergence-clash.jpg"> | **[The Convergence](docs/LASERS.md#the-convergence)** (fork only): the Nether and the Aether fight over the target and tear the land in two. |
 
 ## If something goes wrong
 
-- **Options → Mods says `orbital — Can't be read: horizon-mod.toml: capability world is for server mods`.** That's
-  stock Horizon, not the Orbital Laser build: the mod is installed fine, but stock Horizon can't run it. Quit, and
-  start the game with `./play.sh` from a terminal (it finds the build in `~/horizon-orbital`, or tells you how to get
-  it).
-- **No wheel, no `/orbital` command, or the items do nothing.** You're running stock Horizon, an older fork build, or
-  one built without `--features mods` (the log says *this build has no mod runtime*). Start the game with `./play.sh`
-  on `orbital-mod-api-12` or newer. On **Options → Mods**, Orbital Laser's row says why if it stopped.
-- **`play.sh` can't find the build or the resources, or says the build isn't the Orbital Laser one.** Set
-  `HORIZON_ORBITAL` to the folder with the build's `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the
-  prepared resources. Double-clicking `play.sh` in a file manager may show nothing: run it from a terminal to see its
-  messages (or read `play-error.txt` beside it).
-- **R does nothing.** Something else may use R: check **Options → Controls → Key Binds** (a clash is shown in yellow)
-  and rebind it (on a native build, on **Options → Mods → Orbital Laser → Settings**). R only opens the wheel while you play with the designator in hand, not over another screen. With
-  anything else in hand it does nothing (`/orbital wheel` opens the wheel either way).
-- **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks. Past your render distance only
-  the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb and the World Eater can aim, and only with
-  **LOD Distance** on in Video Settings.
-- **The designator only clicks.** A strike is already under way, and one runs at a time. Wait for it to finish, or end
-  it with the wheel's STOP STRIKE or `/orbital stop`.
-- **`horizon-prepare --prepare` says your `26.3.json` is *a 26.3 version file Horizon does not know yet*.** Your copy is fine:
-  Mojang republished it. The fork's builds from `orbital-mod-api-9` on know the republished files; if Mojang republishes
-  again, copy [upstream Horizon's `research-lock.json`](https://github.com/horizon-rust/horizon/blob/main/research-lock.json)
-  over the one at the top of the fork's folder (it's read as `horizon-prepare` runs: nothing to rebuild) and run it again.
-- **No sound.** Check the in-game master volume (Music & Sounds) and your system volume for the game.
-- **The shaft fills with water, or ends in obsidian.** It hit groundwater, and the lava at the bottom met it.
+- **No wheel, no `/orbital` command, or Options → Mods says *capability world is for server mods*.** That's stock
+  Horizon or an older fork build: start the game with `./play.sh` on `orbital-mod-api-12` or newer. On
+  **Options → Mods**, Orbital Laser's row says why if it stopped.
+- **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks.
+- **The designator only clicks.** A strike is already under way; wait for it, or end it with `/orbital stop`.
 
-## Known gaps
-
-- **The fork version needs a Horizon fork**. Its ready-built download is for Linux x86-64, with a Windows test build that hasn't been run on real Windows yet. The native version runs on regular Horizon.
-- **QUALITY FULL is heavy during the Supervolcano**: about 50 ms a frame at 1080p, against about 17 ms on FAST (the default).
-- **The World Eater is the heaviest laser.** At 2560x1440 on QUALITY FAST (an RTX 4070 SUPER) the game's frame takes
-  about 5 ms of GPU time for most of a hunt, 17 to 26 ms through the breach and the hops and 9 to 19 ms while you ride inside, with whole frames spiking to 20 to 60 ms round the breach, the swallow and the spit (the slowest half second about 41 fps); the scripted show seen from 250 blocks off tops out at about 13 ms of GPU time. QUALITY PERFORMANCE (`/orbital quality performance`) draws it at its lightest.
-- **The first time the World Eater is picked, the game freezes while its effects are built**: about half a minute to a minute and a half on the fork
-  build `orbital-mod-api-12`, behind the wheel's LOADING. After that it's instant, until a driver update or a new
-  version of the mod.
-- **The World Eater's neck shows stacked discs** as its head turns to look at you: the rings behind the head fan out
-  into a stack instead of bending smoothly.
-- **On the fork version, picking a laser can stop the game for a moment** while its effects are built (up to a few seconds
-  the first time, behind the wheel's LOADING). The native version builds them in the background.
-- **On the fork version, a strike's sounds can run on over the title screen** after Save and Quit to Title, until they end: the game doesn't stop them. It needs a fix in Horizon itself.
-- **Tested on Linux.** Reported working on Windows 11 by a user (the fork built from source, `--features mods`).
-- **macOS (Apple Silicon): the Downfall's effects may not draw.** Apple's Metal shader compiler fails on its effects
-  (`XPC_ERROR_CONNECTION_INTERRUPTED` in `Device::create_render_pipeline`), and the Nuke's can when it's the laser
-  loaded as the game starts. The other lasers work. The fork's builds from `orbital-mod-api-9` on (so the
-  `orbital-mod-api-12` this release needs) stop the crash: a pass the driver can't build is skipped and tried again
-  later, so on those Macs the Downfall's strike may run without its visuals. The mod builds a laser's effects only once
-  you're playing, and if the game closed while it built them, the next start loads the Plasma instead and says so in chat.
-- **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn
-  only for the player who fired.
-- **Terrain damage can't be undone.** Back up the world, or switch terrain damage off.
-- **Targets must be in loaded chunks.** The fifteen long-range lasers reach 1000 blocks across the distant terrain, where
-  the aim follows the coarser distant heights, and a crater only shows there once those chunks load.
-
-To build the mod from source or change it, see [CONTRIBUTING.md](CONTRIBUTING.md).
+The rest, and the known gaps (performance, macOS, single player): [Troubleshooting](docs/TROUBLESHOOTING.md). To build
+the mod from source or change it, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Support it
 

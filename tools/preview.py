@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19}
+INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19, "convergence": 20}
 # the shader's file where it is not the laser's name
 SHADER = {"supervolcano": "volcano"}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
@@ -457,6 +457,58 @@ VIEWS = {
     "webcarry3": "cx=212.1 cy=-15 cz=74.5 lx=244.2 ly=-15 lz=112.8 flat=1 trees=1 fov=80",
     "webcarry4": "cx=265.7 cy=-9 cz=138.6 lx=294.9 ly=11.7 lz=173.5 flat=1 trees=1 fov=80",
     "webcarry5": "cx=291.1 cy=59.6 cz=169 lx=291.2 ly=109.6 lz=169.1 flat=1 trees=1 fov=80",
+    # the convergence (the player 300 blocks south of the target): from where they stand, looking up at the meeting
+    # point; close in, looking up the columns at the rift; from 1,000 blocks off; from high over it
+    "cvplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "cvup": "cx=0 cy=67 cz=150 lx=0.5 ly=300 lz=-40 flat=1 trees=1 fov=80 reach=150",
+    "cvfar": "cx=120 cy=100 cz=1000 lx=0.5 ly=150 lz=0.5 flat=1 fov=50 reach=1000",
+    "cvaerial": "cx=0 cy=420 cz=420 lx=0.5 ly=65 lz=0.5 flat=1 trees=1 fov=60 reach=300",
+    # (the sky side up close: under the rift from 60 out looking up at it, from 120 looking up the columns, level with
+    # the rift's plane from 220, and from over it looking down through it)
+    "cvsunder": "cx=0 cy=67 cz=60 lx=0.5 ly=330 lz=-20 flat=1 trees=1 fov=80 reach=60",
+    "cvsmid": "cx=0 cy=67 cz=120 lx=0.5 ly=210 lz=0.5 flat=1 trees=1 fov=85 reach=120",
+    "cvslevel": "cx=0 cy=326 cz=220 lx=0.5 ly=290 lz=0.5 flat=1 fov=70 reach=220",
+    "cvsabove": "cx=0 cy=410 cz=150 lx=0.5 ly=240 lz=0.5 flat=1 trees=1 fov=75 reach=150",
+    # (the gold column whole: from the game's stand 195 off looking up its length, and 100 off on the ground up at it)
+    "cvsgameup": "cx=185.5 cy=67 cz=60.3 lx=0.5 ly=230 lz=0.5 flat=1 trees=1 fov=70 reach=195",
+    "cvsclose": "cx=0 cy=67 cz=100 lx=0.5 ly=200 lz=0.5 flat=1 trees=1 fov=80 reach=100",
+    # the ground side close: 50 blocks off on the ground looking up at the meeting point; 40 off at the fountain's foot;
+    # 150 off looking up; 110 off and 50 up, at the plume's edge
+    "cvgnear": "cx=0 cy=67 cz=50 lx=0.5 ly=140 lz=0.5 flat=1 trees=1 fov=85 reach=50",
+    "cvgcol": "cx=28 cy=67 cz=30 lx=0.5 ly=95 lz=0.5 flat=1 trees=1 fov=80 reach=40",
+    "cvgmid": "cx=0 cy=67 cz=150 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=75 reach=150",
+    "cvgedge": "cx=90 cy=115 cz=70 lx=-20 ly=95 lz=-10 flat=1 trees=1 fov=75 reach=110",
+    # 200 off on the ground (seed 37's seam): on the seam's line looking along it, and on the Nether's side across it
+    "cvgalong": "cx=-119.8 cy=67 cz=-159.3 lx=0.5 ly=100 lz=0.5 flat=1 trees=1 fov=75 reach=200",
+    "cvgacross": "cx=160.3 cy=67 cz=-119.8 lx=0.5 ly=100 lz=0.5 flat=1 trees=1 fov=75 reach=200",
+    # (as the game's player stands: 195 off on the ground looking level at the target, 35 degrees off the seam's line
+    # with the Nether's half on the right; and face on from the Aether's half)
+    "cvggame": "cx=185.5 cy=67 cz=60.3 lx=0.5 ly=69 lz=0.5 flat=1 trees=1 fov=70 reach=195",
+    # (a wide stand: 330 off, looking up enough to hold the land and the rift in one frame)
+    "cvfilm": "cx=310.5 cy=67 cz=110.3 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=70 reach=330",
+    "cvggamef": "cx=-155.8 cy=67 cz=117.4 lx=0.5 ly=69 lz=0.5 flat=1 trees=1 fov=70 reach=195",
+    "cvgclash": "cx=40 cy=67 cz=80 lx=0.5 ly=120 lz=0.5 flat=1 trees=1 fov=80 reach=90",
+    # (100 off on the ground looking up at the meeting point, the rift over it)
+    "cvgup": "cx=80 cy=67 cz=60 lx=0.5 ly=180 lz=0.5 flat=1 trees=1 fov=75 reach=100",
+    # (120 off on the ground, framed on the meeting point)
+    "cvgmeet": "cx=100 cy=67 cz=66 lx=0.5 ly=205 lz=0.5 flat=1 trees=1 fov=55 reach=120",
+    # (level with the meeting point from 260 off, on two bearings a right angle apart: the front edge on, for measuring)
+    "cvgside": "cx=260.5 cy=215 cz=0.5 lx=0.5 ly=215 lz=0.5 flat=1 fov=50 reach=260",
+    "cvgside2": "cx=0.5 cy=215 cz=260.5 lx=0.5 ly=215 lz=0.5 flat=1 fov=50 reach=260",
+    # (90 off on the Aether's half, face on to the sheet, looking up its folds)
+    "cvgface": "cx=-71.9 cy=67 cz=54.2 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=80 reach=90",
+    # (the cracks close in: on the ground 40 and 100 blocks off looking at the target, 60 off looking up the fire, from
+    # 25 over the land looking down into the cracks, and standing among them)
+    "cvkclose": "cx=0 cy=67 cz=40 lx=0.5 ly=72 lz=0.5 flat=1 trees=1 fov=70 reach=40",
+    "cvkmid": "cx=35 cy=68 cz=95 lx=0.5 ly=80 lz=0.5 flat=1 trees=1 fov=70 reach=100",
+    "cvkup": "cx=0 cy=67 cz=60 lx=0.5 ly=125 lz=0.5 flat=1 trees=1 fov=80 reach=60",
+    "cvkover": "cx=12 cy=92 cz=38 lx=0.5 ly=65 lz=4 flat=1 trees=1 fov=70 reach=40",
+    "cvkin": "cx=11.5 cy=67.5 cz=16.5 lx=20 ly=64 lz=40 flat=1 trees=1 fov=75 reach=20",
+    "cvktrench": "cx=14 cy=72 cz=13 lx=8.3 ly=65 lz=19 flat=1 trees=1 fov=70 reach=20",
+    # (the omen from the air over hilly land, 52 off and 42 up, looking down at the cracks running out; and close on
+    # the ground 22 off, looking along one)
+    "cvkair": "cx=34 cy=108 cz=40 lx=0.5 ly=66 lz=0.5 hills=10 fov=70 reach=60",
+    "cvklow": "cx=6 cy=69.5 cz=22 lx=0.5 ly=64 lz=-10 hills=10 trees=1 fov=75 reach=25",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -469,7 +521,8 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "fold": "flhill,flhigh",
                  "skybreak": "sbplayer,sbfar,sbaerial",
                  "carpetbomb": "cpplayer,cpside,cpaerial",
-                 "worldeater": "weplayer,wefar"}
+                 "worldeater": "weplayer,wefar",
+                 "convergence": "cvplayer,cvup,cvfar,cvaerial"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -478,12 +531,16 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"):
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
         if laser == "worldeater":
             # (its path (with the constants we_path.rs gives: `cargo test we_wgsl_in_step` keeps this copy right), its
             # body, its own: mod/build.rs)
             own = (SHADERS / "worldeater_path.wgsl").read_text() + (SHADERS / "worldeater_body.wgsl").read_text() + own
+        if laser == "convergence":
+            # (its own file up to [cv stages], its sky side, its ground side, its cracks, then its stages: mod/build.rs)
+            at = own.index("// ==== [cv stages]")
+            own = own[:at] + (SHADERS / "convergence_sky.wgsl").read_text() + (SHADERS / "convergence_ground.wgsl").read_text() + (SHADERS / "convergence_cracks.wgsl").read_text() + own[at:]
         # (less the Mothership's ship unless the laser's own says it uses it: mod/src/passbuild.rs)
         ship = [] if "// [uses the mothership]" in own else ["-e", r"/^\/\/ \[mothership\]/,/^\/\/ \[end mothership\]/d"]
         pre = subprocess.run(["sed", "-e", r"/^\/\/ \[lasers pass only\]/,/^\/\/ \[end lasers pass only\]/d", *ship, "-e", "/^@fragment/,$d"],
@@ -542,6 +599,22 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
     for the strike's seed, as the mod does (the Sinkhole's waterfall, with SH_WATER=angle in the environment)."""
     if laser == "crystalbloom":
         return crystal_data(out, sets)
+    if laser == "convergence":
+        seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
+        path = (out / "data.txt").resolve()
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path))
+        if ATLAS:
+            # (the sky's islands' block sprites as the fake atlas has them: convergence.rs's cv_sprites)
+            env["HU_ATLAS_JSON"] = str(ATLAS / "atlas.txt")
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "cv_write_table", "--", "--ignored"],
+                       cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+        # (`--set seam=RADIANS`: the seam's bearing, word 1; `seam=face` lays it along the view's line to the target,
+        # as the game does for the player who fired)
+        seam = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seam=")), None)
+        if seam is not None and seam != "face":
+            lines = [ln for ln in path.read_text().splitlines() if ln.split()[:1] != ["1"]]
+            path.write_text("\n".join(lines + [f"1 {float(seam)}"]) + "\n")
+        return dict(os.environ, PREVIEW_DATA=str(path))
     if laser == "worldeater":
         # (the path's table, as strike/worldeater.rs gives it: `--set weplan=3` the three-arch test chain, `wedebug=1`
         # Rust's own samples of the path for the pass to check its centreline against: worldeater.wgsl's we_debug)
@@ -650,7 +723,7 @@ def main() -> int:
     out = a.out / a.laser
     out.mkdir(parents=True, exist_ok=True)
     views = (a.views or DEFAULT_VIEWS.get(a.laser, "player")).split(",")
-    if a.laser in ("hurricane", "tsunami", "skybreak", "worldeater") and not a.notex:
+    if a.laser in ("hurricane", "tsunami", "skybreak", "worldeater", "convergence") and not a.notex:
         atlas(out)
     qualities = ["full", "fast"] if a.quality == "both" else [a.quality]
     w, h = a.size.split("x")
@@ -661,7 +734,7 @@ def main() -> int:
         vox = ROOT / "dist" / "preview" / "fold_land.txt"
         if vox.exists():
             env_vox = str(vox)
-    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     if a.laser == "skybreak":
@@ -674,7 +747,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence") else None
     env = dict(env or os.environ)
     if a.laser == "fold" and (ROOT / "dist" / "preview" / "fold_land.txt").exists():
         env["PREVIEW_VOXELS"] = str(ROOT / "dist" / "preview" / "fold_land.txt")
@@ -708,7 +781,7 @@ def main() -> int:
         lock = ["flock", os.environ["PREVIEW_LOCK"]] if os.environ.get("PREVIEW_LOCK") else []
         # (the World Eater's DETAIL tier, params[15] = mod_params[3].w, worldeater_path.wgsl's we_tier: 2 FULL, 1 FAST,
         # as the game gives it; `--set colour=0` for PERFORMANCE)
-        tier = [f"colour={2 if q == 'full' else 1}"] if a.laser == "worldeater" and not any(kv.startswith("colour=") for kv in a.set) else []
+        tier = [f"colour={2 if q == 'full' else 1}"] if a.laser in ("worldeater", "convergence") and not any(kv.startswith("colour=") for kv in a.set) else []
         r = subprocess.run([*lock, str(exe), str(shader), str(qout), *common, *tier, *shots], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             print(r.stderr, file=sys.stderr)

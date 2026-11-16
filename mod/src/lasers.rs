@@ -661,7 +661,34 @@ pub const WORLD_EATER: Laser = Laser {
     particle_b: "particle minecraft:sculk_soul {x} {y} {z} {r} 2 {r} 0.05 8 force",
 };
 
-pub const LASERS: [&Laser; 20] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER];
+/// The Convergence, planned in `strike::convergence_plan` (strike/convergence.rs, built on the Rod's; the pass
+/// shaders/convergence.wgsl). The Nether breaks out of the ground, the Aether out of the sky, their columns meet over
+/// the target, struggle, and end in one blast that leaves a crater split between the two. The crater fields below are
+/// only what the shared tests read: its land is planned there.
+pub const CONVERGENCE: Laser = Laser {
+    key: "convergence",
+    index: 20,
+    title: "CONVERGENCE",
+    rgb: 0xE8B860,
+    blurb: "Nether out of the ground, Aether out of the sky: they meet and blast the land apart.",
+    icon_model: "orbital:convergence_icon",
+    length: 60.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:netherrack", 1.0)],
+    bowl_floor: ("minecraft:calcite", 0.0, "minecraft:netherrack"),
+    bottom: &[],
+    particle_a: "particle minecraft:lava {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:end_rod {x} {y} {z} {r} 2 {r} 0.05 8 force",
+};
+
+pub const LASERS: [&Laser; 21] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER, &CONVERGENCE];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

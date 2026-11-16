@@ -71,6 +71,13 @@ fn main() {
     let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_carpet_{f}.wgsl"), passbuild::split_pass(&shader, &cp, f))).collect();
     writeln!(rs, "/// The Carpet Bomb's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_CARPET: [&str; 2] = [{}];", c.join(", ")).unwrap();
+    // (its own file up to `[cv stages]`, then its sky side, its ground side, then the rest of its own: the stages)
+    let cv_own = read("convergence.wgsl");
+    let at = cv_own.find("// ==== [cv stages]").expect("convergence.wgsl's [cv stages]");
+    let cv = cv_own[..at].to_string() + &read("convergence_sky.wgsl") + &read("convergence_ground.wgsl") + &read("convergence_cracks.wgsl") + &cv_own[at..];
+    let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_convergence_{f}.wgsl"), passbuild::split_pass(&shader, &cv, f))).collect();
+    writeln!(rs, "/// The Convergence's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_CONVERGENCE: [&str; 2] = [{}];", c.join(", ")).unwrap();
     // the World Eater's: its path (its constants spliced in from strike/we_path.rs), its body, its own; and its world warp
     // (what of the path is marked `[warp too]`, then worldeater_warp.wgsl)
     let we_path_src = we_path::we_splice_consts(&read("worldeater_path.wgsl"));

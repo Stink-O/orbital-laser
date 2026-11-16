@@ -15,7 +15,9 @@ orbital-sounds/         All the sounds are synthesized from noise and tones by t
                         three: the Sky Breaks' shudder (orbital-sounds/assets/orbital/sounds/skybreak/shudder.ogg), whose
                         glass is slices of the CC0 recordings listed below, and the World Eater's burst and ground
                         (orbital-sounds/assets/orbital/sounds/worldeater/breach_burst_*.ogg and ground_*.ogg), built
-                        from the CC0 recordings listed below over synthesized layers.
+                        from the CC0 recordings listed below over synthesized layers, and the Convergence's sounds
+                        (orbital-sounds/assets/orbital/sounds/convergence/), whose fire, air and voices are cut
+                        from the CC0 recordings listed below, over synthesized layers (its explosions synthesized).
 docs/branding/          The logo, icon and social preview are drawn as vector paths by tools/make_branding.py.
 docs/*.jpg              Screenshots taken in Horizon with this shader pack. They show Minecraft terrain rendered by
                         Horizon; they are included to show the shader's output.
@@ -67,6 +69,41 @@ orbital-sounds/assets/orbital/sounds/worldeater/ground_*.ogg
   "Soil Slide" by NeoSpica (https://freesound.org/s/426174/), the rock and soil;
   "Rocket Launch Rumble (Geofon recording)" by felix.blume (https://freesound.org/s/613617/) and "Earthquake
   **audible only with appropriate speakers**" by MBARI_MARS (https://freesound.org/s/369485/), the heave.
+
+orbital-sounds/assets/orbital/sounds/convergence/*.ogg
+  The Convergence's recorded layers hold sixteen recordings from Freesound, each dedicated to the public domain
+  (CC0 1.0) by its author, cut, slowed, filtered, re-enveloped and laid over synthesized layers by
+  tools/sounds_convergence.py (the recordings themselves are not included). Its explosions are synthesized in
+  tools/sounds_cv_blasts.py to octave levels measured on a reference explosion, nothing of it sampled; over 1 kHz
+  some of them carry recorded texture, named below. Each recording and every place it is heard:
+  "G08-18-Aircraft-Sonic Boom.wav" by craigsmith (https://freesound.org/s/437881/), the rift opening and the top of
+  the hit in the air;
+  "Heavy stone door opens 2" by PostProdDog (https://freesound.org/s/578491/), the ground grinding under the Nether
+  before the launch;
+  "stonegrind1.mp3" by j1987 (https://freesound.org/s/95007/), the ground grinding under the Nether, the clash's grind,
+  and the top of the eruption, of the Nether's surges and of the land's tear;
+  "S24-18 Landslide.wav" by craigsmith (https://freesound.org/s/675736/), the top of the land's tear;
+  "Lava Loop 3" by Fission9 (https://freesound.org/s/474851/), the lava's churn under the Nether, in the clash's fire
+  and in hell's voice;
+  "Mud Volcano Field - Salton Sea" by RTB45 (https://freesound.org/s/415608/), slowed, in hell's voice;
+  "Ice - Lake fractures" by Vrymaa (https://freesound.org/s/737896/), the sky straining far off before the launch and
+  the clash's light;
+  "Fire -massive no cracking.wav" by Aegersum (https://freesound.org/s/387924/), the fire out of the cracks, the roar
+  under the Nether's fountain, the burning in the aftermath, and the top of the eruption and of the Nether's surges;
+  "Flamethrower.wav" by sidequesting (https://freesound.org/s/494085/), the fire out of the cracks, the build to the
+  eruption, the rush to the hit in the air, heaven's drive down and the clash's fire;
+  "Seamless Rocket Booster Roar & Crackle" by NickTimesAudio (https://freesound.org/s/494827/), hell's furnace and
+  the clash's fire;
+  "tiger, roar, growl, wild" by FALL-E (https://freesound.org/s/696476/), slowed, the roars in hell's voice;
+  "Lions Roaring 2" by Filmscore (https://freesound.org/s/869003/), slowed, hell's voice and the Nether's fountain;
+  "CRWDSing_Ahh Vowel Sung Near F 02_ShaneVincent_GSC24_BIN-AmbeoVR.wav" by ShangusBurger
+  (https://freesound.org/s/764003/), heaven's choir and its win after the blast;
+  "Voice Choir OOOH.wav" by Uzbazur (https://freesound.org/s/413713/), heaven's choir and its win after the blast,
+  voices far off in the sky before the launch and the clash's light;
+  "Thunder big crack explosive close ms 77mel 190903.flac" by TRP (https://freesound.org/s/574412/), the sky's air
+  before the launch, the rift's thunder and the top of the blast (its rolls);
+  "Closeup Thunder Strike 01" by loganzsound (https://freesound.org/s/840628/), the rift's mass settling as it opens,
+  the clash's air, the rift's thunder, and the top of the hit in the air and of the blast (its rolls).
 
 tools/bake_hand.py's source mesh
   The Sky Breaks' arm and hand are sculpted from MakeHuman's base mesh (base.obj, default.mhskel, default_weights.mhw),

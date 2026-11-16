@@ -5,6 +5,7 @@ use crate::lasers::Laser;
 use std::f64::consts::PI;
 
 mod carpet;
+mod convergence;
 mod crystal;
 mod hu_blocks;
 mod fold;
@@ -296,6 +297,10 @@ pub(super) const TIDY_FLOWERS: &str = "#minecraft:flowers";
 pub(super) const TIDY_SAPLINGS: &str = "#minecraft:saplings";
 pub(super) const TIDY_LOGS: &str = "#minecraft:logs";
 pub(super) const TIDY_HANGING: &str = "#minecraft:replaceable_by_trees";
+/// A layer of snow: where `tidy` clears leaves or loose plants it clears the snow that lay on them too, a block higher
+/// (left in the air otherwise: `edit-blocks` tells nothing round what it changes). The snow on the ground of a column
+/// left as it was lies under those runs and stays.
+pub(super) const TIDY_SNOW: &str = "minecraft:snow";
 
 /// What a strike left hanging round the columns x0..=x1, z0..=z1 it changed (`col` tells what it made of each, and is
 /// asked TIDY_BORDER further out too), to be edited once those changes are made (an edit reads the ground as it is
@@ -307,7 +312,15 @@ pub(super) const TIDY_HANGING: &str = "#minecraft:replaceable_by_trees";
 /// plant there has nothing under it; leaves there were on a trunk that went), so the grass and flowers on its ground
 /// and the trees standing on it stay. A column cleared through needs nothing. Only filtered runs: nothing but those
 /// plants, leaves and logs changes.
-pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, mut col: impl FnMut(i32, i32) -> Col) -> Blocks {
+pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, col: impl FnMut(i32, i32) -> Col) -> Blocks {
+    tidy_opt(x0, z0, x1, z1, reach, plants, true, col)
+}
+/// `tidy` without the snow's runs: for a stage that has no fuel to spare for them (the World Eater's bites).
+pub(super) fn tidy_bare(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, col: impl FnMut(i32, i32) -> Col) -> Blocks {
+    tidy_opt(x0, z0, x1, z1, reach, plants, false, col)
+}
+#[allow(clippy::too_many_arguments)]
+fn tidy_opt(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, snow: bool, mut col: impl FnMut(i32, i32) -> Col) -> Blocks {
     let b = TIDY_BORDER;
     let mut out = Blocks::default();
     if x1 < x0 || z1 < z0 {
@@ -342,6 +355,9 @@ pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, 
                 Col::Cleared => {}
                 Col::Dug => {
                     out.put(x, z, 0, reach, "minecraft:air", Some(TIDY_LOOSE), true);
+                    if snow {
+                        out.put(x, z, 0, reach + 1, "minecraft:air", Some(TIDY_SNOW), true);
+                    }
                     for only in [TIDY_FLOWERS, TIDY_SAPLINGS] {
                         out.put(x, z, 0, plants, "minecraft:air", Some(only), true);
                     }
@@ -350,6 +366,9 @@ pub(super) fn tidy(x0: i32, z0: i32, x1: i32, z1: i32, reach: i32, plants: i32, 
                 Col::Kept => {
                     if (j - bu..=j + bu).any(|k| rows[k * w + i]) {
                         out.put(x, z, 2, reach, "minecraft:air", Some(TIDY_HANGING), true);
+                        if snow {
+                            out.put(x, z, 2, reach + 1, "minecraft:air", Some(TIDY_SNOW), true);
+                        }
                     }
                 }
             }
@@ -721,6 +740,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "hurricane" {
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "convergence" {
+        return convergence::convergence_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "carpetbomb" {
         return carpet::carpet_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4505,7 +4527,7 @@ mod tests {
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
             // (nor the tsunami: it sweeps what stands on the land it read, under its water; strike/tsunami.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "worldeater" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
@@ -5193,7 +5215,7 @@ mod tick_budget {
     /// The columns (x, z) of an edit's runs clearing what hangs (`tidy`'s filters), and whether every such run only
     /// changes what its filter names (into air).
     fn tidied(edits: &[(f32, Blocks)]) -> std::collections::HashSet<(i32, i32)> {
-        let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING];
+        let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING, TIDY_SNOW];
         let mut cols = std::collections::HashSet::new();
         for (_, b) in edits {
             for r in &b.runs {
@@ -5223,7 +5245,7 @@ mod tick_budget {
         let mut at: std::collections::HashMap<(i32, i32), Vec<(String, i32, i32)>> = Default::default();
         for r in &b.runs {
             let only = r.only.map(|f| b.filters[f as usize].to_string()).expect("a run with no filter");
-            assert!(only.starts_with("#minecraft:"), "{only}");
+            assert!(only.starts_with("#minecraft:") || only == TIDY_SNOW, "{only}");
             assert_eq!(b.palette[r.block as usize], "minecraft:air");
             assert!(r.surface.is_some(), "counted from the ground");
             at.entry((r.x, r.z)).or_default().push((only, r.y, r.y + r.height as i32 - 1));
@@ -5240,10 +5262,13 @@ mod tick_budget {
                             assert!(runs.iter().any(|r| r.0 == f && r.1 <= 0 && r.2 >= top), "{x} {z}: {f}");
                         }
                         assert!(runs.iter().any(|r| r.0 == TIDY_LOGS && r.2 < 0), "{x} {z}: the trunk");
+                        assert!(runs.iter().any(|r| r.0 == TIDY_SNOW && r.1 <= 0 && r.2 >= 17), "{x} {z}: the snow on what it clears");
                     }
                     Col::Kept if near => {
                         let runs = runs.unwrap_or_else(|| panic!("{x} {z}: in the border"));
-                        assert!(runs.iter().all(|r| r.0 == TIDY_HANGING && r.1 >= 2 && r.2 >= 12), "{x} {z}: {runs:?}");
+                        assert!(runs.iter().all(|r| (r.0 == TIDY_HANGING || r.0 == TIDY_SNOW) && r.1 >= 2 && r.2 >= 12), "{x} {z}: {runs:?}");
+                        // (the snow that lay on what hangs goes with it, a block higher; the ground's own stays)
+                        assert!(runs.iter().any(|r| r.0 == TIDY_SNOW && r.1 == 2 && r.2 >= 17), "{x} {z}: its snow");
                     }
                     Col::Kept => assert!(runs.is_none(), "{x} {z}: beyond the border"),
                 }
@@ -5254,7 +5279,7 @@ mod tick_budget {
     #[test]
     #[ignore]
     fn tidy_cost() {
-        let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING];
+        let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING, TIDY_SNOW];
         for laser in [&crate::lasers::CRYSTAL_BLOOM, &crate::lasers::PLANET_KILLER] {
             let edits = all_edits(laser, 7.0);
             let (mut runs, mut blocks, mut all_runs, mut all_blocks) = (0usize, 0u64, 0usize, 0u64);
@@ -5302,7 +5327,7 @@ mod tick_budget {
                 }
             }
             // (an edit clearing what hangs clears nothing else)
-            let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING];
+            let tidy = [TIDY_LOOSE, TIDY_FLOWERS, TIDY_SAPLINGS, TIDY_LOGS, TIDY_HANGING, TIDY_SNOW];
             if b.runs.first().is_some_and(|r| r.only.is_some_and(|f| tidy.contains(&b.filters[f as usize]))) {
                 assert!(b.runs.iter().filter(|r| b.palette[r.block as usize] == "minecraft:air").all(|r| r.only.is_some()));
             }

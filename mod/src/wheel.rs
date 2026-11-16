@@ -156,7 +156,7 @@ impl Rows {
             Some(l) if crate::unavailable(l.key).is_some() => Rows::None,
             Some(l) if is_ship(l) => Rows::Ship,
             Some(l) if sound_of(l.key).is_some() => Rows::Sound,
-            Some(l) if l.key == "rod" => Rows::Impact,
+            Some(l) if l.key == "rod" || l.key == "convergence" => Rows::Impact,
             Some(l) if l.key == "fold" => Rows::Crease,
             Some(l) if l.key == "worldeater" => Rows::Worm,
             _ => Rows::None,
@@ -316,7 +316,7 @@ pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" || key == "worldeater" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" || key == "worldeater" || key == "convergence" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -618,8 +618,8 @@ impl Wheel {
                 text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
             }
         }
-        // (the Rod's: its impact frames on or off, the one picked lit in its colour)
-        if let Some(rl) = row.filter(|&i| LASERS[i].key == "rod") {
+        // (the Rod's and the Convergence's: their impact frames on or off, the one picked lit in its colour)
+        if let Some(rl) = row.filter(|&i| LASERS[i].key == "rod" || LASERS[i].key == "convergence") {
             let ms = LASERS[rl];
             let b0 = impact_button(0);
             text(&mut out, "IMPACT FX", b0.x - IMPACT_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
@@ -827,7 +827,9 @@ mod tests {
     }
     #[test]
     fn the_fold_and_the_sky_breaks_are_on_the_fourth_page() {
-        assert_eq!(pages(), 4);
+        assert_eq!(pages(), 5);
+        let cv = LASERS.iter().position(|l| l.key == "convergence").expect("the Convergence");
+        assert_eq!((cv, page_of(cv)), (20, 4));
         let fold = LASERS.iter().position(|l| l.key == "fold").expect("the Fold");
         assert_eq!(page_of(fold), 3);
         let sb = LASERS.iter().position(|l| l.key == "skybreak").expect("the Sky Breaks");
@@ -836,7 +838,7 @@ mod tests {
         assert_eq!((cp, page_of(cp)), (18, 3));
         let we = LASERS.iter().position(|l| l.key == "worldeater").expect("the World Eater");
         assert_eq!((we, page_of(we)), (19, 3));
-        assert_eq!(tab(3).x + tab(3).w, -tab(0).x, "the four tabs centred over the ring");
+        assert_eq!(tab(4).x + tab(4).w, -tab(0).x, "the five tabs centred over the ring");
     }
 
     #[test]

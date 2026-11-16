@@ -220,7 +220,7 @@ fn fd_drop(t: f32, dist: f32, side: vec2<f32>) -> FdDrop {
     return FdDrop(R, stop_h, h, max(sx, 0.001), sy, piv, rip, ph, sway, foot.x, foot.y);
 }
 // The teardrop's side: its radius squared at height y (radii over the centre, -1 its bottom, FD_TIP its tip), and how fast
-// that changes with y. Fitted to the user's picture: within 1.2% of its radius all the way up.
+// that changes with y. Fitted to a picture: within 1.2% of its radius all the way up.
 fn fd_prof(y: f32) -> vec2<f32> {
     let a = y + 1.0;
     let b = FD_TIP - y;

@@ -38,10 +38,17 @@ body() {
     [ "$1" != fold ] || sed -n '/^\/\/ \[post pass too\]/,/^\/\/ \[end post pass too\]/p' "$shaders/fold_warp.wgsl"
     # (the World Eater's pass is its path, its body and its own, in that order: mod/build.rs)
     [ "$1" != worldeater ] || cat "$shaders/worldeater_path.wgsl" "$shaders/worldeater_body.wgsl"
-    cat "$shaders/$1.wgsl"
+    if [ "$1" = convergence ]; then
+        # (the Convergence's: its own file up to [cv stages], its sky side, its ground side, its cracks, then its stages: mod/build.rs)
+        sed -e '/^\/\/ ==== \[cv stages\]/,$d' "$shaders/convergence.wgsl"
+        cat "$shaders/convergence_sky.wgsl" "$shaders/convergence_ground.wgsl" "$shaders/convergence_cracks.wgsl"
+        sed -n -e '/^\/\/ ==== \[cv stages\]/,$p' "$shaders/convergence.wgsl"
+    else
+        cat "$shaders/$1.wgsl"
+    fi
     [ "$1" != volcano ] || cat "$shaders/volcano_mount.wgsl"
 }
-for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane tsunami fold volcano skybreak carpetbomb worldeater; do
+for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercell hurricane tsunami fold volcano skybreak carpetbomb worldeater convergence; do
     { cat "$prelude"; pre "$own"; body "$own"; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass (strike.wgsl up to its fs_main, then $own.wgsl):"; echo "$out"; exit 1; }
     # the game takes a pass of 256 KiB at most
@@ -54,7 +61,7 @@ for own in downfall planetkiller crystalbloom sinkhole payload nuke rod supercel
     [ "$size" -le 262144 ] || { echo "the $own pass is $size bytes, over the game's 256 KiB"; exit 1; }
 done
 # the payload's and the nuke's at QUALITY FULL: without its half-size stage (`[half stage]`), as mod/src/lib.rs's payload_pass builds it
-for own in payload nuke rod supercell hurricane volcano skybreak carpetbomb worldeater; do
+for own in payload nuke rod supercell hurricane volcano skybreak carpetbomb worldeater convergence; do
     { cat "$prelude"; pre "$own"; body "$own" | sed -e '/^\/\/ \[half stage\]/,/^\/\/ \[end half stage\]/d'; } > "$tmp"
     out=$("$bin" "$tmp" 2>&1) || { echo "the $own pass at QUALITY FULL (without its half-size stage):"; echo "$out"; exit 1; }
 done

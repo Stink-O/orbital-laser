@@ -27,6 +27,16 @@
 //              by a meteor, its black hole engine rupturing (`downfall`). [3].z there is how far downrange its stern
 //              comes to rest. Kept out of this pass so its size costs the other lasers nothing.
 
+// A live-tuned number (mod/src/tune.rs): the value in `slot` of the block at the end of mod_data, or `d` when the
+// laser sends none. A pass that reads tune_knob must not size its own tables by arrayLength(&mod_data).
+const TUNE_SLOTS: u32 = 16u;
+fn tune_knob(slot: u32, d: f32) -> f32 {
+    let n = arrayLength(&mod_data);
+    if (n < TUNE_SLOTS + 1u || mod_data[n - 1u] != 0x54554E45u || slot >= TUNE_SLOTS) {
+        return d;
+    }
+    return bitcast<f32>(mod_data[n - 1u - TUNE_SLOTS + slot]);
+}
 fn target_x() -> f32 { return frame.mod_params[0].x; }
 fn target_y() -> f32 { return frame.mod_params[0].y; }
 fn target_z() -> f32 { return frame.mod_params[0].z; }

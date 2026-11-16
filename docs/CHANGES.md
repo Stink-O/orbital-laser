@@ -1,6 +1,22 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0515); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0516); each release's notes are in [docs/releases](releases).
+
+## 0.5.16
+
+A new laser, **the Convergence**. The Nether breaks up out of the ground and the Aether down out of a rift in the sky:
+the land round the target cracks open with fire and ash rushing out of it, and the sky tears open over it. A column of
+fire and a column of light race at each other and strike in the air, push each other up and down in six surges, and the
+light drives the meeting point down into the ground in one huge blast. The land is torn in two: a crater about 170
+across, half Nether and half pale stone and moss with a seam of obsidian between them, and a few small islands of the
+Aether left hanging in the sky over it. It's on the wheel's fifth page and `/orbital convergence`; on the fork it needs
+the release `orbital-mod-api-12` (no new fork release). It isn't in the native version (`orbital.hnmod`) yet. See
+[The lasers](LASERS.md#the-convergence).
+
+- **Snow no longer hangs in the air** where a strike clears the leaves and plants it lay on (the Crystal Bloom, the
+  Sinkhole, the Payload, the Nuke, the Rod from God, the Fold, the Carpet Bomb and the Convergence; not yet the World
+  Eater).
+
 
 ## 0.5.15
 
@@ -287,7 +303,7 @@ What each release of Orbital Laser added, newest first. The current release is i
 - **Downfall**, the sixth laser, on the wheel's second page and `/orbital downfall`: the Mothership brought down by a
   meteor. Its roof turrets fire on the meteor and break it up, the pieces hit it anyway, it falls and crashes into the
   land, crushing what it lands on and burying itself half its height, then the black hole engine in its stern ruptures
-  and swallows the wreck. See [the README](../README.md#the-lasers).
+  and swallows the wreck. See [the lasers](LASERS.md#downfall).
 - **A second page on the wheel** (its arrows, its tabs or a right-click turn it).
 - **A colour for each ship**: the Mothership green, the Downfall red, or amber, blue, violet or white, from the swatches
   beside the arrival row or `/orbital colour …`.

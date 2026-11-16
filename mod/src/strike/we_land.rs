@@ -22,7 +22,7 @@
 //! Every edit goes in through `world.edit-blocks`, split by the tick it is due (`Blocks::split_by`), so each hole and
 //! each trench goes in as a wave and no tick takes much of it (worldeater.rs's `we_land_profile` prints the busiest).
 use super::payload::{self, Column, LEAVES, LOG_X, LOG_Y, LOG_Z, PL_ABOVE, PL_BELOW};
-use super::{Act, Blocks, Col, Plan, Rng, mh, surf, tidy, vnoise};
+use super::{Act, Blocks, Col, Plan, Rng, mh, surf, tidy_bare, vnoise};
 use crate::ground::FxMap;
 use std::cell::RefCell;
 use std::f64::consts::PI;
@@ -681,7 +681,8 @@ pub(super) fn tidy_rows(q: &mut Plan, site: &Site, h: &Hole, reach: f64, z0: i32
             _ => Col::Kept,
         }
     };
-    let b = tidy(ix - rr, z0, ix + rr, z1, 32, -1, col);
+    // (without the snow's runs: this stage is at its fuel's edge)
+    let b = tidy_bare(ix - rr, z0, ix + rr, z1, 32, -1, col);
     // (from the middle out over a second: each of its runs looks some thirty blocks up a column)
     for (t, b) in by_chunk_at(&b, |x, z| t + (h.at(x, z).0 / reach.max(1.0)) as f32) {
         q.ev.push((t, Act::Blocks(Box::new(b))));

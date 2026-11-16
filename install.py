@@ -4,7 +4,7 @@
   python3 install.py              install the mod (horizon-mods/orbital) and switch it on
   python3 install.py --uninstall  remove it (and anything the 0.1 setup installed)
   python3 install.py --legacy     the 0.1 setup instead, for stock Horizon: a shader pack, a sound pack and an item
-                                  mod, run by strike.py from outside the game (see "Stock Horizon" in the README)
+                                  mod, run by strike.py from outside the game (see "Stock Horizon" in docs/HOW-IT-WORKS.md)
   --home PATH                     Horizon's game folder (default: $HORIZON_HOME, then the usual place for your OS)
 
 Run it with the game CLOSED: Horizon rewrites its settings when it exits.

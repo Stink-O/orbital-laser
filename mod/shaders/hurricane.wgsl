@@ -1262,7 +1262,7 @@ fn hu_stroke(a: f32, n: u32) -> f32 {
     }
     return (s + 0.08 * exp(-a / 0.25)) * (1.0 - smoothstep(0.45, 0.6, a));
 }
-// A bolt's own timing (the user's reference: a game's lightning strike filmed at 60 fps): a thin jagged leader
+// A bolt's own timing (measured on a lightning strike filmed at 60 fps): a thin jagged leader
 // flickering for the first ~75 ms, its shape new every two frames; then the return stroke, a thick glowing column of
 // light from the cloud to the land, straight but for a gentle wave, the land at its foot lit; from 0.17 s it draws up
 // off the land into the cloud, its foot a point, gone by 0.27 s; then a thin jagged re-stroke or two, a frame or two

@@ -491,28 +491,66 @@ the end. All of it goes in through `world.edit-blocks` on what `world.read-colum
 each trench as a wave. At QUALITY PERFORMANCE the dressing (sculk, what's left hanging, felled logs, thrown blocks) is
 left out. With terrain damage off it changes nothing and kills nothing.
 
+The **Convergence** ([`strike/convergence.rs`](../mod/src/strike/convergence.rs)) changes the land before its blast and
+with it, all of it split along a seam through the target (the line from the player to the target as it fires), one half
+going Nether and the other pale. Before the blast: seven fissures open out from the target to 33-50 blocks, 2 to 6
+deep with magma at their foot, from the middle out over 5.3 to 9.3 s (never next to lava); netherrack creeps out along
+veins round them to 62, magma along their middles; sixteen clusters of basalt, 5 to 15 tall, rise on the Nether half
+14 to 56 out, each starting between 6 and 12 s and up in seven steps over 2.4 s; and from 13.3 to about 22.5 s the ground's top block turns out to 100, the Nether
+half's to netherrack, crimson nylium, soul soil, blackstone and magma (crimson roots and fungus, soul fire on the soul
+soil), the pale half's to pale moss, calcite, diorite and andesite with a fleck of glowstone and raw gold (pale moss
+carpet, lilies of the valley, alliums), and a seam 1.6 wide of obsidian and crying obsidian between them. The blast
+leaves a crater about 168 across (radius 84, its edge wandering about 12%) and 42 deep at its middle, a bowl with a
+broad floor, lined by half: the Nether's netherrack, blackstone, basalt, soul soil, nether wart block, magma and a
+little glowstone, with fire on its netherrack and soul fire on its soul soil (nothing round them burns, so they spread
+to nothing); the pale half's diorite, calcite, andesite, pale moss, raw gold and glowstone; the seam's obsidian and
+crying obsidian. Its rim is heaped out to 1.5 radii (about 126), a ridge up to about 17 high just past the edge
+falling away, the deep rock turned over on top (blackstone, basalt and netherrack on one half, andesite, calcite and
+diorite on the other) over rooted, coarse and plain dirt. Everything standing on the land is swept off out to about 190
+(wandering about 13%), the trees felled pointing away from it with a stump of 1 or 2 left; for 40 past that the crowns
+are stripped in patches and some trees knocked flat. The grass is turned Nether or pale by half all round the rim and
+in about 17 rays out to about 220; rubble of each half's rock lands in the same rays out to 250, and leaves and
+branches of the commonest wood round it over the flattened land and the band; 240 falling blocks are thrown out of the
+crater over its first 1.35 s (about 45% landing as blocks). From about 31 s eleven clusters of basalt, 9 to 24 tall,
+rise round the Nether half of the crater 92 to 164 from the middle, and from 28.5 s seven islands (one in four over
+the Nether half) grow in the sky over it, 30 to 95 out, 55 to 110 over the target's ground and at least 24 over the
+highest ground under them, 8 to 15 in radius: a top of pale moss with a few flowers, pale stone under it (calcite,
+diorite, andesite, glowstone and raw gold) tapering to a point of smooth sandstone, an oak on its middle and a cloud
+or two of white and light blue glass beside it. There is no shaft. Water it cuts into is dug like any other block, and
+what is left of it flows in, and no rim is heaped on or beside it; lava in the crater and its rim is dug or cooled as
+the land round it is (basalt under a crust of magma where the crater cuts a pool), a pool past the rim is left, held
+back by it, and the lava in the ground the crater bares is sealed. Every mob and item within 200 is killed (at 26.1,
+27, 29 and 32 s). It keeps the ~890 chunks within 260 loaded from the moment it fires to a second before it ends.
+The land is read (`world.read-columns`, 36 under each column's top) out to 256 in 48 rings as it starts; the blast goes
+in through `world.edit-blocks` as two waves from the middle out, the crater dug out with its front (the pit open by
+about 27.1 s) and then lined from the middle (the crater by about 27.7 s, the rim by 28.5, the flattened land by about
+30.5, all of it by about 32), each chunk's edits on one tick in each, paced by the frame time; on land far off it waits
+for the chunks to load, and what never loads is left out (logged `convergence: N columns of the land never loaded`).
+With terrain damage off it changes no blocks; the mobs and items within 200 are still killed at the blast.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater`, `/orbital convergence` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
-| `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod is pointed at or loaded |
+| `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); the same switch turns the Convergence's impact frames on or off (they have one look of their own: any of the three looks turns them on); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod or the Convergence is pointed at or loaded |
 | `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
-| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's, the Supervolcano's, the Carpet Bomb's and the World Eater's knockback (`Act::Shove`; the World Eater's `Shove`), the Hurricane's carry, the Tsunami's surge and the World Eater's swallow on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while a laser it applies to is pointed at or loaded |
+| `/orbital knockback on`, `/orbital knockback off` | the Nuke's, the Rod's, the Fold's, the Supervolcano's, the Carpet Bomb's, the World Eater's and the Convergence's knockback (`Act::Shove`; the World Eater's `Shove`), the Hurricane's carry, the Tsunami's surge and the World Eater's swallow on (the default) or off; kept; the camera's jolt stays either way; also the wheel's KNOCKBACK switch, in its left column under LOCK SEED while a laser it applies to is pointed at or loaded |
 | `/orbital worldeater hunt`, `/orbital worldeater scripted` | the World Eater's take: HUNT (the default) comes after you, surfacing nearer you hop by hop and coming down on you (up to 90 s); SCRIPTED is the one-arch show across your view, the same every time (46 s), for filming; kept; also the wheel's TAKE row, under the ring while the World Eater is pointed at or loaded |
 | `/orbital wormground a`, `b`, `c`, `old`, `off` | the World Eater's sound as it moves under the land: one of three passes over each run (`a`, the default, a rockslide; `b`, the body's segments shoving; `c`, rock dragged and crumbling), the older loop (`old`) or none; for this session only (`strike::WORMGROUND`) |
 | `/orbital carryview turn`, `/orbital carryview still` | while the Hurricane carries you: `turn` (the default) turns your view a little with you round the storm and sways it with the gusts, `still` leaves it your own; kept |
 | `/orbital follow on`, `/orbital follow off`, `/orbital follow distance N` | the follow camera (`mod/src/follow.rs`), off by default, kept, 70 blocks out by default (10 to 400): an orbit round the Nuke's or the Payload's bomb (`strike::bomb_path`, the path the pass draws it on), the angle the player's own: the camera sits that far back from the bomb along the way they look, so turning the view orbits it. The mod never turns the view or teleports them while it follows: it gives their velocity a kick each tick (`world.push-player`, on the client, as knockback is), worked out against the game's own drag and gravity (or flight's, read from how they move) to land them on the orbit's next point (never more than 24 blocks a tick, past which the game's collision sweep runs out of budget), so the game's own movement and frame interpolation carry them smoothly. It leaves them once the bomb comes within 440 blocks of where they stand (a player only moves where their chunk is loaded, and going further would load and draw new land), flies out to the orbit over 1.6 s, rides the bomb down, backs off to 380 blocks (the Payload 170) as it bursts, orbits the fireball and the climbing cloud, and at 40 s (32 s), a stop or `follow off` puts them back where they stood with a `tp ... ~ ~`; the knockback is left out meanwhile; also the wheel's FOLLOW switch, in its left column while the Nuke or the Payload is pointed at or loaded |
-| `/orbital quality full`, `/orbital quality fast`, `/orbital quality performance` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud, the Sky Breaks' dust, the Carpet Bomb's smoke and the World Eater are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp; the Carpet Bomb's smoke, dust and shockwave fronts, its bomber, bombs, fires and debris staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; the World Eater's body, dust and caught view at half size, its pieces, the lens and its upsample's sharp edges at full size; PERFORMANCE is FAST with the World Eater at its lightest (its detail halved again: fewer steps, pieces and dust, its land's dressing left out, at most 3 falling blocks a tick and 60 alive); kept between sessions; a click on the wheel's switch moves it FULL, FAST, PERF; also the wheel's QUALITY switch, under PANEL |
+| `/orbital quality full`, `/orbital quality fast`, `/orbital quality performance` | how the Payload's, the Nuke's and the Rod's smoke, the Supercell's storm, the Supervolcano's cloud, the Sky Breaks' dust, the Carpet Bomb's smoke, the World Eater and the Convergence are drawn: FAST (the default) draws the column, the dust, the trail and the pieces' smoke (the Supercell's cloud, rain and funnels; the Supervolcano's ash cloud, its bolts and lava bombs' heads staying sharp; the Sky Breaks' dust, its cracks, the void and the panes staying sharp; the Carpet Bomb's smoke, dust and shockwave fronts, its bomber, bombs, fires and debris staying sharp) at half the width and height and lays them over the full-size picture (edges against blocks and the sky kept by matching each pixel's depth), FULL every pixel; the World Eater's body, dust and caught view at half size, its pieces, the lens and its upsample's sharp edges at full size; the Convergence's glows, smoke and rift at half size, its cores, rings, burst and lens at full size; PERFORMANCE is FAST with the World Eater at its lightest (its detail halved again: fewer steps, pieces and dust, its land's dressing left out, at most 3 falling blocks a tick and 60 alive); kept between sessions; a click on the wheel's switch moves it FULL, FAST, PERF; also the wheel's QUALITY switch, under PANEL |
+| `/orbital tune`, `/orbital tune KEY VALUE`, `/orbital tune reset [KEY]` | the loaded laser's live numbers (`mod/src/tune.rs`): lists them, sets one (clamped to its range; kept), or puts one or all back. Only the Convergence has any: `crater` (its radius, 84), `depth` (42), `turn` (how far the land turns, 220), `knock`, `jolt` and `islands` (7) from its next strike; `glow`, `burst`, `flash`, `haze` and `dusk` (how far the day goes out) at once |
 | `/orbital hud on`, `/orbital hud off` | shows or hides the status panel at the top right; also the wheel's PANEL switch, at the top of its right column |
 | `/orbital stop` | ends the strike under way there and then: its effects and sounds stop, the world changes still waiting are dropped and the chunks it force-loaded let go (what it has already done to the world stays); also the wheel's STOP STRIKE button, red under QUALITY while a strike is under way |
 | `/orbital skip SECONDS` | starts the next strike that many seconds in, to look at one moment of it (terrain damage off only); `0` starts at the beginning |
@@ -533,7 +571,7 @@ The mod ([`mod/`](../mod)) is Rust built for WebAssembly, running in Horizon's m
 | `ui` | draws the laser wheel: quads for the segments, item icons, text; clicks come back as events |
 | `render` | the strike's post-processing pass ([`mod/shaders/strike.wgsl`](../mod/shaders/strike.wgsl)), fed 16 numbers each frame, more through `render.set-data` (the Crystal Bloom's spires and pieces, and where each piece comes to rest), and the camera shake |
 | `world` | aims (a raycast up to 1024 blocks, across the distant terrain past the loaded chunks), plays the sounds, runs the crater's block changes as server commands, silently, in bulk each tick (the big lasers' land goes straight into the chunks' sections through `world.edit-blocks`), asks the height of the ground under the Crystal Bloom's pieces and stumps (`world.surface-height`), reads the real blocks of the land the Sinkhole cuts into slabs and the Payload and the Nuke sweep and scorch (`world.read-columns`: the names of the blocks round each column's top), sets your flying speed, throws you back as the Nuke's shockwave passes (`world.push-player`), carries you round the Hurricane (`world.carry-player`), and asks whether you are flying (`game.player-flying`) |
-| `atlas` | the game's own block textures in the post pass (`atlas.block-sprites`, bindings 8 and 9), so the Hurricane's flying blocks and trees look like the blocks they were |
+| `atlas` | the game's own block textures in the post pass (`atlas.block-sprites`, bindings 8 and 9), so the Hurricane's flying blocks and trees look like the blocks they were, and the islands seen through the Convergence's rift are textured with the game's blocks |
 | `hud`, `storage`, `game-read` | the status panel, the chosen laser and terrain setting, the player's position and dimension |
 | `registries` | the items, their textures and models, and the sounds |
 
@@ -656,7 +694,8 @@ down to the ground wherever it lies lower, and the crystals round their feet res
 ## The sounds
 
 The sounds ([`tools/synth_sounds.py`](../tools/synth_sounds.py)) have no samples in them, but for the Sky Breaks'
-shudder ([below](#the-sky-breaks-laser-17)) and the World Eater's burst and ground ([below](#the-world-eater-laser-19)): they are generated from noise and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
+shudder ([below](#the-sky-breaks-laser-17)), the World Eater's burst and ground ([below](#the-world-eater-laser-19)) and the
+Convergence's beds and voices ([below](#the-convergence-laser-20)): they are generated from noise and sweeps, with a reverb built from a synthetic impulse response. The Planet Killer's bursts
 ([`tools/sounds_pk_blast.py`](../tools/sounds_pk_blast.py)) are shaped to measurements of a real, very large explosion:
 its spectrum, how it rises and holds, how its bands move and how wide it sounds over time. Only the numbers were taken
 from the recording; none of its audio is used. The Crystal Bloom's ([`tools/sounds_crystal.py`](../tools/sounds_crystal.py))
@@ -1375,3 +1414,121 @@ Tests: `we_scripted_show_keeps_its_beats_and_leaves_its_land`, `we_hunts_a_playe
 `we_terrain_off_catches_nobody`, `we_no_catch_and_no_knockback_with_it_off`, `we_spits_never_land_in_a_hole`,
 `we_hole_goes_to_bedrock_with_a_dressed_wall_and_a_funnel`, `we_trench_sinks_ring_by_ring_and_leaves_the_pond`,
 `we_sounds_every_event_has_its_file_and_every_file_is_used`, `pcs_layout_in_step`, `we_wgsl_in_step` and the path's.
+
+## The Convergence (laser 20)
+
+Two worlds break into this one over the target, fight, and tear the land in two. 60 s
+([`strike/convergence.rs`](../mod/src/strike/convergence.rs) the plan, the land, the table and the sounds' schedule;
+the pass [`shaders/convergence.wgsl`](../mod/shaders/convergence.wgsl), `convergence_sky.wgsl`,
+`convergence_ground.wgsl` and `convergence_cracks.wgsl`; [`tools/sounds_convergence.py`](../tools/sounds_convergence.py)
+the sounds, their explosions from `tools/sounds_cv_blasts.py`). There is no beam. It reaches 1000 blocks; while the
+designator is held its countdown reads `WORLDS STIRRING`. It is on the wheel's fifth page and isn't in the native
+version yet.
+
+**The seam.** Everything is split along one line through the target: the line from where the player fired to the
+target (`cv_face_seam`; the seed picks which side is which, and a player standing on the target gets the seed's own
+bearing). The Nether takes one half and the Aether the other, on the land, in the sky and in the crater.
+
+- **The omen** (0-5 s, `CV_OMEN`). The ground trembles, a little harder each half second. Seven cracks fracture out
+  from the target to 33-50 blocks (`CV_CRACKS`, `CV_CRACK_R`), glowing: the pass draws them, and no block changes
+  before 5 s. A hairline of light opens along the seam high over the target, straining. The daylight starts to dim.
+- **The break** (5 s, `CV_BREAK`). A harder jolt. The cracks open into real fissures from the middle out (5.3 to about
+  9.3 s), fire and ash rushing out of them and embers jetting up the fissures every half second until the blast;
+  netherrack creeps out along veins round them (to 62, 5.8 to 12.8 s) and sixteen clusters of basalt shoulder up on
+  the Nether half (`CV_PILLARS`). The hairline is drawn apart into a rift in the plane 260 over the target's ground
+  (`CV_RIFT_Y`), 80 in radius along the seam (`CV_RIFT_R`), whole a little before they fire. Through it the Aether: a
+  brighter, bluer sky, three layers of blocky clouds and eleven floating islands in three tiers, 40 to 420 over the
+  hole, textured with the game's blocks; a cone of luminous mist falls from its rim and shafts of light slant down to
+  the land. The daylight goes out by 12.33 s and the sky takes sides along the seam, dark red with rolling ash over the
+  Nether's half and deep blue with bands of pale light over the Aether's.
+- **The fountain and the stub** (6 and 7.5 s, `CV_RED0`, `CV_GOLD0`). A fountain of fire stands 30 high out of the
+  ground on the target (`CV_RED_STUB`), and a stub of light hangs 36 long out of the rift (`CV_GOLD_STUB`); gold motes
+  drift down out of it.
+- **The launch and the impact** (12.33-13 s). Both gather their light from 12.33 s (`CV_CROUCH`) and fire at 12.45
+  (`CV_FIRE`): two columns 18 across (`CV_BEAM_R` 9) race at each other, at 60% of their mean speed from the first
+  instant and faster all the way (`cv_reach`, `CV_SNAP`), and strike each other at 13 s (`CV_MEET`), 130 over the
+  target's ground (`CV_MEET_Y`): a hard white flash in clear air and a shell racing out from the point at 240 blocks a
+  second (`CV_IMPACT_V`), the camera jolting as it reaches the player.
+- **The clash** (13-23 s). Six surges (`CV_SURGES`: 14.4, 16.2, 17.6, 19.4, 20.9 and 22.2 s), the Nether's and the
+  Aether's in turn, each its own reach and weight (`CV_SURGE_AMP`, `CV_SURGE_ATK`); each sends a ring out from the
+  meeting point (its timing at 160 blocks a second, `CV_RING_V`) and jolts the camera as it reaches the player. The
+  Nether's drive the meeting point up and keep what they take, to some 180 over the ground; the Aether's hold it
+  (`cv_meet_y`). The gold column's light streams down faster as it drives the meeting point down and stalls as it is
+  driven back. Under them the land takes sides out to 100 (13.3 to about 22.5 s), and with terrain on 36 blocks of netherrack
+  or calcite lift off the land toward the rift and fall back.
+- **The draw** (23-26 s, `CV_DRAW`). The meeting point is drawn down, faster and faster, to 14 over the ground
+  (`CV_BURST`); the ground shakes harder and harder.
+- **The blast** (26 s, `CV_HIT`). It is driven into the ground on the target. The impact frames (`cvg_impact`): three
+  frames, a fifth of a second in all, the picture cut in two along the seam: the world black on white with the seam's
+  line white-hot; then black on the two sides' colours (the Nether's ember, the Aether's gold-white); then the world in
+  its side's colour on black, a white line on the seam through all three. Then a short white-out that resolves into a
+  sheet of light standing on the seam, the Nether's surge of fire and ash out over its half and the Aether's of light
+  and mist over the other, sparks thrown. The front runs out at 343 blocks a second; as it reaches the player the
+  camera is hit hard, kicked again and again and left shuddering for five or six seconds (`cv_jolt`, the Rod's; the
+  pass knocks the picture about on top of it), and KNOCKBACK throws them back (`Act::Shove`: 0.7 blocks a tick out and
+  0.5 up, none past 450, `CV_KNOCK_OUT`, `CV_KNOCK_UP`, `CV_KNOCK_REACH`). The crater is dug as the front passes.
+- **The aftermath** (26-60 s). Islands grow in the sky from 28.5 s (`CV_ISLAND_AT`), one every 0.8 s, each its top
+  first, spreading from its middle, then down a layer every 0.35 s, then its tree, grown by about 40 to 45 s. From 31 s
+  (`CV_CLOSE`) an ash pall sinks over the Nether's half, mist lifts into the rift over the Aether's, a curtain of light
+  hangs on the seam and the crater's glow dies; basalt rises round the Nether half of the crater; the daylight comes
+  back and the rift closes by 40 s (`CV_END`). Everything fades out over the last 8 s, and the strike ends at 60.
+
+What it leaves (terrain on) is in [What each strike destroys](#what-each-strike-destroys). All the land's work is one
+chain of stages, a tick each (`cv_work`, `Work`): the land read in 48 rings from the middle out, two asked a stage
+(`world.read-columns`, 36 under each column's top, out to 256: `CV_READ`, `CV_PARTS`, `CV_BELOW`), the land's changes
+before the blast (`cv_pre_part`, sectors out to 100), the islands, the thrown blocks, then the blast's rings from the
+middle out (`cv_blast_part`, rings 4 wide split by angle into parts of about 250 columns), the basalt after it and the
+rubble once the whole land is in. Each stage does about `CV_BUDGET` columns' worth. The blast's edits go in as two
+waves (`Wave`): the carve, every block over each column's finished floor turned to air out with the front (900,000
+blocks a second at most, `CV_CARVE_RATE`), then, 0.1 s after the whole pit is open, the lining from the middle out
+(350,000 a second, `CV_RATE`); each chunk's edits on one tick in each. Columns the world hasn't loaded are asked again a
+ring at a time; the land gives up on them 20 s after the blast (`CV_LAND_BY`), or 4 s after nothing more came once the
+crater's land is in (`CV_PATIENCE`). The land's heights along the cracks are asked of the world as it fires
+(`world.surface-height`) and handed to the pass, which stands the cracks' fire on them.
+
+The pass (pass 16) is four files after `strike.wgsl` up to its `fs_main`, joined by `mod/build.rs` (and by
+`tools/check-shader.sh` and `tools/preview.py` the same way): `convergence.wgsl` up to `[cv stages]` (`[cv shared]`: the
+clock and the geometry, mirrored by `strike/convergence.rs`'s `CV_*`), then `convergence_sky.wgsl` (the rift and what
+shows through it, the gold column, the light spilling out), `convergence_ground.wgsl` (the red column, the smoke, the
+meeting point, the shells and rings, the blast, the impact frames, the aftermath, the lens) and
+`convergence_cracks.wgsl` (the cracks' glow, the trenches, the fire and ash out of them), then the rest of
+`convergence.wgsl` (the stages and the jolt on the picture). Each side is reached only through its two functions, a soft
+one (the volumes: drawn at half size at QUALITY FAST, `fs_half`) and a sharp one (drawn at full size over the picture,
+`fs_join`); FULL draws every pixel; PERFORMANCE draws it as FAST. It goes into the game with every comment and blank
+line dropped (`// [lean pass]`): about 190 KB of the game's 256 KiB. What the pass needs from the mod is in `mod_data`
+(`cv_table`, the tick after it fires): word 0 `CV_MAGIC`, 1 the seam's bearing, 2 the seed, from 16 the cracks'
+bearings and reaches, from 48 the atlas layers of the blocks the islands through the rift are textured with, from 64
+the islands the land grows, then the land's heights along the cracks. With terrain on, the pass leaves the fissures'
+trenches to the real blocks; with it off it draws them itself.
+
+Its sounds ([`tools/sounds_convergence.py`](../tools/sounds_convergence.py), scheduled by `cv_sounds`) are its own,
+every one following the player, each in three tiers (`_near`, `_mid`, `_far`: the near ones alone out to 500 blocks,
+crossfaded to the mid over 500 to 900 and to the far over 1,100 to 2,000; mid and far are the same sound through the
+air's absorption over distance). The beats are heard as they are seen, on the strike clock, never late by the
+distance: the ground's voice before the launch (`nether`, from 0) and the sky's (`aether`, from 0.5, the rift's weight
+at 5 to 6.5 s), the cracks giving at 5 s and the eruption at 6 (`erupt`), the fire under it all to the blast (`fire`),
+the held breath and the launch into the hit in the air at 13 s (`impact`), the two columns pressed together from 13 s
+(`clash`), each surge's blow on the peak of its push (`surge_1` to `surge_6`), heaven's drive down (`drive`, from 23 s),
+the blast at 26 s (`blast`) and the land's tear (`sunder`); over it the layers of hell and heaven, each its own event
+(`hell`, a many-throated voice from under the ground; `furnace` under the red column; `choir` on one open chord;
+`thunder`, the rift's), and heaven's win after the blast (`win`, from 26.9 s). Only the quake through the ground (ahead
+of the air) and the aftermath (`after`) come late by the burst's distance. The explosions are synthesized, built to
+octave levels and low blows measured on a real explosion; the beds and hell's voice are CC0 recordings, cut, slowed and
+laid over synthesized layers (NOTICE lists every recording).
+
+**Photosensitivity:** the impact frames at 26 s are a fifth of a second of hard full-screen cuts in black, white and the
+two sides' colours, then a white-out; `/orbital impactframes off` (or OFF on the wheel's IMPACT FX row) leaves them
+out, and the white-out comes at once. The columns' meeting at 13 s is a short bright flash; the camera jolts at the
+impact, at each surge and hard at the blast.
+
+Offscreen: `tools/preview.py convergence T --views cvplayer,cvup,cvfar,cvaerial` (the default views: from the player
+300 off, close in looking up the columns, from 1,000 off and from high over it); `cvs*` the sky side up close, `cvg*`
+the ground side, `cvk*` the cracks, `cvfilm` a stand 330 off; `--set seed=N`, `--set seam=RADIANS` or `seam=face` (the
+seam along the view's line to the target, as the game lays it). The preview writes the table with `cv_write_table`
+(ignored). `cv_wave_times` (ignored) prints when the blast's waves reach each radius, and `cv_no_stage_too_heavy_anywhere`
+(ignored; run it on its own) times every stage over every test land. Tests: `cv_pass_keeps_the_shared_clock_and_geometry_in_step`,
+`cv_columns_meet_struggle_and_drop_into_the_burst`, `cv_land_breaks_open_takes_sides_and_is_split_by_the_crater`,
+`cv_basalt_is_cleared_by_the_blast`, `cv_lava_on_a_hill_in_the_crater_is_dug_out`,
+`cv_lava_cut_by_the_crater_is_cooled_at_the_cut`, `cv_lava_past_the_rim_is_held_back`,
+`cv_leaves_the_land_alone_with_the_terrain_off`, `cv_land_goes_in_in_order_anywhere` and
+`cv_throws_real_blocks_out_of_the_crater`.
