@@ -322,6 +322,12 @@ pub mod render {
         let c = |v: f32| if v.is_finite() { v.clamp(0.0, 8.0) } else { 1.0 };
         super::__host::with(|s| s.hand_tint = Some([c(r), c(g), c(b)]));
     }
+    /// The fork's `render.set-view-offset` (API 13): the camera drawn from an offset. A stand-in: upstream draws the
+    /// camera where the player is (`native_build::UNSUPPORTED`; the Earthquake, which needs it, is held back).
+    pub fn set_view_offset(_x: f64, _y: f64, _z: f64) {}
+    /// The fork's `render.set-warp-data` (API 13): floats the world warp reads. A stand-in: upstream's warp has no such
+    /// data (`native_build::UNSUPPORTED`; the Earthquake's falling trees need it, and it is held back).
+    pub fn set_warp_data(_data: &[f32]) {}
     pub fn shake(strength: f32, seconds: f32) {
         if strength.is_finite() && seconds.is_finite() && strength > 0.0 && seconds > 0.0 {
             super::__host::with(|s| {
@@ -433,6 +439,10 @@ pub mod world {
             s.snapshot.carried
         })
     }
+    /// The fork's `world.shift-player` (API 13). A stand-in: nothing moves, and it answers false.
+    pub fn shift_player(_x: f64, _y: f64, _z: f64) -> bool {
+        false
+    }
     pub fn set_flying_speed(speed: Option<f32>) {
         let speed = speed
             .filter(|s| s.is_finite())
@@ -540,7 +550,10 @@ pub mod atlas {
 pub mod native_build {
     /// The fork's calls this build has, so the mod builds, but doesn't carry out yet. Take one out when the glue does.
     pub const UNSUPPORTED: &[&str] = &[
-        // (none: the Fold's world warp and held world are drawn since upstream's #11955 and #11956)
+        // (the Fold's world warp and held world are drawn since upstream's #11955 and #11956)
+        "render.set-view-offset",
+        "world.shift-player",
+        "render.set-warp-data",
     ];
     /// The fork's calls a laser's strike can't do without (by its key in lasers.rs), for the lasers that need one this
     /// build may lack: a laser with a call in UNSUPPORTED is unavailable. A new laser that needs a call this build
@@ -551,11 +564,13 @@ pub mod native_build {
         ("fold", &["render.set-warp", "render.warp-on", "render.hold-world", "render.hold-world-within"]),
         // the World Eater: its wormsign bends the land through the world warp
         ("worldeater", &["render.set-warp", "render.warp-on"]),
+        // the Earthquake: its plates move the land through the world warp
+        ("earthquake", &["render.set-warp", "render.warp-on", "render.set-view-offset", "world.shift-player", "render.set-warp-data"]),
     ];
-    /// The lasers held back on this build though it can make them (by key), greyed out until they have been played
-    /// natively: the Fold (its water drops out at some angles through the world warp), the Sky Breaks, the Carpet
-    /// Bomb and the World Eater (not yet played on a native build). Take one out once it has been.
-    pub const HELD_BACK: &[&str] = &["fold", "skybreak", "carpetbomb", "worldeater", "convergence"];
+    /// The lasers held back on this build though it can make them (by key), greyed out until they play right natively:
+    /// the Fold (its water drops out at some angles through the world warp) and the Earthquake (it needs calls the
+    /// upstream mod API lacks). Take one out once it plays right.
+    pub const HELD_BACK: &[&str] = &["fold", "earthquake"];
     /// What the wheel, the Designator and `/orbital <laser>` say of an unavailable laser.
     pub const NOT_YET: &str = "On the fork now, native soon";
     /// Whether this build carries out the fork's call `call` (as the fork names it: `render.set-warp`).
@@ -582,10 +597,10 @@ pub mod native_build {
         use super::*;
         #[test]
         fn every_laser_but_those_held_back_plays_on_this_build() {
-            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano"] {
+            for key in ["plasma", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "sixstars"] {
                 assert_eq!(unavailable(key), None, "{key}");
             }
-            for key in ["fold", "skybreak", "carpetbomb", "worldeater", "convergence"] {
+            for key in ["fold", "earthquake"] {
                 assert_eq!(unavailable(key), Some(NOT_YET), "{key}");
             }
             assert!(supports("render.set-warp") && supports("render.hold-world-within") && supports("render.set-post"));

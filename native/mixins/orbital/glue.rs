@@ -18,7 +18,7 @@ use std::sync::Mutex;
 
 pub(super) const ID: &str = "orbital";
 const NAME: &str = "Orbital Laser";
-const VERSION: &str = "0.5.14";
+const VERSION: &str = "0.5.17";
 /// The operator level of the console, which the server half runs a client's world work at (`native_run_command`).
 const CONSOLE_LEVEL: u8 = 4;
 const WORK: &str = "orbital:work";
@@ -27,6 +27,15 @@ const ANSWER: &str = "orbital:answer";
 const MESSAGE: usize = 28_000;
 /// Columns a read or a height query asks in one message (8 bytes each); the answers are split by their own size.
 const READ_COLUMNS: usize = 3000;
+/// Batches of world work out at once, not yet acknowledged by the server half. Upstream takes at most 32 mod messages
+/// from a player a *server* tick and drops the rest in silence (`guest_native_net`), while the window may send 32 a
+/// *client* tick: with the server behind (a big strike's chunks generating, ticks of half a second) most of a strike's
+/// edits, reads and forceloads were thrown away, whole chunks left uncarved. So no more than this many are ever on
+/// their way, whatever the two ticks do (the fork's mod calls the world directly and never lost any).
+const WINDOW: usize = 30;
+/// No acknowledgement for this long with batches out: the ones not acknowledged go again (the server half takes each
+/// once, by its number).
+const RESEND_AFTER: std::time::Duration = std::time::Duration::from_secs(4);
 
 thread_local! {
     /// Started (its `init` ran) on this thread: the window's.
@@ -44,6 +53,16 @@ static SERVER_COMMANDS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 struct Client {
     /// Work for the server half, in order, as messages.
     out: VecDeque<Vec<u8>>,
+    /// Batches sent and not yet acknowledged (number, bytes), oldest first; `resend` of them, from the front, still to
+    /// go again; the next batch's number; this session's number (a new one each world, so the server half starts over);
+    /// when the last acknowledgement moved on.
+    unacked: VecDeque<(u32, Vec<u8>)>,
+    resend: usize,
+    next_seq: u32,
+    epoch: u32,
+    progress: Option<std::time::Instant>,
+    /// The most requests waiting since the work last caught up, and since when.
+    backlog: (usize, Option<std::time::Instant>),
     /// The mod's own screen: open as far as the mod knows, and its clicks and typing not yet polled.
     screen_open: bool,
     screen_events: Vec<input::Event>,
@@ -489,6 +508,9 @@ impl Reader<'_> {
     fn u16(&mut self) -> Option<u16> {
         self.take(2).map(|b| u16::from_le_bytes(b.try_into().unwrap()))
     }
+    fn i16(&mut self) -> Option<i16> {
+        self.take(2).map(|b| i16::from_le_bytes(b.try_into().unwrap()))
+    }
     fn i32(&mut self) -> Option<i32> {
         self.take(4).map(|b| i32::from_le_bytes(b.try_into().unwrap()))
     }
@@ -536,25 +558,62 @@ fn send_commands(commands: &[String]) {
         flush(&mut lines);
     }
 }
-/// A block edit, its runs split over as many messages as they need, each with the palette and filters.
+/// A block edit, its runs split over as many messages as they need, each with the palette and filters. A message's
+/// runs go packed (kind 5: 13 bytes a run, x and z from the message's first run's) when they fit, else whole (kind 1:
+/// 25 bytes): the world work is what the channel's 32 messages a server tick carry, so the fewer bytes the better.
 fn send_edit(edit: &world::BlockEdit) {
-    let head = 9 + edit.palette.iter().chain(&edit.filters).map(|s| s.len() + 4).sum::<usize>();
-    let per = ((MESSAGE.saturating_sub(head)) / 25).max(1);
-    for runs in edit.runs.chunks(per) {
-        let mut w = Writer::new(1);
+    let head = 9 + 8 + edit.palette.iter().chain(&edit.filters).map(|s| s.len() + 4).sum::<usize>();
+    let mut start = 0;
+    while start < edit.runs.len() {
+        let room = MESSAGE.saturating_sub(head);
+        // as many runs as fit packed, while they pack
+        let (x0, z0) = (edit.runs[start].x, edit.runs[start].z);
+        let packs = |r: &world::BlockRun| {
+            i16::try_from(i64::from(r.x) - i64::from(x0)).is_ok()
+                && i16::try_from(i64::from(r.z) - i64::from(z0)).is_ok()
+                && i16::try_from(r.y).is_ok()
+                && u16::try_from(r.height).is_ok()
+                && u16::try_from(r.block).is_ok()
+                && r.only.is_none_or(|o| o < i16::MAX as u32)
+        };
+        let mut n = 0;
+        while start + n < edit.runs.len() && (n + 1) * 13 <= room && packs(&edit.runs[start + n]) {
+            n += 1;
+        }
+        let packed = n > 0;
+        if !packed {
+            n = (room / 25).max(1).min(edit.runs.len() - start);
+        }
+        let runs = &edit.runs[start..start + n];
+        let mut w = Writer::new(if packed { 5 } else { 1 });
         w.strs(&edit.palette);
         w.strs(&edit.filters);
         w.u32(runs.len() as u32);
+        if packed {
+            w.i32(x0);
+            w.i32(z0);
+        }
         for r in runs {
-            w.i32(r.x);
-            w.i32(r.z);
-            w.i32(r.y);
-            w.u32(r.height);
-            w.0.push(r.surface.map_or(0, heightmap));
-            w.u32(r.block);
-            w.i32(r.only.map_or(-1, |o| o as i32));
+            if packed {
+                w.0.extend_from_slice(&((r.x - x0) as i16).to_le_bytes());
+                w.0.extend_from_slice(&((r.z - z0) as i16).to_le_bytes());
+                w.0.extend_from_slice(&(r.y as i16).to_le_bytes());
+                w.0.extend_from_slice(&(r.height as u16).to_le_bytes());
+                w.0.push(r.surface.map_or(0, heightmap));
+                w.0.extend_from_slice(&(r.block as u16).to_le_bytes());
+                w.0.extend_from_slice(&r.only.map_or(-1i16, |o| o as i16).to_le_bytes());
+            } else {
+                w.i32(r.x);
+                w.i32(r.z);
+                w.i32(r.y);
+                w.u32(r.height);
+                w.0.push(r.surface.map_or(0, heightmap));
+                w.u32(r.block);
+                w.i32(r.only.map_or(-1, |o| o as i32));
+            }
         }
         send(w.0);
+        start += n;
     }
 }
 fn send_surface(tag: u32, columns: &[(i32, i32)], h: u8) {
@@ -600,13 +659,62 @@ fn send_columns(tag: u32, columns: &[(i32, i32)], h: u8, below: u32, above: u32)
     }
 }
 
-/// The client half: the work waiting goes to the server half, as much as the channel takes this tick, the requests
-/// packed into as few messages as they fit (a message, kind 9: requests, each its length then its bytes).
+/// A new session's number for the batches (not 0).
+fn new_epoch() -> u32 {
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.subsec_nanos() ^ d.as_secs() as u32);
+    t.max(1)
+}
+
+/// The client half: the work waiting goes to the server half, as much as the channel takes this tick and no more than
+/// `WINDOW` batches unacknowledged, the requests packed into as few messages as they fit (a message, kind 9: the
+/// session, the batch's number, then requests, each its length then its bytes). Batches not acknowledged within
+/// `RESEND_AFTER` go again first.
 fn flush_work(game: &mut Game<'_>) {
     CLIENT.with(|c| {
         let mut c = c.borrow_mut();
-        while !c.out.is_empty() {
+        let c = &mut *c;
+        if c.epoch == 0 {
+            c.epoch = new_epoch();
+        }
+        let now = std::time::Instant::now();
+        if c.unacked.is_empty() {
+            c.progress = Some(now);
+        } else if c.resend == 0 && c.progress.is_some_and(|t| now.duration_since(t) > RESEND_AFTER) {
+            log::info!(
+                "[mod {ID}] world work: no answer from the server half for {} s, {} batches sent again",
+                RESEND_AFTER.as_secs(),
+                c.unacked.len()
+            );
+            c.resend = c.unacked.len();
+            c.progress = Some(now);
+        }
+        // the ones to go again
+        while c.resend > 0 {
+            let i = c.unacked.len() - c.resend;
+            if game.native_net_send_to_server(WORK, &c.unacked[i].1).is_err() {
+                return;
+            }
+            c.resend -= 1;
+        }
+        // (how far the world work fell behind the server half, said once it has caught up)
+        if c.out.len() > c.backlog.0 {
+            c.backlog = (c.out.len(), c.backlog.1.or(Some(now)));
+        }
+        if c.out.is_empty() && c.unacked.is_empty() {
+            if let (n, Some(since)) = c.backlog
+                && n >= 64
+            {
+                log::info!(
+                    "[mod {ID}] world work: up to {n} requests waited for the server half, caught up after {:.1} s",
+                    now.duration_since(since).as_secs_f32()
+                );
+            }
+            c.backlog = (0, None);
+        }
+        while !c.out.is_empty() && c.unacked.len() < WINDOW {
             let mut batch = vec![9u8];
+            batch.extend_from_slice(&c.epoch.to_le_bytes());
+            batch.extend_from_slice(&c.next_seq.to_le_bytes());
             let mut taken = 0;
             for m in c.out.iter() {
                 if taken > 0 && batch.len() + 4 + m.len() > MESSAGE {
@@ -624,6 +732,8 @@ fn flush_work(game: &mut Game<'_>) {
                 break;
             }
             c.out.drain(..taken);
+            c.unacked.push_back((c.next_seq, batch));
+            c.next_seq = c.next_seq.wrapping_add(1);
         }
     });
 }
@@ -714,6 +824,21 @@ pub(super) fn from_server(game: &mut Game<'_>, channel: &str, data: &[u8]) {
                     });
                 }
             }
+            12 => {
+                // the server half has served every batch before `next` of session `epoch`
+                let (epoch, next) = (r.u32()?, r.u32()?);
+                if epoch == c.epoch {
+                    let before = c.unacked.len();
+                    while c.unacked.front().is_some_and(|&(seq, _)| next.wrapping_sub(seq) as i32 > 0) {
+                        c.unacked.pop_front();
+                    }
+                    let gone = before - c.unacked.len();
+                    if gone > 0 {
+                        c.resend = c.resend.min(c.unacked.len());
+                        c.progress = Some(std::time::Instant::now());
+                    }
+                }
+            }
             _ => {}
         }
         Some(())
@@ -731,6 +856,127 @@ struct Server {
     work: BTreeMap<u128, VecDeque<Vec<u8>>>,
     /// Answers waiting for the channel, by player.
     answers: BTreeMap<u128, VecDeque<Vec<u8>>>,
+    /// Each player's session and the number of the next batch to serve: a batch is served once, in order (one out of
+    /// order, past one that was lost, waits to come again).
+    next: BTreeMap<u128, (u32, u32)>,
+    /// The acknowledgements still to go (the channel was full), by player.
+    acks: BTreeMap<u128, (u32, u32)>,
+    /// Edits for chunks not loaded yet, by (dimension, chunk), oldest first: upstream's edit-blocks leaves out runs in
+    /// chunks not loaded, and a strike holding thousands of chunks (the Supervolcano, past upstream's 4,096) has the
+    /// server so far behind that its edits came before their land. They go in as each chunk comes.
+    waiting: BTreeMap<(String, i32, i32), Waiting>,
+    /// Chunks that waited since the last time none did, and the longest wait (s).
+    waited: (usize, f32),
+}
+
+/// A chunk's edits waiting for it, since when, and whether its ticket goes once they are in.
+struct Waiting {
+    since: std::time::Instant,
+    edits: Vec<NativeBlockEdit>,
+    release: bool,
+}
+/// How long a chunk's edits wait for it before they are given up; and how long one loaded waits for its neighbours
+/// (whose loading lights it).
+const WAIT_MOST: std::time::Duration = std::time::Duration::from_secs(120);
+const WAIT_NEIGHBOURS: std::time::Duration = std::time::Duration::from_secs(10);
+/// Waiting chunks put in a tick at most.
+const WAIT_PER_TICK: usize = 96;
+
+/// Whether chunk `(cx, cz)` of `dimension` takes edits now: loaded, its neighbours too (or it has waited long enough).
+fn chunk_ready(game: &Game<'_>, dimension: &str, cx: i32, cz: i32, since: Option<std::time::Instant>) -> bool {
+    if !game.native_chunk_is_loaded(dimension, [cx, cz]) {
+        return false;
+    }
+    if since.is_some_and(|t| t.elapsed() > WAIT_NEIGHBOURS) {
+        return true;
+    }
+    (-1..=1).all(|dz| (-1..=1).all(|dx| (dx == 0 && dz == 0) || game.native_chunk_is_loaded(dimension, [cx + dx, cz + dz])))
+}
+
+/// An edit: its runs in chunks ready go in now, the rest wait for their chunks (behind any edits already waiting there).
+fn edit_or_wait(game: &mut Game<'_>, dimension: &str, edit: NativeBlockEdit) {
+    let mut by_chunk: BTreeMap<(i32, i32), Vec<NativeBlockRun>> = BTreeMap::new();
+    for r in edit.runs {
+        by_chunk.entry((r.x >> 4, r.z >> 4)).or_default().push(r);
+    }
+    let mut now = Vec::new();
+    for ((cx, cz), runs) in by_chunk {
+        let key = (dimension.to_owned(), cx, cz);
+        let queued = SERVER.with(|s| s.borrow().waiting.contains_key(&key));
+        if !queued && chunk_ready(game, dimension, cx, cz, None) {
+            now.extend(runs);
+            continue;
+        }
+        let part = NativeBlockEdit { palette: edit.palette.clone(), filters: edit.filters.clone(), runs, ..Default::default() };
+        SERVER.with(|s| {
+            s.borrow_mut()
+                .waiting
+                .entry(key)
+                .or_insert_with(|| Waiting { since: std::time::Instant::now(), edits: Vec::new(), release: false })
+                .edits
+                .push(part)
+        });
+    }
+    if !now.is_empty() {
+        let edit = NativeBlockEdit { palette: edit.palette, filters: edit.filters, runs: now, ..Default::default() };
+        if let Err(e) = game.native_edit_blocks(dimension, &edit) {
+            log::warn!("[mod {ID}] edit-blocks left out: {e}");
+        }
+    }
+}
+
+/// The edits waiting in `dimension` whose chunks have come go in (the oldest first, `WAIT_PER_TICK` chunks at most), and
+/// those waiting past `WAIT_MOST` are given up; a chunk's ticket a strike let go of goes once its edits are done.
+fn edits_waiting(game: &mut Game<'_>, dimension: &str) {
+    let keys: Vec<((String, i32, i32), std::time::Instant)> = SERVER.with(|s| {
+        let s = s.borrow();
+        let mut k: Vec<_> = s.waiting.iter().filter(|(k, _)| k.0 == dimension).map(|(k, w)| (k.clone(), w.since)).collect();
+        k.sort_by_key(|(_, t)| *t);
+        k
+    });
+    if keys.is_empty() {
+        return;
+    }
+    let (mut put, mut lost) = (0, 0);
+    for (key, since) in keys {
+        let expired = since.elapsed() > WAIT_MOST;
+        if !expired && (put >= WAIT_PER_TICK || !chunk_ready(game, dimension, key.1, key.2, Some(since))) {
+            continue;
+        }
+        let Some(w) = SERVER.with(|s| s.borrow_mut().waiting.remove(&key)) else { continue };
+        if expired {
+            lost += 1;
+        } else {
+            put += 1;
+            for e in &w.edits {
+                if let Err(err) = game.native_edit_blocks(dimension, e) {
+                    log::warn!("[mod {ID}] edit-blocks left out: {err}");
+                }
+            }
+            SERVER.with(|s| {
+                let mut s = s.borrow_mut();
+                s.waited.0 += 1;
+                s.waited.1 = s.waited.1.max(since.elapsed().as_secs_f32());
+            });
+        }
+        if w.release {
+            game.native_force_chunk_in(TICKET, dimension, [key.1, key.2], false);
+        }
+    }
+    if lost > 0 {
+        log::warn!("[mod {ID}] world work: the edits of {lost} chunks given up, their land not loaded in {} s", WAIT_MOST.as_secs());
+    }
+    let done = SERVER.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.waiting.is_empty() && s.waited.0 > 0 {
+            Some(std::mem::take(&mut s.waited))
+        } else {
+            None
+        }
+    });
+    if let Some((n, most)) = done {
+        log::info!("[mod {ID}] world work: the edits of {n} chunks waited for their land, up to {most:.1} s");
+    }
 }
 
 /// The `net_from_client` hook: a player's request, kept for the tick of their level.
@@ -751,6 +997,7 @@ pub(super) fn level_tick(game: &mut Game<'_>, dimension: &str) {
     if game.native_window() || !game.native_on(ID) {
         return;
     }
+    edits_waiting(game, dimension);
     let players = game.native_server_players();
     let mine: Vec<(u128, u8)> =
         players.iter().filter(|p| p.dimension == dimension).map(|p| (p.uuid, p.permission)).collect();
@@ -767,10 +1014,34 @@ pub(super) fn level_tick(game: &mut Game<'_>, dimension: &str) {
             }
             continue;
         }
+        let had = !work.is_empty();
         for batch in work {
             let mut r = Reader(&batch);
-            if r.u8() != Some(9) {
+            let (Some(9), Some(epoch), Some(seq)) = (r.u8(), r.u32(), r.u32()) else {
                 log::warn!("[mod {ID}] a bad message from {}", uuid(player));
+                continue;
+            };
+            let take = SERVER.with(|s| {
+                let mut s = s.borrow_mut();
+                let next = s.next.entry(player).or_insert((epoch, 0));
+                if next.0 != epoch {
+                    *next = (epoch, 0);
+                }
+                if next.1 == seq {
+                    next.1 = seq.wrapping_add(1);
+                    true
+                } else {
+                    // (past the one expected: one before it was lost on the way; it comes again)
+                    if (seq.wrapping_sub(next.1) as i32) > 0 {
+                        static SAID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                        if SAID.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 8 {
+                            log::warn!("[mod {ID}] world work: batch {seq} came before {}, which was lost on the way", next.1);
+                        }
+                    }
+                    false
+                }
+            });
+            if !take {
                 continue;
             }
             while let Some(n) = r.u32() {
@@ -779,6 +1050,24 @@ pub(super) fn level_tick(game: &mut Game<'_>, dimension: &str) {
                     log::warn!("[mod {ID}] a bad request from {}", uuid(player));
                 }
             }
+        }
+        if had {
+            SERVER.with(|s| {
+                let mut s = s.borrow_mut();
+                if let Some(&n) = s.next.get(&player) {
+                    s.acks.insert(player, n);
+                }
+            });
+        }
+    }
+    // acknowledgements first (kind 12: the session, the next batch to serve), so the window's work keeps coming
+    let acks: Vec<(u128, (u32, u32))> = SERVER.with(|s| s.borrow().acks.iter().map(|(&p, &n)| (p, n)).collect());
+    for (player, (epoch, next)) in acks {
+        let mut w = Writer::new(12);
+        w.u32(epoch);
+        w.u32(next);
+        if game.native_net_send_to_player(player, ANSWER, &w.0).is_ok() {
+            SERVER.with(|s| s.borrow_mut().acks.remove(&player));
         }
     }
     // answers leave as the channel allows, the rest next tick
@@ -806,6 +1095,59 @@ fn answer(player: u128, message: Vec<u8>) {
     SERVER.with(|s| s.borrow_mut().answers.entry(player).or_default().push_back(message));
 }
 
+/// What holds the chunks a strike keeps loaded (`native_force_chunk_in`'s owner).
+const TICKET: &str = "orbital:strike";
+
+/// A strike's `forceload add|remove X0 Z0 X1 Z1` (or `execute in DIMENSION run` it), made as chunk tickets: upstream's
+/// `/forceload add` waits on the server thread until its chunks are loaded (a9c7b82, as vanilla), and a strike's few
+/// hundred of them over land not yet generated held one tick for half a minute, the game frozen behind it. Tickets
+/// load the same chunks over the ticks that follow, as the fork's forceload did. Whether the line was one.
+fn force_load(game: &mut Game<'_>, dimension: &str, line: &str) -> bool {
+    let (dim, rest) = match line.strip_prefix("execute in ") {
+        Some(r) => match r.split_once(" run ") {
+            Some((d, rest)) => (d, rest),
+            None => return false,
+        },
+        None => (dimension, line),
+    };
+    let w: Vec<&str> = rest.split_whitespace().collect();
+    let hold = match w.as_slice() {
+        ["forceload", "add", ..] => true,
+        ["forceload", "remove", ..] => false,
+        _ => return false,
+    };
+    let n: Vec<i32> = w[2..].iter().filter_map(|v| v.parse().ok()).collect();
+    let (x0, z0, x1, z1) = match n.as_slice() {
+        [x, z] if w.len() == 4 => (*x, *z, *x, *z),
+        [a, b, c, d] if w.len() == 6 => (*a, *b, *c, *d),
+        _ => return false,
+    };
+    let (cx0, cx1, cz0, cz1) = (x0.min(x1) >> 4, x0.max(x1) >> 4, z0.min(z1) >> 4, z0.max(z1) >> 4);
+    // (as /forceload refuses more than 256 chunks a line)
+    if i64::from(cx1 - cx0 + 1) * i64::from(cz1 - cz0 + 1) > 256 {
+        return false;
+    }
+    for cx in cx0..=cx1 {
+        for cz in cz0..=cz1 {
+            // (a chunk whose edits still wait for it keeps its ticket until they are in)
+            let waits = SERVER.with(|s| {
+                let mut s = s.borrow_mut();
+                match s.waiting.get_mut(&(dim.to_owned(), cx, cz)) {
+                    Some(w) => {
+                        w.release = !hold;
+                        !hold
+                    }
+                    None => false,
+                }
+            });
+            if !waits {
+                game.native_force_chunk_in(TICKET, dim, [cx, cz], hold);
+            }
+        }
+    }
+    true
+}
+
 fn serve(game: &mut Game<'_>, player: u128, dimension: &str, request: &[u8]) -> Option<()> {
     let mut r = Reader(request);
     match r.u8()? {
@@ -813,24 +1155,44 @@ fn serve(game: &mut Game<'_>, player: u128, dimension: &str, request: &[u8]) -> 
             // as the player, where they are, silently: the fork ran them from the player's source
             let who = uuid(player);
             for line in r.strs()? {
-                game.native_run_command(&format!("execute as {who} at @s run {}", line.trim_start_matches('/')));
+                let line = line.trim_start_matches('/');
+                if force_load(game, dimension, line) {
+                    continue;
+                }
+                game.native_run_command(&format!("execute as {who} at @s run {line}"));
             }
         }
-        1 => {
+        kind @ (1 | 5) => {
             let palette = r.strs()?;
             let filters = r.strs()?;
             let n = r.u32()? as usize;
             let mut runs = Vec::with_capacity(n);
-            for _ in 0..n {
+            if kind == 5 {
+                let (x0, z0) = (r.i32()?, r.i32()?);
+                for _ in 0..n {
+                    let (dx, dz, y, height) = (r.i16()?, r.i16()?, r.i16()?, r.u16()?);
+                    let surface = heightmap_of(r.u8()?);
+                    let block = r.u16()?;
+                    let only = r.i16()?;
+                    runs.push(NativeBlockRun {
+                        x: x0.wrapping_add(i32::from(dx)),
+                        z: z0.wrapping_add(i32::from(dz)),
+                        y: i32::from(y),
+                        height: u32::from(height),
+                        surface,
+                        block: u32::from(block),
+                        only: u32::try_from(only).ok(),
+                    });
+                }
+            }
+            for _ in 0..if kind == 1 { n } else { 0 } {
                 let (x, z, y, height) = (r.i32()?, r.i32()?, r.i32()?, r.u32()?);
                 let surface = heightmap_of(r.u8()?);
                 let block = r.u32()?;
                 let only = r.i32()?;
                 runs.push(NativeBlockRun { x, z, y, height, surface, block, only: u32::try_from(only).ok() });
             }
-            if let Err(e) = game.native_edit_blocks(dimension, &NativeBlockEdit { palette, filters, runs }) {
-                log::warn!("[mod {ID}] edit-blocks left out: {e}");
-            }
+            edit_or_wait(game, dimension, NativeBlockEdit { palette, filters, runs, ..Default::default() });
         }
         2 => {
             let (tag, h, offset, total) = (r.u32()?, r.u8()?, r.u32()?, r.u32()?);
@@ -1300,6 +1662,10 @@ pub(super) fn client_level_unload(game: &mut Game<'_>, dimension: &str) {
             let mut c = c.borrow_mut();
             c.leaving = false;
             c.out.clear();
+            c.unacked.clear();
+            c.resend = 0;
+            c.next_seq = 0;
+            c.epoch = new_epoch();
             c.surface.clear();
             c.columns.clear();
         });

@@ -10,21 +10,19 @@ The [README](../README.md) has the short version. This page has every step and o
 The [native version](#native-version-regular-horizon) runs on regular Horizon: install it from
 the launcher's Mods page and the launcher compiles it into the game. The [fork version](#fork-version) is a WebAssembly mod for the Orbital Laser build of
 Horizon ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), release
-`orbital-mod-api-12` or newer), with a ready-built Linux download on its
+`orbital-mod-api-13` or newer), with a ready-built Linux download on its
 [releases](https://github.com/Stink-O/horizon/releases). Either way you need your own copy of Minecraft Java
 Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 
-**Not in the native version yet: the Fold, the Sky Breaks, the Carpet Bomb, the World Eater and the Convergence.**
-They aren't playable in the native file, `orbital.hnmod` (what the launcher's Mods page installs): the first three show
-greyed out in the wheel, saying "On the fork now, native soon", and the World Eater and the Convergence aren't in it
-yet. To play them now, use the fork version, `orbital-laser-v0.5.16.zip`, on the Orbital Laser build of Horizon ([Fork version](#fork-version)).
-Every other laser plays on both.
+**Not in the native version yet: the Fold and the Earthquake.** They aren't playable in the native file,
+`orbital-laser-native-v0.5.17.hnmod` (what the launcher's Mods page installs): they show greyed out in the wheel, saying
+"On the fork now, native soon". To play them now, use the fork version, `orbital-laser-v0.5.17.zip`, on the Orbital Laser
+build of Horizon ([Fork version](#fork-version)). Every other laser plays on both.
 
-**A reliable native version is waiting on upstream Horizon.** I can't release a native build I'd call reliable until
-Horizon merges the fixes I've sent it: the sound stopping during a heavy strike
-([#15875](https://github.com/horizon-rust/horizon/pull/15875)) and frames hanging on NVIDIA cards on Linux
-([#13885](https://github.com/horizon-rust/horizon/pull/13885)) are still open. Until they're in, new lasers come to
-the fork first.
+**The native version is built on a Horizon with the fixes I sent upstream:** the sound stopping during a heavy strike
+([#15875](https://github.com/horizon-rust/horizon/pull/15875)), frames hanging on NVIDIA cards on Linux
+([#13885](https://github.com/horizon-rust/horizon/pull/13885)) and the Supervolcano's slowdown
+([#15878](https://github.com/horizon-rust/horizon/pull/15878)). New lasers still come to the fork first.
 
 ## Native version (regular Horizon)
 
@@ -42,18 +40,19 @@ launcher tells you the command if any are missing). Windows needs nothing extra.
 6. Hold the Designator and press **R** to pick a laser, then hold right-click on a target to fire. Type
    **`/orbital terrain off`** first if you don't want the land wrecked.
 
-**Not in this version yet:** the Fold, the Sky Breaks and the Carpet Bomb show greyed out in the native wheel, and the
-World Eater and the Convergence aren't in it yet. They're in the [fork version](#fork-version) for now.
+**Not in this version yet:** the Fold and the Earthquake show greyed out in the native wheel. They're in the [fork version](#fork-version) for
+now.
 
 **To update:** when the **Mods** page offers a newer Orbital Laser, install it, then **Build** again (step 4).
 
 **To install the file by hand** (for a version that isn't on the Mods page yet):
 
-1. Download **`orbital.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
+1. Download **`orbital-laser-native-v0.5.17.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
 2. On the **Instances** page, press **Open folder** on your instance. (A new instance's folder is in
    `instances/<its name>` inside Horizon's data folder, not in the data folder itself.)
-3. Put `orbital.hnmod` in its **`horizon-native-mods`** folder. Make the folder if it isn't there yet: it only
-   appears once a native mod has been installed.
+3. Put the file in its **`horizon-native-mods`** folder, keeping its name. Make the folder if it isn't there yet: it
+   only appears once a native mod has been installed. Keep only one Orbital Laser file there: take out an older
+   `orbital.hnmod` or `orbital-laser-native-v….hnmod` first.
 4. On the **Mods** page, check Orbital Laser is on, then carry on from step 3 above.
 
 > [!CAUTION]
@@ -64,7 +63,7 @@ World Eater and the Convergence aren't in it yet. They're in the [fork version](
 
 ## Fork version
 
-1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-12` or newer). Download
+1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-13` or newer). Download
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases)
    and unpack it to `~/horizon-orbital`.
 
@@ -95,7 +94,7 @@ World Eater and the Convergence aren't in it yet. They're in the [fork version](
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.16.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.17.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh

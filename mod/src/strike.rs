@@ -7,6 +7,20 @@ use std::f64::consts::PI;
 mod carpet;
 mod convergence;
 mod crystal;
+mod earthquake;
+mod eq_land;
+mod eq_trees;
+mod eq_fx;
+mod eq_ground;
+pub use earthquake::{EQ_REAL_LAND, EQ_WARP_END, EQ_WARP_START, eq_hold_within, eq_params};
+pub(crate) use earthquake::{EQ_BACK_END, EQ_HEAVE, EQ_PLATES, EQ_REST, EQ_STILL, EqPlates, eq_plates, eq_rigid_param};
+pub use eq_land::{eq_chunk_due, eq_frame, eq_land_in, eq_walker};
+#[cfg(test)]
+pub use eq_ground::eq_ground_set_test;
+pub use eq_ground::{eq_ground_height, eq_ground_take};
+pub use eq_trees::{EqSlab, EqTree, eq_slabs_now, eq_tree_data, eq_trees_copy, eq_trees_now};
+pub use earthquake::{eq_slab_cues, eq_tree_cues};
+pub(crate) use eq_land::EQ_RIDER_FROM;
 mod hu_blocks;
 mod fold;
 mod fold_land;
@@ -14,6 +28,7 @@ pub use fold::{FD_COPIES, FD_COPY_ON, FD_COPY_R, FD_HIDDEN, FD_LEAD, fd_hold_are
 mod hurricane;
 mod nuke;
 mod rod;
+mod sixstars;
 mod payload;
 mod sb_hand;
 mod sb_lift;
@@ -105,6 +120,12 @@ pub enum Act {
     Cmd(String),
     /// A sound following the player (`at` none), or at a point, heard only nearby.
     Sound { event: String, at: Option<[f64; 3]>, volume: f32, pitch: f32 },
+    /// A sound played where it is made: along the line from `from` to `to` (a fault; one point when they are the
+    /// same), at the point `sound_from_line` gives for where the player is as it starts, so it comes from that way as
+    /// they turn and the game fades it with their distance (over the event's `attenuation_distance`). `band`: the
+    /// distances over which this file fades in and out (its tier among an event's near, mid and far files), by how
+    /// far the line is from them then: `band_weight`.
+    SoundFrom { event: String, from: [f64; 3], to: [f64; 3], volume: f32, pitch: f32, band: [f32; 4] },
     /// A jolt of the real camera (`render.shake`): `strength` 0 to 1, fading out over `seconds`.
     Shake { strength: f32, seconds: f32 },
     /// The player knocked back by a blast's front (`world.push-player`, lib.rs's `knockback`): thrown away from `from`
@@ -167,6 +188,12 @@ pub struct Blocks {
     /// Blocks laid down (landing rubble, a landed tree): none goes in where the player is as it is made (lib.rs's
     /// `edit` leaves out the runs that would fill their body or the block over their head).
     pub clear_of_player: bool,
+    /// With `clear_of_player`: the columns this many blocks round the player's own are left as they are too, from
+    /// their feet up, so what is heaped up never walls them in (the Earthquake's scree).
+    pub clear_room: u8,
+    /// With `clear_of_player`: where a run would fill the player, air is put instead (land swapped in whole round a
+    /// player put into it: what stood there before has to go, or it is left standing in them).
+    pub clear_to_air: bool,
     /// Counted as it goes in (a plate or a shard that comes down waits for all of its to be in the world before the pass lets it go).
     pub sent: Option<std::rc::Rc<std::cell::Cell<u32>>>,
     // [World Eater, land] priorities in the edit queue (lib.rs's `edit`):
@@ -226,9 +253,48 @@ impl Blocks {
     }
     /// The edit less its runs that would fill where a player with their feet at `feet` is (`clear_of_player`): their
     /// body's two blocks and the one over their head, in the columns their box (0.3 out from their middle) reaches.
+    /// A run of air fills nothing and is always kept: left out, the land it clears would stand where the player is (a
+    /// column of the old land left through a player put on a plate that sank).
+    /// With `clear_to_air` a run left out is split instead: air where the player is, its own block under and over them.
     pub fn edit_clear_of(&self, feet: [f64; 3]) -> horizon_mod_sdk::world::BlockEdit {
         let mut e = self.edit();
-        e.runs.retain(|r| !in_player(r.x, r.z, r.y, r.y + r.height as i32 - 1, feet));
+        let room = i32::from(self.clear_room);
+        let (px, py, pz) = (feet[0].floor() as i32, feet[1].floor() as i32, feet[2].floor() as i32);
+        let air: Vec<bool> = e.palette.iter().map(|b| b == "minecraft:air").collect();
+        let mut cut: Vec<horizon_mod_sdk::world::BlockRun> = Vec::new();
+        e.runs.retain(|r| {
+            let top = r.y + r.height as i32 - 1;
+            if air[r.block as usize] {
+                return true;
+            }
+            if in_player(r.x, r.z, r.y, top, feet) {
+                if self.clear_to_air {
+                    cut.push(r.clone());
+                }
+                return false;
+            }
+            !(room > 0 && (r.x - px).abs() <= room && (r.z - pz).abs() <= room && top >= py)
+        });
+        if !cut.is_empty() {
+            let to = match air.iter().position(|a| *a) {
+                Some(i) => i as u32,
+                None => {
+                    e.palette.push("minecraft:air".to_string());
+                    (e.palette.len() - 1) as u32
+                }
+            };
+            for r in cut {
+                let top = r.y + r.height as i32 - 1;
+                let (a, b) = (r.y.max(py), top.min(py + 2));
+                if r.y < a {
+                    e.runs.push(horizon_mod_sdk::world::BlockRun { height: (a - r.y) as u32, ..r.clone() });
+                }
+                e.runs.push(horizon_mod_sdk::world::BlockRun { y: a, height: (b - a + 1) as u32, block: to, ..r.clone() });
+                if top > b {
+                    e.runs.push(horizon_mod_sdk::world::BlockRun { y: b + 1, height: (top - b) as u32, ..r });
+                }
+            }
+        }
         e
     }
     /// The runs sorted into the ticks they go in at (`when` of each run's column): a wave's edits, in order.
@@ -236,7 +302,7 @@ impl Blocks {
         let mut out: std::collections::BTreeMap<i32, Blocks> = Default::default();
         crate::meter::spend(200 * self.runs.len() as u64);
         for r in &self.runs {
-            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_insert_with(|| Blocks { clear_of_player: self.clear_of_player, urgent: self.urgent, shed: self.shed, ..Default::default() });
+            let b = out.entry((when(r.x, r.z) / 0.05).ceil() as i32).or_insert_with(|| Blocks { clear_of_player: self.clear_of_player, clear_room: self.clear_room, clear_to_air: self.clear_to_air, urgent: self.urgent, shed: self.shed, ..Default::default() });
             let block = Self::index(&mut b.palette, self.palette[r.block as usize]);
             let only = r.only.map(|f| Self::index(&mut b.filters, self.filters[f as usize]));
             b.runs.push(horizon_mod_sdk::world::BlockRun { block, only, ..r.clone() });
@@ -443,6 +509,33 @@ impl Rng {
     }
 }
 
+/// A sound made along a line is heard from this far along it from its nearest point, toward its middle: a fault that
+/// runs past the player and on ahead of them sounds from ahead and to the side, not from straight beside them.
+pub const SOUND_LEAN: f64 = 60.0;
+/// Where a sound made along the line from `a` to `b` is played for a player whose head is at `ear` (the line's
+/// nearest point to them, then `SOUND_LEAN` on toward its middle), and how far the line is from them.
+pub fn sound_from_line(ear: [f64; 3], a: [f64; 3], b: [f64; 3]) -> ([f64; 3], f64) {
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    let at = |k: f64| [a[0] + ab[0] * k, a[1] + ab[1] * k, a[2] + ab[2] * k];
+    let k = if l2 > 1e-9 { (((ear[0] - a[0]) * ab[0] + (ear[1] - a[1]) * ab[1] + (ear[2] - a[2]) * ab[2]) / l2).clamp(0.0, 1.0) } else { 0.0 };
+    let n = at(k);
+    let d = ((n[0] - ear[0]).powi(2) + (n[1] - ear[1]).powi(2) + (n[2] - ear[2]).powi(2)).sqrt();
+    let k = if l2 > 1e-9 { k + (SOUND_LEAN / l2.sqrt()).min((0.5 - k).abs()) * (0.5 - k).signum() } else { k };
+    (at(k), d)
+}
+/// How much of a file is heard `d` blocks from where it is made: fading in from `band[0]` to `band[1]` and out from
+/// `band[2]` to `band[3]` (no fade where the two are not in order), at equal power with the file that fades the other
+/// way over the same distances.
+pub fn band_weight(band: [f32; 4], d: f64) -> f32 {
+    let s = |a: f32, b: f32| {
+        let t = ((d - f64::from(a)) / f64::from(b - a)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t) * std::f64::consts::FRAC_PI_2
+    };
+    let fade_in = if band[1] > band[0] { s(band[0], band[1]).sin() } else { 1.0 };
+    let fade_out = if band[3] > band[2] { s(band[2], band[3]).cos() } else { 1.0 };
+    (fade_in * fade_out) as f32
+}
 /// Seconds a sound takes to reach the player at `me` from `p` (about 343 blocks a second), and how far it is.
 fn sound_from(p: [f64; 3], me: [f64; 3]) -> (f32, f64) {
     let d = ((p[0] - me[0]).powi(2) + (p[1] - me[1]).powi(2) + (p[2] - me[2]).powi(2)).sqrt();
@@ -741,8 +834,14 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     if laser.key == "hurricane" {
         return hurricane::hurricane_plan(laser, target, terrain, dimension, shader_seed, me);
     }
+    if laser.key == "sixstars" {
+        return sixstars::sixstars_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
     if laser.key == "convergence" {
         return convergence::convergence_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "earthquake" {
+        return earthquake::earthquake_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "carpetbomb" {
         return carpet::carpet_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4510,7 +4609,7 @@ mod tests {
             match act {
                 Act::Cmd(c) | Act::Spare(c) => out.push((t, c)),
                 Act::Blocks(b) => out.extend(b.as_fills().into_iter().map(|c| (t, c))),
-                Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) | Act::Hand(_) => {}
+                Act::Sound { .. } | Act::SoundFrom { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Survey { .. } | Act::Read { .. } | Act::Words { .. } | Act::Data { .. } | Act::Table(_) | Act::Hand(_) => {}
                 Act::Later(job) | Act::Soon(job) | Act::Cleanup(job) => ev.extend(job()),
             }
         }
@@ -4527,7 +4626,7 @@ mod tests {
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
             // (nor the tsunami: it sweeps what stands on the land it read, under its water; strike/tsunami.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" {
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" || laser.key == "earthquake" || laser.key == "sixstars" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
@@ -5682,7 +5781,15 @@ pub(super) mod sim {
         pub stages: Vec<(f32, f32, f64)>,
     }
     pub type Answer<'a> = &'a dyn Fn(i32, i32, u32, u32) -> Option<(i32, Vec<&'static str>)>;
-    pub fn play(mut plan: Vec<(f32, Act)>, length: f32, answer: Answer) -> Played {
+    pub fn play(plan: Vec<(f32, Act)>, length: f32, answer: Answer) -> Played {
+        let mut edits = Vec::new();
+        let mut out = play_each(plan, length, answer, &mut |t, due, b| edits.push((t, due, b)));
+        out.edits = edits;
+        out
+    }
+    /// As `play`, each edit handed to `edit` as it goes in (the tick's time, the time it was due, its blocks) instead of
+    /// kept: what a strike holds can be measured without every edit it made held beside it.
+    pub fn play_each(mut plan: Vec<(f32, Act)>, length: f32, answer: Answer, edit: &mut dyn FnMut(f32, f32, Blocks)) -> Played {
         crate::columns::clear();
         plan.sort_by(|a, b| a.0.total_cmp(&b.0));
         let mut out = Played { edits: Vec::new(), cmds: Vec::new(), stages: Vec::new() };
@@ -5712,7 +5819,7 @@ pub(super) mod sim {
                 next += 1;
                 match act {
                     Act::Cmd(c) | Act::Spare(c) => out.cmds.push((now, c)),
-                    Act::Blocks(b) => out.edits.push((now, t, *b)),
+                    Act::Blocks(b) => edit(now, t, *b),
                     Act::Read { tag, columns, below, above } => crate::columns::test_answer(tag, &columns, below, above, &|x, z| answer(x, z, below, above)),
                     Act::Survey { tag, columns } => crate::ground::test_answer(tag, &columns),
                     Act::Soon(job) if worked_out => urgent.push_back((t, job)),
@@ -5738,5 +5845,46 @@ pub(super) mod sim {
         }
         r.sort_by(f64::total_cmp);
         (r[0], r[r.len() / 2], r[r.len() - 1])
+    }
+}
+
+#[cfg(test)]
+mod forceload_count {
+    use super::*;
+    /// (ignored) How many distinct chunks each laser's strike force-loads at once: upstream Horizon's streaming keeps a
+    /// quick map of them only up to 4,096 (`ForcedCover::MOST`) and scans them all for every chunk past that.
+    #[test]
+    #[ignore]
+    fn forceload_chunks_per_laser() {
+        let target = Target { block: [10, 64, -3], point: [10.5, 65.0, -2.5] };
+        for laser in crate::lasers::LASERS {
+            let mut ev = plan(laser, &target, true, "minecraft:overworld", 7.0, [10.5, 66.0, 300.0], 0);
+            let mut held = std::collections::HashSet::new();
+            let mut most = 0;
+            let mut adds = Vec::new();
+            let mut n = 0;
+            while let Some((t, act)) = ev.pop() {
+                n += 1;
+                if n > 2_000_000 { break; }
+                match act {
+                    Act::Cmd(c) | Act::Spare(c) if c.starts_with("forceload ") => adds.push((t, c)),
+                    Act::Later(job) | Act::Soon(job) => ev.extend(job()),
+                    _ => {}
+                }
+            }
+            adds.sort_by(|a, b| a.0.total_cmp(&b.0));
+            for (_, c) in &adds {
+                let w: Vec<&str> = c.split_whitespace().collect();
+                let v: Vec<i32> = w[2..].iter().filter_map(|s| s.parse().ok()).collect();
+                if v.len() != 4 { continue; }
+                for x in (v[0].min(v[2]) >> 4)..=(v[0].max(v[2]) >> 4) {
+                    for z in (v[1].min(v[3]) >> 4)..=(v[1].max(v[3]) >> 4) {
+                        if w[1] == "add" { held.insert((x, z)); } else { held.remove(&(x, z)); }
+                    }
+                }
+                most = most.max(held.len());
+            }
+            println!("{:14} most held at once {most}", laser.key);
+        }
     }
 }

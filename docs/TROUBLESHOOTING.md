@@ -10,7 +10,7 @@ What to do if the mod doesn't start or a strike doesn't fire, and the known gaps
   it).
 - **No wheel, no `/orbital` command, or the items do nothing.** You're running stock Horizon, an older fork build, or
   one built without `--features mods` (the log says *this build has no mod runtime*). Start the game with `./play.sh`
-  on `orbital-mod-api-12` or newer. On **Options → Mods**, Orbital Laser's row says why if it stopped.
+  on `orbital-mod-api-13` or newer. On **Options → Mods**, Orbital Laser's row says why if it stopped.
 - **`play.sh` can't find the build or the resources, or says the build isn't the Orbital Laser one.** Set
   `HORIZON_ORBITAL` to the folder with the build's `horizon-client` and `horizon-ctl`, and `HORIZON_RESOURCES` to the
   prepared resources. Double-clicking `play.sh` in a file manager may show nothing: run it from a terminal to see its
@@ -48,7 +48,7 @@ What to do if the mod doesn't start or a strike doesn't fire, and the known gaps
 - **macOS (Apple Silicon): the Downfall's effects may not draw.** Apple's Metal shader compiler fails on its effects
   (`XPC_ERROR_CONNECTION_INTERRUPTED` in `Device::create_render_pipeline`), and the Nuke's can when it's the laser
   loaded as the game starts. The other lasers work. The fork's builds from `orbital-mod-api-9` on (so the
-  `orbital-mod-api-12` this release needs) stop the crash: a pass the driver can't build is skipped and tried again
+  `orbital-mod-api-13` this release needs) stop the crash: a pass the driver can't build is skipped and tried again
   later, so on those Macs the Downfall's strike may run without its visuals. The mod builds a laser's effects only once
   you're playing, and if the game closed while it built them, the next start loads the Plasma instead and says so in chat.
 - **Single player** (or hosting LAN). The world changes need a world the game itself runs, and the effects are drawn

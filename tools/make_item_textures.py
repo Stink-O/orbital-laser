@@ -507,13 +507,51 @@ CONVERGENCE_ICON = [     # the convergence: a gold beam down out of a rift, a re
     "JJJJJJJEEJJJJJJJ",
 ]
 
-GRIDS = {"convergence_icon": CONVERGENCE_ICON, "worldeater_icon": WORLDEATER_ICON, "carpetbomb_icon": CARPETBOMB_ICON, "supervolcano_icon": SUPERVOLCANO_ICON, "skybreak_icon": SKYBREAK_ICON, "tsunami_icon": TSUNAMI_ICON, "hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+EARTHQUAKE_ICON = [      # the earthquake: a block of land split by a fault, its right half slipped down and along, dust over the crack
+    "................",
+    "................",
+    ".....sS.........",
+    "....sSSs........",
+    "ttttttss........",
+    "TtTtTjS.........",
+    "jjjjjjl..tttttt.",
+    "jJjjjll.ttTtTtt.",
+    "lllljll.jjjjjjj.",
+    "lLllLll.jjJjjjj.",
+    "lllllLl.lllljll.",
+    "LlLlllL.lLllLll.",
+    "lllLlll.llllllL.",
+    "LLLLLLLLLlLlllL.",
+    "LLLLLLLLLLLLLLLL",
+    "................",
+]
+
+SIXSTARS_ICON = [        # the six stars: a white star of blocks, outlined, its edges burning rose and orange as it falls
+    "...........O.zO.",
+    "..........OzzO..",
+    ".......dd.zOO...",
+    "......dWWd.O....",
+    "......dWWd......",
+    ".dddddWWWWddddd.",
+    ".dWWWWWWWWWWWWd.",
+    "..dWWWWWWWWWWd..",
+    "...dWWWWWWWWd...",
+    "....dWWWWWWd....",
+    "....dWWWWWWd....",
+    "...dWWWddWWWd...",
+    "...dWWd..dWWd...",
+    "..dWWd....dWWd..",
+    "..ddd......ddd..",
+    "................",
+]
+
+GRIDS = {"sixstars_icon": SIXSTARS_ICON, "earthquake_icon": EARTHQUAKE_ICON, "convergence_icon": CONVERGENCE_ICON, "worldeater_icon": WORLDEATER_ICON, "carpetbomb_icon": CARPETBOMB_ICON, "supervolcano_icon": SUPERVOLCANO_ICON, "skybreak_icon": SKYBREAK_ICON, "tsunami_icon": TSUNAMI_ICON, "hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon", "tsunami_icon", "supervolcano_icon", "skybreak_icon", "carpetbomb_icon", "worldeater_icon", "convergence_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon", "tsunami_icon", "supervolcano_icon", "skybreak_icon", "carpetbomb_icon", "worldeater_icon", "convergence_icon", "earthquake_icon", "sixstars_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:

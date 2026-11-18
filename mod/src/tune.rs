@@ -37,6 +37,14 @@ pub static KNOBS: &[Knob] = &[
     Knob { laser: "convergence", key: "flash", default: 1.0, min: 0.0, max: 2.0, slot: Some(2), help: "the blast's flash (at once)" },
     Knob { laser: "convergence", key: "haze", default: 1.0, min: 0.0, max: 3.0, slot: Some(3), help: "the haze and glow in the air (at once)" },
     Knob { laser: "convergence", key: "dusk", default: 1.0, min: 0.0, max: 1.5, slot: Some(4), help: "how far the day goes out while the worlds fight (at once)" },
+    // the Earthquake: its plates and its push take effect on the next strike; the pass's and the warp's at once
+    Knob { laser: "earthquake", key: "reach", default: 160.0, min: 100.0, max: 220.0, slot: None, help: "the plates' zone's radius, blocks (next strike)" },
+    Knob { laser: "earthquake", key: "slip", default: 1.0, min: 0.3, max: 2.0, slot: None, help: "how far the plates slip along the faults, times (next strike)" },
+    Knob { laser: "earthquake", key: "heave", default: 1.0, min: 0.0, max: 2.0, slot: None, help: "how far the plates rise and drop, times (next strike)" },
+    Knob { laser: "earthquake", key: "pace", default: 1.0, min: 0.6, max: 1.6, slot: None, help: "how long each lurch takes, times (next strike)" },
+    Knob { laser: "earthquake", key: "knock", default: 1.0, min: 0.0, max: 3.0, slot: None, help: "the shocks' knockback, times (next strike)" },
+    Knob { laser: "earthquake", key: "jolt", default: 1.0, min: 0.0, max: 3.0, slot: None, help: "the camera jolts, times (next strike)" },
+    Knob { laser: "earthquake", key: "dust", default: 1.0, min: 0.0, max: 3.0, slot: Some(0), help: "the dust along the faults (at once)" },
 ];
 
 /// Shader slots in the block at the end of `mod_data` (keep strike.wgsl's TUNE_SLOTS in step).

@@ -1,6 +1,49 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0516); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0517); each release's notes are in [docs/releases](releases).
+
+## 0.5.17
+
+A new laser, **the Earthquake**. The ground splits open along a fault through the target with a trench of lava down it,
+the land on your side is thrust up into a cliff in lurches while the far side drops away, and it comes to rest moved for
+real: cliffs of banded rock up to about 90 blocks high over a lava canyon. You can ride the land up. It's on the wheel's
+fifth page and `/orbital earthquake`; on the fork it needs the new release `orbital-mod-api-13`. It isn't in the native
+version yet. See [The lasers](LASERS.md#the-earthquake).
+
+A second new laser, **the Six Stars**. A wanted level climbs to six stars at the top of the screen while the sky turns
+to a golden-hour sunset; the last star tears out of the screen, turns into a burning star the size of a hill and falls on
+the target. Its five points plough out across the land and it leaves a five-pointed star about 340 blocks tip to tip
+burnt into the ground. It's on the wheel's fifth page and `/orbital sixstars`; it plays natively too. See
+[The lasers](LASERS.md#the-six-stars).
+
+- **The native version brought up to date**, every laser played on regular Horizon for it (`native/SWEEP.md`). The Six
+  Stars, the Sky Breaks, the Carpet Bomb, the World Eater and the Convergence play natively; the Fold (its water through
+  the world warp) and the Earthquake (it needs calls upstream lacks) stay greyed out there.
+- **Native: built on upstream Horizon `4626921`**, which has the three fixes sent upstream for it: the sound output
+  reopened without stopping what plays, with a longer buffer
+  ([horizon-rust/horizon#15875](https://github.com/horizon-rust/horizon/pull/15875)); swapchain images waited for on
+  the CPU on NVIDIA under Linux, so no frame hangs the GPU on the compositor
+  ([horizon-rust/horizon#13885](https://github.com/horizon-rust/horizon/pull/13885)); forced chunks past 4,096 answered
+  from bitmaps instead of a scan of every one, the Supervolcano's slowdown
+  ([horizon-rust/horizon#15878](https://github.com/horizon-rust/horizon/pull/15878)). The launcher builds it with
+  horizon-mixins `5a64af9`.
+- **Native: a strike's forceloads are chunk tickets** in the native glue: upstream's `/forceload add` now waits on the
+  server thread for its chunks, and the Supervolcano's few hundred froze the game for half a minute.
+- **Native: big strikes no longer leave whole chunks standing in their craters.** Upstream takes at most 32 mod messages
+  from a player a server tick and drops the rest without a word, while the native glue sent up to 32 a client tick: with
+  the server behind during a big strike (the Planet Killer, the Supervolcano, the Nuke) much of a strike's world work
+  (block edits, land reads, forceloads) was thrown away. The glue now numbers its batches, the server half acknowledges
+  them, at most 30 are ever on their way, and one not acknowledged goes again; edit runs go packed (13 bytes instead of
+  25) so more fits a tick. Edits for a chunk not loaded yet (upstream's `edit_blocks` leaves those out) wait in the
+  server half until it and its neighbours are, for up to two minutes, its ticket kept meanwhile. The fork never had this
+  (its mod calls the world directly).
+- **Native: stereo sound files go in as mono.** The fork sums every sound file to mono and places it in the world;
+  upstream plays a stereo file direct, as OpenAL plays music (no distance, no direction). `native/package.py` writes
+  each stereo file as the same sum (the channels' mean, Vorbis q6), so a strike sounds as on the fork; it also keeps the
+  file under the registry's 64 MiB (the Convergence's and the World Eater's sounds took it to 73 MB).
+- The Supervolcano asks again for land that answered late instead of forgetting it, and the Sky Breaks waits a little
+  longer for the land under its island (both for slow servers; the fork plays as before).
+- The native download is `orbital-laser-native-vX.Y.Z.hnmod`; the game finds its content by the mod id.
 
 ## 0.5.16
 

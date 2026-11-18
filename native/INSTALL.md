@@ -1,13 +1,16 @@
-# Orbital Laser 0.5.14 on native Horizon: install
+# Orbital Laser 0.5.17 on native Horizon: install
 
-Orbital Laser 0.5.14 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
+Orbital Laser 0.5.17 as a native mod of upstream Horizon: no fork and no WebAssembly. The launcher compiles it into
 the game. Its code runs with full access to your computer, like any native mod, so only install it if you trust it.
 
 ## What you need
 
 - The Horizon launcher, 0.2.37 or newer ([playhorizon.dev](https://playhorizon.dev)), and a Horizon instance of its
   own (not the Orbital Laser build's game folder). Any installed release or Nightly will do: the mod is pinned to
-  upstream Horizon `89f236e3ef8e8b554bef507216b86ca90b552213`, and the launcher builds it on that commit.
+  upstream Horizon `4626921895df51521be64d485ee763412de2917c`, and the launcher builds it on that commit.
+  Newer Horizon (from 16 November) dropped the hooks the mod's world bending and screen effects use, so it can't move
+  to a newer Horizon until it's ported to the new mod API. A port is coming; until then it stays on that commit, and a
+  compatibility check against the newest Nightly may show it as broken there.
 - The first native build downloads the launcher's own Rust (1.99.1) and takes 20 to 30 minutes. Later builds are
   quicker. You don't need Rust installed yourself.
 
@@ -22,25 +25,27 @@ the game. Its code runs with full access to your computer, like any native mod, 
 
 ## The file
 
-`orbital.hnmod`: the native code and the content (items, models, textures, sounds) in one file. It goes in the
-instance's `horizon-native-mods/`. The launcher builds its code into the game, and the game reads its content from the
-same file.
+`orbital-laser-native-v0.5.17.hnmod`: the native code and the content (items, models, textures, sounds) in one file. It
+goes in the instance's `horizon-native-mods/` (the launcher's Mods page puts it there as `orbital.hnmod`; a copy put
+there by hand can keep its own name). The launcher builds its code into the game, and the game reads its content from
+the same file.
 
 **Coming from an earlier native test build?** Delete `orbital_laser.hnmod` from `horizon-native-mods/`, and
-`orbital-*.hmod` and `orbital-laser-native-*.hmod` from `horizon-mods/`. The new `orbital.hnmod` replaces them all, and
-the old ones build or load beside it.
+`orbital-*.hmod` and `orbital-laser-native-*.hmod` from `horizon-mods/`, and keep only one Orbital Laser `.hnmod` in
+`horizon-native-mods/` (an older `orbital.hnmod` or `orbital-laser-native-v*.hnmod`): the new file replaces them all, and
+old ones build or load beside it.
 
 ## Steps
 
 1. Close the game.
-2. Copy `orbital.hnmod` into the instance's `horizon-native-mods/` folder (make it if it isn't there). Or install
+2. Copy `orbital-laser-native-v0.5.17.hnmod` into the instance's `horizon-native-mods/` folder (make it if it isn't there). Or install
    **Orbital Laser** from the launcher's Mods page, which puts it there for you. The Instances page's **Open folder** opens
    the instance's folder; `horizon-launcher instance list` prints it.
 3. Turn it on in the Mods page (or check that `orbital` is on in the instance's `horizon-mods.txt`). On the
    **Native build** row pick **Release build** (`horizon-launcher settings native-profile release`): it builds more
    slowly, but the game runs noticeably faster than with the default Performance build.
 4. **The trust step (yours to run).** In the Mods page, the **Native build of {instance}** row shows **Not built** or
-   **Needs rebuild**. Press **Build**, read the red warning naming `orbital 0.5.14`, and choose
+   **Needs rebuild**. Press **Build**, read the red warning naming `orbital 0.5.17`, and choose
    **I trust these mods: build**. From a terminal, the same step is:
 
    ```bash
@@ -55,13 +60,23 @@ the old ones build or load beside it.
 
 ## Checking it worked
 
-- Options > Mods lists Orbital Laser 0.5.14.
+- Options > Mods lists Orbital Laser 0.5.17.
 - `/orbital` answers in chat, is white once typed and completes with Tab, and the wheel opens with R while you hold
   the Designator.
 - Fire one strike with terrain off first (`/orbital terrain off`). Strikes with terrain on are permanent, so only
   fire those in a throwaway world.
 
 ## Known issues
+
+- **The Fold and the Earthquake are greyed out** ("On the fork now, native soon"): the Fold's water can drop out
+  through its bending of the world on regular Horizon, and the Earthquake needs three calls only the fork has. Play
+  them on the fork version for now.
+- **A laser's first strike in a session can hitch** for a second or two (the Downfall about 8, the Sky Breaks about 12)
+  if fired straight after it is picked: its effects are still being prepared. Pick it, wait a few seconds, then fire.
+  The World Eater's effects are the biggest: the very first time on a computer, the game can freeze for about half a
+  minute as it fires; after that the graphics driver keeps them and it's a second or two.
+- **The sound can catch for a moment** when a strike stalls the game on Linux (Horizon opens its sound output again by
+  itself and the sounds go on).
 
 - **On Macs the Downfall's effects don't draw.** Apple's Metal compiler fails on its pass (the same on the Orbital
   Laser build of Horizon, [#3](https://github.com/Stink-O/orbital-laser/issues/3)): you get its land and sound, not its
@@ -74,4 +89,4 @@ the old ones build or load beside it.
 
 ## Removing it
 
-Remove `orbital.hnmod`, or turn the mod off, then rebuild (or switch the instance back to a plain Nightly).
+Remove the Orbital Laser `.hnmod` from `horizon-native-mods/`, or turn the mod off, then rebuild (or switch the instance back to a plain Nightly).

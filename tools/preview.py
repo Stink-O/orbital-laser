@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19, "convergence": 20}
+INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19, "convergence": 20, "earthquake": 21, "sixstars": 22}
 # the shader's file where it is not the laser's name
 SHADER = {"supervolcano": "volcano"}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
@@ -457,6 +457,16 @@ VIEWS = {
     "webcarry3": "cx=212.1 cy=-15 cz=74.5 lx=244.2 ly=-15 lz=112.8 flat=1 trees=1 fov=80",
     "webcarry4": "cx=265.7 cy=-9 cz=138.6 lx=294.9 ly=11.7 lz=173.5 flat=1 trees=1 fov=80",
     "webcarry5": "cx=291.1 cy=59.6 cz=169 lx=291.2 ly=109.6 lz=169.1 flat=1 trees=1 fov=80",
+    # the six stars (the player 300 blocks south of the target): from where they stand, looking at the sky over the
+    # target (the stars at the top right); looking up at where it hangs; from far off; from high over the crater
+    "ssplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "sslow": "cx=0 cy=67 cz=300 lx=0.5 ly=75 lz=0.5 flat=1 trees=1 fov=70 reach=300",
+    "ssup": "cx=0 cy=67 cz=300 lx=0.5 ly=420 lz=-140 flat=1 trees=1 fov=70 reach=300",
+    "ssfar": "cx=150 cy=100 cz=1000 lx=0.5 ly=150 lz=0.5 flat=1 trees=1 fov=50 reach=300",
+    # (towards the sunset's sun, seed 37: 40-odd degrees left of the target as the player looks)
+    "sssun": "cx=0 cy=67 cz=300 lx=-330 ly=110 lz=-60 flat=1 trees=1 fov=70 reach=300",
+    "ssover": "cx=0 cy=300 cz=230 lx=0.5 ly=60 lz=-30 flat=1 trees=1 fov=60 reach=300",
+    "ssaerial": "cx=0 cy=520 cz=420 lx=0.5 ly=60 lz=0.5 flat=1 trees=1 fov=60 reach=300",
     # the convergence (the player 300 blocks south of the target): from where they stand, looking up at the meeting
     # point; close in, looking up the columns at the rift; from 1,000 blocks off; from high over it
     "cvplayer": "cx=0 cy=67 cz=300 lx=0.5 ly=110 lz=0.5 flat=1 trees=1 fov=70 reach=300",
@@ -509,6 +519,20 @@ VIEWS = {
     # the ground 22 off, looking along one)
     "cvkair": "cx=34 cy=108 cz=40 lx=0.5 ly=66 lz=0.5 hills=10 fov=70 reach=60",
     "cvklow": "cx=6 cy=69.5 cz=22 lx=0.5 ly=64 lz=-10 hills=10 trees=1 fov=75 reach=25",
+    # the earthquake (the player 250 blocks south of the target; the preview has no world warp: only the pass's fault
+    # lines and jolt show): from where they stand, from 200 up over them, and straight down over the target
+    "eqplayer": "cx=0 cy=67 cz=250 lx=0.5 ly=64 lz=0.5 flat=1 trees=1 fov=70 reach=250",
+    "eqaerial": "cx=0 cy=260 cz=250 lx=0.5 ly=64 lz=0.5 flat=1 trees=1 fov=70 reach=250",
+    "eqtop": "cx=0.5 cy=420 cz=1 lx=0.5 ly=64 lz=0.5 flat=1 trees=1 fov=60 reach=250",
+    # (on the ground 60 blocks off the main fault, on its down side, looking along it; and on the up side 120 off it,
+    # where the climax's front passes, looking back at the fault)
+    "eqalong": "cx=75 cy=66 cz=170 lx=35 ly=70 lz=-120 flat=1 trees=1 fov=70 reach=250",
+    "eqfront": "cx=-118 cy=66.5 cz=10 lx=10 ly=70 lz=0 flat=1 trees=1 fov=75 reach=250",
+    # (close to the main fault's crack, a little up, looking along it toward the target)
+    "eqcrack": "cx=45 cy=72 cz=95 lx=0 ly=66 lz=-40 flat=1 trees=1 fov=70 reach=250",
+    # (on hills 30 high: from 200 up over the player, and low along the ground toward the fault)
+    "eqhill": "cx=0 cy=230 cz=300 lx=0.5 ly=64 lz=0.5 hills=30 trees=1 fov=70 reach=250",
+    "eqhilllow": "cx=60 cy=84 cz=210 lx=0.5 ly=66 lz=0.5 hills=30 trees=1 fov=70 reach=250",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -522,7 +546,9 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "skybreak": "sbplayer,sbfar,sbaerial",
                  "carpetbomb": "cpplayer,cpside,cpaerial",
                  "worldeater": "weplayer,wefar",
-                 "convergence": "cvplayer,cvup,cvfar,cvaerial"}
+                 "convergence": "cvplayer,cvup,cvfar,cvaerial",
+                 "earthquake": "eqplayer,eqaerial,eqtop",
+                 "sixstars": "ssplayer,ssup,ssaerial"}
 
 
 def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = ()) -> pathlib.Path:
@@ -531,12 +557,17 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars"):
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
         if laser == "worldeater":
             # (its path (with the constants we_path.rs gives: `cargo test we_wgsl_in_step` keeps this copy right), its
             # body, its own: mod/build.rs)
             own = (SHADERS / "worldeater_path.wgsl").read_text() + (SHADERS / "worldeater_body.wgsl").read_text() + own
+        if laser == "earthquake":
+            # (its plates, shared with its world warp, then its own: mod/build.rs)
+            # (its own file up to [eq stages], its dust, then its stages)
+            at = own.index("// ==== [eq stages]")
+            own = (SHADERS / "earthquake_plates.wgsl").read_text() + own[:at] + (SHADERS / "earthquake_dust.wgsl").read_text() + own[at:]
         if laser == "convergence":
             # (its own file up to [cv stages], its sky side, its ground side, its cracks, then its stages: mod/build.rs)
             at = own.index("// ==== [cv stages]")
@@ -555,6 +586,10 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
         if "// [lean pass]" in own:
             pre = "".join(l + "\n" for l in pre.splitlines() if l.strip() and not l.lstrip().startswith("//"))
             own = "".join(l + "\n" for l in own.splitlines() if l.strip() and not l.lstrip().startswith("//"))
+        # (the Earthquake's dust stood on the land where it lies: the preview has no world warp, so the plates' land does
+        # not move there; `--set eqmoved=1` stands it on the moved land as the game does)
+        if laser == "earthquake" and "eqmoved=1" not in sets:
+            own = own.replace("const EQD_STILL_LAND: bool = false;", "const EQD_STILL_LAND: bool = true;")
         # (the Rod's impact frames in another of their looks: `--set rdif=N`)
         rdif = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("rdif=")), None)
         if rdif is not None:
@@ -615,6 +650,15 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
             lines = [ln for ln in path.read_text().splitlines() if ln.split()[:1] != ["1"]]
             path.write_text("\n".join(lines + [f"1 {float(seam)}"]) + "\n")
         return dict(os.environ, PREVIEW_DATA=str(path))
+    if laser == "earthquake":
+        # (the table as strike/earthquake.rs gives it: the plates' make, the jolts)
+        seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
+        path = (out / "data.txt").resolve()
+        hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
+        env = dict(os.environ, CB_SEED=seed, CB_OUT=str(path), PL_ME=f"0,65,{pl_reach}", PL_HILLS=hills)
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "eq_write_table", "--", "--ignored"],
+                       cwd=ROOT / "mod", env=env, check=True, capture_output=True)
+        return dict(os.environ, PREVIEW_DATA=str(path))
     if laser == "worldeater":
         # (the path's table, as strike/worldeater.rs gives it: `--set weplan=3` the three-arch test chain, `wedebug=1`
         # Rust's own samples of the path for the pass to check its centreline against: worldeater.wgsl's we_debug)
@@ -629,7 +673,7 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "we_write_table", "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
-    if laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb"):
+    if laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "sixstars"):
         seed = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("seed=")), "37")
         path = (out / "data.txt").resolve()
         hills = next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")
@@ -653,7 +697,7 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
         if laser == "skybreak" and "terrain=0" in sets:
             # (light and sound only: the panes stay drawn, never laid)
             env["SB_TERRAIN"] = "0"
-        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table", "supervolcano": "vc_write_table", "tsunami": "ts_write_table", "skybreak": "sb_write_table", "carpetbomb": "cp_write_table"}.get(laser, "pl_write_table")
+        test = {"nuke": "nk_write_table", "rod": "rd_write_table", "supercell": "sc_write_table", "hurricane": "hu_write_table", "supervolcano": "vc_write_table", "tsunami": "ts_write_table", "skybreak": "sb_write_table", "carpetbomb": "cp_write_table", "sixstars": "ss_write_table"}.get(laser, "pl_write_table")
         subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", test, "--", "--ignored"],
                        cwd=ROOT / "mod", env=env, check=True, capture_output=True)
         if laser == "skybreak":
@@ -734,7 +778,7 @@ def main() -> int:
         vox = ROOT / "dist" / "preview" / "fold_land.txt"
         if vox.exists():
             env_vox = str(vox)
-    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"):
+    if a.laser in ("payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars"):
         # (where the player stood as it fired, in the params the pass reads it from: payload.wgsl's `me`)
         common += ["mode=0", "style=65", "reach=300"]
     if a.laser == "skybreak":
@@ -747,7 +791,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars") else None
     env = dict(env or os.environ)
     if a.laser == "fold" and (ROOT / "dist" / "preview" / "fold_land.txt").exists():
         env["PREVIEW_VOXELS"] = str(ROOT / "dist" / "preview" / "fold_land.txt")
@@ -781,7 +825,7 @@ def main() -> int:
         lock = ["flock", os.environ["PREVIEW_LOCK"]] if os.environ.get("PREVIEW_LOCK") else []
         # (the World Eater's DETAIL tier, params[15] = mod_params[3].w, worldeater_path.wgsl's we_tier: 2 FULL, 1 FAST,
         # as the game gives it; `--set colour=0` for PERFORMANCE)
-        tier = [f"colour={2 if q == 'full' else 1}"] if a.laser in ("worldeater", "convergence") and not any(kv.startswith("colour=") for kv in a.set) else []
+        tier = [f"colour={2 if q == 'full' else 1}"] if a.laser in ("worldeater", "convergence", "earthquake") and not any(kv.startswith("colour=") for kv in a.set) else []
         r = subprocess.run([*lock, str(exe), str(shader), str(qout), *common, *tier, *shots], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             print(r.stderr, file=sys.stderr)

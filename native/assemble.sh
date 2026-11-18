@@ -28,13 +28,17 @@ rm -rf "$tmp"
 # A .hmod holds only .rs and .toml files under mixins/<id>/, besides a folder's data/ (docs/api/mod-files.md): the
 # shaders and the built passes move under engine/data/, and what includes them follows.
 mkdir -p "$E/data/gen"; mv "$E/shaders" "$E/data/shaders"; mv "$E"/gen/*.wgsl "$E/data/gen/"
-sed -i -E -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' -e 's|include_str!\("(pass_[a-z_]+\.wgsl)"|include_str!("../data/gen/\1"|g' "$E/gen/passes.rs"
+sed -i -E -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' -e 's|include_str!\("([a-z0-9_]+\.wgsl)"|include_str!("../data/gen/\1"|g' "$E/gen/passes.rs"
 # (the mod's own shader includes: strike/*.rs two folders up, lib.rs one)
 find "$E/src" -name '*.rs' -exec sed -i -E -e 's|include_str!\("\.\./\.\./shaders/|include_str!("../../data/shaders/|g' -e 's|include_str!\("\.\./shaders/|include_str!("../data/shaders/|g' {} +
 find "$E/src" -name '*.rs' -exec sed -i -E -e 's|include_bytes!\("\.\./\.\./assets/|include_bytes!("../../data/assets/|g' {} +
 if grep -rnE 'include_bytes!\("[^"]*"' "$E/src" | grep -v '/data/'; then echo "a binary include left outside data/" >&2; exit 1; fi
 if grep -rnE 'include_str!\("[^"]*\.wgsl"' "$E/src" "$E/gen" | grep -v '/data/'; then echo "a shader include left outside data/" >&2; exit 1; fi
 cp "$B/engine-shim/horizon_sdk.rs" "$E/src/horizon_sdk.rs"
+# sdk.rs wraps the SDK's world calls in a `world` of its own, which lib.rs imports at the crate root. Here the crate is
+# its own horizon_mod_sdk, so that `world` would shadow the SDK's and the wrapper would import itself: name the SDK's
+# module there directly.
+sed -i 's/horizon_mod_sdk::/crate::horizon_sdk::/g' "$E/src/sdk.rs"
 # After lib.rs's leading //! doc comment: the SDK at the crate root, named as the WebAssembly SDK was.
 python3 - "$E/src/lib.rs" <<'PY'
 import sys
@@ -53,7 +57,7 @@ PY
 cat > "$E/Cargo.toml" <<'TOML'
 [package]
 name = "orbital-laser"
-version = "0.5.14"
+version = "0.5.17"
 edition = "2024"
 description = "Orbital Laser's engine for the native build: the mod's code, unchanged, on a native Horizon mod SDK."
 license = "MIT"

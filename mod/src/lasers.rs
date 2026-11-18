@@ -688,7 +688,62 @@ pub const CONVERGENCE: Laser = Laser {
     particle_b: "particle minecraft:end_rod {x} {y} {z} {r} 2 {r} 0.05 8 force",
 };
 
-pub const LASERS: [&Laser; 21] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER, &CONVERGENCE];
+/// The Earthquake, planned in `strike::earthquake_plan` (strike/earthquake.rs; its plates shaders/earthquake_plates.wgsl,
+/// moved through the world warp shaders/earthquake_warp.wgsl; the pass shaders/earthquake.wgsl). No beam: the land round
+/// the target splits along a fault and one side is thrust up into a cliff in lurches, the other dropping into a canyon,
+/// and comes to rest moved. The crater fields below
+/// are only what the shared tests read.
+pub const EARTHQUAKE: Laser = Laser {
+    key: "earthquake",
+    index: 21,
+    title: "EARTHQUAKE",
+    rgb: 0xC89A5A,
+    blurb: "The land splits along a fault and one side is thrust up into a cliff, step by step.",
+    icon_model: "orbital:earthquake_icon",
+    length: 50.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:stone", 1.0)],
+    bowl_floor: ("minecraft:gravel", 0.0, "minecraft:stone"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:ash {x} {y} {z} {r} 2 {r} 0.05 8 force",
+};
+
+/// The Six Stars, planned in `strike::sixstars_plan` (strike/sixstars.rs, built on the Rod's land and the Payload's
+/// table; the pass shaders/sixstars.wgsl). A wanted level climbs to six stars on the screen, the last one tears out of
+/// it as a burning star the size of a hill and comes down on the target; its points plough out and leave a five-pointed
+/// star burnt into the land. The crater fields below are only what the shared tests read: its land is planned there.
+pub const SIX_STARS: Laser = Laser {
+    key: "sixstars",
+    index: 22,
+    title: "SIX STARS",
+    rgb: 0xF0A0D0,
+    blurb: "Six stars climb. The last one leaves the screen and lands. Leaves a star burnt into the land.",
+    icon_model: "orbital:sixstars_icon",
+    length: 58.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 10,
+    bowl_d: 2,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:blackstone", 1.0)],
+    bowl_floor: ("minecraft:basalt", 0.0, "minecraft:blackstone"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:flame {x} {y} {z} {r} 2 {r} 0.05 8 force",
+};
+
+pub const LASERS: [&Laser; 23] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER, &CONVERGENCE, &EARTHQUAKE, &SIX_STARS];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

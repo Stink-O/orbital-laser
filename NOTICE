@@ -12,12 +12,18 @@ Original material
 orbital-laser-shader/   Written for this project.
 orbital-sounds/         All the sounds are synthesized from noise and tones by the scripts in tools/ (synth_sounds.py,
                         soundlib.py and the sounds_*.py files). They contain no samples from any recording, but for
-                        three: the Sky Breaks' shudder (orbital-sounds/assets/orbital/sounds/skybreak/shudder.ogg), whose
+                        these: the Sky Breaks' shudder (orbital-sounds/assets/orbital/sounds/skybreak/shudder.ogg), whose
                         glass is slices of the CC0 recordings listed below, and the World Eater's burst and ground
                         (orbital-sounds/assets/orbital/sounds/worldeater/breach_burst_*.ogg and ground_*.ogg), built
                         from the CC0 recordings listed below over synthesized layers, and the Convergence's sounds
                         (orbital-sounds/assets/orbital/sounds/convergence/), whose fire, air and voices are cut
-                        from the CC0 recordings listed below, over synthesized layers (its explosions synthesized).
+                        from the CC0 recordings listed below, over synthesized layers (its explosions synthesized), and the Earthquake's earlier take
+                        (orbital-sounds/assets/orbital/sounds/earthquake/, the files without the syn_ prefix), whose breaking rock, trees and water are shaped from the
+                        CC0 recordings listed below over synthesized sub, and the Earthquake's syn_*.ogg, whose rock
+                        breaks are cut from two of those recordings (below) over synthesized layers,
+                        and Six Stars' sounds (orbital-sounds/assets/orbital/sounds/sixstars/), whose breaking, burning,
+                        rolling and rushing layers are cut from the CC0 recordings listed below, over synthesized
+                        layers.
 docs/branding/          The logo, icon and social preview are drawn as vector paths by tools/make_branding.py.
 docs/*.jpg              Screenshots taken in Horizon with this shader pack. They show Minecraft terrain rendered by
                         Horizon; they are included to show the shader's output.
@@ -104,6 +110,71 @@ orbital-sounds/assets/orbital/sounds/convergence/*.ogg
   before the launch, the rift's thunder and the top of the blast (its rolls);
   "Closeup Thunder Strike 01" by loganzsound (https://freesound.org/s/840628/), the rift's mass settling as it opens,
   the clash's air, the rift's thunder, and the top of the hit in the air and of the blast (its rolls).
+
+orbital-sounds/assets/orbital/sounds/earthquake/syn_*.ogg
+  The Earthquake's sounds (`/orbital quakesound synth`), made by tools/sounds_earthquake.py: synthesized, but for the
+  rock breaking, which is breaks cut from two recordings from Freesound, each dedicated to the public domain (CC0 1.0)
+  by its author (tools/sound_sources/earthquake/, as the MP3 previews Freesound serves): "Rock destroy" by Bertsz
+  (https://freesound.org/s/524312/) and "RockCrack03" by falcospizaetus (https://freesound.org/s/489905/).
+
+orbital-sounds/assets/orbital/sounds/earthquake/*.ogg (all but syn_*.ogg)
+  The Earthquake's earlier take (`/orbital quakesound real`): its rock tearing, rock grinding on rock, falling rock and scree, trees going over and water pouring
+  hold eighteen recordings from Freesound, each dedicated to the public domain (CC0 1.0) by its author, slowed,
+  low-passed, re-enveloped and layered by tools/sounds_earthquake_rec.py over synthesized sub and air (the recordings
+  themselves are not included; the script lists the seconds of each it uses):
+  "RockCrack03" by falcospizaetus (https://freesound.org/s/489905/), "Rock destroy" by Bertsz
+  (https://freesound.org/s/524312/), "S41-31 Misc. crashes for earthquake; or general destruction" by craigsmith
+  (https://freesound.org/s/675846/) and "Cracking Earthquake (cracking soil, cracking stone)" by uagadugu
+  (https://freesound.org/s/222521/), the rock tearing;
+  "Stone Slab Door Grinding - Heavy Rock Scrape" by NahuelMartinez (https://freesound.org/s/844329/), "Stone slab.wav"
+  by Scottrex05 (https://freesound.org/s/593489/), "Rock sliding" by Throndronis (https://freesound.org/s/799521/) and
+  "DéplacementRoche.wav" by davidou (https://freesound.org/s/88496/), the rock grinding;
+  "S33-29 Boulders fall down mountain and crash explosively" (https://freesound.org/s/675733/), "S33-22 Boulders
+  crashing down mountain (two speeds)" (https://freesound.org/s/675732/), "S10-20 Heavy stone falling onto stone"
+  (https://freesound.org/s/675741/) and "S32-12 Landslide starts and stops" (https://freesound.org/s/675735/) by
+  craigsmith, the cliff letting go, the blows' stone and the falling rock;
+  "G43-11-Earth Quake.wav" (https://freesound.org/s/438690/) and "R29-03-Long Rumble for Earthquake or Explosion"
+  (https://freesound.org/s/483287/) by craigsmith, the rumble and the blows' body;
+  "Big Tree Fall in Forest" by Kinoton (https://freesound.org/s/494071/), "Tall dead tree splintering then falling to
+  ground" by ozymandias37 (https://freesound.org/s/869103/) and "G26-24-Tree Crashes.wav" by craigsmith
+  (https://freesound.org/s/438343/), the trees;
+  "Rushing Waterfall (Aira Force)" by Colonnades (https://freesound.org/s/760050/), the water.
+
+orbital-sounds/assets/orbital/sounds/sixstars/*.ogg
+  Six Stars' recorded layers hold sixteen recordings from Freesound, each dedicated to the public domain (CC0 1.0) by
+  its author, cut, slowed, filtered and re-enveloped over synthesized layers (the booms, the stars' blooms, the far
+  sirens, the bed's drones, the glass's ring, the swell under the burning star, the blast's roar) by
+  tools/sounds_sixstars.py (the recordings themselves are not included). Two more recordings of real explosions were
+  measured for the blast's octave levels and are not in any file: "R28-38-Eleven Large Explosions.wav" by craigsmith
+  (https://freesound.org/s/483286/) and "huge explosion in distance.wav" by SuperPhat
+  (https://freesound.org/s/417691/). Each recording and where it is heard:
+  "Dynamite explosion in the mountain" by felix.blume (https://freesound.org/s/251401/), the blast's knock;
+  "Earthquake **audible only with appropriate speakers**" by MBARI_MARS (https://freesound.org/s/369485/), the shock
+  through the ground;
+  "Rocket Launch Rumble (Geofon recording)" by felix.blume (https://freesound.org/s/613617/), the ground's rumble under
+  the climb and the aftermath;
+  "merrimack-st-demolition.aif" by alienistcog (https://freesound.org/s/125937/), the blast's second blow;
+  "Closeup Thunder Strike 01" by loganzsound (https://freesound.org/s/840628/), the brightness in the blast's roar;
+  "Thunder big crack explosive close ms 77mel 190903.flac" by TRP (https://freesound.org/s/574412/), the blast's
+  rolls;
+  "Extremely distant thunder" by supercell10 (https://freesound.org/s/393634/), the sky under the climb and the
+  aftermath's rolls;
+  "Seamless Rocket Booster Roar & Crackle" by NickTimesAudio (https://freesound.org/s/494827/), the falling star's
+  roar;
+  "Flamethrower.wav" by sidequesting (https://freesound.org/s/494085/), the burning pieces the falling star sheds;
+  "Fire -massive no cracking.wav" by Aegersum (https://freesound.org/s/387924/), the rush of air as the star flies off
+  into the sky, the low body and first breath of fire as it hangs burning, the falling star's fire, the blast's
+  fireball and the crater burning after;
+  "G43-04-AvalancheRockslide.wav" by craigsmith (https://freesound.org/s/438683/), the blast's dust wall and the points
+  ploughing;
+  "S24-18 Landslide.wav" by craigsmith (https://freesound.org/s/675736/) and "Soil Slide" by NeoSpica
+  (https://freesound.org/s/426174/), the points ploughing;
+  "R28-12-Glass Windows Break.wav" by craigsmith (https://freesound.org/s/487138/), the glass pop as the star tears
+  loose and the glass ringing on after it (the recording is in tools/sound_sources/skybreak/);
+  "Whoosh - Long Bamboo stick - OS ST 13" by Sadiquecat (https://freesound.org/s/855844/), the air pulled away after
+  that pop;
+  "Woosh (stick swung in the air)" by Dalesome (https://freesound.org/s/352719/), the whoosh as the star lifts away
+  into the sky.
 
 tools/bake_hand.py's source mesh
   The Sky Breaks' arm and hand are sculpted from MakeHuman's base mesh (base.obj, default.mhskel, default_weights.mhw),

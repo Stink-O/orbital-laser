@@ -44,8 +44,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > [!IMPORTANT]
 > **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: install it from
 > the launcher's Mods page. The [fork version](#getting-started) runs on the Orbital Laser build of Horizon and has
-> every laser; the Fold, the Sky Breaks, the Carpet Bomb, the World Eater and the Convergence are only in the fork
-> version for now. Either way you need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
+> every laser; the Fold and the Earthquake are only in the fork version for now. Either way you need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
 > repository or the downloads. [Setup](docs/SETUP.md) has every step and option.
 
 > [!WARNING]
@@ -53,7 +52,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > a user (the fork built from source); on macOS the Downfall's effects may not draw. The ready-built Horizon is for
 > Linux x86-64, with a Windows test build that has only been run under Wine so far.
 
-**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.16](#new-in-0516) · [Fork version](#getting-started) ·
+**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.17](#new-in-0517) · [Fork version](#getting-started) ·
 [How to play](#how-to-play) · [The lasers](#the-lasers) · [If something goes wrong](#if-something-goes-wrong) ·
 [Credits and licence](#credits-and-licence)
 
@@ -80,23 +79,36 @@ A native mod isn't sandboxed: its code is built into the game and runs with full
 it if you trust it. To update, installing the file by hand and what isn't in the native version yet:
 [Setup](docs/SETUP.md#native-version-regular-horizon).
 
-## New in 0.5.16
+## New in 0.5.17
 
-A new laser, **the Convergence**. The Nether breaks up out of the ground and the Aether down out of a rift in the sky,
-and a column of fire and a column of light fight over the target until the light drives the meeting point into the
-ground in one huge blast. It leaves a crater about 170 across, half Nether and half pale stone and moss with a seam of
-obsidian between them, and a few small islands of the Aether hanging in the sky over it. It's on the wheel's fifth
-page and `/orbital convergence`; on the fork it needs the release `orbital-mod-api-12` (no new fork release). It isn't
-in the native version (`orbital.hnmod`) yet. [More on the Convergence](docs/LASERS.md#the-convergence).
+A new laser, **the Earthquake**. No beam: the ground splits open along a fault through the target, a trench of lava
+opening down it, and over twenty seconds the land on your side is thrust up into a cliff in lurches while the far side
+drops away, trees going over and slabs of the low edge breaking off into the lava. It comes to rest moved for real:
+cliffs of banded rock up to about 90 blocks high along the fault, a lava canyon at their foot and scree heaped under
+every step. If you stand on your side as it fires, you ride the land up. It's on the wheel's fifth page and
+`/orbital earthquake`; on the fork it needs the new release `orbital-mod-api-13`. It isn't in the native version
+(`orbital-laser-native-v0.5.17.hnmod`) yet. [More on the Earthquake](docs/LASERS.md#the-earthquake).
 
-**Photosensitivity:** its blast at 26 seconds opens with a fifth of a second of hard full-screen cuts in black, white
-and the two sides' colours, then a white flash (`/orbital impactframes off`, or OFF on the wheel's IMPACT FX row,
-leaves them out); the columns meeting at 13 seconds is a short bright flash; the camera jolts at each surge and hard
-at the blast.
+**Motion:** the camera jolts at each heave and hard at the climax, and the land you stand on moves under you for about
+fifteen seconds.
 
-- **Snow no longer hangs in the air** where a strike clears the leaves and plants it lay on (the Crystal Bloom, the
-  Sinkhole, the Payload, the Nuke, the Rod from God, the Fold, the Carpet Bomb and the Convergence; not yet the World
-  Eater).
+A second new laser, **the Six Stars**. A wanted level climbs to six stars at the top of your screen, a far siren joining
+with each one, while the whole sky turns to a hazy golden-hour sunset and the sun swells. When the sixth lights, the
+last star tears out of the screen, turns into a burning star the size of a hill hanging over the target, and falls. It
+strikes in a dirty fireball, its five points break off and plough out across the land, and it leaves a five-pointed
+star about 340 blocks tip to tip burnt into the ground, lava in its cracks and the forest flattened round it. It's on
+the wheel's fifth page and `/orbital sixstars`, and it plays in the native version too.
+[More on the Six Stars](docs/LASERS.md#the-six-stars).
+
+**Photosensitivity:** the sun flares on each star, the stars flash, and the impact is a bright flash
+(`/orbital impactframes off`, or SOFT on the wheel's FLASHES row, softens them); the camera jolts at the impact.
+
+The native version catches up with the fork. Every laser but the Fold and the Earthquake now plays on regular Horizon:
+the Six Stars, the Sky Breaks, the Carpet Bomb, the World Eater and the Convergence included. It's built on a newer Horizon with three
+fixes I sent upstream: the sound keeps going through a heavy strike, no frames hang on NVIDIA cards on Linux, and the
+Supervolcano no longer drags the world. Big strikes no longer leave whole chunks standing in their craters, and the
+strikes' sounds come from the strike and fade with distance as on the fork. The download is now
+`orbital-laser-native-v0.5.17.hnmod`. [All the changes](docs/CHANGES.md#0517).
 
 Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
@@ -104,7 +116,7 @@ Earlier versions: [docs/CHANGES.md](docs/CHANGES.md).
 
 The fork version, on the Orbital Laser build of Horizon. On Windows or macOS, see [Setup](docs/SETUP.md#fork-version).
 
-1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-12` or newer). Download
+1. **Get the Orbital Laser build of Horizon** (`orbital-mod-api-13` or newer). Download
    `horizon-orbital-linux-x86_64.tar.gz` from [Stink-O/horizon releases](https://github.com/Stink-O/horizon/releases),
    unpack it to `~/horizon-orbital` and make Horizon's prepared resources once from your own Minecraft 26.3:
 
@@ -114,7 +126,7 @@ The fork version, on the Orbital Laser build of Horizon. On Windows or macOS, se
    ./horizon-prepare sounds
    ```
 
-2. **Install the mod.** Download `orbital-laser-v0.5.16.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.17.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run
    `python3 install.py`.
 3. **Play.** From the same folder, run `./play.sh` (a creative test world called OrbitalTest) or `./play.sh MyWorld`
@@ -165,7 +177,7 @@ the Tsunami or the World Eater, and every command: [Playing](docs/PLAYING.md).
 
 ## The lasers
 
-Twenty-one lasers, five to a page of the wheel. Each name links to its full description.
+Twenty-three lasers, five to a page of the wheel. Each name links to its full description.
 
 | | |
 |---|---|
@@ -186,15 +198,17 @@ Twenty-one lasers, five to a page of the wheel. Each name links to its full desc
 | <img alt="The wall close to, nearly black, long streaks of foam drawn up its face and a boiling brown foot on the land" width="240" src="docs/46-tsunami-wall.jpg"> | **[Tsunami](docs/LASERS.md#tsunami)**: a wall of water 320 blocks high comes in over the land and rolls over you. |
 | <img alt="The whole world on the walls of a tube, a hole of stars in its roof" width="240" src="docs/50-fold-tube.jpg"> | **[The Fold](docs/LASERS.md#the-fold)** (fork only): a drop of liquid metal goes into the land and folds the world up round you. |
 | <img alt="The column at sunset, lightning down through it and plates of crust hanging in the air" width="240" src="docs/55-supervolcano-column.jpg"> | **[Supervolcano](docs/LASERS.md#supervolcano)**: the land erupts and falls into a caldera about 560 across. |
-| <img alt="A huge eye looking through the black hole in the cracked sky, broken panes round it, one falling" width="240" src="docs/59-skybreak-eye.jpg"> | **[The Sky Breaks](docs/LASERS.md#the-sky-breaks)** (fork only): a fist punches through the sky, an eye looks through, and panes of sky fall into the land. |
-| <img alt="The blasts walking in across the land" width="240" src="docs/64-carpetbomb-run.jpg"> | **[The Carpet Bomb](docs/LASERS.md#the-carpet-bomb)** (fork only): a bomber walks a line of thirteen blasts across the land towards you. |
-| <img alt="The worm's body arched over the jungle, diving back into the land" width="240" src="docs/68-worldeater-arch.jpg"> | **[The World Eater](docs/LASERS.md#the-world-eater)** (fork only): a worm the size of a mountain bursts out of the land and comes after you. |
-| <img alt="The column of fire and the column of light meeting in the air over the target" width="240" src="docs/73-convergence-clash.jpg"> | **[The Convergence](docs/LASERS.md#the-convergence)** (fork only): the Nether and the Aether fight over the target and tear the land in two. |
+| <img alt="A huge eye looking through the black hole in the cracked sky, broken panes round it, one falling" width="240" src="docs/59-skybreak-eye.jpg"> | **[The Sky Breaks](docs/LASERS.md#the-sky-breaks)**: a fist punches through the sky, an eye looks through, and panes of sky fall into the land. |
+| <img alt="The blasts walking in across the land" width="240" src="docs/64-carpetbomb-run.jpg"> | **[The Carpet Bomb](docs/LASERS.md#the-carpet-bomb)**: a bomber walks a line of thirteen blasts across the land towards you. |
+| <img alt="The worm's body arched over the jungle, diving back into the land" width="240" src="docs/68-worldeater-arch.jpg"> | **[The World Eater](docs/LASERS.md#the-world-eater)**: a worm the size of a mountain bursts out of the land and comes after you. |
+| <img alt="The column of fire and the column of light meeting in the air over the target" width="240" src="docs/73-convergence-clash.jpg"> | **[The Convergence](docs/LASERS.md#the-convergence)**: the Nether and the Aether fight over the target and tear the land in two. |
+| <img alt="The land torn open along the fault, one side thrust up into a cliff over a trench of lava" width="240" src="docs/78-earthquake-cliff.jpg"> | **[The Earthquake](docs/LASERS.md#the-earthquake)** (fork only): the land splits along a fault and your side is thrust up into a cliff over a canyon of lava. |
+| <img alt="A five-pointed star burnt into the land, lava in its cracks, the forest flattened round it" width="240" src="docs/80-sixstars-crater.jpg"> | **[The Six Stars](docs/LASERS.md#the-six-stars)**: a wanted level climbs to six stars, the last one tears out of the screen as a burning star the size of a hill and lands, leaving a star burnt into the land. |
 
 ## If something goes wrong
 
 - **No wheel, no `/orbital` command, or Options → Mods says *capability world is for server mods*.** That's stock
-  Horizon or an older fork build: start the game with `./play.sh` on `orbital-mod-api-12` or newer. On
+  Horizon or an older fork build: start the game with `./play.sh` on `orbital-mod-api-13` or newer. On
   **Options → Mods**, Orbital Laser's row says why if it stopped.
 - **`NO TARGET IN RANGE`.** You're aiming at the sky, too far, or at unloaded chunks.
 - **The designator only clicks.** A strike is already under way; wait for it, or end it with `/orbital stop`.

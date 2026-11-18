@@ -1,10 +1,10 @@
 [mod]
 id = "orbital"
-version = "0.5.14"
+version = "0.5.17"
 priority = 100
 
 [compatibility]
-horizon_revision = "89f236e3ef8e8b554bef507216b86ca90b552213"
+horizon_revision = "4626921895df51521be64d485ee763412de2917c"
 
 # The mod's code, unchanged, on a native build of its SDK (engine/src/horizon_sdk.rs).
 [[crate]]

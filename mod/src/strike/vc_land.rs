@@ -69,6 +69,9 @@ const VC_A_TICK: usize = 12;
 const VC_FLIGHT: usize = 10;
 /// When the chunks past the read are asked after.
 const VC_FAR_ASK: f32 = 44.0;
+/// How long a re-read of the chunks not loaded waits for its answer before they are asked again (a native build's
+/// server, running behind under the forceloads, can take seconds).
+const VC_RETRY: f32 = 5.0;
 /// A chunk's blocks inside the ring, for the pace.
 const VC_COL: f64 = 118.0;
 /// What the work of a column is reckoned at, in instructions, besides what `Blocks` counts of its runs.
@@ -1291,7 +1294,10 @@ struct Work {
     asked: usize,
     taken: usize,
     missing: Missing,
-    retry: Option<(u32, f32)>,
+    /// The re-read out (its tag, when it was asked) and the chunks it asked after, put back on the list if it isn't
+    /// answered in time: on a native build a server running behind answers late, and the chunks a late answer would
+    /// have brought were never asked again, left uncarved.
+    retry: Option<(u32, f32, Vec<(i32, i32)>)>,
     /// The chunks' corners, by when they are due.
     chunks: Vec<(f32, i32, i32)>,
     next: usize,
@@ -1503,18 +1509,27 @@ fn vc_work(q: &mut Plan, w: Rc<RefCell<Work>>, now: f32) {
         }
         // (what the world had not loaded asked again, in lots, while there is time)
         if wk.taken == wk.tags.len() && now < VC_COLLAPSE + 2.0 {
-            if let Some((tag, since)) = wk.retry {
+            if let Some((tag, since, _)) = &wk.retry {
+                let (tag, since) = (*tag, *since);
                 if let Some(a) = crate::columns::take(tag) {
                     take_in(&mut wk.cols, &mut wk.missing, &a, bx, bz);
                     wk.retry = None;
-                } else if now > since + 3.0 {
-                    wk.retry = None;
+                } else if now > since + VC_RETRY {
+                    // (not answered in time: its chunks back on the list, to be asked again)
+                    if let Some((_, _, chunks)) = wk.retry.take() {
+                        crate::meter::spend(60 * chunks.len() as u64);
+                        for (cx, cz) in chunks {
+                            wk.missing.add(cx * 16, cz * 16, bx, bz);
+                        }
+                    }
                 }
             } else if !wk.missing.list.is_empty() {
                 let cols = wk.missing.take(&wk.cols, bx, bz, 6000);
+                let mut chunks: Vec<(i32, i32)> = cols.iter().map(|&(x, z)| (x >> 4, z >> 4)).collect();
+                chunks.dedup();
                 let tag = crate::columns::new_tag();
                 q.ev.push((now, Act::Read { tag, columns: cols, below: VC_BELOW, above: VC_ABOVE }));
-                wk.retry = Some((tag, now));
+                wk.retry = Some((tag, now, chunks));
             }
         }
         if now >= VC_COLLAPSE + 2.0 && !wk.said {

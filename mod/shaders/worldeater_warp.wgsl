@@ -114,8 +114,12 @@ fn world_fragment(f: Fragment) -> Painted {
     // (the face's way up, from how its position changes across the screen: worked out first, while every pixel of the
     // face is still running)
     let up = abs(normalize(cross(dpdx(f.home), dpdy(f.home)) + vec3<f32>(0.0, 1.0e-6, 0.0)).y);
-    // (as the game's own fragments: faces cut, and those no light reaches, left out)
-    if (f.cut > 0.0 || (f.light.x < 0.5 && f.light.y < 0.5)) {
+    // (faces cut left out, and the backs of faces: the warp's pipelines cull none, and the back of a face lies in the
+    // plane of another's front (a plant's two sides, two leaf blocks' shared faces, water's underside), so drawn both
+    // they flicker through each other; nothing here is moved, so a back is one the game would have left out. The faces
+    // no light reaches are kept, unlike the fork's default for a warp: the land is never lifted off its caves, and the
+    // floor of water over 15 deep has no light either, so the caves under a lake showed through it)
+    if (f.cut > 0.0 || !f.front) {
         return Painted(vec4<f32>(0.0, 0.0, 0.0, -1.0), 1.0);
     }
     let plain = sprite(f.uv, f.layer) * f.color;

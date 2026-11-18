@@ -87,6 +87,16 @@ fn crease_button(k: usize) -> Rect {
     let x = -w / 2.0 + CREASE_LABEL_W + CREASE_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
     Rect { x, y: ROW_Y, w: CREASE_W[k], h: BTN_H }
 }
+/// The Six Stars' flashes' row: its label, then FULL and SOFT (`/orbital impactframes on|off`: the sun's flare on each
+/// beat, the stars' flashes and the impact's flash softened).
+const FLASHES: [&str; 2] = ["FULL", "SOFT"];
+const FLASH_LABEL_W: f32 = 50.0;
+const FLASH_W: [f32; 2] = [40.0, 40.0];
+fn flash_button(k: usize) -> Rect {
+    let w = FLASH_LABEL_W + FLASH_W.iter().sum::<f32>() + BTN_GAP;
+    let x = -w / 2.0 + FLASH_LABEL_W + FLASH_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
+    Rect { x, y: ROW_Y, w: FLASH_W[k], h: BTN_H }
+}
 fn impact_button(k: usize) -> Rect {
     let w = IMPACT_LABEL_W + IMPACT_W.iter().sum::<f32>() + BTN_GAP * 3.0;
     let x = -w / 2.0 + IMPACT_LABEL_W + IMPACT_W[..k].iter().sum::<f32>() + BTN_GAP * k as f32;
@@ -112,6 +122,8 @@ pub enum Spot {
     Quality,
     /// The Rod's impact frames' row: 0 on, 1 off.
     Impact(usize),
+    /// The Six Stars' flashes: 0 full, 1 softened.
+    Flash(usize),
     /// The Fold's crease pattern's row: which.
     Crease(usize),
     /// The World Eater's take: 0 the hunt, 1 the scripted show.
@@ -146,6 +158,7 @@ pub enum Rows {
     Ship,
     Sound,
     Impact,
+    Flash,
     Crease,
     Worm,
 }
@@ -157,6 +170,7 @@ impl Rows {
             Some(l) if is_ship(l) => Rows::Ship,
             Some(l) if sound_of(l.key).is_some() => Rows::Sound,
             Some(l) if l.key == "rod" || l.key == "convergence" => Rows::Impact,
+            Some(l) if l.key == "sixstars" => Rows::Flash,
             Some(l) if l.key == "fold" => Rows::Crease,
             Some(l) if l.key == "worldeater" => Rows::Worm,
             _ => Rows::None,
@@ -316,7 +330,7 @@ pub fn toggles(i: usize) -> Vec<(Rect, Spot)> {
     let key = LASERS[i].key;
     let mut at = [KNOCK, FOLLOW].into_iter();
     let mut out = Vec::new();
-    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" || key == "worldeater" || key == "convergence" {
+    if key == "nuke" || key == "rod" || key == "hurricane" || key == "tsunami" || key == "fold" || key == "supervolcano" || key == "carpetbomb" || key == "worldeater" || key == "convergence" || key == "earthquake" || key == "sixstars" {
         out.push((at.next().unwrap_or(KNOCK), Spot::Knock));
     }
     if key == "nuke" || key == "payload" {
@@ -350,6 +364,13 @@ pub fn spot(x: f32, y: f32, rows: impl Into<Rows>, page: usize) -> Option<Spot> 
         for k in 0..IMPACT_FX.len() {
             if inside(&impact_button(k), x, y) {
                 return Some(Spot::Impact(k));
+            }
+        }
+    }
+    if rows == Rows::Flash {
+        for k in 0..FLASHES.len() {
+            if inside(&flash_button(k), x, y) {
+                return Some(Spot::Flash(k));
             }
         }
     }
@@ -619,6 +640,22 @@ impl Wheel {
             }
         }
         // (the Rod's and the Convergence's: their impact frames on or off, the one picked lit in its colour)
+        // (the Six Stars': its flashes full or softened)
+        if let Some(rl) = row.filter(|&i| LASERS[i].key == "sixstars") {
+            let ms = LASERS[rl];
+            let b0 = flash_button(0);
+            text(&mut out, "FLASHES", b0.x - FLASH_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
+            for (k, name) in FLASHES.iter().enumerate() {
+                let b = flash_button(k);
+                let chosen = (k == 0) == (impact > 0);
+                let hovered = self.hover == Some(Spot::Flash(k));
+                out.push(Draw::Fill((b, if hovered { argb(0xE6, shade(ms.rgb, 0.42)) } else { 0xE0101318 })));
+                let rim = if chosen { 2.0 } else { 1.0 };
+                let rim_c = if chosen { argb(0xFF, ms.rgb) } else { argb(0x90, shade(ms.rgb, 0.6)) };
+                out.push(Draw::Fill((Rect { x: b.x, y: b.y + b.h - rim, w: b.w, h: rim }, rim_c)));
+                text(&mut out, name, b.x + b.w / 2.0, b.y + 2.0, if chosen || hovered { ms.rgb } else { 0x9AA2AE });
+            }
+        }
         if let Some(rl) = row.filter(|&i| LASERS[i].key == "rod" || LASERS[i].key == "convergence") {
             let ms = LASERS[rl];
             let b0 = impact_button(0);
@@ -709,6 +746,8 @@ impl Wheel {
             Some(Spot::Impact(1)) => ("Kanada: silhouettes, thick lines, a gold negative".to_string(), 0x8C93A0),
             Some(Spot::Impact(2)) => ("Black Flash: red and black, black lightning".to_string(), 0x8C93A0),
             Some(Spot::Impact(_)) => ("Cinematic: a white-out and a shockwave ring".to_string(), 0x8C93A0),
+            Some(Spot::Flash(0)) => ("Flashes in full: the sun flaring on each star, the impact's flash".to_string(), 0x8C93A0),
+            Some(Spot::Flash(_)) => ("Flashes softened, for anyone sensitive to flashing light".to_string(), 0x8C93A0),
             Some(Spot::Crease(k)) => (FD_PATTERNS[k.min(2)].2.to_string(), 0x8C93A0),
             Some(Spot::Worm(k)) => (WORM_HINTS[k.min(1)].to_string(), 0x8C93A0),
             Some(Spot::Knock) => ("The Nuke's and the Rod's push on you on or off".to_string(), 0x8C93A0),
@@ -830,6 +869,10 @@ mod tests {
         assert_eq!(pages(), 5);
         let cv = LASERS.iter().position(|l| l.key == "convergence").expect("the Convergence");
         assert_eq!((cv, page_of(cv)), (20, 4));
+        let eq = LASERS.iter().position(|l| l.key == "earthquake").expect("the Earthquake");
+        assert_eq!((eq, page_of(eq)), (21, 4));
+        let ss = LASERS.iter().position(|l| l.key == "sixstars").expect("the Six Stars");
+        assert_eq!((ss, page_of(ss)), (22, 4));
         let fold = LASERS.iter().position(|l| l.key == "fold").expect("the Fold");
         assert_eq!(page_of(fold), 3);
         let sb = LASERS.iter().position(|l| l.key == "skybreak").expect("the Sky Breaks");

@@ -766,8 +766,10 @@ pub(super) fn sb_lift_plan(p: &mut Plan, seed: u32, terrain: bool, me: [f64; 3])
         let now = at.max(clock());
         let (bx, by, bz) = (q.bx, q.by, q.bz);
         let got = crate::columns::get(tag);
-        // (until just before the cut it waits for the land; after, it makes one up, and leaves the land alone)
-        if got.is_none() && now < LF_CUT - 0.1 {
+        // (it waits for the land until a little past the cut: a native build's server, taking the strike's forceloads in,
+        // can answer a few ticks late, and the cut goes in as the answer does, up to LF_CUT + 0.3 (`cut` below); after,
+        // it makes one up, and leaves the land alone)
+        if got.is_none() && now < LF_CUT + 0.25 {
             let t = now + 0.05;
             q.later(t, move |q| wait(q, tag, seed, terrain, me, t));
             return;

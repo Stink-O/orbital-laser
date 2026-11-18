@@ -528,19 +528,39 @@ about 27.1 s) and then lined from the middle (the crater by about 27.7 s, the ri
 for the chunks to load, and what never loads is left out (logged `convergence: N columns of the land never loaded`).
 With terrain damage off it changes no blocks; the mobs and items within 200 are still killed at the blast.
 
+The **Earthquake** ([`strike/earthquake.rs`](../mod/src/strike/earthquake.rs), its land
+[`strike/eq_land.rs`](../mod/src/strike/eq_land.rs)) moves the land rather than blasting it. The faults are cut open for
+real as the crack reaches them (0.8 to 5.5 s): the main fault through the target a trench up to 20 blocks wide at the
+target and narrower toward its ends, down to near bedrock, with a lake of lava in it some 30 blocks under the lowest
+land; the side faults about four wide. The land within about 250 blocks of the target is split into 21 plates; the four
+bands on the player's side of the main fault rise by up to 54, 38, 22 and 8 blocks (the band by the fault the most) and
+shift a few blocks away from it and along it, the bands on the far side drop by up to 38, 14 and 5. Every column of that
+land is read as the strike fires (`world.read-columns`) and written where its plate comes to rest, behind the game's hold
+on the terrain (`render.hold-world`), and the whole of it is swapped in on one frame at 31 s: faces of banded rock where
+the land stands higher than the land beside it, scree at their foot, the canyon along the main fault open to its lava
+(crusted over in places), the gaps along the side faults filled with rubble to a little under the lower side. Up to 21
+trees near the player fall over and lie as logs; up to 10 slabs of the low side's edge of the trench are gone into the
+lava. Water standing over a new edge is set flowing. Nothing is killed. The chunks within about 290 blocks of the zone's
+middle are force-loaded from the moment it fires and let go after the land is in. With terrain damage off it changes no
+blocks: the plates move the same way in the picture and go back home by 43 s.
+
+Blocks that keep a shape in their state (stairs, slabs, fences, glass panes, doors and the like) are written again in
+their plain shape on land that moves, and chests and other blocks that hold items lose what they hold.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater`, `/orbital convergence` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater`, `/orbital convergence`, `/orbital earthquake` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
 | `/orbital flyspeed N`, `/orbital flyspeed reset` | flies N times vanilla's creative flying speed (any number over 0, up to 1000; sprinting still doubles it), or back to vanilla's; kept between sessions and worlds; also the wheel's FLY SPEED bar and box |
 | `/orbital payloadsound main`, `/orbital payloadsound alt` | which blast the Payload plays: the main one, or the alternative (its thump through the ground swaps with it); kept between sessions; also the wheel's BLAST SOUND row |
 | `/orbital nukesound main`, `/orbital nukesound alt` | which blast the Nuke plays: the main one, or the alternative (`blast_alt`, `blast_alt_far`); kept between sessions; also the wheel's BLAST SOUND row |
+| `/orbital quakesound synth`, `/orbital quakesound real` | which set of sounds the Earthquake plays: the synthesized set (the default), or the earlier one shaped from recordings; this session only |
 | `/orbital impactframes kanada`, `/orbital impactframes blackflash`, `/orbital impactframes cinematic`, `/orbital impactframes off` | the Rod from God's impact frames (a fifth of a second of hard cuts as it strikes) in one of three looks, Kanada the default, or off (`on` brings back the last look); the same switch turns the Convergence's impact frames on or off (they have one look of their own: any of the three looks turns them on); kept between sessions; also the wheel's IMPACT FX row (OFF, KANADA, BLACK FLASH, CINEMATIC), under the ring while the Rod or the Convergence is pointed at or loaded |
 | `/orbital foldpattern a`, `b`, `c` | the Fold's crease pattern for its next strike: umbrella (the default), waterbomb or diagonal; kept, also the wheel's FOLD row |
 | `/orbital seed N`, `/orbital seed lock`, `/orbital seed random` | every strike's seed (what its random choices come from, so its look) held at N (1 to 997), held at the last strike's, or a fresh one each strike (the default); kept; also the wheel's SEED field (the last strike's seed, or one typed in it) and LOCK SEED switch, at the top of its left column |
@@ -584,8 +604,9 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `world.read-columns` from `orbital-mod-api-6`, and `world.push-player`, the Nuke's knockback, from
 `orbital-mod-api-8`, and the `atlas` capability, `world.carry-player` and `game.player-flying`, the Hurricane's, from
 `orbital-mod-api-10`, `render.set-warp`, `render.hold-world` and `render.hold-world-within`, the Fold's, from
-`orbital-mod-api-11`, and `render.set-hand-tint` and the chat's tree of mod commands from `orbital-mod-api-12`) are
-needed too: a fork build without them won't start the mod, so 0.5.13 needs `orbital-mod-api-12` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+`orbital-mod-api-11`, `render.set-hand-tint` and the chat's tree of mod commands from `orbital-mod-api-12`, and `render.set-view-offset`,
+`world.shift-player` and `render.set-warp-data`, the Earthquake's, from `orbital-mod-api-13`) are needed too: a fork
+build without them won't start the mod, so 0.5.17 needs `orbital-mod-api-13` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.
 
@@ -1532,3 +1553,109 @@ seam along the view's line to the target, as the game lays it). The preview writ
 `cv_lava_cut_by_the_crater_is_cooled_at_the_cut`, `cv_lava_past_the_rim_is_held_back`,
 `cv_leaves_the_land_alone_with_the_terrain_off`, `cv_land_goes_in_in_order_anywhere` and
 `cv_throws_real_blocks_out_of_the_crater`.
+
+## The Earthquake (laser 21)
+
+The Earthquake ([`strike/earthquake.rs`](../mod/src/strike/earthquake.rs)) has no beam and no blast: the land moves.
+Its beats: 0 s a deep blow; 0.8 s the crack, the faults cut open for real as it reaches them, all by 5.5 s; 5.6 s the
+world warp on; 6 s the first heave (35% of each plate's travel); lurches at 8.5, 11 and 13.5 s; 14 to 18.5 s the plates
+shudder harder; 18.5 s the climax (the rest of the travel in one thrust); 21 s every plate on its final place; 31 s the
+real land swapped in; 50 s the end.
+
+**The plates** (`EqPlates`): a main fault runs through the target, heading for the player and passing them on their
+side, and side faults split the land within about 250 blocks of the target into 21 plates, seven bands of three. The
+four bands on the player's side rise and the three on the far side drop. While they move nothing in the world has moved
+yet: the fork's world warp (`render.set-warp`, [`shaders/earthquake_warp.wgsl`](../mod/shaders/earthquake_warp.wgsl))
+draws the game's own terrain moved with its plate, every plate ending on a whole-block offset.
+
+**The land** ([`strike/eq_land.rs`](../mod/src/strike/eq_land.rs)): the faults are cut for real just ahead of the crack
+(a chunk's cut on one tick), the main fault's trench filled with lava over an invisible floor so that, as the plates
+part, the warp has only the lava's own surface to stretch. Every column of the land is read
+(`world.read-columns`), worked out where its plate comes to rest, and written behind the game's hold on the terrain
+(`render.hold-world`: the picture keeps the land as it was while the world changes under it), a chunk at a time with
+each chunk's edits on one tick, the chunks round the player last. At 31 s the hold lets go and the moved land is on
+screen on the same frame the warp goes off.
+
+**Walking on it**: a player on a moving plate walks it while the picture shows it moved: the camera is drawn from that
+plate's displacement (the fork's `render.set-view-offset`) and the warp keeps that plate from rocking, so feet and
+ground agree. Just before the land under them is written they are put where they are seen (`world.shift-player`) and
+held there with their plate (`world.carry-player`) until the swap. In flight the view keeps the offset it has, held to
+the plate under them only as far as their height over the land asks, so flying over a fault moves nothing.
+
+**The trees and the slabs**: up to 21 trees near the player are picked to fall at the heaves; the warp draws each one
+tipping over (`render.set-warp-data`, two floats a tree) and the land writes it lying where it lands. Up to 10 slabs of
+the low edge of the trench lean over into the lava at the lurches and the climax and are gone at rest.
+
+**The sounds** (`tools/sounds_earthquake.py`): synthesized, but for two recordings of breaking rock (NOTICE): the blow,
+the crack tearing out and branching, the heaves' ground blows, grinding rock, rockfalls, the climax, trees falling, slabs
+going over and water pouring, each heard from where it happens, late by the distance. `/orbital quakesound real` plays
+the earlier set shaped from recordings instead.
+
+## The Six Stars (laser 22)
+
+A wanted level climbs on the screen and its last star comes down on the target. 58 s
+([`strike/sixstars.rs`](../mod/src/strike/sixstars.rs) the plan, the land, the table and the sounds' schedule; the
+pass [`shaders/sixstars.wgsl`](../mod/shaders/sixstars.wgsl), built on the Payload's; [`tools/sounds_sixstars.py`](../tools/sounds_sixstars.py)
+the sounds). There is no beam. It reaches 1000 blocks; while the designator is held its countdown reads `HEAT RISING`.
+It is on the wheel's fifth page and plays in the native version too.
+
+- **The climb** (0.3-8.2 s). Six empty stars fade in at the top right of the picture (`ss_hud`: drawn by the pass,
+  built of the same steps as the star that will leave, so it is the same picture). From 1.2 s (`SS_STARS`, every
+  1.15 s) they light from the right, each growing out of its middle with a little overshoot; a deep swell plays on
+  each, and far-off police sirens rise under them, one more car with each star. With each star the sky turns further
+  to a golden-hour sunset (`ss_level`, `ss_hold`): the pass replaces every pixel of sky with its own gradient, a deck
+  of streaky cloud lit from under and a big low sun off to one side of the target (`ss_sunset`, `ss_clouds`,
+  `ss_sky_sun`; its bearing in the table), the sun swelling a step with each star and flaring on the beat
+  (`ss_sun_r`, `ss_beat`); the land is graded warm with violet shadows and a pink haze far off (`ss_grade`), the far
+  land shimmering in the heat. The smoke, the dust and the star are lit by this sun. The game's time of day and weather
+  are not touched; the sunset lets go over the strike's last 7 s.
+- **The release** (7.72-10.35 s). The leftmost star, the last lit, gathers in its slot from 7.72 s (it sinks, the
+  others dim, the sky round the slot is drawn in), and at 8.2 s (`SS_PEEL`) jolts up out of it over 0.1 s, holds a
+  moment (to `SS_GO`, 8.36), and is let go with a few smeared frames (its sound a quiet glass pop on 8.2, the glass
+  ringing on after, `SS_POP_LEAD`, `SS_POP_VOL`; from 8.25 the air rushing after it and a swell growing under it as it
+  hangs, into the fall, `SS_FLIGHT`; the sirens carry on past the pop and fade by 11 s), a refraction ring bulging out of the slot and
+  bending the picture behind it (`ss_bend`), the other five recoiling and the camera kicking. It flies as a flat icon,
+  turning once, along a path that eases into where the star will hang, growing to its size there (`ss_fly`), and at
+  10.35 s (`SS_CONV`) the pass swaps it for the star in the world on the same pixels, its thickness growing in.
+- **The star** (10.35-17 s). A voxel star (`ss_dda`, `ss_draw`): 12 cells from its middle to each tip, 75 blocks to a
+  tip (`SS_R`), 22 thick in the middle and thinner to its edges (`SS_THICK`); white blocks with darker seams, cracks
+  glowing white-hot and widening as it falls, its edges burning violet to magenta to orange, a glow round it
+  (`ss_glow`). It hangs 520 blocks over the target's ground and 140 beyond the target from the player (`SS_H`,
+  `SS_BACK`), drawn up a little, then falls from 11.8 s (`SS_DROP`), faster and faster to about 230 blocks a second
+  (`SsGeo::pos`, sampled into the table), tipping over to lie face down and turning a fifth of a turn so it lands flat
+  with its first point straight away from the player (`SsGeo::yaw`). It sheds 20 burning blocks and 12 sparks
+  (`ss_fragments`) and trails smoke, gone 5 s after the impact.
+- **The impact** (17 s, `SS_HIT`). A dirty fireball and a column of black and brown smoke boiling up to about 340
+  (the Payload's column with wider billows, `ss_puffs`), the dust wall of the front at 343 blocks a second, 120 pieces of
+  debris; the ground's blow, then the air's, the camera jolting, and a push of 0.75 blocks a tick out and 0.55 up,
+  none past 500 (KNOCKBACK). Its five points plough out from 75 to 170 blocks over 2.4 s, slowing (`ss_tip`,
+  `ss_piece`), each cutting a trench that glows behind it, with smoke rising along it as part of the column's own smoke (in
+  `pl_column`, lying on the land's heights so it hugs the ground), thinning away over half a minute. From 19.5 s the five stars left blink, go blank and fade away by 23.6 s.
+
+**What it leaves** (terrain on). A five-pointed crater (`Shape`, `star_edge`): its tips 170 from the target, the
+land between them in to 60, 40 deep in the middle and shallower along each trench to its tip, its walls steep. Its floor
+and walls blackstone, basalt, coal, deepslate and a little magma; lava in its cracks only where it lies no higher than
+the floor round it and no water is within six columns (magma elsewhere); fires on netherrack here and there in the
+trenches; the white wreck of each point (calcite, quartz, white concrete, a few lights, veins of magma) lying at its
+trench's end. A band of scorched black ground out to 1.42 of the star's edge, so it reads from above; the rim heaped to
+1.22 of it; everything standing swept off and the trees felled lying pointing away out to about 225, crowns stripped
+40 past that, the grass charred in rays out to about 255 and rubble strewn to 268; 200 falling blocks thrown out of the
+middle; every mob and dropped item within 260 killed. The middle is dug as it strikes and each trench as its point
+reaches it (`Wave`, `plough_t`), each chunk's edits on one tick, then lined from the middle out. The land is read
+(`world.read-columns`, 36 under each top) out to 272 in 52 rings and goes in through `world.edit-blocks`; the ~1,000
+chunks within 276 are force-loaded from the moment it fires and let go a second before the end.
+
+**Its cost.** At 2560x1440 on QUALITY FAST in the game: the climb and the fall 1-3 ms a frame, the impact and the
+ploughing about 11 ms in the median with its worst seconds (19-21 s, the smoke at its thickest while the crater goes
+in) about 12.5 ms, the aftermath 5-8 ms. Its busiest tick uses under half a tick's fuel.
+
+**Photosensitivity.** The sun flares on each star's beat and on the release; each star flashes as it lights; the
+release has a flash and the distortion ring; the impact is a bright flash that lights the land; the stars in the corner
+blink two to three times a second for about 3 s from 19.5 s. SOFT on the wheel's FLASHES row (the same setting as
+`/orbital impactframes off`) turns each into a slow, gentle pulse.
+
+Tests: `ss_star_edge_is_a_star`, `ss_falls_from_where_it_hangs_onto_the_target`,
+`ss_pass_keeps_the_clock_and_the_star_in_step`, `ss_sounds_are_its_own_and_the_blast_arrives_late_by_the_distance`,
+`ss_leaves_a_five_pointed_star_burnt_into_the_land`, `ss_digs_the_middle_as_it_strikes_and_each_trench_as_its_point_reaches_it`,
+`ss_leaves_the_land_alone_with_the_terrain_off`, `ss_keeps_lava_from_the_lake` and `ss_no_stage_too_heavy`.
+

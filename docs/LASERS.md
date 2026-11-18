@@ -4,9 +4,9 @@ Every laser in Orbital Laser, in the order of the wheel, five to a page. The [RE
 short list. [How it works](HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish, and
 [What each strike destroys](HOW-IT-WORKS.md#what-each-strike-destroys) what it leaves.
 
-**Contents:** [Plasma](#plasma) · [Godly](#godly) · [Black Hole](#black-hole) · [Meteor Storm](#meteor-storm) · [Mothership](#mothership) · [Downfall](#downfall) · [Planet Killer](#planet-killer) · [Crystal Bloom](#crystal-bloom) · [Sinkhole](#sinkhole) · [Payload](#payload) · [Nuke](#nuke) · [Rod from God](#rod-from-god) · [Supercell](#supercell) · [Hurricane](#hurricane) · [Tsunami](#tsunami) · [The Fold](#the-fold) · [Supervolcano](#supervolcano) · [The Sky Breaks](#the-sky-breaks) · [The Carpet Bomb](#the-carpet-bomb) · [The World Eater](#the-world-eater) · [The Convergence](#the-convergence)
+**Contents:** [Plasma](#plasma) · [Godly](#godly) · [Black Hole](#black-hole) · [Meteor Storm](#meteor-storm) · [Mothership](#mothership) · [Downfall](#downfall) · [Planet Killer](#planet-killer) · [Crystal Bloom](#crystal-bloom) · [Sinkhole](#sinkhole) · [Payload](#payload) · [Nuke](#nuke) · [Rod from God](#rod-from-god) · [Supercell](#supercell) · [Hurricane](#hurricane) · [Tsunami](#tsunami) · [The Fold](#the-fold) · [Supervolcano](#supervolcano) · [The Sky Breaks](#the-sky-breaks) · [The Carpet Bomb](#the-carpet-bomb) · [The World Eater](#the-world-eater) · [The Convergence](#the-convergence) · [The Earthquake](#the-earthquake)
 
-Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb, the World Eater and the Convergence reach 1000.
+Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb, the World Eater, the Convergence and the Earthquake reach 1000.
 
 ## Plasma
 
@@ -210,7 +210,7 @@ about a fifth of a second.
 
 ## The Fold
 
-*On the wheel's fourth page. Fork version only for now: greyed out in the native `orbital.hnmod`.*
+*On the wheel's fourth page. Fork version only for now: greyed out in the native version.*
 
 A glint high in the sky. You hear it long before you see it: a drop of liquid metal, 3,600 blocks up, falling for
 seven seconds on a rope of smoke. Right over the target it brakes over a second, the fire and the smoke pouring on past it, hangs, and is let
@@ -250,7 +250,7 @@ from about 26 to 80 seconds.
 
 ## The Sky Breaks
 
-*On the wheel's fourth page. Fork version only for now: greyed out in the native `orbital.hnmod`.*
+*On the wheel's fourth page.*
 
 No beam. A disc of land some 14 blocks across round the target cracks
 round its rim, tears free and rises into the sky, dirt pouring off its underside, and sinks into the sky, which rings like a
@@ -273,7 +273,7 @@ as the slam's shockwave passes you the picture greys over with dust for under a 
 
 ## The Carpet Bomb
 
-*On the wheel's fourth page. Fork version only for now: greyed out in the native `orbital.hnmod`.*
+*On the wheel's fourth page.*
 
 No beam. A heavy bomber comes out of the haze far beyond
 the target, high and steady, its four contrails trailing it, and lets a stick of thirteen bombs go one after another
@@ -297,7 +297,7 @@ races across the land with its shockwave.
 
 ## The World Eater
 
-*On the wheel's fourth page. Fork version only for now: not in the native `orbital.hnmod` yet.*
+*On the wheel's fourth page.*
 
 No beam, and it
 comes after you. A rumble grows under your feet as something ploughs through the ground towards the target from some
@@ -328,7 +328,7 @@ thrown.
 
 ## The Convergence
 
-*On the wheel's fifth page. Fork version only for now: not in the native `orbital.hnmod` yet.*
+*On the wheel's fifth page.*
 
 No beam: two worlds
 break into this one and fight over the target. For five seconds the ground trembles, cracks of fire run out from the
@@ -357,3 +357,70 @@ seconds is a short bright flash; the camera jolts at each surge and hard at the 
 | The Convergence | The clash | The blast | What it leaves |
 |---|---|---|---|
 | ![The rift torn open in the sky, the Aether showing through it](72-convergence-rift.jpg) | ![The column of fire and the column of light meeting in the air over the target](73-convergence-clash.jpg) | ![The blast on the target, the land split along the seam](74-convergence-blast.jpg) | ![The crater split down the middle, half Nether and half pale, islands hanging in the sky over it](75-convergence-aftermath.jpg) |
+
+## The Earthquake
+
+*On the wheel's fifth page. Fork version only for now: greyed out in the native version.*
+
+No beam: the land itself breaks. A deep blow sounds underfoot, and from under a second in the ground splits open along a
+main fault through the target, the crack racing out both ways and on toward you, side cracks branching off it and
+running out round the land in about five seconds. The main fault opens into a trench up to 20 blocks wide with a lake
+of lava far down in it. At 6 seconds the land heaves: the land within about 250 blocks of the target is broken into 21
+plates, and the ones on your side of the main fault lurch upward while the far side drops away. They lurch again at 8.5,
+11 and 13.5 seconds, grind and shudder harder from 14, and at 18.5 seconds the climax thrusts your side up into a cliff
+in one last heave. By 21 seconds the land is still. Trees near you fall over as the ground jolts under them (up to 21,
+lying as real logs where they come down), slabs of the low side's edge break away and topple into the lava, and the lava
+crusts over in dark rafts. At 31 seconds the moved land is swapped in for real: cliffs of banded rock up to about 90
+blocks high, a canyon with lava at its foot along the main fault, smaller steps and gaps along the side faults, scree
+heaped at the foot of every step, and water that ran to the new edges pouring over them.
+
+If you stand on your side of the fault inside the moving land as it fires, you ride your plate up and can walk, jump
+and fly on it while it moves; anyone else is knocked by the heaves (KNOCKBACK). A survival player on a moving plate gets
+Resistance V for the strike, and no mob is killed. With terrain damage off the land moves just the same and then settles
+back where it was by 43 seconds, nothing changed.
+**Motion:** the camera jolts at each heave and hard at the climax, and the land you stand on moves under you for about
+fifteen seconds.
+
+| The crack | A lurch | The climax | What it leaves |
+|---|---|---|---|
+| ![The ground split open along the fault, lava far down in the trench](76-earthquake-crack.jpg) | ![The cliff lurching up across the trench, dust pouring off it, lava below](77-earthquake-lurch.jpg) | ![The land torn open along the fault, one side thrust up into a cliff over a trench of lava](78-earthquake-cliff.jpg) | ![The cliff of banded rock over the lava canyon, scree at its foot](79-earthquake-aftermath.jpg) |
+
+## The Six Stars
+
+*On the wheel's fifth page.*
+
+A nod to GTA 6's six-star wanted level, in our own design. No beam: a wanted level climbs on your screen and its last
+star comes down on the target. A row of six empty stars fades in at the top right of the picture, and from 1.2 seconds
+they light one by one from the right, each with a deep swell felt more than heard, while far-off police sirens rise,
+one more with each star. As they climb, the whole sky turns to a hazy golden-hour sunset: deep violet and lavender
+overhead, hot pink and coral lower down, peach and orange at the horizon, the low sun swelling a step with each star,
+and the land warming, its shadows going violet and the far land shimmering in the heat. The game's own time of day and
+weather are left alone; the sky goes back over the last seconds of the strike.
+
+At 8.2 seconds the leftmost star, the last one lit, tears out of the row: it sinks into its slot, snaps up out of it
+with the quiet pop of a glass pane, the glass ringing on after and the air rushing after it, a ring of distortion bending the sky round the empty slot, the other stars recoiling, and flies off into the sky
+as a flat icon, the same size on the screen, tracking where it is going. At about 10.4 seconds it turns into a real
+star in the world on the same spot: 150 blocks across, built of cracked white blocks, white-hot through its cracks,
+its edges burning violet, magenta and orange. It hangs high over the target, then falls from 11.8 seconds, faster and
+faster, turning to lie flat, shedding burning blocks and trailing smoke. It strikes at 17 seconds: a dirty fireball
+and a column of black and brown smoke boiling up some 340 blocks, a wall of dust racing out over the land, blocks
+thrown, the camera jolting, and a push that throws you back (KNOCKBACK). Its five points break off and plough out
+over the land for 2.4 seconds, each cutting a burning trench with smoke rising along it into the column. As the smoke
+rolls, the five stars left in the corner blink like a wanted level about to be lost, go blank and fade away.
+
+It leaves a five-pointed star burned into the land, about 340 blocks from tip to tip: a crater 40 deep in the middle,
+its five trenches shallowing out to their tips, lined black (blackstone, basalt, coal, deepslate) with lava in its
+cracks and fires burning in the trenches, the white wreck of each point lying at its trench's end, and a band of
+scorched black ground round the whole star so it reads from above. Round it the earth is heaped on the rim, the land
+flattened and the trees felled lying pointing away out to about 225 blocks, crowns stripped past that, the grass
+charred in rays and rubble strewn out to about 270, and every mob within 260 killed. Its first point lies straight
+away from where you fired.
+**Photosensitivity:** the sun flares on each star's beat and on the release at 8.2 seconds, each star flashes as it
+lights, the release has a bright flash and the distortion ring, the impact at 17 seconds is a bright flash that lights
+the land, and from 19.5 seconds the stars in the corner blink two to three times a second for about three seconds.
+SOFT on the wheel's FLASHES row (or `/orbital impactframes off`) makes all of these slow, gentle pulses. The stars are
+drawn by the strike's own picture, so F1 does not hide them.
+
+| The climb | The fall | The impact | What it leaves |
+|---|---|---|---|
+| ![The six stars lit at the top of the screen over a golden-hour sunset](81-sixstars-climb.jpg) | ![The burning star falling on the target](82-sixstars-fall.jpg) | ![The impact, a dirty fireball and the points ploughing out](83-sixstars-impact.jpg) | ![A five-pointed star burnt into the land, lava in its cracks, the forest flattened round it](80-sixstars-crater.jpg) |

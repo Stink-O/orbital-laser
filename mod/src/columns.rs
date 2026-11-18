@@ -44,6 +44,9 @@ struct Store {
     /// Each query waiting: its columns, and how deep and high it reads.
     asked: HashMap<u32, (Vec<(i32, i32)>, u32, u32)>,
     got: HashMap<u32, Rc<Answer>>,
+    /// The queries read from each column's ground (`MotionBlockingNoLeaves`: its highest motion-blocking block, leaves
+    /// left out) instead of its world surface: `by_ground`.
+    ground: std::collections::HashSet<u32>,
 }
 
 thread_local! {
@@ -59,13 +62,20 @@ pub fn new_tag() -> u32 {
     })
 }
 
+/// Query `tag` is to be read from each column's ground (one above its highest motion-blocking block, leaves left out:
+/// a tree's trunk counts, its crown doesn't) rather than its world surface. Said before the query is asked.
+pub fn by_ground(tag: u32) {
+    STORE.with(|s| s.borrow_mut().ground.insert(tag));
+}
+
 /// Ask the world for `columns`' blocks round their tops, as query `tag` (lib.rs, for `Act::Read`). A query over the
 /// game's limits is cut down to them.
 pub fn ask(tag: u32, columns: Vec<(i32, i32)>, below: u32, above: u32) {
     let per = (below + above).max(1) as usize;
     let mut columns = columns;
     columns.truncate(MAX_COLUMNS.min(MAX_BLOCKS / per));
-    world::read_columns(tag, &columns, Heightmap::WorldSurface, below, above);
+    let ground = STORE.with(|s| s.borrow_mut().ground.remove(&tag));
+    world::read_columns(tag, &columns, if ground { Heightmap::MotionBlockingNoLeaves } else { Heightmap::WorldSurface }, below, above);
     STORE.with(|s| s.borrow_mut().asked.insert(tag, (columns, below, above)));
 }
 

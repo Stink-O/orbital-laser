@@ -78,6 +78,10 @@ fn main() {
     let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_convergence_{f}.wgsl"), passbuild::split_pass(&shader, &cv, f))).collect();
     writeln!(rs, "/// The Convergence's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_CONVERGENCE: [&str; 2] = [{}];", c.join(", ")).unwrap();
+    let ss = read("sixstars.wgsl");
+    let s6: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_sixstars_{f}.wgsl"), passbuild::split_pass(&shader, &ss, f))).collect();
+    writeln!(rs, "/// The Six Stars' at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_SIXSTARS: [&str; 2] = [{}];", s6.join(", ")).unwrap();
     // the World Eater's: its path (its constants spliced in from strike/we_path.rs), its body, its own; and its world warp
     // (what of the path is marked `[warp too]`, then worldeater_warp.wgsl)
     let we_path_src = we_path::we_splice_consts(&read("worldeater_path.wgsl"));
@@ -94,6 +98,18 @@ fn main() {
     let warp = write("we_warp.wgsl".into(), passbuild::marked(&we_path_src, "warp too") + &read("worldeater_warp.wgsl"));
     writeln!(rs, "/// The World Eater's world warp (the wormsign and the dome).").unwrap();
     writeln!(rs, "const PASS_WE_WARP: &str = {warp};").unwrap();
+    // the Earthquake's: its plates (earthquake_plates.wgsl, shared with its world warp) before its own; and the warp
+    let eq_plates = read("earthquake_plates.wgsl");
+    // (its own file up to `[eq stages]`, its dust, then its stages)
+    let eq_own = read("earthquake.wgsl");
+    let at = eq_own.find("// ==== [eq stages]").expect("earthquake.wgsl's [eq stages]");
+    let eq = eq_plates.clone() + &eq_own[..at] + &read("earthquake_dust.wgsl") + &eq_own[at..];
+    let e: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_earthquake_{f}.wgsl"), passbuild::split_pass(&shader, &eq, f))).collect();
+    writeln!(rs, "/// The Earthquake's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_EARTHQUAKE: [&str; 2] = [{}];", e.join(", ")).unwrap();
+    let eq_warp = write("eq_warp.wgsl".into(), eq_plates + &read("earthquake_warp.wgsl"));
+    writeln!(rs, "/// The Earthquake's world warp (the plates moved, the faults' faces painted).").unwrap();
+    writeln!(rs, "const PASS_EQ_WARP: &str = {eq_warp};").unwrap();
     let fold = write("pass_fold.wgsl".into(), passbuild::own_pass(&shader, &(passbuild::warp_shared(&read("fold_warp.wgsl")) + &read("fold.wgsl"))));
     writeln!(rs, "/// The Fold's (no half-size stage: its cost is the warp, drawn whole).").unwrap();
     writeln!(rs, "const PASS_FOLD: &str = {fold};").unwrap();

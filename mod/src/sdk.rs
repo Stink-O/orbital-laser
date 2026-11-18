@@ -66,6 +66,14 @@ pub mod fake {
         /// The hand's tint last set (`render.set-hand-tint`; none: never), and how many times it was.
         pub hand_tint: Option<[f32; 3]>,
         pub hand_tints: u64,
+        /// The view's offset last set (`render.set-view-offset`), and the shifts asked (`world.shift-player`).
+        pub view_offset: [f64; 3],
+        pub shifts: Vec<[f64; 3]>,
+        /// The warp's data last set (`render.set-warp-data`) and how many times; its copies and their radius last asked
+        /// while it was on (`render.warp-on`).
+        pub warp_data: Vec<f32>,
+        pub warp_datas: u64,
+        pub warp_copies: (u32, f32),
     }
     thread_local! {
         pub static FAKE: RefCell<Fake> = RefCell::new(Fake::default());
@@ -120,13 +128,26 @@ pub mod fake {
         pub fn set_post(_wgsl: &str) {}
         pub fn set_params(_params: &[f32]) {}
         pub fn set_warp(_wgsl: &str) {}
-        pub fn warp_on(_on: bool, _x: f64, _y: f64, _z: f64, _copies: u32, _radius: f32) {}
+        pub fn warp_on(on: bool, _x: f64, _y: f64, _z: f64, copies: u32, radius: f32) {
+            if on {
+                super::with(|w| w.warp_copies = (copies, radius));
+            }
+        }
+        pub fn set_warp_data(data: &[f32]) {
+            super::with(|w| {
+                w.warp_datas += 1;
+                w.warp_data = data.to_vec();
+            });
+        }
         pub fn hold_world(_on: bool) {}
         pub fn hold_world_within(_areas: &[(f64, f64, f64)]) {}
         pub fn clear_post() {}
         pub fn set_history(_on: bool) {}
         pub fn set_data(_words: &[u32]) {}
         pub fn shake(_strength: f32, _seconds: f32) {}
+        pub fn set_view_offset(x: f64, y: f64, z: f64) {
+            super::with(|w| w.view_offset = [x, y, z]);
+        }
         pub fn set_hand_tint(r: f32, g: f32, b: f32) {
             super::with(|w| {
                 w.hand_tints += 1;
@@ -215,6 +236,15 @@ pub mod fake {
         }
         pub fn carry_player(_x: f32, _y: f32, _z: f32, _turn: f32) -> bool {
             super::with(|w| w.pushes += 1);
+            true
+        }
+        pub fn shift_player(x: f64, y: f64, z: f64) -> bool {
+            super::with(|w| {
+                w.shifts.push([x, y, z]);
+                if let Some(p) = &mut w.player {
+                    (p.x, p.y, p.z) = (p.x + x, p.y + y, p.z + z);
+                }
+            });
             true
         }
         pub fn edit_blocks(edit: &BlockEdit) {

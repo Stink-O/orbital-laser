@@ -23,6 +23,7 @@ mod perf;
 mod sdk;
 mod strike;
 mod surge;
+mod eq_ride;
 mod tune;
 mod wheel;
 
@@ -98,6 +99,15 @@ const PASS_NULL: &str = "@fragment\nfn fs_main(in: StageIn) -> @location(0) vec4
 fn convergence_pass(fast: bool) -> &'static str {
     PASS_CONVERGENCE[usize::from(fast)]
 }
+/// The Earthquake's, the same way (earthquake.wgsl's `[half stage]`: the dust beside its fault lines at half size, the
+/// lines and the jolt at full size; its plates' motion is its world warp, PASS_EQ_WARP).
+fn earthquake_pass(fast: bool) -> &'static str {
+    PASS_EARTHQUAKE[usize::from(fast)]
+}
+/// The Six Stars', the same way (sixstars.wgsl's `[half stage]`: the smoke, the trail and the dust at half size).
+fn sixstars_pass(fast: bool) -> &'static str {
+    PASS_SIXSTARS[usize::from(fast)]
+}
 fn worldeater_pass(fast: bool) -> &'static str {
     PASS_WORLDEATER[usize::from(fast)]
 }
@@ -151,6 +161,8 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "carpetbomb" => 14,
         "worldeater" => 15,
         "convergence" => 16,
+        "earthquake" => 17,
+        "sixstars" => 18,
         _ => 0,
     }
 }
@@ -309,6 +321,15 @@ const HAND_TINT: bool = false;
 const IMPACT_STYLES: [&str; 3] = ["blackflash", "kanada", "cinematic"];
 const IMPACT_ORDER: [u8; 3] = [1, 0, 2];
 
+thread_local! {
+    /// The Earthquake's sounds this session: synthesized (true, the default) or the earlier set (`/orbital quakesound`).
+    static QUAKE_SYNTH: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+/// Whether the Earthquake plays its synthesized sounds (strike/eq_sounds.rs).
+pub(crate) fn quake_synth() -> bool {
+    QUAKE_SYNTH.with(std::cell::Cell::get)
+}
+
 /// `/orbital`'s words, as paths after it ("orbital give", "orbital terrain on"): a fork from orbital-mod-api-12 offers
 /// them as the chat fills in (a registered command with spaces in it is a path under its first word); the command
 /// itself is still `/orbital`, which gets the whole line.
@@ -336,6 +357,9 @@ fn command_paths() -> Vec<String> {
     add(&["tune", "reset"]);
     for v in strike::WORMGROUND {
         add(&["wormground", v]);
+    }
+    for v in ["synth", "real"] {
+        add(&["quakesound", v]);
     }
     for v in ["turn", "still"] {
         add(&["carryview", v]);
@@ -466,7 +490,7 @@ struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
     /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's, 15 the world eater's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 17],
+    passes: [&'static str; 19],
     compiled: Option<usize>,
     warming: bool,
     /// A pick has left the wheel up while its pass is built (`close_picked`).
@@ -496,6 +520,18 @@ struct Orbital {
     we_uncapped: bool,
     /// `/orbital perf nowarp`: the World Eater's world warp (the mound and the dome) never turned on (to measure it).
     we_nowarp: bool,
+    /// The Earthquake's hold on the terrain: whether it held on the last frame, the frames since it let go, and the frames'
+    /// seconds it has been held (strike::eq_frame).
+    eq_held: bool,
+    eq_lag: u8,
+    eq_held_secs: f32,
+    /// The Earthquake's falling trees as last given the warp (strike/eq_trees.rs's count; u32::MAX none), and the copy
+    /// of the land round them the warp turns them in (anchor, radius), with the plates they are worked out from.
+    eq_trees_sent: u32,
+    eq_copy: Option<([f64; 3], f32)>,
+    /// Whether the slabs of the strike under way have been given their sounds.
+    eq_slabs_cued: bool,
+    eq_pl: Option<strike::EqPlates>,
     /// How far the linear memory had grown when that was last logged (`tick`).
     heap_logged: usize,
     pace: pace::Pace,
@@ -544,6 +580,13 @@ struct Orbital {
     carry_held: bool,
     /// The Tsunami's surge carrying the player (`surge.rs`), while its strike is under way and the knockback is on.
     surging: Option<surge::Surge>,
+    /// The Earthquake's walk (`eq_ride.rs`): the player on a moving plate sees it from where it is drawn while they
+    /// walk where it really is, and is handed over onto it before the land at rest goes in under them.
+    quaking: Option<eq_ride::EqRide>,
+    /// The frames' seconds since the last tick (the Earthquake's view at the warp's partial tick).
+    since_tick: f32,
+    /// Whether the view's offset was last left at nothing.
+    view_clear: bool,
     /// Whether the carry turns the player's view a little with them round the storm and sways it with the gusts
     /// (`/orbital carryview turn|still`; turn, the default).
     carry_turn: bool,
@@ -618,7 +661,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, lite, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn, we_scripted } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast), convergence_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast), convergence_pass(fast), earthquake_pass(fast), sixstars_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -634,6 +677,13 @@ impl Orbital {
             falls: Default::default(),
             we_uncapped: false,
             we_nowarp: false,
+            eq_held: false,
+            eq_lag: 0,
+            eq_held_secs: 0.0,
+            eq_trees_sent: u32::MAX,
+            eq_copy: None,
+            eq_slabs_cued: false,
+            eq_pl: None,
             heap_logged: 0,
             pace: pace::Pace::default(),
             laser,
@@ -658,6 +708,9 @@ impl Orbital {
             carrying: None,
             carry_held: true,
             surging: None,
+            quaking: None,
+            since_tick: 0.0,
+            view_clear: true,
             carry_turn,
             we_scripted,
             follow_distance,
@@ -1025,6 +1078,11 @@ impl Orbital {
                 world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
                 self.show_wheel();
             }
+            Some(wheel::Spot::Flash(k)) => {
+                self.set_impact(k == 0);
+                world::play_sound("minecraft:ui.button.click", None, 0.6, if self.impact { 1.6 } else { 1.0 });
+                self.show_wheel();
+            }
             Some(wheel::Spot::Worm(k)) => {
                 self.we_scripted = k == 1;
                 if let Some(w) = &mut self.wheel {
@@ -1111,17 +1169,22 @@ impl Orbital {
         self.rebuild("carpetbomb", carpet_pass(fast));
         self.rebuild("worldeater", worldeater_pass(fast));
         self.rebuild("convergence", convergence_pass(fast));
+        self.rebuild("earthquake", earthquake_pass(fast));
+        self.rebuild("sixstars", sixstars_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
     fn set_impact(&mut self, on: bool) {
         self.impact = on;
         self.save();
-        let flags = self.flags_of(11);
-        if let Some(s) = &mut self.strike
-            && s.params[7] == 11.0
+        // (at once for a strike under way that reads it: the Rod's, the Six Stars' (the Convergence's flags carry its terrain too: from its next strike))
+        if let Some(i) = self.strike.as_ref().map(|s| s.params[7] as u32)
+            && LASERS.iter().any(|l| l.index == i && matches!(l.key, "rod" | "sixstars"))
         {
-            s.params[15] = flags;
+            let flags = self.flags_of(i);
+            if let Some(s) = &mut self.strike {
+                s.params[15] = flags;
+            }
         }
     }
     /// The follow camera on or off, kept; off ends the one under way at once (the player put back).
@@ -1211,6 +1274,67 @@ impl Orbital {
             world::play_sound(&event, None, volume, pitch);
         }
     }
+    /// The Earthquake's walk this tick (`eq_ride.rs`): the plate under the player's real feet found (the frame draws the
+    /// view from it), and before the land at rest goes in under them, handed over: put where they are seen and held
+    /// there with their plate until the real land is swapped in at rest.
+    fn quake_tick(&mut self) {
+        self.since_tick = 0.0;
+        let Some(t) = self.strike.as_ref().map(|s| f64::from(s.clock())) else { return };
+        let Some(c) = &mut self.quaking else { return };
+        if c.over(t) {
+            if let Some([x, y, z]) = c.set_down() {
+                world::push_player(x, y, z);
+            }
+            self.quaking = None;
+            strike::eq_walker(None);
+            render::set_view_offset(0.0, 0.0, 0.0);
+            self.view_clear = true;
+            return;
+        }
+        let Some(p) = game::get_player() else {
+            c.gone();
+            strike::eq_walker(None);
+            return;
+        };
+        strike::eq_walker(Some([p.x, p.z]));
+        let swapped = t >= f64::from(strike::EQ_REST) && !self.eq_held;
+        let o = c.tick(t, [p.x, p.y, p.z], self.carry_held, game::player_flying(), swapped, &strike::eq_chunk_due);
+        // (handed over: the view's offset back to nothing and the player put where they were seen, in the same call)
+        if let Some([x, y, z]) = o.shift {
+            render::set_view_offset(0.0, 0.0, 0.0);
+            self.view_clear = true;
+            if !world::shift_player(x, y, z) {
+                log::write(log::Level::Warn, "earthquake: the player could not be put where they were seen");
+            }
+            log::write(log::Level::Info, &format!("earthquake: the player handed over at {t:.2} s, put {x:.2} {y:.2} {z:.2} where they were seen"));
+        }
+        let o = o.carry;
+        // (set down: a push while carried is what the game lets them go with, out of flight)
+        if let Some([x, y, z]) = o.throw {
+            world::push_player(x, y, z);
+        }
+        if !o.cmds.is_empty() {
+            world::run_commands(&o.cmds);
+        }
+        // (the game's answer: whether the carry it was asked for before held them)
+        let held = match o.carry {
+            Some([x, y, z]) => world::carry_player(x, y, z, o.turn),
+            None => true,
+        };
+        self.carry_held = held;
+    }
+    /// The land's own heights under the Earthquake's dust (strike/eq_ground.rs), into the pass's words on the tick the
+    /// world has answered.
+    fn quake_ground(&mut self) {
+        let Some(s) = self.strike.as_mut().filter(|s| s.key == "earthquake") else { return };
+        let Some((index, words)) = strike::eq_ground_take(s.clock()) else { return };
+        let i = index as usize;
+        if s.data.len() < i + words.len() {
+            s.data.resize(i + words.len(), 0);
+        }
+        s.data[i..i + words.len()].copy_from_slice(&words);
+        s.data_sent = false;
+    }
     /// What the smoke lasers' pass reads in params[15] (laser `index`'s): 1 if the cloud shadows are off (`/orbital
     /// shadow off`), and for the Rod from God 2 more if its impact frames are.
     /// The World Eater's DETAIL tier, its pass's params[15] (`frame.mod_params[3].w`; worldeater_path.wgsl's `we_tier`
@@ -1229,7 +1353,7 @@ impl Orbital {
             return self.fold_stop as f32;
         }
         // (the Rod's and the Convergence's impact frames: 2 off, else 4 times one more than the look picked)
-        let impact = index == 11 || LASERS.iter().any(|l| l.index == index && l.key == "convergence");
+        let impact = index == 11 || LASERS.iter().any(|l| l.index == index && (l.key == "convergence" || l.key == "sixstars"));
         f32::from(u8::from(self.shadow_off)) + if impact { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
@@ -1275,6 +1399,11 @@ impl Orbital {
                 // (and the World Eater's wormsign's: shaders/worldeater_warp.wgsl)
                 if LASERS[self.laser].key == "worldeater" {
                     render::set_warp(PASS_WE_WARP);
+                    render::warp_on(true, 0.0, 0.0, 0.0, 0, 0.0);
+                }
+                // (and the Earthquake's plates': shaders/earthquake_warp.wgsl; its params all 0, nothing moves)
+                if LASERS[self.laser].key == "earthquake" {
+                    render::set_warp(PASS_EQ_WARP);
                     render::warp_on(true, 0.0, 0.0, 0.0, 0, 0.0);
                 }
                 self.warming = true;
@@ -1374,7 +1503,7 @@ impl Orbital {
         if laser.key == "downfall" {
             params[14] = strike::df_reach(target.point, me);
         }
-        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" {
+        if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" || laser.key == "sixstars" {
             // (where the player stood as it fired: the shockwave's dust follows the land from the target's ground to theirs)
             params[12..15].copy_from_slice(&[me[0] as f32, me[1] as f32, me[2] as f32]);
             params[15] = self.flags_of(laser.index);
@@ -1386,6 +1515,15 @@ impl Orbital {
             if (laser.key == "fold" || laser.key == "convergence") && self.terrain {
                 params[15] += 0.25;
             }
+        }
+        if laser.key == "earthquake" {
+            // (what its world warp reads: the plates' make, the zone's shift, the rider's plate, the knobs;
+            // shaders/earthquake_warp.wgsl)
+            for (i, v) in strike::eq_params(&target, me, seed, self.terrain) {
+                params[i] = v;
+            }
+            // (a quarter more when the plates come to rest displaced: the real land moved under them)
+            params[15] = self.flags_of(laser.index) + if self.terrain && strike::EQ_REAL_LAND { 0.25 } else { 0.0 };
         }
         self.hand_post(pass_of(laser));
         render::set_params(&params);
@@ -1400,6 +1538,10 @@ impl Orbital {
         if laser.key == "worldeater" {
             // (the wormsign bends the world's own land: shaders/worldeater_warp.wgsl, on only while it does: `frame`)
             render::set_warp(PASS_WE_WARP);
+        }
+        if laser.key == "earthquake" {
+            // (the plates move the world's own vertices: shaders/earthquake_warp.wgsl, on only while they move: `frame`)
+            render::set_warp(PASS_EQ_WARP);
         }
         log::write(log::Level::Info, &format!("strike [{}] at {} {} {}", laser.key, hit.block_x, hit.block_y, hit.block_z));
         // (started part way in: what was due before then is left out, sounds and world changes alike; but the stages and
@@ -1416,12 +1558,25 @@ impl Orbital {
         // (the sinkhole's slabs, rings and rim come on the tick after: strike::sh_table, as Act::Table)
         let data = if laser.key == "crystalbloom" { strike::cb_table(seed) } else { Vec::new() };
         tune::send(&data, laser.key);
+        (self.eq_held, self.eq_lag, self.eq_held_secs) = (false, 0, 0.0);
         self.strike = Some(Strike { plan, next, more: Default::default(), given: 0, ticks, length, params, level: level_tag.map(|t| (t, target.block)), waiting: Default::default(), urgent: Default::default(), data, data_sent: true, skipped, wait, sounds: Default::default(), key: laser.key, sprites: if laser.key == "hurricane" { sdk::atlas::resources_version() } else { 0 }, hand: None, hand_t: 0.0 });
         self.hold_forceloads(&dimension, clock, length + wait as f32 * 0.05);
         // (the Hurricane's wind carrying the player off once it reaches them, with the knockback on)
         self.carrying = (laser.key == "hurricane" && self.knock && player.is_some()).then(|| carry::Carry::new([hit.block_x as f64 + 0.5, hit.block_y as f64 + 1.0, hit.block_z as f64 + 0.5]));
         // (the Tsunami's surge carrying the player along once the water has them, with the knockback on)
         self.surging = (laser.key == "tsunami" && self.knock && player.is_some()).then(|| surge::Surge::new(strike::TsGeo::new(&target, me, seed)));
+        // (the Earthquake's walk on the plate under the player: always, the KNOCKBACK switch or not, since the land they
+        // stand on moves)
+        self.quaking = (laser.key == "earthquake" && player.is_some()).then(|| eq_ride::EqRide::new(strike::eq_plates(&target, me, seed, self.terrain)));
+        if laser.key == "earthquake" {
+            // (where its faults lie, for pictures and checks: the main fault's direction, the zone's shift along and
+            // across it, the rider's plate, where the crack ends toward the player)
+            let pl = strike::eq_plates(&target, me, seed, self.terrain);
+            log::write(log::Level::Info, &format!("earthquake: fault {:.4} {:.4} shift {} {} rider {} crack_end {:.1}", pl.fdir[0], pl.fdir[1], pl.shift[0], pl.shift[1], pl.ride, pl.crack_end));
+            self.eq_pl = Some(pl);
+            self.eq_copy = None;
+            self.eq_slabs_cued = false;
+        }
         // (the follow camera: an orbit round the bomb on the path the pass draws it on)
         self.unfollow();
         if self.follow
@@ -1526,7 +1681,7 @@ impl Orbital {
             }
             meter::spend(300);
             let Some((t, act)) = s.take_due() else { break };
-            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Spare(_) | Act::Blocks(_)) {
+            if t < s.skipped && matches!(act, Act::Cmd(_) | Act::Sound { .. } | Act::SoundFrom { .. } | Act::Shake { .. } | Act::Shove { .. } | Act::Spare(_) | Act::Blocks(_)) {
                 continue;
             }
             match act {
@@ -1537,6 +1692,17 @@ impl Orbital {
                 Act::Sound { event, at, volume, pitch } => {
                     world::play_sound(&event, at.map(|[x, y, z]| (x, y, z)), volume, pitch);
                     s.sounds.insert(event);
+                }
+                Act::SoundFrom { event, from, to, volume, pitch, band } => {
+                    // (where it is made, for where they are now; how much of this file is heard from that far)
+                    if let Some(p) = game::get_player() {
+                        let ([x, y, z], d) = strike::sound_from_line([p.x, p.y + 1.6, p.z], from, to);
+                        let v = volume * strike::band_weight(band, d);
+                        if v > 0.002 {
+                            world::play_sound(&event, Some((x, y, z)), v, pitch);
+                            s.sounds.insert(event);
+                        }
+                    }
                 }
                 Act::Shake { strength, seconds } => jolts.push((strength, seconds)),
                 Act::Shove { from, out, up, reach } => {
@@ -1695,10 +1861,27 @@ impl Orbital {
         self.unfollow();
         self.carrying = None;
         self.surging = None;
+        // (the Earthquake's walk stopped part way: the view back where they are, let go out of flight if held,
+        // Resistance V spares the fall)
+        if let Some(q) = self.quaking.take() {
+            if let Some([x, y, z]) = q.set_down() {
+                world::push_player(x, y, z);
+            }
+            render::set_view_offset(0.0, 0.0, 0.0);
+            self.view_clear = true;
+            strike::eq_walker(None);
+        }
         render::clear_post();
         self.hand_reset();
         let had = self.strike.is_some();
         render::warp_on(false, 0.0, 0.0, 0.0, 0, 0.0);
+        // (the Earthquake's trees: the warp's table emptied, so the next warp built ahead reads none)
+        if self.eq_trees_sent != u32::MAX {
+            render::set_warp_data(&[]);
+            self.eq_trees_sent = u32::MAX;
+            self.eq_copy = None;
+            self.eq_pl = None;
+        }
         self.strike = None;
         ground::clear();
         columns::clear();
@@ -2091,10 +2274,10 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" || l.key == "earthquake" || l.key == "sixstars" {
                 lines.push((format!("Quality: {}", if self.lite { "performance (the World Eater at its lightest)" } else if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
-            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" {
+            if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" || l.key == "earthquake" || l.key == "sixstars" {
                 lines.push((format!("Knockback: {}", if self.knock { "on" } else { "off" }), 0xA8B0BC));
             }
             if (l.key == "nuke" || l.key == "payload") && self.follow {
@@ -2210,6 +2393,8 @@ impl Mod for Orbital {
                         "skybreak" => "STRAINING THE SKY",
                         "carpetbomb" => "CLEARING THE RUN",
                         "convergence" => "WORLDS STIRRING",
+                        "earthquake" => "READING FAULTS",
+                        "sixstars" => "HEAT RISING",
                         "worldeater" => "STIRRING THE DEEP",
                         _ => "ACQUIRING TARGET",
                     };
@@ -2222,6 +2407,8 @@ impl Mod for Orbital {
         self.follow_tick();
         self.carry_tick();
         self.surge_tick();
+        self.quake_tick();
+        self.quake_ground();
         self.update_panel();
         self.paid();
         self.release_held();
@@ -2255,6 +2442,7 @@ impl Mod for Orbital {
             log::write(log::Level::Info, &format!("a frame of {seconds:.2} s, {:.1} s into the strike", self.strike.as_ref().map_or(0.0, |s| s.ticks as f32 * 0.05)));
         }
         self.warm();
+        self.since_tick += seconds;
         let we_tier = self.we_tier();
         let nowarp = self.we_nowarp;
         let player = if self.strike.as_ref().is_some_and(|s| s.key == "worldeater") { game::get_player() } else { None };
@@ -2283,6 +2471,77 @@ impl Mod for Orbital {
                 if perf::on() && perf::warp_changed(on) {
                     log::write(log::Level::Info, &format!("perf: warp {} at {:.2}", if on { "on" } else { "off" }, s.params[3]));
                 }
+            }
+            if s.key == "earthquake" {
+                // (the plates moving: the warp on from just before the first heave to rest; with the land really moved
+                // (terrain on: a quarter in params[15]) the terrain held from just before the first edit, and the land
+                // swapped in at rest once every edit is in: the hold lets go and the warp a frame after it)
+                let p = &s.params;
+                let real = p[15].fract() > 0.2;
+                let (hold, warp, lag) = strike::eq_frame(p[3], real, strike::eq_land_in(), self.eq_held_secs, (self.eq_held, self.eq_lag));
+                // (the terrain left alone: the plates ease back home after rest, the warp on till they are)
+                let warp = warp || (!real && (strike::EQ_WARP_START..strike::EQ_BACK_END).contains(&p[3]));
+                // (the walk: the camera drawn from the plate under the player's real feet as the warp draws it at this
+                // frame's partial tick, and that plate kept from rocking; params 13 and 14 given again at once)
+                let view = self.quaking.as_ref().map(|q| q.frame(f64::from(p[3]) + f64::from(self.since_tick.min(0.05)), warp));
+                if let Some(v) = view {
+                    (s.params[13], s.params[14]) = (v.p13, v.p14);
+                    render::set_params(&s.params);
+                }
+                let off = view.map_or([0.0; 3], |v| v.offset);
+                let clear = off == [0.0; 3];
+                if !(clear && self.view_clear) {
+                    render::set_view_offset(off[0], off[1], off[2]);
+                }
+                self.view_clear = clear;
+                let p = &s.params;
+                if hold {
+                    self.eq_held_secs += seconds;
+                }
+                if self.eq_held && !hold {
+                    log::write(log::Level::Info, &format!("earthquake: the land swapped in at {:.2} s, held {:.1} s{}", p[3], self.eq_held_secs, if strike::eq_land_in() { "" } else { ", some of it not in" }));
+                }
+                (self.eq_held, self.eq_lag) = (hold, lag);
+                // (the trees that fall, once the land's work has found them: their table for the warp, given again only
+                // when it changes, and the land round them drawn again as the copy they turn in)
+                let (ver, trees, origin) = strike::eq_trees_now();
+                if ver != self.eq_trees_sent {
+                    let slabs = strike::eq_slabs_now();
+                    render::set_warp_data(&strike::eq_tree_data(&trees, &slabs, origin));
+                    self.eq_copy = self.eq_pl.as_ref().and_then(|pl| strike::eq_trees_copy(&trees, &slabs, pl));
+                    self.eq_trees_sent = ver;
+                    // (each slab's sound, at the slab, once)
+                    if !slabs.is_empty() && !self.eq_slabs_cued {
+                        self.eq_slabs_cued = true;
+                        if let Some(me) = game::get_player() {
+                            for (t, act) in strike::eq_slab_cues(&slabs, [me.x, me.y + 1.6, me.z]) {
+                                s.given += 1;
+                                s.more.push(Given { t, seq: s.given, act });
+                            }
+                        }
+                    }
+                    if !trees.is_empty() {
+                        // (each one's sound, at its trunk, for where the player is now)
+                        let mut cues = 0;
+                        if let Some(me) = game::get_player() {
+                            for (t, act) in strike::eq_tree_cues(&trees, [me.x, me.y + 1.6, me.z]) {
+                                s.given += 1;
+                                s.more.push(Given { t, seq: s.given, act });
+                                cues += 1;
+                            }
+                        }
+                        log::write(log::Level::Info, &format!("earthquake: {} trees given the warp, the copy {:?}, {cues} sound cues", trees.len(), self.eq_copy));
+                    }
+                }
+                match self.eq_copy.filter(|_| warp) {
+                    Some((a, r)) => render::warp_on(true, a[0], a[1], a[2], 1, r),
+                    None => render::warp_on(warp, 0.0, 0.0, 0.0, 0, 0.0),
+                }
+                render::hold_world(hold);
+                if hold {
+                    render::hold_world_within(&[strike::eq_hold_within(p)]);
+                }
+                self.pace.hidden = hold;
             }
             if s.key == "fold" {
                 let on = (strike::FD_WARP_START..strike::FD_WARP_END).contains(&s.params[3]);
@@ -2492,6 +2751,12 @@ impl Mod for Orbital {
                 Ok(Some(format!("World Eater ground: {v} (from the next strike, this session)")))
             }
             (Some("wormground"), _) => Ok(Some(format!("World Eater ground: {} (/orbital wormground a, b, c, old or off)", strike::WORMGROUND[usize::from(strike::wormground())]))),
+            // (the Earthquake's sounds, for this session: synthesized, or the earlier set shaped from recordings)
+            (Some("quakesound"), Some(v @ ("synth" | "real"))) => {
+                QUAKE_SYNTH.with(|q| q.set(v == "synth"));
+                Ok(Some(format!("Earthquake sounds: {v} (from the next strike, this session)")))
+            }
+            (Some("quakesound"), _) => Ok(Some(format!("Earthquake sounds: {} (/orbital quakesound synth|real)", if quake_synth() { "synth" } else { "real" }))),
             (Some("shadow"), Some(v @ ("on" | "off"))) => {
                 self.shadow_off = v == "off";
                 let flags = |o: &Self, i: f32| o.flags_of(i as u32);
@@ -2585,6 +2850,16 @@ const _: () = {
 
 #[cfg(test)]
 mod tests {
+    /// The game gives the entities' shader a warp's source up to its first `// [fragments]` line: `world_warp` must stand
+    /// before that line, and the line must not be written anywhere before it (a comment would cut the source short).
+    #[test]
+    fn every_warp_has_its_vertex_part_before_the_fragments_line() {
+        for (name, warp) in [("fold", super::FOLD_WARP), ("worldeater", super::PASS_WE_WARP), ("earthquake", super::PASS_EQ_WARP)] {
+            let head = warp.split("// [fragments]").next().unwrap_or("");
+            assert!(head.contains("fn world_warp("), "{name}: no world_warp before the first `// [fragments]`");
+            assert!(warp.contains("fn world_fragment(") && !head.contains("fn world_fragment("), "{name}: world_fragment belongs after `// [fragments]`");
+        }
+    }
     #[test]
     fn own_passes_are_whole_and_small() {
         // the downfall's and the planet killer's passes leave out the other lasers' own functions and fs_main, keep what
@@ -2993,7 +3268,7 @@ mod stress {
     }
     fn soak_timed(sequences: u64, seed: u64) -> (u64, String, std::time::Duration, String) {
         let mut s = Soak::new(seed);
-        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence"]
+        let lasers: Vec<usize> = ["nuke", "nuke", "nuke", "rod", "rod", "payload", "planetkiller", "crystalbloom", "sinkhole", "downfall", "blackhole", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake"]
             .iter()
             .map(|k| LASERS.iter().position(|l| l.key == *k).expect("a laser"))
             // (`ORBITAL_SOAK_LASERS=worldeater,nuke`: only those)
@@ -3218,6 +3493,74 @@ mod stress {
         assert!(left.is_empty(), "{} of {} chunks of the caldera never dug: {:?}", left.len(), inner.len(), &left[..left.len().min(12)]);
         let last = inner.iter().map(|(x, z)| chunks[&(cx + x, cz + z)]).max().unwrap_or(0);
         assert!(last < 84 * 20, "the caldera's last chunk went in at {} s", last as f32 / 20.0);
+    }
+
+    /// The Earthquake's walk through lib.rs's own playback: a player on the plate that rises, standing still or walking
+    /// off the land kept for last, is handed over (`world.shift-player`) before any edit at rest goes into the chunks
+    /// round their real feet; a stop mid-strike puts the view back and lets the walk go.
+    #[test]
+    fn eq_walk_through_playback_hands_over_before_the_land_goes_in() {
+        let eq = LASERS.iter().position(|l| l.key == "earthquake").expect("the earthquake");
+        for (walking, stop) in [(false, false), (true, false), (false, true)] {
+            let mut s = Soak::new(7);
+            s.loaded = Loaded { me: (1000, -1890), view: 24, forced: Default::default(), slow: 1, now: s.tick };
+            fake::with(|w| w.keep_chunks = true);
+            s.fire(eq, (1000, -2000));
+            fake::with(|w| {
+                if let Some(p) = &mut w.player {
+                    p.y = f64::from(ground(1000, -1890, false) + 1);
+                }
+            });
+            assert!(s.o.quaking.is_some(), "a walk for the player");
+            let hold = (9.6 * 20.0) as u64;
+            let mut handed = None;
+            for tick in 0..1000u64 {
+                fake::with(|w| w.tick = tick);
+                s.step("earthquake");
+                if stop && tick == 400 {
+                    fake::with(|w| w.view_offset = [1.0; 3]);
+                    s.stop();
+                    assert!(s.o.quaking.is_none() && fake::with(|w| w.view_offset) == [0.0; 3], "stopped: the walk let go, the view back");
+                    break;
+                }
+                let t = s.o.strike.as_ref().map_or(99.0, |st| st.clock());
+                if walking && handed.is_none() && t > 6.0 {
+                    fake::with(|w| {
+                        if let Some(p) = &mut w.player {
+                            p.x += 0.4;
+                        }
+                    });
+                }
+                let feet = fake::with(|w| w.player.as_ref().map(|p| (p.x, p.z)).unwrap());
+                s.o.quake_tick();
+                if handed.is_none() && fake::with(|w| !w.shifts.is_empty()) {
+                    handed = Some(t);
+                }
+                if handed.is_none() {
+                    // (nothing at rest gone into a chunk round their real feet while they walk the unmoved land)
+                    // (the chunks within a block of their feet)
+                    let ch = |v: f64| (v.floor() as i32) >> 4;
+                    let (a0, a1, b0, b1) = (ch(feet.0 - 1.0), ch(feet.0 + 1.0), ch(feet.1 - 1.0), ch(feet.1 + 1.0));
+                    let hit = fake::with(|w| (a0..=a1).flat_map(|i| (b0..=b1).map(move |j| (i, j))).find(|c| w.chunks.get(c).is_some_and(|&k| k >= hold)));
+                    assert!(hit.is_none(), "walking {walking}: chunk {hit:?} edited at rest under them at {t:.2} s, before the hand-over");
+                }
+                if s.o.strike.is_none() {
+                    break;
+                }
+            }
+            if stop {
+                continue;
+            }
+            let at = handed.expect("handed over");
+            let shift = fake::with(|w| w.shifts[0]);
+            eprintln!("walking {walking}: handed over at {at:.2} s, shifted {shift:?}");
+            assert!(at < strike::EQ_RIDER_FROM, "handed over at {at}");
+            if !walking {
+                assert!(shift[1] > 20.0, "put up on the plate that rose: {shift:?}");
+                assert!(at > strike::EQ_RIDER_FROM - 0.3, "handed over at {at}");
+            }
+            assert!(s.o.quaking.is_none() && fake::with(|w| w.view_offset) == [0.0; 3], "over: the view back");
+        }
     }
 
     /// The follow camera: a Nuke fired with it on moves the player by kicks to their velocity once the bomb comes
