@@ -743,7 +743,34 @@ pub const SIX_STARS: Laser = Laser {
     particle_b: "particle minecraft:flame {x} {y} {z} {r} 2 {r} 0.05 8 force",
 };
 
-pub const LASERS: [&Laser; 23] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER, &CONVERGENCE, &EARTHQUAKE, &SIX_STARS];
+/// The Colossi, planned in `strike::colossi_plan` (strike/colossi.rs; the pass shaders/colossi.wgsl): five stone giants rise
+/// out of the earth in a ring, swing their hammers down towards the middle, the cracks they open run to the middle, meet and it all goes
+/// up; the broken giants are converted into blocks and left standing round the crater. The crater fields below are only
+/// what the shared tests read.
+pub const COLOSSI: Laser = Laser {
+    key: "colossi",
+    index: 23,
+    title: "COLOSSI",
+    rgb: 0x6CE08A,
+    blurb: "Five stone giants hammer the land until it blows, and are left kneeling as statues.",
+    icon_model: "orbital:colossi_icon",
+    length: 34.0,
+    range: 1000.0,
+    scorch: &[],
+    bowl_r: 26,
+    bowl_d: 10,
+    bowl_rough: 0.1,
+    shaft_r: 0,
+    shaft_min: 0,
+    shaft_rough: 0.0,
+    lining: &[("minecraft:blackstone", 1.0)],
+    bowl_floor: ("minecraft:blackstone", 0.0, "minecraft:dirt"),
+    bottom: &[],
+    particle_a: "particle minecraft:large_smoke {x} {y} {z} {r} 2 {r} 0.02 20 force",
+    particle_b: "particle minecraft:cloud {x} {y} {z} {r} 2 {r} 0.2 20 force",
+};
+
+pub const LASERS: [&Laser; 24] = [&PLASMA, &GODLY, &BLACK_HOLE, &METEOR, &MOTHERSHIP, &DOWNFALL, &PLANET_KILLER, &CRYSTAL_BLOOM, &SINKHOLE, &PAYLOAD, &NUKE, &ROD, &SUPERCELL, &HURRICANE, &TSUNAMI, &FOLD, &SUPERVOLCANO, &SKYBREAK, &CARPET_BOMB, &WORLD_EATER, &CONVERGENCE, &EARTHQUAKE, &SIX_STARS, &COLOSSI];
 
 /// The ship lasers: they share the mothership's arrival and its approach and arrival choices.
 pub fn is_ship(l: &Laser) -> bool {

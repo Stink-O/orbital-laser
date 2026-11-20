@@ -36,9 +36,8 @@ def raster(svg, width):
 def social_preview():
     W, H = 1280, 640
     # a strike on the right of the card (its ship and beam clear of the words), fading into the dark on the left
-    # (the Six Stars: the star torn out of the screen hanging over the land in the golden-hour sky, about to fall, a frame
-    # from a recording)
-    shot = Image.open(ROOT / "docs" / "branding" / "sixstars-card.jpg").convert("RGB")
+    # (the Colossi: a giant's hammer swung over the land, three more giants in their dust beyond, a frame from a recording)
+    shot = Image.open(ROOT / "docs" / "branding" / "colossi-card.jpg").convert("RGB")
     shot = shot.resize((round(shot.width * H / shot.height), H), Image.LANCZOS)
     card = Image.new("RGBA", (W, H), (7, 10, 17, 255))
     card.paste(shot, (W - shot.width, 0))
@@ -59,10 +58,10 @@ def social_preview():
     y = 140 + logo.height + 146
     tag = ImageFont.truetype(str(FONT), 22)
     tw = round(d.textlength("NEW", font=tag))
-    d.rounded_rectangle((80, y, 80 + tw + 24, y + 36), radius=7, fill="#F06AB0")
+    d.rounded_rectangle((80, y, 80 + tw + 24, y + 36), radius=7, fill="#5BE39A")
     d.text((92, y + 5), "NEW", font=tag, fill="#07090F")
-    d.text((80 + tw + 24 + 16, y - 4), "SIX STARS", font=ImageFont.truetype(str(FONT), 38), fill="#F06AB0")
-    d.text((80, y + 56), "and 22 more!", font=ImageFont.truetype(str(FONT), 30), fill="#C4CBD4")
+    d.text((80 + tw + 24 + 16, y - 4), "COLOSSI", font=ImageFont.truetype(str(FONT), 38), fill="#5BE39A")
+    d.text((80, y + 56), "and 23 more!", font=ImageFont.truetype(str(FONT), 30), fill="#C4CBD4")
     card.convert("RGB").save(OUT / "social-preview.png", optimize=True)
 
 

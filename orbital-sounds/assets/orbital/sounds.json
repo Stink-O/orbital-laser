@@ -7751,5 +7751,374 @@
       }
     ],
     "subtitle": "subtitles.orbital.sixstars.after"
+  },
+  "colossi.rise1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/rise1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.rise"
+  },
+  "colossi.rise2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/rise2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.rise"
+  },
+  "colossi.rise3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/rise3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.rise"
+  },
+  "colossi.stamp1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/stamp1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.stamp"
+  },
+  "colossi.stamp2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/stamp2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.stamp"
+  },
+  "colossi.stamp3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/stamp3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.stamp"
+  },
+  "colossi.heave1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/heave1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.heave"
+  },
+  "colossi.heave2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/heave2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.heave"
+  },
+  "colossi.heave3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/heave3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.heave"
+  },
+  "colossi.slam1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam"
+  },
+  "colossi.slam2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam"
+  },
+  "colossi.slam3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam"
+  },
+  "colossi.slam4": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam4",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam"
+  },
+  "colossi.slam5": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam5",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam"
+  },
+  "colossi.slam_far1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam_far1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam_far"
+  },
+  "colossi.slam_far2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam_far2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam_far"
+  },
+  "colossi.slam_far3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam_far3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam_far"
+  },
+  "colossi.slam_far4": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam_far4",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam_far"
+  },
+  "colossi.slam_far5": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam_far5",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam_far"
+  },
+  "colossi.charge1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/charge1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.charge"
+  },
+  "colossi.charge2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/charge2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.charge"
+  },
+  "colossi.charge3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/charge3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.charge"
+  },
+  "colossi.burst1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/burst1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.burst"
+  },
+  "colossi.burst2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/burst2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.burst"
+  },
+  "colossi.burst3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/burst3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.burst"
+  },
+  "colossi.burst_far1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/burst_far1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.burst_far"
+  },
+  "colossi.burst_far2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/burst_far2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.burst_far"
+  },
+  "colossi.burst_far3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/burst_far3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.burst_far"
+  },
+  "colossi.kneel1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/kneel1",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.kneel"
+  },
+  "colossi.kneel2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/kneel2",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.kneel"
+  },
+  "colossi.kneel3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/kneel3",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.kneel"
+  },
+  "colossi.settle1": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/settle1",
+        "attenuation_distance": 1200
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.settle"
+  },
+  "colossi.settle2": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/settle2",
+        "attenuation_distance": 1200
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.settle"
+  },
+  "colossi.settle3": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/settle3",
+        "attenuation_distance": 1200
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.settle"
+  },
+  "colossi.quake": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/quake",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.quake"
+  },
+  "colossi.slam_all": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/slam_all",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.slam_all"
+  },
+  "colossi.beam": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/beam",
+        "attenuation_distance": 2048
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.beam"
+  },
+  "colossi.ground": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/ground",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.ground"
+  },
+  "colossi.blast": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/blast",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.blast"
+  },
+  "colossi.blast_far": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/blast_far",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.blast_far"
+  },
+  "colossi.rumble": {
+    "sounds": [
+      {
+        "name": "orbital:colossi/rumble",
+        "attenuation_distance": 256
+      }
+    ],
+    "subtitle": "subtitles.orbital.colossi.rumble"
   }
 }

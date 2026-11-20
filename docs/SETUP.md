@@ -7,6 +7,13 @@ The [README](../README.md) has the short version. This page has every step and o
 
 ## Two ways to play
 
+> [!NOTE]
+> **The native version is off for now.** Horizon's launcher moved to a new mod format on 18 November 2026 and no
+> longer installs `.hnmod` mods, so Orbital Laser isn't on its Mods page any more. The native steps below are for
+> Horizon builds from before the change, with `orbital-laser-native-v0.5.17.hnmod` from the
+> [0.5.17 release](https://github.com/Stink-O/orbital-laser/releases/tag/v0.5.17). Otherwise play the
+> [fork version](#fork-version).
+
 The [native version](#native-version-regular-horizon) runs on regular Horizon: install it from
 the launcher's Mods page and the launcher compiles it into the game. The [fork version](#fork-version) is a WebAssembly mod for the Orbital Laser build of
 Horizon ([Stink-O/horizon](https://github.com/Stink-O/horizon/tree/mod-api-input-ui-render-world), release
@@ -16,7 +23,7 @@ Edition 26.3: nothing from Minecraft is in this repository or the downloads.
 
 **Not in the native version yet: the Fold and the Earthquake.** They aren't playable in the native file,
 `orbital-laser-native-v0.5.17.hnmod` (what the launcher's Mods page installs): they show greyed out in the wheel, saying
-"On the fork now, native soon". To play them now, use the fork version, `orbital-laser-v0.5.17.zip`, on the Orbital Laser
+"On the fork now, native soon". To play them now, use the fork version, `orbital-laser-v0.5.18.zip`, on the Orbital Laser
 build of Horizon ([Fork version](#fork-version)). Every other laser plays on both.
 
 **The native version is built on a Horizon with the fixes I sent upstream:** the sound stopping during a heavy strike
@@ -25,6 +32,13 @@ build of Horizon ([Fork version](#fork-version)). Every other laser plays on bot
 ([#15878](https://github.com/horizon-rust/horizon/pull/15878)). New lasers still come to the fork first.
 
 ## Native version (regular Horizon)
+
+> [!NOTE]
+> **The native version is off for now.** Horizon's launcher moved to a new mod format on 18 November 2026 and no
+> longer installs `.hnmod` mods, so Orbital Laser isn't on its Mods page any more. The native steps below are for
+> Horizon builds from before the change, with `orbital-laser-native-v0.5.17.hnmod` from the
+> [0.5.17 release](https://github.com/Stink-O/orbital-laser/releases/tag/v0.5.17). Otherwise play the
+> [fork version](#fork-version).
 
 **You need:** the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) with an instance set up from your own
 Minecraft Java Edition 26.3, and on Linux a C compiler, `pkg-config` and the ALSA and libudev development files (the
@@ -47,7 +61,7 @@ now.
 
 **To install the file by hand** (for a version that isn't on the Mods page yet):
 
-1. Download **`orbital-laser-native-v0.5.17.hnmod`** from the [latest release](https://github.com/Stink-O/orbital-laser/releases/latest).
+1. Download **`orbital-laser-native-v0.5.17.hnmod`** from the [0.5.17 release](https://github.com/Stink-O/orbital-laser/releases/tag/v0.5.17).
 2. On the **Instances** page, press **Open folder** on your instance. (A new instance's folder is in
    `instances/<its name>` inside Horizon's data folder, not in the data folder itself.)
 3. Put the file in its **`horizon-native-mods`** folder, keeping its name. Make the folder if it isn't there yet: it
@@ -94,7 +108,7 @@ now.
    If you already have Horizon set up, skip that and point `HORIZON_RESOURCES` at its prepared resources (the folder
    `.local/horizon-client/26.3` inside it).
 
-2. **Install the mod.** Download `orbital-laser-v0.5.17.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.18.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run:
 
    ```sh

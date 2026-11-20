@@ -1,6 +1,23 @@
 # Changes
 
-What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0517); each release's notes are in [docs/releases](releases).
+What each release of Orbital Laser added, newest first. The current release is in the [README](../README.md#new-in-0518); each release's notes are in [docs/releases](releases).
+
+## 0.5.18
+
+A new laser, **the Colossi**. Five stone giants about 220 blocks tall heave themselves out of the earth in a ring round
+the target, slam their hammers into the land one after another and then together, and the cracks they open meet and
+blow the land apart. They're left kneeling as stone statues round a terraced crater about 317 blocks across. It's on
+the wheel's fifth page and `/orbital colossi`; on the fork it needs `orbital-mod-api-13`, as 0.5.17 did. It isn't in the
+native version. The giants and their hammer were made in Tripo and turned into blocks with
+[model2mc](https://github.com/Stink-O/model2mc); this laser was sponsored by Tripo. Its impact frames and flash follow
+`/orbital impactframes` and the wheel's FLASHES row. See [The lasers](LASERS.md#the-colossi).
+
+- **The Earthquake over water:** where its fault ran through water, the slabs breaking off the low edge took the water
+  and the seabed with them as they tipped, drawn as stretched blue and black sheets. The slabs' land is checked as the
+  strike fires now, and only slabs standing dry break away.
+- **The native version is off for now.** Horizon's launcher moved to a new mod format on 18 November 2026 and no longer
+  installs `.hnmod` mods, so Orbital Laser left its Mods page. This release has no native file; 0.5.17's stays on its
+  release for Horizon builds from before the change.
 
 ## 0.5.17
 

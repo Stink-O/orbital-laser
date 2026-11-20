@@ -551,6 +551,85 @@ laser, command, capability and timing). This file is the short, factual version 
   **Photosensitivity:** the sun's flare on each star's beat and on the release, each star's flash, the release's flash
   and ring, the impact's flash lighting the land, and the HUD's stars blinking 2.3-2.9 times a second for about 3 s from
   19.5 s; SOFT makes them slow pulses.
+- **The Colossi** (`strike/colossi.rs`, `shaders/colossi.wgsl`, assets `mod/colossi/`; 34 s, `CL_LEN`; laser index 23,
+  pass 19, the wheel's fifth page; held back natively, `HELD_BACK`) is the one laser
+  built from models you hand it: five stone giants 206-230 blocks tall (`GIANTS` in tools/colossi_assets.py; `CL_K` 4.4
+  times the first design's 50; the most a block statue can be under the build limit) in a ring 300 out (`RING_R`,
+  `RING_DEG`). Each rises in heaves from 0.2 s + 0.2 s a giant over 6.5 s (`T_RISE0`, `T_RISE_STEP`, `CL_RISE_S`; the
+  pass's `cl_rise`), stamps a foot 3.2 s times its own lead before each blow, heaves its hammer over its shoulder and
+  slams it into the ground in front of it (`slam_point`, 40 of its mesh units ahead of its pelvis): first blows at
+  11 s + 0.6 s a giant (`slam1`), then a ragged combined blow rolling over about half a second in an order dealt
+  each strike, the last landing at 18 s (`slam2`, `SLAM2`, the pass's `CL_T2`). Each giant moves its own way
+  (`CHARACTER`: eager, stiff, showy, brute, wary, dealt round the ring by the target block, `character`; its lead into
+  each blow `leads`, its crouch, arch, twist, posture, head, restlessness and reaction: record words 26-34). The cracks
+  from the five blows lunge on to the middle in five jolts (`cl_run`, 18-20 s) and meet in a blast at 20 s (`CL_HIT`;
+  no beam from the sky, though the sound and the shakes still call that moment `T_BEAM0`); from 20.9 s its light climbs
+  each hammer and the arms holding it, which burst at 22.4 s + 0.15 s a giant (`CHARGE`, `BURST`, `BURST_STEP`; the
+  pass's `CL_CHARGE`, `CL_BURST`, `cl_tb`; which arm pieces go is `BURST_MASK`, the same masks as `GIANTS`, whose
+  `burst` leaves them out of the statues and drops whatever no longer joins the ground). From 0.2 s after its burst
+  each goes down on one knee, in three catches, and shudders to a stop at 24.3 s (`CL_SETTLE`): from then the giant
+  drawn is exactly its statue. A line sweeps down each from 25 s, 0.3 s apart, 4.5 s each (`T_SWEEP0`, `T_SWEEP_STEP`,
+  `CL_SWEEP`; the last done at 30.7 s), only showing the blocks already there. Terrain on: force-loads the chunks in
+  the square within 400 of the target (`LOAD_R`, `load_rows`: about 2,600) from the start, let go at 33.5 s; kills
+  every mob and item (not players, not falling blocks) within 470 at 20 s (`KILL_R`). **The torn land** round each giant
+  (`hv_setup`, `hv_drive`, `hv_chunk`): every column out to ~115 from its feet and round its hammer's strip is read
+  (`world.read-columns`, 36 under its top, `HV_READ` 24 chunks a read asked about 1.2 s before its first is due) and
+  torn up a chunk an edit from its feet out, 0.4-4.8 s after the giant starts up: everything standing cleared whatever
+  its height (leaves a little further, so no crown hangs), the ground broken into plates (`frac`, the pass's `cl_frac`,
+  step for step: 9 cracks radiating from its feet, branching, dug 2-7 down and running on past the torn edge; plates
+  in staggered rings, each tipped its own way, a fissure 1-2 deep along most of their edges), each plate one family of
+  blocks (`HV_FAM`: deepslate, stone and tuff near its feet and at the cracks' lips, coarse, rooted and plain dirt,
+  packed mud and gravel further out; sand or red sand under a desert's), the heap (`Heave::terms`, the pass's `cl_mh`)
+  on each column's own ground, through any water, in up to 3 lifts 0.6 s apart (`HV_STEPS`, `HV_GAP`), its top the
+  land's own surface (`hv_surface`: grass, snow, sand...), the earth at each stance foot as it stamps and the lip round
+  the hammer (and what stands there) as it lands (`HV_AT_BLOW`); a ragged edge (`Heave::edge`), nothing inside the
+  crater, columns holding a chest, barrel, furnace and the like left as they are (`hv_kind` 5); a chunk not loaded is
+  asked again, a column first, till 19 s (`HV_LAST`). The colours of what it tears up go to the pass at `HV_COL`
+  (`cl_heapcol`); with the terrain on the pass draws no heap outside the crater (flags bit 3). `hv_drive` runs by the
+  real clock (`strike::clock()`, see below). **The crater** (`Crater`, `cr_column`): ~317 across (`CRATER_R` 158, 36
+  CL_K), its edge wandering 9% and pulled out in lobes up to 16% along the five crack lines (`CR_LOBE`), ~62 deep under
+  the target's ground (`CRATER_D`) and 8 more in a pit in its middle, in terraces about 6 deep (`CR_STEP`) broken into
+  slabs ~22 across (`CR_SLAB`), lined by depth (`cr_stone`: the land's own stone, then tuff and stone, deepslate,
+  blackstone and basalt deep), its risers blackened in patches, a few glowing pools of verdant froglight in the pit;
+  land over the target's ground cut back from the edge in a stepped slope (`CR_SLOPE`); a broken rim of overturned
+  earth and rock up to ~11 high (`CR_RIM_H`) within ~26 of the edge (`CR_RIM`); fissures (five towards the giants'
+  blows from 8 out to ~258, and between each two giants one from inside the crater out to ~283 (most strikes) and one
+  from near its edge out to 253-293), 6-15 wide and deep in the crater, narrower and shallower out past it, bedded in verdant froglight, dark prismarine, sculk and
+  blackstone with dark lips. **The blast field** past it out to 384 (`BD_R`, `Crater::zone`, `bd_fell`, `bd_rock`): trees
+  felled lying pointing away from the middle out to about 82 past the crater's edge (`BD_FELL`; some knocked flat
+  further), snapped and stripped to about 150 past it (`BD_SNAP`), crowns thinned from the top in patches and snow
+  shaken off out to `BD_R`, the ground scorched in tongues (blackstone, basalt, coal block; coarse dirt, podzol,
+  gravel; singed), boulders and rubble in 21 rays (`BD_RAYS`); a column never loaded is done by the heightmap out to
+  `TREE_R` (308) only; nothing within a statue's box or a giant's torn land (`Crater::clear`). Its stages
+  (`cr_setup` at 7.85 s, `cr_list`, `cr_run`): the field and the crater's edge chunks clear of the torn land read from
+  8 s (`BD_SETUP`, a stage every `BD_GAP` 0.1 s, `BD_AHEAD` 4 reads in hand), the crater's middle from 12 s
+  (`CR_SETUP`, every `CR_GAP` 0.1 s, `CR_AHEAD` 3), the edge near the torn land from 18.2 s (`CR_ASK`, a stage a tick);
+  `world.read-columns` 34 under each column's top (`CR_BELOW`), six chunks a read (`CR_PART`). A chunk's blocks are one
+  edit, due as the front reaches its nearest column (`cr_when`: 20.15 s + 140 blocks a second out to ~228, `CR_READ`,
+  then 110 a second, `BD_WAVE`: the bowl in by ~21.3 s, the rim by ~21.8, the field by ~23.2).
+  `the_crater_goes_in_as_the_blast_hides_it` (hills, a river, trees) and `the_field_and_the_wrecks_over_a_snowy_forest`
+  play it; `CR_MAP=file.ppm` draws it from above. **The hammer wrecks** (`hm_wreck`, `hm_pieces`, on the floor the
+  crater's stages leave within `HM_R` 64 of each blow, `Crater::floors`): the head's stump buried across the blow, its
+  top 6-14 over the floor, broken off at one end, the shaft's stub (18-44 long) leaning back towards the giant, in
+  polished deepslate, deepslate tiles and bricks and tuff bricks with dark prismarine and froglight in the breaks, and
+  11-15 fragments out to 46 (`HM_FAR`); the stump at 24.95 s + 0.25 s a giant + 0.05 (`HM_AT`, `HM_STEP`), the
+  fragments in two edits as they land after it; all seeded from `Crater::seed` and the giant only. **The statues**: five
+  kneeling statues (`STATUE_POSE` in tools/colossi_assets.py, posed by tools/colossi_pose.py; about 38,000-74,000 blocks
+  each, some 300,000 in all, their grids 137-177 high and set 9 into the ground, `BURY`), read out of `statues.bin` from
+  21.6 s + 0.3 s a giant (`statue_read_at`: `Statue::cells` a stage, `Cells::by_chunk` the next), handed to the world a
+  few chunks a stage (`place_statue`, `STATUE_STAGE`), every edit of giant g's at 24.45 s + 0.1 s g (`STATUE_AT`,
+  `STATUE_STEP`: after `CL_SETTLE`, before its line), one per chunk column, the chunk with the highest block first,
+  each chunk once, hidden inside the giant the pass still draws over them till its line reveals them;
+  `cl_edit_profile` (ignored) prints the edits a quarter second at a time and each statue's margin before its reveal.
+  The meshes in the repo (`mod/colossi/*.bin`) are built from the owner's Tripo models (GiantA, GiantB, Hammer: not in
+  the repo) with `tools/colossi_assets.py --models DIR`; **never run it without `--models`**: it would build from
+  stand-ins (`tools/colossi_standin.py`) and replace them. `--reuse` packs the converter's output already in its work
+  folder (only the packing and the statues' pose run); a fresh build needs the converter
+  ([model2mc](https://github.com/Stink-O/model2mc)) and its `.venv`.
+  Its impact frames (`cl_if`, half a second of hard cuts as the land bursts at 20 s, `cl_spikes` in the half-size
+  stage) and the blast's white flash obey `/orbital impactframes on|off` and the wheel's FLASHES row (FULL or SOFT,
+  `Rows::Flash`, the same setting as the Six Stars'): off sets params[15] bit 2 (`flags_of`) and `cl_soft` leaves the
+  frames out and holds the flash down. **Photosensitivity:** a note goes with it in the README and the release notes.
 - **Minecraft is not part of this repo.** Horizon's prepared resources come from the user's own Minecraft Java 26.3
   (`horizon-prepare`). Don't download, bundle, fake or work around it.
 - **Stock Horizon can't run the mod.** It needs the fork's build, release `orbital-mod-api-13` or newer (it adds
@@ -600,6 +679,8 @@ tools/preview.py convergence 6 13.05 20 26.1 38 --views cvplayer,cvaerial  # the
 python3 tools/sounds_convergence.py                  # the Convergence's sounds (its explosions from tools/sounds_cv_blasts.py; the recordings: NOTICE)
 tools/preview.py sixstars 3.5 8.5 14 19 30 --views ssplayer,ssover  # the Six Stars offscreen (views ss*: ssplayer, sssun, ssup, ssfar, ssover, ssaerial)
 python3 tools/sounds_sixstars.py                     # the Six Stars' sounds (`--src DIR` or SS_SOUND_SRC: the CC0 recordings, by their Freesound numbers in NOTICE)
+tools/preview.py colossi 10.5 20.3 23.2 --views clplayer,clburst  # the Colossi (views cl*; the meshes from mod/colossi/view.bin)
+python3 tools/sounds_colossi.py --listen DIR         # the Colossi's sounds (and the strike heard from 300 and 700 blocks)
 ```
 
 **Search with ripgrep (`rg`), not `grep`.** It's installed, much faster on this repo and the fork, and skips
@@ -613,8 +694,8 @@ install and check it in the game, once. In the game, `/orbital skip SECONDS` (te
 far in, so one moment can be looked at without sitting through the rest; `horizon-ctl command "orbital skip 29"`
 from a script.
 
-In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak`, `carpetbomb`, `worldeater`, `convergence`, `earthquake` or `sixstars`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast|performance` (PERFORMANCE: FAST with the World Eater's pass at its lightest, `we_tier`), `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look; the Convergence's frames read only on or off), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's, the Fold's, the Supervolcano's, the Carpet Bomb's, the World Eater's, the Convergence's and the Six Stars' push, the Hurricane's and the Tsunami's carry, the World Eater's swallow; kept, the wheel's KNOCKBACK switch), `/orbital worldeater hunt|scripted` (kept, the wheel's TAKE row), `/orbital wormground a|b|c|old|off` (the World Eater's sound under the land, `WORMGROUND`; this session only; default a), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`. `/orbital tune` lists the loaded laser's live knobs, `/orbital tune KEY VALUE` sets one (clamped; kept), `/orbital tune reset [KEY]` puts them back (`mod/src/tune.rs`; only the Convergence has any: `crater`, `depth`, `turn`, `knock`, `jolt`, `islands` from its next strike, `glow`, `burst`, `flash`, `haze`, `dusk` at once).
-The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb and the World Eater on the fourth, the Convergence, the Earthquake and the Six Stars on the fifth. Its FLY
+In the game: `/orbital give` (the designator), `/orbital wheel`, `/orbital plasma`, `godly`, `blackhole`, `meteor`, `mothership`, `downfall`, `planetkiller`, `crystalbloom`, `sinkhole`, `payload`, `nuke`, `rod`, `supercell`, `hurricane`, `tsunami`, `fold`, `supervolcano`, `skybreak`, `carpetbomb`, `worldeater`, `convergence`, `earthquake`, `sixstars` or `colossi`, `/orbital approach …`, `/orbital arrival …`, `/orbital colour …`, `/orbital terrain on|off`, `/orbital hud on|off`, `/orbital payloadsound main|alt`, `/orbital nukesound main|alt`, `/orbital quality full|fast|performance` (PERFORMANCE: FAST with the World Eater's pass at its lightest, `we_tier`), `/orbital impactframes kanada|blackflash|cinematic|off` (`on` brings back the last look; the Convergence's frames read only on or off), `/orbital seed N|lock|random` (kept, the wheel's SEED field and LOCK SEED switch: N in 1-997 holds every strike's seed, `lock` holds the last strike's, `random` lets go), `/orbital knockback on|off` (the Nuke's, the Rod's, the Fold's, the Supervolcano's, the Carpet Bomb's, the World Eater's, the Convergence's and the Six Stars' push, the Hurricane's and the Tsunami's carry, the World Eater's swallow; kept, the wheel's KNOCKBACK switch), `/orbital worldeater hunt|scripted` (kept, the wheel's TAKE row), `/orbital wormground a|b|c|old|off` (the World Eater's sound under the land, `WORMGROUND`; this session only; default a), `/orbital carryview turn|still` (kept: whether the Hurricane's carry turns the player's view a little with them round the storm and sways it with the gusts, `CARRY_TURN`; `still` leaves the view their own), `/orbital follow on|off` and `/orbital follow distance N` (kept, the wheel's FOLLOW switch: an orbit camera round a Nuke's or a Payload's bomb, `follow.rs`: the player's own look sets the angle, the camera `distance` (70) back from the bomb along it; moved only by `world.push-player` kicks each tick, never faster than 24 blocks a tick (`VMAX`: past that the game's collision sweep runs out of budget and crashes), worked out against the game's own drag so its movement and frame interpolation carry it, never a teleport or a turn of the view; it leaves the player once the bomb is within 440 blocks of them, so it stays on land already loaded; backs off to 380 (the Payload 170) as the burst nears, orbits the cloud, and a `tp ... ~ ~` puts them back), `/orbital flyspeed N|reset`, `/orbital stop` (ends the strike under way; also the wheel's STOP STRIKE button while one is), `/orbital skip SECONDS`. `/orbital tune` lists the loaded laser's live knobs, `/orbital tune KEY VALUE` sets one (clamped; kept), `/orbital tune reset [KEY]` puts them back (`mod/src/tune.rs`; only the Convergence has any: `crater`, `depth`, `turn`, `knock`, `jolt`, `islands` from its next strike, `glow`, `burst`, `flash`, `haze`, `dusk` at once).
+The wheel has pages of five (its arrows, its tabs or a right-click turn them); the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole and the Payload are on the second, the Nuke, the Rod from God, the Supercell, the Hurricane and the Tsunami on the third, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb and the World Eater on the fourth, the Convergence, the Earthquake, the Six Stars and the Colossi on the fifth. Its FLY
 SPEED row over the title sets the creative flying speed (a click along the bar for 1x–40x, or a number typed in its
 box, up to 1000x, Enter to set), through `world.set-flying-speed` and `input.poll-typed`. A fork build without them, or
 without `world.edit-blocks`, `world.surface-height`, `world.read-columns`, `world.push-player`, `world.carry-player`,
@@ -625,9 +706,9 @@ at the top, then KNOCKBACK (the Nuke, the Rod, the Hurricane, the Tsunami, the F
 under way, its rows lined up with the left's (PANEL with SEED, QUALITY with LOCK SEED, STOP STRIKE with the first
 switch under them). Nothing goes over the hotbar but the designator's: its countdown while held (`ACQUIRING TARGET …`, `SEISMIC SCAN …`,
 `DESIGNATING …`, the Hurricane's `TRACKING STORM …`, the Tsunami's `READING THE SEA …`, the Fold's `ATTUNING …`, the Supervolcano's
-`BREACHING CRUST …`, the Convergence's `WORLDS STIRRING …`, the Earthquake's `READING FAULTS …`, the Six Stars' `HEAT RISING …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
+`BREACHING CRUST …`, the Convergence's `WORLDS STIRRING …`, the Earthquake's `READING FAULTS …`, the Six Stars' `HEAT RISING …`, the Colossi's `WAKING THE GIANTS …`, with the laser's name) and `NO TARGET IN RANGE` (`actionbar` in lib.rs;
 the strikes have no messages; firing during a strike only clicks). With the Rod or the Convergence loaded or pointed at, an IMPACT FX row under the ring (OFF, KANADA, BLACK FLASH,
-CINEMATIC; `Rows::Impact`; the Convergence's frames have one look, so any look but OFF turns them on). With the Six Stars, a FLASHES row (FULL or SOFT; `Rows::Flash`, the same setting). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
+CINEMATIC; `Rows::Impact`; the Convergence's frames have one look, so any look but OFF turns them on). With the Six Stars or the Colossi, a FLASHES row (FULL or SOFT; `Rows::Flash`, the same setting). With the Payload or the Nuke loaded or pointed at, a BLAST SOUND row under the ring picks its blast (MAIN or ALT, as
 `/orbital payloadsound` or `/orbital nukesound`). Every post pass is built ahead of time by `mod/build.rs` (`src/passbuild.rs`): a switch
 only picks a ready-made one, but the game holds one pipeline at a time and builds a new one on the render thread as `warm` hands it
 over: some 60 ms each time, and up to 2 s (the Downfall's 7) the first time the driver sees a pass. So a wheel pick stays up for the two
@@ -682,6 +763,17 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   the landings: `tree_landing`, `hu_landings`), `src/carry.rs` the player's carry, `shaders/hurricane.wgsl` its pass (`hu_debris`, `hu_trees`,
   `hu_volume`; FAST's `[half stage]`). Preview views `hu*` (`hustrip=1` takes the preview's trees away as the front
   reaches them); `hu_write_table` (ignored) writes its table over the preview's wooded land.
+- The Colossi: `src/strike/colossi.rs` its plan (the table and the records, `CHARACTER`, the sounds' cues `CS_*`, the
+  torn land `hv_*`, the crater and the blast field `cr_*`/`bd_*`, the hammer wrecks `hm_*`, the statues `place_statue`),
+  `shaders/colossi.wgsl` its pass (appended to `strike.wgsl` up to its `fs_main`: the skeleton and its pose, BVH ray
+  tracing of the packed meshes cut by the converter's damage function `cl_damage` (`cl_cut`), the land's cracks and
+  heap, the ground clouds and plumes, the blast's crown, column and dust wall, the burst's debris and smoke, all put
+  together in `cl_render`; FAST's `[half stage]`: the whole of `cl_render` at half size, `fs_join` a joint bilateral
+  upsample against the land's depth), `tools/colossi_rig.py` (the meshes cut into bone pieces, the layout),
+  `tools/colossi_assets.py` (converter output to `mod/colossi/view.bin` and `statues.bin`), `tools/colossi_pose.py` (the
+  statues posed as the pass poses the giants), `tools/colossi_standin.py` (stand-in GLBs: never over the real ones),
+  `tools/sounds_colossi.py` its sounds (`colossi.*`, all synthesised; its `schedule` plays the plan's cue arithmetic:
+  keep the `CS_*` leads and the files in step). Preview views `cl*`; `cl_write_table` (ignored) writes the table.
 - The Tsunami: `src/strike/tsunami.rs` its plan (`TsGeo`, the land's read and edits, `ts_chunk`, `ponds`, `table_words`),
   `src/strike/ts_sounds.rs` its sounds' schedule, `src/surge.rs` the player carried in the water,
   `shaders/tsunami.wgsl` its pass (no half-size stage), `tools/sounds_tsunami.py` its sounds. Preview views `ts*`;
@@ -742,7 +834,7 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   `mixins/orbital/horizon-mixin.toml` its hook points and the upstream commit it is pinned to). A fork call the native
   build lacks gets a stand-in in the shim so the mod builds: `native_build::UNSUPPORTED` lists the ones a laser can't do
   without and `NEEDS` which laser needs them, and such a laser is greyed out in the wheel; `HELD_BACK` greys out a laser the build can make but that hasn't been played
-  natively yet or doesn't play right there (the Fold, its water through the warp; the Earthquake, which needs calls upstream lacks), saying `NOT_YET` ("On the fork now, native soon"). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
+  natively yet or doesn't play right there (the Fold, its water through the warp; the Earthquake, which needs calls upstream lacks; the Colossi, not yet tried natively), saying `NOT_YET` ("On the fork now, native soon"). `render.set-hand-tint` is a stand-in that only keeps the colour (upstream has
   no hand tint). The glue ignores the mod's `Registration` (its command paths included): it runs every line starting
   with `/orbital` and puts only its own `USAGES` in the server's command tree. Check a bundle with
   `horizon-mixins apply` and `cargo check -p horizon-client` on its pin and on the newest Nightly (the registry's check).
@@ -800,6 +892,69 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
   fork; `payload_pass` in lib.rs drops the section for FULL. `tools/preview.py payload T --quality both` shows FULL and
   FAST side by side (`--whole`: FAST as a fork without the stage draws it). The Planet Killer, the Crystal Bloom and
   the Sinkhole could take the same split.
+- **The Colossi are skeletons** (`tools/colossi_rig.py`, `cl_pose`/`cl_rig`/`cl_leg`/`cl_arm` in `colossi.wgsl`,
+  `pose_words` in `strike/colossi.rs`): 13 rigid pieces a giant (pelvis, torso, head, two arms and forearms, two thighs,
+  shins and feet) plus the hammer, chained about 15 joints per design (`JOINTS_A`/`JOINTS_B`, in the 50-unit mesh's
+  coordinates, or `rig.joints` in colossi.json as box fractions: Tripo's rig can replace them with no code change), cut
+  by nearest capsule, planes at the neck, hips, knees and ankles and a 0.7 overlap band, balls at shoulders and elbows to
+  close the seam; legs by two-bone IK (`cl_leg`, its frame `cl_frame`: thigh, shin and foot turn as one hinge about the
+  knee line) so the feet stay planted, arms by IK to the handle (`cl_arm`). The pose is `cl_pose(g, t)`: a rise in
+  heaves, a foot stamped before each blow (`cl_stomps`), the hammer heaved over the shoulder and slammed, each giant by
+  its record's character words; after its burst one knee goes down (record words 59-62: where the kneeling foot goes and
+  which; the other foot steps in to `CL_FRONT`) and it sinks into its statue's crouch (words 48-58) by `CL_SETTLE`
+  (24.3). **That pose is in two places**: the pass's `cl_pose`/`cl_rig`/`cl_leg`/`cl_arm`/`cl_about`/`cl_arc`/
+  `cl_rest_pole` and `tools/colossi_pose.py` (`rig`, `leg`, `arm`, `feet`, `FRONT` = `CL_FRONT`), which moves the
+  statue's blocks bone by bone into the same crouch (`pose_blocks`) for `tools/colossi_assets.py` (`STATUE_POSE`, packed
+  into `statues.bin` and handed to the pass as words 48-62): change one, change the other, and rebuild the statues
+  (`tools/colossi_assets.py --models DIR --reuse`; never without `--models`), or the blocks will not lie under the giant
+  drawn over them. Round the giants: `cl_ground` (the green cracks where each rises, `cl_frac`; where each hammer lands
+  and on to the middle, `cl_run`; the stamps' rings; the crazed glow as the cracks meet; the crater's light; the dust
+  wall's ring on the land), `cl_mound`/`cl_mh`/`cl_mtrace` (the heap, drawn only inside the crater with the terrain on),
+  `cl_earth` (to 24.5 s: `cl_gc`, rolling ground clouds where each rises, stamps and strikes; `cl_plumes`, each giant's
+  own plumes of earth as its head and shoulders break the ground), `cl_falls`/`cl_strm` (dirt pouring off the hammer,
+  the arms, the hands and the chin as each clears the ground and at each blow: 15 points a giant, a ray-to-line test
+  each, no march), `cl_blast` (the crown of thrown earth, a cone, `cl_crown_at`; the eruption's column, `cl_col`,
+  `cl_col_d`, `cl_col_rho`, marched with leaps through clear air, its head some 500 up, hanging and drifting with the
+  wind to the end; the dust wall, `cl_surge_r`, `cl_surge_k`, `cl_surge_seg`, lobed and torn, past the giants in
+  ~1.4 s), `cl_blast_glow`/`cl_blast_lit`/`cl_blast_shade` (its light: one flash of about a fifth of a second, the core's
+  green, a low glow in the crater; and the column's ragged shadow on the land), `cl_debris` (each giant's hammer and arms
+  in 40 pieces, `CL_DBN`: `cl_pc` places each closed-form, `cl_vox` walks its blocks, at most `CL_DBV` 4 walks a pixel;
+  thrown, landed, lying to the end), `cl_bsmoke` (the burst's shell of stone dust, ~7 s), `cl_flash`, `cl_motes` (green
+  embers over the crater), `cl_cut` (the damage, the burst and the sweep line on a hit). `cl_px` and `cl_jit`: every
+  march's jitter is white noise on the pixel grid, new each frame (a pattern showed as hatching or moire). Preview views
+  `cl*` (`clplayer`, `clfar`, `clclose`, `clswing`, `clheave`, `clrisehill`, `clriseslam`, `clburst`, `clburstup`,
+  `clkneel`, `cllegs`, `cllegsb`, `clface`, `clhero`, `clbust`, `clhead`, `clgrip`, `clfeet`, `clside`, `clfront`,
+  `clmid`, `claerial`; `--set hills=H` puts the giants on the preview's hills).
+- **The Colossi's pass and the size limit**: the fork takes a post pass of at most 256 KiB (262,144 bytes,
+  `POST_SOURCE` in the fork's `horizon-mods` runtime.rs: over it the game logs "post pass over 256 KiB, ignored" and draws
+  nothing of it). colossi.wgsl says `// [lean pass]`, so the mod sends it without its comment and blank lines
+  (`passbuild::lean_pass`): 172,931 bytes as sent, against 231,630 with them. `tools/check-shader.sh` fails any pass over
+  the limit, counting it the same way.
+- **The Colossi's data is three places**: the layout at the head of `colossi.wgsl` (`mod_data`: 27 meshes' headers at 16,
+  rigs at 448 (96 words a design), five records of 64 words at 640 (`REC0 + REC * g`), the heap's colours at 1008
+  (`HV_COL`), the meshes from 1024; view.bin is 256,808 words of the 262,144 `render.set-data` takes),
+  `tools/colossi_rig.py` + `tools/colossi_assets.py` (the meshes, the statues file) and `strike/colossi.rs`
+  (`table_words`, `pose_words`, the `Statue` reader). A record's words: 0 design, 1 mirror, 2 scale, 3 yaw, 4-6 where its
+  mesh stands (5 its ground less `BURY`, rewritten by the `survey`), 7 its damage seed, 8 glow, 9 its rise, 10 its first
+  blow, 11 its sweep, 12-14 its grid, 15 its cuts, 16-19 the damage spec, 20-22 the grid's offset; 23 its second blow, 24 its swing's
+  seconds, 25 its variation, 26-27 its leads, 28-34 its character, 36 the hammer's scale; 44-46 where its hammer lands
+  (45 rewritten by the survey), 47 the pieces that burst with it (`BURST_MASK`), 48-58 its statue's crouch and 59-62 its
+  kneel. Word 3 is the flags (bit 0 the cuts, bit 1 the shadows, bit 3 the terrain's heap is real); 1008 + 2 g giant g's
+  torn land's colours (its surface, what is under it; 0xAABBGGRR, A 255 once known). CL_K (4.4), the CL_* times, the
+  ring and the blast's speed are in the shader and the plan: change both. The shader's damage (`cl_h3`, `cl_vn`,
+  `cl_damage`) must stay the converter's `docs/damage.md` exactly, or the display and the blocks will not agree.
+  `statues.bin` is 1.6 MB of runs and is read a stage at a time on purpose: reading it all when the strike fires took
+  the mod's whole tick fuel ("it took too long"); keep the heavy decoding (`Statue::cells`) in a stage of its own, one
+  giant at a time.
+- **The mod has 64 MB of memory** (`MEMORY` in the fork's `horizon-mods` runtime.rs), besides the fuel limit: past it
+  the mod stops for good (a `rust_oom` in the soak). Edits, reads' answers and work waiting are all held in it. The
+  Colossi hit it: the giants' torn land shared the stages with the crater and the field, one stage a tick, and ran 13 to
+  28 s late, till the strike's end at 34 s dropped them; their reads' answers waited in memory meanwhile (some 27 MB)
+  and took the mod past 64 MB. Now `hv_drive` runs by the real clock (`strike::clock()`, set each tick by lib.rs's
+  `set_clock` and by `sim::play`: a stage that runs late catches up with all that is due instead of falling a stage
+  behind each time), the reads in hand are capped (`BD_AHEAD`, `CR_AHEAD`), a land never loaded is done only near the
+  middle (`TREE_R`), and the statues go in over five ticks (`STATUE_STEP`). One soak seed hid it: run `mod_soak`
+  (`SOAK_LASERS=colossi SOAK_FULL=1`) on several (7, 9 and 11), six strikes each, and keep every one under half the fuel.
 - **The Tsunami's land work is metered by its columns** (`strike/tsunami.rs`): a first version counted a column at a
   sixth of what it cost (a block-name lookup for every column's ground, the noise per column) and the game stopped the mod
   mid-strike ("it took too long", 50M fuel in one tick). Now the ground's kind is looked up once per palette name, the
@@ -942,9 +1097,10 @@ The game's control tool works on this build too: `horizon-ctl state`, `horizon-c
 
 Shader: `tools/check-shader.sh` prints `OK` (every pass: the prelude + `mod/shaders/strike.wgsl`, the Downfall's, the
 Planet Killer's, the Crystal Bloom's, the Sinkhole's, the Payload's, the Nuke's, the Rod's, the Supercell's, the
-Hurricane's, the Tsunami's, the Supervolcano's, the Sky Breaks', the Carpet Bomb's, the World Eater's, the Convergence's, the Earthquake's and the Six Stars', each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
+Hurricane's, the Tsunami's, the Supervolcano's, the Sky Breaks', the Carpet Bomb's, the World Eater's, the Convergence's, the Earthquake's, the Six Stars' and the Colossi's, each also at QUALITY FULL where it has a half-size stage). Mod: build, install, `./play.sh`, one
 strike with terrain off, then one with terrain on in a throwaway world; the chat stays empty and the shaft reaches
-bedrock. See [CONTRIBUTING.md](CONTRIBUTING.md).
+bedrock. A change to the Colossi's plan: `mod_soak` with `SOAK_LASERS=colossi SOAK_FULL=1` on seeds 7, 9 and 11 (its
+memory, besides its fuel). See [CONTRIBUTING.md](CONTRIBUTING.md).
 Around every in-game strike run `tools/game_check.py mark` before it and `tools/game_check.py watch` (or `check`)
 during and after it: if it reports the mod stopped (out of fuel, a panic, a failed start), the run failed, whatever it
 looked like.

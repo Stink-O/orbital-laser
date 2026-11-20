@@ -83,6 +83,9 @@ K = {  # palette
     "@": (176, 206, 255, 255),    # its paler glass
     "$": (14, 12, 26, 255),       # the dark behind the sky
     "~": (246, 250, 255, 255),    # its clouds
+    "6": (132, 134, 128, 255),    # the colossus's lit stone
+    "-": (74, 76, 74, 255),       # its shadowed stone
+    "^": (110, 255, 150, 255),    # its glowing cracks
 }
 
 def designator():
@@ -545,13 +548,32 @@ SIXSTARS_ICON = [        # the six stars: a white star of blocks, outlined, its 
     "................",
 ]
 
-GRIDS = {"sixstars_icon": SIXSTARS_ICON, "earthquake_icon": EARTHQUAKE_ICON, "convergence_icon": CONVERGENCE_ICON, "worldeater_icon": WORLDEATER_ICON, "carpetbomb_icon": CARPETBOMB_ICON, "supervolcano_icon": SUPERVOLCANO_ICON, "skybreak_icon": SKYBREAK_ICON, "tsunami_icon": TSUNAMI_ICON, "hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
+COLOSSI_ICON = [         # a stone giant with its hammer raised in the fist, green cracks glowing
+    "..........----..",
+    "..........-66-..",
+    ".....666..66666.",
+    ".....6^66.-----.",
+    ".....66666...5..",
+    "....6666666..5..",
+    "...666^66666.5..",
+    "..666666666-6555",
+    "..666-666^66.5..",
+    "..666-66666..5..",
+    "..-6.-666-6-.5..",
+    "..-6..66666.....",
+    "..66..-6^66.....",
+    "..66..66666.....",
+    "..--..--.--.....",
+    "................",
+]
+
+GRIDS = {"colossi_icon": COLOSSI_ICON, "sixstars_icon": SIXSTARS_ICON, "earthquake_icon": EARTHQUAKE_ICON, "convergence_icon": CONVERGENCE_ICON, "worldeater_icon": WORLDEATER_ICON, "carpetbomb_icon": CARPETBOMB_ICON, "supervolcano_icon": SUPERVOLCANO_ICON, "skybreak_icon": SKYBREAK_ICON, "tsunami_icon": TSUNAMI_ICON, "hurricane_icon": HURRICANE_ICON, "supercell_icon": SUPERCELL_ICON, "rod_icon": ROD_ICON, "nuke_icon": NUKE_ICON, "payload_icon": PAYLOAD_ICON, "sinkhole_icon": SINKHOLE_ICON, "plasma_icon": PLASMA_ICON, "godly_icon": GODLY_ICON, "blackhole_icon": BLACKHOLE_ICON,
          "downfall_icon": DOWNFALL_ICON, "crystalbloom_icon": CRYSTALBLOOM_ICON}
 DRAWN = {"laser_designator": designator, "meteor_icon": meteor_icon, "mothership_icon": mothership_icon,
          "planetkiller_icon": planetkiller_icon}
 
 names = ("laser_designator", "plasma_icon", "godly_icon", "blackhole_icon", "meteor_icon", "mothership_icon", "downfall_icon",
-         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon", "tsunami_icon", "supervolcano_icon", "skybreak_icon", "carpetbomb_icon", "worldeater_icon", "convergence_icon", "earthquake_icon", "sixstars_icon")
+         "planetkiller_icon", "crystalbloom_icon", "sinkhole_icon", "payload_icon", "nuke_icon", "rod_icon", "supercell_icon", "hurricane_icon", "tsunami_icon", "supervolcano_icon", "skybreak_icon", "carpetbomb_icon", "worldeater_icon", "convergence_icon", "earthquake_icon", "sixstars_icon", "colossi_icon")
 sheet = Image.new("RGBA", (20 * len(names) - 4, 16), (0, 0, 0, 0))
 for i, name in enumerate(names):
     if name in GRIDS:

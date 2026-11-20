@@ -63,6 +63,10 @@ fn main() {
     let t: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_tsunami_{f}.wgsl"), passbuild::split_pass(&shader, &ts, f))).collect();
     writeln!(rs, "/// The Tsunami's at QUALITY FULL and FAST.").unwrap();
     writeln!(rs, "const PASS_TSUNAMI: [&str; 2] = [{}];", t.join(", ")).unwrap();
+    let cl = read("colossi.wgsl");
+    let c: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_colossi_{f}.wgsl"), passbuild::split_pass(&shader, &cl, f))).collect();
+    writeln!(rs, "/// The Colossi's at QUALITY FULL and FAST.").unwrap();
+    writeln!(rs, "const PASS_COLOSSI: [&str; 2] = [{}];", c.join(", ")).unwrap();
     let sb = read("skybreak.wgsl");
     let k: Vec<String> = [false, true].iter().map(|&f| write(format!("pass_skybreak_{f}.wgsl"), passbuild::split_pass(&shader, &sb, f))).collect();
     writeln!(rs, "/// The Sky Breaks' at QUALITY FULL and FAST.").unwrap();

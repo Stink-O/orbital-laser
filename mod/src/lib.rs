@@ -108,6 +108,10 @@ fn earthquake_pass(fast: bool) -> &'static str {
 fn sixstars_pass(fast: bool) -> &'static str {
     PASS_SIXSTARS[usize::from(fast)]
 }
+/// The Colossi's, the same way (colossi.wgsl's `[half stage]`: its giants traced at half size, joined to the land's depth).
+fn colossi_pass(fast: bool) -> &'static str {
+    PASS_COLOSSI[usize::from(fast)]
+}
 fn worldeater_pass(fast: bool) -> &'static str {
     PASS_WORLDEATER[usize::from(fast)]
 }
@@ -163,6 +167,7 @@ fn pass_of(l: &lasers::Laser) -> usize {
         "convergence" => 16,
         "earthquake" => 17,
         "sixstars" => 18,
+        "colossi" => 19,
         _ => 0,
     }
 }
@@ -488,9 +493,9 @@ fn default_colour(i: usize) -> usize {
 
 struct Orbital {
     /// The post passes (0 the other lasers', 1 the downfall's, 2 the planet killer's, 3 the crystal bloom's, 4 the
-    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's, 15 the world eater's), the one the
+    /// sinkhole's, 5 the payload's, 6 the nuke's, 7 the rod's, 8 the supercell's, 9 the hurricane's, 10 the fold's, 11 the supervolcano's, 12 the tsunami's, 13 the sky breaks', 14 the carpet bomb's, 15 the world eater's, 16 the convergence's, 17 the earthquake's, 18 the six stars', 19 the colossi's), the one the
     /// game last compiled, and whether it is being now, ahead of a strike (see `frame`).
-    passes: [&'static str; 19],
+    passes: [&'static str; 20],
     compiled: Option<usize>,
     warming: bool,
     /// A pick has left the wheel up while its pass is built (`close_picked`).
@@ -661,7 +666,7 @@ impl Orbital {
     fn new(settings: Settings) -> Orbital {
         let Settings { laser, terrain, hud, approach, arrival, page, colours, fly, blast_alt, fast, lite, impact, knock, follow, follow_distance, seed_lock, impact_style, fold_pattern, carry_turn, we_scripted } = settings;
         Orbital {
-            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast), convergence_pass(fast), earthquake_pass(fast), sixstars_pass(fast)],
+            passes: [PASS_OWN[0], PASS_OWN[1], PASS_OWN[2], PASS_OWN[3], PASS_OWN[4], payload_pass(fast), nuke_pass(fast), rod_pass(fast), supercell_pass(fast), hurricane_pass(fast), PASS_FOLD, volcano_pass(fast), tsunami_pass(fast), skybreak_pass(fast), carpet_pass(fast), worldeater_pass(fast), convergence_pass(fast), earthquake_pass(fast), sixstars_pass(fast), colossi_pass(fast)],
             compiled: None,
             warming: false,
             closing: false,
@@ -1171,6 +1176,7 @@ impl Orbital {
         self.rebuild("convergence", convergence_pass(fast));
         self.rebuild("earthquake", earthquake_pass(fast));
         self.rebuild("sixstars", sixstars_pass(fast));
+        self.rebuild("colossi", colossi_pass(fast));
         self.update_panel();
     }
     /// The Rod's impact frames on or off, kept, and at once for a strike under way.
@@ -1179,7 +1185,7 @@ impl Orbital {
         self.save();
         // (at once for a strike under way that reads it: the Rod's, the Six Stars' (the Convergence's flags carry its terrain too: from its next strike))
         if let Some(i) = self.strike.as_ref().map(|s| s.params[7] as u32)
-            && LASERS.iter().any(|l| l.index == i && matches!(l.key, "rod" | "sixstars"))
+            && LASERS.iter().any(|l| l.index == i && matches!(l.key, "rod" | "sixstars" | "colossi"))
         {
             let flags = self.flags_of(i);
             if let Some(s) = &mut self.strike {
@@ -1353,7 +1359,8 @@ impl Orbital {
             return self.fold_stop as f32;
         }
         // (the Rod's and the Convergence's impact frames: 2 off, else 4 times one more than the look picked)
-        let impact = index == 11 || LASERS.iter().any(|l| l.index == index && (l.key == "convergence" || l.key == "sixstars"));
+        // (the Colossi's too: 2 softens its flashes, no impact frames: colossi.wgsl's cl_soft)
+        let impact = index == 11 || LASERS.iter().any(|l| l.index == index && (l.key == "convergence" || l.key == "sixstars" || l.key == "colossi"));
         f32::from(u8::from(self.shadow_off)) + if impact { if self.impact { 4.0 * f32::from(1 + self.impact_style) } else { 2.0 } } else { 0.0 }
     }
     /// Laser `key`'s pass is `pass` from now on: given to the game at once if its strike is drawing it (else compiled
@@ -2274,7 +2281,7 @@ impl Orbital {
                 lines.push((format!("Arrival: it {}", ARRIVALS[self.arrival].label), 0xA8B0BC));
                 lines.push((format!("Colour: {}", COLOURS[self.colours[self.laser]].label), COLOUR_RGB[self.colours[self.laser]]));
             }
-            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" || l.key == "earthquake" || l.key == "sixstars" {
+            if l.key == "payload" || l.key == "nuke" || l.key == "rod" || l.key == "supercell" || l.key == "hurricane" || l.key == "colossi" || l.key == "supervolcano" || l.key == "skybreak" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" || l.key == "earthquake" || l.key == "sixstars" {
                 lines.push((format!("Quality: {}", if self.lite { "performance (the World Eater at its lightest)" } else if self.fast { "fast (smoke at half size)" } else { "full" }), 0xA8B0BC));
             }
             if l.key == "nuke" || l.key == "rod" || l.key == "hurricane" || l.key == "tsunami" || l.key == "supervolcano" || l.key == "carpetbomb" || l.key == "worldeater" || l.key == "convergence" || l.key == "earthquake" || l.key == "sixstars" {
@@ -2395,6 +2402,7 @@ impl Mod for Orbital {
                         "convergence" => "WORLDS STIRRING",
                         "earthquake" => "READING FAULTS",
                         "sixstars" => "HEAT RISING",
+                        "colossi" => "WAKING THE GIANTS",
                         "worldeater" => "STIRRING THE DEEP",
                         _ => "ACQUIRING TARGET",
                     };

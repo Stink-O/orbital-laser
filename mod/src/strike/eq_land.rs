@@ -863,6 +863,10 @@ struct Work {
     lakek: Vec<u8>,
     /// The slabs of the low lip that come away (`find_slabs`), and whether lib.rs has been told of them.
     slabs: Vec<EqSlab>,
+    /// The slabs found, until the world says which stand dry (`settle_slabs`), and the query asking it.
+    slab_cands: Vec<EqSlab>,
+    slab_tag: Option<u32>,
+    slabs_settled: bool,
     /// The lake's level (`EqPlates::lake`, which works out every plate's offset: asked once, not a column).
     lake: Option<i32>,
     /// The next chunk of the grid looked at for the biome under it (`biome_stage`).
@@ -1165,6 +1169,9 @@ impl Work {
             plain_log: Vec::new(),
             lakek: vec![0; n],
             slabs: Vec::new(),
+            slab_cands: Vec::new(),
+            slab_tag: None,
+            slabs_settled: false,
             lake: pl.lake(),
             biome_next: 0,
             slabs_said: false,
@@ -1523,7 +1530,40 @@ impl Work {
         }
     }
     /// A cut chunk's edits (one, or two when the crack crosses it twice), its walls' linings kept for the rest.
+    /// Which of the slabs found come away: only those whose every column stands dry. Water standing over a slab's
+    /// land would be turned with it, and drawn stretched between the slab and the water round it. Asked of the world as
+    /// the strike fires (`slab_tag`); decided once the answer is in, or, `force`, before any slab column is cut (no
+    /// answer yet: none come away). The slabs are given to the warp only then.
+    fn settle_slabs(&mut self, force: bool) {
+        if self.slabs_settled {
+            return;
+        }
+        let ready = self.slab_tag.is_none_or(crate::ground::ready);
+        if !ready && !force {
+            return;
+        }
+        let cands = std::mem::take(&mut self.slab_cands);
+        let n = cands.len();
+        crate::meter::spend(2_000 * n as u64);
+        self.slabs = if ready {
+            cands
+                .into_iter()
+                .filter(|s| (s.lo[0]..=s.hi[0]).all(|x| (s.lo[1]..=s.hi[1]).all(|z| crate::ground::at(x, z).is_some() && crate::ground::water(x, z).unwrap_or(0) <= 0)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.slabs_settled = true;
+        eq_slabs_publish(&self.slabs, [self.pl.block[0], self.pl.block[1] + 1, self.pl.block[2]]);
+        #[cfg(not(test))]
+        crate::sdk::log::write(
+            crate::sdk::log::Level::Info,
+            &format!("earthquake: {} slabs of the lip come away ({} of {} found over water or land not loaded): {:?}", self.slabs.len(), n - self.slabs.len(), n, self.slabs.iter().map(|s| (s.lo, s.hi, s.t0, s.amax as i32, s.fall as i32)).collect::<Vec<_>>()),
+        );
+    }
     fn cut_edits(&mut self, items: Vec<Item>) -> Vec<(f32, Blocks)> {
+        // (which slabs stand is settled before any of the cut is made)
+        self.settle_slabs(true);
         let mut items = items;
         items.sort_by(|a, b| a.at.total_cmp(&b.at));
         // (split once, at the biggest gap in time, when the crack crosses it twice)
@@ -2837,14 +2877,19 @@ fn stage_parts(q: &mut Plan, wk: &mut Work, now: f32, kp: &mut usize, part: &mut
     wk.cap = if wk.cut_built { REST_STAGE } else { STAGE };
     // (the slabs of the lip, before any of the cut is made: the cut leaves them standing)
     if !wk.slabs_said {
-        wk.slabs = find_slabs(&wk.pl);
-        eq_slabs_publish(&wk.slabs, [wk.pl.block[0], wk.pl.block[1] + 1, wk.pl.block[2]]);
+        wk.slab_cands = find_slabs(&wk.pl);
         wk.slabs_said = true;
-        #[cfg(not(test))]
-        crate::sdk::log::write(crate::sdk::log::Level::Info, &format!("earthquake: {} slabs of the lip come away: {:?}", wk.slabs.len(), wk.slabs.iter().map(|s| (s.lo, s.hi, s.t0, s.amax as i32, s.fall as i32)).collect::<Vec<_>>()));
+        // (their columns asked of the world: which stand dry, `settle_slabs`)
+        let cols: Vec<(i32, i32)> = wk.slab_cands.iter().flat_map(|s| (s.lo[0]..=s.hi[0]).flat_map(move |x| (s.lo[1]..=s.hi[1]).map(move |z| (x, z)))).collect();
+        if !cols.is_empty() {
+            let tag = crate::ground::new_tag();
+            q.ev.push((now, Act::Survey { tag, columns: cols }));
+            wk.slab_tag = Some(tag);
+        }
         // (a stage of its own: the cut begins with the next)
         return true;
     }
+    wk.settle_slabs(false);
     if wk.pl.rest && now >= BIOME_AT {
         wk.biome_stage(q, now);
     }
@@ -3405,8 +3450,12 @@ mod tests {
     }
     /// A strike played against the synthetic land, the world's reads answered from the land as the edits have left it.
     fn run_with(seed: u32, me: [f64; 3], hole: Option<fn(i32, i32) -> bool>) -> Run {
+        run_wet(seed, me, hole, survey_wet)
+    }
+    /// The same, the world saying water stands `wet(x, z)` deep over column (x, z).
+    fn run_wet(seed: u32, me: [f64; 3], hole: Option<fn(i32, i32) -> bool>, wet: fn(i32, i32) -> Option<i32>) -> Run {
         crate::ground::set_test(Some(survey));
-        crate::ground::set_test_wet(Some(survey_wet));
+        crate::ground::set_test_wet(Some(wet));
         let pl = eq_plates(&target(), me, seed as f32, true);
         let ev = plan_eq(me, seed);
         let world = RefCell::new(World::new());
@@ -3809,6 +3858,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A slab comes away only where its land stands dry: one under water would turn its water with it.
+    #[test]
+    fn eq_slabs_come_away_only_where_the_land_is_dry() {
+        use super::super::eq_trees::eq_slabs_now;
+        let (seed, me) = CASES[0];
+        run(seed, me);
+        let dry = eq_slabs_now();
+        assert!(!dry.is_empty(), "seed {seed}: no slab on dry land");
+        // (water a block deep over the land beside the first slab: that one stays, the others come away)
+        fn wet(x: i32, z: i32) -> Option<i32> {
+            let s = WET_AT.with(std::cell::Cell::get);
+            ((x - s[0]).abs() <= 12 && (z - s[1]).abs() <= 12).then_some(1)
+        }
+        WET_AT.with(|w| w.set(dry[0].lo));
+        run_wet(seed, me, None, wet);
+        let some = eq_slabs_now();
+        assert!(!some.iter().any(|s| s.lo == dry[0].lo), "seed {seed}: a slab under water comes away");
+        assert!(some.len() >= dry.len().saturating_sub(3) && some.len() < dry.len(), "{} of {} slabs", some.len(), dry.len());
+        // (water everywhere: none)
+        run_wet(seed, me, None, |_, _| Some(3));
+        assert!(eq_slabs_now().is_empty(), "seed {seed}: slabs over water");
+    }
+    thread_local! {
+        static WET_AT: std::cell::Cell<[i32; 2]> = const { std::cell::Cell::new([0, 0]) };
     }
 
     /// The slabs of the low lip (strike/eq_trees.rs's EqSlab): some are found; each stands in the main fault's trench

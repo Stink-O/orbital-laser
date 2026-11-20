@@ -170,7 +170,7 @@ impl Rows {
             Some(l) if is_ship(l) => Rows::Ship,
             Some(l) if sound_of(l.key).is_some() => Rows::Sound,
             Some(l) if l.key == "rod" || l.key == "convergence" => Rows::Impact,
-            Some(l) if l.key == "sixstars" => Rows::Flash,
+            Some(l) if l.key == "sixstars" || l.key == "colossi" => Rows::Flash,
             Some(l) if l.key == "fold" => Rows::Crease,
             Some(l) if l.key == "worldeater" => Rows::Worm,
             _ => Rows::None,
@@ -640,8 +640,8 @@ impl Wheel {
             }
         }
         // (the Rod's and the Convergence's: their impact frames on or off, the one picked lit in its colour)
-        // (the Six Stars': its flashes full or softened)
-        if let Some(rl) = row.filter(|&i| LASERS[i].key == "sixstars") {
+        // (the Six Stars' and the Colossi's: their flashes full or softened)
+        if let Some(rl) = row.filter(|&i| LASERS[i].key == "sixstars" || LASERS[i].key == "colossi") {
             let ms = LASERS[rl];
             let b0 = flash_button(0);
             text(&mut out, "FLASHES", b0.x - FLASH_LABEL_W / 2.0 - 2.0, b0.y + 2.0, 0xB8BEC8);
@@ -746,6 +746,7 @@ impl Wheel {
             Some(Spot::Impact(1)) => ("Kanada: silhouettes, thick lines, a gold negative".to_string(), 0x8C93A0),
             Some(Spot::Impact(2)) => ("Black Flash: red and black, black lightning".to_string(), 0x8C93A0),
             Some(Spot::Impact(_)) => ("Cinematic: a white-out and a shockwave ring".to_string(), 0x8C93A0),
+            Some(Spot::Flash(0)) if row.is_some_and(|i| LASERS[i].key == "colossi") => ("Flashes in full: the impact frames as it blows, the blast's flash".to_string(), 0x8C93A0),
             Some(Spot::Flash(0)) => ("Flashes in full: the sun flaring on each star, the impact's flash".to_string(), 0x8C93A0),
             Some(Spot::Flash(_)) => ("Flashes softened, for anyone sensitive to flashing light".to_string(), 0x8C93A0),
             Some(Spot::Crease(k)) => (FD_PATTERNS[k.min(2)].2.to_string(), 0x8C93A0),

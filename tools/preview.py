@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHADERS = ROOT / "mod" / "shaders"
-LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars"]
+LASERS = ["plasma", "godly", "blackhole", "meteor", "mothership", "downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars", "colossi"]
 # the shader's laser number where it is not the list's place (lasers.rs's index)
-INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19, "convergence": 20, "earthquake": 21, "sixstars": 22}
+INDEX = {"supercell": 12, "hurricane": 13, "fold": 14, "supervolcano": 15, "tsunami": 16, "skybreak": 17, "carpetbomb": 18, "worldeater": 19, "convergence": 20, "earthquake": 21, "sixstars": 22, "colossi": 23}
 # the shader's file where it is not the laser's name
 SHADER = {"supervolcano": "volcano"}
 # Where the eye is (the target is at 0.5 65 0.5, the player 60 blocks south of it, so the ships lie away north)
@@ -533,6 +533,39 @@ VIEWS = {
     # (on hills 30 high: from 200 up over the player, and low along the ground toward the fault)
     "eqhill": "cx=0 cy=230 cz=300 lx=0.5 ly=64 lz=0.5 hills=30 trees=1 fov=70 reach=250",
     "eqhilllow": "cx=60 cy=84 cz=210 lx=0.5 ly=66 lz=0.5 hills=30 trees=1 fov=70 reach=250",
+    # the colossi (five giants ~220 tall in a ring 200 out round the target, each with its hammer): from 800 blocks off with the
+    # whole ring in frame, from the player's spot 330 off, close (230 off) on one giant, from the ring's middle looking up,
+    # and from high above
+    "clfar": "cx=0 cy=130 cz=800 lx=0.5 ly=110 lz=0.5 flat=1 fov=70 reach=800",
+    "clplayer": "cx=0 cy=68 cz=330 lx=0.5 ly=120 lz=0.5 flat=1 fov=75 reach=330",
+    "clclose": "cx=40 cy=70 cz=390 lx=117 ly=110 lz=160 flat=1 fov=70 reach=390",
+    "clmid": "cx=0 cy=66 cz=0 lx=100 ly=300 lz=-120 flat=1 fov=90 reach=1",
+    "clside": "cx=470 cy=125 cz=-560 lx=0 ly=110 lz=-300 flat=1 fov=50 reach=600",
+    "clfront": "cx=0 cy=100 cz=-620 lx=0 ly=100 lz=-300 flat=1 fov=50 reach=600",
+    "claerial": "cx=0 cy=900 cz=900 lx=0.5 ly=60 lz=0.5 flat=1 fov=60 reach=900",
+    # (the first giant, at z -300 and facing the middle: its front from the middle, three-quarters from the ground, its
+    # chest and head close, and its hammer's head close)
+    "clswing": "cx=420 cy=110 cz=-225 lx=0 ly=150 lz=-225 flat=1 fov=58 reach=700",
+    "clfeet": "cx=75 cy=84 cz=-235 lx=0 ly=82 lz=-292 flat=1 fov=50 reach=150",
+    # (the land the first giant tears up, from up and to one side: its plates, cracks and ragged edge)
+    "clheave": "cx=90 cy=230 cz=-130 lx=0 ly=60 lz=-310 flat=1 fov=62 reach=400",
+    # (the rise and the first blow on wooded hills: from over giant 0's shoulder, and low over the land at its blow)
+    "clrisehill": "cx=90 cy=230 cz=-130 lx=0 ly=60 lz=-310 hills=30 trees=1 fov=62 reach=400",
+    "clriseslam": "cx=110 cy=120 cz=-40 lx=2 ly=60 lz=-150 hills=30 trees=1 fov=62 reach=400",
+    "clgrip": "cx=190 cy=235 cz=-70 lx=-10 ly=205 lz=-265 flat=1 fov=52 reach=400",
+    "clface": "cx=0 cy=105 cz=60 lx=0 ly=105 lz=-300 flat=1 fov=50 reach=360",
+    "clhigh": "cx=227 cy=172 cz=-300 lx=0 ly=110 lz=0 flat=1 fov=75 reach=380",
+    "clhighh": "cx=227 cy=172 cz=-300 lx=0 ly=110 lz=0 hills=30 trees=1 fov=75 reach=380",
+    "clhero": "cx=190 cy=68 cz=-60 lx=0 ly=125 lz=-300 flat=1 fov=62 reach=320",
+    "clbust": "cx=70 cy=205 cz=-150 lx=0 ly=185 lz=-300 flat=1 fov=32 reach=170",
+    "cllegs": "cx=150 cy=100 cz=-260 lx=0 ly=90 lz=-290 flat=1 fov=62 reach=300",
+    "clkneel": "cx=230 cy=150 cz=-300 lx=0 ly=120 lz=-300 flat=1 fov=60 reach=300",
+    "cllegsb": "cx=-120 cy=95 cz=-190 lx=0 ly=90 lz=-290 flat=1 fov=62 reach=300",
+    # (close on the first giant's hammer as it charges and bursts, and where its pieces come down)
+    "clburst": "cx=170 cy=100 cz=-90 lx=0 ly=65 lz=-185 flat=1 fov=60 reach=320",
+    # (from above the first giant's hammer: where its pieces come down)
+    "clburstup": "cx=40 cy=330 cz=-110 lx=0 ly=60 lz=-200 flat=1 fov=60 reach=320",
+    "clhead": "cx=40 cy=80 cz=-140 lx=0 ly=40 lz=-225 flat=1 fov=50 reach=100",
 }
 DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "planetkiller": "player,far,side",
                  "crystalbloom": "cbplayer,cbfar,spire", "sinkhole": "shplayer,shedge,shdown",
@@ -542,6 +575,7 @@ DEFAULT_VIEWS = {"downfall": "player,far,side", "mothership": "player,far", "pla
                  "hurricane": "huplayer,hufar,huunder,huaerial",
                  "supervolcano": "vc1k,vc2k,vcair",
                  "tsunami": "tsplayer,tsside,tsaerial",
+                 "colossi": "clfar,clplayer,clclose",
                  "fold": "flhill,flhigh",
                  "skybreak": "sbplayer,sbfar,sbaerial",
                  "carpetbomb": "cpplayer,cpside,cpaerial",
@@ -557,7 +591,7 @@ def build_pass(laser: str, out: pathlib.Path, fast: bool = False, sets: tuple = 
     half-size stage (`[half stage]`) kept only for QUALITY FAST (`fast`)."""
     path = out / ("pass-fast.wgsl" if fast else "pass.wgsl")
     strike = (SHADERS / "strike.wgsl").read_text()
-    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars"):
+    if laser in ("downfall", "planetkiller", "crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "fold", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars", "colossi"):
         own = (SHADERS / f"{SHADER.get(laser, laser)}.wgsl").read_text()
         if laser == "worldeater":
             # (its path (with the constants we_path.rs gives: `cargo test we_wgsl_in_step` keeps this copy right), its
@@ -649,6 +683,13 @@ def mod_data(laser: str, out: pathlib.Path, sets: list, pl_reach: str = "300") -
         if seam is not None and seam != "face":
             lines = [ln for ln in path.read_text().splitlines() if ln.split()[:1] != ["1"]]
             path.write_text("\n".join(lines + [f"1 {float(seam)}"]) + "\n")
+        return dict(os.environ, PREVIEW_DATA=str(path))
+    if laser == "colossi":
+        # (the strike's own table: the packed meshes and the five giants placed, as strike/colossi.rs writes it; the meshes
+        # from mod/colossi/view.bin, which tools/colossi_assets.py makes)
+        path = (out / "data.txt").resolve()
+        subprocess.run(["cargo", "test", "--release", "--quiet", "--lib", "cl_write_table", "--", "--ignored"],
+                       cwd=ROOT / "mod", env=dict(os.environ, CB_OUT=str(path), PL_HILLS=next((kv.split("=", 1)[1] for kv in sets if kv.startswith("hills=")), "0")), check=True, capture_output=True)
         return dict(os.environ, PREVIEW_DATA=str(path))
     if laser == "earthquake":
         # (the table as strike/earthquake.rs gives it: the plates' make, the jolts)
@@ -791,7 +832,7 @@ def main() -> int:
     # (the payload's player: 300 blocks south, or as far as the first view puts them)
     pl_reach = next((kv.split("=", 1)[1] for kv in VIEWS[views[0]].split() + a.set if kv.startswith("reach=")), "300")
     # (and on the first view's land: its hills, if any, in the payload's heightfield)
-    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars") else None
+    env = mod_data(a.laser, out, [kv for kv in VIEWS[views[0]].split() if kv.startswith("hills=") or kv == "vox=2"] + a.set, pl_reach) if a.laser in ("crystalbloom", "sinkhole", "payload", "nuke", "rod", "supercell", "hurricane", "tsunami", "supervolcano", "skybreak", "carpetbomb", "worldeater", "convergence", "earthquake", "sixstars", "colossi") else None
     env = dict(env or os.environ)
     if a.laser == "fold" and (ROOT / "dist" / "preview" / "fold_land.txt").exists():
         env["PREVIEW_VOXELS"] = str(ROOT / "dist" / "preview" / "fold_land.txt")

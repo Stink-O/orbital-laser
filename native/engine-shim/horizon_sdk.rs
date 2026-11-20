@@ -568,9 +568,10 @@ pub mod native_build {
         ("earthquake", &["render.set-warp", "render.warp-on", "render.set-view-offset", "world.shift-player", "render.set-warp-data"]),
     ];
     /// The lasers held back on this build though it can make them (by key), greyed out until they play right natively:
-    /// the Fold (its water drops out at some angles through the world warp) and the Earthquake (it needs calls the
-    /// upstream mod API lacks). Take one out once it plays right.
-    pub const HELD_BACK: &[&str] = &["fold", "earthquake"];
+    /// the Fold (its water drops out at some angles through the world warp), the Earthquake (it needs calls the
+    /// upstream mod API lacks) and the Colossi (not yet tried natively; its meshes and sounds would not fit the native
+    /// file either). Take one out once it plays right.
+    pub const HELD_BACK: &[&str] = &["fold", "earthquake", "colossi"];
     /// What the wheel, the Designator and `/orbital <laser>` say of an unavailable laser.
     pub const NOT_YET: &str = "On the fork now, native soon";
     /// Whether this build carries out the fork's call `call` (as the fork names it: `render.set-warp`).

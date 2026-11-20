@@ -4,9 +4,9 @@ Every laser in Orbital Laser, in the order of the wheel, five to a page. The [RE
 short list. [How it works](HOW-IT-WORKS.md#the-lasers-in-detail) describes each one from start to finish, and
 [What each strike destroys](HOW-IT-WORKS.md#what-each-strike-destroys) what it leaves.
 
-**Contents:** [Plasma](#plasma) · [Godly](#godly) · [Black Hole](#black-hole) · [Meteor Storm](#meteor-storm) · [Mothership](#mothership) · [Downfall](#downfall) · [Planet Killer](#planet-killer) · [Crystal Bloom](#crystal-bloom) · [Sinkhole](#sinkhole) · [Payload](#payload) · [Nuke](#nuke) · [Rod from God](#rod-from-god) · [Supercell](#supercell) · [Hurricane](#hurricane) · [Tsunami](#tsunami) · [The Fold](#the-fold) · [Supervolcano](#supervolcano) · [The Sky Breaks](#the-sky-breaks) · [The Carpet Bomb](#the-carpet-bomb) · [The World Eater](#the-world-eater) · [The Convergence](#the-convergence) · [The Earthquake](#the-earthquake)
+**Contents:** [Plasma](#plasma) · [Godly](#godly) · [Black Hole](#black-hole) · [Meteor Storm](#meteor-storm) · [Mothership](#mothership) · [Downfall](#downfall) · [Planet Killer](#planet-killer) · [Crystal Bloom](#crystal-bloom) · [Sinkhole](#sinkhole) · [Payload](#payload) · [Nuke](#nuke) · [Rod from God](#rod-from-god) · [Supercell](#supercell) · [Hurricane](#hurricane) · [Tsunami](#tsunami) · [The Fold](#the-fold) · [Supervolcano](#supervolcano) · [The Sky Breaks](#the-sky-breaks) · [The Carpet Bomb](#the-carpet-bomb) · [The World Eater](#the-world-eater) · [The Convergence](#the-convergence) · [The Earthquake](#the-earthquake) · [The Six Stars](#the-six-stars) · [The Colossi](#the-colossi)
 
-Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb, the World Eater, the Convergence and the Earthquake reach 1000.
+Plasma, Godly, the Black Hole and the Meteor Storm reach 200 blocks; the Mothership, the Downfall, the Planet Killer, the Crystal Bloom, the Sinkhole, the Payload, the Nuke, the Rod from God, the Supercell, the Hurricane, the Tsunami, the Fold, the Supervolcano, the Sky Breaks, the Carpet Bomb, the World Eater, the Convergence, the Earthquake, the Six Stars and the Colossi reach 1000.
 
 ## Plasma
 
@@ -424,3 +424,35 @@ drawn by the strike's own picture, so F1 does not hide them.
 | The climb | The fall | The impact | What it leaves |
 |---|---|---|---|
 | ![The six stars lit at the top of the screen over a golden-hour sunset](81-sixstars-climb.jpg) | ![The burning star falling on the target](82-sixstars-fall.jpg) | ![The impact, a dirty fireball and the points ploughing out](83-sixstars-impact.jpg) | ![A five-pointed star burnt into the land, lava in its cracks, the forest flattened round it](80-sixstars-crater.jpg) |
+
+## The Colossi
+
+*On the wheel's fifth page.*
+
+Five stone giants rise and hammer the land until it blows. No beam: from the moment you fire, the ground cracks in a
+ring 300 blocks round the target, glowing green, and five giants about 220 blocks tall heave themselves up out of it,
+one after another, tearing the land up round their feet into tilted plates of rock and earth, earth pouring off their
+shoulders as they come. Each moves its own way: one eager, one stiff, one showy, one a hunched brute, one wary. From
+11 seconds, one after another, each stamps a foot, hauls its hammer up over its shoulder, holds it there and slams it
+into the ground in front of it, cracks running from the blow towards the middle; at 18 seconds all five slam down
+together in a ragged roll. The cracks lunge on and meet at 20 seconds, and the land bursts: a crown of earth thrown up
+round a column of dark smoke some 500 blocks high, a wall of dust racing out past the giants. The light runs back up
+each hammer into the arms holding it, and they burst into flying rock. Each giant sinks onto one knee, and a glowing
+line sweeps down it, turning it into real blocks.
+
+It leaves five kneeling statues of stone blocks round a terraced crater about 317 blocks across and 62 deep, split by
+glowing green fissures running out past the giants, its floor and walls lined darker with depth, a broken rim of
+overturned earth round it and each hammer's wreck lying where it struck. The land each giant rose from is left torn
+into plates. Past the crater the trees are felled pointing away out to about 240 blocks and snapped further out, the
+ground is scorched in streaks out to about 380, and every mob within 470 is killed. Chests and the like are left where
+they are.
+
+The giants and their hammer were made in [Tripo](https://www.tripo3d.ai) and turned into blocks with
+[model2mc](https://github.com/Stink-O/model2mc); this laser was sponsored by Tripo. It isn't in the native version.
+**Photosensitivity:** as the land bursts at 20 seconds there are half a second of hard cuts between black and white and
+pale green (impact frames), and a white flash. SOFT on the wheel's FLASHES row (or `/orbital impactframes off`) leaves
+out the impact frames and holds the flash down.
+
+| The rise | The blows | The blast | What it leaves |
+|---|---|---|---|
+| ![Five stone giants rising out of the earth in a ring, the ground torn up round them](84-colossi-rise.jpg) | ![A stone giant slamming its hammer into the ground](85-colossi-slam.jpg) | ![The land bursting in the middle of the ring, a column of dark smoke](86-colossi-blast.jpg) | ![Kneeling stone statues round a terraced crater](87-colossi-statues.jpg) |

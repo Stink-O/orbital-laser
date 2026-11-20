@@ -1619,6 +1619,7 @@ const USAGES: &[&str] = &[
     "orbital foldpattern b",
     "orbital foldpattern c",
     "orbital supervolcano",
+    "orbital colossi",
 ];
 
 /// The `register_commands` hook: `/orbital` and its usages in the server's command tree.

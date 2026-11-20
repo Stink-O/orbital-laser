@@ -469,5 +469,22 @@
   "subtitles.orbital.sixstars.blast": "The star explodes",
   "subtitles.orbital.sixstars.plough": "The ground is torn open",
   "subtitles.orbital.sixstars.after": "Fire burns in the crater",
-  "subtitles.orbital.sixstars.sirens": "Sirens wail far off"
+  "subtitles.orbital.sixstars.sirens": "Sirens wail far off",
+  "subtitles.orbital.colossi.quake": "The earth splits",
+  "subtitles.orbital.colossi.rise": "A stone giant heaves out of the earth",
+  "subtitles.orbital.colossi.stamp": "A giant stamps",
+  "subtitles.orbital.colossi.heave": "Stone grinds as a giant heaves",
+  "subtitles.orbital.colossi.slam": "A hammer slams the earth",
+  "subtitles.orbital.colossi.slam_far": "A distant hammer blow",
+  "subtitles.orbital.colossi.slam_all": "The earth heaves",
+  "subtitles.orbital.colossi.beam": "Cracks race to the middle",
+  "subtitles.orbital.colossi.ground": "Ground jolts",
+  "subtitles.orbital.colossi.blast": "Colossal blast",
+  "subtitles.orbital.colossi.blast_far": "Distant blast",
+  "subtitles.orbital.colossi.rumble": "The land rumbles",
+  "subtitles.orbital.colossi.charge": "Stone strains with energy",
+  "subtitles.orbital.colossi.burst": "A giant's arms burst apart",
+  "subtitles.orbital.colossi.burst_far": "Distant stone bursts",
+  "subtitles.orbital.colossi.kneel": "A giant drops to one knee",
+  "subtitles.orbital.colossi.settle": "Stone settles into blocks"
 }

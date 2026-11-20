@@ -26,6 +26,7 @@ mod fold;
 mod fold_land;
 pub use fold::{FD_COPIES, FD_COPY_ON, FD_COPY_R, FD_HIDDEN, FD_LEAD, fd_hold_areas, FD_STAY, FD_TETHER, FD_TETHER_ON, FD_WARP_END, FD_WARP_START, FD_PATTERNS, fd_level, fd_lie, fd_pin, fd_survey};
 mod hurricane;
+mod colossi;
 mod nuke;
 mod rod;
 mod sixstars;
@@ -854,6 +855,9 @@ pub fn plan(laser: &'static Laser, target: &Target, terrain: bool, dimension: &s
     }
     if laser.key == "tsunami" {
         return tsunami::tsunami_plan(laser, target, terrain, dimension, shader_seed, me);
+    }
+    if laser.key == "colossi" {
+        return colossi::colossi_plan(laser, target, terrain, dimension, shader_seed, me);
     }
     if laser.key == "supervolcano" {
         return volcano::volcano_plan(laser, target, terrain, dimension, shader_seed, me);
@@ -4626,7 +4630,8 @@ mod tests {
             // (nor is the supercell: it leaves only pits, tracks and a small crater; strike/storm.rs's tests check them)
             // (nor the hurricane: it tears up only what stands on the land and its top; strike/hurricane.rs's tests check it)
             // (nor the tsunami: it sweeps what stands on the land it read, under its water; strike/tsunami.rs's tests check it)
-            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" || laser.key == "earthquake" || laser.key == "sixstars" {
+            // (nor the colossi: it clears the footprints it rises from and digs and scorches round its target; strike/colossi.rs's tests check it)
+            if laser.key == "payload" || laser.key == "nuke" || laser.key == "rod" || laser.key == "supercell" || laser.key == "hurricane" || laser.key == "tsunami" || laser.key == "colossi" || laser.key == "fold" || laser.key == "supervolcano" || laser.key == "skybreak" || laser.key == "carpetbomb" || laser.key == "convergence" || laser.key == "worldeater" || laser.key == "earthquake" || laser.key == "sixstars" {
                 continue;
             }
             for (dimension, sky) in [("minecraft:overworld", 319), ("minecraft:the_nether", 122)] {
@@ -5781,6 +5786,19 @@ pub(super) mod sim {
         pub stages: Vec<(f32, f32, f64)>,
     }
     pub type Answer<'a> = &'a dyn Fn(i32, i32, u32, u32) -> Option<(i32, Vec<&'static str>)>;
+    thread_local! {
+        /// Whether `play` sets the strike clock each tick, as lib.rs does in the game (`play_clocked`).
+        static TICK_CLOCK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    /// `play`, the strike clock set each tick as lib.rs sets it in the game: for a strike whose stages catch up by it (the
+    /// Colossi's torn land, `hv_drive`). (The Earthquake's land tests are tuned to `play` without it.)
+    pub fn play_clocked(plan: Vec<(f32, Act)>, length: f32, answer: Answer) -> Played {
+        TICK_CLOCK.with(|c| c.set(true));
+        let played = play(plan, length, answer);
+        TICK_CLOCK.with(|c| c.set(false));
+        set_clock(0.0);
+        played
+    }
     pub fn play(plan: Vec<(f32, Act)>, length: f32, answer: Answer) -> Played {
         let mut edits = Vec::new();
         let mut out = play_each(plan, length, answer, &mut |t, due, b| edits.push((t, due, b)));
@@ -5800,6 +5818,9 @@ pub(super) mod sim {
             ticks += 1;
             crate::meter::reset();
             let now = ticks as f32 * 0.05;
+            if TICK_CLOCK.with(std::cell::Cell::get) {
+                set_clock(now);
+            }
             let mut worked_out = false;
             let mut run = |job: Stage, due: f32, plan: &mut Vec<(f32, Act)>, next: usize, out: &mut Played| {
                 let s = std::time::Instant::now();

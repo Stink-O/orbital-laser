@@ -14,9 +14,7 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 <p align="center">
   <a href="https://github.com/Stink-O/orbital-laser/releases/latest"><b>Download</b></a>
   &nbsp;·&nbsp;
-  <a href="#quick-install-regular-horizon"><b>Quick install</b></a>
-  &nbsp;·&nbsp;
-  <a href="#getting-started"><b>Fork version</b></a>
+  <a href="#getting-started"><b>Get started</b></a>
   &nbsp;·&nbsp;
   <a href="docs/HOW-IT-WORKS.md"><b>How it works</b></a>
   &nbsp;·&nbsp;
@@ -42,42 +40,45 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
 > light and sound only. [What each laser destroys](docs/HOW-IT-WORKS.md#what-each-strike-destroys).
 
 > [!IMPORTANT]
-> **Two ways to play.** The [native version](#quick-install-regular-horizon) runs on regular Horizon: install it from
-> the launcher's Mods page. The [fork version](#getting-started) runs on the Orbital Laser build of Horizon and has
-> every laser; the Fold and the Earthquake are only in the fork version for now. Either way you need your own copy of Minecraft Java Edition 26.3: nothing from Minecraft is in this
-> repository or the downloads. [Setup](docs/SETUP.md) has every step and option.
+> **How to play.** Orbital Laser runs on the Orbital Laser build of Horizon ([Getting started](#getting-started)), which
+> has every laser. The native version for regular Horizon is off for now: Horizon's launcher moved to a new mod format
+> on 18 November and no longer installs it ([Native version](#native-version-regular-horizon)). You need your own copy
+> of Minecraft Java Edition 26.3: nothing from Minecraft is in this repository or the downloads. [Setup](docs/SETUP.md)
+> has every step and option.
 
 > [!WARNING]
 > **Early and experimental.** Developed and tested on one Linux PC (Fedora, NVIDIA). Reported working on Windows 11 by
 > a user (the fork built from source); on macOS the Downfall's effects may not draw. The ready-built Horizon is for
 > Linux x86-64, with a Windows test build that has only been run under Wine so far.
 
-**Contents:** [Quick install](#quick-install-regular-horizon) · [New in 0.5.17](#new-in-0517) · [Fork version](#getting-started) ·
+**Contents:** [New in 0.5.18](#new-in-0518) · [Getting started](#getting-started) · [Native version](#native-version-regular-horizon) ·
 [How to play](#how-to-play) · [The lasers](#the-lasers) · [If something goes wrong](#if-something-goes-wrong) ·
 [Credits and licence](#credits-and-licence)
 
 **More:** [Setup](docs/SETUP.md) · [Playing](docs/PLAYING.md) · [The lasers](docs/LASERS.md) ·
 [Troubleshooting](docs/TROUBLESHOOTING.md) · [How it works](docs/HOW-IT-WORKS.md) · [Changes](docs/CHANGES.md)
 
-## Quick install (regular Horizon)
+## New in 0.5.18
 
-**You need:** the [Horizon launcher](https://playhorizon.dev) (0.2.37 or newer) with an instance set up from your own
-Minecraft Java Edition 26.3, and on Linux a C compiler, `pkg-config` and the ALSA and libudev development files (the
-launcher tells you the command if any are missing). Windows needs nothing extra. On a Mac with Apple Silicon run
-`xcode-select --install` first; Intel Macs can't build native mods.
+A new laser, **the Colossi**. Five stone giants about 220 blocks tall heave themselves out of the earth in a ring 300
+blocks round the target, tearing the land up round their feet. Each stamps a foot down, hauls its hammer up over its
+shoulder and slams it into the ground in front of it, one after another, then all five together. Green cracks run from
+the blows to the middle and meet, and the land bursts in a crown of earth round a column of dark smoke some 500 blocks
+high while a wall of dust races out past the giants. Light runs back up each hammer into the arms holding it and they
+burst into flying rock; the giants sink onto one knee and a glowing line sweeps down each, turning it into real blocks.
+It leaves five kneeling statues round a terraced crater about 317 blocks across, split by glowing green fissures, the
+hammers' wrecks lying in it and the trees felled round it. It's on the wheel's fifth page and `/orbital colossi`. It
+isn't in the native version. The giants and their hammer were made in [Tripo](https://www.tripo3d.ai) and turned into
+blocks with [model2mc](https://github.com/Stink-O/model2mc); this laser was sponsored by Tripo.
+**Photosensitivity:** as the land bursts there are half a second of hard black-and-white impact frames and a white flash;
+`/orbital impactframes off` or the wheel's FLASHES row (SOFT) leaves out the impact frames and holds the flash down.
+See [The lasers](docs/LASERS.md#the-colossi).
 
-1. **Close the game.**
-2. In the launcher, open the **Mods** page, search **orbital** and press **Install** on Orbital Laser.
-3. On the **Native build** row, pick **Release build**.
-4. Press **Build** and choose **I trust these mods: build**. The first build takes 20 to 30 minutes; later ones are
-   quicker.
-5. Press **Play**, open a creative world and type **`/orbital give`**.
-6. Hold the Designator and press **R** to pick a laser, then hold right-click on a target to fire. Type
-   **`/orbital terrain off`** first if you don't want the land wrecked.
+Also a fix for the Earthquake. Where its fault ran through water, the slabs breaking off the low edge took the water and the
+seabed with them, drawn as stretched blue and black sheets. Now only slabs standing dry break away. The fork version
+needs `orbital-mod-api-13`, as 0.5.17 did. [All the changes](docs/CHANGES.md#0518).
 
-A native mod isn't sandboxed: its code is built into the game and runs with full access to your computer, so only build
-it if you trust it. To update, installing the file by hand and what isn't in the native version yet:
-[Setup](docs/SETUP.md#native-version-regular-horizon).
+The native version is off for now: see [Native version](#native-version-regular-horizon).
 
 ## New in 0.5.17
 
@@ -126,13 +127,21 @@ The fork version, on the Orbital Laser build of Horizon. On Windows or macOS, se
    ./horizon-prepare sounds
    ```
 
-2. **Install the mod.** Download `orbital-laser-v0.5.17.zip` from the
+2. **Install the mod.** Download `orbital-laser-v0.5.18.zip` from the
    [latest release](https://github.com/Stink-O/orbital-laser/releases/latest), unzip it, and with the game closed run
    `python3 install.py`.
 3. **Play.** From the same folder, run `./play.sh` (a creative test world called OrbitalTest) or `./play.sh MyWorld`
    (back it up first). Always start the game this way: Horizon's own launcher, or a stock `horizon-client`, can't run
    the mod.
 4. **In the game,** type `/orbital give` for the Designator.
+
+## Native version (regular Horizon)
+
+Horizon's launcher moved to a new mod format on 18 November 2026 and no longer installs `.hnmod` mods, so Orbital
+Laser isn't on its Mods page any more. The last native file, `orbital-laser-native-v0.5.17.hnmod` (every laser but the
+Fold and the Earthquake), stays on the [0.5.17 release](https://github.com/Stink-O/orbital-laser/releases/tag/v0.5.17)
+for Horizon builds from before the change. For now, play the [fork version](#getting-started).
+[More in Setup](docs/SETUP.md#native-version-regular-horizon).
 
 ## Set it up with an AI agent
 
@@ -204,6 +213,7 @@ Twenty-three lasers, five to a page of the wheel. Each name links to its full de
 | <img alt="The column of fire and the column of light meeting in the air over the target" width="240" src="docs/73-convergence-clash.jpg"> | **[The Convergence](docs/LASERS.md#the-convergence)**: the Nether and the Aether fight over the target and tear the land in two. |
 | <img alt="The land torn open along the fault, one side thrust up into a cliff over a trench of lava" width="240" src="docs/78-earthquake-cliff.jpg"> | **[The Earthquake](docs/LASERS.md#the-earthquake)** (fork only): the land splits along a fault and your side is thrust up into a cliff over a canyon of lava. |
 | <img alt="A five-pointed star burnt into the land, lava in its cracks, the forest flattened round it" width="240" src="docs/80-sixstars-crater.jpg"> | **[The Six Stars](docs/LASERS.md#the-six-stars)**: a wanted level climbs to six stars, the last one tears out of the screen as a burning star the size of a hill and lands, leaving a star burnt into the land. |
+| <img alt="A kneeling stone statue of a giant over a terraced crater, more statues behind it" width="240" src="docs/87-colossi-statues.jpg"> | **[The Colossi](docs/LASERS.md#the-colossi)**: five stone giants rise in a ring, hammer the land until it blows, and are left kneeling as stone statues round the crater. |
 
 ## If something goes wrong
 
@@ -226,6 +236,9 @@ Orbital Laser is free and always will be. If you've enjoyed it and want more str
 Orbital Laser is under the MIT License (`LICENSE`). Third-party notes are in `NOTICE`. It is built on
 [Horizon](https://github.com/horizon-rust/horizon) by Ludovic and contributors (MIT), and the Orbital Laser build of Horizon
 is a fork of it.
+
+**The Colossi's giants and hammer** were made in [Tripo](https://www.tripo3d.ai) and turned into blocks with
+[model2mc](https://github.com/Stink-O/model2mc); that laser was sponsored by Tripo.
 
 **Java Edition port:** [@Ramingen](https://github.com/Ramingen) is porting Orbital Laser to Minecraft Java Edition,
 starting with Fabric ([#6](https://github.com/Stink-O/orbital-laser/pull/6)), with NeoForge and Forge to follow. The work

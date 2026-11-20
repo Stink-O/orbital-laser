@@ -544,6 +544,58 @@ lava. Water standing over a new edge is set flowing. Nothing is killed. The chun
 middle are force-loaded from the moment it fires and let go after the land is in. With terrain damage off it changes no
 blocks: the plates move the same way in the picture and go back home by 43 s.
 
+The **Colossi** (34 s; [more](#the-colossi-laser-23)) tear up the land round each giant as it rises, blast a crater and a field round it, and leave
+the giants standing as statues, all with terrain damage on (off, the giants still convert away and nothing is left).
+The chunks in the square within 400 blocks of the target (about 2,600) are forceloaded from the start and let go at the
+end, and every mob and item within 470 (not players) dies at 20 s.
+
+- **The torn land round each giant**, out to about 115 from its feet and along where its hammer came up and came down,
+  read as it starts to rise (`world.read-columns`, 36 under each column's top) and torn up a chunk at a time from its
+  feet out, from 0.4 to 4.8 s after it starts up: everything standing on it cleared whatever its height (the leaves a
+  little further, so no crown is left hanging), the ground broken into plates by nine cracks radiating from its feet
+  (branching, 2 to 7 deep, running on past the torn edge), the plates in staggered rings, each tipped up its own way, a
+  fissure a block or two deep along their edges, each plate one kind of rock or earth (deepslate, stone and tuff near
+  its feet and at the cracks' lips; coarse, rooted and plain dirt, packed mud and gravel further out; sand or red sand
+  where that is what lies under the land), and the earth it heaved up heaped on the ground (through any water) in up to
+  three lifts 0.6 s apart, topped with the land's own surface (grass, snow, sand); against each foot as it stamps, and
+  round the hammer, with what stands there, as it lands. Its edge is ragged, broken into fingers along the cracks.
+  Columns holding a chest, barrel, furnace or the like are left as they are; land not loaded by 19 s is left.
+- **The crater**, about 317 across (its edge wandering and pulled out in lobes along the five cracks) and about 62 deep
+  under the target's ground, a pit 8 deeper in its middle: terraces about 6 deep broken into slabs some 22 across, each
+  stepped down its own way; lined with the land's own stone near the top, then tuff and stone, then deepslate,
+  blackstone and basalt, its risers blackened in patches, rubble slid to the foot of each wall and a few glowing pools
+  of verdant froglight in the pit; land higher than the target's ground cut back from its edge in a stepped slope, never
+  a sheer wall; a broken rim of overturned earth and rock up to about 11 high within about 26 of the edge. Fissures up
+  to 15 wide run out of it: five towards the giants' blows, out to about 258, and between each two giants one or two
+  more out to 250 to 290, narrower and shallower past the edge, bedded in verdant froglight, dark prismarine, sculk and
+  blackstone, with dark lips of blackstone and basalt.
+- **The blast field** past it, out to 384 from the middle: the trees felled, lying pointing away from the middle, out
+  to about 82 past the crater's edge (some knocked flat further out), snapped and stripped bare out to about 150 past
+  it, their crowns thinned from the top in patches and the snow shaken off them out to 384; the ground scorched in
+  tongues (blackstone, basalt and coal near the crater, then coarse dirt, podzol and gravel, then singed in patches);
+  boulders and rubble strewn in 21 rays. A column not loaded is done by the world's heightmap, out to about 310 only.
+  None of it touches a statue's ground or a giant's torn land.
+- **The hammers' wrecks**, in the crater where each struck: the stump of its head buried across the blow, its top 6 to
+  14 over the floor, broken off at one end; the stub of its shaft, 18 to 44 long, leaning back towards its giant,
+  snapped off at a slant; polished deepslate, deepslate tiles and bricks and tuff bricks, with dark prismarine and
+  froglight glowing in the breaks; and 11 to 15 broken lumps of it lying round out to about 46, some half buried.
+- **The statues**: the five giants as the converter voxelised them (`--damage-seed`, `--yaw`, `--mirror`), broken where
+  the pass broke them, without the arms that burst (nor anything left not joined to the ground), kneeling on one knee
+  as the pass leaves them (posed by `tools/colossi_pose.py`), 137 to 177 blocks high and set some 9 into the ground, about
+  38,000 to 74,000 blocks each, packed into `mod/colossi/statues.bin` by `tools/colossi_assets.py`. Each stands on its
+  own ground, as `world.surface-height` answered for its middle.
+
+How it goes in: the torn land through the rise (each chunk's read asked about a second before it is due; columns not
+loaded asked again till 19 s). The blast's land is read with `world.read-columns` (34 under each column's top, six
+chunks a read): the field from 8 s, the crater's middle from 12 s, the crater's edge where the giants' torn land
+reaches from 18.2 s, once that is in; each worked out ahead in small stages and handed to `world.edit-blocks` a chunk
+an edit, due as the blast's front reaches it: from 20.15 s at 140 blocks a second out to about 228, then 110 a second,
+the bowl in by about 21.3 s, the rim by about 21.8, the field by about 23.2, under the blast's light and dust. The
+statues are read out of their file a giant at a time from 21.6 s, sorted by chunk and handed over a chunk column an
+edit, each giant's at once (24.45 s, 0.1 s apart), the chunk with the highest block first, so each chunk changes once;
+the giant drawn over them by then holds the statue's pose exactly and hides them till its line reveals them. The
+hammers' wrecks go in from 25 s (each giant 0.25 s after the last), the stump first and the lumps as they land.
+
 Blocks that keep a shape in their state (stairs, slabs, fences, glass panes, doors and the like) are written again in
 their plain shape on land that moves, and chests and other blocks that hold items lose what they hold.
 
@@ -553,7 +605,7 @@ their plain shape on land that moves, and chests and other blocks that hold item
 |---|---|
 | `/orbital give` | puts the Designator in your inventory |
 | `/orbital wheel` | opens the laser wheel |
-| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater`, `/orbital convergence`, `/orbital earthquake` | loads that laser |
+| `/orbital plasma`, `/orbital godly`, `/orbital blackhole`, `/orbital meteor`, `/orbital mothership`, `/orbital downfall`, `/orbital planetkiller`, `/orbital crystalbloom`, `/orbital sinkhole`, `/orbital payload`, `/orbital nuke`, `/orbital rod`, `/orbital supercell`, `/orbital hurricane`, `/orbital tsunami`, `/orbital fold`, `/orbital supervolcano`, `/orbital skybreak`, `/orbital carpetbomb`, `/orbital worldeater`, `/orbital convergence`, `/orbital earthquake`, `/orbital sixstars`, `/orbital colossi` | loads that laser |
 | `/orbital approach ahead\|behind\|left\|right\|overhead` | where the ship (Mothership, Downfall) comes in from |
 | `/orbital arrival snap\|unfold\|warp` | how the ship arrives |
 | `/orbital terrain on`, `/orbital terrain off` | switches terrain damage (off: light and sound only) |
@@ -606,7 +658,7 @@ which is what keeps that true. The fork's later additions (`world.set-flying-spe
 `orbital-mod-api-10`, `render.set-warp`, `render.hold-world` and `render.hold-world-within`, the Fold's, from
 `orbital-mod-api-11`, `render.set-hand-tint` and the chat's tree of mod commands from `orbital-mod-api-12`, and `render.set-view-offset`,
 `world.shift-player` and `render.set-warp-data`, the Earthquake's, from `orbital-mod-api-13`) are needed too: a fork
-build without them won't start the mod, so 0.5.17 needs `orbital-mod-api-13` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
+build without them won't start the mod, so 0.5.17 and later need `orbital-mod-api-13` or newer. `orbital-mod-api-7` added a half-size stage to a mod's post pass (no new import: the
 pass's source says whether it has one), which QUALITY FAST uses; `orbital-mod-api-9` skips a post pass the graphics
 driver can't build instead of crashing.
 
@@ -1659,3 +1711,115 @@ Tests: `ss_star_edge_is_a_star`, `ss_falls_from_where_it_hangs_onto_the_target`,
 `ss_leaves_a_five_pointed_star_burnt_into_the_land`, `ss_digs_the_middle_as_it_strikes_and_each_trench_as_its_point_reaches_it`,
 `ss_leaves_the_land_alone_with_the_terrain_off`, `ss_keeps_lava_from_the_lake` and `ss_no_stage_too_heavy`.
 
+## The Colossi (laser 23)
+
+Five stone giants rise in a ring, hammer the land until it blows, and are left kneeling as statues. 34 s
+([`strike/colossi.rs`](../mod/src/strike/colossi.rs) the plan, the land, the table and the sounds' cues; the pass
+[`shaders/colossi.wgsl`](../mod/shaders/colossi.wgsl); [`tools/sounds_colossi.py`](../tools/sounds_colossi.py) the
+sounds; the meshes and statues in [`mod/colossi/`](../mod/colossi), built by
+[`tools/colossi_assets.py`](../tools/colossi_assets.py)). It is on the wheel's fifth page; it isn't in the native version
+yet (`HELD_BACK`). The giants and their hammer were made in Tripo and turned into blocks with
+[model2mc](https://github.com/Stink-O/model2mc); this laser was sponsored by Tripo.
+
+No beam: five stone giants 206 to 230 blocks tall, made from Tripo
+models, stand up out of the earth in a ring 300 blocks round the target, facing the middle. While the designator is
+held its countdown reads `WAKING THE GIANTS`. From 0.2 s (each giant 0.2 s after the last) each heaves itself up over
+6.5 s, in catches, never one glide: out of a deep slouched crouch, legs first or head last as its nature has it, green
+cracks spreading through the land round it, plumes of earth thrown up as its head and shoulders break the ground,
+dirt pouring off its arms, chin and hammer and soil sliding off the stone within seconds, a ground cloud rolling out
+round its feet. Each moves its own way, one of five characters dealt round the ring each strike (eager, stiff, showy,
+brute, wary: how early it starts its wind-up, how deep it crouches, how far it arches and twists, its posture, where
+its head turns, how restless and how quick to react). Before each blow it stamps a foot down into a wide stance (a
+ring of dust, a thud, a small shake), takes the hammer in both hands, hauls it to its chest, presses it up over its
+shoulder, hangs there and swings it down into the ground in front of it in a deep squat, its torso folded over it:
+the first blows one after another from 11 s, 0.6 s apart round the ring; a flash and sparks where the head lands,
+green cracks running off through the land towards the middle, earth thrown up and rolling out, a shake. It heaves
+the caked hammer back out and all five come down again together in a ragged roll over half a second, the last at
+18 s. From there the cracks lunge on to the middle in jolts, the ground between them lighting up from under in a
+crazed web, and the giants lift their heads to watch them meet. At 20 s the land bursts where they meet: one hard
+flash (about a fifth of a second), a crown of thrown earth bursting up round the crater, a heavy column of earth and
+dark smoke boiling up out of it to some 500 blocks, its core's green light low in it, and a lobed wall of dust racing
+out over the land, past the giants in about a second and a half; the column hangs, leans off with the wind and is
+eaten away from outside in through the rest of the strike, its shadow on the land, green embers rising off the
+crater's floor. The giants are rocked by it. From 20.9 s its light runs back along the cracks and climbs each hammer
+into the arms holding it, the giant looking down at it and trembling, and at 22.4 s (each giant 0.15 s after the
+last) the hammer and those arms burst: a hard green-white line all along them, the stone broken into forty blocky
+pieces a giant (slabs off the head, splinters off the handle, chunks of arm, green-hot on their broken faces) thrown
+out tumbling to land with a puff and lie there, a shell of stone dust drifting off over some seven seconds, and the
+giant itself broken where its seeded damage says (the converter's own function, so the blocks left standing are what
+it showed; the cut edges hot green and cooling). Then each sinks, the heavy way, onto one knee in three catches and
+shudders to a stop by 24.3 s. From 25 s a glowing line sweeps down each giant (0.3 s apart, 4.5 s each, the last done
+at 30.7 s) and what is above it is the real blocks already standing there. The column and the crater's glow fade out
+by 34 s, when the strike ends. It reaches 1000 blocks. **Photosensitivity:** as the land bursts there are half a second of hard cuts
+(impact frames) and a white flash; SOFT on the wheel's FLASHES row or `/orbital impactframes off` leaves out the
+impact frames and holds the flash down (`cl_soft`, params[15] bit 2, as the Six Stars').
+
+The Colossi rise from 0.2 s (each 0.2 s after the last, over 6.5 s), the land torn up round each from 0.6 s; their first
+blows land from 11 s, 0.6 s apart, and all five again by 18; the cracks meet and the land bursts at 20, the crater
+going in from 20.15 (the bowl by about 21.3, the field by about 23.2); the hammers charge from 20.9 and burst from 22.4,
+0.15 s apart; the giants are down on one knee and still by 24.3, their statues go in from 24.45 and the hammers' wrecks
+from 25; the lines sweep down them from 25 to 30.7, and the strike ends at 34.
+
+The Colossi's ([`tools/sounds_colossi.py`](../tools/sounds_colossi.py)) are stone, earth and an old green energy, all
+synthesised (noise, pulse trains, swept tones, combs and filters) and none of it borrowed from another laser. Stone
+grinding on stone is a stick-slip: catches at random through a few rock-body bands, fused into a roar, over gritty
+friction and a groan (a jittered low pulse train through a rock body and a comb, never a creak). A blow is a falling sub
+with its harmonics for small speakers, inharmonic stone modes, a knock with a short bright front, the earth crushed and
+torn and the land's echoes; the green is a low detuned chord swelling through a comb whose delay sweeps, its pitch
+falling as it spreads. A giant's sounds come from where it stands; its rise, burst and kneel arrive late by the
+distance, but its stamps, its hammer and its blows are heard as you see them, each blow one bang: the earth splitting and heaving under all five as they rise (`quake`) and each giant
+heaving itself up in catches (`rise`); before each blow its stamp (`stamp`) and the hammer hauled up over its shoulder,
+its joints grinding under the load (`heave`, played faster or slower with the giant's wind-up), then the swing's whoosh
+and the blow (`slam`, a take for each of the five characters at its own pitch; `slam_far` cross-faded in from 250 to 800
+blocks off), and at 18 s the five together through the ground (`slam_all`); the cracks racing in to meet (`beam`, cut
+on the hit); the blast through the ground (`ground`) and through the air (`blast`, `blast_far`) and the land
+rolling on after it (`rumble`), all of it from the cracks on heard with the impact frames wherever you stand, never late
+by the distance; the light climbing each hammer (`charge`), its burst (`burst`, `burst_far`), the giant
+going down on one knee (`kneel`) and the line down it, the stone setting into blocks (`settle`). Each giant's sounds
+have three takes (the blow five), dealt so no two giants in a row share one. The plan's cues (`CS_*` in
+[`strike/colossi.rs`](../mod/src/strike/colossi.rs)) and the script's `schedule` do the same arithmetic, and the script
+reads the strike's times out of the plan. `python3 tools/sounds_colossi.py --listen DIR` writes the strike as heard from
+300 and 700 blocks, with each distance's true peak.
+
+The Colossi's pass ([`mod/shaders/colossi.wgsl`](../mod/shaders/colossi.wgsl), appended to `strike.wgsl` up to its
+`fs_main` as the other lasers' are) ray-traces triangle meshes. The giants and the hammer are Tripo models run through
+the converter's display-mesh export (`model2mc --display-mesh`, its `docs/display-mesh.md`, at most 20,000 triangles for
+the first design, 15,000 for the second and 6,000 for the hammer); `tools/colossi_rig.py` cuts each giant by joint
+capsules and planes into 13 rigid pieces (pelvis, torso, head, arm and forearm each side, thigh, shin and foot each
+side), and `tools/colossi_assets.py` builds a BVH over each piece (leaves of up to six triangles, boxes and vertices
+quantised to 10 bits an axis in the piece's own box; a vertex carries its colour, a smooth normal, baked ambient
+occlusion and an emissive byte from how green the model is there, the glowing cracks) and writes
+`mod/colossi/view.bin`: 256,808 words of the 262,144 a `render.set-data` call takes. The mod sends that with the
+strike's table (a record of 64 words a giant: design, mirror, scale, turn, where, damage seed and spec, grid, times,
+its character, where its hammer lands, which arm pieces burst, its statue's pose) as `mod_data` at the start of the
+strike, and later the ground under each giant and its blow (`world.surface-height`) and the colours of the land each
+giant tears up. The layout is at the head of colossi.wgsl, in `tools/colossi_rig.py` and in the plan; keep them in step.
+Two giant designs and one hammer are instanced five times. A giant is a skeleton of those pieces chained about 15 joints
+from one table per design (`JOINTS_A`, `JOINTS_B`, or `rig.joints` in colossi.json), the legs solved by two-bone IK
+(`cl_leg`: thigh, shin and foot turning as one hinge, so the feet stay planted and the knee never twists open), the arms
+by IK to the handle (`cl_arm`), a ball at each shoulder and elbow closing the seam; its turn and mirror are the
+converter's, so the display lies over the blocks. The pose (`cl_pose`) is worked out per pixel from the record: the rise
+in heaves (`cl_rise`), the stamps (`cl_stomps`), the heave, the hang and the swing, each part moving a little after the
+one that drives it, small drifts in every joint and the head looking about between the moves, all scaled by the
+giant's character; the kneel after the burst is the statue's own pose (words 48-62, `STATUE_POSE`), reached at
+`CL_SETTLE`, which `tools/colossi_pose.py` also applies, bone by bone, to the statue's blocks. The damage is the
+converter's `damage.md` function in WGSL (`cl_h3`, `cl_vn`, `cl_damage`, integer hashing and value noise), evaluated at
+each candidate hit in the giant's own grid (`cl_cut`), so a ray passes through the cut parts and carries on; the blast's
+front decides when it shows and the cut edge is hot green, cooling. The burst runs up the hammer and the arms in a third
+of a second (`cl_chain`), and the sweep that converts a giant is the same test on height. The stone is lit as the game
+lights its blocks (a fixed shade by the way a face looks, the day's light, the moon's by night), so the statue's blocks
+take over at the sweep without a jump. The land's part is the pass's too: the green cracks round each giant
+(`cl_frac`, step for step the plan's `frac`, so the light runs along the real cracks), from each blow on to the middle
+(`cl_run`), the crazed glow as they meet and the crater's light (`cl_ground`); the heaved earth in 2-block cells
+(`cl_mh`, the plan's `Heave::terms`), drawn only inside the crater once the real blocks are there; the ground clouds
+and each giant's plumes of earth (`cl_earth`, `cl_gc`, `cl_plumes`, marched, billowing in advected noise, lit from over
+their tops and the sun's side); dirt pouring off the stone (`cl_falls`, `cl_strm`: a ray against a falling line, no
+march); the blast's crown of earth (a cone met where the ray crosses it, `cl_crown_at`), its column (`cl_col`, marched
+with leaps through clear air, its lumps carried up and swelling, eaten away from outside in, its shadow on the land,
+`cl_blast_shade`) and its dust wall (`cl_surge_*`); the burst's forty pieces a giant (`cl_debris`: each placed in closed
+form, cut out by four fracture planes and walked block by block, `cl_vox`, only a few a pixel) and its smoke
+(`cl_bsmoke`); the flashes (`cl_flash`) and the embers (`cl_motes`). Every march is jittered by white noise on the
+pixel grid, new each frame (`cl_jit`). QUALITY FAST runs the whole pass at half the width and height (`fs_half`) and
+lays it over the full-size picture (`fs_join`), weighing the four nearest half-size pixels by how near the land's depth
+under them is to this pixel's, so a hill hiding a giant's foot does not leak. It goes to the game without its comment and
+blank lines (`// [lean pass]`): 172,931 bytes, under the 256 KiB the game takes for one.
