@@ -30,6 +30,13 @@ orbit. It digs a crater and a shaft to bedrock, flattens what stands round it an
   <a href="https://ko-fi.com/stinkoh"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white"></a>
 </p>
 
+> [!TIP]
+> **Make your own giants.** Each of the Colossi started as four pictures of it: front, back and both sides.
+> [Tripo](https://tripo.pxf.io/xJdOKy?p.invite_code=8615S1) turned them into a textured 3D model and [model2mc](https://github.com/Stink-O/model2mc) turned that
+> into blocks. If you'd like to support me **and** get a discount on a 3D model generator for your own projects,
+> **[use my link](https://tripo.pxf.io/xJdOKy?p.invite_code=8615S1)** or the code `8615S1`: you start with 500 free credits, and the code takes 60% off your first
+> month of Pro. *(Affiliate link.)*
+
 <p align="center">
   <img alt="The Sky Breaks: a huge eye flaring in a black hole punched through the cracked sky, broken panes round it, dust rising off the land below" width="720" src="docs/62-skybreak-eye-flare.jpg">
 </p>
@@ -68,7 +75,7 @@ high while a wall of dust races out past the giants. Light runs back up each ham
 burst into flying rock; the giants sink onto one knee and a glowing line sweeps down each, turning it into real blocks.
 It leaves five kneeling statues round a terraced crater about 317 blocks across, split by glowing green fissures, the
 hammers' wrecks lying in it and the trees felled round it. It's on the wheel's fifth page and `/orbital colossi`. It
-isn't in the native version. The giants and their hammer were made in [Tripo](https://www.tripo3d.ai) and turned into
+isn't in the native version. The giants and their hammer were made in [Tripo](https://tripo.pxf.io/xJdOKy?p.invite_code=8615S1) and turned into
 blocks with [model2mc](https://github.com/Stink-O/model2mc); this laser was sponsored by Tripo.
 **Photosensitivity:** as the land bursts there are half a second of hard black-and-white impact frames and a white flash;
 `/orbital impactframes off` or the wheel's FLASHES row (SOFT) leaves out the impact frames and holds the flash down.
@@ -230,6 +237,7 @@ the mod from source or change it, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Orbital Laser is free and always will be. If you've enjoyed it and want more strikes, you can buy me a coffee on
 [Ko-fi](https://ko-fi.com/stinkoh). It goes straight into the hours behind the next one.
+Making your own models in [Tripo](https://tripo.pxf.io/xJdOKy?p.invite_code=8615S1) through my link helps too, and costs you nothing extra (affiliate link).
 
 ## Credits and licence
 
@@ -237,7 +245,7 @@ Orbital Laser is under the MIT License (`LICENSE`). Third-party notes are in `NO
 [Horizon](https://github.com/horizon-rust/horizon) by Ludovic and contributors (MIT), and the Orbital Laser build of Horizon
 is a fork of it.
 
-**The Colossi's giants and hammer** were made in [Tripo](https://www.tripo3d.ai) and turned into blocks with
+**The Colossi's giants and hammer** were made in [Tripo](https://tripo.pxf.io/xJdOKy?p.invite_code=8615S1) and turned into blocks with
 [model2mc](https://github.com/Stink-O/model2mc); that laser was sponsored by Tripo.
 
 **Java Edition port:** [@Ramingen](https://github.com/Ramingen) is porting Orbital Laser to Minecraft Java Edition,
